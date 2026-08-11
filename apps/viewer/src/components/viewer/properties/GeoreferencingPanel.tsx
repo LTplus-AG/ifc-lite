@@ -26,7 +26,7 @@ import {
   mergeProjectedCRS,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
-import { detectDoubleGeoreference, formatApproxDistance } from '@/lib/geo/double-georeference';
+import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
@@ -714,15 +714,21 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
                   Angle to Grid North by hand if it looks wrong.
                 </>
               )}
-              {doubleGeoref.overridesAuthoredScale && (
+              {doubleGeoref.scaleForExport !== null && (
                 <>
                   {' '}Its Scale is not applied either: on map-sized coordinates it would re-scale
                   the model about the map origin.
                 </>
               )}
               {' '}The file&apos;s own values are shown below exactly as authored. The export is
-              worth fixing at source; to bake the correction in here, set Eastings and Northings
-              to 0 and Angle to Grid North to 0, then use Export IFC (with changes).
+              worth fixing at source; to bake the correction in here,{' '}
+              {/* Zeroing the offsets is NOT enough when Scale is being
+                  overridden: a spec-strict consumer reading the exported file
+                  back would still multiply the map-sized coordinates by it. */}
+              {doubleGeoref.scaleForExport !== null
+                ? `set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to ${trimFloat(doubleGeoref.scaleForExport)}`
+                : 'set Eastings and Northings to 0 and Angle to Grid North to 0'}
+              , then use Export IFC (with changes).
             </span>
           </div>
         </div>

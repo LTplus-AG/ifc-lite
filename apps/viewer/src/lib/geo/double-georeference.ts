@@ -81,16 +81,26 @@ export interface DoubleGeoreference {
    */
   overridesAuthoredRotation: boolean;
   /**
-   * True when the neutralised conversion also replaces an authored `Scale`
+   * Non-null when the neutralised conversion also replaces an authored `Scale`
    * that ifc-lite would otherwise have applied — i.e. the effective horizontal
    * scale for this file is not 1. Left alone it would keep re-scaling the
    * map-sized coordinates about the map origin (a UTM point scale of 0.9996 on
    * a 6 000 km northing is ~2.4 km of drift), so the guard pins it to 1.
    *
-   * Reported for the same reason as the rotation: it is a value of the user's
-   * file that the placement on screen does not honour.
+   * Carries the `Scale` value the FILE would need for the spec-strict formula
+   * to leave its own absolute coordinates alone: the unit bridge
+   * `lengthUnitScale / mapUnitScale`. Reported for two reasons — it is a value
+   * of the user's file that the placement on screen does not honour, and
+   * zeroing only the offsets is then not enough to bake the correction into an
+   * export. A spec-compliant consumer reading such a file back would still
+   * rescale the map-sized coordinates about the map origin, so any instruction
+   * that stops at Eastings/Northings/rotation would be wrong. (PR review.)
+   *
+   * Null when the effective horizontal scale is already 1, which covers both a
+   * spec-correct unit bridge and the unset-Scale heuristic — so a genuine
+   * foot/metre bridge is neither overridden nor mentioned.
    */
-  overridesAuthoredScale: boolean;
+  scaleForExport: number | null;
 }
 
 /**
@@ -147,6 +157,8 @@ export function detectDoubleGeoreference(
   // One metre at the model's own distance from the origin is what matters.
   const worldMagnitude = Math.hypot(ifcX, ifcY);
   const scaleIsUnit = Math.abs(scale - 1) * worldMagnitude <= 1;
+  const mapUnitScale = mapScale > 0 ? mapScale : 1;
+  const lengthScale = lengthUnitScale > 0 ? lengthUnitScale : 1;
 
   return {
     worldCenter: { x: ifcX, y: ifcY },
@@ -154,7 +166,7 @@ export function detectDoubleGeoreference(
     residual: Math.hypot(ifcX - easting, ifcY - northing),
     displacement: Math.hypot(appliedE - ifcX, appliedN - ifcY),
     overridesAuthoredRotation: !rotationIsIdentity,
-    overridesAuthoredScale: !scaleIsUnit,
+    scaleForExport: scaleIsUnit ? null : lengthScale / mapUnitScale,
   };
 }
 
@@ -175,6 +187,17 @@ export function detectDoubleGeoreference(
  * actually implies instead. A file that also mis-scales lands there easily: a
  * 1000× scale on map-sized coordinates produces billions of km.
  */
+/**
+ * A float as the shortest string that still round-trips to the same value at 6
+ * significant figures — `0.001`, not `toPrecision(4)`'s `0.001000`. Used for
+ * the `Scale` value the note tells the user to type into a field, where
+ * trailing zeros read as a precision claim the number does not carry.
+ */
+export function trimFloat(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  return String(Number(value.toPrecision(6)));
+}
+
 export function formatApproxDistance(metres: number): string {
   if (!Number.isFinite(metres)) return 'an unknown distance';
   if (metres > 100_000_000) return 'more than a planet-width';

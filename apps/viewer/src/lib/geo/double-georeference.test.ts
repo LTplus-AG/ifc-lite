@@ -8,8 +8,9 @@ import assert from 'node:assert';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
-import { detectDoubleGeoreference, formatApproxDistance } from './double-georeference.js';
+import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from './double-georeference.js';
 import { effectiveMapConversionForGeometry } from './map-absolute.js';
+import { getEffectiveHorizontalScale } from './geo-scale.js';
 
 /**
  * Build a CoordinateInfo whose model centre lands on the given IFC world
@@ -208,8 +209,8 @@ describe('detectDoubleGeoreference', () => {
     });
   });
 
-  describe('overridesAuthoredScale', () => {
-    it('is false when the effective horizontal scale is already 1', () => {
+  describe('scaleForExport', () => {
+    it('is null when the effective horizontal scale is already 1', () => {
       // #2526's file: Scale unset on a mm project with a metre MapUnit, which
       // getEffectiveHorizontalScale already resolves to 1. Nothing about the
       // model's size is being overridden, so the note must not claim it is.
@@ -220,10 +221,10 @@ describe('detectDoubleGeoreference', () => {
         0.001,
       );
       assert.ok(found);
-      assert.strictEqual(found!.overridesAuthoredScale, false);
+      assert.strictEqual(found!.scaleForExport, null);
     });
 
-    it('is true for a NEAR-unit scale whose induced drift is still kilometres', () => {
+    it('carries the unit bridge for a NEAR-unit scale whose induced drift is still kilometres', () => {
       // Effective scale 1.004 is inside detectScaleUnitMismatch's 0.5% band,
       // but multiplied by a ~6 000 km coordinate it drags the model ~24 km. A
       // fraction-based tolerance would wave this through; the guard pins
@@ -236,10 +237,35 @@ describe('detectDoubleGeoreference', () => {
         1,
       );
       assert.ok(found);
-      assert.strictEqual(found!.overridesAuthoredScale, true);
+      // Metre project + metre MapUnit, so the bridge is 1 / 1 = 1 — writing
+      // that back is what makes the EXPORTED file read at 1x in a spec-strict
+      // consumer, which zeroing the offsets alone would not achieve.
+      assert.ok(found!.scaleForExport !== null, 'a 24 km drift must be correctable on export');
+      assert.ok(Math.abs(found!.scaleForExport! - 1) < 1e-12);
     });
 
-    it('is false for a genuine foot/metre bridge', () => {
+    it('carries the mm/metre unit bridge when Scale is explicitly off-spec', () => {
+      // Scale explicitly 1000 on a mm project: the unset-Scale heuristic does
+      // not rescue it, so 1e6 is applied. The value the file needs is
+      // lengthUnitScale / mapUnitScale = 0.001.
+      const scaled: MapConversion = { ...ISSUE_2526_CONVERSION, scale: 1000 };
+      const found = detectDoubleGeoreference(
+        scaled,
+        METRE_CRS,
+        coordInfoAt(ISSUE_2526_CENTER.x, ISSUE_2526_CENTER.y),
+        0.001,
+      );
+      assert.ok(found);
+      assert.ok(found!.scaleForExport !== null);
+      assert.ok(Math.abs(found!.scaleForExport! - 0.001) < 1e-12);
+      // And it must actually neutralise: (0.001 x 1) / 0.001 = 1.
+      assert.strictEqual(
+        getEffectiveHorizontalScale(found!.scaleForExport!, 1, 0.001),
+        1,
+      );
+    });
+
+    it('is null for a genuine foot/metre bridge', () => {
       // A real bridge needs the units to DIFFER: a foot project with a metre
       // MapUnit, and Scale = 0.3048 doing exactly what the schema asks. The
       // effective scale is then (0.3048 × 1) / 0.3048 = 1 — nothing is
@@ -252,7 +278,7 @@ describe('detectDoubleGeoreference', () => {
         0.3048,
       );
       assert.ok(found);
-      assert.strictEqual(found!.overridesAuthoredScale, false);
+      assert.strictEqual(found!.scaleForExport, null);
     });
   });
 
@@ -393,8 +419,23 @@ describe('detectDoubleGeoreference', () => {
       0.001,
     );
     assert.ok(found);
-    assert.strictEqual(found!.overridesAuthoredScale, false);
+    assert.strictEqual(found!.scaleForExport, null);
     assert.ok(Number.isFinite(found!.displacement));
+  });
+});
+
+describe('trimFloat', () => {
+  it('drops the trailing zeros toPrecision leaves on a value the user must retype', () => {
+    // The Scale the note names goes into a text field. `toPrecision(4)` renders
+    // the mm/metre unit bridge as "0.001000", which reads as a precision claim
+    // the value does not make.
+    assert.strictEqual(trimFloat(0.001), '0.001');
+    assert.strictEqual(trimFloat(1), '1');
+    assert.strictEqual(trimFloat(0.3048), '0.3048');
+  });
+
+  it('still rounds a value that genuinely needs it', () => {
+    assert.strictEqual(trimFloat(1 / 3), '0.333333');
   });
 });
 

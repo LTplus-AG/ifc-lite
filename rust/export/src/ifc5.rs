@@ -186,7 +186,12 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 
     let doc = json!({
         "header": {
-            "version": "ifcx_alpha",
+            // `ifcxVersion`, not `version`. That is the key buildingSMART's own
+            // reference files carry, and the one `@ifc-lite/ifcx` requires to
+            // recognise a file at all — so under the old name every file this
+            // exporter produced was rejected by our own parser with
+            // "Invalid IFCX file: missing or invalid header.ifcxVersion".
+            "ifcxVersion": "ifcx_alpha",
             "author": opts.author,
             "dataVersion": opts.data_version,
         },
@@ -215,7 +220,7 @@ mod tests {
     fn duplex_exports_valid_ifcx() {
         let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
-        assert_eq!(v["header"]["version"], "ifcx_alpha");
+        assert_eq!(v["header"]["ifcxVersion"], "ifcx_alpha");
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
 
         let data = v["data"].as_array().expect("data array");
@@ -250,6 +255,37 @@ mod tests {
             })
         });
         assert!(has_prop, "expected a typed IFC5 property somewhere");
+    }
+
+    /// The header key a READER looks for, which is not the same thing as the
+    /// key this exporter happens to write.
+    ///
+    /// The assertion above was previously `header.version`, mirroring the
+    /// implementation — so it passed while every exported file was rejected by
+    /// `@ifc-lite/ifcx` ("missing or invalid header.ifcxVersion") and did not
+    /// match buildingSMART's own reference files either. Pinning the absence of
+    /// the old key is what makes that regression fail here instead of at the
+    /// other end of a round-trip.
+    #[test]
+    fn header_uses_the_key_readers_look_for() {
+        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let v: Value = serde_json::from_str(&s).expect("valid JSON");
+
+        let header = v["header"].as_object().expect("header object");
+        assert!(
+            header.contains_key("ifcxVersion"),
+            "header must carry ifcxVersion; got keys {:?}",
+            header.keys().collect::<Vec<_>>(),
+        );
+        assert!(
+            !header.contains_key("version"),
+            "the old `version` key is what readers ignore — it must not come back",
+        );
+        // Readers match case-insensitively on the substring "ifcx".
+        assert!(
+            header["ifcxVersion"].as_str().unwrap().to_lowercase().contains("ifcx"),
+            "ifcxVersion must contain 'ifcx'",
+        );
     }
 
     #[test]

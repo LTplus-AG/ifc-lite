@@ -20,35 +20,130 @@
  * rail was its only entry point, which #2508 calls out as a discoverability
  * problem. These pin that it now reaches both, and that neither toolbar grew
  * apportionment UI of its own to drift from the panel's.
+ *
+ * The reachability half used to be asserted by reading `MainToolbar.tsx` and
+ * `AnalyzeTab.tsx` as text. It is now asserted by MOUNTING them, opening the
+ * classic Panels dropdown, clicking the Zones entry and reading
+ * `sidebarActivePanel` back (#2434). Same for "the panels host the
+ * apportionment UI": the panels are mounted and their rendered numbers read,
+ * because `<ZoneApportionSummary />` written into a panel but never reached
+ * reads identically in source and ships a dead feature — which is exactly the
+ * hole the two describe blocks below this one were added to close.
  */
 
 import '@/test/setup-dom.js';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { act } from 'react';
+import { act, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from './toolbar/useWorkspacePanelControls.js';
 import { ZoneApportionSummary } from './ZoneApportionSummary.js';
 import { ZoneVolumeBreakdown } from './ZoneVolumeBreakdown.js';
+import { MainToolbar } from './MainToolbar.js';
+import { AnalyzeTab } from './ribbon/tabs/AnalyzeTab.js';
+import { ZonesPanel } from './ZonesPanel.js';
+import { PropertiesPanel } from './PropertiesPanel.js';
+import { IfcParser } from '@ifc-lite/parser';
 import { zoneSetRevision } from '@/lib/zones';
 import { gatherProvedVolumes } from '@/hooks/useZoneApportionment';
 import type { ZoneSet } from '@/lib/zones';
 import { ProjectUnits } from '@ifc-lite/parser';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
+/**
+ * Mount helpers (#2434). These assertions used to read `MainToolbar.tsx` and
+ * `AnalyzeTab.tsx` as text on the belief that neither could be mounted under
+ * `tsx --test`. Both mount fine given the `src/test/` loader hooks, and a
+ * mounted toolbar answers the question the text could not: whether the entry
+ * point WORKS, not whether the call is written down somewhere.
+ */
+/**
+ * A real, fully-typed `IfcDataStore` from the actual columnar parser. The
+ * Properties panel walks a `ModelQuery` over it (`getEntity`, `getProperties`,
+ * `getQuantities`) before it renders anything, so a hand-shaped stand-in would
+ * have to reimplement the parser to get as far as the zone breakdown.
+ */
+const MINI_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#42=IFCWALL('0Wall00000000000000042',$,'Wall A',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
 
-/** Read a source file with its IMPORT lines removed. A guard that accepts an
- *  import is a guard that passes on a dead feature — the exact hole #2510's
- *  first attempt had. */
-function bodyOf(relativePath: string): string {
-  return readFileSync(join(HERE, relativePath), 'utf8')
-    .split('\n')
-    .filter((line) => !/^\s*import\b/.test(line) && !/^\s*}\s*from\s+'/.test(line))
-    .join('\n');
+const MINI_BYTES = new TextEncoder().encode(MINI_IFC);
+const miniStore = await new IfcParser().parseColumnar(
+  MINI_BYTES.buffer.slice(MINI_BYTES.byteOffset, MINI_BYTES.byteOffset + MINI_BYTES.byteLength),
+);
+
+const extraMounts: Array<{ root: Root; container: HTMLElement }> = [];
+
+function mount(node: ReactNode): HTMLElement {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  const r = createRoot(el);
+  act(() => r.render(<TooltipProvider>{node}</TooltipProvider>));
+  extraMounts.push({ root: r, container: el });
+  return el;
+}
+
+function unmountExtras(): void {
+  for (const { root: r, container: el } of extraMounts.splice(0)) {
+    act(() => r.unmount());
+    el.remove();
+  }
+}
+
+/** A real bubbling click, the way it arrives at React's root listener. */
+function clickEl(element: Element): void {
+  act(() => element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+}
+
+/**
+ * The Zones entry on the classic strip lives inside the Panels dropdown, so a
+ * user has to open the menu first. Radix opens on `pointerdown`, which is why
+ * a plain `click()` on the trigger finds nothing.
+ */
+function openPanelsMenu(container: HTMLElement): void {
+  const trigger = [...container.querySelectorAll('button')].find((b) =>
+    /Panels/i.test(b.textContent ?? '') || /Panels/i.test(b.getAttribute('aria-label') ?? ''),
+  );
+  assert.ok(trigger, 'the classic strip must have a Panels menu');
+  act(() => {
+    trigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 } as PointerEventInit));
+  });
+  clickEl(trigger);
+}
+
+/**
+ * The Zones control on each surface, as a user finds it. The menu item is
+ * portalled out of the toolbar's own container, so the classic lookup is on
+ * `document`.
+ */
+function zonesControl(surface: 'classic' | 'ribbon', container: HTMLElement): HTMLElement {
+  const found = surface === 'classic'
+    ? [...document.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')].filter(
+        (e) => e.textContent?.trim() === 'Location Zones')
+    // Matched on the VISIBLE label: `RibbonLargeButton` sets
+    // `aria-label={tooltip ?? label}`, so this button's accessible name is the
+    // tooltip prose, not "Zones".
+    : [...container.querySelectorAll<HTMLElement>('button')].filter(
+        (e) => e.textContent?.trim() === 'Zones');
+  assert.equal(found.length, 1, `${surface}: expected one Zones control, found ${found.length}`);
+  return found[0];
+}
+
+/** Whether the surface is SHOWING Zones as the open panel. */
+function zonesLooksOpen(surface: 'classic' | 'ribbon', control: HTMLElement): boolean {
+  return surface === 'classic'
+    ? control.getAttribute('aria-checked') === 'true'
+    : control.getAttribute('aria-pressed') === 'true' || control.dataset.active === 'true';
 }
 
 const ZONE_SET: ZoneSet = {
@@ -63,36 +158,65 @@ const ZONE_SET: ZoneSet = {
   ],
 };
 
+const SURFACES = [
+  { surface: 'classic', name: 'the classic strip', Toolbar: MainToolbar, open: openPanelsMenu },
+  { surface: 'ribbon', name: 'the ribbon Analyze tab', Toolbar: AnalyzeTab, open: () => {} },
+] as const;
+
 describe('#2508 zone apportionment reachability', () => {
   describe('both toolbars reach the Zones panel', () => {
-    it('the classic strip dispatches it', () => {
-      const body = bodyOf('MainToolbar.tsx');
-      assert.match(body, /toggleWorkspacePanel\('zones'\)/, 'the classic Panels menu must open Zones');
-    });
+    afterEach(unmountExtras);
 
-    it('the ribbon dispatches it', () => {
-      const body = bodyOf('ribbon/tabs/AnalyzeTab.tsx');
-      assert.match(body, /toggleWorkspacePanel\('zones'\)/, 'the ribbon Analyze tab must open Zones');
-    });
+    for (const { surface, name, Toolbar, open } of SURFACES) {
+      it(`${name} opens Zones when clicked`, () => {
+        useViewerStore.getState().showWorkspacePanel('properties');
+        const container = mount(<Toolbar />);
+        open(container);
 
-    it('both read their active state from the SHARED hook, not from a private flag', () => {
-      // Two toolbars deriving "is Zones open" independently is how they drift.
-      for (const file of ['MainToolbar.tsx', 'ribbon/tabs/AnalyzeTab.tsx']) {
-        assert.match(bodyOf(file), /activeWorkspacePanels\.has\('zones'\)/, `${file} must use the shared set`);
-      }
-      assert.match(
-        bodyOf('toolbar/useWorkspacePanelControls.ts'),
-        /sidebarActivePanel === 'zones'/,
-        'the shared hook is the one place that decides',
-      );
-    });
+        clickEl(zonesControl(surface, container));
 
-    it('neither toolbar grows apportionment UI of its own', () => {
-      for (const file of ['MainToolbar.tsx', 'ribbon/tabs/AnalyzeTab.tsx']) {
-        const body = bodyOf(file);
-        assert.doesNotMatch(body, /ZoneApportionSummary|ZoneVolumeBreakdown/, `${file} must not host a second copy`);
-      }
-    });
+        assert.equal(
+          useViewerStore.getState().sidebarActivePanel,
+          'zones',
+          `${name}: the click must dock the Zones panel`,
+        );
+      });
+
+      it(`${name} shows Zones as open only when it IS open`, () => {
+        // Two toolbars deriving "is Zones open" independently is how they
+        // drift; both must reflect the one store field. Asserted on the
+        // rendered state in BOTH directions — a control hard-coded to either
+        // value satisfies one of them.
+        useViewerStore.getState().showWorkspacePanel('properties');
+        let container = mount(<Toolbar />);
+        open(container);
+        assert.equal(zonesLooksOpen(surface, zonesControl(surface, container)), false, `${name}: closed`);
+
+        unmountExtras();
+        useViewerStore.getState().showWorkspacePanel('zones');
+        container = mount(<Toolbar />);
+        open(container);
+        assert.equal(zonesLooksOpen(surface, zonesControl(surface, container)), true, `${name}: open`);
+      });
+
+      it(`${name} grows no apportionment UI of its own`, () => {
+        // Seeded so a hosted copy would have something to render; an empty one
+        // would be indistinguishable from no copy at all.
+        useViewerStore.setState({
+          zoneSets: [ZONE_SET],
+          zoneAssignments: new Map([[42, { zs1: { zoneId: 'a', zoneName: 'Area A', straddles: true, touchedZoneIds: ['a', 'b'] } }]]) as never,
+        });
+        const container = mount(<Toolbar />);
+        open(container);
+
+        assert.doesNotMatch(
+          (container.textContent ?? '') + document.body.textContent,
+          /straddler|Split volume by zone/,
+          `${name} must not host a second copy of the apportionment UI`,
+        );
+        useViewerStore.setState({ zoneSets: [], zoneAssignments: new Map() });
+      });
+    }
   });
 
   // These two exist because the SOURCE guards above passed while BOTH toolbar
@@ -161,12 +285,76 @@ describe('#2508 zone apportionment reachability', () => {
   });
 
   describe('the panels host the apportionment UI', () => {
-    it('the Zones panel hosts the whole-set control', () => {
-      assert.match(bodyOf('ZonesPanel.tsx'), /<ZoneApportionSummary\b/, 'ZonesPanel must render the control');
+    afterEach(() => {
+      unmountExtras();
+      useViewerStore.setState({ zoneSets: [], zoneAssignments: new Map(), zoneApportionment: new Map() });
     });
 
     it('the Properties panel hosts the per-element breakdown', () => {
-      assert.match(bodyOf('PropertiesPanel.tsx'), /<ZoneVolumeBreakdown\b/, 'PropertiesPanel must render the breakdown');
+      // Same reasoning as above, and the same trap: `<ZoneVolumeBreakdown />`
+      // written into the panel but never reached renders as text just fine.
+      // Needs a REAL parsed store, because the Properties panel walks a
+      // ModelQuery over it before it gets anywhere near the breakdown.
+      useViewerStore.setState({
+        models: new Map([['m1', {
+          id: 'm1', name: 'model', ifcDataStore: miniStore, visible: true, idOffset: 0,
+          maxExpressId: 100_000, loadedAt: 1,
+          geometryResult: { meshes: [{ expressId: 42, positions: new Float32Array([0, 0, 0, 2, 2, 2]) }], coordinateInfo: {} },
+        }]]) as never,
+        activeModelId: 'm1',
+        selectedEntity: { modelId: 'm1', expressId: 42 },
+        selectedEntityId: 42,
+        geometryResult: null,
+        zoneSets: [ZONE_SET],
+        // Only a STRADDLER has anything to apportion, so the panel renders the
+        // breakdown for one and nothing for the rest.
+        zoneAssignments: new Map([[42, { zs1: { zoneId: 'a', zoneName: 'Area A', straddles: true, touchedZoneIds: ['a', 'b'] } }]]) as never,
+        zoneApportionment: new Map([['zs1', {
+          revision: zoneSetRevision(ZONE_SET),
+          byElement: new Map([[42, {
+            wholeVolumeM3: 7.2,
+            shares: [
+              { zoneId: 'a', zoneName: 'Area A', volumeM3: 2.88, fraction: 0.4 },
+              { zoneId: 'b', zoneName: 'Area B', volumeM3: 4.32, fraction: 0.6 },
+            ],
+            outsideVolumeM3: 0,
+            outsideFraction: 0,
+            overlapping: false,
+            unreliable: false,
+          }]]),
+          refused: new Map(),
+          computedAt: 0,
+          elapsedMs: 1,
+        }]]) as never,
+      });
+
+      const container = mount(<PropertiesPanel />);
+
+      assert.match(
+        container.textContent ?? '',
+        /Area A/,
+        `PropertiesPanel must render the breakdown: ${container.textContent?.slice(0, 300)}`,
+      );
+      useViewerStore.setState({ models: new Map(), selectedEntity: null, selectedEntityId: null });
+    });
+
+    it('the Zones panel hosts the whole-set control', () => {
+      // Asserted by the control's own rendered output, not by the element name
+      // appearing in the panel's source: a `<ZoneApportionSummary />` behind a
+      // condition that is never true reads identically in text.
+      useViewerStore.setState({
+        zoneSets: [ZONE_SET],
+        zoneAssignments: new Map([[42, { zs1: { zoneId: 'a', zoneName: 'Area A', straddles: true, touchedZoneIds: ['a', 'b'] } }]]) as never,
+        zoneApportionment: new Map(),
+      });
+
+      const container = mount(<ZonesPanel onClose={() => {}} />);
+
+      assert.match(
+        container.textContent ?? '',
+        /1 straddler\b/,
+        `ZonesPanel must render the whole-set control: ${container.textContent?.slice(0, 300)}`,
+      );
     });
   });
 

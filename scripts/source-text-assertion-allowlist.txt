@@ -12,7 +12,6 @@
 
 # ── Viewer components: convertible NOW that src/test/ carries the harness ──
 apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # FileTab renders under the harness now; the icon-set and export-cluster reads are convertible
-apps/viewer/src/components/viewer/zone-apportionment-parity.test.tsx        # ditto, same week
 apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # part AST-based (keep) and part raw-text (convert); split it
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # asserts a Tailwind class pair; needs computed style, not text
 

@@ -22,6 +22,4 @@ apps/viewer/src/utils/frameWait.test.ts                                     # "n
 apps/viewer/src/lib/using-declaration-build.test.ts                         # same shape: asserts a build-output property across files
 
 # ── Genuinely out of reach in node; the root fix is elsewhere ──
-packages/codegen/test/crc32.test.ts                                         # regex-loads generated TYPE_IDS; fix is to import the generated module (it exports them)
-packages/codegen/test/type-ids-generator.test.ts                            # ditto
 packages/create-ifc-lite/test/config-fixers.test.ts                         # would need vite + plugin devDeps in that package to load the generated config

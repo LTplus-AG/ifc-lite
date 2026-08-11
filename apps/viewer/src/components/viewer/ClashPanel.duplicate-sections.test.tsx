@@ -76,13 +76,15 @@ describe('ClashPanel — duplicate scan sections (#2530)', () => {
       clashGroups: groupDuplicateSets(result),
     });
     await renderPanel();
+    // This is the discriminating assertion: the pre-#2530 panel bucketed the
+    // three pair rows under a generic severity header and never rendered a
+    // set title anywhere. (No companion "generic header is gone" assertion:
+    // the severity summary chips legitimately keep the severity words on
+    // screen in both implementations, so no such string test can discriminate.)
     const text = container!.textContent ?? '';
     assert.ok(
       text.includes('3 coincident IfcColumn objects'),
       `panel must render the set title; got: ${text.slice(0, 400)}`,
     );
-    // And it is the section header, not an extra row alongside the generic
-    // severity bucket the pre-#2530 panel showed.
-    assert.ok(!text.includes('Minor ('), 'generic severity header must be replaced');
   });
 });

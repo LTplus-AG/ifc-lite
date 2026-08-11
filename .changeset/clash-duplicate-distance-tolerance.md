@@ -10,7 +10,7 @@ tolerance: for two equal boxes offset by `d` along an axis of extent `e` the IoU
 is `(e − d) / (e + d)`, and the 0.9 default therefore allowed `d ≤ e / 19`.
 Measured over four common shapes and all three axes, the displacement that still
 counted as a duplicate ranged from 5 mm (across a DN100 pipe) to 421 mm (in the
-plane of an 8 m slab) — a 93× spread from one number nobody set. A duplicated
+plane of an 8 m slab) — an 80× spread from one number nobody set. A duplicated
 pipe nudged 5 mm was missed while a duplicated slab moved 400 mm was still
 reported.
 

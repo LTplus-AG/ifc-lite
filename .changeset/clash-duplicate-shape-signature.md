@@ -58,7 +58,10 @@ stops three copies under one GlobalId collapsing into a single deduped finding.
 Cost is unchanged. The signature is O(triangles), computed at most once per
 element and only for pairs that already coincide, so a model with no duplicates
 never reads a vertex. Across five public models the reported pairs, their ids,
-their severities and their groupings are all identical to before (1 / 0 / 0 / 0 /
-32, split 22 `major` / 10 `minor`); computing every element's signature eagerly,
-which the pass does not do, would cost 3.1 ms over the 236,795 triangles of the
-largest of them against a 215 ms pass.
+their severities and their groupings are all identical to the distance-tolerance
+baseline this builds on (1 / 0 / 0 / 0 / 32, split 22 `major` / 10 `minor` —
+"before" here means after that change, which itself moved eight pairs from
+`major` to `minor`; see its changeset); computing every element's signature eagerly,
+which the pass does not do, would cost 2.6 ms over the 236,795 triangles of the
+largest of them against a 215 ms pass (the measurement the `findDuplicates`
+docs cite).

@@ -103,10 +103,11 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // sailed straight through. No `IfcProduct` subclass in any supported schema
     // ends in `Type`/`Style`, so this never drops an occurrence. It DOES drop
     // ORPHAN type geometry too (`MeshData.geometryClass === 1`, a type with no
-    // occurrence): the viewer renders that only in a scene with no occurrence
-    // geometry at all — a type-library file — where clashing origin-stacked
-    // templates against each other would be pure noise, so excluding it is the
-    // intended reading, not collateral.
+    // occurrence): the viewer's Model view renders that only when the scene has
+    // no occurrence geometry at all — a type-library file — and its Types view
+    // (which always shows classes 1 and 2) is a catalogue, not a place clash
+    // runs from. Clashing origin-stacked templates against each other would be
+    // pure noise, so excluding class 1 is the intended reading, not collateral.
     if (NON_CLASHABLE_TAGS.has(tag) || isIfcTypeLikeEntity(tag.toUpperCase())) continue;
 
     // The wasm geometry path stores positions in the element's LOCAL frame

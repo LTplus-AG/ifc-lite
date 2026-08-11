@@ -12,9 +12,8 @@
  * coordinate system, so the correct reading is to apply it on top of those
  * already-absolute coordinates — which adds the offset a second time and flings
  * the model roughly `‖(E, N)‖` away from where it belongs. Issue #2526: a
- * Vectorworks export of a site in Rostock (E 311 988 / N 5 996 149, EPSG:25833)
- * landed at 33.71 N / -49.12 E, ~5 200 km out in the North Atlantic, on an empty
- * basemap.
+ * Vectorworks export in EPSG:25833 (E 311 988 / N 5 996 149) landed thousands
+ * of km out in the North Atlantic, on an empty basemap.
  *
  * The fingerprint is unusually crisp, which is why this is a translation match
  * rather than an "is the result inside the CRS's area of use" test (we ship no
@@ -81,29 +80,31 @@ export interface DoubleGeoreference {
    */
   displacement: number;
   /**
-   * Whether we can corroborate that clearing the conversion's ROTATION is safe,
-   * as opposed to only its translation.
+   * True when the fix would REPLACE a rotation the file actually authors,
+   * rather than just restating an already-identity one.
    *
-   * The fingerprint below matches on translation alone, so on its own it does
-   * not prove the model's local axes are grid-aligned. Two cases make the
-   * rotation reset unambiguous, and this flag marks them:
+   * The fingerprint matches on translation, so it says nothing about whether
+   * the model's local axes are grid-aligned. The fix resets the axis anyway,
+   * because there is no translation-only alternative to offer (see
+   * {@link identityConversionFields}) — but when this is true, the orientation
+   * it lands on is OUR choice rather than the file's, and callers must say so
+   * instead of applying it silently. (PR #2543 review.)
    *
-   *   - the authored rotation is already the identity, so there is nothing to
-   *     reset; or
-   *   - the geometry's own placement carries a rotation
-   *     (`CoordinateInfo.buildingRotation`, baked into the world coordinates by
-   *     the geometry pipeline). That rotation is exactly what turns the site's
-   *     local frame INTO the map frame, so the world axes are grid axes and the
-   *     conversion's rotation is redundant. This is the reporter's file
-   *     (#2526): site X axis (-0.46689605, -0.88431221), i.e. -117.833°.
-   *
-   * When it is false the file cannot be reconciled at all — a non-identity
-   * rotation applied to map-sized world coordinates swings the model thousands
-   * of km whatever the translation is, so no choice of offsets rescues it — but
-   * the ORIENTATION the fix lands on (grid-aligned) is then our choice rather
-   * than the file's. Callers must say so instead of applying it silently.
+   * An earlier version also treated a non-zero `CoordinateInfo.buildingRotation`
+   * as corroboration, on the theory that a rotating site placement is what
+   * turns the local frame INTO the map frame. That is evidence, not proof: the
+   * placement rotation and the conversion's axis can simply disagree (they do
+   * in #2526 — -117.833° versus +90°), and picking the placement silently is
+   * exactly the outcome the flag exists to prevent. A caveat sentence costs a
+   * line of prose; a silently mis-oriented model costs a re-export.
    */
-  rotationCorroborated: boolean;
+  overridesAuthoredRotation: boolean;
+  /**
+   * True when the fix must also rewrite `Scale`, because the scale the viewer
+   * currently applies is not 1 and would keep mis-sizing the geometry about the
+   * map origin after the offsets are cleared. Carries the value to write.
+   */
+  scaleCorrection: number | null;
 }
 
 /**
@@ -154,14 +155,23 @@ export function detectDoubleGeoreference(
   const appliedN = northing + scale * (ordinate * ifcX + abscissa * ifcY);
 
   const rotationIsIdentity = Math.abs(abscissa - 1) < 1e-9 && Math.abs(ordinate) < 1e-9;
-  const placementCarriesRotation = Math.abs(coordinateInfo.buildingRotation ?? 0) > 1e-6;
+  // `scale` above is the EFFECTIVE horizontal scale, i.e. what the viewer
+  // actually applies to metre geometry. Anything other than 1 keeps re-scaling
+  // the map-sized coordinates about the map origin after the offsets are
+  // cleared, so "already in the map CRS" would still be false. The Scale value
+  // that makes the effective scale 1 is the spec unit bridge,
+  // lengthUnitScale / mapUnitScale.
+  const scaleIsUnit = Math.abs(scale - 1) <= 0.005;
+  const mapUnitScale = mapScale > 0 ? mapScale : 1;
+  const lengthScale = lengthUnitScale > 0 ? lengthUnitScale : 1;
 
   return {
     worldCenter: { x: ifcX, y: ifcY },
     offset: { easting, northing },
     residual,
     displacement: Math.hypot(appliedE - ifcX, appliedN - ifcY),
-    rotationCorroborated: rotationIsIdentity || placementCarriesRotation,
+    overridesAuthoredRotation: !rotationIsIdentity,
+    scaleCorrection: scaleIsUnit ? null : lengthScale / mapUnitScale,
   };
 }
 
@@ -169,28 +179,38 @@ export function detectDoubleGeoreference(
  * The `IfcMapConversion` field values that make the conversion a horizontal
  * identity, i.e. "the geometry is already in the map CRS".
  *
- * `OrthogonalHeight` and `Scale` are deliberately absent. The fingerprint this
- * module matches is a duplicated HORIZONTAL offset and says nothing about the
- * vertical: zeroing an `OrthogonalHeight` that legitimately carries the site
- * altitude (while the geometry Z is local) would trade a horizontal error for a
- * vertical one. `Scale` is likewise left as authored — `getEffectiveHorizontalScale`
- * already resolves it, and overwriting it here would discard a genuine
- * foot/metre bridge.
+ * `OrthogonalHeight` is deliberately absent. The fingerprint this module matches
+ * is a duplicated HORIZONTAL offset and says nothing about the vertical: zeroing
+ * an `OrthogonalHeight` that legitimately carries the site altitude (while the
+ * geometry Z is local) would trade a horizontal error for a vertical one.
  *
- * The axis pair IS included, and that is not symmetric with the two above. A
- * rotation is applied to the coordinates BEFORE the translation, so a
- * non-identity rotation acting on a map-sized world coordinate swings the model
- * by a distance of order ‖world‖ — millions of metres — no matter what the
- * offsets are. Leaving it while zeroing the offsets would move the model from
- * one wrong continent to another, so there is no "translation-only" fix to
- * offer. See {@link DoubleGeoreference.rotationCorroborated} for when that
- * reset merely restates the file and when it is our choice.
+ * The axis pair is always included, and `Scale` is included when
+ * {@link DoubleGeoreference.scaleCorrection} is set. Neither is symmetric with
+ * `OrthogonalHeight`, because both act on the coordinates BEFORE the
+ * translation: a non-identity rotation or scale applied to a map-sized world
+ * coordinate moves the model by a distance of order ‖world‖ — millions of
+ * metres — no matter what the offsets are. Leaving either while zeroing the
+ * offsets would move the model from one wrong continent to another, so there is
+ * no "offsets-only" fix to offer. (PR #2543 review.)
+ *
+ * `Scale` is left alone when the EFFECTIVE horizontal scale is already 1, which
+ * covers both a spec-correct unit bridge and the unset-Scale heuristic — so a
+ * genuine foot/metre bridge survives untouched.
+ *
+ * @param scaleCorrection `DoubleGeoreference.scaleCorrection`: the Scale value
+ *   that makes the effective horizontal scale 1, or null to leave Scale alone.
  */
-export function identityConversionFields(): Array<{ field: string; value: number }> {
-  return [
+export function identityConversionFields(
+  scaleCorrection: number | null = null,
+): Array<{ field: string; value: number }> {
+  const fields = [
     { field: 'eastings', value: 0 },
     { field: 'northings', value: 0 },
     { field: 'xAxisAbscissa', value: 1 },
     { field: 'xAxisOrdinate', value: 0 },
   ];
+  if (scaleCorrection !== null) {
+    fields.push({ field: 'scale', value: scaleCorrection });
+  }
+  return fields;
 }

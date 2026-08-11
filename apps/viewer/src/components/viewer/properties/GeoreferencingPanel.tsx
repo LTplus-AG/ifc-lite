@@ -32,11 +32,19 @@ import { toast } from '@/components/ui/toast';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
-/** Metres → a short human-readable distance ("5,206 km", "820 m"). */
+/**
+ * Metres → a short human-readable distance ("6,004 km", "820 m").
+ *
+ * Past ~2.5 Earth circumferences the figure stops meaning anything to a reader
+ * and starts looking like a formatting bug, so say what it actually implies
+ * instead. A file that also mis-scales lands there easily: a 1000× scale on
+ * map-sized coordinates produces billions of km.
+ */
 function formatDistance(metres: number): string {
-  if (!Number.isFinite(metres)) return '?';
-  if (metres >= 1000) return `${Math.round(metres / 1000).toLocaleString()} km`;
-  return `${Math.round(metres).toLocaleString()} m`;
+  if (!Number.isFinite(metres)) return 'an unknown distance';
+  if (metres > 100_000_000) return 'more than a planet-width';
+  if (metres >= 1000) return `about ${Math.round(metres / 1000).toLocaleString()} km`;
+  return `about ${Math.round(metres).toLocaleString()} m`;
 }
 
 const COMMON_DATUMS = ['WGS84', 'ETRS89', 'NAD83', 'NAD27', 'GRS80', 'Bessel 1841', 'Clarke 1866'];
@@ -527,13 +535,17 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
 
   // Clear a duplicated MapConversion offset (#2526): the geometry is already in
   // the map CRS, so the conversion has to be a horizontal identity.
-  const applyIdentityConversion = useCallback(() => {
+  const applyIdentityConversion = useCallback((scaleCorrection: number | null) => {
     if (!modelId || !setGeorefFields) return;
-    setGeorefFields(modelId, 'mapConversion', identityConversionFields().map(({ field, value }) => ({
-      field,
-      value,
-      oldValue: mergedConversion?.[field as keyof MapConversion] as number | undefined,
-    })));
+    setGeorefFields(
+      modelId,
+      'mapConversion',
+      identityConversionFields(scaleCorrection).map(({ field, value }) => ({
+        field,
+        value,
+        oldValue: mergedConversion?.[field as keyof MapConversion] as number | undefined,
+      })),
+    );
     posthog.capture('georeference_set', { method: 'double_georeference_identity' });
     setConversionOpen(true);
     requestAlignmentReload();
@@ -714,15 +726,19 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <strong>Model is georeferenced twice.</strong>{' '}
               The geometry already sits at map coordinates (E{' '}
               {doubleGeoref.worldCenter.x.toFixed(0)} N {doubleGeoref.worldCenter.y.toFixed(0)}),
-              and this IfcMapConversion repeats the same offset. Applying it moves the model
-              about {formatDistance(doubleGeoref.displacement)} away from where it belongs.
+              and this IfcMapConversion repeats the same offset. Applying it displaces the model
+              by {formatDistance(doubleGeoref.displacement)}.
               {editable
-                ? ' The fix below zeroes Eastings/Northings and resets the rotation to grid-aligned, treating the geometry as already being in the map CRS. OrthogonalHeight and Scale are left as authored.'
+                ? ` The fix below zeroes Eastings/Northings and resets the rotation to grid-aligned${
+                  doubleGeoref.scaleCorrection !== null
+                    ? `, sets Scale to ${doubleGeoref.scaleCorrection.toPrecision(4)} so the geometry is no longer re-scaled about the map origin,`
+                    : ''
+                } and treats the geometry as already being in the map CRS. OrthogonalHeight is left as authored.`
                 : ' Enable editing to correct it.'}
-              {/* The fingerprint matches on translation, so when the file gives
-                  us no way to corroborate the rotation, say that the resulting
-                  orientation is our choice rather than the file's. */}
-              {editable && !doubleGeoref.rotationCorroborated && (
+              {/* The fingerprint matches on TRANSLATION, so when the file authors
+                  a rotation of its own we are choosing the orientation, not
+                  restating it. Say so rather than applying it silently. */}
+              {editable && doubleGeoref.overridesAuthoredRotation && (
                 <>
                   {' '}This file authors a rotation that cannot be reconciled with its own
                   coordinates, so check the orientation afterwards and set Angle to Grid North
@@ -733,7 +749,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
           </div>
           {editable && (
             <button
-              onClick={applyIdentityConversion}
+              onClick={() => applyIdentityConversion(doubleGeoref.scaleCorrection)}
               className="mt-1.5 ml-[18px] text-[10px] text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-200 px-1.5 py-0.5 border border-amber-400/60 dark:border-amber-700/60 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
             >
               Treat geometry as already in the map CRS

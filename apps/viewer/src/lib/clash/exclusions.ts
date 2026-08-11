@@ -24,10 +24,14 @@
  * present — a count that grows with the federation, not with the intent. On one
  * infrastructure model that was 3 rules for `IfcSlab` alone.
  *
- * Element identity is **model-qualified** (`qualifiedKey`), so in a federated
- * set two models that happen to share an element key cannot suppress each
- * other's clashes. TYPE rules carry no model qualification and are therefore
- * deliberately cross-model: an IFC class means the same thing in every file.
+ * Element identity is the DURABLE element key alone (IfcGUID / USD prim
+ * path) — the same encoding `clashReviewKey` (`@ifc-lite/clash`) uses for
+ * review state, and for the same reason: `ClashElementRef.model` is the
+ * viewer's per-load `crypto.randomUUID()` (`useIfcLoader`/`useIfcFederation`),
+ * so qualifying the rule identity with it would make every element-pair rule
+ * go permanently inert on the next reload while the panel still lists it as
+ * enabled. TYPE rules are, likewise, deliberately cross-model: an IFC class
+ * means the same thing in every file.
  * The pair kinds compare through `pairKey`, which is order-independent and
  * length-prefixed, so `A × B` and `B × A` are one rule and no separator can be
  * forged out of a name; `typeAny` gets its order-independence from testing both
@@ -39,7 +43,7 @@
  * removed without re-running detection.
  */
 
-import { pairKey, qualifiedKey, summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
+import { pairKey, summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
 
 /** Which granularity a rule matches at. */
 export type ClashExclusionKind = 'typeAny' | 'typePair' | 'elementPair';
@@ -49,8 +53,8 @@ export interface ClashExclusionRule {
   id: string;
   kind: ClashExclusionKind;
   /**
-   * Side A. `typeAny`/`typePair`: an IFC class name. `elementPair`: a
-   * `qualifiedKey`.
+   * Side A. `typeAny`/`typePair`: an IFC class name. `elementPair`: the
+   * element's DURABLE key alone (no `model` — see the module doc).
    */
   a: string;
   /**
@@ -128,13 +132,21 @@ export function typePairExclusion(tagA: string, tagB: string): ClashExclusionRul
   };
 }
 
-/** "Never report exactly these two elements" — nothing else is affected. */
+/**
+ * "Never report exactly these two elements" — nothing else is affected.
+ *
+ * Keyed on the DURABLE element key alone (not `qualifiedKey(model, key)`):
+ * `model` is the viewer's per-load `crypto.randomUUID()`, so persisting it
+ * into the rule identity would make the rule match nothing after the next
+ * reload while the panel still lists it as enabled. Same choice, same reason,
+ * as `clashReviewKey` in `@ifc-lite/clash`.
+ */
 export function elementPairExclusion(a: ClashElementRef, b: ClashElementRef): ClashExclusionRule {
   return {
     id: newId(),
     kind: 'elementPair',
-    a: qualifiedKey(a.model, a.key),
-    b: qualifiedKey(b.model, b.key),
+    a: a.key,
+    b: b.key,
     label: label(elementLabel(a), elementLabel(b)),
     enabled: true,
     createdAt: Date.now(),
@@ -146,10 +158,7 @@ export function exclusionMatches(rule: ClashExclusionRule, a: ClashElementRef, b
   // One-sided: either side carrying the class is enough, which is what makes
   // the rule independent of which element the engine put on side A.
   if (rule.kind === 'typeAny') return a.tag === rule.a || b.tag === rule.a;
-  const target =
-    rule.kind === 'typePair'
-      ? pairKey(a.tag, b.tag)
-      : pairKey(qualifiedKey(a.model, a.key), qualifiedKey(b.model, b.key));
+  const target = rule.kind === 'typePair' ? pairKey(a.tag, b.tag) : pairKey(a.key, b.key);
   return target === pairKey(rule.a, rule.b);
 }
 

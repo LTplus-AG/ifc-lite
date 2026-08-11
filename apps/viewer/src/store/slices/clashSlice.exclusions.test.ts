@@ -167,6 +167,27 @@ describe('user-defined clash exclusions (store)', () => {
     assert.strictEqual(s.get().clashExclusions.length, 1);
   });
 
+  it('re-enables a matching DISABLED rule instead of silently no-opping', () => {
+    // Failure scenario the fix targets: add "exclude anything touching
+    // IfcRail", untick it to see the clashes again, then click the same
+    // exclude control on a clash. Before the fix, `exclusionRuleKey` matched
+    // the disabled rule and `addClashExclusion` returned `{ ok: true }`
+    // without re-enabling it — the button looked broken (no change, no toast).
+    const s = slice();
+    s.get().setClashResult(sampleResult());
+    const rule = typeAnyExclusion('IfcRail');
+    s.get().addClashExclusion(rule);
+    assert.strictEqual(s.get().clashSuppressedCount, 2);
+    s.get().setClashExclusionEnabled(rule.id, false);
+    assert.strictEqual(s.get().clashSuppressedCount, 0);
+    // Re-"add" the same rule (what the exclude button does on re-click).
+    const res = s.get().addClashExclusion(typeAnyExclusion('IfcRail'));
+    assert.deepStrictEqual(res, { ok: true });
+    assert.strictEqual(s.get().clashExclusions.length, 1, 'still one rule, not a duplicate');
+    assert.strictEqual(s.get().clashExclusions[0]?.enabled, true, 'the existing rule must be re-enabled');
+    assert.strictEqual(s.get().clashSuppressedCount, 2, 'clashes must be hidden again');
+  });
+
   it('keeps a specific element pair distinct from the type pair of the same classes', () => {
     const s = slice();
     s.get().addClashExclusion(typePairExclusion('IfcBeam', 'IfcBeam'));
@@ -217,6 +238,59 @@ describe('user-defined clash exclusions (store)', () => {
     assert.strictEqual(state.clashSuppressedCount, 2);
   });
 
+  it('round-trips an element-pair rule through storage and still applies it after a model-id change (reload)', () => {
+    // The actual bug scenario: `ClashElementRef.model` is the viewer's
+    // per-load `crypto.randomUUID()` (useIfcLoader/useIfcFederation mint a
+    // fresh one on every load), so a real page reload re-runs detection
+    // against elements carrying a DIFFERENT model id even though the durable
+    // element keys (GUIDs) are unchanged. A rule keyed on `qualifiedKey(model,
+    // key)` would go inert here while still being listed as enabled.
+    const first = slice();
+    first.get().setClashResult(sampleResult());
+    first.get().addClashExclusion(elementPairExclusion(rail1, ballast));
+    assert.strictEqual(first.get().clashExclusions.length, 1);
+    assert.strictEqual(first.get().clashExclusions[0]?.kind, 'elementPair');
+
+    // A new slice over the SAME storage — i.e. a page reload.
+    let state: ClashSlice;
+    const set = (partial: unknown) => {
+      const patch = typeof partial === 'function'
+        ? (partial as (s: ClashSlice) => Partial<ClashSlice>)(state)
+        : (partial as Partial<ClashSlice>);
+      state = { ...state, ...patch };
+    };
+    state = createClashSlice(set as never, (() => state) as never, {} as never);
+    assert.strictEqual(state.clashExclusions.length, 1);
+
+    // The post-reload run: same GUIDs, but a NEW model id (a fresh
+    // `crypto.randomUUID()`), exactly as a real reload produces.
+    const rail1Reloaded = ref('m2-reload', 'GUID_RAIL_1', 'IfcRail', 'Rail 1');
+    const rail2Reloaded = ref('m2-reload', 'GUID_RAIL_2', 'IfcRail', 'Rail 2');
+    const ballastReloaded = ref('m2-reload', 'GUID_COURSE_1', 'IfcCourse', 'Ballast');
+    const beam1Reloaded = ref('m2-reload', 'GUID_BEAM_1', 'IfcBeam', 'Beam 1');
+    const beam2Reloaded = ref('m2-reload', 'GUID_BEAM_2', 'IfcBeam', 'Beam 2');
+    const reloadedResult: ClashResult = {
+      clashes: [
+        clash(rail1Reloaded, ballastReloaded),
+        clash(rail2Reloaded, ballastReloaded),
+        clash(beam1Reloaded, beam2Reloaded),
+      ],
+      summary: {
+        total: 3,
+        byRule: { 'all-clashes': 3 },
+        byTypePair: { 'IfcCourse vs IfcRail': 2, 'IfcBeam vs IfcBeam': 1 },
+        bySeverity: { critical: 0, major: 3, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    state.setClashResult(reloadedResult);
+    // The rule must still suppress the ONE pair it names, across the model-id
+    // change: this is the blocker scenario, and must NOT regress to 0.
+    assert.strictEqual(state.clashSuppressedCount, 1);
+    assert.strictEqual(state.clashResult?.clashes.length, 2);
+  });
+
   it('does not commit an exclusion whose write was refused', () => {
     const s = slice();
     s.storage.failKey = EXCLUSIONS_KEY;
@@ -256,11 +330,20 @@ describe('user-defined clash exclusions (store)', () => {
   it('clearClash drops the raw result too, so a stale run cannot resurface', () => {
     const s = slice();
     s.get().setClashResult(sampleResult());
+    // Add a rule BEFORE clearing: the invariant under test is that clearClash
+    // does not wipe it too. An empty-list-to-empty-list assertion (never
+    // adding one) would still pass if a future edit put `clashExclusions: []`
+    // into clearClash's `set` block.
+    const rule = typePairExclusion('IfcRail', 'IfcCourse');
+    assert.deepStrictEqual(s.get().addClashExclusion(rule), { ok: true });
+    assert.strictEqual(s.get().clashExclusions.length, 1);
+
     s.get().clearClash();
     assert.strictEqual(s.get().clashRawResult, null);
     assert.strictEqual(s.get().clashResult, null);
     assert.strictEqual(s.get().clashSuppressedCount, 0);
     // Exclusions are workspace state (like presets/reviews) and survive.
-    assert.strictEqual(s.get().clashExclusions.length, 0);
+    assert.strictEqual(s.get().clashExclusions.length, 1);
+    assert.strictEqual(s.get().clashExclusions[0]?.id, rule.id);
   });
 });

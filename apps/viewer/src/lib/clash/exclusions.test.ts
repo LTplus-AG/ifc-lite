@@ -94,13 +94,16 @@ describe('clash exclusion rule matching', () => {
     assert.strictEqual(exclusionMatches(rule, beam1, beam3), false);
   });
 
-  it('keeps element identity model-qualified so two models cannot collide', () => {
-    // Same element key in two federated models must NOT share an exclusion:
-    // suppressing "42 vs 42" in model A would otherwise hide a real
-    // cross-model clash in model B.
+  it('keeps matching an element pair across a model-id change (survives reload)', () => {
+    // `model` is the viewer's per-load `crypto.randomUUID()` (useIfcLoader /
+    // useIfcFederation mint a fresh one on every load/reload). A rule keyed on
+    // it would go permanently inert the moment the page reloads while the
+    // panel still lists it as enabled. Element identity is the durable key
+    // alone (same choice as `clashReviewKey` in `@ifc-lite/clash`), so the
+    // SAME rule still matches after `model` changes.
     const rule = elementPairExclusion(ref('m1', 'K1', 'IfcBeam'), ref('m1', 'K2', 'IfcBeam'));
-    assert.strictEqual(exclusionMatches(rule, ref('m2', 'K1', 'IfcBeam'), ref('m2', 'K2', 'IfcBeam')), false);
-    assert.strictEqual(exclusionMatches(rule, ref('m1', 'K1', 'IfcBeam'), ref('m2', 'K2', 'IfcBeam')), false);
+    assert.strictEqual(exclusionMatches(rule, ref('m2', 'K1', 'IfcBeam'), ref('m2', 'K2', 'IfcBeam')), true);
+    assert.strictEqual(exclusionMatches(rule, ref('m1', 'K1', 'IfcBeam'), ref('m2', 'K2', 'IfcBeam')), true);
   });
 
   it('gives order-independent, kind-distinct dedup keys', () => {

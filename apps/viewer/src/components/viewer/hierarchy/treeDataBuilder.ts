@@ -4,11 +4,11 @@
 
 import {
   IfcTypeEnum,
+  IfcTypeEnumFromString,
   EntityFlags,
   RelationshipType,
   isSpaceLikeSpatialType,
   isSpatialStructureType,
-  isSpatialStructureTypeName,
   isStoreyLikeSpatialType,
   type SpatialNode,
 } from '@ifc-lite/data';
@@ -638,12 +638,17 @@ export interface AuthoredProduct {
 /** Per-model view of "what renders" for the 3D-oriented class/type trees, with
  *  assemblies resolved to their `IfcRelAggregates` parts. */
 interface AssemblyGeometry {
-  /** Passes the geometry filter: the entity renders, or an aggregated part does. */
-  renders(expressId: number, typeName: string): boolean;
+  /** Passes the geometry filter: the entity renders, or an aggregated part does.
+   *  `globalId` is the caller's own already-resolved id — passed in rather than
+   *  recomputed so the common "has its own geometry" hit never needs a type
+   *  lookup, only the rarer misses (below) do. */
+  renders(expressId: number, globalId: number): boolean;
   /** Geometry-bearing aggregated parts for a row whose own id carries none —
    *  what click / eye / isolate must act on instead (undefined if not an
-   *  assembly, or if the row renders under its own id). */
-  parts(expressId: number): number[] | undefined;
+   *  assembly, or if the row renders under its own id). `typeName` is the
+   *  caller's already-looked-up class name (needed for every row that
+   *  survives `renders`, so it costs nothing extra here). */
+  parts(expressId: number, typeName: string): number[] | undefined;
 }
 
 /**
@@ -661,7 +666,15 @@ interface AssemblyGeometry {
  *
  * Spatial structure classes are deliberately NOT admitted this way: IfcProject
  * aggregates the site, building and storeys, so a descendant test would drag
- * the entire spatial skeleton into a tree that is meant to list products.
+ * the entire spatial skeleton into a tree that is meant to list products. The
+ * guard applies in BOTH `renders` and `parts`, and independent of whether the
+ * geometry filter itself is active — during initial streaming `geometricIds`
+ * is empty (no filter yet), and without a filter-independent guard `parts`
+ * would hand IfcProject the descendant ids of the entire spatial skeleton as
+ * "aggregated parts" to isolate. The name check is case-insensitive
+ * (`IfcTypeEnumFromString` upper-cases before lookup) because every current
+ * caller already canonicalises the type string on the way in, but nothing
+ * about this predicate should silently depend on that.
  *
  * `hasAggregatedGeometry` short-circuits and shares one memo per model per
  * rebuild, and the `parts` walk is gated behind a single direct-children lookup,
@@ -678,15 +691,21 @@ function makeAssemblyGeometry(
   const relationships = dataStore.relationships as AggregationRelationships | undefined;
   const toGlobal = (expressId: number) => resolveTreeGlobalId(modelId, expressId, models);
   const cache = new Map<number, boolean>();
+  const isSpatial = (typeName: string) => isSpatialStructureType(IfcTypeEnumFromString(typeName));
   return {
-    renders(expressId, typeName) {
+    renders(expressId, globalId) {
       if (!applyFilter) return true;
-      if (geometricIds!.has(toGlobal(expressId))) return true;
-      if (isSpatialStructureTypeName(typeName)) return false;
+      if (geometricIds!.has(globalId)) return true;
+      // Only entities that FAIL the own-geometry test above ever reach a type
+      // lookup — the majority of a whole-model scan (anything with its own
+      // mesh) skips it entirely.
+      const typeName = dataStore.entities.getTypeName(expressId);
+      if (isSpatial(typeName)) return false;
       return hasAggregatedGeometry(relationships, expressId, toGlobal, geometricIds!, cache);
     },
-    parts(expressId) {
+    parts(expressId, typeName) {
       if (!relationships) return undefined;
+      if (isSpatial(typeName)) return undefined;
       if (applyFilter && geometricIds!.has(toGlobal(expressId))) return undefined;
       if (getAggregatedChildren(relationships, expressId).length === 0) return undefined;
       const ids = collectAggregatedDescendants(relationships, expressId)
@@ -695,6 +714,23 @@ function makeAssemblyGeometry(
       return ids.length > 0 ? ids : undefined;
     },
   };
+}
+
+/** Ids to act on (class/type-group `globalIds`, click-to-isolate targets) for
+ *  a set of rows: a geometry-less assembly stands in for its geometry-bearing
+ *  parts, deduped across the whole set. Shared by `buildTypeTree`'s group node
+ *  and `buildIfcTypeTree`'s class/type nodes — same substitution, same dedup. */
+function partsOrOwnIds(rows: readonly { globalId: number; parts?: number[] }[]): number[] {
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const row of rows) {
+    for (const id of row.parts && row.parts.length > 0 ? row.parts : [row.globalId]) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+  }
+  return out;
 }
 
 /** Build tree data grouped by IFC class instead of spatial hierarchy.
@@ -719,12 +755,13 @@ export function buildTypeTree(
     for (let i = 0; i < dataStore.entities.count; i++) {
       const expressId = dataStore.entities.expressId[i];
       const globalId = resolveTreeGlobalId(modelId, expressId, models);
-      const typeName = dataStore.entities.getTypeName(expressId) || 'Unknown';
 
       // Only include entities that render — themselves, or through their
-      // IfcRelAggregates parts (a geometry-less assembly).
-      if (!assemblyGeometry.renders(expressId, typeName)) continue;
+      // IfcRelAggregates parts (a geometry-less assembly). Own-geometry rows
+      // (the majority) resolve here without any type-name lookup.
+      if (!assemblyGeometry.renders(expressId, globalId)) continue;
 
+      const typeName = dataStore.entities.getTypeName(expressId) || 'Unknown';
       const entityName = dataStore.entities.getName(expressId) || `${typeName} #${expressId}`;
 
       if (!typeGroups.has(typeName)) {
@@ -735,7 +772,7 @@ export function buildTypeTree(
         globalId,
         name: entityName,
         modelId,
-        parts: assemblyGeometry.parts(expressId),
+        parts: assemblyGeometry.parts(expressId, typeName),
       });
     }
   };
@@ -774,21 +811,20 @@ export function buildTypeTree(
     // Store all globalIds on the group node so getNodeElements is O(1),
     // avoiding a full entity scan when the group is collapsed. A geometry-less
     // assembly contributes its geometry-bearing parts instead of its own dead
-    // id, so isolating the class actually shows the assemblies in it.
-    const groupGlobalIds: number[] = [];
-    const seenGroupGlobalIds = new Set<number>();
-    for (const e of entities) {
-      for (const id of e.parts && e.parts.length > 0 ? e.parts : [e.globalId]) {
-        if (seenGroupGlobalIds.has(id)) continue;
-        seenGroupGlobalIds.add(id);
-        groupGlobalIds.push(id);
-      }
-    }
+    // id, so isolating the class actually shows the assemblies in it. NOT
+    // index-aligned with `expressIds` (a part-substituted, deduped list can be
+    // a different length) — `memberGlobalIds` below is the aligned one.
+    const groupGlobalIds = partsOrOwnIds(entities);
 
     nodes.push({
       id: groupNodeId,
       expressIds: entities.map((e) => e.expressId),
       globalIds: groupGlobalIds,
+      // Index-aligned with `expressIds`: each entity's OWN globalId, never a
+      // substituted part. Lets a click resolve "the first member of this
+      // class" (e.g. to open it in the Properties panel) to the class's own
+      // entity rather than an arbitrary part of a decomposed one.
+      memberGlobalIds: entities.map((e) => e.globalId),
       modelIds: [],
       name: typeName,
       type: 'type-group',
@@ -872,10 +908,11 @@ export function buildIfcTypeTree(
 
       for (const instId of instanceIds) {
         const instGlobalId = resolveTreeGlobalId(modelId, instId, models);
-        const instIfcType = dataStore.entities.getTypeName(instId) || 'Unknown';
         // An IfcElementAssemblyType's occurrences carry no geometry of their
-        // own — without this the type row reported 0 elements (#1133).
-        if (!assemblyGeometry.renders(instId, instIfcType)) continue;
+        // own — without this the type row reported 0 elements (#1133). Own-
+        // geometry instances (the majority) resolve without a type lookup.
+        if (!assemblyGeometry.renders(instId, instGlobalId)) continue;
+        const instIfcType = dataStore.entities.getTypeName(instId) || 'Unknown';
         const instName = dataStore.entities.getName(instId) || `#${instId}`;
         instances.push({
           expressId: instId,
@@ -883,7 +920,7 @@ export function buildIfcTypeTree(
           name: instName,
           modelId,
           ifcType: instIfcType,
-          parts: assemblyGeometry.parts(instId),
+          parts: assemblyGeometry.parts(instId, instIfcType),
         });
       }
 
@@ -915,21 +952,6 @@ export function buildIfcTypeTree(
 
   const nodes: TreeNode[] = [];
 
-  /** Ids to isolate / eye-toggle for a set of instances: a geometry-less
-   *  assembly stands in for its geometry-bearing parts, deduped. */
-  const isolationIdsFor = (instances: TypeEntry['instances']): number[] => {
-    const out: number[] = [];
-    const seen = new Set<number>();
-    for (const inst of instances) {
-      for (const id of inst.parts && inst.parts.length > 0 ? inst.parts : [inst.globalId]) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-        out.push(id);
-      }
-    }
-    return out;
-  };
-
   // Sort type class groups alphabetically
   const sortedClassNames = Array.from(typeClassGroups.keys()).sort();
 
@@ -938,15 +960,20 @@ export function buildIfcTypeTree(
     const classNodeId = `typeclass-${className}`;
     const isClassExpanded = expandedNodes.has(classNodeId);
 
+    const allInstances = types.flatMap(t => t.instances);
     // Total instances across all types in this class
-    const totalInstances = types.reduce((sum, t) => sum + t.instances.length, 0);
-    // Collect all instance globalIds for visibility/isolation
-    const allInstanceGlobalIds = isolationIdsFor(types.flatMap(t => t.instances));
+    const totalInstances = allInstances.length;
+    // Collect all instance globalIds for visibility/isolation — a geometry-
+    // less assembly occurrence stands in for its geometry-bearing parts (see
+    // `partsOrOwnIds`), so NOT index-aligned with `expressIds` below.
+    const allInstanceGlobalIds = partsOrOwnIds(allInstances);
 
     nodes.push({
       id: classNodeId,
       expressIds: types.flatMap(t => t.instances.map(i => i.expressId)),
       globalIds: allInstanceGlobalIds,
+      // Index-aligned with `expressIds`: each occurrence's OWN globalId.
+      memberGlobalIds: allInstances.map((i) => i.globalId),
       modelIds: [],
       name: className,
       type: 'type-group',
@@ -965,13 +992,14 @@ export function buildIfcTypeTree(
       for (const typeEntry of types) {
         const typeNodeId = `ifctype-${typeEntry.modelId}-${typeEntry.typeExpressId}`;
         const isTypeExpanded = expandedNodes.has(typeNodeId);
-        const instanceGlobalIds = isolationIdsFor(typeEntry.instances);
+        const instanceGlobalIds = partsOrOwnIds(typeEntry.instances);
         const suffix = isMultiModel ? ` [${models.get(typeEntry.modelId)?.name || typeEntry.modelId}]` : '';
 
         nodes.push({
           id: typeNodeId,
           expressIds: typeEntry.instances.map(i => i.expressId),
           globalIds: instanceGlobalIds,
+          memberGlobalIds: typeEntry.instances.map((i) => i.globalId),
           entityExpressId: typeEntry.typeExpressId,
           modelIds: [typeEntry.modelId],
           name: `${typeEntry.typeName}${suffix}`,

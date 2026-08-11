@@ -1358,3 +1358,83 @@ describe('buildIfcTypeTree — geometry-less assembly occurrences (By Type tab)'
     assert.strictEqual(classNode.elementCount, 0, 'an assembly with no renderable part contributes nothing');
   });
 });
+
+describe('makeAssemblyGeometry — spatial guard (deep-review follow-up)', () => {
+  it('never treats a spatial container as a decomposing assembly, even with an empty geometry filter', () => {
+    // The real state during initial streaming: no geometry source has arrived
+    // yet, so `geometricIds` is empty and `applyFilter` is false — the
+    // unfiltered branch lists everything, INCLUDING the storey. Before the
+    // fix `parts()` had no spatial guard at all when unfiltered, so the
+    // storey's aggregated descendants (the wall) leaked in as
+    // `assemblyChildGlobalIds`, and clicking the storey row would have
+    // isolated the wall as if the storey were an assembly.
+    const ds = createDecompositionDataStore();
+    const rel = ds.relationships as unknown as {
+      getRelated: (id: number, t: RelationshipType, d: 'forward' | 'inverse') => number[];
+    };
+    const inner = rel.getRelated;
+    rel.getRelated = (id, t, d) =>
+      t === RelationshipType.Aggregates && d === 'forward' && id === 16 ? [14] : inner(id, t, d);
+
+    // Group nodes only expand into 'element' rows when their group id is in
+    // `expandedNodes` — expand the storey's class group to actually see it.
+    const nodes = buildTypeTree(new Map(), ds, new Set(['type-IfcBuildingStorey']), false, new Set());
+    const storey = nodes.find((n) => n.type === 'element' && n.expressIds[0] === 16);
+    assert.ok(storey, 'the unfiltered tree lists everything, including the storey');
+    assert.strictEqual(
+      storey.assemblyChildGlobalIds,
+      undefined,
+      'IfcBuildingStorey must never be handed its descendants as "aggregated parts"',
+    );
+  });
+
+  it('recognises a spatial type name case-insensitively', () => {
+    // spatial-types.test.ts pins IfcTypeEnumFromString/isSpatialStructureType
+    // as case-insensitive; this test only asserts the tree builder actually
+    // routes through that pair rather than a case-sensitive name-set lookup.
+    const ds = createDecompositionDataStore();
+    const rel = ds.relationships as unknown as {
+      getRelated: (id: number, t: RelationshipType, d: 'forward' | 'inverse') => number[];
+    };
+    const innerRel = rel.getRelated;
+    rel.getRelated = (id, t, d) =>
+      t === RelationshipType.Aggregates && d === 'forward' && id === 16 ? [14] : innerRel(id, t, d);
+
+    const entities = ds.entities as unknown as { getTypeName: (id: number) => string };
+    const innerType = entities.getTypeName;
+    entities.getTypeName = (id: number) => (id === 16 ? 'IFCBUILDINGSTOREY' : innerType(id));
+
+    const nodes = buildTypeTree(new Map(), ds, new Set(), false, DECOMPOSITION_GEOMETRIC_IDS);
+    assert.strictEqual(
+      nodes.find((n) => n.ifcType === 'IFCBUILDINGSTOREY'),
+      undefined,
+      'an upper-cased spatial type name must still be excluded from the By-Class tree',
+    );
+  });
+});
+
+describe('type-group / ifc-type nodes — memberGlobalIds (deep-review follow-up)', () => {
+  it('buildTypeTree: memberGlobalIds stays index-aligned to expressIds while globalIds is parts-substituted', () => {
+    const ds = createDecompositionDataStore();
+    const nodes = buildTypeTree(new Map(), ds, new Set(), false, DECOMPOSITION_GEOMETRIC_IDS);
+    const group = nodes.find((n) => n.type === 'type-group' && n.ifcType === 'IfcElementAssembly')!;
+    assert.deepStrictEqual(group.expressIds, [10]);
+    assert.deepStrictEqual(group.memberGlobalIds, [10], "the class's own member id, not a substituted part");
+    assert.deepStrictEqual(group.globalIds, [11, 12], 'isolation still targets the parts');
+  });
+
+  it('buildIfcTypeTree: class and type nodes carry memberGlobalIds aligned to expressIds', () => {
+    const ds = createDecompositionDataStore();
+    const expanded = new Set(['typeclass-IfcElementAssemblyType', 'ifctype-legacy-20']);
+    const nodes = buildIfcTypeTree(new Map(), ds, expanded, false, DECOMPOSITION_GEOMETRIC_IDS);
+    const classNode = nodes.find((n) => n.type === 'type-group' && n.ifcType === 'IfcElementAssemblyType')!;
+    assert.deepStrictEqual(classNode.expressIds, [10]);
+    assert.deepStrictEqual(classNode.memberGlobalIds, [10]);
+    assert.deepStrictEqual(classNode.globalIds, [11, 12]);
+
+    const typeNode = nodes.find((n) => n.type === 'ifc-type' && n.entityExpressId === 20)!;
+    assert.deepStrictEqual(typeNode.expressIds, [10]);
+    assert.deepStrictEqual(typeNode.memberGlobalIds, [10]);
+    assert.deepStrictEqual(typeNode.globalIds, [11, 12]);
+  });
+});

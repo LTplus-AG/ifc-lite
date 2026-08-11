@@ -868,6 +868,46 @@ export function Viewport({
         );
       };
 
+      // Federation-safe relationship-graph lookup for aggregation resolution
+      // (frameSelection, resolveHighlightIds): a federated model's
+      // `ifcDataStore` is `IfcDataStore | null` (server-backed, mid-load), and
+      // silently falling back to `state.ifcDataStore` in that case walks a
+      // DIFFERENT model's aggregation graph and maps the result back through
+      // the requested model's id offset — cross-wiring the two. The fallback
+      // is only correct in true legacy single-model mode, where there is no
+      // federation map to be wrong about.
+      const relationshipsForModel = (modelId: string) => {
+        const state = useViewerStore.getState();
+        if (state.models.size === 0) return state.ifcDataStore?.relationships;
+        return state.models.get(modelId)?.ifcDataStore?.relationships;
+      };
+
+      // Shared by frameSelection and resolveHighlightIds: replace ids with no
+      // renderable geometry by their nearest aggregated parts that DO render,
+      // so a geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+      // container, …) can still be framed and highlighted. One bounds cache
+      // per call — callers don't share cadence with each other, and the
+      // common case (ids that already render) never touches aggregation.
+      const resolveRenderableIds = (ids: readonly number[]): number[] => {
+        const geom = geometryRef.current;
+        if (!geom) return [];
+        const scene = rendererRef.current?.getScene();
+        const boundsCache = new Map<number, ReturnType<typeof getEntityBounds>>();
+        const hasGeometry = (id: number) => {
+          const hit = boundsCache.get(id);
+          if (hit !== undefined) return hit !== null;
+          const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+          boundsCache.set(id, b);
+          return b !== null;
+        };
+        return expandToGeometryBearingIds(ids, hasGeometry, {
+          resolve: resolveEntityRef,
+          relationshipsFor: relationshipsForModel,
+          toGlobalId: (modelId, expressId) =>
+            toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId),
+        });
+      };
+
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
@@ -965,22 +1005,13 @@ export function Viewport({
           // meshes hang off its IfcRelAggregates parts — so asking it for bounds
           // yields null and Frame used to do nothing at all (#1133). Resolve
           // those ids to the parts that DO have geometry before giving up.
-          // Done here rather than at the call sites so every Frame entry point
-          // (search modal, hierarchy row, keyboard shortcut, clash focus) is
-          // covered by one fix; the relationship graph is reachable from the
-          // store, which resolveEntityRef already reads.
-          const state = useViewerStore.getState();
-          const framedIds = expandToGeometryBearingIds(
-            ids,
-            (id) => boundsOf(id) !== null,
-            {
-              resolve: resolveEntityRef,
-              relationshipsFor: (modelId) =>
-                (state.models.get(modelId)?.ifcDataStore ?? state.ifcDataStore)?.relationships,
-              toGlobalId: (modelId, expressId) =>
-                toGlobalIdFromModels(state.models, modelId, expressId),
-            },
-          );
+          // Shared with `resolveHighlightIds` below so the SAME resolution
+          // drives both what the camera frames and what the renderer
+          // highlights — a search/select entry point that only called
+          // frameSelection moved the camera to an assembly that stayed
+          // unhighlighted, because the renderer highlights `selectedEntityIds`
+          // directly and that set still held the geometry-less assembly id.
+          const framedIds = resolveRenderableIds(ids);
           for (const id of framedIds) {
             const b = boundsOf(id);
             if (!b) continue;
@@ -1003,6 +1034,18 @@ export function Viewport({
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
         },
+        // Resolve ids to what the renderer can actually highlight (the SAME
+        // aggregation resolution frameSelection uses to decide what to frame),
+        // for selection entry points that assign `selectedEntityId`/
+        // `selectedEntityIds` directly instead of a 3D pick — a 3D pick can
+        // never land on a geometry-less assembly (it has no mesh to click),
+        // but the search modal does: it sets the assembly's own id and calls
+        // frameSelection, and the renderer highlights `selectedEntityIds`
+        // directly (it doesn't itself expand assemblies), so the camera moved
+        // to the right place while nothing lit up. Returns `[]`, not the
+        // input, for an id with neither geometry nor renderable parts, so a
+        // caller can fall back to its own default.
+        resolveHighlightIds: (ids) => resolveRenderableIds(ids),
         frameClashRegion: (min, max) => {
           // Frame the clash's (already context-padded) contact box from the
           // canonical isometric pose so the penetration is read at a 3/4 angle,

@@ -57,7 +57,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     clearSearchModelFilter,
     setSearchHighlightIndex,
     setSelectedEntity,
-    setSelectedEntityId,
+    setSelectedEntityIds,
     addEntitiesToSelection,
     toggleEntitySelection,
     clearEntitySelection,
@@ -76,7 +76,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       clearSearchModelFilter: s.clearSearchModelFilter,
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       setSelectedEntity: s.setSelectedEntity,
-      setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
       addEntitiesToSelection: s.addEntitiesToSelection,
       toggleEntitySelection: s.toggleEntitySelection,
       clearEntitySelection: s.clearEntitySelection,
@@ -127,7 +127,15 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       const ref = { modelId: r.modelId, expressId: r.expressId };
       const isLegacy = r.modelId === 'legacy' || r.modelId === '__legacy__' || models.size === 0;
       const globalId = isLegacy ? r.expressId : toGlobalIdFromModels(models, r.modelId, r.expressId);
-      setSelectedEntityId(globalId);
+      // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+      // container, …) owns no mesh — the renderer highlights `selectedEntityIds`
+      // directly, so selecting its bare id moved the camera there (frameSelection
+      // resolves it) but left nothing lit up. Mirror HierarchyPanel's own click
+      // handler (#1133): highlight the renderable parts too, with the assembly's
+      // id LAST so it stays the primary selection (tree row stays highlighted,
+      // Properties panel opens on the assembly, not an arbitrary part).
+      const renderableParts = cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
+      setSelectedEntityIds([...renderableParts, globalId]);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
         window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
@@ -143,7 +151,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       onClose,
       searchQuery,
       setSelectedEntity,
-      setSelectedEntityId,
+      setSelectedEntityIds,
     ],
   );
 

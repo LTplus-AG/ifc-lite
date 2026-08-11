@@ -382,7 +382,12 @@ export function HierarchyPanel() {
       if (elements.length > 0) {
         // Clear multi-selection highlight
         setSelectedEntityIds([]);
-        setSelectedEntity(resolveEntityRef(elements[0]));
+        // Open the Properties panel on the class's own first MEMBER, not an
+        // arbitrary aggregated part of a decomposed one — `elements[0]` can be
+        // a part (e.g. an IfcColumn) when the first entity in the class is a
+        // geometry-less IfcElementAssembly, which would open the wrong
+        // properties for a row the user clicked expecting the assembly.
+        setSelectedEntity(resolveEntityRef(node.memberGlobalIds?.[0] ?? elements[0]));
         if (groupingMode === 'type') {
           const className = node.ifcType || node.name;
           // Class tab → class filter (combinable with storey + type isolation)

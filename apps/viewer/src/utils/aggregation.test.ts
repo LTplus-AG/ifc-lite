@@ -94,6 +94,25 @@ describe('hasAggregatedGeometry', () => {
     assert.strictEqual(hasAggregatedGeometry(rel, 10, identity, new Set([99])), false);
   });
 
+  it('does not call getRelated at all for an entity that decomposes nothing', () => {
+    // The vast majority of a whole-model scan (property sets, relationship
+    // objects, ordinary non-decomposing elements) fails the own-geometry test
+    // and has zero aggregation children — that path must cost exactly the one
+    // children lookup, never a second `getRelated` for "grandchildren" of an
+    // empty children list, and it must not throw building a Set/stack it
+    // never needs.
+    let calls = 0;
+    const rel: AggregationRelationships = {
+      getRelated(entityId, relType, direction) {
+        if (relType !== RelationshipType.Aggregates || direction !== 'forward') return [];
+        calls++;
+        return [];
+      },
+    };
+    assert.strictEqual(hasAggregatedGeometry(rel, 42, identity, new Set([99])), false);
+    assert.strictEqual(calls, 1, 'exactly one getRelated call — for the (empty) children of the root');
+  });
+
   it('memoises so a whole-model scan does not re-walk shared subtrees', () => {
     let calls = 0;
     const adjacency: Record<number, number[]> = { 10: [11, 12] };
@@ -156,24 +175,74 @@ describe('expandToGeometryBearingIds', () => {
     assert.deepStrictEqual(expandToGeometryBearingIds([11, 10], hasGeometry, access), [11, 12]);
   });
 
-  // frameSelection lives in a useImperativeHandle closure inside Viewport.tsx,
-  // which has no test harness — the behaviour above is what's actually pinned.
-  // This is only a guard against the wiring being silently dropped, so it
-  // matches against comment-stripped source (a bare substring search would
-  // happily match the prose explaining the call).
-  it('is wired into Viewport.frameSelection', () => {
+  // frameSelection and resolveHighlightIds live in a useImperativeHandle
+  // closure inside Viewport.tsx, which has no test harness (no DOM/renderer
+  // to mount against) — the behaviour above, on the pure function both of
+  // them delegate to, is what's actually pinned. This is only a guard
+  // against the wiring being silently dropped or one of the two callbacks
+  // being pointed at a DIFFERENT resolution than the other (the actual bug:
+  // frameSelection resolved geometry-less assemblies to their renderable
+  // parts, but nothing told the renderer's highlight channel — see
+  // SearchModal.text.tsx below), so it matches against comment-stripped
+  // source. A bare substring search for `expandToGeometryBearingIds(` would
+  // happily match either callback alone, or the prose explaining the call —
+  // this additionally requires BOTH callbacks route through the SAME shared
+  // helper, which is what actually closes the highlight/frame mismatch.
+  it('frameSelection and resolveHighlightIds share the same aggregation resolution', () => {
     const source = readFileSync(
       new URL('../components/viewer/Viewport.tsx', import.meta.url),
       'utf8',
     )
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/^\s*\/\/.*$/gm, '');
-    const frameSelection = source.slice(source.indexOf('frameSelection: () => {'));
-    const body = frameSelection.slice(0, frameSelection.indexOf('frameClashRegion:'));
-    assert.ok(body.length > 0, 'frameSelection body located');
+
+    const helperStart = source.indexOf('const resolveRenderableIds = ');
+    assert.ok(helperStart >= 0, 'resolveRenderableIds helper defined');
+    const helperBody = source.slice(helperStart, source.indexOf('setCameraCallbacks({', helperStart));
     assert.ok(
-      body.includes('expandToGeometryBearingIds('),
+      helperBody.includes('expandToGeometryBearingIds('),
+      'the shared helper must resolve geometry-less assemblies to their renderable parts',
+    );
+
+    const frameSelection = source.slice(source.indexOf('frameSelection: () => {'));
+    const frameBody = frameSelection.slice(0, frameSelection.indexOf('resolveHighlightIds:'));
+    assert.ok(
+      frameBody.includes('resolveRenderableIds('),
       'frameSelection must resolve geometry-less assemblies before giving up on bounds',
+    );
+
+    const resolveHighlight = frameSelection.slice(frameSelection.indexOf('resolveHighlightIds:'));
+    const highlightBody = resolveHighlight.slice(0, resolveHighlight.indexOf('frameClashRegion:'));
+    assert.ok(
+      highlightBody.includes('resolveRenderableIds('),
+      'resolveHighlightIds must use the SAME resolution as frameSelection, not a separate one',
+    );
+  });
+
+  // The other half of the fix: a selection entry point that assigns
+  // selectedEntityId/selectedEntityIds directly (not via a 3D pick, which can
+  // never land on a geometry-less assembly) must resolve through
+  // resolveHighlightIds before highlighting, or the camera moves to an
+  // assembly that stays dark. SearchModal.text.tsx has no test harness
+  // either (zustand store + virtualized list, no DOM) — same constraint,
+  // same style of guard.
+  it('SearchModal resolves highlight ids before selecting a search result', () => {
+    const source = readFileSync(
+      new URL('../components/viewer/SearchModal.text.tsx', import.meta.url),
+      'utf8',
+    )
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '');
+    const commitStart = source.indexOf('const commit = useCallback(');
+    assert.ok(commitStart >= 0, 'commit handler defined');
+    const body = source.slice(commitStart, source.indexOf('  );', commitStart));
+    assert.ok(
+      body.includes('cameraCallbacks.resolveHighlightIds'),
+      'commit() must resolve geometry-less assemblies to renderable ids before setSelectedEntityIds',
+    );
+    assert.ok(
+      body.indexOf('cameraCallbacks.resolveHighlightIds') < body.indexOf('setSelectedEntityIds('),
+      'resolution must happen BEFORE the selection is set, not after',
     );
   });
 });

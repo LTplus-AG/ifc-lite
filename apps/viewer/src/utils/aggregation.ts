@@ -95,22 +95,35 @@ export function hasAggregatedGeometry(
   if (cached !== undefined) return cached;
   let result = geometricIds.has(toGlobalId(rootId));
   if (!result && relationships) {
-    const seen = new Set<number>([rootId]);
-    const stack = relationships.getRelated(rootId, RelationshipType.Aggregates, 'forward').slice();
-    while (stack.length > 0) {
-      const id = stack.pop()!;
-      if (seen.has(id)) continue;
-      seen.add(id);
-      // A descendant already decided (as a root, or on an earlier walk) short-
-      // circuits the rest of its subtree.
-      const sub = cache?.get(id);
-      if (sub === true || (sub === undefined && geometricIds.has(toGlobalId(id)))) {
-        result = true;
-        break;
-      }
-      if (sub === false) continue;
-      for (const kid of relationships.getRelated(id, RelationshipType.Aggregates, 'forward')) {
-        if (!seen.has(kid)) stack.push(kid);
+    // Fetch the children BEFORE allocating `seen`/copying them into the walk
+    // stack: the overwhelming majority of a whole-model scan (property sets,
+    // relationship objects, ordinary elements) decomposes nothing, so this
+    // keeps the common miss down to one `getRelated` call and zero
+    // allocations, instead of a `Set` + an array copy for every entity in the
+    // table. The `.slice()` below is NOT waste: `AggregationRelationships` is
+    // a public interface — the production graphs all return a fresh `.map`ped
+    // array per call, but nothing guarantees every implementation (or test
+    // double) does, and popping directly off a shared/cached array would
+    // silently truncate the caller's own adjacency data on the next call.
+    const children = relationships.getRelated(rootId, RelationshipType.Aggregates, 'forward');
+    if (children.length > 0) {
+      const seen = new Set<number>([rootId]);
+      const stack = children.slice();
+      while (stack.length > 0) {
+        const id = stack.pop()!;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        // A descendant already decided (as a root, or on an earlier walk) short-
+        // circuits the rest of its subtree.
+        const sub = cache?.get(id);
+        if (sub === true || (sub === undefined && geometricIds.has(toGlobalId(id)))) {
+          result = true;
+          break;
+        }
+        if (sub === false) continue;
+        for (const kid of relationships.getRelated(id, RelationshipType.Aggregates, 'forward')) {
+          if (!seen.has(kid)) stack.push(kid);
+        }
       }
     }
   }

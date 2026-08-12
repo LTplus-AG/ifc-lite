@@ -57,7 +57,7 @@
     "docs:check-readmes": "node scripts/docs/check-package-readmes.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.js",
-    "release": "pnpm build && pnpm test:esm && pnpm release:npm && pnpm release:crates",
+    "release": "pnpm build && pnpm test:esm && node scripts/release-all.mjs",
     "release:npm": "changeset publish",
     "release:crates": "node scripts/release-crates.mjs",
     "publish:npm": "pnpm -r publish --access public",

@@ -177,6 +177,7 @@ jobs:
           # authored by a real user identity and CI triggers on them — see
           # the comment on the Checkout step for the full rationale.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
           # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
           # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
           # NPM_CONFIG_PROVENANCE complete the handshake automatically
@@ -211,29 +212,61 @@ jobs:
       - name: Decide release artifacts
         id: release-gate
         run: |
-          VERSION="${{ steps.pre.outputs.version }}"
-          SB_VERSION="${{ steps.pre.outputs.sb_version }}"
-          PENDING="${{ steps.pre.outputs.pending }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "sb_version=${SB_VERSION}" >> $GITHUB_OUTPUT
 
-          released=false
-          if [ "${{ steps.changesets.outputs.published }}" = "true" ]; then
+          # Is each version actually OUT, as opposed to merely versioned?
+          #
+          # An empty `.changeset` directory does not answer that. After a
+          # version PR merges its changesets are already consumed, so a run
+          # whose publish fails outright — bad credentials, a build error, the
+          # npm 404 on an unbootstrapped package that stranded crates.io for
+          # nine days — still arrives here with PENDING=0. Inferring "released"
+          # from that would tag versions that never shipped.
+          #
+          # npm is the durable evidence, and each tag is gated on the version
+          # IT stands for: the root tag on whichever published package carries
+          # the root version (sync-versions.js keeps them aligned), the
+          # server-bin tag on @ifc-lite/server-bin itself. `published == true`
+          # short-circuits it — that IS this run publishing.
+          root_released=false
+          sb_released=false
+          if [ "${PUBLISHED}" = "true" ]; then
             echo "npm published in this run"
-            released=true
+            root_released=true
+            sb_released=true
           elif [ "${PENDING}" != "0" ]; then
             echo "${PENDING} changeset(s) were pending — this run opened the version PR, nothing to tag"
           else
-            echo "no changesets were pending — v${VERSION} is released; backfilling anything missing"
-            released=true
+            ROOT_PKG=$(node -e '
+              const fs = require("fs");
+              const want = process.env.VERSION;
+              const hit = fs.readdirSync("packages")
+                .map((d) => { try { return JSON.parse(fs.readFileSync(`packages/${d}/package.json`, "utf8")); } catch { return null; } })
+                .find((p) => p && p.private !== true && p.version === want);
+              process.stdout.write(hit ? hit.name : "");
+            ')
+            if [ -n "${ROOT_PKG}" ] && npm view "${ROOT_PKG}@${VERSION}" version > /dev/null 2>&1; then
+              echo "${ROOT_PKG}@${VERSION} is on npm — v${VERSION} is genuinely released"
+              root_released=true
+            else
+              echo "no published package carries v${VERSION} on npm — NOT tagging (publish likely failed)"
+            fi
+            if npm view "@ifc-lite/server-bin@${SB_VERSION}" version > /dev/null 2>&1; then
+              echo "@ifc-lite/server-bin@${SB_VERSION} is on npm"
+              sb_released=true
+            else
+              echo "@ifc-lite/server-bin@${SB_VERSION} is not on npm — NOT tagging it"
+            fi
           fi
 
+          # Root and server-bin are tracked SEPARATELY. A run that created the
+          # root release and then failed must still be able to backfill the
+          # server-bin one, which a single shared flag would skip forever.
           root=false
           server=false
-          if [ "$released" = "true" ]; then
-            gh release view "v${VERSION}"    > /dev/null 2>&1 || root=true
-            gh release view "v${SB_VERSION}" > /dev/null 2>&1 || server=true
-          fi
+          [ "$root_released" = "true" ] && { gh release view "v${VERSION}"    > /dev/null 2>&1 || root=true; }
+          [ "$sb_released"   = "true" ] && { gh release view "v${SB_VERSION}" > /dev/null 2>&1 || server=true; }
 
           # When the two versions coincide, the ONE release must be created by
           # the server-bin step, which uses the PAT. A GITHUB_TOKEN-created
@@ -250,6 +283,13 @@ jobs:
           echo "root=${root} server=${server}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Passed as env, not interpolated into the script: `${{ }}` expansion
+          # inside `run:` splices the value into the shell source itself
+          # (zizmor template-injection).
+          VERSION: ${{ steps.pre.outputs.version }}
+          SB_VERSION: ${{ steps.pre.outputs.sb_version }}
+          PENDING: ${{ steps.pre.outputs.pending }}
+          PUBLISHED: ${{ steps.changesets.outputs.published }}
 
       - name: Get Version
         id: get-version
@@ -257,24 +297,27 @@ jobs:
         run: |
           # The pre-action root version — NOT a fresh read of package.json, which
           # `changesets/action` may have bumped in this same tree.
-          echo "version=${{ steps.release-gate.outputs.version }}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        env:
+          VERSION: ${{ steps.release-gate.outputs.version }}
 
       - name: Create GitHub Release
         if: steps.release-gate.outputs.run_root == 'true'
         run: |
           # Create the v* tag (changesets creates @scope/package@version tags, not v* tags)
-          git tag "v${{ steps.get-version.outputs.version }}" || true
-          git push origin "v${{ steps.get-version.outputs.version }}" || true
+          git tag "v${VERSION}" || true
+          git push origin "v${VERSION}" || true
           # Create release, skipping if it already exists
-          if gh release view "v${{ steps.get-version.outputs.version }}" > /dev/null 2>&1; then
-            echo "Release v${{ steps.get-version.outputs.version }} already exists, skipping"
+          if gh release view "v${VERSION}" > /dev/null 2>&1; then
+            echo "Release v${VERSION} already exists, skipping"
           else
-            gh release create "v${{ steps.get-version.outputs.version }}" \
-              --title "v${{ steps.get-version.outputs.version }}" \
+            gh release create "v${VERSION}" \
+              --title "v${VERSION}" \
               --notes "See CHANGELOG.md for details"
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.get-version.outputs.version }}
 
       # @ifc-lite/server-bin downloads its native archive from a GitHub
       # release tagged `v<its-own-version>` (packages/server-bin/src/binary.ts).
@@ -288,7 +331,7 @@ jobs:
       - name: Create server-bin binary release
         if: steps.release-gate.outputs.run_server == 'true'
         run: |
-          SB_VERSION="${{ steps.release-gate.outputs.sb_version }}"
+          # SB_VERSION arrives via env (see below), not spliced into this script.
           TAG="v${SB_VERSION}"
           # Skip when the tag already exists (server-bin unchanged this cycle,
           # or it happens to equal the root release already created above).

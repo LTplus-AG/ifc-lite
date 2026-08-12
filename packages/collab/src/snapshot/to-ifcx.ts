@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { entityToJSON, iterEntities } from '../doc/entity.js';
 import { metaMap } from '../doc/schema.js';
 import { flattenStructuredBranches, geometryRecordLookup } from './structured-attrs.js';
+import { IFCX_VERSION } from '@ifc-lite/ifcx';
 
 export interface SnapshotOptions {
   author?: string;
@@ -43,7 +44,7 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
 
   const header: IfcxHeader = {
     id: options.id ?? seededHeader?.id ?? 'ifc-lite/collab/snapshot',
-    ifcxVersion: options.ifcxVersion ?? seededHeader?.ifcxVersion ?? 'ifcx_alpha',
+    ifcxVersion: options.ifcxVersion ?? seededHeader?.ifcxVersion ?? IFCX_VERSION,
     dataVersion: options.dataVersion ?? seededHeader?.dataVersion ?? '1.0.0',
     author: options.author ?? seededHeader?.author ?? 'ifc-lite/collab',
     timestamp: options.timestamp ?? new Date().toISOString(),

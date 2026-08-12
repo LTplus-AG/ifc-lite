@@ -7,10 +7,22 @@ name: Test
 on:
   pull_request:
     branches: [main]
+  # Post-merge guard. Two PRs can each be green against their own base and be
+  # broken as a pair on main: #2551 removed a helper from
+  # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it
+  # at 06:35, and main was red from then on. Nothing ran on main, so it
+  # surfaced hours later on an unrelated first-time contributor's PR, and every
+  # open PR's Node lane was red until it was fixed.
+  push:
+    branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Include the event so a push-to-main run and a PR run never share a group.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
+  # Superseding a PR run is free (the newer commit is what matters). Superseding
+  # a main run is not: each merge is a distinct state that nothing else checks,
+  # and cancelling it is how a broken main goes unnoticed.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -50,6 +62,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A push event filters against the previous commit, which a depth-1
+          # clone does not contain. PRs filter against the base ref and are
+          # unaffected, so only the push path pays the extra object.
+          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -420,7 +436,9 @@ jobs:
   viewer-e2e:
     name: Viewer E2E smoke
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # PR-only: see the `push:` trigger comment. The post-merge run repeats the
+    # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -541,7 +559,8 @@ jobs:
   geometry-census:
     name: Geometry watertightness census
     needs: changes
-    if: needs.changes.outputs.geometry == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 45
     steps:
@@ -589,7 +608,8 @@ jobs:
   plato-check:
     name: Plato clash-math freshness
     needs: changes
-    if: needs.changes.outputs.plato == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ubuntu-latest

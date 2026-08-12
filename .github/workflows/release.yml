@@ -171,16 +171,57 @@ jobs:
           # crates.io token minted via OIDC above; expires in 30 minutes.
           CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
 
+      # Whether to create this version's release artifacts.
+      #
+      # This used to be `steps.changesets.outputs.published == 'true'`, which
+      # asks "did npm publish in THIS run?" — a different question from "does
+      # this released version still need its tag?". The two came apart on
+      # 2026-08-12 (v4.4.1): `changeset publish` published every package, then
+      # the step failed while pushing tags on a transient TLS error
+      # ("server certificate verification failed"). `published` was therefore
+      # not 'true', so the v-tag steps skipped — and every later run skipped
+      # them too, because by then npm had nothing left to publish. v4.4.0 and
+      # v4.4.1 both ended up with no `v*` tag or GitHub release at all, and no
+      # run would ever create them.
+      #
+      # So: publish-in-this-run still qualifies, and a released version whose
+      # tag is missing now qualifies too. "Released" means no changeset is
+      # pending — with changesets waiting, `package.json` still carries the
+      # PREVIOUS released version (the bump lands in the version PR), so its
+      # tag already exists and this is a no-op rather than a premature tag.
+      # Both downstream steps are already idempotent on an existing release.
+      - name: Decide release artifacts
+        id: release-gate
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          PENDING=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          if [ "${{ steps.changesets.outputs.published }}" = "true" ]; then
+            echo "npm published in this run — creating release artifacts for v${VERSION}"
+            echo "run=true" >> $GITHUB_OUTPUT
+          elif [ "${PENDING}" != "0" ]; then
+            echo "${PENDING} changeset(s) pending — v${VERSION} is the previous release, nothing to do"
+            echo "run=false" >> $GITHUB_OUTPUT
+          elif gh release view "v${VERSION}" > /dev/null 2>&1; then
+            echo "Release v${VERSION} already exists, nothing to do"
+            echo "run=false" >> $GITHUB_OUTPUT
+          else
+            echo "v${VERSION} is released but has no GitHub release — backfilling"
+            echo "run=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Get Version
         id: get-version
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.release-gate.outputs.run == 'true'
         run: |
           # Read the root release version (sync-versions.js keeps it aligned to the highest released workspace package version)
           VERSION=$(node -p "require('./package.json').version")
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.release-gate.outputs.run == 'true'
         run: |
           # Create the v* tag (changesets creates @scope/package@version tags, not v* tags)
           git tag "v${{ steps.get-version.outputs.version }}" || true
@@ -206,7 +247,7 @@ jobs:
       # event triggers server-binaries.yml to build + upload the per-platform
       # archives to this tag, so the download URL resolves with fresh binaries.
       - name: Create server-bin binary release
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.release-gate.outputs.run == 'true'
         run: |
           SB_VERSION=$(node -p "require('./packages/server-bin/package.json').version")
           TAG="v${SB_VERSION}"

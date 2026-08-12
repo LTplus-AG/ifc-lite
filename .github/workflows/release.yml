@@ -177,7 +177,6 @@ jobs:
           # authored by a real user identity and CI triggers on them — see
           # the comment on the Checkout step for the full rationale.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
-          SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
           # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
           # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
           # NPM_CONFIG_PROVENANCE complete the handshake automatically
@@ -352,6 +351,7 @@ jobs:
           # would sit empty and downloads would still 404. The PAT is a real
           # identity, so the event fires and binaries build + upload to this tag.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          SB_VERSION: ${{ steps.release-gate.outputs.sb_version }}
 
   # Verify every published package is actually reachable on npm.
   # Catches packages accidentally skipped during release before users hit them.

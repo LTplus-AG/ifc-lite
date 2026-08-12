@@ -17,11 +17,17 @@ on:
     branches: [main]
 
 concurrency:
-  # Include the event so a push-to-main run and a PR run never share a group.
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
-  # Superseding a PR run is free (the newer commit is what matters). Superseding
-  # a main run is not: each merge is a distinct state that nothing else checks,
-  # and cancelling it is how a broken main goes unnoticed.
+  # PR runs share a group per ref, so a new commit supersedes the old run — the
+  # newer commit is the only one whose verdict matters.
+  #
+  # Push runs get a group PER COMMIT. Not merely `cancel-in-progress: false`:
+  # GitHub keeps only one running plus one PENDING run per group, and a newer
+  # queued run EVICTS the pending one even when cancellation is off. With three
+  # merges in quick succession, a docs-only third merge would evict the queued
+  # run for a frontend-breaking second merge, and its path filters would then
+  # skip the Node lane — leaving exactly the broken state this guard exists to
+  # catch unchecked. A per-commit group means no merge can displace another.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

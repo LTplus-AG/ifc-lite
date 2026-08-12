@@ -1,5 +1,12 @@
 # @ifc-lite/bcf
 
+## 1.18.1
+
+### Patch Changes
+
+- Updated dependencies [[`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797)]:
+  - @ifc-lite/encoding@2.0.0
+
 ## 1.18.0
 
 ### Minor Changes

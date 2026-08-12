@@ -432,29 +432,39 @@ describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', (
   });
 });
 
-describe('TsClashEngine: contained-pair penetration depth (#1866)', () => {
-  it('reports the mesh-level depth, not the AABB gap, for a contained crossing pair', async () => {
+describe('TsClashEngine: contained-pair penetration depth, non-box fallback (#1866)', () => {
+  // #1866 was originally fixed by `maxPenetrationInto` — a nearest-crossing-
+  // vertex probe held (PR #2536) for being a sampling artifact that converges
+  // to 0 under retessellation instead of to the true depth (see `obb.ts`,
+  // `obb.test.ts`). Its replacement, the box-box SAT depth, cannot certify a
+  // concave L-prism (it is not a box), so BOTH fixtures below now report the
+  // pre-#1866 AABB estimate — honestly labelled `'estimate'`, not silently
+  // mislabelled `'mesh'` the way the old probe was. Extending exact
+  // measurement to non-box shapes is future work (PR #2536 hold comment,
+  // "landing conditions").
+  it('falls back to the labelled AABB estimate for a contained crossing pair', async () => {
     // Box in the L's notch, AABB-contained in the L's AABB, dipping past the
-    // notch wall at x=1 into the solid. True mesh penetration = 1 - xMin.
+    // notch wall at x=1 into the solid.
     const wall = lPrismElement('A', 'IfcWall');
     const duct = boxElementHxyz('B', 'IfcDuct', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
     const result = await engine.run([wall, duct], [hard()]);
     expect(result.summary.total).toBe(1);
     const clash = result.clashes[0];
     expect(clash.status).toBe('hard');
-    const expected = 1 - duct.bounds.min[0]; // ~0.05, f32-exact from the mesh
-    expect(expected).toBeGreaterThan(0.049);
-    expect(expected).toBeLessThan(0.051);
-    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-9);
-    // The old AABB signed-gap depth for this pair was 0.7 (the contained box's
-    // own smallest-axis overlap), 14x the real penetration.
-    expect(-clash.distance).toBeLessThan(0.1);
+    expect(clash.distanceKind).toBe('estimate');
+    // The AABB estimate here is the duct's own y/z cross-section (0.4), not
+    // the true ~0.05 m mesh penetration a box-exact metric can't see for a
+    // non-box element.
+    expect(-clash.distance).toBeCloseTo(0.4, 6);
   });
 
-  it('reports a micrometre-scale depth for a designed face contact (issue corpus scale)', async () => {
+  it('falls back to the same AABB estimate for a designed face contact (issue corpus scale)', async () => {
     // Same layout, but the box crosses the notch wall by ~1e-6 m: a designed
-    // face contact as in the #1866 corpus (true worst depth 7.39e-6 m). The
-    // reported depth must sit inside the touching band, not at the AABB gap.
+    // face contact as in the #1866 corpus (true worst depth 7.39e-6 m). A
+    // box-exact metric would need a box; the L-prism isn't one, so the
+    // reported depth is the SAME AABB cross-section estimate as the case
+    // above, not the true micrometre-scale depth — the known residual of
+    // narrowing the metric to boxes only.
     const wall = lPrismElement('A', 'IfcWall');
     const xMinTarget = 0.999999;
     const duct = boxElementHxyz(
@@ -465,14 +475,12 @@ describe('TsClashEngine: contained-pair penetration depth (#1866)', () => {
     );
     const xMin = duct.bounds.min[0]; // f32-rounded, slightly below 1
     expect(xMin).toBeLessThan(1);
-    const expected = 1 - xMin; // ~1e-6
-    expect(expected).toBeGreaterThan(0);
-    expect(expected).toBeLessThan(1e-4); // inside TOUCHING_EPSILON
     const result = await engine.run([wall, duct], [hard()]);
     expect(result.summary.total).toBe(1);
     const clash = result.clashes[0];
     expect(clash.status).toBe('hard');
-    expect(Math.abs(-clash.distance - expected)).toBeLessThan(1e-12);
+    expect(clash.distanceKind).toBe('estimate');
+    expect(-clash.distance).toBeCloseTo(0.4, 6);
   });
 });
 

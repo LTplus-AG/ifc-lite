@@ -6,6 +6,7 @@ import { BVH, type AABB, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { Mat4, Vec3 } from '../types.js';
 import { sub, cross, dot, distSq } from '../math/vec3.js';
 import { closestPtPointTriangle } from '../math/triangle-distance.js';
+import { detectObb, type Obb } from './obb.js';
 
 /**
  * Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
@@ -46,6 +47,9 @@ export class TriMesh {
    * `TriMesh::probe_seed` computes the identical value.
    */
   private readonly probeSeed: number;
+  /** Memoized `detectObb(this)` result; `undefined` until first requested.
+   * Computed at most once per element per run, same lifetime as the mesh. */
+  private obbCache: Obb | null | undefined;
 
   constructor(positions: Float32Array, indices: Uint32Array, transform?: Mat4) {
     this.positions = positions;
@@ -136,6 +140,13 @@ export class TriMesh {
     return this.bvh.queryAABB(bounds);
   }
 
+  /** Memoized `Obb` for this mesh, or `null` when the mesh is not (within
+   * tolerance) a rectangular box. See `obb.ts` for the detection rule. */
+  getObb(): Obb | null {
+    if (this.obbCache === undefined) this.obbCache = detectObb(this);
+    return this.obbCache;
+  }
+
   /**
    * Mean of every vertex (world-space, transform applied), summed in index
    * order. A rigid-invariant interior probe for the volumetric-overlap check in
@@ -188,11 +199,16 @@ export class TriMesh {
    * Exact distance from `p` to this mesh's surface: the minimum point-to-
    * triangle distance over the whole mesh.
    *
-   * Driven by the triangle BVH rather than a linear scan, because since #2441
-   * this runs for EVERY intersecting pair (not only AABB-contained ones), at
-   * every deduped crossing vertex — an O(n) scan there costs seconds on
-   * realistic meshes. The BVH is used through a plain `queryAABB`, so the value
-   * is still the exact global minimum:
+   * Not on the narrow-phase hot path as of PR #2536 (its former caller,
+   * `maxPenetrationInto`, was removed — see `obb.ts`): a nearest-crossing-
+   * VERTEX distance-to-surface probe is a sampling artifact that converges to
+   * 0 under retessellation rather than to the true penetration depth. Kept as
+   * a genuinely exact, independently tested primitive (see the shared probe
+   * fixture in `tri-mesh.test.ts` / `kernel_tests.rs`) for future callers that
+   * need it — e.g. clearance-to-nearest-surface — not as dead weight. Driven
+   * by the triangle BVH rather than a linear scan so it stays cheap when it IS
+   * called. The BVH is used through a plain `queryAABB`, so the value is still
+   * the exact global minimum:
    *
    * 1. Query the cube of half-size `h` centred on `p`. Every triangle within
    *    distance `h` of `p` has its closest point inside that cube, hence its
@@ -234,35 +250,6 @@ export class TriMesh {
       h *= 2;
     }
     return this.distanceToSurfaceScan(p);
-  }
-
-  /**
-   * Mesh-level penetration of this mesh into `other`, measured at the vertices
-   * of the triangles flagged in `crossFlags` (the pairs the narrow phase saw
-   * genuinely crossing `other`): the maximum distance-to-surface of `other`
-   * over those vertices that lie inside `other`. Each vertex is visited once
-   * (deduped by vertex index, in index order — bit-identical to the Rust
-   * `max_penetration_into`). Returns 0 when no flagged vertex is inside, e.g.
-   * a thin member piercing straight through, whose crossing-triangle vertices
-   * all sit outside `other` (#1866).
-   */
-  maxPenetrationInto(other: TriMesh, crossFlags: Uint8Array): number {
-    const seen = new Uint8Array(Math.floor(this.positions.length / 3));
-    let depth = 0;
-    for (let t = 0; t < this.count; t += 1) {
-      if (crossFlags[t] === 0) continue;
-      const o = t * 3;
-      for (let k = 0; k < 3; k += 1) {
-        const vi = this.indices[o + k];
-        if (seen[vi] === 1) continue;
-        seen[vi] = 1;
-        const v = this.vertex(vi);
-        if (!other.containsPoint(v)) continue;
-        const d = other.distanceToSurface(v);
-        if (d > depth) depth = d;
-      }
-    }
-    return depth;
   }
 
   /**

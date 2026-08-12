@@ -8,6 +8,18 @@
  * existed the two were indistinguishable in the output. These fixtures pin one
  * pair per code path, and pin the distances themselves so the labelling can
  * never be mistaken for a change of the numbers.
+ *
+ * The `'mesh'` label now comes from an exact box-box penetration depth (see
+ * `obb.ts`), not from `maxPenetrationInto` — a nearest-crossing-vertex probe
+ * that was held (PR #2536) for being a sampling artifact: it converges to 0
+ * under retessellation instead of to the true depth, and was labelled
+ * trustworthy while the AABB estimate — genuinely correct for boxes — was
+ * labelled an estimate. Every pair of RECTANGULAR-BOX elements is now exactly
+ * measurable, so every box fixture below is `'mesh'`; only a genuinely
+ * non-box shape (the triangular-prism column) still falls back to the AABB
+ * `'estimate'`. See `obb.test.ts` for the analytic-oracle coverage of the
+ * metric itself (tessellation invariance, a rotated box, a barely-overlapping
+ * control).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -33,6 +45,43 @@ function boxEl(key: string, tag: string, min: Vec3, max: Vec3): ClashElement {
   return { key, ref: nextRef++, model: 'm', tag, positions, indices, bounds: { min, max } };
 }
 
+/**
+ * Triangular-prism element: a right prism over triangle base `(p0,p1,p2)`
+ * (in XY) extruded from `z0` to `z1`. NOT a box — the two triangular caps and
+ * the three rectangular sides give 5 distinct face-normal families, so
+ * `detectObb` correctly declines to certify it, keeping the AABB-estimate
+ * path genuinely exercised (rather than by a box the detector happens to miss).
+ */
+function prismEl(key: string, tag: string, p0: [number, number], p1: [number, number], p2: [number, number], z0: number, z1: number): ClashElement {
+  const pts = [p0, p1, p2];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+  }
+  const positions = new Float32Array([
+    p0[0], p0[1], z0, p1[0], p1[1], z0, p2[0], p2[1], z0, // 0,1,2: bottom cap
+    p0[0], p0[1], z1, p1[0], p1[1], z1, p2[0], p2[1], z1, // 3,4,5: top cap
+  ]);
+  const indices = new Uint32Array([
+    // Bottom cap (facing -z) and top cap (facing +z).
+    0, 2, 1, 3, 4, 5,
+    // Three rectangular sides.
+    0, 1, 4, 0, 4, 3,
+    1, 2, 5, 1, 5, 4,
+    2, 0, 3, 2, 3, 5,
+  ]);
+  return {
+    key,
+    ref: nextRef++,
+    model: 'm',
+    tag,
+    positions,
+    indices,
+    bounds: { min: [minX, minY, z0], max: [maxX, maxY, z1] },
+  };
+}
+
 const RULE: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
 
 function pair(a: ClashElement, b: ClashElement) {
@@ -42,9 +91,9 @@ function pair(a: ClashElement, b: ClashElement) {
 }
 
 describe('hard-clash distance provenance', () => {
-  it('labels a genuine crossing as mesh-measured', () => {
-    // A block driven 75 mm into a 200 mm slab: the block's lower corners are
-    // strictly inside the slab, so the mesh probe has a vertex to measure from.
+  it('labels a genuine box-box crossing as mesh-measured', () => {
+    // A block driven 75 mm into a 200 mm slab: both elements are boxes, so the
+    // exact box-box penetration depth (the Z-axis overlap) is certifiable.
     const res = pair(
       boxEl('A', 'IfcSlab', [0, 0, 0], [10, 10, 0.2]),
       boxEl('B', 'IfcFooting', [4, 4, 0.125], [5, 5, 1]),
@@ -55,8 +104,8 @@ describe('hard-clash distance provenance', () => {
   });
 
   it('labels a stack whose footprints do NOT coincide as mesh-measured', () => {
-    // The upper slab is inset, so the lower slab's top corners fall strictly
-    // inside it and the mesh probe fires.
+    // The upper slab is inset but both elements are still boxes: the exact
+    // depth is the Z overlap, 0.04.
     const res = pair(
       boxEl('A', 'IfcSlab', [0, 0, 0], [10, 10, 0.2]),
       boxEl('B', 'IfcSlab', [1, 1, 0.16], [9, 9, 0.41]),
@@ -66,47 +115,46 @@ describe('hard-clash distance provenance', () => {
     expect(res.distance).toBe(-0.040000006556510925);
   });
 
-  it('labels a member piercing clean through as an AABB estimate', () => {
-    // A thin bar passing right through a slab. The triangles genuinely cross,
-    // but every crossing-triangle vertex is OUTSIDE the other solid — the bar's
-    // ends stick out, the slab's caps reach far beyond the bar — so
-    // `maxPenetrationInto` returns 0 on both sides and the reported number is
-    // the smallest overlapping BOX dimension.
+  it('labels a non-box member piercing clean through as an AABB estimate', () => {
+    // A triangular-prism column passing right through a box slab: the column
+    // is NOT a box (detectObb declines it), so there is no certified box-box
+    // depth and the reported number is the smallest overlapping AABB
+    // dimension — an estimate, not a measured depth.
     const res = pair(
       boxEl('A', 'IfcSlab', [0, 0, 0], [10, 10, 0.2]),
-      boxEl('B', 'IfcColumn', [4, 4, -5], [4.3, 4.3, 5]),
+      prismEl('B', 'IfcColumn', [4, 4], [4.3, 4], [4.15, 4.3], -5, 5),
     );
     expect(res.status).toBe('hard');
     expect(res.distanceKind).toBe('estimate');
     expect(res.distance).toBe(-0.2);
   });
 
-  it('labels coincident-footprint stacked layers as an AABB estimate', () => {
+  it('labels coincident-footprint stacked box layers as mesh-measured', () => {
     // Two pavement layers with the same footprint, overlapping 40 mm. Their
-    // surfaces only COINCIDE — no triangle pair crosses — so this lands in the
-    // coplanar-overlap branch, whose distance is the AABB signed gap, i.e. the
-    // smallest overlapping box dimension. Nothing was measured on the meshes.
+    // surfaces only COINCIDE — no triangle pair crosses — so this lands in
+    // the coplanar-overlap branch. Both are boxes, so the exact depth (the Z
+    // overlap) is certifiable there too.
     const res = pair(
       boxEl('A', 'IfcSlab', [0, 0, 0], [10, 10, 0.2]),
       boxEl('B', 'IfcSlab', [0, 0, 0.16], [10, 10, 0.41]),
     );
     expect(res.status).toBe('hard');
-    expect(res.distanceKind).toBe('estimate');
-    expect(res.distance).toBe(-0.04000000000000001);
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBe(-0.040000006556510925);
   });
 
-  it('labels an enclosed layer as an AABB estimate', () => {
-    // A 40 mm layer modelled wholly inside a 250 mm one: no surface crossing at
-    // all, so the enclosed-solid branch reports the AABB gap — which here is
-    // exactly the thin layer's own thickness, the value most easily mistaken
-    // for a measured depth.
+  it('labels an enclosed box layer as mesh-measured', () => {
+    // A 40 mm layer modelled wholly inside a 250 mm one: no surface crossing
+    // at all, so this lands in the enclosed-solid branch. Both are boxes, so
+    // the exact depth is certified there too — it happens to equal the thin
+    // layer's own thickness, the value most easily mistaken for a guess.
     const res = pair(
       boxEl('A', 'IfcSlab', [0, 0, 0], [10, 10, 0.04]),
       boxEl('B', 'IfcSlab', [0, 0, 0], [10, 10, 0.25]),
     );
     expect(res.status).toBe('hard');
-    expect(res.distanceKind).toBe('estimate');
-    expect(res.distance).toBe(-0.04);
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBe(-0.03999999910593033);
   });
 
   it('carries the label onto the public Clash', async () => {
@@ -119,7 +167,7 @@ describe('hard-clash distance provenance', () => {
       [{ id: 'r', name: 'r', a: 'IfcSlab', b: 'IfcSlab', mode: 'hard' }],
     );
     expect(res.clashes).toHaveLength(1);
-    expect(res.clashes[0].distanceKind).toBe('estimate');
+    expect(res.clashes[0].distanceKind).toBe('mesh');
   });
 });
 

@@ -10,8 +10,10 @@
 
 use crate::aabb::Aabb;
 use crate::bvh::Bvh;
+use crate::obb::{detect_obb, MeshLike, Obb};
 use crate::triangle::closest_pt_point_triangle;
 use crate::vec3::{cross, dist_sq, dot, sub, Vec3};
+use std::cell::RefCell;
 
 /// Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
 /// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
@@ -36,10 +38,17 @@ pub struct TriMesh {
     /// size. Derived with exact power-of-two arithmetic (no `powi`/`cbrt`, whose
     /// last bit is not guaranteed to agree with JS) — the TS `TriMesh.probeSeed`
     /// computes the identical value.
+    #[allow(dead_code)]
     probe_seed: f64,
+    /// Memoized `detect_obb(self)` result; `None` until first requested (the
+    /// outer `Option` is the "not yet computed" marker, the inner one is
+    /// "not a box"). Computed at most once per element per run, same
+    /// lifetime as the mesh — mirrors the TS `TriMesh.obbCache`.
+    obb_cache: RefCell<Option<Option<Obb>>>,
 }
 
 /// The axis-aligned cube of half-size `h` centred on `p`.
+#[allow(dead_code)]
 fn cube_around(p: Vec3, h: f64) -> Aabb {
     Aabb::new([p[0] - h, p[1] - h, p[2] - h], [p[0] + h, p[1] + h, p[2] + h])
 }
@@ -121,7 +130,19 @@ impl TriMesh {
             count,
             bvh,
             probe_seed,
+            obb_cache: RefCell::new(None),
         }
+    }
+
+    /// Memoized `Obb` for this mesh, or `None` when the mesh is not (within
+    /// tolerance) a rectangular box. See `obb.rs` for the detection rule.
+    pub fn get_obb(&self) -> Option<Obb> {
+        if let Some(cached) = *self.obb_cache.borrow() {
+            return cached;
+        }
+        let computed = detect_obb(self);
+        *self.obb_cache.borrow_mut() = Some(computed);
+        computed
     }
 
     /// World-space vertex `i`.
@@ -178,6 +199,7 @@ impl TriMesh {
     }
 
     /// Minimum point-to-triangle distance over `tris`, as a squared distance.
+    #[allow(dead_code)]
     fn min_dist_sq_over(&self, p: Vec3, tris: &[u32]) -> f64 {
         let mut best = f64::INFINITY;
         for &t in tris {
@@ -192,6 +214,7 @@ impl TriMesh {
     }
 
     /// Exhaustive fallback for `distance_to_surface`: every triangle, index order.
+    #[allow(dead_code)]
     fn distance_to_surface_scan(&self, p: Vec3) -> f64 {
         let mut best = f64::INFINITY;
         for t in 0..self.count {
@@ -208,11 +231,15 @@ impl TriMesh {
     /// Exact distance from `p` to this mesh's surface: the minimum point-to-
     /// triangle distance over the whole mesh.
     ///
-    /// Driven by the triangle BVH rather than a linear scan, because since #2441
-    /// this runs for EVERY intersecting pair (not only AABB-contained ones), at
-    /// every deduped crossing vertex — an O(n) scan there costs seconds on
-    /// realistic meshes. The BVH is used through a plain `query_aabb`, so the
-    /// value is still the exact global minimum:
+    /// Not on the narrow-phase hot path as of PR #2536 (its former caller,
+    /// `max_penetration_into`, was removed — see `obb.rs`): a nearest-crossing-
+    /// VERTEX distance-to-surface probe is a sampling artifact that converges
+    /// to 0 under retessellation rather than to the true penetration depth.
+    /// Kept as a genuinely exact, independently tested primitive (see the
+    /// shared probe fixture in `kernel_tests.rs` / `tri-mesh.test.ts`) for
+    /// future callers that need it — e.g. clearance-to-nearest-surface — not
+    /// as dead weight. Driven by the triangle BVH rather than a linear scan so
+    /// it stays cheap when it IS called:
     ///
     /// 1. Query the cube of half-size `h` centred on `p`. Every triangle within
     ///    distance `h` of `p` has its closest point inside that cube, hence its
@@ -235,6 +262,7 @@ impl TriMesh {
     /// empty. It is kept only as defence-in-depth against a future
     /// `query_tris` regression, not as a code path with coverage; do not read
     /// it as a tested safety net.
+    #[allow(dead_code)]
     pub fn distance_to_surface(&self, p: Vec3) -> f64 {
         if self.count == 0 {
             return f64::INFINITY;
@@ -260,42 +288,6 @@ impl TriMesh {
             h *= 2.0;
         }
         self.distance_to_surface_scan(p)
-    }
-
-    /// Mesh-level penetration of this mesh into `other`, measured at the
-    /// vertices of the triangles flagged in `cross_flags` (the pairs the narrow
-    /// phase saw genuinely crossing `other`): the maximum distance-to-surface
-    /// of `other` over those vertices that lie inside `other`. Each vertex is
-    /// visited once (deduped by vertex index, in index order — bit-identical to
-    /// the TS `maxPenetrationInto`). Returns 0 when no flagged vertex is
-    /// inside, e.g. a thin member piercing straight through, whose crossing-
-    /// triangle vertices all sit outside `other` (#1866).
-    pub fn max_penetration_into(&self, other: &TriMesh, cross_flags: &[bool]) -> f64 {
-        let mut seen = vec![false; self.positions.len() / 3];
-        let mut depth = 0.0f64;
-        // `cross_flags` has one entry per triangle (len == self.count).
-        for (t, &flagged) in cross_flags.iter().enumerate() {
-            if !flagged {
-                continue;
-            }
-            let o = t * 3;
-            for k in 0..3 {
-                let vi = self.indices[o + k] as usize;
-                if seen[vi] {
-                    continue;
-                }
-                seen[vi] = true;
-                let v = self.vertex(vi as u32);
-                if !other.contains_point(v) {
-                    continue;
-                }
-                let d = other.distance_to_surface(v);
-                if d > depth {
-                    depth = d;
-                }
-            }
-        }
-        depth
     }
 
     /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and
@@ -342,6 +334,15 @@ impl TriMesh {
             }
         }
         crossings & 1 == 1
+    }
+}
+
+impl MeshLike for TriMesh {
+    fn tri_count(&self) -> usize {
+        self.count
+    }
+    fn tri_verts(&self, t: usize) -> [Vec3; 3] {
+        self.tri(t)
     }
 }
 

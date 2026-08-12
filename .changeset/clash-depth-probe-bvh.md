@@ -2,6 +2,8 @@
 "@ifc-lite/clash": patch
 ---
 
+**Note added in this same release — see `clash-depth-box-exact-metric.md`.** `TriMesh.maxPenetrationInto`, the probes' caller, has been removed (it was a sampling artifact, not a real depth measurement). `containsPoint` and `distanceToSurface` — the BVH-accelerated probes this changeset describes — are kept as exact, independently tested primitives for future callers, but are no longer on the hot path this changeset was optimising; the per-pair cost figures below no longer apply to the current narrow phase.
+
 Drive the mesh-depth probes through the triangle BVH instead of scanning every triangle.
 
 Measuring the mesh-level penetration depth for every hard clash (rather than only for AABB-contained pairs) made two per-vertex probes hot: `containsPoint`, a ray cast counting crossings against every triangle, and `distanceToSurface`, a closest-surface scan over every triangle. Both were deliberate O(n) linear scans whose doc comments justified the cost by "only invoked from the contained-pair depth measurement" — an invariant that stopped holding when the gate was removed. Both comments are now corrected, and both probes use the per-element triangle BVH that `TriMesh` already builds.

@@ -8,6 +8,21 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
+import { obbPenetrationDepth } from './obb.js';
+
+/**
+ * Exact box-box penetration depth when BOTH meshes are (within tolerance)
+ * rectangular boxes, else `null`. This is the only source of a `'mesh'`
+ * label for a distance that used to come from `TriMesh.maxPenetrationInto` —
+ * a nearest-crossing-vertex sampling probe that converges to 0 under
+ * retessellation instead of to the true depth (see `obb.ts`, `obb.test.ts`).
+ */
+function boxMeasuredDepth(small: TriMesh, large: TriMesh): number | null {
+  const oa = small.getObb();
+  const ob = large.getObb();
+  if (!oa || !ob) return null;
+  return obbPenetrationDepth(oa, ob);
+}
 
 export interface NarrowResult {
   status: ClashStatus;
@@ -50,15 +65,6 @@ export function testPair(
   const small = aSmaller ? triA : triB;
   const large = aSmaller ? triB : triA;
 
-  // Crossing-triangle flags for the mesh-level penetration depth. The AABB
-  // signed gap is the smallest overlapping BOX dimension, which for a
-  // penetrating pair is often a dimension of one element (a layer thickness, a
-  // member's cross-section) rather than how far the MESHES interpenetrate — so
-  // collect the crossing triangles for every pair and measure the depth on the
-  // meshes instead (#1866).
-  const crossSmall = new Uint8Array(small.count);
-  const crossLarge = new Uint8Array(large.count);
-
   let intersects = false;
   let contactSumX = 0;
   let contactSumY = 0;
@@ -89,8 +95,6 @@ export function testPair(
       const [l0, l1, l2] = large.tri(tl);
       if (triTriIntersect(s0, s1, s2, l0, l1, l2)) {
         intersects = true;
-        crossSmall[ts] = 1;
-        crossLarge[tl] = 1;
         const c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
         contactSumX += c[0];
         contactSumY += c[1];
@@ -155,21 +159,15 @@ export function testPair(
     const point: Vec3 = contactN > 0
       ? [contactSumX / contactN, contactSumY / contactN, contactSumZ / contactN]
       : center(overlap);
-    // Mesh-level depth: the distance from the deepest crossing-triangle vertex
-    // of either mesh inside the other solid to that solid's surface. This is
-    // the reported depth whenever such a vertex exists (#1866).
-    const meshDepth = Math.max(
-      small.maxPenetrationInto(large, crossSmall),
-      large.maxPenetrationInto(small, crossLarge),
-    );
-    // Fallback when no crossing-triangle vertex of either mesh lies inside the
-    // other (a thin member piercing straight through, so every vertex is
-    // outside): the AABB overlap, i.e. the smallest overlapping box dimension.
-    // That is an estimate, not a measured depth — it can report a dimension of
-    // one of the elements rather than how far they interpenetrate.
-    const measured = meshDepth > 0;
+    // Exact box-box penetration depth when both elements are rectangular
+    // boxes (see `boxMeasuredDepth`); otherwise fall back to the AABB overlap,
+    // i.e. the smallest overlapping box dimension. That fallback is an
+    // estimate, not a measured depth — for a non-box shape it can report a
+    // dimension of one of the elements rather than how far they interpenetrate.
+    const boxDepth = boxMeasuredDepth(small, large);
+    const measured = boxDepth != null;
     const penetration = measured
-      ? meshDepth
+      ? boxDepth
       : Math.max(0, -signedGap(elA.bounds, elB.bounds));
     return {
       status: 'hard',
@@ -188,15 +186,22 @@ export function testPair(
   // correctly returns "outside" when the inner sits in a concave notch.
   // Test B-contains-A first, then A-contains-B, so the inner pick is
   // deterministic (and identical to the Rust kernel) on equal AABBs.
-  // Either way there is no surface crossing, hence no crossing-triangle vertex
-  // to measure from: the reported AABB gap is an estimate, not a measured depth.
+  // Either way there is no surface crossing. When both elements are boxes the
+  // exact box-box depth is available (see `boxMeasuredDepth`) and is reported
+  // as measured; otherwise the AABB gap is an estimate, not a measured depth.
   if (aabbContains(elB.bounds, elA.bounds)) {
     if (triA.count > 0 && triB.containsPoint(triA.tri(0)[0])) {
-      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
+      const boxDepth = boxMeasuredDepth(small, large);
+      return boxDepth != null
+        ? { status: 'hard', distance: -boxDepth, distanceKind: 'mesh', point: center(overlap), bounds: overlap }
+        : { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
     }
   } else if (aabbContains(elA.bounds, elB.bounds)) {
     if (triB.count > 0 && triA.containsPoint(triB.tri(0)[0])) {
-      return { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
+      const boxDepth = boxMeasuredDepth(small, large);
+      return boxDepth != null
+        ? { status: 'hard', distance: -boxDepth, distanceKind: 'mesh', point: center(overlap), bounds: overlap }
+        : { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
     }
   }
 
@@ -229,12 +234,13 @@ export function testPair(
         // actually coincide), clamped to the element overlap — not the whole-
         // element AABB intersection, which for angled members spans nearly the
         // full member length and sits away from the real contact (#1362/#1402).
+        // When both elements are boxes the exact box-box depth is available
+        // (see `boxMeasuredDepth`) and is reported as measured, not estimated.
+        const boxDepth = boxMeasuredDepth(small, large);
         return {
           status: 'hard',
-          distance: gap,
-          // `gap` is the AABB signed gap; the surfaces only coincide, so no
-          // mesh-level depth was measured here either.
-          distanceKind: 'estimate',
+          distance: boxDepth != null ? -boxDepth : gap,
+          distanceKind: boxDepth != null ? 'mesh' : 'estimate',
           point: mid(closestA, closestB),
           bounds: contactBounds,
         };

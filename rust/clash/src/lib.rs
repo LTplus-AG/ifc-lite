@@ -33,6 +33,7 @@ mod aabb;
 mod bvh;
 mod generated;
 mod narrow;
+mod obb;
 mod triangle;
 mod tri_mesh;
 mod vec3;

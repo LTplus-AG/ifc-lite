@@ -2,6 +2,8 @@
 "@ifc-lite/clash": patch
 ---
 
+**Superseded in this same release — see `clash-depth-box-exact-metric.md`.** The mesh-level probe this changeset describes (`TriMesh.maxPenetrationInto`, measuring the distance from the nearest crossing-triangle vertex to the other surface) was held on review: it is a sampling artifact that converges to 0 as a mesh is retessellated rather than to the true penetration depth, and was mislabelled `'mesh'` (trustworthy) while the AABB estimate — correct for boxes — was labelled `'estimate'`. It has been removed. The description below is kept for history; it describes behaviour that no longer exists.
+
 Report the mesh-level penetration depth for every hard clash, not only for contained pairs.
 
 `Clash.distance` for a hard clash was, for most penetrating pairs, the AABB signed gap — the *smallest overlapping bounding-box dimension* of the two elements. For elements that overlap over a wide area but are thin in one direction (stacked pavement courses, a plate, a bar's cross-section), that smallest dimension is a dimension of one of the elements, so the reported "depth" came out as the element's own thickness no matter how far the two solids actually interpenetrated. On a layered road model that surfaces as depths that are exactly the layer thicknesses, repeated across hundreds of clashes.

@@ -274,14 +274,13 @@ fn a_genuine_crossing_is_labelled_mesh_measured() {
 
 #[test]
 fn a_member_piercing_clean_through_is_labelled_an_estimate() {
-    // A thin bar passing right through a slab. The triangles genuinely cross,
-    // but every crossing-triangle vertex is OUTSIDE the other solid — the bar's
-    // ends stick out, the slab's caps reach far beyond the bar — so
-    // `max_penetration_into` returns 0 on both sides and the number reported is
-    // the smallest overlapping BOX dimension.
+    // A triangular-prism column passing right through a box slab. The column
+    // is NOT a box (`detect_obb` declines it: 5 face-normal families, not 3),
+    // so there is no certified box-box depth and the number reported is the
+    // smallest overlapping AABB dimension — an estimate, not a measured depth.
     let session = session_of_parts(&[
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
-        box_hxyz(4.15, 4.15, 0.0, 0.15, 0.15, 5.0),
+        tri_prism([[4.0, 4.0], [4.3, 4.0], [4.15, 4.3]], -5.0, 5.0),
     ]);
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
@@ -290,11 +289,11 @@ fn a_member_piercing_clean_through_is_labelled_an_estimate() {
 }
 
 #[test]
-fn coincident_footprint_layers_are_labelled_an_estimate() {
-    // Two layers sharing a footprint, overlapping 40 mm. Their surfaces only
-    // COINCIDE — no triangle pair crosses — so this lands in the coplanar-
-    // overlap branch, whose distance is the AABB signed gap, i.e. the smallest
-    // overlapping box dimension. Nothing was measured on the meshes.
+fn coincident_footprint_layers_are_labelled_mesh_measured() {
+    // Two BOX layers sharing a footprint, overlapping 40 mm. Their surfaces
+    // only COINCIDE — no triangle pair crosses — so this lands in the
+    // coplanar-overlap branch. Both parts are boxes, so the exact box-box
+    // depth (the Z overlap) is certifiable there too.
     let session = session_of_parts(&[
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
         box_hxyz(5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
@@ -302,15 +301,16 @@ fn coincident_footprint_layers_are_labelled_an_estimate() {
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
-    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
 }
 
 #[test]
-fn an_enclosed_layer_is_labelled_an_estimate() {
-    // A thin layer modelled wholly inside a thicker one: no surface crossing at
-    // all, so the enclosed-solid branch reports the AABB gap — which here is
-    // exactly the thin layer's own thickness, the value most easily mistaken
-    // for a measured depth.
+fn an_enclosed_layer_is_labelled_mesh_measured() {
+    // A thin BOX layer modelled wholly inside a thicker BOX: no surface
+    // crossing at all, so this lands in the enclosed-solid branch. Both are
+    // boxes, so the exact depth is certified there too — it happens to equal
+    // the thin layer's own thickness, the value most easily mistaken for a
+    // guess.
     let session = session_of_parts(&[
         box_hxyz(5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
         box_hxyz(5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
@@ -318,7 +318,7 @@ fn an_enclosed_layer_is_labelled_an_estimate() {
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
-    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
 }
 
 #[test]
@@ -473,23 +473,21 @@ fn separated_not_enclosed_none() {
 }
 
 #[test]
-fn contained_pair_reports_mesh_depth_not_aabb_gap() {
-    // #1866: a small box in the L prism's notch, AABB-contained in the L's AABB,
-    // dipping past the notch wall at x=1 into the solid. The old AABB signed-gap
-    // depth reported the contained box's own smallest-axis overlap (0.7 here);
-    // the reported depth must be the mesh-level penetration 1 - x_min instead.
+fn contained_pair_with_a_non_box_element_falls_back_to_the_aabb_estimate() {
+    // #1866 was fixed by `max_penetration_into` — a nearest-crossing-vertex
+    // probe held (PR #2536) as a sampling artifact that converges to 0 under
+    // retessellation instead of to the true depth (see `obb.rs`). Its
+    // replacement, the box-box SAT depth, cannot certify a concave L-prism (it
+    // is not a box), so this KNOWN case regresses to the pre-#1866 AABB
+    // signed-gap estimate — reported honestly as `Estimate`, not silently
+    // mislabelled `Mesh` the way the old probe was. A non-box depth metric is
+    // future work (PR #2536 hold comment, "landing conditions").
     let session = session_of_parts(&[l_part(), box_hxyz(1.2, 1.4, 0.5, 0.25, 0.2, 0.2)]);
     let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
     assert_eq!(result.records.len(), 1, "expected one hard clash");
     let rec = &result.records[0];
     assert_eq!(rec.status, ClashStatus::Hard);
-    let x_min = (1.2f32 - 0.25f32) as f64; // matches box_hxyz's f32 corner math
-    let expected = 1.0 - x_min;
-    assert!(
-        (rec.distance + expected).abs() < 1e-9,
-        "depth must be the mesh penetration {expected}, got {}",
-        rec.distance
-    );
+    assert_eq!(rec.distance_kind, DistanceKind::Estimate);
 }
 
 #[test]

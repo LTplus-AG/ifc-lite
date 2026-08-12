@@ -301,11 +301,11 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(n).toBe(1);
   });
 
-  it('agrees on the AABB-estimate label for coincident-footprint layers', async () => {
-    // Stacked layers sharing a footprint: no crossing-triangle vertex lies
-    // inside the other solid, so BOTH kernels must fall back to the AABB
-    // estimate and BOTH must say so. This is the population the label exists
-    // for, and the one where the reported number is a box dimension.
+  it('agrees on the mesh label for coincident-footprint BOX layers', async () => {
+    // Stacked BOX layers sharing a footprint: no crossing-triangle vertex lies
+    // inside the other solid, so this lands in the coplanar-overlap branch.
+    // Both parts are boxes, so both kernels must certify the exact box-box
+    // depth (the Z overlap) and BOTH must say so.
     const lower = boxHxyz('L1', 'IfcSlab', [5, 5, 0.1], [5, 5, 0.1]);
     const upper = boxHxyz('L2', 'IfcSlab', [5, 5, 0.285], [5, 5, 0.125]);
     const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcSlab', b: 'IfcSlab', mode: 'hard' }];
@@ -313,14 +313,15 @@ describe('differential: WASM kernel === TS kernel', () => {
     const b = await wasm.run([lower, upper], rules);
     assertParity(a, b);
     expect(a.clashes).toHaveLength(1);
-    expect(a.clashes[0].distanceKind).toBe('estimate');
+    expect(a.clashes[0].distanceKind).toBe('mesh');
   });
 
-  it('agrees on the contained-pair mesh-level depth (#1866)', async () => {
+  it('agrees on the AABB-estimate fallback for a non-box contained pair (#1866)', async () => {
     // Concave L prism (notch [1,2]x[1,2] inside the AABB but outside the solid)
     // and a small box in the notch, AABB-contained, dipping ~0.05 into the notch
-    // wall at x=1. The reported depth is measured from the crossing triangles'
-    // vertices, so both kernels must run the identical mesh-depth path.
+    // wall at x=1. The L prism is not a box, so neither kernel can certify a
+    // box-box depth here; both must agree on the (now honestly labelled)
+    // AABB-estimate fallback rather than diverge on it.
     const positions = new Float32Array([
       0, 0, 0, 2, 0, 0, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
       0, 0, 1, 2, 0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 0, 2, 1,
@@ -336,7 +337,11 @@ describe('differential: WASM kernel === TS kernel', () => {
       positions, indices, bounds: { min: [0, 0, 0], max: [2, 2, 1] },
     };
     const duct = boxHxyz('B', 'IfcDuctSegment', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
-    const n = await bothAgree([wall, duct], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
-    expect(n).toBe(1);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }];
+    const a = await ts.run([wall, duct], rules);
+    const b = await wasm.run([wall, duct], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('estimate');
   });
 });

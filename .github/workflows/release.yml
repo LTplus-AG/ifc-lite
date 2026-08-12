@@ -150,6 +150,20 @@ jobs:
         id: crates-auth
         uses: rust-lang/crates-io-auth-action@c6f97d42243bad5fab37ca0427f495c86d5b1a18 # v1.0.5
 
+      # Read the release state BEFORE `changesets/action` runs. That step invokes
+      # `pnpm run version` when changesets are pending, which CONSUMES
+      # `.changeset/*.md` and bumps `package.json` in this same working tree. A
+      # gate reading either of those afterwards sees "no changesets pending" and
+      # the NEW, not-yet-released version — and would tag a version whose
+      # packages have not been published, on the very run that only opened the
+      # version PR.
+      - name: Capture pre-release state
+        id: pre
+        run: |
+          echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+          echo "sb_version=$(node -p "require('./packages/server-bin/package.json').version")" >> $GITHUB_OUTPUT
+          echo "pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')" >> $GITHUB_OUTPUT
+
       - name: Create Release Pull Request or Publish
         id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
@@ -185,43 +199,68 @@ jobs:
       # run would ever create them.
       #
       # So: publish-in-this-run still qualifies, and a released version whose
-      # tag is missing now qualifies too. "Released" means no changeset is
-      # pending — with changesets waiting, `package.json` still carries the
-      # PREVIOUS released version (the bump lands in the version PR), so its
-      # tag already exists and this is a no-op rather than a premature tag.
-      # Both downstream steps are already idempotent on an existing release.
+      # tag is missing now qualifies too. "Released" is read from the PRE-action
+      # state (see `steps.pre`): with changesets pending, this run only opened
+      # the version PR, and the post-action tree already carries the bumped,
+      # unpublished version.
+      #
+      # Root and server-bin are tracked SEPARATELY. A run that created the root
+      # release and then failed must still be able to backfill the server-bin
+      # one, which a single shared flag would skip forever — the same
+      # "one flag, two questions" mistake in miniature.
       - name: Decide release artifacts
         id: release-gate
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${{ steps.pre.outputs.version }}"
+          SB_VERSION="${{ steps.pre.outputs.sb_version }}"
+          PENDING="${{ steps.pre.outputs.pending }}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          PENDING=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          echo "sb_version=${SB_VERSION}" >> $GITHUB_OUTPUT
+
+          released=false
           if [ "${{ steps.changesets.outputs.published }}" = "true" ]; then
-            echo "npm published in this run — creating release artifacts for v${VERSION}"
-            echo "run=true" >> $GITHUB_OUTPUT
+            echo "npm published in this run"
+            released=true
           elif [ "${PENDING}" != "0" ]; then
-            echo "${PENDING} changeset(s) pending — v${VERSION} is the previous release, nothing to do"
-            echo "run=false" >> $GITHUB_OUTPUT
-          elif gh release view "v${VERSION}" > /dev/null 2>&1; then
-            echo "Release v${VERSION} already exists, nothing to do"
-            echo "run=false" >> $GITHUB_OUTPUT
+            echo "${PENDING} changeset(s) were pending — this run opened the version PR, nothing to tag"
           else
-            echo "v${VERSION} is released but has no GitHub release — backfilling"
-            echo "run=true" >> $GITHUB_OUTPUT
+            echo "no changesets were pending — v${VERSION} is released; backfilling anything missing"
+            released=true
           fi
+
+          root=false
+          server=false
+          if [ "$released" = "true" ]; then
+            gh release view "v${VERSION}"    > /dev/null 2>&1 || root=true
+            gh release view "v${SB_VERSION}" > /dev/null 2>&1 || server=true
+          fi
+
+          # When the two versions coincide, the ONE release must be created by
+          # the server-bin step, which uses the PAT. A GITHUB_TOKEN-created
+          # release emits no `release: published` event (GitHub recursion
+          # guard), so server-binaries.yml would never upload the archives and
+          # `npx @ifc-lite/server-bin` would 404 against an empty release.
+          if [ "${VERSION}" = "${SB_VERSION}" ] && [ "$server" = "true" ]; then
+            echo "root and server-bin versions coincide — letting the PAT-authored server-bin step create v${VERSION}"
+            root=false
+          fi
+
+          echo "run_root=${root}" >> $GITHUB_OUTPUT
+          echo "run_server=${server}" >> $GITHUB_OUTPUT
+          echo "root=${root} server=${server}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get Version
         id: get-version
-        if: steps.release-gate.outputs.run == 'true'
+        if: steps.release-gate.outputs.run_root == 'true' || steps.release-gate.outputs.run_server == 'true'
         run: |
-          # Read the root release version (sync-versions.js keeps it aligned to the highest released workspace package version)
-          VERSION=$(node -p "require('./package.json').version")
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          # The pre-action root version — NOT a fresh read of package.json, which
+          # `changesets/action` may have bumped in this same tree.
+          echo "version=${{ steps.release-gate.outputs.version }}" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: steps.release-gate.outputs.run == 'true'
+        if: steps.release-gate.outputs.run_root == 'true'
         run: |
           # Create the v* tag (changesets creates @scope/package@version tags, not v* tags)
           git tag "v${{ steps.get-version.outputs.version }}" || true
@@ -247,9 +286,9 @@ jobs:
       # event triggers server-binaries.yml to build + upload the per-platform
       # archives to this tag, so the download URL resolves with fresh binaries.
       - name: Create server-bin binary release
-        if: steps.release-gate.outputs.run == 'true'
+        if: steps.release-gate.outputs.run_server == 'true'
         run: |
-          SB_VERSION=$(node -p "require('./packages/server-bin/package.json').version")
+          SB_VERSION="${{ steps.release-gate.outputs.sb_version }}"
           TAG="v${SB_VERSION}"
           # Skip when the tag already exists (server-bin unchanged this cycle,
           # or it happens to equal the root release already created above).

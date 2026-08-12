@@ -67,6 +67,7 @@ import { RibbonToolbar } from '../ribbon/RibbonToolbar.js';
 import { HomeTab } from '../ribbon/tabs/HomeTab.js';
 import { ViewportContainer } from '../ViewportContainer.js';
 import { PropertiesPanel } from '../PropertiesPanel.js';
+import * as formatDistanceModule from './formatDistance.js';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 
 interface Vec3 { x: number; y: number; z: number }
@@ -717,24 +718,19 @@ describe('guard sanity', () => {
     // live `feat/measurement-tools` branch. The override handling was folded
     // into `formatDistance` itself; this pins that there is only one name to
     // find and call from here on.
-    const source = read('./formatDistance.ts');
-    assert.doesNotMatch(
-      source,
-      /export function formatDistanceDisplay/,
-      'a second, override-aware distance formatter has reappeared beside formatDistance — fold it back in instead of exporting two names',
+    //
+    // Asked of the loaded module rather than of its source text (#2551). A
+    // second formatter is caught however it is spelled or re-exported, and the
+    // four per-consumer source reads this replaces are covered for free: a call
+    // site reaching for a name the module does not export cannot typecheck.
+    const distanceFormatters = Object.keys(formatDistanceModule)
+      .filter((name) => name.startsWith('formatDistance'))
+      .sort();
+    assert.deepEqual(
+      distanceFormatters,
+      ['formatDistance'],
+      'a second, override-aware distance formatter has appeared beside formatDistance — fold it back in instead of exporting two names',
     );
-    for (const rel of [
-      './MeasurePanel.tsx',
-      './MeasurePointReadout.tsx',
-      './MeasurementVisuals.tsx',
-      './measure-modes/components.ts',
-    ]) {
-      assert.doesNotMatch(
-        read(rel),
-        /formatDistanceDisplay/,
-        `${rel} still references the removed formatDistanceDisplay name`,
-      );
-    }
   });
 
   describe('one frame per scene, resolved in one place', () => {

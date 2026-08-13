@@ -156,6 +156,20 @@ export function CesiumOverlay({
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const storeIsolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
+  // The GLB effect keys on this version, NOT on the Set references. The store
+  // hands out a fresh Set on every visibility action, and the effect's cleanup
+  // pulls the model off the globe — so keying on identity blanks the map for a
+  // second and rebuilds a multi-megabyte GLB even when the content is
+  // unchanged. `VisibilityEpochTracker` compares content, so an equal set is a
+  // no-op while an in-place mutation of the same Set still registers.
+  //
+  // Safe to run during render: `update()` only bumps when the content actually
+  // changed, so a double-invoked render (StrictMode) returns the same version.
+  const visibilityEpochsRef = useRef(new VisibilityEpochTracker());
+  const visibilityVersion = visibilityEpochsRef.current.update(hiddenEntities, isolatedEntities);
+  // Read inside the deferred build, which runs long after the effect fired.
+  const visibilityRef = useRef({ hiddenIds: hiddenEntities, isolatedIds: isolatedEntities });
+  visibilityRef.current = { hiddenIds: hiddenEntities, isolatedIds: isolatedEntities };
 
   // Solar study state — drives the sun-path dome + shadow study.
   const solarEnabled = useViewerStore((s) => s.solarEnabled);
@@ -173,10 +187,6 @@ export function CesiumOverlay({
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
   const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
-  // Content-based epoch for the hide/isolate sets: the store hands out a fresh
-  // Set on every action, so an identity check would rebuild the GLB for a
-  // no-op, and an in-place mutation would slip past one entirely.
-  const visibilityEpochsRef = useRef(new VisibilityEpochTracker());
   // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
   // solar mode can toggle its shadow casting/receiving.
   const tilesetRef = useRef<{ shadows?: any } | null>(null);
@@ -582,9 +592,9 @@ export function CesiumOverlay({
         const glbInput: CesiumModelGLBInput = {
           geometryResult,
           geometryContentVersion,
-          hiddenIds: hiddenEntities,
-          isolatedIds: isolatedEntities,
-          visibilityVersion: visibilityEpochsRef.current.update(hiddenEntities, isolatedEntities),
+          hiddenIds: visibilityRef.current.hiddenIds,
+          isolatedIds: visibilityRef.current.isolatedIds,
+          visibilityVersion,
         };
         const key = cesiumModelGLBKey(glbInput);
         const cached = glbCacheRef.current;
@@ -677,7 +687,7 @@ export function CesiumOverlay({
       }
       setCesiumGlbLoaded(false);
     };
-  }, [status, bridgeVersion, geometryResult, geometryContentVersion, hiddenEntities, isolatedEntities]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the

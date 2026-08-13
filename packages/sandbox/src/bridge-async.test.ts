@@ -215,23 +215,32 @@ describe('#2305 — a host promise cannot hang the run', () => {
     // `assert(list_empty(&rt->gc_obj_list))` — which poisons the shared WASM
     // module for the rest of the document, not just this sandbox.
     const isolated = await createSandbox(stalledSdk(), { limits: { timeoutMs: 5_000 } });
-    const pending = isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    expect(() => isolated.dispose()).not.toThrow();
-    expect(isSandboxRuntimeAborted()).toBe(false);
-
-    const settled = await pending;
-    expect(settled).toBeInstanceOf(Error);
-    expect((settled as Error).message).toContain('Sandbox disposed');
-
-    // The real oracle: a module left in the aborted state cannot run anything
-    // afterwards, so a fresh sandbox still working is what proves it is intact.
-    const fresh = await createSandbox(sdkWithClash());
+    // The disposal below is the subject, not the cleanup — but it is also the
+    // only thing that frees this realm, so a failing assertion before it would
+    // leak a QuickJS sandbox into the rest of the suite, which is the same
+    // neighbourhood as the bug the test is about. `dispose()` is idempotent, so
+    // the guarantee here only does work if the test threw before reaching it.
     try {
-      expect((await fresh.eval('1 + 1')).value).toBe(2);
+      const pending = isolated.eval(STALL_SCRIPT).catch((err: unknown) => err);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      expect(() => isolated.dispose()).not.toThrow();
+      expect(isSandboxRuntimeAborted()).toBe(false);
+
+      const settled = await pending;
+      expect(settled).toBeInstanceOf(Error);
+      expect((settled as Error).message).toContain('Sandbox disposed');
+
+      // The real oracle: a module left in the aborted state cannot run anything
+      // afterwards, so a fresh sandbox still working is what proves it is intact.
+      const fresh = await createSandbox(sdkWithClash());
+      try {
+        expect((await fresh.eval('1 + 1')).value).toBe(2);
+      } finally {
+        fresh.dispose();
+      }
     } finally {
-      fresh.dispose();
+      isolated.dispose();
     }
   });
 });

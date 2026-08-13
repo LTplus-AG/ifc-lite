@@ -9,11 +9,9 @@
  * viewProj)` entry point that the caller invokes from inside an existing
  * RGBA-blended render pass.
  *
- * Triangulation: simple ear-clipping for polygon-with-optional-holes,
- * inlined below to avoid adding a dependency. Good enough for typical IFC
- * fill regions (rooms, hatched zones) which are usually convex or near-convex.
- * Pathological concave shapes with many holes may show tessellation glitches —
- * an `earcut` upgrade is straightforward when it matters.
+ * Triangulation lives in `fill-triangulate.ts` and is shared with the section
+ * cut caps: rings are nested by the even-odd rule, holes are bridged in, and
+ * the result is ear-clipped.
  */
 
 import { SymbolicTextAtlas } from './symbolic-text-atlas.js';
@@ -22,6 +20,7 @@ import {
   SYMBOLIC_TEXT_WGSL,
 } from './shaders/symbolic-overlay.wgsl.js';
 import { PIPELINE_CONSTANTS } from './constants.js';
+import { triangulateRings, type Pt } from './fill-triangulate.js';
 
 const FILL_VERTEX_STRIDE_BYTES = (3 + 4) * 4; // pos.xyz + color.rgba, 4 bytes each
 const TEXT_INSTANCE_STRIDE_BYTES = (3 + 3 + 3 + 4 + 4 + 3 + 1 + 1 + 4 + 1) * 4;
@@ -197,12 +196,14 @@ export class SymbolicFillPipeline {
   }
 
   /**
-   * Upload a list of fill regions. Each region is triangulated (ear-clipping,
-   * holes-aware) into a single shared vertex buffer.
+   * Upload a list of fill regions. Each region is triangulated by the shared
+   * even-odd triangulator (`fill-triangulate.ts`) into a single vertex buffer.
    *
-   * Pass an empty array to clear. Triangulation skips degenerate rings
-   * (< 3 vertices) and silently drops any hole that can't be merged into the
-   * outer ring (rare; usually overlapping rings in malformed IFC).
+   * Pass an empty array to clear. Rings with fewer than 3 vertices are
+   * dropped, and so is any ring set that yields no triangle at all (a fully
+   * collinear bound). Inner bounds themselves are never dropped: since #2516
+   * the bridge always finds an anchor, so a hole cannot fall out of the
+   * result the way it used to when it "couldn't be merged".
    */
   upload(fills: readonly SymbolicFillInput[]): void {
     this.init();
@@ -707,14 +708,14 @@ function parseBoxAlignment(s: string): { horizontal: number; vertical: number } 
 }
 
 /**
- * Triangulate a polygon-with-holes via ear-clipping. Each output triangle is
- * appended to `stream` as 3 × (x, y, z, r, g, b, a) entries (matching the
- * fill pipeline's vertex layout). Holes that fully enclose nothing or have
- * < 3 valid vertices are silently dropped.
+ * Triangulate a fill region (outer bound plus inner bounds) and append every
+ * output triangle to `stream` as 3 x (x, y, z, r, g, b, a) entries, matching
+ * the fill pipeline's vertex layout.
  *
- * Ear-clipping is O(n²) which is fine for fill regions (typically < 100
- * vertices). For pathological inputs we'd want earcut proper, but adding the
- * npm dependency for marginal gain isn't worth it.
+ * `holesOffsets` splits the flat `points` buffer into rings; rings with fewer
+ * than 3 vertices are dropped. Which of those rings are filled and which are
+ * voids is decided by nesting, not by position, so an inner bound that itself
+ * contains an island fills that island (see `fill-triangulate.ts`).
  */
 function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
   const { points, holesOffsets, worldY, color } = fill;
@@ -725,13 +726,12 @@ function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
   const ringStarts: number[] = [0, ...Array.from(holesOffsets), totalVerts];
   if (ringStarts.length < 2) return;
 
-  // Pull each ring's vertices out.
-  const rings: Array<Array<{ x: number; z: number }>> = [];
+  const rings: Pt[][] = [];
   for (let r = 0; r < ringStarts.length - 1; r++) {
     const start = ringStarts[r];
     const end = ringStarts[r + 1];
     if (end - start < 3) continue;
-    const ring: Array<{ x: number; z: number }> = [];
+    const ring: Pt[] = [];
     for (let v = start; v < end; v++) {
       ring.push({ x: points[v * 2], z: points[v * 2 + 1] });
     }
@@ -739,191 +739,11 @@ function triangulateFillTo(stream: number[], fill: SymbolicFillInput): void {
   }
   if (rings.length === 0) return;
 
-  // Stitch each hole into the outer ring with a bridge edge from the hole's
-  // rightmost vertex to the nearest outer-ring vertex (the same approach
-  // earcut.js takes for polygon-with-holes input). Ear-clipping then runs on
-  // the resulting simple polygon. The hole's winding is reversed first so the
-  // combined ring's signed area stays consistent and the ear-test sign holds.
-  const outer = rings[0];
-  const holes = rings.slice(1);
-  const stitched = holes.length === 0 ? outer : joinHoles(outer, holes);
-  const triangles = earClip(stitched);
+  const { points: verts, triangles } = triangulateRings(rings);
   for (const tri of triangles) {
     for (const idx of tri) {
-      const v = stitched[idx];
+      const v = verts[idx];
       stream.push(v.x, worldY, v.z, color[0], color[1], color[2], color[3]);
     }
   }
-}
-
-/**
- * Stitch each hole into the outer ring with a single bridge edge so the
- * result is a simple polygon ear-clipping can handle. Mirrors mapbox/earcut's
- * `eliminateHoles` pass:
- *
- *   1. For each hole, pick its rightmost (max-x) vertex as the bridge start.
- *   2. Sort holes by descending bridge-start x so outer holes go in first.
- *   3. Walk the outer ring for the vertex on the right side of the bridge
- *      that's "visible" from the hole — closest match wins.
- *   4. Splice the hole (rotated to start at its bridge vertex, and reversed
- *      so its winding opposes the outer ring) into the outer ring at the
- *      anchor, closing both ends back to their starts to form a zero-area
- *      bridge edge.
- *
- * This breaks under pathological inputs (overlapping holes, holes outside
- * the outer ring) but those don't occur in well-formed `IfcAnnotationFillArea`
- * geometry — the IFC schema requires the outer bound to contain all inner
- * bounds.
- */
-export type Pt = { x: number; z: number };
-export function joinHoles(outer: Pt[], holes: Pt[][]): Pt[] {
-  if (holes.length === 0) return outer;
-
-  type HoleEntry = { ring: Pt[]; startIdx: number; startX: number; startZ: number };
-  const sorted: HoleEntry[] = holes
-    .map((h) => {
-      let bestI = 0;
-      for (let i = 1; i < h.length; i++) {
-        if (h[i].x > h[bestI].x) bestI = i;
-      }
-      return { ring: h, startIdx: bestI, startX: h[bestI].x, startZ: h[bestI].z };
-    })
-    .sort((a, b) => b.startX - a.startX);
-
-  let result: Pt[] = outer.slice();
-
-  for (const { ring, startIdx, startX, startZ } of sorted) {
-    // Find the outer-ring index with the smallest distance to the bridge
-    // start, preferring vertices to the right (x > startX). When nothing is
-    // to the right (hole touches the outer ring's right edge), fall back to
-    // global nearest.
-    let bestIdx = -1;
-    let bestDist = Infinity;
-    for (let i = 0; i < result.length; i++) {
-      const p = result[i];
-      if (p.x <= startX) continue;
-      const d = (p.x - startX) * (p.x - startX) + (p.z - startZ) * (p.z - startZ);
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
-    }
-    if (bestIdx < 0) {
-      for (let i = 0; i < result.length; i++) {
-        const p = result[i];
-        const d = (p.x - startX) * (p.x - startX) + (p.z - startZ) * (p.z - startZ);
-        if (d < bestDist) {
-          bestDist = d;
-          bestIdx = i;
-        }
-      }
-    }
-    if (bestIdx < 0) continue;
-
-    // Hole reversed so its winding opposes outer (outer is CCW after earClip
-    // normalisation; holes should be CW for the combined ring's area to come
-    // out right). Rotate to start at the bridge vertex.
-    const reversed = ring.slice().reverse();
-    const reversedStartIdx = ring.length - 1 - startIdx;
-    const rotated = [
-      ...reversed.slice(reversedStartIdx),
-      ...reversed.slice(0, reversedStartIdx),
-    ];
-
-    result = [
-      ...result.slice(0, bestIdx + 1),
-      ...rotated,
-      rotated[0],
-      result[bestIdx],
-      ...result.slice(bestIdx + 1),
-    ];
-  }
-
-  return result;
-}
-
-/** Ear-clipping triangulation of a simple polygon. Returns triangle vertex indices. */
-export function earClip(ring: ReadonlyArray<{ x: number; z: number }>): number[][] {
-  const n = ring.length;
-  if (n < 3) return [];
-  if (n === 3) return [[0, 1, 2]];
-
-  // Working list of indices.
-  const indices: number[] = [];
-  // Determine winding: positive shoelace = CCW; otherwise reverse so the
-  // ear-test below uses a consistent sign.
-  let area = 0;
-  for (let i = 0; i < n; i++) {
-    const a = ring[i];
-    const b = ring[(i + 1) % n];
-    area += (a.x * b.z) - (b.x * a.z);
-  }
-  const ccw = area > 0;
-  for (let i = 0; i < n; i++) {
-    indices.push(ccw ? i : n - 1 - i);
-  }
-
-  const triangles: number[][] = [];
-  let safety = indices.length * indices.length;
-
-  while (indices.length > 3 && safety-- > 0) {
-    let found = false;
-    for (let i = 0; i < indices.length; i++) {
-      const ia = indices[(i + indices.length - 1) % indices.length];
-      const ib = indices[i];
-      const ic = indices[(i + 1) % indices.length];
-      const a = ring[ia];
-      const b = ring[ib];
-      const c = ring[ic];
-
-      // Convex check (cross product of (b-a) × (c-b) > 0 for CCW).
-      const cross = (b.x - a.x) * (c.z - b.z) - (b.z - a.z) * (c.x - b.x);
-      if (cross <= 0) continue;
-
-      // No other vertex inside triangle (a, b, c).
-      let containsOther = false;
-      for (let j = 0; j < indices.length; j++) {
-        const ij = indices[j];
-        if (ij === ia || ij === ib || ij === ic) continue;
-        if (pointInTriangle(ring[ij], a, b, c)) {
-          containsOther = true;
-          break;
-        }
-      }
-      if (containsOther) continue;
-
-      triangles.push([ia, ib, ic]);
-      indices.splice(i, 1);
-      found = true;
-      break;
-    }
-    if (!found) break; // degenerate polygon — emit what we have
-  }
-
-  if (indices.length === 3) {
-    triangles.push([indices[0], indices[1], indices[2]]);
-  }
-  return triangles;
-}
-
-function pointInTriangle(
-  p: { x: number; z: number },
-  a: { x: number; z: number },
-  b: { x: number; z: number },
-  c: { x: number; z: number },
-): boolean {
-  const s1 = sign(p, a, b);
-  const s2 = sign(p, b, c);
-  const s3 = sign(p, c, a);
-  const hasNeg = s1 < 0 || s2 < 0 || s3 < 0;
-  const hasPos = s1 > 0 || s2 > 0 || s3 > 0;
-  return !(hasNeg && hasPos);
-}
-
-function sign(
-  p1: { x: number; z: number },
-  p2: { x: number; z: number },
-  p3: { x: number; z: number },
-): number {
-  return (p1.x - p3.x) * (p2.z - p3.z) - (p2.x - p3.x) * (p1.z - p3.z);
 }

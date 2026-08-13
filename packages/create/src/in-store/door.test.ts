@@ -26,7 +26,7 @@ describe('addDoorToStore', () => {
 
     const result = addDoorToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [1, 2, 0], Width: 0.9, Height: 2.1 },
     );
 
@@ -45,7 +45,7 @@ describe('addDoorToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addDoorToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54, schema: 'IFC2X3' },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54, schema: 'IFC2X3' },
       { Position: [0, 0, 0], Width: 0.9, Height: 2.1 },
     );
     const door = view.getNewEntities().find((e) => e.expressId === result.doorId);
@@ -58,7 +58,7 @@ describe('addDoorToStore', () => {
     const editor = new StoreEditor(makeStore(10), view);
     expect(() => addDoorToStore(
       editor,
-      { ownerHistoryId: 1, bodyContextId: 2, storeyId: 3, storeyPlacementId: 4 },
+      { ownerHistoryId: 1, bodyContextId: 2, axisContextId: 5, storeyId: 3, storeyPlacementId: 4 },
       { Position: [0, 0, 0], Width: 0, Height: 2.1 },
     )).toThrow(/positive/);
   });

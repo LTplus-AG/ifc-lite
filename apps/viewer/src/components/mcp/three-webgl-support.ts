@@ -49,7 +49,7 @@ import {
  * with `alpha` hardcoded to `true` regardless of the `alpha` parameter — the
  * renderer's own `alpha` only drives its clear colour.
  *
- * Both `HeroScene.createScene` and `PlaygroundViewer.createScene` pass
+ * Both `hero-scene.ts` and `playground-scene.ts`'s `createScene` pass
  * `{ antialias: true, alpha: true, powerPreference: 'high-performance' }`, so
  * the values below are the merge of those two facts. `antialias` and
  * `powerPreference` are exactly the kind of request a constrained device

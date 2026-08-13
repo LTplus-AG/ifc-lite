@@ -1,5 +1,65 @@
 # @ifc-lite/cache
 
+## 3.0.4
+
+### Patch Changes
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Validate the v13 geometry section's `headLength` field against the actual parsed head size, instead of trusting it as the chunk-0 anchor.
+
+  `openGeometryChunksV13` anchors chunk 0's declared `byteOffset` at `4 + head.headLength`, since the contiguity loop that validates every other chunk against its predecessor structurally cannot anchor element 0. But `headLength` is itself an on-disk declared field, read but never used to seek during the head parse — so the anchor check (`chunks[0].byteOffset === 4 + head.headLength`) only cross-validated two independently-corruptible fields against EACH OTHER. Corrupting `headLength` and echoing the same corruption into chunk 0's declared `byteOffset` kept the two "consistent" and passed both the anchor check and the contiguity loop that follows it, even though neither matched where the head parse actually landed.
+
+  `openGeometryChunksV13` now checks `4 + head.headLength` against `reader.position` (a structural fact — where parsing meshCount/totalVertices/totalTriangles/coordinateInfo/chunkCount/directory actually ended) before trusting `headLength` for anything, and the chunk-0 anchor now compares against that same structural position rather than the declared field directly. A well-formed cache is unaffected — `headLength` always matches the true head size by construction.
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Validate the v13 geometry section's chunk directory before decoding instead of trusting each entry's declared byte range.
+
+  `openGeometryChunksV13`'s `readChunk` sliced a chunk's stored bytes out of the section buffer with `bytes.subarray(start, start + info.byteLength)`. `subarray` doesn't throw when a range runs past the buffer — it saturates — so a corrupt directory entry (disk corruption, a hand-crafted cache) could hand `decodeGeometryChunk` fewer bytes than declared. Worse, `decodeGeometryChunk`'s own `raw.byteLength !== info.uncompressedLength` check could be neutralised: a directory entry whose `byteLength`, `uncompressedLength`, and `meshCount` are corrupted consistently (matching the actual truncated/absorbed byte range) passes that check while silently decoding a NEIGHBOURING chunk's real, validly-encoded mesh records as if they belonged to this chunk — duplicating that geometry under two chunks with no error.
+
+  Two guards close this: `readChunk` now rejects a chunk range that exceeds the buffer before slicing, and `openGeometryChunksV13` now validates that consecutive chunks' declared ranges are contiguous (matching how the writer always lays them out) before any chunk is read. A well-formed cache is unaffected — chunk ranges are always contiguous and within bounds by construction.
+
+  This does not close every variant: a corrupted LAST chunk whose range reaches past its true end into whatever bytes happen to follow (trailing padding, or the next section in a multi-section cache file) isn't caught by the contiguity check, since there is no next chunk to cross-validate against. That residual case still relies on the buffer-bounds check plus `decodeGeometryChunk`'s existing length check.
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `readStrings` now rejects a StringTable section whose offset table isn't non-decreasing instead of silently mis-decoding it.
+
+  The read loop sliced each string out of the shared data blob with `data.subarray(offsets[i], offsets[i + 1])`. `subarray` doesn't throw when a range is out of order or runs past the blob — it saturates — so a corrupt or hand-crafted offset table (disk corruption, a truncated transfer) could make one string silently absorb bytes belonging to the next string (or decode as empty) instead of failing loudly. This is the same "declared length trusted without a bounds check" shape already fixed for the entity-index and geometry-chunk sections' directories. A validly-written table's offsets are always non-decreasing and end at the data blob's length, so this guard rejects only corruption.
+
+- Updated dependencies [[`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa), [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d)]:
+  - @ifc-lite/geometry@3.8.1
+  - @ifc-lite/data@3.2.4
+
+## 3.0.3
+
+### Patch Changes
+
+- [#2234](https://github.com/LTplus-AG/ifc-lite/pull/2234) [`a500a98`](https://github.com/LTplus-AG/ifc-lite/commit/a500a9892ef1e40a0b42db37023c07c62259abdc) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden binary parsing against truncated/corrupt input so it fails with a diagnosable error instead of a raw engine `RangeError` ("Invalid typed array length" / offset-and-length-out-of-bounds).
+
+  `BufferReader` (used by every `.ifc-lite` cache section reader — strings, entities, properties, quantities, relationships, entity index) now bounds-checks each read against the bytes actually remaining before touching the buffer. Previously `readBytes()` silently clamped via `Uint8Array.slice()` on a short buffer, and callers like `readUint32Array()` then constructed a typed array at the originally-requested element count against that shorter (copied) buffer — throwing a raw `RangeError` deep inside the engine instead of a message naming what ran short. This mirrors the guard `readInstancedShards` already hand-rolled for the same bug shape ([#1238](https://github.com/LTplus-AG/ifc-lite/issues/1238)), generalized to every read.
+
+  `parseGLBToMeshData`'s `readAccessorData` (GLB/binary-glTF import) now validates an accessor's declared byte range against the actual BIN chunk length before slicing/constructing typed arrays, for both the tightly-packed and strided read paths — a malformed or truncated `.glb` with an inflated `accessor.count` previously hit the same raw `RangeError` shape instead of a clear "accessor N reads bytes [...) but the BIN chunk is only M bytes" error.
+
+  No change to well-formed input; both are purely defensive bounds checks on malformed/truncated data.
+
+- [#2330](https://github.com/LTplus-AG/ifc-lite/pull/2330) [`51cd3ab`](https://github.com/LTplus-AG/ifc-lite/commit/51cd3ab46c7f9d40588e319e7b2c24ce66e99c29) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `parseGLBToMeshData`'s existing accessor bounds guard being silently bypassed by a missing/non-numeric `accessor.count` in a GLB's JSON chunk.
+
+  The guard (`bufferOffset + neededBytes > bin.byteLength`) is a bare comparison, and `accessor.count` — REQUIRED by the glTF spec but never runtime-checked — flows unvalidated from `JSON.parse` into it. A missing `count` makes it `undefined`, and `undefined * elementSize` is `NaN`; every arithmetic comparison against `NaN` (`< 0`, `> bin.byteLength`) evaluates `false`, so the guard added for the accessor-overrun case (see the "malformed accessor bounds" tests) did not catch this. Control fell through to a typed-array constructor built from the same `NaN`, which coerces to an element count of 0 — producing a mesh with an empty `positions` array, reported as a successfully imported model, instead of throwing. `readAccessorData` now validates `accessor.count` is a non-negative integer before doing any arithmetic on it; a valid `count`, including the boundary value `0`, is unaffected.
+
+- [#2233](https://github.com/LTplus-AG/ifc-lite/pull/2233) [`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `EntityTable.setTypeOverride` storing a UI retype's class name in whatever casing the caller passed instead of canonicalising it.
+
+  A "change class" retype hands `setTypeOverride` a raw UPPERCASE IFC class token (e.g. `IFCBUILDINGSTOREY`), and `getTypeName` echoed the override straight back unchanged. `isSpatialStructureTypeName` — and any other case-sensitive `*Name` predicate built off `IfcTypeEnumToString`'s PascalCase output — matches against the PascalCase form only, so a retyped entity's new class silently stopped being recognised as part of the spatial tree, even though the case-insensitive `isStoreyLikeSpatialTypeName` correctly saw it. `setTypeOverride` now canonicalises the incoming name to PascalCase before storing it, so `getTypeName` and every name-based predicate agree regardless of the casing a caller passes in.
+
+  `EntityTable` has three independent implementations — the columnar table in `@ifc-lite/data`, the cache-restored table in `@ifc-lite/cache`, and the server-backed table in `apps/viewer` — and all three stored the override verbatim. Fixing only one would have left the same retype behaving differently depending on whether the model came from a fresh parse, a cache restore, or the server, which is harder to diagnose than the original bug. All three now canonicalise identically.
+
+- [#2179](https://github.com/LTplus-AG/ifc-lite/pull/2179) [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `QuantityTable.sumByType` from silently ignoring its declared `elementType` filter.
+
+  `sumByType(quantityName, elementType?)` declares an optional element-type filter, but two of the three implementations were arity-1 closures that dropped it: the columnar table in `@ifc-lite/data` and the cache-restored table in `@ifc-lite/cache`. The third — the server-backed table in `apps/viewer` — honours it for real, resolving ids through `entities.getByType`. So three implementations of one interface disagreed, and a caller holding the interface type had no way to tell which behaviour it would get.
+
+  The failure mode mattered more than the type-level inaccuracy: a dropped filter returns a total over _every_ element rather than an error, and in a quantity context a plausible wrong number is worse than a loud failure. No caller passes the second argument today, so nothing changes for existing code.
+
+  Neither implementation can honour the filter as written — both see only `entityId` per row, with the entity-type mapping living in `EntityTable`. Rather than leave the contract lying, both now throw when `elementType` is passed, naming the supported route (resolve ids via `entities.getByType(elementType)` and total the matching rows). The interface doc records why.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/geometry@3.7.1
+
 ## 3.0.2
 
 ### Patch Changes

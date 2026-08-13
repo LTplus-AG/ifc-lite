@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.3.1",
+  "version": "4.4.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -30,6 +30,8 @@
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
+    "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
+    "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
@@ -43,7 +45,8 @@
     "collab:server": "pnpm turbo build --filter=@ifc-lite/collab-server && node packages/collab-server/dist/bin.js",
     "collab:demo": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo.mjs",
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
-    "typecheck": "turbo typecheck",
+    "typecheck": "turbo typecheck && node scripts/typecheck-tests.mjs --audit",
+    "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
     "lint": "pnpm -r lint",
     "knip": "knip",
     "docs:serve": "python3 -m mkdocs serve",
@@ -54,7 +57,7 @@
     "docs:check-readmes": "node scripts/docs/check-package-readmes.mjs",
     "changeset": "changeset",
     "version": "changeset version && node scripts/sync-versions.js",
-    "release": "pnpm build && pnpm test:esm && pnpm release:npm && pnpm release:crates",
+    "release": "pnpm build && pnpm test:esm && node scripts/release-all.mjs",
     "release:npm": "changeset publish",
     "release:crates": "node scripts/release-crates.mjs",
     "publish:npm": "pnpm -r publish --access public",
@@ -67,7 +70,7 @@
     "check:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs --check",
     "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
-    "check:templates": "pnpm --filter viewer check:templates"
+    "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
@@ -93,7 +96,8 @@
       "protobufjs": "^8.0.2",
       "protocol-buffers-schema": "^3.6.1",
       "postcss": "^8.5.10",
-      "dompurify": "^3.4.12",
+      "nanoid@3": "^3.3.17",
+      "dompurify": "^3.4.13",
       "lodash": "^4.18.0",
       "tar": "^7.5.21",
       "rollup": "^4.59.0",
@@ -109,7 +113,7 @@
       "picomatch@>=4": "^4.0.4",
       "uuid@<11.1.1": "^11.1.1",
       "@babel/core": "^7.29.6",
-      "js-yaml@4": "^4.3.0",
+      "js-yaml@4": "^4.3.1",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
       "minimatch": "^10.2.5"

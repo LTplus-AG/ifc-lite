@@ -185,6 +185,27 @@ export interface DocumentData {
   confidentiality?: string;
 }
 
+/**
+ * The related **objects** of an entity's structural relationships — never the
+ * `IfcRel*` entities themselves:
+ *
+ * - `voids` — the `IfcOpeningElement`s that void this element
+ *   (`IfcRelVoidsElement`, host → opening).
+ * - `fills` — the `IfcOpeningElement` this element fills
+ *   (`IfcRelFillsElement`, filler → opening).
+ * - `groups` — the `IfcZone` / `IfcGroup` / `IfcSystem` it is assigned to.
+ * - `connections` — the elements it is joined to.
+ *
+ * The field names are deliberately not EXPRESS names, and #2422 resolved to
+ * keep them. IFC's own names for these traversals (`HasOpenings`, `FillsVoids`,
+ * `HasAssignments`, `ConnectedTo` / `ConnectedFrom`) are INVERSE attributes
+ * holding the `IfcRel*` entity, which is not what these arrays contain — so
+ * "use the exact EXPRESS name" has no name to offer here. Renaming `voids` to
+ * `openings` is not a fix either: `voids` **and** `fills` both hold
+ * `IfcOpeningElement`s, and only the voids/fills pair — buildingSMART's own
+ * vocabulary for the two directions — tells them apart. Pinned by
+ * `packages/parser/test/relationship-field-semantics-2422.test.ts`.
+ */
 export interface EntityRelationshipsData {
   voids: Array<{ id: number; name?: string; type: string }>;
   fills: Array<{ id: number; name?: string; type: string }>;
@@ -609,6 +630,11 @@ export interface ExportBackendMethods {
    * wasm engine); the data-only SDK never meshes, so it delegates here.
    */
   hbjson?(name?: string): Promise<string>;
+  /**
+   * Export the model's `IfcSpace` volumes as a Dragonfly DFJSON energy model (extruded
+   * `Room2D` plates). Optional — present only on geometry-capable backends.
+   */
+  dfjson?(name?: string): Promise<string>;
 }
 
 export interface LensBackendMethods {

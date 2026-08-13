@@ -294,6 +294,25 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
     `IfcAPI::setComputeGeometryHashes`. The hashing-on numbers above therefore
     come from driving the real wasm entry point, not from `probe.sh`.
 
+- **Second harness gap, same shape: `probe.sh` cannot reach the SYMBOLIC path
+  either** (found on #2358, 2026-08-11). `perf_probe` drives `process_geometry`,
+  which never populates `symbolic_data`; annotation/placement work hangs off a
+  separate entry point, `extract_symbolic_data`, called by the wasm binding and
+  the server. So a symbolic-only change produces a **flat, identical probe table
+  on both sides** — which reads exactly like "no regression" but is a control,
+  not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
+  and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  - **And pick the fixture by whether it exercises the branch, not by the default.**
+    #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
+    `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has
+    **zero** such reps (all 34 are SubContext) and C20-Institute zero of 316;
+    `dental_clinic.ifc` has **1080**. Scan the corpus for the shape your diff
+    touches before measuring, or the "canonical" fixture will confirm nothing.
+  - Related trap when reading byte-identity on this path: **every WCS in the
+    corpus is the identity**, which is precisely why the #2358 bug survived —
+    resolving it correctly and never resolving it agree on every shipped fixture.
+    Identical output there is evidence about the corpus, not about the change.
+
 ### Reading the FIELD telemetry (PostHog) — verdicts and traps
 
 - **A per-model PostHog regression alert is device-mix noise until you control for

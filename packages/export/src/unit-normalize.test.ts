@@ -121,6 +121,27 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
+  it('leaves a line whose argument list it cannot delimit exactly as it found it', () => {
+    // `findOuterArgs` is where a malformed record stops: it tracks quotes and
+    // depth to find the `)` that closes the record's own `(`, so a line that
+    // never closes either has no argument span at all and is returned as-is.
+    // That is also why `splitTopLevelStepArguments` returning null is
+    // unreachable from here — the span it is handed is balanced by
+    // construction — so nothing below pretends to exercise that guard.
+    const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
+
+    const unbalanced = "#8=IFCBUILDINGSTOREY('g',$,'L1',$,$,$,$,(#1,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unbalanced, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unbalanced);
+
+    // An EMPTY slot is not in that class — one empty argument is one part, so
+    // the span is delimited, `Elevation` is still the tenth argument, and it is
+    // still rescaled. Rejecting empty slots in the splitter would have silently
+    // stopped rescaling these lines too (#2470).
+    expect(rescaleEntityLengths("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);", 'IFCBUILDINGSTOREY', 0.001, 1, 1))
+      .toBe("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3.);");
+  });
+
   it('scales cartesian point coordinates', () => {
     expect(rescaleEntityLengths('#6=IFCCARTESIANPOINT((100.,200.,300.));', 'IFCCARTESIANPOINT', 0.001, 1, 1))
       .toBe('#6=IFCCARTESIANPOINT((0.1,0.2,0.3));');

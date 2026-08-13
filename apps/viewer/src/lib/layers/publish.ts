@@ -22,6 +22,7 @@ import {
   setProvenance,
   ATTR,
   IFCLITE_ATTR,
+  IFCX_VERSION,
 } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
@@ -207,7 +208,7 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   const bare: IfcxFile = {
     header: {
       id: '',
-      ifcxVersion: 'ifcx_alpha',
+      ifcxVersion: IFCX_VERSION,
       dataVersion: '1.0.0',
       author: init.authorPrincipal,
       timestamp: manifest.created,

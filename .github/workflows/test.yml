@@ -7,10 +7,28 @@ name: Test
 on:
   pull_request:
     branches: [main]
+  # Post-merge guard. Two PRs can each be green against their own base and be
+  # broken as a pair on main: #2551 removed a helper from
+  # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it
+  # at 06:35, and main was red from then on. Nothing ran on main, so it
+  # surfaced hours later on an unrelated first-time contributor's PR, and every
+  # open PR's Node lane was red until it was fixed.
+  push:
+    branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR runs share a group per ref, so a new commit supersedes the old run — the
+  # newer commit is the only one whose verdict matters.
+  #
+  # Push runs get a group PER COMMIT. Not merely `cancel-in-progress: false`:
+  # GitHub keeps only one running plus one PENDING run per group, and a newer
+  # queued run EVICTS the pending one even when cancellation is off. With three
+  # merges in quick succession, a docs-only third merge would evict the queued
+  # run for a frontend-breaking second merge, and its path filters would then
+  # skip the Node lane — leaving exactly the broken state this guard exists to
+  # catch unchecked. A per-commit group means no merge can displace another.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -50,7 +68,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+          # A push event filters against the previous commit, which a depth-1
+          # clone does not contain. PRs filter against the base ref and are
+          # unaffected, so only the push path pays the extra object.
+          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -140,7 +162,7 @@ jobs:
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -262,7 +284,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -287,7 +309,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -311,7 +333,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -333,6 +355,20 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # A test that reads its subject's SOURCE and asserts on the text passes
+      # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
+      # with the row handler unwired (#2396 verbatim). The harness that made
+      # the behavioural version look impossible now exists in
+      # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
+      - name: Check for new source-text assertions
+        run: node scripts/check-source-text-assertions.mjs
+      # A hidden tab never delivers an animation frame, so an unbounded
+      # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
+      # parks finalize / WASM release / setLoading(false) until the user comes
+      # back (#2385). Absence over five files is a lint, not a unit test --
+      # it used to be the one non-executable case in frameWait.test.ts (#2434).
+      - name: Check for unbounded animation-frame waits
+        run: node scripts/check-unbounded-frame-wait.mjs
       # Every `new GeometryProcessor(...)` must free its WASM handle on all
       # paths. AGENTS.md required this already, but self-policing decayed one
       # call site at a time until 12 sites leaked (#1959) -- including the
@@ -364,6 +400,22 @@ jobs:
       # sides of the contract (packages/**, apps/viewer/**).
       - name: Check sandbox bim-globals freshness
         run: node scripts/generate-bim-globals.mjs --check
+      # Typecheck the built-in template scripts AGAINST that generated surface.
+      # This is the only thing that actually compiles bim-globals.d.ts, and it
+      # was run by no workflow: it sat at 193 errors (every one of them
+      # `Cannot find name 'console'`, because the sandbox `console` was never
+      # declared), which is why the drift in #2418 went unnoticed for months.
+      # Now that the declaration is generated, this also verifies every type the
+      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
+      # (#2422). No build needed: the .d.ts is self-contained and the templates
+      # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
+      - name: Check sandbox script templates typecheck
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.
@@ -390,7 +442,9 @@ jobs:
   viewer-e2e:
     name: Viewer E2E smoke
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # PR-only: see the `push:` trigger comment. The post-merge run repeats the
+    # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -399,7 +453,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -463,7 +517,7 @@ jobs:
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust
       - name: Cache test fixtures
@@ -511,7 +565,8 @@ jobs:
   geometry-census:
     name: Geometry watertightness census
     needs: changes
-    if: needs.changes.outputs.geometry == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 45
     steps:
@@ -522,7 +577,7 @@ jobs:
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-census
       - name: Cache test fixtures
@@ -536,6 +591,18 @@ jobs:
         run: node scripts/fixtures/fetch-fixtures.mjs
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The per-host rows this run measured, uploaded pass or fail. The census
+      # gates against a checked-in golden, and its log prints its per-element
+      # lists truncated, so without this a run that disagrees with the golden
+      # could only be diagnosed by reproducing a ~20-minute sweep over a 1.4 GB
+      # fixture corpus locally. Re-blessing is now: download, replace the golden.
+      - name: Upload the census rows
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: watertightness-census-rows
+          path: target/watertightness_census.run.tsv
+          if-no-files-found: warn
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
   # is written once in Plato and transpiled to Rust + TypeScript; the committed
@@ -547,7 +614,8 @@ jobs:
   plato-check:
     name: Plato clash-math freshness
     needs: changes
-    if: needs.changes.outputs.plato == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ubuntu-latest
@@ -557,7 +625,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -603,7 +671,7 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22

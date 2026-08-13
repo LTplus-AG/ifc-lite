@@ -4,7 +4,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLoadError, errorCaptureProps, formatLoadError } from './load-errors.js';
+import { classifyLoadError, errorCaptureProps } from './load-errors.js';
+import { formatLoadError } from './load-error-message.js';
 
 describe('classifyLoadError', () => {
   it('classifies the wasm-bindgen non-OK HTTP status as wasm_engine_load', () => {
@@ -159,6 +160,52 @@ describe('classifyLoadError', () => {
     assert.equal(classifyLoadError('cancelled'), 'cancelled');
   });
 
+  // #2410. `cancelled` is in `BENIGN_ERROR_KINDS`, so matching it downgrades the
+  // event to `warning` and fingerprints it into the cancellation issue — an
+  // actionable failure taken off the error-level list. The old
+  // `/\bcancel(?:led|ed)?\b/` fired on the word anywhere in the message (and,
+  // with both suffixes optional, on a bare "cancel"), so any failure that
+  // merely mentioned one was relabelled benign.
+  it('never buckets a failure that merely MENTIONS a cancellation as cancelled', () => {
+    for (const message of [
+      'Upload failed: driver shim logged cancelled while retrying',
+      // Bare "cancel" is not a cancellation: the old matcher's `(?:led|ed)?`
+      // made both suffixes optional, so the verb alone was enough.
+      'Cannot cancel: the export already finished writing 0 bytes',
+      'Failed to save: the server said the subscription was cancelled',
+      // The subject must be the message's OWN opening words, not something
+      // reached across a `:`. Widening the leading-word class to allow the
+      // colon through is invisible to every carrier above — they all put more
+      // than two words in front of the token — and this is what kills it.
+      'Retry failed: cancelled requests must not be replayed',
+      // The bare token has no subject to name, so it gets no trailing latitude:
+      // a sentence bolted onto it is not a cancellation report.
+      'cancelled and our upload pipeline then wrote 0 bytes',
+      'The operation was aborted and our upload pipeline then wrote 0 bytes',
+      // `AbortError` is matched as the STRINGIFIED NAME, which only means
+      // anything at the start of the value. Mentioned mid-sentence it is prose
+      // about an abort, not an abort.
+      'Upload failed: the shim swallowed an AbortError and wrote 0 bytes',
+    ]) {
+      assert.equal(classifyLoadError(new Error(message)), 'unknown', message);
+    }
+  });
+
+  // …while the forms our own code actually throws keep their kind. These are
+  // verbatim from `syncSourceModel.ts` and `packages/mcp/src/tools/clash.ts`,
+  // which is what stops the anchor being tightened into matching nothing real.
+  it('still classifies the cancellation wordings we author', () => {
+    for (const message of [
+      'Sync cancelled: tower.ifc was removed while its update was downloading.',
+      'Sync cancelled: tower.ifc was removed while its update was loading.',
+      'Clash run cancelled before meshing.',
+      // A cross-realm throwable reaches the analytics path as `String(err)`.
+      'AbortError: The user aborted a request.',
+    ]) {
+      assert.equal(classifyLoadError(message), 'cancelled', message);
+    }
+  });
+
   it('falls back to unknown for unrelated errors', () => {
     assert.equal(classifyLoadError(new Error('Unexpected token in IFC header')), 'unknown');
   });
@@ -188,14 +235,57 @@ describe('classifyLoadError', () => {
     );
   });
 
+  // #2410: the transport wordings come FROM `fetch()`, so they ARE the whole
+  // message. Anything that wraps one is by construction ours. This matters more
+  // than for the other kinds because `network_unavailable` is the most dangerous
+  // label in the file — analytics-scrub.ts downgrades it to `warning` AND
+  // deletes the event outright when the browser also reported the user offline.
+  it('never buckets a WRAPPED transport phrase as network_unavailable', () => {
+    for (const message of [
+      'Upload failed: driver shim logged Failed to fetch while retrying',
+      'Import aborted: the worker reported Load failed for chunk 3 of 9',
+      'Retry loop saw NetworkError when attempting to fetch resource and gave up',
+      'Sync stopped: the mirror said The network connection was lost midway',
+      'Failed to fetch and our upload pipeline then wrote 0 bytes',
+      'Load failed, and our upload pipeline then wrote 0 bytes',
+      // The stringified-name prefix is BOUNDED for a reason: unbound, it is an
+      // arbitrary leading sentence that happens to end in "…Error:", and every
+      // carrier above still passes while this walks through.
+      'Upload failed: the driver shim threw a TransportError: Load failed',
+    ]) {
+      assert.equal(classifyLoadError(new Error(message)), 'unknown', message);
+    }
+  });
+
+  // A cross-realm throwable reaches the analytics path as `String(err)`, so the
+  // stringified-name prefix is structural and must not cost the classification.
+  it('classifies a stringified transport failure with its error-name prefix', () => {
+    assert.equal(classifyLoadError('TypeError: Load failed'), 'network_unavailable');
+    assert.equal(classifyLoadError('TypeError: Failed to fetch'), 'network_unavailable');
+    // The BARE `Error:` form, which is the commonest of all and which a
+    // `{1,32}` bound silently excluded (Codex review on #2431). Built through
+    // `String(new Error(...))` rather than written out, so the test cannot
+    // drift from what the runtime actually produces.
+    assert.equal(classifyLoadError(String(new Error('Load failed'))), 'network_unavailable');
+    assert.equal(classifyLoadError(String(new Error('cancelled'))), 'cancelled');
+    assert.equal(
+      classifyLoadError(String(new Error('Sync cancelled: tower.ifc was removed.'))),
+      'cancelled',
+    );
+    assert.equal(classifyLoadError(String(new Error('The operation was aborted'))), 'cancelled');
+  });
+
   // A failure that named itself must keep its own, more actionable kind — the
   // network bucket is checked last precisely so it cannot swallow them.
   // A rotated JS chunk after a redeploy is OUR breakage, not the user's
-  // connection. Its Chromium wording contains "Failed to fetch", so without an
-  // explicit exclusion `network_unavailable` claims it — which both fingerprints
-  // it together with genuine offline blips AND hands it to the benign-severity
+  // connection. Its Chromium wording contains "Failed to fetch", so an
+  // unanchored `network_unavailable` claims it — which both fingerprints it
+  // together with genuine offline blips AND hands it to the benign-severity
   // downgrade in analytics-scrub.ts, silencing a real deploy failure that
-  // survived main.tsx's one-shot chunk-reload budget.
+  // survived main.tsx's one-shot chunk-reload budget. #2410 removed the explicit
+  // exclusion that used to say so, because the whole-message anchor subsumes it
+  // (the message names the module, so it is not the whole wording) — leaving
+  // this test as the live gate on that anchor rather than an unreachable branch.
   it('never buckets a failed module import as network_unavailable', () => {
     for (const message of [
       'Failed to fetch dynamically imported module: https://example.test/assets/Viewport-Bq3x.js',
@@ -286,12 +376,51 @@ describe('classifyLoadError', () => {
     );
   });
 
-  it('does NOT claim three.js\'s WebGL failure, which nothing catches (#2354)', () => {
-    // PostHog issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP
-    // playground's mount effect — an uncaught throw that tears the React tree
-    // down. Sweeping it into the benign family would silence real breakage.
+  it('classifies three.js\'s WebGL refusal into the same family (#2458)', () => {
+    // The reversal of the #2354 decision, and it turns on a fact that changed
+    // rather than a change of mind. Then: PostHog issue 019fc458 was
+    // `THREE.WebGLRenderer: Error creating WebGL context.` escaping the MCP
+    // hero's mount effect and taking the /mcp route down through
+    // ChunkErrorBoundary (recorded under `lazy_subtree_boundary`), and folding a
+    // page-killing crash into the benign minimap family would have hidden it.
+    // Now: #2401 put both /mcp scenes behind `useThreeScene`, and they are the
+    // only WebGLRenderer construction sites in this app, so these strings can
+    // only arrive as a handled degradation of one panel — the same device
+    // condition the minimap reports, and it belongs in the same bucket instead
+    // of minting one issue per wording.
     assert.equal(
       classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context.')),
+      'webgl_unavailable',
+    );
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context with your selected attributes.')),
+      'webgl_unavailable',
+    );
+    // The synthesised pre-flight message — the arm that fires first, and
+    // therefore the one most sessions actually report.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context. (pre-flight probe)')),
+      'webgl_unavailable',
+    );
+  });
+
+  it('does NOT claim a message that merely QUOTES three\'s wording (#2458)', () => {
+    // Same anchoring discipline as the MapLibre arms below: one of our own
+    // failures that wraps three's message for context is a bug of ours, and
+    // must keep its own identity rather than inherit a device-capability
+    // fingerprint nobody triages. Both ends, because anchoring one fixes one.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context. while building the hero')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('HeroScene failed: THREE.WebGLRenderer: Error creating WebGL context.')),
+      'unknown',
+    );
+    // Not three's failure at all: a lost context is a different condition with
+    // a different remedy, and three words it differently on purpose.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Context Lost.')),
       'unknown',
     );
   });

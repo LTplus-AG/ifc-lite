@@ -37,6 +37,7 @@ import { toast } from '@/components/ui/toast';
 import { generateZonesFromStoreys } from '@/hooks/useZoneStoreyGeneration';
 import { selectElementsInZone } from '@/hooks/useZoneSelection';
 import type { Zone } from '@/lib/zones';
+import { ZoneApportionSummary } from './ZoneApportionSummary';
 
 interface ZonesPanelProps {
   onClose?: () => void;
@@ -352,6 +353,9 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                   }}
                 />
               ))}
+              {/* Volume apportionment for this set's straddlers (#2508). On
+                  demand only — never part of load. */}
+              {zs.zones.length > 0 && <ZoneApportionSummary zoneSet={zs} />}
             </CollapsibleContent>
           </Collapsible>
         ))}

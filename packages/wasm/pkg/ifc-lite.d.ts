@@ -249,6 +249,19 @@ export class IfcAPI {
      */
     exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): Uint8Array;
     /**
+     * Export the `IfcSpace` volumes in `content` as a Dragonfly **DFJSON** string.
+     *
+     * Each space becomes an extruded `Room2D` (floor polygon + floor-to-ceiling height)
+     * grouped into stories — the simpler Ladybug Tools target for mostly-vertical-wall
+     * models. Loads via `dragonfly.model.Model.from_dfjson`.
+     *
+     * ```javascript
+     * const api = new IfcAPI();
+     * const dfjson = api.exportDfjson(ifcContent, "my_model");
+     * ```
+     */
+    exportDfjson(content: Uint8Array, name: string): string;
+    /**
      * Export the render geometry in `content` as a binary **GLB** (`Uint8Array`).
      *
      * `hidden` / `isolated` are express-id visibility filters; `hidden_types_csv` is a
@@ -1655,6 +1668,7 @@ export interface InitOutput {
     readonly ifcapi_clearPrePassCache: (a: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;

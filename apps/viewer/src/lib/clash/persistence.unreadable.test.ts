@@ -10,6 +10,9 @@ import {
   savePresets,
   loadReviews,
   saveReviews,
+  loadSettings,
+  saveSettings,
+  DEFAULT_CLASH_SETTINGS,
   type ClashPreset,
 } from './persistence.js';
 
@@ -23,10 +26,12 @@ class MemoryStorage {
 const g = globalThis as { localStorage?: unknown };
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
+const SETTINGS_KEY = 'ifc-lite-clash-settings';
 
 /** Truncated JSON — the shape a half-written or externally mangled entry has. */
 const CORRUPT_PRESETS = '{"schemaVersion":1,"presets":[{"id":"custom-1","name":"My rule"';
 const CORRUPT_REVIEWS = '{"schemaVersion":1,"reviews":{"rule-a G1 G2":{"status":"resol';
+const CORRUPT_SETTINGS = '{"schemaVersion":1,"settings":{"mode":"hard","tolerance":0.5';
 
 /** True when `raw` is still somewhere in storage (original key or a backup). */
 function survives(ls: MemoryStorage, raw: string): boolean {
@@ -52,6 +57,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     // Clear the module-level "unwritable" flags via a clean read of empty storage.
     buildInitialPresets();
     loadReviews();
+    loadSettings();
   });
 
   after(() => {
@@ -68,6 +74,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     g.localStorage = new MemoryStorage();
     buildInitialPresets();
     loadReviews();
+    loadSettings();
   });
 
   it('preserves unreadable presets across the save that follows the failed read', () => {
@@ -93,12 +100,86 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.ok(survives(ls, CORRUPT_REVIEWS), 'the unreadable reviews blob was destroyed by the save');
   });
 
+  it('preserves unreadable settings across the save that follows the failed read', () => {
+    ls.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
+
+    // The read degrades to defaults — the user's stored tolerance is not visible.
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+
+    // ...and the very next edit persists that degraded (default) settings —
+    // but the original bytes must still be recoverable from a backup key.
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
+
+    assert.ok(survives(ls, CORRUPT_SETTINGS), 'the unreadable settings blob was destroyed by the save');
+
+    // The save reporting `ok: true` is not, on its own, proof that anything was
+    // written: read SETTINGS_KEY back and check it actually holds the edit, so a
+    // no-op save (or one that silently wrote something else) cannot pass this
+    // test the way it could when only the `SaveResult` and `survives()` were
+    // checked.
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.01, 'the recovery save did not actually write the new settings');
+  });
+
+  // An empty string is not "no entry" — it is the corrupt entry a truncated or
+  // interrupted write is most likely to leave behind. `!raw` treats it the same
+  // as a missing key (both are falsy), so it must be `raw === null` specifically,
+  // or an empty string never reaches `JSON.parse` and silently skips the whole
+  // preserve-and-quarantine path this suite otherwise exercises.
+  it('treats an empty stored string as a read failure, not "no entry"', () => {
+    ls.setItem(SETTINGS_KEY, '');
+
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+
+    // The empty string must have gone through the same preserve-and-quarantine
+    // path as bad JSON — moved to a backup key — not silently skipped because
+    // it happened to also be falsy like a missing key.
+    assert.ok(
+      ls.store.has(`${SETTINGS_KEY}:unreadable`),
+      'an empty stored string must be preserved as an unreadable entry, not treated as if nothing was ever stored',
+    );
+
+    // Ordinary recovery, not a lockout: the very next save still succeeds and
+    // actually writes, since the empty value was successfully backed up.
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.01);
+  });
+
+  // Bounding control: a genuinely absent key is not a read failure. Without
+  // this, a fix that widens the check too far (e.g. treating `undefined` or
+  // any falsy `raw` as corrupt) would misclassify a brand-new user's first run
+  // as data corruption.
+  it('a genuinely absent key still returns defaults without being treated as corrupt', () => {
+    // Nothing was ever set at SETTINGS_KEY (beforeEach starts from a fresh store).
+    assert.strictEqual(ls.getItem(SETTINGS_KEY), null);
+
+    const loaded = loadSettings();
+    assert.deepStrictEqual(loaded, DEFAULT_CLASH_SETTINGS);
+    assert.ok(!ls.store.has(`${SETTINGS_KEY}:unreadable`), 'a missing key must not be preserved as an unreadable entry');
+
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.03 }), { ok: true });
+    const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
+    assert.strictEqual(persisted.settings.tolerance, 0.03);
+  });
+
   // ── Negative cases: the guard must not turn into "never write again" ────────
 
   it('still round-trips normally when the stored entry is readable', () => {
     assert.deepStrictEqual(savePresets([customPreset]), { ok: true });
     const reloaded = buildInitialPresets().filter((p) => !p.builtin);
     assert.deepStrictEqual(reloaded.map((p) => p.id), ['custom-new']);
+  });
+
+  // Bounding control: a non-corrupt settings entry must still load its stored
+  // values and still save successfully — otherwise "refuse everything" would
+  // pass this suite too.
+  it('still round-trips settings normally when the stored entry is readable', () => {
+    const settings = { ...DEFAULT_CLASH_SETTINGS, tolerance: 0.05, mode: 'clearance' as const };
+    assert.deepStrictEqual(saveSettings(settings), { ok: true });
+    assert.deepStrictEqual(loadSettings(), settings);
   });
 
   it('keeps saving after an unreadable read — the panel stays usable', () => {
@@ -144,10 +225,12 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     })();
     full.setItem(PRESETS_KEY, CORRUPT_PRESETS);
     full.setItem(REVIEWS_KEY, CORRUPT_REVIEWS);
+    full.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
     g.localStorage = full;
 
     buildInitialPresets();
     loadReviews();
+    loadSettings();
 
     const presetResult = savePresets([customPreset]);
     assert.strictEqual(presetResult.ok === false && presetResult.reason, 'unreadable');
@@ -156,5 +239,9 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     const reviewResult = saveReviews(new Map<string, ClashReview>([['k', { status: 'resolved' }]]));
     assert.strictEqual(reviewResult.ok === false && reviewResult.reason, 'unreadable');
     assert.strictEqual(full.getItem(REVIEWS_KEY), CORRUPT_REVIEWS);
+
+    const settingsResult = saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 });
+    assert.strictEqual(settingsResult.ok === false && settingsResult.reason, 'unreadable');
+    assert.strictEqual(full.getItem(SETTINGS_KEY), CORRUPT_SETTINGS);
   });
 });

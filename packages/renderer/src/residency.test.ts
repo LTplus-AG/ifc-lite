@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.ts';
+import { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
 
 const MB = 1024 * 1024;
 const FRAME = 1000; // current frame, comfortably past the min age

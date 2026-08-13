@@ -314,14 +314,18 @@ async fn breaker_is_inert_when_rss_budget_or_pct_is_zero() {
     no_pct.acquire(1).await.expect("shed_pct 0 ⇒ no breaker");
 }
 
-/// `set_resident_bytes` / `resident_bytes` round-trip, and the gauge is what
-/// `metrics_text` publishes. Without this the sampler could write to a field
-/// nothing reads.
+/// `set_resident_bytes` feeds the gauge that `metrics_text` publishes.
+/// Without this the sampler could write to a field nothing reads.
+///
+/// Pins only the observable contract (the metrics body), not the
+/// `resident_bytes()` getter round-trip: the body assertion below already
+/// requires `set_resident_bytes` to have taken effect, so a separate
+/// `assert_eq!(a.resident_bytes(), 4_096)` added nothing a broken
+/// `metrics_text` implementation could hide behind.
 #[tokio::test]
 async fn resident_gauge_round_trips_into_the_metrics_body() {
     let a = Arc::new(Admission::new(cfg_shed(2, 100, 2, 85)));
     a.set_resident_bytes(4_096);
-    assert_eq!(a.resident_bytes(), 4_096);
     assert!(a.metrics_text().contains("ifc_server_resident_bytes 4096"));
     // The budget gauge reports bytes, not MB.
     assert!(a

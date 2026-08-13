@@ -580,14 +580,26 @@ export class ColumnarParser {
         // The hierarchy panel can render immediately while property/association
         // parsing continues. This lets the panel appear at the same time as
         // geometry streaming completes.
-        const entitySource = new BufferEntitySource(uint8Buffer, entityIndex);
+        // ONE accessor, shared by the store field and the entity source.
+        //
+        // These used to be built separately -- `BufferEntitySource` got the raw
+        // `uint8Buffer` and wrapped it in its own accessor, while `source` got
+        // another. That is invisible while both are resident views over the
+        // same bytes, and fatal once the source can switch to compressed
+        // storage in place (#2183): `getEntity` would keep reading its private
+        // resident accessor, so the original buffer would never be released and
+        // the store would serve entities from one representation and properties
+        // from the other. Measured: with two accessors the buffer survives GC
+        // after the swap; with one it is collected.
+        const source = contiguousSourceBytes(uint8Buffer);
+        const entitySource = new BufferEntitySource(source, entityIndex);
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
             sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
-            source: contiguousSourceBytes(uint8Buffer),
+            source,
             entityIndex,
             strings,
             entities: entityTable,
@@ -1156,6 +1168,7 @@ export function pickLongName(entity: IfcEntity): string {
 // Re-export on-demand extraction functions from focused module
 export {
     extractClassificationsOnDemand,
+    extractClassificationSystemsOnDemand,
     extractMaterialsOnDemand,
     extractAllMaterialsOnDemand,
     extractMaterialPropertiesOnDemand,

@@ -8,24 +8,13 @@
  */
 
 import React from 'react';
-import { AddFile, Loading, OpenFile, Refresh, Screenshot, FileCsv, FileIfc, FileGlb, FileKmz, FileJson, FileHbjson, FileUsd, Share, CollabsRoom } from '@/icons';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { AddFile, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
-import { ExportDialog } from '../../ExportDialog';
-import { GLBExportDialog } from '../../GLBExportDialog';
-import { KmzExportDialog } from '../../KmzExportDialog';
-import { HbjsonExportDialog } from '../../HbjsonExportDialog';
-import { UsdExportDialog } from '../../UsdExportDialog';
 import type { FileCommands } from '../../toolbar/useFileCommands';
-import { useExportCommands } from '../../toolbar/useExportCommands';
+import { RibbonExportGroup } from './RibbonExportGroup';
+import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
   RibbonGroup,
   RibbonGroupDivider,
@@ -36,8 +25,7 @@ import {
 
 export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const { handleOpenClick, handleAddModelClick, handleRefresh, canRefresh, hasModelsLoaded, openShareDialog } = fileCommands;
-  const { loading, models, ifcDataStore } = useIfc();
-  const { handleExportCSV, handleExportJSON, handleScreenshot } = useExportCommands();
+  const { loading, models } = useIfc();
 
   // Collaboration: the Share cluster is gated behind the collab feature flag.
   // The ShareDialog itself (and its `ifc-lite:open-share-dialog` listener)
@@ -47,8 +35,6 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const collabPeerCount = useViewerStore((s) => s.collabPeers.length);
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
-
-  const canExport = hasModelsLoaded || Boolean(ifcDataStore);
 
   return (
     <>
@@ -81,66 +67,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
 
       <RibbonGroupDivider />
 
-      <RibbonGroup label="Export">
-        {/* Gate on any loaded model, not the legacy single-model geometryResult:
-            federated / multi-model sessions populate `models` but leave
-            geometryResult null, which would hide the whole export group. */}
-        <ExportDialog
-          trigger={
-            <RibbonLargeButton icon={FileIfc} label="IFC" tooltip="Export IFC (with changes)" disabled={!canExport} />
-          }
-        />
-        <RibbonSmallStack>
-          <GLBExportDialog
-            trigger={<RibbonSmallButton icon={FileGlb} label="GLB" tooltip="Export GLB (3D model)" disabled={!canExport} />}
-          />
-          <KmzExportDialog
-            trigger={<RibbonSmallButton icon={FileKmz} label="KMZ" tooltip="Export KMZ (Google Earth Pro)" disabled={!canExport} />}
-          />
-        </RibbonSmallStack>
-        <RibbonSmallStack>
-          <UsdExportDialog
-            trigger={<RibbonSmallButton icon={FileUsd} label="USD" tooltip="Export USD (OpenUSD .usda)" disabled={!canExport} />}
-          />
-          <HbjsonExportDialog
-            trigger={<RibbonSmallButton icon={FileHbjson} label="HBJSON" tooltip="Export HBJSON (energy model)" disabled={!canExport} />}
-          />
-        </RibbonSmallStack>
-        <RibbonSmallStack>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <RibbonSmallButton icon={FileCsv} label="CSV" hasMenu tooltip="Export CSV tables" disabled={!ifcDataStore} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={() => handleExportCSV('entities')}>
-                <FileCsv className="h-4 w-4 mr-2" />
-                Entities
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('properties')}>
-                <FileCsv className="h-4 w-4 mr-2" />
-                Properties
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleExportCSV('quantities')}>
-                <FileCsv className="h-4 w-4 mr-2" />
-                Quantities
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => handleExportCSV('spatial')}>
-                <FileCsv className="h-4 w-4 mr-2" />
-                Spatial Hierarchy
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <RibbonSmallButton
-            icon={FileJson}
-            label="JSON"
-            tooltip="Export JSON (all data)"
-            disabled={!ifcDataStore}
-            onClick={handleExportJSON}
-          />
-          <RibbonSmallButton icon={Screenshot} label="Screenshot" tooltip="Save viewport as PNG" onClick={handleScreenshot} />
-        </RibbonSmallStack>
-      </RibbonGroup>
+      <RibbonExportGroup icons={RIBBON_EXPORT_ICONS} />
 
       {collabEnabled && (
         <>

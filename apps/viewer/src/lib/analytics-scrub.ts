@@ -474,12 +474,17 @@ const stampFingerprint = (
 // alter — the reported occurrences are a device whose GPU is missing an
 // extension or whose GPU process could not serve a second context. It stays
 // captured and queryable (with `map_unavailable_reason` and `webgl_status`
-// intact), just not competing with real breakage on an error-level list. Only
-// MapLibre's handled failure is in this bucket: three.js's
-// `THREE.WebGLRenderer: Error creating WebGL context.` is classified `unknown`
-// and stays error-level, because nothing catches it — it throws out of the MCP
-// playground's mount effect, which takes the React tree down with it. That is
-// breakage, not a degradation, and must not inherit this severity.
+// intact), just not competing with real breakage on an error-level list.
+//
+// three.js's `THREE.WebGLRenderer: Error creating WebGL context.` was pointedly
+// NOT in this bucket while nothing caught it: it threw out of an `/mcp` mount
+// effect and took the React tree down, which is breakage and had to stay
+// error-level. #2401 removed that premise — both `/mcp` scenes now mount behind
+// `useThreeScene`, degrade to a static panel, and report once as a HANDLED
+// exception — so #2458 folds those wordings into `webgl_unavailable` (see
+// `isThreeContextRefusal` in ./webgl-unavailable.ts) and they inherit this severity
+// with it. If a WebGLRenderer is ever constructed outside that guard again, the
+// throw would arrive here benign; the guard is the thing keeping this honest.
 const BENIGN_ERROR_KINDS = new Set<string>([
   'network_unavailable', 'cancelled', 'webgl_unavailable',
 ]);
@@ -496,15 +501,34 @@ const downgradeBenignExceptions = (
 
 // The browser told us it was offline when the fetch failed, so the failure is
 // definitionally user-side and there is nothing on our end to act on. Requires
-// BOTH signals: `online === false` alone could accompany an unrelated bug, and
-// `network_unavailable` alone may well be ours (a dead CDN edge reads the same
-// to an online client). Capture sites set `online` from `navigator.onLine`.
+// ALL THREE signals: `online === false` alone could accompany an unrelated bug,
+// and `network_unavailable` alone may well be ours (a dead CDN edge reads the
+// same to an online client). Capture sites set `online` from `navigator.onLine`.
+//
+// The third is the frameless gate, and it closes a case that was live rather
+// than hypothetical (#2410). `network_unavailable`'s doc comment in
+// ./load-errors.ts rests on these strings originating INSIDE `fetch()` and so
+// arriving with an EMPTY stack — but nothing enforced that, and the reproduction
+// confirmed the drop fired just as readily on an exception carrying our own
+// frames. A stack of ours is positive evidence that the throw happened in our
+// code, whatever `navigator.onLine` said at the time, and deleting that is
+// irreversible. Same `frameCount === 0` shape the two noise-filter arms above
+// use, for the same reason.
+//
+// An ABSENT or empty `$exception_list` keeps the event: an irreversible drop
+// must require positive evidence of its premise, never the mere absence of
+// counter-evidence. The production shape from #1903 — one entry, no
+// `stacktrace` key at all — is frameless and still drops.
+const isFramelessException = (list: unknown): boolean =>
+  Array.isArray(list) && list.length > 0 && list.every((entry) => frameCount(entry) === 0);
+
 const isOfflineNetworkFailure = (
   event: { event?: string; properties?: Record<string, unknown> },
 ): boolean =>
   event.event === '$exception' &&
   event.properties?.error_kind === 'network_unavailable' &&
-  event.properties?.online === false;
+  event.properties?.online === false &&
+  isFramelessException(event.properties?.$exception_list);
 
 // `before_send` shape: (event | null) => (event | null). Returning null drops
 // the event (noise filter above); otherwise we mutate properties in place,

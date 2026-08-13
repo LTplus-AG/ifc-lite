@@ -9,7 +9,7 @@ import {
   shouldRouteMeshTransparent,
   shouldRouteBatchTransparent,
   splitVisibleIdsByPromotion,
-} from './overlay-routing.ts';
+} from './overlay-routing.js';
 
 type Overrides = Map<number, [number, number, number, number]>;
 

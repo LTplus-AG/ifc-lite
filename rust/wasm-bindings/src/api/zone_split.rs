@@ -64,6 +64,7 @@ pub struct ZoneSplitJs {
     pieces: Vec<ZonePieceJs>,
     whole_volume: f64,
     sum_error_rel: f64,
+    remainder_failed: bool,
 }
 
 #[wasm_bindgen]
@@ -100,6 +101,17 @@ impl ZoneSplitJs {
     pub fn sum_error_rel(&self) -> f64 {
         self.sum_error_rel
     }
+
+    /// The part of the element inside NO zone could not be built.
+    ///
+    /// Separate from `sumErrorRel` because the two have opposite fixes: a
+    /// raised sum means the zones overlap and want redrawing, while this means
+    /// real volume is MISSING from the result. A caller must refuse the split
+    /// outright rather than publish the zone pieces alone.
+    #[wasm_bindgen(getter, js_name = remainderFailed)]
+    pub fn remainder_failed(&self) -> bool {
+        self.remainder_failed
+    }
 }
 
 /// Split a mesh into one closed solid per zone, plus the remainder.
@@ -110,12 +122,14 @@ impl ZoneSplitJs {
 /// (matching the viewer's `Zone.size`) and the rotation is radians about the
 /// vertical axis. A trailing partial zone is ignored rather than guessed at.
 ///
-/// A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is
-/// non-zero: it then takes that many `[x, z]` pairs from `footprints`, in
-/// order, and uses the 7-tuple only for its vertical extent
-/// (`cy +/- sy/2`). The footprint must be CONVEX; the viewer gates that on
-/// import, because a concave polygon fans into overlapping triangles and would
-/// cut wrong rather than fail. Passing empty arrays keeps every zone a box.
+/// A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is at
+/// least 3: it then takes that many `[x, z]` pairs from `footprints`, in order,
+/// and uses the 7-tuple only for its vertical extent (`cy +/- sy/2`). The
+/// footprint must be CONVEX; the viewer gates that on import, because a concave
+/// polygon fans into overlapping triangles and would cut wrong rather than
+/// fail. A count of 1 or 2 is not a polygon: it still consumes its pairs, so
+/// later zones stay aligned, and leaves that zone a box. Passing empty arrays
+/// keeps every zone a box.
 ///
 /// The caller must have established that the mesh is a closed orientable solid
 /// first, exactly as it must before quoting a volume at all (#1891/#1993): a
@@ -172,18 +186,24 @@ pub fn split_mesh_by_zones_js(
         .enumerate()
         .map(|(i, z)| {
             let points = counts.get(i).copied().unwrap_or(0) as usize;
-            let start = cursor * 2;
-            let end = start + points * 2;
-            cursor += points;
+            // CHECKED, because `usize` is 32 bits on wasm32 and `points` comes
+            // from a u32: `points * 2` can wrap in a release build, and a
+            // wrapped end then satisfies the bounds test and panics on the
+            // slice. Bounds-checking the arithmetic is what makes the fallback
+            // below actually a fallback.
+            let span = points.checked_mul(2);
+            let start = cursor.checked_mul(2);
+            let slice = match (start, span) {
+                (Some(s), Some(n)) => s.checked_add(n).and_then(|e| footprints.get(s..e)),
+                _ => None,
+            };
+            cursor = cursor.saturating_add(points);
             // A count that runs past the buffer is a caller bug; falling back to
             // the box rather than panicking keeps one malformed zone from
             // taking down the whole split.
-            if points >= 3 && end <= footprints.len() {
+            if let (true, Some(slice)) = (points >= 3, slice) {
                 ZoneShape::Prism {
-                    footprint: footprints[start..end]
-                        .chunks_exact(2)
-                        .map(|p| [p[0], p[1]])
-                        .collect(),
+                    footprint: slice.chunks_exact(2).map(|p| [p[0], p[1]]).collect(),
                     min_y: z[1] - z[4] / 2.0,
                     max_y: z[1] + z[4] / 2.0,
                 }
@@ -199,6 +219,7 @@ pub fn split_mesh_by_zones_js(
 
     let split = split_mesh_by_zones(&tris, &shapes);
     let sum_error_rel = split.sum_error_rel();
+    let remainder_failed = split.remainder_failed;
     let pieces = split
         .pieces
         .into_iter()
@@ -225,5 +246,6 @@ pub fn split_mesh_by_zones_js(
         pieces,
         whole_volume: split.whole_volume,
         sum_error_rel,
+        remainder_failed,
     }
 }

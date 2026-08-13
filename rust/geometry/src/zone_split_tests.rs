@@ -294,6 +294,16 @@ fn oriented_key(t: &Tri) -> String {
         .join("|")
 }
 
+/// The first face whose opposite winding is also present, for a failure message
+/// that points at the membrane instead of at triangle zero.
+fn first_membrane_face(tris: &[Tri]) -> Option<Tri> {
+    use std::collections::HashSet;
+    let forward: HashSet<String> = tris.iter().map(oriented_key).collect();
+    tris.iter()
+        .find(|t| forward.contains(&oriented_key(&[t[0], t[2], t[1]])))
+        .copied()
+}
+
 /// Faces that appear both ways round in one solid: a zero-volume membrane.
 fn back_to_back_pairs(tris: &[Tri]) -> usize {
     use std::collections::HashSet;
@@ -325,15 +335,16 @@ fn a_tiling_leaves_no_membrane_inside_the_remainder() {
         .find(|p| p.zone.is_none())
         .expect("the wall's x = 4..6 tail must survive as the remainder");
     assert!((remainder.volume - 2.0).abs() < EPS, "remainder volume {}", remainder.volume);
+    let membranes = back_to_back_pairs(&remainder.tris);
     assert_eq!(
-        back_to_back_pairs(&remainder.tris),
+        membranes,
         0,
         "the remainder carries {} membrane faces, e.g. {:?}",
-        back_to_back_pairs(&remainder.tris),
-        remainder.tris.iter().find(|t| {
-            let flipped = [t[0], t[2], t[1]];
-            back_to_back_pairs(&[**t, flipped]) > 0
-        }),
+        membranes,
+        // The FIRST triangle whose flip is also present, rather than the first
+        // triangle of the piece: a message that always names triangle 0 tells
+        // the next reader nothing about where the membrane is.
+        first_membrane_face(&remainder.tris),
     );
 }
 

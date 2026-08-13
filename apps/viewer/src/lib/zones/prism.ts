@@ -55,8 +55,6 @@
  * measured number for a tidier one.
  */
 
-import type { ElementMeshPiece } from './apportionment-clip.js';
-
 /** A point of a footprint: world `[x, z]` metres. Y is the extrusion axis. */
 export type FootprintPoint = readonly [x: number, z: number];
 
@@ -103,19 +101,29 @@ export function isConvexFootprint(poly: readonly FootprintPoint[]): boolean {
   if (poly.length < 3) return false;
   if (!poly.every((p) => Number.isFinite(p[0]) && Number.isFinite(p[1]))) return false;
   let sign = 0;
+  let turn = 0;
   for (let i = 0; i < poly.length; i++) {
     const a = poly[i];
     const b = poly[(i + 1) % poly.length];
     const c = poly[(i + 2) % poly.length];
     const cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]);
+    const dot = (b[0] - a[0]) * (c[0] - b[0]) + (b[1] - a[1]) * (c[1] - b[1]);
+    turn += Math.atan2(cross, dot);
     if (Math.abs(cross) < 1e-12) continue;
     const s = cross > 0 ? 1 : -1;
     if (sign === 0) sign = s;
     else if (s !== sign) return false;
   }
-  // All cross products vanished: the "polygon" is a line, which has no area and
-  // cannot contain anything.
-  return sign !== 0;
+  // `sign !== 0`: all cross products vanished, so the "polygon" is a line, which
+  // has no area and cannot contain anything.
+  //
+  // The TURNING NUMBER is what makes this a self-intersection test rather than
+  // only a convexity test. A star polygon (a pentagram traced point to point)
+  // turns the same way at every vertex, so the sign check alone accepts it,
+  // and `trapezoidsOfFootprint` then finds more than two spanning edges in a
+  // strip and silently reports the volume of the HULL. A simple polygon turns
+  // exactly once; a star turns twice or more.
+  return sign !== 0 && Math.abs(Math.abs(turn) - 2 * Math.PI) < 1e-6;
 }
 
 /** Axis-aligned bounds of a footprint, `[minX, minZ, maxX, maxZ]`. */
@@ -274,186 +282,8 @@ export function footprintOverlapsRect(
   return true;
 }
 
-/** Scratch polygons. A triangle clipped by six planes has at most nine
- *  vertices; twelve is headroom, and module scope keeps the loop allocation
- *  free, as in the box path. */
-const SCRATCH_A = new Float64Array(12 * 3);
-const SCRATCH_B = new Float64Array(12 * 3);
-
-/**
- * Clip a polygon against `nx*x + ny*y + nz*z <= d`, writing to `dst`.
- *
- * The general-plane counterpart of the box path's axis-aligned clip. The edge
- * parameter is clamped behind a denominator guard for the same reason it is
- * there: without it a near-coincident plane extrapolates the cut vertex off the
- * end of the edge (#1155).
- */
-function clipPlane(
-  src: Float64Array,
-  srcCount: number,
-  dst: Float64Array,
-  nx: number,
-  ny: number,
-  nz: number,
-  d: number,
-): number {
-  let out = 0;
-  for (let i = 0; i < srcCount; i++) {
-    const ai = i * 3;
-    const bi = ((i + 1) % srcCount) * 3;
-    const da = d - (nx * src[ai] + ny * src[ai + 1] + nz * src[ai + 2]);
-    const db = d - (nx * src[bi] + ny * src[bi + 1] + nz * src[bi + 2]);
-    if (da >= 0) {
-      dst[out * 3] = src[ai];
-      dst[out * 3 + 1] = src[ai + 1];
-      dst[out * 3 + 2] = src[ai + 2];
-      out++;
-    }
-    if ((da > 0 && db < 0) || (da < 0 && db > 0)) {
-      const denom = da - db;
-      let t = Math.abs(denom) > 1e-12 ? da / denom : 0;
-      if (!(t > 0)) t = 0;
-      else if (t > 1) t = 1;
-      dst[out * 3] = src[ai] + (src[bi] - src[ai]) * t;
-      dst[out * 3 + 1] = src[ai + 1] + (src[bi + 1] - src[ai + 1]) * t;
-      dst[out * 3 + 2] = src[ai + 2] + (src[bi + 2] - src[ai + 2]) * t;
-      out++;
-    }
-  }
-  return out;
-}
-
-/** Fan-triangulate and accumulate `a.x * f(centroid)`, where `f` is the linear
- *  weight of the region this polygon was clipped into. */
-function accumulate(
-  poly: Float64Array,
-  count: number,
-  constant: number,
-  perZ: number,
-  perX: number,
-): number {
-  if (count < 3) return 0;
-  let sum = 0;
-  const p0x = poly[0];
-  const p0y = poly[1];
-  const p0z = poly[2];
-  for (let i = 1; i + 1 < count; i++) {
-    const ii = i * 3;
-    const ji = (i + 1) * 3;
-    const uy = poly[ii + 1] - p0y;
-    const uz = poly[ii + 2] - p0z;
-    const vy = poly[ji + 1] - p0y;
-    const vz = poly[ji + 2] - p0z;
-    const ax = 0.5 * (uy * vz - uz * vy);
-    if (ax === 0) continue;
-    const cx = (p0x + poly[ii] + poly[ji]) / 3;
-    const cz = (p0z + poly[ii + 2] + poly[ji + 2]) / 3;
-    sum += ax * (constant + perX * cx + perZ * cz);
-  }
-  return sum;
-}
-
-/** Integrate one trapezoid's contribution over one already-transformed
- *  triangle held in `SCRATCH_A`. */
-function accumulateTrapezoid(trap: Trapezoid, minY: number, maxY: number): number {
-  let count = clipPlane(SCRATCH_A, 3, SCRATCH_B, 0, 1, 0, maxY);
-  if (count < 3) return 0;
-  count = clipPlane(SCRATCH_B, count, SCRATCH_A, 0, -1, 0, -minY);
-  if (count < 3) return 0;
-  count = clipPlane(SCRATCH_A, count, SCRATCH_B, 0, 0, 1, trap.z1);
-  if (count < 3) return 0;
-  count = clipPlane(SCRATCH_B, count, SCRATCH_A, 0, 0, -1, -trap.z0);
-  if (count < 3) return 0;
-
-  // Keep only x >= lo(z), i.e. -(x - bLo*z) <= -aLo. Below it the field is
-  // zero, so the region contributes nothing at all.
-  count = clipPlane(SCRATCH_A, count, SCRATCH_B, -1, 0, trap.bLo, -trap.aLo);
-  if (count < 3) return 0;
-
-  // Split at hi(z): inside the chord the weight is `x - lo(z)`; beyond it the
-  // weight is the whole chord width `hi(z) - lo(z)`, which is how a face on the
-  // far side accounts for the material it shadows. A polygon lying exactly on
-  // the split plane must go to ONE side: Sutherland-Hodgman would keep it whole
-  // on both and double that face's contribution, and a face sitting precisely
-  // on a zone boundary is the common case in a tiling plan, not an edge case.
-  let minD = Infinity;
-  let maxD = -Infinity;
-  for (let i = 0; i < count; i++) {
-    const d = SCRATCH_B[i * 3] - (trap.aHi + trap.bHi * SCRATCH_B[i * 3 + 2]);
-    if (d < minD) minD = d;
-    if (d > maxD) maxD = d;
-  }
-  const inside = (): number => accumulate(SCRATCH_A, count, -trap.aLo, -trap.bLo, 1);
-  if (maxD <= 0) {
-    SCRATCH_A.set(SCRATCH_B.subarray(0, count * 3));
-    return inside();
-  }
-  if (minD >= 0) {
-    SCRATCH_A.set(SCRATCH_B.subarray(0, count * 3));
-    return accumulate(SCRATCH_A, count, trap.aHi - trap.aLo, trap.bHi - trap.bLo, 0);
-  }
-  const near = clipPlane(SCRATCH_B, count, SCRATCH_A, 1, 0, -trap.bHi, trap.aHi);
-  let sum = accumulate(SCRATCH_A, near, -trap.aLo, -trap.bLo, 1);
-  const far = clipPlane(SCRATCH_B, count, SCRATCH_A, -1, 0, trap.bHi, -trap.aHi);
-  sum += accumulate(SCRATCH_A, far, trap.aHi - trap.aLo, trap.bHi - trap.bLo, 0);
-  return sum;
-}
-
-/**
- * Volume (cubic metres) of the closed mesh `pieces` inside `prism`.
- *
- * Signed exactly as the mesh's own volume is, like
- * `clippedVolumeForZone`: a globally inward-wound mesh yields a negative number
- * here AND a negative whole volume, and their ratio is still right.
- */
-export function clippedVolumeForPrism(pieces: readonly ElementMeshPiece[], prism: CompiledPrism): number {
-  if (prism.traps.length === 0) return 0;
-  let vol = 0;
-  for (const piece of pieces) {
-    const positions = piece.positions;
-    const indices = piece.indices;
-    const ox = piece.origin?.[0] ?? 0;
-    const oy = piece.origin?.[1] ?? 0;
-    const oz = piece.origin?.[2] ?? 0;
-
-    for (let t = 0; t + 2 < indices.length; t += 3) {
-      let degenerate = false;
-      let allAboveY = true, allBelowY = true, allBelowX = true, allBelowZ = true, allAboveZ = true;
-      for (let k = 0; k < 3; k++) {
-        const vi = indices[t + k] * 3;
-        const x = positions[vi] + ox;
-        const y = positions[vi + 1] + oy;
-        const z = positions[vi + 2] + oz;
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-          degenerate = true;
-          break;
-        }
-        SCRATCH_A[k * 3] = x;
-        SCRATCH_A[k * 3 + 1] = y;
-        SCRATCH_A[k * 3 + 2] = z;
-        if (y < prism.maxY) allAboveY = false;
-        if (y > prism.minY) allBelowY = false;
-        if (x > prism.minX) allBelowX = false;
-        if (z > prism.minZ) allBelowZ = false;
-        if (z < prism.maxZ) allAboveZ = false;
-      }
-      // Nothing is rejected for lying beyond maxX: that region carries the
-      // full-chord weight and is exactly how a far face accounts for the
-      // material between it and the prism.
-      if (degenerate || allAboveY || allBelowY || allBelowX || allBelowZ || allAboveZ) continue;
-
-      const x0 = SCRATCH_A[0], y0 = SCRATCH_A[1], z0 = SCRATCH_A[2];
-      const x1 = SCRATCH_A[3], y1 = SCRATCH_A[4], z1 = SCRATCH_A[5];
-      const x2 = SCRATCH_A[6], y2 = SCRATCH_A[7], z2 = SCRATCH_A[8];
-      for (const trap of prism.traps) {
-        // Each trapezoid clips the ORIGINAL triangle: the scratch buffer is
-        // overwritten by the previous strip's clipping.
-        SCRATCH_A[0] = x0; SCRATCH_A[1] = y0; SCRATCH_A[2] = z0;
-        SCRATCH_A[3] = x1; SCRATCH_A[4] = y1; SCRATCH_A[5] = z1;
-        SCRATCH_A[6] = x2; SCRATCH_A[7] = y2; SCRATCH_A[8] = z2;
-        vol += accumulateTrapezoid(trap, prism.minY, prism.maxY);
-      }
-    }
-  }
-  return vol;
-}
+// The integrator lives in `./prism-clip.js` (the same seam `apportionment.ts`
+// has with `apportionment-clip.ts`). Re-exported so a caller asks this module
+// for "the volume of an element inside a prism" without needing to know which
+// half of the pair computes it.
+export { clippedVolumeForPrism } from './prism-clip.js';

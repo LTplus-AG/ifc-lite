@@ -66,8 +66,24 @@ export interface ZoneWriteBackResult {
   /** Model ids that gained properties. */
   modelIds: string[];
   elapsedMs: number;
-  /** Set when nothing was written because the session forbids editing. */
-  blocked: 'collab-role' | null;
+  /** Set when nothing was written, and why. */
+  blocked: 'collab-role' | 'duplicate-set-name' | null;
+}
+
+/**
+ * Is another loaded zone set using this one's display name?
+ *
+ * Both set names carry the DISPLAY name, and `ZoneSet.name` is unique only by
+ * convention (`types.ts`: ids are what disambiguate). Two sets sharing a name
+ * would write to the same property-set name and, worse, one's sweep would
+ * delete the other's quantity sets, because a quantity set is matched by the
+ * bracket text of the property set that names it. Refusing is better than
+ * either silently merging two takt plans or burying an id in the name a user
+ * reads in another tool.
+ */
+function collidesByName(zoneSet: ZoneSet): boolean {
+  return useViewerStore.getState().zoneSets
+    .some((other) => other.id !== zoneSet.id && other.name.trim() === zoneSet.name.trim());
 }
 
 const EMPTY: ZoneWriteBackResult = {
@@ -159,6 +175,7 @@ function zoneSetsOnElement(
   context: ModelContext,
   expressId: number,
   zoneSetId: string,
+  knownQsets?: ReturnType<typeof quantitySetsFor>,
 ): { psets: string[]; qsets: string[] } {
   const psets: string[] = [];
   const brackets: string[] = [];
@@ -169,8 +186,11 @@ function zoneSetsOnElement(
     psets.push(pset.name);
     brackets.push(pset.name.slice(`${ZONE_SET_NAME_PREFIX} [`.length, -1));
   }
-  const qsets = context.view
-    .getQuantitiesForEntity(expressId)
+  // Reuses the caller's read when it has one. Each of these is an on-demand
+  // extraction, and the write path already reads the element's quantity sets to
+  // resolve its declared basis, so asking again would double the run's cost for
+  // an answer that cannot have changed in between.
+  const qsets = (knownQsets ?? quantitySetsFor(context, expressId))
     .map((q) => q.name)
     .filter((name) => brackets.some((b) => name.startsWith(zoneQuantitySetPrefix(b))));
   return { psets, qsets };
@@ -187,8 +207,13 @@ function zoneSetsOnElement(
  * survives the re-run. Deleting first makes each run's output exactly what that
  * run computed.
  */
-function sweepZoneSets(context: ModelContext, expressId: number, zoneSetId: string): number {
-  const { psets, qsets } = zoneSetsOnElement(context, expressId, zoneSetId);
+function sweepZoneSets(
+  context: ModelContext,
+  expressId: number,
+  zoneSetId: string,
+  knownQsets?: ReturnType<typeof quantitySetsFor>,
+): number {
+  const { psets, qsets } = zoneSetsOnElement(context, expressId, zoneSetId, knownQsets);
   for (const name of psets) context.view.deletePropertySet(expressId, name);
   for (const name of qsets) context.view.deleteQuantitySet(expressId, name);
   return psets.length + qsets.length;
@@ -274,6 +299,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
   // difference from the per-mutation actions' own gate: a read-only collab
   // participant must not accumulate local edits no peer will ever see.
   if (!state.canCollabEdit()) return { ...EMPTY, blocked: 'collab-role' };
+  if (collidesByName(zoneSet)) return { ...EMPTY, blocked: 'duplicate-set-name' };
 
   const t0 = performance.now();
   const zoneNameById = new Map(zoneSet.zones.map((z) => [z.id, z.name]));
@@ -345,7 +371,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     // over a same-named set that exists in the FILE, so without this a re-run
     // keeps rows it did not compute: a zone the element no longer reaches, or a
     // `VolumeBasis` label standing beside a fresh `VolumeUnavailable`.
-    if (sweepZoneSets(context, ref.expressId, zoneSet.id) > 0) touchedModels.add(ref.modelId);
+    if (sweepZoneSets(context, ref.expressId, zoneSet.id, qsets) > 0) touchedModels.add(ref.modelId);
 
     context.view.createPropertySet(
       ref.expressId,
@@ -394,6 +420,7 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
 export function removeZoneWriteBack(zoneSet: ZoneSet): { removed: number; modelIds: string[] } {
   const state = useViewerStore.getState();
   if (!state.canCollabEdit()) return { removed: 0, modelIds: [] };
+  if (collidesByName(zoneSet)) return { removed: 0, modelIds: [] };
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();
   let removed = 0;
@@ -405,6 +432,29 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): { removed: number; modelI
     if (sweepZoneSets(context, ref.expressId, zoneSet.id) === 0) continue;
     touchedModels.add(ref.modelId);
     removed++;
+  }
+
+  // The assignment cache holds only elements the renderer has geometry for, so
+  // an element whose geometry was released to reclaim memory (#2183) has left
+  // it while its property set has not. Every element THIS SESSION wrote to is
+  // still named in its model's mutation history, which is an in-memory walk
+  // with no extraction behind it, so the two together cover everything the
+  // feature can have produced. What remains out of reach is an element written
+  // in an EARLIER session whose geometry is not loaded now; loading the model's
+  // geometry brings it back into the first pass.
+  for (const [modelId, view] of state.mutationViews) {
+    const context = contextFor(modelId, contexts);
+    if (!context) continue;
+    const seen = new Set<number>();
+    for (const mutation of view.getMutations()) {
+      if (!mutation.psetName?.startsWith(ZONE_SET_NAME_PREFIX)
+        && !mutation.psetName?.startsWith(ZONE_QUANTITY_SET_NAME_PREFIX)) continue;
+      if (seen.has(mutation.entityId)) continue;
+      seen.add(mutation.entityId);
+      if (sweepZoneSets(context, mutation.entityId, zoneSet.id) === 0) continue;
+      touchedModels.add(modelId);
+      removed++;
+    }
   }
 
   const modelIds = [...touchedModels];

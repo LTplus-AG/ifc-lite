@@ -1575,6 +1575,15 @@ export class ZoneSplitJs {
     piece(index: number): ZonePieceJs | undefined;
     readonly pieceCount: number;
     /**
+     * The part of the element inside NO zone could not be built.
+     *
+     * Separate from `sumErrorRel` because the two have opposite fixes: a
+     * raised sum means the zones overlap and want redrawing, while this means
+     * real volume is MISSING from the result. A caller must refuse the split
+     * outright rather than publish the zone pieces alone.
+     */
+    readonly remainderFailed: boolean;
+    /**
      * How far the pieces are from summing to the whole, relative.
      *
      * The invariant #2508 puts above everything else here. Exposed rather than
@@ -1654,12 +1663,14 @@ export function resolve2d(a: Contours2D): Contours2D;
  * (matching the viewer's `Zone.size`) and the rotation is radians about the
  * vertical axis. A trailing partial zone is ignored rather than guessed at.
  *
- * A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is
- * non-zero: it then takes that many `[x, z]` pairs from `footprints`, in
- * order, and uses the 7-tuple only for its vertical extent
- * (`cy +/- sy/2`). The footprint must be CONVEX; the viewer gates that on
- * import, because a concave polygon fans into overlapping triangles and would
- * cut wrong rather than fail. Passing empty arrays keeps every zone a box.
+ * A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is at
+ * least 3: it then takes that many `[x, z]` pairs from `footprints`, in order,
+ * and uses the 7-tuple only for its vertical extent (`cy +/- sy/2`). The
+ * footprint must be CONVEX; the viewer gates that on import, because a concave
+ * polygon fans into overlapping triangles and would cut wrong rather than
+ * fail. A count of 1 or 2 is not a polygon: it still consumes its pairs, so
+ * later zones stay aligned, and leaves that zone a box. Passing empty arrays
+ * keeps every zone a box.
  *
  * The caller must have established that the mesh is a closed orientable solid
  * first, exactly as it must before quoting a volume at all (#1891/#1993): a
@@ -1965,6 +1976,7 @@ export interface InitOutput {
     readonly zonepiecejs_zoneIndex: (a: number) => number;
     readonly zonesplitjs_piece: (a: number, b: number) => number;
     readonly zonesplitjs_pieceCount: (a: number) => number;
+    readonly zonesplitjs_remainderFailed: (a: number) => number;
     readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;

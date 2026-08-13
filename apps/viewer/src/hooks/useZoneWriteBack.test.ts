@@ -261,13 +261,18 @@ describe('zone write-back: what reaches the model', () => {
     // An `unqualified` run writes volume quantities with no qualifying name.
     // Read back on the next run they would look like the element's declared
     // total, so each run would apportion the previous run's shares again.
-    applyZoneWriteBack(ZONE_SET, 'unqualified');
-    const first = qsetOn(BEAM_ID, zoneQuantitySetName('Takt areas', 'unqualified'));
-    applyZoneWriteBack(ZONE_SET, 'unqualified');
-    const second = qsetOn(BEAM_ID, zoneQuantitySetName('Takt areas', 'unqualified'));
+    // The WALL on its declared NET basis: the beam declares no quantities at
+    // all, so any declared-basis run refuses it and both reads would be null -
+    // the assertion would then hold for a run that wrote nothing.
+    applyZoneWriteBack(ZONE_SET, 'net');
+    const first = qsetOn(WALL_ID, zoneQuantitySetName('Takt areas', 'net'));
+    assert.ok(first && first.quantities.length > 0, 'the first run wrote nothing to compare');
+    applyZoneWriteBack(ZONE_SET, 'net');
+    const second = qsetOn(WALL_ID, zoneQuantitySetName('Takt areas', 'net'));
+    assert.ok(second);
     assert.deepEqual(
-      second?.quantities.map((q) => q.value) ?? null,
-      first?.quantities.map((q) => q.value) ?? null,
+      second.quantities.map((q) => q.value),
+      first.quantities.map((q) => q.value),
     );
   });
 
@@ -372,6 +377,32 @@ describe('zone write-back: what a later run has to clean up', () => {
     const { removed } = removeZoneWriteBack(ZONE_SET);
     assert.equal(removed, 2);
     assert.equal(psetOn(WALL_ID, zonePropertySetName('Takt areas')), null);
+  });
+
+  it('refuses to write when another zone set has the same display name', () => {
+    // Both set names carry the display name, so two sets sharing one would
+    // write to the same property set and each sweep would clear the other's
+    // quantity sets.
+    useViewerStore.setState({
+      zoneSets: [ZONE_SET, { ...ZONE_SET, id: 'set-2' }],
+    } as never);
+    const result = applyZoneWriteBack(ZONE_SET, 'mesh');
+    assert.equal(result.blocked, 'duplicate-set-name');
+    assert.equal(result.summary.written, 0);
+    assert.equal(view(), null, 'nothing was written at all');
+  });
+
+  it('removes from an element the assignment cache no longer holds', () => {
+    // Geometry released to reclaim memory (#2183) drops the element from
+    // `zoneAssignments`, but not its property set. The session's own mutation
+    // history still names every element it wrote to.
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+    useViewerStore.setState({ zoneAssignments: new Map() } as never);
+
+    const { removed } = removeZoneWriteBack(ZONE_SET);
+    assert.equal(removed, 2);
+    assert.equal(psetOn(WALL_ID, zonePropertySetName('Takt areas')), null);
+    assert.equal(psetOn(BEAM_ID, zonePropertySetName('Takt areas')), null);
   });
 
   it('does not touch another zone set\'s output', () => {

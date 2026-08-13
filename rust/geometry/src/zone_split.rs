@@ -171,6 +171,16 @@ pub struct ZoneSplit {
     /// Enclosed volume of the input, so a caller can check the pieces against
     /// it without re-deriving it from a different producer.
     pub whole_volume: f64,
+    /// The remainder could not be built: the arrangement was left
+    /// non-conforming and `difference_all` refused rather than risk an
+    /// over- or under-cut.
+    ///
+    /// Reported SEPARATELY from [`ZoneSplit::sum_error_rel`] because the two
+    /// have opposite fixes. A raised sum means the zones overlap and the user
+    /// should redraw them; this means the part of the element inside NO zone is
+    /// missing from the result, which a caller must refuse outright -- publishing
+    /// the zone pieces alone silently deletes real volume from the model.
+    pub remainder_failed: bool,
 }
 
 impl ZoneSplit {
@@ -220,6 +230,7 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
 
     let mut pieces = Vec::new();
     let mut reached: Vec<Vec<Tri>> = Vec::new();
+    let mut remainder_failed = false;
     for (index, zone) in zones.iter().enumerate() {
         let (lo, hi) = zone.world_aabb();
         if (0..3).any(|k| lo[k] > host_hi[k] || hi[k] < host_lo[k]) {
@@ -256,19 +267,26 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         // co-oriented duplicate, so the difference sees one clean operand.
         let operands: Vec<&[Tri]> = reached.iter().map(|t| t.as_slice()).collect();
         let (cutter, _conforming) = union_all(&operands);
-        if let Some(rest) = difference_all(&host, &[&cutter]) {
-            let volume = signed_volume_of(&rest);
-            if !rest.is_empty() && volume > negligible {
-                pieces.push(ZonePiece { zone: None, tris: rest, volume });
+        match difference_all(&host, &[&cutter]) {
+            Some(rest) => {
+                let volume = signed_volume_of(&rest);
+                if !rest.is_empty() && volume > negligible {
+                    pieces.push(ZonePiece { zone: None, tris: rest, volume });
+                }
             }
+            // Said out loud rather than left to `sum_error_rel`, which a caller
+            // cannot tell apart from overlapping zones and which would point
+            // them at redrawing zones that are not the problem.
+            None => remainder_failed = true,
         }
     } else {
         // No zone reaches the element at all, so all of it is the remainder.
         // Returning nothing here would state that the element vanished.
-        pieces.push(ZonePiece { zone: None, tris: host, volume: whole_volume });
+        let volume = whole_volume;
+        pieces.push(ZonePiece { zone: None, tris: host, volume });
     }
 
-    ZoneSplit { pieces, whole_volume }
+    ZoneSplit { pieces, whole_volume, remainder_failed }
 }
 
 fn tris_aabb(tris: &[Tri]) -> ([f64; 3], [f64; 3]) {

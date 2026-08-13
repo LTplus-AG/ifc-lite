@@ -68,6 +68,13 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
               toast.error('Your role in this session is read-only, so nothing was written');
               return;
             }
+            if (result.blocked === 'duplicate-set-name') {
+              // Both set names carry the display name, so two sets sharing one
+              // would write to the same place and each would clear the other's
+              // numbers. Renaming is the user's call, not this run's.
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before writing.`);
+              return;
+            }
             if (result.summary.written === 0) {
               toast.info('No element is in a zone of this set, so nothing was written');
               return;

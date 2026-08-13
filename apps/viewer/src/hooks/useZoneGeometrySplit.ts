@@ -42,7 +42,14 @@ import { getGlobalRenderer } from './useBCF.js';
 import { buildMergedGLB } from '@/lib/geo/cesium-glb';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { splitElementByZones, type SplitMeshByZonesFn } from '@/lib/zones/split.js';
-import { volumeGateVerdict, PROVED_VOLUME_AGREEMENT_REL, type ZoneSet } from '@/lib/zones';
+import {
+  compileZone,
+  isPointInCompiledZone,
+  volumeGateVerdict,
+  PROVED_VOLUME_AGREEMENT_REL,
+  type Zone,
+  type ZoneSet,
+} from '@/lib/zones';
 import { gatherProvedVolumes } from './useZoneApportionment.js';
 
 /**
@@ -76,6 +83,42 @@ export interface ZoneGeometryExport {
 export type ZoneGeometryExportResult =
   | { ok: true; summary: ZoneGeometryExport }
   | { ok: false; reason: 'no-binding' | 'no-geometry' | 'empty-zone' };
+
+/**
+ * Is every vertex of the element inside `zone`?
+ *
+ * Tested on the element's own AABB corners rather than on every vertex: the box
+ * (or prism) is convex, so a bounding box entirely inside it contains only
+ * points inside it. Conservative in the safe direction -- an element whose AABB
+ * pokes out while its geometry does not is merely cut instead of copied, which
+ * costs time and changes no number.
+ */
+function aabbInsideZone(pieces: readonly MeshData[], zone: Zone): boolean {
+  const compiled = compileZone(zone);
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (const piece of pieces) {
+    const ox = piece.origin?.[0] ?? 0;
+    const oy = piece.origin?.[1] ?? 0;
+    const oz = piece.origin?.[2] ?? 0;
+    const p = piece.positions;
+    for (let i = 0; i + 2 < p.length; i += 3) {
+      const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
+    }
+  }
+  if (!Number.isFinite(minX)) return false;
+  for (const x of [minX, maxX]) {
+    for (const y of [minY, maxY]) {
+      for (const z of [minZ, maxZ]) {
+        if (!isPointInCompiledZone(x, y, z, compiled)) return false;
+      }
+    }
+  }
+  return true;
+}
 
 /** World-space `MeshData` pieces for one element, or `null`. */
 function meshPiecesFor(globalId: number): MeshData[] | null {
@@ -142,7 +185,15 @@ export function exportZoneGeometry(
       continue;
     }
 
-    if (!assignment.straddles) {
+    // "Does not straddle" is not "wholly inside". v1's straddle flag asks
+    // whether the element penetrates ANOTHER zone by more than a millimetre, so
+    // an element that pokes out of the zone set entirely -- past the end of the
+    // last takt area, over the edge of the top one -- carries no flag at all.
+    // Writing it whole would put geometry from OUTSIDE the section into the
+    // section's file, and the volume total would say so too. Containment is
+    // therefore tested rather than inferred, on the element's own bounds.
+    const inside = assignment.straddles ? false : aabbInsideZone(pieces, zone);
+    if (inside) {
       // Wholly inside: nothing to cut, and nothing to prove either. Its
       // geometry is already the answer.
       meshes.push(...pieces);
@@ -153,7 +204,7 @@ export function exportZoneGeometry(
       continue;
     }
 
-    // A straddler is cut, and only if the mesher proved a single closed solid
+    // Anything else is cut, and only if the mesher proved a single closed solid
     // for it: clipping an open shell yields pieces whose volume is arbitrary
     // rather than approximate. Checked BEFORE the cut, so a refused element
     // costs no clipping at all (30 to 40% of meshed elements in real models do

@@ -1920,6 +1920,16 @@ export class MutablePropertyView {
         case 'DELETE_QUANTITY_SET':
           if (mutation.psetName) {
             this.deleteQuantitySet(mutation.entityId, mutation.psetName);
+            // The marker is recorded even when this view cannot SEE the base
+            // set, unlike the live path. `deleteQuantitySet` only masks a set
+            // the quantity extractor reports, and that extractor is opt-in
+            // (null by default, and several in-tree callers wire the property
+            // one beside it and not it). A replayed deletion is a decision the
+            // origin session already made, so dropping it here would let a
+            // later export regenerate a set the user removed. An inert marker
+            // on a set that does not exist costs a row in the change list;
+            // losing the deletion costs the user's edit.
+            this.deletedQsets.add(`${mutation.entityId}:${mutation.psetName}`);
           }
           break;
 

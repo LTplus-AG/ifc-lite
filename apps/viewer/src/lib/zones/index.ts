@@ -28,10 +28,10 @@ export {
 
 export { assignElementsToZoneSet, assignElementsToZoneSets, STRADDLE_PENETRATION_M } from './assignment.js';
 
-// `prism.ts` is deliberately NOT re-exported here: every consumer of a prism so
-// far is inside this folder (`geometry`, `apportionment`, `persistence`), and
-// an unused re-export is a maintenance liability rather than an affordance.
-// Add one when something outside needs it.
+// `prism.ts` is deliberately NOT re-exported here. Its consumers are this
+// folder (`geometry`, `apportionment`, `persistence`) plus `zonesSlice`, which
+// deep-imports it exactly as it already deep-imports `types` and `persistence`.
+// Re-exporting would widen this barrel for one caller that does not use it.
 
 export {
   generateStoreyZones,

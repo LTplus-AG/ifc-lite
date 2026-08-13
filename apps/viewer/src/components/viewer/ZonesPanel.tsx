@@ -96,11 +96,14 @@ function NumberField({
 }
 
 function ZoneRow({
-  setId, zone, editing, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
+  setId, zone, editing, exporting, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
 }: {
   setId: string;
   zone: Zone;
   editing: boolean;
+  /** A geometry export for THIS zone is running: the control is disabled and
+   *  says so, because the split blocks the main thread for seconds. */
+  exporting: boolean;
   onEdit: () => void;
   onUpdate: (patch: Partial<Omit<Zone, 'id'>>) => void;
   onRemove: () => void;
@@ -139,11 +142,14 @@ function ZoneRow({
           variant="ghost"
           size="icon"
           className="h-6 w-6"
-          title="Export this zone's geometry (straddlers cut at the boundary) as GLB"
+          title={exporting
+            ? 'Cutting this zone\'s geometry, this can take a while'
+            : "Export this zone's geometry (straddlers cut at the boundary) as GLB"}
           aria-label={`Export ${zone.name} geometry`}
+          disabled={exporting}
           onClick={onExportGeometry}
         >
-          <Scissors className="h-3 w-3" />
+          <Scissors className={`h-3 w-3${exporting ? ' animate-pulse' : ''}`} />
         </Button>
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Delete zone" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
@@ -234,6 +240,11 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   const exportZoneSetsJSON = useViewerStore((s) => s.exportZoneSetsJSON);
   const importZoneSetsJSON = useViewerStore((s) => s.importZoneSetsJSON);
   const { exportZone } = useZoneGeometrySplit();
+  // Which zone's geometry export is running, for the disabled state, plus a ref
+  // so a second click is refused in the same tick the first one starts (state
+  // has not re-rendered yet at that point).
+  const [exportingZoneId, setExportingZoneId] = useState<string | null>(null);
+  const exportingRef = useRef(false);
 
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -407,8 +418,26 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     if (count > 0) toast.success(`Selected ${count} element(s)`);
                     else toast.info('No elements in this zone');
                   }}
-                  onExportGeometry={() => {
-                    const result = exportZone(zs, zs.zones.indexOf(zone));
+                  exporting={exportingZoneId === zone.id}
+                  onExportGeometry={async () => {
+                    // The split is seconds of synchronous work (~357 ms per cut
+                    // element, measured), so three things have to happen before
+                    // it starts: mark the zone busy, let the browser PAINT that
+                    // (a state change alone does not, since the handler blocks
+                    // the same frame), and refuse a second click. Without the
+                    // last one a queued click starts a whole second run the
+                    // moment the first returns.
+                    if (exportingRef.current) return;
+                    exportingRef.current = true;
+                    setExportingZoneId(zone.id);
+                    await new Promise((resolve) => setTimeout(resolve, 0));
+                    let result: ReturnType<typeof exportZone>;
+                    try {
+                      result = exportZone(zs, zs.zones.indexOf(zone));
+                    } finally {
+                      exportingRef.current = false;
+                      setExportingZoneId(null);
+                    }
                     if (!result.ok) {
                       toast.error(result.reason === 'no-binding'
                         ? 'The geometry engine in this build cannot split meshes'

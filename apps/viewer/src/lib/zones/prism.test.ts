@@ -82,6 +82,23 @@ describe('footprint validation', () => {
     assert.equal(isConvexFootprint([[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3]]), false);
   });
 
+  it('rejects a self-intersecting star, which turns the same way at every vertex', () => {
+    // A pentagram traced point to point: every turn has the same sign, so a
+    // convexity test built on sign alone accepts it. The sweep would then find
+    // more than two spanning edges in a strip and silently report the volume of
+    // the HULL, which is the shape the user did not draw.
+    const pentagram: FootprintPoint[] = [
+      [0, 1], [0.588, -0.809], [-0.951, 0.309], [0.951, 0.309], [-0.588, -0.809],
+    ];
+    assert.equal(isConvexFootprint(pentagram), false);
+    // The convex pentagon through the same five outer points is still accepted,
+    // so the check rejects the crossing rather than the vertex count.
+    const pentagon: FootprintPoint[] = [
+      [0, 1], [0.951, 0.309], [0.588, -0.809], [-0.588, -0.809], [-0.951, 0.309],
+    ];
+    assert.equal(isConvexFootprint(pentagon), true);
+  });
+
   it('rejects degenerate input rather than treating it as a zone', () => {
     assert.equal(isConvexFootprint([[0, 0], [1, 1]]), false);
     assert.equal(isConvexFootprint([[0, 0], [1, 1], [2, 2]]), false, 'a line has no area');

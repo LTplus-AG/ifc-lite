@@ -46,6 +46,9 @@ export interface ZoneSplitHandle {
   readonly pieceCount: number;
   readonly wholeVolume: number;
   readonly sumErrorRel: number;
+  /** The remainder could not be built. Distinct from a raised `sumErrorRel`:
+   *  that one means the zones overlap, this one means volume is MISSING. */
+  readonly remainderFailed: boolean;
   piece(index: number): ZoneSplitPieceHandle | undefined;
   free(): void;
 }
@@ -202,7 +205,14 @@ export function splitElementByZones(
   const flat = flattenZones(zones);
   const handle = split(positions, indices, flat.zones, flat.footprints, flat.footprintCounts);
   try {
-    if (handle.sumErrorRel > tolerance) return null;
+    // Inverted rather than `> tolerance`, so a NaN report REFUSES: `NaN >
+    // tolerance` is false, and NaN is exactly what a degenerate or unclosed
+    // solid produces, which is the case this gate exists for.
+    if (!(handle.sumErrorRel <= tolerance)) return null;
+    // The part of the element inside no zone could not be built, so the pieces
+    // are not the whole element. Publishing them would delete real volume from
+    // a per-section model while every number left in the result looks right.
+    if (handle.remainderFailed) return null;
     const out: ZoneMeshPiece[] = [];
     for (let i = 0; i < handle.pieceCount; i++) {
       const piece = handle.piece(i);

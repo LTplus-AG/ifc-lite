@@ -35,10 +35,12 @@ const ZONE_SET: ZoneSet = {
   updatedAt: 0,
 };
 
-function mesh(expressId: number): MeshData {
+/** A triangle at `x`, so a fixture can put an element inside a given zone.
+ *  Zone A spans x = -5..5 and zone B x = 5..15. */
+function mesh(expressId: number, x = 0): MeshData {
   return {
     expressId,
-    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    positions: new Float32Array([x, 0, 0, x + 1, 0, 0, x, 1, 0]),
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2]),
     color: [1, 0, 0, 1],
@@ -51,6 +53,7 @@ const split: SplitMeshByZonesFn = () => ({
   pieceCount: 2,
   wholeVolume: 2,
   sumErrorRel: 0,
+  remainderFailed: false,
   piece(index: number) {
     return {
       zoneIndex: index,
@@ -90,7 +93,10 @@ function runExport(zoneIndex: number) {
   const emitted: Array<{ bytes: Uint8Array; filename: string }> = [];
   const result = exportZoneGeometry(ZONE_SET, zoneIndex, {
     split,
-    meshPieces: (globalId) => [mesh(globalId)],
+    // The straddler sits in zone A; the whole element is placed INSIDE zone B,
+    // which is where its assignment says it is. A fixture whose geometry is not
+    // in its own zone would exercise the outside-the-set path by accident.
+    meshPieces: (globalId) => [mesh(globalId, globalId === WHOLE ? 9 : 0)],
     emit: (bytes, filename) => emitted.push({ bytes, filename }),
   });
   return { result, emitted };
@@ -128,6 +134,41 @@ describe('exporting one zone as its own model', () => {
       [...b.emitted[0].bytes.slice(0, 512)],
       'both zones produced byte-identical files, so the piece was not selected by zone',
     );
+  });
+
+  it('cuts an element that does not straddle but reaches outside the zone set', () => {
+    // v1's straddle flag asks whether the element penetrates ANOTHER zone, so
+    // an element hanging off the end of the last takt area carries no flag.
+    // Copied whole, it would put geometry from outside the section into the
+    // section's file.
+    const OUTSIDE = 13;
+    useViewerStore.setState({
+      zoneAssignments: new Map([
+        [OUTSIDE, { 'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] } }],
+      ]) as never,
+      geometryResult: { meshes: [{ expressId: OUTSIDE, geometryVolume: 2 }] } as never,
+    } as never);
+
+    const far: MeshData = {
+      ...mesh(OUTSIDE),
+      // Zone A spans x = -5..5; this reaches x = 900.
+      positions: new Float32Array([0, 0, 0, 900, 0, 0, 0, 1, 0]),
+    } as MeshData;
+    const result = exportZoneGeometry(ZONE_SET, 0, {
+      split,
+      meshPieces: () => [far],
+      emit: () => {},
+    });
+
+    assert.ok(result.ok);
+    assert.equal(result.summary.whole, 0, 'it was copied whole instead of being cut');
+    assert.equal(result.summary.cut, 1);
+  });
+
+  it('still copies an element that IS wholly inside, without cutting it', () => {
+    const { result } = runExport(1);
+    assert.ok(result.ok);
+    assert.equal(result.summary.whole, 1);
   });
 
   it('names the file after the set and the zone', () => {

@@ -209,12 +209,17 @@ const REFUSAL_TEXT: Record<WriteBackRefusal, string> = {
  *  replaces the first - a whole zone's volume vanishing with no error. The
  *  suffix is positional and therefore stable for a given zone order. */
 function disambiguate(names: readonly string[]): string[] {
-  const used = new Map<string, number>();
+  const taken = new Set<string>();
   return names.map((raw) => {
     const base = raw.trim() === '' ? UNNAMED_ZONE : raw.trim();
-    const seen = used.get(base) ?? 0;
-    used.set(base, seen + 1);
-    return seen === 0 ? base : `${base} (${seen + 1})`;
+    let candidate = base;
+    // The suffixed candidate is checked against the names already taken, not
+    // just counted: zones named ['A', 'A', 'A (2)'] would otherwise produce
+    // 'A (2)' twice and lose the third zone's volume, which is the same failure
+    // the plain duplicate would have caused.
+    for (let n = 2; taken.has(candidate); n++) candidate = `${base} (${n})`;
+    taken.add(candidate);
+    return candidate;
   });
 }
 

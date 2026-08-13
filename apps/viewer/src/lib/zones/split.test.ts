@@ -48,7 +48,7 @@ function piece(origin: [number, number, number], offset = 0) {
  *  around it is what the assertions see. */
 function fakeSplit(
   pieces: Array<{ zoneIndex: number; positions: number[]; volume: number }>,
-  options: { wholeVolume?: number; sumErrorRel?: number; onFree?: () => void } = {},
+  options: { wholeVolume?: number; sumErrorRel?: number; remainderFailed?: boolean; onFree?: () => void } = {},
 ): { fn: SplitMeshByZonesFn; calls: Array<{ positions: Float64Array; zones: Float64Array }> } {
   const calls: Array<{ positions: Float64Array; zones: Float64Array }> = [];
   const fn: SplitMeshByZonesFn = (positions, _indices, zones) => {
@@ -57,6 +57,7 @@ function fakeSplit(
       pieceCount: pieces.length,
       wholeVolume: options.wholeVolume ?? 1,
       sumErrorRel: options.sumErrorRel ?? 0,
+      remainderFailed: options.remainderFailed ?? false,
       piece(index: number): ZoneSplitPieceHandle | undefined {
         const p = pieces[index];
         if (!p) return undefined;
@@ -146,6 +147,27 @@ describe('splitElementByZones', () => {
     const { fn } = fakeSplit(
       [{ zoneIndex: 0, positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], volume: 5 }],
       { sumErrorRel: 0.5 },
+    );
+    assert.equal(splitElementByZones(fn, [piece([0, 0, 0])], [ZONE]), null);
+  });
+
+  it('refuses a split whose sum error is NaN rather than publishing it', () => {
+    // `NaN > tolerance` is false, so a naive comparison PASSES the one report a
+    // degenerate or unclosed solid actually produces.
+    const { fn } = fakeSplit(
+      [{ zoneIndex: 0, positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], volume: 5 }],
+      { sumErrorRel: Number.NaN },
+    );
+    assert.equal(splitElementByZones(fn, [piece([0, 0, 0])], [ZONE]), null);
+  });
+
+  it('refuses when the kernel could not build the remainder', () => {
+    // The pieces can add up perfectly and still be missing the part of the
+    // element inside no zone. Publishing them deletes real volume from a
+    // per-section model while every number left in the result looks right.
+    const { fn } = fakeSplit(
+      [{ zoneIndex: 0, positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], volume: 5 }],
+      { sumErrorRel: 0, remainderFailed: true },
     );
     assert.equal(splitElementByZones(fn, [piece([0, 0, 0])], [ZONE]), null);
   });

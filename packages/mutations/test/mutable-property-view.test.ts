@@ -442,6 +442,27 @@ describe('deleteQuantitySet (#2508)', () => {
     expect(view.hasChanges(7)).toBe(true);
   });
 
+  it('replays a serialized deletion even where this view cannot see the base', () => {
+    // The quantity extractor is opt-in and several in-tree callers wire the
+    // property one beside it and not it. A replayed deletion is a decision the
+    // origin session already made, so a view with no base must still mask the
+    // set: otherwise a later export regenerates what the user removed.
+    const origin = new MutablePropertyView(null, 'model-1');
+    origin.setOnDemandExtractor(() => []);
+    origin.setQuantityExtractor((entityId) => entityId === 7 ? [{
+      name: 'Qto_WallBaseQuantities',
+      quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }],
+    }] : []);
+    origin.deleteQuantitySet(7, 'Qto_WallBaseQuantities');
+
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.setOnDemandExtractor(() => []);
+    // No quantity extractor here, on purpose.
+    replayed.applyMutations(origin.getMutations());
+
+    expect(replayed.isQuantitySetDeleted(7, 'Qto_WallBaseQuantities')).toBe(true);
+  });
+
   it('leaves other quantity sets on the same entity alone', () => {
     const view = new MutablePropertyView(null, 'model-1');
     view.setOnDemandExtractor(() => []);

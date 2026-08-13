@@ -37,6 +37,7 @@ import { getGlobalRenderer } from '@/hooks/useBCF';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
+import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { createLatestWinsGuard } from '@/lib/clash/latest-wins';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
@@ -465,12 +466,26 @@ export function useClash() {
               // `clearHighlight` do not know about this override — they just
               // clear ghosting outright, which is correct either way).
               s.clearIsolation();
-              s.setGhostExceptEntities(new Set());
+              const ghostExceptEntities = new Set<number>();
+              s.setGhostExceptEntities(ghostExceptEntities);
               // Drop the amber/cyan pair tint: ghosted, the pair should read
               // as ordinary translucent context (grey, like the rest), not a
               // coloured ghost — the solid alone carries the "here" colour.
               s.setClashHighlightColors(null);
-              s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
+              // Restoring `lensAppliedColors` verbatim would defeat the
+              // ghosting: the renderer promotes any entity carrying a
+              // colour override to the opaque, depth-writing pipeline
+              // (packages/renderer/src/overlay-routing.ts), and
+              // `ghostExceptIds` only supplies alpha through the transparent
+              // path — it does not survive that promotion. With any lens,
+              // Pset, or IDS colouring active, every overridden entity
+              // (including the two clash parents) would render opaque again,
+              // burying the solid behind them (#2574). Filter the restored
+              // map down to entities this ghost does NOT cover — today that's
+              // every entity (`ghostExceptEntities` is empty), so this
+              // collapses to an empty map and takes the same
+              // `clearColorOverrides()` path as "no lens active".
+              s.setPendingColorUpdates(restoreOverridesForGhosting(s.lensAppliedColors, ghostExceptEntities));
               // The box/contact-line marker is superseded by the solid.
               s.setClashContactLines(null);
               s.setClashOverlapBox(null);

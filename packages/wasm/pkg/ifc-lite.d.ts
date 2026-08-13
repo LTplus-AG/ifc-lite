@@ -1536,6 +1536,60 @@ export class SymbolicText {
 }
 
 /**
+ * One closed solid of a split element.
+ */
+export class ZonePieceJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Flat triangle indices into `positions`.
+     */
+    readonly indices: Uint32Array;
+    /**
+     * Flat `[x, y, z, ...]` in the caller's frame.
+     */
+    readonly positions: Float64Array;
+    /**
+     * Enclosed volume of this piece, cubic units of the caller's frame.
+     */
+    readonly volume: number;
+    /**
+     * Index into the zone array that was passed in, or `-1` for the part of
+     * the element inside no zone.
+     */
+    readonly zoneIndex: number;
+}
+
+/**
+ * The result of splitting one element.
+ */
+export class ZoneSplitJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Piece `index`, or `undefined` when out of range. Each call COPIES the
+     * piece out, matching the rest of this API surface.
+     */
+    piece(index: number): ZonePieceJs | undefined;
+    readonly pieceCount: number;
+    /**
+     * How far the pieces are from summing to the whole, relative.
+     *
+     * The invariant #2508 puts above everything else here. Exposed rather than
+     * enforced: the caller decides what to do with a split that does not add
+     * up (the expected cause is zones that overlap each other), and a number
+     * it can show beats a silent refusal.
+     */
+    readonly sumErrorRel: number;
+    /**
+     * Enclosed volume of the input element.
+     */
+    readonly wholeVolume: number;
+}
+
+/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -1592,6 +1646,34 @@ export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axi
 export function resolve2d(a: Contours2D): Contours2D;
 
 /**
+ * Split a mesh into one closed solid per zone, plus the remainder.
+ *
+ * `positions` is flat XYZ (f64, caller's frame), `indices` flat triangle
+ * indices. `zones` is flat, SEVEN numbers per zone:
+ * `[cx, cy, cz, sx, sy, sz, rotationY]`, where the sizes are FULL extents
+ * (matching the viewer's `Zone.size`) and the rotation is radians about the
+ * vertical axis. A trailing partial zone is ignored rather than guessed at.
+ *
+ * The caller must have established that the mesh is a closed orientable solid
+ * first, exactly as it must before quoting a volume at all (#1891/#1993): a
+ * clip of an open shell produces pieces whose volumes are arbitrary rather
+ * than approximate.
+ *
+ * ```javascript
+ * const split = splitMeshByZones(positions, indices, new Float64Array([
+ *   0, 0, 0, 10, 10, 10, 0,
+ * ]));
+ * for (let i = 0; i < split.pieceCount; i++) {
+ *   const piece = split.piece(i);
+ *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
+ *   piece.free();
+ * }
+ * split.free();
+ * ```
+ */
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array): ZoneSplitJs;
+
+/**
  * `a ∪ b`.
  */
 export function union2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -1634,6 +1716,8 @@ export interface InitOutput {
     readonly __wbg_symbolicpolyline_free: (a: number, b: number) => void;
     readonly __wbg_symbolicrepresentationcollection_free: (a: number, b: number) => void;
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
+    readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
+    readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
@@ -1810,6 +1894,7 @@ export interface InitOutput {
     readonly spaceplatehandle_snapshot: (a: number, b: number) => void;
     readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly symboliccircle_centerX: (a: number) => number;
     readonly symboliccircle_centerY: (a: number) => number;
     readonly symboliccircle_endAngle: (a: number) => number;
@@ -1860,6 +1945,13 @@ export interface InitOutput {
     readonly symbolictext_targetPx: (a: number) => number;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
+    readonly zonepiecejs_indices: (a: number) => number;
+    readonly zonepiecejs_positions: (a: number) => number;
+    readonly zonepiecejs_volume: (a: number) => number;
+    readonly zonepiecejs_zoneIndex: (a: number) => number;
+    readonly zonesplitjs_piece: (a: number, b: number) => number;
+    readonly zonesplitjs_pieceCount: (a: number) => number;
+    readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
@@ -1876,6 +1968,7 @@ export interface InitOutput {
     readonly symbolictext_worldY: (a: number) => number;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly zonesplitjs_wholeVolume: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

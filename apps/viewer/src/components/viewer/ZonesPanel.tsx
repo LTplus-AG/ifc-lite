@@ -26,6 +26,7 @@ import {
   Upload,
   MousePointerClick,
   Pencil,
+  Scissors,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { generateZonesFromStoreys } from '@/hooks/useZoneStoreyGeneration';
 import { selectElementsInZone } from '@/hooks/useZoneSelection';
+import { useZoneGeometrySplit } from '@/hooks/useZoneGeometrySplit';
 import type { Zone } from '@/lib/zones';
 import { ZoneApportionSummary } from './ZoneApportionSummary';
 import { ZoneWriteBackControl } from './ZoneWriteBackControl';
@@ -94,7 +96,7 @@ function NumberField({
 }
 
 function ZoneRow({
-  setId, zone, editing, onEdit, onUpdate, onRemove, onSelect,
+  setId, zone, editing, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
 }: {
   setId: string;
   zone: Zone;
@@ -103,6 +105,7 @@ function ZoneRow({
   onUpdate: (patch: Partial<Omit<Zone, 'id'>>) => void;
   onRemove: () => void;
   onSelect: () => void;
+  onExportGeometry: () => void;
 }) {
   return (
     <div className={`rounded-md border p-2 text-xs space-y-1.5 ${editing ? 'border-amber-500 bg-amber-500/5' : 'border-border/60'}`}>
@@ -123,6 +126,18 @@ function ZoneRow({
         </Button>
         <Button variant="ghost" size="icon" className="h-6 w-6" title="Select elements in this zone" onClick={onSelect}>
           <MousePointerClick className="h-3 w-3" />
+        </Button>
+        {/* The geometry half of #2508: elements wholly in this zone plus the
+            CUT pieces of the straddlers, as one model of this section. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Export this zone's geometry (straddlers cut at the boundary) as GLB"
+          aria-label={`Export ${zone.name} geometry`}
+          onClick={onExportGeometry}
+        >
+          <Scissors className="h-3 w-3" />
         </Button>
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Delete zone" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
@@ -179,6 +194,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   const replaceZonesInSet = useViewerStore((s) => s.replaceZonesInSet);
   const exportZoneSetsJSON = useViewerStore((s) => s.exportZoneSetsJSON);
   const importZoneSetsJSON = useViewerStore((s) => s.importZoneSetsJSON);
+  const { exportZone } = useZoneGeometrySplit();
 
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -351,6 +367,20 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     const count = selectElementsInZone(zs.id, zone.id);
                     if (count > 0) toast.success(`Selected ${count} element(s)`);
                     else toast.info('No elements in this zone');
+                  }}
+                  onExportGeometry={() => {
+                    const result = exportZone(zs, zs.zones.indexOf(zone));
+                    if (!result.ok) {
+                      toast.error(result.reason === 'no-binding'
+                        ? 'The geometry engine in this build cannot split meshes'
+                        : 'Nothing to export: no loaded geometry reaches this zone');
+                      return;
+                    }
+                    const { whole, cut, refused } = result.summary;
+                    toast.success(
+                      `Exported ${whole} whole and ${cut} cut element(s)`
+                      + (refused > 0 ? `, ${refused} skipped (mesh not a proven closed solid)` : ''),
+                    );
                   }}
                 />
               ))}

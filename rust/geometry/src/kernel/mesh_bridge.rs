@@ -113,13 +113,23 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
 /// volume is negative, so every operand the kernel sees is outward. The flip is a
 /// no-op for already-outward inputs (every pinned box−box manifest: `cube_mesh`
 /// has volume `+8`/`+27`), so determinism manifests are unperturbed.
-fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
+pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     if signed_volume6(&tris) < 0.0 {
         for t in &mut tris {
             t.swap(1, 2);
         }
     }
     tris
+}
+
+/// Enclosed volume of a closed triangle soup, in the operands' own units.
+///
+/// `signed_volume6` is the kernel's own divergence sum and returns SIX times
+/// the volume (it skips the constant divide per tetra). Callers outside the
+/// keep/flip rules want the volume itself, and a second hand-rolled sum in
+/// another module is how two producers of the same number start to disagree.
+pub(crate) fn signed_volume_of(tris: &[Tri]) -> f64 {
+    signed_volume6(tris) / 6.0
 }
 
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that

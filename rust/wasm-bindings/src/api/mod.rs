@@ -257,16 +257,8 @@ impl IfcAPI {
     /// Create and initialize the IFC API
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        // MUST be `crate::utils::set_panic_hook()`, never
-        // `console_error_panic_hook::set_once()` directly: the latter owns
-        // its own private `Once` and calls `panic::set_hook` unconditionally
-        // on first invocation, which — since every wasm realm constructs an
-        // `IfcAPI` before doing any work — silently REPLACES the stashing
-        // hook `#[wasm_bindgen(start)] init()` installs, permanently killing
-        // the panic-location stash (`utils.rs`'s privacy-safe transport for
-        // the viewer's error tracking). `set_panic_hook()` is idempotent
-        // (its own `Once`), so calling it again here is a safe no-op once
-        // `init()` has already run.
+        // MUST be `set_panic_hook()`, never `console_error_panic_hook::set_once()`
+        // directly — that would replace init()'s panic-location stash. Idempotent.
         crate::utils::set_panic_hook();
 
         Self {

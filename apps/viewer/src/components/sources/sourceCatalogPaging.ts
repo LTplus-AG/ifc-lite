@@ -98,15 +98,24 @@ export async function fetchAllFilePages(
   const items: SourceFile[] = [...page.items];
   let pageCount = 1;
 
-  while (page.cursor !== undefined) {
-    pageCount += 1;
+  // Checked after every response, including the first. Checking before the next
+  // request instead would never inspect a single oversized page at all: a
+  // provider answering the whole listing in one 500k-item page has no cursor,
+  // so the loop is not entered and the ceiling never applies.
+  const enforceCeiling = () => {
     if (items.length > MAX_FILE_SWEEP_ITEMS || pageCount > MAX_FILE_SWEEP_PAGES) {
       throw new Error(
         `Listing files at ${containerId} exceeded ${MAX_FILE_SWEEP_ITEMS} files / ${MAX_FILE_SWEEP_PAGES} pages without finishing`,
       );
     }
+  };
+  enforceCeiling();
+
+  while (page.cursor !== undefined) {
+    pageCount += 1;
     page = await fetchFilePage(provider, ctx, projectId, containerId, page.cursor, signal);
     items.push(...page.items);
+    enforceCeiling();
   }
 
   return { items, cursor: undefined } satisfies PagedItems<SourceFile>;

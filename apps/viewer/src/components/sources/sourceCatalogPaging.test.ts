@@ -101,6 +101,16 @@ describe('fetchAllFilePages', () => {
     assert.equal(result.cursor, undefined);
   });
 
+  it('rejects a single oversized page, which no cursor loop would ever inspect', async () => {
+    // One page, no cursor: the sweep loop is never entered. A ceiling checked
+    // only before the next request therefore never runs, and 150k files are
+    // returned as if bounded. Enforcing after each response is what catches it.
+    const huge = Array.from({ length: 150_000 }, (_, i) => file(`f${i}`));
+    const { provider } = providerOf([huge]);
+
+    await assert.rejects(() => sweep(provider), /exceeded/, 'a single page above the item ceiling must fail');
+  });
+
   it('throws rather than hanging when a provider mints cursors forever', async () => {
     // Never yields a cursorless page: the runaway the ceiling exists for.
     const provider = {

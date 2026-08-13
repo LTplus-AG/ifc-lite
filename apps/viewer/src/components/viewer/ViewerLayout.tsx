@@ -44,7 +44,8 @@ import {
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
 import { renderPanelBody } from '@/lib/panels/renderPanelBody';
-import { getPanelDef, type WorkspacePanelId } from '@/lib/panels/registry';
+import { getPanelDef } from '@/lib/panels/registry';
+import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
 import { usePanelControls } from '@/hooks/usePanelControls';
 
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
@@ -227,12 +228,6 @@ export function ViewerLayout() {
   // titled "Properties" — the wrong panel, not merely a wrong label.
   const sidebarActivePanel = useViewerStore((s) => s.sidebarActivePanel);
   const { closePanel } = usePanelControls();
-  const mobileSheetPanel = useMemo<WorkspacePanelId>(() => {
-    if (ganttPanelVisible) return 'gantt';
-    if (scriptPanelVisible) return 'script';
-    if (listPanelVisible) return 'lists';
-    return sidebarActivePanel;
-  }, [ganttPanelVisible, scriptPanelVisible, listPanelVisible, sidebarActivePanel]);
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -245,6 +240,15 @@ export function ViewerLayout() {
   const activeBottomAnalysisExtension = activeAnalysisExtension?.placement === 'bottom'
     ? activeAnalysisExtension
     : null;
+
+  const mobileSheet = useMemo(() => resolveMobileSheet({
+    hasAnalysisExtension: activeAnalysisExtension !== null && activeAnalysisExtension !== undefined,
+    activeTool,
+    ganttVisible: ganttPanelVisible,
+    scriptVisible: scriptPanelVisible,
+    listVisible: listPanelVisible,
+    sidebarActivePanel,
+  }), [activeAnalysisExtension, activeTool, ganttPanelVisible, scriptPanelVisible, listPanelVisible, sidebarActivePanel]);
 
   // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts).
   // The right region is now the unified sidebar (#1208), which owns its own
@@ -503,29 +507,31 @@ export function ViewerLayout() {
             {!rightPanelCollapsed && (
               <MobileBottomSheet
                 title={
-                  activeAnalysisExtension ? activeAnalysisExtension.label
-                  : activeTool === 'addElement' ? 'Add element'
-                  : getPanelDef(mobileSheetPanel)?.title ?? 'Information'
+                  mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? 'Analysis')
+                  : mobileSheet.kind === 'addElement' ? 'Add element'
+                  : getPanelDef(mobileSheet.id)?.title ?? 'Information'
                 }
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
-                  if (activeAnalysisExtension) closeActiveAnalysisExtension();
-                  if (activeTool === 'addElement') setActiveTool('select');
+                  // Close ONLY what the sheet is showing. The close chain used
+                  // to close the underlying sidebar panel as well, so dismissing
+                  // Add Element took an unrelated panel down with it.
+                  if (mobileSheet.kind === 'extension') closeActiveAnalysisExtension();
+                  else if (mobileSheet.kind === 'addElement') setActiveTool('select');
                   // Clears the dock flag AND the float / pop-out channels, so
                   // closing the sheet cannot leave the panel open somewhere the
                   // phone has no room to show it.
-                  closePanel(mobileSheetPanel);
+                  else closePanel(mobileSheet.id);
                 }}
               >
-                {activeBottomAnalysisExtension ? (
-                  activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                ) : activeRightAnalysisExtension ? (
-                  activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                ) : activeTool === 'addElement' ? (
+                {mobileSheet.kind === 'extension' ? (
+                  (activeBottomAnalysisExtension ?? activeRightAnalysisExtension)
+                    ?.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : mobileSheet.kind === 'addElement' ? (
                   <AddElementPanel onClose={() => setActiveTool('select')} />
                 ) : (
-                  renderPanelBody(mobileSheetPanel, () => closePanel(mobileSheetPanel))
+                  renderPanelBody(mobileSheet.id, () => closePanel(mobileSheet.id))
                 )}
               </MobileBottomSheet>
             )}

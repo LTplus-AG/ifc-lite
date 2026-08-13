@@ -4,6 +4,30 @@
 
 use crate::{Mesh, Point2, Point3, Vector3};
 
+// Test-only seam for the `outer_filled == outer_count` accounting
+// (`cap_half_space_clip`, below): forces `triangulate_polygon_with_holes_refined`
+// to fail for one specific OUTER ring index, so a "partial cap" (some outer
+// regions triangulate, one CDT-fails) is reproducible without needing to
+// construct real degenerate geometry that trips earcutr/CDT internals — the
+// robustness `safe_earcut` deliberately provides makes that near-impossible
+// to hit organically (kernel-gate review, PR #2260: "needs a CDT-failure
+// fixture, which is genuinely harder"). `#[cfg(test)]`-gated in both
+// directions, so it compiles to nothing (no thread-local, no branch) outside
+// `cargo test` on this crate.
+#[cfg(test)]
+thread_local! {
+    static FORCE_CDT_FAIL_ON_RING: std::cell::Cell<Option<usize>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Set which outer-ring index (0-based, in processing order) should fail
+/// triangulation on the NEXT `cap_half_space_clip` call. `None` disables it.
+/// Test-only; see [`FORCE_CDT_FAIL_ON_RING`].
+#[cfg(test)]
+pub(crate) fn force_cdt_fail_on_ring_for_test(ring: Option<usize>) {
+    FORCE_CDT_FAIL_ON_RING.with(|c| c.set(ring));
+}
+
 /// Close the planar cut left by an unbounded `IfcHalfSpaceSolid` DIFFERENCE.
 ///
 /// `ClippingProcessor::clip_mesh` clips each triangle to the half-plane but
@@ -252,6 +276,12 @@ pub(crate) fn cap_half_space_clip(
     // the return value.
     let outer_count = depth.iter().filter(|&&d| d.is_multiple_of(2)).count();
     let mut outer_filled = 0usize;
+    // 0-based index among OUTER rings only, in processing order — distinct
+    // from `oi` (which also counts holes). Used only to address the
+    // `#[cfg(test)]` CDT-failure seam above, so it does not exist at all
+    // outside a test build.
+    #[cfg(test)]
+    let mut outer_count_seen = 0usize;
 
     for (oi, ring) in rings.iter().enumerate() {
         if !depth[oi].is_multiple_of(2) {
@@ -277,7 +307,23 @@ pub(crate) fn cap_half_space_clip(
             holes.push(h);
         }
 
-        let (verts2d, indices) = match triangulate_polygon_with_holes_refined(&outer, &holes) {
+        #[cfg(test)]
+        let forced_fail = FORCE_CDT_FAIL_ON_RING.with(|c| c.get() == Some(outer_count_seen));
+        #[cfg(not(test))]
+        let forced_fail = false;
+        #[cfg(test)]
+        {
+            outer_count_seen += 1;
+        }
+
+        let cdt_result = if forced_fail {
+            Err(crate::Error::TriangulationError(
+                "forced CDT failure (test seam)".to_string(),
+            ))
+        } else {
+            triangulate_polygon_with_holes_refined(&outer, &holes)
+        };
+        let (verts2d, indices) = match cdt_result {
             Ok(r) => r,
             Err(_) => continue,
         };

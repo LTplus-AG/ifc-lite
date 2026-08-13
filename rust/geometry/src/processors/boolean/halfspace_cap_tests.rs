@@ -420,3 +420,158 @@ fn cap_does_not_leak_garbage_triangles_from_an_unclosed_merge_chain() {
         "a chain that never closes must not append ANY vertices to the mesh"
     );
 }
+
+/// Kernel-gate finding (PR #2260, deep review): `outer_filled == outer_count`
+/// (the "did every outer ring actually triangulate" accounting) had NO
+/// fixture — mutating it to `outer_filled <= outer_count` or `>= 1` passed
+/// every other test in this file, because none of them produce two SEPARATE
+/// outer rings where only one fails its CDT. That shape needs a genuine
+/// triangulation failure, which `safe_earcut`'s deliberate robustness makes
+/// hard to trigger with real degenerate geometry (see the fn-level doc on
+/// `force_cdt_fail_on_ring_for_test`), so this drives it through the
+/// `#[cfg(test)]` seam instead: two unit boxes far apart, both clipped by the
+/// SAME plane in one call (two disjoint, non-nested cut sections ⇒
+/// `outer_count == 2`), with the second ring's CDT forced to fail.
+#[test]
+fn cap_reports_false_when_one_of_two_outer_rings_fails_its_cdt() {
+    let mut combined = unit_box();
+    let second = {
+        let mut b = unit_box();
+        for c in b.positions.as_chunks_mut::<3>().0 {
+            c[0] += 10.0; // far enough that the two cut sections never nest
+        }
+        b
+    };
+    let base = (combined.positions.len() / 3) as u32;
+    combined.positions.extend_from_slice(&second.positions);
+    combined.normals.extend_from_slice(&second.normals);
+    combined
+        .indices
+        .extend(second.indices.iter().map(|&i| i + base));
+
+    let plane_point = Point3::new(0.5, 0.5, 0.5);
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let clipper = ClippingProcessor::new();
+    let mut clipped = clipper
+        .clip_mesh(&combined, &Plane::new(plane_point, clip_normal))
+        .unwrap();
+
+    // Sanity: with no forced failure, both sections cap and the verdict is
+    // true — establishes `outer_count == 2` is really reached before we
+    // start forcing failures.
+    let mut baseline = clipped.clone();
+    force_cdt_fail_on_ring_for_test(None);
+    assert!(
+        cap_half_space_clip(&mut baseline, plane_point, clip_normal),
+        "both disjoint sections must cap cleanly with no forced failure"
+    );
+
+    let tris_before = clipped.indices.len() / 3;
+    force_cdt_fail_on_ring_for_test(Some(1)); // fail the SECOND outer ring
+    let capped = cap_half_space_clip(&mut clipped, plane_point, clip_normal);
+    force_cdt_fail_on_ring_for_test(None); // don't leak into later tests
+
+    assert!(
+        !capped,
+        "one outer ring failing its CDT must make the whole verdict false, \
+         even though the other ring succeeded"
+    );
+    let tris_after = clipped.indices.len() / 3;
+    assert!(
+        tris_after > tris_before,
+        "the ring that DID triangulate must still contribute its cap \
+         triangles (best-effort geometry), got {} new tris",
+        tris_after - tris_before
+    );
+}
+
+/// Kernel-gate finding (PR #2260, deep review, minor): the merge-arm
+/// `loop_v.clear()` fix (above) makes an unclosed chain correctly contribute
+/// NO triangles — but which vertex a walk happens to START from is decided
+/// by welded-vertex insertion order, and for a "cycle plus one dangling tail
+/// that merges into it" shape (a rho: closed ring C, plus an edge t->c into
+/// one of C's own vertices), that order decides whether C's own,
+/// independently-valid loop ever gets walked at all.
+///
+/// Same solid — a unit box cut at z=0.5 (a clean, independently-capping
+/// cycle) plus one on-plane dangling triangle whose edge targets a cycle
+/// corner — reproduced under BOTH vertex orderings. In both, `capped` is
+/// correctly `false` (the invariant #1810 depends on: never a false
+/// positive). What differs is whether the cycle's own cap geometry survives:
+///
+/// - tail-vertices-inserted-first: the walk starting at the tail consumes the
+///   ENTIRE cycle into `visited` before merging back into itself, so the
+///   cycle never gets its own walk and NOTHING is capped.
+/// - cycle-vertices-inserted-first: a cycle vertex is walked (and closes)
+///   before the tail's start is reached, so the cycle IS capped — the
+///   tail's own walk then correctly contributes nothing.
+///
+/// This is a real latent difference in output completeness (not correctness
+/// — `capped` is false either way) that the kernel-gate review flagged as
+/// non-blocking, latent risk rather than an observed regression, since fixing
+/// it needs picking genuine chain "sources" before genuine cycles, which is
+/// a bigger structural change than this PR's "small fixes" scope. This test
+/// pins BOTH observed behaviours as a regression guard and a citation for the
+/// follow-up, rather than leaving the finding untested.
+#[test]
+fn cap_verdict_stays_false_but_cap_completeness_is_order_dependent_for_a_cycle_plus_tail() {
+    let plane_point = Point3::new(0.5, 0.5, 0.5);
+    let clip_normal = Vector3::new(0.0, 0.0, 1.0);
+    let clipper = ClippingProcessor::new();
+    let box_cut = clipper
+        .clip_mesh(&unit_box(), &Plane::new(plane_point, clip_normal))
+        .unwrap();
+
+    // Dangling on-plane edge t -> c, where `c` coincides exactly with the
+    // box cut's (0.0, 0.0, 0.5) corner (an axis-aligned edge cut at an
+    // exactly-representable f32 midpoint, so this is a bit-exact weld).
+    let t = [2.0f32, 0.0, 0.5];
+    let c = [0.0f32, 0.0, 0.5];
+    let off = [2.0f32, 1.0, 3.0];
+
+    // Order A: tail vertices FIRST → the cycle is entirely consumed into the
+    // tail's own failed walk and never capped.
+    let mut order_a = Mesh::new();
+    for v in [t, c, off] {
+        order_a.positions.extend_from_slice(&v);
+        order_a.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+    }
+    order_a.indices.extend_from_slice(&[0, 1, 2]);
+    let box_base = (order_a.positions.len() / 3) as u32;
+    order_a.positions.extend_from_slice(&box_cut.positions);
+    order_a.normals.extend_from_slice(&box_cut.normals);
+    order_a
+        .indices
+        .extend(box_cut.indices.iter().map(|&i| i + box_base));
+
+    let tris_before_a = order_a.indices.len() / 3;
+    let capped_a = cap_half_space_clip(&mut order_a, plane_point, clip_normal);
+    assert!(!capped_a, "order A must still report capped=false");
+    assert_eq!(
+        order_a.indices.len() / 3,
+        tris_before_a,
+        "order A (tail-first ids): the cycle must be swallowed by the tail's \
+         walk and end up with NO cap triangles at all"
+    );
+
+    // Order B: box (cycle) vertices FIRST → the cycle gets its own walk and
+    // IS capped; the tail's walk correctly contributes nothing.
+    let mut order_b = box_cut.clone();
+    let tail_base = (order_b.positions.len() / 3) as u32;
+    for v in [t, c, off] {
+        order_b.positions.extend_from_slice(&v);
+        order_b.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
+    }
+    order_b
+        .indices
+        .extend_from_slice(&[tail_base, tail_base + 1, tail_base + 2]);
+
+    let tris_before_b = order_b.indices.len() / 3;
+    let capped_b = cap_half_space_clip(&mut order_b, plane_point, clip_normal);
+    assert!(!capped_b, "order B must still report capped=false");
+    assert!(
+        order_b.indices.len() / 3 > tris_before_b,
+        "order B (cycle-first ids): the cycle must still be capped even \
+         though the overall verdict is correctly false"
+    );
+}

@@ -29,3 +29,19 @@ into `loops`, triangulated, and appended to the mesh — garbage cap geometry
 landing in the output even on a call that correctly reported
 `capped: false`. The merge arm now clears the partial walk before breaking,
 matching its sibling dead-end arm.
+
+Scope note: `capped` only measures whether the ON-PLANE cut section closed.
+A host with pre-existing OPEN boundary edges off the cut plane still reports
+`capped: true` — the boundary walk is filtered to on-plane endpoints by
+design, so it never re-examines unrelated openness elsewhere on the mesh.
+
+Also adds `kernel::mesh_volume`, a public, closedness-UNGATED divergence-
+theorem volume reading for a `Mesh` (delegates to the crate's one
+divergence-sum implementation, `signed_volume6`). It is a raw primitive, not
+a replacement for `geom_closure::GeometryHasher::volume` — that one stays
+the crate's closedness-gated, per-entity volume and requires the hasher's
+accumulated state; `mesh_volume` is for a bare `Mesh` (e.g. a future
+zone-split piece) that never went through it. Callers of `mesh_volume` must
+establish closedness themselves first; see its doc for the exact
+translation-stability guarantee (stable up to a documented quantization
+noise floor, not exact).

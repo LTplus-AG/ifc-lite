@@ -29,6 +29,8 @@ use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
 use halfspace_cap::cap_half_space_clip;
+#[cfg(test)]
+use halfspace_cap::force_cdt_fail_on_ring_for_test;
 
 /// Maximum recursion depth for nested boolean operations.
 /// Prevents stack overflow from deeply nested IfcBooleanResult chains.

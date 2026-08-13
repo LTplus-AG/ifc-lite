@@ -941,6 +941,60 @@ export class MutablePropertyView {
     return mutation;
   }
 
+  /**
+   * Delete an entire quantity set - the inverse of `createQuantitySet`, and the
+   * exact mirror of `deletePropertySet` one level up.
+   *
+   * It was missing until #2508's zone write-back needed it, which is why
+   * `deletedQsets` existed but was only ever populated by the restore path.
+   * Without it, a writer that REPLACES an entity's quantity set can shrink it
+   * but never empty it: re-running with no quantities to write leaves the
+   * previous run's numbers in place, so the file states volumes beside a
+   * property saying the volume could not be computed.
+   */
+  deleteQuantitySet(entityId: number, qsetName: string): Mutation {
+    // In-session qsets carry their own quantity mutations, recorded by
+    // `createQuantitySet`. Drop both, for `deletePropertySet`'s reasons: an
+    // empty Map left behind keeps reporting the entity as modified, and an
+    // orphaned SET mutation re-adds the quantity to a base qset of the same
+    // name.
+    const entityQsets = this.newQsets.get(entityId);
+    const inSessionQset = entityQsets?.get(qsetName);
+    if (entityQsets && inSessionQset) {
+      entityQsets.delete(qsetName);
+      if (entityQsets.size === 0) {
+        this.newQsets.delete(entityId);
+      }
+      for (const quantity of inSessionQset.quantities) {
+        this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name));
+      }
+    }
+
+    // A DELETE marker only earns its keep against a qset that genuinely exists
+    // in the base file - same argument as `deletePropertySet`'s. A purely
+    // in-session qset has nothing to mask, and recording one would tell the
+    // export review a set is being removed when the net change is zero.
+    const baseQset = this.getBaseQuantitiesForEntity(entityId).find(q => q.name === qsetName);
+    if (baseQset) {
+      this.deletedQsets.add(`${entityId}:${qsetName}`);
+      for (const quantity of baseQset.quantities) {
+        this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name), { operation: 'DELETE' });
+      }
+    }
+
+    const mutation: Mutation = {
+      id: generateMutationId(),
+      type: 'DELETE_QUANTITY',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId,
+      psetName: qsetName,
+    };
+
+    this.mutationHistory.push(mutation);
+    return mutation;
+  }
+
   // ---------------------------------------------------------------------------
   // Attribute mutations
   // ---------------------------------------------------------------------------

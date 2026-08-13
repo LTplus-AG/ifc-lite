@@ -38,6 +38,7 @@ import { generateZonesFromStoreys } from '@/hooks/useZoneStoreyGeneration';
 import { selectElementsInZone } from '@/hooks/useZoneSelection';
 import type { Zone } from '@/lib/zones';
 import { ZoneApportionSummary } from './ZoneApportionSummary';
+import { ZoneWriteBackControl } from './ZoneWriteBackControl';
 
 interface ZonesPanelProps {
   onClose?: () => void;
@@ -356,6 +357,8 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
               {/* Volume apportionment for this set's straddlers (#2508). On
                   demand only — never part of load. */}
               {zs.zones.length > 0 && <ZoneApportionSummary zoneSet={zs} />}
+              {/* ...and the way that result leaves the viewer (#2508 item 3). */}
+              {zs.zones.length > 0 && <ZoneWriteBackControl zoneSet={zs} />}
             </CollapsibleContent>
           </Collapsible>
         ))}

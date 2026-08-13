@@ -70,6 +70,24 @@ export {
 } from './apportionment-cache.js';
 
 export {
+  buildElementWriteBack,
+  summarize,
+  zonePropertySetName,
+  zoneQuantitySetName,
+  zoneQuantitySetPrefix,
+  OUTSIDE_QUANTITY_NAME,
+  UNNAMED_ZONE,
+  ZONE_PROPERTY_NAMES,
+  ZONE_SET_NAME_PREFIX,
+  ZONE_QUANTITY_SET_NAME_PREFIX,
+  type ElementZoneFacts,
+  type ElementWriteBack,
+  type WriteBackRefusal,
+  type WriteBackSummary,
+  type ZoneWriteBackOptions,
+} from './writeback.js';
+
+export {
   allBasisBreakdowns,
   basisBreakdown,
   declaredVolumeBases,

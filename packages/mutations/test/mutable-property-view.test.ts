@@ -405,3 +405,53 @@ describe('hasQuantityBase (github.com/LTplus-AG/ifc-lite/issues/2487)', () => {
     ]);
   });
 });
+
+describe('deleteQuantitySet (#2508)', () => {
+  it('removes a quantity set created in this session, along with its quantities', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => []);
+
+    view.createQuantitySet(7, 'IfcLite_ZoneVolumes [Takt] (mesh)', [
+      { name: 'Takt A', value: 2, quantityType: QuantityType.Volume },
+    ]);
+    expect(view.getQuantitiesForEntity(7)).toHaveLength(1);
+
+    view.deleteQuantitySet(7, 'IfcLite_ZoneVolumes [Takt] (mesh)');
+
+    // Not merely absent from the set list: the per-quantity SET mutations the
+    // create recorded are dropped too, so nothing can re-add the quantity to a
+    // base set of the same name later, and the entity stops reporting itself
+    // as modified with nothing to show for it.
+    expect(view.getQuantitiesForEntity(7)).toEqual([]);
+    expect(view.hasChanges(7)).toBe(false);
+  });
+
+  it('masks a quantity set that exists in the base file', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor((entityId) => entityId === 7 ? [{
+      name: 'Qto_WallBaseQuantities',
+      quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }],
+    }] : []);
+
+    view.deleteQuantitySet(7, 'Qto_WallBaseQuantities');
+
+    expect(view.getQuantitiesForEntity(7)).toEqual([]);
+    // A base deletion IS a change, unlike dropping a set this session created.
+    expect(view.hasChanges(7)).toBe(true);
+  });
+
+  it('leaves other quantity sets on the same entity alone', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => []);
+
+    view.createQuantitySet(7, 'Kept', [{ name: 'A', value: 1, quantityType: QuantityType.Volume }]);
+    view.createQuantitySet(7, 'Dropped', [{ name: 'B', value: 2, quantityType: QuantityType.Volume }]);
+
+    view.deleteQuantitySet(7, 'Dropped');
+
+    expect(view.getQuantitiesForEntity(7).map((q) => q.name)).toEqual(['Kept']);
+  });
+});

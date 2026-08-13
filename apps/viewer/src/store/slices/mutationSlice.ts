@@ -700,6 +700,18 @@ export interface MutationSlice {
   clearAllMutations: () => void;
   /** Manually bump mutation version (for bulk operations that bypass store) */
   bumpMutationVersion: () => void;
+  /**
+   * Mark models as having unsaved changes, and bump the mutation version, in
+   * ONE update.
+   *
+   * For bulk writers that go straight to a model's `MutablePropertyView`
+   * (zone write-back, #2508). Those cannot drive the per-mutation actions
+   * above: each of them copies the model's whole undo stack, so calling one
+   * per element is quadratic. `bumpMutationVersion` alone is not enough  - 
+   * without the dirty flag the model reports no unsaved changes while its
+   * overlay holds thousands of them.
+   */
+  markModelsDirty: (modelIds: readonly string[]) => void;
 }
 
 function generateChangeSetId(): string {
@@ -3219,5 +3231,17 @@ export const createMutationSlice: StateCreator<
     set((state) => ({
       mutationVersion: state.mutationVersion + 1,
     }));
+  },
+
+  markModelsDirty: (modelIds) => {
+    if (modelIds.length === 0) return;
+    set((state) => {
+      const newDirty = new Set(state.dirtyModels);
+      for (const id of modelIds) newDirty.add(id);
+      return {
+        dirtyModels: newDirty,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
   },
 });

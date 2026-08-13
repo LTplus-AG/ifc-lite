@@ -38,7 +38,6 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
     if (isBlended(m)) blendedIdxs += m.indices.length;
     else opaqueIdxs += m.indices.length;
   }
-  const totalIdxs = opaqueIdxs + blendedIdxs;
 
   // Allocate merged buffers. Vertices are shared by both primitives; only the
   // index buffers and the material differ, so nothing is duplicated.

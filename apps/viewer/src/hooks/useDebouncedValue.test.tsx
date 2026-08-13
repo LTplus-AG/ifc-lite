@@ -20,8 +20,15 @@ import { useDebouncedValue } from './useDebouncedValue.js';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Real timers, so the margins are deliberately wide: a slow CI box that
+// overruns the debounce between keystrokes would emit an intermediate value and
+// fail the "drops intermediate values" case for a reason that is not a bug.
+const DELAY_MS = 120;
+const TYPING_GAP_MS = 5;
+const SETTLE_MS = 400;
+
 function Probe({ value, seen }: { value: string; seen: string[] }) {
-  const debounced = useDebouncedValue(value, 30);
+  const debounced = useDebouncedValue(value, DELAY_MS);
   if (seen[seen.length - 1] !== debounced) seen.push(debounced);
   return <span>{debounced}</span>;
 }
@@ -62,8 +69,8 @@ describe('useDebouncedValue', () => {
     const set = await mountProbe(seen, 'R');
 
     // Type "Ro", "Ros", "Rost" faster than the delay.
-    for (const v of ['Ro', 'Ros', 'Rost']) await set(v, 5);
-    await act(async () => { await sleep(90); });
+    for (const v of ['Ro', 'Ros', 'Rost']) await set(v, TYPING_GAP_MS);
+    await act(async () => { await sleep(SETTLE_MS); });
 
     assert.deepEqual(seen, ['R', 'Rost'], 'only the settled value should be emitted');
   });
@@ -72,7 +79,7 @@ describe('useDebouncedValue', () => {
     const seen: string[] = [];
     const set = await mountProbe(seen, 'a');
 
-    await set('b', 90);
+    await set('b', SETTLE_MS);
 
     assert.equal(seen[seen.length - 1], 'b');
   });

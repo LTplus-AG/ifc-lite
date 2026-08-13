@@ -47,7 +47,17 @@ function fakeMap() {
     },
     getLayer(id: string) { return layers.get(id); },
     removeLayer(id: string) { layers.delete(id); },
-    removeSource(id: string) { sources.delete(id); },
+    removeSource(id: string) {
+      // MapLibre refuses to drop a source that layers still reference. Without
+      // this, a regression that removed the source BEFORE its layers would pass
+      // every assertion here and throw on the real map.
+      for (const layer of layers.values()) {
+        if ((layer as { source?: string }).source === id) {
+          throw new Error(`source ${id} is still in use by a layer`);
+        }
+      }
+      sources.delete(id);
+    },
   };
   return map;
 }
@@ -88,6 +98,16 @@ describe('location-map footprint', () => {
     assert.equal(m.layers.size, 0);
     // The pairing is the point: a leftover would throw here.
     assert.doesNotThrow(() => addFootprintToMap(asMap(m), RING));
+  });
+
+  it('removes the layers BEFORE the source they reference', () => {
+    // The fake throws on a source still referenced by a layer, exactly as
+    // MapLibre does, so reversing the order in removeFootprintFromMap fails
+    // here rather than only on a real map.
+    const m = fakeMap();
+    addFootprintToMap(asMap(m), RING);
+
+    assert.doesNotThrow(() => removeFootprintFromMap(asMap(m)));
   });
 
   it('is a no-op when there is nothing to remove', () => {

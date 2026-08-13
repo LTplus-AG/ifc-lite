@@ -20,8 +20,6 @@ import {
   Search, Mountain, MapPin, X, Check,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-// See `loadMaplibre` below for why the worker URL is threaded in by hand.
-import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';

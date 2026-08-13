@@ -61,6 +61,11 @@ export interface ZoneGeometryExport {
   cut: number;
   /** Straddlers the kernel would not split, or whose pieces did not add up. */
   refused: number;
+  /** Elements the renderer holds no triangles for at all (never had geometry,
+   *  or it was released to reclaim memory). Counted apart from `refused`
+   *  because the fix is different: load or re-load the model, rather than look
+   *  at the element's own geometry. */
+  noGeometry: number;
   /** Total volume in the exported file, cubic metres. `null` when a whole
    *  element's volume was never proved, so the total would understate. */
   volumeM3: number | null;
@@ -125,6 +130,7 @@ export function exportZoneGeometry(
   let whole = 0;
   let cut = 0;
   let refused = 0;
+  let noGeometry = 0;
   let volumeM3: number | null = 0;
 
   for (const [globalId, record] of state.zoneAssignments) {
@@ -132,7 +138,7 @@ export function exportZoneGeometry(
     if (!assignment || !assignment.touchedZoneIds.includes(zone.id)) continue;
     const pieces = meshPieces(globalId);
     if (!pieces) {
-      refused++;
+      noGeometry++;
       continue;
     }
 
@@ -203,7 +209,7 @@ export function exportZoneGeometry(
   emit(glb, `${sanitizeFilename(`${zoneSet.name}-${zone.name}`)}.glb`);
   return {
     ok: true,
-    summary: { whole, cut, refused, volumeM3, bytes: glb.byteLength, elapsedMs: performance.now() - t0 },
+    summary: { whole, cut, refused, noGeometry, volumeM3, bytes: glb.byteLength, elapsedMs: performance.now() - t0 },
   };
 }
 

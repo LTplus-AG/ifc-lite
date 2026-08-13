@@ -115,15 +115,21 @@ function ZoneRow({
           onChange={(e) => onUpdate({ name: e.target.value })}
           className="h-6 flex-1 px-1.5 text-xs font-medium"
         />
-        <Button
-          variant={editing ? 'default' : 'ghost'}
-          size="icon"
-          className="h-6 w-6"
-          title={editing ? 'Stop editing in 3D' : 'Edit in 3D (move / resize / rotate handles)'}
-          onClick={onEdit}
-        >
-          <Pencil className="h-3 w-3" />
-        </Button>
+        {/* Hidden for a prism: the 3D gizmo edits the box fields, which a
+            prism derives from its footprint, so the handles would move nothing
+            (see `ZoneOverlay`). A control that does nothing is worse than no
+            control. */}
+        {!zone.footprint && (
+          <Button
+            variant={editing ? 'default' : 'ghost'}
+            size="icon"
+            className="h-6 w-6"
+            title={editing ? 'Stop editing in 3D' : 'Edit in 3D (move / resize / rotate handles)'}
+            onClick={onEdit}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" className="h-6 w-6" title="Select elements in this zone" onClick={onSelect}>
           <MousePointerClick className="h-3 w-3" />
         </Button>
@@ -409,10 +415,11 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                         : 'Nothing to export: no loaded geometry reaches this zone');
                       return;
                     }
-                    const { whole, cut, refused, elapsedMs } = result.summary;
+                    const { whole, cut, refused, noGeometry, elapsedMs } = result.summary;
                     toast.success(
                       `Exported ${whole} whole and ${cut} cut element(s) in ${(elapsedMs / 1000).toFixed(1)}s`
-                      + (refused > 0 ? `, ${refused} skipped (mesh not a proven closed solid)` : ''),
+                      + (refused > 0 ? `, ${refused} not cut (mesh not a proven closed solid, or the pieces did not add up)` : '')
+                      + (noGeometry > 0 ? `, ${noGeometry} with no loaded geometry` : ''),
                     );
                   }}
                 />

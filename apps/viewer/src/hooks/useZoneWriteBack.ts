@@ -48,9 +48,10 @@ import {
   summarize,
   declaredVolumeBases,
   validEntry,
-  zonePropertySetName,
   zoneQuantitySetPrefix,
+  ZONE_PROPERTY_NAMES,
   ZONE_QUANTITY_SET_NAME_PREFIX,
+  ZONE_SET_NAME_PREFIX,
   type ElementWriteBack,
   type ElementZoneFacts,
   type VolumeBasis,
@@ -142,6 +143,55 @@ function declaredTotal(
   const declared = declaredVolumeBases(declaredSets, volumeSiScale);
   const match = declared.find((d) => d.basis === basis);
   return match ? { totalM3: match.valueM3, quantityName: match.quantityName } : null;
+}
+
+/**
+ * Every zone property/quantity set on this element that belongs to `zoneSetId`,
+ * whatever the set was CALLED when it was written.
+ *
+ * The names carry the zone set's display name, which a user can rename at any
+ * time, so matching on the current name alone would orphan everything written
+ * under the old one. The property set carries its set's ID, so the id is what
+ * is matched, and the quantity sets are then found by the bracket text of the
+ * property set that names them.
+ */
+function zoneSetsOnElement(
+  context: ModelContext,
+  expressId: number,
+  zoneSetId: string,
+): { psets: string[]; qsets: string[] } {
+  const psets: string[] = [];
+  const brackets: string[] = [];
+  for (const pset of context.view.getForEntity(expressId)) {
+    if (!pset.name.startsWith(`${ZONE_SET_NAME_PREFIX} [`)) continue;
+    const owner = pset.properties.find((p) => p.name === ZONE_PROPERTY_NAMES.zoneSetId)?.value;
+    if (owner !== zoneSetId) continue;
+    psets.push(pset.name);
+    brackets.push(pset.name.slice(`${ZONE_SET_NAME_PREFIX} [`.length, -1));
+  }
+  const qsets = context.view
+    .getQuantitiesForEntity(expressId)
+    .map((q) => q.name)
+    .filter((name) => brackets.some((b) => name.startsWith(zoneQuantitySetPrefix(b))));
+  return { psets, qsets };
+}
+
+/**
+ * Remove every trace of one zone set from one element, and report how many sets
+ * went.
+ *
+ * Run before each write as well as by the panel's Remove: `createPropertySet`
+ * MERGES over a set of the same name that exists in the FILE (a re-imported
+ * export of a previous run), so a row that should have disappeared -- a zone the
+ * element no longer reaches, a `VolumeBasis` on an element now refused --
+ * survives the re-run. Deleting first makes each run's output exactly what that
+ * run computed.
+ */
+function sweepZoneSets(context: ModelContext, expressId: number, zoneSetId: string): number {
+  const { psets, qsets } = zoneSetsOnElement(context, expressId, zoneSetId);
+  for (const name of psets) context.view.deletePropertySet(expressId, name);
+  for (const name of qsets) context.view.deleteQuantitySet(expressId, name);
+  return psets.length + qsets.length;
 }
 
 interface VolumeResolution {
@@ -236,12 +286,22 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
 
   for (const [globalId, record] of state.zoneAssignments) {
     const assignment = record[zoneSet.id];
+    const ref = resolveEntityRef(globalId);
+    const context = contextFor(ref.modelId, contexts);
     if (!assignment || assignment.touchedZoneIds.length === 0) {
+      // An element that has LEFT the set (a zone moved or was deleted) would
+      // otherwise keep the previous run's zone and volumes forever, since the
+      // old loop never visited it again. `hasChanges` is an in-memory map check
+      // with no extraction behind it, so the common case -- an element this
+      // session never touched -- costs nothing. An element written in an
+      // EARLIER session and re-imported is not reachable this cheaply; the
+      // panel's Remove sweeps unconditionally for exactly that.
+      if (context && context.view.hasChanges(ref.expressId)) {
+        if (sweepZoneSets(context, ref.expressId, zoneSet.id) > 0) touchedModels.add(ref.modelId);
+      }
       results.push(null);
       continue;
     }
-    const ref = resolveEntityRef(globalId);
-    const context = contextFor(ref.modelId, contexts);
     if (!context) {
       results.push(null);
       continue;
@@ -273,11 +333,19 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
     };
     const built = buildElementWriteBack(facts, {
       zoneSetName: zoneSet.name,
+      zoneSetId: zoneSet.id,
       basis,
       volumeSiScale: context.volumeSiScale,
     });
     results.push(built);
     if (!built) continue;
+
+    // Everything this set left here before goes first, whatever it was named
+    // and on whatever basis. `createPropertySet` / `createQuantitySet` MERGE
+    // over a same-named set that exists in the FILE, so without this a re-run
+    // keeps rows it did not compute: a zone the element no longer reaches, or a
+    // `VolumeBasis` label standing beside a fresh `VolumeUnavailable`.
+    if (sweepZoneSets(context, ref.expressId, zoneSet.id) > 0) touchedModels.add(ref.modelId);
 
     context.view.createPropertySet(
       ref.expressId,
@@ -295,17 +363,6 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
         built.quantities.map((q) => ({ name: q.name, value: q.value, quantityType: QuantityType.Volume })),
       );
     }
-    // Whatever a previous run left on this element for this zone set, under a
-    // different basis or under this one when the volume is now refused, is
-    // removed. Otherwise switching basis accumulates one quantity set per basis
-    // ever chosen, and a re-run that refuses leaves stale numbers standing
-    // beside a property saying no volume could be computed.
-    const scope = zoneQuantitySetPrefix(zoneSet.name);
-    for (const q of qsets) {
-      if (q.name.startsWith(scope) && q.name !== built.qsetName) {
-        context.view.deleteQuantitySet(ref.expressId, q.name);
-      }
-    }
     touchedModels.add(ref.modelId);
   }
 
@@ -320,32 +377,32 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
 }
 
 /**
- * Remove what a previous run wrote, for one zone set.
+ * Remove what any run wrote for one zone set, from every element.
  *
  * The inverse exists because the run does not enter the undo stack (see the
- * module doc). It deletes by NAME, so it also clears sets written in an earlier
- * session and re-imported, and it clears the quantity set on EVERY basis rather
- * than only the one currently selected in the panel.
+ * module doc). Three things it deliberately does not narrow:
+ *
+ *  - it visits EVERY element, not only the ones currently in the set, because
+ *    an element that has since left it is exactly the one carrying a stale
+ *    assignment nothing else will clear;
+ *  - it matches on the set's ID rather than its name, so a rename does not
+ *    strand the earlier output;
+ *  - it counts only elements where something was actually deleted. A count of
+ *    "removed from 12,000 elements" on a model that was never written to, with
+ *    an unsaved-changes flag to match, is a false report of an edit.
  */
 export function removeZoneWriteBack(zoneSet: ZoneSet): { removed: number; modelIds: string[] } {
   const state = useViewerStore.getState();
   if (!state.canCollabEdit()) return { removed: 0, modelIds: [] };
-  const psetName = zonePropertySetName(zoneSet.name);
-  const scope = zoneQuantitySetPrefix(zoneSet.name);
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();
   let removed = 0;
 
-  for (const [globalId, record] of state.zoneAssignments) {
-    const assignment = record[zoneSet.id];
-    if (!assignment || assignment.touchedZoneIds.length === 0) continue;
+  for (const [globalId] of state.zoneAssignments) {
     const ref = resolveEntityRef(globalId);
     const context = contextFor(ref.modelId, contexts);
     if (!context) continue;
-    context.view.deletePropertySet(ref.expressId, psetName);
-    for (const q of context.view.getQuantitiesForEntity(ref.expressId)) {
-      if (q.name.startsWith(scope)) context.view.deleteQuantitySet(ref.expressId, q.name);
-    }
+    if (sweepZoneSets(context, ref.expressId, zoneSet.id) === 0) continue;
     touchedModels.add(ref.modelId);
     removed++;
   }

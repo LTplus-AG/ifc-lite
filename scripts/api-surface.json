@@ -4177,6 +4177,8 @@
     "SymbolicRepresentationCollection: class",
     "SymbolicText: class",
     "SyncInitInput: type",
+    "ZonePieceJs: class",
+    "ZoneSplitJs: class",
     "default: function",
     "difference2d: function",
     "get_memory: function",
@@ -4185,6 +4187,7 @@
     "intersection2d: function",
     "meshOutline2d: function",
     "resolve2d: function",
+    "splitMeshByZones: function",
     "union2d: function",
     "version: function"
   ],

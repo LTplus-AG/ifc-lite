@@ -32,7 +32,7 @@
 //!   only reach `Mesh` (f32) at the caller's boundary. A per-piece f64 -> f32 ->
 //!   f64 round trip is what turns a shared zone boundary into a crack.
 
-use crate::kernel::arrangement::{boolean, box_mesh, difference_all, BoolOp, Tri};
+use crate::kernel::arrangement::{boolean, box_mesh, difference_all, union_all, BoolOp, Tri};
 use crate::kernel::mesh_bridge::{orient_outward, signed_volume_of};
 
 /// A zone as the viewer authors it: an oriented box that rotates about the
@@ -227,21 +227,35 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         let box_tris = orient_outward(zone.to_tris());
         let piece = boolean(&host, &box_tris, BoolOp::Intersection);
         let volume = signed_volume_of(&piece);
-        // Kept for the remainder even when the piece itself is negligible: a
-        // box the element merely abuts contributes no solid but must still be
-        // subtracted, or the remainder would double-count the boundary.
-        reached.push(box_tris);
         if piece.is_empty() || volume <= negligible {
+            // NOT subtracted from the remainder. A zone the element merely
+            // abuts takes nothing, so leaving it out cannot double-count: the
+            // sliver simply stays in the remainder and the sum stays exact.
+            // Subtracting it would instead feed the arrangement an
+            // exactly-coplanar operand with no intersection to show for it,
+            // which is the kernel's hardest case for no benefit.
             continue;
         }
+        reached.push(box_tris);
         pieces.push(ZonePiece { zone: Some(index), tris: piece, volume });
     }
 
     if !reached.is_empty() {
+        // UNIONED first, then subtracted as ONE operand.
+        //
+        // `difference_all` requires its cutters to be pairwise disjoint, and a
+        // zone set that TILES shares boundary planes: two coincident,
+        // opposite-wound cutter faces at each shared plane are classified only
+        // against the host, so both survive into the result as a zero-volume
+        // membrane inside the remainder. The volume is unaffected (the pair
+        // cancels), which is exactly why no volume-based check can see it --
+        // but the remainder is published as a closed solid, and a consumer that
+        // renders or exports it would show a phantom wall at every zone
+        // boundary. `union_all` merges the tiles first and drops each
+        // co-oriented duplicate, so the difference sees one clean operand.
         let operands: Vec<&[Tri]> = reached.iter().map(|t| t.as_slice()).collect();
-        // ONE arrangement against every box, not a chain of differences: a
-        // chain would re-snap the previous cut's seams on every step.
-        if let Some(rest) = difference_all(&host, &operands) {
+        let (cutter, _conforming) = union_all(&operands);
+        if let Some(rest) = difference_all(&host, &[&cutter]) {
             let volume = signed_volume_of(&rest);
             if !rest.is_empty() && volume > negligible {
                 pieces.push(ZonePiece { zone: None, tris: rest, volume });

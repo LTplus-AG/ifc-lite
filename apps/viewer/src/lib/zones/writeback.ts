@@ -118,6 +118,9 @@ export interface ElementZoneFacts {
 
 export interface ZoneWriteBackOptions {
   zoneSetName: string;
+  /** The set's stable id, written into the property set so a later run can
+   *  recognise its own output across a rename. */
+  zoneSetId: string;
   basis: VolumeBasis;
   /** The model's own VOLUMEUNIT scale to SI, from
    *  `ProjectUnits.resolvedForUnitType('VOLUMEUNIT').siScale`. Values are
@@ -154,6 +157,11 @@ export interface ElementWriteBack {
 /** Property names, exported so tests and the removal path name them once. */
 export const ZONE_PROPERTY_NAMES = {
   zoneSet: 'ZoneSet',
+  /** The set's stable id. Written so a later run can find what an EARLIER one
+   *  left on this element after the set was renamed: the set names carry the
+   *  display name, and matching on that alone orphans everything written under
+   *  the old one. Ids are what disambiguate a zone set (`types.ts`). */
+  zoneSetId: 'ZoneSetId',
   zone: 'Zone',
   zones: 'Zones',
   straddles: 'Straddles',
@@ -236,6 +244,7 @@ export function buildElementWriteBack(
 
   const properties: WriteBackProperty[] = [
     { name: ZONE_PROPERTY_NAMES.zoneSet, value: options.zoneSetName, kind: 'LABEL' },
+    { name: ZONE_PROPERTY_NAMES.zoneSetId, value: options.zoneSetId, kind: 'LABEL' },
     // Empty rather than a sentinel like "(none)": a straddler whose centroid
     // falls between zones genuinely has no home zone, and any placeholder string
     // is a value a filter cannot tell apart from a zone actually named that.

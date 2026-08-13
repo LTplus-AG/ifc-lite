@@ -176,12 +176,10 @@ describe('prism volume on shapes a box cannot express', () => {
     // 1 m-deep wall is a parallelogram of area 0.4 * sqrt(2) ... times the
     // wall's 1 m height.
     const c = 3;
-    const half = 0.4 / Math.SQRT2 / 2 * Math.SQRT2; // 0.2*sqrt(2) along x at z=0
     const footprint: FootprintPoint[] = [
       [c - 0.2 * Math.SQRT2, -1], [c + 0.2 * Math.SQRT2, -1],
       [c + 0.2 * Math.SQRT2 + 2, 1], [c - 0.2 * Math.SQRT2 + 2, 1],
     ];
-    void half;
     const volume = clippedVolumeForPrism([wall()], compilePrism(footprint, -1, 2));
     // The band's width along x is constant at 0.4*sqrt(2); it crosses the
     // wall's full 1 m depth and 1 m height inside the wall's own x range.

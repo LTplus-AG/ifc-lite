@@ -983,8 +983,13 @@ export class MutablePropertyView {
     }
 
     const mutation: Mutation = {
+      // Its OWN type rather than a `DELETE_QUANTITY` with no `propName`: both
+      // replay consumers (`applyMutations` here, `change-set-to-ops`) key the
+      // member-delete case off `propName`, so a set removal filed under it
+      // matched nothing, resurrected the set on import and vanished from a
+      // layer publish without reaching `skipped`.
       id: generateMutationId(),
-      type: 'DELETE_QUANTITY',
+      type: 'DELETE_QUANTITY_SET',
       timestamp: Date.now(),
       modelId: this.modelId,
       entityId,
@@ -993,6 +998,20 @@ export class MutablePropertyView {
 
     this.mutationHistory.push(mutation);
     return mutation;
+  }
+
+  /**
+   * Has this entity's quantity set been DELETED this session?
+   *
+   * `getQuantitiesForEntity` cannot answer it: a deleted set and a set that
+   * never existed both come back absent. The exporter needs the difference,
+   * because it withholds a source `IfcElementQuantity` when it is writing a
+   * REPLACEMENT for it, and a deletion has no replacement to recognise it by.
+   * Without this, `deleteQuantitySet` masked a base set in the panel while the
+   * exported file still carried it.
+   */
+  isQuantitySetDeleted(entityId: number, qsetName: string): boolean {
+    return this.deletedQsets.has(`${entityId}:${qsetName}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -1895,6 +1914,12 @@ export class MutablePropertyView {
         case 'DELETE_PROPERTY_SET':
           if (mutation.psetName) {
             this.deletePropertySet(mutation.entityId, mutation.psetName);
+          }
+          break;
+
+        case 'DELETE_QUANTITY_SET':
+          if (mutation.psetName) {
+            this.deleteQuantitySet(mutation.entityId, mutation.psetName);
           }
           break;
 

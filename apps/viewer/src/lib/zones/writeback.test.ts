@@ -18,6 +18,7 @@ import {
 
 const MESH: ZoneWriteBackOptions = {
   zoneSetName: 'Takt areas',
+  zoneSetId: 'set-1',
   basis: 'mesh',
   volumeSiScale: 1,
 };
@@ -193,6 +194,7 @@ describe('zone write-back: the basis travels with the numbers', () => {
   it('records the declared quantity name and the as-built-split disclosure for a net basis', () => {
     const result = buildElementWriteBack(straddler({ quantityName: 'NetVolume' }), {
       zoneSetName: 'Sections',
+      zoneSetId: 'set-1',
       basis: 'net',
       volumeSiScale: 1,
     });
@@ -236,7 +238,7 @@ describe('zone write-back: refusals', () => {
     // prevent.
     const result = buildElementWriteBack(
       straddler({ shares: [], refusal: 'no-declared-quantity' }),
-      { zoneSetName: 'Sections', basis: 'net', volumeSiScale: 1 },
+      { zoneSetName: 'Sections', zoneSetId: 'set-1', basis: 'net', volumeSiScale: 1 },
     );
     assert.ok(result);
     assert.equal(result.qsetName, null);

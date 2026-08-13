@@ -311,3 +311,91 @@ describe('zone write-back: the exported file carries it', () => {
     assert.ok(Math.abs((values.get('Takt A') ?? 0) / 2e9 - 1) < 1e-6, `Takt A = ${values.get('Takt A')}`);
   });
 });
+
+describe('zone write-back: what a later run has to clean up', () => {
+  beforeEach(async () => {
+    await seedStore();
+  });
+
+  it('an element that has LEFT the set loses what the last run wrote onto it', () => {
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+    assert.ok(psetOn(BEAM_ID, zonePropertySetName('Takt areas')));
+
+    // The zone moved away, so the beam is in no zone of the set any more. The
+    // old run's "Zone: Takt A" would otherwise stay on it forever: nothing else
+    // visits an element that is no longer a member.
+    useViewerStore.setState({
+      zoneAssignments: new Map([
+        [WALL_ID, { 'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: true, touchedZoneIds: ['z-a', 'z-b'] } }],
+        [BEAM_ID, { 'set-1': { zoneId: null, zoneName: null, straddles: false, touchedZoneIds: [] } }],
+      ]) as never,
+    } as never);
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+
+    assert.equal(psetOn(BEAM_ID, zonePropertySetName('Takt areas')), null);
+    assert.equal(qsetOn(BEAM_ID, zoneQuantitySetName('Takt areas', 'mesh')), null);
+  });
+
+  it('renaming the set does not strand the sets written under the old name', () => {
+    // The set names carry the DISPLAY name, so a run after a rename writes to
+    // new names. Matching the old output by name would miss it; the property
+    // set carries the set's stable id for exactly this.
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+    applyZoneWriteBack({ ...ZONE_SET, name: 'Sections' }, 'mesh');
+
+    const names = (view()?.getForEntity(WALL_ID) ?? []).map((p) => p.name)
+      .filter((n) => n.startsWith('IfcLite_Zones'));
+    assert.deepEqual(names, ['IfcLite_Zones [Sections]']);
+    const qnames = (view()?.getQuantitiesForEntity(WALL_ID) ?? []).map((q) => q.name)
+      .filter((n) => n.startsWith('IfcLite_ZoneVolumes'));
+    assert.deepEqual(qnames, [zoneQuantitySetName('Sections', 'mesh')]);
+  });
+
+  it('removing reports nothing, and dirties nothing, on a model never written to', () => {
+    // `deletePropertySet` returns a mutation whether or not anything was there,
+    // so counting calls rather than deletions claimed an edit over a
+    // byte-identical model and offered to save it.
+    const { removed } = removeZoneWriteBack(ZONE_SET);
+    assert.equal(removed, 0);
+    assert.equal(useViewerStore.getState().dirtyModels.has('m1'), false);
+  });
+
+  it('removing reaches an element that has since left the set', () => {
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+    useViewerStore.setState({
+      zoneAssignments: new Map([
+        [WALL_ID, { 'set-1': { zoneId: null, zoneName: null, straddles: false, touchedZoneIds: [] } }],
+        [BEAM_ID, { 'set-1': { zoneId: null, zoneName: null, straddles: false, touchedZoneIds: [] } }],
+      ]) as never,
+    } as never);
+
+    const { removed } = removeZoneWriteBack(ZONE_SET);
+    assert.equal(removed, 2);
+    assert.equal(psetOn(WALL_ID, zonePropertySetName('Takt areas')), null);
+  });
+
+  it('does not touch another zone set\'s output', () => {
+    applyZoneWriteBack(ZONE_SET, 'mesh');
+    const other: ZoneSet = { ...ZONE_SET, id: 'set-2', name: 'Sections' };
+    useViewerStore.setState({
+      zoneAssignments: new Map([
+        [WALL_ID, {
+          'set-1': { zoneId: 'z-a', zoneName: 'Takt A', straddles: true, touchedZoneIds: ['z-a', 'z-b'] },
+          'set-2': { zoneId: 'z-a', zoneName: 'Takt A', straddles: false, touchedZoneIds: ['z-a'] },
+        }],
+      ]) as never,
+    } as never);
+    applyZoneWriteBack(other, 'mesh');
+
+    // Both sets coexist: an element genuinely belongs to several zone sets at
+    // once, which is v1's whole point.
+    const names = (view()?.getForEntity(WALL_ID) ?? []).map((p) => p.name)
+      .filter((n) => n.startsWith('IfcLite_Zones')).sort();
+    assert.deepEqual(names, ['IfcLite_Zones [Sections]', 'IfcLite_Zones [Takt areas]']);
+
+    removeZoneWriteBack(other);
+    const left = (view()?.getForEntity(WALL_ID) ?? []).map((p) => p.name)
+      .filter((n) => n.startsWith('IfcLite_Zones'));
+    assert.deepEqual(left, ['IfcLite_Zones [Takt areas]']);
+  });
+});

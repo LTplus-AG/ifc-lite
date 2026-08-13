@@ -3237,9 +3237,18 @@ export const createMutationSlice: StateCreator<
     if (modelIds.length === 0) return;
     set((state) => {
       const newDirty = new Set(state.dirtyModels);
-      for (const id of modelIds) newDirty.add(id);
+      // Redo is cleared for the same reason every per-mutation action clears
+      // it: a new edit invalidates the branch an undone one could be replayed
+      // onto. A bulk writer is no different, and leaving it alone let Ctrl+Y
+      // replay an edit made before the bulk write, on top of it.
+      const newRedo = new Map(state.redoStacks);
+      for (const id of modelIds) {
+        newDirty.add(id);
+        newRedo.set(id, []);
+      }
       return {
         dirtyModels: newDirty,
+        redoStacks: newRedo,
         mutationVersion: state.mutationVersion + 1,
       };
     });

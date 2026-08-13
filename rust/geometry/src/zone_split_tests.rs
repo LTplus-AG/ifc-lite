@@ -275,3 +275,100 @@ fn a_prism_with_too_few_points_takes_nothing_rather_than_panicking() {
     assert!(volume_of(&split, Some(0)) < EPS);
     assert!((volume_of(&split, None) - 6.0).abs() < EPS);
 }
+
+/// A triangle's vertices in a rotation-independent, winding-SENSITIVE key, so
+/// two copies of the same face wound oppositely hash differently.
+fn oriented_key(t: &Tri) -> String {
+    let start = (0..3)
+        .min_by(|&a, &b| {
+            let (x, y) = (t[a], t[b]);
+            x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .unwrap_or(0);
+    (0..3)
+        .map(|i| {
+            let p = t[(start + i) % 3];
+            format!("{:.9},{:.9},{:.9}", p[0], p[1], p[2])
+        })
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+/// Faces that appear both ways round in one solid: a zero-volume membrane.
+fn back_to_back_pairs(tris: &[Tri]) -> usize {
+    use std::collections::HashSet;
+    let forward: HashSet<String> = tris.iter().map(oriented_key).collect();
+    tris.iter()
+        .filter(|t| {
+            let flipped = [t[0], t[2], t[1]];
+            forward.contains(&oriented_key(&flipped))
+        })
+        .count()
+}
+
+#[test]
+fn a_tiling_leaves_no_membrane_inside_the_remainder() {
+    // Two zones sharing the plane x = 2, covering only part of the wall, so the
+    // remainder is a real solid rather than a dropped sliver.
+    //
+    // `difference_all` documents that its cutters must be pairwise disjoint,
+    // and a tiling zone set is precisely the case that violates it: the two
+    // coincident, opposite-wound cutter faces at x = 2 are each classified only
+    // against the host, so BOTH survive into the remainder as a zero-volume
+    // membrane. Volume cannot see it (the pair cancels), which is why the
+    // assertion is on the faces rather than on any number.
+    let split = split_mesh_by_zones(&wall(), &[slab(0.0, 2.0), slab(2.0, 4.0)]);
+
+    let remainder = split
+        .pieces
+        .iter()
+        .find(|p| p.zone.is_none())
+        .expect("the wall's x = 4..6 tail must survive as the remainder");
+    assert!((remainder.volume - 2.0).abs() < EPS, "remainder volume {}", remainder.volume);
+    assert_eq!(
+        back_to_back_pairs(&remainder.tris),
+        0,
+        "the remainder carries {} membrane faces, e.g. {:?}",
+        back_to_back_pairs(&remainder.tris),
+        remainder.tris.iter().find(|t| {
+            let flipped = [t[0], t[2], t[1]];
+            back_to_back_pairs(&[**t, flipped]) > 0
+        }),
+    );
+}
+
+#[test]
+fn a_prism_tiling_leaves_no_membrane_either() {
+    let lower = ZoneShape::Prism {
+        footprint: vec![[-1.0, -1.0], [3.0, -1.0], [3.0, 2.0], [-1.0, 2.0]],
+        min_y: -1.0,
+        max_y: 2.0,
+    };
+    let upper = ZoneShape::Prism {
+        footprint: vec![[3.0, -1.0], [5.0, -1.0], [5.0, 2.0], [3.0, 2.0]],
+        min_y: -1.0,
+        max_y: 2.0,
+    };
+    let split = split_mesh_by_zones(&wall(), &[lower, upper]);
+    let remainder = split
+        .pieces
+        .iter()
+        .find(|p| p.zone.is_none())
+        .expect("x = 5..6 must survive as the remainder");
+    assert_eq!(back_to_back_pairs(&remainder.tris), 0);
+    assert!(split.sum_error_rel() < 1e-9, "sum error {}", split.sum_error_rel());
+}
+
+#[test]
+fn a_zone_the_element_only_abuts_is_not_subtracted_from_the_remainder() {
+    // The second zone starts exactly where the wall ends, so it takes nothing.
+    // Subtracting it anyway would hand the arrangement an exactly-coplanar
+    // operand with no intersection to show for it, and a refusal there
+    // (`difference_all` returns None) would lose the remainder entirely.
+    let split = split_mesh_by_zones(&wall(), &[slab(0.0, 2.0), slab(6.0, 9.0)]);
+
+    let remainder = split.pieces.iter().find(|p| p.zone.is_none());
+    assert!(remainder.is_some(), "the x = 2..6 remainder was lost");
+    assert!((remainder.unwrap().volume - 4.0).abs() < EPS);
+    assert!(split.sum_error_rel() < 1e-12);
+}

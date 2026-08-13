@@ -509,7 +509,8 @@ export class StepExporter {
 
         if (!mutation.psetName) continue;
 
-        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY' || mutation.type === 'DELETE_QUANTITY';
+        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY'
+          || mutation.type === 'DELETE_QUANTITY' || mutation.type === 'DELETE_QUANTITY_SET';
         const targetMap = isQuantity ? entityQuantMutations : entityPropMutations;
 
         if (!targetMap.has(mutation.entityId)) {
@@ -731,10 +732,14 @@ export class StepExporter {
         // affected-name set is not the same thing: it comes from the session's
         // append-only mutation history, which keeps naming a quantity set after
         // an undo has taken it back out of the overlay, so a Ctrl+Z used to
-        // withhold a source `IfcElementQuantity` that nothing regenerated. There
-        // is no quantity-set REMOVAL to preserve here — `deletedQsets` has no
-        // public populator, so withholding without a replacement is always the
-        // bug and never the intent (#2487).
+        // withhold a source `IfcElementQuantity` that nothing regenerated.
+        //
+        // A quantity-set REMOVAL is the one case where withholding WITHOUT a
+        // replacement is the intent rather than the bug. It had no public
+        // populator when #2487 wrote that rule, so the rule read "always the
+        // bug"; `MutablePropertyView.deleteQuantitySet` (#2508) gives it one,
+        // and the deleted set is now asked for by name below. Without that, the
+        // panel hid a base quantity set the exported file still carried.
         const regeneratedQsetNames = new Set(relevantQsets.map((qset: QuantitySet) => qset.name));
 
         // Skip original quantity set entities (IfcElementQuantity).
@@ -743,7 +748,9 @@ export class StepExporter {
         if (rels) {
           for (const { relId, psetId: relatedPsetId } of rels) {
             const qsetName = this.getElementQuantityName(relatedPsetId);
-            if (qsetName && regeneratedQsetNames.has(qsetName)) {
+            const deleted = qsetName !== null
+              && this.mutationView.isQuantitySetDeleted?.(entityId, qsetName) === true;
+            if (qsetName && (regeneratedQsetNames.has(qsetName) || deleted)) {
               skipRelationshipIds.add(relId);
               skipPropertySetIds.add(relatedPsetId);
               const quantIds = this.getPropertyIdsInSet(relatedPsetId);

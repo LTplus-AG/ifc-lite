@@ -40,7 +40,9 @@ interface BoundaryInfo { disp: Pt[]; unbounded: boolean }
 interface Diagnostic { a: Pt; b: Pt; bounding: boolean }
 
 export interface SpaceSketchCanvasProps {
-  svgRef: React.RefObject<SVGSVGElement | null>;
+  /** Callback OR object ref — the overlay passes a callback so the wheel
+   *  listener re-binds when this canvas is remounted (minimize/reopen). */
+  svgRef: React.Ref<SVGSVGElement>;
   width: number;
   height: number;
   cursor: string;

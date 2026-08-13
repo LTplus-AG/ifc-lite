@@ -3,114 +3,116 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Detect a model that is georeferenced TWICE.
+ * REPORT a model that is georeferenced TWICE — the user-facing half of #2526.
  *
  * Some authoring tools place the `IfcSite` (and therefore every element under
  * it) at absolute map coordinates via its `IfcLocalPlacement`, AND also emit an
  * `IfcMapConversion` carrying the very same eastings/northings. Per IFC4 the
  * conversion is defined on the `IfcGeometricRepresentationContext`'s world
- * coordinate system, so the correct reading is to apply it on top of those
- * already-absolute coordinates — which adds the offset a second time and flings
- * the model roughly `‖(E, N)‖` away from where it belongs. Issue #2526: a
- * Vectorworks export in EPSG:25833 (E 311 988 / N 5 996 149) landed thousands
- * of km out in the North Atlantic, on an empty basemap.
+ * coordinate system, so the spec-strict reading applies it on top of those
+ * already-absolute coordinates — adding the offset a second time and flinging
+ * the model thousands of km away. Issue #2526: a Vectorworks export in
+ * EPSG:25833 (E 311 988 / N 5 996 149) landed in the North Atlantic.
  *
- * The fingerprint is unusually crisp, which is why this is a translation match
- * rather than an "is the result inside the CRS's area of use" test (we ship no
- * area-of-use extents, and that test has a far larger false-positive surface):
+ * ## One threshold, one code path
  *
- *   1. the model's world centre is itself already map-sized (>= 100 km from the
- *      IFC origin — no ordinary local-frame model is), AND
- *   2. that centre coincides with the MapConversion offset to within a
- *      tolerance that a duplicated value clears trivially and an independent
- *      value essentially never does.
+ * ifc-lite does not render that reading. `effectiveMapConversionForGeometry`
+ * ({@link ./map-absolute}) neutralises the duplicated conversion for every
+ * geometry-derived consumer, so the model lands where it belongs. This module
+ * exists purely to TELL the user that happened — and it must agree with the
+ * correction exactly, or the panel ends up describing a model that is not the
+ * one on screen.
  *
- * A correctly authored absolute-coordinate model (buildingSMART LoGeoRef 20/30)
- * fails (2) precisely because its conversion offset is 0/0, so it is not
- * flagged. A correctly authored local-frame model fails (1).
- *
- * This module only REPORTS. Nothing here changes placement: the viewer keeps
- * rendering the file as authored, and the georeferencing panel offers the user
- * a one-click correction.
+ * So the fingerprint is NOT re-implemented here. {@link detectDoubleGeoreference}
+ * calls the very same guard the geometry pipeline calls and reports iff that
+ * guard fired. There is one predicate and one set of constants, and they live
+ * with the correction. An earlier version of this module carried its own
+ * thresholds (world magnitude >= 100 km, residual <= max(1 km, 0.1% of the
+ * offset)); those were close to the guard's but not identical, which left a
+ * band of models that would be silently corrected without being flagged, and
+ * another that would be flagged without being corrected. (#2526, #2543/#2534
+ * reconciliation.)
  */
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 
-import { computeModelCenterInIfcMeters } from './reproject';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
-
-/**
- * How far the model centre must sit from the IFC origin before a coincidence
- * with the MapConversion offset means anything. A local-frame building model
- * lives within a few km of its origin; 100 km is comfortably clear of even a
- * sprawling site or an infrastructure alignment, while every map-coordinate
- * easting/northing pair worth worrying about is in the 10^5..10^7 m range.
- */
-const MIN_WORLD_MAGNITUDE_M = 100_000;
-
-/**
- * Absolute floor on the coincidence tolerance. The model CENTRE is compared
- * against the offset, and the offset is normally the site/project origin, so
- * the two differ by roughly half the model's plan extent. 1 km covers any
- * building and most sites outright.
- */
-const MIN_RESIDUAL_TOLERANCE_M = 1_000;
-
-/**
- * Relative part of the coincidence tolerance, applied to the magnitude of the
- * offset. Keeps large-extent models (infrastructure alignments, whole
- * districts) inside the tolerance without widening it for small coordinates.
- */
-const RESIDUAL_TOLERANCE_FRACTION = 0.001;
 
 export interface DoubleGeoreference {
   /** Model centre in IFC world metres, Z-up (X ≈ easting, Y ≈ northing). */
   worldCenter: { x: number; y: number };
   /** `IfcMapConversion` eastings/northings converted to metres. */
   offset: { easting: number; northing: number };
-  /** Distance between the two, metres. Small by construction when flagged. */
+  /** Distance between the two, metres. Small by construction when reported. */
   residual: number;
   /**
-   * How far the duplicated offset displaces the model, in projected metres:
-   * the distance from where the geometry already sits in the map CRS to where
-   * applying the conversion puts it. This is the size of the error the user
-   * sees, and it is NOT simply ‖offset‖ — the conversion's rotation swings the
-   * (already map-sized) world centre around as well.
+   * How far the duplicated offset WOULD displace the model, in projected
+   * metres: the distance from where the geometry already sits in the map CRS
+   * to where a spec-strict application of the conversion would put it.
+   *
+   * Counterfactual, not current state — ifc-lite has already neutralised the
+   * conversion by the time this is reported. It is the size of the error the
+   * user would see in a tool that applies the file literally, which is what
+   * makes it worth quoting: it is the number that explains why this file needs
+   * fixing at source.
+   *
+   * NOT simply ‖offset‖ — the conversion's rotation swings the (already
+   * map-sized) world centre around as well. Non-finite when the file authors a
+   * non-finite axis or scale; callers must render that as "unknown" rather
+   * than a number (see `formatApproxDistance`).
    */
   displacement: number;
   /**
-   * True when the fix would REPLACE a rotation the file actually authors,
-   * rather than just restating an already-identity one.
+   * True when the neutralised conversion REPLACES a rotation the file actually
+   * authors, rather than just restating an already-identity one.
    *
    * The fingerprint matches on translation, so it says nothing about whether
-   * the model's local axes are grid-aligned. The fix resets the axis anyway,
-   * because there is no translation-only alternative to offer (see
-   * {@link identityConversionFields}) — but when this is true, the orientation
-   * it lands on is OUR choice rather than the file's, and callers must say so
-   * instead of applying it silently. (PR #2543 review.)
+   * the model's local axes are grid-aligned. The guard resets the axis anyway,
+   * because a non-identity rotation acting on a map-sized coordinate is
+   * unrecoverable whatever the offsets are — but when this is true, the
+   * orientation on screen is OUR choice rather than the file's, and callers
+   * must say so instead of leaving it implicit.
    *
-   * An earlier version also treated a non-zero `CoordinateInfo.buildingRotation`
-   * as corroboration, on the theory that a rotating site placement is what
-   * turns the local frame INTO the map frame. That is evidence, not proof: the
-   * placement rotation and the conversion's axis can simply disagree (they do
-   * in #2526 — -117.833° versus +90°), and picking the placement silently is
-   * exactly the outcome the flag exists to prevent. A caveat sentence costs a
-   * line of prose; a silently mis-oriented model costs a re-export.
+   * (The site placement's own rotation is NOT taken as corroboration: the
+   * placement rotation and the conversion's axis can simply disagree, and they
+   * do in #2526 — −117.833° versus +90°.)
    */
   overridesAuthoredRotation: boolean;
   /**
-   * True when the fix must also rewrite `Scale`, because the scale the viewer
-   * currently applies is not 1 and would keep mis-sizing the geometry about the
-   * map origin after the offsets are cleared. Carries the value to write.
+   * Non-null when the neutralised conversion also replaces an authored `Scale`
+   * that ifc-lite would otherwise have applied — i.e. the effective horizontal
+   * scale for this file is not 1. Left alone it would keep re-scaling the
+   * map-sized coordinates about the map origin (a UTM point scale of 0.9996 on
+   * a 6 000 km northing is ~2.4 km of drift), so the guard pins it to 1.
+   *
+   * Carries the `Scale` value the FILE would need for the spec-strict formula
+   * to leave its own absolute coordinates alone: the unit bridge
+   * `lengthUnitScale / mapUnitScale`. Reported for two reasons — it is a value
+   * of the user's file that the placement on screen does not honour, and
+   * zeroing only the offsets is then not enough to bake the correction into an
+   * export. A spec-compliant consumer reading such a file back would still
+   * rescale the map-sized coordinates about the map origin, so any instruction
+   * that stops at Eastings/Northings/rotation would be wrong. (PR review.)
+   *
+   * Null when the effective horizontal scale is already 1, which covers both a
+   * spec-correct unit bridge and the unset-Scale heuristic — so a genuine
+   * foot/metre bridge is neither overridden nor mentioned.
    */
-  scaleCorrection: number | null;
+  scaleForExport: number | null;
 }
 
 /**
  * Report a duplicated georeference, or `null` when the model does not match the
- * fingerprint. See the module header for the two conditions and why they are
- * safe against correctly authored files.
+ * fingerprint.
+ *
+ * Fires **iff** {@link effectiveMapConversionForGeometry} neutralised the
+ * conversion for the geometry — see the module header. That guard returns its
+ * argument unchanged when it does not fire and a fresh object when it does, so
+ * reference identity is the exact question "did the placement on screen differ
+ * from the file?". `map-absolute.test.ts` pins the unchanged-return half of
+ * that contract; `double-georeference.test.ts` pins both halves from here.
  *
  * @param conversion      Effective `IfcMapConversion` (file values + any edits).
  * @param crs             Effective `IfcProjectedCRS` (for `mapUnitScale`).
@@ -126,56 +128,34 @@ export function detectDoubleGeoreference(
   if (!conversion || !coordinateInfo) return null;
 
   const mapScale = resolveMapUnitToMetreScale(crs?.mapUnitScale, lengthUnitScale);
+  const neutralised = effectiveMapConversionForGeometry(conversion, mapScale, coordinateInfo);
+  if (neutralised === conversion) return null;
+
   const easting = conversion.eastings * mapScale;
   const northing = conversion.northings * mapScale;
-  if (!Number.isFinite(easting) || !Number.isFinite(northing)) return null;
-
   const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
-  if (!Number.isFinite(ifcX) || !Number.isFinite(ifcY)) return null;
 
-  const worldMagnitude = Math.hypot(ifcX, ifcY);
-  if (worldMagnitude < MIN_WORLD_MAGNITUDE_M) return null;
-
-  const offsetMagnitude = Math.hypot(easting, northing);
-  const residual = Math.hypot(ifcX - easting, ifcY - northing);
-  const tolerance = Math.max(
-    MIN_RESIDUAL_TOLERANCE_M,
-    RESIDUAL_TOLERANCE_FRACTION * offsetMagnitude,
-  );
-  if (residual > tolerance) return null;
-
-  // Where applying the conversion puts the model, versus where its geometry
-  // already sits in the map CRS. Mirrors `computeProjectedCenter` exactly,
+  // Where a spec-strict tool would put the model, versus where its geometry
+  // already sits in the map CRS. Mirrors `computeProjectedCenter` exactly —
   // including the `?? 1 / ?? 0` axis defaults and the effective (not raw)
-  // horizontal scale, so the reported error is the one the viewer renders.
+  // horizontal scale — so the quoted error is the one such a tool renders.
+  //
+  // Deliberately NOT guarded against a non-finite axis or Scale. The guard
+  // above does not inspect either, so a malformed file is still corrected on
+  // screen; bailing here would move it silently and say nothing. Quote "an
+  // unknown distance" instead of suppressing the whole message. (#2526.)
   const abscissa = conversion.xAxisAbscissa ?? 1;
   const ordinate = conversion.xAxisOrdinate ?? 0;
   const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
-  // `hasStandardGeoreferencing` deliberately does NOT gate on the axis pair or
-  // Scale being finite (see effective-georef.ts), so a NaN can reach here. It
-  // would poison `displacement` and make `rotationIsIdentity` false by
-  // accident, i.e. we would flag a malformed file and quote it a nonsense
-  // number. Stay quiet instead. (PR #2543 review.)
-  if (!Number.isFinite(abscissa) || !Number.isFinite(ordinate) || !Number.isFinite(scale)) {
-    return null;
-  }
   const appliedE = easting + scale * (abscissa * ifcX - ordinate * ifcY);
   const appliedN = northing + scale * (ordinate * ifcX + abscissa * ifcY);
 
   const rotationIsIdentity = Math.abs(abscissa - 1) < 1e-9 && Math.abs(ordinate) < 1e-9;
-  // `scale` above is the EFFECTIVE horizontal scale, i.e. what the viewer
-  // actually applies to metre geometry. Anything other than 1 keeps re-scaling
-  // the map-sized coordinates about the map origin after the offsets are
-  // cleared, so "already in the map CRS" would still be false. The Scale value
-  // that makes the effective scale 1 is the spec unit bridge,
-  // lengthUnitScale / mapUnitScale.
-  //
-  // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction.
-  // `detectScaleUnitMismatch`'s 0.5% band is calibrated for geometry sitting a
-  // few tens of metres from its own origin; here the scale multiplies a
-  // map-sized coordinate, so 0.4% of a 6 000 km easting is 24 km of drift — a
-  // fraction-based band would wave that through. One metre at the model's own
-  // distance from the origin is the threshold that matters. (PR #2543 review.)
+  // The tolerance is expressed as INDUCED POSITION ERROR, not as a fraction:
+  // this scale multiplies a map-sized coordinate, so 0.4% of a 6 000 km
+  // easting is 24 km of drift and a fraction-based band would wave it through.
+  // One metre at the model's own distance from the origin is what matters.
+  const worldMagnitude = Math.hypot(ifcX, ifcY);
   const scaleIsUnit = Math.abs(scale - 1) * worldMagnitude <= 1;
   const mapUnitScale = mapScale > 0 ? mapScale : 1;
   const lengthScale = lengthUnitScale > 0 ? lengthUnitScale : 1;
@@ -183,49 +163,44 @@ export function detectDoubleGeoreference(
   return {
     worldCenter: { x: ifcX, y: ifcY },
     offset: { easting, northing },
-    residual,
+    residual: Math.hypot(ifcX - easting, ifcY - northing),
     displacement: Math.hypot(appliedE - ifcX, appliedN - ifcY),
     overridesAuthoredRotation: !rotationIsIdentity,
-    scaleCorrection: scaleIsUnit ? null : lengthScale / mapUnitScale,
+    scaleForExport: scaleIsUnit ? null : lengthScale / mapUnitScale,
   };
 }
 
 /**
- * The `IfcMapConversion` field values that make the conversion a horizontal
- * identity, i.e. "the geometry is already in the map CRS".
+ * Metres → a short human-readable distance for the sentence the banner builds
+ * around it ("about 6,004 km", "about 820 m").
  *
- * `OrthogonalHeight` is deliberately absent. The fingerprint this module matches
- * is a duplicated HORIZONTAL offset and says nothing about the vertical: zeroing
- * an `OrthogonalHeight` that legitimately carries the site altitude (while the
- * geometry Z is local) would trade a horizontal error for a vertical one.
+ * The grouping locale is pinned to `en-US` on purpose. The viewer's UI is
+ * English-only, and a bare `toLocaleString()` groups in the BROWSER's locale
+ * instead: on the reporter's German browser 6 004 km printed as
+ * "about 6.004 km", which inside an English sentence reads as six metres. That
+ * is the exact text quoted back on #2526 — a real placement error, made to
+ * look like a formatting bug. A number embedded in prose has to be formatted
+ * in the language of the prose.
  *
- * The axis pair is always included, and `Scale` is included when
- * {@link DoubleGeoreference.scaleCorrection} is set. Neither is symmetric with
- * `OrthogonalHeight`, because both act on the coordinates BEFORE the
- * translation: a non-identity rotation or scale applied to a map-sized world
- * coordinate moves the model by a distance of order ‖world‖ — millions of
- * metres — no matter what the offsets are. Leaving either while zeroing the
- * offsets would move the model from one wrong continent to another, so there is
- * no "offsets-only" fix to offer. (PR #2543 review.)
- *
- * `Scale` is left alone when the EFFECTIVE horizontal scale is already 1, which
- * covers both a spec-correct unit bridge and the unset-Scale heuristic — so a
- * genuine foot/metre bridge survives untouched.
- *
- * @param scaleCorrection `DoubleGeoreference.scaleCorrection`: the Scale value
- *   that makes the effective horizontal scale 1, or null to leave Scale alone.
+ * Past ~2.5 Earth circumferences the figure stops meaning anything to a reader
+ * and starts looking like a formatting bug in its own right, so say what it
+ * actually implies instead. A file that also mis-scales lands there easily: a
+ * 1000× scale on map-sized coordinates produces billions of km.
  */
-export function identityConversionFields(
-  scaleCorrection: number | null = null,
-): Array<{ field: string; value: number }> {
-  const fields = [
-    { field: 'eastings', value: 0 },
-    { field: 'northings', value: 0 },
-    { field: 'xAxisAbscissa', value: 1 },
-    { field: 'xAxisOrdinate', value: 0 },
-  ];
-  if (scaleCorrection !== null) {
-    fields.push({ field: 'scale', value: scaleCorrection });
-  }
-  return fields;
+/**
+ * A float as the shortest string that still round-trips to the same value at 6
+ * significant figures — `0.001`, not `toPrecision(4)`'s `0.001000`. Used for
+ * the `Scale` value the note tells the user to type into a field, where
+ * trailing zeros read as a precision claim the number does not carry.
+ */
+export function trimFloat(value: number): string {
+  if (!Number.isFinite(value)) return String(value);
+  return String(Number(value.toPrecision(6)));
+}
+
+export function formatApproxDistance(metres: number): string {
+  if (!Number.isFinite(metres)) return 'an unknown distance';
+  if (metres > 100_000_000) return 'more than a planet-width';
+  if (metres >= 1000) return `about ${Math.round(metres / 1000).toLocaleString('en-US')} km`;
+  return `about ${Math.round(metres).toLocaleString('en-US')} m`;
 }

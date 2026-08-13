@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle } from 'lucide-react';
+import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -26,26 +26,11 @@ import {
   mergeProjectedCRS,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
-import { detectDoubleGeoreference, identityConversionFields } from '@/lib/geo/double-georeference';
+import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
 // ── Field-specific assistance data ─────────────────────────────────────
-
-/**
- * Metres → a short human-readable distance ("6,004 km", "820 m").
- *
- * Past ~2.5 Earth circumferences the figure stops meaning anything to a reader
- * and starts looking like a formatting bug, so say what it actually implies
- * instead. A file that also mis-scales lands there easily: a 1000× scale on
- * map-sized coordinates produces billions of km.
- */
-function formatDistance(metres: number): string {
-  if (!Number.isFinite(metres)) return 'an unknown distance';
-  if (metres > 100_000_000) return 'more than a planet-width';
-  if (metres >= 1000) return `about ${Math.round(metres / 1000).toLocaleString()} km`;
-  return `about ${Math.round(metres).toLocaleString()} m`;
-}
 
 const COMMON_DATUMS = ['WGS84', 'ETRS89', 'NAD83', 'NAD27', 'GRS80', 'Bessel 1841', 'Clarke 1866'];
 const COMMON_PROJECTIONS = ['Transverse Mercator', 'UTM', 'Lambert Conformal Conic', 'Mercator', 'Stereographic', 'Oblique Mercator'];
@@ -404,8 +389,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
   // Geometry already at absolute map coordinates AND a MapConversion repeating
-  // the same offset — applying it a second time throws the model thousands of
-  // km off (#2526). Report only; the user decides.
+  // the same offset (#2526). `effectiveMapConversionForGeometry` has ALREADY
+  // neutralised the duplicate for every geometry consumer by the time this
+  // runs — this is the note that says so, and it fires on exactly the same
+  // predicate, so the panel can never disagree with the model on screen.
   const doubleGeoref = useMemo(() => {
     return detectDoubleGeoreference(
       mergedConversion,
@@ -530,24 +517,6 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
       { field: 'xAxisOrdinate', value: ordinate, oldValue: mergedConversion?.xAxisOrdinate },
     ]);
     posthog.capture('georeference_set', { method: 'true_north' });
-    requestAlignmentReload();
-  }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
-
-  // Clear a duplicated MapConversion offset (#2526): the geometry is already in
-  // the map CRS, so the conversion has to be a horizontal identity.
-  const applyIdentityConversion = useCallback((scaleCorrection: number | null) => {
-    if (!modelId || !setGeorefFields) return;
-    setGeorefFields(
-      modelId,
-      'mapConversion',
-      identityConversionFields(scaleCorrection).map(({ field, value }) => ({
-        field,
-        value,
-        oldValue: mergedConversion?.[field as keyof MapConversion] as number | undefined,
-      })),
-    );
-    posthog.capture('georeference_set', { method: 'double_georeference_identity' });
-    setConversionOpen(true);
     requestAlignmentReload();
   }, [modelId, setGeorefFields, mergedConversion, requestAlignmentReload]);
 
@@ -715,46 +684,53 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         )}
       </div>
 
-      {/* Doubly-georeferenced model (#2526). Sits ABOVE the collapsibles and
-          outside them: a multi-thousand-km placement error must not be hidden
-          behind a collapsed section the way the scale note is. */}
+      {/* Doubly-georeferenced model (#2526). Informational, not a warning, and
+          deliberately without an action: the model on screen is already
+          correct — `effectiveMapConversionForGeometry` neutralised the
+          duplicated conversion before anything was placed. An alarm here would
+          tell the user their model is thousands of km out while they are
+          looking at it in the right place, and a "fix it" button would only
+          bake OUR substituted rotation into their authored data. Sits above the
+          collapsibles because it explains a difference between the file and the
+          view, which must not be hidden behind a collapsed section. */}
       {doubleGeoref && (
-        <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-amber-50/60 dark:bg-amber-950/25">
-          <div className="flex items-start gap-1.5 text-[10px] text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
+        <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-sky-50/60 dark:bg-sky-950/25">
+          <div className="flex items-start gap-1.5 text-[10px] text-sky-700 dark:text-sky-400">
+            <Info className="h-3 w-3 mt-0.5 shrink-0" />
             <span className="leading-snug">
-              <strong>Model is georeferenced twice.</strong>{' '}
+              <strong>This model is georeferenced twice. ifc-lite corrected it.</strong>{' '}
               The geometry already sits at map coordinates (E{' '}
               {doubleGeoref.worldCenter.x.toFixed(0)} N {doubleGeoref.worldCenter.y.toFixed(0)}),
-              and this IfcMapConversion repeats the same offset. Applying it displaces the model
-              by {formatDistance(doubleGeoref.displacement)}.
-              {editable
-                ? ` The fix below zeroes Eastings/Northings and resets the rotation to grid-aligned${
-                  doubleGeoref.scaleCorrection !== null
-                    ? `, sets Scale to ${doubleGeoref.scaleCorrection.toPrecision(4)} so the geometry is no longer re-scaled about the map origin,`
-                    : ''
-                } and treats the geometry as already being in the map CRS. OrthogonalHeight is left as authored.`
-                : ' Enable editing to correct it.'}
+              and this IfcMapConversion repeats the same offset. ifc-lite places the geometry
+              where it already is; a tool that applied the conversion on top would put the model{' '}
+              {formatApproxDistance(doubleGeoref.displacement)} away.
               {/* The fingerprint matches on TRANSLATION, so when the file authors
                   a rotation of its own we are choosing the orientation, not
-                  restating it. Say so rather than applying it silently. */}
-              {editable && doubleGeoref.overridesAuthoredRotation && (
+                  restating it. Say so rather than leaving it implicit. */}
+              {doubleGeoref.overridesAuthoredRotation && (
                 <>
-                  {' '}This file authors a rotation that cannot be reconciled with its own
-                  coordinates, so check the orientation afterwards and set Angle to Grid North
-                  by hand if it looks wrong.
+                  {' '}This file also authors a map rotation that cannot be reconciled with its own
+                  coordinates, so the model is placed grid-aligned. Check the orientation, and set
+                  Angle to Grid North by hand if it looks wrong.
                 </>
               )}
+              {doubleGeoref.scaleForExport !== null && (
+                <>
+                  {' '}Its Scale is not applied either: on map-sized coordinates it would re-scale
+                  the model about the map origin.
+                </>
+              )}
+              {' '}The file&apos;s own values are shown below exactly as authored. The export is
+              worth fixing at source; to bake the correction in here,{' '}
+              {/* Zeroing the offsets is NOT enough when Scale is being
+                  overridden: a spec-strict consumer reading the exported file
+                  back would still multiply the map-sized coordinates by it. */}
+              {doubleGeoref.scaleForExport !== null
+                ? `set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to ${trimFloat(doubleGeoref.scaleForExport)}`
+                : 'set Eastings and Northings to 0 and Angle to Grid North to 0'}
+              , then use Export IFC (with changes).
             </span>
           </div>
-          {editable && (
-            <button
-              onClick={() => applyIdentityConversion(doubleGeoref.scaleCorrection)}
-              className="mt-1.5 ml-[18px] text-[10px] text-amber-800 dark:text-amber-300 hover:text-amber-950 dark:hover:text-amber-200 px-1.5 py-0.5 border border-amber-400/60 dark:border-amber-700/60 hover:bg-amber-100/70 dark:hover:bg-amber-900/40 transition-colors"
-            >
-              Treat geometry as already in the map CRS
-            </button>
-          )}
         </div>
       )}
 

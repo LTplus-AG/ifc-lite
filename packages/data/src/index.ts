@@ -6,6 +6,7 @@
  * @ifc-lite/data - Columnar data structures
  */
 
+export { IFCX_VERSION } from './ifcx-version.js';
 export { StringTable } from './string-table.js';
 export { EntityTableBuilder, entityTableFromColumns, entityTableToColumns } from './entity-table.js';
 export type { EntityTable, EntityTableColumns } from './entity-table.js';

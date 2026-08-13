@@ -39,7 +39,7 @@ import {
   viewerToIfcAxes,
   formatCoordinateTriple,
 } from './measure-modes/coordinates';
-import { formatDistance } from './formatDistance';
+import { formatDistance, formatSignedTriple } from './formatDistance';
 import { projectedEnh, useProjectedLatLon, type Vec3Like } from './measure-modes/geo-readout';
 
 /** One labelled coordinate row. */
@@ -61,6 +61,7 @@ export function MeasurePointReadout() {
   const geoReadoutEnabled = useViewerStore((s) => s.geoReadoutEnabled);
   const referencePoint = useViewerStore((s) => s.measureReferencePoint);
   const setReferencePoint = useViewerStore((s) => s.setMeasureReferencePoint);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   const frame = useRenderFrameOffsets();
   const anchor = useAnchorGeoreference();
@@ -134,8 +135,12 @@ export function MeasurePointReadout() {
         {offset && (
           <CoordRow
             label="Rel. ref"
-            value={formatCoordinateTriple({ x: offset.dx, y: offset.dy, z: offset.dz })}
-            hint={formatDistance(offset.distance)}
+            // dx/dy/dz are a LENGTH DELTA, not a raw model coordinate — unlike
+            // the Model/Render/Map rows above, this triple must honour the
+            // same LENGTHUNIT override as the trailing distance hint, or the
+            // two disagree (#2538 deep review).
+            value={formatSignedTriple({ x: offset.dx, y: offset.dy, z: offset.dz }, unitDisplayOverrides)}
+            hint={formatDistance(offset.distance, unitDisplayOverrides)}
           />
         )}
         {enh && (

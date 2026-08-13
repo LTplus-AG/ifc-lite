@@ -477,6 +477,29 @@ describe('resolveDxfExportGeoreference (PR #1871 review: edited georeferencing m
     close(out.y, 1_199_994);
   });
 
+  it('threads the legacy single-model coordinateInfo into the georeference (#2526 map-absolute guard input)', async () => {
+    const store = await parseStore(GEOREF_FIXTURE);
+    const legacyCoordinateInfo = {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      hasLargeCoordinates: false,
+    };
+    const georef = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      legacyCoordinateInfo,
+      georefMutations: new Map(),
+    });
+    assert.ok(georef);
+    // The SAME object, not a copy — the map-absolute guard in
+    // resolveGeorefLinearParams reads it to decide whether the anchor model's
+    // geometry already sits at the declared anchor. A caller that omits it
+    // (as useDxfMapToWorldTransform once did) silently splits the forward
+    // and inverse transforms onto different conversions for such files.
+    assert.strictEqual(georef.coordinateInfo, legacyCoordinateInfo);
+  });
+
   it('an applied placement edit (georefMutations) changes the exported DXF coordinates', async () => {
     const store = await parseStore(GEOREF_FIXTURE);
     const mutations = new Map<string, GeorefMutationDataLike>([
@@ -820,5 +843,94 @@ describe('buildDxfMapToWorldTransform', () => {
     assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
     close(mapPoint.x, 500_000 + 1007);
     close(mapPoint.y, 6_000_000 + 2001);
+  });
+});
+
+describe('DXF georeference with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style file: geometry authored at the ABSOLUTE projected
+  // coordinates (rebased into wasmRtcOffset), IfcMapConversion repeating the
+  // same anchor with a 90-degree rotation. The exported DXF must carry the
+  // geometry's absolute coordinates unchanged — applying the authored
+  // conversion on top would double-transform, exactly like the pin did.
+  const mapAbsInfo: NonNullable<GeometryResult['coordinateInfo']> = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+  const mapAbsGeoreference = (coordinateInfo?: GeometryResult['coordinateInfo']) => ({
+    mapConversion: {
+      id: 1,
+      sourceCRS: 0,
+      targetCRS: 0,
+      eastings: 312000,
+      northings: 5996150,
+      orthogonalHeight: 0,
+      xAxisAbscissa: 0,
+      xAxisOrdinate: 1,
+      scale: 1,
+    },
+    projectedCRS: { id: 2, name: 'EPSG:25833', mapUnitScale: 1 },
+    lengthUnitScale: 1,
+    coordinateInfo,
+  });
+
+  it('exports the absolute world coordinate unchanged instead of double-applying the anchor + rotation', () => {
+    const transform = buildDxfExportTransform({
+      coordinateInfo: mapAbsInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: mapAbsGeoreference(mapAbsInfo),
+    });
+    // dxfWorldShift = (rtc.x, rtc.y) = (312000, 5996150); drawing (10, 10)
+    // is the absolute world/map point (312010, 5996140).
+    const out = transform({ x: 10, y: 10 });
+    close(out.x, 312010);
+    close(out.y, 5996140);
+  });
+
+  it('imports a georeferenced DXF underlay at the absolute world coordinate (inverse agrees)', () => {
+    const mapToWorld = buildDxfMapToWorldTransform(mapAbsGeoreference(mapAbsInfo));
+    const out = mapToWorld({ x: 312010, y: 5996140 });
+    close(out.x, 312010);
+    close(out.y, 5996140);
+  });
+
+  it('control: a compliant file (no RTC rebase) keeps the authored conversion in both directions', () => {
+    const compliantInfo: GeometryResult['coordinateInfo'] = {
+      ...mapAbsInfo,
+      wasmRtcOffset: undefined,
+    };
+    const georeference = mapAbsGeoreference(compliantInfo);
+    const transform = buildDxfExportTransform({
+      coordinateInfo: compliantInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    // world (3, -4) under the authored 90-degree rotation:
+    // x = 312000 + (0*3 - 1*(-4)) = 312004; y = 5996150 + (1*3 + 0) = 5996153.
+    const out = transform({ x: 3, y: 4 });
+    close(out.x, 312004);
+    close(out.y, 5996153);
+    const roundTrip = buildDxfMapToWorldTransform(georeference)(out);
+    close(roundTrip.x, 3);
+    close(roundTrip.y, -4);
+  });
+
+  it('control: a georeference without coordinateInfo keeps the authored conversion', () => {
+    const transform = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: mapAbsGeoreference(undefined),
+    });
+    const out = transform({ x: 3, y: 4 });
+    close(out.x, 312004);
+    close(out.y, 5996153);
   });
 });

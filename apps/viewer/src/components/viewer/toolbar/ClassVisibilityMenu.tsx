@@ -11,8 +11,11 @@
  * <label> wrapping a right-aligned Switch, so toggling does NOT close
  * the menu — users routinely flip several classes in one pass. State
  * reads two ways: the switch position and the row dimming when off.
- * All rows render unconditionally (persisted preferences, sticky across
- * models/reloads); toggling a class the model lacks is a no-op.
+ * The preference rows render unconditionally (persisted, sticky across
+ * models/reloads); toggling a class the model lacks is a no-op. The two
+ * exceptions are state reports rather than preferences, and appear only when
+ * they have something to say: the Model/Types switch (needs type geometry) and
+ * the pinned-detail notice (needs a stored `?geomTier=` override).
  */
 
 import React from 'react';
@@ -21,6 +24,7 @@ import {
   BoxSelect,
   Boxes,
   Building2,
+  Gauge,
   Grid3x3,
   Layers2,
   Pencil,
@@ -32,6 +36,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { DropdownMenuContent, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
+import { isPreviewTier } from '@/store/constants';
 import { cn } from '@/lib/utils';
 
 interface ClassVisibilityRowProps {
@@ -102,6 +107,9 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
   const setMergeLayers = useViewerStore((state) => state.setMergeLayers);
   const geometryMode = useViewerStore((state) => state.geometryMode);
   const setGeometryMode = useViewerStore((state) => state.setGeometryMode);
+  // #2544: a pinned `?geomTier=` override is otherwise invisible and permanent.
+  const geomTierOverride = useViewerStore((state) => state.geomTierOverride);
+  const clearGeomTierOverride = useViewerStore((state) => state.clearGeomTierOverride);
   const { visible: visibleClassCount, total: classToggleCount } = useVisibleClassCount();
 
   return (
@@ -268,6 +276,39 @@ export function ClassVisibilityMenuContent({ align = 'start' }: { align?: 'start
           onCheckedChange={(next) => setGeometryMode(next === true ? 'fast' : 'exact')}
         />
       </label>
+
+      {/* A `?geomTier=` override persists to localStorage from a single link
+          visit and then silently governs every later load. Before #2544 nothing
+          in the UI said so and the only ways out were `?geomTier=auto` or
+          clearing site data — so a borrowed debug link could pin a browser to
+          preview fidelity forever. Rendered ONLY while an override is stored:
+          for everyone else there is nothing to say, and a permanent "Detail:
+          auto" row would be noise. Not a <label>/Switch like the rows above,
+          because this is not a preference the user set here; it is a stuck
+          state with exactly one useful action. */}
+      {geomTierOverride && (
+        <div className="flex items-center justify-between gap-3 rounded-md border border-primary/40 bg-primary/5 px-2 py-1.5">
+          <span className="flex items-center gap-2.5 min-w-0">
+            <Gauge className="h-4 w-4 shrink-0 text-primary" />
+            <span className="grid gap-0.5 min-w-0">
+              <span className="text-sm leading-tight truncate">Detail pinned: {geomTierOverride}</span>
+              <span className="text-[10px] leading-tight text-muted-foreground truncate">
+                {isPreviewTier(geomTierOverride) && geometryMode !== 'fast'
+                  ? 'Ignored in Exact · from a ?geomTier= link'
+                  : 'Overrides automatic detail · from a ?geomTier= link'}
+              </span>
+            </span>
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 shrink-0 px-2 text-[11px] font-semibold uppercase tracking-wider"
+            onClick={clearGeomTierOverride}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
     </DropdownMenuContent>
   );
 }

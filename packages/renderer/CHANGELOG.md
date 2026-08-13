@@ -1,5 +1,22 @@
 # @ifc-lite/renderer
 
+## 1.44.1
+
+### Patch Changes
+
+- [#2523](https://github.com/LTplus-AG/ifc-lite/pull/2523) [`bb0c1fe`](https://github.com/LTplus-AG/ifc-lite/commit/bb0c1feab74d0e4b76b66acbabf7bebe45144b25) Thanks [@louistrue](https://github.com/louistrue)! - Section cut caps and `IfcAnnotationFillArea` fills now subtract their holes. The shared triangulator bridged hole rings in but almost never clipped an ear from the bridged ring, so a 4x4 profile with a 2x2 hole covered an area of 2 instead of 12 and any cut through a wall opening or slab void rendered a near-empty cap. Rings are now nested by the even-odd rule, so an island inside a hole fills, matching the 2D canvas and SVG export paths which already fill with `evenodd`. Hole-free profiles are unchanged.
+
+- [#2399](https://github.com/LTplus-AG/ifc-lite/pull/2399) [`7ec9876`](https://github.com/LTplus-AG/ifc-lite/commit/7ec9876202b3fd4d83fda5f23931740a6b0e4e25) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden `Scene.flushPending`'s mesh-queue drain loop against a future regression, not an observed bug: today the chunk-end computation is provably always at least one mesh past the read cursor (three constants combine to guarantee this — see the comment at the call site), but nothing at the loop itself said so. Extracted the chunk-end computation into a pure `computeFlushChunkEnd` helper and added a zero-progress `break`, so that if a future change ever broke one of those three invariants the loop would stop instead of spinning the main thread at 100% CPU with zero allocation.
+
+  Also closed a latent gap in the same computation: `meshQueue[i].indices.length` was read unchecked when deciding whether a chunk exceeds the index-volume cap. A `NaN` there would have made the cap silently vacuous (`NaN > cap` is always `false`), producing one indivisible oversized chunk instead of stopping. The cap check is now written in the codebase's established NaN-rejecting form (`!(x <= cap)` instead of `x > cap`), which is a no-op for all valid input and closes the chunk defensively if it ever sees `NaN` or `+Infinity`.
+
+  No behavior change on any real input; this is defensive hardening surfaced while investigating [#2379](https://github.com/LTplus-AG/ifc-lite/issues/2379).
+
+  Also rejects `-Infinity` specifically, which the `!(x <= cap)` form above didn't already close (`-Infinity <= cap` is always `true`, so the check passes it through). Folding it into the running `chunkIndices` total then poisoned that total to `-Infinity` too, making the cap vacuous for every mesh after the malformed one, not just that one mesh. Every non-finite `indices.length` now closes the chunk explicitly, before it can reach either the cap comparison or the running total.
+
+- Updated dependencies [[`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa), [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d)]:
+  - @ifc-lite/geometry@3.8.1
+
 ## 1.44.0
 
 ### Minor Changes

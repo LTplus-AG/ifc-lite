@@ -1,5 +1,31 @@
 # @ifc-lite/cache
 
+## 3.0.4
+
+### Patch Changes
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Validate the v13 geometry section's `headLength` field against the actual parsed head size, instead of trusting it as the chunk-0 anchor.
+
+  `openGeometryChunksV13` anchors chunk 0's declared `byteOffset` at `4 + head.headLength`, since the contiguity loop that validates every other chunk against its predecessor structurally cannot anchor element 0. But `headLength` is itself an on-disk declared field, read but never used to seek during the head parse — so the anchor check (`chunks[0].byteOffset === 4 + head.headLength`) only cross-validated two independently-corruptible fields against EACH OTHER. Corrupting `headLength` and echoing the same corruption into chunk 0's declared `byteOffset` kept the two "consistent" and passed both the anchor check and the contiguity loop that follows it, even though neither matched where the head parse actually landed.
+
+  `openGeometryChunksV13` now checks `4 + head.headLength` against `reader.position` (a structural fact — where parsing meshCount/totalVertices/totalTriangles/coordinateInfo/chunkCount/directory actually ended) before trusting `headLength` for anything, and the chunk-0 anchor now compares against that same structural position rather than the declared field directly. A well-formed cache is unaffected — `headLength` always matches the true head size by construction.
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Validate the v13 geometry section's chunk directory before decoding instead of trusting each entry's declared byte range.
+
+  `openGeometryChunksV13`'s `readChunk` sliced a chunk's stored bytes out of the section buffer with `bytes.subarray(start, start + info.byteLength)`. `subarray` doesn't throw when a range runs past the buffer — it saturates — so a corrupt directory entry (disk corruption, a hand-crafted cache) could hand `decodeGeometryChunk` fewer bytes than declared. Worse, `decodeGeometryChunk`'s own `raw.byteLength !== info.uncompressedLength` check could be neutralised: a directory entry whose `byteLength`, `uncompressedLength`, and `meshCount` are corrupted consistently (matching the actual truncated/absorbed byte range) passes that check while silently decoding a NEIGHBOURING chunk's real, validly-encoded mesh records as if they belonged to this chunk — duplicating that geometry under two chunks with no error.
+
+  Two guards close this: `readChunk` now rejects a chunk range that exceeds the buffer before slicing, and `openGeometryChunksV13` now validates that consecutive chunks' declared ranges are contiguous (matching how the writer always lays them out) before any chunk is read. A well-formed cache is unaffected — chunk ranges are always contiguous and within bounds by construction.
+
+  This does not close every variant: a corrupted LAST chunk whose range reaches past its true end into whatever bytes happen to follow (trailing padding, or the next section in a multi-section cache file) isn't caught by the contiguity check, since there is no next chunk to cross-validate against. That residual case still relies on the buffer-bounds check plus `decodeGeometryChunk`'s existing length check.
+
+- [#2326](https://github.com/LTplus-AG/ifc-lite/pull/2326) [`2e18adc`](https://github.com/LTplus-AG/ifc-lite/commit/2e18adc0e6983dbd5832367429cc3782e2cb2d1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `readStrings` now rejects a StringTable section whose offset table isn't non-decreasing instead of silently mis-decoding it.
+
+  The read loop sliced each string out of the shared data blob with `data.subarray(offsets[i], offsets[i + 1])`. `subarray` doesn't throw when a range is out of order or runs past the blob — it saturates — so a corrupt or hand-crafted offset table (disk corruption, a truncated transfer) could make one string silently absorb bytes belonging to the next string (or decode as empty) instead of failing loudly. This is the same "declared length trusted without a bounds check" shape already fixed for the entity-index and geometry-chunk sections' directories. A validly-written table's offsets are always non-decreasing and end at the data blob's length, so this guard rejects only corruption.
+
+- Updated dependencies [[`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa), [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d)]:
+  - @ifc-lite/geometry@3.8.1
+  - @ifc-lite/data@3.2.4
+
 ## 3.0.3
 
 ### Patch Changes

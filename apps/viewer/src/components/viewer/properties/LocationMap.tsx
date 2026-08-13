@@ -30,7 +30,8 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
-import { buildKmz } from '@/lib/geo/kmz-exporter';
+import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
+import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
   getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
@@ -111,6 +112,16 @@ export interface LocationMapProps {
   editable?: boolean;
   /** Called when the user applies a new position from the map */
   onApplyPosition?: (position: PickedPosition) => void;
+  /**
+   * wasm seam for the KMZ export, forwarded to `buildKmzForResolvedGeoref`.
+   * Production leaves it undefined and gets the real `GeometryProcessor`;
+   * `LocationMap.kmz.test.tsx` passes a stub so the Google Earth button can be
+   * driven end to end under `tsx --test`, where the engine cannot load. Same
+   * seam `buildKmz` has always exposed to `kmz-exporter.test.ts`, one level up
+   * — without it this call site is untestable, which is exactly how it drifted
+   * out of sync with the Export KMZ dialog (#2526 follow-up).
+   */
+  createKmzProcessor?: () => KmzProcessor;
 }
 
 type MapState = 'idle' | 'loading' | 'ready' | 'error';
@@ -239,7 +250,7 @@ function removeFootprintFromMap(map: InstanceType<typeof import('maplibre-gl').M
 
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult,
-  lengthUnitScale = 1, editable, onApplyPosition,
+  lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
 }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
@@ -707,24 +718,35 @@ export function LocationMap({
   }, [latLon]);
 
   const handleExportKmz = useCallback(async () => {
-    if (!latLon || !geometryResult || !mapConversion) return;
+    if (!latLon || !geometryResult || !mapConversion || !projectedCRS) return;
     try {
       // Embed the model as COLLADA (Rust exporter): Google Earth's <Model> only loads
       // COLLADA, renders it bright via emission, and clampToGround keeps it on the
       // terrain so the MSL orthogonal height no longer floats it (#1427).
-      const kmz = await buildKmz({
-        latLon,
-        altitude: mapConversion.orthogonalHeight,
-        xAxisAbscissa: mapConversion.xAxisAbscissa,
-        xAxisOrdinate: mapConversion.xAxisOrdinate,
+      //
+      // Placement is NOT computed here. This used to call `buildKmz` directly
+      // with the authored axis and a raw `orthogonalHeight`, which skipped all
+      // three corrections the Export KMZ dialog got: the map-absolute guard
+      // (#2526), the map-unit altitude scaling, and the RTC Z fold-back. Same
+      // model, two buttons, two different files. `buildKmzForResolvedGeoref` is
+      // now the single source for both (#2526 follow-up).
+      const kmz = await buildKmzForResolvedGeoref({
+        conversion: mapConversion,
+        crs: projectedCRS,
+        coordinateInfo,
+        lengthUnitScale: lengthUnitScale ?? 1,
         meshes: geometryResult.meshes as MeshData[],
         name: 'IFC Model',
-      });
+      }, createKmzProcessor);
+      if (typeof kmz === 'string') {
+        console.error('KMZ export failed:', kmz);
+        return;
+      }
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
     } catch (err) {
       console.error('KMZ export failed:', err);
     }
-  }, [latLon, geometryResult, mapConversion]);
+  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor]);
 
   const isDarkRef = useRef(false);
 

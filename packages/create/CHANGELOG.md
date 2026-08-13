@@ -1,5 +1,13 @@
 # @ifc-lite/create
 
+## 2.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568), [`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797), [`1de1696`](https://github.com/LTplus-AG/ifc-lite/commit/1de16969db1c56f4901e4af49da74085bae3b3fe)]:
+  - @ifc-lite/parser@4.0.2
+  - @ifc-lite/encoding@2.0.0
+
 ## 2.0.2
 
 ### Patch Changes

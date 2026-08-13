@@ -68,6 +68,7 @@ export interface DxfMapToWorld {
 export function useDxfMapToWorldTransform(): DxfMapToWorld {
   const models = useViewerStore((s) => s.models);
   const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const geometryResult = useViewerStore((s) => s.geometryResult);
   const anchorModelIdOverride = useViewerStore((s) => s.anchorModelIdOverride);
   const georefMutations = useViewerStore((s) => s.georefMutations);
   // Georef edits replace the map, but subscribe to mutationVersion too so
@@ -78,12 +79,17 @@ export function useDxfMapToWorldTransform(): DxfMapToWorld {
     const georeference = resolveDxfExportGeoreference({
       models,
       legacyDataStore: ifcDataStore,
+      // The legacy single-model coordinateInfo must be threaded exactly like
+      // useDrawingExport does, or the map-absolute guard (#2526) fires on
+      // export but not on this import path and the two directions disagree
+      // for a map-absolute model loaded through the legacy store.
+      legacyCoordinateInfo: geometryResult?.coordinateInfo,
       anchorModelIdOverride,
       georefMutations,
     });
     return { transform: buildDxfMapToWorldTransform(georeference), available: georeference !== null };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models, ifcDataStore, anchorModelIdOverride, georefMutations, mutationVersion]);
+  }, [models, ifcDataStore, geometryResult, anchorModelIdOverride, georefMutations, mutationVersion]);
 }
 
 export function useDxfUnderlaysForDrawing(params: {

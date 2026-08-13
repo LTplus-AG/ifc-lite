@@ -27,12 +27,26 @@ export interface FixtureEntity {
   /** Canonical PascalCase type, e.g. `IfcWall`. */
   type: string;
   name?: string;
+  /** 22-char IFC GlobalId. Only needed by tests that search by GUID. */
+  globalId?: string;
+  description?: string;
+  objectType?: string;
 }
 
 /**
  * The smallest object that survives a viewer panel's render path: an
  * `entityIndex.byType` map and an `entities` accessor. `spatialHierarchy` is
  * left undefined, which `collectStoreys` handles by returning no storeys.
+ *
+ * `entities` also carries the COLUMNAR half of the real `EntityTable`
+ * (`expressId` / `name` / `globalId` / `description` / `objectType` /
+ * `typeEnum` typed arrays plus a `strings` table), because search is not a
+ * per-id lookup: `runTier0Scan` and `buildTier1Index` walk the columns
+ * directly. Without them a search component mounts and finds nothing, which
+ * makes every downstream assertion vacuously true rather than red.
+ * Index 0 of the string table is the canonical empty string, exactly as the
+ * parser's `StringTable` defines it — both scanners use `idx === 0` as their
+ * "row has no searchable text" fast skip.
  */
 export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
   const byType = new Map<string, number[]>();
@@ -44,6 +58,25 @@ export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
     else byType.set(key, [e.expressId]);
     byId.set(e.expressId, e);
   }
+
+  const strings: string[] = [''];
+  const intern = (value: string | undefined): number => {
+    if (!value) return 0;
+    const existing = strings.indexOf(value);
+    if (existing > 0) return existing;
+    return strings.push(value) - 1;
+  };
+  const column = (pick: (e: FixtureEntity) => string | undefined): Uint32Array =>
+    Uint32Array.from(entities, (e) => intern(pick(e)));
+
+  const expressIdCol = Uint32Array.from(entities, (e) => e.expressId);
+  const nameCol = column((e) => e.name);
+  const globalIdCol = column((e) => e.globalId);
+  const descriptionCol = column((e) => e.description);
+  const objectTypeCol = column((e) => e.objectType);
+  const byGlobalId = new Map<string, number>();
+  for (const e of entities) if (e.globalId) byGlobalId.set(e.globalId, e.expressId);
+
   // ONE cast, here, rather than at every call site. It is narrow on purpose:
   // widening this object until it structurally satisfies IfcDataStore would
   // mean reimplementing the parser, and a per-test cast would silence the next
@@ -52,10 +85,22 @@ export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
   return {
     entityIndex: { byType },
     spatialHierarchy: undefined,
+    strings: { get: (idx: number) => strings[idx] ?? '' },
     entities: {
       getTypeName: (id: number) => byId.get(id)?.type ?? null,
       getName: (id: number) => byId.get(id)?.name ?? null,
-      count: byId.size,
+      getDescription: (id: number) => byId.get(id)?.description ?? '',
+      getObjectType: (id: number) => byId.get(id)?.objectType ?? '',
+      getExpressIdByGlobalId: (guid: string) => byGlobalId.get(guid) ?? 0,
+      count: entities.length,
+      expressId: expressIdCol,
+      // Every fixture row is "some product"; no scanner branches on the value,
+      // they only carry it through into the index entry.
+      typeEnum: new Uint16Array(entities.length),
+      name: nameCol,
+      globalId: globalIdCol,
+      description: descriptionCol,
+      objectType: objectTypeCol,
     },
   } as unknown as IfcDataStore;
 }

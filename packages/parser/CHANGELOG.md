@@ -1,5 +1,59 @@
 # @ifc-lite/parser
 
+## 4.0.2
+
+### Patch Changes
+
+- [#2359](https://github.com/LTplus-AG/ifc-lite/pull/2359) [`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two corrupted cells in the generated CRC32 lookup table (index 111 and 245), which were hand-typed literals that had silently drifted from the correct reflected CRC-32 (polynomial `0xEDB88320`) values. `packages/codegen` now renders this table from a single `buildCRC32Table()` source of truth in both its TypeScript and Rust templates instead of hand-typing a second copy, so the two cannot diverge again.
+
+  The 256-entry `TYPE_IDS` map shipped for every named entity in the schema was never affected — those ids are computed with the correct table at generation time. The corruption only affected `crc32Hash()` / `crc32_hash()` at runtime for entity keywords that are NOT in the map, i.e. the `IfcType::from_str` `Unknown(crc32_hash(...))` fallback reached for unrecognized/vendor-extension entity keywords, which could get a silently wrong stable id for names whose hash computation happened to touch one of the two corrupted cells.
+
+  `packages/codegen/generated/ifc4/type-ids.ts`, `packages/parser/src/generated/type-ids.ts`, `rust/core/src/generated/schema.rs`, and `packages/codegen/generated/ifc4x3/type-ids.ts` were all regenerated to correct the same two cells; each diff is exactly those two constants. The `ifc4x3` copy (see the companion changeset) is not imported by `packages/parser` or `rust/core`, so it had no runtime reader today, but it is a checked-in generated artifact and now matches the canonical table like the other three.
+
+  `formatCRC32TableLiteral()` now validates `perLine` and throws for a zero, negative, or non-integer value instead of silently producing a broken or extremely slow result. No caller passes a non-default `perLine` today, so this is a hardening of the exported helper's contract rather than a behavioral fix to generated output — with the default (`perLine = 6`), this hardening by itself leaves the four regenerated artifacts above unchanged.
+
+- [#2542](https://github.com/LTplus-AG/ifc-lite/pull/2542) [`1de1696`](https://github.com/LTplus-AG/ifc-lite/commit/1de16969db1c56f4901e4af49da74085bae3b3fe) Thanks [@louistrue](https://github.com/louistrue)! - Skip `/* */` comments when scanning for entities, so a commented-out record stays commented out
+
+  The entity scanners looked for `#` anywhere in the buffer, including inside a
+  STEP comment. A record that has been commented out is still a well-formed
+  `#id = TYPE(...);`, so every shape check downstream accepted it and it was
+  parsed as a live entity. Round-tripped through `StepExporter`, those revived
+  records are written into the output as real ones, taking express ids from gaps
+  in the source numbering.
+
+  The guard added in [#856](https://github.com/LTplus-AG/ifc-lite/issues/856) cannot catch this. It requires a `#<digits>` to be
+  followed by `=`, which rejects a bare `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)` in prose and accepts a commented-out
+  record, because that record has its `=`. The comment has to be skipped as a
+  region, which is what the Rust `EntityScanner` already does.
+
+  All three copies of the scan loop are fixed, not just the one: `scanEntities`,
+  `scanEntitiesFast`, and the string-embedded `WORKER_CODE` in
+  `scan-worker-inline.ts`. The worker matters most, because `scanIfcEntities`
+  tries it before the wasm scan and before the tokenizer, so in a browser it is
+  the copy that runs. Each skips comment regions, counts the newlines it jumps so
+  line numbers stay right, stops at an unterminated comment rather than resuming
+  inside it, and leaves a lone `/` alone. Comments do not nest, per ISO 10303-21,
+  so the first `*/` closes the region.
+
+  The scanners now also consume a string literal whole when they meet one outside
+  a record. HEADER records carry no `#`, so the outer loops walk them byte by
+  byte, and their string values are the one place those loops reliably meet
+  quoted text. A `FILE_DESCRIPTION` reading `'rev /* pending'` would otherwise
+  open a comment that never closes and drop the entire DATA section of a legal
+  file. The same skip fixes a defect that predates this change: `[#12](https://github.com/LTplus-AG/ifc-lite/issues/12)=IFCWALL(x)`
+  inside a HEADER description was read as a record.
+
+  `scanEntities` additionally now advances past a record it has matched. It used
+  to leave its cursor at the record's opening parenthesis and re-walk the body
+  with no string state, which was harmless while an interior `#` merely failed
+  the `=` guard and would not have been once the same loop began reacting to
+  `/*`: a slash-star inside a string literal would have opened a comment and
+  swallowed the rest of the file. The Rust scanner advances for the same reason.
+
+- Updated dependencies [[`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797)]:
+  - @ifc-lite/encoding@2.0.0
+  - @ifc-lite/data@3.2.4
+
 ## 4.0.1
 
 ### Patch Changes

@@ -402,6 +402,14 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
   };
 }
 
+/** What a removal did, or why it did nothing. */
+export interface ZoneWriteBackRemoval {
+  /** Elements something was actually deleted from. */
+  removed: number;
+  modelIds: string[];
+  blocked: 'collab-role' | 'duplicate-set-name' | null;
+}
+
 /**
  * Remove what any run wrote for one zone set, from every element.
  *
@@ -417,10 +425,13 @@ export function applyZoneWriteBack(zoneSet: ZoneSet, basis: VolumeBasis): ZoneWr
  *    "removed from 12,000 elements" on a model that was never written to, with
  *    an unsaved-changes flag to match, is a false report of an edit.
  */
-export function removeZoneWriteBack(zoneSet: ZoneSet): { removed: number; modelIds: string[] } {
+export function removeZoneWriteBack(zoneSet: ZoneSet): ZoneWriteBackRemoval {
   const state = useViewerStore.getState();
-  if (!state.canCollabEdit()) return { removed: 0, modelIds: [] };
-  if (collidesByName(zoneSet)) return { removed: 0, modelIds: [] };
+  // Reported rather than folded into `removed: 0`: "nothing to remove" and "you
+  // were not allowed to" are different answers, and only one of them means the
+  // user should do something next.
+  if (!state.canCollabEdit()) return { removed: 0, modelIds: [], blocked: 'collab-role' };
+  if (collidesByName(zoneSet)) return { removed: 0, modelIds: [], blocked: 'duplicate-set-name' };
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels = new Set<string>();
   let removed = 0;
@@ -459,7 +470,7 @@ export function removeZoneWriteBack(zoneSet: ZoneSet): { removed: number; modelI
 
   const modelIds = [...touchedModels];
   if (modelIds.length > 0) useViewerStore.getState().markModelsDirty(modelIds);
-  return { removed, modelIds };
+  return { removed, modelIds, blocked: null };
 }
 
 /** React-facing handles. */

@@ -392,6 +392,15 @@ describe('zone write-back: what a later run has to clean up', () => {
     assert.equal(view(), null, 'nothing was written at all');
   });
 
+  it('says WHY a removal did nothing, rather than reporting an empty success', () => {
+    // "Nothing to remove" and "you were not allowed to" are different answers,
+    // and only one of them means the user should do something next.
+    useViewerStore.setState({
+      zoneSets: [ZONE_SET, { ...ZONE_SET, id: 'set-2' }],
+    } as never);
+    assert.equal(removeZoneWriteBack(ZONE_SET).blocked, 'duplicate-set-name');
+  });
+
   it('removes from an element the assignment cache no longer holds', () => {
     // Geometry released to reclaim memory (#2183) drops the element from
     // `zoneAssignments`, but not its property set. The session's own mutation

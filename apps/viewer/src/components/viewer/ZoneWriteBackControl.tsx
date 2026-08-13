@@ -96,7 +96,15 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
           title={`Remove ${zonePropertySetName(zoneSet.name)} from every element of this set`}
           aria-label="Remove zone properties"
           onClick={() => {
-            const { removed } = remove(zoneSet);
+            const { removed, blocked } = remove(zoneSet);
+            if (blocked === 'collab-role') {
+              toast.error('Your role in this session is read-only, so nothing was removed');
+              return;
+            }
+            if (blocked === 'duplicate-set-name') {
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before removing.`);
+              return;
+            }
             if (removed === 0) toast.info('Nothing to remove for this set');
             else toast.success(`Removed the zone property set from ${removed.toLocaleString()} element(s)`);
           }}

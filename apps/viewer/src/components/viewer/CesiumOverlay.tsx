@@ -745,13 +745,17 @@ export function CesiumOverlay({
           return;
         }
 
-        await swapCesiumModel(
+        const outcome = await swapCesiumModel(
           viewer.scene.primitives,
           cesiumModelRef.current,
           model,
           (m) => whenModelRenderable(viewer, m),
+          () => cancelled,
         );
-        if (cancelled) return;
+        // Superseded: a newer build owns the outcome, the globe still shows the
+        // previous model, and `model` has already been destroyed. Recording it
+        // would leave the refs pointing at geometry nobody is rendering.
+        if (outcome === 'superseded' || cancelled) return;
         cesiumModelRef.current = model;
         loadedKeyRef.current = key;
         setCesiumGlbLoaded(true);

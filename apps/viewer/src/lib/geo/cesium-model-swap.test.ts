@@ -119,6 +119,41 @@ describe('swapCesiumModel', () => {
     assert.deepEqual([...c.contents], ['first']);
   });
 
+  it('backs out when a newer build supersedes it mid-wait', async () => {
+    // The window that made this necessary: the effect re-runs while readiness
+    // is pending. Removing `previous` then would destroy the primitive the
+    // caller still references and leave `next` in the collection owned by
+    // nobody, rendering geometry that has already been superseded.
+    const c = fakeCollection();
+    c.add('old');
+    const gate = deferredReady();
+    let superseded = false;
+
+    const swap = swapCesiumModel(c, 'old', 'new', gate.whenReady, () => superseded);
+    await Promise.resolve();
+    superseded = true;      // a newer build takes over
+    gate.release();
+
+    assert.equal(await swap, 'superseded');
+    assert.deepEqual([...c.contents], ['old'], 'the live model must survive untouched');
+  });
+
+  it('reports "swapped" when it was not superseded', async () => {
+    const c = fakeCollection();
+    c.add('old');
+
+    assert.equal(await swapCesiumModel(c, 'old', 'new', readyNow, () => false), 'swapped');
+  });
+
+  it('does not consult supersession when there is nothing to replace', async () => {
+    // A first load has no previous model to protect, so it must reach the globe
+    // even if the run that started it has been superseded.
+    const c = fakeCollection();
+
+    assert.equal(await swapCesiumModel(c, null, 'first', readyNow, () => true), 'swapped');
+    assert.deepEqual([...c.contents], ['first']);
+  });
+
   it('touches nothing when asked to replace a model with itself', async () => {
     // Re-adding a primitive already in the collection is not harmless on the
     // real one — it would duplicate the draw or throw — and there would be

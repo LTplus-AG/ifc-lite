@@ -2,6 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+/**
+ * `'superseded'` means a newer build took over while this one was waiting for
+ * readiness: nothing changed on the globe, and `next` has been destroyed. The
+ * caller must NOT record it as the live model.
+ */
+export type SwapOutcome = 'swapped' | 'superseded';
+
 /** The slice of `Cesium.PrimitiveCollection` a model swap needs. */
 export interface PrimitiveCollectionLike<T> {
   add(primitive: T): unknown;
@@ -37,13 +44,14 @@ export async function swapCesiumModel<T>(
   previous: T | null,
   next: T,
   whenReady: (next: T) => Promise<void>,
-): Promise<void> {
+  isSuperseded: () => boolean = () => false,
+): Promise<SwapOutcome> {
   // Replacing a primitive with itself must touch nothing. Adding it a second
   // time is not harmless on a real PrimitiveCollection — it would duplicate the
   // draw or throw — and there would be nothing left to release afterwards.
-  if (previous === next) return;
+  if (previous === next) return 'swapped';
   primitives.add(next);
-  if (previous === null) return;
+  if (previous === null) return 'swapped';
   try {
     await whenReady(next);
   } catch {
@@ -51,5 +59,15 @@ export async function swapCesiumModel<T>(
     // globe forever; dropping it here is the same outcome as before this
     // change, and the caller has already logged the failure.
   }
+  // The await above is a window in which a newer build can take over. Removing
+  // `previous` then would destroy the primitive the caller still holds a
+  // reference to, and leave `next` in the collection owned by nobody —
+  // rendering geometry that has already been superseded. Back out instead:
+  // drop what we added (which destroys it) and leave the live model alone.
+  if (isSuperseded()) {
+    primitives.remove(next);
+    return 'superseded';
+  }
   primitives.remove(previous);
+  return 'swapped';
 }

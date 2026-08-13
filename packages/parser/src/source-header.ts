@@ -14,7 +14,7 @@
  */
 
 import type { IfcSourceHeader } from '@ifc-lite/data';
-import { decodeIfcString } from '@ifc-lite/encoding';
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
@@ -71,70 +71,26 @@ function splitTopLevel(inner: string): string[] {
  * Decode a STEP header string argument's inner text (outer quotes already
  * stripped) to its Unicode value.
  *
- * First collapse the `''` doubled-quote escape, then run the canonical
- * ISO-10303-21 backslash decoder ({@link decodeIfcString}), which resolves the
- * `\X2\HHHH\X0\`, `\X\HH`, `\S\` and `\Px\` control directives non-ASCII header
- * fields (author, description, ...) arrive in.
+ * Both escape layers, in one scan, from the shared
+ * {@link decodeStepStringLiteral}: the `''` / `\\` doublings and the
+ * ISO-10303-21 backslash directives (`\X2\HHHH\X0\`, `\X\HH`, `\S\` and
+ * `\Px\`) the non-ASCII header fields (author, description, ...) arrive in.
  *
- * The previous `\\`->`\` regex left those directives untouched on read while the
- * writer's `\`->`\\` escaper doubled every backslash on write, so a round-trip
- * turned `Tr\X2\00FC\X0\mpler` into the literal `Tr\\X2\\00FC\\X0\\mpler`.
- * Decoding to real Unicode here means the writer re-emits plain UTF-8 (no
- * backslashes to double), so the value round-trips intact.
+ * The regex this replaced in #2486 left those directives untouched on read
+ * while the writer's `\`->`\\` escaper doubled every backslash on write, so a
+ * round trip turned `Tr\X2\00FC\X0\mpler` into the literal
+ * `Tr\\X2\\00FC\\X0\\mpler`. Decoding to real Unicode here means the writer
+ * re-emits plain UTF-8 (no backslashes to double), so the value round-trips
+ * intact.
  *
- * `\\` (one literal backslash) is resolved by a left-to-right scan that gives
- * directives precedence over the pair escape: a naive split at every doubled
- * backslash would consume a directive's closing `\` when the directive is
- * immediately followed by an escaped backslash (`\X2\00FC\X0\` + `\\` ends in
- * THREE backslashes, and the split eats the first two), leaving an
- * unterminated `\X2\` that never decodes. The scan consumes each whole
- * directive span first, treats `\\` as a literal backslash only outside a
- * span, and hands the directive text to {@link decodeIfcString} untouched —
- * which also keeps escaped literal text (`\\X2\\...` means the characters
- * `\X2\...`) from being mis-decoded as a real `\X2\` directive, and keeps
- * `C:\\temp` from re-doubling on every round trip ({@link decodeIfcString}
- * deliberately preserves unknown escapes, so it can't collapse `\\` itself).
+ * The implementation moved into `@ifc-lite/encoding` for #2490, where
+ * `@ifc-lite/data`'s `parseStepValue` had grown the SAME directive-blind regex
+ * independently. Two copies of a decoder this subtle is how the second one got
+ * written; see that module for why the two layers cannot be resolved by two
+ * independent passes.
  */
 function unescapeStepString(str: string): string {
-  const value = str.replace(/''/g, "'");
-  let out = '';
-  let seg = ''; // pending directive-bearing text, flushed through decodeIfcString
-  let i = 0;
-  while (i < value.length) {
-    if (value[i] === '\\') {
-      // Whole directive spans move into `seg` atomically so their own
-      // backslashes (terminators, \S\ operands) never match the pair escape.
-      if (value.startsWith('\\X2\\', i) || value.startsWith('\\X4\\', i)) {
-        const end = value.indexOf('\\X0\\', i + 4);
-        if (end !== -1) {
-          seg += value.slice(i, end + 4);
-          i = end + 4;
-          continue;
-        }
-      } else if (value.startsWith('\\S\\', i) && i + 3 < value.length) {
-        seg += value.slice(i, i + 4); // \S\ + operand char (may itself be '\')
-        i += 4;
-        continue;
-      } else if (value.startsWith('\\X\\', i)) {
-        seg += value.slice(i, i + 5); // \X\ + two hex digits
-        i += 5;
-        continue;
-      } else if (/^\\P[A-Z]\\/.test(value.slice(i, i + 4))) {
-        seg += value.slice(i, i + 4);
-        i += 4;
-        continue;
-      }
-      if (value[i + 1] === '\\') {
-        out += decodeIfcString(seg) + '\\';
-        seg = '';
-        i += 2;
-        continue;
-      }
-    }
-    seg += value[i];
-    i += 1;
-  }
-  return out + decodeIfcString(seg);
+  return decodeStepStringLiteral(str);
 }
 
 /**

@@ -60,14 +60,14 @@ jobs:
       - name: Cargo cache
         # Swatinem on the free GitHub cache (10 GB LRU) — acceptable for a
         # weekly job; only per-PR Rust jobs justify Depot's uncapped cache.
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-arm64-determinism
 
       # node + pnpm only for the fixture fetch script (`pnpm fixtures`);
       # no `pnpm install` needed — the script has no npm deps.
       - name: Setup pnpm
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

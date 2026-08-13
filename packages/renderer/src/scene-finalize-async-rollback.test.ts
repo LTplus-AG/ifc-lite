@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { Scene } from './scene.js';
-import type { BatchedMesh, RenderPipeline } from './types.js';
+import type { RenderPipeline } from './pipeline.js';
+import type { BatchedMesh } from './types.js';
 import type { MeshData } from '@ifc-lite/geometry';
 
 /**

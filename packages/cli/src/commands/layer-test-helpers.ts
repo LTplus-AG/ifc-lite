@@ -11,6 +11,7 @@ import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { openStore, type LayerStore } from './layer-store.js';
 import { publishLayer } from './layer-publish.js';
 import { createRef, moveRef } from './ref.js';
+import { IFCX_VERSION } from '@ifc-lite/ifcx';
 
 export const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
 export const CLASS = 'bsi::ifc::class';
@@ -23,7 +24,7 @@ export function makeDelta(nodes: IfcxNode[]): IfcxFile {
   return {
     header: {
       id: '',
-      ifcxVersion: 'ifcx_alpha',
+      ifcxVersion: IFCX_VERSION,
       dataVersion: '1.0.0',
       author: 'test',
       timestamp: '2026-01-01T00:00:00.000Z',

@@ -282,6 +282,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
+            ...this.wasmMetadataProps(),
         };
 
         if (meshes.length === 0) {
@@ -322,6 +323,7 @@ export class CoordinateHandler {
                 originalBounds,
                 shiftedBounds: originalBounds,
                 hasLargeCoordinates: false,
+                ...this.wasmMetadataProps(),
             };
         }
 
@@ -343,6 +345,25 @@ export class CoordinateHandler {
             originalBounds,
             shiftedBounds,
             hasLargeCoordinates: true,
+            ...this.wasmMetadataProps(),
+        };
+    }
+
+    /**
+     * World→render metadata for a returned {@link CoordinateInfo}: the
+     * length-unit scale and the RTC offset the WASM mesh path actually
+     * subtracted (see {@link setWasmMetadata}). `wasmRtcOffset` is attached
+     * only when a shift was actually applied, so `wasmRtcOffset !== undefined`
+     * keeps meaning "geometry re-based" for downstream federation / cache /
+     * georeference consumers. The batch `processMeshes` path used to DROP
+     * this metadata (only the incremental path attached it), so every sync
+     * `process()` consumer read the re-based bounds as if they were absolute
+     * — losing the site offset that georeferencing math needs (#2526).
+     */
+    private wasmMetadataProps(): Pick<CoordinateInfo, 'wasmRtcOffset' | 'lengthUnitScale'> {
+        return {
+            ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
+            ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
         };
     }
 
@@ -529,11 +550,7 @@ export class CoordinateHandler {
             originalBounds: { ...this.accumulatedBounds },
             shiftedBounds,
             hasLargeCoordinates,
-            // Only attach wasmRtcOffset when a shift was actually applied, so
-            // `wasmRtcOffset !== undefined` keeps meaning "geometry re-based"
-            // for downstream federation / cache consumers.
-            ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
-            ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
+            ...this.wasmMetadataProps(),
         };
     }
 
@@ -558,8 +575,7 @@ export class CoordinateHandler {
                 max: { x: 0, y: 0, z: 0 },
             },
             hasLargeCoordinates: false,
-            ...(this.appliedWasmRtcOffset ? { wasmRtcOffset: { ...this.appliedWasmRtcOffset } } : {}),
-            ...(this.lengthUnitScale !== undefined ? { lengthUnitScale: this.lengthUnitScale } : {}),
+            ...this.wasmMetadataProps(),
         };
     }
 

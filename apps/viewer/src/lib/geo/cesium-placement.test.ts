@@ -16,10 +16,14 @@ import {
   metersToMapUnits,
   orthometricTargetForTerrain,
   projectedDeltaToViewerDelta,
+  projectedDeltaToViewerDeltaForGeometry,
   shouldApplyGeoidUndulation,
   shouldPreferOrthometricTerrain,
   viewerDeltaToProjectedDelta,
+  viewerDeltaToProjectedDeltaForGeometry,
 } from './cesium-placement.js';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { MapConversion } from '@ifc-lite/parser';
 
 describe('cesium placement helpers', () => {
   it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
@@ -347,5 +351,89 @@ describe('snap-to-terrain geoid round-trip (#1456)', () => {
       Math.abs((orthogonalHeight + appliedN) - ellipsoidalTerrain) < 0.02,
       `expected round-trip to ${ellipsoidalTerrain}, got ${orthogonalHeight + appliedN}`,
     );
+  });
+});
+
+describe('placement-gizmo deltas with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style file: geometry at the ABSOLUTE map coordinates (folded
+  // into wasmRtcOffset), IfcMapConversion repeating the anchor with a
+  // 90-degree rotation. A gizmo drag is a DELTA: it has no offsets to double
+  // apply, but the bogus authored rotation still turns "drag east" into a
+  // northing change. For map-absolute geometry the viewer axes ARE the map
+  // axes, so the delta must go through the neutralised (identity-rotation)
+  // conversion.
+  const mapAbsInfo: CoordinateInfo = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+  const mapAbsConversion: MapConversion = {
+    id: 1,
+    sourceCRS: 0,
+    targetCRS: 0,
+    eastings: 312000,
+    northings: 5996150,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 0,
+    xAxisOrdinate: 1,
+    scale: 1,
+  };
+  const crs = { mapUnitScale: 1 };
+  const near = (a: number, b: number, label: string) =>
+    assert.ok(Math.abs(a - b) < 1e-9, `${label}: expected ${b}, got ${a}`);
+
+  it('viewerDeltaToProjectedDeltaForGeometry expresses a drag in the map frame (identity rotation)', () => {
+    const delta = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    // Viewer +X is map east, viewer -Z is map north for absolute geometry.
+    near(delta.eastings, 5, 'eastings');
+    near(delta.northings, 7, 'northings');
+  });
+
+  it('projectedDeltaToViewerDeltaForGeometry previews an E/N delta along the map axes', () => {
+    const delta = projectedDeltaToViewerDeltaForGeometry(
+      5, 7, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    near(delta.x, 5, 'x');
+    near(delta.z, -7, 'z');
+  });
+
+  it('round-trips through both directions', () => {
+    const projected = viewerDeltaToProjectedDeltaForGeometry(
+      3.25, -1.5, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    const viewer = projectedDeltaToViewerDeltaForGeometry(
+      projected.eastings, projected.northings, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    near(viewer.x, 3.25, 'x');
+    near(viewer.z, -1.5, 'z');
+  });
+
+  it('control: a compliant file (no RTC rebase) keeps the authored rotation for the delta', () => {
+    const compliant = { ...mapAbsInfo, wasmRtcOffset: undefined };
+    const guarded = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, compliant,
+    );
+    const authored = viewerDeltaToProjectedDelta(5, -7, mapAbsConversion, crs, 1);
+    near(guarded.eastings, authored.eastings, 'eastings');
+    near(guarded.northings, authored.northings, 'northings');
+    const guardedViewer = projectedDeltaToViewerDeltaForGeometry(
+      5, 7, mapAbsConversion, crs, 1, compliant,
+    );
+    const authoredViewer = projectedDeltaToViewerDelta(5, 7, mapAbsConversion, crs, 1);
+    near(guardedViewer.x, authoredViewer.x, 'x');
+    near(guardedViewer.z, authoredViewer.z, 'z');
+  });
+
+  it('control: no coordinateInfo keeps the authored rotation', () => {
+    const guarded = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, undefined,
+    );
+    const authored = viewerDeltaToProjectedDelta(5, -7, mapAbsConversion, crs, 1);
+    near(guarded.eastings, authored.eastings, 'eastings');
+    near(guarded.northings, authored.northings, 'northings');
   });
 });

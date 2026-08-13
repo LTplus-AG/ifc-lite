@@ -1,5 +1,16 @@
 # @ifc-lite/drawing-2d
 
+## 1.21.1
+
+### Patch Changes
+
+- [#2381](https://github.com/LTplus-AG/ifc-lite/pull/2381) [`3029cb2`](https://github.com/LTplus-AG/ifc-lite/commit/3029cb2813940438dd43de3cca9e6b25546dad80) Thanks [@louistrue](https://github.com/louistrue)! - Fix an infinite loop in `PolygonBuilder.classifyLoops` that hung the viewer at ~95% load (issue [#2364](https://github.com/LTplus-AG/ifc-lite/issues/2364)). The nearest-ancestor search introduced by [#2331](https://github.com/LTplus-AG/ifc-lite/issues/2331) tested containment with a single point, so two partially-overlapping loops could each "contain" the other's start vertex, making the parent pointers cyclic and the nesting-depth walk spin forever. Parents are now restricted to earlier (larger-or-equal-area) loops in the area-descending sort, which keeps the ancestor relation acyclic by construction.
+
+- [#2331](https://github.com/LTplus-AG/ifc-lite/pull/2331) [`70c431d`](https://github.com/LTplus-AG/ifc-lite/commit/70c431d3d9a12a5217ac0c1912da18bce7548e4e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `PolygonBuilder.classifyLoops` misclassifying an island (e.g. a mullion cross-section, or a column stub) nested inside a hole as a second hole of the outer boundary, instead of a solid polygon in its own right. Previously every ring's containment was tested only against the top-level outer boundary, so anything geometrically inside it — at any nesting depth — became a hole, silently turning the island into void in the rendered section drawing. Loops are now classified by nesting depth relative to their nearest containing ancestor: even depth is a solid outer boundary, odd depth is a hole of its immediate parent.
+
+- Updated dependencies [[`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933)]:
+  - @ifc-lite/geometry@3.7.1
+
 ## 1.21.0
 
 ### Minor Changes

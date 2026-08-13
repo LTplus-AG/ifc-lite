@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { chunkCellKey, bucketBaseKeyFor } from './chunk-grid.ts';
+import { chunkCellKey, bucketBaseKeyFor } from './chunk-grid.js';
 
 const mesh = (firstVertex: [number, number, number], origin?: [number, number, number]) => ({
   positions: new Float32Array([...firstVertex, 999, 999, 999]),

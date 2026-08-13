@@ -27,7 +27,7 @@ describe('addColumnToStore', () => {
 
     const result = addColumnToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [1, 1, 0], Width: 0.3, Depth: 0.4, Height: 3, Name: 'Column 1' },
     );
 
@@ -76,7 +76,7 @@ describe('addColumnToStore', () => {
 
     const result = addColumnToStore(
       editor,
-      { ownerHistoryId: 1, bodyContextId: 2, storeyId: 3, storeyPlacementId: 4 },
+      { ownerHistoryId: 1, bodyContextId: 2, axisContextId: 5, storeyId: 3, storeyPlacementId: 4 },
       { Position: [0, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 },
     );
 
@@ -108,12 +108,12 @@ describe('addColumnToStore', () => {
 
     const resultA = addColumnToStore(
       editorA,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [1, 1, 0], Width: 0.3, Depth: 0.4, Height: 3 },
     );
     const resultB = addColumnToStore(
       editorB,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [2, 2, 0], Width: 0.3, Depth: 0.4, Height: 3 },
     );
 

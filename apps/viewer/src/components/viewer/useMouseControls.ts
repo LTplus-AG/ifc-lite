@@ -390,7 +390,12 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       // co-planar triangle pairs; the slice would warn and refuse a
       // commit anyway, so don't waste a preview on it.
       const nLen = hit ? Math.hypot(hit.intersection.normal.x, hit.intersection.normal.y, hit.intersection.normal.z) : 0;
-      if (!hit || nLen < 1e-6) {
+      // `nLen < 1e-6` alone is a magnitude test where finiteness is also at
+      // stake: it is false for BOTH `Infinity` and `NaN`, so a non-finite
+      // raycast normal passed the floor and then `Infinity / Infinity` made
+      // the snapshot below all-NaN (#2495). The store repeats this screen —
+      // this copy just avoids arming a 200ms dwell timer for a dead pick.
+      if (!hit || !Number.isFinite(nLen) || nLen < 1e-6) {
         if (sectionDwellTimerRef.current) {
           clearTimeout(sectionDwellTimerRef.current);
           sectionDwellTimerRef.current = null;

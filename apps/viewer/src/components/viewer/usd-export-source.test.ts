@@ -4,7 +4,7 @@
 
 /**
  * Unit coverage for the USD export source gate. The mutation-vs-raw routing is
- * `resolveHbjsonMutationSource` (covered in `hbjson-export-source.test.ts`) and
+ * `resolveEnergyExportMutationSource` (covered in `energy-export-source.test.ts`) and
  * the end-to-end export + WASM disposal is `UsdExportDialog.test.tsx`; this
  * suite locks which models the USD exporter is offered — in particular that
  * `.ifcx` (USD-flavored JSON, a separate exporter) is excluded so it can never

@@ -21,6 +21,7 @@ import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { parseUrlParams, assertFetchableUrl } from '../bridge/urlParams.js';
 import { initBridge, destroyBridge, emitEvent } from '../bridge/handler.js';
+import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
 export function EmbedViewer() {
@@ -45,83 +46,88 @@ export function EmbedViewer() {
     setTheme(urlParams.theme === 'dark' ? 'dark' : 'light');
   }, [urlParams.theme, setTheme]);
 
-  // Initialize the postMessage bridge
+  // Initialize the postMessage bridge.
+  //
+  // Guarded via mountBridgeLifecycle/unmountBridgeLifecycle so a React 19
+  // <StrictMode> mount -> cleanup -> remount cycle (dev only) re-initializes
+  // instead of leaving the bridge permanently dead: the mount side was
+  // ref-guarded but the cleanup never reset it, so the remount saw the guard
+  // already set, skipped initBridge(), and the inbound listener stayed removed.
   useEffect(() => {
-    if (bridgeInitialized.current) return;
-    bridgeInitialized.current = true;
-
-    // Derive the expected parent origin (so content-bearing auto-load events
-    // are not broadcast to '*' before any inbound command arrives): prefer the
-    // explicit ?parentOrigin= param, then fall back to the referrer's origin.
-    let expectedParentOrigin = urlParams.parentOrigin;
-    if (!expectedParentOrigin && document.referrer) {
-      try {
-        expectedParentOrigin = new URL(document.referrer).origin;
-      } catch (error) {
-        // Malformed referrer — leave undefined and rely on the inbound handshake.
-        console.warn('[embed] Failed to derive parent origin from document.referrer', document.referrer, error);
-        expectedParentOrigin = undefined;
+    mountBridgeLifecycle(bridgeInitialized, () => {
+      // Derive the expected parent origin (so content-bearing auto-load events
+      // are not broadcast to '*' before any inbound command arrives): prefer the
+      // explicit ?parentOrigin= param, then fall back to the referrer's origin.
+      let expectedParentOrigin = urlParams.parentOrigin;
+      if (!expectedParentOrigin && document.referrer) {
+        try {
+          expectedParentOrigin = new URL(document.referrer).origin;
+        } catch (error) {
+          // Malformed referrer — leave undefined and rely on the inbound handshake.
+          console.warn('[embed] Failed to derive parent origin from document.referrer', document.referrer, error);
+          expectedParentOrigin = undefined;
+        }
       }
-    }
 
-    initBridge({
-      getState: () => useViewerStore.getState(),
-      loadModelFromUrl: async (url: string) => {
-        // Enforce the same http(s)-only allowlist as the URL-param path so the
-        // postMessage bridge can't be steered to file:/data:/internal targets.
-        const safeUrl = assertFetchableUrl(url);
-        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
-        if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
-        const buffer = await response.arrayBuffer();
-        const filename = url.split('/').pop() || 'model.ifc';
-        const file = new File([buffer], filename);
-        await loadFile(file);
-        const state = useViewerStore.getState();
-        const gr = state.geometryResult;
-        return {
-          entities: state.ifcDataStore?.entities?.count ?? 0,
-          triangles: gr?.totalTriangles ?? 0,
-          vertices: gr?.totalVertices ?? 0,
-        };
-      },
-      loadModelFromBuffer: async (buffer: ArrayBuffer, name?: string) => {
-        const file = new File([buffer], name || 'model.ifc');
-        await loadFile(file);
-        const state = useViewerStore.getState();
-        const gr = state.geometryResult;
-        return {
-          entities: state.ifcDataStore?.entities?.count ?? 0,
-          triangles: gr?.totalTriangles ?? 0,
-          vertices: gr?.totalVertices ?? 0,
-        };
-      },
-      addModelFromUrl: async (url: string) => {
-        // Federation-aware add: routes through useIfcFederation's addModel,
-        // which loads with target `{ kind: 'federated' }` and therefore does
-        // NOT clear existing models (unlike loadFile's default primary
-        // target, which loadModelFromUrl above uses for LOAD_MODEL).
-        const safeUrl = assertFetchableUrl(url);
-        const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
-        if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
-        const buffer = await response.arrayBuffer();
-        const filename = url.split('/').pop() || 'model.ifc';
-        const file = new File([buffer], filename);
-        const modelId = await addModel(file);
-        if (!modelId) throw new Error('Failed to add model');
-        const added = useViewerStore.getState().models.get(modelId);
-        return {
-          modelId,
-          entities: added?.ifcDataStore?.entities?.count ?? 0,
-          triangles: added?.geometryResult?.totalTriangles ?? 0,
-          vertices: added?.geometryResult?.totalVertices ?? 0,
-        };
-      },
-    }, {
-      allowedOrigins: urlParams.allowOrigins,
-      expectedParentOrigin,
+      initBridge({
+        getState: () => useViewerStore.getState(),
+        loadModelFromUrl: async (url: string) => {
+          // Enforce the same http(s)-only allowlist as the URL-param path so the
+          // postMessage bridge can't be steered to file:/data:/internal targets.
+          const safeUrl = assertFetchableUrl(url);
+          const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
+          if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
+          const buffer = await response.arrayBuffer();
+          const filename = url.split('/').pop() || 'model.ifc';
+          const file = new File([buffer], filename);
+          await loadFile(file);
+          const state = useViewerStore.getState();
+          const gr = state.geometryResult;
+          return {
+            entities: state.ifcDataStore?.entities?.count ?? 0,
+            triangles: gr?.totalTriangles ?? 0,
+            vertices: gr?.totalVertices ?? 0,
+          };
+        },
+        loadModelFromBuffer: async (buffer: ArrayBuffer, name?: string) => {
+          const file = new File([buffer], name || 'model.ifc');
+          await loadFile(file);
+          const state = useViewerStore.getState();
+          const gr = state.geometryResult;
+          return {
+            entities: state.ifcDataStore?.entities?.count ?? 0,
+            triangles: gr?.totalTriangles ?? 0,
+            vertices: gr?.totalVertices ?? 0,
+          };
+        },
+        addModelFromUrl: async (url: string) => {
+          // Federation-aware add: routes through useIfcFederation's addModel,
+          // which loads with target `{ kind: 'federated' }` and therefore does
+          // NOT clear existing models (unlike loadFile's default primary
+          // target, which loadModelFromUrl above uses for LOAD_MODEL).
+          const safeUrl = assertFetchableUrl(url);
+          const response = await fetch(safeUrl, { signal: AbortSignal.timeout(60_000) });
+          if (!response.ok) throw new Error(`Failed to fetch model: ${response.statusText}`);
+          const buffer = await response.arrayBuffer();
+          const filename = url.split('/').pop() || 'model.ifc';
+          const file = new File([buffer], filename);
+          const modelId = await addModel(file);
+          if (!modelId) throw new Error('Failed to add model');
+          const added = useViewerStore.getState().models.get(modelId);
+          return {
+            modelId,
+            entities: added?.ifcDataStore?.entities?.count ?? 0,
+            triangles: added?.geometryResult?.totalTriangles ?? 0,
+            vertices: added?.geometryResult?.totalVertices ?? 0,
+          };
+        },
+      }, {
+        allowedOrigins: urlParams.allowOrigins,
+        expectedParentOrigin,
+      });
     });
 
-    return () => destroyBridge();
+    return () => unmountBridgeLifecycle(bridgeInitialized, () => destroyBridge());
   }, [loadFile, addModel, urlParams.allowOrigins, urlParams.parentOrigin]);
 
   // Auto-load model from URL param

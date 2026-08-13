@@ -16,12 +16,14 @@
  * write (it uses the terrain-clamped bridge origin).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { sunPosition, sunTimes, azimuthAltitudeToEnu } from '@ifc-lite/solar';
 import { useViewerStore } from '@/store';
 import { computeCesiumModelOrigin } from '@/lib/geo/cesium-bridge';
+import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
+import { resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
 import { enuToViewerDirection } from '@/lib/geo/solar-direction';
 
 export interface SolarEnvironmentGeoref {
@@ -50,6 +52,23 @@ export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void
 
   const mapConversion = georef?.mapConversion;
   const projectedCRS = georef?.projectedCRS;
+  const coordinateInfo = georef?.coordinateInfo;
+  const lengthUnitScale = georef?.lengthUnitScale ?? 1;
+
+  // Map-absolute geometry (#2526): `computeCesiumModelOrigin` neutralises the
+  // conversion internally, so the sun rotation below must read the SAME
+  // effective conversion — mixing the authored XAxis rotation with the
+  // neutralised origin/gamma would swing the sun by that rotation relative to
+  // the camera/model frame (the exact disagreement viewer-enu-rotation.ts
+  // exists to prevent).
+  const effectiveConversion = useMemo(() => {
+    if (!mapConversion) return undefined;
+    return effectiveMapConversionForGeometry(
+      mapConversion,
+      resolveMapUnitToMetreScale(projectedCRS?.mapUnitScale, lengthUnitScale),
+      coordinateInfo,
+    );
+  }, [mapConversion, projectedCRS?.mapUnitScale, coordinateInfo, lengthUnitScale]);
 
   // Resolve the site's lat/lon once per georeference (proj4 lookup is async).
   useEffect(() => {
@@ -89,8 +108,8 @@ export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void
     const enu = azimuthAltitudeToEnu(sp.azimuth, sp.altitude);
     setSolarSunDirection(enuToViewerDirection(
       enu,
-      mapConversion?.xAxisAbscissa ?? 1,
-      mapConversion?.xAxisOrdinate ?? 0,
+      effectiveConversion?.xAxisAbscissa ?? 1,
+      effectiveConversion?.xAxisOrdinate ?? 0,
       origin.gamma,
     ));
 
@@ -112,8 +131,8 @@ export function useSolarEnvironment(georef: SolarEnvironmentGeoref | null): void
     solarDateMs,
     origin,
     cesiumEnabled,
-    mapConversion?.xAxisAbscissa,
-    mapConversion?.xAxisOrdinate,
+    effectiveConversion?.xAxisAbscissa,
+    effectiveConversion?.xAxisOrdinate,
     setSolarSunDirection,
     setSolarSunInfo,
   ]);

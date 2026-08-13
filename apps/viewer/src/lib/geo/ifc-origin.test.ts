@@ -214,6 +214,63 @@ describe('computeIfcOriginViewerPosition', () => {
     assert.ok(Math.abs(out!.viewer.z) < 5, `viewer.z residual = ${out!.viewer.z}`);
   });
 
+  it('#2534 review: neutralises a map-absolute ANCHOR before inverting, matching federationAlign (BasepointOverlay no longer contradicts the aligned geometry)', async () => {
+    // Deep review of #2534 (2026-08-10, louistrue), blocking issue on
+    // ifc-origin.ts:93-140: `federationAlign.ts` aligns geometry through the
+    // NEUTRALISED anchor conversion (`effectiveConv`), but this function
+    // used to invert the AUTHORED one — for a map-absolute anchor the two
+    // disagreed by the full anchor magnitude (hundreds of km), and
+    // BasepointOverlay drew that model's origin dot nowhere near its
+    // geometry. Fixture is the #2526 Vectorworks anchor: RTC re-based
+    // geometry sitting ~37m from the declared (repeated) anchor, with a
+    // 90-degree XAxis rotation — the map-absolute detection signature.
+    const anchorConv: MapConversion = {
+      id: 1, sourceCRS: 1, targetCRS: 2,
+      eastings: 311_988.181, northings: 5_996_148.565, orthogonalHeight: 0,
+      xAxisAbscissa: 0, xAxisOrdinate: 1, scale: 1,
+    };
+    const anchor: ModelGeorefInput = {
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        // wasmRtcOffset re-bases the anchor's geometry right next to the
+        // declared anchor (~37m away — inside the 10km detection window),
+        // which is exactly the #2526 double-georeferencing signature.
+        wasmRtcOffset: { x: 312_018.898, y: 5_996_169.654, z: 14 },
+        originalBounds: { min: { x: 0, y: 7, z: 0 }, max: { x: 0, y: 7, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 7, z: 0 }, max: { x: 0, y: 7, z: 0 } },
+        hasLargeCoordinates: true,
+      },
+      mapConversion: anchorConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    // A COMPLIANT second model federated onto the map-absolute anchor: its
+    // own declared anchor is far from ITS local (near-zero) geometry — the
+    // guard must NOT fire for this model.
+    const compliantConv = makeConversion(312_050, 5_996_100);
+    const compliant: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: compliantConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const out = await computeIfcOriginViewerPosition(compliant, anchor);
+    assert.ok(out);
+    assert.strictEqual(out!.source, 'anchor');
+    // Pre-fix (inverting the AUTHORED anchor conversion) landed this dot at
+    // viewer ≈ (-312067, ?, 5996231) — hundreds of km from the geometry
+    // federationAlign.ts actually aligns onto (tx/tz of a few tens of
+    // metres, per the review's own hand-derivation). The fix must land in
+    // that same small neighbourhood, not the pre-fix magnitude.
+    assert.ok(Math.abs(out!.viewer.x) < 1000, `viewer.x should be tens of metres, not ~312067km-scale: ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.z) < 1000, `viewer.z should be tens of metres, not ~5996231km-scale: ${out!.viewer.z}`);
+    // Exact value, hand-derived: with the anchor neutralised (eastings=0,
+    // northings=0, axis=(1,0), scale=1), ifcX = eA = 312050, ifcY = nA =
+    // 5996100; anchorOff = rtcYup = (312018.898, 14, -5996169.654).
+    assert.ok(Math.abs(out!.viewer.x - 31.102) < 1e-2, `viewer.x = ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.z - 69.654) < 1e-2, `viewer.z = ${out!.viewer.z}`);
+  });
+
   it('falls back to the model own frame when the anchor lacks georef', async () => {
     const model: ModelGeorefInput = {
       coordinateInfo: {

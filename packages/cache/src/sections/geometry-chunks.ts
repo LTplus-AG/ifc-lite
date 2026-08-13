@@ -48,12 +48,18 @@ import {
   writeCoordinateInfo,
   readCoordinateInfo,
 } from './geometry.js';
+import { validateGeometryDirectory } from './geometry-directory.js';
 
 // 6×f32 AABB (24) + 5×u32 (offset, length, uncompressed, meshCount, flags).
 const DIRECTORY_ENTRY_BYTES = 44;
 
 /** Parsed head of a v13 geometry section. */
 export interface GeometryHead {
+  /** Byte length of the head that FOLLOWS the `headLength` field itself. The
+   *  first chunk record therefore starts at `4 + headLength`, which is the
+   *  only external anchor available for chunk 0's declared offset — a
+   *  consistent-with-predecessor loop cannot anchor element 0. */
+  headLength: number;
   meshCount: number;
   totalVertices: number;
   totalTriangles: number;
@@ -242,7 +248,6 @@ export async function buildGeometrySectionV13(
  *  section start. Cheap: never touches chunk records. */
 export function readGeometryHeadV13(reader: BufferReader): GeometryHead {
   const headLength = reader.readUint32();
-  void headLength; // total head size — used by range readers to bound the head fetch
   const meshCount = reader.readUint32();
   const totalVertices = reader.readUint32();
   const totalTriangles = reader.readUint32();
@@ -260,7 +265,7 @@ export function readGeometryHeadV13(reader: BufferReader): GeometryHead {
       flags: reader.readUint32(),
     });
   }
-  return { meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
+  return { headLength, meshCount, totalVertices, totalTriangles, coordinateInfo, chunks };
 }
 
 /** Decode one chunk record's stored bytes into meshes. */
@@ -282,6 +287,19 @@ export async function decodeGeometryChunk(
   for (let i = 0; i < info.meshCount; i++) {
     meshes.push(readMeshRecord(reader, version, i));
   }
+  // `meshCount` and `uncompressedLength` are two independently-corruptible
+  // directory fields; a lying pair (meshCount inflated, uncompressedLength
+  // adjusted to match a byteLength that swallowed a NEIGHBOURING chunk's
+  // bytes — see readChunk's bounds check) would otherwise let this loop
+  // silently decode the next chunk's real mesh records as if they belonged
+  // to this one, duplicating that geometry under two chunks with no error.
+  // Requiring the reader to land exactly on `raw`'s end closes that: valid
+  // records always consume the whole (decompressed) chunk record exactly.
+  if (reader.position !== raw.byteLength) {
+    throw new Error(
+      `Invalid cache: chunk claims ${info.meshCount} mesh record(s) but consumed ${reader.position} of ${raw.byteLength} bytes`,
+    );
+  }
   return meshes;
 }
 
@@ -300,14 +318,35 @@ export function openGeometryChunksV13(
   const reader = new BufferReader(buffer);
   reader.position = sectionOffset;
   const head = readGeometryHeadV13(reader);
+  // `reader.position` here is a STRUCTURAL fact: it's where the parse of
+  // meshCount/totalVertices/totalTriangles/coordinateInfo/chunkCount/
+  // directory actually landed, none of which depend on `head.headLength`.
+  // `head.headLength` itself is just an on-disk declared field, read but
+  // never used to seek — so it can disagree with the true head size without
+  // the parse above ever noticing.
+  const actualHeadEnd = reader.position - sectionOffset;
   const bytes = new Uint8Array(buffer);
+
+  validateGeometryDirectory(head, actualHeadEnd);
+
   return {
     ...head,
     readChunk(index: number): Promise<MeshData[]> {
       const info = head.chunks[index];
       if (!info) return Promise.reject(new Error(`chunk index ${index} out of range (${head.chunks.length})`));
       const start = sectionOffset + info.byteOffset;
-      return decodeGeometryChunk(bytes.subarray(start, start + info.byteLength), info, version);
+      const end = start + info.byteLength;
+      // `Uint8Array.subarray` SATURATES instead of throwing when a range
+      // runs past the buffer, so a corrupt/truncated directory entry would
+      // otherwise silently hand `decodeGeometryChunk` fewer bytes than
+      // declared instead of failing loudly — the same shape as the
+      // packed-geometry pool and LAS strided-read bugs.
+      if (end > bytes.length) {
+        return Promise.reject(new Error(
+          `Invalid cache: geometry chunk ${index} range [${start}, ${end}) exceeds buffer length ${bytes.length}`,
+        ));
+      }
+      return decodeGeometryChunk(bytes.subarray(start, end), info, version);
     },
   };
 }

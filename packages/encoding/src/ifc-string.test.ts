@@ -65,9 +65,12 @@ describe('decodeIfcString', () => {
   });
 
   it('passes malformed \\X2\\/\\X4\\ payloads through literally without throwing', () => {
-    // Empty payload: the hex regex requires at least one digit.
-    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\\\X0\\');
-    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\\\X0\\');
+    // Empty payload: the hex regex requires at least one digit, so the leading
+    // `\X4\` is not a directive. What is left IS a doubled reverse solidus
+    // (`\X4` + `\\` + `X0` + a dangling `\`), so the pair collapses to one
+    // backslash (#2323). Before that arm existed both backslashes survived.
+    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\X0\\');
+    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\X0\\');
     // Odd-length payloads (not a multiple of 8 / 4 hex digits).
     expect(decodeIfcString('\\X4\\0001D11\\X0\\')).toBe('\\X4\\0001D11\\X0\\');
     expect(decodeIfcString('\\X2\\00E\\X0\\')).toBe('\\X2\\00E\\X0\\');
@@ -76,6 +79,24 @@ describe('decodeIfcString', () => {
     // Unterminated directive (no \X0\ closer) stays literal.
     expect(decodeIfcString('\\X2\\00E4')).toBe('\\X2\\00E4');
     expect(decodeIfcString('\\X4\\0001D11E')).toBe('\\X4\\0001D11E');
+  });
+
+  it('collapses the doubled reverse solidus to one backslash', () => {
+    // ISO 10303-21 doubles `\` inside a string literal exactly as it doubles
+    // `'`, so `C:\\temp` in the file is the value `C:\temp` (#2323).
+    expect(decodeIfcString('C:\\\\temp')).toBe('C:\\temp');
+    expect(decodeIfcString('\\\\')).toBe('\\');
+    expect(decodeIfcString('\\\\\\\\')).toBe('\\\\');
+  });
+
+  it('gives a directive precedence over the doubled-backslash pair', () => {
+    // A directive immediately followed by an escaped backslash ends in THREE
+    // backslashes. The directive must consume its own `\X0\` terminator first;
+    // a pre-pass that collapsed pairs left-to-right would eat the terminator.
+    expect(decodeIfcString('\\X2\\00FC\\X0\\\\\\')).toBe('\u00fc\\');
+    // The mirror case: an ESCAPED backslash followed by the literal text
+    // `X2\00FC\X0\` is not a directive at all.
+    expect(decodeIfcString('\\\\X2\\00FC\\X0\\')).toBe('\\X2\\00FC\\X0\\');
   });
 
   it('decodes \\X\\ ISO-8859-1 single byte', () => {

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readFile, unlink } from 'node:fs/promises';
@@ -63,8 +63,8 @@ describe('filterWorstHosts', () => {
 });
 
 describe('diagnoseGeometryCommand', () => {
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(() => {
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -137,9 +137,9 @@ describe('diagnoseGeometryCommand', () => {
   }, 30_000);
 
   it('--product with an unresolvable GlobalId fails closed with a clear error (does not crash silently)', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     try {
       await expect(
         diagnoseGeometryCommand([SAMPLE_IFC, '--product', 'not-a-real-guid-value']),
@@ -162,9 +162,9 @@ describe('diagnoseGeometryCommand', () => {
 
   it('disposes the GeometryProcessor WASM handle even when --product resolution fails (throw path)', async () => {
     const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     try {
       await expect(
         diagnoseGeometryCommand([SAMPLE_IFC, '--product', 'not-a-real-guid-value']),

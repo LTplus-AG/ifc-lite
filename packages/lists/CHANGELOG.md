@@ -1,5 +1,37 @@
 # @ifc-lite/lists
 
+## 1.23.0
+
+### Minor Changes
+
+- [#2515](https://github.com/LTplus-AG/ifc-lite/pull/2515) [`ed9acf0`](https://github.com/LTplus-AG/ifc-lite/commit/ed9acf0d5a11c291caa70165e9d673812c75c7fa) Thanks [@louistrue](https://github.com/louistrue)! - Add `zone` column/condition modes that report how much VOLUME of an element sits in each zone (`Volume (mesh)` and `Volume breakdown (mesh)`), backed by a new optional `ListDataProvider.getZoneVolumeShares` hook. The numeric mode is tagged as a volume quantity so the shared per-column unit resolver converts and labels it like any declared `NetVolume`. Providers built before this simply have no volume data and the columns read `null`.
+
+### Patch Changes
+
+- Updated dependencies [[`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797)]:
+  - @ifc-lite/encoding@2.0.0
+  - @ifc-lite/data@3.2.4
+
+## 1.22.5
+
+### Patch Changes
+
+- Updated dependencies [[`eb39b27`](https://github.com/LTplus-AG/ifc-lite/commit/eb39b27f5eba186b23b3a683c25fff2c60084d9c), [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/encoding@1.16.0
+  - @ifc-lite/data@3.2.3
+
+## 1.22.4
+
+### Patch Changes
+
+- [#2373](https://github.com/LTplus-AG/ifc-lite/pull/2373) [`d954df3`](https://github.com/LTplus-AG/ifc-lite/commit/d954df35ef9e01f30e0a26333381b4dd50f9e59e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `equals`/`notEquals` list conditions being case-sensitive for boolean-like values, while their `contains` sibling was already case-insensitive. An `IfcBoolean` property displays as `"True"`/`"False"`, and a location-zone `Straddles` condition resolves to a raw JS boolean that stringifies as `"true"`/`"false"` — a condition typed as `IsExternal = true` (or a saved zone `Straddles = True` filter) could silently fail to match, and the equivalent `notEquals` condition could silently include rows that only differed by letter case.
+
+  The fix is scoped to values that look like a boolean/logical (`"true"`/`"false"`/`"unknown"`, any case, or a genuine JS boolean) on both sides of the comparison. Every other value type — GlobalId, Name, classification codes, spatial container names, and any other string property — keeps the original exact, case-sensitive comparison, since e.g. two distinct IFC GlobalIds can differ only by case.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/encoding@1.15.1
+
 ## 1.22.3
 
 ### Patch Changes

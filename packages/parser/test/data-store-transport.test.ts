@@ -205,7 +205,7 @@ describe('data-store-transport', () => {
     const received = await new Promise<typeof payload>((resolveMsg, rejectMsg) => {
       channel.port2.onmessage = (e) => resolveMsg(e.data);
       channel.port2.onmessageerror = () => rejectMsg(new Error('messageerror'));
-      channel.port1.postMessage(payload, transfers as unknown as readonly Transferable[]);
+      channel.port1.postMessage(payload, transfers);
     });
 
     expect(received.fileSize).toBe(expectedFileSize);

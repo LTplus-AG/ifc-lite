@@ -249,9 +249,9 @@ describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
   }, 60_000);
 
   it('never constructs a GeometryProcessor when argument parsing fails before meshing', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
     try {

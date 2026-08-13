@@ -25,7 +25,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, LongName: 'Living Room' },
     );
 
@@ -47,7 +47,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       {
         Profile: 'polygon',
         OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]],
@@ -70,7 +70,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3 },
     );
     const named = namedQ(view, result.spaceId);
@@ -86,7 +86,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3, netFloorArea: 10 },
     );
     const named = namedQ(view, result.spaceId);
@@ -99,7 +99,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       {
         Profile: 'polygon',
         OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]],
@@ -130,7 +130,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: null, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 },
+      { ownerHistoryId: null, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
       { Position: [0, 0, 0], Width: 4, Depth: 3, Height: 3 },
     );
     const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
@@ -146,7 +146,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(40), view);
     const result = addSpaceToStore(
       editor,
-      { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54, lengthUnitScale: 0.001 },
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54, lengthUnitScale: 0.001 },
       { Profile: 'polygon', OuterCurve: [[0, 0], [4, 0], [4, 3], [0, 3]], Height: 3, grossFloorArea: 12 },
     );
     const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
@@ -170,7 +170,7 @@ describe('addSpaceToStore', () => {
     const editor = new StoreEditor(makeStore(10), view);
     expect(() => addSpaceToStore(
       editor,
-      { ownerHistoryId: 1, bodyContextId: 2, storeyId: 3, storeyPlacementId: 4 },
+      { ownerHistoryId: 1, bodyContextId: 2, axisContextId: 5, storeyId: 3, storeyPlacementId: 4 },
       { Position: [0, 0, 0], Width: 4, Depth: 4, Height: 0 },
     )).toThrow(/positive/);
   });

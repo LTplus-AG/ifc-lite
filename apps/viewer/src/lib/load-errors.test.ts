@@ -376,12 +376,51 @@ describe('classifyLoadError', () => {
     );
   });
 
-  it('does NOT claim three.js\'s WebGL failure, which nothing catches (#2354)', () => {
-    // PostHog issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP
-    // playground's mount effect — an uncaught throw that tears the React tree
-    // down. Sweeping it into the benign family would silence real breakage.
+  it('classifies three.js\'s WebGL refusal into the same family (#2458)', () => {
+    // The reversal of the #2354 decision, and it turns on a fact that changed
+    // rather than a change of mind. Then: PostHog issue 019fc458 was
+    // `THREE.WebGLRenderer: Error creating WebGL context.` escaping the MCP
+    // hero's mount effect and taking the /mcp route down through
+    // ChunkErrorBoundary (recorded under `lazy_subtree_boundary`), and folding a
+    // page-killing crash into the benign minimap family would have hidden it.
+    // Now: #2401 put both /mcp scenes behind `useThreeScene`, and they are the
+    // only WebGLRenderer construction sites in this app, so these strings can
+    // only arrive as a handled degradation of one panel — the same device
+    // condition the minimap reports, and it belongs in the same bucket instead
+    // of minting one issue per wording.
     assert.equal(
       classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context.')),
+      'webgl_unavailable',
+    );
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context with your selected attributes.')),
+      'webgl_unavailable',
+    );
+    // The synthesised pre-flight message — the arm that fires first, and
+    // therefore the one most sessions actually report.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context. (pre-flight probe)')),
+      'webgl_unavailable',
+    );
+  });
+
+  it('does NOT claim a message that merely QUOTES three\'s wording (#2458)', () => {
+    // Same anchoring discipline as the MapLibre arms below: one of our own
+    // failures that wraps three's message for context is a bug of ours, and
+    // must keep its own identity rather than inherit a device-capability
+    // fingerprint nobody triages. Both ends, because anchoring one fixes one.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Error creating WebGL context. while building the hero')),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error('HeroScene failed: THREE.WebGLRenderer: Error creating WebGL context.')),
+      'unknown',
+    );
+    // Not three's failure at all: a lost context is a different condition with
+    // a different remedy, and three words it differently on purpose.
+    assert.equal(
+      classifyLoadError(new Error('THREE.WebGLRenderer: Context Lost.')),
       'unknown',
     );
   });

@@ -102,17 +102,30 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
     void_index
 }
 
-fn process(host_id: u32) -> Option<Mesh> {
-    if !std::path::Path::new(FIXTURE).exists() {
-        // Match the `read_fixture` convention in processors/tests.rs so a
-        // missing fixture surfaces a clear hint instead of silently passing
-        // the test. CI always has the full fixture set.
-        eprintln!(
-            "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-            FIXTURE,
-        );
-        return None;
+/// `true` when the catalogued fixture is on disk.
+///
+/// An absent fixture must SKIP, never panic (AGENTS.md); CI always has the full
+/// set. This is deliberately separate from [`process`] so the two failure modes
+/// stay distinguishable: "no fixture" ends the test quietly, while "the fixture
+/// is here and the kernel could not process this host" is a real failure that
+/// must still panic. Folding both into one `Option` is what let three tests
+/// here read as skippable while actually panicking, and would equally let the
+/// other four silently pass on a genuine regression.
+fn fixture_present() -> bool {
+    if std::path::Path::new(FIXTURE).exists() {
+        return true;
     }
+    eprintln!(
+        "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+        FIXTURE,
+    );
+    false
+}
+
+/// Process one host. Callers must have checked [`fixture_present`] first, so
+/// every `None` here is a genuine processing failure and is `expect`ed at the
+/// call site rather than skipped.
+fn process(host_id: u32) -> Option<Mesh> {
     let content = std::fs::read_to_string(FIXTURE).ok()?;
     let entity_index = build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -128,11 +141,25 @@ fn process(host_id: u32) -> Option<Mesh> {
         .ok()
 }
 
+/// Skip the enclosing test when the fixture is absent, else process `$id` and
+/// bind the mesh. Keeps the guard and the `expect` adjacent so a new test in
+/// this file cannot reintroduce either half of the defect.
+macro_rules! mesh_or_skip {
+    ($id:expr) => {{
+        if !fixture_present() {
+            return;
+        }
+        process($id).unwrap_or_else(|| {
+            panic!("fixture present but host {} did not process", $id)
+        })
+    }};
+}
+
 // ──────────────────────────── working cases ────────────────────────────
 
 #[test]
 fn wall_552611_2_openings_matches_ios() {
-    let Some(mesh) = process(552611) else { return; };
+    let mesh = mesh_or_skip!(552611);
     let (mn, mx) = bbox(&mesh.positions).expect("non-empty");
     let ext = (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2);
     // IOS: v=32 t=60, min=(7.764,-0.620,0.094), ext=(0.200,8.404,10.506)
@@ -179,7 +206,7 @@ fn wall_552611_2_openings_matches_ios() {
 
 #[test]
 fn wall_552761_2_openings_matches_ios() {
-    let Some(mesh) = process(552761) else { return; };
+    let mesh = mesh_or_skip!(552761);
     let (_mn, mx) = bbox(&mesh.positions).expect("non-empty");
     // Oracle volume 16.396679 (uncut 17.117, openings 0.7206 removed).
     let vol = mesh_volume(&mesh);
@@ -197,7 +224,7 @@ fn wall_552761_2_openings_matches_ios() {
 
 #[test]
 fn wall_555082_1_opening_matches_ios() {
-    let Some(mesh) = process(555082) else { return; };
+    let mesh = mesh_or_skip!(555082);
     let (_, _) = bbox(&mesh.positions).expect("non-empty");
     // Oracle volume 11.065037 (uncut 11.424, opening 0.359 removed).
     let vol = mesh_volume(&mesh);
@@ -235,7 +262,7 @@ fn wall_555082_1_opening_matches_ios() {
 /// opening is subtracted with its authored extent.
 #[test]
 fn wall_553010_opening_does_not_empty_wall() {
-    let mesh = process(553010).expect("fixture available");
+    let mesh = mesh_or_skip!(553010);
     let (mn, mx) = bbox(&mesh.positions).expect(
         "opening cut wiped the entire wall — extend_opening_along_direction \
          is over-extending along the wrong axis again",
@@ -280,7 +307,7 @@ fn wall_553010_opening_does_not_empty_wall() {
 /// produces a real wall-with-3-holes mesh covering the full host extent.
 #[test]
 fn wall_612315_bbox_must_not_collapse() {
-    let mesh = process(612315).expect("fixture available");
+    let mesh = mesh_or_skip!(612315);
     let (mn, mx) = bbox(&mesh.positions).expect("non-empty");
     let ext = (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2);
     // IOS extent: (11.839, 0.115, 3.406). Pin all three axes — the prior
@@ -318,7 +345,7 @@ fn wall_612315_bbox_must_not_collapse() {
 /// vertex welding separately).
 #[test]
 fn wall_555268_7_openings_cuts_take_effect() {
-    let mesh = process(555268).expect("fixture available");
+    let mesh = mesh_or_skip!(555268);
     let (mn, mx) = bbox(&mesh.positions).expect("non-empty");
     let ext = (mx.0 - mn.0, mx.1 - mn.1, mx.2 - mn.2);
     let tol = 0.01_f32;
@@ -348,7 +375,7 @@ fn wall_555268_7_openings_cuts_take_effect() {
 /// is ~0.30 × 9.015 × 4.292 m; assert it survives at near-full extent.
 #[test]
 fn wall_555433_engulfing_opening_does_not_collapse_wall() {
-    let Some(mesh) = process(555433) else { return };
+    let mesh = mesh_or_skip!(555433);
     let (mn, mx) = bbox(&mesh.positions).expect(
         "engulfing-opening fallback deleted the wall — the near-engulf guard in \
          apply_void_context regressed",

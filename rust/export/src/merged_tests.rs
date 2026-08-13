@@ -7,11 +7,6 @@
 
 use super::*;
 
-fn fixture(rel: &str) -> Vec<u8> {
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-}
-
 fn scan_ids(step: &str) -> Vec<u32> {
     let bytes = step.as_bytes();
     let mut ids = Vec::new();
@@ -24,7 +19,7 @@ fn scan_ids(step: &str) -> Vec<u32> {
 
 #[test]
 fn merge_two_models_unifies_project_and_offsets_ids() {
-    let a = fixture("ara3d/duplex.ifc");
+    let a = fixture_or_skip!("ara3d/duplex.ifc");
     let single = scan_ids(&String::from_utf8_lossy(&a)).len();
 
     let (merged, stats) = export_merged_with_stats(&[&a, &a], &MergedOptions::default());
@@ -198,7 +193,7 @@ fn header_fields_round_trip_apostrophe_and_backslash_per_spec() {
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: r"O'Brien\Docs\ifc-lite".to_string(),
     };
-    let a = fixture("ara3d/duplex.ifc");
+    let a = fixture_or_skip!("ara3d/duplex.ifc");
     let (step, _stats) = export_merged_with_stats(&[&a], &opts);
 
     // Pull the quoted application field out of

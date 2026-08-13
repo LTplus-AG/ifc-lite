@@ -18,7 +18,8 @@
  * `--update` rewrites it.
  *
  * The point is that the number can only go down. A package sitting at 355 still
- * catches the 356th.
+ * catches the 356th — and a package that IMPROVES must lower its baseline in the
+ * same change, or the slack it just earned silently absorbs the next 50.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -113,6 +114,9 @@ if (lost.length > 0) {
   process.exit(1);
 }
 const improvements = Object.entries(counts).filter(([dir, n]) => n < (baseline[dir] ?? 0));
+// A package NEW to the baseline has never been measured, so it has no guard at
+// all — record it rather than letting it pass silently forever.
+const unrecorded = Object.keys(counts).filter((dir) => !(dir in baseline));
 
 if (regressions.length > 0) {
   console.error('❌ Unused locals/imports increased:\n');
@@ -126,10 +130,23 @@ if (regressions.length > 0) {
   process.exit(1);
 }
 
+if (improvements.length > 0) {
+  console.error('❌ These packages improved but the baseline still allows the old count,');
+  console.error('   which is slack the next regression would ride in on:\n');
+  for (const [dir, n] of improvements) console.error(`   ${dir}: ${n} (baseline ${baseline[dir]}, -${baseline[dir] - n})`);
+  console.error('\nRun `pnpm lint:baseline` and commit — the ratchet only holds if it tightens.');
+  process.exit(1);
+}
+
+if (unrecorded.length > 0) {
+  console.error('❌ These packages are not in the baseline, so nothing guards them:\n');
+  for (const dir of unrecorded) console.error(`   ${dir}: ${counts[dir]}`);
+  console.error('\nRun `pnpm lint:baseline` and commit.');
+  process.exit(1);
+}
+
 const total = Object.values(counts).reduce((a, b) => a + b, 0);
 console.log(`✅ No new unused locals (${Object.keys(counts).length} packages, ${total} known, none increased).`);
-if (improvements.length > 0) {
-  console.log('\n   Baseline can be lowered — these improved:');
-  for (const [dir, n] of improvements) console.log(`   ${dir}: ${n} (baseline ${baseline[dir]})`);
-  console.log('   Run with --update and commit the baseline.');
+if (unmeasurable.length > 0) {
+  console.log(`   Not measured (do not compile standalone): ${unmeasurable.join(', ')}`);
 }

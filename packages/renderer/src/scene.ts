@@ -4213,8 +4213,7 @@ export class Scene {
     if (this.instancedEntityMap.size > 0) {
       const instancedMap = new Map<number, MeshData[]>();
       for (const eid of this.instancedEntityMap.keys()) {
-        if (hiddenIds?.has(eid)) continue;
-        if (isolatedIds != null && !isolatedIds.has(eid)) continue;
+        if (!isEntityVisible(eid, hiddenIds, isolatedIds)) continue;
         const bounds = this.getInstancedEntityBounds(eid);
         if (!bounds || !rayIntersectsBox(rayOrigin, rayDirInv, rayDirSign, bounds)) continue;
         const pieces = this.getInstancedMeshDataPieces(eid);

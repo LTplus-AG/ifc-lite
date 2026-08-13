@@ -200,7 +200,11 @@ export async function buildKmzForModel(
   input: BuildKmzInput,
   createProcessor?: () => KmzProcessor,
 ): Promise<Uint8Array | KmzBuildError> {
-  if (!input.geometryResult.meshes?.length) return 'no-geometry';
+  // No flat-mesh guard here: `meshes` can be empty while the model still has
+  // geometry, because every occurrence is GPU-instanced. Gating on it would
+  // report "no geometry" for a model that exports fine — the same
+  // flat-list-is-not-the-model mistake this function was fixed for (#2577).
+  // `buildKmzForResolvedGeoref` makes that call against the COMPLETE set.
   const info = extractGeoreferencingOnDemand(input.dataStore);
   const scale = extractLengthUnitScale(input.dataStore.source, input.dataStore.entityIndex) ?? 1;
   // Apply pending georef edits BEFORE deciding the model is unreferenced: a model

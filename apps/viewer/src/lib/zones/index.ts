@@ -108,3 +108,13 @@ export {
   type QuantityLike,
   type QuantitySetLike,
 } from './volume-basis.js';
+
+export {
+  emitSpatialZones,
+  emitRefusalText,
+  removeSpatialZones,
+  zoneToIfcWorld,
+  type EmitRefusal,
+  type EmitResult,
+  type ZoneMembership,
+} from './emit-spatial-zones.js';

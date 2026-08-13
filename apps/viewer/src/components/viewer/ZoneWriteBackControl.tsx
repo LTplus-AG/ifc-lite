@@ -19,7 +19,7 @@
  */
 
 import { useState } from 'react';
-import { FileOutput, Undo2 } from 'lucide-react';
+import { Box, FileOutput, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -30,6 +30,8 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
+import { emitRefusalText } from '@/lib/zones/emit-spatial-zones';
 import {
   zonePropertySetName,
   zoneQuantitySetName,
@@ -43,6 +45,7 @@ const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
+  const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
 
   return (
     <div className="space-y-1 rounded border-t pt-1.5">
@@ -117,6 +120,63 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
       <p className="text-[10px] text-muted-foreground leading-snug break-words">
         {zonePropertySetName(zoneSet.name)} · {zoneQuantitySetName(zoneSet.name, basis)}
       </p>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 flex-1 text-[11px]"
+          title="Emit the zones themselves as IfcSpatialZone entities, each referencing the elements it contains"
+          onClick={() => {
+            const result = emitZones(zoneSet);
+            if (result.blocked === 'collab-role') {
+              toast.error('Your role in this session is read-only, so nothing was emitted');
+              return;
+            }
+            if (result.blocked === 'no-members') {
+              toast.info('No element is in a zone of this set, so there is nothing to reference');
+              return;
+            }
+            const written = result.models.filter((m) => m.zonesEmitted > 0);
+            // Every refused model is named, rather than folded into a count: in
+            // a federation the answer "which file did NOT get the zones" is the
+            // one the user has to act on.
+            const refused = result.models.filter((m) => m.refusal);
+            for (const model of refused) {
+              toast.error(emitRefusalText(model.refusal as NonNullable<typeof model.refusal>, model.modelName));
+            }
+            if (written.length === 0) return;
+            const zones = written.reduce((sum, m) => sum + m.zonesEmitted, 0);
+            const elements = written.reduce((sum, m) => sum + m.elementsReferenced, 0);
+            const replaced = written.reduce((sum, m) => sum + m.zonesReplaced, 0);
+            toast.success(
+              `Emitted ${zones.toLocaleString()} IfcSpatialZone(s) across ${written.length} model(s), `
+              + `referencing ${elements.toLocaleString()} element(s)`
+              + (replaced > 0 ? `, replacing ${replaced.toLocaleString()} from an earlier run` : ''),
+            );
+          }}
+        >
+          <Box className="h-3 w-3 mr-1" />
+          Emit zones as IfcSpatialZone
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Remove the IfcSpatialZone entities emitted for this set"
+          aria-label="Remove emitted spatial zones"
+          onClick={() => {
+            const { removed, blocked } = removeZones(zoneSet);
+            if (blocked === 'collab-role') {
+              toast.error('Your role in this session is read-only, so nothing was removed');
+              return;
+            }
+            if (removed === 0) toast.info('No emitted zones to remove for this set');
+            else toast.success(`Removed ${removed.toLocaleString()} IfcSpatialZone(s)`);
+          }}
+        >
+          <Undo2 className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   );
 }

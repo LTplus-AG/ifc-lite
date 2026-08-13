@@ -5,9 +5,9 @@
 /**
  * The write-back control, driven from the panel that hosts it (#2508 item 3).
  *
- * `useZoneWriteBack.test.ts` proves the write itself. What this proves is the
- * half that file cannot: the button exists ON the Zones panel, and CLICKING it
- * writes. A test that asserts the control renders would pass just as well with
+ * `useZoneWriteBack.test.ts` and `useZoneSpatialZones.test.ts` prove the writes
+ * themselves. What this proves is the half those files cannot: the buttons
+ * exist ON the Zones panel, and CLICKING them writes. A test that asserts the control renders would pass just as well with
  * `onClick={() => {}}`, which is the failure #2434 catalogued and #2396 shipped
  * - so the assertion here is the property set landing on the element.
  */
@@ -30,7 +30,12 @@ FILE_NAME('zones','',(''),(''),'','','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 DATA;
-#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,$,$);
+#1=IFCPROJECT('0Project0000000000000a',$,'P',$,$,$,$,(#5),$);
+#7=IFCCARTESIANPOINT((0.,0.,0.));
+#8=IFCAXIS2PLACEMENT3D(#7,$,$);
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#8,$);
+#20=IFCLOCALPLACEMENT($,#8);
+#30=IFCBUILDINGSTOREY('0storey000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
 #${WALL_ID}=IFCWALL('0Wall00000000000000042',$,'Wall A',$,$,$,$,$,$);
 ENDSEC;
 END-ISO-10303-21;
@@ -104,5 +109,41 @@ describe('ZonesPanel: writing zone data into the model', () => {
 
     const psets = useViewerStore.getState().getMutationView('m1')?.getForEntity(WALL_ID) ?? [];
     assert.ok(!psets.some((p) => p.name === zonePropertySetName('Takt areas')));
+  });
+});
+
+function button(container: HTMLElement, label: string): HTMLButtonElement {
+  const found = [...container.querySelectorAll('button')]
+    .find((b) => b.textContent?.trim() === label || b.getAttribute('aria-label') === label);
+  assert.ok(found, `no "${label}" control; buttons were: ${[...container.querySelectorAll('button')].map((b) => b.textContent?.trim() || b.getAttribute('aria-label')).join(' | ')}`);
+  return found as HTMLButtonElement;
+}
+
+function emittedZones(): string[] {
+  return (useViewerStore.getState().getMutationView('m1')?.getNewEntities() ?? [])
+    .filter((e) => e.type === 'IfcSpatialZone')
+    .map((e) => String(e.attributes[2]));
+}
+
+describe('ZonesPanel: emitting the zones themselves', () => {
+  beforeEach(async () => {
+    await seed();
+  });
+
+  it('emits an IfcSpatialZone when the panel button is clicked', () => {
+    const container = render(<ZonesPanel />);
+    assert.deepEqual(emittedZones(), [], 'the panel emitted on mount');
+
+    click(button(container, 'Emit zones as IfcSpatialZone'));
+
+    assert.deepEqual(emittedZones(), ['Takt A']);
+    assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
+  });
+
+  it('takes them out again from the same panel', () => {
+    const container = render(<ZonesPanel />);
+    click(button(container, 'Emit zones as IfcSpatialZone'));
+    click(button(container, 'Remove emitted spatial zones'));
+    assert.deepEqual(emittedZones(), []);
   });
 });

@@ -1,9 +1,10 @@
 # Emitting location zones as IFC entities (design)
 
-**Status:** decided, partly built. The property/quantity write-back ships
-(#2508 item 3b). `IfcZone` emission is **refused** on schema grounds.
-`IfcSpatialZone` is the correct vehicle for the zone boxes themselves and is
-deferred to its own PR, with the shape below.
+**Status:** decided and built. The property/quantity write-back ships (#2508
+item 3b), and so does the `IfcSpatialZone` emission this document argued for:
+`packages/create/src/in-store/spatial-zone.ts` for the schema half,
+`apps/viewer/src/lib/zones/emit-spatial-zones.ts` for the frame half.
+`IfcZone` emission remains **refused** on schema grounds.
 
 Issue #2508 asks the question rather than assuming the answer: "Whether
 user-drawn takt boxes *should* become `IfcZone` is a genuine modelling
@@ -84,17 +85,23 @@ is 40% in this zone*, which is the number #2508 exists to produce. So an
 replacement for it: the zone entity carries the region, the quantity set
 carries the split.
 
-### Why it is deferred rather than done here
+### Why it took its own PR
+
+Each of these was a reason to defer it, and each is now a property of what
+shipped:
 
 - It writes new **spatial** entities into someone else's model, which is a
-  heavier act than adding property sets, and needs its own review and its own
-  opt-in.
-- It needs a placement chain and a swept-solid or brep representation in IFC
-  **Z-up**, converted out of the viewer's Y-up frame, anchored on the site.
-  That is geometry authoring, not data authoring.
+  heavier act than adding property sets. So it is a separate, explicitly
+  labelled button, and its inverse removes exactly what it wrote.
+- It needs a placement chain and a swept-solid representation in IFC **Z-up**,
+  converted out of the viewer's Y-up frame. That conversion is the part only
+  the viewer can do, and it is the part that fails invisibly, so it lives in
+  one exported function with a test per shift
+  (`emit-spatial-zones.test.ts`). A model federation alignment re-based is
+  refused rather than written by another file's origin.
 - Zones change several times a week (property 3 above). Baking planning state
-  into the spatial structure of a design model is a decision a user should make
-  deliberately, on export, not as a side effect of drawing a box.
+  into a design model stays a deliberate act: nothing emits on load, on
+  assignment, or on export.
 
 ## What ships instead, and why it is the right default
 
@@ -108,17 +115,37 @@ The property and quantity write-back (#2508 item 3b,
 - lands in the one place every downstream tool already looks, which is what the
   reporter of #1763 was doing by hand in a spreadsheet.
 
-## If the `IfcSpatialZone` PR is written
-
-Sketch, so the next person does not re-derive it:
+## What the `IfcSpatialZone` emission does
 
 - One `IfcSpatialZone` per zone, `PredefinedType = CONSTRUCTION`, `LongName` =
-  the zone set's name, `Name` = the zone's name.
-- Placement relative to the site, representation as an extruded rectangle
-  profile carrying `rotationY` in the placement rather than in the profile.
+  the zone set's name, `Name` = the zone's name. **Nine** attributes, not ten:
+  the type derives from `IfcSpatialElement` rather than
+  `IfcSpatialStructureElement`, so it has no `CompositionType` - which is the
+  schema saying a zone is not part of the containment hierarchy.
+- An **absolute** placement (`PlacementRelTo = $`) rather than one chained to
+  the site: the zone's coordinates are world coordinates already, because the
+  mesh pipeline resolved every placement chain to world before the user drew
+  the box against it. Inverting that chain to recover a local offset would be
+  arithmetic with nothing to gain.
+- Representation as an extruded rectangle profile carrying `rotationY` in the
+  placement rather than in the profile, so a receiving tool reads a rectangle
+  as one. A prism zone emits its convex footprint as an
+  `IfcArbitraryClosedProfileDef`, with the points made relative to the
+  placement.
 - `IfcRelReferencedInSpatialStructure` per zone, listing every element the
   assignment says it touches (not just the elements whose home it is).
-- Aggregate the set's zones under one `IfcZone` **only** if every member is an
-  `IfcSpatialZone`, which is admissible and is the one legitimate use of
-  `IfcZone` here.
-- Emit alongside the property sets, never instead of them.
+- Emitted alongside the property sets, never instead of them.
+
+Not done, and deliberately: aggregating the set's zones under one `IfcZone`.
+That is admissible once every member is an `IfcSpatialZone`, and it is the one
+legitimate use of `IfcZone` here, but nothing yet asks for the extra grouping
+level.
+
+### The limit worth knowing
+
+A re-run replaces its own output by matching the zone set's **name**, because
+the file has no id to match on. Renaming a set between runs therefore leaves
+the previous run's zones in place, and removing them means removing under the
+old name. Zones from a re-imported earlier export are likewise left alone: the
+sweep only touches entities this session created, which is what keeps it from
+gutting a model that already contains zones.

@@ -37,6 +37,13 @@ export { addBeamToStore, type BeamInStoreParams, type BeamBuildResult } from './
 export { addDoorToStore, type DoorInStoreParams, type DoorBuildResult } from './in-store/door.js';
 export { addWindowToStore, type WindowInStoreParams, type WindowBuildResult } from './in-store/window.js';
 export { addSpaceToStore, type SpaceInStoreParams, type SpaceRectangleParams, type SpacePolygonParams, type SpaceBuildResult } from './in-store/space.js';
+export {
+  addSpatialZonesToStore,
+  spatialZonesSupported,
+  type SpatialZoneInput,
+  type SpatialZoneInStoreParams,
+  type SpatialZoneBuildResult,
+} from './in-store/spatial-zone.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';

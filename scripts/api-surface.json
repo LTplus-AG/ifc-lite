@@ -853,6 +853,9 @@
     "SpacePolygonParams: interface",
     "SpaceRectangleParams: interface",
     "SpatialAnchor: interface",
+    "SpatialZoneBuildResult: interface",
+    "SpatialZoneInStoreParams: interface",
+    "SpatialZoneInput: interface",
     "StairParams: interface",
     "StoreyInfo: interface",
     "StoreyParams: interface",
@@ -881,6 +884,7 @@
     "addRoofToStore: function",
     "addSlabToStore: function",
     "addSpaceToStore: function",
+    "addSpatialZonesToStore: function",
     "addWallToStore: function",
     "addWindowToStore: function",
     "detectEnclosedAreas: function",
@@ -892,7 +896,8 @@
     "listStoreys: function",
     "offsetRoomFootprint: function",
     "resolveDuplicateSource: function",
-    "resolveSpatialAnchor: function"
+    "resolveSpatialAnchor: function",
+    "spatialZonesSupported: function"
   ],
   "@ifc-lite/data": [
     "BUILDING_LIKE_SPATIAL_TYPE_ENUMS: const",

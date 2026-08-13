@@ -100,13 +100,13 @@ export function AnalyzeTab() {
           icon={List}
           label="Lists"
           tooltip="Entity lists"
-          active={activeWorkspacePanels.has('list')}
-          onClick={() => handleToggleBottomPanel('list')}
+          active={activeWorkspacePanels.has('lists')}
+          onClick={() => handleToggleBottomPanel('lists')}
         />
         <RibbonLargeButton
           icon={Schedule}
           label="Schedule"
-          tooltip="Schedule (Gantt)"
+          tooltip="Construction schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />

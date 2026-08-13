@@ -101,21 +101,24 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
                 </span>
               ) : undefined}
             />
-            {/* Room panel toggle — live presence + management, only while in a room. */}
-            {collabRoomId && (
-              <RibbonLargeButton
-                icon={CollabsRoom}
-                label="Room"
-                tooltip="Collaboration room"
-                active={collabPanelVisible}
-                onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
-                badge={collabPeerCount > 0 ? (
-                  <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
-                    {collabPeerCount + 1}
-                  </span>
-                ) : undefined}
-              />
-            )}
+            {/* Room panel toggle — live presence + management. Shown whenever
+                collab is on, not only inside a room: the classic strip's Panels
+                menu, the palette and the rail all offer it unconditionally, and
+                gating it here left ribbon users unable to open the panel at all
+                before joining. It also contradicted this toolbar's own rule
+                that its geography stays put rather than appearing mid-session. */}
+            <RibbonLargeButton
+              icon={CollabsRoom}
+              label="Room"
+              tooltip={collabRoomId ? 'Collaboration room' : 'Collaboration room — not in a room yet'}
+              active={collabPanelVisible}
+              onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}
+              badge={collabPeerCount > 0 ? (
+                <span className="absolute right-1 top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-medium text-white">
+                  {collabPeerCount + 1}
+                </span>
+              ) : undefined}
+            />
           </RibbonGroup>
         </>
       )}

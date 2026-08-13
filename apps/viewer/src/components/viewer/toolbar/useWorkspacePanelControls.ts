@@ -19,7 +19,12 @@ import {
 } from '@/services/analysis-extensions';
 import { closePanelWindow } from '@/services/panel-windows';
 
-export type BottomPanel = 'script' | 'list' | 'gantt';
+/** Registry ids, deliberately. This hook used to spell the entity-list panel
+ *  `'list'` while the registry and the store spell it `'lists'`, and the cost
+ *  was structural rather than cosmetic: with ids that did not match, the bottom
+ *  branch below could not simply hand the click to the store, so it re-derived
+ *  the flag flips and lost the float / pop-out cleanup along the way. */
+export type BottomPanel = 'script' | 'lists' | 'gantt';
 export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
@@ -48,6 +53,10 @@ export function useWorkspacePanelControls() {
   const setGanttPanelVisible = useViewerStore((state) => state.setGanttPanelVisible);
   const layersPanelVisible = useViewerStore((state) => state.layersPanelVisible);
   const collabPanelVisible = useViewerStore((state) => state.collabPanelVisible);
+  // The detached channels — a panel living in one of these is open regardless
+  // of its dock flag (see `activeWorkspacePanels`).
+  const floatingPanels = useViewerStore((state) => state.floatingPanels);
+  const poppedOutIds = useViewerStore((state) => state.poppedOutIds);
   // Zones (#1810) has no dedicated visibility flag — it is a pure sidebar
   // panel, driven by `sidebarActivePanel`. Reading it HERE rather than in each
   // toolbar is what keeps the classic strip and the ribbon from drifting on
@@ -77,40 +86,38 @@ export function useWorkspacePanelControls() {
     if (activeAnalysisExtension?.placement === 'bottom') {
       closeActiveAnalysisExtension();
     }
-    const nextScriptVisible = panel === 'script' ? !scriptPanelVisible : false;
-    const nextListVisible = panel === 'list' ? !listPanelVisible : false;
-    const nextGanttVisible = panel === 'gantt' ? !ganttPanelVisible : false;
-
-    setScriptPanelVisible(nextScriptVisible);
-    setListPanelVisible(nextListVisible);
-    setGanttPanelVisible(nextGanttVisible);
-
-    if (nextScriptVisible || nextListVisible || nextGanttVisible) {
-      setRightPanelCollapsed(false);
-    }
-  }, [
-    activeAnalysisExtension?.placement,
-    ganttPanelVisible,
-    listPanelVisible,
-    scriptPanelVisible,
-    setGanttPanelVisible,
-    setListPanelVisible,
-    setRightPanelCollapsed,
-    setScriptPanelVisible,
-  ]);
+    // The store owns the bottom strip's re-dock rules, so hand it the click
+    // rather than re-deriving the flag flips. The copy that used to live here
+    // knew nothing about the float / pop-out channels: toggling a FLOATING
+    // Lists panel cleared its dock flag and left the floating window on screen
+    // with the toolbar latch off, while the same click from the activity bar
+    // (which routes here) brought it home correctly.
+    useViewerStore.getState().toggleBottomPanel(panel);
+  }, [activeAnalysisExtension?.placement]);
 
   const handleToggleRightPanel = useCallback((panel: RightPanel) => {
     if (activeAnalysisExtension?.placement !== 'bottom') {
       closeActiveAnalysisExtension();
     }
 
-    const nextBcfVisible = panel === 'bcf' ? !bcfPanelVisible : false;
-    const nextIdsVisible = panel === 'ids' ? !idsPanelVisible : false;
-    const nextLensVisible = panel === 'lens' ? !lensPanelVisible : false;
-    const nextClashVisible = panel === 'clash' ? !clashPanelVisible : false;
-    const nextCompareVisible = panel === 'compare' ? !comparePanelVisible : false;
-    const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
-    const nextSourcesVisible = panel === 'sources' ? !sourcesPanelVisible : false;
+    // "Active" means it owns the DOCKED slot right now, the same test the
+    // store's `toggleWorkspacePanel` applies. A floating or popped-out panel
+    // keeps its dock flag set, so negating the raw flag read the click as
+    // "close" and the detach cleanup below then tore the panel down entirely —
+    // where the rail, asking this question properly, brings it home. Toggling a
+    // detached panel must re-dock it, never close it out from under its window.
+    // `addElement` is a TOOL, not a registry panel, so it has no detach channel.
+    const detached = panel !== 'addElement'
+      && (floatingPanels.some((p) => p.id === panel) || poppedOutIds.includes(panel));
+    const docked = (visible: boolean) => visible && !detached;
+
+    const nextBcfVisible = panel === 'bcf' ? !docked(bcfPanelVisible) : false;
+    const nextIdsVisible = panel === 'ids' ? !docked(idsPanelVisible) : false;
+    const nextLensVisible = panel === 'lens' ? !docked(lensPanelVisible) : false;
+    const nextClashVisible = panel === 'clash' ? !docked(clashPanelVisible) : false;
+    const nextCompareVisible = panel === 'compare' ? !docked(comparePanelVisible) : false;
+    const nextExtensionsVisible = panel === 'extensions' ? !docked(extensionsPanelVisible) : false;
+    const nextSourcesVisible = panel === 'sources' ? !docked(sourcesPanelVisible) : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
@@ -157,6 +164,8 @@ export function useWorkspacePanelControls() {
     setRightPanelCollapsed,
     setSourcesPanelVisible,
     sourcesPanelVisible,
+    floatingPanels,
+    poppedOutIds,
   ]);
 
   const handleToggleAnalysisExtension = useCallback((id: string) => {
@@ -217,8 +226,15 @@ export function useWorkspacePanelControls() {
 
   const activeWorkspacePanels = useMemo(() => {
     const panels = new Set<WorkspacePanel>();
+    // A floating or popped-out panel is OPEN — the sidebar's single-tenant rule
+    // clears its dock flag the moment another panel docks, without touching the
+    // detached channels. Reading only the flags is what made a floating BCF
+    // panel's latch go dark on both toolbars while the panel sat on screen; the
+    // activity bar never had the bug because it reads `panelLocation`.
+    for (const panel of floatingPanels) panels.add(panel.id);
+    for (const id of poppedOutIds) panels.add(id);
     if (scriptPanelVisible) panels.add('script');
-    if (listPanelVisible) panels.add('list');
+    if (listPanelVisible) panels.add('lists');
     if (ganttPanelVisible) panels.add('gantt');
     if (bcfPanelVisible) panels.add('bcf');
     if (idsPanelVisible) panels.add('ids');
@@ -246,6 +262,8 @@ export function useWorkspacePanelControls() {
     idsPanelVisible,
     lensPanelVisible,
     listPanelVisible,
+    floatingPanels,
+    poppedOutIds,
     scriptPanelVisible,
     sidebarActivePanel,
     sourcesPanelVisible,
@@ -255,7 +273,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.size === 0) return null;
     if (activeWorkspacePanels.size > 1) return 'Multiple Panels';
     if (activeWorkspacePanels.has('script')) return 'Script Editor';
-    if (activeWorkspacePanels.has('list')) return 'Lists';
+    if (activeWorkspacePanels.has('lists')) return 'Lists';
     if (activeWorkspacePanels.has('gantt')) return 'Schedule';
     if (activeWorkspacePanels.has('bcf')) return 'BCF Issues';
     if (activeWorkspacePanels.has('ids')) return 'IDS Validation';

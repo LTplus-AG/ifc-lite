@@ -1,5 +1,39 @@
 # @ifc-lite/viewer
 
+## 1.33.7
+
+### Patch Changes
+
+- [#2576](https://github.com/LTplus-AG/ifc-lite/pull/2576) [`e09f824`](https://github.com/LTplus-AG/ifc-lite/commit/e09f8247eae1a7291f4e2ce18272ec4c2c7660ae) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now shows the whole model — repeated geometry (curtain-wall facades, mullions, windows) no longer disappears on the map.
+
+  The Cesium overlay built its GLB from `geometryResult.meshes`, which by design holds only part of the model: GPU-instanced occurrences render from compact shards and are deliberately absent from that flat list, as `utils/instancedExport.ts` documents and as the glTF and IFC exporters already compensate for. The world view never did, so every repeated occurrence was dropped from the map while the WebGPU viewport drew it correctly. On the model from issue [#2558](https://github.com/LTplus-AG/ifc-lite/issues/2558) that was 9,950 of 18,555 meshes and 396K of 655K triangles — a tower's entire facade gone, leaving bare floor slabs over Google's imagery.
+
+  Building the GLB and its cache key now live together in `lib/geo/cesium-model-glb.ts`, which materialises the instanced half through the same `withInstancedMeshes` helper the exporters use. The cache key also counts instanced entities rather than flat meshes alone, so a geometry batch whose occurrences are all instanced — one that adds no flat meshes at all — no longer reads as "unchanged". It also folds in `geometryContentVersion`, so an in-place edit such as a gizmo move, which changes no count at all, invalidates the cached bytes too.
+
+- [#2582](https://github.com/LTplus-AG/ifc-lite/pull/2582) [`f01588b`](https://github.com/LTplus-AG/ifc-lite/commit/f01588bc83593c621d521233cf697393c6df1936) Thanks [@louistrue](https://github.com/louistrue)! - KMZ export no longer ships a model with its repeated geometry missing.
+
+  `buildKmzForResolvedGeoref` was handed `geometryResult.meshes`, which holds only part of the model: GPU-instanced occurrences render from compact shards and are deliberately absent from that flat list. Both surfaces that export a KMZ — the Export KMZ dialog and the Location panel's "Google Earth" button — passed it, so a tower whose facade is repeated panels exported to Google Earth as bare floor slabs. Same defect [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) fixed for the on-screen world view, in the file the user hands to someone else.
+
+  The complete set is now derived inside the shared builder, from a `geometryResult` rather than a mesh array, so there is no way for a call site to pass a pre-flattened list — the same reason the builder refuses a pre-guarded conversion. Callers pass `isPrimaryModel` alongside it, since instanced shard occurrences live in the primary model's id space and a federated model must not adopt them.
+
+- [#2581](https://github.com/LTplus-AG/ifc-lite/pull/2581) [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now hides what you hide: hide and isolate reach the map, not just the viewport.
+
+  The world view renders the model through its own glTF pipeline, so it never inherited the per-frame hide/isolate filtering the WebGPU renderer applies. It honoured type visibility (its mesh list arrives pre-filtered) but nothing else — hide an element, or isolate a storey, and the map kept drawing everything. Since [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) gave the world view the GPU-instanced half of the model as well, that gap covered both geometry channels.
+
+  `@ifc-lite/renderer` now exports the rule itself rather than leaving each surface to restate it. `isEntityVisible(expressId, hiddenIds, isolatedIds)` was written out separately at the flat-draw and instanced-draw sites; both now call the shared helper, and so does the world view. `VisibilityEpochTracker` — already used internally for content-based change detection on those two sets — is exported alongside it, so a consumer outside the render loop can tell a real visibility change from a store handing out a fresh Set with identical content.
+
+  Two details the shared rule pins down, both easy to get wrong when restating it: an EMPTY isolation set isolates _nothing_ (it hides everything) and is not the same as `null` (no isolation), and hiding wins over isolation.
+
+- Updated dependencies [[`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe)]:
+  - @ifc-lite/export@2.8.6
+  - @ifc-lite/data@3.3.0
+  - @ifc-lite/ifcx@2.3.5
+  - @ifc-lite/mutations@1.26.0
+  - @ifc-lite/wasm@4.5.0
+  - @ifc-lite/renderer@1.45.0
+  - @ifc-lite/ids@1.15.45
+  - @ifc-lite/lists@1.23.1
+
 ## 1.33.6
 
 ### Patch Changes

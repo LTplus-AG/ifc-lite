@@ -1,5 +1,19 @@
 # @ifc-lite/export
 
+## 2.8.6
+
+### Patch Changes
+
+- [#2579](https://github.com/LTplus-AG/ifc-lite/pull/2579) [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee) Thanks [@louistrue](https://github.com/louistrue)! - `StepExporter` now honours a quantity set the session DELETED.
+
+  It withholds a source `IfcElementQuantity` when it is writing a replacement for it, and a deletion has no replacement to be recognised by, so a deleted set stayed in the exported bytes while the panel showed it gone. [#2487](https://github.com/LTplus-AG/ifc-lite/issues/2487) wrote that rule when `MutablePropertyView` had no public quantity-set delete; `deleteQuantitySet` ([#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508)) gives it one, so the exporter asks `isQuantitySetDeleted` as well.
+
+  Behaviour is unchanged for every session that does not delete a quantity set, which is every session before this one could exist.
+
+- Updated dependencies [[`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee)]:
+  - @ifc-lite/data@3.3.0
+  - @ifc-lite/mutations@1.26.0
+
 ## 2.8.5
 
 ### Patch Changes

@@ -32,7 +32,7 @@ import {
   orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
-import { buildMergedGLB } from '@/lib/geo/cesium-glb';
+import { buildCesiumModelGLB, cesiumModelGLBKey } from '@/lib/geo/cesium-model-glb';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
 import { sunPosition, sunTimes } from '@ifc-lite/solar';
 
@@ -157,7 +157,7 @@ export function CesiumOverlay({
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
-  const glbCacheRef = useRef<{ meshCount: number; glb: Uint8Array } | null>(null);
+  const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
   // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
   // solar mode can toggle its shadow casting/receiving.
   const tilesetRef = useRef<{ shadows?: any } | null>(null);
@@ -557,9 +557,12 @@ export function CesiumOverlay({
     const startExport = async () => {
       if (cancelled) return;
       try {
-        // Export GLB (cached by mesh count — skip if already loaded)
-        const meshCount = geometryResult.meshes.length;
-        if (cesiumModelRef.current && glbCacheRef.current?.meshCount === meshCount) {
+        // Reuse the cached GLB when it was built from the same mesh set. The key
+        // spans flat AND instanced geometry (see cesiumModelGLBKey), so an
+        // all-instanced batch still invalidates it.
+        const key = cesiumModelGLBKey(geometryResult);
+        const cached = glbCacheRef.current;
+        if (cesiumModelRef.current && cached?.key === key) {
           // Model already loaded with same geometry — just update matrix
           return;
         }
@@ -571,13 +574,14 @@ export function CesiumOverlay({
         }
 
         let glbBytes: Uint8Array;
-        if (glbCacheRef.current?.meshCount === meshCount) {
-          glbBytes = glbCacheRef.current.glb;
+        if (cached?.key === key) {
+          glbBytes = cached.glb;
         } else {
           await new Promise(r => setTimeout(r, 50));
           if (cancelled) return;
-          glbBytes = buildMergedGLB(geometryResult.meshes);
-          glbCacheRef.current = { meshCount, glb: glbBytes };
+          const built = buildCesiumModelGLB(geometryResult);
+          glbBytes = built.glb;
+          glbCacheRef.current = { key: built.key, glb: built.glb };
         }
         if (cancelled) return;
 

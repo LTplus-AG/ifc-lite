@@ -29,10 +29,11 @@ const STRADDLER: ElementZoneFacts = {
   globalId: 42,
   homeZoneName: 'Takt A',
   touchedZoneNames: ['Takt A', 'Takt B'],
+  touchedZoneIds: ['z-a', 'z-b'],
   straddles: true,
   shares: [
-    { zoneName: 'Takt A', valueM3: 2 },
-    { zoneName: 'Takt B', valueM3: 3 },
+    { zoneId: 'z-a', zoneName: 'Takt A', valueM3: 2 },
+    { zoneId: 'z-b', zoneName: 'Takt B', valueM3: 3 },
   ],
   outsideM3: 0,
   refusal: null,
@@ -64,7 +65,7 @@ describe('zoneTableRows', () => {
     // geometry they do not.
     const rows = zoneTableRows(
       ELEMENT,
-      { ...STRADDLER, shares: [{ zoneName: 'Takt A', valueM3: 2 }], touchedZoneNames: ['Takt A'], outsideM3: 3 },
+      { ...STRADDLER, shares: [{ zoneId: 'z-a', zoneName: 'Takt A', valueM3: 2 }], touchedZoneNames: ['Takt A'], touchedZoneIds: ['z-a'], outsideM3: 3 },
       'Takt areas',
       'net',
     );
@@ -99,7 +100,7 @@ describe('zoneTableRows', () => {
   it('does not divide by a zero total', () => {
     const rows = zoneTableRows(
       ELEMENT,
-      { ...STRADDLER, shares: [{ zoneName: 'Takt A', valueM3: 0 }], touchedZoneNames: ['Takt A'], outsideM3: 0 },
+      { ...STRADDLER, shares: [{ zoneId: 'z-a', zoneName: 'Takt A', valueM3: 0 }], touchedZoneNames: ['Takt A'], touchedZoneIds: ['z-a'], outsideM3: 0 },
       'Takt areas',
       'net',
     );
@@ -165,6 +166,50 @@ describe('toCsv', () => {
     const body = toCsv(rows).split('\n')[1];
     assert.ok(!body.includes('null'), `null leaked into the CSV: ${body}`);
     assert.ok(body.includes(',,'), 'the empty volume should be an empty cell');
+  });
+});
+
+describe('zoneTableRows: zones that share a name', () => {
+  it('reports each zone its OWN share', () => {
+    // Zone names are unique only by convention, so a set can legitimately hold
+    // two zones called "Section 2" (a JSON import, a copy-paste). Keying the
+    // shares by name collapsed them into one entry and reported the last one's
+    // volume for BOTH rows - a wrong number that still adds up, which is the
+    // worst kind in a file people sum.
+    const rows = zoneTableRows(
+      ELEMENT,
+      {
+        ...STRADDLER,
+        touchedZoneNames: ['Section 2', 'Section 2'],
+        touchedZoneIds: ['z-a', 'z-b'],
+        shares: [
+          { zoneId: 'z-a', zoneName: 'Section 2', valueM3: 2 },
+          { zoneId: 'z-b', zoneName: 'Section 2', valueM3: 3 },
+        ],
+      },
+      'Takt areas',
+      'net',
+    );
+    assert.deepEqual(rows.map((r) => r.VolumeM3), [2, 3]);
+    assert.equal(rows.reduce((sum, r) => sum + (r.VolumeM3 ?? 0), 0), 5);
+  });
+});
+
+describe('toCsv: a cell a spreadsheet would EXECUTE', () => {
+  it('neutralizes a formula hiding in an IFC name', () => {
+    // An IFC Name is attacker-controlled in any federated project, and this
+    // file exists to be opened in Excel. Quoting alone does not stop a cell
+    // being re-read as a formula.
+    for (const hostile of ['=cmd|\'/c calc\'!A1', '+1+1', '-1+1', '@SUM(A1)']) {
+      const csv = toCsv(zoneTableRows({ ...ELEMENT, name: hostile }, STRADDLER, 'Takt areas', 'net'));
+      const cell = parseCsvLine(csv.trim().split('\n')[1])[4];
+      assert.equal(cell, `'${hostile}`, `\`${hostile}\` reached the sheet unguarded`);
+    }
+  });
+
+  it('leaves an ordinary name alone', () => {
+    const csv = toCsv(zoneTableRows(ELEMENT, STRADDLER, 'Takt areas', 'net'));
+    assert.equal(parseCsvLine(csv.trim().split('\n')[1])[4], 'Basic Wall');
   });
 });
 

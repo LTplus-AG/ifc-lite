@@ -32,6 +32,7 @@
  * the same call the pset write-back makes. Nothing here recomputes a volume.
  */
 
+import { neutralizeSpreadsheetFormula } from '@/lib/lists/export/model';
 import { volumeBasisLabel, type VolumeBasis } from './volume-basis.js';
 import type { ElementZoneFacts, WriteBackRefusal } from './writeback.js';
 
@@ -109,12 +110,17 @@ export function zoneTableRows(
   zoneSetName: string,
   basis: VolumeBasis,
 ): ZoneTableRow[] {
-  const shares = new Map(facts.shares.map((s) => [s.zoneName, s.valueM3]));
+  // Keyed by ID, not by name. Zone names are unique only by convention
+  // (`types.ts`: ids are what disambiguate), so two zones a user called
+  // "Section 2" would collapse into ONE entry here and report the last one's
+  // volume for both rows - a wrong number that adds up, which is the worst
+  // kind in a file people sum.
+  const shares = new Map(facts.shares.map((s) => [s.zoneId, s.valueM3]));
   const total = facts.shares.reduce((sum, s) => sum + s.valueM3, 0) + facts.outsideM3;
   const unavailable = facts.refusal ? refusalText(facts.refusal) : '';
 
-  return facts.touchedZoneNames.map((zoneName) => {
-    const value = shares.get(zoneName);
+  return facts.touchedZoneNames.map((zoneName, index) => {
+    const value = shares.get(facts.touchedZoneIds[index]);
     const measured = value !== undefined && Number.isFinite(value);
     return {
       GlobalId: element.globalId,
@@ -150,7 +156,13 @@ export function zoneTableRows(
 export function toCsv(rows: readonly ZoneTableRow[], delimiter = ','): string {
   const cell = (value: unknown): string => {
     if (value === null || value === undefined) return '';
-    const text = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
+    const raw = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
+    // Quoting stops a comma breaking the COLUMNS; it does nothing about a cell
+    // a spreadsheet re-reads as a FORMULA. An IFC Name is attacker-controlled
+    // in any federated project, and this file exists to be opened in Excel, so
+    // it goes through the viewer's existing neutralizer rather than a second
+    // rule invented here.
+    const text = neutralizeSpreadsheetFormula(raw);
     return /["\n\r]|^\s|\s$/.test(text) || text.includes(delimiter)
       ? `"${text.replace(/"/g, '""')}"`
       : text;

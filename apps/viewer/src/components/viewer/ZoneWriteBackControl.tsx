@@ -18,7 +18,7 @@
  * quantity set's name.
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -48,8 +48,22 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
   const { exportTable } = useZoneTableExport();
+  // A table export gathers every element and may recompute the apportionment,
+  // so a second click while the first runs pays for two full gathers and
+  // downloads the same file twice.
+  //
+  // A REF as well as the state, and the ref is what guards: state has not
+  // re-rendered yet in the tick the first click starts, so a double click would
+  // pass a state-only check and disable a button that is already too late. The
+  // state exists only to say so in the UI. Same pairing, for the same reason,
+  // as the geometry export in `ZonesPanel`.
+  const exportingTableRef = useRef(false);
+  const [exportingTable, setExportingTable] = useState<ZoneTableFormat | null>(null);
 
   const runTableExport = async (format: ZoneTableFormat) => {
+    if (exportingTableRef.current) return;
+    exportingTableRef.current = true;
+    setExportingTable(format);
     try {
       const result = await exportTable(zoneSet, basis, format);
       if (result.blocked === 'no-members') {
@@ -66,6 +80,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
       // that can fail for a reason outside the model.
       console.error('[zones] table export failed', error);
       toast.error(`Could not export the table: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      // In a `finally` so a Parquet writer that fails to load does not leave
+      // both buttons dead for the rest of the session.
+      exportingTableRef.current = false;
+      setExportingTable(null);
     }
   };
 
@@ -151,11 +170,12 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             variant="outline"
             size="sm"
             className="h-6 flex-1 text-[11px]"
+            disabled={exportingTable !== null}
             title={`Download the per-element breakdown for this set as ${format.toUpperCase()}, one row per element and zone`}
             onClick={() => { void runTableExport(format); }}
           >
             <Sheet className="h-3 w-3 mr-1" />
-            {format.toUpperCase()}
+            {exportingTable === format ? 'Building...' : format.toUpperCase()}
           </Button>
         ))}
       </div>

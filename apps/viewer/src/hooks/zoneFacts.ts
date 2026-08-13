@@ -101,7 +101,7 @@ export function declaredTotal(
 }
 
 export interface VolumeResolution {
-  shares: Array<{ zoneName: string; valueM3: number }>;
+  shares: Array<{ zoneId: string; zoneName: string; valueM3: number }>;
   outsideM3: number;
   refusal: WriteBackRefusal | null;
   quantityName: string | null;
@@ -119,6 +119,7 @@ export function resolveVolumes(
   globalId: number,
   straddles: boolean,
   homeZoneName: string | null,
+  homeZoneId: string | null,
   basis: VolumeBasis,
   qsets: ReturnType<typeof quantitySetsFor>,
   volumeSiScale: number,
@@ -145,7 +146,7 @@ export function resolveVolumes(
     }
     const total = declared ? declared.totalM3 : entry.wholeVolumeM3;
     return {
-      shares: entry.shares.map((s) => ({ zoneName: s.zoneName, valueM3: s.fraction * total })),
+      shares: entry.shares.map((s) => ({ zoneId: s.zoneId, zoneName: s.zoneName, valueM3: s.fraction * total })),
       outsideM3: entry.outsideFraction * total,
       refusal: null,
       quantityName,
@@ -154,9 +155,14 @@ export function resolveVolumes(
 
   // Wholly inside one zone. Nothing to split, so nothing to prove about the
   // geometry - on a declared basis this element never touches the renderer.
-  if (!homeZoneName) return { shares: [], outsideM3: 0, refusal: 'no-geometry', quantityName };
+  if (!homeZoneName || !homeZoneId) return { shares: [], outsideM3: 0, refusal: 'no-geometry', quantityName };
   if (declared) {
-    return { shares: [{ zoneName: homeZoneName, valueM3: declared.totalM3 }], outsideM3: 0, refusal: null, quantityName };
+    return {
+      shares: [{ zoneId: homeZoneId, zoneName: homeZoneName, valueM3: declared.totalM3 }],
+      outsideM3: 0,
+      refusal: null,
+      quantityName,
+    };
   }
   if (proved.rescaled.has(globalId)) {
     return { shares: [], outsideM3: 0, refusal: 'rescaled-by-alignment', quantityName };
@@ -165,7 +171,12 @@ export function resolveVolumes(
   if (mesh === undefined || !Number.isFinite(mesh)) {
     return { shares: [], outsideM3: 0, refusal: 'unproved-solid', quantityName };
   }
-  return { shares: [{ zoneName: homeZoneName, valueM3: Math.abs(mesh) }], outsideM3: 0, refusal: null, quantityName };
+  return {
+    shares: [{ zoneId: homeZoneId, zoneName: homeZoneName, valueM3: Math.abs(mesh) }],
+    outsideM3: 0,
+    refusal: null,
+    quantityName,
+  };
 }
 
 /** One element's row: the facts, plus what a writer needs to reach it. */
@@ -216,7 +227,7 @@ export function gatherZoneFacts(zoneSet: ZoneSet, basis: VolumeBasis): ZoneFacts
  *  rather than imported to keep this module free of the store's types. */
 export function zoneFactsFor(
   globalId: number,
-  assignment: { zoneName: string | null; straddles: boolean; touchedZoneIds: string[] },
+  assignment: { zoneId: string | null; zoneName: string | null; straddles: boolean; touchedZoneIds: string[] },
   zoneNameById: ReadonlyMap<string, string>,
   basis: VolumeBasis,
   context: ModelContext,
@@ -228,6 +239,7 @@ export function zoneFactsFor(
     globalId,
     assignment.straddles,
     assignment.zoneName,
+    assignment.zoneId,
     basis,
     qsets,
     context.volumeSiScale,
@@ -241,6 +253,7 @@ export function zoneFactsFor(
     // holds zone IDS precisely so a rename cannot leave stale names behind
     // (types.ts).
     touchedZoneNames: assignment.touchedZoneIds.map((id) => zoneNameById.get(id) ?? ''),
+    touchedZoneIds: [...assignment.touchedZoneIds],
     straddles: assignment.straddles,
     ...volumes,
   };

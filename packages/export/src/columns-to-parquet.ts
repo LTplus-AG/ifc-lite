@@ -42,8 +42,12 @@ export async function columnsToParquet(
 
         for (const [name, data] of Object.entries(columns)) {
             if (data.length === 0) {
-                // Empty column - create empty vector with null type
-                vectors[name] = arrow.vectorFromArray([]);
+                // No rows at all: same reasoning as the all-null case
+                // below - an untyped empty column is Arrow's Null type,
+                // which the Parquet writer rejects.
+                vectors[name] = floatColumns?.has(name)
+                    ? arrow.vectorFromArray([], new arrow.Float64())
+                    : arrow.vectorFromArray([], new arrow.Utf8());
                 continue;
             }
 
@@ -51,8 +55,15 @@ export async function columnsToParquet(
             const sample = data.find((v) => v !== null && v !== undefined);
 
             if (sample === undefined) {
-                // All nulls - create string vector with nulls
-                vectors[name] = arrow.vectorFromArray(data);
+                // All nulls. A caller that DECLARED the column numeric gets
+                // Float64 anyway: inference alone would give it Arrow's Null
+                // type, which parquet-wasm cannot write, and the failure lands
+                // in the catch below - so the whole table silently degrades to
+                // Arrow IPC because one column happened to be empty. Reachable
+                // here whenever no element in a zone set could be measured.
+                vectors[name] = floatColumns?.has(name)
+                    ? arrow.vectorFromArray(data, new arrow.Float64())
+                    : arrow.vectorFromArray(data, new arrow.Utf8());
             } else if (typeof sample === 'number') {
                 // Columns declared as REAL-typed by the caller (e.g. ValueReal,
                 // quantity Value) always use Float64 — content inference alone

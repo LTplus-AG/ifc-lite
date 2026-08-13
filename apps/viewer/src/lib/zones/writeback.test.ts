@@ -28,11 +28,11 @@ function straddler(overrides: Partial<ElementZoneFacts> = {}): ElementZoneFacts 
   return {
     globalId: 42,
     homeZoneName: 'Takt A',
-    touchedZoneNames: ['Takt A', 'Takt B'],
+    touchedZoneNames: ['Takt A', 'Takt B'], touchedZoneIds: ['z-takt-a', 'z-takt-b'],
     straddles: true,
     shares: [
-      { zoneName: 'Takt A', valueM3: 4 },
-      { zoneName: 'Takt B', valueM3: 6 },
+      { zoneId: 'z-takt-a', zoneName: 'Takt A', valueM3: 4 },
+      { zoneId: 'z-takt-b', zoneName: 'Takt B', valueM3: 6 },
     ],
     outsideM3: 0,
     refusal: null,
@@ -87,7 +87,7 @@ describe('zone write-back: what lands on the element', () => {
 
   it('writes nothing at all for an element in no zone of the set', () => {
     const result = buildElementWriteBack(
-      straddler({ touchedZoneNames: [], shares: [], homeZoneName: null, straddles: false }),
+      straddler({ touchedZoneNames: [], touchedZoneIds: [], shares: [], homeZoneName: null, straddles: false }),
       MESH,
     );
     assert.equal(result, null);
@@ -120,8 +120,8 @@ describe('zone write-back: the numbers reconcile', () => {
   it('quantities sum to the element whole, including the part in no zone', () => {
     const facts = straddler({
       shares: [
-        { zoneName: 'Takt A', valueM3: 4 },
-        { zoneName: 'Takt B', valueM3: 5 },
+        { zoneId: 'z-takt-a', zoneName: 'Takt A', valueM3: 4 },
+        { zoneId: 'z-takt-b', zoneName: 'Takt B', valueM3: 5 },
       ],
       outsideM3: 1,
     });
@@ -142,8 +142,8 @@ describe('zone write-back: the numbers reconcile', () => {
     const result = buildElementWriteBack(
       straddler({
         shares: [
-          { zoneName: 'Takt A', valueM3: 10 },
-          { zoneName: 'Takt B', valueM3: 1e-17 },
+          { zoneId: 'z-takt-a', zoneName: 'Takt A', valueM3: 10 },
+          { zoneId: 'z-takt-b', zoneName: 'Takt B', valueM3: 1e-17 },
         ],
       }),
       MESH,
@@ -161,10 +161,10 @@ describe('zone write-back: names that collide', () => {
     // quantity with the second, losing a whole zone's volume with no error.
     const result = buildElementWriteBack(
       straddler({
-        touchedZoneNames: ['Section 2', 'Section 2'],
+        touchedZoneNames: ['Section 2', 'Section 2'], touchedZoneIds: ['z-section-2', 'z-section-2'],
         shares: [
-          { zoneName: 'Section 2', valueM3: 4 },
-          { zoneName: 'Section 2', valueM3: 6 },
+          { zoneId: 'z-section-2', zoneName: 'Section 2', valueM3: 4 },
+          { zoneId: 'z-section-2', zoneName: 'Section 2', valueM3: 6 },
         ],
       }),
       MESH,
@@ -177,10 +177,10 @@ describe('zone write-back: names that collide', () => {
   it('names a blank zone rather than writing an unaddressable empty quantity', () => {
     const result = buildElementWriteBack(
       straddler({
-        touchedZoneNames: ['  ', 'Takt B'],
+        touchedZoneNames: ['  ', 'Takt B'], touchedZoneIds: ['z---', 'z-takt-b'],
         shares: [
-          { zoneName: '  ', valueM3: 4 },
-          { zoneName: 'Takt B', valueM3: 6 },
+          { zoneId: 'z---', zoneName: '  ', valueM3: 4 },
+          { zoneId: 'z-takt-b', zoneName: 'Takt B', valueM3: 6 },
         ],
       }),
       MESH,
@@ -256,7 +256,7 @@ describe('zone write-back: refusals', () => {
 
   it('writes the pset without a quantity set when every share was negligible', () => {
     const result = buildElementWriteBack(
-      straddler({ shares: [{ zoneName: 'Takt A', valueM3: 0 }], outsideM3: 0 }),
+      straddler({ shares: [{ zoneId: 'z-takt-a', zoneName: 'Takt A', valueM3: 0 }], outsideM3: 0 }),
       MESH,
     );
     assert.ok(result);
@@ -270,7 +270,7 @@ describe('zone write-back: run summary', () => {
     const results = [
       buildElementWriteBack(straddler(), MESH),
       buildElementWriteBack(straddler({ shares: [], refusal: 'no-geometry' }), MESH),
-      buildElementWriteBack(straddler({ touchedZoneNames: [] }), MESH),
+      buildElementWriteBack(straddler({ touchedZoneNames: [], touchedZoneIds: [] }), MESH),
     ];
     assert.deepEqual(summarize(results), {
       written: 2,

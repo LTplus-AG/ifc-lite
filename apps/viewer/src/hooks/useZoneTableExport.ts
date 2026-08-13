@@ -112,7 +112,10 @@ export async function exportZoneTable(
 
   return {
     rows: rows.length,
-    elements: new Set(rows.map((row) => row.GlobalId)).size,
+    // By resolved identity rather than by GlobalId: `describeElement` leaves
+    // the id EMPTY when neither resolver answers, and every such element would
+    // otherwise share one bucket and be reported as one.
+    elements: new Set(rows.map((row) => `${row.Model}#${row.ExpressId}`)).size,
     unmeasured: rows.filter((row) => row.VolumeM3 === null).length,
     bytes: bytes.byteLength,
     filename,

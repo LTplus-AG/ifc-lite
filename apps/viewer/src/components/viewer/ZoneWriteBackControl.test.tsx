@@ -180,6 +180,40 @@ describe('ZonesPanel: emitting the zones themselves', () => {
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
   });
 
+  it('refuses a second click in the same tick as the first', async () => {
+    // The guard has to be a REF: state has not re-rendered in the tick the
+    // first click starts, so a state-only check lets a double click start two
+    // full gathers and download the same table twice.
+    const downloads: string[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = () => 'blob:zone-table';
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+      if (this.download) downloads.push(this.download);
+    };
+    try {
+      const container = render(<ZonesPanel />);
+      const csv = button(container, 'CSV');
+      // Dispatched RAW rather than through the test helper's `click`: that one
+      // wraps each event in `act`, which flushes the state update in between,
+      // so a state-only guard would pass a check it cannot pass in the tick
+      // the events actually share.
+      csv.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      csv.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(downloads.length, 1, `two clicks produced ${downloads.length} downloads`);
+    } finally {
+      (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+});
+
+describe('ZonesPanel: emitting the zones themselves (removal)', () => {
+  beforeEach(async () => {
+    await seed();
+  });
+
   it('takes them out again from the same panel', () => {
     const container = render(<ZonesPanel />);
     click(button(container, 'Emit zones as IfcSpatialZone'));

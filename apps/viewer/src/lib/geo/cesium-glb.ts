@@ -162,13 +162,19 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
     primitives.push({ attributes, indices: accessors.length - 1, material: materials.length - 1 });
   }
 
+  // Nothing to draw — everything hidden, or an empty model. glTF requires a
+  // mesh to have at least one primitive, so emit an empty scene rather than an
+  // invalid mesh. (The previous shape, a primitive over zero-count accessors,
+  // was also invalid; Cesium tolerates both, but there is no reason to hand it
+  // something out of spec.)
+  const empty = primitives.length === 0;
   const gltf = {
     asset: { version: '2.0', generator: 'IFC-Lite-Cesium' },
     scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0 }],
+    scenes: [{ nodes: empty ? [] : [0] }],
+    nodes: empty ? [] : [{ mesh: 0 }],
     materials,
-    meshes: [{ primitives }],
+    meshes: empty ? [] : [{ primitives }],
     accessors,
     bufferViews,
     buffers: [{ byteLength: totalBinLen }],

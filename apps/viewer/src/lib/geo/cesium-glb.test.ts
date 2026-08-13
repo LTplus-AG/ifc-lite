@@ -71,3 +71,15 @@ describe('buildMergedGLB (#1355 Cesium shading)', () => {
     assert.deepEqual(json.accessors[0].min, [10, 20, 30]);
   });
 });
+
+describe('buildMergedGLB — nothing to draw', () => {
+  it('emits an empty scene rather than a mesh with no primitives', () => {
+    // glTF requires meshes[].primitives to have at least one entry, so a model
+    // with everything hidden must drop the mesh and node, not emit empty ones.
+    const { json } = parseGlb(buildMergedGLB([]));
+
+    assert.deepEqual(json.meshes, []);
+    assert.deepEqual(json.nodes, []);
+    assert.deepEqual(json.scenes[0].nodes, []);
+  });
+});

@@ -29,6 +29,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
+import { ghostExemptSelection } from '@/lib/ghost-selection';
 import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
@@ -207,12 +208,10 @@ export function useCesiumModel({
   // changes a byte of the GLB. Tracking it unconditionally would rebuild a
   // multi-megabyte model on every Ctrl-click in ordinary viewing.
   const ghosting = ghostExceptEntities != null;
-  const selectionForGhost = useMemo(() => {
-    if (!ghosting) return null;
-    const merged = new Set<number>(selectedEntityIds ?? []);
-    if (selectedEntityId != null) merged.add(selectedEntityId);
-    return merged;
-  }, [ghosting, selectedEntityIds, selectedEntityId]);
+  const selectionForGhost = useMemo(
+    () => (ghosting ? ghostExemptSelection(selectedEntityId, selectedEntityIds) : null),
+    [ghosting, selectedEntityIds, selectedEntityId],
+  );
 
   // A second content-based epoch for the X-Ray set, for the same reason as the
   // first: a fresh Set with equal content must not rebuild a multi-megabyte GLB.

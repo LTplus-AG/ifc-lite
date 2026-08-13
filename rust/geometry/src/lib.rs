@@ -84,6 +84,7 @@ pub(crate) mod contour_bool2d;
 /// Deterministic Constrained Delaunay Triangulation + bounded Ruppert
 /// min-angle refinement. Backs the quality triangulators in `triangulation`.
 mod cdt;
+pub mod clash_solid;
 pub mod csg;
 /// Measurement-only CSG corpus capture (off-by-default `csg_capture` feature).
 #[cfg(feature = "csg_capture")]
@@ -158,6 +159,7 @@ pub use bool2d::{
 pub use contour_bool2d::{
     boolean_2d, resolve_2d, sanitize as sanitize_contours, BooleanOp2D, ContourSet, Ring2D,
 };
+pub use clash_solid::{intersection_solid, DegenerateReason, IntersectionSolid};
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};

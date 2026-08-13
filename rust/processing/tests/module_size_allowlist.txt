@@ -72,7 +72,10 @@
 # +39: begin()/tripped() budget-guard added to the union & intersection kernel entries (#1109 parity with subtract).
 # +7: union_many threads/documents union_all's new (union, conforming) signal (B8 arrange-many parity).
 # +12: near_band_from_extent (the snap-scatter band formula) single-homed here, next to canonical SNAP_GRID; tritri/classify import it instead of mirroring the expression.
-     904 rust/geometry/src/kernel/mesh_bridge.rs
+# -420: inline `mod tests` split out to the ratchet-exempt sibling mesh_bridge_tests.rs
+#       when `intersection_tris` was added for the clash intersection solid; the module
+#       itself shrank, so the budget ratchets DOWN to match rather than absorbing the growth.
+     484 rust/geometry/src/kernel/mesh_bridge.rs
      700 rust/geometry/src/kernel/predicates.rs
 # -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
               935 rust/geometry/src/kernel/retriangulate.rs

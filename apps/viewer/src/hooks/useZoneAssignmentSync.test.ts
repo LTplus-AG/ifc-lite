@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import assert from 'node:assert/strict';
-import { beforeEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 import { recomputeZoneAssignmentsNow } from './useZoneAssignmentSync.js';
 import { useViewerStore } from '../store/index.js';
 import type { ZoneSet } from '../lib/zones/types.js';
@@ -21,12 +21,23 @@ function makeZoneSet(id: string): ZoneSet {
   };
 }
 
+// apps/viewer's suite runs every *.test.ts file's node:test suite in one
+// process (see apps/viewer/package.json's "test" script), so useViewerStore
+// is a real shared singleton across files, not reset between them. The last
+// test below leaves zoneSets/zoneAssignmentTiming non-empty; restore the
+// pristine state afterward so a later file's test can't inherit it.
+const RESET_STATE = {
+  zoneSets: [],
+  zoneAssignments: new Map(),
+  zoneAssignmentTiming: null,
+} as never;
+
 beforeEach(() => {
-  useViewerStore.setState({
-    zoneSets: [],
-    zoneAssignments: new Map(),
-    zoneAssignmentTiming: null,
-  } as never);
+  useViewerStore.setState(RESET_STATE);
+});
+
+afterEach(() => {
+  useViewerStore.setState(RESET_STATE);
 });
 
 describe('recomputeZoneAssignmentsNow (issue #1810)', () => {

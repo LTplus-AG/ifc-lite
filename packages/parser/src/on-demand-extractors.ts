@@ -23,7 +23,7 @@ import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
 import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
-export { extractClassificationsOnDemand } from './classification-resolver.js';
+export { extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from './classification-resolver.js';
 export type { ClassificationInfo } from './classification-resolver.js';
 
 export { extractMaterialsOnDemand, extractAllMaterialsOnDemand } from './material-resolver.js';

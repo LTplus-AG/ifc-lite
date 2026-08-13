@@ -35,7 +35,8 @@ import {
   type LoadedPlaygroundModel,
 } from './playground-dispatcher';
 import { PlaygroundChat } from './PlaygroundChat';
-import { PlaygroundViewer, type ViewerController } from './PlaygroundViewer';
+import { PlaygroundViewer } from './PlaygroundViewer';
+import type { ViewerController } from './playground-viewer-types';
 import { playgroundFiles, usePlaygroundFiles, formatBytes as formatFileBytes } from './playground-files';
 
 const NIGHT = '#0a0a0c';

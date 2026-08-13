@@ -440,3 +440,101 @@ describe('alignGeometryToReference — the world AABB rides with the vertices (#
     assertBoxClose(mesh.geometryAabb, expected, 0.05, 'reprojected');
   });
 });
+
+describe('alignGeometryToReference with a map-absolute source (#2526)', () => {
+  // Vectorworks-style source: geometry authored at the ABSOLUTE projected
+  // coordinates (rebased into wasmRtcOffset by the wasm RTC pre-pass) while
+  // its IfcMapConversion repeats the same anchor with a 90-degree rotation.
+  // Aligning such a model into a compliant reference must read the geometry's
+  // absolute coordinates through a NEUTRALISED conversion — applying the
+  // authored rotation on top would fling the model by the double transform.
+  const mapAbsSourceInfo = coordinateInfo({
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  });
+  const mapAbsConversion: Partial<MapConversion> = {
+    eastings: 312000,
+    northings: 5996150,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 0,
+    xAxisOrdinate: 1,
+  };
+  // Compliant reference in the same CRS, identity rotation, no viewer shift.
+  const referenceGeoref = () => georef(
+    { eastings: 312050, northings: 5996100, orthogonalHeight: 0 },
+    'EPSG:25833',
+    coordinateInfo(),
+  );
+
+  it('places the source at its absolute map position in the reference frame', async () => {
+    const mesh = boxMesh(1, [-1, -1, -1], [1, 1, 1]);
+    const geom = geometry([mesh], mapAbsSourceInfo);
+    const status = await alignGeometryToReference(
+      geom,
+      georef(mapAbsConversion, 'EPSG:25833', mapAbsSourceInfo),
+      referenceGeoref(),
+    );
+    assert.equal(status, 'same-crs');
+    // Absolute vertex (E, N, H) = local + rtc; reference inverse (identity
+    // rotation) gives viewer = (E - 312050, H, -(N - 5996100)):
+    //   x' = x + 312000 - 312050 = x - 50
+    //   y' = y + 10
+    //   z' = z + (5996100 - 5996150) = z - 50
+    assertBoxClose(
+      geom.coordinateInfo?.originalBounds
+        ? {
+            min: [
+              geom.coordinateInfo.originalBounds.min.x,
+              geom.coordinateInfo.originalBounds.min.y,
+              geom.coordinateInfo.originalBounds.min.z,
+            ],
+            max: [
+              geom.coordinateInfo.originalBounds.max.x,
+              geom.coordinateInfo.originalBounds.max.y,
+              geom.coordinateInfo.originalBounds.max.z,
+            ],
+          }
+        : undefined,
+      { min: [-51, 9, -51], max: [-49, 11, -49] },
+      1e-3,
+      'map-absolute source',
+    );
+  });
+
+  it('control: a compliant source (no RTC rebase) still aligns with its authored rotation', async () => {
+    const compliantInfo = coordinateInfo({
+      originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+      shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    });
+    const mesh = boxMesh(1, [-1, -1, -1], [1, 1, 1]);
+    const geom = geometry([mesh], compliantInfo);
+    const status = await alignGeometryToReference(
+      geom,
+      georef(mapAbsConversion, 'EPSG:25833', compliantInfo),
+      referenceGeoref(),
+    );
+    assert.equal(status, 'same-crs');
+    // Authored 90-degree source rotation: E = 312000 + vz, N = 5996150 + vx;
+    // reference inverse: x' = vz - 50, y' = vy, z' = -(50 + vx).
+    assertBoxClose(
+      geom.coordinateInfo?.originalBounds
+        ? {
+            min: [
+              geom.coordinateInfo.originalBounds.min.x,
+              geom.coordinateInfo.originalBounds.min.y,
+              geom.coordinateInfo.originalBounds.min.z,
+            ],
+            max: [
+              geom.coordinateInfo.originalBounds.max.x,
+              geom.coordinateInfo.originalBounds.max.y,
+              geom.coordinateInfo.originalBounds.max.z,
+            ],
+          }
+        : undefined,
+      { min: [-51, -1, -51], max: [-49, 1, -49] },
+      1e-3,
+      'compliant source',
+    );
+  });
+});

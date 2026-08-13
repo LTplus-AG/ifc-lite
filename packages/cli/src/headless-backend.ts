@@ -81,9 +81,18 @@ import {
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
-import { exportHbjson } from './hbjson-export.js';
+import { exportHbjson, exportDfjson } from './energy-export.js';
 
 const MODEL_ID = 'default';
+
+/**
+ * Strip a real IFC source-file extension from a filename-derived model name.
+ * Only applied to the `modelName` fallback: an explicitly supplied export name
+ * is a display name where a trailing dotted segment is meaningful (`Tower.v2`).
+ */
+function stripIfcExtension(name: string): string {
+  return name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
+}
 
 const REL_TYPE_MAP: Record<string, RelationshipType> = {
   IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
@@ -344,8 +353,36 @@ export class HeadlessBackend implements BimBackend {
           }
         }
 
-        if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-        if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+        // `!= null` alone lets a NaN offset/limit through (NaN is neither
+        // null nor undefined); a bare `> 0` then silently drops it (every
+        // NaN comparison is false), which used to IGNORE a garbage value
+        // instead of rejecting it -- and, by the same reasoning, silently
+        // ignored a deliberate `limit: 0`. Reject non-finite/negative
+        // values loudly instead of quietly serving the wrong slice; the
+        // The CLI's own `--limit`/`--offset` flags are validated before they
+        // reach this descriptor, so this guards callers that build one
+        // directly — and it makes `limit: 0` mean "no rows" rather than being
+        // silently ignored, matching what `--limit 0` documents.
+        //
+        // NOTE this does NOT cover @ifc-lite/mcp. That package has its own
+        // backend (`packages/mcp/src/backend-query.ts`), a parallel
+        // implementation rather than a shared import, and its equivalent lines
+        // still read `descriptor.limit && descriptor.limit > 0` — so a NaN is
+        // silently ignored there and `limit: 0` is a no-op. Same defect,
+        // different package, its own tests and release cadence; tracked as a
+        // separate change rather than folded into this CLI-scoped PR.
+        if (descriptor.offset != null) {
+          if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+            throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+          }
+          if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+        }
+        if (descriptor.limit != null) {
+          if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+            throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+          }
+          filtered = filtered.slice(0, descriptor.limit);
+        }
 
         return filtered;
       },
@@ -650,9 +687,15 @@ export class HeadlessBackend implements BimBackend {
         }
         return exportToStep(store, exportOpts);
       },
+      // Both energy formats apply the mutation view — see energy-export.ts
+      // (issues #1908, #1344). An explicit `name` is a display/model name, so
+      // it is kept verbatim (dotted identifiers like `Tower.v2` are valid);
+      // only the `modelName` fallback is a filename, so only it gets a real
+      // IFC extension stripped.
       hbjson: (name?: string): Promise<string> =>
-        // See hbjson-export.ts for the mutation-view application (issue #1908).
-        exportHbjson(store, this.mutationView, name ?? modelName),
+        exportHbjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
+      dfjson: (name?: string): Promise<string> =>
+        exportDfjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
       },

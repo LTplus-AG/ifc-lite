@@ -56,9 +56,11 @@ export type {
   SandboxLimits,
   ScriptResult,
   LogEntry,
+  SandboxConsoleLevel,
 } from './types.js';
 
 export {
   DEFAULT_PERMISSIONS,
   DEFAULT_LIMITS,
+  SANDBOX_CONSOLE_LEVELS,
 } from './types.js';

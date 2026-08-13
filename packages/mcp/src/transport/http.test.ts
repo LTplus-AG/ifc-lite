@@ -63,7 +63,10 @@ const INITIALIZE = JSON.stringify({
 async function request(
   port: number,
   token: string,
-  init: RequestInit & { sessionId?: string; headers?: Record<string, string> } = {},
+  // `headers` is replaced rather than intersected: intersecting with
+  // `HeadersInit` would leave `Headers`/`string[][]` in the union and those
+  // do not spread into a `Record<string, string>`.
+  init: Omit<RequestInit, 'headers'> & { sessionId?: string; headers?: Record<string, string> } = {},
 ): Promise<Response> {
   // Caller headers merge over the defaults so tests can add e.g. Accept.
   const headers: Record<string, string> = {

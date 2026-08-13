@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { contiguousSourceBytes } from '@ifc-lite/parser';
 
 /**
  * The worker's contract with its client is: ALWAYS post exactly one reply,
@@ -42,7 +43,11 @@ afterEach(() => {
 });
 
 function event(kind: 'grid-lines' | 'alignment-lines' = 'grid-lines'): MessageEvent<never> {
-  return { data: { id: 7, kind, source: new Uint8Array([1]) } } as unknown as MessageEvent<never>;
+  // A real envelope, not a hand-rolled one: the worker rebuilds through
+  // sourceBytesFromTransferable, so a stale shape here would test a message
+  // the client can no longer send.
+  const source = contiguousSourceBytes(new Uint8Array([1])).toTransferable();
+  return { data: { id: 7, kind, source } } as unknown as MessageEvent<never>;
 }
 
 describe('overlay-parse worker handle', () => {
@@ -73,5 +78,41 @@ describe('overlay-parse worker handle', () => {
     await handle(event());
     assert.equal(posted.length, 1);
     assert.equal((posted[0] as { id: number }).id, 7);
+  });
+});
+
+/**
+ * An envelope this build cannot rehydrate must produce an ERROR REPLY, not a
+ * rejection.
+ *
+ * The client has no other way to learn a job failed. A `handle` that rejects
+ * posts nothing, the queue's `.catch` swallows it, and the client sits on its
+ * 120s deadline — then `failAll` terminates the worker and takes every other
+ * in-flight overlay job down with it. One unrehydratable message would stall
+ * the grid, the alignment lines and the 2D drawing together, for two minutes,
+ * with no error anywhere.
+ *
+ * That is exactly what happened when the source rebuild sat above the `try`
+ * instead of inside it.
+ */
+describe('overlay-parse worker source rebuild (#2183)', () => {
+  it('replies with an error when the source envelope cannot be rebuilt', async () => {
+    const unrehydratable = {
+      kind: 'nonsense-kind',
+      bytes: new Uint8Array([1]),
+      contentKey: null,
+    } as unknown as ReturnType<typeof contiguousSourceBytes>['toTransferable'] extends never
+      ? never : never;
+
+    await assert.doesNotReject(
+      handle({ data: { id: 11, kind: 'grid-lines', source: unrehydratable } } as never),
+      'handle must never reject; the client only learns of failure from a reply',
+    );
+
+    assert.equal(posted.length, 1, 'exactly one reply, or the client waits out its deadline');
+    const reply = posted[0] as { id: number; ok: boolean; error?: string };
+    assert.equal(reply.id, 11);
+    assert.equal(reply.ok, false);
+    assert.ok((reply.error ?? '').length > 0, 'the reply must carry a reason');
   });
 });

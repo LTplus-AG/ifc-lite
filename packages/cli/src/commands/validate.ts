@@ -17,7 +17,7 @@
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { getInheritanceChainAcrossSchemas, type IfcDataStore, type EntityRef } from '@ifc-lite/parser';
+import { getInheritanceChainAcrossSchemas, asSourceBytes, type IfcDataStore, type EntityRef, type IfcSourceBytes } from '@ifc-lite/parser';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
@@ -64,14 +64,27 @@ const CH_STAR = 0x2a; // *
  * skipped.
  */
 function scanEntityForDanglingRefs(
+  src: Uint8Array | IfcSourceBytes,
+  ref: EntityRef,
+  exists: (id: number) => boolean,
+  out: DanglingReference[],
+): void {
+  // Narrow to this record before scanning. `slice` is a `subarray` on a
+  // contiguous source, so the byte walk below is unchanged and zero-copy.
+  const record = asSourceBytes(src).slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+  scanRecordForDanglingRefs(record, ref, exists, out);
+}
+
+/** The byte walk itself, over one already-narrowed entity record. */
+function scanRecordForDanglingRefs(
   source: Uint8Array,
   ref: EntityRef,
   exists: (id: number) => boolean,
   out: DanglingReference[],
 ): void {
-  const end = ref.byteOffset + ref.byteLength;
+  const end = source.length;
   // References only occur inside the attribute list; skip the "#id = TYPE" prefix.
-  let i = ref.byteOffset;
+  let i = 0;
   while (i < end && source[i] !== CH_LPAREN) i++;
   if (i >= end) return; // malformed record, nothing to scan
 

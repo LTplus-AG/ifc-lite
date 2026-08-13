@@ -10,7 +10,7 @@ import {
   projectedInstancedRadiusPx,
   resolveContributionThresholdPx,
   type CullCameraState,
-} from './contribution-cull.ts';
+} from './contribution-cull.js';
 
 const perspectiveCam = (overrides: Partial<CullCameraState> = {}): CullCameraState => ({
   eye: { x: 0, y: 0, z: 0 },

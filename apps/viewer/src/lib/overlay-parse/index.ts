@@ -19,6 +19,9 @@ import type {
   OverlayParseRequest,
   OverlayParseResponse,
 } from './overlay-parse.worker.js';
+import type { IfcSourceTransfer } from '@ifc-lite/parser';
+
+import { createEmptyFlatProfiles, type FlatProfiles } from './profiles-flat.js';
 import {
   createEmptyFlatSymbolic,
   type FlatSymbolic,
@@ -84,8 +87,14 @@ let workerFactory: WorkerFactory | null = defaultWorkerFactory();
  * would make `WorkerParser.isSupported()` believe the PARSER can use workers
  * too, and hand an overlay stub a parse request it cannot answer.
  */
-export function __setOverlayWorkerFactoryForTest(factory: WorkerFactory | null): void {
+export function __setOverlayWorkerFactoryForTest(
+  factory: WorkerFactory | null,
+): WorkerFactory | null {
+  const previous = workerFactory;
   workerFactory = factory ?? defaultWorkerFactory();
+  // Returned so a caller can restore whatever was installed before it, rather
+  // than resetting to the default and silently disabling an outer shim.
+  return previous;
 }
 
 function ensureWorker(): Worker {
@@ -127,7 +136,7 @@ function releaseWorker(): void {
  */
 export async function parseOverlayLines(
   kind: OverlayLineKind,
-  source: Uint8Array,
+  source: IfcSourceTransfer,
 ): Promise<Float32Array> {
   const response = await dispatch(kind, source);
   return response && 'verts' in response ? response.verts : EMPTY_F32;
@@ -148,7 +157,7 @@ export async function parseOverlayLines(
  * Never rejects; resolves to an empty stream on every failure path.
  */
 export async function parseSymbolicFlat(
-  source: Uint8Array,
+  source: IfcSourceTransfer,
   debug = false,
   mode: SymbolicFilterMode = 'overlay',
 ): Promise<FlatSymbolic> {
@@ -156,10 +165,25 @@ export async function parseSymbolicFlat(
   return response && 'flat' in response ? response.flat : createEmptyFlatSymbolic();
 }
 
+/**
+ * Extract the construction-projection profiles off the main thread.
+ *
+ * Returns the FLAT entry stream, not finished `ProfileEntry` objects: the
+ * caller rebuilds them with `buildProfileEntries`, which keeps the RTC /
+ * `originShift` correction on the main thread where `coordinateInfo` lives.
+ * See `profiles-flat.ts`.
+ *
+ * Never rejects; resolves to an empty stream on every failure path.
+ */
+export async function parseProfilesFlat(source: IfcSourceTransfer): Promise<FlatProfiles> {
+  const response = await dispatch('profiles', source);
+  return response && 'profiles' in response ? response.profiles : createEmptyFlatProfiles();
+}
+
 /** Shared request path. Resolves to null on every failure. */
 async function dispatch(
   kind: OverlayParseKind,
-  source: Uint8Array,
+  source: IfcSourceTransfer,
   debug?: boolean,
   mode?: SymbolicFilterMode,
 ): Promise<Extract<OverlayParseResponse, { ok: true }> | null> {
@@ -205,4 +229,10 @@ async function dispatch(
 }
 
 export { getWholeSourceForWorker } from './source-handoff.js';
-export type { OverlayParseKind, OverlayLineKind, FlatSymbolic, SymbolicFilterMode };
+export type {
+  OverlayParseKind,
+  OverlayLineKind,
+  FlatProfiles,
+  FlatSymbolic,
+  SymbolicFilterMode,
+};

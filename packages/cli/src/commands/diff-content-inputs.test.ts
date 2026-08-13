@@ -14,7 +14,7 @@
 import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { contentDiffCommand } from './diff-content.js';
 import { BASE_MODEL, HEAD_MODEL } from './diff-test-helpers.js';
 
@@ -23,9 +23,9 @@ describe('ifc-lite diff --by-content — input paths', () => {
   let basePath: string;
   let headPath: string;
   let mapPath: string;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
+  let exitSpy: MockInstance<typeof process.exit>;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'ifclite-identity-inputs-'));
@@ -36,9 +36,9 @@ describe('ifc-lite diff --by-content — input paths', () => {
     await writeFile(headPath, HEAD_MODEL, 'utf-8');
     stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
   });
 
   afterEach(() => {

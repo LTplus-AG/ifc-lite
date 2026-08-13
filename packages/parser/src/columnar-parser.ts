@@ -48,13 +48,25 @@ import { parseSourceHeader } from './source-header.js';
 
 import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
+import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
+
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
 export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
-    source: Uint8Array;
+    /**
+     * The IFC source bytes, behind an accessor rather than a resident
+     * `Uint8Array` (#2183). Read ranges with `slice`/`decodeUtf8`; use
+     * `withMaterialized` for the genuine whole-file consumers, and
+     * `toTransferable()` to hand it to a worker without materialising here.
+     *
+     * `byteLength === 0` is a supported state (server-parsed, synthetic, GLB,
+     * point-cloud), and `length` is aliased so existing presence guards keep
+     * their meaning.
+     */
+    source: IfcSourceBytes;
     entityIndex: { byId: EntityByIdIndex; byType: Map<string, number[]> };
     deferredEntityIndex?: EntityByIdIndex;
 
@@ -568,14 +580,26 @@ export class ColumnarParser {
         // The hierarchy panel can render immediately while property/association
         // parsing continues. This lets the panel appear at the same time as
         // geometry streaming completes.
-        const entitySource = new BufferEntitySource(uint8Buffer, entityIndex);
+        // ONE accessor, shared by the store field and the entity source.
+        //
+        // These used to be built separately -- `BufferEntitySource` got the raw
+        // `uint8Buffer` and wrapped it in its own accessor, while `source` got
+        // another. That is invisible while both are resident views over the
+        // same bytes, and fatal once the source can switch to compressed
+        // storage in place (#2183): `getEntity` would keep reading its private
+        // resident accessor, so the original buffer would never be released and
+        // the store would serve entities from one representation and properties
+        // from the other. Measured: with two accessors the buffer survives GC
+        // after the swap; with one it is collected.
+        const source = contiguousSourceBytes(uint8Buffer);
+        const entitySource = new BufferEntitySource(source, entityIndex);
         const earlyStore: IfcDataStore = {
             fileSize: buffer.byteLength,
             schemaVersion,
             sourceHeader,
             entityCount: totalEntities,
             parseTime: performance.now() - startTime,
-            source: uint8Buffer,
+            source,
             entityIndex,
             strings,
             entities: entityTable,
@@ -1144,6 +1168,7 @@ export function pickLongName(entity: IfcEntity): string {
 // Re-export on-demand extraction functions from focused module
 export {
     extractClassificationsOnDemand,
+    extractClassificationSystemsOnDemand,
     extractMaterialsOnDemand,
     extractAllMaterialsOnDemand,
     extractMaterialPropertiesOnDemand,

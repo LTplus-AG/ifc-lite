@@ -15,7 +15,7 @@
  * two really do carry the same data.
  */
 
-import { StepTokenizer, ColumnarParser } from '@ifc-lite/parser';
+import { StepTokenizer, ColumnarParser, type IfcDataStore } from '@ifc-lite/parser';
 import {
   IfcTypeEnum,
   type IfcStoreBase,
@@ -69,7 +69,7 @@ const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
 #70=IFCRELDEFINESBYPROPERTIES('qto-rel-guid',#1,$,$,(#10),#60);`;
 
 /** Parse the fixture the way the viewer/CLI do: STEP scan then `parseLite`. */
-export async function parseStepFixture(): Promise<IfcStoreBase> {
+export async function parseStepFixture(): Promise<IfcDataStore> {
   const source = new TextEncoder().encode(IFC);
   const tokenizer = new StepTokenizer(source);
   const entityRefs: Array<{

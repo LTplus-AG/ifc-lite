@@ -70,6 +70,7 @@ mod items;
 mod primitives;
 mod text;
 mod transform;
+mod trimmed_curve;
 
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,

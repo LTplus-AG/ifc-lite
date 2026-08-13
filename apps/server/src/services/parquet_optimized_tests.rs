@@ -234,3 +234,48 @@
         assert!(serialize_to_parquet_optimized_with_stats(&meshes, false).is_ok());
         assert!(serialize_to_parquet_optimized_with_stats(&meshes, true).is_ok());
     }
+
+    /// `assemble_optimized_output`'s five section lengths are wire-format
+    /// u32 (see the doc comment on the function). Coverage-gap-turned-fix:
+    /// `serialize_to_parquet_optimized` built these five `[len:u32][bytes]`
+    /// sections by casting `usize` to `u32` with no bounds check — unlike
+    /// `parquet::frame_sections`/`frame_combined_sections`, which already
+    /// call `check_u32_len` for the exact same wire shape. A section over
+    /// 4 GiB would have its length prefix silently wrap instead of erroring,
+    /// producing a blob whose declared length disagrees with its actual
+    /// bytes.
+    ///
+    /// Proven directly against `check_optimized_section_lengths` using bare
+    /// `usize` lengths — no multi-gigabyte Arrow/Parquet encode, and no
+    /// multi-gigabyte `Vec` allocation either. An earlier version of this
+    /// test allocated a real `vec![0u8; u32::MAX as usize + 1]` per slot to
+    /// drive `assemble_optimized_output` end to end; that reserves >4 GiB of
+    /// (lazily-zeroed) address space five times over on every test run,
+    /// which is wasteful and, on a memory-constrained runner, risks an OOM
+    /// kill that would look nothing like the guard actually failing.
+    #[test]
+    fn each_section_length_is_checked_against_the_u32_wire_limit() {
+        let oversized_len = (u32::MAX as usize) + 1;
+        let section_names = ["instance", "mesh", "material", "vertex", "index"];
+
+        for oversized_slot in 0..section_names.len() {
+            let mut lengths = [4usize; 5];
+            lengths[oversized_slot] = oversized_len;
+
+            let result = check_optimized_section_lengths(
+                lengths[0], lengths[1], lengths[2], lengths[3], lengths[4],
+            );
+            assert!(
+                result.is_err(),
+                "{} section of {oversized_len} bytes (> u32::MAX) must be rejected, not silently wrapped into a corrupt length prefix",
+                section_names[oversized_slot]
+            );
+        }
+    }
+
+    /// Bounding control for the test above: all-small lengths must pass, so
+    /// the assertion can't be vacuously true from an always-erroring guard.
+    #[test]
+    fn all_small_section_lengths_pass_the_u32_wire_check() {
+        assert!(check_optimized_section_lengths(4, 4, 4, 4, 4).is_ok());
+    }

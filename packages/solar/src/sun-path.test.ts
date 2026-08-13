@@ -170,12 +170,6 @@ describe('domeGraticule', () => {
     expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
   });
 
-  // Same reasoning as dayPath's stepMinutes: `360 + Number.MIN_VALUE === 360`,
-  // so `az += azStep` never advances and the azimuth-spokes loop hangs.
-  it('rejects a positive azimuthStep too small to advance the loop', () => {
-    expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
-  });
-
   // altitudeStep and resolution previously got only `!(x > 0)` — weaker than
   // the progress test stepMinutes/dayStep/azimuthStep get — so a step too
   // small to advance the loop (e.g. 1e-15) still hung: `90 + 1e-15 === 90`
@@ -187,17 +181,42 @@ describe('domeGraticule', () => {
   it('rejects a positive altitudeStep/resolution too small to advance their loops', () => {
     expect(() => domeGraticule({ altitudeStep: 1e-15 })).toThrow(/altitudeStep/);
     expect(() => domeGraticule({ resolution: 1e-15 })).toThrow(/resolution/);
+  });
+
+  it('accepts a fine-grained graticule without degrading it', () => {
+    const g = domeGraticule({ altitudeStep: 0.5, resolution: 0.1 });
+    // 0.5..89.5 step 0.5 => 179 rings, plus the horizon ring => 180.
+    expect(g.altitudeRings.length).toBe(180);
+    // 0..360 step 0.1 lands 3600 points (fp drift keeps the last step short of 360).
+    expect(g.altitudeRings[0].ring.length).toBe(3600);
+  });
+
+  it('rejects a denormal altitudeStep instead of hanging', () => {
+    // Number.MIN_VALUE passes `step > 0` but 90 + Number.MIN_VALUE === 90,
+    // so the altitude-rings loop would never advance without this guard.
+    expect(90 + Number.MIN_VALUE).toBe(90);
     expect(() => domeGraticule({ altitudeStep: Number.MIN_VALUE })).toThrow(/altitudeStep/);
+  });
+
+  it('rejects a denormal resolution instead of hanging', () => {
+    // Same shape, against the largest bound resolution drives (360).
+    expect(360 + Number.MIN_VALUE).toBe(360);
     expect(() => domeGraticule({ resolution: Number.MIN_VALUE })).toThrow(/resolution/);
   });
 
-  // Control: a small-but-viable step must still be accepted and terminate.
-  // (1 degree, not something like 1e-3 — resolution also drives the 360°
-  // azimuth loop, and a too-small resolution combined with a too-small
-  // altitudeStep would make this a combinatorially slow test, not a hang.)
-  it('accepts a small but viable altitudeStep/resolution and terminates', () => {
-    const g = domeGraticule({ altitudeStep: 1, resolution: 1 });
-    expect(g.altitudeRings.length).toBeGreaterThan(1);
-    expect(g.altitudeRings[0].ring.length).toBeGreaterThan(1);
+  it('rejects a denormal azimuthStep instead of hanging', () => {
+    // azStep drives `for (let az = 0; az < 360; az += azStep)`, bounded at
+    // 360: Number.MIN_VALUE passes `step > 0` but 360 + Number.MIN_VALUE
+    // === 360, so the azimuth-spokes loop would never advance.
+    expect(360 + Number.MIN_VALUE).toBe(360);
+    expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: 0 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: NaN })).toThrow(/azimuthStep/);
+  });
+
+  it('rejects NaN immediately for altitudeStep and resolution (not a hang)', () => {
+    expect(() => domeGraticule({ altitudeStep: NaN })).toThrow(/altitudeStep/);
+    expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
   });
 });

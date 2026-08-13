@@ -1,5 +1,35 @@
 # @ifc-lite/server-client
 
+## 1.22.1
+
+### Patch Changes
+
+- [#2370](https://github.com/LTplus-AG/ifc-lite/pull/2370) [`1e13943`](https://github.com/LTplus-AG/ifc-lite/commit/1e139434adac8e98e6e40c989b257e5ec87aa20a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `decodeDataModel` now validates the length prefix of every length-prefixed section in the wire format, not just the optional appended ones. Previously only the classification/material/document reader (`readOptionalSection`) checked a section's length against the remaining buffer and threw a clear `Malformed data model: ...` error; the five required top-level sections (entities, properties, quantities, relationships, spatial) and the five nested spatial sub-sections (nodes and the four element-to-storey/building/site/space lookup tables) had no such check, so a truncated or corrupted required section instead surfaced as a raw engine error (`RangeError: Offset is outside the bounds of the DataView`, or `TypeError: Invalid typed array length: ...`) from deep inside `decodeDataModel`/`parseLookupTable` — still a thrown error, just an unhelpful one to diagnose.
+
+  All ten length-prefixed reads now share one bounds-checking helper, so a truncated required section reports which section and how many bytes are missing, matching the existing optional-section error. A well-formed model with legitimately empty required tables (e.g. no quantities, no relationships) is unaffected: a Parquet-encoded table's byte length is never zero even with zero rows (file magic + schema + footer), so the zero-length check only ever rejects genuine truncation.
+
+  The optional-section reader is also tightened, which is the one behaviour change here. It treated "fewer than 4 bytes remain" as "section absent", which is right for the older-payload shape that ends exactly after the last required section, but also swallowed one to three trailing bytes — a length prefix cut short — and reported it as a successful decode with the classification, material and document tables silently dropped. Absence now requires the buffer to end exactly at the boundary; a short prefix throws `Malformed data model: truncated classifications section length prefix (remaining=N)` like every other truncation. Genuine older payloads decode exactly as before.
+
+## 1.22.0
+
+### Minor Changes
+
+- [#2421](https://github.com/LTplus-AG/ifc-lite/pull/2421) [`81e5415`](https://github.com/LTplus-AG/ifc-lite/commit/81e541588ff5e5665b9091179a87bc4d03cd77f9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Declare the unresolved-elevation sentinel on `symbolic_data`: `SymbolicGridAxis`, `SymbolicPolyline`, `SymbolicCircle`, `SymbolicText` and `SymbolicFillArea` now type `world_y` as `number | null` instead of `number`.
+
+  **This is a type correction, not a wire change.** The server has always been able to send `null` here. `world_y` is `f32::NAN` in the Rust model when the placement chain resolved no elevation, and `serde_json` writes a non-finite float as JSON `null` — so the payload already carried `null` while the declaration promised `number`. `hatch_angle_secondary` on `SymbolicFillArea` was already declared `number | null` for exactly this reason; the elevation fields were the ones left lying. The bytes on the wire are byte-identical before and after, now pinned by a fixture emitted from the Rust serializer itself (`packages/server-client/src/__fixtures__/symbolic-unresolved-wire.json`) and asserted from both sides.
+
+  **`null` is not `0`.** `world_y: 0` is a real elevation at datum; `world_y: null` means the server never resolved one. Branch on `x === null` — do not coerce, because `Number(null)` is `0` and would silently invent a datum-level elevation for every unresolved primitive. Anything that buckets, sorts or filters by elevation must exclude the `null`s rather than fold them into the zero bucket. An omitted key stays distinct from both: the server rejects a payload with `world_y` missing outright, so a truncated body can never masquerade as "elevation unknown".
+
+  **Migrating.** Marked `minor` because the widened type can fail compilation where the old one did not: `const y: number = axis.world_y` now needs a `null` branch (or `?? fallback`, chosen deliberately). No runtime behaviour changes for a consumer that was already handling the values it actually received.
+
+  Shipped alongside a Rust-side fix (`ifc-lite-processing`, `ifc-lite-server`) for the same sentinel: the derived `Deserialize` could not read `null` back into an `f32` (`invalid type: null, expected f32`), so the server's own symbolic cache could not re-read the blob it had just written. One unresolved scalar anywhere in a model made the entire `{cache_key}-symbolic-v1` entry unparseable, and `load_cached_symbolic`'s error fallback then served `SymbolicData::default()` — every replayed request silently returned no 2D symbols at all, for the whole model.
+
+### Patch Changes
+
+- [#2368](https://github.com/LTplus-AG/ifc-lite/pull/2368) [`22a1eae`](https://github.com/LTplus-AG/ifc-lite/commit/22a1eae0d2b349d9abd18c7aced0c57a2f90c03a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a mesh `origin` decode defect in `parquet-tables.ts`'s `transformFields`: `origin_x/y/z` are `Float64` columns server-side and can legitimately carry `NaN`/`Infinity` on a corrupted payload, but the truthiness check (`originX[index] || originY[index] || originZ[index]`) treated a NaN component as "present" whenever at least one of the other two components was truthy — a partially-NaN origin (e.g. `[NaN, 5, 0]`) rode straight through into `MeshData.origin`, where a NaN can later poison `expandModelBoundsWithFlatVertices` / scene-bounds arithmetic for the whole model. An all-NaN origin was already dropped (NaN is falsy), so the two corruption shapes were handled inconsistently.
+
+  Both now fall back to "no origin" — the same graceful degradation `originIsUsable` already applies to a structurally short/absent column set — rather than throwing, matching this file's existing convention of reserving thrown errors for structural malformation (missing columns, length mismatches, out-of-bounds ranges) and never for a value inside an otherwise well-formed float column. A normal finite origin and the existing all-zero-origin-omitted behavior are unchanged. Applies to both the standard (`buildMeshesFromTables`) and optimized/instanced (`buildMeshesFromOptimizedTables`) decode paths, which share `transformFields`.
+
 ## 1.21.1
 
 ### Patch Changes

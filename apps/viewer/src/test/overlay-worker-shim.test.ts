@@ -4,9 +4,14 @@
 
 import { describe, it, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { contiguousSourceBytes, type IfcSourceTransfer } from '@ifc-lite/parser';
 
 import { installInProcessOverlayWorker } from './overlay-worker-shim.js';
-import { parseOverlayLines, parseSymbolicFlat } from '@/lib/overlay-parse/index.js';
+import {
+  parseOverlayLines,
+  parseProfilesFlat,
+  parseSymbolicFlat,
+} from '@/lib/overlay-parse/index.js';
 
 /**
  * The shim exists so end-to-end hook tests are not silently vacuous. If it
@@ -20,6 +25,11 @@ import { parseOverlayLines, parseSymbolicFlat } from '@/lib/overlay-parse/index.
 
 import type { OverlayShimHandle } from './overlay-worker-shim.js';
 
+/** The client takes a transfer envelope; build it the way the seam does. */
+function transferOf(bytes: Uint8Array): IfcSourceTransfer {
+  return contiguousSourceBytes(bytes).toTransferable();
+}
+
 let shim: OverlayShimHandle | undefined;
 
 afterEach(() => {
@@ -30,25 +40,49 @@ afterEach(() => {
 describe('in-process overlay worker shim', () => {
   it('routes replies correctly when jobs overlap', async () => {
     shim = installInProcessOverlayWorker();
-    // Dispatched in the same tick: all three are in flight before any settles.
-    const [grid, alignment, symbolic] = await Promise.all([
-      parseOverlayLines('grid-lines', new Uint8Array([1])),
-      parseOverlayLines('alignment-lines', new Uint8Array([1])),
-      parseSymbolicFlat(new Uint8Array([1])),
+    // Dispatched in the same tick: all four are in flight before any settles.
+    const [grid, alignment, symbolic, profiles] = await Promise.all([
+      parseOverlayLines('grid-lines', transferOf(new Uint8Array([1]))),
+      parseOverlayLines('alignment-lines', transferOf(new Uint8Array([1]))),
+      parseSymbolicFlat(transferOf(new Uint8Array([1]))),
+      parseProfilesFlat(transferOf(new Uint8Array([1]))),
     ]);
     assert.ok(grid instanceof Float32Array);
     assert.ok(alignment instanceof Float32Array);
     assert.ok(symbolic && Array.isArray(symbolic.typeNames));
+    assert.ok(profiles && profiles.expressId instanceof Uint32Array);
 
     // The load-bearing assertion. The input is garbage, so every result is
     // empty either way — and the client ALSO resolves empty when a reply is
-    // lost. Only the worker's own reply log distinguishes "three jobs
-    // answered" from "three jobs silently fell back".
+    // lost. Only the worker's own reply log distinguishes "four jobs
+    // answered" from "four jobs silently fell back".
     assert.equal(
-      shim.repliedIds().length, 3,
-      `worker replied for ${shim.repliedIds().length} of 3 jobs; the rest hit the client fallback`,
+      shim.repliedIds().length, 4,
+      `worker replied for ${shim.repliedIds().length} of 4 jobs; the rest hit the client fallback`,
     );
-    assert.equal(new Set(shim.repliedIds()).size, 3, 'each job needs its own id');
+    assert.equal(new Set(shim.repliedIds()).size, 4, 'each job needs its own id');
+  });
+
+  // Reported in review: restore() used to reset to the default factory, so a
+  // nested install silently disabled the outer shim on teardown.
+  it('restores the OUTER shim, not the default, when nested', async () => {
+    const outer = installInProcessOverlayWorker();
+    try {
+      const inner = installInProcessOverlayWorker();
+      inner.restore();
+    // The outer shim must still be serving: with it disabled, Node has no
+    // Worker and this would resolve empty without the worker ever replying.
+      const before = outer.repliedIds().length;
+      await parseOverlayLines('grid-lines', transferOf(new Uint8Array([1])));
+      assert.ok(
+        outer.repliedIds().length > before,
+        'the outer shim stopped serving, so restore() reset to the default',
+      );
+    } finally {
+      // A failed assertion above must not leave the outer shim installed for
+      // every later test in this file.
+      outer.restore();
+    }
   });
 
   it('restores the previous Worker wiring on teardown', async () => {
@@ -57,6 +91,6 @@ describe('in-process overlay worker shim', () => {
     assert.equal((globalThis as { self?: unknown }).self, before);
     // With the shim gone and Node having no Worker, the client must resolve
     // empty rather than throw.
-    assert.equal((await parseOverlayLines('grid-lines', new Uint8Array([1]))).length, 0);
+    assert.equal((await parseOverlayLines('grid-lines', transferOf(new Uint8Array([1])))).length, 0);
   });
 });

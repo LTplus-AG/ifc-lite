@@ -15,7 +15,7 @@ import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
 import { countGlbMeshes } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
-import { getFlag, hasFlag, fatal, writeOutput } from '../output.js';
+import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
 import type { ComparisonOp } from '@ifc-lite/sdk';
@@ -129,13 +129,21 @@ function columnValueToCsv(value: unknown): string {
 /**
  * Resolve the raw IFC bytes (parsed store source, or re-read from disk) plus a
  * one-shot wasm GeometryProcessor for the Rust-backed exporters (OBJ / glTF / JSON-LD).
+ *
+ * Every Rust exporter below takes the WHOLE file, so the source is genuinely
+ * materialised here (#2183). It is handed back rather than scoped through a
+ * callback because the caller is one `switch` arm of a single CLI invocation
+ * that also runs the optional diagnostics pass over the same bytes; the buffer
+ * dies with the command.
  */
 async function rustExportContext(
   store: IfcDataStore,
   filePath: string,
 ): Promise<{ bytes: Uint8Array; gp: GeometryProcessor }> {
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
+  let bytes: Uint8Array;
+  if (store.source.byteLength > 0) {
+    bytes = store.source.materialize();
+  } else {
     const buf = await readFile(filePath);
     bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
   }
@@ -167,13 +175,16 @@ export async function exportCommand(args: string[]): Promise<void> {
   const limit = getFlag(args, '--limit');
   const propFilter = getFlag(args, '--where');
   const storeyFilter = getFlag(args, '--storey');
-  // IFCX and USD are whole-model, geometry-backed exports: they never honor the
-  // entity-isolation filters, so an invalid/zero-match filter must NOT abort the
-  // export — skip filter processing entirely and just note it below.
-  const wholeModelFormat = format === 'ifcx' || format === 'usd';
+  // Whole-model exports: geometry-backed (IFCX, USD) or analytic energy models
+  // (HBJSON, DFJSON). None of them receive the isolated entity set — they re-read
+  // the whole model from bytes — so the entity-isolation filters can only be
+  // ignored. Skip filter processing entirely (an invalid/zero-match filter must
+  // NOT abort an export the filter never applied to) and say so once, below.
+  const wholeModelFormat =
+    format === 'ifcx' || format === 'usd' || format === 'hbjson' || format === 'dfjson';
   const filterRequested = !!(type || propFilter || storeyFilter || limit);
 
-  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
+  if (!filePath) fatal('Usage: ifc-lite export <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson [--type IfcWall] [--columns Name,Type,GlobalId] [--where PsetName.Prop=Value] [--storey Name] [--name Model] [--out file]');
 
   // B9/F6: Auto-prefix Ifc
   if (type) {
@@ -212,9 +223,20 @@ export async function exportCommand(args: string[]): Promise<void> {
     entities = entities.filter((e: any) => storeyIds.has(e.ref.expressId));
   }
 
-  // Apply limit after storey filtering
-  if (limit) {
-    entities = entities.slice(0, parseInt(limit, 10));
+  // Apply limit after storey filtering. A non-numeric/negative --limit used
+  // to fall through to Array.prototype.slice(0, NaN), which silently returns
+  // an empty array — a typo'd flag turned into a zero-row export reported as
+  // success. validateLimit() rejects that loudly instead.
+  //
+  // Not for the whole-model formats, though: they never see `entities`, so the
+  // limit has nothing to slice and cannot produce the zero-row export that
+  // validation exists to prevent. Validating it anyway made `--limit` the one
+  // entity filter that could still abort a whole-model export — the same
+  // defect `--storey` had, which the `!wholeModelFormat` guards above fixed.
+  // The ignored filter is still reported on stderr below.
+  const parsedLimit = wholeModelFormat ? undefined : validateLimit(limit);
+  if (parsedLimit !== undefined) {
+    entities = entities.slice(0, parsedLimit);
   }
 
   const refs = entities.map((e: any) => e.ref);
@@ -226,6 +248,13 @@ export async function exportCommand(args: string[]): Promise<void> {
   // Check if any columns need quantity/property resolution (non-native columns)
   const nativeColumns = new Set(['Name', 'name', 'Type', 'type', 'GlobalId', 'globalId', 'Description', 'description', 'ObjectType', 'objectType']);
   const hasCustomColumns = columns.some(c => !nativeColumns.has(c));
+
+  // A filter on a whole-model format is ignored, not an error. Reported once here
+  // rather than inside a single case, so every whole-model format says so — the
+  // energy exporters used to accept `--type`/`--where`/`--limit` in silence.
+  if (filterRequested && wholeModelFormat) {
+    process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
+  }
 
   switch (format) {
     case 'csv': {
@@ -292,10 +321,6 @@ export async function exportCommand(args: string[]): Promise<void> {
       // instead — the user asked for a subset and got zero matches.
       if (filterActive && isolated.length === 0) {
         fatal('Filter matched 0 entities — nothing to export. Check --type/--storey/--where/--limit.');
-      }
-      // IFCX / USD are whole-model exports; a requested filter is ignored, not an error.
-      if (filterRequested && wholeModelFormat) {
-        process.stderr.write(`Note: --type/--storey/--where/--limit do not apply to ${format.toUpperCase()}; exporting the whole model.\n`);
       }
       // --profile: attribute wall-time between the per-invocation wasm
       // bootstrap (GeometryProcessor init) and the export itself - the
@@ -396,12 +421,19 @@ export async function exportCommand(args: string[]): Promise<void> {
     case 'hbjson': {
       // Honeybee/Ladybug energy-model export via the SDK (the headless backend meshes
       // analytically through the wasm engine; the data-only SDK delegates to it).
-      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.ifc$/i, '');
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.(ifc|ifcx|ifczip)$/i, '');
       const hbjson = await bim.export.hbjson({ name });
       await writeOutput(hbjson, outPath);
       break;
     }
+    case 'dfjson': {
+      // Dragonfly/Ladybug energy-model export (extruded Room2D plates) via the SDK.
+      const name = getFlag(args, '--name') ?? basename(filePath).replace(/\.(ifc|ifcx|ifczip)$/i, '');
+      const dfjson = await bim.export.dfjson({ name });
+      await writeOutput(dfjson, outPath);
+      break;
+    }
     default:
-      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, usd, hbjson`);
+      fatal(`Unknown format: ${format}. Supported: csv, json, ifc, obj, gltf, glb, jsonld, step, ifcx, usd, hbjson, dfjson`);
   }
 }

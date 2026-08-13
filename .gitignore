@@ -121,3 +121,9 @@ tests/benchmark/benchmark-results/viewer-*.console.log
 # Generated head revisions from the content-matching fixture (scripts/xmatch).
 # Deterministic from the seed, so they are rebuilt rather than committed.
 .xmatch-out/
+
+# Generated per-package TEST typecheck programs (scripts/typecheck-tests.mjs).
+# Derived from each package's own tsconfig plus the test files on disk, so they
+# are rebuilt on every run rather than committed. See tsconfig.tests.base.json.
+packages/*/tsconfig.tests.json
+apps/*/tsconfig.tests.json

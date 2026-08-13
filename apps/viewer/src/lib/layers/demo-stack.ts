@@ -21,6 +21,7 @@ import {
   computeStackHash,
   createProvenanceManifest,
   setProvenance,
+  IFCX_VERSION,
 } from '@ifc-lite/ifcx';
 
 /** hello-wall entity paths (IFC5 UUID-style; path IS the identity). */
@@ -48,7 +49,7 @@ function publishable(
   const bare: IfcxFile = {
     header: {
       id: '',
-      ifcxVersion: 'ifcx_alpha',
+      ifcxVersion: IFCX_VERSION,
       dataVersion: '1.0.0',
       author: author.principal,
       timestamp: created,

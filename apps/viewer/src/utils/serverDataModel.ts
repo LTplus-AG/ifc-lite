@@ -16,6 +16,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
   CompactEntityIndexBuilder,
+  EMPTY_SOURCE_BYTES,
   type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
@@ -30,6 +31,7 @@ import {
   QuantityType,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
+  IFC_ENTITY_NAMES,
   type SpatialHierarchy,
   type SpatialNode,
   type EntityTable,
@@ -401,7 +403,13 @@ function buildEntityTable(
     },
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise on the way in, matching `entityTableFromColumns`
+      // (packages/data/src/entity-table.ts) and the cache-restored table.
+      // `getTypeName` echoes the override back verbatim and consumers like
+      // `isSpatialStructureTypeName` match the PascalCase form, so storing
+      // the caller's raw UPPERCASE token makes a retyped entity invisible to
+      // them. All three EntityTable implementations must agree here.
+      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
@@ -791,7 +799,7 @@ export function convertServerDataModel(
     schemaVersion,
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
-    source: new Uint8Array(0),
+    source: EMPTY_SOURCE_BYTES,
     entityIndex: { byId: entityById, byType },
     strings,
     entities,

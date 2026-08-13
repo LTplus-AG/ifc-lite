@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { RelationshipType } from '@ifc-lite/data';
 import { StepTokenizer } from '../src/tokenizer.js';
 import { ColumnarParser, type IfcDataStore } from '../src/columnar-parser.js';
+import { EMPTY_SOURCE_BYTES } from '../src/source-bytes.js';
 import { buildMaterialUsageIndex, collectMaterialLeaves } from '../src/material-resolver.js';
 import type { EntityRef } from '../src/types.js';
 
@@ -86,18 +87,22 @@ describe('buildMaterialUsageIndex relationship-graph fallback', () => {
         // Store with neither a material map nor a source (nor relationships):
         // the index is empty and MUST NOT be memoised, so a later-populated
         // store object can still build a real index.
-        const store = {
+        const store: IfcDataStore = {
             ...base,
             onDemandMaterialMap: undefined,
-            relationships: undefined,
-            source: new Uint8Array(0),
-        } as unknown as IfcDataStore;
+            source: EMPTY_SOURCE_BYTES,
+        };
+        // `IfcDataStore.relationships` is declared required, but every reader in
+        // material-resolver.ts guards it because server-loaded stores really do
+        // arrive without a graph — that absent-graph store is exactly what this
+        // test pins, so drop the key rather than fake an empty graph.
+        Reflect.deleteProperty(store, 'relationships');
 
         expect(buildMaterialUsageIndex(store).size).toBe(0);
 
         // Populate the SAME object and rebuild — a cached empty would mask this.
         store.onDemandMaterialMap = base.onDemandMaterialMap;
-        (store as { source: Uint8Array }).source = base.source!;
+        store.source = base.source;
         store.relationships = base.relationships;
 
         const usage = buildMaterialUsageIndex(store);

@@ -133,10 +133,10 @@ describe('ActivationDispatcher — concurrent fire re-entrancy', () => {
       calls += 1;
       if (extId === 'ext-a') await gate;
     });
-    d.register('ext-a', ['onStartup', 'onOpen']);
+    d.register('ext-a', ['onStartup', 'onModelLoad']);
 
     const p1 = d.fire('onStartup');
-    const p2 = d.fire('onOpen');
+    const p2 = d.fire('onModelLoad');
     releaseFirst();
     await Promise.all([p1, p2]);
 

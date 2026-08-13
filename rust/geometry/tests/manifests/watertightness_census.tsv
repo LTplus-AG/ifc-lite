@@ -1,0 +1,1184 @@
+# Per-host watertightness census golden. Generated, do not hand-edit.
+#
+# Re-bless with:
+#   IFCLITE_CENSUS_BLESS=1 cargo test -p ifc-lite-geometry \
+#     --features triangulation-alt --test triangulation_invariance
+#
+# model: manifest-relative path (basenames are NOT unique across the corpus).
+# open:  open boundary edges, 1 mm snapped topology.
+# tris:  emitted triangles. A shrink is geometry loss even when open stays 0.
+# coll:  1 if any triangle collapsed under the snap.
+# far:   1 if |coord| is past what f32 carries mm topology at (reported, not gated).
+# alt:   open edges under the alternate triangulator, or x if that pass failed.
+# pre:   open edges with no voids applied; x if that pass failed, - if not taken.
+model	id	rep	open	tris	coll	far	alt	pre
+ara3d/AC20-FZK-Haus.ifc	17040	SweptSolid	0	36	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	18698	SweptSolid	0	54	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	21966	SweptSolid	0	80	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	27421	SweptSolid	0	80	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	31470	SweptSolid	0	52	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	32407	SweptSolid	0	72	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	59290	SweptSolid	0	32	0	0	0	-
+ara3d/AC20-FZK-Haus.ifc	60012	Clipping	0	204	0	0	18	-
+ara3d/AC20-FZK-Haus.ifc	67828	Clipping	0	196	0	0	18	-
+ara3d/C20-Institute-Var-2.ifc	31190	SweptSolid	0	320	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	35819	SweptSolid	0	324	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	40505	SweptSolid	0	600	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	47404	SweptSolid	0	116	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	50078	SweptSolid	0	130	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	52075	SweptSolid	0	52	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	55353	SweptSolid	0	42	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	56404	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	57708	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	72946	SweptSolid	0	80	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	81755	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	82662	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	83555	SweptSolid	0	320	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	87784	SweptSolid	0	70	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	90339	SweptSolid	0	320	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	94567	SweptSolid	0	324	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	99022	SweptSolid	0	100	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	100667	SweptSolid	0	72	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	101958	SweptSolid	0	120	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	104309	SweptSolid	0	64	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	107811	SweptSolid	0	328	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	112277	SweptSolid	0	36	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	113099	SweptSolid	0	42	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	114155	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	114727	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	125284	SweptSolid	0	80	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	135395	SweptSolid	0	320	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	139845	SweptSolid	0	324	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	144069	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	144635	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	145201	SweptSolid	0	948	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	154762	SweptSolid	0	116	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	157112	SweptSolid	0	120	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	159462	SweptSolid	0	192	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	165435	SweptSolid	0	34	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	166266	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	167338	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	178044	SweptSolid	0	64	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	188155	SweptSolid	0	320	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	192605	SweptSolid	0	324	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	196829	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	197395	SweptSolid	0	32	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	197961	SweptSolid	0	948	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	207522	SweptSolid	0	116	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	209872	SweptSolid	0	120	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	212222	SweptSolid	0	182	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	218661	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	219733	SweptSolid	0	40	0	0	0	-
+ara3d/C20-Institute-Var-2.ifc	220884	SweptSolid	0	64	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	26448	SweptSolid	0	72	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	26635	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	30660	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	30826	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	31022	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	40974	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	52867	SweptSolid	0	34	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	53112	SweptSolid	0	34	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	61530	SweptSolid	0	48	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	67415	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	67562	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	67758	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	77712	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	89640	SweptSolid	0	34	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	89885	SweptSolid	0	34	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	90210	SweptSolid	0	48	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	99281	SweptSolid	0	72	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	100158	SweptSolid	0	168	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	100207	SweptSolid	0	186	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	106167	Clipping	0	48	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	106259	SweptSolid	0	40	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	106951	SweptSolid	0	100	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	136983	SweptSolid	0	80	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	137547	Clipping	0	60	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	138037	Clipping	12	301	1	0	21	0
+ara3d/FM_ARC_DigitalHub.ifc	138279	SweptSolid	0	60	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	138767	Clipping	0	80	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	139288	Clipping	9	300	1	0	9	0
+ara3d/FM_ARC_DigitalHub.ifc	139605	Clipping	9	300	1	0	9	0
+ara3d/FM_ARC_DigitalHub.ifc	139864	Clipping	0	184	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	139985	Clipping	9	300	1	0	18	0
+ara3d/FM_ARC_DigitalHub.ifc	140227	SweptSolid	0	184	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	140337	SweptSolid	0	496	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	146777	SweptSolid	0	222	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	149094	SweptSolid	0	668	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	155733	SweptSolid	0	282	0	0	11	-
+ara3d/FM_ARC_DigitalHub.ifc	187843	SweptSolid	0	172	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	188186	SweptSolid	0	32	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	188235	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	188333	SweptSolid	0	74	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	188424	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	196863	SweptSolid	0	112	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	196912	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	196961	SweptSolid	0	132	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	197010	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	197353	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	197794	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	200204	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	200253	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	200449	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	200645	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	216340	SweptSolid	0	68	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	216561	SweptSolid	0	44	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	216762	SweptSolid	0	28	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	217867	SweptSolid	0	72	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	218038	SweptSolid	0	32	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	218227	SweptSolid	0	72	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	218398	SweptSolid	0	32	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	218587	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	218718	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	219094	SweptSolid	0	52	0	0	0	-
+ara3d/FM_ARC_DigitalHub.ifc	219225	SweptSolid	0	52	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	17040	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	18698	SweptSolid	0	54	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	21966	SweptSolid	0	80	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	27421	SweptSolid	0	80	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	31470	SweptSolid	0	52	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	32407	SweptSolid	0	72	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	59290	SweptSolid	0	32	0	0	0	-
+ara3d/ISSUE_005_haus.ifc	60012	Clipping	0	204	0	0	18	-
+ara3d/ISSUE_005_haus.ifc	67828	Clipping	0	196	0	0	18	-
+ara3d/ISSUE_126_model.ifc	40983	SweptSolid	0	52	0	0	0	-
+ara3d/ISSUE_126_model.ifc	43236	SweptSolid	0	20	0	0	0	-
+ara3d/ISSUE_126_model.ifc	49197	SweptSolid	0	20	0	0	0	-
+ara3d/ISSUE_126_model.ifc	49964	SweptSolid	0	20	0	0	0	-
+ara3d/ISSUE_126_model.ifc	50658	SweptSolid	0	54	0	0	0	-
+ara3d/ISSUE_126_model.ifc	50766	SweptSolid	0	58	0	0	0	-
+ara3d/ISSUE_126_model.ifc	52352	SweptSolid	0	34	0	0	0	-
+ara3d/ISSUE_126_model.ifc	56758	SweptSolid	0	30	0	0	0	-
+ara3d/ISSUE_126_model.ifc	73237	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_126_model.ifc	73349	SweptSolid	0	216	0	0	0	-
+ara3d/ISSUE_126_model.ifc	77438	SweptSolid	0	80	0	0	0	-
+ara3d/ISSUE_126_model.ifc	78232	SweptSolid	0	52	0	0	0	-
+ara3d/ISSUE_126_model.ifc	78975	SweptSolid	0	170	0	0	0	-
+ara3d/ISSUE_126_model.ifc	82108	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_126_model.ifc	82925	SweptSolid	0	34	0	0	0	-
+ara3d/ISSUE_126_model.ifc	83323	SweptSolid	0	66	0	0	0	-
+ara3d/ISSUE_126_model.ifc	83694	SweptSolid	0	20	0	0	0	-
+ara3d/ISSUE_126_model.ifc	84442	SweptSolid	0	34	0	0	0	-
+ara3d/ISSUE_126_model.ifc	86446	SweptSolid	0	54	0	0	0	-
+ara3d/ISSUE_126_model.ifc	86609	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_126_model.ifc	98282	SweptSolid	24	130	0	0	24	0
+ara3d/ISSUE_126_model.ifc	100504	SweptSolid	0	50	0	0	0	-
+ara3d/ISSUE_126_model.ifc	111997	SweptSolid	27	51	0	0	27	0
+ara3d/ISSUE_126_model.ifc	131771	SweptSolid	0	96	0	0	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	6891	Clipping	91	345	0	1	56	6
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	7526	SweptSolid	1113	958	1	1	993	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8434	Clipping	0	44	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	4	28	0	1	3	3
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	864	1160	1	1	860	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	11115	Clipping	21	167	0	1	9	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	1674	1399	1	1	1234	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	252	1513	0	1	155	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	443	485	0	1	460	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	461	867	0	1	395	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	54	109	0	1	52	12
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	57	111	0	1	41	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	23	99	0	1	23	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	67	221	0	1	19	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid	244	393	0	1	214	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59957	SweptSolid	37	55	0	1	37	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60118	SweptSolid	17	123	1	1	17	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60344	SweptSolid	0	36	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	728	1413	1	1	758	3
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63146	Clipping	20	106	0	1	23	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63466	Clipping	16	164	0	1	22	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63721	SweptSolid	6	22	0	1	6	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	68263	Clipping	15	71	0	1	15	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	68943	Clipping	26	162	0	1	29	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	69569	Clipping	7	43	0	1	7	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	69961	Clipping	21	119	0	1	21	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	81223	Clipping	17	135	0	1	20	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	81562	Clipping	43	181	0	1	43	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	81869	Clipping	0	28	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	83043	Clipping	13	41	0	1	13	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	138693	Clipping	31	91	0	1	31	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	138919	Clipping	11	71	0	1	11	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	139190	SweptSolid	22	144	0	1	22	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	139364	Clipping	35	152	0	1	35	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	139571	SweptSolid	38	276	0	1	38	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	141060	SweptSolid	67	99	0	1	41	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145270	SweptSolid	46	96	0	1	50	6
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145756	SweptSolid	13	101	0	1	13	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145897	SweptSolid	32	70	0	1	32	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148665	SweptSolid	474	912	0	1	350	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148864	SweptSolid	3	97	0	1	3	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149277	SweptSolid	221	447	1	1	261	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149280	SweptSolid	230	825	0	1	187	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196139	SweptSolid	145	161	0	1	130	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196326	SweptSolid	88	68	0	1	91	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	233296	SweptSolid	0	46	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	244479	SweptSolid	356	394	0	1	267	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247051	Clipping	29	164	1	1	29	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247203	Clipping	18	88	0	1	18	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247726	Clipping	38	180	0	1	38	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247953	Clipping	37	165	0	1	38	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	1050	915	1	1	999	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	425	273	1	1	620	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299369	SweptSolid	0	32	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299638	SweptSolid	10	10	0	1	10	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	316547	SweptSolid	263	576	0	1	183	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	332017	SweptSolid	172	360	0	1	118	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	332205	SweptSolid	63	263	0	1	3	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	333923	SweptSolid	1124	1143	1	1	1311	6
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	335218	SweptSolid	791	764	1	1	1425	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	337691	SweptSolid	27	93	0	1	27	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359157	SweptSolid	0	52	0	1	6	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359305	SweptSolid	20	60	0	1	12	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359480	SweptSolid	32	44	0	1	32	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359627	SweptSolid	0	52	0	1	6	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359926	SweptSolid	0	52	0	1	6	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360075	SweptSolid	33	44	0	1	33	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360237	SweptSolid	57	79	0	1	57	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360384	SweptSolid	7	43	0	1	7	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360680	SweptSolid	0	32	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360821	SweptSolid	0	32	0	1	0	-
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360966	SweptSolid	10	36	0	1	10	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	361107	SweptSolid	3	35	0	1	3	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	4380	SweptSolid	6	94	0	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	4630	SweptSolid	0	38	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	4732	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	4834	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	4940	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	6012	Clipping	6	144	0	0	6	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	8511	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27148	SweptSolid	3	117	1	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27562	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	27770	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	28290	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	34099	SweptSolid	35	259	0	0	30	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	37094	SweptSolid	0	64	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46565	SweptSolid	0	100	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46667	SweptSolid	0	32	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46769	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	46871	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	47807	SweptSolid	0	168	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	49773	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	63308	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	63516	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	64036	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	76544	SweptSolid	0	60	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	78513	SweptSolid	0	156	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	78918	Clipping	12	106	0	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79070	Clipping	0	50	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79197	Clipping	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	79969	AdvancedBrep	0	80	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	80101	Clipping	0	80	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	81274	Clipping	12	140	0	0	12	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	83292	Clipping	0	52	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	87331	Clipping	0	132	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	87839	Clipping	0	44	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	88116	Clipping	0	46	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	88776	Clipping	0	76	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	92201	Clipping	17	141	0	0	20	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	94199	Clipping	0	66	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95188	Clipping	6	96	0	0	6	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95332	Clipping	0	44	0	0	3	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95459	Clipping	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	95605	Clipping	0	80	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	96778	Clipping	12	132	0	0	12	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	98786	Clipping	0	48	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	100558	Clipping	0	44	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	100835	Clipping	0	46	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	101495	Clipping	0	76	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	103251	Clipping	0	78	1	0	3	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	105519	SweptSolid	0	156	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	119816	SweptSolid	6	62	0	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	119924	SweptSolid	3	63	1	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	120028	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	120132	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	120448	SweptSolid	0	96	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	121490	SweptSolid	0	60	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	122695	SweptSolid	12	144	1	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	123117	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	123329	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	123859	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	124711	SweptSolid	0	204	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	127658	SweptSolid	0	54	1	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	128193	SweptSolid	3	97	1	0	0	0
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	128297	SweptSolid	0	32	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	128401	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	128505	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	129459	SweptSolid	0	120	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	131443	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	132587	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	132799	SweptSolid	0	28	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	133329	SweptSolid	0	44	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	134472	SweptSolid	0	60	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	135938	SweptSolid	0	128	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	137886	SweptSolid	0	112	0	0	0	-
+ara3d/ISSUE_159_kleine_Wohnung_R22.ifc	139140	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	61	SweptSolid	0	114	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	528	SweptSolid	0	64	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	733	SweptSolid	0	32	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	880	SweptSolid	0	64	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	1085	SweptSolid	0	72	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	1290	SweptSolid	0	58	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	1512	SweptSolid	0	36	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	1812	SweptSolid	0	58	0	0	0	-
+ara3d/ISSUE_171_IfcSurfaceCurveSweptAreaSolid.ifc	2017	SweptSolid	0	68	0	0	0	-
+ara3d/IfcOpenHouse_IFC4.ifc	40	SweptSolid	0	56	0	0	0	-
+ara3d/IfcOpenHouse_IFC4.ifc	268	Clipping	0	40	0	0	0	-
+ara3d/IfcOpenHouse_IFC4.ifc	281	Clipping	0	42	0	0	0	-
+ara3d/Office_A_20110811.ifc	65	SweptSolid	0	92	0	0	0	-
+ara3d/Office_A_20110811.ifc	71	SweptSolid	0	308	0	0	0	-
+ara3d/Office_A_20110811.ifc	76	SweptSolid	0	140	0	0	0	-
+ara3d/Office_A_20110811.ifc	81	SweptSolid	0	312	0	0	0	-
+ara3d/Office_A_20110811.ifc	82	SweptSolid	0	32	0	0	0	-
+ara3d/Office_A_20110811.ifc	83	SweptSolid	0	292	0	0	0	-
+ara3d/Office_A_20110811.ifc	88	SweptSolid	0	60	0	0	0	-
+ara3d/Office_A_20110811.ifc	97	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	100	SweptSolid	0	152	0	0	0	-
+ara3d/Office_A_20110811.ifc	101	SweptSolid	0	164	0	0	0	-
+ara3d/Office_A_20110811.ifc	102	SweptSolid	0	140	0	0	0	-
+ara3d/Office_A_20110811.ifc	104	SweptSolid	0	92	0	0	0	-
+ara3d/Office_A_20110811.ifc	105	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	106	SweptSolid	0	172	0	0	0	-
+ara3d/Office_A_20110811.ifc	130	SweptSolid	0	76	0	0	0	-
+ara3d/Office_A_20110811.ifc	134	SweptSolid	0	92	0	0	0	-
+ara3d/Office_A_20110811.ifc	139	SweptSolid	0	76	0	0	0	-
+ara3d/Office_A_20110811.ifc	143	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	156	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	161	SweptSolid	0	60	0	0	0	-
+ara3d/Office_A_20110811.ifc	164	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	165	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	166	SweptSolid	0	100	0	0	0	-
+ara3d/Office_A_20110811.ifc	175	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	178	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	179	SweptSolid	0	60	0	0	0	-
+ara3d/Office_A_20110811.ifc	183	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	185	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	188	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	191	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	193	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	195	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	196	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	197	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	198	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	223	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	224	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	227	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	228	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	234	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	238	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	239	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	242	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	246	SweptSolid	0	60	0	0	0	-
+ara3d/Office_A_20110811.ifc	247	SweptSolid	0	44	0	0	0	-
+ara3d/Office_A_20110811.ifc	248	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	277	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	282	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	288	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	307	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	314	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	326	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	351	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	354	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	361	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	363	SweptSolid	0	28	0	0	0	-
+ara3d/Office_A_20110811.ifc	364	SweptSolid	0	180	0	0	0	-
+ara3d/Office_A_20110811.ifc	417	SweptSolid	0	122	0	0	0	-
+ara3d/Office_A_20110811.ifc	429	SweptSolid	0	32	0	0	0	-
+ara3d/Office_A_20110811.ifc	607	SweptSolid	0	122	0	0	0	-
+ara3d/Office_A_20110811.ifc	684	SweptSolid	0	122	0	0	0	-
+ara3d/Office_A_20110811.ifc	1028	SweptSolid	0	678	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	4172	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	5434	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	6155	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	14416	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	35182	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	36567	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	43442	SweptSolid	0	80	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	48600	SweptSolid	0	44	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	49149	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89022	unknown	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89141	SweptSolid	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89264	SweptSolid	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89384	SweptSolid	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89504	SweptSolid	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	89624	SweptSolid	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	90617	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	91291	CSG	3	46	1	0	3	6
+ara3d/S_Office_Integrated Design Archi.ifc	91968	CSG	0	120	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	12	68	1	0	13	12
+ara3d/S_Office_Integrated Design Archi.ifc	93316	CSG	0	64	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	93990	CSG	0	108	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	99549	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	368885	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	414959	SweptSolid	0	40	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	415490	unknown	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	426329	CSG	0	496	0	0	6	-
+ara3d/S_Office_Integrated Design Archi.ifc	437170	CSG	6	380	0	0	0	6
+ara3d/S_Office_Integrated Design Archi.ifc	448019	CSG	90	1034	0	0	89	164
+ara3d/S_Office_Integrated Design Archi.ifc	458857	CSG	78	1062	0	0	80	78
+ara3d/S_Office_Integrated Design Archi.ifc	469706	CSG	51	1077	0	0	61	51
+ara3d/S_Office_Integrated Design Archi.ifc	489748	SweptSolid	0	40	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	495955	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	496628	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503263	unknown	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503302	SweptSolid	0	172	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503345	SweptSolid	0	172	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503385	SweptSolid	0	172	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503425	SweptSolid	0	172	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	503482	SweptSolid	0	172	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	543063	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	639833	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	670546	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	701210	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	704150	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	719862	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	722750	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	723436	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	724125	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	724811	CSG	3	81	0	0	3	3
+ara3d/S_Office_Integrated Design Archi.ifc	725497	CSG	7	185	0	0	7	12
+ara3d/S_Office_Integrated Design Archi.ifc	726183	CSG	0	212	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	726869	CSG	0	212	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	730647	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	753197	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	763256	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	763898	CSG	0	122	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	764543	CSG	0	124	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	765185	CSG	0	118	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	765827	CSG	0	64	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	766469	CSG	0	112	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	767111	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	767445	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	768209	CSG	0	224	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	768976	CSG	0	232	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	769740	CSG	0	280	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	770504	CSG	0	100	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	771268	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	772032	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	803290	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	832090	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	832800	CSG	0	224	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	833513	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	834223	CSG	0	200	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	834933	CSG	0	100	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	835643	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	836353	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857637	unknown	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857676	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857719	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857759	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857799	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	857839	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	866873	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	867376	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	868018	CSG	0	122	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	868663	CSG	0	124	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	869305	CSG	0	118	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	869947	CSG	0	64	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	870589	CSG	0	108	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	871231	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	902095	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	903633	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	904243	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	904620	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	905288	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	905959	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	906627	CSG	6	82	0	0	6	6
+ara3d/S_Office_Integrated Design Archi.ifc	907295	CSG	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	907963	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	908631	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	909123	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	909362	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	909877	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	910230	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	910609	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	912366	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	918017	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	918355	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	929798	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	930704	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	951036	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	951723	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	952413	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	137	1	0	3	3
+ara3d/S_Office_Integrated Design Archi.ifc	953787	CSG	0	116	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	16	228	0	0	16	13
+ara3d/S_Office_Integrated Design Archi.ifc	955161	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	955764	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	969935	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	970645	CSG	0	224	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	971358	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	972068	CSG	0	200	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	972778	CSG	0	100	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	973488	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974198	CSG	0	196	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974760	unknown	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974799	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974842	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974882	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974922	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	974962	SweptSolid	0	156	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	976762	Curve2D	0	0	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	977404	CSG	0	120	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	978049	CSG	0	120	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	978691	CSG	0	114	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	979333	CSG	0	60	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	979975	CSG	0	114	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	980617	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	986525	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	987406	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	997903	SweptSolid	0	36	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	998325	SweptSolid	0	52	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	1001521	SweptSolid	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	1001906	SweptSolid	0	32	0	0	0	-
+ara3d/advanced_model.ifc	552611	SweptSolid	0	158	0	0	0	-
+ara3d/advanced_model.ifc	552761	SweptSolid	0	168	0	0	0	-
+ara3d/advanced_model.ifc	552894	SweptSolid	0	104	0	0	0	-
+ara3d/advanced_model.ifc	553010	Clipping	0	82	0	0	0	-
+ara3d/advanced_model.ifc	555082	SweptSolid	0	88	0	0	0	-
+ara3d/advanced_model.ifc	555224	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	555268	SweptSolid	0	124	0	0	0	-
+ara3d/advanced_model.ifc	555433	SweptSolid	0	172	0	0	0	-
+ara3d/advanced_model.ifc	555613	Clipping	0	90	0	0	0	-
+ara3d/advanced_model.ifc	555770	Clipping	0	56	0	0	0	-
+ara3d/advanced_model.ifc	555985	SweptSolid	0	184	0	0	0	-
+ara3d/advanced_model.ifc	556264	SweptSolid	0	192	0	0	0	-
+ara3d/advanced_model.ifc	559034	SweptSolid	0	88	0	0	0	-
+ara3d/advanced_model.ifc	559171	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	559270	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	559314	SweptSolid	0	52	0	0	0	-
+ara3d/advanced_model.ifc	561445	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	563598	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	563980	SweptSolid	0	156	0	0	0	-
+ara3d/advanced_model.ifc	612062	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	612150	SweptSolid	0	124	0	0	0	-
+ara3d/advanced_model.ifc	612315	SweptSolid	0	128	0	0	0	-
+ara3d/advanced_model.ifc	612436	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	632450	Clipping	0	126	0	0	0	-
+ara3d/advanced_model.ifc	636693	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	636774	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	636818	SweptSolid	0	52	0	0	0	-
+ara3d/advanced_model.ifc	636995	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	637271	SweptSolid	0	76	0	0	0	-
+ara3d/advanced_model.ifc	637377	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	637697	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	637785	SweptSolid	0	60	0	0	0	-
+ara3d/advanced_model.ifc	637873	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	637917	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	646621	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	646665	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	650657	SweptSolid	0	68	0	0	0	-
+ara3d/advanced_model.ifc	650761	SweptSolid	0	76	0	0	0	-
+ara3d/advanced_model.ifc	650893	SweptSolid	0	56	0	0	0	-
+ara3d/advanced_model.ifc	651604	SweptSolid	0	76	0	0	0	-
+ara3d/advanced_model.ifc	674148	SweptSolid	0	76	0	0	0	-
+ara3d/advanced_model.ifc	679345	SweptSolid	0	140	0	0	0	-
+ara3d/advanced_model.ifc	694436	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	737480	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	737716	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	737804	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	737892	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	737936	SweptSolid	0	156	0	0	0	-
+ara3d/advanced_model.ifc	738205	SweptSolid	0	92	0	0	0	-
+ara3d/advanced_model.ifc	738433	SweptSolid	0	1860	0	0	0	-
+ara3d/advanced_model.ifc	739014	SweptSolid	0	1832	0	0	0	-
+ara3d/advanced_model.ifc	797099	SweptSolid	0	192	0	0	0	-
+ara3d/advanced_model.ifc	797102	SweptSolid	0	192	0	0	0	-
+ara3d/advanced_model.ifc	797108	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	797111	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	797114	SweptSolid	0	464	0	0	0	-
+ara3d/advanced_model.ifc	797120	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	797123	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	797126	SweptSolid	0	604	0	0	0	-
+ara3d/advanced_model.ifc	797129	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	798479	SweptSolid	0	612	0	0	0	-
+ara3d/advanced_model.ifc	798926	SweptSolid	0	2900	0	0	0	-
+ara3d/advanced_model.ifc	799400	SweptSolid	0	604	0	0	0	-
+ara3d/advanced_model.ifc	799566	SweptSolid	0	604	0	0	0	-
+ara3d/advanced_model.ifc	799732	SweptSolid	0	604	0	0	0	-
+ara3d/advanced_model.ifc	800371	SweptSolid	0	604	0	0	0	-
+ara3d/advanced_model.ifc	800374	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800377	SweptSolid	0	464	0	0	0	-
+ara3d/advanced_model.ifc	800380	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800383	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800389	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800395	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800398	SweptSolid	0	308	0	0	0	-
+ara3d/advanced_model.ifc	800410	SweptSolid	0	340	0	0	0	-
+ara3d/advanced_model.ifc	800413	SweptSolid	0	160	0	0	0	-
+ara3d/advanced_model.ifc	800416	SweptSolid	0	372	0	0	0	-
+ara3d/advanced_model.ifc	800422	SweptSolid	0	324	0	0	0	-
+ara3d/advanced_model.ifc	801940	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	801984	SweptSolid	0	44	0	0	0	-
+ara3d/advanced_model.ifc	806064	SweptSolid	0	28	0	0	0	-
+ara3d/advanced_model.ifc	806149	SweptSolid	0	508	0	0	0	-
+ara3d/advanced_model.ifc	815104	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	94	SweptSolid	0	232	0	0	0	-
+ara3d/dental_clinic.ifc	95	SweptSolid	0	172	0	0	0	-
+ara3d/dental_clinic.ifc	101	SweptSolid	0	128	0	0	0	-
+ara3d/dental_clinic.ifc	146	SweptSolid	0	192	0	0	0	-
+ara3d/dental_clinic.ifc	156	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	157	SweptSolid	0	92	0	0	0	-
+ara3d/dental_clinic.ifc	159	SweptSolid	0	108	0	0	0	-
+ara3d/dental_clinic.ifc	163	SweptSolid	0	128	0	0	0	-
+ara3d/dental_clinic.ifc	166	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	167	Clipping	10	192	0	0	10	0
+ara3d/dental_clinic.ifc	169	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	175	Clipping	0	168	0	0	0	-
+ara3d/dental_clinic.ifc	180	Clipping	0	168	0	0	0	-
+ara3d/dental_clinic.ifc	184	SweptSolid	0	92	0	0	0	-
+ara3d/dental_clinic.ifc	195	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	196	SweptSolid	0	64	0	0	0	-
+ara3d/dental_clinic.ifc	202	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	203	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	205	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	206	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	207	Clipping	8	278	0	0	8	0
+ara3d/dental_clinic.ifc	212	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	213	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	214	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	215	SweptSolid	0	68	0	0	0	-
+ara3d/dental_clinic.ifc	216	SweptSolid	0	92	0	0	0	-
+ara3d/dental_clinic.ifc	217	SweptSolid	0	26	0	0	0	-
+ara3d/dental_clinic.ifc	218	SweptSolid	0	20	0	0	0	-
+ara3d/dental_clinic.ifc	231	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	232	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	233	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	234	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	235	SweptSolid	0	112	0	0	0	-
+ara3d/dental_clinic.ifc	236	SweptSolid	0	72	0	0	0	-
+ara3d/dental_clinic.ifc	248	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	249	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	262	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	263	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	264	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	265	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	266	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	269	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	270	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	271	Clipping	0	72	0	0	0	-
+ara3d/dental_clinic.ifc	272	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	273	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	284	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	285	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	286	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	287	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	288	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	297	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	298	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	299	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	300	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	301	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	302	SweptSolid	0	72	0	0	0	-
+ara3d/dental_clinic.ifc	303	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	319	Clipping	0	38	0	0	0	-
+ara3d/dental_clinic.ifc	320	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	321	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	322	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	323	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	324	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	325	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	326	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	327	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	329	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	349	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	350	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	351	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	352	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	353	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	354	SweptSolid	0	60	0	0	0	-
+ara3d/dental_clinic.ifc	355	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	356	SweptSolid	0	52	0	0	0	-
+ara3d/dental_clinic.ifc	357	SweptSolid	0	20	0	0	0	-
+ara3d/dental_clinic.ifc	360	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	361	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	375	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	376	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	377	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	378	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	379	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	380	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	381	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	424	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	425	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	426	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	427	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	428	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	429	SweptSolid	0	104	0	0	0	-
+ara3d/dental_clinic.ifc	430	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	431	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	432	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	434	SweptSolid	0	12	0	0	0	-
+ara3d/dental_clinic.ifc	437	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	438	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	439	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	475	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	481	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	482	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	483	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	484	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	488	SweptSolid	0	20	0	0	0	-
+ara3d/dental_clinic.ifc	490	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	491	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	507	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	522	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	523	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	524	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	525	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	526	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	527	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	528	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	529	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	530	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	531	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	532	Clipping	0	22	0	0	0	-
+ara3d/dental_clinic.ifc	542	Clipping	0	22	0	0	0	-
+ara3d/dental_clinic.ifc	545	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	584	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	590	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	591	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	592	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	593	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	594	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	595	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	596	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	597	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	598	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	599	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	600	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	601	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	627	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	628	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	675	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	686	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	696	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	697	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	698	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	699	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	700	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	701	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	702	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	703	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	704	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	736	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	804	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	825	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	827	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	828	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	829	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	830	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	831	Clipping	0	64	0	0	0	-
+ara3d/dental_clinic.ifc	872	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	931	SweptSolid	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	964	Clipping	0	30	0	0	0	-
+ara3d/dental_clinic.ifc	965	Clipping	0	30	0	0	0	-
+ara3d/dental_clinic.ifc	966	Clipping	0	30	0	0	0	-
+ara3d/dental_clinic.ifc	973	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	974	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	975	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	976	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	977	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	978	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	979	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	980	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	981	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	982	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	983	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	984	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	985	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	986	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	987	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	988	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	989	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	990	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	991	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	992	SweptSolid	0	54	0	0	0	-
+ara3d/dental_clinic.ifc	993	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	994	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	995	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	996	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	997	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	998	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	999	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1003	Clipping	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1022	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1085	Clipping	0	32	0	0	0	-
+ara3d/dental_clinic.ifc	1093	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1094	SweptSolid	0	36	0	0	0	-
+ara3d/dental_clinic.ifc	1096	SweptSolid	0	36	0	0	0	-
+ara3d/dental_clinic.ifc	1183	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1194	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1195	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1242	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1252	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1253	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1310	SweptSolid	0	164	0	0	0	-
+ara3d/dental_clinic.ifc	1311	Clipping	10	80	0	0	10	0
+ara3d/dental_clinic.ifc	1314	SweptSolid	0	58	0	0	0	-
+ara3d/dental_clinic.ifc	1331	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	1643	Clipping	0	30	0	0	0	-
+ara3d/dental_clinic.ifc	1673	Clipping	9	32	1	0	9	0
+ara3d/dental_clinic.ifc	1757	Clipping	3	28	1	0	3	0
+ara3d/dental_clinic.ifc	1831	SweptSolid	0	24	0	0	0	-
+ara3d/dental_clinic.ifc	1832	SweptSolid	0	24	0	0	0	-
+ara3d/dental_clinic.ifc	2093	SweptSolid	0	28	0	0	0	-
+ara3d/dental_clinic.ifc	2268	SweptSolid	0	48	0	0	0	-
+ara3d/dental_clinic.ifc	2269	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2270	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2275	SweptSolid	0	64	0	0	0	-
+ara3d/dental_clinic.ifc	2276	SweptSolid	0	76	0	0	0	-
+ara3d/dental_clinic.ifc	2278	SweptSolid	0	72	0	0	0	-
+ara3d/dental_clinic.ifc	2279	SweptSolid	0	68	0	0	0	-
+ara3d/dental_clinic.ifc	2280	SweptSolid	0	68	0	0	0	-
+ara3d/dental_clinic.ifc	2285	SweptSolid	0	548	0	0	0	-
+ara3d/dental_clinic.ifc	2286	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2287	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2288	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2289	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2290	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2291	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2292	SweptSolid	19	305	1	0	6	0
+ara3d/dental_clinic.ifc	2293	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2294	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2295	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2296	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2297	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2298	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2299	SweptSolid	0	44	0	0	0	-
+ara3d/dental_clinic.ifc	2300	SweptSolid	0	64	0	0	0	-
+ara3d/dental_clinic.ifc	2301	SweptSolid	6	634	0	0	6	0
+ara3d/dental_clinic.ifc	2302	SweptSolid	7	366	1	0	7	0
+ara3d/dental_clinic.ifc	2304	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2305	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2306	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2307	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2308	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2309	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2310	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2311	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2312	SweptSolid	0	56	0	0	0	-
+ara3d/dental_clinic.ifc	2313	SweptSolid	0	56	0	0	0	-
+ara3d/duplex.ifc	3797	SweptSolid	0	48	0	0	0	-
+ara3d/duplex.ifc	3999	SweptSolid	0	48	0	0	0	-
+ara3d/duplex.ifc	4043	SweptSolid	0	48	0	0	0	-
+ara3d/duplex.ifc	4087	SweptSolid	0	48	0	0	0	-
+ara3d/duplex.ifc	4219	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	4508	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	5448	SweptSolid	0	142	0	0	0	-
+ara3d/duplex.ifc	5498	SweptSolid	0	218	0	0	0	-
+ara3d/duplex.ifc	5548	SweptSolid	0	164	0	0	0	-
+ara3d/duplex.ifc	5598	SweptSolid	0	226	0	0	0	-
+ara3d/duplex.ifc	5642	SweptSolid	0	32	0	0	0	-
+ara3d/duplex.ifc	5687	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	5731	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	5903	SweptSolid	0	32	0	0	0	-
+ara3d/duplex.ifc	5948	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	5992	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	12574	SurfaceModel	89	292	0	0	89	70
+ara3d/duplex.ifc	12976	SurfaceModel	84	292	0	0	85	70
+ara3d/duplex.ifc	13331	SurfaceModel	89	292	0	0	89	70
+ara3d/duplex.ifc	13685	SurfaceModel	84	292	0	0	85	70
+ara3d/duplex.ifc	14040	SurfaceModel	89	292	0	0	89	70
+ara3d/duplex.ifc	14394	SurfaceModel	85	292	0	0	86	70
+ara3d/duplex.ifc	14749	SurfaceModel	89	292	0	0	89	70
+ara3d/duplex.ifc	15103	SurfaceModel	85	292	0	0	86	70
+ara3d/duplex.ifc	16261	SweptSolid	0	68	0	0	0	-
+ara3d/duplex.ifc	16802	SweptSolid	3	727	0	0	3	0
+ara3d/duplex.ifc	22475	unknown	0	0	0	0	0	-
+ara3d/duplex.ifc	22492	SweptSolid	0	60	0	0	0	-
+ara3d/duplex.ifc	35199	SweptSolid	0	28	0	0	0	-
+ara3d/duplex.ifc	35357	SweptSolid	0	28	0	0	0	-
+ara3d/schependomlaan.ifc	46535	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	49281	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	52348	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	72010	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	76629	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	80335	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	99074	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	101868	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	112392	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	115669	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	119854	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	125502	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	133655	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	136076	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	140907	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	143594	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	154792	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	159728	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	163917	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	169275	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	171696	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	178863	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	186163	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	188256	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	263912	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	270253	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	271891	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	311100	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	313863	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	315576	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	325984	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	338352	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	340160	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	345463	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	368479	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	401470	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	404402	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	409878	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	411995	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	415563	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	422700	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	424453	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	426206	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	435307	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	472665	SweptSolid	0	80	0	0	0	-
+ara3d/schependomlaan.ifc	534371	SweptSolid	0	12	0	0	0	-
+ara3d/schependomlaan.ifc	558010	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	562146	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	597457	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	605031	SweptSolid	0	40	0	0	0	-
+ara3d/schependomlaan.ifc	618431	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	640164	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	643860	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	668602	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	711509	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	717596	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	753581	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	766683	SweptSolid	0	12	0	0	0	-
+ara3d/schependomlaan.ifc	778605	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	783014	SweptSolid	0	40	0	0	0	-
+ara3d/schependomlaan.ifc	787207	SweptSolid	0	48	0	0	0	-
+ara3d/schependomlaan.ifc	820735	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	822589	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	826337	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	829534	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	876846	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	878050	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	879248	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	880446	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	967617	SweptSolid	0	0	0	0	0	-
+ara3d/schependomlaan.ifc	969938	SweptSolid	0	0	0	0	0	-
+ara3d/tested_sample_project.ifc	186	SweptSolid	0	192	0	0	0	-
+ara3d/tested_sample_project.ifc	294	SweptSolid	0	28	0	0	0	-
+buildingsmart/wall-with-opening-and-window.ifc	45	unknown	0	32	0	0	0	-
+ifc5/Hello_Wall_hello-wall.ifc	1222	SweptSolid	0	68	0	0	0	-
+ifcopenshell/faceted_brep_csg.ifc	1096640	CSG	0	58	0	0	0	-
+issues/1007_roof_brep_opening_winding.ifc	1112	Brep	0	98	0	0	0	-
+issues/218_IFC-test-lite.ifc	417	SweptSolid	8	72	0	0	8	8
+issues/821_TallBuilding.ifc	615	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	810	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	887	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	964	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	1297	Clipping	0	44	0	0	0	-
+issues/821_TallBuilding.ifc	1850	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	1926	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	2002	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	2078	Clipping	0	52	0	0	0	-
+issues/821_TallBuilding.ifc	2401	Clipping	0	68	0	0	0	-
+issues/821_TallBuilding.ifc	2477	Clipping	0	72	0	0	0	-
+issues/821_TallBuilding.ifc	11462	Clipping	0	44	0	0	0	-
+issues/832_opening_representations.ifc	50	SweptSolid	0	32	0	0	0	-
+issues/832_opening_representations.ifc	89	SweptSolid	0	36	0	0	0	-
+issues/832_opening_representations.ifc	128	SweptSolid	0	32	0	0	0	-
+issues/832_opening_representations.ifc	175	SweptSolid	0	28	0	0	0	-
+issues/832_opening_representations.ifc	222	SweptSolid	0	28	0	0	0	-
+issues/841_house_stack_overflow.ifc	96	SweptSolid	0	96	0	0	0	-
+issues/841_house_stack_overflow.ifc	144	SweptSolid	0	28	0	0	0	-
+issues/841_house_stack_overflow.ifc	192	SweptSolid	0	68	0	0	0	-
+issues/841_house_stack_overflow.ifc	240	SweptSolid	0	32	0	0	0	-
+issues/841_house_stack_overflow.ifc	336	SweptSolid	0	174	0	0	0	-
+issues/841_house_stack_overflow.ifc	384	SweptSolid	0	322	1	0	0	-
+issues/841_house_stack_overflow.ifc	432	SweptSolid	0	338	1	0	0	-
+issues/841_house_stack_overflow.ifc	528	SweptSolid	0	60	0	0	0	-
+issues/841_house_stack_overflow.ifc	576	SweptSolid	0	28	0	0	0	-
+issues/841_house_stack_overflow.ifc	768	SweptSolid	0	48	0	0	0	-
+issues/841_house_stack_overflow.ifc	914	SweptSolid	0	32	0	0	0	-
+issues/841_house_stack_overflow.ifc	1020	SweptSolid	0	40	0	0	0	-
+issues/841_house_stack_overflow.ifc	1070	SweptSolid	0	58	0	0	0	-
+issues/841_house_stack_overflow.ifc	1118	SweptSolid	0	60	0	0	0	-
+issues/841_house_stack_overflow.ifc	1166	SweptSolid	0	36	0	0	0	-
+issues/841_house_stack_overflow.ifc	1362	Clipping	0	92	0	0	0	-
+issues/841_house_stack_overflow.ifc	1878	Clipping	0	114	0	0	0	-
+issues/841_house_stack_overflow.ifc	2152	Clipping	55	236	1	0	6	4
+issues/841_house_stack_overflow.ifc	2797	Clipping	0	44	0	0	0	-
+issues/841_house_stack_overflow.ifc	3698	Clipping	0	68	0	0	0	-
+issues/841_house_stack_overflow.ifc	4148	Clipping	0	142	0	0	0	-
+issues/841_house_stack_overflow.ifc	4219	Clipping	0	52	0	0	0	-
+issues/841_house_stack_overflow.ifc	4267	SweptSolid	0	30	0	0	0	-
+issues/841_house_stack_overflow.ifc	4374	Clipping	0	62	0	0	0	-
+issues/841_house_stack_overflow.ifc	4897	Clipping	0	130	0	0	0	-
+issues/841_house_stack_overflow.ifc	5904	Clipping	0	124	0	0	0	-
+issues/841_house_stack_overflow.ifc	13928	SweptSolid	0	28	0	0	0	-
+issues/845_wall_elemented_case.ifc	130	SweptSolid	0	224	0	0	0	-
+issues/845_wall_elemented_case.ifc	133	SweptSolid	0	392	0	0	0	-
+issues/845_wall_elemented_case.ifc	145	SweptSolid	0	224	0	0	0	-
+issues/845_wall_elemented_case.ifc	146	SweptSolid	0	200	0	0	0	-
+issues/845_wall_elemented_case.ifc	148	unknown	0	0	0	0	0	-
+issues/853_slab_pocket.ifc	303	SweptSolid	0	260	0	0	0	-
+issues/953_trimmed_curve_cartesian_arc.ifc	1112	Brep	0	98	0	0	0	-
+issues/960_house_segmented_roof_clip.ifc	2152	Clipping	55	236	1	0	6	4
+issues/960_house_segmented_roof_clip.ifc	2797	Clipping	0	44	0	0	0	-
+issues/960_house_segmented_roof_clip.ifc	4148	Clipping	0	142	0	0	0	-
+issues/960_house_segmented_roof_clip.ifc	4374	Clipping	0	62	0	0	0	-
+issues/960_house_segmented_roof_clip.ifc	5904	Clipping	0	124	0	0	0	-
+issues/964_slab_arbitrary_profile_voids.ifc	6443	SweptSolid	111	322	0	0	113	64
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	430	SweptSolid	0	280	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	654	SweptSolid	0	284	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	857	SweptSolid	0	52	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1029	SweptSolid	0	128	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1183	SweptSolid	0	172	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1369	SweptSolid	0	204	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1536	SweptSolid	0	92	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1649	SweptSolid	0	32	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1691	SweptSolid	0	76	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1789	SweptSolid	0	496	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	1992	SweptSolid	0	32	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	2036	SweptSolid	0	588	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	2411	SweptSolid	0	1406	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	3051	SweptSolid	0	48	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	3110	SweptSolid	0	112	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	3394	Clipping	0	32	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	25758	SweptSolid	40	308	0	0	40	50
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	26830	SweptSolid	0	32	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	27921	Clipping	0	32	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	45444	SweptSolid	0	64	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	45708	SweptSolid	0	176	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	45774	Clipping	0	40	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	71367	SweptSolid	0	216	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	81962	SweptSolid	136	784	0	0	136	158
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	100256	SweptSolid	0	84	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	100536	SweptSolid	0	176	0	0	0	-
+various/01_Snowdon_Towers_Sample_Structural(1).ifc	124547	SweptSolid	0	968	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	74	SweptSolid	0	52	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	75	SweptSolid	0	76	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	77	SweptSolid	0	524	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	78	SweptSolid	0	240	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	90	SweptSolid	0	340	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	91	SweptSolid	0	84	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	92	SweptSolid	0	52	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	93	SweptSolid	0	58	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	94	SweptSolid	0	52	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	103	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	104	SweptSolid	0	48	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	105	SweptSolid	0	250	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	106	SweptSolid	0	84	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	107	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	108	SweptSolid	0	476	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	109	SweptSolid	0	158	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	110	SweptSolid	0	96	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	111	SweptSolid	0	28	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	112	SweptSolid	0	56	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	113	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	114	SweptSolid	0	164	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	115	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	116	SweptSolid	0	68	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	136	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	137	SweptSolid	0	128	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	138	SweptSolid	0	180	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	139	SweptSolid	0	48	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	140	SweptSolid	0	194	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	141	SweptSolid	0	28	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	142	SweptSolid	0	56	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	143	SweptSolid	0	120	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	144	SweptSolid	0	172	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	145	SweptSolid	0	94	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	146	SweptSolid	0	40	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	179	SweptSolid	0	136	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	180	SweptSolid	0	124	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	181	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	182	SweptSolid	0	128	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	183	SweptSolid	0	28	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	214	SweptSolid	0	32	0	0	0	-
+various/02_BIMcollab_Example_STR_random_C_ebkp.ifc	276	SweptSolid	0	72	0	0	0	-
+various/issue-604-door.ifc	55	SweptSolid	0	28	0	0	0	-
+various/rvt01.ifc	5941	Tessellation	78	240	0	1	81	11
+various/rvt01.ifc	6073	Tessellation	58	213	0	1	69	0
+various/rvt01.ifc	6163	SweptSolid	19	69	0	1	19	0
+various/rvt01.ifc	6243	SweptSolid	48	118	0	1	63	8
+various/rvt01.ifc	6305	SweptSolid	104	228	0	1	97	8
+various/rvt01.ifc	6420	SweptSolid	65	143	0	1	72	6
+various/rvt01.ifc	6511	SweptSolid	70	152	0	1	61	6
+various/rvt01.ifc	6588	SweptSolid	53	113	0	1	53	0
+various/rvt01.ifc	6724	SweptSolid	50	190	0	1	51	8
+various/rvt01.ifc	6810	SweptSolid	84	198	0	1	86	27
+various/rvt01.ifc	6934	SweptSolid	23	89	0	1	29	0
+various/rvt01.ifc	7013	SweptSolid	60	167	0	1	50	8
+various/rvt01.ifc	7075	SweptSolid	78	216	0	1	67	8
+various/rvt01.ifc	7137	SweptSolid	40	149	0	1	43	0
+various/rvt01.ifc	7216	SweptSolid	39	129	0	1	37	0
+various/rvt01.ifc	7295	SweptSolid	65	100	0	1	42	6
+various/rvt01.ifc	7403	Tessellation	11	41	0	1	11	3
+various/rvt01.ifc	7544	SweptSolid	99	192	1	1	91	8
+various/rvt01.ifc	7700	SweptSolid	61	92	0	1	69	0
+various/rvt01.ifc	7834	SweptSolid	87	195	0	1	91	16
+various/rvt01.ifc	8881	SweptSolid	70	176	0	1	44	8
+various/rvt01.ifc	8997	SweptSolid	86	174	0	1	76	26
+various/rvt01.ifc	9058	SweptSolid	91	176	0	1	94	8
+various/rvt01.ifc	9229	SweptSolid	72	175	0	1	79	8
+various/rvt01.ifc	9400	SweptSolid	55	167	0	1	61	0
+various/rvt01.ifc	9730	SweptSolid	50	114	0	1	57	8
+various/rvt01.ifc	9901	SweptSolid	45	97	0	1	48	8
+various/rvt01.ifc	10191	Tessellation	13	29	0	1	14	0
+various/rvt01.ifc	10335	Tessellation	9	9	0	1	7	0
+various/rvt01.ifc	10526	Tessellation	29	59	0	1	29	0
+various/rvt01.ifc	10632	Tessellation	19	117	0	1	17	0
+various/rvt01.ifc	11110	Tessellation	0	4	0	1	3	-
+various/rvt01.ifc	11168	Tessellation	26	66	0	1	23	0
+various/rvt01.ifc	11232	Tessellation	14	56	0	1	14	6
+various/rvt01.ifc	11304	Tessellation	7	27	0	1	7	0
+various/rvt01.ifc	11477	Tessellation	0	0	0	1	7	-
+various/rvt01.ifc	11563	Tessellation	15	15	0	1	11	0
+various/rvt01.ifc	11627	Tessellation	46	54	0	1	17	3
+various/rvt01.ifc	11690	Tessellation	26	82	0	1	26	6
+various/rvt01.ifc	11753	Tessellation	6	2	0	1	9	0
+various/rvt01.ifc	11803	SweptSolid	26	52	0	1	22	0
+various/rvt01.ifc	12235	SweptSolid	13	33	0	1	13	0
+various/rvt01.ifc	12345	SweptSolid	5	67	0	1	5	0
+various/rvt01.ifc	12449	Tessellation	44	145	1	1	48	9
+various/rvt01.ifc	13735	SweptSolid	52	161	0	1	38	8
+various/rvt01.ifc	13797	Tessellation	161	374	1	1	115	42
+various/rvt01.ifc	14014	SweptSolid	49	164	0	1	41	8
+various/rvt01.ifc	14132	SweptSolid	79	156	0	1	70	8
+various/rvt01.ifc	14194	SweptSolid	64	159	0	1	68	8
+various/rvt01.ifc	14256	SweptSolid	55	173	0	1	61	0
+various/rvt01.ifc	14447	SweptSolid	47	225	0	1	50	0
+various/rvt01.ifc	14638	SweptSolid	50	140	0	1	50	8
+various/rvt01.ifc	14797	SweptSolid	40	134	0	1	40	0
+various/rvt01.ifc	15020	SweptSolid	62	156	0	1	63	8
+various/rvt01.ifc	15301	SweptSolid	69	188	0	1	72	8
+various/rvt01.ifc	15857	SweptSolid	61	178	0	1	67	12
+various/rvt01.ifc	15917	SweptSolid	64	187	0	1	83	16
+various/rvt01.ifc	16231	SweptSolid	45	100	0	1	42	0
+various/rvt01.ifc	16286	SweptSolid	53	130	1	1	66	8
+various/rvt01.ifc	16805	SweptSolid	45	95	0	1	39	8
+various/rvt01.ifc	17553	Tessellation	4	10	0	1	4	0
+various/rvt01.ifc	17615	Tessellation	20	44	0	1	20	0
+various/rvt01.ifc	17919	Tessellation	9	45	0	1	16	0
+various/rvt01.ifc	17985	Tessellation	40	52	0	1	34	0
+various/rvt01.ifc	18169	SweptSolid	78	135	1	1	73	8
+various/rvt01.ifc	21999	SweptSolid	0	40	0	1	0	-
+various/rvt01.ifc	25694	Tessellation	15	105	0	1	15	0
+various/rvt01.ifc	25914	SweptSolid	38	154	0	1	38	0
+various/rvt01.ifc	26166	Tessellation	36	96	0	1	32	0
+various/rvt01.ifc	26300	Tessellation	63	103	1	1	57	0
+various/rvt01.ifc	26610	Tessellation	18	58	0	1	18	0
+various/rvt01.ifc	26681	Tessellation	32	142	0	1	24	0
+various/rvt01.ifc	26832	Tessellation	11	17	0	1	11	0
+various/rvt01.ifc	30054	Tessellation	11	41	0	1	11	0
+various/rvt01.ifc	30125	Tessellation	13	39	0	1	6	0
+various/rvt01.ifc	30518	Tessellation	59	215	0	1	39	0
+various/rvt01.ifc	31083	Tessellation	28	42	0	1	17	0
+various/rvt01.ifc	31156	Tessellation	41	125	0	1	40	0
+various/rvt01.ifc	31323	Tessellation	0	8	0	1	0	-
+various/rvt01.ifc	31430	Tessellation	17	41	0	1	14	0
+various/rvt01.ifc	31577	Tessellation	11	41	0	1	11	0
+various/rvt01.ifc	31648	Tessellation	13	39	0	1	6	0
+various/rvt01.ifc	32081	SweptSolid	62	175	1	1	52	0
+various/rvt01.ifc	33639	SweptSolid	168	214	0	1	169	24
+various/rvt01.ifc	37278	Tessellation	4	16	0	1	5	0
+various/rvt01.ifc	37347	Tessellation	49	106	0	1	46	0
+various/rvt01.ifc	37455	Tessellation	66	145	1	1	57	3
+various/rvt01.ifc	37570	SweptSolid	3	75	0	1	3	0
+various/rvt01.ifc	38680	Tessellation	32	84	0	1	34	0
+various/rvt01.ifc	38745	SweptSolid	22	44	0	1	22	0
+various/rvt01.ifc	38800	SweptSolid	72	201	1	1	95	14

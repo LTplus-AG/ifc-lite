@@ -7,6 +7,7 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 import { findClampAnchorY } from './clamp-anchor';
 import { computeModelCenterInIfcMeters } from './reproject';
+import { effectiveMapConversionForGeometry } from './map-absolute';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
 
 export function getMapUnitScale(
@@ -147,12 +148,19 @@ export function computeOrthogonalHeightForBaseAltitude({
   storeyElevations,
   targetBaseAltitude,
 }: OrthogonalHeightForBaseAltitudeInput): number {
+  // `originalBounds` is ALREADY in the world frame (see the producer contract
+  // note on `computeModelCenterInIfcMeters` in reproject.ts), so `anchorY`
+  // below is already world-frame. Subtracting `originShift` again here would
+  // double-count it: this mirrors `ifcOriginHeight = orthogonalHeight*scale +
+  // computeModelCenterInIfcMeters(coordinateInfo).ifcZ`, whose `ifcZ` already
+  // folds the shift back into `shiftedBounds` (which cancels against this
+  // function's `originalBounds` read) plus the RTC offset — so only the RTC
+  // offset still needs folding in here, not the shift a second time.
   const bounds = coordinateInfo?.originalBounds;
   const anchorY = findClampAnchorY(bounds, storeyElevations);
-  const shiftY = coordinateInfo?.originShift?.y ?? 0;
   // RTC offset is stored in IFC Z-up; viewer-Y aligns to its Z component.
   const rtcYupY = coordinateInfo?.wasmRtcOffset?.z ?? 0;
-  const orthogonalHeightMeters = targetBaseAltitude - shiftY - rtcYupY - anchorY;
+  const orthogonalHeightMeters = targetBaseAltitude - rtcYupY - anchorY;
 
   return Math.round(
     metersToMapUnits(orthogonalHeightMeters, projectedCRS, lengthUnitScale) * 100,
@@ -284,4 +292,65 @@ export function projectedDeltaToViewerDelta(
     x: (abscissa * eastMeters + ordinate * northMeters) / denom,
     z: (ordinate * eastMeters - abscissa * northMeters) / denom,
   };
+}
+
+/**
+ * {@link viewerDeltaToProjectedDelta} routed through the map-absolute guard
+ * (#2526), for the placement gizmo's drag math.
+ *
+ * A delta has no offsets to double-apply — the guard's zeroed
+ * eastings/northings are inert here because the delta formulas read only the
+ * axis pair and scale. What a "neutralised conversion" means for a DELTA is
+ * the identity ROTATION: map-absolute geometry's viewer axes ARE the map
+ * axes, so a drag along viewer +X is a pure easting change, while the
+ * authored (double-georeferencing) axis would rotate the drag into the wrong
+ * E/N direction. For a compliant file the guard does not fire and the
+ * authored rotation applies exactly as in the raw function.
+ *
+ * Takes the FULL MapConversion (offsets included) because the guard's
+ * detection compares the declared anchor against the geometry centre.
+ */
+export function viewerDeltaToProjectedDeltaForGeometry(
+  deltaX: number,
+  deltaZ: number,
+  mapConversion: MapConversion,
+  projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): { eastings: number; northings: number } {
+  const conversion = effectiveMapConversionForGeometry(
+    mapConversion,
+    getMapUnitScale(projectedCRS, lengthUnitScale),
+    coordinateInfo,
+  );
+  return viewerDeltaToProjectedDelta(deltaX, deltaZ, conversion, projectedCRS, lengthUnitScale);
+}
+
+/**
+ * {@link projectedDeltaToViewerDelta} routed through the map-absolute guard
+ * (#2526) — the inverse counterpart of
+ * {@link viewerDeltaToProjectedDeltaForGeometry}, used by the gizmo's
+ * draft-offset preview. Both directions must route identically or the gizmo
+ * stops tracking the cursor for map-absolute files.
+ */
+export function projectedDeltaToViewerDeltaForGeometry(
+  eastingsDelta: number,
+  northingsDelta: number,
+  mapConversion: MapConversion,
+  projectedCRS: Pick<ProjectedCRS, 'mapUnitScale'> | undefined,
+  lengthUnitScale: number,
+  coordinateInfo: CoordinateInfo | undefined,
+): { x: number; z: number } {
+  const conversion = effectiveMapConversionForGeometry(
+    mapConversion,
+    getMapUnitScale(projectedCRS, lengthUnitScale),
+    coordinateInfo,
+  );
+  return projectedDeltaToViewerDelta(
+    eastingsDelta,
+    northingsDelta,
+    conversion,
+    projectedCRS,
+    lengthUnitScale,
+  );
 }

@@ -11,14 +11,28 @@ data.ts                 - shared content (catalog, clients, recipes, snippets)
 types.ts                - typed shapes for the shared content
 use-mcp-page.ts         - useFonts / useCopyToClipboard / useDocumentMeta helpers
 McpLanding.tsx          - the shipped /mcp landing page ("Stage": cinematic dark)
-HeroScene.tsx           - the animated Three.js IFC hero driven by McpLanding
+HeroScene.tsx           - React half of the hero: HERO_STEPS data + the mount
+hero-scene.ts           - hero scene factory: renderer, lights, animation loop
+hero-scene-building.ts  - hero building geometry, section prop, BCF pin sprite
+hero-scene-steps.ts     - the twelve-step story arc (update(step))
 McpPlayground.tsx       - the /mcp/playground route (in-browser IFC + BYOK chat)
 playground-dispatcher.ts- browser tool dispatcher backing the playground
 playground-files.ts     - playground sample/file plumbing
 playground-uploads.ts   - playground upload handling
 PlaygroundChat.tsx      - BYOK Anthropic chat UI for the playground
-PlaygroundViewer.tsx    - inline Three.js viewer for the playground
+PlaygroundViewer.tsx    - React half of the playground viewer + geometry loading
+playground-viewer-types.ts - ViewerController / SceneHandle interfaces
+playground-scene.ts     - playground scene factory: renderer, picking, handle
+playground-scene-registry.ts - one mesh + lookup maps per IFC entity
+playground-scene-ops.ts - colorize / isolate / hide / show / reset
+playground-scene-view.ts- camera framing + section planes
+useThreeScene.ts        - the guarded mount both three.js surfaces use (#2401)
+three-webgl-support.ts  - WebGL probe + session latch behind useThreeScene
 ```
+
+Both `createScene` factories are unreachable from the test suites: happy-dom
+has no WebGL, so neither ever executes in CI. Changes inside them are verified
+by typecheck and by reading, not by tests.
 
 The catalog is read from `apps/viewer/src/generated/mcp-catalog.json`,
 currently hand-seeded with the real shape of the v0.1 surface. A future

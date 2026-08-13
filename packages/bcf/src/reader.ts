@@ -31,6 +31,7 @@ import type {
   BCFBimSnippet,
   BCFHeaderFile,
 } from './types.js';
+import { parseFiniteFloat } from './numeric.js';
 
 /**
  * Resource caps guarding against a malicious (zip-bomb) .bcfzip: a tiny
@@ -468,7 +469,10 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
   const match = content.match(/<BimSnippet\s+SnippetType="([^"]+)"[^>]*>([\s\S]*?)<\/BimSnippet>/);
   if (!match) return undefined;
 
-  const isExternalMatch = match[0].match(/isExternal="([^"]+)"/);
+  // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
+  // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
+  // casing so a spec-correct 3.0 file's flag isn't silently read as false.
+  const isExternalMatch = match[0].match(/\b[Ii]sExternal="([^"]+)"/);
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
@@ -482,22 +486,37 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
 
 /**
  * Extract document references from topic content
+ *
+ * BCF 2.1's `<DocumentReference>` carries `<ReferencedDocument>` plus an
+ * `isExternal` flag; BCF 3.0 replaced that with `<DocumentGuid>` (internal,
+ * into project.bcfp's Documents) or `<Url>` (external), and dropped
+ * `isExternal` entirely (buildingSMART/BCF-XML markup.xsd). Parse whichever
+ * shape is present rather than assuming 2.1, so a 3.0 file's document
+ * references aren't silently dropped.
  */
 function extractDocumentReferences(content: string): BCFDocumentReference[] {
   const refs: BCFDocumentReference[] = [];
-  const matches = content.matchAll(/<DocumentReference[^>]*>([\s\S]*?)<\/DocumentReference>/g);
+  // `(?![A-Za-z])` keeps 3.0's <DocumentReferences> CONTAINER from matching as
+  // if it were an entry: without it the container's opening tag pairs with the
+  // first entry's closing tag, and the first reference is only parsed
+  // correctly by accident of that overlap.
+  const matches = content.matchAll(/<DocumentReference(?![A-Za-z])[^>]*>([\s\S]*?)<\/DocumentReference>/g);
 
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
-    const isExternalMatch = match[0].match(/isExternal="([^"]+)"/);
+    const isExternalMatch = match[0].match(/\bisExternal="([^"]+)"/);
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
+    const documentGuid = extractElement(match[1], 'DocumentGuid');
+    const url = extractElement(match[1], 'Url');
     const description = extractElement(match[1], 'Description');
 
-    if (referencedDoc) {
+    if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalMatch?.[1] === 'true',
+        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' : undefined,
         referencedDocument: referencedDoc,
+        documentGuid,
+        url,
         description,
       });
     }
@@ -760,11 +779,17 @@ function parsePerspectiveCamera(content: string): BCFPerspectiveCamera | undefin
     return undefined;
   }
 
+  // Same treatment as the coordinates: an unusable scalar is a missing one.
+  // `fieldOfView` is converted to radians and handed to the viewer camera,
+  // and the parser already drops the whole camera when the element is absent.
+  const fov = parseFiniteFloat(fieldOfView);
+  if (fov === undefined) return undefined;
+
   return {
     cameraViewPoint: viewPoint,
     cameraDirection: direction,
     cameraUpVector: upVector,
-    fieldOfView: parseFloat(fieldOfView),
+    fieldOfView: fov,
   };
 }
 
@@ -786,11 +811,17 @@ function parseOrthogonalCamera(content: string): BCFOrthogonalCamera | undefined
     return undefined;
   }
 
+  // `viewToWorldScale` becomes the orthographic half-height, which is the
+  // value `getOrthoSize()` hands back into a saved viewpoint — so a
+  // non-finite one persists past the session if it is allowed in (#2461).
+  const scale = parseFiniteFloat(viewToWorldScale);
+  if (scale === undefined) return undefined;
+
   return {
     cameraViewPoint: viewPoint,
     cameraDirection: direction,
     cameraUpVector: upVector,
-    viewToWorldScale: parseFloat(viewToWorldScale),
+    viewToWorldScale: scale,
   };
 }
 
@@ -809,11 +840,24 @@ function parsePoint(content: string, elementName: string): BCFPoint | undefined 
     return undefined;
   }
 
-  return {
-    x: parseFloat(x),
-    y: parseFloat(y),
-    z: parseFloat(z),
-  };
+  // A coordinate that is not a real number is treated as a missing one.
+  // `parseFloat` has no out-of-band failure value — `"NaN"` parses to `NaN`
+  // and the well-formed literal `"1e999"` parses to `Infinity` — and from here
+  // the value reaches `Camera.setPosition`/`setTarget`, which store a pose
+  // verbatim by design. Once stored, a single non-finite coordinate spreads
+  // across the whole pose on the next gesture. Rejecting at the file boundary
+  // means it never gets there, and it costs no new branch: every caller
+  // already drops the thing it was parsing when a coordinate is missing
+  // (#2466).
+  const px = parseFiniteFloat(x);
+  const py = parseFiniteFloat(y);
+  const pz = parseFiniteFloat(z);
+
+  if (px === undefined || py === undefined || pz === undefined) {
+    return undefined;
+  }
+
+  return { x: px, y: py, z: pz };
 }
 
 /**

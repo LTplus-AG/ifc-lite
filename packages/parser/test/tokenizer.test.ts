@@ -152,3 +152,137 @@ describe('StepTokenizer.scanEntities (paren-matching scan)', () => {
     expect(scanSlow("#1=IFCWALL('a',$")).toEqual([]);
   });
 });
+
+describe('StepTokenizer and STEP comments', () => {
+  // A commented-out record is well-formed: it has its `#id`, its `=`, its
+  // uppercase type and its parenthesised arguments. So the #856 guard, which
+  // requires an `=` after `#<digits>`, accepts it, and only skipping the
+  // comment as a region rejects it. Real files ship elements commented out for
+  // a revision, and reviving one puts an entity the author deleted back into
+  // the model and into any file written from that model.
+  const cases = [
+    ['fast', scanFast],
+    ['slow', scanSlow],
+  ] as const;
+
+  for (const [name, scan] of cases) {
+    it(`${name}: does not yield a record that is commented out`, () => {
+      const src = ["#1=IFCWALL('a');", "/*#2=IFCWALL('b');*/", "#3=IFCWALL('c');"].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1, 3]);
+    });
+
+    it(`${name}: keeps line numbers correct when a record itself spans lines`, () => {
+      // Newlines inside a record, not inside a comment. Every multi-line test
+      // here put them in comments, which left the record case uncovered, and
+      // the slow scanner was double-counting the newlines between `#1=` and its
+      // type name: once while matching, once again when stepping past the
+      // record. A newline there is ordinary whitespace and legal.
+      const src = ["#1=", "IFCWALL('a');", "#2=IFCWALL('b');"].join('\n');
+      expect(scan(src).map((r) => [r.expressId, r.line])).toEqual([
+        [1, 1],
+        [2, 3],
+      ]);
+    });
+
+    it(`${name}: keeps line numbers correct across a multi-line comment`, () => {
+      // The skip has to count the newlines it jumps. Without that, records
+      // after a comment report a line number that is too low, and that only
+      // ever surfaces inside an error message about something else.
+      const src = ["#1=IFCWALL('a');", '/* two', 'three', 'four */', "#2=IFCWALL('b');"].join('\n');
+      expect(scan(src).map((r) => [r.expressId, r.line])).toEqual([
+        [1, 1],
+        [2, 5],
+      ]);
+    });
+
+    it(`${name}: stops at an unterminated comment rather than resuming inside it`, () => {
+      const src = ["#1=IFCWALL('a');", '/* never closed', "#2=IFCWALL('b');"].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1]);
+    });
+
+    it(`${name}: does not treat a lone slash as a comment`, () => {
+      // STEP values and unit expressions carry bare '/'. Skipping on one would
+      // swallow the rest of the file.
+      const src = ["#1=IFCWALL('a/b');", "#2=IFCWALL('c');"].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1, 2]);
+    });
+
+    it(`${name}: does not treat a slash-star inside a string literal as a comment`, () => {
+      // The one input that separated the two scanners. scanEntities used to
+      // leave position at the record's '(' and re-walk the body with no string
+      // state, which was harmless while an interior '#' merely failed the '='
+      // guard, and stopped being harmless once the loop also reacted to '/*':
+      // the slash-star below opened a comment and swallowed #2 and everything
+      // after it. scanEntities now steps past a matched record, as the Rust
+      // EntityScanner does, so the outer loop is never inside a DATA string.
+      const unterminated = ["#1=IFCWALL('a /* b');", "#2=IFCWALL('c');"].join('\n');
+      expect(scan(unterminated).map((r) => r.expressId)).toEqual([1, 2]);
+
+      // Same shape, with a later `*/` in a second literal. The failure mode
+      // there is a skip rather than a stop, so it needs its own input.
+      const closed = ["#1=IFCWALL('a /* b');", "#2=IFCWALL('z */ w');", "#3=IFCWALL('q');"].join('\n');
+      expect(scan(closed).map((r) => r.expressId)).toEqual([1, 2, 3]);
+    });
+
+    it(`${name}: a slash-star in a HEADER string does not open a comment`, () => {
+      // HEADER records carry no '#', so the outer loop walks them byte by byte
+      // and their string literals are the one place it reliably meets quoted
+      // text. An unterminated '/*' there used to take the whole DATA section
+      // with it, turning a legal file into an empty model.
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_DESCRIPTION(('rev /* pending'),'2;1');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1]);
+    });
+
+    it(`${name}: a HEADER slash-star closed later in DATA does not eat the records between`, () => {
+      // The nastier shape of the HEADER case, because it does not look broken.
+      // An unterminated comment yields nothing and is obvious; a comment that
+      // opens in a HEADER string and closes inside a later DATA string just
+      // drops the records in between, leaves a non-empty result, and so is
+      // accepted by callers that only check for emptiness.
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_NAME('plan /* draft.ifc','2024-01-01T00:00:00',(''),(''),'','','');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        "#2=IFCWALL('b');",
+        "#3=IFCWALL('note */ done');",
+        "#4=IFCWALL('d');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1, 2, 3, 4]);
+    });
+
+    it(`${name}: a record-shaped token inside a HEADER string is not a record`, () => {
+      const src = [
+        'ISO-10303-21;',
+        'HEADER;',
+        "FILE_DESCRIPTION(('see #12=IFCWALL(x) in the old revision'),'2;1');",
+        'ENDSEC;',
+        'DATA;',
+        "#1=IFCWALL('a');",
+        'ENDSEC;',
+        'END-ISO-10303-21;',
+      ].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([1]);
+    });
+
+    it(`${name}: does not nest, because ISO 10303-21 comments do not`, () => {
+      // The first `*/` closes the comment. Treating the inner `/*` as a new
+      // level would swallow #2.
+      const src = ['/* outer /* inner */', "#2=IFCWALL('b');"].join('\n');
+      expect(scan(src).map((r) => r.expressId)).toEqual([2]);
+    });
+  }
+});

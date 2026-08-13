@@ -198,6 +198,17 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(await bothAgree(els, [{ id: 'self', name: 'self', a: 'IfcBeam', mode: 'hard' }])).toBe(1);
   });
 
+  it('agrees on same-key exclusion (WASM has no key concept in its broad phase)', async () => {
+    // The Rust/WASM broad phase ingests only positions/indices/AABBs — it has no
+    // notion of durable `key`/`model`, so same-entity exclusion for the WASM
+    // engine relies entirely on the shared orchestrator's post-filter (see
+    // orchestrator.ts `elA.key === elB.key` check). This pins that the WASM
+    // engine agrees with TS (0 clashes) for two overlapping elements sharing a
+    // durable key, the way a split IFC5/USD entity would.
+    const els = [box('SAME', 'IfcWall', [0, 0, 0]), box('SAME', 'IfcWall', [0.2, 0, 0])];
+    expect(await bothAgree(els, [{ id: 'self', name: 'wall self-clash', a: 'IfcWall', mode: 'hard' }])).toBe(0);
+  });
+
   it('agrees across the full discipline matrix on a mixed model', async () => {
     const els = [
       box('w1', 'IfcWall', [0, 0, 0]),

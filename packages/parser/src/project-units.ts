@@ -20,6 +20,7 @@
 
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
 
 /** A resolved display unit: the symbol to render plus the factor that converts a
  *  value in this unit to its canonical SI base (`mm` → `1e-3`, `m³/h` → `1/3600`,
@@ -479,7 +480,10 @@ function conversionFactorScale(
  * Never throws: an absent/malformed assignment yields an empty {@link ProjectUnits}
  * (all measures then fall back to their SI default symbols).
  */
-export function extractProjectUnits(source: Uint8Array, entityIndex: EntityIndexLike): ProjectUnits {
+export function extractProjectUnits(
+  source: Uint8Array | IfcSourceBytes,
+  entityIndex: EntityIndexLike,
+): ProjectUnits {
   const byType = new Map<string, ResolvedUnit>();
   let monetary: ResolvedUnit | null = null;
 

@@ -8,6 +8,7 @@ import {
   verifyRoomToken,
   createRoomTokenAuthenticator,
 } from '../src/room-token.js';
+import type { Role } from '../src/auth.js';
 import { startCollabServer, MemoryPersistence } from '../src/server.js';
 
 const SECRET = 'test-secret-do-not-use-in-prod';
@@ -129,7 +130,8 @@ describe('POST /collab/token mint route', () => {
         body: JSON.stringify({ roomId: 'm/abc', role: 'editor' }),
       });
       expect(ok.status).toBe(200);
-      const { token, role } = await ok.json();
+      // The mint route replies `{ token, roomId, role, exp }` (room-token.ts).
+      const { token, role } = (await ok.json()) as { token: string; role: Role };
       expect(role).toBe('editor');
       const claims = verifyRoomToken(token, { secret: SECRET, room: 'm/abc' });
       expect(claims?.role).toBe('editor');

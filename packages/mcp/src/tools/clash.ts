@@ -55,34 +55,42 @@ async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> 
   const cached = meshCache.get(m);
   if (cached) return cached;
 
-  const bytes = await resolveIfcBytes(m);
-  ctx.progress.report(0.1, 'Tessellating model geometry', 1);
-  const gp = new GeometryProcessor();
-  try {
-    await gp.init();
-    if (ctx.signal.aborted) {
-      throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
+  return withIfcBytes(m, async (bytes) => {
+    ctx.progress.report(0.1, 'Tessellating model geometry', 1);
+    const gp = new GeometryProcessor();
+    try {
+      await gp.init();
+      if (ctx.signal.aborted) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
+      }
+      const result = await gp.process(bytes);
+      const meshes = result.meshes;
+      if (meshes.length === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.UNSUPPORTED_OPERATION,
+          message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
+          hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
+        });
+      }
+      meshCache.set(m, meshes);
+      return meshes;
+    } finally {
+      gp.dispose();
     }
-    const result = await gp.process(bytes);
-    const meshes = result.meshes;
-    if (meshes.length === 0) {
-      throw new ToolExecutionError({
-        code: ToolErrorCode.UNSUPPORTED_OPERATION,
-        message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-        hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
-      });
-    }
-    meshCache.set(m, meshes);
-    return meshes;
-  } finally {
-    gp.dispose();
-  }
+  });
 }
 
-/** Raw IFC bytes for meshing: prefer the in-memory source, fall back to disk. */
-async function resolveIfcBytes(m: LoadedModel): Promise<Uint8Array> {
-  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
-  if (m.filePath) return readFile(m.filePath);
+/**
+ * Run `fn` over the model's raw IFC bytes: prefer the in-memory source, fall
+ * back to disk.
+ *
+ * Scoped rather than returning the buffer (#2183): the wasm mesher is a genuine
+ * whole-file consumer, so the source really is materialised — but only for the
+ * duration of the call, so nothing but the meshes survives it.
+ */
+async function withIfcBytes<T>(m: LoadedModel, fn: (bytes: Uint8Array) => Promise<T>): Promise<T> {
+  if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
+  if (m.filePath) return fn(await readFile(m.filePath));
   throw new ToolExecutionError({
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message: 'Model has no in-memory source bytes and no file path to re-read for meshing.',

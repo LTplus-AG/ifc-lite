@@ -8,7 +8,7 @@
  */
 
 import { useState, useCallback, useMemo } from 'react';
-import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle } from 'lucide-react';
+import { Globe, MapPin, PenLine, Check, X, Search, ChevronRight, Mountain, AlertTriangle, Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { computeAngleToGridNorth, type GeoreferenceInfo, type MapConversion, type ProjectedCRS } from '@ifc-lite/parser';
@@ -26,6 +26,7 @@ import {
   mergeProjectedCRS,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
+import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
 
@@ -387,6 +388,20 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
     );
   }, [mergedConversion, mergedCRS?.mapUnitScale, lengthUnitScale]);
 
+  // Geometry already at absolute map coordinates AND a MapConversion repeating
+  // the same offset (#2526). `effectiveMapConversionForGeometry` has ALREADY
+  // neutralised the duplicate for every geometry consumer by the time this
+  // runs — this is the note that says so, and it fires on exactly the same
+  // predicate, so the panel can never disagree with the model on screen.
+  const doubleGeoref = useMemo(() => {
+    return detectDoubleGeoreference(
+      mergedConversion,
+      mergedCRS,
+      coordinateInfo,
+      lengthUnitScale ?? 1,
+    );
+  }, [mergedConversion, mergedCRS, coordinateInfo, lengthUnitScale]);
+
   const mapUnitSuffix = useMemo(() => {
     const mapUnit = mergedCRS?.mapUnit?.toUpperCase();
     if (!mapUnit) return 'm';
@@ -669,6 +684,56 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         )}
       </div>
 
+      {/* Doubly-georeferenced model (#2526). Informational, not a warning, and
+          deliberately without an action: the model on screen is already
+          correct — `effectiveMapConversionForGeometry` neutralised the
+          duplicated conversion before anything was placed. An alarm here would
+          tell the user their model is thousands of km out while they are
+          looking at it in the right place, and a "fix it" button would only
+          bake OUR substituted rotation into their authored data. Sits above the
+          collapsibles because it explains a difference between the file and the
+          view, which must not be hidden behind a collapsed section. */}
+      {doubleGeoref && (
+        <div className="px-3 py-2 border-b border-zinc-100 dark:border-zinc-900 bg-sky-50/60 dark:bg-sky-950/25">
+          <div className="flex items-start gap-1.5 text-[10px] text-sky-700 dark:text-sky-400">
+            <Info className="h-3 w-3 mt-0.5 shrink-0" />
+            <span className="leading-snug">
+              <strong>This model is georeferenced twice. ifc-lite corrected it.</strong>{' '}
+              The geometry already sits at map coordinates (E{' '}
+              {doubleGeoref.worldCenter.x.toFixed(0)} N {doubleGeoref.worldCenter.y.toFixed(0)}),
+              and this IfcMapConversion repeats the same offset. ifc-lite places the geometry
+              where it already is; a tool that applied the conversion on top would put the model{' '}
+              {formatApproxDistance(doubleGeoref.displacement)} away.
+              {/* The fingerprint matches on TRANSLATION, so when the file authors
+                  a rotation of its own we are choosing the orientation, not
+                  restating it. Say so rather than leaving it implicit. */}
+              {doubleGeoref.overridesAuthoredRotation && (
+                <>
+                  {' '}This file also authors a map rotation that cannot be reconciled with its own
+                  coordinates, so the model is placed grid-aligned. Check the orientation, and set
+                  Angle to Grid North by hand if it looks wrong.
+                </>
+              )}
+              {doubleGeoref.scaleForExport !== null && (
+                <>
+                  {' '}Its Scale is not applied either: on map-sized coordinates it would re-scale
+                  the model about the map origin.
+                </>
+              )}
+              {' '}The file&apos;s own values are shown below exactly as authored. The export is
+              worth fixing at source; to bake the correction in here,{' '}
+              {/* Zeroing the offsets is NOT enough when Scale is being
+                  overridden: a spec-strict consumer reading the exported file
+                  back would still multiply the map-sized coordinates by it. */}
+              {doubleGeoref.scaleForExport !== null
+                ? `set Eastings and Northings to 0, Angle to Grid North to 0, and Scale to ${trimFloat(doubleGeoref.scaleForExport)}`
+                : 'set Eastings and Northings to 0 and Angle to Grid North to 0'}
+              , then use Export IFC (with changes).
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* IfcProjectedCRS */}
       {mergedCRS && (
         <div>
@@ -719,7 +784,10 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
             <ChevronRight className={`h-3 w-3 text-teal-500 shrink-0 transition-transform ${conversionOpen ? 'rotate-90' : ''}`} />
             <MapPin className="h-3 w-3 text-teal-500 shrink-0" />
             <span className="font-bold text-[11px] text-zinc-700 dark:text-zinc-300 uppercase tracking-wide flex-1 text-left">Coordinate Operation</span>
-            {scaleMismatch && (
+            {/* A COMPENSATED scale deviation gets no warning glyph: nothing is
+                mis-sized here, and an amber flag on a non-problem is what made
+                the real defect in #2526 easy to miss. */}
+            {scaleMismatch && !scaleMismatch.compensated && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <AlertTriangle
@@ -751,16 +819,24 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
               <AngleRow angle={angleToGridNorth} editable={editable} onAngleChange={handleAngleChange} />
               <GeorefRow label="Scale" value={mergedConversion.scale} isNumber editable={editable} isMutated={isMutated('mapConversion', 'scale')} fieldEntity="mapConversion" fieldName="scale" onSave={v => handleSave('mapConversion', 'scale', v)} />
               {scaleMismatch && (
-                <div className="px-3 py-2 flex items-start gap-1.5 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20">
+                <div className={`px-3 py-2 flex items-start gap-1.5 text-[10px] leading-snug ${
+                  scaleMismatch.compensated
+                    ? 'text-zinc-500 dark:text-zinc-400 bg-zinc-50/60 dark:bg-zinc-900/40'
+                    : 'text-amber-600 dark:text-amber-400 bg-amber-50/50 dark:bg-amber-950/20'
+                }`}>
                   <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-                  <span className="leading-snug">
+                  <span>
                     <strong>Scale inconsistent with project/map units.</strong>{' '}
                     Per IFC schema, IfcMapConversion.Scale should bridge the unit
                     difference between the project length unit and map CRS unit.
                     Current Scale = {scaleMismatch.rawScale}; expected ≈{' '}
-                    {scaleMismatch.expectedScale.toPrecision(4)}. Geometry is
-                    being placed at {scaleMismatch.effectiveScale.toPrecision(4)}×
-                    its physical size — adjust Scale (or MapUnit) to fix.
+                    {scaleMismatch.expectedScale.toPrecision(4)}.{' '}
+                    {scaleMismatch.compensated
+                      ? `ifc-lite compensates and places the geometry at 1× — no action needed here, but a
+                         tool that follows the schema strictly will render this file at
+                         ${scaleMismatch.specEffectiveScale.toPrecision(4)}× its physical size.`
+                      : `Geometry is being placed at ${scaleMismatch.effectiveScale.toPrecision(4)}×
+                         its physical size — adjust Scale (or MapUnit) to fix.`}
                   </span>
                 </div>
               )}

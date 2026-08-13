@@ -37,10 +37,25 @@ export interface PlaneBasis {
 }
 
 /**
+ * The basis a normal that carries no usable direction degrades to: exactly
+ * what `planeBasis([0, 1, 0])` returns, i.e. the horizontal plane.
+ *
+ * Every other answer would either be non-orthonormal (a zero bitangent) or a
+ * pair matching no real plane at all, and `resolveSectionPlaneFrame` already
+ * settled the same question the same way for the clip uniform (#2442): a
+ * section normal that cannot be used degrades to a cardinal preset rather
+ * than propagating.
+ */
+function degenerateBasis(): PlaneBasis {
+  // Freshly built rather than a shared constant: `PlaneBasis` exposes mutable
+  // tuples, and this is a public export.
+  return { tangent: [0, 0, -1], bitangent: [1, 0, 0] };
+}
+
+/**
  * Derive an orthonormal in-plane basis (`tangent`, `bitangent`) from a
- * unit normal. Returns a basis even for non-unit input — the caller is
- * responsible for normalising `normal` if exact unit length matters
- * elsewhere.
+ * plane normal. Non-unit input is fine — the normal is normalised here, so
+ * only its *direction* is read.
  *
  * Properties guaranteed by the implementation (covered by tests):
  *   1. `tangent · normal ≈ 0` and `bitangent · normal ≈ 0`.
@@ -50,11 +65,36 @@ export interface PlaneBasis {
  *      the same `(tangent, bitangent)`. This is essential so the cap
  *      hatch doesn't rotate when state is reconstructed (e.g. on reload
  *      or when the renderer rebuilds resources).
+ *   5. Every component of both axes is finite, for every input.
+ *
+ * Normalising up front is what makes 3 and 5 true rather than aspirational
+ * (#2489). Before it, the function read the caller's magnitudes directly and
+ * every magnitude test below was therefore a test on *length* where the
+ * comment claimed an *angle*:
+ *   • A non-finite component sailed through both of them — `Infinity > 1e-9`
+ *     is true and `NaN < 1e-9` is false — and reached the divisions as
+ *     `Infinity / Infinity` / `NaN / NaN`. Both axes came back all-NaN and
+ *     went into the section gizmo's vertex buffer and the cap's lift-to-3D.
+ *   • The `|ny| < 0.9` reference-axis pick only measures the angle to Y when
+ *     `|normal| = 1`. `[10, 1, 0]` is 6° off horizontal but was routed down
+ *     the near-vertical fallback, flipping the hatch axis 180° purely
+ *     because the caller had not normalised.
+ *   • The `1e-9` tangent floor is a length, so a short-but-perfectly-valid
+ *     normal such as `[1e-12, 0, 0]` was declared degenerate and returned a
+ *     zero-length bitangent.
+ * A unit normal makes the cross product with the reference axis at least
+ * 0.43 long, so the fallback below is now reachable only for a normal with
+ * no direction at all.
  */
 export function planeBasis(normal: Vec3Tuple): PlaneBasis {
-  const nx = normal[0];
-  const ny = normal[1];
-  const nz = normal[2];
+  const nlen = Math.hypot(normal[0], normal[1], normal[2]);
+  // One total test covers both bad-input classes: `Math.hypot` returns NaN
+  // for a NaN component and Infinity for an infinite one (or for a finite
+  // magnitude that overflows), and neither is `> 0 && < Infinity`.
+  if (!(nlen > 0 && nlen < Infinity)) return degenerateBasis();
+  const nx = normal[0] / nlen;
+  const ny = normal[1] / nlen;
+  const nz = normal[2] / nlen;
 
   // Reference axis: Y-up unless the normal is nearly parallel to Y, in
   // which case fall back to X. The 0.9 threshold matches the gizmo's
@@ -71,9 +111,10 @@ export function planeBasis(normal: Vec3Tuple): PlaneBasis {
   let tz = nx * refY - ny * refX;
   let tlen = Math.hypot(tx, ty, tz);
   if (tlen < 1e-9) {
-    // Should never trigger given the threshold above, but keep the
-    // contract honest: any normal yields *some* basis.
-    tx = 1; ty = 0; tz = 0;
+    // Unreachable for a unit normal — the reference-axis pick above keeps
+    // this cross product at least 0.43 long — but kept so a future edit to
+    // the 0.9 threshold degrades instead of dividing by zero.
+    tx = 0; ty = 0; tz = -1;
     tlen = 1;
   }
   tx /= tlen; ty /= tlen; tz /= tlen;

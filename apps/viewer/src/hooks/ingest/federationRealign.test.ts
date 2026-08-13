@@ -209,7 +209,14 @@ function federation(): { models: Map<string, TestModel>; x: TestModel; a: TestMo
   );
   const a = model(
     [boxMesh(21, [7, 0, -3], [-1, 0, 4])],
-    coordinateInfo({ originShift: { x: 20, y: 0, z: -5 } }),
+    // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+    // invariant); realignFederationModels only round-trips this field
+    // opaquely (never reads it), but a fixture no producer could emit is
+    // still worth avoiding.
+    coordinateInfo({
+      originShift: { x: 20, y: 0, z: -5 },
+      shiftedBounds: { min: { x: -20, y: 0, z: 5 }, max: { x: -19, y: 1, z: 6 } },
+    }),
     georef({ eastings: 0, northings: 800 }),
   );
   const models = new Map<string, TestModel>([['X', x], ['A', a]]);

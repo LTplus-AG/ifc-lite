@@ -55,12 +55,12 @@ interface GoldenFixture {
 const FIXTURES: GoldenFixture[] = [
   {
     path: 'tests/models/various/01_BIMcollab_Example_ARC.ifc',
-    digest: '838895dd19709818c72698fac680c63ef8de250c237d9997e3d6c9bc077770cc',
+    digest: '8a304204199f80174343ca4eec723104b28b2198d7d1547234febf22e5524b6c',
     minPrimitives: 80,
   },
   {
     path: 'tests/models/ara3d/ISSUE_102_M3D-CON-CD.ifc',
-    digest: '364152e3a148c0b2a303285d31f3ac31866b009a0b7aa2263935631d67046d3e',
+    digest: 'afe3a887e44469b3043913aa3dfd7b785d6b85ddf3300fb5f6fc6ec2ce63de3e',
     minPrimitives: 400,
   },
 ];
@@ -128,7 +128,7 @@ function countPrimitives(result: ParseResult): number {
 
 describe('symbolic parse golden digests (#2183)', () => {
   for (const fixture of FIXTURES) {
-    it(`reproduces the pinned ParseResult for ${fixture.path}`, async () => {
+    it(`reproduces the pinned ParseResult for ${fixture.path}`, async (t) => {
       // AGENTS.md requires fixture-backed tests to SKIP, not throw, when the
       // fixture is absent — they are not committed, and CI fetches them via
       // `pnpm fixtures` before running. But a plain skip would also stay
@@ -143,7 +143,10 @@ describe('symbolic parse golden digests (#2183)', () => {
       );
       const abs = join(REPO_ROOT, fixture.path);
       if (!existsSync(abs)) {
-        console.warn(`skip: ${fixture.path} absent — run \`pnpm fixtures\``);
+        // t.skip() records a SKIP; a bare `return` records a PASS, which is
+        // how a fixture-less run silently looks green. It does not stop
+        // execution on its own, so the `return` stays.
+        t.skip(`${fixture.path} absent — run \`pnpm fixtures\``);
         return;
       }
       const result = await parseSymbolicAnnotations({ source: new Uint8Array(readFileSync(abs)) });

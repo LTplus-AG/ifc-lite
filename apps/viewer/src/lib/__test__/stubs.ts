@@ -21,6 +21,8 @@
  * in at runtime.
  */
 
+import { EMPTY_SOURCE_BYTES } from '@ifc-lite/parser';
+
 import type { reassignWallOpenings } from '../wall-opening-reassign.js';
 
 export interface OverlayEntity {
@@ -104,7 +106,7 @@ export class StubView {
  */
 export function makeStubDataStore(byType: Map<string, number[]> = new Map()): Parameters<typeof reassignWallOpenings>[0] {
   return {
-    source: new Uint8Array(),
+    source: EMPTY_SOURCE_BYTES,
     entityIndex: { byId: new Map(), byType },
   } as unknown as Parameters<typeof reassignWallOpenings>[0];
 }

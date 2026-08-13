@@ -63,6 +63,9 @@ function input(
     hiddenIds: null,
     isolatedIds: null,
     visibilityVersion: 0,
+    ghostExceptIds: null,
+    selectedIds: null,
+    ghostVersion: 0,
     ...over,
   };
 }
@@ -93,10 +96,40 @@ function glbVertexCount(glb: Uint8Array): number {
   return parseGlb(glb).accessors[0]?.count ?? 0;
 }
 
-/** SCALAR index accessor count / 3 = triangles actually packed into the GLB. */
+/** SCALAR index accessors / 3 = triangles actually packed into the GLB. */
 function glbTriangleCount(glb: Uint8Array): number {
-  const indices = parseGlb(glb).accessors.find((a) => a.type === 'SCALAR');
-  return indices ? indices.count / 3 : 0;
+  return parseGlb(glb).accessors
+    .filter((a) => a.type === 'SCALAR')
+    .reduce((n, a) => n + a.count / 3, 0);
+}
+
+/** Triangles per alpha bucket, keyed by the primitive's material alphaMode. */
+function glbTrianglesByMode(glb: Uint8Array): { opaque: number; blend: number } {
+  const json = parseGlb(glb) as unknown as {
+    accessors: Array<{ count: number; type: string }>;
+    materials?: Array<{ alphaMode?: string }>;
+    meshes: Array<{ primitives: Array<{ indices: number; material: number }> }>;
+  };
+  const out = { opaque: 0, blend: 0 };
+  for (const prim of json.meshes[0]?.primitives ?? []) {
+    const tris = json.accessors[prim.indices].count / 3;
+    if (json.materials?.[prim.material]?.alphaMode === 'BLEND') out.blend += tris;
+    else out.opaque += tris;
+  }
+  return out;
+}
+
+/** The alpha byte each vertex carries in COLOR_0. */
+function glbAlphas(glb: Uint8Array): number[] {
+  const dv = new DataView(glb.buffer, glb.byteOffset, glb.byteLength);
+  const jsonLen = dv.getUint32(12, true);
+  const json = JSON.parse(new TextDecoder().decode(glb.subarray(20, 20 + jsonLen)));
+  const view = json.bufferViews[json.accessors[2].bufferView];
+  const binStart = 20 + jsonLen + 8;
+  const bytes = glb.subarray(binStart + view.byteOffset, binStart + view.byteOffset + view.byteLength);
+  const out: number[] = [];
+  for (let i = 3; i < bytes.length; i += 4) out.push(bytes[i]);
+  return out;
 }
 
 describe('buildCesiumModelGLB — completeness (#2558)', () => {
@@ -249,5 +282,92 @@ describe('cesiumModelGLBKey', () => {
     const inp = input([mesh(1, 0)]);
 
     assert.equal(buildCesiumModelGLB(inp).key, cesiumModelGLBKey(inp));
+  });
+});
+
+
+describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
+  afterEach(() => {
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  });
+
+  /** A mesh with an explicit alpha, so the bucket split is observable. */
+  function meshWithAlpha(expressId: number, alpha: number): MeshData {
+    const m = mesh(expressId, 0) as unknown as { color: [number, number, number, number] };
+    m.color = [0.5, 0.5, 0.5, alpha];
+    return m as unknown as MeshData;
+  }
+
+  it('fades everything outside the X-Ray set, and only in alpha', () => {
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(
+      input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]) }),
+    );
+
+    const alphas = glbAlphas(glb);
+    // Mesh 1 is excepted (stays 255); mesh 2 ghosts to 0.12 * 255 = 31.
+    assert.deepEqual(alphas.slice(0, 3), [255, 255, 255], 'the excepted mesh keeps its alpha');
+    assert.deepEqual(alphas.slice(3, 6), [31, 31, 31], 'the rest drops to the ghost alpha');
+  });
+
+  it('routes ghosted geometry into a BLEND primitive, the opaque rest into its own', () => {
+    // Without this the alpha is inert: a glTF material with no alphaMode is
+    // OPAQUE per spec, and Cesium ignores COLOR_0 alpha entirely.
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(
+      input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]) }),
+    );
+
+    assert.deepEqual(glbTrianglesByMode(glb), { opaque: 1, blend: 1 });
+  });
+
+  it('exempts the selection from ghosting, as the renderer does', () => {
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(
+      input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set([1]), selectedIds: new Set([2]) }),
+    );
+
+    assert.deepEqual(glbAlphas(glb).slice(3, 6), [255, 255, 255], 'a selected mesh stays solid');
+  });
+
+  it('ghosts the INSTANCED half too when it is not excepted', () => {
+    setRenderer([mesh(3, 20)]);
+
+    const { glb } = buildCesiumModelGLB(
+      input([mesh(1, 0)], { ghostExceptIds: new Set([1]) }),
+    );
+
+    assert.deepEqual(glbTrianglesByMode(glb), { opaque: 1, blend: 1 });
+  });
+
+  it('changes nothing when no X-Ray is active', () => {
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(input([mesh(1, 0), mesh(2, 10)]));
+
+    assert.deepEqual(glbTrianglesByMode(glb), { opaque: 2, blend: 0 });
+    assert.ok(glbAlphas(glb).every((a) => a === 255));
+  });
+
+  it('keeps authored transparency (glass) in the blended primitive', () => {
+    // Not ghosting: an IfcSurfaceStyleRendering Transparency reaching the map.
+    // It was drawn solid before, because the single material was OPAQUE.
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(input([mesh(1, 0), meshWithAlpha(2, 0.4)]));
+
+    assert.deepEqual(glbTrianglesByMode(glb), { opaque: 1, blend: 1 });
+  });
+
+  it('changes the cache key when the X-Ray set changes', () => {
+    setRenderer([]);
+
+    assert.notEqual(
+      cesiumModelGLBKey(input([mesh(1, 0)], { ghostVersion: 1 })),
+      cesiumModelGLBKey(input([mesh(1, 0)])),
+    );
   });
 });

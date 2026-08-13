@@ -185,6 +185,10 @@ export function useCesiumModel({
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const storeIsolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
+  // X-Ray context (#2591). Everything NOT in this set fades; selection is
+  // exempt, matching the renderer.
+  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
+  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   // The GLB effect keys on this version, NOT on the Set references. The store
   // hands out a fresh Set on every visibility action, and the effect's cleanup
   // pulls the model off the globe — so keying on identity blanks the map for a
@@ -196,9 +200,23 @@ export function useCesiumModel({
   // changed, so a double-invoked render (StrictMode) returns the same version.
   const visibilityEpochsRef = useRef(new VisibilityEpochTracker());
   const visibilityVersion = visibilityEpochsRef.current.update(hiddenEntities, isolatedEntities);
+  // A second content-based epoch for the X-Ray set, for the same reason as the
+  // first: a fresh Set with equal content must not rebuild a multi-megabyte GLB.
+  const ghostEpochsRef = useRef(new VisibilityEpochTracker());
+  const ghostVersion = ghostEpochsRef.current.update(ghostExceptEntities, selectedEntityIds);
   // Read inside the deferred build, which runs long after the effect fired.
-  const visibilityRef = useRef({ hiddenIds: hiddenEntities, isolatedIds: isolatedEntities });
-  visibilityRef.current = { hiddenIds: hiddenEntities, isolatedIds: isolatedEntities };
+  const visibilityRef = useRef({
+    hiddenIds: hiddenEntities,
+    isolatedIds: isolatedEntities,
+    ghostExceptIds: ghostExceptEntities,
+    selectedIds: selectedEntityIds,
+  });
+  visibilityRef.current = {
+    hiddenIds: hiddenEntities,
+    isolatedIds: isolatedEntities,
+    ghostExceptIds: ghostExceptEntities,
+    selectedIds: selectedEntityIds,
+  };
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<CesiumModelPrimitive | null>(null);
@@ -250,6 +268,9 @@ export function useCesiumModel({
           hiddenIds: visibilityRef.current.hiddenIds,
           isolatedIds: visibilityRef.current.isolatedIds,
           visibilityVersion,
+          ghostExceptIds: visibilityRef.current.ghostExceptIds,
+          selectedIds: visibilityRef.current.selectedIds,
+          ghostVersion,
         };
         const key = cesiumModelGLBKey(glbInput);
         const cached = glbCacheRef.current;
@@ -360,7 +381,7 @@ export function useCesiumModel({
       cancelled = true;
       clearTimeout(deferTimer);
     };
-  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion, ghostVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the

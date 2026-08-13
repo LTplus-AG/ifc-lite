@@ -78,6 +78,9 @@ export { sumResidentGpuBytes } from './render-stats.js';
 // render the model outside this package's pipeline (the Cesium world view,
 // #2578) and so must reach the same verdict the viewport does.
 export { isEntityVisible } from './entity-visibility.js';
+// Alpha constants the Cesium world view must match, since it renders the model
+// through its own glTF pipeline rather than this one (#2591).
+export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
@@ -144,7 +147,7 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -1854,7 +1857,7 @@ export class Renderer {
         // through the transparent pipeline with no extra call sites — and avoids
         // building a Map over every element just to fade "the rest".
         const ghostExceptIds = options.ghostExceptIds ?? null;
-        const ghostAlpha = options.ghostAlpha ?? 0.12;
+        const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
         const hasGhost = ghostExceptIds != null;
         const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {

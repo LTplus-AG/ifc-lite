@@ -64,7 +64,22 @@ jobs:
 
       - name: Setup Rust
         # Pin to a master-branch SHA + explicit `toolchain: stable`;
-        # see docs.yml note for rationale.
+        # see docs.yml note for rationale on the pinning strategy.
+        #
+        # `toolchain: stable` here names what gets INSTALLED (and what
+        # `targets:` below adds the target std for) — it is NOT what actually
+        # compiles this crate. The repo's `rust-toolchain.toml` pins nightly,
+        # and rustup's per-directory toolchain file always wins over
+        # `rustup default` (which is all this action sets); every `cargo`
+        # invocation below runs on the pinned nightly regardless of this
+        # `stable` input. Confirmed locally: `rustup default stable` followed
+        # by `rustc --version` inside a checkout of this repo still reports
+        # the nightly pinned in rust-toolchain.toml, with rustup noting the
+        # override. See the CARGO_UNSTABLE_BUILD_STD env var on the "Build
+        # Server Binary" step below for the consequence: the aarch64/cross-arch
+        # target std was only ever installed for `stable`, never for the
+        # nightly that actually runs, so those targets need std rebuilt from
+        # source instead of relying on a prebuilt one that was never fetched.
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
         with:
           toolchain: stable
@@ -95,7 +110,22 @@ jobs:
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
-            cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            # See the "Setup Rust" step above: this actually runs on the
+            # nightly pinned by rust-toolchain.toml, not the `stable` named
+            # there, so cross-arch legs (linux-arm64, darwin-x64 on the
+            # arm64 macos-14 runner) need their target's std rebuilt from
+            # source — it was never installed for nightly. Was previously
+            # papered over by a global `[unstable] build-std` in
+            # .cargo/config.toml (removed — see scripts/build-wasm.sh);
+            # scoped here instead. No-op on the legs where
+            # matrix.rust-target already matches the runner's own host
+            # triple (linux-x64, darwin-arm64, win32-x64): that std ships
+            # with any toolchain install regardless of this variable.
+            # Deliberately NOT set for the `cross build` branch above: that
+            # runs inside `cross`'s own Docker image with its own toolchain
+            # setup, wasn't reported broken, and forwarding host env vars
+            # into that container isn't verified here.
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -158,7 +188,22 @@ jobs:
 
       - name: Setup Rust
         # Pin to a master-branch SHA + explicit `toolchain: stable`;
-        # see docs.yml note for rationale.
+        # see docs.yml note for rationale on the pinning strategy.
+        #
+        # `toolchain: stable` here names what gets INSTALLED (and what
+        # `targets:` below adds the target std for) — it is NOT what actually
+        # compiles this crate. The repo's `rust-toolchain.toml` pins nightly,
+        # and rustup's per-directory toolchain file always wins over
+        # `rustup default` (which is all this action sets); every `cargo`
+        # invocation below runs on the pinned nightly regardless of this
+        # `stable` input. Confirmed locally: `rustup default stable` followed
+        # by `rustc --version` inside a checkout of this repo still reports
+        # the nightly pinned in rust-toolchain.toml, with rustup noting the
+        # override. See the CARGO_UNSTABLE_BUILD_STD env var on the "Build
+        # Server Binary" step below for the consequence: the aarch64/cross-arch
+        # target std was only ever installed for `stable`, never for the
+        # nightly that actually runs, so those targets need std rebuilt from
+        # source instead of relying on a prebuilt one that was never fetched.
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
         with:
           toolchain: stable
@@ -189,7 +234,22 @@ jobs:
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
-            cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            # See the "Setup Rust" step above: this actually runs on the
+            # nightly pinned by rust-toolchain.toml, not the `stable` named
+            # there, so cross-arch legs (linux-arm64, darwin-x64 on the
+            # arm64 macos-14 runner) need their target's std rebuilt from
+            # source — it was never installed for nightly. Was previously
+            # papered over by a global `[unstable] build-std` in
+            # .cargo/config.toml (removed — see scripts/build-wasm.sh);
+            # scoped here instead. No-op on the legs where
+            # matrix.rust-target already matches the runner's own host
+            # triple (linux-x64, darwin-arm64, win32-x64): that std ships
+            # with any toolchain install regardless of this variable.
+            # Deliberately NOT set for the `cross build` branch above: that
+            # runs inside `cross`'s own Docker image with its own toolchain
+            # setup, wasn't reported broken, and forwarding host env vars
+            # into that container isn't verified here.
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc

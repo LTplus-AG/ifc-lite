@@ -78,7 +78,14 @@ afterEach(async () => {
   if (current) await act(async () => current.unmount());
   container?.remove();
   container = null;
-  useViewerStore.setState({ clashHideTouching: false });
+  // Reset every store field this suite writes, not just the toggle: apps/viewer
+  // runs all node:test files in ONE process against a shared Zustand store, so a
+  // synthetic clashResult left behind here is inherited by every later mount.
+  useViewerStore.setState({
+    clashResult: null,
+    clashGroups: null,
+    clashHideTouching: false,
+  });
 });
 
 describe('ClashPanel — generic sections recompute on filter/sort (#2530 bot finding)', () => {

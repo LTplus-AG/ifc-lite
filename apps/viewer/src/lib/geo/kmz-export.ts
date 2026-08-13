@@ -14,6 +14,7 @@ import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
 import { resolveMapUnitToMetreScale } from './geo-scale';
+import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
@@ -27,6 +28,9 @@ export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined)
 
 export interface BuildKmzInput {
   geometryResult: GeometryResult;
+  /** True when this is the primary model (`idOffset === 0`) — see
+   *  {@link ResolvedKmzGeorefInput.isPrimaryModel}. */
+  isPrimaryModel: boolean;
   dataStore: IfcDataStore;
   /** Pending georef edits for this model (store `georefMutations.get(modelId)`). */
   mutations?: GeorefMutationData;
@@ -119,7 +123,21 @@ export interface ResolvedKmzGeorefInput {
   coordinateInfo: CoordinateInfo | undefined;
   /** IFC project length unit to metres. */
   lengthUnitScale: number;
-  meshes: MeshData[];
+  /**
+   * The model's geometry. Deliberately NOT a mesh array: the COMPLETE set is
+   * derived here via `withInstancedMeshes`, because `geometryResult.meshes`
+   * omits every GPU-instanced occurrence and a caller passing it directly
+   * exported a model with its repeated geometry missing (#2577) — the same way
+   * both call sites once passed a raw conversion and skipped the placement
+   * corrections. There is no way to hand in a pre-flattened list.
+   */
+  geometryResult: GeometryResult;
+  /**
+   * True when this is the primary model (`idOffset === 0`). Instanced shard
+   * occurrences live in the primary model's id space, so a federated model must
+   * not adopt them — same flag the glTF/IFC exporters pass.
+   */
+  isPrimaryModel: boolean;
   /** Display name / file stem. */
   name: string;
   altitudeMode?: KmzAltitudeMode;
@@ -152,7 +170,8 @@ export async function buildKmzForResolvedGeoref(
   input: ResolvedKmzGeorefInput,
   createProcessor?: () => KmzProcessor,
 ): Promise<Uint8Array | KmzBuildError> {
-  if (!input.meshes.length) return 'no-geometry';
+  const meshes = withInstancedMeshes(input.geometryResult, input.isPrimaryModel).meshes as MeshData[];
+  if (!meshes.length) return 'no-geometry';
   const { conversion, crs, coordinateInfo, lengthUnitScale } = input;
   const latLon = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);
   if (!latLon) return 'unprojectable';
@@ -162,7 +181,7 @@ export async function buildKmzForResolvedGeoref(
     altitude: computeKmzAltitude(conversion.orthogonalHeight, crs, lengthUnitScale, coordinateInfo),
     xAxisAbscissa: heading.xAxisAbscissa,
     xAxisOrdinate: heading.xAxisOrdinate,
-    meshes: input.meshes,
+    meshes,
     name: input.name,
     altitudeMode: input.altitudeMode,
   };
@@ -196,7 +215,8 @@ export async function buildKmzForModel(
     crs,
     coordinateInfo: input.geometryResult.coordinateInfo,
     lengthUnitScale: scale,
-    meshes: input.geometryResult.meshes as MeshData[],
+    geometryResult: input.geometryResult,
+    isPrimaryModel: input.isPrimaryModel,
     name: input.name,
     altitudeMode: input.altitudeMode,
   }, createProcessor);

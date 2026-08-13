@@ -735,7 +735,12 @@ export function LocationMap({
         crs: projectedCRS,
         coordinateInfo,
         lengthUnitScale: lengthUnitScale ?? 1,
-        meshes: geometryResult.meshes as MeshData[],
+        // The COMPLETE mesh set is derived inside the builder — passing
+        // `geometryResult.meshes` here dropped every GPU-instanced occurrence
+        // from the exported file (#2577). The Location panel only ever shows
+        // the primary model's georeference.
+        geometryResult,
+        isPrimaryModel: true,
         name: 'IFC Model',
       }, createKmzProcessor);
       if (typeof kmz === 'string') {

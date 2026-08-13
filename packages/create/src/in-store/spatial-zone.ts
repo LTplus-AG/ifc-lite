@@ -124,6 +124,23 @@ export function addSpatialZonesToStore(
     if (!Number.isFinite(zone.Height) || zone.Height <= 0) {
       throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite positive Height`);
     }
+    // ONE predicate decides the shape, so the rotation and the profile cannot
+    // disagree: keying the rotation off "has a Footprint" while the profile
+    // needs three points would silently emit a rectangle with the caller's
+    // rotation discarded. A Footprint too small to be a polygon is a caller
+    // error, not a reason to emit a different shape than was asked for.
+    const usePolygon = zone.Footprint !== undefined;
+    if (usePolygon && (zone.Footprint as Array<[number, number]>).length < 3) {
+      throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" has a Footprint of fewer than 3 points`);
+    }
+    // Only meaningful for a box: a polygon carries its own extents.
+    if (!usePolygon) {
+      for (const [name, value] of [['Width', zone.Width], ['Depth', zone.Depth]] as const) {
+        if (!Number.isFinite(value) || value <= 0) {
+          throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite positive ${name}`);
+        }
+      }
+    }
 
     const position = toNativePoint3(anchor, zone.Position);
     const height = toNativeLength(anchor, zone.Height);
@@ -131,7 +148,7 @@ export function addSpatialZonesToStore(
     // Placement: absolute, with the vertical rotation carried as the RefDirection
     // rather than rotated into the profile.
     const originPt = editor.addEntity('IfcCartesianPoint', [position]).expressId;
-    const rotation = zone.Footprint ? 0 : (zone.RotationZ ?? 0);
+    const rotation = usePolygon ? 0 : (zone.RotationZ ?? 0);
     const refDirectionId = rotation === 0
       ? null
       : editor.addEntity('IfcDirection', [[Math.cos(rotation), Math.sin(rotation), 0]]).expressId;
@@ -146,7 +163,7 @@ export function addSpatialZonesToStore(
     // points are made RELATIVE to the placement origin so the two do not both
     // carry the position (which would put the zone at twice its coordinates).
     let profileId: number;
-    if (zone.Footprint && zone.Footprint.length >= 3) {
+    if (usePolygon && zone.Footprint) {
       profileId = emitPolygonProfile(
         editor,
         zone.Footprint.map(([x, y]): [number, number] => [

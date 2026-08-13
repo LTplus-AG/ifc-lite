@@ -83,7 +83,13 @@ function seedAssignments() {
   ]);
 }
 
-async function seedStore(options: { schema?: string; lengthUnit?: string; rebased?: boolean } = {}): Promise<IfcDataStore> {
+async function seedStore(options: {
+  schema?: string;
+  lengthUnit?: string;
+  rebased?: boolean;
+  /** This model's OWN render offsets, as its geometry pass recorded them. */
+  coordinateInfo?: unknown;
+} = {}): Promise<IfcDataStore> {
   const store = await parse(miniIfc(options.schema, options.lengthUnit));
   useViewerStore.setState({
     models: new Map([['m1', {
@@ -92,6 +98,7 @@ async function seedStore(options: { schema?: string; lengthUnit?: string; rebase
       ifcDataStore: store,
       visible: true,
       loadedAt: 1,
+      geometryResult: options.coordinateInfo ? { coordinateInfo: options.coordinateInfo } : undefined,
       // `'same-crs'` is one of the two statuses under which alignment re-baked
       // this model's vertices into another file's frame.
       federationAlignmentStatus: options.rebased ? 'same-crs' : undefined,
@@ -245,6 +252,43 @@ describe('removeZoneSpatialZones', () => {
     assert.match(step, /=IFCWALL\('0Wall00000000000000042'/);
     assert.match(step, /=IFCBEAM\('0Beam00000000000000043'/);
     assert.match(step, /=IFCBUILDINGSTOREY\('0storey000000000000000'/);
+  });
+});
+
+describe('emitZoneSpatialZones: whose frame', () => {
+  it('undoes THIS model\'s offsets, not the scene anchor\'s', async () => {
+    // A model alignment did not re-base (`'none'`, `'failed'`) is drawn in its
+    // OWN local frame, so undoing another model's offsets would move its zones
+    // by the difference between the two files' origins - kilometres on a
+    // georeferenced pair, and perfectly plausible in the file.
+    const store = await seedStore({
+      lengthUnit: '$',
+      coordinateInfo: { originShift: { x: 1000, y: 0, z: 0 }, wasmRtcOffset: null },
+    });
+    // An EARLIER model, which is the one the scene frame resolves to. Without a
+    // second model the two rules agree and the test would prove nothing.
+    // Appended rather than prepended: `resolveRenderFrame` picks by `loadedAt`,
+    // while `resolveEntityRef` falls back to the FIRST entry of the map, so
+    // putting the anchor first would send the elements to a model with no store.
+    useViewerStore.setState({
+      models: new Map([
+        ...useViewerStore.getState().models,
+        ['m0', {
+          id: 'm0',
+          name: 'anchor.ifc',
+          visible: true,
+          loadedAt: 0,
+          geometryResult: { coordinateInfo: { originShift: { x: -7, y: 0, z: 0 }, wasmRtcOffset: null } },
+        } as never],
+      ]) as never,
+    } as never);
+
+    emitZoneSpatialZones(ZONE_SET);
+    const step = exportStep(store);
+    // Takt A's base centre is render x = 5, so this model's own +1000 shift
+    // puts it at 1005 and the scene's -7 would put it at -2.
+    assert.match(step, /=IFCCARTESIANPOINT\(\(1005\.?,/);
+    assert.doesNotMatch(step, /=IFCCARTESIANPOINT\(\(-2\.?,/);
   });
 });
 

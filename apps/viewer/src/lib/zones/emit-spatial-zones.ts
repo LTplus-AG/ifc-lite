@@ -71,7 +71,7 @@ export type EmitRefusal =
    *  A zone still needs a body context for its shape even though it is placed
    *  absolutely and contained by nothing. */
   | 'no-anchor'
-  /** A zone in the set has no height (or a non-finite one), which would emit a
+  /** A zone in the set has a zero or non-finite extent, which would emit a
    *  degenerate solid. Refused for the WHOLE set rather than per zone: the
    *  builder emits zone by zone, so stopping halfway would leave one takt area
    *  in the file and the rest not. */
@@ -98,7 +98,7 @@ export function emitRefusalText(refusal: EmitRefusal, modelName: string): string
     case 'no-anchor':
       return `${modelName} has no storey or representation context to anchor zones against`;
     case 'degenerate-zone':
-      return 'A zone in this set has no height, so nothing was emitted. Give it one and try again.';
+      return 'A zone in this set has a zero extent, so nothing was emitted. Give it a real size and try again.';
   }
 }
 
@@ -119,6 +119,12 @@ export function zoneToIfcWorld(zone: Zone, frame: RenderFrameOffsets): SpatialZo
     return [p.x, p.y];
   });
 
+  // ONE predicate for both halves of the decision. Keying the rotation off "has
+  // a footprint" and the shape off "has three points" would, for a footprint
+  // too small to be a polygon, emit the box fallback with the rotation thrown
+  // away - an axis-aligned zone where the user drew a turned one.
+  const usePolygon = footprint !== undefined && footprint.length >= 3;
+
   return {
     Name: zone.name,
     // The base, not the centre: an extruded solid grows along +Z from its
@@ -130,9 +136,10 @@ export function zoneToIfcWorld(zone: Zone, frame: RenderFrameOffsets): SpatialZo
     Height: zone.size[1],
     // The viewer rotates about its Y, the file about its Z, and the axis swap
     // above turns one into the other. The SIGN flips with it: viewer +Y and IFC
-    // +Z point the same way, but the swap mirrors the horizontal plane.
-    RotationZ: zone.footprint ? 0 : 0 - zone.rotationY,
-    ...(footprint && footprint.length >= 3 ? { Footprint: footprint } : {}),
+    // +Z point the same way, but the swap mirrors the horizontal plane. A
+    // polygon needs none of this: its points are already world-aligned.
+    RotationZ: usePolygon ? 0 : 0 - zone.rotationY,
+    ...(usePolygon ? { Footprint: footprint } : {}),
   };
 }
 
@@ -168,8 +175,10 @@ export function emitSpatialZones(
 
   // Checked for EVERY zone before the first is written. The builder refuses a
   // degenerate zone by throwing, and it emits zone by zone, so validating as it
-  // goes would leave the file holding whichever takt areas came first.
-  if (zoneSet.zones.some((zone) => !(Number.isFinite(zone.size[1]) && zone.size[1] > 0))) {
+  // goes would leave the file holding whichever takt areas came first. All
+  // three extents, not just the height: a zero width emits a rectangle profile
+  // no reader can use, and the run would report success.
+  if (zoneSet.zones.some((zone) => zone.size.some((extent) => !(Number.isFinite(extent) && extent > 0)))) {
     return { ...empty, refusal: 'degenerate-zone' };
   }
 

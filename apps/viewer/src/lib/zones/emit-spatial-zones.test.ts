@@ -103,9 +103,13 @@ describe('zoneToIfcWorld: prisms', () => {
   });
 
   it('drops a footprint too small to be a polygon rather than emitting one', () => {
-    const out = zoneToIfcWorld({ ...ZONE, footprint: [[0, 0], [1, 0]] }, NO_SHIFT);
+    const out = zoneToIfcWorld({ ...ZONE, rotationY: 1.2, footprint: [[0, 0], [1, 0]] }, NO_SHIFT);
     assert.equal(out.Footprint, undefined);
     // ...and falls back to the box extents, so the zone still has a shape.
     assert.equal(out.Width, 6);
+    // ...INCLUDING its rotation. Deciding the shape and the rotation from two
+    // different predicates put an axis-aligned zone where a turned one was
+    // drawn, which is a wrong zone that looks like a right one.
+    assert.equal(out.RotationZ, 0 - 1.2);
   });
 });

@@ -219,6 +219,43 @@ describe('addSpatialZonesToStore', () => {
     })).toThrow(/IFC4 or later/);
   });
 
+  it('refuses a degenerate footprint rather than quietly emitting a box', () => {
+    // Two points cannot be a profile. Falling back to Width/Depth would emit a
+    // shape the caller did not ask for, and (before the fix) would also discard
+    // the rotation, since the fallback path is the rotated one.
+    const { editor } = session();
+    expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [{ ...BOX, Footprint: [[0, 0], [1, 0]] }],
+      referencedElements: [[]],
+    })).toThrow(/fewer than 3 points/);
+  });
+
+  it('refuses a box with a zero extent', () => {
+    // An IfcRectangleProfileDef with XDim 0 is a shape no reader can use, and
+    // the emission would report success.
+    const { editor } = session();
+    for (const bad of [{ Width: 0 }, { Depth: Number.NaN }]) {
+      expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+        LongName: 'Takt areas',
+        zones: [{ ...BOX, ...bad }],
+        referencedElements: [[]],
+      })).toThrow(/finite positive (Width|Depth)/);
+    }
+  });
+
+  it('does not check the extents of a zone whose shape is a polygon', () => {
+    // A prism carries its own extents, so a caller that leaves Width/Depth at
+    // zero is not wrong.
+    const { editor, view } = session();
+    addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [{ ...BOX, Width: 0, Depth: 0, Footprint: [[10, 20], [16, 20], [16, 24]] }],
+      referencedElements: [[]],
+    });
+    expect(view.getNewEntities().some((e) => e.type === 'IfcArbitraryClosedProfileDef')).toBe(true);
+  });
+
   it('refuses a zone with no height rather than emitting a flat solid', () => {
     const { editor } = session();
     expect(() => addSpatialZonesToStore(editor, ANCHOR, {

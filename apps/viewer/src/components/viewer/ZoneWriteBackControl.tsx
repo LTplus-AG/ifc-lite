@@ -150,7 +150,12 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             for (const model of refused) {
               toast.error(emitRefusalText(model.refusal as NonNullable<typeof model.refusal>, model.modelName));
             }
-            if (written.length === 0) return;
+            if (written.length === 0) {
+              // A model with no parsed store is skipped without a refusal, so
+              // without this the click produces no feedback at all.
+              if (refused.length === 0) toast.info('No loaded model could take the zones');
+              return;
+            }
             const zones = written.reduce((sum, m) => sum + m.zonesEmitted, 0);
             const elements = written.reduce((sum, m) => sum + m.elementsReferenced, 0);
             const replaced = written.reduce((sum, m) => sum + m.zonesReplaced, 0);

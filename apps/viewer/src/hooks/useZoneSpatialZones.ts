@@ -16,8 +16,10 @@
  *
  * Zones are authored against the shared scene, so one set can reach elements in
  * several loaded models. There is no such thing as a federated IFC file, so
- * each model gets its OWN copy of the zones, referencing its own elements. The
- * copies agree because they are all built from the same world coordinates.
+ * each model gets its OWN copy of the zones, referencing its own elements -
+ * each converted out of the render frame by THAT model's own offsets, because
+ * an unaligned model is drawn in its own local frame rather than the anchor's
+ * (see {@link frameFor}).
  *
  * A model that federation alignment RE-BASED is refused rather than emitted
  * into: its render coordinates undo to the anchor file's coordinate system, so
@@ -35,6 +37,8 @@ import { useCallback } from 'react';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
+import type { RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
 import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
@@ -71,6 +75,28 @@ interface ModelContext {
   store: IfcDataStore;
   name: string;
   rebased: boolean;
+  /** THIS model's offsets, not the scene's. See {@link frameFor}. */
+  frame: RenderFrameOffsets;
+}
+
+/**
+ * The offsets to undo for one model's own coordinates.
+ *
+ * Per model rather than per scene, and the difference is not cosmetic. A
+ * federated model is only re-based into the anchor's frame when alignment
+ * SUCCEEDS: `'failed'` says so in as many words ("the model is shown in its own
+ * local frame"), and `'none'` never attempted it. Those models keep their own
+ * RTC offset and origin shift, so undoing the ANCHOR's offsets would move their
+ * zones by the difference between the two files' origins - which on a
+ * georeferenced pair is kilometres, and looks perfectly plausible in the file.
+ *
+ * The scene-wide frame remains the fallback for the legacy single-model path,
+ * where there is no per-model geometry result to read.
+ */
+function frameFor(model: FederatedModel | undefined, scene: RenderFrameOffsets): RenderFrameOffsets {
+  const info = model?.geometryResult?.coordinateInfo;
+  if (!info) return scene;
+  return { originShift: info.originShift ?? null, wasmRtcOffsetIfc: info.wasmRtcOffset ?? null };
 }
 
 /**
@@ -81,7 +107,11 @@ interface ModelContext {
  * view holds: two editors over one view are safe, but reusing the cached one
  * keeps that a fact rather than a thing to re-check.
  */
-function contextFor(modelId: string, cache: Map<string, ModelContext | null>): ModelContext | null {
+function contextFor(
+  modelId: string,
+  cache: Map<string, ModelContext | null>,
+  scene: RenderFrameOffsets,
+): ModelContext | null {
   const cached = cache.get(modelId);
   if (cached !== undefined) return cached;
 
@@ -110,6 +140,7 @@ function contextFor(modelId: string, cache: Map<string, ModelContext | null>): M
     store,
     name: model?.name ?? modelId,
     rebased: model ? !geometryVolumesSurviveAlignment(model.federationAlignmentStatus) : false,
+    frame: frameFor(model, scene),
   };
   cache.set(modelId, context);
   return context;
@@ -144,19 +175,18 @@ export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   const byModel = membersByModel(zoneSet);
   if (byModel.size === 0) return { models: [], blocked: 'no-members', elapsedMs: performance.now() - t0 };
 
-  // One frame for the whole scene, resolved by the readouts' own rule: the
-  // federation is aligned to the earliest-loaded model's frame at load, so that
-  // model's offsets are what every model on screen was drawn with.
-  const frame = resolveRenderFrame(state.models, state.geometryResult);
+  // The scene-wide frame, resolved by the readouts' own rule, is only the
+  // FALLBACK here: each model is written in its own frame (see `frameFor`).
+  const scene = resolveRenderFrame(state.models, state.geometryResult);
 
   const contexts = new Map<string, ModelContext | null>();
   const outcomes: ModelEmitOutcome[] = [];
   const touchedModels: string[] = [];
 
   for (const [modelId, members] of byModel) {
-    const context = contextFor(modelId, contexts);
+    const context = contextFor(modelId, contexts, scene);
     if (!context) continue;
-    const result = emitSpatialZones(context.editor, context.store, zoneSet, members, frame, {
+    const result = emitSpatialZones(context.editor, context.store, zoneSet, members, context.frame, {
       rebased: context.rebased,
     });
     outcomes.push({
@@ -197,8 +227,10 @@ export function removeZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitRemoval {
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels: string[] = [];
   let removed = 0;
+  // Removal reads no coordinates, so the frame it carries is irrelevant here.
+  const scene = resolveRenderFrame(state.models, state.geometryResult);
   for (const [modelId] of state.mutationViews) {
-    const context = contextFor(modelId, contexts);
+    const context = contextFor(modelId, contexts, scene);
     if (!context) continue;
     const count = removeSpatialZones(context.editor, zoneSet.name);
     if (count === 0) continue;

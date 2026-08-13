@@ -6,6 +6,7 @@
 //! the house 400-line rule (test files are ratchet-exempt).
 
 use super::*;
+use crate::mesh_orient::OrientVerdict;
 
 /// A unit cube (8 verts, 12 triangles) centred near `origin` in world
 /// coordinates. Returns positions already in world space.

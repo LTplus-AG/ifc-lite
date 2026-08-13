@@ -160,6 +160,7 @@
     "findDuplicates: function",
     "groupClashes: function",
     "inferClashSeverity: function",
+    "isClusterGroupingIneffective: function",
     "isExcluded: function",
     "isTouching: function",
     "makeExclusionSet: function",

@@ -189,6 +189,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     highlightAll,
     clearHighlight,
     clearAll,
+    invalidateSolidCompute,
   } = useClash();
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
@@ -210,6 +211,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   /** How the rest of the model is shown when a clash is focused (#1275). */
   const focusMode = useViewerStore((s) => s.clashFocusMode);
   const setFocusMode = useViewerStore((s) => s.setClashFocusMode);
+  /** On-demand intersection-solid state for the focused clash — see `focusClash` in `useClash`. */
+  const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  const clashSolidVolumeM3 = useViewerStore((s) => s.clashSolidVolumeM3);
+  const clashSolidReason = useViewerStore((s) => s.clashSolidReason);
+  const clashSolidThicknessM = useViewerStore((s) => s.clashSolidThicknessM);
+  const clashSolidRequiredM = useViewerStore((s) => s.clashSolidRequiredM);
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
   // The whole detection-controls block is collapsible so the result list gets
@@ -230,8 +237,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     s.setClashSelectedId(null);
     s.setClashHighlightColors(null);
     s.setClashOverlapBox(null);
+    s.clearClashSolid();
     s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
-  }, []);
+    // Drop any in-flight solid compute too — without this, a compute kicked
+    // off just before the panel closes can resolve AFTER this cleanup runs
+    // and re-apply a solid + full-model ghost onto a view the user already
+    // left (the leaked-ghosting bug this whole feature is most at risk of).
+    invalidateSolidCompute();
+  }, [invalidateSolidCompute]);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -786,6 +799,24 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               </Button>
             </div>
           </div>
+          {selectedId && clashSolidStatus !== 'none' && (
+            <div className="text-[11px] text-muted-foreground" data-testid="clash-solid-status">
+              {clashSolidStatus === 'computing' && 'Computing the true overlap volume…'}
+              {clashSolidStatus === 'solid' &&
+                `True overlap volume shown as a solid: ${clashSolidVolumeM3.toFixed(3)} m³. Both elements are ghosted so it reads through them.`}
+              {clashSolidStatus === 'unavailable' && (
+                <>
+                  {clashSolidReason === 'below-kernel-resolution'
+                    ? `No solid — this overlap is thinner (${(clashSolidThicknessM * 1000).toFixed(2)} mm) than the kernel can resolve as a volume (needs ≥ ${(clashSolidRequiredM * 1000).toFixed(2)} mm); showing the contact marker instead.`
+                    : clashSolidReason === 'no-overlap'
+                      ? 'No solid — the surfaces touch without a measurable penetration; showing the contact marker instead.'
+                      : clashSolidReason === 'empty-operand'
+                        ? "No solid — one side's geometry isn't available yet; showing the contact marker instead."
+                        : "No solid could be computed for this pair; showing the contact marker instead."}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 

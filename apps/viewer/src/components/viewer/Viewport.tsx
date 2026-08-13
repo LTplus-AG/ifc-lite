@@ -589,6 +589,25 @@ export function Viewport({
     // isInitialized: if a clash is focused before the renderer mounts, this effect
     // bails early; depend on it so the indicator is (re)sent once it is ready.
   }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
+  // The focused clash's TRUE intersection volume (BIMcollab Zoom / Solibri
+  // style opaque solid), when the kernel resolved one. Independent of the
+  // box/lines buffer above — the solid draws through its own pipeline so it
+  // can be a real depth-tested 3D volume rather than a line list.
+  const clashSolidMesh = useViewerStore((s) => s.clashSolidMesh);
+  const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    if (clashSolidStatus === 'solid' && clashSolidMesh) {
+      renderer.setClashIntersectionSolid({
+        positions: clashSolidMesh.positions,
+        indices: clashSolidMesh.indices,
+        color: CLASH_COLOR_OVERLAP,
+      });
+    } else {
+      renderer.setClashIntersectionSolid(null);
+    }
+  }, [clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);

@@ -46,6 +46,7 @@ import { SectionPlaneRenderer } from './section-plane.js';
 import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
 import { SymbolicOverlays } from './renderer-symbolic-overlays.js';
 import type { SymbolicFillInput, SymbolicTextInput } from './symbolic-overlay-pipelines.js';
+import { ClashSolidPipeline, type ClashSolidInput } from './clash-solid-pipeline.js';
 import { aabbEdgeLineList } from './aabb-edges.js';
 import { projectedBoundsRange } from './render-section-plane.js';
 import { drawSectionOverlays, type ModelBounds } from './render-section-draw.js';
@@ -85,6 +86,7 @@ export class RendererOverlays {
     // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
     private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
     private readonly symbolic: SymbolicOverlays;
+    private clashSolidPipeline: ClashSolidPipeline | null = null;
 
     constructor(private readonly host: OverlayHost) {
         this.symbolic = new SymbolicOverlays(host);
@@ -100,6 +102,7 @@ export class RendererOverlays {
         // Re-apply any colour set before this (re)creation so it isn't lost.
         this.section2DOverlayRenderer.setOverlayLineColor(this.overlayLineColor);
         this.symbolic.init(device, format, sampleCount);
+        this.clashSolidPipeline = new ClashSolidPipeline(device, format, sampleCount);
     }
 
     /** Release every overlay GPU resource. Idempotent, like `Renderer.destroy()`. */
@@ -109,6 +112,8 @@ export class RendererOverlays {
         this.section2DOverlayRenderer?.dispose();
         this.section2DOverlayRenderer = null;
         this.symbolic.destroy();
+        this.clashSolidPipeline?.destroy();
+        this.clashSolidPipeline = null;
     }
 
     /**
@@ -149,6 +154,13 @@ export class RendererOverlays {
         }
         if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
             this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
+        }
+        // Drawn after the box/contact lines and — crucially — after every
+        // ghosted (depth-non-writing) element in the main pass, so the true
+        // overlap volume shows opaque through both ghosted parents rather
+        // than being buried inside them.
+        if (this.clashSolidPipeline?.hasGeometry()) {
+            this.clashSolidPipeline.render(pass, viewProj);
         }
         this.symbolic.drawTexts(pass, viewProj, ctx.canvasWidth, ctx.canvasHeight, camera);
     }
@@ -342,6 +354,13 @@ export class RendererOverlays {
         }
         this.section2DOverlayRenderer.setClashBoxLineColor(lines.color);
         this.section2DOverlayRenderer.uploadClashBoxLines3D(lines.vertices);
+        this.host.requestRender();
+    }
+
+    /** See `Renderer.setClashIntersectionSolid` for the published contract. */
+    setClashIntersectionSolid(input: ClashSolidInput | null): void {
+        if (!this.clashSolidPipeline) return;
+        this.clashSolidPipeline.upload(input);
         this.host.requestRender();
     }
 

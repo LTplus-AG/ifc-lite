@@ -334,7 +334,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       color: groupBy === 'severity' ? SEVERITY[key as ClashSeverity].color : undefined,
       items,
     }));
-  }, [result, setSections, groupBy]);
+  }, [result, setSections, visibleClashes, groupBy]);
 
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;

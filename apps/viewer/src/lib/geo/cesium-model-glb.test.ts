@@ -86,7 +86,7 @@ describe('buildCesiumModelGLB (#2558 world view drops instanced geometry)', () =
     // 1 flat mesh, 3 instanced occurrences — the facade-panel shape of #2558.
     setRenderer([mesh(2, 10), mesh(3, 20), mesh(4, 30)]);
 
-    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0)]));
+    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0)]), 0);
 
     assert.equal(glbVertexCount(glb), 12, '3 verts x (1 flat + 3 instanced) meshes');
     assert.equal(glbTriangleCount(glb), 4, '1 flat + 3 instanced triangles');
@@ -95,7 +95,7 @@ describe('buildCesiumModelGLB (#2558 world view drops instanced geometry)', () =
   it('still builds the flat model when the scene has no instanced geometry', () => {
     setRenderer([]);
 
-    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0), mesh(2, 10)]));
+    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0), mesh(2, 10)]), 0);
 
     assert.equal(glbVertexCount(glb), 6);
     assert.equal(glbTriangleCount(glb), 2);
@@ -104,7 +104,7 @@ describe('buildCesiumModelGLB (#2558 world view drops instanced geometry)', () =
   it('builds the flat model when no renderer is available', () => {
     setRenderer(null);
 
-    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0)]));
+    const { glb } = buildCesiumModelGLB(geometry([mesh(1, 0)]), 0);
 
     assert.equal(glbVertexCount(glb), 3);
   });
@@ -113,7 +113,7 @@ describe('buildCesiumModelGLB (#2558 world view drops instanced geometry)', () =
     setRenderer([mesh(2, 10)]);
     const geom = geometry([mesh(1, 0)]);
 
-    buildCesiumModelGLB(geom);
+    buildCesiumModelGLB(geom, 0);
 
     assert.equal(geom.meshes.length, 1, 'instanced meshes are not appended in place');
   });
@@ -128,11 +128,11 @@ describe('cesiumModelGLBKey (#2558 cache key)', () => {
     const geom = geometry([mesh(1, 0)]);
 
     setRenderer([]);
-    const before = cesiumModelGLBKey(geom);
+    const before = cesiumModelGLBKey(geom, 0);
     // A batch whose occurrences are ALL instanced: same flat mesh list, more
     // geometry. Keying on `meshes.length` alone would serve a stale GLB.
     setRenderer([mesh(2, 10), mesh(3, 20)]);
-    const after = cesiumModelGLBKey(geom);
+    const after = cesiumModelGLBKey(geom, 0);
 
     assert.notEqual(after, before);
   });
@@ -141,13 +141,23 @@ describe('cesiumModelGLBKey (#2558 cache key)', () => {
     setRenderer([mesh(2, 10)]);
     const geom = geometry([mesh(1, 0)]);
 
-    assert.equal(cesiumModelGLBKey(geom), cesiumModelGLBKey(geom));
+    assert.equal(cesiumModelGLBKey(geom, 0), cesiumModelGLBKey(geom, 0));
+  });
+
+  it('changes on an in-place edit, which moves no count at all', () => {
+    setRenderer([mesh(2, 10)]);
+    // A gizmo move rewrites positions in the SAME arrays: same flat mesh count,
+    // same instanced entity count, different geometry. Only the store's
+    // content-version counter can see it.
+    const geom = geometry([mesh(1, 0)]);
+
+    assert.notEqual(cesiumModelGLBKey(geom, 1), cesiumModelGLBKey(geom, 0));
   });
 
   it('matches the key the builder stamps onto the bytes it returns', () => {
     setRenderer([mesh(2, 10)]);
     const geom = geometry([mesh(1, 0)]);
 
-    assert.equal(buildCesiumModelGLB(geom).key, cesiumModelGLBKey(geom));
+    assert.equal(buildCesiumModelGLB(geom, 0).key, cesiumModelGLBKey(geom, 0));
   });
 });

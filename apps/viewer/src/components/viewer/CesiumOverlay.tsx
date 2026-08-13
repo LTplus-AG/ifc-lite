@@ -141,6 +141,9 @@ export function CesiumOverlay({
   const setCesiumTerrainSaveHeight = useViewerStore((s) => s.setCesiumTerrainSaveHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
+  // In-place mesh mutations (a gizmo move rewrites positions in the SAME
+  // arrays) change no mesh count, so the world-view GLB cache keys on this too.
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
 
   // Solar study state — drives the sun-path dome + shadow study.
   const solarEnabled = useViewerStore((s) => s.solarEnabled);
@@ -560,7 +563,7 @@ export function CesiumOverlay({
         // Reuse the cached GLB when it was built from the same mesh set. The key
         // spans flat AND instanced geometry (see cesiumModelGLBKey), so an
         // all-instanced batch still invalidates it.
-        const key = cesiumModelGLBKey(geometryResult);
+        const key = cesiumModelGLBKey(geometryResult, geometryContentVersion);
         const cached = glbCacheRef.current;
         if (cesiumModelRef.current && cached?.key === key) {
           // Model already loaded with same geometry — just update matrix
@@ -579,7 +582,7 @@ export function CesiumOverlay({
         } else {
           await new Promise(r => setTimeout(r, 50));
           if (cancelled) return;
-          const built = buildCesiumModelGLB(geometryResult);
+          const built = buildCesiumModelGLB(geometryResult, geometryContentVersion);
           glbBytes = built.glb;
           glbCacheRef.current = { key: built.key, glb: built.glb };
         }
@@ -651,7 +654,7 @@ export function CesiumOverlay({
       }
       setCesiumGlbLoaded(false);
     };
-  }, [status, bridgeVersion, geometryResult]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the

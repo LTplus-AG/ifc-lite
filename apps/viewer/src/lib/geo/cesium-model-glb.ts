@@ -9,16 +9,26 @@ import { buildMergedGLB } from './cesium-glb.js';
 
 /**
  * Cheap identity for the mesh set {@link buildCesiumModelGLB} would build from.
- * O(1): a flat mesh count plus the scene's instanced-entity census.
+ * O(1): the store's in-place-mutation counter, the flat mesh count, and the
+ * scene's instanced-entity census.
  *
  * The overlay caches the built GLB and must not rebuild it on every camera or
- * placement change, but the flat count alone is not enough of a key. A geometry
- * batch whose occurrences are ALL instanced adds no flat meshes, so keying on
- * `meshes.length` would report "unchanged" for a batch that changed the model.
+ * placement change, but a count alone is not enough of a key. Two changes slip
+ * past counts:
+ *
+ *  - A geometry batch whose occurrences are ALL instanced adds no flat meshes,
+ *    so `meshes.length` reports "unchanged" for a batch that changed the model.
+ *    The instanced-entity census catches that one.
+ *  - An in-place edit (a gizmo move rewrites positions in the SAME arrays)
+ *    changes no count at all. `geometryContentVersion` is the store's existing
+ *    signal for exactly that, which is why callers pass it in.
  */
-export function cesiumModelGLBKey(geometryResult: GeometryResult): string {
+export function cesiumModelGLBKey(
+  geometryResult: GeometryResult,
+  geometryContentVersion: number,
+): string {
   const instancedEntities = getGlobalRenderer()?.getScene()?.getInstancedEntityCount() ?? 0;
-  return `${geometryResult.meshes.length}:${instancedEntities}`;
+  return `${geometryContentVersion}:${geometryResult.meshes.length}:${instancedEntities}`;
 }
 
 /**
@@ -44,11 +54,14 @@ export function cesiumModelGLBKey(geometryResult: GeometryResult): string {
  * re-homed onto their owning model's id space at upload (#1912). So every
  * occurrence the scene can hand back belongs in this GLB.
  */
-export function buildCesiumModelGLB(geometryResult: GeometryResult): {
+export function buildCesiumModelGLB(
+  geometryResult: GeometryResult,
+  geometryContentVersion: number,
+): {
   glb: Uint8Array;
   key: string;
 } {
-  const key = cesiumModelGLBKey(geometryResult);
+  const key = cesiumModelGLBKey(geometryResult, geometryContentVersion);
   const complete = withInstancedMeshes(geometryResult, true);
   return { glb: buildMergedGLB(complete.meshes), key };
 }

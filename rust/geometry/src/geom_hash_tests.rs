@@ -107,6 +107,51 @@ fn sub_tolerance_jitter_is_ignored() {
 }
 
 #[test]
+fn a_request_finer_than_the_floor_is_clamped_not_honoured() {
+    // A large triangle far from the origin (a georeferenced point, ~2.6e6 m,
+    // with a 100 m edge) at the maintainer-reported dangerous tolerance
+    // (1e-9 m) is exactly the shape that pushed `plane_of`'s `i128` plane
+    // offset to ~1.6e38 -- within a factor of ~1 of `i128::MAX`. This must
+    // neither panic (debug) nor silently wrap (release): `GeometryHasher::new`
+    // clamps any request finer than `MIN_GEOM_HASH_TOLERANCE` up to it.
+    let origin = [2_600_000.0_f32, 0.0, 0.0];
+    let positions: Vec<f32> = vec![
+        origin[0],
+        origin[1],
+        origin[2],
+        origin[0] + 100.0,
+        origin[1],
+        origin[2],
+        origin[0],
+        origin[1] + 100.0,
+        origin[2],
+    ];
+    let indices = vec![0u32, 1, 2];
+
+    // Must not panic.
+    let requested_1e_9 = hash_mesh_world(&positions, &indices, [0.0; 3], 1e-9);
+
+    // A request clamped to the floor must produce the SAME hash as asking for
+    // the floor directly -- proving the clamp actually took effect, not just
+    // that the finer request happened not to panic this run.
+    let at_floor = hash_mesh_world(&positions, &indices, [0.0; 3], MIN_GEOM_HASH_TOLERANCE);
+    assert_eq!(
+        requested_1e_9, at_floor,
+        "a tolerance finer than MIN_GEOM_HASH_TOLERANCE must be clamped up to it, \
+         not honoured verbatim"
+    );
+
+    // And it must actually differ from a call at the (coarser) default --
+    // otherwise the clamp could be silently clamping everything to the same
+    // value regardless of what was asked for.
+    let at_default = hash_mesh_world(&positions, &indices, [0.0; 3], DEFAULT_GEOM_HASH_TOLERANCE);
+    assert_ne!(
+        at_floor, at_default,
+        "the floor and the (coarser) default must not collapse to the same grid"
+    );
+}
+
+#[test]
 fn triangle_and_vertex_order_invariant() {
     let (pos, idx) = cube([3.0, 3.0, 3.0]);
     let canonical = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);

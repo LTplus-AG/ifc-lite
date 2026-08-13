@@ -651,8 +651,12 @@ impl IfcAPI {
     /// Pass a positive `tolerance` (metres) to enable — it is the quantization
     /// grid the hash snaps positions to (larger = more tolerant of float noise,
     /// smaller = catches finer edits; the `f32` precision floor of model-local
-    /// coordinates means values below ~1 mm mostly hash noise). Pass `null`/
-    /// `undefined` (or a non-positive value) to disable. Default: disabled.
+    /// coordinates means values below ~1 mm mostly hash noise). A request finer
+    /// than `ifc_lite_geometry::MIN_GEOM_HASH_TOLERANCE` (1e-6 m) is silently
+    /// clamped up to it — see that constant's doc for why finer is an `i128`
+    /// overflow surface on a georeferenced model, not a precision win. Pass
+    /// `null`/`undefined` (or a non-positive value) to disable. Default:
+    /// disabled.
     #[wasm_bindgen(js_name = setComputeGeometryHashes)]
     pub fn set_compute_geometry_hashes(&self, tolerance: Option<f64>) {
         use std::sync::atomic::Ordering::Relaxed;

@@ -49,7 +49,10 @@
 //!   [`DEFAULT_GEOM_HASH_TOLERANCE`] and the `tolerance_sweep` test for the
 //!   trade-off — the effective floor is the `f32` precision of the local
 //!   positions (~1e-4 m near origin), so tolerances below ~1 mm mostly hash
-//!   float noise.
+//!   float noise. A request finer than [`MIN_GEOM_HASH_TOLERANCE`] is clamped
+//!   up to it: below that grid, [`surface::plane_of`]'s `i128` plane-offset
+//!   arithmetic is an overflow surface on a georeferenced model, not a
+//!   precision win — see that constant for the measured bound.
 //!
 //! All inputs must be in a single consistent frame for both files (i.e. unit
 //! scaled to metres, and either both pre- or both post- any axis convention
@@ -107,6 +110,23 @@ use surface::{plane_of, vertex_hash};
 /// the `f32` precision floor of RTC-local coordinates; tune empirically with
 /// the `tolerance_sweep` test against real revision pairs.
 pub const DEFAULT_GEOM_HASH_TOLERANCE: f64 = 1.0e-3;
+
+/// Floor on the quantization tolerance ([`GeometryHasher::new`] clamps any
+/// smaller request up to this).
+///
+/// `plane_of`'s plane offset `d = n·point` is an `i128` product of a quantized
+/// normal and a quantized corner, both scaled by `1/tolerance`; it grows
+/// roughly as `1/tolerance²`. Measured on a georeferenced point (~2.6e6 m) and
+/// a 100 m triangle, `tolerance = 1e-9` pushes `d` to ~1.6e38 — within a factor
+/// of ~1 of `i128::MAX` (1.7e38), i.e. one differently-shaped input away from
+/// overflow (debug builds panic, release wraps and two unrelated planes can
+/// alias to the same key). At this floor the same inputs land `d` around
+/// 1.6e26 — six orders of magnitude of headroom. It is also three orders of
+/// magnitude finer than the documented useful floor (~1 mm, the `f32`
+/// precision limit of RTC-local coordinates — see the module docs'
+/// "Tolerance-quantized" bullet), so no real caller loses precision by being
+/// clamped to it.
+pub const MIN_GEOM_HASH_TOLERANCE: f64 = 1.0e-6;
 
 /// splitmix64 finalizer — strong avalanche for a single `u64`. Shared with
 /// `router::content_hash`'s 128-bit content hash, which uses this SAME
@@ -173,12 +193,16 @@ pub struct GeometryHasher {
 impl GeometryHasher {
     /// Create a hasher for one entity.
     ///
-    /// * `tolerance` — quantization grid in metres (must be `> 0`).
+    /// * `tolerance` — quantization grid in metres (must be `> 0`). Clamped up
+    ///   to [`MIN_GEOM_HASH_TOLERANCE`] — see that constant for why a smaller
+    ///   request is an `i128` overflow surface in [`surface::plane_of`], not a
+    ///   precision win.
     /// * `rtc_offset` — the file's RTC offset, added back to local positions to
     ///   reconstruct world coordinates. Pass `[0.0; 3]` if positions are
     ///   already in world space.
     pub fn new(tolerance: f64, rtc_offset: [f64; 3]) -> Self {
         debug_assert!(tolerance > 0.0, "geometry hash tolerance must be positive");
+        let tolerance = tolerance.max(MIN_GEOM_HASH_TOLERANCE);
         Self {
             inv_tol: 1.0 / tolerance,
             rtc: rtc_offset,

@@ -136,6 +136,12 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
               toast.info('No element is in a zone of this set, so there is nothing to reference');
               return;
             }
+            if (result.blocked === 'duplicate-set-name') {
+              // The set's name is what identifies its zones in the FILE, so two
+              // sets sharing one would each delete the other's on the next run.
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before emitting.`);
+              return;
+            }
             const written = result.models.filter((m) => m.zonesEmitted > 0);
             // Every refused model is named, rather than folded into a count: in
             // a federation the answer "which file did NOT get the zones" is the
@@ -168,6 +174,10 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             const { removed, blocked } = removeZones(zoneSet);
             if (blocked === 'collab-role') {
               toast.error('Your role in this session is read-only, so nothing was removed');
+              return;
+            }
+            if (blocked === 'duplicate-set-name') {
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before removing.`);
               return;
             }
             if (removed === 0) toast.info('No emitted zones to remove for this set');

@@ -81,7 +81,7 @@ export interface ZoneWriteBackResult {
  * either silently merging two takt plans or burying an id in the name a user
  * reads in another tool.
  */
-function collidesByName(zoneSet: ZoneSet): boolean {
+export function collidesByName(zoneSet: ZoneSet): boolean {
   return useViewerStore.getState().zoneSets
     .some((other) => other.id !== zoneSet.id && other.name.trim() === zoneSet.name.trim());
 }

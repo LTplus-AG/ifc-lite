@@ -39,6 +39,7 @@ import { resolveEntityRef } from '@/store/resolveEntityRef';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import { resolveRenderFrame } from './useRenderFrameOffsets.js';
+import { collidesByName } from './useZoneWriteBack.js';
 import {
   emitSpatialZones,
   removeSpatialZones,
@@ -60,7 +61,7 @@ export interface ModelEmitOutcome {
 export interface ZoneEmitResult {
   models: ModelEmitOutcome[];
   /** Set when nothing was emitted anywhere, and why. */
-  blocked: 'collab-role' | 'no-members' | null;
+  blocked: 'collab-role' | 'no-members' | 'duplicate-set-name' | null;
   elapsedMs: number;
 }
 
@@ -133,6 +134,11 @@ function membersByModel(zoneSet: ZoneSet): Map<string, ZoneMembership[]> {
 export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   const state = useViewerStore.getState();
   if (!state.canCollabEdit()) return { models: [], blocked: 'collab-role', elapsedMs: 0 };
+  // The set's name is the only handle the FILE has on which run wrote which
+  // zones (`LongName`), so two sets sharing one would make each emission delete
+  // the other's zones. Refused for the same reason, and by the same test, as
+  // the write-back's own name collision.
+  if (collidesByName(zoneSet)) return { models: [], blocked: 'duplicate-set-name', elapsedMs: 0 };
 
   const t0 = performance.now();
   const byModel = membersByModel(zoneSet);
@@ -171,7 +177,7 @@ export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
 export interface ZoneEmitRemoval {
   /** Zones removed, across every model. */
   removed: number;
-  blocked: 'collab-role' | null;
+  blocked: 'collab-role' | 'duplicate-set-name' | null;
 }
 
 /**
@@ -184,6 +190,9 @@ export interface ZoneEmitRemoval {
 export function removeZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitRemoval {
   const state = useViewerStore.getState();
   if (!state.canCollabEdit()) return { removed: 0, blocked: 'collab-role' };
+  // Removal sweeps by name too, so a collision here would take the other set's
+  // zones with it.
+  if (collidesByName(zoneSet)) return { removed: 0, blocked: 'duplicate-set-name' };
 
   const contexts = new Map<string, ModelContext | null>();
   const touchedModels: string[] = [];

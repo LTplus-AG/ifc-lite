@@ -70,7 +70,12 @@ export type EmitRefusal =
   /** The model has no storey, or no representation context, to anchor against.
    *  A zone still needs a body context for its shape even though it is placed
    *  absolutely and contained by nothing. */
-  | 'no-anchor';
+  | 'no-anchor'
+  /** A zone in the set has no height (or a non-finite one), which would emit a
+   *  degenerate solid. Refused for the WHOLE set rather than per zone: the
+   *  builder emits zone by zone, so stopping halfway would leave one takt area
+   *  in the file and the rest not. */
+  | 'degenerate-zone';
 
 export interface EmitResult {
   zonesEmitted: number;
@@ -92,6 +97,8 @@ export function emitRefusalText(refusal: EmitRefusal, modelName: string): string
       return `No element of ${modelName} is in a zone of this set`;
     case 'no-anchor':
       return `${modelName} has no storey or representation context to anchor zones against`;
+    case 'degenerate-zone':
+      return 'A zone in this set has no height, so nothing was emitted. Give it one and try again.';
   }
 }
 
@@ -158,6 +165,13 @@ export function emitSpatialZones(
     return { ...empty, refusal: 'no-anchor' };
   }
   if (!spatialZonesSupported(anchor.schema)) return { ...empty, refusal: 'schema-too-old' };
+
+  // Checked for EVERY zone before the first is written. The builder refuses a
+  // degenerate zone by throwing, and it emits zone by zone, so validating as it
+  // goes would leave the file holding whichever takt areas came first.
+  if (zoneSet.zones.some((zone) => !(Number.isFinite(zone.size[1]) && zone.size[1] > 0))) {
+    return { ...empty, refusal: 'degenerate-zone' };
+  }
 
   const referenced = zoneSet.zones.map((zone) =>
     members.filter((m) => m.touchedZoneIds.includes(zone.id)).map((m) => m.expressId));

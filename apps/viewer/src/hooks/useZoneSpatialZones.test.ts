@@ -269,6 +269,29 @@ describe('emitZoneSpatialZones: what it refuses', () => {
     assert.equal(emitZoneSpatialZones(ZONE_SET).blocked, 'no-members');
   });
 
+  it('refuses a set whose name another set also uses', async () => {
+    // Both sets would write LongName 'Takt areas', so the second emission would
+    // sweep the first's zones out of the file. The panel asks for a rename
+    // rather than picking a winner.
+    await seedStore();
+    useViewerStore.setState({
+      zoneSets: [ZONE_SET, { ...ZONE_SET, id: 'set-2' }],
+    } as never);
+    assert.equal(emitZoneSpatialZones(ZONE_SET).blocked, 'duplicate-set-name');
+    assert.equal(removeZoneSpatialZones(ZONE_SET).blocked, 'duplicate-set-name');
+    assert.equal(zoneEntities().length, 0);
+  });
+
+  it('refuses a zone with no height, before writing any of the others', async () => {
+    await seedStore();
+    const flat = { ...ZONE_SET, zones: [ZONE_SET.zones[0], { ...ZONE_SET.zones[1], size: [10, 0, 8] as [number, number, number] }] };
+    const result = emitZoneSpatialZones(flat);
+    assert.equal(result.models[0].refusal, 'degenerate-zone');
+    // The good zone must not be in the file either: the builder emits zone by
+    // zone, so a half-written set is the failure this refusal exists to stop.
+    assert.equal(zoneEntities().length, 0);
+  });
+
   it('writes nothing at all for a read-only collab role', async () => {
     await seedStore();
     const canEdit = useViewerStore.getState().canCollabEdit;

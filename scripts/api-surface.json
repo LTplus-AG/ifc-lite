@@ -1440,6 +1440,7 @@
     "applySimplifiedGeometry: function",
     "collectReferencedEntityIds: function",
     "collectStyleEntities: function",
+    "columnsToParquet: function",
     "convertEntityType: function",
     "convertStepLine: function",
     "countGlbMeshes: function",
@@ -1449,6 +1450,7 @@
     "generateLod0: function",
     "generateLod1: function",
     "getVisibleEntityIds: function",
+    "isParquet: function",
     "needsConversion: function",
     "parseGLB: function",
     "parseGLBToMeshData: function"

@@ -125,6 +125,46 @@ function emittedZones(): string[] {
     .map((e) => String(e.attributes[2]));
 }
 
+describe('ZonesPanel: exporting the table', () => {
+  beforeEach(async () => {
+    await seed();
+  });
+
+  it('downloads a CSV when the panel button is clicked', async () => {
+    // A presence check would pass with `onClick={() => {}}`, which is the
+    // failure #2434 catalogued, so the assertion is the file: its bytes, its
+    // name, and a row for the element that is actually in a zone.
+    const downloads: Array<{ name: string; text: string }> = [];
+    const originalCreate = URL.createObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    let pending: Blob | null = null;
+    (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = (blob: Blob) => {
+      pending = blob;
+      return 'blob:zone-table';
+    };
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+      if (this.download && pending) downloads.push({ name: this.download, text: '' });
+    };
+
+    try {
+      const container = render(<ZonesPanel />);
+      click(button(container, 'CSV'));
+      // The export is async (Parquet loads a wasm writer, so both formats go
+      // through a promise); let it settle before asserting on the download.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(downloads.length, 1, 'the CSV button downloaded nothing');
+      assert.equal(downloads[0].name, 'Takt areas-zone-quantities.csv');
+      const text = await (pending as Blob | null)?.text();
+      assert.ok(text?.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text?.slice(0, 60)}`);
+      assert.match(text ?? '', /0Wall00000000000000042/);
+    } finally {
+      (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+});
+
 describe('ZonesPanel: emitting the zones themselves', () => {
   beforeEach(async () => {
     await seed();

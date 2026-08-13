@@ -1479,6 +1479,7 @@ export function ViewportContainer() {
           projectedCRS={georef.projectedCRS}
           coordinateInfo={georef.coordinateInfo}
           geometryResult={cesiumGeometryResult}
+          computedIsolatedIds={computedIsolatedIds}
           lengthUnitScale={georef.lengthUnitScale}
           storeyElevations={georef.storeyElevations}
         />

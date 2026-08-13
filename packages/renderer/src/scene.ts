@@ -25,6 +25,7 @@ import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } 
 import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { isEntityVisible } from './entity-visibility.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
@@ -3564,14 +3565,11 @@ export class Scene {
     }
     this.instancedVisibilityDirty = false;
     this.lastInstancedVisibilityVersion = visibilityVersion;
-    const isHidden = (eid: number): boolean =>
-      (hiddenIds != null && hiddenIds.has(eid)) ||
-      (isolatedIds != null && !isolatedIds.has(eid));
     // Recompute the effective hidden set over all instanced occurrences and diff vs
     // the current one; only flips touch the GPU buffer.
     const next = new Set<number>();
     for (const eid of this.instancedEntityMap.keys()) {
-      if (isHidden(eid)) next.add(eid);
+      if (!isEntityVisible(eid, hiddenIds, isolatedIds)) next.add(eid);
     }
     // Fast-path: unchanged hidden set → nothing to write.
     let changed = next.size !== this.instancedHidden.size;

@@ -73,6 +73,12 @@ export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, L
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
 export { sumResidentGpuBytes } from './render-stats.js';
+
+// The hide/isolate rule and its change detection, shared with consumers that
+// render the model outside this package's pipeline (the Cesium world view,
+// #2578) and so must reach the same verdict the viewport does.
+export { isEntityVisible } from './entity-visibility.js';
+export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
 export type { RenderDegradationInfo } from './render-degradation.js';
@@ -130,6 +136,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
@@ -1924,12 +1931,11 @@ export class Renderer {
             }
         }
 
-        // Visibility filtering
-        if (options.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter(mesh => !options.hiddenIds!.has(mesh.expressId));
-        }
-        if (options.isolatedIds !== null && options.isolatedIds !== undefined) {
-            meshes = meshes.filter(mesh => options.isolatedIds!.has(mesh.expressId));
+        // Visibility filtering. Shares `isEntityVisible` with the instanced pass
+        // and with the Cesium world view, which renders through its own glTF
+        // pipeline and so cannot inherit this filter for free (#2578).
+        if ((options.hiddenIds && options.hiddenIds.size > 0) || options.isolatedIds != null) {
+            meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options.hiddenIds, options.isolatedIds));
         }
 
         // Resize depth texture if needed

@@ -12,9 +12,10 @@
  * primitive whose shadow mode it sets.
  *
  * ORDERING NOTE: call this hook where its effects sat, AFTER the model hook.
- * It reads `modelRef` to apply shadow settings, and keys on `modelEpoch` so a
- * swapped-in primitive (#2583) gets those settings applied to it — the model
- * hook must have run first for both to be current.
+ * It reads `modelRef` to apply shadow settings and keys on `modelEpoch`, so a
+ * swapped-in primitive (#2583) gets those settings — the model hook must have
+ * run first for both to be current. Its cleanup, like every other one here,
+ * runs after the viewer effect's, so it must not assume a live scene.
  */
 
 import { useEffect, useRef, type RefObject } from 'react';

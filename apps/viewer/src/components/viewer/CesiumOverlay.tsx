@@ -23,24 +23,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
-import { getGlobalRenderer } from '@/hooks/useBCF';
-import { createCesiumBridge, type CesiumBridge } from '@/lib/geo/cesium-bridge';
-import {
-  computeCesiumPlacement,
-  shouldPreferOrthometricTerrain,
-  shouldApplyGeoidUndulation,
-  orthometricTargetForTerrain,
-} from '@/lib/geo/cesium-placement';
-import { egm96Undulation } from '@/lib/geo/egm96-undulation';
-import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
-import { sunPosition, sunTimes } from '@ifc-lite/solar';
-import { loadCesium, getCesiumModule } from './cesium/cesium-module';
+import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
+import { loadCesium } from './cesium/cesium-module';
 import { useCesiumBridge } from './cesium/useCesiumBridge';
 import { useCesiumModel } from './cesium/useCesiumModel';
 import { useCesiumSolar } from './cesium/useCesiumSolar';
 import { useCesiumCameraSync } from './cesium/useCesiumCameraSync';
-
-
 
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
@@ -82,46 +70,16 @@ export function CesiumOverlay({
   const invalidateSolarRef = useRef<() => void>(() => {});
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
-  // Tracks bridge readiness as state (not just a ref) so terrain query effect re-runs
-  // Bumped every time a NEW model primitive reaches the globe. `cesiumGlbLoaded`
-  // used to serve this purpose by flipping false→true around every rebuild, but
-  // the model now stays loaded across one (#2583), so the flag no longer moves.
 
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
   const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
-  // In-place mesh mutations (a gizmo move rewrites positions in the SAME
-  // arrays) change no mesh count, so the world-view GLB cache keys on this too.
-  // Hide/isolate, resolved the way Viewport resolves what it hands the
-  // renderer, so the map draws the elements the viewport draws (#2578).
-  // The GLB effect keys on this version, NOT on the Set references. The store
-  // hands out a fresh Set on every visibility action, and the effect's cleanup
-  // pulls the model off the globe — so keying on identity blanks the map for a
-  // second and rebuilds a multi-megabyte GLB even when the content is
-  // unchanged. `VisibilityEpochTracker` compares content, so an equal set is a
-  // no-op while an in-place mutation of the same Set still registers.
-  //
-  // Safe to run during render: `update()` only bumps when the content actually
-  // changed, so a double-invoked render (StrictMode) returns the same version.
-  // Read inside the deferred build, which runs long after the effect fired.
 
-  // Solar study state — drives the sun-path dome + shadow study.
-  // Environment sky toggle — atmosphere + sun + fog in geo mode.
-
-  // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
-  // Key of the model actually ON the globe, which is not the same thing as the
-  // key of the last GLB built — see the gate in Effect 2c.
   // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
   // solar mode can toggle its shadow casting/receiving.
   const tilesetRef = useRef<{ shadows?: any } | null>(null);
-  // Active sun-path dome entity collection (null when solar study is off).
-  // UTC calendar day the dome's static geometry (day-arc, analemmas) was built
-  // for. Intra-day time scrubs only move the sun marker; a new day rebuilds.
-  // Whether the solar study has ever touched Cesium scene state. Guards us
-  // from mutating the default (non-solar) lighting on plain mount.
-
 
   // ─── Effect 1: Create/destroy the Cesium viewer (heavy, rare) ───────────
   // Only depends on cesiumEnabled, ionToken, terrainEnabled, dataSource.
@@ -308,9 +266,10 @@ export function CesiumOverlay({
   });
 
   // ─── Model lifecycle: build, load, swap, keep the matrix current ────────
-  // Called HERE, between the bridge effect and the solar effect, because React
-  // runs effects in declaration order and cleanups in reverse — the teardown
-  // inside this hook assumes the viewer effect's cleanup runs after its own.
+  // Called HERE, between the bridge and the solar study, because React runs a
+  // component's effects — setups AND cleanups — in declaration order. Each
+  // hook's header states what that buys it; moving a call changes teardown
+  // order as much as setup order.
   const { modelRef: cesiumModelRef, modelEpoch: cesiumModelEpoch, invalidate: invalidateModel } = useCesiumModel({
     status,
     bridgeVersion,
@@ -342,7 +301,6 @@ export function CesiumOverlay({
 
   // ─── Camera sync: mirror the viewport's pose onto the globe, per frame ──
   useCesiumCameraSync({ status, viewerRef, bridgeRef, cameraBridgeRef, terrainClipY, rafRef });
-
 
   if (!cesiumEnabled || !mapConversion || !projectedCRS) {
     return null;

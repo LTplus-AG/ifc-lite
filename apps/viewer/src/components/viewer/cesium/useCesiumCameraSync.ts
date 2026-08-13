@@ -27,8 +27,9 @@ export interface UseCesiumCameraSyncParams {
   terrainClipY: number | null;
   /**
    * Owned by the CALLER, not this hook. The viewer effect cancels the loop from
-   * its own cleanup, which runs BEFORE this hook re-runs — without that, the
-   * loop can tick once against a viewer that has just been destroyed.
+   * its own cleanup, and every cleanup in a commit runs before any effect
+   * re-runs — so the frame that would otherwise tick against a just-destroyed
+   * viewer never happens. Moving the handle in here would lose that.
    */
   rafRef: RefObject<number | null>;
 }

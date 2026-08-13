@@ -13,10 +13,14 @@
  * (the old model stays until its replacement can actually draw) — so it is the
  * one that most benefits from being readable on its own.
  *
- * ORDERING NOTE: the caller must invoke this hook in the position the effects
- * occupied, between the bridge effect and the solar effect. React runs effects
- * in declaration order and cleanups in reverse, and the teardown here assumes
- * the viewer effect's cleanup runs after its own.
+ * ORDERING NOTE: call this hook where its effects sat — after the bridge hook,
+ * before the solar hook. Within a component React runs effect setups in
+ * declaration order AND cleanups in that same order (verified, not assumed:
+ * "cleanups run in reverse" is a common misreading that only describes
+ * child-before-parent across the tree). So the viewer effect, declared first,
+ * cleans up FIRST — which is why nothing in this hook's cleanup may touch the
+ * viewer. It only cancels the in-flight build; removing the primitive is left
+ * to the not-ready branch, or to the viewer teardown itself via `invalidate`.
  */
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';

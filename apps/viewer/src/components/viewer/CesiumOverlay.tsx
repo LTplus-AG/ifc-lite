@@ -100,6 +100,60 @@ function buildModelMatrix(
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
 
+/** The slice of `Cesium.Model` this overlay touches. */
+type CesiumModelPrimitive = {
+  modelMatrix: any;
+  shadows?: any;
+  ready?: boolean;
+  readyEvent?: { addEventListener(cb: () => void): () => void };
+  destroy?: () => void;
+};
+
+/**
+ * Resolves once `model` can actually draw.
+ *
+ * `Model.fromGltfAsync` resolving only means the glTF was fetched and parsed:
+ * Cesium finishes creating WebGL resources inside `update()` over subsequent
+ * frames, raises `readyEvent` from `frameState.afterRender`, and then skips one
+ * more frame before rendering. Waiting for the event plus a rendered frame is
+ * what makes "swap without a visible gap" true rather than merely
+ * "swap without an empty collection" (#2583).
+ *
+ * Rejects if neither happens within the timeout, so a model that never becomes
+ * renderable cannot strand its predecessor on the globe for the session.
+ */
+function whenModelRenderable(
+  viewer: { scene: { postRender: { addEventListener(cb: () => void): () => void } }; },
+  model: CesiumModelPrimitive,
+  timeoutMs = 5_000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      offReady?.();
+      offFrame?.();
+      globalThis.clearTimeout(timer);
+      if (ok) { resolve(); return; }
+      // Bounded on purpose: the timeout path degrades to exactly the old
+      // behaviour (drop the previous model and accept a brief blank), so a
+      // model that is merely slow costs a flicker, not a stranded primitive.
+      console.warn('[CesiumOverlay] model did not report renderable within %d ms; swapping anyway', timeoutMs);
+      reject(new Error('model never became renderable'));
+    };
+    // One rendered frame AFTER ready — Cesium deliberately returns early from
+    // the update that raises the event, so the model draws on the next one.
+    const afterReady = () => { offFrame = viewer.scene.postRender.addEventListener(() => finish(true)); };
+    let offFrame: (() => void) | undefined;
+    let offReady: (() => void) | undefined;
+    const timer = globalThis.setTimeout(() => finish(false), timeoutMs);
+    if (model.ready) { afterReady(); return; }
+    if (!model.readyEvent) { finish(true); return; } // nothing to wait on
+    offReady = model.readyEvent.addEventListener(() => { offReady?.(); afterReady(); });
+  });
+}
+
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
   cameraMapConversion?: MapConversion;
@@ -186,7 +240,7 @@ export function CesiumOverlay({
   const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
-  const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
+  const cesiumModelRef = useRef<CesiumModelPrimitive | null>(null);
   const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
   // Key of the model actually ON the globe, which is not the same thing as the
   // key of the last GLB built — see the gate in Effect 2c.
@@ -605,6 +659,9 @@ export function CesiumOverlay({
 
     const startExport = async () => {
       if (cancelled) return;
+      // Declared at this scope so the catch can release a model that was built
+      // but never installed (the viewer was destroyed mid-load).
+      let model: CesiumModelPrimitive | null = null;
       try {
         // Reuse the cached GLB when it was built from the same mesh set. The key
         // spans flat AND instanced geometry (see cesiumModelGLBKey), so an
@@ -651,7 +708,6 @@ export function CesiumOverlay({
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
-        let model: { modelMatrix: any; destroy?: () => void } | null = null;
         try {
           model = await Cesium.Model.fromGltfAsync({
             url: glbUrl,
@@ -689,7 +745,13 @@ export function CesiumOverlay({
           return;
         }
 
-        swapCesiumModel(viewer.scene.primitives, cesiumModelRef.current, model);
+        await swapCesiumModel(
+          viewer.scene.primitives,
+          cesiumModelRef.current,
+          model,
+          (m) => whenModelRenderable(viewer, m),
+        );
+        if (cancelled) return;
         cesiumModelRef.current = model;
         loadedKeyRef.current = key;
         setCesiumGlbLoaded(true);
@@ -700,6 +762,9 @@ export function CesiumOverlay({
         viewer.scene.requestRender();
       } catch (err) {
         console.warn('[CesiumOverlay] Failed to load IFC model into Cesium:', err);
+        // A model built but never installed (the viewer was destroyed mid-load,
+        // so `primitives.add` threw) owns GPU buffers nothing will release.
+        if (model && cesiumModelRef.current !== model) model.destroy?.();
       }
     };
 

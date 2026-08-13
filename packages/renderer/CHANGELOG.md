@@ -1,5 +1,15 @@
 # @ifc-lite/renderer
 
+## 1.45.1
+
+### Patch Changes
+
+- [#2587](https://github.com/LTplus-AG/ifc-lite/pull/2587) [`a38012f`](https://github.com/LTplus-AG/ifc-lite/commit/a38012f6d9fec6b9ea934b22016c9005579a54b7) Thanks [@louistrue](https://github.com/louistrue)! - The hide/isolate rule now has one definition inside the renderer, not six.
+
+  `isEntityVisible` was introduced for the draw paths so the Cesium world view could reach the same verdict the viewport does. Picking and raycasting still restated the rule inline — `pick`, `pickRect`, the pick piece-scan, both raycast-engine loops and the scene's instanced raycast each spelled out "not hidden, and isolated if isolation is active" in their own words. They agreed, but nothing held them together: the world view's disagreement began exactly this way.
+
+  Behaviour is unchanged; this is the same predicate, called instead of copied. The point-cloud query keeps its own rule deliberately — it filters whole assets on `hiddenIds` only, because a point cloud has no per-element ids to isolate on.
+
 ## 1.45.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/viewer",
-  "version": "1.33.7",
+  "version": "1.33.8",
   "description": "IFC-Lite viewer application",
   "private": true,
   "type": "module",

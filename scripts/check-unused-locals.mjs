@@ -84,15 +84,23 @@ function countViolations(dir) {
     return { count: 0, unmeasurable: false };
   } catch (err) {
     const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
-    const matches = output.match(UNUSED_RE);
-    const otherErrors = OTHER_ERROR_RE.test(output);
-    if (otherErrors) {
+    const count = output.match(UNUSED_RE)?.length ?? 0;
+    if (OTHER_ERROR_RE.test(output)) {
       // The package does not compile. That belongs to the typecheck lane, not
       // here — but it must not silently drop out of the ratchet either, or
       // breaking a build becomes a way to lose the guard. Reported, not skipped.
-      return { count: matches?.length ?? 0, unmeasurable: true };
+      return { count, unmeasurable: true };
     }
-    return { count: matches?.length ?? 0, unmeasurable: false };
+    if (count === 0) {
+      // Non-zero exit, and nothing here explains it: no unused diagnostics, no
+      // other `error TS####`. tsc never ran, or died without reporting — a
+      // missing binary, a killed process, a failure printed in a shape this
+      // does not parse. The one thing that must not happen is calling it zero,
+      // which would read as a clean package and could be written into the
+      // baseline as one (review, #2603).
+      return { count: 0, unmeasurable: true };
+    }
+    return { count, unmeasurable: false };
   }
 }
 

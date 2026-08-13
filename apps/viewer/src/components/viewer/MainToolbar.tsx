@@ -68,7 +68,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -617,6 +617,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             <GitCompareArrows className="h-4 w-4 mr-2" />
             Compare Models
+          </DropdownMenuCheckboxItem>
+          {/* Cloud sources (CDE integrations): the ActivityBar rail was its
+              only entry point, exactly as Location Zones was before #2508.
+              The ribbon files it under File, where models come from. */}
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('sources')}
+            onCheckedChange={() => handleToggleRightPanel('sources')}
+          >
+            <Cloud className="h-4 w-4 mr-2" />
+            Cloud Sources
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}

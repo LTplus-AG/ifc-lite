@@ -30,6 +30,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Box,
+  Cloud,
   EyeOff,
   Eye,
   Equal,
@@ -221,7 +222,7 @@ function recordUsage(id: string) {
  *  analysis extension first preserves the prior "panels win the slot" behavior.
  *  Kept as two thin helpers so every existing command action keeps its call
  *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -450,6 +451,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
         action: () => { activateRightPanel('layers'); } },
+      // Cloud sources and Location zones reached the two toolbars but not this
+      // list. Same shape as the gap that left Cloud sources rail-only: a panel
+      // is only as reachable as the LAST surface that learned about it.
+      { id: 'panel:sources', label: 'Cloud Sources', keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
+        action: () => { activateRightPanel('sources'); } },
+      { id: 'panel:zones', label: 'Location Zones', keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
+        action: () => { activateRightPanel('zones'); } },
       ...(isCollabEnabled()
         ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
             action: () => { activateRightPanel('collab'); } }]

@@ -8,11 +8,13 @@
  */
 
 import React from 'react';
+import { Cloud } from 'lucide-react';
 import { AddFile, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
 import type { FileCommands } from '../../toolbar/useFileCommands';
+import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import { RibbonExportGroup } from './RibbonExportGroup';
 import { RIBBON_EXPORT_ICONS } from './ribbon-export-icons';
 import {
@@ -36,6 +38,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
   const collabRoomId = useViewerStore((s) => s.collabRoomId);
   const collabPanelVisible = useViewerStore((s) => s.collabPanelVisible);
 
+  // Cloud sources (CDE integrations) is a model SOURCE, so it belongs on the
+  // tab that moves bytes — not with the analysis panels. Until now the
+  // ActivityBar rail was its only entry point, the same gap Location zones
+  // had before #2508, and the parity guard cannot see it: both toolbars
+  // already reach `toggleWorkspacePanel` for other panels.
+  const { activeWorkspacePanels, handleToggleRightPanel } = useWorkspacePanelControls();
+
   return (
     <>
       <RibbonGroup label="Model">
@@ -46,6 +55,13 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           disabled={loading}
           className={loading ? '[&_svg]:animate-spin' : undefined}
           onClick={() => { void handleOpenClick(); }}
+        />
+        <RibbonLargeButton
+          icon={Cloud}
+          label="Cloud sources"
+          tooltip="Cloud sources (connected CDEs)"
+          active={activeWorkspacePanels.has('sources')}
+          onClick={() => handleToggleRightPanel('sources')}
         />
         <RibbonSmallStack>
           <RibbonSmallButton
@@ -89,7 +105,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
             {collabRoomId && (
               <RibbonLargeButton
                 icon={CollabsRoom}
-                label="Collabs Room"
+                label="Room"
                 tooltip="Collaboration room"
                 active={collabPanelVisible}
                 onClick={() => useViewerStore.getState().toggleWorkspacePanel('collab')}

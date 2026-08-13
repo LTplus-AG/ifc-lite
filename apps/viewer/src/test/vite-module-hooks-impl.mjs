@@ -12,6 +12,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ICON_PREFIX = '~icons/';
 
+/** Vite's raw-text import suffix (`./thing.ts?raw` → the file's source string). */
+const RAW_SUFFIX = '?raw';
+
 /** Absolute URL of the stub every `~icons/*` specifier collapses onto. */
 const ICON_STUB = new URL('./icon-stub.tsx', import.meta.url).href;
 
@@ -26,16 +29,30 @@ const REPO_ROOT = new URL('../../../../', import.meta.url).href;
 const ENV_PRELUDE =
   'import.meta.env ??= (globalThis.__VITE_ENV__ ??= { MODE: "test", DEV: false, PROD: false });\n';
 
-export function resolve(specifier, context, nextResolve) {
+export async function resolve(specifier, context, nextResolve) {
   if (specifier.startsWith(ICON_PREFIX)) {
     // Every icon renders the same stub. Tests that care about WHICH icon
     // should assert on an accessible name, not on the glyph.
     return { url: ICON_STUB, shortCircuit: true, format: 'module' };
   }
+  if (specifier.endsWith(RAW_SUFFIX)) {
+    // Keep the marker on the URL so `load` below can see it: tsx strips the
+    // query and hands back the TRANSPILED module, which is how a `?raw` import
+    // of a `.ts` file fails as "does not provide an export named 'default'"
+    // rather than as an unresolved specifier.
+    const base = await nextResolve(specifier.slice(0, -RAW_SUFFIX.length), context);
+    return { ...base, url: base.url + RAW_SUFFIX, shortCircuit: true };
+  }
   return nextResolve(specifier, context);
 }
 
 export async function load(url, context, nextLoad) {
+  if (url.endsWith(RAW_SUFFIX)) {
+    // Vite's `?raw` is the file's TEXT, so read it rather than evaluating it.
+    const text = readFileSync(fileURLToPath(url.slice(0, -RAW_SUFFIX.length)), 'utf8');
+    return { source: `export default ${JSON.stringify(text)};\n`, format: 'module', shortCircuit: true };
+  }
+
   const loaded = await nextLoad(url, context);
 
   if (!url.startsWith(REPO_ROOT) || url.includes('/node_modules/')) return loaded;

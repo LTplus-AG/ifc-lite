@@ -20,7 +20,7 @@ import {
 import { closePanelWindow } from '@/services/panel-windows';
 
 export type BottomPanel = 'script' | 'list' | 'gantt';
-export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions';
+export type RightPanel = 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'addElement' | 'extensions' | 'sources';
 export type WorkspacePanel = BottomPanel | RightPanel | string;
 
 export function useWorkspacePanelControls() {
@@ -40,6 +40,8 @@ export function useWorkspacePanelControls() {
   const setLensPanelVisible = useViewerStore((state) => state.setLensPanelVisible);
   const extensionsPanelVisible = useViewerStore((state) => state.extensionsPanelVisible);
   const setExtensionsPanelVisible = useViewerStore((state) => state.setExtensionsPanelVisible);
+  const sourcesPanelVisible = useViewerStore((state) => state.sourcesPanelVisible);
+  const setSourcesPanelVisible = useViewerStore((state) => state.setSourcesPanelVisible);
   const scriptPanelVisible = useViewerStore((state) => state.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((state) => state.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((state) => state.ganttPanelVisible);
@@ -108,6 +110,7 @@ export function useWorkspacePanelControls() {
     const nextClashVisible = panel === 'clash' ? !clashPanelVisible : false;
     const nextCompareVisible = panel === 'compare' ? !comparePanelVisible : false;
     const nextExtensionsVisible = panel === 'extensions' ? !extensionsPanelVisible : false;
+    const nextSourcesVisible = panel === 'sources' ? !sourcesPanelVisible : false;
     const isAddElementActive = activeTool === 'addElement';
     const nextAddElementActive = panel === 'addElement' ? !isAddElementActive : false;
 
@@ -117,6 +120,7 @@ export function useWorkspacePanelControls() {
     setClashPanelVisible(nextClashVisible);
     setComparePanelVisible(nextCompareVisible);
     setExtensionsPanelVisible(nextExtensionsVisible);
+    setSourcesPanelVisible(nextSourcesVisible);
     // Keep the float + window channels in sync (#1200/#1201/#1208): toggling a
     // workspace panel from the toolbar re-docks it if it was floating or popped
     // out, instead of leaving an orphaned floating panel or OS window.
@@ -131,7 +135,7 @@ export function useWorkspacePanelControls() {
       setActiveTool('select');
     }
 
-    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextAddElementActive) {
+    if (nextBcfVisible || nextIdsVisible || nextLensVisible || nextClashVisible || nextCompareVisible || nextExtensionsVisible || nextSourcesVisible || nextAddElementActive) {
       setRightPanelCollapsed(false);
     }
   }, [
@@ -151,6 +155,8 @@ export function useWorkspacePanelControls() {
     setIdsPanelVisible,
     setLensPanelVisible,
     setRightPanelCollapsed,
+    setSourcesPanelVisible,
+    sourcesPanelVisible,
   ]);
 
   const handleToggleAnalysisExtension = useCallback((id: string) => {
@@ -183,6 +189,7 @@ export function useWorkspacePanelControls() {
     setClashPanelVisible(false);
     setComparePanelVisible(false);
     setExtensionsPanelVisible(false);
+    setSourcesPanelVisible(false);
     // The right slot is single-tenant: when an analysis extension takes
     // it over, the AddElement tool must release it too, otherwise its 3D
     // click handler keeps placing elements behind the extension panel.
@@ -205,6 +212,7 @@ export function useWorkspacePanelControls() {
     setListPanelVisible,
     setRightPanelCollapsed,
     setScriptPanelVisible,
+    setSourcesPanelVisible,
   ]);
 
   const activeWorkspacePanels = useMemo(() => {
@@ -218,6 +226,7 @@ export function useWorkspacePanelControls() {
     if (clashPanelVisible) panels.add('clash');
     if (comparePanelVisible) panels.add('compare');
     if (extensionsPanelVisible) panels.add('extensions');
+    if (sourcesPanelVisible) panels.add('sources');
     if (activeTool === 'addElement') panels.add('addElement');
     if (layersPanelVisible) panels.add('layers');
     if (collabPanelVisible) panels.add('collab');
@@ -239,6 +248,7 @@ export function useWorkspacePanelControls() {
     listPanelVisible,
     scriptPanelVisible,
     sidebarActivePanel,
+    sourcesPanelVisible,
   ]);
 
   const workspacePanelLabel = useMemo(() => {
@@ -253,6 +263,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('clash')) return 'Clash Detection';
     if (activeWorkspacePanels.has('compare')) return 'Compare Models';
     if (activeWorkspacePanels.has('extensions')) return 'Extensions';
+    if (activeWorkspacePanels.has('sources')) return 'Cloud Sources';
     if (activeWorkspacePanels.has('addElement')) return 'Add Element';
     if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
     if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';

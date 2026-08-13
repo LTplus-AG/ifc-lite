@@ -56,16 +56,10 @@
 //!   in a fixed, facet-index-sorted order), and projected vertices are snapped
 //!   to the same `1/2^16` grid the kernel uses, so the welded mesh is
 //!   byte-identical on every target.
-//! - Normals and plane offsets are computed in a **local frame** anchored at
-//!   the mesh's first canonical vertex (subtracted before, added back after)
-//!   rather than the raw world-frame position. This is a determinism-neutral
-//!   change (the anchor is a fixed function of the input mesh, same on every
-//!   target) that fixes a magnitude-amplification bug: a plane offset is
-//!   `n·v`, so at ordinary site coordinates (hundreds–thousands of metres,
-//!   below `LARGE_COORD_THRESHOLD_METERS` and therefore never recentred
-//!   upstream) a µm-scale per-facet normal error is amplified by `|v|` into
-//!   an offset error that blows through `MAX_OFFSET_JITTER`. Anchoring
-//!   replaces `|v|` with the mesh's own (small) extent.
+//! - Normals and offsets are computed in a frame anchored at the first
+//!   canonical vertex rather than raw world position, which removes a
+//!   magnitude-amplification bug in `n·v` at large site coordinates — see
+//!   Step 1.5 below for the derivation and the determinism argument.
 //!
 //! ## Watertightness
 //!
@@ -220,10 +214,8 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
         [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]]
     };
 
-    // ── Step 2: per-facet canonical triangle, unit normal, area, plane offset
-    // — normal and offset computed in the anchor-local frame so the offset's
-    // dot product multiplies a small (mesh-extent) magnitude, not the raw
-    // world-frame position.
+    // ── Step 2: per-facet canonical triangle, unit normal, area, plane
+    // offset — normal and offset computed in the anchor-local frame (Step 1.5).
     struct Facet {
         tri: [usize; 3],
         normal: [f64; 3],
@@ -899,29 +891,21 @@ mod tests {
         set.len()
     }
 
-    /// Same as [`distinct_offset_buckets`] but computed in a frame anchored at
-    /// the mesh's own vertex centroid — the fair way to ask "are these facets
-    /// coplanar" at large absolute coordinates. `distinct_offset_buckets`
-    /// itself computes `n·v` at the RAW (possibly large-magnitude) vertex, so
-    /// at site-scale coordinates it inherits the exact amplification bug this
-    /// module fixes: `Mesh::positions` is `f32`, whose ULP at ~8.7 km
-    /// magnitude is ~1 mm — a hundred times coarser than the 1 µm bucket grid
-    /// — so even a mesh that IS exactly coplanar in the algorithm's internal
-    /// f64 math reads back as multiple raw-frame buckets purely from f32
-    /// storage quantization, independent of whether the weld ran or worked.
-    /// That is a real, separate, and expected limit of `f32` storage at large
-    /// coordinates, not a defect in the weld: this local-frame variant is
-    /// what actually distinguishes "the weld welded" from "the weld didn't".
+    /// Same as [`distinct_offset_buckets`] but anchored at the mesh's vertex
+    /// centroid, not the raw vertex — `distinct_offset_buckets` itself
+    /// inherits the amplification bug at site-scale coordinates (`f32` ULP at
+    /// ~8.7 km is ~1 mm, a hundred times coarser than the 1 µm bucket grid,
+    /// so an already-coplanar mesh reads back as multiple raw-frame buckets
+    /// from storage quantization alone). This is the fair check for whether
+    /// the weld's OWN clustering worked.
     fn distinct_offset_buckets_anchored(m: &Mesh) -> usize {
         use std::collections::BTreeSet;
         let vertex_count = m.positions.len() / 3;
         if vertex_count == 0 {
             return 0;
         }
-        // Centroid of every RAW vertex — deliberately NOT any single facet's
-        // own corner (which would trivially zero the offset for any facet
-        // that happens to include that corner, masking a real coplanarity
-        // difference between facets that share an edge).
+        // Centroid, not a single facet's own corner (which would trivially
+        // zero the offset for any facet containing it).
         let mut anchor = [0.0f64, 0.0, 0.0];
         for i in 0..vertex_count {
             let p = vert(m, i);
@@ -1041,21 +1025,14 @@ mod tests {
         assert_eq!(a.indices, b.indices);
     }
 
-    /// Ordinary site coordinates (~150 m — well under
-    /// `LARGE_COORD_THRESHOLD_METERS`, so never recentred upstream) must weld
-    /// exactly as well as the near-origin case. Same structure as
-    /// `welds_offset_jitter_not_distinct_plane` (10 m-side facets), just
-    /// translated. 150 m is chosen deliberately, not for convenience: beyond
-    /// ~840 m, `f32`'s own ULP exceeds `POSITION_DEDUP_GRID` (1e-4 m), so
-    /// Step 1's position-based vertex dedup itself starts failing to merge
-    /// genuinely-coincident corners — a SEPARATE, pre-existing limitation
-    /// this change does not touch (see
-    /// `anchored_formula_removes_offset_amplification` and the module
-    /// report for that finding). At 150 m dedup still succeeds, so this test
-    /// isolates the ONE thing this change fixes: before anchoring, the plane
-    /// OFFSET (`n·v_raw`) amplified this same jitter by the ~150 m vertex
-    /// magnitude into a gap beyond `MAX_OFFSET_JITTER` (5e-5 m) — a false
-    /// NEGATIVE with no fixed-tolerance escape (see module docs).
+    /// Ordinary site coordinates (~150 m, well under
+    /// `LARGE_COORD_THRESHOLD_METERS`) must weld exactly as well as the
+    /// near-origin case. Same structure as `welds_offset_jitter_not_distinct_plane`,
+    /// just translated. 150 m, not thousands: beyond ~840 m `f32`'s ULP
+    /// exceeds `POSITION_DEDUP_GRID`, a separate pre-existing dedup
+    /// limitation this change doesn't touch (see
+    /// `anchored_formula_removes_offset_amplification`); below that, this
+    /// isolates the one thing that IS fixed here.
     #[test]
     fn welds_offset_jitter_at_large_site_coordinates() {
         let j = 2.0e-5; // > 1 f32-ULP at ~150m (survives storage), < POSITION_DEDUP_GRID
@@ -1074,11 +1051,7 @@ mod tests {
             ],
         ]);
 
-        // Anchored check (see `distinct_offset_buckets_anchored` doc comment)
-        // — a fair read on whether the weld's OWN clustering worked, not on
-        // whether the OUTPUT happens to still be `f32`-representable at 1 µm
-        // resolution (which is unrelated to this test's magnitude, but keeps
-        // the same checker as the rest of this module for consistency).
+        // Anchored check — see `distinct_offset_buckets_anchored` doc.
         let pre_buckets = distinct_offset_buckets_anchored(&jittered);
         let welded = weld_near_coplanar_facets(&jittered);
         let post_buckets = distinct_offset_buckets_anchored(&welded);
@@ -1095,31 +1068,24 @@ mod tests {
         );
     }
 
-    /// Isolates and measures the offset-formula fix directly (not through
-    /// the full `weld_near_coplanar_facets` pipeline, so Step 1's
-    /// `POSITION_DEDUP_GRID` — a separate, pre-existing limitation at these
-    /// magnitudes, see the module report — cannot interfere). Uses a jitter
-    /// magnitude that is actually representable in `f32` at ~5000-7000 m
-    /// (`f32`'s own ULP there is ~0.5 mm — a *true* ~15 µm jitter, the #1112
-    /// magnitude, is provably unrepresentable this far out: two f64 values
-    /// 15 µm apart at ~7000 m cast to the IDENTICAL nearest `f32`).
+    /// Isolates the offset-formula fix from the full `weld_near_coplanar_facets`
+    /// pipeline (so `POSITION_DEDUP_GRID`'s separate limitation, see above,
+    /// can't interfere), using the smallest jitter that survives `f32`
+    /// storage at ~5000-7000 m (a true 15 µm #1112-scale jitter is
+    /// unrepresentable there).
     ///
-    /// Asserts the ANCHORED gap is within `MAX_OFFSET_JITTER` when the
-    /// anchor is on the shared edge (the common case: `weld_near_coplanar_facets`
-    /// anchors at `canon_pos[0]`, and for a single compact host that vertex
-    /// is typically part of, or very close to, the cluster being welded) —
-    /// while the RAW (pre-fix) gap is orders of magnitude over tolerance.
-    /// Also PRINTS (does not assert — see module report) the gap for an
-    /// anchor progressively farther from the cluster: the fix bounds the
-    /// residual to the anchor-to-cluster DISTANCE (mesh-scale), not the
-    /// world-origin distance (site-scale) — a large improvement, but not a
-    /// complete elimination for a sprawling multi-cluster host.
+    /// Asserts the ANCHORED gap clears `MAX_OFFSET_JITTER` when the anchor is
+    /// on the shared edge (the common case, since `weld_near_coplanar_facets`
+    /// anchors at `canon_pos[0]`, typically part of or near the cluster being
+    /// welded), against a RAW gap orders of magnitude over tolerance. Also
+    /// PRINTS (doesn't assert) the gap for an anchor progressively farther
+    /// from the cluster: the residual scales with anchor-to-cluster distance
+    /// (mesh-scale) rather than world-origin distance (site-scale) — a large
+    /// improvement, not a complete elimination for a sprawling host.
     #[test]
     fn anchored_formula_removes_offset_amplification() {
         let t = [5000.123_f64, 3000.456, 7000.789];
-        // One ULP of an f32 near |t| ~ 5000-7000 (~0.5-1mm) — the SMALLEST
-        // vertex divergence that can even survive `f32` storage at this
-        // magnitude, i.e. the storage-imposed floor, not an arbitrary choice.
+        // Smallest vertex divergence that survives f32 storage at this magnitude.
         let ulp_at_t2 = {
             let f = t[2] as f32;
             (f32::from_bits(f.to_bits() + 1) - f) as f64
@@ -1128,19 +1094,16 @@ mod tests {
 
         for edge in [1.0_f64, 10.0_f64] {
             let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
-            // Facet1 flat, NOT axis-aligned (so its normal has all 3
-            // components — avoids a spurious zero dot-product from an
-            // edge/normal that happens to be orthogonal). Facet2 shares the
-            // (A,B) edge; its own unique corner lifted by exactly one f32
-            // ULP (the minimum representable divergence at this magnitude).
+            // Facet1 flat, not axis-aligned (avoids a spurious zero dot
+            // product from an orthogonal edge/normal). Facet2 shares the
+            // (A,B) edge; its unique corner is lifted by one f32 ULP.
             let a = add([0.0, 0.0, 0.0]);
             let b = add([edge, 0.3 * edge, 0.05 * edge]);
             let c1 = add([0.2 * edge, edge, 0.1 * edge]);
             let c2 = add([0.2 * edge, edge, 0.1 * edge + ulp_at_t2]);
 
-            // Evaluate offset at the vertex that actually MOVED (c1/c2), not
-            // a shared edge vertex — otherwise the dot product can vanish by
-            // construction regardless of the real coplanarity gap.
+            // Evaluate at the vertex that moved (c1/c2) — a shared-edge
+            // vertex would vanish by construction regardless of the gap.
             let raw_gap = {
                 let n1 = super::tri_normal(a, b, c1).unwrap().0;
                 let n2 = super::tri_normal(b, c2, a).unwrap().0;

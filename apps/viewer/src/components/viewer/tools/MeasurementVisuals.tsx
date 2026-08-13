@@ -11,19 +11,30 @@ import type { Measurement, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
 import { formatDistance } from './formatDistance';
+import {
+  distanceComponents,
+  formatAxisDeltas,
+  formatHorizontalVertical,
+} from './measure-modes/components';
+import { inclination, formatInclination } from './measure-modes/inclination';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
   pending: { screenX: number; screenY: number } | null;
-  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number }; distance: number } | null;
+  // `current` carries world x/y/z (the store's ActiveMeasurement uses a full
+  // MeasurePoint) so the live label can show the same axis breakdown.
+  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number; x: number; y: number; z: number }; distance: number } | null;
   snapTarget: SnapTarget | null;
   snapVisualization: SnapVisualization | null;
   hoverPosition?: { x: number; y: number } | null;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   constraintEdge?: MeasurementConstraintEdge | null;
+  /** The user's per-unit-type display override (#1573); defaults to none so
+   *  callers that don't pass it keep the previous auto-scaled-metric labels. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge }: MeasurementOverlaysProps) {
+export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, unitDisplayOverrides = {} }: MeasurementOverlaysProps) {
   // Determine snap indicator position
   // Priority: activeMeasurement.current > snapTarget projected position > hoverPosition (fallback)
   const snapIndicatorPos = useMemo(() => {
@@ -75,7 +86,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       </svg>
 
       {/* Completed measurements */}
-      {measurements.map((m) => (
+      {measurements.map((m) => {
+        const components = distanceComponents(m.start, m.end);
+        return (
         <div key={m.id} className="pointer-events-none">
           {/* Line connecting start and end */}
           <svg
@@ -120,10 +133,22 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (m.start.screenY + m.end.screenY) / 2,
             }}
           >
-            {formatDistance(m.distance)}
+            {formatDistance(m.distance, unitDisplayOverrides)}
+            {/* Axis breakdown, derived on render (see measure-modes/components). */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(components, unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(components, unitDisplayOverrides)}
+            </div>
+            {/* Inclination to horizontal (#2199 §4), from the same endpoints. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(components))}
+            </div>
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Active measurement (live preview while dragging) */}
       {activeMeasurement && (
@@ -175,7 +200,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
             }}
           >
-            {formatDistance(activeMeasurement.distance)}
+            {formatDistance(activeMeasurement.distance, unitDisplayOverrides)}
+            {/* Live axis breakdown, derived on render (see measure-modes/components).
+                Mirrors the completed-measurement label: axis deltas first, then
+                horizontal/vertical — the drag is exactly when a setting-out user
+                wants dX/dY/dZ, so the live readout must not be the poorer one. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(distanceComponents(activeMeasurement.start, activeMeasurement.current)))}
+            </div>
           </div>
         </div>
       )}
@@ -448,7 +486,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       )}
     </>
   );
-}, (prevProps, nextProps) => {
+}, measurementOverlaysPropsEqual);
+
+/**
+ * Props-equality for the `React.memo` above. Exported so it can be tested
+ * directly — the stale-readout bug it guards against is invisible in a render
+ * test, because the component renders correctly when it renders at all.
+ *
+ * World coordinates are compared as well as screen ones: the axis breakdown
+ * (`distanceComponents`) is derived from world x/y/z, so two different world
+ * positions that project to the SAME screen point — moving along the view ray,
+ * or snapping to a different depth under an unmoved cursor — must still
+ * re-render. Screen-only comparison would leave a stale dX/dY/dZ on screen.
+ */
+export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProps, nextProps: MeasurementOverlaysProps): boolean {
   // Custom comparison to prevent unnecessary re-renders
   // Return true if props are equal (skip re-render), false if different (re-render)
 
@@ -461,6 +512,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     // Check screen coordinates for zoom/camera changes
     if (prev.start.screenX !== next.start.screenX || prev.start.screenY !== next.start.screenY) return false;
     if (prev.end.screenX !== next.end.screenX || prev.end.screenY !== next.end.screenY) return false;
+    // World coords too — the axis breakdown is derived from them.
+    if (prev.start.x !== next.start.x || prev.start.y !== next.start.y || prev.start.z !== next.start.z) return false;
+    if (prev.end.x !== next.end.x || prev.end.y !== next.end.y || prev.end.z !== next.end.z) return false;
   }
 
   // Compare activeMeasurement - check if it exists and if position changed
@@ -470,7 +524,13 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       prevProps.activeMeasurement.current.screenX !== nextProps.activeMeasurement.current.screenX ||
       prevProps.activeMeasurement.current.screenY !== nextProps.activeMeasurement.current.screenY ||
       prevProps.activeMeasurement.start.screenX !== nextProps.activeMeasurement.start.screenX ||
-      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY
+      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY ||
+      prevProps.activeMeasurement.current.x !== nextProps.activeMeasurement.current.x ||
+      prevProps.activeMeasurement.current.y !== nextProps.activeMeasurement.current.y ||
+      prevProps.activeMeasurement.current.z !== nextProps.activeMeasurement.current.z ||
+      prevProps.activeMeasurement.start.x !== nextProps.activeMeasurement.start.x ||
+      prevProps.activeMeasurement.start.y !== nextProps.activeMeasurement.start.y ||
+      prevProps.activeMeasurement.start.z !== nextProps.activeMeasurement.start.z
     ) return false;
   }
 
@@ -547,8 +607,22 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     if (prevProps.constraintEdge.activeAxis !== nextProps.constraintEdge.activeAxis) return false;
   }
 
+  // Compare unitDisplayOverrides — every distance label routes through it
+  // (#2199 formatDistance/unitDisplayOverrides gap). A shallow key/value
+  // compare, not a reference compare: the store spreads a new object on
+  // every `setUnitDisplayOverride` call, but an unrelated re-render must not
+  // force this component to re-render just because its identity changed.
+  const prevOverrides = prevProps.unitDisplayOverrides ?? {};
+  const nextOverrides = nextProps.unitDisplayOverrides ?? {};
+  const prevKeys = Object.keys(prevOverrides);
+  const nextKeys = Object.keys(nextOverrides);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (const key of prevKeys) {
+    if (prevOverrides[key] !== nextOverrides[key]) return false;
+  }
+
   return true; // All props are equal, skip re-render
-});
+}
 
 interface SnapIndicatorProps {
   screenX: number;

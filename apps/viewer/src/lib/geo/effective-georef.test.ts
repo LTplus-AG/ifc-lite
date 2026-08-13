@@ -15,6 +15,7 @@ import {
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
+import { resolveMapUnitToMetreScale } from './geo-scale.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
@@ -44,6 +45,55 @@ describe('effective georeferencing', () => {
 
     assert.strictEqual(merged?.description, 'Edited CRS');
     assert.strictEqual(merged?.mapUnitScale, 2.5);
+  });
+
+  /**
+   * The MapUnit editor is a `<select>` whose first option has an empty value,
+   * and `commitEdit` deliberately permits an empty commit for selects, so `''`
+   * reaches `mergeProjectedCRS` as an edit.
+   *
+   * `''` is not `undefined`, so it took the EDITED branch and
+   * `inferMapUnitScale('', lengthUnitScale)` returned the length-unit
+   * fallback. That is exactly the reading `resolveMapUnitToMetreScale`'s doc
+   * rejects -- "when no explicit MapUnit is set, treat the offsets as metres"
+   * -- so clearing the field opted INTO the failure the heuristic exists to
+   * avoid. For a millimetre project that is a 1000x under-scale of the CRS
+   * offsets, which flings the model outside the CRS's valid range.
+   */
+  it('treats a CLEARED MapUnit as absent (metres), not as unparseable', () => {
+    const original: ProjectedCRS = {
+      id: 1,
+      name: 'EPSG:28992',
+      mapUnit: 'METRE',
+      mapUnitScale: 1,
+    };
+
+    // lengthUnitScale 0.001 = a millimetre project, the case that hurts.
+    const merged = mergeProjectedCRS(original, { mapUnit: '' }, 0.001);
+
+    assert.strictEqual(merged?.mapUnit, '');
+    // `undefined`, NOT the length-unit scale: an absent MapUnit leaves the
+    // scale unresolved here and `resolveMapUnitToMetreScale` supplies the
+    // metres default downstream. Asserting `1` here would be wrong -- that
+    // number is produced one layer later, and pinning it in the wrong place
+    // would pass for the wrong reason.
+    assert.strictEqual(
+      merged?.mapUnitScale,
+      undefined,
+      'a cleared MapUnit must be treated as absent, not as an unparseable unit',
+    );
+    // And the downstream resolution is the metres heuristic, which is the
+    // behaviour the user actually gets.
+    assert.strictEqual(resolveMapUnitToMetreScale(merged?.mapUnitScale, 0.001), 1);
+  });
+
+  it('still falls back to the length unit for a NON-EMPTY unparseable MapUnit', () => {
+    // Control: the fix must not turn every edited MapUnit into 1, only the
+    // cleared one. 'WIBBLE' matches no known unit, so the documented
+    // length-unit fallback still applies.
+    const original: ProjectedCRS = { id: 1, name: 'EPSG:28992', mapUnit: 'METRE', mapUnitScale: 1 };
+    const merged = mergeProjectedCRS(original, { mapUnit: 'WIBBLE' }, 0.001);
+    assert.strictEqual(merged?.mapUnitScale, 0.001);
   });
 
   it('treats IFC2X3 files with IfcMapConversion and IfcProjectedCRS as standard georeferencing', () => {
@@ -259,18 +309,36 @@ describe('effective georeferencing', () => {
       assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1), null);
     });
 
-    it('flags the common Scale=1 + mm-project + m-map error', () => {
+    it('flags the common Scale=1 + mm-project + m-map error as COMPENSATED', () => {
+      // The file is off-spec, but `getEffectiveHorizontalScale`'s unset/1 Scale
+      // heuristic already places the geometry at 1×. Reporting effectiveScale
+      // 1000 here claimed a mis-sizing the code prevents, and that false
+      // warning was the only thing the panel said about the #2526 file.
       const m = detectScaleUnitMismatch(1, 1, 0.001);
       assert.ok(m, 'expected a mismatch report');
       assert.strictEqual(m!.rawScale, 1);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
       assert.strictEqual(m!.expectedScale, 0.001);
     });
 
-    it('flags Scale omitted when units differ', () => {
+    it('flags Scale omitted when units differ as COMPENSATED', () => {
       const m = detectScaleUnitMismatch(undefined, 1, 0.001);
       assert.ok(m);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
+    });
+
+    it('does NOT mark a genuine mis-scaling as compensated', () => {
+      // Scale explicitly 1000 on a mm project: the heuristic only rescues an
+      // unset/1 Scale, so this really is applied and really does mis-size.
+      const m = detectScaleUnitMismatch(1000, 1, 0.001);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 1e6);
+      assert.strictEqual(m!.specEffectiveScale, 1e6);
+      assert.strictEqual(m!.compensated, false);
     });
 
     it('tolerates tiny floating-point noise around 1.0', () => {
@@ -283,6 +351,7 @@ describe('effective georeferencing', () => {
       const m = detectScaleUnitMismatch(2, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
+      assert.strictEqual(m!.compensated, false);
     });
   });
 

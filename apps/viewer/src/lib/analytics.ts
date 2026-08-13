@@ -28,6 +28,55 @@ export const beforeSend = <
   return scrubEvent(event);
 };
 
+// PostHog's own `DOMExceptionCoercer` (posthog-js -> @posthog/core) does
+// exactly this before an exception ever leaves the browser:
+//
+//   const hasStack = isString(err.stack);
+//   return { ..., stack: hasStack ? err.stack : undefined, ... };
+//
+// — verified by reading @posthog/core's dom-exception-coercer.js. So any
+// DOMException reaching `captureException` with no `.stack` is symbolicated
+// as zero frames, full stop; no amount of sourcemap upload changes that,
+// because there is nothing for PostHog to resolve.
+//
+// And a JS-constructed `DOMException` commonly HAS no `.stack`: confirmed by
+// probing real engines with Playwright (both WebKit 26.5 and Chromium) —
+// `new DOMException(msg, name)` is `instanceof Error` but `'stack' in err` is
+// false in both. Contrast a DOMException the browser itself throws as part of
+// a native binding failure (e.g. `structuredClone`'s `DataCloneError`), which
+// DOES get a stack in both engines. Which path `GPUDevice.createTexture`'s
+// `InvalidStateError` takes isn't independently verifiable without a live
+// WebGPU device, but the fix below is correct either way: it only touches
+// errors that already have no usable stack, so it can only add frames PostHog
+// would otherwise have dropped, never disturb a real one.
+//
+// This is the root cause behind issues #2229/#2230 ("payload carries no
+// stacktrace") for any call site whose caught value is a DOMException (GPU
+// upload failures, WebGL context loss, AbortError-shaped cancellations, …).
+//
+// The fix: at the capture boundary, if the value handed to `captureException`
+// is an `Error` (DOMException included — it's `instanceof Error`) with no
+// usable `.stack`, synthesize one by throwing/catching fresh right here. That
+// can't recover the original throw site, but every call site that reaches
+// this (gpu-upload-guard.ts, useIfcLoader.ts, LocationMap.tsx, …) reports
+// synchronously from inside its own catch block, so the synthesized frames
+// are the same call chain minus the innermost native frame — real,
+// sourcemap-resolvable file/line/column instead of the zero frames PostHog's
+// coercer would otherwise emit. See ./analytics.test.ts for the RED/GREEN
+// pair pinning this against posthog-js's actual coercer behavior.
+export function ensureCapturableStack(err: unknown): unknown {
+  if (!(err instanceof Error)) return err;
+  if (typeof err.stack === 'string' && err.stack.length > 0) return err;
+  const withStack = new Error(err.message);
+  withStack.name = err.name;
+  // V8 only: drops this function's own frame so the top of the synthesized
+  // stack is the real caller. A no-op (and harmless) everywhere else — those
+  // engines already excluded native-call frames from `new Error()`'s capture.
+  const capture = (Error as unknown as { captureStackTrace?: (target: object, ctor: unknown) => void }).captureStackTrace;
+  if (typeof capture === 'function') capture(withStack, ensureCapturableStack);
+  return withStack;
+}
+
 // `import.meta.env` is undefined under the Node test runner (no Vite define
 // plugin), and this module is loaded transitively by most viewer tests. The
 // optional chaining keeps the module-top-level read safe there — do NOT drop
@@ -73,7 +122,13 @@ if (enabled) {
       app_version: typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev',
       app_build_sha: typeof __BUILD_SHA__ === 'string' ? __BUILD_SHA__ : 'dev',
     });
-    client = posthogClient;
+    client = {
+      capture: posthogClient.capture.bind(posthogClient),
+      // Normalize away the DOMException-with-no-.stack case (see
+      // ensureCapturableStack above) before it reaches posthog-js's coercer.
+      captureException: (err, additionalProperties) =>
+        posthogClient.captureException(ensureCapturableStack(err), additionalProperties),
+    };
   } catch (err) {
     console.warn('[analytics] PostHog init failed; analytics disabled', err);
   }

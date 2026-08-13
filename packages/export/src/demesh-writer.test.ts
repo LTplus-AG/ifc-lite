@@ -236,7 +236,7 @@ describe('applySimplifiedGeometry', () => {
       { disableWorkerScan: true },
     );
     expect(reparsed.entityIndex.byId.has(10)).toBe(true);
-    const reparsedText = new TextDecoder().decode(reparsed.source);
+    const reparsedText = reparsed.source.decodeUtf8(0, reparsed.source.byteLength);
     expect(reparsedText).toMatch(/#10=IFC\w+\([^\n]*#\d+/);
 
     // Follow #10's reference chain rather than asserting the faceset exists

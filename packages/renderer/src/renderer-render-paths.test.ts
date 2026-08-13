@@ -6,7 +6,8 @@ import { describe, it, mock } from 'node:test';
 import assert from 'node:assert';
 import { Renderer } from './index.js';
 import { Picker } from './picker.js';
-import type { MeshData, RenderOptions, BatchedMesh } from './types.js';
+import type { MeshData } from '@ifc-lite/geometry';
+import type { RenderOptions, BatchedMesh } from './types.js';
 
 /**
  * Drives the REAL render() loop against a stub GPU so the frame-lifecycle

@@ -24,111 +24,15 @@ pub use options::{ModelOptions, Placement};
 #[path = "model_props.rs"]
 mod props;
 pub use props::fmt_num;
-use props::{opt_string, ref_list, resolve_pset_defs};
+use props::{opt_string, ref_list, render_attributes, resolve_pset_defs};
 
-/// A single property value (`IfcPropertySingleValue` and friends).
-#[derive(Debug, Clone, PartialEq)]
-pub struct PropValue {
-    pub name: String,
-    pub value: String,
-    /// IFC value type tag when known (e.g. `IFCLABEL`, `IFCREAL`, `IFCBOOLEAN`).
-    pub value_type: String,
-}
+#[path = "model_inherit.rs"]
+mod inherit;
+use inherit::merge_inherited;
 
-/// A named property set (`IfcPropertySet`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct PropertySet {
-    pub name: String,
-    pub properties: Vec<PropValue>,
-}
-
-/// A single physical quantity (`IfcQuantityLength`/`Area`/`Volume`/…).
-#[derive(Debug, Clone, PartialEq)]
-pub struct QuantityValue {
-    pub name: String,
-    pub value: f64,
-    /// `Length` | `Area` | `Volume` | `Count` | `Weight` | `Time`.
-    pub kind: &'static str,
-}
-
-/// A named quantity set (`IfcElementQuantity`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct QuantitySet {
-    pub name: String,
-    pub quantities: Vec<QuantityValue>,
-}
-
-/// One exportable entity row (an `IfcProduct` occurrence).
-#[derive(Debug, Clone, PartialEq)]
-pub struct EntityRow {
-    pub express_id: u32,
-    pub ifc_type: String,
-    pub global_id: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub object_type: Option<String>,
-    /// True when the product carries a geometric Representation (attr 6).
-    pub has_geometry: bool,
-    /// The product's placement, when [`ModelOptions::placements`] asked for it
-    /// AND the product carries an `ObjectPlacement` (attr 5).
-    ///
-    /// `None` is therefore two different facts. The caller knows which it asked
-    /// for; it cannot tell from the row alone, and 7.5% of product occurrences
-    /// in a real corpus genuinely have no placement, so this is not a rare case
-    /// to hand-wave.
-    ///
-    /// **A resolvable-but-broken chain is not `None`.** A dangling reference, a
-    /// cycle, or a chain deeper than 32 composes to the identity, and identity
-    /// is a legitimate placement — so a malformed file yields a product at the
-    /// origin rather than an error. Distinguishing those would mean changing
-    /// what the resolver returns, which is a wider change than this.
-    pub placement: Option<Placement>,
-    pub property_sets: Vec<PropertySet>,
-    pub quantity_sets: Vec<QuantitySet>,
-}
-
-impl EntityRow {
-    /// Look up a flattened `PsetName.PropName` value (case-sensitive), then quantities.
-    pub fn lookup(&self, pset: &str, prop: &str) -> Option<String> {
-        for ps in &self.property_sets {
-            if ps.name == pset {
-                for p in &ps.properties {
-                    if p.name == prop {
-                        return Some(p.value.clone());
-                    }
-                }
-            }
-        }
-        for qs in &self.quantity_sets {
-            if qs.name == pset {
-                for q in &qs.quantities {
-                    if q.name == prop {
-                        return Some(fmt_num(q.value));
-                    }
-                }
-            }
-        }
-        None
-    }
-}
-
-/// The full extracted model.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExportModel {
-    pub entities: Vec<EntityRow>,
-    /// The model's unit scales, resolved from its `IFCPROJECT`.
-    ///
-    /// Attribute values in [`EntityRow`] are in the file's OWN units — a
-    /// millimetre model yields a `Qto_WallBaseQuantities.Length` of 3000, not 3.
-    /// The geometry exporters normalise to metres; this path deliberately does
-    /// not, because a property value is not always a length and coercing one
-    /// would be guessing. That leaves the caller needing the scale to interpret
-    /// anything dimensional, and until now it had no way to obtain it: the
-    /// resolver was internal and `ExportModel` carried only entities. A consumer
-    /// writing quantities alongside exported geometry therefore had a silent
-    /// 1000x mismatch with no value on hand to detect it with.
-    pub units: UnitScales,
-}
+#[path = "model_types.rs"]
+mod types;
+pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue};
 
 /// Build the export model from raw IFC/STEP bytes.
 ///
@@ -255,6 +159,13 @@ pub fn stream_export_model_with_options(
     let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
     let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
     let mut type_product_candidates: Vec<TypeProductCandidate> = Vec::new();
+    // Occurrence → its `IfcTypeObject`, from `IfcRelDefinesByType.RelatedObjects`.
+    // Populated only when `opts.inherit_type_properties` asks for it.
+    let mut type_by_object: HashMap<u32, u32> = HashMap::new();
+    // Type id → its resolved sets, so one IfcWallType typing 5000 walls is
+    // decoded once. Bounded by the file's distinct types, which is orders of
+    // magnitude below its occurrences.
+    let mut type_pset_cache: HashMap<u32, (Vec<PropertySet>, Vec<QuantitySet>)> = HashMap::new();
     {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -289,10 +200,33 @@ pub fn stream_export_model_with_options(
                 // IfcRelDefinesByType.RelatingType (attr 5) → a type WITH occurrences;
                 // its geometry is drawn by those occurrences, never as orphan type
                 // geometry (the AC20/ArchiCAD duplicate-boxes guard).
+                //
+                // RelatedObjects (attr 4) is read only when property inheritance
+                // is on: it is the occurrence → type edge that makes a type's
+                // HasPropertySets reachable from the occurrence, and building the
+                // map costs an allocation per typed occurrence that the geometry
+                // bookkeeping above has no use for.
                 "IFCRELDEFINESBYTYPE" => {
                     if let Ok(rel) = decoder.decode_at_uncached(start, end) {
                         if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
                             instantiated_type_ids.insert(tid);
+                            if opts.inherit_type_properties {
+                                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                                    for o in objs {
+                                        if let Some(oid) = o.as_entity_ref() {
+                                            // FIRST relationship wins if a file
+                                            // types one object twice (a schema
+                                            // violation, but exports do it).
+                                            // `typeIds[0]` is what the TS
+                                            // extractor takes, and scan order
+                                            // here is file order, so the two
+                                            // pick the same type rather than
+                                            // disagreeing per engine.
+                                            type_by_object.entry(oid).or_insert(tid);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -384,7 +318,31 @@ pub fn stream_export_model_with_options(
         });
 
         let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
-        let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+
+        // Fold in whatever this occurrence inherits from its type. Resolution is
+        // memoized per type id, not per occurrence: a Revit export types
+        // thousands of walls off one IfcWallType, and re-decoding its sets for
+        // each would turn a constant cost into a linear one.
+        if opts.inherit_type_properties {
+            if let Some(&type_id) = type_by_object.get(&id) {
+                let inherited = type_pset_cache.entry(type_id).or_insert_with_key(|&tid| {
+                    // `HasPropertySets` is attr 5 on IfcTypeObject. Resolved
+                    // from the type entity itself rather than the pass-1
+                    // candidate list, because that list holds only types with
+                    // RepresentationMaps and the common inheriting type has
+                    // none.
+                    let def_ids = decoder
+                        .decode_by_id(tid)
+                        .ok()
+                        .map(|t| ref_list(t.get(5)))
+                        .unwrap_or_default();
+                    resolve_pset_defs(&mut decoder, &def_ids)
+                });
+                property_sets = merge_inherited(property_sets, inherited.0.clone());
+                quantity_sets = merge_inherited(quantity_sets, inherited.1.clone());
+            }
+        }
 
         f(EntityRow {
             express_id: id,
@@ -397,6 +355,11 @@ pub fn stream_export_model_with_options(
             placement,
             property_sets,
             quantity_sets,
+            attributes: if opts.attributes {
+                render_attributes(&entity)
+            } else {
+                Vec::new()
+            },
         }, Some(&entity));
 
         // Keep the property-resolution cache bounded across the whole file.
@@ -453,6 +416,20 @@ pub fn stream_export_model_with_options(
             placement: None,
             property_sets,
             quantity_sets,
+            // Pass 3 assembles this row from the pass-1 scan and does not hold
+            // the type entity, so this costs one decode. Worth it: the option
+            // promises attributes on every row, and a type carries the ones a
+            // consumer wants (`IfcDoorType.PredefinedType`). The count is
+            // bounded by orphan-geometry types, which is a handful per file.
+            attributes: if opts.attributes {
+                decoder
+                    .decode_by_id(cand.express_id)
+                    .ok()
+                    .map(|t| render_attributes(&t))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
         }, None);
 
         if decoder.cache_size() > PSET_CACHE_CAP {

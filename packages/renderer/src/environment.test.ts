@@ -56,6 +56,68 @@ describe('resolveEnvironment', () => {
   });
 });
 
+/**
+ * A non-finite `sunDirection` must never reach the lighting uniform (#2489).
+ *
+ * `normalized()` guarded with `len > 1e-6`, which rejects a NaN length but is
+ * TRUE for an infinite one — the division then ran and returned
+ * `Infinity / Infinity = NaN`. These assert the resolved VALUES and the packed
+ * floats, not that nothing threw: NaN propagates silently all the way into
+ * `dot(N, sunDirection)`, so "did not throw" is precisely the assertion that
+ * cannot catch this.
+ */
+describe('a non-finite sun direction never reaches the lighting uniform (#2489)', () => {
+  const DEFAULT = resolveEnvironment().sunDirection;
+
+  it('falls back for an Infinity component', () => {
+    const env = resolveEnvironment({ sunDirection: [Infinity, 1, 0.3] });
+    assert.deepStrictEqual(env.sunDirection, DEFAULT);
+  });
+
+  it('falls back for a -Infinity component', () => {
+    const env = resolveEnvironment({ sunDirection: [0.5, -Infinity, 0.3] });
+    assert.deepStrictEqual(env.sunDirection, DEFAULT);
+  });
+
+  it('falls back for a NaN component', () => {
+    const env = resolveEnvironment({ sunDirection: [0.5, 1, NaN] });
+    assert.deepStrictEqual(env.sunDirection, DEFAULT);
+  });
+
+  it('falls back when a finite direction overflows to an infinite length', () => {
+    // Both components are ordinary finite doubles; only their magnitude is
+    // not representable. `Math.hypot` returns Infinity, and the old floor
+    // waved it through exactly like a literal Infinity.
+    const env = resolveEnvironment({ sunDirection: [1.7e308, 1.7e308, 0] });
+    assert.deepStrictEqual(env.sunDirection, DEFAULT);
+  });
+
+  it('writes only finite floats into the packed uniform', () => {
+    const buf = packEnvironmentUniforms(
+      resolveEnvironment({ sunDirection: [Infinity, 1, 0.3] }),
+    );
+    for (let i = 0; i < buf.length; i++) {
+      assert.ok(Number.isFinite(buf[i]), `uniform float ${i} is ${buf[i]}`);
+    }
+  });
+
+  it('still normalizes a short but perfectly valid direction', () => {
+    // The anti-mutation half: the floor is a LOWER bound on the length, and a
+    // 5e-6-long direction is a real direction. Widening the floor (or swapping
+    // the length test for a "looks too small" heuristic) would silently swap
+    // the caller's sun for the default, and this is what would catch it.
+    const env = resolveEnvironment({ sunDirection: [3e-6, 4e-6, 0] });
+    assertClose(env.sunDirection[0], 0.6);
+    assertClose(env.sunDirection[1], 0.8);
+    assert.strictEqual(env.sunDirection[2], 0);
+  });
+
+  it('still normalizes a very large but representable direction', () => {
+    const env = resolveEnvironment({ sunDirection: [1e300, 0, 0] });
+    assert.deepStrictEqual(env.sunDirection, [1, 0, 0]);
+  });
+});
+
 describe('packEnvironmentUniforms', () => {
   it('packs the WGSL struct layout exactly', () => {
     const env = resolveEnvironment({

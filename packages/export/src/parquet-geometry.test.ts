@@ -16,8 +16,9 @@
  * discovers days later. This file pins the writers row by row.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { ParquetExporter } from './parquet-exporter.js';
+import JSZip from 'jszip';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import {
@@ -31,25 +32,15 @@ import {
 } from '@ifc-lite/data';
 
 /**
- * `src/vendor-types.d.ts` declares deliberately NARROW ambient modules for
- * apache-arrow and parquet-wasm covering only the write side the exporter
- * uses, so a named import of the read side (`tableFromIPC` / `readParquet`)
- * does not typecheck. Reach them through an explicitly typed dynamic import
- * instead of widening the ambient declaration — the exporter's own contract
- * is what that file describes.
+ * Both packages ship their own types, so the read side (`tableFromIPC` /
+ * `readParquet`) is reached through a plain dynamic import. The import must
+ * stay dynamic: `parquet-wasm`'s Node build compiles its WebAssembly module
+ * as an import side effect, and `beforeAll` below pays that cost once,
+ * outside any single test's timing budget (see the note on that hook).
  */
-interface ArrowRow { toJSON(): Record<string, unknown> }
-interface ArrowTable {
-  toArray(): ArrowRow[];
-  schema: { fields: Array<{ name: string; type: unknown }> };
-}
-async function readArrowTable(bytes: Uint8Array): Promise<ArrowTable> {
-  const { readParquet } = (await import('parquet-wasm')) as unknown as {
-    readParquet(b: Uint8Array): { intoIPCStream(): ArrayBuffer };
-  };
-  const { tableFromIPC } = (await import('apache-arrow')) as unknown as {
-    tableFromIPC(ipc: ArrayBuffer): ArrowTable;
-  };
+async function readArrowTable(bytes: Uint8Array) {
+  const { readParquet } = await import('parquet-wasm');
+  const { tableFromIPC } = await import('apache-arrow');
   return tableFromIPC(readParquet(bytes).intoIPCStream());
 }
 
@@ -143,6 +134,39 @@ function buildTypedStore(): IfcDataStore {
     relationships: new RelationshipGraphBuilder().build(),
   } as unknown as IfcDataStore;
 }
+
+/**
+ * `toParquet()` (and this file's own `readArrowTable`) dynamically import
+ * `apache-arrow` and `parquet-wasm` on first use. `parquet-wasm`'s Node
+ * build instantiates its WebAssembly module synchronously as an import side
+ * effect (`node_modules/parquet-wasm/node/parquet_wasm.js`: `readFileSync` +
+ * `new WebAssembly.Instance(...)` at module scope), so the first call in
+ * this worker pays real module-resolution + WASM-compile latency — under
+ * light load, comfortably inside vitest's 5s default `testTimeout`; under
+ * CI-scale contention (many packages' test suites racing for CPU in the
+ * same `turbo test` run), it can push PAST it (#2248 — reproduced as
+ * `Error: Test timed out in 5000ms` on whichever test happened to run
+ * first, 3/6 concurrent local runs, plus one CI run at 5025ms with the very
+ * next test at 4974ms — one tick from also timing out).
+ *
+ * That is a fixed one-time tax that has nothing to do with any single
+ * test's assertions, so it does not belong inside any single test's
+ * timing budget. Pay it once here, in a hook with its own (generous, and
+ * import-latency-appropriate) timeout, so every `it()` below — including
+ * whichever one the test runner happens to schedule first — starts from a
+ * warm module cache and reflects only its own (fast) work.
+ */
+beforeAll(async () => {
+  await import('apache-arrow');
+  await import('parquet-wasm');
+  // The `exportBOS` tests below also reach for jszip from inside their own
+  // bodies to read the archive back. That import is cheap today only because
+  // `ParquetExporter.exportBOS` itself lazily imports jszip, so the module is
+  // already resolved by the time the test asks for it — an incidental ordering
+  // the tests should not silently depend on. Warm it explicitly so it stays
+  // outside their budgets even if the exporter stops loading it first.
+  await import('jszip');
+}, 30_000);
 
 describe('ParquetExporter VertexBuffer.parquet', () => {
   it('bakes the per-mesh origin into world vertices on all three axes', async () => {
@@ -375,7 +399,6 @@ describe('ParquetExporter Metadata.json', () => {
     const exporter = new ParquetExporter(buildTypedStore(), geometry([a]));
     const zipBytes = await exporter.exportBOS();
 
-    const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(zipBytes);
     const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
 
@@ -389,7 +412,6 @@ describe('ParquetExporter Metadata.json', () => {
     // The two-valued signal in both directions: the branch above must not be
     // passing merely because the numbers happen to be non-zero.
     const zipBytes = await new ParquetExporter(buildTypedStore()).exportBOS();
-    const JSZip = (await import('jszip')).default;
     const zip = await JSZip.loadAsync(zipBytes);
     const metadata = JSON.parse(await zip.file('Metadata.json')!.async('string'));
 

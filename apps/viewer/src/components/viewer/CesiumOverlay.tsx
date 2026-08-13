@@ -32,7 +32,10 @@ import {
   orthometricTargetForTerrain,
 } from '@/lib/geo/cesium-placement';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
-import { buildMergedGLB } from '@/lib/geo/cesium-glb';
+import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
+import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
+import { effectiveIsolatedIds } from '@/lib/effective-isolation';
+import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
 import { sunPosition, sunTimes } from '@ifc-lite/solar';
 
@@ -97,6 +100,60 @@ function buildModelMatrix(
   return Cesium.Matrix4.multiply(enuToEcef, ifcToEnu, new Cesium.Matrix4());
 }
 
+/** The slice of `Cesium.Model` this overlay touches. */
+type CesiumModelPrimitive = {
+  modelMatrix: any;
+  shadows?: any;
+  ready?: boolean;
+  readyEvent?: { addEventListener(cb: () => void): () => void };
+  destroy?: () => void;
+};
+
+/**
+ * Resolves once `model` can actually draw.
+ *
+ * `Model.fromGltfAsync` resolving only means the glTF was fetched and parsed:
+ * Cesium finishes creating WebGL resources inside `update()` over subsequent
+ * frames, raises `readyEvent` from `frameState.afterRender`, and then skips one
+ * more frame before rendering. Waiting for the event plus a rendered frame is
+ * what makes "swap without a visible gap" true rather than merely
+ * "swap without an empty collection" (#2583).
+ *
+ * Rejects if neither happens within the timeout, so a model that never becomes
+ * renderable cannot strand its predecessor on the globe for the session.
+ */
+function whenModelRenderable(
+  viewer: { scene: { postRender: { addEventListener(cb: () => void): () => void } }; },
+  model: CesiumModelPrimitive,
+  timeoutMs = 5_000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      offReady?.();
+      offFrame?.();
+      globalThis.clearTimeout(timer);
+      if (ok) { resolve(); return; }
+      // Bounded on purpose: the timeout path degrades to exactly the old
+      // behaviour (drop the previous model and accept a brief blank), so a
+      // model that is merely slow costs a flicker, not a stranded primitive.
+      console.warn('[CesiumOverlay] model did not report renderable within %d ms; swapping anyway', timeoutMs);
+      reject(new Error('model never became renderable'));
+    };
+    // One rendered frame AFTER ready — Cesium deliberately returns early from
+    // the update that raises the event, so the model draws on the next one.
+    const afterReady = () => { offFrame = viewer.scene.postRender.addEventListener(() => finish(true)); };
+    let offFrame: (() => void) | undefined;
+    let offReady: (() => void) | undefined;
+    const timer = globalThis.setTimeout(() => finish(false), timeoutMs);
+    if (model.ready) { afterReady(); return; }
+    if (!model.readyEvent) { finish(true); return; } // nothing to wait on
+    offReady = model.readyEvent.addEventListener(() => { offReady?.(); afterReady(); });
+  });
+}
+
 export interface CesiumOverlayProps {
   mapConversion?: MapConversion;
   cameraMapConversion?: MapConversion;
@@ -109,6 +166,10 @@ export interface CesiumOverlayProps {
    *  Used to clamp the model's ground-floor storey to terrain instead of
    *  the lowest geometry vertex (which can be a basement or foundation). */
   storeyElevations?: Map<number, number>;
+  /** Storey isolation, class filter and manual isolation already intersected,
+   *  exactly as the viewport receives it. The world view must hide what the
+   *  viewport hides (#2578). */
+  computedIsolatedIds?: ReadonlySet<number> | null;
 }
 
 export function CesiumOverlay({
@@ -119,6 +180,7 @@ export function CesiumOverlay({
   geometryResult,
   lengthUnitScale = 1,
   storeyElevations,
+  computedIsolatedIds,
 }: CesiumOverlayProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<InstanceType<typeof import('cesium').Viewer> | null>(null);
@@ -129,6 +191,10 @@ export function CesiumOverlay({
   const [error, setError] = useState<string | null>(null);
   // Tracks bridge readiness as state (not just a ref) so terrain query effect re-runs
   const [bridgeVersion, setBridgeVersion] = useState(0);
+  // Bumped every time a NEW model primitive reaches the globe. `cesiumGlbLoaded`
+  // used to serve this purpose by flipping false→true around every rebuild, but
+  // the model now stays loaded across one (#2583), so the flag no longer moves.
+  const [cesiumModelEpoch, setCesiumModelEpoch] = useState(0);
 
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
@@ -141,6 +207,28 @@ export function CesiumOverlay({
   const setCesiumTerrainSaveHeight = useViewerStore((s) => s.setCesiumTerrainSaveHeight);
   const setCesiumTerrainClipY = useViewerStore((s) => s.setCesiumTerrainClipY);
   const setCesiumGlbLoaded = useViewerStore((s) => s.setCesiumGlbLoaded);
+  // In-place mesh mutations (a gizmo move rewrites positions in the SAME
+  // arrays) change no mesh count, so the world-view GLB cache keys on this too.
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
+  // Hide/isolate, resolved the way Viewport resolves what it hands the
+  // renderer, so the map draws the elements the viewport draws (#2578).
+  const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
+  const storeIsolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
+  // The GLB effect keys on this version, NOT on the Set references. The store
+  // hands out a fresh Set on every visibility action, and the effect's cleanup
+  // pulls the model off the globe — so keying on identity blanks the map for a
+  // second and rebuilds a multi-megabyte GLB even when the content is
+  // unchanged. `VisibilityEpochTracker` compares content, so an equal set is a
+  // no-op while an in-place mutation of the same Set still registers.
+  //
+  // Safe to run during render: `update()` only bumps when the content actually
+  // changed, so a double-invoked render (StrictMode) returns the same version.
+  const visibilityEpochsRef = useRef(new VisibilityEpochTracker());
+  const visibilityVersion = visibilityEpochsRef.current.update(hiddenEntities, isolatedEntities);
+  // Read inside the deferred build, which runs long after the effect fired.
+  const visibilityRef = useRef({ hiddenIds: hiddenEntities, isolatedIds: isolatedEntities });
+  visibilityRef.current = { hiddenIds: hiddenEntities, isolatedIds: isolatedEntities };
 
   // Solar study state — drives the sun-path dome + shadow study.
   const solarEnabled = useViewerStore((s) => s.solarEnabled);
@@ -150,14 +238,13 @@ export function CesiumOverlay({
   const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
   // Environment sky toggle — atmosphere + sun + fog in geo mode.
   const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
-  // Re-run the solar effect once the deferred GLB load completes, so the IFC
-  // model's shadow mode is applied even when the study was enabled before the
-  // model finished loading into Cesium.
-  const cesiumGlbLoaded = useViewerStore((s) => s.cesiumGlbLoaded);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
-  const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
-  const glbCacheRef = useRef<{ meshCount: number; glb: Uint8Array } | null>(null);
+  const cesiumModelRef = useRef<CesiumModelPrimitive | null>(null);
+  const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
+  // Key of the model actually ON the globe, which is not the same thing as the
+  // key of the last GLB built — see the gate in Effect 2c.
+  const loadedKeyRef = useRef<string | null>(null);
   // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
   // solar mode can toggle its shadow casting/receiving.
   const tilesetRef = useRef<{ shadows?: any } | null>(null);
@@ -335,8 +422,11 @@ export function CesiumOverlay({
         viewerRef.current = null;
       }
       // Invalidate model ref — the destroyed viewer took the primitive with it,
-      // so Effect 2c must re-load the GLB into the next viewer instance.
+      // so Effect 2c must re-load the GLB into the next viewer instance. The
+      // store flag has to follow, or it advertises a model that is gone.
       cesiumModelRef.current = null;
+      loadedKeyRef.current = null;
+      setCesiumGlbLoaded(false);
       bridgeRef.current = null;
       // The destroyed viewer also took the tileset + sun-path entities.
       tilesetRef.current = null;
@@ -546,7 +636,20 @@ export function CesiumOverlay({
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.
   useEffect(() => {
-    if (status !== 'ready' || !geometryResult?.meshes?.length) return;
+    if (status !== 'ready' || !geometryResult?.meshes?.length) {
+      // The model must not outlive its geometry. The effect cleanup no longer
+      // evicts it (#2583), so a session that unloads its model, or a viewer
+      // that leaves 'ready', is torn down here instead.
+      const live = viewerRef.current;
+      if (cesiumModelRef.current && live) {
+        live.scene.primitives.remove(cesiumModelRef.current);
+        live.scene.requestRender();
+      }
+      cesiumModelRef.current = null;
+      loadedKeyRef.current = null;
+      setCesiumGlbLoaded(false);
+      return;
+    }
     const viewer = viewerRef.current;
     const bridge = bridgeRef.current;
     const Cesium = cesiumModule;
@@ -556,28 +659,44 @@ export function CesiumOverlay({
 
     const startExport = async () => {
       if (cancelled) return;
+      // Declared at this scope so the catch can release a model that was built
+      // but never installed (the viewer was destroyed mid-load).
+      let model: CesiumModelPrimitive | null = null;
       try {
-        // Export GLB (cached by mesh count — skip if already loaded)
-        const meshCount = geometryResult.meshes.length;
-        if (cesiumModelRef.current && glbCacheRef.current?.meshCount === meshCount) {
+        // Reuse the cached GLB when it was built from the same mesh set. The key
+        // spans flat AND instanced geometry (see cesiumModelGLBKey), so an
+        // all-instanced batch still invalidates it.
+        const glbInput: CesiumModelGLBInput = {
+          geometryResult,
+          geometryContentVersion,
+          hiddenIds: visibilityRef.current.hiddenIds,
+          isolatedIds: visibilityRef.current.isolatedIds,
+          visibilityVersion,
+        };
+        const key = cesiumModelGLBKey(glbInput);
+        const cached = glbCacheRef.current;
+        // Gate on what is ON THE GLOBE, not on what has been BUILT. The two
+        // diverge whenever a load is cancelled or `fromGltfAsync` rejects: the
+        // bytes cache already holds the new key while the old primitive is
+        // still displayed, and gating on the byte cache would then treat the
+        // stale model as current and never retry the load.
+        if (cesiumModelRef.current && loadedKeyRef.current === key) {
           // Model already loaded with same geometry — just update matrix
           return;
         }
 
-        // Remove previous model
-        if (cesiumModelRef.current) {
-          viewer.scene.primitives.remove(cesiumModelRef.current);
-          cesiumModelRef.current = null;
-        }
-
+        // The previous model deliberately stays on the globe while its
+        // replacement is built and loaded — `swapCesiumModel` exchanges them
+        // at the end, so the map never goes blank mid-rebuild (#2583).
         let glbBytes: Uint8Array;
-        if (glbCacheRef.current?.meshCount === meshCount) {
-          glbBytes = glbCacheRef.current.glb;
+        if (cached?.key === key) {
+          glbBytes = cached.glb;
         } else {
           await new Promise(r => setTimeout(r, 50));
           if (cancelled) return;
-          glbBytes = buildMergedGLB(geometryResult.meshes);
-          glbCacheRef.current = { meshCount, glb: glbBytes };
+          const built = buildCesiumModelGLB(glbInput);
+          glbBytes = built.glb;
+          glbCacheRef.current = { key: built.key, glb: built.glb };
         }
         if (cancelled) return;
 
@@ -589,7 +708,6 @@ export function CesiumOverlay({
 
         const blob = new Blob([glbBytes as BlobPart], { type: 'model/gltf-binary' });
         const glbUrl = URL.createObjectURL(blob);
-        let model: { modelMatrix: any; destroy?: () => void } | null = null;
         try {
           model = await Cesium.Model.fromGltfAsync({
             url: glbUrl,
@@ -627,27 +745,44 @@ export function CesiumOverlay({
           return;
         }
 
-        viewer.scene.primitives.add(model);
+        const outcome = await swapCesiumModel(
+          viewer.scene.primitives,
+          cesiumModelRef.current,
+          model,
+          (m) => whenModelRenderable(viewer, m),
+          () => cancelled,
+        );
+        // Superseded: a newer build owns the outcome, the globe still shows the
+        // previous model, and `model` has already been destroyed. Recording it
+        // would leave the refs pointing at geometry nobody is rendering.
+        if (outcome === 'superseded' || cancelled) return;
         cesiumModelRef.current = model;
+        loadedKeyRef.current = key;
         setCesiumGlbLoaded(true);
+        // A rebuild no longer flips `cesiumGlbLoaded` false→true, so that flag
+        // can no longer tell the solar effect "there is a different primitive
+        // now, re-apply its shadow mode". This epoch does.
+        setCesiumModelEpoch((e) => e + 1);
         viewer.scene.requestRender();
       } catch (err) {
         console.warn('[CesiumOverlay] Failed to load IFC model into Cesium:', err);
+        // A model built but never installed (the viewer was destroyed mid-load,
+        // so `primitives.add` threw) owns GPU buffers nothing will release.
+        if (model && cesiumModelRef.current !== model) model.destroy?.();
       }
     };
 
     const deferTimer = setTimeout(startExport, 1000);
 
+    // Cancel the in-flight build only. Evicting the live model here is what
+    // blanked the map on every re-run (#2583); the model is exchanged for its
+    // replacement once that replacement exists, and torn down by the
+    // no-geometry branch above or with the viewer in Effect 1.
     return () => {
       cancelled = true;
       clearTimeout(deferTimer);
-      if (cesiumModelRef.current && viewerRef.current) {
-        viewerRef.current.scene.primitives.remove(cesiumModelRef.current);
-        cesiumModelRef.current = null;
-      }
-      setCesiumGlbLoaded(false);
     };
-  }, [status, bridgeVersion, geometryResult]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the
@@ -762,7 +897,7 @@ export function CesiumOverlay({
   }, [
     status,
     bridgeVersion,
-    cesiumGlbLoaded,
+    cesiumModelEpoch,
     solarEnabled,
     solarDateMs,
     solarShowSunPath,

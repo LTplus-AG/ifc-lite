@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/geometry",
-  "version": "3.7.0",
+  "version": "3.8.1",
   "description": "Geometry processing bridge for IFC-Lite - exact-arithmetic CSG, streamed across workers",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))}\"",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

@@ -17,6 +17,11 @@ import type { FixtureWorldSpec } from '../src/index.js';
  *         structural-model.ifc      (2 revisions, distinct deterministic bytes)
  *         structural-notes.txt      (1 revision)
  *     root2 "Archive"               (top-level, no children, no files)
+ *
+ *   proj-2 "Beta Campus"            (a second, otherwise-empty project — exists
+ *                                    only so listProjects has more than one item
+ *                                    to page past; nothing else in this world
+ *                                    scopes to it)
  */
 export function buildTestWorldSpec(): FixtureWorldSpec {
   return {
@@ -57,6 +62,13 @@ export function buildTestWorldSpec(): FixtureWorldSpec {
             revisions: [{ id: 'rev1', label: 'Revision 1', content: 'DEEP-FILE::content' }],
           },
         ],
+      },
+      {
+        id: 'proj-2',
+        name: 'Beta Campus',
+        description: 'A second, minimal fixture project — exists only to force listProjects paging past a single page.',
+        containers: [],
+        files: [],
       },
     ],
   };

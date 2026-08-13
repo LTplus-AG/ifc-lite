@@ -6,7 +6,8 @@
  * Sandbox — QuickJS-in-WASM script execution environment.
  *
  * Architecture:
- * - One WASM module loaded per app lifetime (shared across sandboxes)
+ * - One WASM module loaded per app lifetime (shared across sandboxes), retired
+ *   and replaced if a teardown abort poisons it (see quickjs-module.ts, #1922)
  * - Each sandbox creates a fresh QuickJS context (cheap — a few KB)
  * - The `bim` API is built inside the context via bridge.ts
  * - Scripts run synchronously inside QuickJS
@@ -15,7 +16,6 @@
  */
 
 import {
-  getQuickJS,
   type QuickJSWASMModule,
   type QuickJSContext,
   type QuickJSHandle,
@@ -25,18 +25,23 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { SandboxConfig, ScriptResult, LogEntry } from './types.js';
 import { DEFAULT_LIMITS, DEFAULT_PERMISSIONS } from './types.js';
 import { buildBridge } from './bridge.js';
+import type { HostWorkQueue } from './bridge-async.js';
 import { transpileTypeScript } from './transpile.js';
+import {
+  acquireQuickJSModule,
+  isQuickJSModuleRetired,
+  markRuntimeAborted,
+  retireQuickJSModule,
+} from './quickjs-module.js';
 
-/** Cached WASM module promise — deduplicates concurrent init calls */
-let modulePromise: Promise<QuickJSWASMModule> | null = null;
+/**
+ * Re-exported from its own module so every existing import path keeps working;
+ * see quickjs-module.ts for what it now means (it is a diagnostic, not a
+ * "scripting is dead" flag — #1922 recovery replaces the poisoned module).
+ */
+export { isSandboxRuntimeAborted } from './quickjs-module.js';
+
 let nextSandboxSessionId = 1;
-
-function getModule(): Promise<QuickJSWASMModule> {
-  if (!modulePromise) {
-    modulePromise = getQuickJS();
-  }
-  return modulePromise!;
-}
 
 /**
  * Reported by every entry point that a disposed sandbox refuses: `init()` and
@@ -44,6 +49,27 @@ function getModule(): Promise<QuickJSWASMModule> {
  * apart — callers and tests match on this text.
  */
 const DISPOSED_MESSAGE = 'Sandbox disposed. Create a new sandbox to run more scripts.';
+
+/**
+ * Disposing a QuickJS handle must never crash the run. If the realm became
+ * invalid mid-eval, `.dispose()` throws "Lifetime not alive" — surface that
+ * (house rule: no silent catch) so the real error, or value, still gets
+ * through instead of being masked by a teardown failure.
+ *
+ * An already-dead handle returns early rather than warning: `dispose()` and the
+ * `finally` in `runEval` can both reach the same eval-result handle now that a
+ * run can be torn down mid-flight, and the second one arriving is the intended
+ * outcome, not a fault worth reporting.
+ */
+function safeDispose(handle: { dispose(): void; alive?: boolean } | undefined): void {
+  if (!handle) return;
+  if (handle.alive === false) return;
+  try {
+    handle.dispose();
+  } catch (err) {
+    console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
+  }
+}
 
 function createSandboxSessionId(): string {
   const sessionId = nextSandboxSessionId;
@@ -73,6 +99,16 @@ function describeError(vm: QuickJSContext, handle: QuickJSHandle): string {
 }
 
 export class Sandbox {
+  /**
+   * The WASM module this sandbox's runtime was created on (#1922).
+   *
+   * Held so `dispose()` can retire exactly the module that aborted — the
+   * cached one may already be a different instance by then — and so
+   * `moduleRetired` can tell a host that this sandbox is running on a module
+   * whose abort latch has fired. Cleared by `dispose()`: keeping it would pin
+   * a retired module's heap for as long as the caller holds the sandbox.
+   */
+  private module: QuickJSWASMModule | null = null;
   private runtime: QuickJSRuntime | null = null;
   private vm: QuickJSContext | null = null;
   private logs: LogEntry[] = [];
@@ -82,6 +118,33 @@ export class Sandbox {
    * again be left latched across runs (#2099).
    */
   private resetLogs: (() => void) | null = null;
+  /**
+   * In-flight host promises returned by bridge methods (#2305). Set by init();
+   * `runEval` settles it between QuickJS job drains so a script that awaits an
+   * async `bim.*` call sees the real result, and so a host rejection reaches
+   * the script instead of escaping as an unhandled rejection.
+   */
+  private hostWork: HostWorkQueue | null = null;
+  /**
+   * The eval-result handle of the run currently in flight, if any (#2305).
+   *
+   * Before host promises existed, the only suspension point in `runEval` was
+   * the transpile, which happens *before* `evalCode` — so no run could ever be
+   * torn down while holding a live eval-result handle. Waiting for host work
+   * opens exactly that window, and a `dispose()` landing in it (a React
+   * cleanup, `useSandbox.reset()`, an extension unload — the ordinary ways it
+   * happens) would leave the handle alive. A handle created through the context
+   * is an unmanaged lifetime that `vm.dispose()` does NOT free, so the orphan
+   * keeps a JSObject on the runtime's GC list and `JS_FreeRuntime` then trips
+   * `assert(list_empty(&rt->gc_obj_list))` — the #1922 abort, which costs the
+   * whole WASM module (it is retired and rebuilt, not merely this sandbox).
+   *
+   * `dispose()` frees it before the vm and runtime; `runEval`'s `finally`
+   * clears the field and frees it on the ordinary path. `safeDispose` ignores
+   * an already-dead handle, so whichever arrives second is a no-op. Runs are
+   * serialized through `evalQueue`, so at most one is ever in flight.
+   */
+  private pendingEvalHandle: QuickJSHandle | null = null;
   private config: Required<SandboxConfig>;
   private bridgeDispose: (() => void) | null = null;
   /** Mutable start time — updated by eval(), read by interrupt handler */
@@ -133,6 +196,25 @@ export class Sandbox {
     return this.isDisposed;
   }
 
+  /**
+   * Whether the WASM module backing this sandbox was retired after a teardown
+   * abort (#1922).
+   *
+   * True means some sandbox on this module hit the upstream
+   * `JS_FreeRuntime` assertion, so emscripten's module-wide `ABORT` latch has
+   * fired: this sandbox still *runs* scripts, but its own teardown can no
+   * longer report a failure, and it will silently leak whatever
+   * `JS_FreeRuntime` does not reach. A long-lived host (the extension runtime)
+   * should drop such a sandbox and create a new one — the replacement is built
+   * on a fresh module, so no page reload is needed. Sandboxes created per run
+   * (the viewer's script panel) never observe this: they are already gone.
+   *
+   * Always false after `dispose()`, which releases the module reference.
+   */
+  get moduleRetired(): boolean {
+    return isQuickJSModuleRetired(this.module);
+  }
+
   constructor(
     private sdk: BimContext,
     config: SandboxConfig = {},
@@ -154,12 +236,15 @@ export class Sandbox {
     // holding anything that could. Both checks precede every allocation, so
     // the rejection leaves nothing behind.
     if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
-    const module = await getModule();
+    const module = await acquireQuickJSModule();
     if (this.isDisposed) throw new Error(DISPOSED_MESSAGE);
     // Set this.runtime before the try so dispose() can free it if any
     // subsequent step (newContext / buildBridge) throws — otherwise a failed
     // init() leaks the WASM runtime for the page/process lifetime, since the
     // caller never receives a handle to dispose.
+    // Recorded alongside it, and for the same reason: a dispose() that has to
+    // retire the module must know which instance this runtime came from.
+    this.module = module;
     this.runtime = module.newRuntime();
 
     try {
@@ -180,11 +265,12 @@ export class Sandbox {
       this.vm = this.runtime.newContext();
 
       // Build the bim API inside the sandbox
-      const { logs, resetLogs, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
+      const { logs, resetLogs, hostWork, dispose } = buildBridge(this.vm, this.sdk, this.config.permissions, {
         sandboxSessionId: this.sessionId,
       });
       this.logs = logs;
       this.resetLogs = resetLogs;
+      this.hostWork = hostWork;
       this.bridgeDispose = dispose;
     } catch (err) {
       // dispose() is idempotent — it clears each field before freeing it, so
@@ -257,19 +343,6 @@ export class Sandbox {
       throw new Error('Sandbox not initialized. Call init() first.');
     }
 
-    // Disposing a QuickJS handle must never crash the run. If the realm
-    // became invalid mid-eval, `.dispose()` throws "Lifetime not alive" —
-    // swallow that so the real error (or value) still gets through instead
-    // of being masked by a teardown failure.
-    const safeDispose = (h: { dispose(): void } | undefined): void => {
-      if (!h) return;
-      try {
-        h.dispose();
-      } catch (err) {
-        console.warn('[ifc-lite/sandbox] QuickJS handle could not be disposed', err);
-      }
-    };
-
     this.interrupted = false;
     this.evalStartTime = Date.now();
 
@@ -281,6 +354,9 @@ export class Sandbox {
     // NOT free, so leaking one keeps a JSObject on the runtime's GC list and
     // makes `runtime.dispose()` abort the whole WASM module (#1905).
     const resultHandle = result.error ?? result.value;
+    // Published before the first `await` below, so a `dispose()` landing in the
+    // host-work drain can free it (#1922 class — see `pendingEvalHandle`).
+    this.pendingEvalHandle = resultHandle;
     try {
       // Drain the QuickJS job queue. Promise callbacks and `async`
       // function bodies are scheduled as jobs — without this, an entry
@@ -304,6 +380,21 @@ export class Sandbox {
       // and makes runtime.dispose() abort the whole module (#1905).
       if (this.runtime) {
         safeDispose(this.runtime.executePendingJobs());
+      }
+
+      // A bridge method that returns a host Promise settles on the *host's*
+      // microtask queue, which QuickJS knows nothing about, so the drain above
+      // cannot advance it. Alternate the two queues until the host has no work
+      // left: without this a script that awaits `bim.clash.run(...)` would read
+      // a still-pending promise, and a host rejection would surface as an
+      // unhandled rejection rather than as a script error (#2305).
+      await this.settleHostWork();
+
+      // Re-checked after the drain for the same reason as after the transpile:
+      // it is a suspension point, and a `dispose()` landing in it nulls
+      // `this.vm` before the dereferences below.
+      if (this.isDisposed || !this.vm) {
+        throw new Error(DISPOSED_MESSAGE);
       }
 
       const durationMs = Date.now() - this.evalStartTime;
@@ -391,7 +482,42 @@ export class Sandbox {
       // interrupt armed against a stale start time, so the next VM code to run
       // in this realm (including teardown) would be cut short as a timeout.
       this.evalStartTime = 0;
+      // Cleared before the free so a `dispose()` racing this `finally` cannot
+      // reach a handle this run is already releasing.
+      this.pendingEvalHandle = null;
       safeDispose(resultHandle);
+    }
+  }
+
+  /**
+   * Run the host and guest job queues alternately until the host has nothing
+   * left in flight (#2305).
+   *
+   * Bounded by the same `timeoutMs` the CPU interrupt uses, measured from the
+   * run's start: the interrupt handler only fires while *guest* code executes,
+   * so a host promise that never settles is invisible to it and would hang the
+   * run. A timeout here sets `interrupted`, which the caller already reports as
+   * a timed-out run.
+   *
+   * Each host settle enqueues the script's `.then` callbacks as QuickJS jobs,
+   * and those callbacks may start further host work — hence the loop rather
+   * than a single pass.
+   */
+  private async settleHostWork(): Promise<void> {
+    const hostWork = this.hostWork;
+    if (!hostWork) return;
+    const timeoutMs = this.config.limits.timeoutMs ?? DEFAULT_LIMITS.timeoutMs;
+    while (hostWork.size > 0) {
+      if (this.isDisposed || !this.runtime) return;
+      const remainingMs = timeoutMs - (Date.now() - this.evalStartTime);
+      if (remainingMs <= 0 || !(await hostWork.settle(remainingMs))) {
+        this.interrupted = true;
+        // This run is done waiting; the next one must not inherit the wait.
+        hostWork.abandonInFlight();
+        return;
+      }
+      if (this.isDisposed || !this.runtime) return;
+      safeDispose(this.runtime.executePendingJobs());
     }
   }
 
@@ -419,70 +545,47 @@ export class Sandbox {
    *
    * The abort itself is upstream and cannot be prevented from here (#1922) —
    * see `SandboxAbortError` for what was measured and what is done instead.
+   * What *is* done here is to retire the aborted WASM module, so the next
+   * sandbox is created on a fresh one instead of inheriting a poisoned heap
+   * and a fired `ABORT` latch (see quickjs-module.ts).
    */
   dispose(): void {
     const bridgeDispose = this.bridgeDispose;
+    const pendingEvalHandle = this.pendingEvalHandle;
     const vm = this.vm;
     const runtime = this.runtime;
+    const module = this.module;
     this.bridgeDispose = null;
+    this.pendingEvalHandle = null;
     this.resetLogs = null;
+    this.hostWork = null;
     this.vm = null;
     this.runtime = null;
+    this.module = null;
     // Set before the frees, not after: if `runtime.dispose()` aborts, the
     // sandbox must already read as disposed, so a later eval() reports a dead
     // sandbox instead of running against half-freed structures.
     this.isDisposed = true;
 
+    // The in-flight run's eval-result handle goes first: it is an unmanaged
+    // lifetime, and leaving it alive is what makes `runtime.dispose()` abort
+    // the module (#1922). The run itself observes the disposal and rejects.
+    safeDispose(pendingEvalHandle ?? undefined);
     bridgeDispose?.();
     vm?.dispose();
     if (!runtime) return;
     try {
       runtime.dispose();
     } catch (err) {
-      // Record it before rethrowing: from here on, no later teardown in this
-      // process can be trusted to report its own failure (see markRuntimeAborted).
+      // Retire before rethrowing. This module's emscripten `ABORT` latch has
+      // fired, so from here on nothing running on it can report a teardown
+      // failure — the next sandbox must be built somewhere else.
+      retireQuickJSModule(module);
       markRuntimeAborted(err);
       throw new SandboxAbortError(err);
     }
   }
 
-}
-
-/**
- * Whether a QuickJS teardown has aborted the shared WASM module in this
- * process (#1922).
- *
- * Once true, the module's heap is in an undefined state and — critically —
- * emscripten's `abort()` latch means **no later teardown failure can report
- * itself**: a second runtime left in the same broken state disposes
- * "successfully" while silently leaking whatever `JS_FreeRuntime` had not yet
- * freed. Measured directly: with two runtimes poisoned identically, the first
- * `dispose()` throws the assertion and the second returns cleanly.
- *
- * A host that cares about that distinction (the viewer, an extension host)
- * should treat a `true` here as "reload before trusting sandbox teardown
- * again". Nothing in this package refuses to run on an aborted module: the
- * module was measured to keep executing scripts correctly afterwards, so
- * hard-failing every later sandbox would break more than the bug does.
- */
-export function isSandboxRuntimeAborted(): boolean {
-  return runtimeAborted;
-}
-
-let runtimeAborted = false;
-
-function markRuntimeAborted(cause: unknown): void {
-  if (runtimeAborted) return;
-  runtimeAborted = true;
-  // Reported once, at error level, because this is the only moment the
-  // condition is observable: every later occurrence is swallowed by the
-  // emscripten abort latch.
-  console.error(
-    '[ifc-lite/sandbox] QuickJS aborted while freeing a runtime (#1922). The shared ' +
-      'WASM module is now in an undefined state and later teardown failures will be ' +
-      'silent. Reload before relying on sandbox teardown again.',
-    cause,
-  );
 }
 
 /**
@@ -497,10 +600,10 @@ function markRuntimeAborted(cause: unknown): void {
  * `eval()` that caused it resolved normally, with a message that says nothing
  * about which script did it or what to do next.
  *
- * This class does not fix that; it contains it. The following were each
- * measured against the issue's reproducer in a **fresh process per trial** —
- * the isolation matters, because emscripten latches `ABORT` and every trial
- * after the first in one process reports a false clean:
+ * This class does not fix that; it names it. The following were each measured
+ * against the issue's reproducer in a **fresh process per trial** — the
+ * isolation matters, because emscripten latches `ABORT` per module instance
+ * and every trial after the first on one module reports a false clean:
  *
  * - forcing a QuickJS collection before teardown, by allocating 256 through
  *   1,000,000 object literals in the realm: still aborts. The orphaned objects
@@ -510,17 +613,20 @@ function markRuntimeAborted(cause: unknown): void {
  * - draining the job queue repeatedly, creating and freeing a second context,
  *   and skipping `context.dispose()`: all still abort.
  *
- * quickjs-emscripten 0.32 exposes no GC entry point, so there is no remaining
- * in-repo lever. What is left is to name the failure accurately, point at the
- * issue, and record that the module is now unreliable.
+ * quickjs-emscripten 0.32 exposes no GC entry point, so *preventing* the abort
+ * has no in-repo lever. Surviving it does: the aborted module is retired and
+ * the next sandbox is built on a fresh instance, so this error means "the
+ * script that just ran is over", not "scripting is over until a page reload"
+ * (see quickjs-module.ts).
  */
 export class SandboxAbortError extends Error {
   constructor(public readonly cause: unknown) {
     super(
       'QuickJS aborted while freeing the sandbox runtime. This is upstream ' +
         'quickjs-emscripten behaviour after an out-of-memory or interrupt inside a ' +
-        'drained promise job (ifc-lite#1922); the sandbox is unusable and the shared ' +
-        'WASM module is in an undefined state. Original error: ' +
+        'drained promise job (ifc-lite#1922); this sandbox is gone and its WASM ' +
+        'module has been retired, so the next sandbox will be created on a fresh ' +
+        'one. Original error: ' +
         (cause instanceof Error ? cause.message : String(cause)),
     );
     this.name = 'SandboxAbortError';

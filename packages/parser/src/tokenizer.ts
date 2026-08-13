@@ -9,6 +9,8 @@
 
 import { safeUtf8Decode } from '@ifc-lite/data';
 
+import { countNewlines, opensLiteralOrComment, skipLexical } from './step-lexing.js';
+
 export class StepTokenizer {
   private buffer: Uint8Array;
   private position: number = 0;
@@ -71,6 +73,21 @@ export class StepTokenizer {
         // Find matching closing parenthesis to get full entity length
         const entityLength = this.findEntityLength(startOffset);
         if (entityLength > 0) {
+          // Step past the whole record, as Rust's next_entity does. Leaving
+          // `position` at the '(' made this loop re-walk the body, which was
+          // harmless only while it ignored quotes and comments.
+          //
+          // Count from `position`, not from `startOffset`: `position` is on the
+          // '(' here, and every newline before it was already counted by the
+          // three skipWhitespace calls above. Counting the whole record instead
+          // double-counts a newline written between `#1=` and its type name,
+          // which is ordinary whitespace and legal.
+          this.lineNumber += countNewlines(
+            this.buffer,
+            this.position,
+            startOffset + entityLength,
+          );
+          this.position = startOffset + entityLength;
           yield {
             expressId,
             type,
@@ -83,6 +100,14 @@ export class StepTokenizer {
         // Newline
         this.lineNumber++;
         this.position++;
+      } else if (opensLiteralOrComment(this.buffer, this.position, this.buffer.length)) {
+        // A commented-out record satisfies every check above, so a comment has
+        // to be skipped as a region; a literal has to be skipped so its
+        // contents cannot look like one. See step-lexing.
+        const skip = skipLexical(this.buffer, this.position, this.buffer.length);
+        this.lineNumber += skip.lines;
+        this.position = skip.next;
+        if (skip.stop) return;
       } else {
         this.position++;
       }
@@ -238,6 +263,19 @@ export class StepTokenizer {
       } else if (char === NEWLINE) {
         line++;
         pos++;
+      } else if (opensLiteralOrComment(buf, pos, len)) {
+        // After the newline branch, not before it: the inner loop consumes
+        // entity bodies, so newline is the commonest byte this chain sees.
+        // The byte values are mutually exclusive, so order is
+        // semantics-neutral. See step-lexing for what is skipped and why.
+        const skip = skipLexical(buf, pos, len);
+        line += skip.lines;
+        pos = skip.next;
+        if (skip.stop) {
+          this.position = len;
+          this.lineNumber = line;
+          return;
+        }
       } else {
         pos++;
       }

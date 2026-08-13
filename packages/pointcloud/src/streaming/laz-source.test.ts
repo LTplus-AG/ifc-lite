@@ -95,6 +95,40 @@ function stubLazPerfModuleWithCounter(): LazPerfModule {
   };
 }
 
+/**
+ * Same layout as `buildLazFile` but with an explicit header bbox — needed
+ * to check `toInfo()`'s `bboxInDecodedFrame` translation, which
+ * `buildLazFile`'s all-zero header can't exercise (a zero bbox looks
+ * "translated" whether or not the subtraction actually ran).
+ */
+function buildLazFileWithBbox(
+  pointCount: number,
+  bbox: { min: [number, number, number]; max: [number, number, number] },
+): Blob {
+  const headerSize = 227;
+  const buf = new ArrayBuffer(headerSize + pointCount * RECORD_LEN);
+  const view = new DataView(buf);
+  view.setUint32(0, 0x4653414c, true); // "LASF"
+  view.setUint8(24, 1);
+  view.setUint8(25, 2);
+  view.setUint16(94, headerSize, true);
+  view.setUint32(96, headerSize, true);
+  view.setUint32(100, 0, true);
+  view.setUint8(104, 0);
+  view.setUint16(105, RECORD_LEN, true);
+  view.setUint32(107, pointCount, true);
+  view.setFloat64(131, 1, true);
+  view.setFloat64(139, 1, true);
+  view.setFloat64(147, 1, true);
+  view.setFloat64(179, bbox.max[0], true);
+  view.setFloat64(187, bbox.min[0], true);
+  view.setFloat64(195, bbox.max[1], true);
+  view.setFloat64(203, bbox.min[1], true);
+  view.setFloat64(211, bbox.max[2], true);
+  view.setFloat64(219, bbox.min[2], true);
+  return new Blob([buf], { type: 'application/octet-stream' });
+}
+
 describe('LazStreamingSource downsampling', () => {
   let restore: (() => void) | null = null;
 
@@ -114,6 +148,47 @@ describe('LazStreamingSource downsampling', () => {
     expect(chunk!.pointCount).toBe(4);
     const xs = Array.from({ length: chunk!.pointCount }, (_, i) => chunk!.positions[i * 3]);
     expect(xs).toEqual([0, 3, 6, 9]);
+  });
+});
+
+describe('LazStreamingSource originOffset (issue #1804)', () => {
+  let restore: (() => void) | null = null;
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  it('reports the bbox in the same frame as the points it emits, same as LasStreamingSource', async () => {
+    // `bboxInDecodedFrame` is shared by both streaming sources specifically
+    // so a fix to one doesn't silently leave the other behind (see the
+    // function's doc comment in formats/las.ts) — but only
+    // `las-source.test.ts` pins this. LAZ shares the exact same code path
+    // (decodeLasPoints + bboxInDecodedFrame, both fed `this.originOffset`)
+    // yet had zero coverage: a future edit that updates one call site and
+    // not the other would pass this suite silently.
+    restore = setLazPerfLoaderForTesting(async () => stubLazPerfModuleWithCounter());
+
+    // Header bbox is the RAW (pre-subtraction) box; points come out of the
+    // stub with x = source record index (0, 1, 2, ...), y = z = 0.
+    const blob = buildLazFileWithBbox(3, { min: [0, 0, 0], max: [2, 0, 0] });
+    const originOffset = [100, 200, 300] as const;
+    const src = new LazStreamingSource(blob, { originOffset });
+    const info = await src.open();
+    expect(info.bbox).toEqual({ min: [-100, -200, -300], max: [-98, -200, -300] });
+
+    // Cross-check against the actual emitted points: every point must fall
+    // inside the reported box — the invariant issue #1804 broke for LAS.
+    const chunk = await src.next(16);
+    expect(chunk).not.toBeNull();
+    const { positions, pointCount } = chunk!;
+    for (let i = 0; i < pointCount; i++) {
+      for (let axis = 0; axis < 3; axis++) {
+        const v = positions[i * 3 + axis];
+        expect(v).toBeGreaterThanOrEqual(info.bbox.min[axis]);
+        expect(v).toBeLessThanOrEqual(info.bbox.max[axis]);
+      }
+    }
   });
 });
 

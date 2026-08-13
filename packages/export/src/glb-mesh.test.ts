@@ -173,6 +173,73 @@ describe('parseGLBToMeshData', () => {
     const glb = buildGlb({ asset: { version: '2.0' }, meshes: [] }, new Uint8Array(4));
     expect(parseGLBToMeshData(glb)).toEqual([]);
   });
+
+  /**
+   * `readAccessor`'s bounds check (`byteOffset + byteLen > bin.byteLength`)
+   * is a bare comparison. `count` used to be computed as
+   * `Number(acc.count || 0)`, which only substitutes 0 for a MISSING count —
+   * a present-but-non-numeric count (a corrupted JSON chunk with
+   * `"count":"abc"`) survives `|| 0` and becomes NaN. `NaN > bin.byteLength`
+   * is `false`, so the guard was silently bypassed and `bin.subarray(offset,
+   * NaN)` returned an EMPTY view: the mesh decoded with zero
+   * vertices/indices instead of the read failing loudly.
+   */
+  it('rejects a non-numeric accessor.count instead of silently decoding an empty mesh', () => {
+    // Same shape as buildMeshGlb, but the POSITION accessor's `count` is a
+    // non-empty, non-numeric string. `Number(acc.count || 0)` only
+    // substitutes a default for a MISSING count -- a present-but-bogus
+    // count like this survives `|| 0` and becomes NaN.
+    const { bin, bvOffset, accOffsets } = buildBin();
+    const json = {
+      asset: { version: '2.0' },
+      nodes: [{ mesh: 0, extras: { expressId: 42 } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+      accessors: [
+        { bufferView: 0, byteOffset: accOffsets[0], componentType: FLOAT, count: 'abc', type: 'VEC3' },
+        { bufferView: 0, byteOffset: accOffsets[1], componentType: FLOAT, count: 3, type: 'VEC3' },
+        { bufferView: 0, byteOffset: accOffsets[2], componentType: UNSIGNED_INT, count: 3, type: 'SCALAR' },
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: bvOffset, byteLength: bin.length - bvOffset }],
+      buffers: [{ byteLength: bin.length }],
+    };
+    const glb = buildGlb(json, bin);
+    expect(() => parseGLBToMeshData(glb)).toThrow(/invalid count/);
+  });
+
+  it('still decodes a valid accessor.count (bounding control: the untampered GLB still works)', () => {
+    const meshes = parseGLBToMeshData(buildMeshGlb({ expressId: 42 }));
+    expect(meshes).toHaveLength(1);
+    expect(Array.from(meshes[0].positions)).toEqual(POSITIONS);
+  });
+
+  /**
+   * `Number.isInteger(count) && count >= 0` must accept the boundary value
+   * `0`, not just positive counts -- a legitimately empty accessor (all
+   * three of POSITION/NORMAL/indices declaring zero elements) is not a
+   * malformed GLB and must decode to a mesh with empty typed arrays rather
+   * than being rejected by the new guard.
+   */
+  it('still decodes a valid accessor.count = 0 (bounding control: an empty-but-declared accessor is not an error)', () => {
+    const bin = new Uint8Array(0);
+    const json = {
+      asset: { version: '2.0' },
+      nodes: [{ mesh: 0, extras: { expressId: 42 } }],
+      meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: FLOAT, count: 0, type: 'VEC3' },
+        { bufferView: 0, byteOffset: 0, componentType: FLOAT, count: 0, type: 'VEC3' },
+        { bufferView: 0, byteOffset: 0, componentType: UNSIGNED_INT, count: 0, type: 'SCALAR' },
+      ],
+      bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 0 }],
+      buffers: [{ byteLength: 0 }],
+    };
+    const glb = buildGlb(json, bin);
+    const meshes = parseGLBToMeshData(glb);
+    expect(meshes).toHaveLength(1);
+    expect(meshes[0].positions).toHaveLength(0);
+    expect(meshes[0].normals).toHaveLength(0);
+    expect(meshes[0].indices).toHaveLength(0);
+  });
 });
 
 describe('parseGLB header validation', () => {

@@ -118,10 +118,33 @@ function shortGuidHash(guid: string): string {
  * and `usedNames` catches the remaining collisions with a counter suffix.
  */
 function sanitizeTopicFolderName(guid: string, usedNames: Set<string>): string {
-  const cleaned = guid.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
-  const base = cleaned === guid && cleaned.length > 0
+  return sanitizeZipComponent(guid, usedNames, 'topic');
+}
+
+/**
+ * Sanitize an arbitrary GUID for use as a zip path component (zip-slip guard).
+ *
+ * Shared by both the topic-folder name and the viewpoint file base name: a
+ * viewpoint GUID is parsed just as unvalidated from untrusted markup XML on
+ * read (reader.ts `parseViewpointContent`) as a topic GUID is, so it carries
+ * the same path-traversal hazard. Restrict the name to safe filename
+ * characters and collapse any dot-run so it can never traverse. `fallback` is
+ * used when sanitization strips the name to nothing.
+ *
+ * Sanitization is lossy, so two distinct GUIDs can map to one name, which
+ * would silently overwrite an entry. Any name that sanitization changed gets
+ * a hash of the original GUID appended, and `usedNames` catches the
+ * remaining collisions with a counter suffix. Callers MUST sanitize each
+ * GUID exactly once and reuse the result everywhere that GUID's entry is
+ * named (markup references and the zip entry itself) -- calling this twice
+ * for the same GUID against a `usedNames` set that already contains the
+ * first result produces a second, different name.
+ */
+function sanitizeZipComponent(raw: string, usedNames: Set<string>, fallback: string): string {
+  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  const base = cleaned === raw && cleaned.length > 0
     ? cleaned
-    : `${cleaned.length > 0 ? cleaned : 'topic'}-${shortGuidHash(guid)}`;
+    : `${cleaned.length > 0 ? cleaned : fallback}-${shortGuidHash(raw)}`;
   let candidate = base;
   for (let n = 2; usedNames.has(candidate); n++) {
     candidate = `${base}-${n}`;
@@ -142,14 +165,22 @@ async function writeTopicFolder(
   const folder = zip.folder(sanitizeTopicFolderName(topic.guid, usedFolderNames));
   if (!folder) return;
 
+  // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
+  // reference (written below) and the zip entry (written in
+  // writeViewpointFiles) always agree on the same file name. A topic-scoped
+  // usedNames set disambiguates viewpoint GUIDs that sanitize identically,
+  // the same way topic folders are disambiguated above.
+  const usedViewpointNames = new Set<string>();
+  const viewpointBaseNames = topic.viewpoints.map((vp) =>
+    sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
+  );
+
   // Write markup.bcf
-  writeMarkupFile(folder, topic, version);
+  writeMarkupFile(folder, topic, version, viewpointBaseNames);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
-    const viewpoint = topic.viewpoints[i];
-    const isDefault = i === 0;
-    await writeViewpointFiles(folder, viewpoint, isDefault);
+    await writeViewpointFiles(folder, topic.viewpoints[i], viewpointBaseNames[i]);
   }
 }
 
@@ -171,7 +202,12 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
-function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0'): void {
+function writeMarkupFile(
+  folder: JSZip,
+  topic: BCFTopic,
+  version: '2.1' | '3.0',
+  viewpointBaseNames: string[],
+): void {
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
 
@@ -228,13 +264,18 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0')
   // snippet when it is complete so we never write schema-invalid markup. (The
   // type marks referenceSchema optional, but a snippet without it is unusable.)
   if (topic.bimSnippet?.referenceSchema) {
-    content += writeBimSnippet(topic.bimSnippet);
+    content += writeBimSnippet(topic.bimSnippet, version);
   }
 
   if (topic.documentReferences && topic.documentReferences.length > 0) {
+    // Containment differs too: 3.0 groups the entries under a single
+    // <DocumentReferences> element, while 2.1 repeats <DocumentReference>
+    // directly under <Topic> (buildingSMART/BCF-XML markup.xsd, Topic).
+    if (version === '3.0') content += `\n    <DocumentReferences>`;
     for (const docRef of topic.documentReferences) {
-      content += writeDocumentReference(docRef);
+      content += writeDocumentReference(docRef, version);
     }
+    if (version === '3.0') content += `\n    </DocumentReferences>`;
   }
 
   if (topic.relatedTopics && topic.relatedTopics.length > 0) {
@@ -248,9 +289,14 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0')
   // Write viewpoint references
   for (let i = 0; i < topic.viewpoints.length; i++) {
     const viewpoint = topic.viewpoints[i];
-    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
-    const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-    const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
+    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
+    // but the file name component is the sanitized base name (zip-slip
+    // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
+    // so the markup reference and the archive agree. The real GUID is still
+    // written verbatim as the Guid attribute below.
+    const baseName = viewpointBaseNames[i];
+    const filename = `Viewpoint_${baseName}.bcfv`;
+    const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
     content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
     content += `\n    <Viewpoint>${filename}</Viewpoint>`;
@@ -289,11 +335,14 @@ function writeMarkupFile(folder: JSZip, topic: BCFTopic, version: '2.1' | '3.0')
 async function writeViewpointFiles(
   folder: JSZip,
   viewpoint: BCFViewpoint,
-  _isDefault: boolean
+  baseName: string,
 ): Promise<void> {
-  // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv
-  const filename = `Viewpoint_${viewpoint.guid}.bcfv`;
-  const snapshotName = `Snapshot_${viewpoint.guid}.${snapshotExt(viewpoint)}`;
+  // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv, but
+  // the file name component is the sanitized base name (zip-slip guard) --
+  // the SAME one the caller wrote into the markup <Viewpoint> reference, so
+  // the archive entry and the markup agree. See sanitizeZipComponent.
+  const filename = `Viewpoint_${baseName}.bcfv`;
+  const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>
@@ -652,11 +701,16 @@ function writeHeaderFile(file: BCFHeaderFile, indent: string, version: '2.1' | '
 
 /**
  * Write BimSnippet XML
+ *
+ * BCF 2.1 spells the attribute `isExternal`; 3.0 renamed it `IsExternal`
+ * (buildingSMART/BCF-XML markup.xsd, BimSnippet's IsExternal attribute) —
+ * same rename as the Header `<File>` attribute in {@link writeHeaderFile}.
  */
-function writeBimSnippet(snippet: BCFBimSnippet): string {
+function writeBimSnippet(snippet: BCFBimSnippet, version: '2.1' | '3.0'): string {
   // Caller guarantees referenceSchema is present (see writeMarkupFile); both
   // Reference and ReferenceSchema are required by the BCF schema.
-  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" isExternal="${snippet.isExternal}">`;
+  const isExternalAttr = version === '3.0' ? 'IsExternal' : 'isExternal';
+  let content = `\n    <BimSnippet SnippetType="${escapeXml(snippet.snippetType)}" ${isExternalAttr}="${snippet.isExternal}">`;
   content += `\n      <Reference>${escapeXml(snippet.reference)}</Reference>`;
   content += `\n      <ReferenceSchema>${escapeXml(snippet.referenceSchema ?? '')}</ReferenceSchema>`;
   content += `\n    </BimSnippet>`;
@@ -665,11 +719,38 @@ function writeBimSnippet(snippet: BCFBimSnippet): string {
 
 /**
  * Write DocumentReference XML
+ *
+ * BCF 2.1 and 3.0 diverge structurally here, not just by attribute casing:
+ * 2.1 has `<ReferencedDocument>` (a string, plus an `isExternal` flag on
+ * whether it's a URL); 3.0 replaced both with `<DocumentGuid>` (a reference
+ * into project.bcfp's Documents) or `<Url>`, and dropped `isExternal`
+ * entirely (buildingSMART/BCF-XML markup.xsd, release_3_0 DocumentReference).
+ * `documentGuid`/`url` are preferred when present; `referencedDocument` is
+ * the 2.1-shaped fallback so 2.1-authored data written as 3.0 still emits
+ * something.
  */
-function writeDocumentReference(docRef: BCFDocumentReference): string {
+function writeDocumentReference(docRef: BCFDocumentReference, version: '2.1' | '3.0'): string {
   const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
-  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal}">`;
-  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument)}</ReferencedDocument>`;
+
+  if (version === '3.0') {
+    let content = `\n    <DocumentReference${guidAttr}>`;
+    if (docRef.documentGuid) {
+      content += `\n      <DocumentGuid>${escapeXml(docRef.documentGuid)}</DocumentGuid>`;
+    } else {
+      const url = docRef.url ?? docRef.referencedDocument;
+      if (url) {
+        content += `\n      <Url>${escapeXml(url)}</Url>`;
+      }
+    }
+    if (docRef.description) {
+      content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
+    }
+    content += `\n    </DocumentReference>`;
+    return content;
+  }
+
+  let content = `\n    <DocumentReference${guidAttr} isExternal="${docRef.isExternal ?? false}">`;
+  content += `\n      <ReferencedDocument>${escapeXml(docRef.referencedDocument ?? docRef.url ?? '')}</ReferencedDocument>`;
   if (docRef.description) {
     content += `\n      <Description>${escapeXml(docRef.description)}</Description>`;
   }

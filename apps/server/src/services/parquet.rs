@@ -63,7 +63,11 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
 
 /// Fail loud instead of silently truncating a wire-format `u32` length
 /// prefix when a section exceeds 4 GiB.
-fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> {
+///
+/// `pub(crate)` so `parquet_optimized`'s length-prefixed sections (the same
+/// `[len:u32][bytes]` wire shape) can share this guard instead of growing an
+/// unguarded sibling copy of the cast.
+pub(crate) fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> {
     if u32::try_from(len).is_err() {
         return Err(ParquetError::Overflow(format!(
             "{name} section is {len} bytes, over the u32 wire-format limit"

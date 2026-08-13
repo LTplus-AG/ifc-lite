@@ -51,11 +51,12 @@ export function clashScoreFromCount(totalClashes: number): number {
 }
 
 export async function computeClashChannel(store: IfcDataStore, processor: GeometryProcessor, modelId: string): Promise<Record<string, unknown>> {
-  const bytes = store.source;
-  if (!bytes || bytes.byteLength === 0) {
+  if (store.source.byteLength === 0) {
     return { score: null, error: 'clash check needs source bytes, which the current store did not retain' };
   }
-  const result = await processor.process(bytes);
+  // The wasm mesher needs the whole file; scoped so the materialised buffer
+  // cannot outlive the mesh pass (#2183).
+  const result = await store.source.withMaterializedAsync(bytes => processor.process(bytes));
   const meshes: MeshData[] = result.meshes;
   const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
 

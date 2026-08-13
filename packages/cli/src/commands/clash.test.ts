@@ -52,6 +52,102 @@ function buildClashModel(): string {
   return creator.toIfc().content;
 }
 
+/**
+ * Three wall-crossing pairs, spaced 10m apart along X — each pair produces
+ * exactly one self-clash, and every pair is well outside the 1.5m default
+ * cluster epsilon from every other pair. Models the MEP distribution-run
+ * shape (contact points metres apart) with plain walls, so `--group cluster`
+ * cannot consolidate any of the three clashes: 3 clashes in, 3 groups out.
+ */
+function buildScatteredClashModel(): string {
+  const creator = new IfcCreator({ Name: 'ScatteredClashTest' });
+  const storey = creator.addIfcBuildingStorey({ Name: 'L1', Elevation: 0 });
+  for (const offset of [0, 10, 20]) {
+    creator.addIfcWall(storey, { Start: [offset - 2, 0, 0], End: [offset + 2, 0, 0], Height: 3, Thickness: 0.2 });
+    creator.addIfcWall(storey, { Start: [offset, -2, 0], End: [offset, 2, 0], Height: 3, Thickness: 0.2 });
+  }
+  return creator.toIfc().content;
+}
+
+/**
+ * Same shape as `buildScatteredClashModel`, but the three crossing pairs sit
+ * 0.5m apart along X — well within the 1.5m default cluster epsilon of each
+ * other, and all same rule/type-pair (self-clash on `IfcWall`) — so cluster
+ * grouping DOES consolidate: fewer groups than clashes come out.
+ */
+function buildClusteredClashModel(): string {
+  const creator = new IfcCreator({ Name: 'ClusteredClashTest' });
+  const storey = creator.addIfcBuildingStorey({ Name: 'L1', Elevation: 0 });
+  for (const offset of [0, 0.5, 1.0]) {
+    creator.addIfcWall(storey, { Start: [offset - 2, 0, 0], End: [offset + 2, 0, 0], Height: 3, Thickness: 0.2 });
+    creator.addIfcWall(storey, { Start: [offset, -2, 0], End: [offset, 2, 0], Height: 3, Thickness: 0.2 });
+  }
+  return creator.toIfc().content;
+}
+
+describe('clash --group cluster ineffectiveness note', () => {
+  it.skipIf(!canRun)(
+    'warns on stderr when cluster grouping consolidates nothing',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-cluster-noop-'));
+      const modelPath = join(dir, 'model.ifc');
+      const bcfPath = join(dir, 'out.bcfzip');
+      try {
+        await writeFile(modelPath, buildScatteredClashModel());
+
+        const { stderr } = await execFileAsync(
+          process.execPath,
+          [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcWall', '--group', 'cluster', '--bcf', bcfPath],
+          { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+
+        expect(stderr).toContain('did not consolidate any clashes');
+        expect(stderr).toContain('3 groups from 3 clashes');
+        expect(stderr).toContain('--group rule');
+        expect(stderr).toContain('--group typePair');
+        expect(stderr).toContain('--group element');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+
+  it.skipIf(!canRun)(
+    'stays silent when cluster grouping actually consolidates',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-cluster-ok-'));
+      const modelPath = join(dir, 'model.ifc');
+      const bcfPath = join(dir, 'out.bcfzip');
+      try {
+        // Same fixture shape as the noop test above, but the crossings sit
+        // within epsilon of each other, so clustering merges them: proves the
+        // note is conditioned on actual (in)effectiveness, not just present
+        // whenever --group cluster runs.
+        await writeFile(modelPath, buildClusteredClashModel());
+
+        const { stderr } = await execFileAsync(
+          process.execPath,
+          [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcWall', '--group', 'cluster', '--bcf', bcfPath],
+          { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+
+        // Fewer groups than clashes proves clustering actually merged some of
+        // them (the fixture's 3 wall-crossing pairs sit within epsilon).
+        const match = stderr.match(/\((\d+) topic group\(s\)/);
+        expect(match).not.toBeNull();
+        const groupCount = Number(match?.[1]);
+        expect(groupCount).toBeGreaterThan(0);
+        expect(groupCount).toBeLessThan(12);
+        expect(stderr).not.toContain('did not consolidate');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+});
+
 describe('clash --json stdout hygiene', () => {
   it.skipIf(!canRun)(
     'stdout is exactly one parseable JSON document; diagnostics go to stderr',
@@ -208,9 +304,9 @@ describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
   }, 60_000);
 
   it('never constructs a GeometryProcessor when argument parsing fails before meshing', async () => {
-    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
     vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
     try {

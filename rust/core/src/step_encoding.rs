@@ -13,6 +13,12 @@
 //! - `\S\C` extended ASCII: code point of `C` plus 128
 //! - `\PC\` code-page directive, consumed and dropped
 //!
+//! ISO 10303-21 also doubles the reverse solidus inside a string literal, so
+//! `\\` decodes to one `\`. That arm sits AFTER the directive arms: a directive
+//! immediately followed by an escaped backslash ends in three backslashes
+//! (`\X2\00FC\X0\` + `\\`), and collapsing pairs first would eat the
+//! directive's own terminator.
+//!
 //! Unknown or malformed escapes are passed through unchanged. The `''`
 //! doubled-quote escape is NOT handled here — the tokenizer's consumers strip
 //! the surrounding quotes and un-double before calling this.
@@ -113,6 +119,16 @@ pub fn decode_ifc_string(s: &str) -> Cow<'_, str> {
             }
         }
 
+        // `\\`: one literal reverse solidus (ISO 10303-21 doubles it inside a
+        // string literal). Checked after the directive arms so a `\X0\`/`\X\`
+        // terminator adjacent to an escaped backslash is consumed by its own
+        // directive first, never paired with the escape that follows it.
+        if i + 1 < n && bytes[i + 1] == b'\\' {
+            out.push('\\');
+            i += 2;
+            continue;
+        }
+
         // Unknown escape: keep the backslash and advance one byte.
         out.push('\\');
         i += 1;
@@ -208,6 +224,20 @@ mod tests {
     #[test]
     fn drops_code_page_directive() {
         assert_eq!(decode_ifc_string(r"\PA\Hello"), "Hello");
+    }
+
+    #[test]
+    fn collapses_the_doubled_reverse_solidus() {
+        // ISO 10303-21 doubles the reverse solidus inside a string literal just
+        // as it doubles the apostrophe, so the pair is ONE backslash (#2323).
+        assert_eq!(decode_ifc_string(r"C:\\temp"), r"C:\temp");
+        // Two escaped backslashes stay two: exactly one collapsing pass.
+        assert_eq!(decode_ifc_string(r"\\\\"), r"\\");
+        // A directive consumes its own \X0\ terminator before the pair escape is
+        // considered, so a trailing escaped backslash survives whole.
+        assert_eq!(decode_ifc_string("\\X2\\00FC\\X0\\\\\\"), "\u{FC}\\");
+        // Mirror case: a leading escaped backslash makes the rest literal text.
+        assert_eq!(decode_ifc_string(r"\\X2\00FC\X0\"), r"\X2\00FC\X0\");
     }
 
     #[test]

@@ -21,6 +21,7 @@ const fixtures: ConformanceFixtures = {
   containerWithFilesId: 'sub1',
   fileWithRevisions: { containerId: 'sub1', fileId: 'structural-model' },
   searchQuery: 'structural',
+  secondProjectId: 'proj-2',
 };
 
 const containerListingModes = ['direct-children', 'flat-subtree'] as const;
@@ -39,6 +40,21 @@ for (const containerListing of containerListingModes) {
         createContext: () => createFixtureContext(),
         fixtures,
         smallPageLimit: 1,
+        // The fixture provider clamps `limit` down to its own page size but
+        // otherwise honors it, so it opts into the stricter paging check a
+        // provider is free not to satisfy.
+        pageBoundary: 'limit',
+        // POLLING, not delta-backed: `watchRevisions` walks the `refs` it is
+        // given and ignores `cursor` outright (`src/provider.ts` — the
+        // parameter is `_cursor`). It returns a cursor anyway, so that hosts
+        // which persist and pass one back are exercised, but that is a token
+        // it never reads. Declaring a delta feed here would waive the
+        // empty-ref invariant — "watching nothing reports nothing" — for the
+        // one provider whose whole job is to prove the kit passes a correct
+        // one. The cursor round-trip the flag also gates is exercised by
+        // `conformance-watch-delta-feed.test.ts`, against a stub that really
+        // is delta-backed.
+        watchRevisionsHasDeltaFeed: false,
       });
     });
   }
@@ -64,5 +80,8 @@ describe('auth=interactive', () => {
     createContext: () => ctx,
     fixtures,
     smallPageLimit: 1,
+    pageBoundary: 'limit',
+    // Polling — see the note on the same flag above.
+    watchRevisionsHasDeltaFeed: false,
   });
 });

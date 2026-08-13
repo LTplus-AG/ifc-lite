@@ -52,6 +52,7 @@ import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
 import { posthog } from '../lib/analytics';
 import { errorCaptureProps } from '../lib/load-errors';
+import { getWholeSourceForWorker } from '@/lib/overlay-parse';
 
 // ============================================================================
 // Types
@@ -399,7 +400,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (canUseWorker) {
         try {
           validationReport = await runValidationInWorker({
-            source: dataStore.source!,
+            // Whole-file consumer: the IDS worker re-parses the source.
+            source: getWholeSourceForWorker(dataStore),
             document,
             schemaVersion,
             modelId,
@@ -1004,6 +1006,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
           // Wait for the browser compositor to present the frame to the canvas.
           // Without this, toDataURL() reads a stale canvas — only the last snapshot
           // would show the entity because previous frames haven't been composited yet.
+          // FRAME-WAIT-ALLOW(#2385): must NOT be raced against a timer. The whole
+          // point is that the frame was actually presented; timing out would read
+          // a stale canvas into the IDS report snapshot. A hidden tab cannot
+          // present a frame at all, so bounding this buys nothing.
           await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
 
           // Capture the now-presented frame

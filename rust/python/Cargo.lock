@@ -242,7 +242,7 @@ checksum = "1e9d4a992a9fe83130f41ceacceac3bb116a4355dfc9c8d6ecea4f1e4b4c6caf"
 
 [[package]]
 name = "ifc-lite-core"
-version = "4.1.0"
+version = "4.3.1"
 dependencies = [
  "fast-float2",
  "futures-core",
@@ -256,8 +256,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ifc-lite-export"
+version = "4.3.1"
+dependencies = [
+ "bytemuck",
+ "ifc-lite-core",
+ "ifc-lite-geometry",
+ "ifc-lite-processing",
+ "rustc-hash",
+ "serde",
+ "serde_json",
+ "twox-hash",
+]
+
+[[package]]
 name = "ifc-lite-geometry"
-version = "4.1.0"
+version = "4.3.1"
 dependencies = [
  "bnum",
  "earcutr",
@@ -265,8 +279,8 @@ dependencies = [
  "i_overlay",
  "ifc-lite-core",
  "jpeg-decoder",
+ "memchr",
  "nalgebra",
- "num-bigint",
  "num-rational",
  "num-traits",
  "png",
@@ -279,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-processing"
-version = "4.1.0"
+version = "4.3.1"
 dependencies = [
  "ifc-lite-core",
  "ifc-lite-geometry",
@@ -293,8 +307,9 @@ dependencies = [
 
 [[package]]
 name = "ifc-lite-python"
-version = "4.2.1"
+version = "4.4.0"
 dependencies = [
+ "ifc-lite-export",
  "ifc-lite-processing",
  "pyo3",
 ]
@@ -785,6 +800,12 @@ checksum = "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a"
 dependencies = [
  "once_cell",
 ]
+
+[[package]]
+name = "twox-hash"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8464ec13c3691491391d9fce00f6416c9a48e46972f72d7865688be2080192c9"
 
 [[package]]
 name = "typenum"

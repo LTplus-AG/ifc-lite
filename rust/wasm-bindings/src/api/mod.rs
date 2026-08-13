@@ -12,6 +12,7 @@ mod clash;
 mod csg_diagnostics;
 mod diagnose;
 mod export_data;
+mod export_dfjson;
 mod export_glb;
 mod export_hbjson;
 mod export_obj;
@@ -26,6 +27,7 @@ mod simplify;
 mod space_plate;
 pub(crate) mod styling;
 mod symbolic;
+mod zone_split;
 
 use csg_diagnostics::drain_and_log_csg_diagnostics;
 

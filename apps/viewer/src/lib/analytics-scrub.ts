@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { classifyLoadError } from './load-errors.js';
+import { isMapWebglInitFailureMessage } from './geo/map-webgl-support.js';
 
 // PostHog `before_send` pipeline: the single gate every captured event passes
 // through before it leaves the browser. Kept dependency-free (no posthog-js) so
@@ -171,6 +172,42 @@ const scrubExceptionMessages = (
 };
 
 // ── Noise filter ───────────────────────────────────────────────────────────
+// Every matcher here decides whether to DELETE an event — irreversibly and
+// silently, since nothing anywhere records that the event existed. A
+// misclassification can at least be re-derived from the stored event; a drop
+// cannot be re-derived from anything.
+//
+// INVARIANT, a property of the whole boolean and not of any one clause: every
+// arm matches the exception value AS A WHOLE — anchored at BOTH ends, or
+// structural (parse the payload and require the field to BE the token) — so an
+// unrelated actionable error that merely QUOTES one of these strings still
+// reaches us. #1914 named that hazard while anchoring one arm; three siblings
+// were found loose afterwards, each by checking the neighbours of an arm
+// somebody had already fixed. A one-end anchor is NOT enough and reads exactly
+// like a fix: `^`-only still eats our trailing sentence, `$`-only still eats
+// our leading one.
+//
+// There are TWO axes and an arm has to be tight on both. EXTENT: how much of
+// the value the match covers, which is what anchoring buys. IDENTITY: whether
+// what matched actually IS the third-party failure. An arm can be exact about
+// the shape it matched and vague about whose shape that is — "contains these
+// three key names" dropped anything HTTP-ish until `isCesiumRequestError`
+// below required Cesium's own-property set exactly. Same defect family,
+// different axis, found one review apart.
+//
+// Adding an arm means constraining both ends AND listing its wording in
+// `DROPPED_NOISE_SAMPLES` (./analytics.test.ts), which re-runs every sample
+// under four carriers — text before, text after, both sides, and a comma-led
+// trailing sentence for the arms that SPLIT the value — and fails unless each
+// survives with its own kind, level and fingerprint.
+//
+// Know what that does and does not buy you. Every wording IN the list is
+// protected: loosening any registered arm turns the harness red, including
+// arms nobody wrote a dedicated test for. An arm you add and DON'T register is
+// invisible to it — a fresh `value.includes(…)` clause with no list entry
+// passes everything. Registration is a convention this comment asks for, not a
+// gate. Skipping it is how the next instance of this defect gets in.
+//
 // Cesium rejects failed tile / terrain / imagery / ion-asset requests with a
 // `RequestErrorEvent` — a plain `{ statusCode, response, responseHeaders }`
 // object, not an Error. During continuous globe rendering these fire from deep
@@ -181,17 +218,72 @@ const scrubExceptionMessages = (
 // drop the `$exception` event entirely. Match on Cesium's stable property-name
 // shape (those three keys), NOT the minified class name (`D_`), which changes
 // every build. posthog-js stringifies a non-Error throwable as
-// "'<ctor>' captured as exception with keys: <comma-separated own keys>".
-const CESIUM_REQUEST_ERROR =
-  /captured as exception with keys:(?=[^]*\bstatusCode\b)(?=[^]*\bresponse\b)(?=[^]*\bresponseHeaders\b)/;
+// "'<ctor>' captured as exception with keys: <comma-separated own keys>", and
+// that IS the whole value — even for an unhandled rejection, whose non-Error
+// reason posthog re-coerces through this same path rather than prefixing it.
+//
+// STRUCTURAL, over the complete value: the ctor token (quoted or bare depending
+// on which coercion ran, never spaced), then a key list whose members are
+// EXACTLY Cesium's three own properties. Anchoring at `^` alone was not enough and is
+// the same half-measure this file exists to remove: the lookaheads scanned the
+// rest of the value, so "RequestErrorEvent captured as exception with keys:
+// statusCode, response, responseHeaders and our uploader then wrote 0 bytes"
+// was dropped with our own trailing sentence inside it. Validating the list
+// instead of searching it also leaves posthog free to reorder or respace the
+// keys (it sorts and `", "`-joins them today), which a fully literal `^…$`
+// would not.
+//
+// The ctor token is matched but NOT required to read `RequestErrorEvent`, and
+// that is not an oversight: in production Cesium's class name is minified —
+// the recorded occurrence behind #1175 is literally `'D_'`, which is why that
+// issue keyed on the property shape in the first place. Requiring the readable
+// name makes this arm dead everywhere it matters (verified: it fails #1175's
+// own regression test). The identity constraint that DOES survive minification
+// is the exact own-property set, which is what the length check below enforces.
+const CESIUM_REQUEST_ERROR_KEYS = ['statusCode', 'response', 'responseHeaders'];
+
+// The whole stringification, with the key list captured for validation rather
+// than searched. Bounded runs only: no nested quantifier to backtrack on.
+const CAPTURED_WITH_KEYS = /^\S{1,64} captured as exception with keys:[ \t]*(\S[^\n]{0,512})$/;
+
+const isCesiumRequestError = (value: string): boolean => {
+  const match = CAPTURED_WITH_KEYS.exec(value);
+  if (!match) return false;
+  const keys = match[1].split(',').map((key) => key.trim());
+  // EXACTLY Cesium's three own properties, not merely "contains" them. Own
+  // property names are unique, so length plus containment IS set equality, and
+  // set equality is what carries both jobs at once:
+  //
+  //  identity — containment alone left this arm precise about the shape it
+  //    matched and vague about whose shape it was, so any throwable carrying
+  //    those three among its keys was deleted as Cesium noise. `{statusCode,
+  //    response, responseHeaders}` is a generic HTTP-ish shape, not a
+  //    Cesium-unique one, and ours may legitimately carry all three plus its
+  //    own request id.
+  //  extent — three members that each equal one of three fixed names cannot
+  //    also carry a sentence of ours, so the trailing prose case falls out of
+  //    the same check. (An explicit "every member is a bare identifier" guard
+  //    stood here and was deleted with this change: set equality made it
+  //    unable to alter any outcome, and a check that cannot fail is worse than
+  //    no check — it reads as protection.)
+  if (keys.length !== CESIUM_REQUEST_ERROR_KEYS.length) return false;
+  return CESIUM_REQUEST_ERROR_KEYS.every((key) => keys.includes(key));
+};
 
 // Microsoft's Outlook SafeLinks / Office link-preview crawler injects a script
 // into the page and rejects a promise with this bare string when its own
 // bookkeeping misses. It is not our code, carries no stack, and fires only for
 // visitors arriving from an Outlook link — 18 occurrences made it the single
 // highest-volume "issue" in error tracking, all of it someone else's crawler.
+//
+// Anchored at BOTH ends over the crawler's complete sentence, so the phrase
+// quoted inside a message of OURS survives. The optional leading group is
+// posthog's own wrapper for a rejection whose reason was a bare string, which
+// is how this one always arrives and why `^` alone will not do; the trailing
+// `ParamCount` is optional so a crawler build that omits it still drops.
+// Everything before it is attested verbatim in our recorded occurrences.
 const OUTLOOK_SAFELINK_NOISE =
-  /Object Not Found Matching Id:\s*\d+,\s*MethodName:/i;
+  /^(?:Non-Error promise rejection captured with value:\s*)?Object Not Found Matching Id:\s*\d+,\s*MethodName:\s*\w{1,64}(?:,\s*ParamCount:\s*\d+)?\.?\s*$/i;
 
 // MapLibre cannot get a WebGL context: `_setupPainter()` throws either a bare
 // "Failed to initialize WebGL" or that message wrapped in a JSON blob carrying
@@ -208,13 +300,20 @@ const OUTLOOK_SAFELINK_NOISE =
 // stable message + the `webglcontextcreationerror` token, never on a minified
 // name — the same discipline as the Cesium matcher above. Deliberately narrow:
 // a WebGL failure that is ever actionable must not be silently dropped.
-// The bare case is ANCHORED, not a substring test: MapLibre throws exactly
-// this message and nothing else, so an unrelated error that merely mentions
-// the phrase ("Failed to initialize WebGL renderer for the ...") must still
-// reach us. Dropping is irreversible — a matcher that is loose here goes
-// blind exactly where it matters.
-const MAPLIBRE_WEBGL_UNAVAILABLE =
-  /^\s*Failed to initialize WebGL\s*$|"type":\s*"webglcontextcreationerror"/;
+//
+// Both shapes come from `isMapWebglInitFailureMessage`, imported rather than
+// restated so MapLibre's wordings keep ONE home. #1914 anchored the bare
+// message and left the payload arm a bare `"type": "webglcontextcreationerror"`
+// substring test, so an uncaught `Upload failed: driver shim logged
+// {"type":"webglcontextcreationerror"} while retrying` was deleted outright and
+// no record kept. That arm is now structural: the message must PARSE as JSON
+// whose `type` field IS the token and whose `message` is MapLibre's own
+// anchored wording — the shape v5 actually threw.
+//
+// The set stays exactly MapLibre's two throw shapes and is NOT widened to v6's
+// `WebGL2 is required to display this map`: #2354 keeps that family (classified
+// `webgl_unavailable`, one fingerprint, downgraded to `warning`) precisely so
+// the condition stays queryable, and dropping more of it would undo that.
 
 // The browser's opaque cross-origin error: `window.onerror` reports literally
 // "Script error." with no file, line, or stack when a script from another
@@ -265,12 +364,12 @@ const isUnactionableThirdPartyException = (
   return list.some((entry) => {
     const value = (entry as { value?: unknown })?.value;
     if (typeof value !== 'string') return false;
-    if (CESIUM_REQUEST_ERROR.test(value)) return true;
+    if (isCesiumRequestError(value)) return true;
     if (OUTLOOK_SAFELINK_NOISE.test(value)) return true;
     // Scoped to the UNCAUGHT form only: the LocationMap's own once-per-session
     // handled report carries the same message and has to survive, otherwise
     // this rule would blind us to the very condition it exists to de-noise.
-    if (MAPLIBRE_WEBGL_UNAVAILABLE.test(value) && isUnhandled(entry)) return true;
+    if (isMapWebglInitFailureMessage(value) && isUnhandled(entry)) return true;
     if (OPAQUE_CROSS_ORIGIN.test(value.trim()) && frameCount(entry) === 0) return true;
     if (RESIZE_OBSERVER_LOOP.test(value.trim()) && frameCount(entry) === 0) return true;
     return false;
@@ -329,6 +428,13 @@ const tagErrorKind = (
 // single retention window, which is exactly the "same problem, one fix" case
 // PostHog documents custom fingerprints for.
 //
+// A constant message is not enough on its own, which is what #2354 showed: the
+// minimap's WebGL report is one fixed string per reason, yet it minted a fresh
+// issue on each deploy, because the stack that feeds the default hash names the
+// hashed bundle it came from (`main-DnUx64at.js`, then `index-B0OhdiDw.js`, …).
+// Four issues, one benign condition. A fingerprint is the only thing that
+// survives a release.
+//
 // Scoped deliberately to the families `classifyLoadError` recognises. An
 // unrecognised exception keeps PostHog's default per-message grouping, so we
 // never over-group unrelated failures into one meaningless bucket. The volatile
@@ -359,7 +465,29 @@ const stampFingerprint = (
 // `fatal` / `warning` / `info` is never clobbered. `wasm_engine_load` is
 // pointedly NOT in this set: a rotated or 404ing engine binary means the deploy
 // is broken for everyone and must stay loud.
-const BENIGN_ERROR_KINDS = new Set<string>(['network_unavailable', 'cancelled']);
+//
+// `webgl_unavailable` joins them for the same reason, on stronger evidence
+// (#2354). It is not a failure at all in the sense `error` claims: the minimap
+// probes for a WebGL context, the device refuses one, and `LocationMap` paints
+// its fallback with the coordinate readout, place search, the external map
+// links and KMZ export all still working. Nothing the user or a code change can
+// alter — the reported occurrences are a device whose GPU is missing an
+// extension or whose GPU process could not serve a second context. It stays
+// captured and queryable (with `map_unavailable_reason` and `webgl_status`
+// intact), just not competing with real breakage on an error-level list.
+//
+// three.js's `THREE.WebGLRenderer: Error creating WebGL context.` was pointedly
+// NOT in this bucket while nothing caught it: it threw out of an `/mcp` mount
+// effect and took the React tree down, which is breakage and had to stay
+// error-level. #2401 removed that premise — both `/mcp` scenes now mount behind
+// `useThreeScene`, degrade to a static panel, and report once as a HANDLED
+// exception — so #2458 folds those wordings into `webgl_unavailable` (see
+// `isThreeContextRefusal` in ./webgl-unavailable.ts) and they inherit this severity
+// with it. If a WebGLRenderer is ever constructed outside that guard again, the
+// throw would arrive here benign; the guard is the thing keeping this honest.
+const BENIGN_ERROR_KINDS = new Set<string>([
+  'network_unavailable', 'cancelled', 'webgl_unavailable',
+]);
 
 const downgradeBenignExceptions = (
   event: { event?: string; properties?: Record<string, unknown> },
@@ -373,15 +501,34 @@ const downgradeBenignExceptions = (
 
 // The browser told us it was offline when the fetch failed, so the failure is
 // definitionally user-side and there is nothing on our end to act on. Requires
-// BOTH signals: `online === false` alone could accompany an unrelated bug, and
-// `network_unavailable` alone may well be ours (a dead CDN edge reads the same
-// to an online client). Capture sites set `online` from `navigator.onLine`.
+// ALL THREE signals: `online === false` alone could accompany an unrelated bug,
+// and `network_unavailable` alone may well be ours (a dead CDN edge reads the
+// same to an online client). Capture sites set `online` from `navigator.onLine`.
+//
+// The third is the frameless gate, and it closes a case that was live rather
+// than hypothetical (#2410). `network_unavailable`'s doc comment in
+// ./load-errors.ts rests on these strings originating INSIDE `fetch()` and so
+// arriving with an EMPTY stack — but nothing enforced that, and the reproduction
+// confirmed the drop fired just as readily on an exception carrying our own
+// frames. A stack of ours is positive evidence that the throw happened in our
+// code, whatever `navigator.onLine` said at the time, and deleting that is
+// irreversible. Same `frameCount === 0` shape the two noise-filter arms above
+// use, for the same reason.
+//
+// An ABSENT or empty `$exception_list` keeps the event: an irreversible drop
+// must require positive evidence of its premise, never the mere absence of
+// counter-evidence. The production shape from #1903 — one entry, no
+// `stacktrace` key at all — is frameless and still drops.
+const isFramelessException = (list: unknown): boolean =>
+  Array.isArray(list) && list.length > 0 && list.every((entry) => frameCount(entry) === 0);
+
 const isOfflineNetworkFailure = (
   event: { event?: string; properties?: Record<string, unknown> },
 ): boolean =>
   event.event === '$exception' &&
   event.properties?.error_kind === 'network_unavailable' &&
-  event.properties?.online === false;
+  event.properties?.online === false &&
+  isFramelessException(event.properties?.$exception_list);
 
 // `before_send` shape: (event | null) => (event | null). Returning null drops
 // the event (noise filter above); otherwise we mutate properties in place,

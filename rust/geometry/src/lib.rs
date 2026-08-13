@@ -147,6 +147,9 @@ pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
 pub(crate) mod void_index;
+/// Cut one element into one closed solid per location zone (#2508 item 2), on
+/// top of the exact kernel rather than beside it.
+pub mod zone_split;
 
 // Re-export nalgebra types for convenience
 pub use nalgebra::{Point2, Point3, Vector2, Vector3};

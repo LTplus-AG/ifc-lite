@@ -375,13 +375,25 @@ export function useIfcFederation(
    */
   const loadFederatedIfcxFromBuffers = useCallback(async (
     buffers: Array<{ buffer: ArrayBuffer; name: string }>,
-    options: { resetState?: boolean } = {}
   ): Promise<void> => {
     const { resetViewerState, clearAllModels } = useViewerStore.getState();
 
     try {
-      // Always reset viewer state when geometry changes (selection, hidden entities, etc.)
-      // This ensures 3D highlighting works correctly after re-composition
+      // Reset viewer state on EVERY federated (re-)composition, including
+      // overlay-add. This used to be gated by a boolean "preserve state"
+      // option that was declared but never read (dead since #193) -
+      // `addIfcxOverlays` opted out believing it preserved selection,
+      // but the reset always ran anyway. Investigation confirmed the
+      // reset is correct, not just accidentally-always-on: expressIds in
+      // the composed IFCX entity table are synthetic and reassigned by
+      // iteration order over the composed node map, which shifts when a
+      // new overlay becomes the strongest layer - even a pure
+      // property-only overlay that adds no entities can reshuffle which
+      // expressId belongs to which entity. Since federated models share
+      // idOffset 0 (globalId === expressId), a selection/hidden/isolated
+      // set captured before recomposition can silently point at a
+      // DIFFERENT entity afterwards if left un-reset. So this reset is
+      // unconditional and there is no "preserve state" option to honour.
       resetViewerState();
 
       // Clear legacy geometry BEFORE clearing models to prevent stale fallback
@@ -539,8 +551,10 @@ export function useIfcFederation(
 
     // Check that all files are IFCX format and read buffers.
     // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
-    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
-    // Keep on file.arrayBuffer().
+    // safeUtf8Decode on top of the JSON string (net worse peak than
+    // ArrayBuffer). Keep on file.arrayBuffer(). The copy is no longer
+    // *retained* since #2183 capped the scratch, but it is still a
+    // full-file transient the ArrayBuffer path does not pay.
     const buffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -582,11 +596,10 @@ export function useIfcFederation(
         }
       }
 
-      // Convert Uint8Array source back to ArrayBuffer
-      const sourceBuffer = currentStore.source.buffer.slice(
-        currentStore.source.byteOffset,
-        currentStore.source.byteOffset + currentStore.source.byteLength
-      ) as ArrayBuffer;
+      // Whole-file consumer: the IFCX re-composition needs its own
+      // ArrayBuffer, so copy out of the source rather than aliasing it.
+      const sourceBuffer = currentStore.source
+        .withMaterialized((bytes) => bytes.slice().buffer) as ArrayBuffer;
 
       existingBuffers = [{ buffer: sourceBuffer, name: modelName }];
     } else {
@@ -596,8 +609,10 @@ export function useIfcFederation(
 
     // Read new overlay buffers.
     // IFCX is JSON; SAB streaming would force a SAB→scratch copy in
-    // safeUtf8Decode + retain the scratch (net worse peak than ArrayBuffer).
-    // Keep on file.arrayBuffer().
+    // safeUtf8Decode on top of the JSON string (net worse peak than
+    // ArrayBuffer). Keep on file.arrayBuffer(). The copy is no longer
+    // *retained* since #2183 capped the scratch, but it is still a
+    // full-file transient the ArrayBuffer path does not pay.
     const newBuffers: Array<{ buffer: ArrayBuffer; name: string }> = [];
     for (const file of files) {
       const buffer = await file.arrayBuffer();
@@ -616,7 +631,11 @@ export function useIfcFederation(
     // meant to override (#1717 V2).
     const allBuffers = [...existingBuffers, ...newBuffers];
 
-    await loadFederatedIfcxFromBuffers(allBuffers, { resetState: false });
+    // Re-composing (including this overlay add) always resets viewer
+    // state - see loadFederatedIfcxFromBuffers for why: expressIds are
+    // not stable across recomposition, so stale selection/hidden ids
+    // could point at the wrong entity afterwards.
+    await loadFederatedIfcxFromBuffers(allBuffers);
   }, [setError, loadFederatedIfcxFromBuffers]);
 
   /**

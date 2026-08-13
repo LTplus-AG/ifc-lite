@@ -9,7 +9,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { IfcTypeEnumToString, IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType } from '@ifc-lite/data';
+import { IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType, IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 
 export interface ParquetExportOptions {
@@ -32,12 +32,16 @@ export class ParquetExporter {
      *
      * When supplied, entities the overlay tombstoned via
      * `MutablePropertyView.deleteEntity()` — and every row that references
-     * one — are dropped from `Entities`, `Properties`, `Quantities` and
-     * `Relationships` (#2046). Unlike `StepExporter`/`Ifc5Exporter`, this is
-     * deletion-only: unlike those two, the writers below column-copy typed
-     * arrays out of the store in one shot rather than looping per entity, so
-     * they cannot also apply the overlay's pset/quantity/attribute edits the
-     * way a per-entity emission pass can. That is a known, separate gap.
+     * one — are dropped from `Entities`, `Properties`, `Quantities`,
+     * `Relationships`, `SpatialHierarchy` and the geometry tables
+     * (`VertexBuffer`, `IndexBuffer`, `Meshes`) (#2046; geometry tables
+     * joined the set after they were found still emitting a deleted
+     * entity's mesh into an otherwise-filtered archive). Unlike
+     * `StepExporter`/`Ifc5Exporter`, this is deletion-only: unlike those
+     * two, the writers below column-copy typed arrays out of the store in
+     * one shot rather than looping per entity, so they cannot also apply
+     * the overlay's pset/quantity/attribute edits the way a per-entity
+     * emission pass can. That is a known, separate gap.
      */
     constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
@@ -129,7 +133,34 @@ export class ParquetExporter {
             GlobalId: mapTypedArray(entities.globalId, i => strings.get(i)),
             Name: mapTypedArray(entities.name, i => strings.get(i)),
             Description: mapTypedArray(entities.description, i => strings.get(i)),
-            Type: mapTypedArray(entities.typeEnum, i => IfcTypeEnumToString(i)),
+            // Overlay-aware: a `setEntityType` retype changes what
+            // StepExporter/Ifc5Exporter write for this entity's class
+            // (step-exporter.ts effectiveType = typeMut?.newType ?? entity.type);
+            // this column now asks the same `effective` index instead of reading
+            // the pre-retype `entities.typeEnum` unconditionally, so a
+            // retyped-then-exported row no longer disagrees with those two
+            // exporters.
+            //
+            // The unretyped name comes from `entities.getTypeName(id)`, the
+            // store's own canonical answer, NOT from re-deriving PascalCase out
+            // of `typeEnum` through IFC_ENTITY_NAMES. That round trip is lossy
+            // by construction and had already gone stale once (the table was
+            // missing 4 of the 125 enum types until #2319); `getTypeName` also
+            // falls back to the raw parsed type name when an entity's type is
+            // outside the generated enum, where `IfcTypeEnumToString` yields the
+            // literal string 'Unknown'.
+            //
+            // `typeOf` answers for EVERY indexed entity, not only retyped ones,
+            // so it cannot be the source for untouched rows. Override only when
+            // the overlay actually DISAGREES with the parsed class.
+            Type: expressId.map((id) => {
+                const source = entities.getTypeName(id);
+                const effectiveType = effective?.typeOf(id);
+                if (effectiveType === undefined || effectiveType === source.toUpperCase()) {
+                    return source;
+                }
+                return IFC_ENTITY_NAMES[effectiveType] ?? effectiveType;
+            }),
             ObjectType: mapTypedArray(entities.objectType, i => strings.get(i)),
             HasGeometry: mapTypedArray(entities.flags, f => (f & EntityFlags.HAS_GEOMETRY) !== 0),
             IsType: mapTypedArray(entities.flags, f => (f & EntityFlags.IS_TYPE) !== 0),
@@ -235,11 +266,19 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all positions and normals from meshes
         const allPositions: number[] = [];
         const allNormals: number[] = [];
 
         for (const mesh of this.geometryResult.meshes) {
+            // Same predicate as writeEntities/writeMeshes: a tombstoned
+            // entity's geometry is not a row in Entities.parquet either, so
+            // leaving its vertices here would let VertexBuffer.parquet name
+            // (via Meshes.VertexStart/VertexCount) an entity no other table
+            // has.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             // Positions are in the element's local frame (world = origin + position).
             // The BOS columnar layout has no transform column, so bake the per-mesh
             // origin into the world vertices. Normals are origin-invariant. No-op
@@ -290,9 +329,12 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all indices from meshes
         const allIndices: number[] = [];
         for (const mesh of this.geometryResult.meshes) {
+            if (effective?.isDeleted(mesh.expressId)) continue;
             allIndices.push(...Array.from(mesh.indices));
         }
 
@@ -317,6 +359,7 @@ export class ParquetExporter {
         }
 
         const meshes = this.geometryResult.meshes;
+        const effective = this.getEffective();
         const expressIds: number[] = [];
         const vertexStarts: number[] = [];
         const vertexCounts: number[] = [];
@@ -327,6 +370,11 @@ export class ParquetExporter {
         let indexOffset = 0;
 
         for (const mesh of meshes) {
+            // Must match writeVertexBuffer/writeIndexBuffer's skip exactly —
+            // those two accumulate the offsets this loop reports, so a mesh
+            // dropped there but kept here (or vice versa) would misalign
+            // every subsequent VertexStart/IndexStart.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             expressIds.push(mesh.expressId);
             vertexStarts.push(vertexOffset);
             vertexCounts.push(mesh.positions.length / 3);

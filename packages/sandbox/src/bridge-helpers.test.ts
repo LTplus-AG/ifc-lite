@@ -98,6 +98,28 @@ describe('withAliases', () => {
     });
   });
 
+  it('keeps the two spellings SYMMETRIC — every attribute has both, carrying one value (#2422)', () => {
+    // The exact-shape test above pins today's six attributes. This pins the
+    // invariant that made #2422 resolve as "keep both": a script may reach any
+    // attribute under either spelling and get the same answer. A seventh
+    // attribute added under only one spelling, or an alias wired to the wrong
+    // source field, would satisfy the exact-shape test after a routine update
+    // and still break the promise `bim-globals.d.ts` makes to script authors.
+    const aliased = withAliases(entity);
+    const camel = Object.keys(aliased).filter((k) => k !== 'ref' && k[0] === k[0]?.toLowerCase());
+    expect(camel.length).toBeGreaterThan(0);
+    for (const key of camel) {
+      const pascal = key[0]!.toUpperCase() + key.slice(1);
+      expect(Object.keys(aliased)).toContain(pascal);
+      expect(aliased[pascal]).toBe(aliased[key]);
+    }
+    // ...and nothing is PascalCase-only either.
+    const pascalOnly = Object.keys(aliased).filter(
+      (k) => k[0] === k[0]?.toUpperCase() && !(k[0]!.toLowerCase() + k.slice(1) in aliased),
+    );
+    expect(pascalOnly).toEqual([]);
+  });
+
   it('carries an absent field through as undefined under both spellings', () => {
     const sparse = { ref: { modelId: 'm1', expressId: 7 }, name: 'Wall' } as unknown as EntityData;
     const aliased = withAliases(sparse);

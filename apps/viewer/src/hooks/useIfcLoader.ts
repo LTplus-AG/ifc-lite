@@ -71,7 +71,11 @@ import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegistere
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
+import { nextFrameOrTimeout } from '../utils/frameWait.js';
+import { visibilityWitness } from '../utils/visibilityWitness.js';
+import { buildModelLoadedPayload } from '../utils/loadTelemetry.js';
+import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
+import { formatLoadError } from '../lib/load-error-message.js';
 
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
@@ -140,6 +144,14 @@ function getGeometryStreamWatchdogMs(
   });
 }
 
+
+/**
+ * Upper bound on the "let the last batch paint" frame wait at stream complete.
+ * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
+ * be several hundred ms out, and this budget exists to bound a HIDDEN tab
+ * (where no frame ever arrives), not to cut a real frame short. (#2385)
+ */
+const COMPLETE_FRAME_WAIT_MS = 1000;
 
 /**
  * Hook providing file loading operations for single-model path
@@ -277,6 +289,17 @@ export function useIfcLoader() {
     // exists, or the primary's cold chunks would be stranded shells (their
     // geometry unreachable). Primary loads skip the drain: the scene is
     // replaced wholesale anyway.
+    // Wall-clock timings absorb the time the user spends on another tab, so
+    // stamp every load with whether that happened. Lets the perf queries drop
+    // contaminated rows on evidence rather than on a duration threshold.
+    // Taken BEFORE the first awaited work below (the federated cold-tier
+    // drain): a tab hidden and re-shown entirely within that drain would
+    // otherwise go unrecorded, and the drain is slowest exactly when it is
+    // most likely to span a tab switch. `totalStartTime` deliberately stays
+    // where it is — the drain sits outside `total_elapsed_ms`, so moving it
+    // would silently redefine the metric. (#2385)
+    const wasHidden = visibilityWitness();
+
     {
       const scene = getGlobalRenderer()?.getScene();
       if (scene) {
@@ -526,6 +549,27 @@ export function useIfcLoader() {
               }
             }
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
+            // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
+            // above never touches them) carry the same RAW ids the worker
+            // parsed with — re-home them too, or compare's
+            // `buildEntityFingerprints` (which subtracts idOffset from every
+            // key expecting it to already be global) would derive the wrong
+            // localId for every one of them.
+            if (geometryResult.instancedGeometryHashes) {
+              geometryResult.instancedGeometryHashes = new Map(
+                Array.from(geometryResult.instancedGeometryHashes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryAabbs) {
+              geometryResult.instancedGeometryAabbs = new Map(
+                Array.from(geometryResult.instancedGeometryAabbs, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryVolumes) {
+              geometryResult.instancedGeometryVolumes = new Map(
+                Array.from(geometryResult.instancedGeometryVolumes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
           }
           if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
             const renderer = getGlobalRenderer();
@@ -555,6 +599,16 @@ export function useIfcLoader() {
           // Spatial index AFTER id offset + alignment (final ids + world positions)
           // and AFTER addModel so it attaches to THIS model, not the active slot.
           buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
+          // GPU-instancing (#1912): forward this model's shards now — NOT during
+          // streaming — because `useGeometryStreaming`'s drain re-homes each
+          // occurrence's raw entity id by `idOffset`, which is only known now
+          // (registerModelOffset ran a few lines up). AFTER addModel, so the
+          // renderer-side modelId → modelIndex / idOffset lookups
+          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
+          // this model when the drain effect runs.
+          if (allInstancedShards.length > 0) {
+            appendInstancedShards(modelId, allInstancedShards);
+          }
           return;
         }
 
@@ -660,7 +714,34 @@ export function useIfcLoader() {
         // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
         // before init resolves — used to throw "Renderer not initialized"
         // from `beginPointCloudStream`. Wait for the device to be ready.
-        await renderer.whenReady();
+        //
+        // The wait REJECTS for two reasons, and they read differently to a
+        // user. `RendererDestroyedError`: the viewport unmounted underneath it
+        // — `Viewport` builds a new Renderer per mount, so the instance
+        // captured above is gone for good and no readiness will ever be
+        // published on it (a layout swap, or a StrictMode remount in dev).
+        // `RendererDeviceLostError`: the GPU device died mid-drop, which the
+        // device-loss toast already reports; the drop still has to stop, since
+        // nothing can be streamed into a dead device. Neither is a
+        // decode/stream failure, so both are handled here rather than by the
+        // outer catch — which would file them as load errors and capture an
+        // exception for something that is not one.
+        try {
+          await renderer.whenReady();
+        } catch (err) {
+          console.warn('[useIfc] renderer was not usable while waiting for readiness:', err);
+          if (loadSessionRef.current !== currentSession) return;
+          const deviceLost = err instanceof Error && err.name === 'RendererDeviceLostError';
+          setError(deviceLost
+            ? 'The graphics device was lost during the load — reload the page and drop the point cloud again.'
+            : 'Viewer was reinitialised during the load — drop the point cloud again.');
+          updateModel(modelId, {
+            loadState: 'error',
+            loadError: deviceLost ? 'renderer-device-lost' : 'renderer-destroyed',
+          });
+          setLoading(false);
+          return;
+        }
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
         const blob = file;
@@ -801,7 +882,7 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
-        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
         setLoading(false);
         return;
       }
@@ -820,7 +901,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -862,7 +943,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -966,7 +1047,7 @@ export function useIfcLoader() {
             // Pass the freshly read file buffer as the source fallback: the
             // desktop cache doesn't persist a sourceBuffer, and without one the
             // restored store can't carry the lazy entity accessors.
-            const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
+            const cacheLoadResult = await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer);
             if (cacheLoadResult.success) {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
@@ -974,7 +1055,7 @@ export function useIfcLoader() {
                 cacheState: 'hit',
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-              posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+              posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1035,7 +1116,7 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
           setLoading(false);
           return;
         }
@@ -1074,11 +1155,16 @@ export function useIfcLoader() {
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
-        // GPU instancing is primary-model only (single global scene, primary id
-        // space). A federated load must keep all geometry flat, else its opaque
-        // repeated occurrences would be partitioned into shards the federated path
-        // doesn't consume and silently dropped.
-        enableInstancing: target.kind === 'primary',
+        // GPU instancing (#1912 step 2): enabled for every load, primary and
+        // federated. It used to be primary-only — the scene's instanced
+        // templates were untagged, so a federated model's opaque repeated
+        // occurrences would land in shards the federated path never consumed
+        // and silently dropped. `addInstancedShard` now takes an owning
+        // `modelIndex` (#2172) and the federated finalize branch below
+        // forwards its collected shards with that model's index + its
+        // express-id offset, so the shards this produces have somewhere to
+        // go.
+        enableInstancing: true,
       });
       // Armed BEFORE init() so an engine-init failure still frees whatever the
       // partially-initialised bridge allocated (dispose() is a no-op when it
@@ -1285,6 +1371,13 @@ export function useIfcLoader() {
       // distinguishable from "no fingerprint at all".
       const allInstancedGeometryVolumes = new Map<number, number>();
       let finalCoordinateInfo: CoordinateInfo | null = null;
+      // Kept at function scope so the load telemetry below can report it. Two
+      // loads of the SAME file on the SAME build have been observed emitting
+      // different `total_triangles` with an identical mesh roster; a CSG
+      // void-cut that failed and fell back on one run and not the other is the
+      // leading explanation, and without this counter the field data cannot
+      // distinguish that from a genuine determinism defect. (#2385)
+      let finalCsgFailures: number | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
       // Track all deferred style updates so cache data always uses final colors.
@@ -1511,18 +1604,27 @@ export function useIfcLoader() {
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
+              // GPU-instancing: retain the raw IFNS shard bytes for BOTH target
+              // kinds — a primary load also writes them into the cache (the
+              // decode/upload only reads them, never detaches), and a federated
+              // load forwards them once at finalize (#1912), once its
+              // express-id offset is known (see the `target.kind === 'federated'`
+              // branch of `finalizeModel` below). Empty for non-instanced
+              // models / older wasm.
+              if (event.instancedShards && event.instancedShards.length > 0) {
+                for (let i = 0; i < event.instancedShards.length; i++) {
+                  allInstancedShards.push(event.instancedShards[i]);
+                }
+              }
+
               if (target.kind === 'primary') {
-                // GPU-instancing: hand the batch's IFNS shards to the store so
-                // useGeometryStreaming decodes + uploads them via the instanced path.
-                // Also retain the raw bytes so they're written into the cache (the
-                // decode/upload only reads them, never detaches) — otherwise a cache
-                // reload would drop every instanced occurrence. Empty for non-
-                // instanced models / older wasm.
+                // Live GPU-instancing: hand the batch's IFNS shards to the store
+                // so useGeometryStreaming decodes + uploads them via the
+                // instanced path AS THEY STREAM IN. Primary-only: its id-offset
+                // is always 0 (the federation registry is cleared before every
+                // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  appendInstancedShards(event.instancedShards);
-                  for (let i = 0; i < event.instancedShards.length; i++) {
-                    allInstancedShards.push(event.instancedShards[i]);
-                  }
+                  appendInstancedShards(modelId, event.instancedShards);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1589,6 +1691,7 @@ export function useIfcLoader() {
               // object stays on `event.diagnostics` for any UI/telemetry consumer.
               if (event.diagnostics) {
                 const d = event.diagnostics;
+                finalCsgFailures = d.totalCsgFailures;
                 if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
                   console.info(
                     `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
@@ -1631,7 +1734,25 @@ export function useIfcLoader() {
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              // Let the final geometry batch paint before flipping the streaming
+              // flag — but BOUNDED. `requestAnimationFrame` never fires while the
+              // tab is hidden, and everything that completes this load sits after
+              // this await: `setGeometryStreamingActive(false)`, the whole
+              // `finalizePromise` (finalizeModel → spatial index → cache write),
+              // `closeGeometryIterator()` (which frees the WASM handles), and
+              // `setLoading(false)`. An unbounded wait here therefore left a
+              // tabbed-away load permanently unfinalized with its WASM handles
+              // pinned, and inflated `total_elapsed_ms` by the entire hidden
+              // duration — which is what poisoned the load-time telemetry. (#2385)
+              //
+              // Primary only: the wait exists so the last streamed batch is on
+              // screen before the streaming flag drops, and a federated add
+              // never streamed into the active slot — it paints atomically at
+              // finalize. Waiting for a frame it does not need is pure latency
+              // on the one path that also blocks `loadFilesSequentially`.
+              if (target.kind === 'primary') {
+                await nextFrameOrTimeout(COMPLETE_FRAME_WAIT_MS);
+              }
               if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }
@@ -1660,8 +1781,9 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
-                    // Empty for federated (instancing is primary-only) but kept for
-                    // shape consistency / future-proofing. (#924 compare parity)
+                    // Populated for federated too now that instancing runs for both
+                    // target kinds (#1912); empty only for older wasm / models with
+                    // no instanced-only entities. (#924 compare parity)
                     ...(allInstancedGeometryHashes.size > 0
                       ? { instancedGeometryHashes: allInstancedGeometryHashes }
                       : {}),
@@ -1845,25 +1967,25 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
-      posthog.capture('ifc_model_loaded', {
+      // Single home for this payload — see `utils/loadTelemetry.ts` for why
+      // `was_hidden: false` and `total_csg_failures: 0` must survive to the wire.
+      posthog.capture('ifc_model_loaded', buildModelLoadedPayload({
         format,
-        file_size_mb: Math.round(fileSizeMB * 100) / 100,
-        load_target: target.kind,
-        load_path: 'wasm',
-        mesh_count: allMeshes.length,
-        total_elapsed_ms: Math.round(totalElapsedMs),
-        // Field perf telemetry: vertices/triangles size the model, and the
-        // milestones (read → metadata → first batch → first paint → stream
-        // done) let us spot where real-world loads regress. CSG itself runs
-        // in the geometry workers, so the stream window is its best proxy.
-        total_vertices: totalVertices,
-        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
-        file_read_ms: Math.round(fileReadMs),
-        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
-        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
-        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
-        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
-      });
+        fileSizeMB,
+        loadTarget: target.kind,
+        loadPath: 'wasm',
+        meshCount: allMeshes.length,
+        totalElapsedMs,
+        totalVertices,
+        totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        fileReadMs,
+        metadataCompleteMs,
+        firstGeometryBatchMs: firstAppendGeometryBatchMs,
+        firstVisibleGeometryMs,
+        streamCompleteMs,
+        totalCsgFailures: finalCsgFailures,
+        wasHidden: wasHidden(),
+      }));
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this

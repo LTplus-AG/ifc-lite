@@ -26,6 +26,7 @@ import {
   type DataStoreTransport,
   type ParserMemorySnapshot,
 } from './data-store-transport.js';
+import { contiguousSourceBytes } from './source-bytes.js';
 import type {
   ParserWorkerInputMessage,
   ParserWorkerOutputMessage,
@@ -106,9 +107,16 @@ export class WorkerParser {
       }
       this.worker = worker;
 
-      // Reusable receiver-side view of the shared bytes. Both the partial
-      // and final store on the main thread alias the same SAB.
-      const sourceView = new Uint8Array(source);
+      // ONE accessor, shared by the partial store and the final one. Both
+      // alias the same SAB, so this is not merely tidy: `contentKey` is
+      // memoised per accessor instance, and the viewer's overlay hooks read it
+      // off whichever store is active. Building an accessor per `fromTransport`
+      // call would hash the whole file once for the partial store and again for
+      // the final one -- two full walks of a 342 MB source on the main thread,
+      // on exactly the models #2183 is about. The previous code got one hash by
+      // memoising on the shared Uint8Array; sharing the accessor is the same
+      // guarantee without the side table.
+      const sourceBytes = contiguousSourceBytes(new Uint8Array(source));
 
       const settle = (cleanup: () => void) => {
         worker.onmessage = null;
@@ -133,7 +141,7 @@ export class WorkerParser {
           case 'partial-store': {
             if (!options.onSpatialReady) return;
             try {
-              const partial = fromTransport(msg.payload as DataStoreTransport, sourceView);
+              const partial = fromTransport(msg.payload as DataStoreTransport, sourceBytes);
               options.onSpatialReady(partial);
             } catch (err) {
               // Don't fail the whole parse on partial deserialization
@@ -145,7 +153,7 @@ export class WorkerParser {
 
           case 'complete': {
             try {
-              const dataStore = fromTransport(msg.payload as DataStoreTransport, sourceView);
+              const dataStore = fromTransport(msg.payload as DataStoreTransport, sourceBytes);
               options.onMemorySnapshot?.(msg.memory);
               settle(() => {
                 worker.terminate();

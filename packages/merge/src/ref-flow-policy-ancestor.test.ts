@@ -20,7 +20,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { computeLayerId, computeStackHash, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
+import { computeLayerId, computeStackHash, createProvenanceManifest, getProvenance, setProvenance } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode, ProvenanceBase } from '@ifc-lite/ifcx';
 import { extractStackState } from './component-state.js';
 import { checkRefPolicy, mergeIntoRef, resolveAncestor } from './ref-flow.js';
@@ -85,6 +85,17 @@ function manifestLess(data: IfcxNode[]): IfcxFile {
   return withId(bare(data));
 }
 
+/** A publishable layer carrying a provenance manifest with an agent author. */
+function agentAuthored(data: IfcxNode[], intent: string, base: ProvenanceBase | null): IfcxFile {
+  const manifest = createProvenanceManifest({
+    author: { kind: 'agent', principal: 'bot' },
+    intent,
+    base,
+    created: '2026-08-04T00:00:00Z',
+  });
+  return withId(setProvenance(bare(data), manifest));
+}
+
 describe('checkRefPolicy fails closed on a manifest-less candidate', () => {
   /**
    * A candidate with no manifest could be an agent layer with the manifest
@@ -145,6 +156,53 @@ describe('checkRefPolicy fails closed on a manifest-less candidate', () => {
       created: '2026-08-04T01:00:00Z',
     });
     expect(outcome.status).toBe('merged');
+  });
+
+  /**
+   * `checkRefPolicy`'s gate is `manifest === undefined || manifest.author.kind
+   * === 'agent'`. Every test above the manifest-less side only; this fixture
+   * is the agent-with-manifest side, which had NO coverage anywhere in the
+   * repo — a mutation swapping the literal to `'human'` (still fail-closed on
+   * the manifest-less branch, so every other test here keeps passing) made
+   * `pnpm test` fully green. That is exactly the shape the approval gate
+   * exists to stop: an agent-authored, manifest-carrying candidate walking
+   * onto a `requireHumanApproval` ref unattended.
+   */
+  it('refuses an agent-authored candidate WITH a manifest on a requireHumanApproval ref', () => {
+    const store = new MemoryStore();
+    const base = publishable(
+      [{ path: 'wall-1', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI30' } }],
+      'Base',
+      null,
+    );
+    store.storeLayer(base);
+    store.setRef('protected', {
+      layers: [base.header.id],
+      policy: { requireHumanApproval: true },
+    });
+    const candidate = agentAuthored(
+      [{ path: 'wall-2', attributes: { 'bsi::ifc::class': { code: 'IfcWall', uri: 'u' }, [FIRE]: 'REI90' } }],
+      'Agent draft',
+      null,
+    );
+    store.storeLayer(candidate);
+
+    const refused = mergeIntoRef(store, { candidateId: candidate.header.id, into: 'protected' });
+    expect(refused.status).toBe('policy-failure');
+    if (refused.status !== 'policy-failure') return;
+    expect(refused.reason).toMatch(/human approval/i);
+    expect(store.getRef('protected')?.layers).toEqual([base.header.id]);
+
+    // Control: the same candidate merges once a human approves it — proves
+    // the gate is reachable and not permanently closed.
+    const approved = mergeIntoRef(store, {
+      candidateId: candidate.header.id,
+      into: 'protected',
+      approvedBy: 'bob',
+      principal: 'bob',
+      created: '2026-08-04T01:00:00Z',
+    });
+    expect(approved.status).toBe('merged');
   });
 });
 
@@ -304,5 +362,99 @@ describe('checkRefPolicy: requiredChecks enforcement', () => {
     });
     const reason = checkRefPolicy(entry, manifest, [{ spec: 'spec-other', reason: 'unrelated' }], undefined);
     expect(reason).toMatch(/spec-a/);
+  });
+});
+
+/**
+ * `mergeIntoRef`'s "candidate authored against the ref's current stack"
+ * fast-forward branch (the common push-with-no-conflicts case) was never
+ * exercised by any test in `merge`, `cli`, or `collab-server` — every
+ * existing `fast-forward` assertion instead went through the EARLIER
+ * "candidate already on the ref" branch. That left `waiversConsumed`'s
+ * effect on this specific branch unpinned: a merge that only succeeds
+ * because a required check was waived must fall through to the three-way
+ * path so the waiver lands in a durable `manifest.merge.waived_checks`
+ * record, rather than fast-forwarding (which appends no merge layer, so
+ * the waiver is never recorded). Verified BEFORE writing these tests, by
+ * mutating the `if (!waiversConsumed(...))` guard at ref-flow.ts to
+ * `if (true)`: the full unmodified suite (88 tests) stayed green, and so
+ * did a second mutation on the same branch's `refLayers` construction —
+ * proving the branch was entirely unreached. Production itself is
+ * correct; this closes the gap.
+ */
+describe('mergeIntoRef: fast-forward branch for a candidate built on the ref tip', () => {
+  const store = () => new MemoryStore();
+
+  function seedRef(policy?: RefEntry['policy']) {
+    const s = store();
+    const baseLayer = publishable([{ path: 'wall-1', attributes: {} }], 'Base', null);
+    s.storeLayer(baseLayer);
+    s.setRef('protected', { layers: [baseLayer.header.id], ...(policy ? { policy } : {}) });
+    const stackId = computeStackHash([baseLayer.header.id]);
+    return { store: s, baseLayer, stackId };
+  }
+
+  it('fast-forwards a plain candidate with no ref policy', () => {
+    const { store: s, baseLayer, stackId } = seedRef();
+    const candidate = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI180' } }],
+      'Edit',
+      { kind: 'stack', id: stackId },
+    );
+    s.storeLayer(candidate);
+    const outcome = mergeIntoRef(s, { candidateId: candidate.header.id, into: 'protected' });
+    expect(outcome.status).toBe('fast-forward');
+    if (outcome.status !== 'fast-forward') return;
+    // ORDER is the contract this branch implements: the base layer stays
+    // first and the candidate is appended after it. `arrayContaining` (or
+    // asserting `status` alone) passes for a fast-forward that produced the
+    // wrong layer order, which is exactly the failure worth catching.
+    expect(outcome.refLayers).toEqual([baseLayer.header.id, candidate.header.id]);
+  });
+
+  it('does NOT fast-forward when completion relies on a waived required check — it must record the waiver on a merge layer', () => {
+    const { store: s, stackId } = seedRef({ requiredChecks: ['spec-a'] });
+    const candidate = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI180' } }],
+      'Edit',
+      { kind: 'stack', id: stackId },
+    );
+    s.storeLayer(candidate);
+    const outcome = mergeIntoRef(s, {
+      candidateId: candidate.header.id,
+      into: 'protected',
+      waivers: [{ spec: 'spec-a', reason: 'known flaky, waived' }],
+    });
+    expect(outcome.status).toBe('merged');
+    if (outcome.status !== 'merged') return;
+
+    // The POINT of falling through to the three-way path is that the waiver
+    // becomes durable, not merely that the fast path was skipped. Asserting
+    // `status` alone passes for an implementation that waives the check and
+    // records NOTHING -- which would leave the ref indistinguishable from one
+    // whose required check genuinely passed.
+    const mergeLayer = s.loadLayer(outcome.mergeLayerId);
+    expect(getProvenance(mergeLayer)?.merge?.waived_checks).toEqual([
+      expect.objectContaining({ spec: 'spec-a', reason: 'known flaky, waived' }),
+    ]);
+  });
+
+  it('fast-forwards when the required check genuinely passes (no waiver consumed)', () => {
+    const { store: s, baseLayer, stackId } = seedRef({ requiredChecks: ['spec-a'] });
+    const manifest = createProvenanceManifest({
+      author: { kind: 'human', principal: 'alice' },
+      intent: 'Edit',
+      base: { kind: 'stack', id: stackId },
+      created: '2026-08-04T00:00:00Z',
+      checks: [{ tool: 't', spec: 'spec-a', result: 'pass' }],
+    });
+    const candidate = withId(
+      setProvenance(bare([{ path: 'wall-1', attributes: { [FIRE]: 'REI180' } }]), manifest),
+    );
+    s.storeLayer(candidate);
+    const outcome = mergeIntoRef(s, { candidateId: candidate.header.id, into: 'protected' });
+    expect(outcome.status).toBe('fast-forward');
+    if (outcome.status !== 'fast-forward') return;
+    expect(outcome.refLayers).toEqual([baseLayer.header.id, candidate.header.id]);
   });
 });

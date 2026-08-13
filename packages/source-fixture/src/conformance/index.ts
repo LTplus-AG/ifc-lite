@@ -28,7 +28,12 @@ import { describePagingConformance } from './paging.js';
 import type { ConformanceOptions } from './types.js';
 import { describeWatchRevisionsConformance } from './watch.js';
 
-export type { ConformanceFileRef, ConformanceFixtures, ConformanceOptions } from './types.js';
+export type {
+  ConformanceFileRef,
+  ConformanceFixtures,
+  ConformanceOptions,
+  PageBoundaryMode,
+} from './types.js';
 
 /**
  * Registers the full conformance suite as vitest `describe`/`it` blocks.
@@ -36,15 +41,21 @@ export type { ConformanceFileRef, ConformanceFixtures, ConformanceOptions } from
  * `describe.skip`/`only`, so it composes normally with the surrounding file.
  */
 export function runConformanceSuite(provider: FileSourceProvider, options: ConformanceOptions): void {
-  const { createContext, fixtures, smallPageLimit = 1 } = options;
+  const {
+    createContext,
+    fixtures,
+    smallPageLimit = 1,
+    pageBoundary = 'limit',
+    watchRevisionsHasDeltaFeed = false,
+  } = options;
 
   describe('FileSourceProvider conformance', () => {
     describeManifestConformance(provider);
     describeOptionalMethodConformance(provider);
     describeContainerListingConformance(provider, createContext, fixtures);
     describeFileConformance(provider, createContext, fixtures);
-    describePagingConformance(provider, createContext, fixtures, smallPageLimit);
+    describePagingConformance(provider, createContext, fixtures, smallPageLimit, pageBoundary);
     describeDownloadConformance(provider, createContext, fixtures);
-    describeWatchRevisionsConformance(provider, createContext, fixtures);
+    describeWatchRevisionsConformance(provider, createContext, fixtures, watchRevisionsHasDeltaFeed);
   });
 }

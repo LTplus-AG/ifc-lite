@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { IfcTypeEnum } from '@ifc-lite/data';
+import { IfcTypeEnum, PropertyValueType, type PropertySet } from '@ifc-lite/data';
 import { executeList, listResultToCSV, summariseListRows, groupPathKey, toScheduleRows } from './engine.js';
 import { discoverColumns } from './discovery.js';
 import { LIST_PRESETS } from './presets.js';
@@ -25,22 +25,22 @@ function createMockProvider(): ListDataProvider {
     [IfcTypeEnum.IfcSlab, [3]],
   ]);
 
-  const propertySets = new Map<number, Array<{ name: string; properties: Array<{ name: string; value: unknown; dataType?: string }> }>>([
+  const propertySets = new Map<number, PropertySet[]>([
     [1, [
-      { name: 'Pset_WallCommon', properties: [
-        { name: 'IsExternal', value: ['IFCBOOLEAN', '.T.'] },
-        { name: 'FireRating', value: 'REI 90' },
-        { name: 'LoadBearing', value: ['IFCBOOLEAN', '.T.'] },
+      { name: 'Pset_WallCommon', globalId: 'pset-1', properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.T.'] },
+        { name: 'FireRating', type: PropertyValueType.Label, value: 'REI 90' },
+        { name: 'LoadBearing', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.T.'] },
         // A measure property carrying its raw IFC dataType — used to prove
         // executeList surfaces it onto the result column (#1573).
-        { name: 'ThermalTransmittance', value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
+        { name: 'ThermalTransmittance', type: PropertyValueType.Real, value: 0.24, dataType: 'IFCTHERMALTRANSMITTANCEMEASURE' },
       ]},
     ]],
     [2, [
-      { name: 'Pset_WallCommon', properties: [
-        { name: 'IsExternal', value: ['IFCBOOLEAN', '.F.'] },
-        { name: 'FireRating', value: 'EI 30' },
-        { name: 'LoadBearing', value: ['IFCBOOLEAN', '.F.'] },
+      { name: 'Pset_WallCommon', globalId: 'pset-2', properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.F.'] },
+        { name: 'FireRating', type: PropertyValueType.Label, value: 'EI 30' },
+        { name: 'LoadBearing', type: PropertyValueType.Boolean, value: ['IFCBOOLEAN', '.F.'] },
       ]},
     ]],
     [3, []],
@@ -432,6 +432,64 @@ describe('executeList', () => {
       updatedAt: 0,
       entityTypes: [],
       conditions: [{ source, propertyName, operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // Bug: `equals`/`notEquals` were case-SENSITIVE while their sibling
+  // `contains` (line ~318) is case-insensitive. An IFC boolean property
+  // decodes and displays as "True"/"False" (resolvePropertyValue), so a user
+  // filtering on the natural lowercase "true"/"false" got no match — and
+  // `notEquals` silently INCLUDED rows that differed only by letter case.
+  // IsExternal: Wall-01=['IFCBOOLEAN','.T.'] -> "True", Wall-02=['IFCBOOLEAN','.F.'] -> "False",
+  // Slab-01 has no Pset_WallCommon at all (null -> excluded from every operator).
+  it.each([
+    // equals must match across case for boolean-like values.
+    { operator: 'equals', value: 'true', expected: ['Wall-01'] },
+    { operator: 'equals', value: 'TRUE', expected: ['Wall-01'] },
+    // Bounding control: a genuinely DIFFERENT boolean value must still NOT
+    // match — proves the fix didn't loosen equals into "match everything".
+    { operator: 'equals', value: 'false', expected: ['Wall-02'] },
+    // notEquals must NOT report "not equal" purely on letter case (Wall-01
+    // is "True", condition is 'true' -> they ARE equal -> excluded).
+    { operator: 'notEquals', value: 'true', expected: ['Wall-02'] },
+  ] as const)('boolean property $operator "$value" is case-insensitive', ({ operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-bool-case',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'property', psetName: 'Pset_WallCommon', propertyName: 'IsExternal', operator, value }],
+      columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+    };
+
+    const result = executeList(def, provider);
+    expect(result.rows.map((r) => r.values[0]).sort()).toEqual([...expected]);
+  });
+
+  // Bounding control: GlobalId is a base64-ish IFC GUID where case IS
+  // significant (two distinct GUIDs can differ only by case). `equals` must
+  // stay case-sensitive here even after the boolean fix above, or a list
+  // could match the WRONG entity. Mock GlobalIds are lowercase hex
+  // ('0abc' for Wall-01) so an uppercase condition must NOT match.
+  it.each([
+    { operator: 'equals', value: '0abc', expected: ['Wall-01'] },
+    { operator: 'equals', value: '0ABC', expected: [] },
+    { operator: 'notEquals', value: '0ABC', expected: ['Slab-01', 'Wall-01', 'Wall-02'] },
+  ] as const)('GlobalId $operator "$value" stays case-sensitive', ({ operator, value, expected }) => {
+    const provider = createMockProvider();
+    const def: ListDefinition = {
+      id: 'cond-globalid-case',
+      name: 'Test',
+      createdAt: 0,
+      updatedAt: 0,
+      entityTypes: [],
+      conditions: [{ source: 'attribute', propertyName: 'GlobalId', operator, value }],
       columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
     };
 
@@ -971,6 +1029,22 @@ describe('toScheduleRows', () => {
   it('a group with no path falls back to a single-entry path built from its label (defensive for older callers)', () => {
     const rows = toScheduleRows([{ key: 'k', label: 'Solo', count: 4, sums: {}, level: 0 }], 1);
     expect(rows).toEqual([{ key: 'k', path: ['Solo'], count: 4, sums: {} }]);
+  });
+
+  it('a hand-built group with `level` omitted derives it from `path.length - 1`, not `path.length`', () => {
+    // `level` is optional on the public ListGroup type; `summariseListRows`
+    // always fills it, but a caller assembling groups by hand (the
+    // documented "hand-built multi-level set" case) may only supply `path`.
+    // For a 3-level tuple ['A','B','C'], the leaf level is 2 (path.length -
+    // 1), matching `levelCount=3`'s `leafLevel = levelCount - 1 = 2`. Using
+    // `path.length` (3) instead would never equal `leafLevel`, so every
+    // hand-built leaf group would be filtered out and the schedule would
+    // come back empty.
+    const rows = toScheduleRows(
+      [{ key: groupPathKey(['A', 'B', 'C']), label: 'C', count: 2, sums: {}, path: ['A', 'B', 'C'] }],
+      3,
+    );
+    expect(rows).toEqual([{ key: groupPathKey(['A', 'B', 'C']), path: ['A', 'B', 'C'], count: 2, sums: {} }]);
   });
 });
 

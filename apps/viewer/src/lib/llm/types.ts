@@ -46,6 +46,17 @@ export interface ScriptEditorSelection {
   to: number;
 }
 
+/**
+ * One text splice from an assistant edit batch.
+ *
+ * Coordinates are **sequential**: within a batch, each change's `from`/`to`
+ * index the content *after* every preceding change has been applied (they are
+ * the literal arguments to the applier's own running splice). This is NOT
+ * CodeMirror's array-of-specs convention, which reads every spec against the
+ * original document — pass a batch through `planScriptEditorChanges`
+ * (`./script-editor-changes.ts`) to convert it, never straight to `dispatch`
+ * (#2357 / #2300).
+ */
 export interface ScriptEditorTextChange {
   from: number;
   to: number;

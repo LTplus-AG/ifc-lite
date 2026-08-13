@@ -344,7 +344,28 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: A
     // this case timed out at 5.59 s TWICE, having never once disagreed on a
     // byte. A determinism test that fails by running out of clock reports the
     // opposite of what it measures, which is worth more than the 10 s.
-  }, 20_000);
+    //
+    // 20 s was still not enough. On 2026-08-08 this timed out on three PRs that
+    // touch nothing it depends on -- #2326 (cache bounds), #2362 (viewer-embed
+    // teardown) and #2408 (STEP header escaping). Re-running the identical
+    // commits with no code change turned #2326 and #2408 green, so the failure
+    // is clock-bound, not a real disagreement: it has still never once differed
+    // on a byte.
+    //
+    // Note the margin is NOT simply thin, and it is worth not pretending we
+    // fully explain this. Measured locally: this case 5663 ms, with the two
+    // siblings at 3414 ms and 4146 ms. Those same siblings log 6347 ms and
+    // 6521 ms on CI, i.e. CI runs 1.6-1.9x slower, which predicts roughly 10 s
+    // here -- about 2x under the old 20 s ceiling. It nonetheless blew past 20 s
+    // three times in one day, so the tail is heavier than a flat scale factor
+    // implies (runner contention is the likely cause, unconfirmed). 45 s buys
+    // ~4.5x over the predicted cost; it is a margin that absorbs the observed
+    // tail, not a diagnosis of it.
+    //
+    // Raising the ceiling rather than trimming the work, because the double run
+    // IS the assertion: both runs must be independent for byte-identity to mean
+    // anything, so there is no shared parse to hoist out.
+  }, 45_000);
 
   it('reset mid-session restores the pristine model', async () => {
     const lines = await runGym(

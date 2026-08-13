@@ -50,6 +50,18 @@ describe('classifyDepthRange', () => {
     expect(classifyDepthRange(-0.5, -2, bands)).toBe('visible');
   });
 
+  it('keeps an element exactly at the below-band boundary as visible (band is closed at -below)', () => {
+    // dMax === -depths.below exactly — the documented `[-below, 0)` band is
+    // closed on this end, so this must NOT cull.
+    expect(classifyDepthRange(-5, -3, bands)).toBe('visible');
+  });
+
+  it('keeps an element exactly at the above-band boundary as overhead (band is closed at +above)', () => {
+    // dMin === depths.above exactly — the documented `(0, +above]` band is
+    // closed on this end, so this must NOT cull.
+    expect(classifyDepthRange(3, 5, bands)).toBe('overhead');
+  });
+
   it('zero-width bands cull a near-plane element; the 1mm floor keeps it (R1)', () => {
     const dNearBelow = -0.0005; // just below the cut
     expect(classifyDepthRange(dNearBelow, dNearBelow, { below: 0, above: 0 })).toBe('cull');

@@ -584,8 +584,20 @@ export interface ParentInfo {
   expressId: number;
   /** Parent entity type */
   entityType: string;
-  /** Parent predefined type (if available) */
+  /**
+   * Parent's raw `PredefinedType` enum token (`BEAM`, `USERDEFINED`,
+   * `NOTDEFINED`, …), if available. Mirrors `IFCDataAccessor.getPredefinedTypeRaw`.
+   */
   predefinedType?: string;
+  /**
+   * Parent's user-defined name (`ObjectType`/`ElementType`/`ProcessType`) —
+   * only meaningful as a fallback when `predefinedType` is `USERDEFINED`.
+   * Mirrors `IFCDataAccessor.getObjectType`. Kept distinct from
+   * `predefinedType` so partOf's predefinedType match can reproduce the
+   * same two-branch (raw-token-first, user-name-fallback) semantics
+   * `entity-facet.ts` uses for a direct entity check.
+   */
+  objectType?: string;
 }
 
 // ============================================================================

@@ -398,11 +398,7 @@ fn type_product_geometry_lands_in_unassigned() {
     // keeping it from being dropped. Same fixture model.rs uses for the join.
     let rel =
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-        return;
-    };
+    let bytes = fixture_or_skip!(rel);
     let usda = export(&bytes);
     let ids = xform_ids(&scan(&usda));
 
@@ -488,6 +484,7 @@ fn emit_attributes_dedups_colliding_names() {
         }],
         quantity_sets: vec![],
         placement: None,
+        attributes: vec![],
     };
     let mut out = String::new();
     emit_attributes(&mut out, 1, "IfcWall", Some(&row));

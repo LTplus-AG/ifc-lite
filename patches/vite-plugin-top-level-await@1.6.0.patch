@@ -1,5 +1,5 @@
 diff --git a/dist/bundle-info.js b/dist/bundle-info.js
-index fec6ef5417214d2b612f685790279253daf7bdf0..5939733f87c1f7e6bfe7c35398beef2a318d05c3 100644
+index fec6ef5417214d2b612f685790279253daf7bdf0..d0666ebf6202f749ba0246b51ec8739df63c0c82 100644
 --- a/dist/bundle-info.js
 +++ b/dist/bundle-info.js
 @@ -43,7 +43,8 @@ async function parseBundleAsts(bundleChunks) {
@@ -12,3 +12,17 @@ index fec6ef5417214d2b612f685790279253daf7bdf0..5939733f87c1f7e6bfe7c35398beef2a
          })
      ])));
  }
+@@ -86,7 +87,12 @@ async function parseBundleInfo(bundleAsts) {
+     }
+     // Pass 2: transfer each modules's "top-level await usage" property to all successors in reverse graph
+     const q = Object.entries(bundleInfo)
+-        .filter(([, module]) => module.withTopLevelAwait)
++        // Seed from transformNeeded, not withTopLevelAwait. transformModule defers
++        // the exports of ANY chunk with transformNeeded (which includes chunks
++        // flagged solely for containing dynamic imports), so a static importer of
++        // such a chunk must be wrapped too - otherwise it evaluates synchronously
++        // and reads a binding that is still unassigned. See ifc-lite#2246/#2243.
++        .filter(([, module]) => module.transformNeeded)
+         .map(([moduleName]) => moduleName);
+     while (q.length > 0) {
+         const moduleName = q.shift();

@@ -228,6 +228,56 @@ describe('null attribute opinions compose as removals (#1031)', () => {
     assert.ok(fedWall);
     assert.strictEqual(fedWall.attributes.has('bsi::ifc::prop::FireRating'), false, 'composeFederated');
   });
+
+  it('null removals mask INHERITED children too (both composers)', () => {
+    // Mirrors the attribute case above: a null child opinion is a removal
+    // that must shadow a child of the same name coming from `inherits`,
+    // not just one defined directly on the node.
+    const inheritedChildRemoval: IfcxNode[] = [
+      { path: 'base-type', children: { Opening: 'opening-1' }, attributes: {} },
+      { path: 'opening-1', attributes: { 'bsi::ifc::class': { code: 'IfcOpeningElement', uri: 'u' } } },
+      {
+        path: 'wall-9',
+        inherits: { Type: 'base-type' },
+        children: { Opening: null },
+        attributes: { 'bsi::ifc::prop::Name': 'W9' },
+      },
+    ];
+
+    const composed = composeIfcx(makeFile(inheritedChildRemoval, 'inherit-child-removal'));
+    const wall = composed.get('wall-9');
+    assert.ok(wall);
+    assert.strictEqual(wall.children.has('Opening'), false, 'composeIfcx');
+    assert.strictEqual(wall.attributes.get('bsi::ifc::prop::Name'), 'W9');
+
+    const stack = createLayerStack();
+    stack.addLayerAt(
+      makeFile(inheritedChildRemoval, 'inherit-child-removal'),
+      new ArrayBuffer(0),
+      'layer-0',
+      0,
+      { type: 'buffer', name: 'layer-0' }
+    );
+    const federated = composeFederated(stack);
+    const fedWall = federated.composed.get('wall-9');
+    assert.ok(fedWall);
+    assert.strictEqual(fedWall.children.has('Opening'), false, 'composeFederated');
+  });
+
+  it('a later non-null child opinion resurrects a removed child', () => {
+    const resurrectChild: IfcxNode[] = [
+      { path: 'base-type', children: { Opening: 'opening-1' }, attributes: {} },
+      { path: 'opening-1', attributes: {} },
+      { path: 'opening-2', attributes: {} },
+      { path: 'wall-9', inherits: { Type: 'base-type' }, children: { Opening: null }, attributes: {} },
+      { path: 'wall-9', children: { Opening: 'opening-2' }, attributes: {} },
+    ];
+
+    const composed = composeIfcx(makeFile(resurrectChild, 'resurrect-child'));
+    const wall = composed.get('wall-9');
+    assert.ok(wall);
+    assert.strictEqual(wall.children.get('Opening')?.path, 'opening-2');
+  });
 });
 
 describe('bakeLayers (tombstone-free materialization)', () => {

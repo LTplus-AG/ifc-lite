@@ -20,10 +20,20 @@ import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 
-/** Raw IFC bytes for the wasm exporters: prefer in-memory source, fall back to disk. */
-async function resolveIfcBytes(m: ReturnType<typeof resolveModel>): Promise<Uint8Array> {
-  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
-  if (m.filePath) return readFile(m.filePath);
+/**
+ * Run `fn` over the model's raw IFC bytes for the wasm exporters: prefer the
+ * in-memory source, fall back to disk.
+ *
+ * Scoped rather than returning the buffer (#2183): each Rust exporter below
+ * takes the WHOLE file, so the source really is materialised — but only for the
+ * duration of one export, so the buffer never outlives the tool call.
+ */
+async function withIfcBytes<T>(
+  m: ReturnType<typeof resolveModel>,
+  fn: (bytes: Uint8Array) => Promise<T>,
+): Promise<T> {
+  if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
+  if (m.filePath) return fn(await readFile(m.filePath));
   throw new ToolExecutionError({
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message: 'Model has no in-memory source bytes and no file path to re-read for export.',
@@ -181,17 +191,32 @@ const exportGlb: Tool = {
         message: `No ${filterType} entities found - nothing to export.`,
       });
     }
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      let glb: Uint8Array | null;
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
       try {
-        glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
-      } catch (err) {
-        // The Rust boundary fails closed on an empty visible mesh set; map the
-        // typed error to the tailored tool error.
-        if (isNoRenderGeometryError(err)) {
+        await gp.init();
+        let glb: Uint8Array | null;
+        try {
+          glb = gp.exportGlb(bytes, false, new Uint32Array(), isolated, '');
+        } catch (err) {
+          // The Rust boundary fails closed on an empty visible mesh set; map the
+          // typed error to the tailored tool error.
+          if (isNoRenderGeometryError(err)) {
+            throw new ToolExecutionError({
+              code: ToolErrorCode.INTERNAL_ERROR,
+              message: filterType
+                ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
+                : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
+            });
+          }
+          throw err;
+        }
+        if (glb == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
+        }
+        // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
+        // must never be written to disk and reported as success.
+        if (countGlbMeshes(glb) === 0) {
           throw new ToolExecutionError({
             code: ToolErrorCode.INTERNAL_ERROR,
             message: filterType
@@ -199,26 +224,12 @@ const exportGlb: Tool = {
               : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
           });
         }
-        throw err;
+        await writeFile(filePath, glb);
+        return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
+      } finally {
+        gp.dispose();
       }
-      if (glb == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'GLB export produced no output.' });
-      }
-      // Defense-in-depth behind the Rust fail-closed guard: a zero-mesh GLB
-      // must never be written to disk and reported as success.
-      if (countGlbMeshes(glb) === 0) {
-        throw new ToolExecutionError({
-          code: ToolErrorCode.INTERNAL_ERROR,
-          message: filterType
-            ? `GLB export produced 0 meshes — no ${filterType} elements have exportable render geometry.`
-            : 'GLB export produced 0 meshes — the model has no exportable render geometry.',
-        });
-      }
-      await writeFile(filePath, glb);
-      return okResult(`Wrote ${glb.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: glb.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 
@@ -252,19 +263,20 @@ const exportObj: Tool = {
         message: `No ${filterType} entities found - nothing to export.`,
       });
     }
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
-      if (obj == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const obj = gp.exportObj(bytes, true, new Uint32Array(), isolated);
+        if (obj == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'OBJ export produced no output.' });
+        }
+        await writeFile(filePath, obj);
+        return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
+      } finally {
+        gp.dispose();
       }
-      await writeFile(filePath, obj);
-      return okResult(`Wrote ${obj.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: obj.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 
@@ -285,19 +297,20 @@ const exportIfcx: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
-      if (ifcx == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const ifcx = gp.exportIfcx(bytes, input.all_properties !== true, true);
+        if (ifcx == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'IFCX export produced no output.' });
+        }
+        await writeFile(filePath, ifcx);
+        return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
+      } finally {
+        gp.dispose();
       }
-      await writeFile(filePath, ifcx);
-      return okResult(`Wrote ${ifcx.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: ifcx.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 
@@ -317,19 +330,20 @@ const exportUsd: Tool = {
   async handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const filePath = await resolveSafePath(input.file_path, ctx, 'write');
-    const bytes = await resolveIfcBytes(m);
-    const gp = new GeometryProcessor();
-    await gp.init();
-    try {
-      const usd = gp.exportUsd(bytes);
-      if (usd == null) {
-        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
+    return withIfcBytes(m, async (bytes) => {
+      const gp = new GeometryProcessor();
+      try {
+        await gp.init();
+        const usd = gp.exportUsd(bytes);
+        if (usd == null) {
+          throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'USD export produced no output.' });
+        }
+        await writeFile(filePath, usd);
+        return okResult(`Wrote ${usd.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: usd.length });
+      } finally {
+        gp.dispose();
       }
-      await writeFile(filePath, usd);
-      return okResult(`Wrote ${usd.length.toLocaleString()} bytes to ${filePath}.`, { filePath, bytes: usd.length });
-    } finally {
-      gp.dispose();
-    }
+    });
   },
 };
 

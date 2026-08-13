@@ -162,6 +162,19 @@ describe('BVH.raycast', () => {
     expect(bvh.raycast([-0.5001, 0, 0], [0, 0, 1])).toEqual([]);
   });
 
+  it('reports a hit when the ray origin sits exactly on the exit face, pointing away', () => {
+    // Cube spans -0.5..0.5 on every axis. Origin at x=0.5 (the +x face),
+    // direction +x (away from the cube). The slab math resolves tmax to
+    // exactly 0 here (not the parallel-axis case covered above — direction
+    // is non-zero on the axis that produces the boundary). AABBUtils.intersects
+    // and the BVH itself are both inclusive at an exact touch (`<=`/`>=`);
+    // `tmax >= 0` is what keeps this consistent for the ray case. `tmax > 0`
+    // also passes every other test in this file, so only this exact-touch
+    // origin distinguishes the two.
+    const bvh = BVH.build([cube(1, [0, 0, 0])]);
+    expect(bvh.raycast([0.5, 0, 0], [1, 0, 0])).toEqual([1]);
+  });
+
   it('reports a hit when the ray starts inside a mesh', () => {
     const bvh = BVH.build([cube(1, [0, 0, 0], 5)]);
     expect(bvh.raycast([0, 0, 0], [1, 0, 0])).toEqual([1]);
@@ -383,6 +396,20 @@ describe('FrustumUtils', () => {
     expect(FrustumUtils.isAABBVisible({ planes: [{ normal: [1, 0, 0], distance: -1.4 }] }, b)).toBe(true);
     // Plane at x = 1.6 → 0.6 m behind: past the margin, culled.
     expect(FrustumUtils.isAABBVisible({ planes: [{ normal: [1, 0, 0], distance: -1.6 }] }, b)).toBe(false);
+  });
+
+  it('keeps an AABB exactly at the margin boundary, and culls a hair past it', () => {
+    // Positive vertex on +x is 1. Plane at x = 1.5 puts it exactly 0.5 m
+    // behind the plane — precisely PLANE_EPSILON. `distance < EPSILON` keeps
+    // this (distance === EPSILON does not satisfy strict '<'); `distance <=
+    // EPSILON` would wrongly cull it, and every other test in this file
+    // (which all use a 0.1 m margin either side of the boundary) still
+    // passes under that mutant.
+    const b = box(-1, -1, -1, 1, 1, 1);
+    expect(FrustumUtils.isAABBVisible({ planes: [{ normal: [1, 0, 0], distance: -1.5 }] }, b)).toBe(true);
+    // A hair past the boundary is culled either way — distinguishes "exact
+    // boundary" from "always keep".
+    expect(FrustumUtils.isAABBVisible({ planes: [{ normal: [1, 0, 0], distance: -1.500001 }] }, b)).toBe(false);
   });
 
   it('applies the same positive-vertex rule for a negative-facing normal', () => {

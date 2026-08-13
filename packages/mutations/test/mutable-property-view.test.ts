@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { PropertyValueType } from '@ifc-lite/data';
+import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { BulkQueryEngine, MutablePropertyView } from '../src/index.js';
 
 describe('MutablePropertyView', () => {
@@ -71,6 +71,61 @@ describe('MutablePropertyView', () => {
     fresh.setProperty(9, 'Pset_WallCommon', 'Combustible', null, PropertyValueType.Boolean);
     expect(fresh.deleteProperty(9, 'Pset_WallCommon', 'Combustible')).not.toBeNull();
     expect(fresh.getForEntity(9)).toEqual([]);
+  });
+
+  describe('setQuantity oldValue/type on a base quantity (undo correctness, #2297 shape)', () => {
+    it('carries the base value as oldValue on the first edit of an existing quantity', () => {
+      // `apps/viewer`'s undo handler only replays `mutation.oldValue` for
+      // UPDATE_QUANTITY when it is non-null (`mutationSlice.ts`): if the
+      // first edit of an already-existing base quantity reports
+      // `oldValue: null` instead of the true prior value, undo silently
+      // does nothing — the mutation stays applied. Unlike `setProperty`,
+      // which resolves `oldValue` via `getPropertyValue()` (base data +
+      // overlay), `setQuantity` must resolve the same way rather than only
+      // consulting an existing overlay mutation.
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setQuantityExtractor((entityId) => entityId === 11 ? [{
+        name: 'Qto_Base',
+        quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }],
+      }] : []);
+
+      const mutation = view.setQuantity(11, 'Qto_Base', 'Area', 99, QuantityType.Area);
+
+      expect(mutation.type).toBe('UPDATE_QUANTITY');
+      expect(mutation.oldValue).toBe(10);
+    });
+
+    it('classifies a brand-new quantity added to an existing base qset as CREATE, not UPDATE', () => {
+      // `qsetExistsInBase` alone doesn't mean THIS quantity existed — adding
+      // a never-before-seen quantity name to an existing qset must report
+      // CREATE_QUANTITY (undo removes the mutation outright) rather than
+      // UPDATE_QUANTITY with a null oldValue (undo would try, and fail, to
+      // restore a "prior" value that never existed).
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setQuantityExtractor((entityId) => entityId === 11 ? [{
+        name: 'Qto_Base',
+        quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }],
+      }] : []);
+
+      const mutation = view.setQuantity(11, 'Qto_Base', 'Volume', 42, QuantityType.Volume);
+
+      expect(mutation.type).toBe('CREATE_QUANTITY');
+      expect(mutation.oldValue).toBeNull();
+    });
+
+    it('still reports UPDATE with the overlay value on a second edit (control)', () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setQuantityExtractor((entityId) => entityId === 11 ? [{
+        name: 'Qto_Base',
+        quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }],
+      }] : []);
+
+      view.setQuantity(11, 'Qto_Base', 'Area', 99, QuantityType.Area);
+      const second = view.setQuantity(11, 'Qto_Base', 'Area', 123, QuantityType.Area);
+
+      expect(second.type).toBe('UPDATE_QUANTITY');
+      expect(second.oldValue).toBe(99);
+    });
   });
 
   describe('entity aliases (duplicate flow)', () => {
@@ -314,5 +369,110 @@ describe('MutablePropertyView.getEffectiveChanges (issue #1915)', () => {
         newValue: 'Edited',
       },
     ]);
+  });
+});
+
+describe('hasQuantityBase (github.com/LTplus-AG/ifc-lite/issues/2487)', () => {
+  it('is false until a quantity extractor is wired, and the overlay is then the only source', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+
+    // The default. Properties always have SOMETHING under the overlay — the
+    // `baseTable` the constructor takes, or the on-demand extractor — but
+    // `setQuantityExtractor` is opt-in and there is no fallback, so a view
+    // without one reports whatever this session edited and nothing else.
+    expect(view.hasQuantityBase()).toBe(false);
+    view.setQuantity(7, 'Qto_WallBaseQuantities', 'GrossArea', 12, QuantityType.Area);
+    expect(view.getQuantitiesForEntity(7)).toEqual([
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossArea', type: QuantityType.Area, value: 12, unit: undefined }] },
+    ]);
+  });
+
+  it('is true once one is, and the set is then reported whole', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => [
+      { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }] },
+    ]);
+
+    expect(view.hasQuantityBase()).toBe(true);
+    view.setQuantity(7, 'Qto_WallBaseQuantities', 'GrossArea', 12, QuantityType.Area);
+    // Both: the base quantity and the edit. This is the difference a consumer
+    // holding the base data can now detect before writing the set out.
+    expect(view.getQuantitiesForEntity(7)[0].quantities.map((q) => q.name)).toEqual([
+      'NetVolume',
+      'GrossArea',
+    ]);
+  });
+});
+
+describe('deleteQuantitySet (#2508)', () => {
+  it('removes a quantity set created in this session, along with its quantities', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => []);
+
+    view.createQuantitySet(7, 'IfcLite_ZoneVolumes [Takt] (mesh)', [
+      { name: 'Takt A', value: 2, quantityType: QuantityType.Volume },
+    ]);
+    expect(view.getQuantitiesForEntity(7)).toHaveLength(1);
+
+    view.deleteQuantitySet(7, 'IfcLite_ZoneVolumes [Takt] (mesh)');
+
+    // Not merely absent from the set list: the per-quantity SET mutations the
+    // create recorded are dropped too, so nothing can re-add the quantity to a
+    // base set of the same name later, and the entity stops reporting itself
+    // as modified with nothing to show for it.
+    expect(view.getQuantitiesForEntity(7)).toEqual([]);
+    expect(view.hasChanges(7)).toBe(false);
+  });
+
+  it('masks a quantity set that exists in the base file', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor((entityId) => entityId === 7 ? [{
+      name: 'Qto_WallBaseQuantities',
+      quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }],
+    }] : []);
+
+    view.deleteQuantitySet(7, 'Qto_WallBaseQuantities');
+
+    expect(view.getQuantitiesForEntity(7)).toEqual([]);
+    // A base deletion IS a change, unlike dropping a set this session created.
+    expect(view.hasChanges(7)).toBe(true);
+  });
+
+  it('replays a serialized deletion even where this view cannot see the base', () => {
+    // The quantity extractor is opt-in and several in-tree callers wire the
+    // property one beside it and not it. A replayed deletion is a decision the
+    // origin session already made, so a view with no base must still mask the
+    // set: otherwise a later export regenerates what the user removed.
+    const origin = new MutablePropertyView(null, 'model-1');
+    origin.setOnDemandExtractor(() => []);
+    origin.setQuantityExtractor((entityId) => entityId === 7 ? [{
+      name: 'Qto_WallBaseQuantities',
+      quantities: [{ name: 'NetVolume', type: QuantityType.Volume, value: 1.5 }],
+    }] : []);
+    origin.deleteQuantitySet(7, 'Qto_WallBaseQuantities');
+
+    const replayed = new MutablePropertyView(null, 'model-1');
+    replayed.setOnDemandExtractor(() => []);
+    // No quantity extractor here, on purpose.
+    replayed.applyMutations(origin.getMutations());
+
+    expect(replayed.isQuantitySetDeleted(7, 'Qto_WallBaseQuantities')).toBe(true);
+  });
+
+  it('leaves other quantity sets on the same entity alone', () => {
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    view.setQuantityExtractor(() => []);
+
+    view.createQuantitySet(7, 'Kept', [{ name: 'A', value: 1, quantityType: QuantityType.Volume }]);
+    view.createQuantitySet(7, 'Dropped', [{ name: 'B', value: 2, quantityType: QuantityType.Volume }]);
+
+    view.deleteQuantitySet(7, 'Dropped');
+
+    expect(view.getQuantitiesForEntity(7).map((q) => q.name)).toEqual(['Kept']);
   });
 });

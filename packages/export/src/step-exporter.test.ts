@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { IfcParser, EntityExtractor, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, EntityExtractor, extractPropertiesOnDemand, asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
 import { isValidIfcGuid } from '@ifc-lite/encoding';
 import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutations';
@@ -66,7 +66,7 @@ function buildMockDataStore(
     schemaVersion: 'IFC4',
     entityCount: entries.length,
     parseTime: 0,
-    source,
+    source: asSourceBytes(source),
     entityIndex: { byId, byType },
     ...(deferred.size > 0 ? { deferredEntityIndex: deferred } : {}),
   } as unknown as IfcDataStore;

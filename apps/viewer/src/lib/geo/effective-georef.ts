@@ -117,8 +117,27 @@ export function mergeProjectedCRS(
 ): ProjectedCRS | undefined {
   if (!original && !mutations) return undefined;
   const mapUnit = mutations?.mapUnit ?? original?.mapUnit;
+  // A CLEARED MapUnit is an ABSENT MapUnit, not an unparseable one.
+  //
+  // The panel's MapUnit editor is a `<select>` whose first option has an empty
+  // value, and `commitEdit` deliberately permits an empty commit for selects
+  // (`if (!trimmed && !hint.isSelect) return;`). So `''` reaches here as an
+  // edit. `''` is not `undefined`, so it took the edited branch, and
+  // `inferMapUnitScale('', lengthUnitScale)` returns the FALLBACK — the
+  // project's length-unit scale.
+  //
+  // That is precisely the reading `resolveMapUnitToMetreScale` exists to
+  // reject: its doc says "when no explicit MapUnit is set, treat the offsets
+  // as metres", because surveying pipelines emit metre offsets regardless of
+  // the project unit. So clearing the field opted the user INTO the failure
+  // the heuristic was written to avoid — for a millimetre project, a 1000×
+  // under-scale that flings the model outside the CRS's valid range.
+  //
+  // Passing `undefined` as the fallback for an empty string routes it to the
+  // absent path (scale 1). A non-empty but unparseable MapUnit keeps today's
+  // length-unit fallback.
   const mapUnitScale = mutations?.mapUnit !== undefined
-    ? inferMapUnitScale(mapUnit, lengthUnitScale)
+    ? inferMapUnitScale(mapUnit, mapUnit ? lengthUnitScale : undefined)
     : original?.mapUnitScale ?? inferMapUnitScale(mapUnit, undefined);
   return {
     id: original?.id ?? 0,

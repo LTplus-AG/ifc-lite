@@ -21,6 +21,14 @@ describe('guid', () => {
     expect(isValidIfcGuid(ifcGuid)).toBe(true);
   });
 
+  it('rejects a UUID string containing non-hex characters instead of silently zeroing them', () => {
+    // hex.length === 32 after stripping dashes, so the length guard passes;
+    // parseInt('GG', 16) is NaN, and Uint8Array coerces NaN to 0. Nothing
+    // throws today - a garbage UUID silently becomes the all-zero UUID's
+    // GUID instead of being rejected.
+    expect(() => uuidToIfcGuid('gggggggg-gggg-gggg-gggg-gggggggggggg')).toThrow();
+  });
+
   it('generates schema-valid IFC GUIDs', () => {
     for (let i = 0; i < 100; i++) {
       const ifcGuid = generateIfcGuid();

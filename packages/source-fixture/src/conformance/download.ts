@@ -57,13 +57,19 @@ export function describeDownloadConformance(
 
       const controller = new AbortController();
       controller.abort();
-      await expect(
-        provider.download(
+      try {
+        await provider.download(
           ctx,
           { projectId: fixtures.projectId, containerId: file.containerId, fileId: file.id },
           { signal: controller.signal },
-        ),
-      ).rejects.toBeTruthy();
+        );
+        expect.fail('download() resolved instead of rejecting on an already-aborted signal');
+      } catch (error) {
+        expect(
+          (error as { name?: unknown } | undefined)?.name,
+          `download() rejected on an already-aborted signal, but not with an abort-specific error: ${String(error)}`,
+        ).toBe('AbortError');
+      }
     });
   });
 }

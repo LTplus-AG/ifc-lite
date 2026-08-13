@@ -192,6 +192,59 @@ describe('geometryRecordLookup', () => {
  * classifications/materials to `[]` has that clearing silently dropped
  * on a snapshot -> seed round trip.
  */
+/**
+ * Numeric-shape gates on the v5a set branches.
+ *
+ * Both `Number.isFinite` checks survived mutation: dropping either left
+ * the whole collab suite green. Neither is reachable through a JSON
+ * round-trip — `JSON.stringify(NaN) === null` — but an in-memory value
+ * computed without one (an op producing `0/0`, a unit conversion
+ * dividing by zero) reaches inflation directly, which is what these
+ * guards are for.
+ */
+describe('v5a numeric shape gates', () => {
+  const QTO = 'bsi::ifc::v5a::Qto_Lengths::Height';
+  const CUSTOM = 'bsi::ifc::v5a::CustomQuantities::Ratio';
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])('does not admit a typed %s under a Qto_ set into quantities', (_label, n) => {
+    const out = inflateStructuredAttributes({ [QTO]: { type: 'IfcReal', value: n } });
+    // It does NOT stay flat: a rejected Qto_ candidate falls through to
+    // the property-shape check below it and lands in psets. Asserting
+    // only "not in quantities" would pass for the wrong reason if the
+    // value were dropped entirely, so pin where it actually goes.
+    expect(out.quantities).toEqual({});
+    expect(out.psets.Qto_Lengths?.Height).toEqual({ type: 'IfcReal', value: n });
+  });
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ])('leaves a raw %s under a custom set FLAT rather than making it a quantity', (_label, n) => {
+    const out = inflateStructuredAttributes({ [CUSTOM]: n });
+    expect(out.quantities).toEqual({});
+    // Present and unchanged, not merely absent from quantities.
+    expect(out.attributes[CUSTOM]).toBe(n);
+  });
+
+  /**
+   * `isTypedPropertyValue`'s extra-key rejection is unpinned across THREE
+   * packages — removing it leaves ifcx, collab and merge all green. A
+   * record carrying an unknown key is not the documented wire shape, and
+   * admitting it would re-emit a different value than arrived, breaking
+   * the same inverse property the gates above protect.
+   */
+  it('leaves a typed record carrying an extra key FLAT', () => {
+    const key = 'bsi::ifc::v5a::Pset_Foo::Bar';
+    const value = { type: 'IfcLabel', value: 'x', extraKey: 'unexpected' };
+    const out = inflateStructuredAttributes({ [key]: value });
+    expect(out.psets).toEqual({});
+    expect(out.attributes[key]).toEqual(value);
+  });
+});
+
 describe('structured-attrs empty-array gate (#1031 regression)', () => {
   it('round-trips an explicitly empty classifications array', () => {
     const inflated = inflateStructuredAttributes({

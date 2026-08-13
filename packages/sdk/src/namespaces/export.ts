@@ -36,6 +36,13 @@ export interface ExportHbjsonOptions {
   filename?: string;
 }
 
+export interface ExportDfjsonOptions {
+  /** Dragonfly model identifier / display name (defaults to the model name). */
+  name?: string;
+  /** When set, also trigger a download with this filename. */
+  filename?: string;
+}
+
 /** bim.export — Data export in multiple formats */
 export class ExportNamespace {
   constructor(private backend: BimBackend) {}
@@ -207,6 +214,26 @@ export class ExportNamespace {
       throw new Error('HBJSON export requires a geometry-capable backend; the active backend does not provide it.');
     }
     const content = await this.backend.export.hbjson(options.name);
+    if (options.filename) {
+      this.backend.export.download(content, options.filename, 'application/json');
+    }
+    return content;
+  }
+
+  /**
+   * Export the model as a Dragonfly DFJSON energy model — each `IfcSpace` becomes an
+   * extruded `Room2D` (floor polygon + floor-to-ceiling height) grouped into stories. This
+   * is the simpler Ladybug Tools target for mostly-vertical-wall models. Loads via
+   * `dragonfly.model.Model.from_dfjson`.
+   *
+   * Requires a geometry-capable backend (the CLI and browser carry the wasm engine); the
+   * data-only SDK never meshes, so this throws on a backend that does not provide it.
+   */
+  async dfjson(options: ExportDfjsonOptions = {}): Promise<string> {
+    if (!this.backend.export.dfjson) {
+      throw new Error('DFJSON export requires a geometry-capable backend; the active backend does not provide it.');
+    }
+    const content = await this.backend.export.dfjson(options.name);
     if (options.filename) {
       this.backend.export.download(content, options.filename, 'application/json');
     }

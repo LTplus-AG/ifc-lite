@@ -22,6 +22,7 @@ import {
   createClashEngine,
   disciplineMatrixRules,
   groupClashes,
+  isClusterGroupingIneffective,
   type Clash,
   type ClashMode,
   type ClashResult,
@@ -61,16 +62,24 @@ async function meshModel(store: IfcDataStore, modelId: string, filePath: string)
   const cached = meshCache.get(modelId);
   if (cached) return cached;
 
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
-    const buffer = await readFile(filePath);
-    bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  }
+  const mesh = async (bytes: Uint8Array): Promise<MeshData[]> => {
+    const processor = await getProcessor();
+    const result = await processor.process(bytes);
+    return result.meshes;
+  };
 
-  const processor = await getProcessor();
-  const result = await processor.process(bytes);
-  meshCache.set(modelId, result.meshes);
-  return result.meshes;
+  // The wasm mesher is a genuine whole-file consumer, so the source is
+  // materialised — but scoped, so the buffer cannot outlive the mesh pass
+  // (only the meshes are cached).
+  let meshes: MeshData[];
+  if (store.source.byteLength > 0) {
+    meshes = await store.source.withMaterializedAsync(mesh);
+  } else {
+    const buffer = await readFile(filePath);
+    meshes = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
+  }
+  meshCache.set(modelId, meshes);
+  return meshes;
 }
 
 function parseMode(raw: string | undefined): ClashMode {
@@ -207,6 +216,15 @@ export async function clashCommand(args: string[]): Promise<void> {
 
     if (bcfPath) {
       const groups = groupClashes(result, { by: bcfGroupBy });
+      if (bcfGroupBy === 'cluster' && isClusterGroupingIneffective(result.clashes, groups)) {
+        // Common on MEP models: distribution-run contact points sit metres apart,
+        // outside any defensible clustering radius, so clustering consolidates
+        // nothing (every clash landed in its own group). Say so and name the
+        // other modes rather than silently reporting one group per clash.
+        process.stderr.write(
+          `  Note: cluster grouping did not consolidate any clashes (${groups.length} groups from ${result.clashes.length} clashes) — try --group rule, --group typePair, or --group element instead.\n`,
+        );
+      }
       const project = await createBCFFromClashResult(result, groups, {
         author: 'ifc-lite clash',
         projectName: 'Clash report',

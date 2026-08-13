@@ -383,8 +383,41 @@ export function createQueryAdapter(
           });
         }
       }
-      if (descriptor.offset && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-      if (descriptor.limit && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+      // `&&` alone lets a NaN offset/limit through silently: every NaN
+      // comparison is false, so `descriptor.offset > 0` was falsy and the
+      // guard did nothing -- a caller that computed a bad value (e.g.
+      // `Number(userInput)` on a non-numeric string) got back MORE rows
+      // than asked for, with no error. The same falsy-zero shape made
+      // `limit: 0` ("no rows") silently mean "every row" instead. Fail
+      // loudly on a non-finite or negative value instead of quietly
+      // serving the wrong slice, matching the misconfigured-caller
+      // convention this adapter already uses elsewhere (see the `add*`
+      // stubs in headless-backend.ts). `limit: 0` is now a deliberate
+      // empty result.
+      //
+      // No built-in MCP tool reaches this today: `query_entities`
+      // (tools/query.ts) validates `limit`/`offset` as JSON-Schema
+      // integers before its handler runs and does its own pagination via
+      // `paginate()` rather than chaining `.limit()/.offset()` on the
+      // query builder. This guards the public SDK path instead --
+      // `HeadlessLikeBackend` is exported from `./index.js` and
+      // `./browser.js` for programmatic use, and an embedder driving it
+      // through `@ifc-lite/sdk`'s fluent `QueryBuilder` reaches
+      // `descriptor.limit`/`descriptor.offset` directly. Same shape as
+      // the CLI's `headless-backend.ts` (#2298) -- a parallel
+      // implementation, not a shared import, so it needed its own fix.
+      if (descriptor.offset != null) {
+        if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+          throw new Error(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+        }
+        if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+      }
+      if (descriptor.limit != null) {
+        if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+          throw new Error(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+        }
+        filtered = filtered.slice(0, descriptor.limit);
+      }
       return filtered;
     },
     // Headless contexts have no interactive viewer filter, so there is never an

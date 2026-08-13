@@ -13,8 +13,14 @@ import type { DynamicBatchConfig } from '@ifc-lite/geometry';
 // Server Configuration
 // ============================================================================
 
+// `import.meta.env` is undefined under the Node `tsx --test` runner (no Vite
+// define plugin), and this module is loaded transitively by `useIfc` ->
+// `useIfcLoader`/`useIfcServer`, which many viewer components (e.g.
+// `GeoreferencingPanel`, `ModelMetadataPanel`) pull in. The optional chaining
+// keeps the module-top-level read safe there (same contract as
+// `lib/analytics.ts` and `store/slices/cesiumSlice.ts`). Do NOT drop it.
 /** IFC server URL - set via environment variable for server-side IFC processing */
-export const SERVER_URL = import.meta.env.VITE_IFC_SERVER_URL || import.meta.env.VITE_SERVER_URL || '';
+export const SERVER_URL = import.meta.env?.VITE_IFC_SERVER_URL || import.meta.env?.VITE_SERVER_URL || '';
 
 /**
  * Enable server-side IFC parsing (disabled by default — uses client-side WASM).
@@ -30,7 +36,7 @@ export const SERVER_URL = import.meta.env.VITE_IFC_SERVER_URL || import.meta.env
  *   VITE_IFC_SERVER_URL=https://ifc-server.example.com
  *   VITE_USE_SERVER=true
  */
-export const USE_SERVER = SERVER_URL !== '' && import.meta.env.VITE_USE_SERVER === 'true';
+export const USE_SERVER = SERVER_URL !== '' && import.meta.env?.VITE_USE_SERVER === 'true';
 
 // ============================================================================
 // File Size Thresholds (in bytes unless noted)

@@ -145,6 +145,97 @@ describe('changeSetToOps', () => {
     expect(add).toMatchObject({ ifcType: 'IfcWall' });
   });
 
+  it('carries the properties of a whole-pset CREATE_PROPERTY_SET into the published component', () => {
+    // `MutablePropertyView.createPropertySet()` (used by `StoreEditor.addPropertySet`)
+    // records ONE CREATE_PROPERTY_SET mutation for the whole set, with `newValue`
+    // holding the full properties array — it does NOT also push a separate
+    // CREATE_PROPERTY mutation per member the way `setProperty()` does. The old
+    // "members follow" comment on this branch assumed such follow-up mutations
+    // always existed; for this path nothing ever populated `values`, so the
+    // published op silently carried `values: {}` — every property the user
+    // entered was dropped from the layer at publish time. Mutation: gut the
+    // `Array.isArray(mutation.newValue)` loop back to just materializing `{}`.
+    const result = changeSetToOps(
+      changeSet([
+        mutation('CREATE_PROPERTY_SET', 42, {
+          psetName: 'Pset_Foo',
+          newValue: [
+            { name: 'Bar', value: 42 },
+            { name: 'Baz', value: 'hello' },
+          ] as unknown as PropertyValue,
+        }),
+      ]),
+      resolver
+    );
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'pset:Pset_Foo',
+      values: { Bar: 42, Baz: 'hello' },
+    });
+  });
+
+  it('still materializes an empty component for a CREATE_PROPERTY_SET with no properties (control)', () => {
+    const result = changeSetToOps(
+      changeSet([mutation('CREATE_PROPERTY_SET', 42, { psetName: 'Pset_Empty', newValue: [] as unknown as PropertyValue })]),
+      resolver
+    );
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'pset:Pset_Empty',
+      values: {},
+    });
+  });
+
+  it('carries the quantities of a whole-qset CREATE_QUANTITY (createQuantitySet, no propName) instead of dropping it (#2251 finding)', () => {
+    // `MutablePropertyView.createQuantitySet()` (used by `StoreEditor.addQuantitySet`)
+    // records a CREATE_QUANTITY mutation with NO `propName` — the previous
+    // `mutation.psetName && mutation.propName` guard was false for this record,
+    // so it fell all the way through the switch's CREATE_QUANTITY/UPDATE_QUANTITY
+    // case with nothing emitted. Worse than the pset case above: because the
+    // mutation still matched a known `case`, it never reached the `default`
+    // branch either, so it wasn't even reported via `skipped` — a freshly
+    // created quantity set vanished from the published layer with zero trace.
+    const result = changeSetToOps(
+      changeSet([
+        mutation('CREATE_QUANTITY', 42, {
+          psetName: 'Qto_Foo',
+          newValue: [{ name: 'NetVolume', value: 1.5 }] as unknown as PropertyValue,
+        }),
+      ]),
+      resolver
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'qset:Qto_Foo',
+      values: { NetVolume: 1.5 },
+    });
+  });
+
+  it('still materializes an empty component for a whole-qset CREATE_QUANTITY with no quantities (control)', () => {
+    // Mirrors the CREATE_PROPERTY_SET empty-array control above. `createQuantitySet(entity,
+    // name, [])` is a legal call (an empty set, to be populated later) — the whole-qset
+    // branch looped over `newValue` to populate `values` but never first materialized the
+    // (possibly empty) component the way the CREATE_PROPERTY_SET branch does, so an empty
+    // array meant the loop ran zero times and the component was never added to `components`
+    // at all: `ops: []`, `skipped: []`, the whole set vanished with zero trace — the #2263
+    // shape surviving in the one corner its original fix didn't cover.
+    const result = changeSetToOps(
+      changeSet([mutation('CREATE_QUANTITY', 42, { psetName: 'Qto_Empty', newValue: [] as unknown as PropertyValue })]),
+      resolver
+    );
+    expect(result.skipped).toEqual([]);
+    expect(result.ops).toContainEqual({
+      op: 'set-component',
+      entity: '3fAx$GlobalId42',
+      componentKey: 'qset:Qto_Empty',
+      values: {},
+    });
+  });
+
   it('serializes a retype as a class opinion and rides PredefinedType on the core channel', () => {
     const result = changeSetToOps(
       changeSet([

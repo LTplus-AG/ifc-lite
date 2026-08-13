@@ -1858,6 +1858,11 @@ export class Renderer {
         // building a Map over every element just to fade "the rest".
         const ghostExceptIds = options.ghostExceptIds ?? null;
         const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
+        // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
+        // stopped at the flat geometry: on a model whose facade is instanced,
+        // the user asked to fade the building and got a solid facade standing
+        // in front of a ghosted interior.
+        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
         const hasGhost = ghostExceptIds != null;
         const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {

@@ -26,6 +26,7 @@ import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
+import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
@@ -3676,27 +3677,18 @@ export class Scene {
     const device = this.instancedDevice;
     if (!device || this.instancedTemplates.length === 0) return;
 
-    const next = new Set<number>();
-    if (ghostExceptIds != null) {
-      for (const eid of this.instancedEntityMap.keys()) {
-        if (!ghostExceptIds.has(eid) && !selectedIds?.has(eid)) next.add(eid);
-      }
-    }
+    const { next, toFade, toRestore, changed } = planInstancedGhosting({
+      ghostExceptIds,
+      selectedIds,
+      instancedIds: this.instancedEntityMap.keys(),
+      current: this.instancedGhosted,
+      ghostAlpha,
+      lastGhostAlpha: this.lastGhostAlpha,
+      dirty: this.instancedGhostDirty,
+    });
+    if (!changed) return;
 
-    // A forced pass rewrites every fade rather than just the delta: the colour
-    // bytes underneath may have been replaced since they were last written.
-    const alphaChanged = next.size > 0 && ghostAlpha !== this.lastGhostAlpha;
-    const forced = this.instancedGhostDirty || alphaChanged;
-    if (!forced && next.size === this.instancedGhosted.size) {
-      let same = true;
-      for (const eid of next) {
-        if (!this.instancedGhosted.has(eid)) { same = false; break; }
-      }
-      if (same) return;
-    }
-
-    for (const eid of this.instancedGhosted) {
-      if (next.has(eid)) continue;
+    for (const eid of toRestore) {
       // Back to whatever owns the colour now: an override if one is active,
       // otherwise the occurrence's baked colour.
       const override = this.instancedOverrideColors?.get(eid);
@@ -3704,8 +3696,7 @@ export class Scene {
       else this.restoreInstanceColor(device, eid);
     }
 
-    for (const eid of next) {
-      if (!forced && this.instancedGhosted.has(eid)) continue;
+    for (const eid of toFade) {
       const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
       if (!base) continue;
       this.writeInstanceColor(device, eid, [base[0], base[1], base[2], ghostAlpha]);

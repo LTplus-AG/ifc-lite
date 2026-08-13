@@ -170,6 +170,57 @@ describe('zone geometry export: what crosses the thread boundary', () => {
   });
 });
 
+describe('one export at a time', () => {
+  beforeEach(seed);
+
+  it('refuses a second run while the first is still cutting', async () => {
+    // The lock has to outlive the PANEL, not just the click: now that the UI
+    // stays live during a cut, the panel can be closed and reopened, which
+    // resets anything the component owns. A second run would compile a second
+    // wasm module and cut the same elements again for an identical download.
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const slow = exportZoneGeometry(ZONE_SET, 1, {
+      split,
+      meshPieces: (globalId) => [mesh(globalId, globalId === WHOLE ? 9 : 0)],
+      emit: () => {},
+      batch: async (request, onProgress) => {
+        await held;
+        return runZoneSplitBatch(split, { ...request, zones: [...request.zones] }, onProgress);
+      },
+    });
+
+    const second = await exportZoneGeometry(ZONE_SET, 1, {
+      split,
+      meshPieces: (globalId) => [mesh(globalId)],
+      emit: () => { throw new Error('the second run produced a file'); },
+    });
+    assert.equal(second.ok, false);
+    assert.equal(second.ok === false && second.reason, 'busy');
+
+    release?.();
+    assert.equal((await slow).ok, true);
+  });
+
+  it('releases the lock when a run throws, rather than wedging the button', async () => {
+    await assert.rejects(exportZoneGeometry(ZONE_SET, 1, {
+      split,
+      meshPieces: (globalId) => [mesh(globalId, globalId === WHOLE ? 9 : 0)],
+      emit: () => {},
+      batch: async () => { throw new Error('worker gone'); },
+    }));
+
+    const after = await exportZoneGeometry(ZONE_SET, 1, {
+      split,
+      meshPieces: (globalId) => [mesh(globalId, globalId === WHOLE ? 9 : 0)],
+      emit: () => {},
+      batch: async (request, onProgress) =>
+        runZoneSplitBatch(split, { ...request, zones: [...request.zones] }, onProgress),
+    });
+    assert.equal(after.ok, true, 'the lock was never released');
+  });
+});
+
 describe('runZoneSplitBatch', () => {
   it('returns the piece for the zone asked for, not the first one', () => {
     const jobs: ZoneSplitJob[] = [{ globalId: STRADDLER_A, pieces: [mesh(STRADDLER_A)] }];

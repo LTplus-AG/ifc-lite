@@ -90,7 +90,23 @@ export interface ZoneGeometryExport {
 
 export type ZoneGeometryExportResult =
   | { ok: true; summary: ZoneGeometryExport }
-  | { ok: false; reason: 'no-binding' | 'no-geometry' | 'empty-zone' };
+  | { ok: false; reason: 'no-binding' | 'no-geometry' | 'empty-zone' | 'busy' };
+
+/**
+ * An export is in flight.
+ *
+ * Module-level, NOT a ref in the panel, and the difference is new to the
+ * worker. While the cut blocked the main thread, a second run was impossible
+ * because nothing could be clicked; now that the UI stays live, the panel can
+ * be closed and reopened mid-export, which resets any state the component
+ * owns. A second run would then compile a second wasm module and cut the same
+ * elements again for a second identical download.
+ *
+ * One at a time rather than one per zone: each run compiles its own
+ * `WebAssembly.Memory` and saturates a core, so two at once is slower than two
+ * in sequence and costs twice the memory.
+ */
+let exportInFlight = false;
 
 /**
  * Is every vertex of the element inside `zone`?
@@ -179,6 +195,30 @@ export async function exportZoneGeometry(
   const zone = zoneSet.zones[zoneIndex];
   if (!zone) return { ok: false, reason: 'empty-zone' };
   const batch = deps.batch ?? defaultBatch(split);
+  if (exportInFlight) return { ok: false, reason: 'busy' };
+  exportInFlight = true;
+  try {
+    return await runExport(zoneSet, zone, zoneIndex, { meshPieces, emit, batch, onProgress: deps.onProgress });
+  } finally {
+    // In a `finally` so a throw from the kernel, the GLB build or the download
+    // does not leave the button dead for the rest of the session.
+    exportInFlight = false;
+  }
+}
+
+interface ResolvedDeps {
+  meshPieces: (globalId: number) => MeshData[] | null;
+  emit: (bytes: Uint8Array, filename: string) => void;
+  batch: ZoneSplitBatchFn;
+  onProgress?: ZoneSplitProgress;
+}
+
+async function runExport(
+  zoneSet: ZoneSet,
+  zone: Zone,
+  zoneIndex: number,
+  { meshPieces, emit, batch, onProgress }: ResolvedDeps,
+): Promise<ZoneGeometryExportResult> {
 
   const t0 = performance.now();
   const state = useViewerStore.getState();
@@ -246,7 +286,7 @@ export async function exportZoneGeometry(
 
   // Phase 2, off this thread: the exact arrangements, which are the whole cost.
   const outcomes = jobs.length > 0
-    ? await batch({ zones: zoneSet.zones, zoneIndex, jobs }, deps.onProgress)
+    ? await batch({ zones: zoneSet.zones, zoneIndex, jobs }, onProgress)
     : [];
 
   // Phase 3, back here: the gate, which needs the proved volumes again.

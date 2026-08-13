@@ -14,6 +14,17 @@ fi
 
 echo "🦀 Building IFC-Lite WASM..."
 
+# The wasm build rebuilds `std` from source (needed for the panic_abort-only
+# single-thread bundle, and for the atomics-enabled threaded bundle below).
+# This used to live in `.cargo/config.toml`'s `[unstable] build-std`, but that
+# table applies to every `cargo` invocation in the workspace, not just wasm
+# ones — including plain host builds with no `--target` at all — and collided
+# with `[profile.release] panic = "abort"` there (duplicate `core` lang item).
+# Scope it to this script only via the env var equivalent of
+# `unstable.build-std`, so host builds (`cargo test --release`, etc.) never
+# see it.
+export CARGO_UNSTABLE_BUILD_STD="std,panic_abort"
+
 # Build with wasm-pack
 echo "📦 Running wasm-pack..."
 

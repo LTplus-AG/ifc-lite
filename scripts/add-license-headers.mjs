@@ -140,6 +140,23 @@ function findFiles(directories, extensions) {
     return files;
 }
 
+// --- CLI flags -------------------------------------------------------------
+// Unknown flags are a hard error, not a silent no-op: this script used to
+// ignore any flag it didn't recognize and fall straight through to the
+// default (write) behavior below, so a typo'd or not-yet-implemented flag
+// (e.g. `--check` before this mode existed) would silently rewrite every
+// source file in the repo instead of doing what the caller asked.
+const KNOWN_FLAGS = new Set(['--check']);
+const argv = process.argv.slice(2);
+for (const arg of argv) {
+    if (!KNOWN_FLAGS.has(arg)) {
+        console.error(`Unknown flag: ${arg}`);
+        console.error(`Known flags: ${[...KNOWN_FLAGS].join(', ')} (or no flags at all)`);
+        process.exit(1);
+    }
+}
+const checkMode = argv.includes('--check');
+
 // Main execution
 const directories = [
     'apps/viewer/src',
@@ -155,6 +172,53 @@ console.log('Finding source files...');
 const files = findFiles(directories, extensions);
 
 console.log(`Found ${files.length} files to process`);
+
+if (checkMode) {
+    // Dry run: report files missing the header, write nothing, and fail CI
+    // if any are found.
+    const missing = [];
+    let excluded = 0;
+
+    for (const file of files) {
+        const ext = getFileExtension(file);
+        if (!ext || !LICENSE_HEADERS[ext]) {
+            continue;
+        }
+        if (shouldExclude(file)) {
+            excluded++;
+            continue;
+        }
+
+        let content;
+        try {
+            content = readFileSync(file, 'utf-8');
+        } catch (error) {
+            console.error(`Error reading ${file}:`, error.message);
+            continue;
+        }
+
+        if (!hasLicenseHeader(content)) {
+            missing.push(file);
+        }
+    }
+
+    console.log(`\nResults:`);
+    console.log(`  Checked: ${files.length - excluded}`);
+    console.log(`  Excluded: ${excluded}`);
+    console.log(`  Missing header: ${missing.length}`);
+
+    if (missing.length > 0) {
+        console.log(`\nFiles missing the MPL license header:`);
+        for (const file of missing) {
+            console.log(`  ${file}`);
+        }
+        console.log(`\n❌ ${missing.length} file(s) missing the license header. Run without --check to add them.`);
+        process.exit(1);
+    }
+
+    console.log(`\n✅ All files have the license header.`);
+    process.exit(0);
+}
 
 let added = 0;
 let skipped = 0;

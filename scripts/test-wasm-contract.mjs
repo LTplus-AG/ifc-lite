@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /**
  * WASM API Contract Tests
  *
@@ -838,6 +841,27 @@ if (existsSync(HELLO_WALL)) {
     const again = api.exportUsd(wallBytes);
     assert.ok(again instanceof Uint8Array);
     assert.equal(new TextDecoder().decode(again), usda, 'USD export must be deterministic');
+  });
+
+  // ===== IFCX header, across the language boundary =====
+  // The Rust exporter and the TypeScript writers each hold their own copy of
+  // the version value (`IFCX_VERSION` in rust/export/src/ifc5.rs, and in
+  // @ifc-lite/data re-exported by @ifc-lite/ifcx). Nothing else would notice
+  // them drifting: `parseIfcx` accepts any value containing the substring
+  // `ifcx`, case-insensitively, which is exactly why six call sites said
+  // `ifcx_alpha` and a seventh said `IFCX-1.0` for months without a symptom.
+  //
+  // Pinned to the literal rather than imported: this script runs on plain node
+  // against the built wasm, and asserting "Rust used its own constant" would
+  // pass even if that constant changed. Update BOTH sides and this line.
+  test('exportIfcx stamps the agreed header.ifcxVersion (pins Rust to the TS constant)', () => {
+    const ifcxBytes = api.exportIfcx(wallBytes);
+    assert.ok(ifcxBytes instanceof Uint8Array, 'IFCX should be a Uint8Array');
+    const header = JSON.parse(new TextDecoder().decode(ifcxBytes)).header;
+    assert.equal(header.ifcxVersion, 'ifcx_alpha', 'Rust exporter and @ifc-lite/data must agree');
+    // The key itself, not just its value: writing it under `version` is what
+    // made every exported file unreadable by our own parser until #2556.
+    assert.ok(!('version' in header), 'the pre-#2556 `version` key must not come back');
   });
 } else {
   console.log('  ⚠️  apps/landing/samples/hello-wall.ifc missing — skipping exportUsd contract test');

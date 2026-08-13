@@ -146,7 +146,11 @@ describe('IfcxWriter — header and envelope', () => {
     const { entities, strings } = makeEntities([{ expressId: 1, typeEnum: TYPE_WALL }]);
     const file = parse(new IfcxWriter({ entities, strings }).export().content);
 
-    assert.strictEqual(file.header.ifcxVersion, 'IFCX-1.0');
+    // Pinned to the literal, not to IFCX_VERSION: importing the constant here
+    // would make this assert "the writer used the constant" — true even if the
+    // constant itself silently changed. Readers only match the substring
+    // `ifcx`, so a changed value is invisible everywhere else.
+    assert.strictEqual(file.header.ifcxVersion, 'ifcx_alpha');
     assert.strictEqual(file.header.author, 'ifc-lite');
     assert.strictEqual(file.header.dataVersion, '1.0.0');
     assert.match(file.header.id, /^ifcx_\d+_[a-z0-9]+$/);
@@ -194,7 +198,7 @@ describe('IfcxWriter — prettyPrint tri-state', () => {
   it('emits compact JSON only when the option is explicitly false', () => {
     const content = new IfcxWriter({ entities, strings }).export({ prettyPrint: false }).content;
     assert.ok(!content.includes('\n'), 'prettyPrint:false must produce single-line JSON');
-    assert.deepStrictEqual(parse(content).header.ifcxVersion, 'IFCX-1.0');
+    assert.deepStrictEqual(parse(content).header.ifcxVersion, 'ifcx_alpha');
   });
 });
 

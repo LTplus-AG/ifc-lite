@@ -1,5 +1,26 @@
 # @ifc-lite/geometry
 
+## 3.8.1
+
+### Patch Changes
+
+- [#2534](https://github.com/LTplus-AG/ifc-lite/pull/2534) [`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface `wasmRtcOffset` / `lengthUnitScale` on the batch `processMeshes` path, not just the incremental one.
+
+  `CoordinateHandler.processMeshes` — the path behind the synchronous `GeometryProcessor.process()` — returned its `CoordinateInfo` without the wasm metadata that `setWasmMetadata` had recorded, while the incremental/streaming path attached it. For a model whose placement the wasm pre-pass re-based (coordinates >10 km from the origin, e.g. a Vectorworks export with the IfcSite at absolute EPSG:25833 map coordinates, issue [#2526](https://github.com/LTplus-AG/ifc-lite/issues/2526)), every sync-path consumer then read the re-based bounds as if they were absolute: the site offset — including its elevation — silently vanished from georeferencing math. All `processMeshes` returns (empty, no-shift, and shifted) now attach the same metadata the incremental path reports, via one shared helper.
+
+- [#2537](https://github.com/LTplus-AG/ifc-lite/pull/2537) [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fixes to the STEP/IFC exporters' shared `FILE_SCHEMA` detection and header re-serialization, reached from `exportMerged` and the STEP re-export path (`ifc-lite-bridge.ts` defaults `schema` to `''`, which resolves to auto-detect on both):
+
+  - `detect_schema` now scans the whole HEADER section instead of only the first 4096 bytes, so a long earlier header field (e.g. a lengthy `FILE_DESCRIPTION`) no longer pushes `FILE_SCHEMA` out of range and silently defaults the output to IFC4.
+  - The `FILE_SCHEMA` search — and the HEADER-section boundary scan that bounds it — are now quote-aware, so a header string value that happens to contain the literal text `FILE_SCHEMA` or `ENDSEC;` is no longer mistaken for the real entry.
+  - `detect_schema` un-doubles a `\\` in the detected label before it is re-escaped on write, so a schema label carrying a literal `\` (synthetic, but reachable through the same code path as the labels above) round-trips instead of compounding.
+  - `exportMerged`'s `#`-reference rewriter now copies non-`#`-reference bytes through unchanged instead of widening each byte to a `char`, which corrupted every non-ASCII (UTF-8 multi-byte) character in a merged model's string literals.
+  - `exportMerged`'s header-string escaping now maps every ASCII control byte (not just `\n`/`\r`/`\t`) to a space, matching the STEP exporter and ISO 10303-21's basic graphic range.
+
+  `merged.rs`'s private forks of `detect_schema` and `escape` are removed; it now shares the hardened primitives in `step_text.rs` with the STEP exporter.
+
+- Updated dependencies []:
+  - @ifc-lite/data@3.2.4
+
 ## 3.8.0
 
 ### Minor Changes

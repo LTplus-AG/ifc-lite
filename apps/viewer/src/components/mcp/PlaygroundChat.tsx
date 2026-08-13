@@ -29,6 +29,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { modelSwapNotice, type SwapModelRef } from './playground-model-swap.js';
 import Anthropic from '@anthropic-ai/sdk';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -141,6 +142,37 @@ export function PlaygroundChat({
   // a "to send" array we drain on each submit.
   const uploads = usePlaygroundUploads();
   const [pendingAttachments, setPendingAttachments] = useState<UploadedFile[]>([]);
+
+  // Swapping the loaded model invalidates every expressId already in the
+  // transcript: they are unique inside ONE STEP file, not across files. The
+  // conversation is deliberately kept (losing the user's thread on a file swap
+  // would be worse), so the boundary is stated in-band instead — the agent
+  // re-reads the whole transcript every turn, and this notice is the only
+  // thing standing between it and confidently acting on a stale id (#2471).
+  //
+  // `lastLoaded` is NOT cleared when the model is closed. It has to survive
+  // that, or load A -> close -> load B reads as a first load and says nothing
+  // — and the close button sits in the same toolbar as the file picker.
+  const lastLoaded = useRef<SwapModelRef | null>(null);
+  const loadCounter = useRef(0);
+  const nextRef = useRef<SwapModelRef | null>(null);
+  const currentModelObject = useRef<LoadedPlaygroundModel | null>(null);
+  if (model !== currentModelObject.current) {
+    currentModelObject.current = model;
+    // A new model OBJECT is a new load. The id is a slug of the filename, so
+    // re-dropping a revised `model.ifc` keeps the id while every expressId may
+    // have moved — the load counter is what distinguishes them.
+    loadCounter.current += 1;
+    nextRef.current = model ? { loadId: loadCounter.current, name: model.name } : null;
+  }
+  const next = nextRef.current;
+  useEffect(() => {
+    setMessages((prior) => {
+      const notice = modelSwapNotice(lastLoaded.current, next, prior.length);
+      return notice ? [...prior, notice] : prior;
+    });
+    if (next !== null) lastLoaded.current = next;
+  }, [next]);
 
   // Auto-scroll on new content
   useEffect(() => {
@@ -737,8 +769,11 @@ type ApiMessage =
  * tool_result message → standalone user text message) breaks that contract
  * the moment the user asks a follow-up after a tool round, because the
  * NEW user text lands AFTER the tool_result, separating it from the
- * tool_use by an extra turn (and yielding a double-user pair Anthropic
- * also rejects).
+ * tool_use by an extra turn (and yielding a double-user pair, which the
+ * Messages API now merges into one turn rather than rejecting — the
+ * tool_result-must-come-first ordering below is the part that still
+ * matters, and the model-swap notice at #2471 deliberately relies on
+ * consecutive user turns being accepted).
  *
  * Fix: merge an assistant turn's pending tool_results into the very next
  * user turn as combined blocks (`[tool_result_*…, { type:'text', text }]`).

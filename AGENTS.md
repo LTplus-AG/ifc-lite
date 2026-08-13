@@ -80,6 +80,23 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 ## Writing tests
 - A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
 - Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.
+- **Never assert on a source file's text.** A test that reads `Thing.tsx` and greps it certifies a string exists, not that the code works: `SearchModal.filter.wiring.test.tsx` asserted the whole body of `handleRowClick` and stayed 5/5 green when `onRowClick={handleRowClick}` was replaced with `onRowClick={() => {}}` — defect #2396 verbatim. `scripts/check-source-text-assertions.mjs` (CI) blocks new ones; the remaining list is in `scripts/source-text-assertion-allowlist.txt` and only ratchets down (#2434).
+- **Testing a viewer component.** It is mountable — including one that reads `useViewerStore`, which is a module-level Zustand store you seed with `setState`. Three test files claimed otherwise for months; the real blockers were two Vite-isms, fixed once in `apps/viewer/src/test/`. The recipe:
+  ```tsx
+  import '@/test/setup-dom.js';               // MUST be first: registers happy-dom
+  import { installLayout } from '@/test/dom-layout.js';
+  installLayout();                            // only if it virtualizes or measures
+  import { render, click, advance, cleanup } from '@/test/render.js';
+  import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
+
+  useViewerStore.setState({ ...fixtureModels(fixtureModel('m', { idOffset: 1_000_000 })) });
+  const ui = render(<YourPanel />);
+  click(/* what a user clicks */);
+  assert.equal(useViewerStore.getState().selectedEntityId, expected);
+  ```
+  `~icons/*` (unplugin-icons virtual modules) and `import.meta.env` are handled by `src/test/vite-module-hooks.mjs`, registered from the `--import` flag in the viewer's `test` script — it cannot be registered from inside a test file, because module resolution finishes before any module body runs. `installLayout()` also makes `ResizeObserver` deliver an entry: happy-dom ships the class but never fires it, which is why a virtualized list otherwise renders zero rows.
+  Four more surfaces were said to be unmountable and are not (#2434): `MainToolbar`, `RibbonToolbar` and its tabs mount as-is; `FileTab` needs its `fileCommands` prop; `PropertiesPanel` and anything reading a `ModelQuery` needs a REAL store (`new IfcParser().parseColumnar(...)` over a few inline STEP lines — see `tools/measure-parity.test.tsx`), not a cast stub; `ViewportContainer` needs a stubbed `navigator.gpu` plus one loaded model, or it renders the "WebGPU Not Available" screen. A Radix dropdown opens on `pointerdown` (then `click`) and portals its items onto `document.body`, so query them there, not inside the container. `RibbonLargeButton` sets `aria-label={tooltip ?? label}`, so match its visible text when it has a tooltip.
+  Assert on the OUTPUT, not on the wiring: `<Thing />` written into a panel but never reached, a hook whose result is ignored, and a handler that nothing invokes all read correctly in source. Every conversion under #2434 that asserted "the component is present" instead of "its numbers appear" survived deleting the component — one shipped that way and was caught only by mutation.
 - Geometry/WASM changes: mocked `@ifc-lite/wasm` tests prove nothing about the boundary; `pnpm test:wasm-contract` runs the real `buildPrePassOnce`/`processGeometryBatch` path and pins the field surface plus unit-scale contract. Extend it when adding wasm API surface. It skips clean (exit 0) if the wasm runtime isn't built, so a local green there proves nothing unless you ran `scripts/build-wasm.sh` first (CI restores the built artifact before the step).
 
 ## CLI

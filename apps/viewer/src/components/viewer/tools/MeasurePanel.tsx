@@ -64,6 +64,7 @@ export function MeasureOverlay() {
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Track cursor position in ref (no re-renders on mouse move)
   const cursorPosRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -257,12 +258,13 @@ export function MeasureOverlay() {
                       index={i}
                       onDelete={handleDeleteMeasurement}
                       geoAnchor={showGeo ? anchor : null}
+                      unitDisplayOverrides={unitDisplayOverrides}
                     />
                   ))}
                   {measurements.length > 1 && (
                     <div className="flex items-center justify-between border-t pt-1 mt-1 text-xs font-medium">
                       <span>Total</span>
-                      <span className="font-mono">{formatDistance(totalDistance)}</span>
+                      <span className="font-mono">{formatDistance(totalDistance, unitDisplayOverrides)}</span>
                     </div>
                   )}
                 </div>
@@ -332,6 +334,7 @@ export function MeasureOverlay() {
         hoverPosition={snapIndicatorPos}
         projectToScreen={projectToScreen}
         constraintEdge={measurementConstraintEdge}
+        unitDisplayOverrides={unitDisplayOverrides}
       />
     </>
   );
@@ -343,16 +346,19 @@ interface MeasurementItemProps {
   onDelete: (id: string) => void;
   /** When set, show real-world E/N/H for the measurement's two endpoints. */
   geoAnchor: AnchorGeoreference | null;
+  /** The user's per-unit-type display override (#1573), so the measurement
+   *  readout honours the same unit the rest of the app is showing. */
+  unitDisplayOverrides: Record<string, string>;
 }
 
-function MeasurementItem({ measurement, index, onDelete, geoAnchor }: MeasurementItemProps) {
+function MeasurementItem({ measurement, index, onDelete, geoAnchor, unitDisplayOverrides }: MeasurementItemProps) {
   // Pure display: derived from the stored endpoints, nothing is persisted.
   const components = distanceComponents(measurement.start, measurement.end);
   return (
     <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-xs">#{index + 1}</span>
-        <span className="font-mono font-medium">{formatDistance(measurement.distance)}</span>
+        <span className="font-mono font-medium">{formatDistance(measurement.distance, unitDisplayOverrides)}</span>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -364,10 +370,10 @@ function MeasurementItem({ measurement, index, onDelete, geoAnchor }: Measuremen
       </div>
       <div className="overflow-x-auto">
         <div className="font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-          {formatAxisDeltas(components)}
+          {formatAxisDeltas(components, unitDisplayOverrides)}
         </div>
         <div className="font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">
-          {formatHorizontalVertical(components)}
+          {formatHorizontalVertical(components, unitDisplayOverrides)}
         </div>
         {/* Inclination, derived from the same two endpoints (#2199 §4). */}
         <div className="font-mono text-[10px] leading-tight text-muted-foreground whitespace-nowrap">

@@ -1,5 +1,19 @@
 # @ifc-lite/sdk
 
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies [[`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568), [`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797), [`1de1696`](https://github.com/LTplus-AG/ifc-lite/commit/1de16969db1c56f4901e4af49da74085bae3b3fe), [`ed9acf0`](https://github.com/LTplus-AG/ifc-lite/commit/ed9acf0d5a11c291caa70165e9d673812c75c7fa)]:
+  - @ifc-lite/parser@4.0.2
+  - @ifc-lite/encoding@2.0.0
+  - @ifc-lite/lists@1.23.0
+  - @ifc-lite/ids@1.15.44
+  - @ifc-lite/bcf@1.18.1
+  - @ifc-lite/create@2.0.3
+  - @ifc-lite/data@3.2.4
+  - @ifc-lite/export@2.8.5
+
 ## 2.1.0
 
 ### Minor Changes

@@ -149,9 +149,12 @@ macro_rules! mesh_or_skip {
         if !fixture_present() {
             return;
         }
-        process($id).unwrap_or_else(|| {
-            panic!("fixture present but host {} did not process", $id)
-        })
+        // Bind once: `$id` must not be expanded twice (call + panic message),
+        // or an argument with side effects would run twice, and it must not be
+        // evaluated at all when the fixture is absent.
+        let host_id = $id;
+        process(host_id)
+            .unwrap_or_else(|| panic!("fixture present but host {host_id} did not process"))
     }};
 }
 

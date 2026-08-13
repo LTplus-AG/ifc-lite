@@ -33,7 +33,8 @@
 //!   f64 round trip is what turns a shared zone boundary into a crack.
 
 use crate::kernel::arrangement::{boolean, box_mesh, difference_all, union_all, BoolOp, Tri};
-use crate::kernel::mesh_bridge::{orient_outward, signed_volume_of};
+use crate::kernel::mesh_bridge::orient_outward;
+use crate::kernel::signed_volume::signed_volume_of;
 
 /// A zone as the viewer authors it: an oriented box that rotates about the
 /// VERTICAL axis only. Coordinates are the caller's frame; the viewer passes

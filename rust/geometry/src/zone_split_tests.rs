@@ -213,7 +213,7 @@ fn the_pieces_are_closed_solids_and_not_merely_clipped_shells() {
             .iter()
             .map(|t| t.map(|p| [p[0] + 1000.0, p[1] - 500.0, p[2] + 250.0]))
             .collect();
-        let about_far = crate::kernel::mesh_bridge::signed_volume_of(&shifted);
+        let about_far = crate::kernel::signed_volume::signed_volume_of(&shifted);
         assert!(
             (about_far - piece.volume).abs() < 1e-6,
             "piece {:?} is not closed: {} about the origin, {} about a far point",

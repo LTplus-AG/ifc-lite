@@ -1666,6 +1666,13 @@ export function resolve2d(a: Contours2D): Contours2D;
  * clip of an open shell produces pieces whose volumes are arbitrary rather
  * than approximate.
  *
+ * A triangle with an out-of-range index or a non-finite coordinate is DROPPED
+ * rather than reported, matching `kernel::mesh_bridge::mesh_to_tris`, which is
+ * panic-free for the same reason: the alternative is a crash deep in the
+ * predicates. It does mean a malformed caller can open the surface and get
+ * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
+ * above is the caller's responsibility and not a formality.
+ *
  * ```javascript
  * const split = splitMeshByZones(positions, indices, new Float64Array([
  *   0, 0, 0, 10, 10, 10, 0,

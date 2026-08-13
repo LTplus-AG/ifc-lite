@@ -122,16 +122,6 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
-/// Enclosed volume of a closed triangle soup, in the operands' own units.
-///
-/// `signed_volume6` is the kernel's own divergence sum and returns SIX times
-/// the volume (it skips the constant divide per tetra). Callers outside the
-/// keep/flip rules want the volume itself, and a second hand-rolled sum in
-/// another module is how two producers of the same number start to disagree.
-pub(crate) fn signed_volume_of(tris: &[Tri]) -> f64 {
-    signed_volume6(tris) / 6.0
-}
-
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
 /// sits within the snap-scatter band of a HOST face plane — and projects
 /// STRICTLY inside that face — onto the plane, then back onto the snap grid.

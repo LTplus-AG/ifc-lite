@@ -19,8 +19,14 @@
  * Three things it refuses to do, each for a reason that already has a
  * precedent in this feature:
  *
- *  - **Run on load.** It is an explicit click, like the apportionment. Clipping
- *    is memory-bandwidth bound; the only lever is doing less of it.
+ *  - **Run on load.** It is an explicit click, like the apportionment, and for
+ *    a stronger reason: an exact arrangement per (element x zone) is orders of
+ *    magnitude dearer than the divergence clip that produces the NUMBERS.
+ *    Measured through this same wasm build on `AC20-FZK-Haus.ifc` with four
+ *    zones tiling its 18 m length: 18 elements produced more than one piece, at
+ *    ~357 ms each (6.4 s in total). So this runs per zone, on demand, over the
+ *    elements that reach that zone, and its cost is reported back to the user
+ *    rather than hidden.
  *  - **Split what the mesher could not prove.** A clip of an open shell
  *    produces pieces whose volumes are arbitrary, not approximate. Those
  *    elements are counted and reported, never quietly dropped.

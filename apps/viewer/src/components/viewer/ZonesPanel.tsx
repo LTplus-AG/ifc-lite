@@ -409,9 +409,9 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                         : 'Nothing to export: no loaded geometry reaches this zone');
                       return;
                     }
-                    const { whole, cut, refused } = result.summary;
+                    const { whole, cut, refused, elapsedMs } = result.summary;
                     toast.success(
-                      `Exported ${whole} whole and ${cut} cut element(s)`
+                      `Exported ${whole} whole and ${cut} cut element(s) in ${(elapsedMs / 1000).toFixed(1)}s`
                       + (refused > 0 ? `, ${refused} skipped (mesh not a proven closed solid)` : ''),
                     );
                   }}

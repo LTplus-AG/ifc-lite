@@ -19,7 +19,7 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { EntityExtractor, IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from '@ifc-lite/export';
 import { useViewerStore } from '@/store/index.js';
 import { emitZoneSpatialZones, removeZoneSpatialZones } from './useZoneSpatialZones.js';
@@ -125,6 +125,29 @@ function exportStep(store: IfcDataStore): string {
   const view = useViewerStore.getState().getMutationView('m1');
   const result = new StepExporter(store, view as never).export({ schema: 'IFC4', applyMutations: true });
   return new TextDecoder().decode(result.content);
+}
+
+/**
+ * Re-parse an exported file and return each zone's placement point, by zone
+ * name, following IfcSpatialZone -> ObjectPlacement -> RelativePlacement ->
+ * Location. Reading the real graph rather than the text is what makes the
+ * coordinate assertion about the ZONE rather than about some point.
+ */
+async function zonePlacements(step: string): Promise<Map<string, number[]>> {
+  const store = await parse(step);
+  const extractor = new EntityExtractor(store.source);
+  const attributes = (id: number): unknown[] => {
+    const ref = store.entityIndex.byId.get(id);
+    return ref ? (extractor.extractEntity(ref)?.attributes ?? []) : [];
+  };
+  const out = new Map<string, number[]>();
+  for (const zoneId of store.entityIndex.byType.get('IFCSPATIALZONE') ?? []) {
+    const zone = attributes(zoneId);
+    const axis = attributes(zone[5] as number)[1] as number;
+    const location = attributes(axis)[0] as number;
+    out.set(String(zone[2]), attributes(location)[0] as number[]);
+  }
+  return out;
 }
 
 describe('emitZoneSpatialZones: what reaches the model', () => {
@@ -238,6 +261,21 @@ describe('removeZoneSpatialZones', () => {
     assert.doesNotMatch(step, /=IFCRELREFERENCEDINSPATIALSTRUCTURE\(/);
   });
 
+  it('clears a model the set no longer reaches, on the next emit', () => {
+    // The zones moved off this model entirely. It is absent from the
+    // membership map, so the emit loop never visits it, and its copies would
+    // otherwise stay in its file describing takt areas that no longer touch it.
+    emitZoneSpatialZones(ZONE_SET);
+    assert.equal(zoneEntities().length, 2);
+
+    useViewerStore.setState({ zoneAssignments: new Map() } as never);
+    const again = emitZoneSpatialZones(ZONE_SET);
+    assert.equal(again.blocked, 'no-members');
+    assert.equal(again.staleRemoved, 2);
+    assert.equal(zoneEntities().length, 0);
+    assert.doesNotMatch(exportStep(store), /=IFCSPATIALZONE\(/);
+  });
+
   it('reports nothing removed when nothing was emitted', () => {
     assert.equal(removeZoneSpatialZones(ZONE_SET).removed, 0);
   });
@@ -284,11 +322,14 @@ describe('emitZoneSpatialZones: whose frame', () => {
     } as never);
 
     emitZoneSpatialZones(ZONE_SET);
-    const step = exportStep(store);
+    // Read the coordinate through the PLACEMENT CHAIN of a re-parsed zone
+    // rather than off the serialized text: a regex for the number would also
+    // match an unrelated point, and would break on a formatting change that
+    // leaves the zone exactly where it belongs.
+    const placed = await zonePlacements(exportStep(store));
     // Takt A's base centre is render x = 5, so this model's own +1000 shift
     // puts it at 1005 and the scene's -7 would put it at -2.
-    assert.match(step, /=IFCCARTESIANPOINT\(\(1005\.?,/);
-    assert.doesNotMatch(step, /=IFCCARTESIANPOINT\(\(-2\.?,/);
+    assert.deepEqual(placed.get('Takt A')?.slice(0, 1), [1005]);
   });
 });
 

@@ -133,7 +133,11 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
               return;
             }
             if (result.blocked === 'no-members') {
-              toast.info('No element is in a zone of this set, so there is nothing to reference');
+              toast.info(
+                result.staleRemoved > 0
+                  ? `No element is in a zone of this set any more, so ${result.staleRemoved.toLocaleString()} emitted zone(s) were removed`
+                  : 'No element is in a zone of this set, so there is nothing to reference',
+              );
               return;
             }
             if (result.blocked === 'duplicate-set-name') {
@@ -162,7 +166,8 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
             toast.success(
               `Emitted ${zones.toLocaleString()} IfcSpatialZone(s) across ${written.length} model(s), `
               + `referencing ${elements.toLocaleString()} element(s)`
-              + (replaced > 0 ? `, replacing ${replaced.toLocaleString()} from an earlier run` : ''),
+              + (replaced > 0 ? `, replacing ${replaced.toLocaleString()} from an earlier run` : '')
+              + (result.staleRemoved > 0 ? `, and clearing ${result.staleRemoved.toLocaleString()} from a model this set no longer reaches` : ''),
             );
           }}
         >

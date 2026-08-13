@@ -856,6 +856,7 @@
     "SpatialZoneBuildResult: interface",
     "SpatialZoneInStoreParams: interface",
     "SpatialZoneInput: interface",
+    "SpatialZoneType: type",
     "StairParams: interface",
     "StoreyInfo: interface",
     "StoreyParams: interface",

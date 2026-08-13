@@ -196,7 +196,7 @@ export function emitSpatialZones(
   const result = addSpatialZonesToStore(editor, anchor, {
     LongName: zoneSet.name,
     zones: zoneSet.zones.map((zone) => zoneToIfcWorld(zone, frame)),
-    referencedElements: referenced,
+    RelatedElements: referenced,
   });
 
   return {

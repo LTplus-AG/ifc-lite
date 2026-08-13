@@ -127,9 +127,10 @@ The property and quantity write-back (#2508 item 3b,
   mesh pipeline resolved every placement chain to world before the user drew
   the box against it. Inverting that chain to recover a local offset would be
   arithmetic with nothing to gain.
-- Representation as an extruded rectangle profile carrying `rotationY` in the
-  placement rather than in the profile, so a receiving tool reads a rectangle
-  as one. A prism zone emits its convex footprint as an
+- Representation as an extruded rectangle profile carrying the zone's rotation
+  in the placement rather than in the profile, so a receiving tool reads a
+  rectangle as one. The viewer's `rotationY` becomes `RotationZ` on the way in:
+  the output is Z-up, and the axis swap flips the sign with it. A prism zone emits its convex footprint as an
   `IfcArbitraryClosedProfileDef`, with the points made relative to the
   placement.
 - `IfcRelReferencedInSpatialStructure` per zone, listing every element the

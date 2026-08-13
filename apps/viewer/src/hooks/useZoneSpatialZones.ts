@@ -64,6 +64,9 @@ export interface ModelEmitOutcome {
 
 export interface ZoneEmitResult {
   models: ModelEmitOutcome[];
+  /** Zones swept out of models this set no longer reaches at all. Counted
+   *  apart from `zonesReplaced`, which is a model that got new zones back. */
+  staleRemoved: number;
   /** Set when nothing was emitted anywhere, and why. */
   blocked: 'collab-role' | 'no-members' | 'duplicate-set-name' | null;
   elapsedMs: number;
@@ -164,22 +167,33 @@ function membersByModel(zoneSet: ZoneSet): Map<string, ZoneMembership[]> {
 /** Emit `zoneSet` into every model it reaches. */
 export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   const state = useViewerStore.getState();
-  if (!state.canCollabEdit()) return { models: [], blocked: 'collab-role', elapsedMs: 0 };
+  if (!state.canCollabEdit()) return { models: [], staleRemoved: 0, blocked: 'collab-role', elapsedMs: 0 };
   // The set's name is the only handle the FILE has on which run wrote which
   // zones (`LongName`), so two sets sharing one would make each emission delete
   // the other's zones. Refused for the same reason, and by the same test, as
   // the write-back's own name collision.
-  if (collidesByName(zoneSet)) return { models: [], blocked: 'duplicate-set-name', elapsedMs: 0 };
+  if (collidesByName(zoneSet)) return { models: [], staleRemoved: 0, blocked: 'duplicate-set-name', elapsedMs: 0 };
 
   const t0 = performance.now();
   const byModel = membersByModel(zoneSet);
-  if (byModel.size === 0) return { models: [], blocked: 'no-members', elapsedMs: performance.now() - t0 };
 
   // The scene-wide frame, resolved by the readouts' own rule, is only the
   // FALLBACK here: each model is written in its own frame (see `frameFor`).
   const scene = resolveRenderFrame(state.models, state.geometryResult);
 
   const contexts = new Map<string, ModelContext | null>();
+
+  // A model this set no longer reaches - every zone moved off it, or the set
+  // shrank - is not in `byModel` and so is never visited by the emit loop. Its
+  // zones from an earlier run would stay in its file forever, describing takt
+  // areas that no longer touch it. Swept FIRST, and unconditionally, so that
+  // holds even when nothing is left to emit anywhere.
+  const stale = sweepModelsWithoutMembers(zoneSet, byModel, contexts, scene);
+
+  if (byModel.size === 0) {
+    return { models: [], staleRemoved: stale, blocked: 'no-members', elapsedMs: performance.now() - t0 };
+  }
+
   const outcomes: ModelEmitOutcome[] = [];
   const touchedModels: string[] = [];
 
@@ -201,7 +215,31 @@ export function emitZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitResult {
   }
 
   if (touchedModels.length > 0) useViewerStore.getState().markModelsDirty(touchedModels);
-  return { models: outcomes, blocked: null, elapsedMs: performance.now() - t0 };
+  return { models: outcomes, staleRemoved: stale, blocked: null, elapsedMs: performance.now() - t0 };
+}
+
+/** Take this set's zones out of every model it no longer reaches. Returns how
+ *  many zones went. */
+function sweepModelsWithoutMembers(
+  zoneSet: ZoneSet,
+  byModel: Map<string, ZoneMembership[]>,
+  contexts: Map<string, ModelContext | null>,
+  scene: RenderFrameOffsets,
+): number {
+  const state = useViewerStore.getState();
+  const touched: string[] = [];
+  let removed = 0;
+  for (const [modelId] of state.mutationViews) {
+    if (byModel.has(modelId)) continue;
+    const context = contextFor(modelId, contexts, scene);
+    if (!context) continue;
+    const count = removeSpatialZones(context.editor, zoneSet.name);
+    if (count === 0) continue;
+    removed += count;
+    touched.push(modelId);
+  }
+  if (touched.length > 0) state.markModelsDirty(touched);
+  return removed;
 }
 
 export interface ZoneEmitRemoval {

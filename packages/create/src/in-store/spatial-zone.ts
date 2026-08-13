@@ -33,6 +33,7 @@
  */
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
+import { IfcSpatialZoneTypeEnum } from '@ifc-lite/parser';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { emitPolygonProfile, ownerHistoryRef } from './_emit-helpers.js';
@@ -67,19 +68,36 @@ export interface SpatialZoneInput {
   Footprint?: Array<[number, number]>;
 }
 
+/**
+ * A `PredefinedType` this builder accepts: the SCHEMA's own enum, or any of its
+ * values as a plain string.
+ *
+ * Typed rather than left as `string` because the value is written as a STEP
+ * ENUMERATION, so anything outside the set produces an `IfcSpatialZone` no
+ * reader can parse. Taken from the generated schema (`@ifc-lite/parser`) rather
+ * than re-listed here: a second copy of an enum is a second thing to keep in
+ * step with the schema.
+ */
+export type SpatialZoneType = IfcSpatialZoneTypeEnum | `${IfcSpatialZoneTypeEnum}`;
+
+const SPATIAL_ZONE_TYPES: ReadonlySet<string> = new Set<string>(Object.values(IfcSpatialZoneTypeEnum));
+
 export interface SpatialZoneInStoreParams {
   /** `IfcSpatialZone.LongName` - the zone SET's name, e.g. "Takt areas". */
   LongName: string;
   zones: SpatialZoneInput[];
   /**
-   * `globalId -> expressIds` the zone references, per zone index. An element
-   * appears under every zone it touches, straddlers included.
+   * `IfcRelReferencedInSpatialStructure.RelatedElements` per zone, by zone
+   * index: the expressIds each zone references. An element appears under every
+   * zone it touches, straddlers included.
    */
-  referencedElements: Array<number[]>;
-  /** `IfcSpatialZone.PredefinedType`. CONSTRUCTION is what a takt area is;
-   *  the enum also has FIRESAFETY, LIGHTING, OCCUPANCY, SECURITY, THERMAL,
-   *  TRANSPORT, VENTILATION, USERDEFINED, NOTDEFINED. */
-  PredefinedType?: string;
+  RelatedElements: Array<number[]>;
+  /** `IfcSpatialZone.PredefinedType`. CONSTRUCTION is what a takt area is. */
+  PredefinedType?: SpatialZoneType;
+  /** `IfcSpatialZone.ObjectType`, which IFC4 REQUIRES when `PredefinedType` is
+   *  `USERDEFINED` (rule `CorrectPredefinedType`): the enum says "named
+   *  elsewhere", and `ObjectType` is where. */
+  ObjectType?: string;
 }
 
 export interface SpatialZoneBuildResult {
@@ -87,6 +105,47 @@ export interface SpatialZoneBuildResult {
   zoneIds: number[];
   /** One `IfcRelReferencedInSpatialStructure` per zone that had elements. */
   relReferencedIds: number[];
+}
+
+/**
+ * Check one zone, and report whether its shape is a polygon.
+ *
+ * ONE predicate decides the shape, so the rotation and the profile cannot
+ * disagree: keying the rotation off "has a Footprint" while the profile needs
+ * three points would silently emit a rectangle with the caller's rotation
+ * discarded. A Footprint too small to be a polygon is a caller error, not a
+ * reason to emit a different shape than was asked for.
+ */
+function validateZone(zone: SpatialZoneInput): boolean {
+  const usePolygon = zone.Footprint !== undefined;
+  if (usePolygon && zone.Footprint!.length < 3) {
+    throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" has a Footprint of fewer than 3 points`);
+  }
+  for (const value of zone.Position) {
+    if (!Number.isFinite(value)) {
+      throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite Position`);
+    }
+  }
+  if (zone.RotationZ !== undefined && !Number.isFinite(zone.RotationZ)) {
+    throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite RotationZ`);
+  }
+  const extents: Array<readonly [string, number]> = usePolygon
+    // A polygon carries its own extents, so Width and Depth are not read.
+    ? [['Height', zone.Height]]
+    : [['Width', zone.Width], ['Depth', zone.Depth], ['Height', zone.Height]];
+  for (const [name, value] of extents) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite positive ${name}`);
+    }
+  }
+  if (usePolygon) {
+    for (const point of zone.Footprint!) {
+      if (!Number.isFinite(point[0]) || !Number.isFinite(point[1])) {
+        throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" has a non-finite Footprint point`);
+      }
+    }
+  }
+  return usePolygon;
 }
 
 /**
@@ -117,30 +176,28 @@ export function addSpatialZonesToStore(
     throw new Error('addSpatialZonesToStore: IfcSpatialZone requires IFC4 or later');
   }
 
+  const predefinedType = params.PredefinedType ?? 'CONSTRUCTION';
+  if (!SPATIAL_ZONE_TYPES.has(predefinedType)) {
+    throw new Error(`addSpatialZonesToStore: "${predefinedType}" is not an IfcSpatialZoneTypeEnum value`);
+  }
+  // IFC4's `CorrectPredefinedType` rule: USERDEFINED means "the type is named
+  // in ObjectType", so emitting it with ObjectType = $ is a file that fails
+  // that rule while looking fine.
+  if (predefinedType === 'USERDEFINED' && !params.ObjectType) {
+    throw new Error('addSpatialZonesToStore: PredefinedType USERDEFINED requires an ObjectType');
+  }
+
+  // EVERY zone is checked before the FIRST entity is added. Validating inside
+  // the emit loop would leave a caller who passed one bad zone with the good
+  // ones already written into the overlay and an exception saying the call
+  // failed - a half-applied build is worse than either outcome.
+  const shapes = params.zones.map((zone) => validateZone(zone));
+
   const zoneIds: number[] = [];
   const relReferencedIds: number[] = [];
 
   params.zones.forEach((zone, index) => {
-    if (!Number.isFinite(zone.Height) || zone.Height <= 0) {
-      throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite positive Height`);
-    }
-    // ONE predicate decides the shape, so the rotation and the profile cannot
-    // disagree: keying the rotation off "has a Footprint" while the profile
-    // needs three points would silently emit a rectangle with the caller's
-    // rotation discarded. A Footprint too small to be a polygon is a caller
-    // error, not a reason to emit a different shape than was asked for.
-    const usePolygon = zone.Footprint !== undefined;
-    if (usePolygon && (zone.Footprint as Array<[number, number]>).length < 3) {
-      throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" has a Footprint of fewer than 3 points`);
-    }
-    // Only meaningful for a box: a polygon carries its own extents.
-    if (!usePolygon) {
-      for (const [name, value] of [['Width', zone.Width], ['Depth', zone.Depth]] as const) {
-        if (!Number.isFinite(value) || value <= 0) {
-          throw new Error(`addSpatialZonesToStore: zone "${zone.Name}" needs a finite positive ${name}`);
-        }
-      }
-    }
+    const usePolygon = shapes[index];
 
     const position = toNativePoint3(anchor, zone.Position);
     const height = toNativeLength(anchor, zone.Height);
@@ -217,11 +274,11 @@ export function addSpatialZonesToStore(
       ownerHistoryRef(anchor.ownerHistoryId),
       zone.Name,
       null,
-      null,
+      params.ObjectType ?? null,
       `#${placementId}`,
       `#${productShapeId}`,
       params.LongName,
-      `.${params.PredefinedType ?? 'CONSTRUCTION'}.`,
+      `.${predefinedType}.`,
     ] as Parameters<StoreEditor['addEntity']>[1]).expressId;
     zoneIds.push(zoneId);
 
@@ -229,7 +286,7 @@ export function addSpatialZonesToStore(
     // element has exactly one, and re-pointing it would move the element out of
     // the storey that owns it. Referencing is additive and many-to-many, which
     // is what lets a straddler belong to both zones it crosses.
-    const elements = params.referencedElements[index] ?? [];
+    const elements = params.RelatedElements[index] ?? [];
     if (elements.length > 0) {
       relReferencedIds.push(editor.addEntity('IfcRelReferencedInSpatialStructure', [
         generateIfcGuid(anchor.guidRandom),

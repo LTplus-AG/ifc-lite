@@ -43,6 +43,7 @@ export {
   type SpatialZoneInput,
   type SpatialZoneInStoreParams,
   type SpatialZoneBuildResult,
+  type SpatialZoneType,
 } from './in-store/spatial-zone.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';

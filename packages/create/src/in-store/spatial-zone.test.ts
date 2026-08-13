@@ -59,7 +59,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [BOX],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
 
     const zone = view.getNewEntities().find((e) => e.expressId === result.zoneIds[0]);
@@ -81,7 +81,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [BOX],
-      referencedElements: [[11, 22, 33]],
+      RelatedElements: [[11, 22, 33]],
     });
 
     const entities = view.getNewEntities();
@@ -100,7 +100,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [BOX, { ...BOX, Name: 'Takt B', Position: [16, 20, 0] }],
-      referencedElements: [[77], [77]],
+      RelatedElements: [[77], [77]],
     });
 
     expect(result.zoneIds).toHaveLength(2);
@@ -114,7 +114,7 @@ describe('addSpatialZonesToStore', () => {
     addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [BOX],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
     expect(view.getNewEntities().some((e) => e.type === 'IfcRelReferencedInSpatialStructure')).toBe(false);
   });
@@ -126,7 +126,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, { ...ANCHOR, lengthUnitScale: 0.001 }, {
       LongName: 'Takt areas',
       zones: [BOX],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
 
     const entities = view.getNewEntities();
@@ -148,7 +148,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [{ ...BOX, RotationZ: Math.PI / 2 }],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
 
     const entities = view.getNewEntities();
@@ -168,7 +168,7 @@ describe('addSpatialZonesToStore', () => {
   it('emits an unrotated placement with no RefDirection at all', () => {
     const { editor, view } = session();
     const result = addSpatialZonesToStore(editor, ANCHOR, {
-      LongName: 'Takt areas', zones: [BOX], referencedElements: [[]],
+      LongName: 'Takt areas', zones: [BOX], RelatedElements: [[]],
     });
     const entities = view.getNewEntities();
     const zone = entities.find((e) => e.expressId === result.zoneIds[0]);
@@ -185,7 +185,7 @@ describe('addSpatialZonesToStore', () => {
     const result = addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [{ ...BOX, Footprint: [[10, 20], [16, 20], [16, 24]] }],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
 
     const entities = view.getNewEntities();
@@ -215,7 +215,7 @@ describe('addSpatialZonesToStore', () => {
 
     const { editor } = session({ ...ANCHOR, schema: 'IFC2X3' });
     expect(() => addSpatialZonesToStore(editor, { ...ANCHOR, schema: 'IFC2X3' }, {
-      LongName: 'Takt areas', zones: [BOX], referencedElements: [[]],
+      LongName: 'Takt areas', zones: [BOX], RelatedElements: [[]],
     })).toThrow(/IFC4 or later/);
   });
 
@@ -227,7 +227,7 @@ describe('addSpatialZonesToStore', () => {
     expect(() => addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [{ ...BOX, Footprint: [[0, 0], [1, 0]] }],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     })).toThrow(/fewer than 3 points/);
   });
 
@@ -239,7 +239,7 @@ describe('addSpatialZonesToStore', () => {
       expect(() => addSpatialZonesToStore(editor, ANCHOR, {
         LongName: 'Takt areas',
         zones: [{ ...BOX, ...bad }],
-        referencedElements: [[]],
+        RelatedElements: [[]],
       })).toThrow(/finite positive (Width|Depth)/);
     }
   });
@@ -251,9 +251,61 @@ describe('addSpatialZonesToStore', () => {
     addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [{ ...BOX, Width: 0, Depth: 0, Footprint: [[10, 20], [16, 20], [16, 24]] }],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     });
     expect(view.getNewEntities().some((e) => e.type === 'IfcArbitraryClosedProfileDef')).toBe(true);
+  });
+
+  it('writes NOTHING when a later zone is invalid', () => {
+    // The one that makes prevalidation worth having: a caller told the call
+    // failed, with the first zone already in the overlay, has a half-built
+    // takt plan and no way to know it.
+    const { editor, view } = session();
+    expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [BOX, { ...BOX, Name: 'Takt B', Height: 0 }],
+      RelatedElements: [[], []],
+    })).toThrow(/Height/);
+    expect(view.getNewEntities()).toHaveLength(0);
+  });
+
+  it('refuses a PredefinedType outside IfcSpatialZoneTypeEnum', () => {
+    const { editor } = session();
+    expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [BOX],
+      RelatedElements: [[]],
+      PredefinedType: 'TAKT' as never,
+    })).toThrow(/IfcSpatialZoneTypeEnum/);
+  });
+
+  it('requires ObjectType with USERDEFINED, and writes it', () => {
+    // IFC4's `CorrectPredefinedType`: USERDEFINED means the type is named in
+    // ObjectType, so emitting `$` there is a file that breaks the rule.
+    const { editor, view } = session();
+    expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas', zones: [BOX], RelatedElements: [[]], PredefinedType: 'USERDEFINED',
+    })).toThrow(/ObjectType/);
+
+    const result = addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [BOX],
+      RelatedElements: [[]],
+      PredefinedType: 'USERDEFINED',
+      ObjectType: 'Takt area',
+    });
+    const zone = view.getNewEntities().find((e) => e.expressId === result.zoneIds[0]);
+    expect(zone?.attributes[4]).toBe('Takt area');
+    expect(zone?.attributes[8]).toBe('.USERDEFINED.');
+  });
+
+  it('refuses a non-finite Position rather than emitting NaN coordinates', () => {
+    const { editor } = session();
+    expect(() => addSpatialZonesToStore(editor, ANCHOR, {
+      LongName: 'Takt areas',
+      zones: [{ ...BOX, Position: [Number.NaN, 0, 0] }],
+      RelatedElements: [[]],
+    })).toThrow(/finite Position/);
   });
 
   it('refuses a zone with no height rather than emitting a flat solid', () => {
@@ -261,7 +313,7 @@ describe('addSpatialZonesToStore', () => {
     expect(() => addSpatialZonesToStore(editor, ANCHOR, {
       LongName: 'Takt areas',
       zones: [{ ...BOX, Height: 0 }],
-      referencedElements: [[]],
+      RelatedElements: [[]],
     })).toThrow(/Height/);
   });
 });

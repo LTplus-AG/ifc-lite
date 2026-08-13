@@ -21,7 +21,7 @@ use crate::mesh::Mesh;
 /// vertex's rounding independently, so the sum drifts by roughly
 /// `surface_area * SNAP_GRID` (plus, at far-from-origin offsets, the
 /// coarser f32-ulp term the `Mesh` positions already carried on the way in).
-/// Because it delegates to [`signed_volume6`], which sums about the
+/// Because it delegates to `signed_volume6`, which sums about the
 /// operand's own AABB centre rather than a fixed point, that drift is the
 /// ONLY thing that moves the reading — a world-origin implementation would
 /// additionally vary with the reference point itself, wrong by orders of
@@ -31,9 +31,9 @@ use crate::mesh::Mesh;
 /// hard against that class of regression). It is still not the mesh's actual
 /// volume. Callers that need a trustworthy reading (e.g. reporting a split
 /// zone piece's volume) must establish closedness first, same requirement
-/// [`signed_volume6`] itself carries.
+/// `signed_volume6` itself carries.
 ///
-/// Delegates to [`signed_volume_of`] - itself one line over [`signed_volume6`],
+/// Delegates to `signed_volume_of` - itself one line over `signed_volume6`,
 /// which returns SIX times the volume - rather than dividing here as well.
 /// #2579 landed that helper an hour before this file did, with a doc that says
 /// exactly why the divide belongs in one place: "a caller that wants the VOLUME
@@ -41,7 +41,7 @@ use crate::mesh::Mesh;
 /// module, which is how two producers of the same number start to disagree."
 ///
 /// The reference point is what makes the shared implementation matter:
-/// [`signed_volume6`] deliberately sums about the OPERAND'S OWN AABB CENTRE
+/// `signed_volume6` deliberately sums about the OPERAND'S OWN AABB CENTRE
 /// rather than the world origin. That
 /// choice is not cosmetic — see `signed_volume::signed_volume6`'s doc for the
 /// #198779 incident where a world-origin reference turned a crack sliver on a
@@ -73,7 +73,7 @@ use crate::mesh::Mesh;
 /// sums about the world origin (fine for its own callers, which only ever see
 /// frame-local meshes near the origin — not true of an arbitrary zone piece),
 /// and `kernel::mesh_bridge`'s `#[cfg(test)]`-only helper duplicates that same
-/// world-origin arithmetic for test-only use. Reusing [`signed_volume6`]
+/// world-origin arithmetic for test-only use. Reusing `signed_volume6`
 /// avoids adding another divergence-theorem implementation to reconcile.
 pub fn mesh_volume(mesh: &Mesh) -> f64 {
     signed_volume_of(&mesh_to_tris(mesh))

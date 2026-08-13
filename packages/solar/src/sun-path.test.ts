@@ -174,10 +174,11 @@ describe('domeGraticule', () => {
   // the progress test stepMinutes/dayStep/azimuthStep get — so a step too
   // small to advance the loop (e.g. 1e-15) still hung: `90 + 1e-15 === 90`
   // and `360 + 1e-15 === 360` (the double ULP near those magnitudes is
-  // ~1.4e-14 and ~5.7e-14 respectively, both larger than 1e-15). Confirmed
-  // the underlying hang is real via a bounded probe (see
-  // sun-path.hang-probe.test.ts) rather than letting the unguarded loop run
-  // in this suite.
+  // ~1.4e-14 and ~5.7e-14 respectively, both larger than 1e-15). This calls
+  // the real `domeGraticule` guard directly rather than a modeled loop copy —
+  // it is safe (not hang-prone) only because the guard runs before either
+  // loop starts; if that check is ever moved after the loop, this test would
+  // hang instead of failing.
   it('rejects a positive altitudeStep/resolution too small to advance their loops', () => {
     expect(() => domeGraticule({ altitudeStep: 1e-15 })).toThrow(/altitudeStep/);
     expect(() => domeGraticule({ resolution: 1e-15 })).toThrow(/resolution/);

@@ -83,6 +83,7 @@ try {
   // Show spatial hierarchy
   console.log('\n=== Spatial Hierarchy ===');
   const hierarchy = result.spatialHierarchy;
+  // eslint-disable-next-line no-inner-declarations -- a hand-run scratch script
   function printNode(node, indent = 0) {
     const prefix = '  '.repeat(indent);
     console.log(`${prefix}- ${node.name} (${node.type === 1 ? 'Project' : node.type === 2 ? 'Site' : node.type === 3 ? 'Building' : node.type === 4 ? 'Storey' : node.type === 5 ? 'Space' : 'Element'})`);

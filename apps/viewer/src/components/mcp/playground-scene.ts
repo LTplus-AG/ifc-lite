@@ -295,6 +295,4 @@ export function createScene(container: HTMLElement): SceneHandle {
     },
   };
 
-  // Avoid "unused" lint flag on the modelRef helper.
-  void modelRef;
 }

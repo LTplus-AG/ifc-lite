@@ -29,6 +29,43 @@ pub struct NarrowResult {
     pub bounds: Aabb,
 }
 
+/// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
+/// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
+/// larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
+/// `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` — see
+/// that function's doc for the derivation; kept here rather than shared
+/// because the two crates serve different callers.
+const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
+
+/// Penetration-depth floor below which a computed overlap cannot be
+/// distinguished from float32 rounding noise, scaled to the pair's own
+/// coordinate magnitude (not a fixed constant — infra models sit far from the
+/// origin, where a fixed epsilon would be far too tight, and small models sit
+/// near it, where a fixed epsilon would be far too loose).
+///
+/// `tri_mesh.rs` ingests geometry from f32 buffers and stores/queries it in
+/// f64, so f64 arithmetic cannot recover precision the source data never
+/// had: two surfaces authored to be flush round to adjacent f32 values, and
+/// the resulting "penetration" is bit-noise at the ULP of whichever operand
+/// coordinate is largest, not a measured overlap. Extent is the max abs
+/// coordinate over both elements' AABBs (matching `near_band_from_extent`'s
+/// use of the actual compared coordinates), floored at 1.0 so a model near
+/// the origin still gets the single-unit ULP, not zero.
+fn precision_floor(aabb_a: &Aabb, aabb_b: &Aabb) -> f64 {
+    let mut extent = 1.0f64;
+    for b in [aabb_a, aabb_b] {
+        for v in [&b.min, &b.max] {
+            for &c in v {
+                let a = c.abs();
+                if a > extent {
+                    extent = a;
+                }
+            }
+        }
+    }
+    extent * F32_ULP_SCALE
+}
+
 /// Run the narrow phase for a candidate element pair.
 ///
 /// `mode`: `0` = hard, `1` = clearance. `tolerance` and `clearance` carry the
@@ -215,6 +252,26 @@ pub fn test_pair(
             if mesh_depth > 0.0 {
                 penetration = mesh_depth;
             }
+        }
+        // A genuine triangle crossing was found, but the measured depth is at
+        // or below the f32 precision floor for this pair's coordinate scale:
+        // it cannot be distinguished from rounding noise (see
+        // `precision_floor`), so it is not a measured overlap. Reclassify as
+        // `Touch` rather than `Hard` — the crossing still means the surfaces
+        // are in contact, which is real information (this codebase already
+        // distinguishes touching from overlapping, e.g. the viewer's
+        // `clashHideTouching` toggle) — rather than silently dropping the
+        // pair or reporting a fabricated depth.
+        if penetration <= precision_floor(aabb_a, aabb_b) {
+            if !report_touch {
+                return None;
+            }
+            return Some(NarrowResult {
+                status: ClashStatus::Touch,
+                distance: 0.0,
+                point,
+                bounds: contact_bounds,
+            });
         }
         return Some(NarrowResult {
             status: ClashStatus::Hard,

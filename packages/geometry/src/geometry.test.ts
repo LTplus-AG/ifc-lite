@@ -684,6 +684,40 @@ describe('CoordinateHandler', () => {
       expect(info.wasmRtcOffset).toBeUndefined();
     });
 
+    it('surfaces the metadata on the batch processMeshes path too (#2526)', () => {
+      // The sync GeometryProcessor.process() path goes through processMeshes,
+      // not processMeshesIncremental + getFinalCoordinateInfo. Dropping the
+      // rtc offset there makes every downstream georef consumer read the
+      // rebased bounds as if they were absolute — the map-conversion math
+      // then loses the re-based site offset (height AND position).
+      handler.setWasmMetadata(0.001, { x: 312018.898, y: 5996169.654, z: 14 });
+      const info = handler.processMeshes([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([0, 0, 0, 10, 10, 10]),
+        }),
+      ]);
+
+      expect(info.lengthUnitScale).toBe(0.001);
+      expect(info.wasmRtcOffset).toEqual({ x: 312018.898, y: 5996169.654, z: 14 });
+    });
+
+    it('keeps lengthUnitScale on the processMeshes large-coordinate shift branch', () => {
+      // No wasm RTC (offset null) but a known unit scale; the TS-side shift
+      // kicks in for >10km coordinates and must not drop the metadata.
+      handler.setWasmMetadata(0.001, null);
+      const info = handler.processMeshes([
+        createTestMesh({
+          expressId: 1,
+          positions: new Float32Array([20000, 20000, 0, 20010, 20010, 10]),
+        }),
+      ]);
+
+      expect(info.hasLargeCoordinates).toBe(true);
+      expect(info.lengthUnitScale).toBe(0.001);
+      expect(info.wasmRtcOffset).toBeUndefined();
+    });
+
     it('clears metadata on reset', () => {
       handler.setWasmMetadata(0.001, { x: 1, y: 2, z: 3 });
       handler.reset();

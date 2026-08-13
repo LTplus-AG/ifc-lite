@@ -28,7 +28,7 @@
 import proj4 from 'proj4';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
-import { computeModelCenterInIfcMeters, resolveProjection } from './reproject';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry, resolveProjection } from './reproject';
 import {
   resolveTerrainElevationDetailed,
   type ResolveTerrainElevationOptions,
@@ -127,10 +127,13 @@ export async function computeCesiumModelOrigin(
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
 
+  const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
+  // Map-absolute geometry (#2526): neutralise a conversion the geometry
+  // already carries, or the offsets/rotation get applied twice.
+  mapConversion = effectiveMapConversionForGeometry(mapConversion, mapScale, coordinateInfo);
   const absc = mapConversion.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion.xAxisOrdinate ?? 0.0;
   const center = computeModelCenterInIfcMeters(coordinateInfo);
-  const mapScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
   const horizontalScale = getEffectiveHorizontalScale(
     mapConversion.scale,
     mapScale,
@@ -252,6 +255,14 @@ export async function createCesiumBridge(
   const projDef = await resolveProjection(projectedCRS);
   if (!projDef) return null;
 
+  // Map-absolute geometry (#2526): the Helmert rotation below must use the
+  // same neutralised conversion as `computeCesiumModelOrigin`, or the model
+  // spins by the double-applied XAxis rotation around a correct origin.
+  mapConversion = effectiveMapConversionForGeometry(
+    mapConversion,
+    resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale),
+    coordinateInfo,
+  );
   const absc = mapConversion.xAxisAbscissa ?? 1.0;
   const ordi = mapConversion.xAxisOrdinate ?? 0.0;
   const rotAngle = Math.atan2(ordi, absc);

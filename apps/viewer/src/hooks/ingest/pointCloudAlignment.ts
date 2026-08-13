@@ -71,6 +71,7 @@
 
 import type { ModelGeoref } from './federationAlign.js';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
+import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { totalYupOffset } from '../../lib/geo/ifc-origin.js';
 
 export interface MapConversionParams {
@@ -196,10 +197,19 @@ export interface PointCloudAlignmentTransform {
  * the caller can hide/disable the alignment toggle.
  */
 export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlignmentTransform | null {
-  const conv = georef.mapConversion;
   const lengthUnitScale = georef.lengthUnitScale ?? 1;
   const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
   if (!(mapUnitScale > 0)) return null;
+  // Map-absolute geometry (#2526): a reference model whose geometry already
+  // sits at the declared anchor lives in the SAME absolute frame as the scan,
+  // so the alignment reduces to the viewer shift alone — inverting the
+  // authored conversion would subtract the anchor twice and rotate the cloud
+  // off the model it was scanned against.
+  const conv = effectiveMapConversionForGeometry(
+    georef.mapConversion,
+    mapUnitScale,
+    georef.coordinateInfo,
+  );
   const scale = getEffectiveHorizontalScale(conv.scale, mapUnitScale, lengthUnitScale);
   if (Math.abs(scale) < 1e-12) return null;
 

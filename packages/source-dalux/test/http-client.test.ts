@@ -130,7 +130,7 @@ describe('fetchPage', () => {
     // keep re-sending the same bookmark on what is genuinely the final page
     // (0 items) rather than ever omitting the nextPage link. Matches the
     // original Dalux Box integration (ifc-lite#1761) and the reference
-    // client (bruadam/dalux-build), neither of which errors on this shape.
+    // third-party client (bruadam/dalux-build), neither of which errors on this shape.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
         json: () =>
@@ -166,7 +166,7 @@ describe('fetchPage', () => {
   });
 
   it('treats a page with no nextPage link as the last page, even when metadata reports remaining items', async () => {
-    // Dalux's own reference client (dalux-build's `paginate` helper) never
+    // An unofficial third-party client (dalux-build's `paginate` helper) never
     // treats `totalRemainingItems` as authoritative — it only logs it and
     // stops as soon as `links` has no `nextPage` entry. Real responses (e.g.
     // `/5.1/projects` with exactly one project) can report a positive

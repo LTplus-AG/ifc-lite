@@ -232,7 +232,7 @@ export interface DaluxPageResult {
  * re-sending the same bookmark on what is genuinely the final page (a 0-item
  * page, `totalRemainingItems: 0`) instead of ever omitting the `nextPage`
  * link, matching how the original Dalux Box integration (ifc-lite#1761) and
- * Dalux's own reference client (github.com/bruadam/dalux-build,
+ * An unofficial third-party reference client (github.com/bruadam/dalux-build,
  * `javascript/src/utils/pagination.js`, `paginate()`) both already treat a
  * repeated bookmark: a clean end, not an error. But Dalux's API is not
  * reliable enough to trust that an echoed bookmark *always* means "done" —

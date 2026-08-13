@@ -52,10 +52,24 @@ export async function fetchFilePage(
   return { items: [...page.items], cursor: page.cursor } satisfies PagedItems<SourceFile>;
 }
 
-/** Hard ceiling on pages swept by {@link fetchAllFilePages}. A provider that
+/** Hard ceiling on FILES swept by {@link fetchAllFilePages}. A provider that
  * keeps minting fresh cursors (buggy or malicious) would otherwise loop
- * forever; this trades a clear failure for an unbounded hang. */
-const MAX_FILE_SWEEP_PAGES = 500;
+ * forever; this trades a clear failure for an unbounded hang.
+ *
+ * Counted in items rather than pages on purpose. `ListOptions.limit` is a
+ * "hint only; providers clamp to whatever their API allows"
+ * (`packages/plugin-api/src/types.ts`), so a page is a provider-controlled
+ * unit: a page ceiling means a provider that clamps to 10 items trips at 5 000
+ * files while one that honours the 200-item hint gets 100 000. That makes the
+ * guard fire on container size for some providers and never for others, which
+ * is not what it is for. An item ceiling is the same promise to every
+ * provider, and it is the quantity the runaway actually consumes. */
+const MAX_FILE_SWEEP_ITEMS = 100_000;
+
+/** Belt-and-braces companion to {@link MAX_FILE_SWEEP_ITEMS}: a provider that
+ * mints endless cursors over EMPTY pages would never reach the item ceiling.
+ * Set far above any legitimate listing at the 200-item hint. */
+const MAX_FILE_SWEEP_PAGES = 5_000;
 
 /**
  * Follows every page of a container's file listing and returns them combined,
@@ -77,16 +91,22 @@ export async function fetchAllFilePages(
   signal: AbortSignal,
 ): Promise<PagedItems<SourceFile>> {
   let page = await fetchFilePage(provider, ctx, projectId, containerId, undefined, signal);
-  let items = page.items;
+  // Accumulate by push, not by re-spreading: `items = [...items, ...page.items]`
+  // copies everything swept so far on every page, which is quadratic in the
+  // file count and is the one place here that sweeps an unbounded number of
+  // pages.
+  const items: SourceFile[] = [...page.items];
   let pageCount = 1;
 
   while (page.cursor !== undefined) {
     pageCount += 1;
-    if (pageCount > MAX_FILE_SWEEP_PAGES) {
-      throw new Error(`Listing files at ${containerId} exceeded ${MAX_FILE_SWEEP_PAGES} pages without finishing`);
+    if (items.length > MAX_FILE_SWEEP_ITEMS || pageCount > MAX_FILE_SWEEP_PAGES) {
+      throw new Error(
+        `Listing files at ${containerId} exceeded ${MAX_FILE_SWEEP_ITEMS} files / ${MAX_FILE_SWEEP_PAGES} pages without finishing`,
+      );
     }
     page = await fetchFilePage(provider, ctx, projectId, containerId, page.cursor, signal);
-    items = [...items, ...page.items];
+    items.push(...page.items);
   }
 
   return { items, cursor: undefined } satisfies PagedItems<SourceFile>;

@@ -36,6 +36,8 @@ import {
   isTouching,
   penetrationDepth,
   sortClashes,
+  classifyRuleCoverage,
+  ruleHadNoMatch,
   DUPLICATES_RULE,
   CLASH_REVIEW_STATUSES,
   type Clash,
@@ -315,6 +317,21 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
   const bySeverity = result?.summary.bySeverity;
+
+  // Case (c) from the clash-matrix design: "0 clashes" because no rule matched
+  // any elements in this model reads as "your model is clean" unless we say
+  // otherwise. `classifyRuleCoverage` distinguishes that from a genuine
+  // zero-clash result; the panel only needs the loud 'no-match' case plus the
+  // list of empty rule names for a short explanation.
+  const coverageOutcome = useMemo(
+    () => (result ? classifyRuleCoverage(result) : 'unknown'),
+    [result],
+  );
+  const emptyRuleNames = useMemo(() => {
+    if (!result?.ruleCoverage) return [] as string[];
+    const names = new Map(result.rulesRun.map((r) => [r.id, r.name]));
+    return result.ruleCoverage.filter(ruleHadNoMatch).map((c) => names.get(c.rule) ?? c.rule);
+  }, [result]);
 
   // Flatten sections → a single row list (group header, clash row, and an
   // expanded-detail row for opened clashes) so the list virtualizes cleanly and
@@ -803,9 +820,27 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </div>
         )}
 
-        {result && total === 0 && (
+        {result && total === 0 && coverageOutcome === 'no-match' && (
+          <div className="flex flex-col items-center justify-center p-8 text-center" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+            <p className="text-sm font-medium">The matrix didn't apply to this model — it did NOT run.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
+              None of the {result.rulesRun.length} rule(s) matched any elements here, so "0 clashes" doesn't mean
+              this model is clean — nothing was actually checked. This rule set is shaped for MEP/HVAC/electrical/
+              fire coordination; it may not describe this model's disciplines.
+            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground max-w-xs">Empty rules: {emptyRuleNames.join(', ')}</p>
+          </div>
+        )}
+
+        {result && total === 0 && coverageOutcome !== 'no-match' && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
             <p className="text-sm">No clashes found for this rule set. 🎉</p>
+            {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
+              <p className="mt-1.5 text-[11px] max-w-xs">
+                {emptyRuleNames.length} rule(s) matched no elements and never ran: {emptyRuleNames.join(', ')}
+              </p>
+            )}
           </div>
         )}
 

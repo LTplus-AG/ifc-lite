@@ -23,6 +23,8 @@ import {
   disciplineMatrixRules,
   groupClashes,
   isClusterGroupingIneffective,
+  classifyRuleCoverage,
+  ruleHadNoMatch,
   type Clash,
   type ClashMode,
   type ClashResult,
@@ -137,6 +139,41 @@ function formatClashRow(clash: Clash): string {
   return `  [${clash.severity}] ${aName} x ${bName} (${clash.status}, ${distance})`;
 }
 
+/**
+ * Rule ids whose selectors matched nothing to compare (on either side) in
+ * THIS model, with their human-readable names for a printable list.
+ */
+function emptyRuleNames(result: ClashResult): string[] {
+  const names = new Map(result.rulesRun.map((r) => [r.id, r.name]));
+  return (result.ruleCoverage ?? [])
+    .filter(ruleHadNoMatch)
+    .map((c) => names.get(c.rule) ?? c.rule);
+}
+
+/**
+ * Case (c) from the design: distinguish "ran and found zero" from "no rule
+ * matched anything, so the check never really ran". Reported as a warning,
+ * never as an error — zero clashes is a legitimate outcome, this only says
+ * which kind of zero it is. See {@link classifyRuleCoverage}.
+ */
+function printCoverageWarning(result: ClashResult): void {
+  const outcome = classifyRuleCoverage(result);
+  if (outcome === 'no-match') {
+    process.stdout.write(
+      `\n  WARNING: none of the ${result.rulesRun.length} rule(s) matched any elements in this model.\n` +
+        `  The clash matrix did NOT run — "${result.summary.total} clashes" means nothing was checked,\n` +
+        `  not that the model is clean. This matrix is shaped for MEP/HVAC/electrical/fire coordination;\n` +
+        `  it may simply not describe this model's disciplines (e.g. an infrastructure model).\n` +
+        `  Empty rules: ${emptyRuleNames(result).join(', ')}\n`,
+    );
+  } else if (outcome === 'partial') {
+    process.stdout.write(
+      `\n  Note: ${emptyRuleNames(result).length} of ${result.rulesRun.length} rule(s) matched no elements ` +
+        `and never ran a comparison: ${emptyRuleNames(result).join(', ')}\n`,
+    );
+  }
+}
+
 function printHumanSummary(result: ClashResult): void {
   const { summary } = result;
   process.stdout.write(`\n  Clash Detection Results\n`);
@@ -147,6 +184,8 @@ function printHumanSummary(result: ClashResult): void {
   if (result.truncated) {
     process.stdout.write(`  Truncated:     ${result.truncated.reason} (${result.truncated.droppedPairs} pairs dropped)\n`);
   }
+
+  printCoverageWarning(result);
 
   if (summary.total > 0) {
     const shown = result.clashes.slice(0, HUMAN_CLASH_CAP);
@@ -244,7 +283,19 @@ export async function clashCommand(args: string[]): Promise<void> {
       const truncated = total > clashes.length
         ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
         : null;
-      printJson({ summary: result.summary, truncated, clashes });
+      // `ruleCoverageOutcome` is the machine-readable form of the same signal
+      // printed by `printCoverageWarning` in the human summary: 'no-match'
+      // means no rule in `rulesRun` matched any elements — the matrix never
+      // ran a real comparison, so `summary.total === 0` here does NOT mean
+      // "model is clean". Never fails the command; consumers decide what to
+      // do with it.
+      printJson({
+        summary: result.summary,
+        truncated,
+        ruleCoverageOutcome: classifyRuleCoverage(result),
+        ruleCoverage: result.ruleCoverage ?? null,
+        clashes,
+      });
       return;
     }
 

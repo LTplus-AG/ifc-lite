@@ -7,6 +7,8 @@ import { createClashEngine } from '../engine.js';
 import { TsKernel } from './ts-kernel.js';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
+import { classifyRuleCoverage, ruleHadNoMatch } from '../analysis.js';
+import { disciplineMatrixRules } from '../disciplines.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
 
 /** Axis-aligned cube as a triangle mesh (12 triangles). */
@@ -232,6 +234,42 @@ describe('TsClashEngine', () => {
     ]);
     expect(result.summary.total).toBe(1);
     expect(result.clashes[0].severity).toBe('critical');
+  });
+
+  it('reports rule coverage so an all-empty discipline matrix is distinguishable from a real clean run (#2536)', async () => {
+    // Reproduces the reported defect at engine scale: an infrastructure-shaped
+    // model (structural elements only, no MEP/HVAC/electrical/fire anywhere)
+    // run through the full built-in CLASH_RULE_PRESETS matrix. Every preset's
+    // selectorA is MEP-shaped, so it matches nothing here — the matrix reports
+    // 0 clashes, and previously that was indistinguishable from "checked and
+    // found nothing".
+    const infraElements = [
+      boxElement('A', 'IfcBeam', [0, 0, 0]),
+      boxElement('B', 'IfcColumn', [0.5, 0, 0]), // overlaps A — a real clash exists,
+      boxElement('C', 'IfcSlab', [10, 0, 0]),    // just not one any preset's rule.a covers.
+    ];
+    const rules = disciplineMatrixRules('hard');
+    const result = await engine.run(infraElements, rules);
+
+    expect(result.summary.total).toBe(0); // the reported symptom: zero clashes
+    expect(result.ruleCoverage).toHaveLength(rules.length);
+    expect(classifyRuleCoverage(result)).toBe('no-match'); // the fix: distinguishable as "never ran"
+    for (const c of result.ruleCoverage!) {
+      expect(ruleHadNoMatch(c)).toBe(true);
+    }
+
+    // Control: the same matrix against a model that DOES contain MEP elements
+    // is unaffected — it still reports the real clash and coverage reads clean.
+    const mepElements = [
+      boxElement('P', 'IfcPipeSegment', [0, 0, 0]),
+      boxElement('S', 'IfcBeam', [0.4, 0, 0]),
+    ];
+    const mepResult = await engine.run(mepElements, rules);
+    // IfcPipeSegment matches both the MEPxSTR and FIRExSTR presets, so this
+    // legitimately reports on more than one rule — the point is only that it's
+    // non-zero and the coverage reads as having actually run.
+    expect(mepResult.summary.total).toBeGreaterThan(0);
+    expect(classifyRuleCoverage(mepResult)).not.toBe('no-match');
   });
 
   it('produces deterministic, stable clash ids and ordering', async () => {

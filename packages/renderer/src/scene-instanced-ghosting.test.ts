@@ -173,6 +173,50 @@ describe('setInstancedGhosting (#2606)', () => {
     assert.equal(faded?.data[3], GHOST);
   });
 
+  it('keeps the fade when an override is DROPPED while ghosted', () => {
+    // The composition seam's other direction, and the one that reintroduced the
+    // bug: dropping an override restores full alpha, and the ghost set has not
+    // changed — so without a dirty flag the per-frame call early-returns and the
+    // occurrence sits solid inside an otherwise ghosted model, forever.
+    const { scene, writes } = sceneWith([1, 2]);
+    scene.setInstancedColorOverrides(new Map([[2, [1, 0, 0, 1] as const]]));
+    scene.setInstancedGhosting(new Set([1]), null, DEFAULT_GHOST_ALPHA);
+
+    scene.setInstancedColorOverrides(null);
+    const mark = writes.length;
+    scene.setInstancedGhosting(new Set([1]), null, DEFAULT_GHOST_ALPHA); // next frame
+
+    assert.deepEqual(alphasSince(writes, mark), [GHOST], 'the fade must be re-applied');
+  });
+
+  it('fades occurrences that stream in while X-Ray is already on', () => {
+    // A shard arriving mid-session adds occurrences at their uploaded solid
+    // colour under an id the ghost set already contains — invisible to a
+    // membership diff.
+    // Deliberately an id ALREADY in the ghost set: a new id would change
+    // membership and be caught by the diff, so it would not test this at all.
+    const { scene, device, writes } = sceneWith([1, 2]);
+    scene.setInstancedGhosting(new Set([1]), null, DEFAULT_GHOST_ALPHA);
+
+    scene.addInstancedShard(device, shard([2]), 0);
+    const mark = writes.length;
+    scene.setInstancedGhosting(new Set([1]), null, DEFAULT_GHOST_ALPHA); // next frame
+
+    // Two writes: the fade is re-applied to BOTH occurrences of id 2 — the one
+    // that was already there and the one that just streamed in.
+    assert.deepEqual(alphasSince(writes, mark), [GHOST, GHOST], 'the new occurrence must fade too');
+  });
+
+  it('re-applies when the ghost alpha changes but the set does not', () => {
+    const { scene, writes } = sceneWith([1, 2]);
+    scene.setInstancedGhosting(new Set([1]), null, DEFAULT_GHOST_ALPHA);
+    const mark = writes.length;
+
+    scene.setInstancedGhosting(new Set([1]), null, 0.5);
+
+    assert.deepEqual(alphasSince(writes, mark), [F32(0.5)]);
+  });
+
   it('restores to the override, not the original colour, when X-Ray clears', () => {
     const { scene, writes } = sceneWith([1, 2]);
     scene.setInstancedColorOverrides(new Map([[2, [1, 0, 0, 1] as const]]));

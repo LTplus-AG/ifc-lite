@@ -259,6 +259,11 @@ export class Scene {
   // actually on the instance buffer.
   private instancedOverrideColors: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
   private lastGhostAlpha = 1;                                      // alpha the active X-Ray fade was written with
+  // Set when something OTHER than the ghost set changed the instance colour
+  // bytes — a shard streaming in, or an override applied/dropped. The
+  // membership diff cannot see those, so without this an occurrence can sit
+  // solid while the set says it is ghosted (#2606 review).
+  private instancedGhostDirty = false;
   private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
   private instancedGhostTransparent = false;                       // X-Ray ghosting made some instanced occurrence translucent
   // Content-based change guard for setInstancedVisibility — same contract as
@@ -3359,8 +3364,11 @@ export class Scene {
     }
     // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
     // to recompute so an already-active isolate/hide also applies to geometry that
-    // streamed in after the visibility was set.
+    // streamed in after the visibility was set. X-Ray needs the same: new
+    // occurrences of an already-ghosted id arrive at their uploaded, solid
+    // colour, and the ghost set's membership has not changed to reveal it.
     this.instancedVisibilityDirty = true;
+    this.instancedGhostDirty = true;
   }
 
   /** Transform a template's local AABB by an occurrence's column-major mat4 (read
@@ -3629,6 +3637,10 @@ export class Scene {
     this.instancedOverridden = new Set(next.keys());
     this.instancedOverrideColors = next.size > 0 ? next : null;
     this.instancedHasTransparent = hasTransparent;
+    // Restoring a dropped override writes FULL alpha, which un-fades a ghosted
+    // occurrence. The ghost set has not changed, so only this flag gets the
+    // fade re-applied on the next frame.
+    this.instancedGhostDirty = true;
   }
 
   /** True when an active colour override made some instanced occurrence translucent,
@@ -3671,8 +3683,11 @@ export class Scene {
       }
     }
 
-    // Nothing to do — including the common case of no X-Ray and none ghosted.
-    if (next.size === this.instancedGhosted.size) {
+    // A forced pass rewrites every fade rather than just the delta: the colour
+    // bytes underneath may have been replaced since they were last written.
+    const alphaChanged = next.size > 0 && ghostAlpha !== this.lastGhostAlpha;
+    const forced = this.instancedGhostDirty || alphaChanged;
+    if (!forced && next.size === this.instancedGhosted.size) {
       let same = true;
       for (const eid of next) {
         if (!this.instancedGhosted.has(eid)) { same = false; break; }
@@ -3690,7 +3705,7 @@ export class Scene {
     }
 
     for (const eid of next) {
-      if (this.instancedGhosted.has(eid)) continue;
+      if (!forced && this.instancedGhosted.has(eid)) continue;
       const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
       if (!base) continue;
       this.writeInstanceColor(device, eid, [base[0], base[1], base[2], ghostAlpha]);
@@ -3698,6 +3713,7 @@ export class Scene {
 
     this.instancedGhosted = next;
     this.lastGhostAlpha = ghostAlpha;
+    this.instancedGhostDirty = false;
     this.instancedGhostTransparent = next.size > 0 && ghostAlpha < OPAQUE_ALPHA_CUTOFF;
   }
 
@@ -3942,6 +3958,7 @@ export class Scene {
     this.instancedHidden.clear();
     this.instancedOverridden.clear();
     this.instancedGhosted.clear();
+    this.instancedGhostDirty = false;
     this.instancedOverrideColors = null;
     this.instancedHasTransparent = false;
     this.instancedGhostTransparent = false;

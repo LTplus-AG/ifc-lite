@@ -8,4 +8,6 @@ The instanced pass received only the hide and isolate sets, so ghosting stopped 
 
 `Scene.setInstancedGhosting` fades every occurrence outside the except-set to the same `DEFAULT_GHOST_ALPHA` the flat path uses, leaves the selection solid exactly as the flat path does, and reports the result through `hasTransparentInstances()` so the translucent sub-pass actually runs.
 
-It composes with lens and IDS colour overrides rather than fighting them: the two share the instance colour bytes, so a ghosted occurrence keeps its override's RGB and takes the ghost alpha, and clearing X-Ray restores the override rather than the original colour. Diffed against the previous ghost set, so the per-frame call is a no-op when nothing changed.
+It composes with lens and IDS colour overrides rather than fighting them: the two share the instance colour bytes, so a ghosted occurrence keeps its override's RGB and takes the ghost alpha, and clearing X-Ray restores the override rather than the original colour.
+
+The per-frame call is a no-op when nothing changed, but "nothing changed" cannot be judged by the ghost set alone — dropping an override writes full alpha, a streaming shard adds occurrences at their uploaded colour, and neither moves the set. Any of those marks the fade dirty so the next frame re-applies it.

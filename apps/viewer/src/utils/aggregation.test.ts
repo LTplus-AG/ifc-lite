@@ -219,30 +219,15 @@ describe('expandToGeometryBearingIds', () => {
     );
   });
 
-  // The other half of the fix: a selection entry point that assigns
+  // The other half of the fix — a selection entry point that assigns
   // selectedEntityId/selectedEntityIds directly (not via a 3D pick, which can
   // never land on a geometry-less assembly) must resolve through
   // resolveHighlightIds before highlighting, or the camera moves to an
-  // assembly that stays dark. SearchModal.text.tsx has no test harness
-  // either (zustand store + virtualized list, no DOM) — same constraint,
-  // same style of guard.
-  it('SearchModal resolves highlight ids before selecting a search result', () => {
-    const source = readFileSync(
-      new URL('../components/viewer/SearchModal.text.tsx', import.meta.url),
-      'utf8',
-    )
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '');
-    const commitStart = source.indexOf('const commit = useCallback(');
-    assert.ok(commitStart >= 0, 'commit handler defined');
-    const body = source.slice(commitStart, source.indexOf('  );', commitStart));
-    assert.ok(
-      body.includes('cameraCallbacks.resolveHighlightIds'),
-      'commit() must resolve geometry-less assemblies to renderable ids before setSelectedEntityIds',
-    );
-    assert.ok(
-      body.indexOf('cameraCallbacks.resolveHighlightIds') < body.indexOf('setSelectedEntityIds('),
-      'resolution must happen BEFORE the selection is set, not after',
-    );
-  });
+  // assembly that stays dark — is covered behaviourally, not by source text,
+  // in SearchModal.text.wiring.test.tsx ("resolves through resolveHighlightIds
+  // and puts the clicked id LAST, so it stays primary"): it stubs
+  // cameraCallbacks.resolveHighlightIds, clicks a real rendered row, and reads
+  // the resulting selectedEntityIds/selectedEntityId off the store, which is
+  // strictly stronger than grepping commit()'s source for both the call and
+  // its position.
 });

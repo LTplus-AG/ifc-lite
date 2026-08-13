@@ -86,6 +86,13 @@ jobs:
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             frontend:
+              # oxlint lints all of `apps/` except `apps/landing`, but this
+              # filter names the two apps individually rather than `apps/**` —
+              # broadening it would drag every landing-page edit through the
+              # full frontend lane. The cost of that choice: a NEW app under
+              # `apps/` gets linted without being able to trigger the Lint job,
+              # so the PR adding it skips the gate and drops its violations on
+              # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'

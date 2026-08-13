@@ -190,6 +190,30 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     // spans the full slab, so its bounding box still reports the true (too small)
     // thickness. Deriving the gate from the volume instead would be circular —
     // the volume is the thing under suspicion.
+    //
+    // KNOWN LIMITATION (review, #2573): `thickness` is measured against the
+    // WORLD axes, so this argument only holds when the contact normal is
+    // parallel to a world axis — an oblique contact (a building grid rotated
+    // off the world frame, the common case) can make the min world-axis
+    // extent overstate the true thin dimension, which could let a
+    // sub-resolution overlap clear a gate meant to reject it.
+    //
+    // Two fix candidates were tried and rejected before shipping this
+    // comment instead: (1) PCA of the wedge's vertex cloud (eigenvector of
+    // the smallest covariance eigenvalue as the thin axis) is numerically
+    // unstable at the aspect ratios this gate deals with and regressed the
+    // already-correct axis-aligned case. (2) Using the normal of the
+    // wedge's largest-area triangle as the thin axis is wrong precisely in
+    // the regime this gate exists for: below the near-band, the kernel's
+    // returned geometry is a genuine WEDGE (module docs above), not a flat
+    // slab, so its largest face is not reliably the true cap and the
+    // measured thickness came out over 30x too large on the very cases this
+    // test file pins. A correct rotation-invariant version most likely needs
+    // the true contact normal from the ORIGINAL operand faces near the
+    // overlap, not a measurement reconstructed from the kernel's output
+    // triangle soup — out of scope to improvise here without reproducing a
+    // wrong volume on real data first (the reviewer's own caveat: "argued
+    // rather than measured"). Left as world-axis-aligned, documented as such.
     let mut lo = [f64::INFINITY; 3];
     let mut hi = [f64::NEG_INFINITY; 3];
     for t in &tris {

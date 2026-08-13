@@ -470,18 +470,24 @@ The built artifacts land in `packages/wasm/pkg/` (`ifc-lite_bg.wasm` binary plus
 
 ## Building from Source
 
+Use `scripts/build-wasm.sh` — it's the build CI and Vercel run, and the one
+this repo wants people running. It sets `CARGO_UNSTABLE_BUILD_STD` (needed for
+the single-thread and threaded bundles) and the wasm-target `rustflags`
+before invoking `wasm-pack`; running `wasm-pack build` directly, without that
+env var, silently produces a different (larger, `build-std`-less) bundle than
+the one CI ships.
+
 ```bash
 # Install wasm-pack
 cargo install wasm-pack
 
 # Build WASM module
-cd rust/wasm-bindings
-wasm-pack build --target web --out-name ifc-lite --release
+bash scripts/build-wasm.sh
 
 # Output files
-# pkg/ifc-lite.js
-# pkg/ifc-lite_bg.wasm
-# pkg/ifc-lite.d.ts
+# packages/wasm/pkg/ifc-lite.js
+# packages/wasm/pkg/ifc-lite_bg.wasm
+# packages/wasm/pkg/ifc-lite.d.ts
 ```
 
 ### Build Targets

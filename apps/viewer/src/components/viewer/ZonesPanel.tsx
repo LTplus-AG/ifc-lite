@@ -434,6 +434,16 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     let result: ReturnType<typeof exportZone>;
                     try {
                       result = exportZone(zs, zs.zones.indexOf(zone));
+                    } catch (error) {
+                      // The kernel, the GLB build and the download can each
+                      // throw. Inside an ASYNC handler a throw becomes an
+                      // unhandled rejection, so the user would sit in front of
+                      // a control that reset itself and said nothing.
+                      console.error('[zones] geometry export failed', error);
+                      toast.error(
+                        `Could not export ${zone.name}: ${error instanceof Error ? error.message : 'unknown error'}`,
+                      );
+                      return;
                     } finally {
                       exportingRef.current = false;
                       setExportingZoneId(null);

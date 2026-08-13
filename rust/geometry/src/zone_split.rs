@@ -266,17 +266,25 @@ pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
         // boundary. `union_all` merges the tiles first and drops each
         // co-oriented duplicate, so the difference sees one clean operand.
         let operands: Vec<&[Tri]> = reached.iter().map(|t| t.as_slice()).collect();
-        let (cutter, _conforming) = union_all(&operands);
-        match difference_all(&host, &[&cutter]) {
+        let (cutter, conforming) = union_all(&operands);
+        // A non-conforming union is refused BEFORE the difference sees it: the
+        // cutter would already be torn, and `difference_all`'s own conformity
+        // gate is about ITS arrangement, not about the operand it was handed.
+        // `union_many` does trust a torn union, but only because its one caller
+        // verifies the subtract that follows; nothing verifies this one, so a
+        // remainder built on it would be the piece nobody checked.
+        //
+        // Either way the failure is SAID rather than left to `sum_error_rel`,
+        // which a caller cannot tell apart from overlapping zones and which
+        // would point them at redrawing zones that are not the problem.
+        let rest = if conforming { difference_all(&host, &[&cutter]) } else { None };
+        match rest {
             Some(rest) => {
                 let volume = signed_volume_of(&rest);
                 if !rest.is_empty() && volume > negligible {
                     pieces.push(ZonePiece { zone: None, tris: rest, volume });
                 }
             }
-            // Said out loud rather than left to `sum_error_rel`, which a caller
-            // cannot tell apart from overlapping zones and which would point
-            // them at redrawing zones that are not the problem.
             None => remainder_failed = true,
         }
     } else {

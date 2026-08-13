@@ -312,7 +312,12 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    # Free runner — oxlint runs against source, no compile.
+    # Two gates, both free-runner: oxlint over the source (no compile), and the
+    # unused-locals ratchet (scripts/check-unused-locals.mjs), which needs the
+    # built dist below because it type-checks each package. Before #2603 this
+    # lane ran NOTHING: the root script was `pnpm -r lint` and no package
+    # defined one, so it passed in 20s having checked nothing, and dead imports
+    # shipped through it.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

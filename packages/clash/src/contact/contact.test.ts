@@ -118,4 +118,117 @@ describe('contactClusters (contact interface geometry)', () => {
       }
     });
   });
+
+  // Sibling defect to the planeEps one above, in the same call path but one
+  // stage downstream: shared-faces.ts's planeKey() quantises plane.offset
+  // (a signed distance from the *world origin*) into buckets of fixed width
+  // `planeDistSnap`, default 1e-3. Two triangle pairs that planeEps already
+  // (correctly) recognises as coplanar can still round to f32 offsets that
+  // straddle a fixed 1e-3 bucket boundary once far from the origin, so a
+  // single physical shared face gets hashed into two different plane-key
+  // buckets and reported as two separate `surface` clusters instead of one.
+  describe('scale-relative planeDistSnap (one physical plane split across two hash buckets)', () => {
+    function nextF32(x: number): number {
+      const buf = new Float32Array([x]);
+      new Uint32Array(buf.buffer)[0] += 1;
+      return buf[0] as number;
+    }
+
+    /** A quad mesh: 4 vertices, 2 triangles. */
+    function quad(
+      id: string,
+      v0: [number, number, number],
+      v1: [number, number, number],
+      v2: [number, number, number],
+      v3: [number, number, number],
+    ): Mesh {
+      return {
+        id,
+        positions: new Float64Array([...v0, ...v1, ...v2, ...v3]),
+        indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      };
+    }
+
+    /**
+     * Find an f32 value near `mag` whose next-ULP neighbour crosses a
+     * `distSnap` quantisation bucket boundary — the worst case for the
+     * plane-offset hashing defect (an ordinary flush pair authored at an
+     * arbitrary offset may or may not happen to straddle a bucket; this
+     * picks a coordinate that does, the same way `nextF32` above picks the
+     * worst case for planeEps).
+     */
+    function findBoundaryStraddle(mag: number, distSnap = 1e-3): { x: number; x1: number } {
+      let x = Math.fround(mag);
+      for (let i = 0; i < 2_000_000; i++) {
+        const x1 = nextF32(x);
+        if (Math.round(x / distSnap) !== Math.round(x1 / distSnap)) return { x, x1 };
+        x = x1;
+        if (x - mag > distSnap) throw new Error('no bucket straddle found in scanned range');
+      }
+      throw new Error('no bucket straddle found');
+    }
+
+    /**
+     * One flat wall face split into two independently-triangulated patches
+     * (routine for large IFC meshes), both nominally on the same physical
+     * plane x ≈ mag — drift is exactly one f32 ULP, chosen to straddle a
+     * `planeDistSnap` bucket boundary — flush against element B. Patch 1's
+     * vertices are all bit-identical at x = xa (so it is exactly planar);
+     * patch 2's are all bit-identical at x = xb = nextF32(xa). The two
+     * patches combined represent one continuous flush contact.
+     */
+    function splitWallFixture(mag: number): { a: Mesh; b: Mesh } {
+      const { x: xa, x1: xb } = findBoundaryStraddle(mag);
+      const patch1 = quad('A1', [xa, 0, 0], [xa, 1, 0], [xa, 1, 1], [xa, 0, 1]);
+      const patch2 = quad('A2', [xb, 1, 0], [xb, 2, 0], [xb, 2, 1], [xb, 1, 1]);
+      const a: Mesh = {
+        id: 'A',
+        positions: new Float64Array([...patch1.positions, ...patch2.positions]),
+        indices: new Uint32Array([
+          ...patch1.indices,
+          ...Array.from(patch2.indices, (i) => i + 4),
+        ]),
+      };
+      const b = box(
+        'B',
+        [xa, 0, 0],
+        [Math.fround(mag) + 0.5, 2, 1],
+      );
+      return { a, b };
+    }
+
+    it('RED: a fixed planeDistSnap=1e-3 splits one flush wall face into two surface clusters at 5 km', () => {
+      const { a, b } = splitWallFixture(5000);
+      const clusters = contactClusters(a, b, { planeDistSnap: 1e-3 });
+      const surfaces = clusters.filter((c) => c.kind === 'surface');
+      expect(surfaces.length).toBe(2);
+    });
+
+    it('GREEN: the default (scale-relative) planeDistSnap merges it back into one surface cluster at 5 km', () => {
+      const { a, b } = splitWallFixture(5000);
+      const clusters = contactClusters(a, b);
+      const surfaces = clusters.filter((c) => c.kind === 'surface');
+      expect(surfaces.length).toBe(1);
+      expect(surfaces[0]?.area_m2).toBeCloseTo(2, 3);
+    });
+
+    it('GREEN: also merges it at 50 km', () => {
+      const { a, b } = splitWallFixture(50_000);
+      const clusters = contactClusters(a, b);
+      const surfaces = clusters.filter((c) => c.kind === 'surface');
+      expect(surfaces.length).toBe(1);
+    });
+
+    it('unchanged near the origin: the new default matches the old fixed 1e-3 exactly, on the fixtures already used above', () => {
+      const cases: Array<[Mesh, Mesh]> = [
+        [box('A', [0, 0, 0], [1, 1, 1]), box('B', [0.5, 0, 0], [1.5, 1, 1])],
+        [box('A', [-5, -0.5, -0.5], [5, 0.5, 0.5]), box('B', [-0.5, -5, -0.5], [0.5, 5, 0.5])],
+      ];
+      for (const [a, b] of cases) {
+        const withDefault = contactClusters(a, b);
+        const withFixed = contactClusters(a, b, { planeDistSnap: 1e-3 });
+        expect(withDefault).toEqual(withFixed);
+      }
+    });
+  });
 });

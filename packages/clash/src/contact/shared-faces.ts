@@ -55,8 +55,57 @@ export interface SharedFaceCluster {
   readonly pairs: readonly TrianglePair[];
 }
 
+/**
+ * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
+ * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
+ * larger magnitudes the ULP only grows. Same constant (and reasoning) as
+ * `F32_ULP_SCALE` in `./narrow-phase.js` — kept local rather than shared
+ * since that one scales a coplanarity *test* tolerance and this one scales a
+ * post-hoc *hash bucket* width; duplicating the one-line constant costs less
+ * than coupling the two call sites' defaults together.
+ */
+const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
+
+/**
+ * Default distance-quantisation bucket for {@link planeKey}'s plane-offset
+ * term, scaled to this batch of pairs' own coordinate magnitude rather than
+ * a fixed constant.
+ *
+ * `plane.offset` is a signed distance from the *world origin*
+ * (`dot(unitNormal, worldVertex)`), so like the plane-distance tolerance in
+ * `narrowPhase` (see `scaledPlaneEps`), a fixed `1e-3` is only a safe bucket
+ * width near the origin: the f32 ULP exceeds it above ~4.2 km. Two triangles
+ * on the identical physical plane — already recognised as coplanar by the
+ * (correctly scaled) upstream `planeEps` test — can still round to f32
+ * values whose `offset` straddles a fixed `1e-3` bucket boundary once far
+ * from the origin, splitting one shared face into separate clusters instead
+ * of merging it into a single `surface` contact. Extent is the max abs
+ * vertex coordinate across the pairs already being clustered — no extra
+ * geometry pass, since every pair's vertices are iterated below regardless —
+ * floored at 1.0 so a model near the origin still gets the single-unit ULP,
+ * not zero.
+ */
+function scaledDistSnap(pairs: readonly TrianglePair[]): number {
+  let extent = 1.0;
+  for (const p of pairs) {
+    for (const tri of [p.a, p.b]) {
+      for (const v of [tri.v0, tri.v1, tri.v2]) {
+        for (const c of v) {
+          const a = Math.abs(c);
+          if (a > extent) extent = a;
+        }
+      }
+    }
+  }
+  return extent * F32_ULP_SCALE;
+}
+
 export interface SharedFaceOptions {
-  /** Absolute tolerance for plane coincidence (unit: model-native length). Default 1e-3. */
+  /**
+   * Absolute tolerance for plane coincidence (unit: model-native length).
+   * Defaults to {@link scaledDistSnap}'s f32-ULP floor for this batch's
+   * coordinate magnitude, not a fixed constant — see that function's doc.
+   */
   readonly planeDistSnap?: number;
   /** Angular snap for plane normal hashing (unitless, ~1 − cos). Default 1e-3. */
   readonly planeAngleSnap?: number;
@@ -74,7 +123,7 @@ export function clusterSharedFaces(
   pairs: readonly TrianglePair[],
   opts: SharedFaceOptions = {},
 ): SharedFaceCluster[] {
-  const planeDistSnap = opts.planeDistSnap ?? 1e-3;
+  const planeDistSnap = opts.planeDistSnap ?? scaledDistSnap(pairs);
   const planeAngleSnap = opts.planeAngleSnap ?? 1e-3;
   const lineSnap = opts.lineSnap ?? 1e-3;
   const surfaceAreaM2 = opts.surfaceAreaM2 ?? 0.01;

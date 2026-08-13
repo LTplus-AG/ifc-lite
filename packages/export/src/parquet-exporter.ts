@@ -525,10 +525,25 @@ export class ParquetExporter {
      */
     private static readonly UINT32_COLUMNS: ReadonlySet<string> = new Set([
         'ExpressId', 'EntityId', 'SourceId', 'TargetId', 'RelId',
-        'ElementId', 'StoreyId', 'BuildingId', 'SiteId',
+        'ElementId', 'StoreyId',
         'Index0', 'Index1', 'Index2',
         'VertexStart', 'VertexCount', 'IndexStart', 'IndexCount',
     ]);
+
+    /**
+     * NOT in the set above, deliberately: `BuildingId`, `SiteId` and `SpaceId`
+     * in `SpatialHierarchy.parquet` carry **-1 as "none"** (see
+     * `writeSpatialHierarchy` - a storey directly under the project has no
+     * building). Declaring those unsigned turned that sentinel into
+     * 4294967295: an id-shaped number where an obviously-absent marker used to
+     * be, which is the exact failure this class of change exists to prevent.
+     *
+     * The residual gap is the narrower one: a building or site id at or above
+     * 2^31 still wraps negative in those three columns. Fixing that properly
+     * means writing NULL rather than -1 for "none", which changes what every
+     * consumer reads for an absent parent and is a separate decision from the
+     * id width.
+     */
 
     private async toParquet(columns: Record<string, any[]>, floatColumns?: Set<string>): Promise<Uint8Array> {
         return columnsToParquet(columns, floatColumns, ParquetExporter.UINT32_COLUMNS);

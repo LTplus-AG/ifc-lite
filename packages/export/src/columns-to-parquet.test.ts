@@ -30,6 +30,16 @@ async function readBack(bytes: Uint8Array): Promise<Record<string, unknown[]>> {
   return out;
 }
 
+/** The Arrow type a column came back as, e.g. `Uint32`. Asserting on this is
+ *  what makes an EMPTY column's test able to fail: an untyped empty column is
+ *  still valid Parquet, so `isParquet` alone passes either way. */
+async function readBackType(bytes: Uint8Array, column: string): Promise<string> {
+  const { readParquet } = await import('parquet-wasm');
+  const { tableFromIPC } = await import('apache-arrow');
+  const table = tableFromIPC(readParquet(bytes).intoIPCStream());
+  return String(table.schema.fields.find((f) => f.name === column)?.type ?? 'missing');
+}
+
 /** 2^31: the first value Int32 cannot hold. An express id may legitimately be
  *  here - STEP bounds entity ids only by the `u32` the readers use, and this
  *  repo stores them in `Uint32Array` throughout. */
@@ -58,11 +68,30 @@ describe('columnsToParquet: unsigned columns', () => {
   });
 
   it('keeps an empty unsigned column typed, so two exports share a schema', async () => {
-    // An untyped empty column is Arrow's Null type, which the Parquet writer
-    // rejects - and the rejection is caught, so the WHOLE table would silently
-    // degrade to Arrow IPC because one column happened to have no rows.
+    // The point is the SCHEMA, not merely that the bytes are Parquet: an
+    // untyped empty column also writes valid Parquet, just with a different
+    // type, so an export whose ids happened to be empty would disagree with
+    // the next one that had rows. Asserting the type is what makes this able
+    // to fail at all.
     const bytes = await columnsToParquet({ ExpressId: [] }, undefined, new Set(['ExpressId']));
     expect(isParquet(bytes)).toBe(true);
+    expect(await readBackType(bytes, 'ExpressId')).toBe('Uint32');
+  });
+
+  it('keeps an all-null unsigned column typed too', async () => {
+    const bytes = await columnsToParquet(
+      { ExpressId: [null, null] },
+      undefined,
+      new Set(['ExpressId']),
+    );
+    expect(await readBackType(bytes, 'ExpressId')).toBe('Uint32');
+    expect((await readBack(bytes)).ExpressId).toEqual([null, null]);
+  });
+
+  it('leaves a column the caller did NOT declare alone', async () => {
+    // The counterfactual for both of the above: without the declaration the
+    // empty column is typed by the fallback rather than by the domain.
+    expect(await readBackType(await columnsToParquet({ ExpressId: [] }), 'ExpressId')).not.toBe('Uint32');
   });
 
   it('keeps a whole-number float a float', async () => {

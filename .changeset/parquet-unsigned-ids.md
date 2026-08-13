@@ -16,7 +16,16 @@ declares its id and geometry-index columns (`ExpressId`, `EntityId`, `SourceId`,
 `TargetId`, `RelId`, `ElementId`, `StoreyId`, `BuildingId`, `SiteId`, `Index0-2`,
 `VertexStart`/`Count`, `IndexStart`/`Count`).
 
-**Schema change for `.bos` consumers:** those columns are now `UINT32` rather
-than `INT32`. Readers that pinned the old signed type will need updating; the
-values themselves are unchanged except for the large ones that were previously
-wrong.
+`SpatialHierarchy.parquet`'s `BuildingId`, `SiteId` and `SpaceId` are
+deliberately NOT in that set: they carry **-1 as "none"**, and declaring them
+unsigned turns that sentinel into 4294967295 - an id-shaped number where an
+obviously-absent marker belongs, which is the same defect in the other
+direction. A building or site id at or above 2^31 therefore still wraps in those
+three columns; fixing that means writing NULL rather than -1 for "none", which
+changes what every consumer reads for an absent parent and is a separate
+decision.
+
+**Schema change for `.bos` consumers:** the declared columns are now `UINT32`
+rather than `INT32`. Readers that pinned the old signed type will need updating.
+The values are unchanged except for ids at or above 2^31, which were previously
+written as negative numbers.

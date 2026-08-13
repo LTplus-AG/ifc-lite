@@ -511,8 +511,27 @@ export class ParquetExporter {
     // UTILITIES
     // ═══════════════════════════════════════════════════════════════
 
+    /**
+     * Column names whose domain is an unsigned 32-bit integer.
+     *
+     * Every one carries an IFC EXPRESS ID or an index into a geometry buffer,
+     * and both are `u32` everywhere else in this codebase - `Uint32Array` in
+     * the parser's entity index and its transports, `u32` in the Rust crates.
+     * Arrow's content inference reaches for Int32 on any whole number, so an
+     * express id at or above 2_147_483_648 came out NEGATIVE: an id-shaped
+     * number that joins to nothing. STEP puts no upper bound on an entity id
+     * below the `u32` the readers use, so that is reachable input rather than a
+     * hypothetical.
+     */
+    private static readonly UINT32_COLUMNS: ReadonlySet<string> = new Set([
+        'ExpressId', 'EntityId', 'SourceId', 'TargetId', 'RelId',
+        'ElementId', 'StoreyId', 'BuildingId', 'SiteId',
+        'Index0', 'Index1', 'Index2',
+        'VertexStart', 'VertexCount', 'IndexStart', 'IndexCount',
+    ]);
+
     private async toParquet(columns: Record<string, any[]>, floatColumns?: Set<string>): Promise<Uint8Array> {
-        return columnsToParquet(columns, floatColumns);
+        return columnsToParquet(columns, floatColumns, ParquetExporter.UINT32_COLUMNS);
     }
 
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {

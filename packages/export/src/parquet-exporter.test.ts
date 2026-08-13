@@ -257,6 +257,25 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
     return { dataStore, geo: geometry(meshes) };
   }
 
+  it('exports an express id above 2^31 without wrapping it negative', async () => {
+    // IFC entity ids are bounded only by the `u32` every reader here uses -
+    // `Uint32Array` in the parser's entity index, `u32` in the Rust crates - so
+    // an id at or above 2_147_483_648 is reachable input. Arrow's content
+    // inference reaches for Int32 on any whole number, which turned such an id
+    // NEGATIVE: still id-shaped, joins to nothing, in a file that opens fine.
+    const strings = new StringTable();
+    const big = 3_000_000_000;
+    const entityBuilder = new EntityTableBuilder(1, strings);
+    entityBuilder.add(big, 'IFCWALL', 'wall-big-guid', 'Wall Big', '', '');
+    const dataStore = {
+      ...buildDataStore(),
+      entities: entityBuilder.build(),
+    } as MockDataStore;
+
+    const rows = decodeParquet(await new ParquetExporter(dataStore).exportTable('entities'));
+    expect(rows.map((r) => Number(r.ExpressId))).toEqual([big]);
+  });
+
   it('omits a deleted entity from Meshes.parquet', async () => {
     const { dataStore, geo } = buildStoreAndGeometry();
     const view = new LiveMutablePropertyView(null, 'm1');

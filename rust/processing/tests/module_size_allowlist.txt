@@ -46,7 +46,10 @@
      956 rust/geometry/src/csg/consolidate.rs
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
-     788 rust/geometry/src/csg/mod.rs
+# +36: clip_mesh scales its vertex-vs-plane classification epsilon to the
+# operand's coordinate magnitude (near_band_from_extent) instead of a fixed
+# 1e-6, which misclassified flush-plane vertices once f32 ULP exceeded it.
+     824 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls

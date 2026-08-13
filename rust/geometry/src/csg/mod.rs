@@ -237,6 +237,14 @@ impl ClippingProcessor {
     /// Clip a triangle against a plane
     /// Returns triangles that are in front of the plane
     pub fn clip_triangle(&self, triangle: &Triangle, plane: &Plane) -> ClipResult {
+        self.clip_triangle_with_epsilon(triangle, plane, self.epsilon)
+    }
+
+    /// Same as [`Self::clip_triangle`], but with an explicit classification
+    /// epsilon instead of `self.epsilon`. [`Self::clip_mesh`] uses this to pass
+    /// a per-call epsilon scaled to the operand's coordinate magnitude (see
+    /// its doc comment) without mutating `self` through a `&self` API.
+    fn clip_triangle_with_epsilon(&self, triangle: &Triangle, plane: &Plane, eps: f64) -> ClipResult {
         // Calculate signed distances for all vertices
         let d0 = plane.signed_distance(&triangle.v0);
         let d1 = plane.signed_distance(&triangle.v1);
@@ -262,13 +270,13 @@ impl ClippingProcessor {
 
         // Count vertices in front of plane
         let mut front_count = 0;
-        if d0 >= -self.epsilon {
+        if d0 >= -eps {
             front_count += 1;
         }
-        if d1 >= -self.epsilon {
+        if d1 >= -eps {
             front_count += 1;
         }
-        if d2 >= -self.epsilon {
+        if d2 >= -eps {
             front_count += 1;
         }
 
@@ -281,32 +289,32 @@ impl ClippingProcessor {
 
             // One vertex in front - create 1 smaller triangle
             1 => {
-                let (front, back1, back2) = if d0 >= -self.epsilon {
+                let (front, back1, back2) = if d0 >= -eps {
                     (triangle.v0, triangle.v1, triangle.v2)
-                } else if d1 >= -self.epsilon {
+                } else if d1 >= -eps {
                     (triangle.v1, triangle.v2, triangle.v0)
                 } else {
                     (triangle.v2, triangle.v0, triangle.v1)
                 };
 
                 // Interpolate to find intersection points
-                let d_front = if d0 >= -self.epsilon {
+                let d_front = if d0 >= -eps {
                     d0
-                } else if d1 >= -self.epsilon {
+                } else if d1 >= -eps {
                     d1
                 } else {
                     d2
                 };
-                let d_back1 = if d0 >= -self.epsilon {
+                let d_back1 = if d0 >= -eps {
                     d1
-                } else if d1 >= -self.epsilon {
+                } else if d1 >= -eps {
                     d2
                 } else {
                     d0
                 };
-                let d_back2 = if d0 >= -self.epsilon {
+                let d_back2 = if d0 >= -eps {
                     d2
-                } else if d1 >= -self.epsilon {
+                } else if d1 >= -eps {
                     d0
                 } else {
                     d1
@@ -323,32 +331,32 @@ impl ClippingProcessor {
 
             // Two vertices in front - create 2 triangles
             2 => {
-                let (front1, front2, back) = if d0 < -self.epsilon {
+                let (front1, front2, back) = if d0 < -eps {
                     (triangle.v1, triangle.v2, triangle.v0)
-                } else if d1 < -self.epsilon {
+                } else if d1 < -eps {
                     (triangle.v2, triangle.v0, triangle.v1)
                 } else {
                     (triangle.v0, triangle.v1, triangle.v2)
                 };
 
                 // Interpolate to find intersection points
-                let d_back = if d0 < -self.epsilon {
+                let d_back = if d0 < -eps {
                     d0
-                } else if d1 < -self.epsilon {
+                } else if d1 < -eps {
                     d1
                 } else {
                     d2
                 };
-                let d_front1 = if d0 < -self.epsilon {
+                let d_front1 = if d0 < -eps {
                     d1
-                } else if d1 < -self.epsilon {
+                } else if d1 < -eps {
                     d2
                 } else {
                     d0
                 };
-                let d_front2 = if d0 < -self.epsilon {
+                let d_front2 = if d0 < -eps {
                     d2
-                } else if d1 < -self.epsilon {
+                } else if d1 < -eps {
                     d0
                 } else {
                     d1
@@ -396,6 +404,22 @@ impl ClippingProcessor {
         let overlap_z = open_min.z - eps <= host_max.z && open_max.z + eps >= host_min.z;
 
         overlap_x && overlap_y && overlap_z
+    }
+
+    /// Coordinate magnitude of `mesh`'s vertices and `plane`'s point, floored
+    /// at 1.0 — the same convention `kernel::mesh_bridge`/`tritri`/`classify`
+    /// use for their `near_band_from_extent` inputs. Feeds [`Self::clip_mesh`]'s
+    /// scaled classification epsilon.
+    fn mesh_plane_extent(mesh: &Mesh, plane: &Plane) -> f64 {
+        let mut extent = 1.0f64;
+        for &c in &mesh.positions {
+            extent = extent.max((c as f64).abs());
+        }
+        extent = extent
+            .max(plane.point.x.abs())
+            .max(plane.point.y.abs())
+            .max(plane.point.z.abs());
+        extent
     }
 
     /// Subtract opening mesh from host mesh using CSG boolean operations
@@ -700,10 +724,22 @@ impl ClippingProcessor {
         true
     }
 
-    /// Clip an entire mesh against a plane
+    /// Clip an entire mesh against a plane.
+    ///
+    /// The vertex-vs-plane classification epsilon is scaled to the operand's
+    /// coordinate magnitude instead of using `self.epsilon` verbatim: the
+    /// plane is f64 world coordinates while mesh vertices are f32-native, and
+    /// the f32 ULP exceeds a fixed 1e-6 above ~8.4 m from the origin, so a
+    /// vertex meant to sit exactly on the plane can misclassify. Reuses
+    /// `near_band_from_extent` (`kernel::mesh_bridge`) — the exact-kernel
+    /// boolean path's own near-coplanar band formula — rather than a second,
+    /// disagreeing constant. `self.epsilon` still acts as a floor.
     pub fn clip_mesh(&self, mesh: &Mesh, plane: &Plane) -> Result<Mesh> {
         record_csg_op(3, mesh.triangle_count(), 0);
         let mut result = Mesh::new();
+
+        let extent = Self::mesh_plane_extent(mesh, plane);
+        let eps = crate::kernel::mesh_bridge::near_band_from_extent(extent).max(self.epsilon);
 
         // Process each triangle
         let vert_count = mesh.positions.len() / 3;
@@ -740,7 +776,7 @@ impl ClippingProcessor {
             let triangle = Triangle::new(v0, v1, v2);
 
             // Clip triangle
-            match self.clip_triangle(&triangle, plane) {
+            match self.clip_triangle_with_epsilon(&triangle, plane, eps) {
                 ClipResult::AllFront(tri) => {
                     // Keep original triangle
                     add_triangle_to_mesh(&mut result, &tri);

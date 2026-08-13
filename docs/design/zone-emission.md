@@ -142,11 +142,15 @@ That is admissible once every member is an `IfcSpatialZone`, and it is the one
 legitimate use of `IfcZone` here, but nothing yet asks for the extra grouping
 level.
 
-### The limit worth knowing
+### How a re-run finds its own zones
 
-A re-run replaces its own output by matching the zone set's **name**, because
-the file has no id to match on. Renaming a set between runs therefore leaves
-the previous run's zones in place, and removing them means removing under the
-old name. Zones from a re-imported earlier export are likewise left alone: the
-sweep only touches entities this session created, which is what keeps it from
-gutting a model that already contains zones.
+Each emitted zone carries `IfcRoot.Description = "IfcLite zone set <id>"`, the
+zone set's stable id. A re-run sweeps by that rather than by the set's name, so
+renaming a set between runs replaces its zones instead of leaving a second,
+obsolete copy under the old name. The name still goes in `LongName`, which is
+what a receiving tool shows.
+
+The limit that remains: the sweep only touches entities THIS SESSION created.
+Zones from a re-imported earlier export are left alone and would be duplicated,
+which is what keeps a later run from gutting a model that already contains
+zones.

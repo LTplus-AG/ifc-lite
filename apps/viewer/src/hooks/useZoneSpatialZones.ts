@@ -233,7 +233,7 @@ function sweepModelsWithoutMembers(
     if (byModel.has(modelId)) continue;
     const context = contextFor(modelId, contexts, scene);
     if (!context) continue;
-    const count = removeSpatialZones(context.editor, zoneSet.name);
+    const count = removeSpatialZones(context.editor, zoneSet);
     if (count === 0) continue;
     removed += count;
     touched.push(modelId);
@@ -270,7 +270,7 @@ export function removeZoneSpatialZones(zoneSet: ZoneSet): ZoneEmitRemoval {
   for (const [modelId] of state.mutationViews) {
     const context = contextFor(modelId, contexts, scene);
     if (!context) continue;
-    const count = removeSpatialZones(context.editor, zoneSet.name);
+    const count = removeSpatialZones(context.editor, zoneSet);
     if (count === 0) continue;
     removed += count;
     touchedModels.push(modelId);

@@ -191,10 +191,11 @@ export function emitSpatialZones(
   // leave two `IfcSpatialZone` entities per zone in the same place, and the
   // second run's numbers would be indistinguishable from the first's in the
   // exported file. Same principle as the write-back's per-element sweep.
-  const zonesReplaced = removeSpatialZones(editor, zoneSet.name);
+  const zonesReplaced = removeSpatialZones(editor, zoneSet);
 
   const result = addSpatialZonesToStore(editor, anchor, {
     LongName: zoneSet.name,
+    Description: zoneSetMarker(zoneSet.id),
     zones: zoneSet.zones.map((zone) => zoneToIfcWorld(zone, frame)),
     RelatedElements: referenced,
   });
@@ -207,15 +208,37 @@ export function emitSpatialZones(
   };
 }
 
-/** Attribute index of `IfcSpatialZone.LongName`, which carries the zone SET's
- *  name and is what identifies one run's output. */
+/** `IfcRoot.Description`, where the emitting run stamps which zone SET the zone
+ *  belongs to. */
+const DESCRIPTION = 3;
+/** Attribute index of `IfcSpatialZone.LongName`, which carries the zone set's
+ *  NAME - readable, and not stable across a rename. */
 const LONG_NAME = 7;
 /** `IfcRelReferencedInSpatialStructure.RelatingStructure`. */
 const RELATING_STRUCTURE = 5;
 
 /**
- * Remove the zones one earlier run of `longName` emitted, and everything only
+ * What a zone's `Description` says about which set emitted it.
+ *
+ * The set's NAME is what a receiving tool reads in `LongName`, and a user can
+ * change it at any time; matching on it alone means a rename between two runs
+ * leaves the first run's zones behind for good. The set's ID never changes, so
+ * it goes in the file too - as a legible sentence rather than a bare uuid,
+ * because this is a field people read in a property panel.
+ */
+export function zoneSetMarker(zoneSetId: string): string {
+  return `IfcLite zone set ${zoneSetId}`;
+}
+
+/**
+ * Remove the zones an earlier run of this set emitted, and everything only
  * those zones referred to.
+ *
+ * A zone is this set's if its `Description` carries the set's ID, whatever the
+ * set is CALLED now. Zones with no marker at all - emitted by a build older
+ * than the marker - fall back to matching the current `LongName`, which is the
+ * best that can be done for them and is safe because two sets sharing a name
+ * are refused before either is written.
  *
  * Overlay-only, by construction: `editor.removeEntity` tombstones an entity
  * that exists in the FILE, so restricting the walk to entities this session
@@ -230,12 +253,17 @@ const RELATING_STRUCTURE = 5;
  * - they are the user's own elements, and one of them may itself be an overlay
  * entity the user authored this session.
  */
-export function removeSpatialZones(editor: StoreEditor, longName: string): number {
+export function removeSpatialZones(editor: StoreEditor, zoneSet: Pick<ZoneSet, 'id' | 'name'>): number {
   const overlay = new Map(editor.getNewEntities().map((e) => [e.expressId, e]));
+  const marker = zoneSetMarker(zoneSet.id);
   const zoneIds = new Set<number>();
   for (const entity of overlay.values()) {
     if (entity.type !== 'IfcSpatialZone') continue;
-    if (entity.attributes[LONG_NAME] !== longName) continue;
+    const description = entity.attributes[DESCRIPTION];
+    const mine = description === undefined || description === null
+      ? entity.attributes[LONG_NAME] === zoneSet.name
+      : description === marker;
+    if (!mine) continue;
     zoneIds.add(entity.expressId);
   }
   if (zoneIds.size === 0) return 0;

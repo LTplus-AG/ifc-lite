@@ -182,8 +182,8 @@ describe('emitZoneSpatialZones: what reaches the model', () => {
     // Nine arguments, the zone's own name in Name and the SET's in LongName:
     // the whole record, so a tenth argument (the `CompositionType` this type
     // does not have) or a swapped name pair cannot pass.
-    assert.match(step, /=IFCSPATIALZONE\('.{22}',#4,'Takt A',\$,\$,#\d+,#\d+,'Takt areas',\.CONSTRUCTION\.\);/);
-    assert.match(step, /=IFCSPATIALZONE\('.{22}',#4,'Takt B',\$,\$,#\d+,#\d+,'Takt areas',\.CONSTRUCTION\.\);/);
+    assert.match(step, /=IFCSPATIALZONE\('.{22}',#4,'Takt A','IfcLite zone set set-1',\$,#\d+,#\d+,'Takt areas',\.CONSTRUCTION\.\);/);
+    assert.match(step, /=IFCSPATIALZONE\('.{22}',#4,'Takt B','IfcLite zone set set-1',\$,#\d+,#\d+,'Takt areas',\.CONSTRUCTION\.\);/);
     assert.equal((step.match(/=IFCSPATIALZONE\(/g) ?? []).length, 2);
     assert.match(step, /=IFCRELREFERENCEDINSPATIALSTRUCTURE\(/);
     // Containment is the exclusive relation that carries the building's real
@@ -231,18 +231,29 @@ describe('emitZoneSpatialZones: running it twice', () => {
     assert.equal(overlay().length, firstPass);
   });
 
-  it('follows a rename: zones written under the old name are NOT swept', () => {
-    // The honest limit of a name-keyed sweep, pinned so it is a decision rather
-    // than a surprise. The zone set's name is what a receiving tool reads in
-    // LongName, and there is no id in the file to match on instead.
+  it('follows a RENAME, because the set is identified by its id in the file', () => {
+    // The case a name-keyed sweep gets wrong: emit, rename the set, emit again.
+    // Matching on LongName alone would leave the first run's zones behind for
+    // good, under a name nothing in the session refers to any more.
     emitZoneSpatialZones(ZONE_SET);
     const renamed = { ...ZONE_SET, name: 'Sections' };
+    useViewerStore.setState({ zoneSets: [renamed] } as never);
+
     const result = emitZoneSpatialZones(renamed);
-    assert.equal(result.models[0].zonesReplaced, 0);
-    assert.equal(zoneEntities().length, 4);
-    // Removing under the old name still reaches the old copies.
-    assert.equal(removeZoneSpatialZones(ZONE_SET).removed, 2);
-    assert.equal(zoneEntities().length, 2);
+    assert.equal(result.models[0].zonesReplaced, 2);
+    assert.equal(zoneEntities().length, 2, 'the rename left the old zones behind');
+    // ...and what is in the file now carries the NEW name.
+    const step = exportStep(store);
+    assert.equal((step.match(/'Takt areas'/g) ?? []).length, 0);
+    assert.match(step, /=IFCSPATIALZONE\('.{22}',#4,'Takt A','IfcLite zone set set-1',\$,#\d+,#\d+,'Sections',/);
+  });
+
+  it('removes a renamed set\'s zones under its NEW name', () => {
+    emitZoneSpatialZones(ZONE_SET);
+    const renamed = { ...ZONE_SET, name: 'Sections' };
+    useViewerStore.setState({ zoneSets: [renamed] } as never);
+    assert.equal(removeZoneSpatialZones(renamed).removed, 2);
+    assert.equal(zoneEntities().length, 0);
   });
 });
 

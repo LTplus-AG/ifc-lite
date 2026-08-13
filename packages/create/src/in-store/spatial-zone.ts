@@ -98,6 +98,11 @@ export interface SpatialZoneInStoreParams {
    *  `USERDEFINED` (rule `CorrectPredefinedType`): the enum says "named
    *  elsewhere", and `ObjectType` is where. */
   ObjectType?: string;
+  /** `IfcRoot.Description`, written on every zone of the set. The caller's to
+   *  use: the viewer puts its zone set's stable id here so a later run can
+   *  find its own zones after the set has been RENAMED, which `LongName`
+   *  cannot survive. */
+  Description?: string;
 }
 
 export interface SpatialZoneBuildResult {
@@ -273,7 +278,7 @@ export function addSpatialZonesToStore(
       generateIfcGuid(anchor.guidRandom),
       ownerHistoryRef(anchor.ownerHistoryId),
       zone.Name,
-      null,
+      params.Description ?? null,
       params.ObjectType ?? null,
       `#${placementId}`,
       `#${productShapeId}`,

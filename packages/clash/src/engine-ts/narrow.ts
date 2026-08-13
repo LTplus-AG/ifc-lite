@@ -42,6 +42,18 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * `near_band_from_extent`'s use of the actual compared coordinates) with a
  * floor of 1.0 so a model near the origin still gets the single-unit ULP,
  * not zero.
+ *
+ * The floor grows linearly with the pair's distance from the origin — that
+ * is the point, since f32 precision itself degrades the same way. The
+ * consequence: on a georeferenced model whose elements sit at real map
+ * coordinates (hundreds of kilometres out, which real IFC files do), the
+ * floor reaches decimetre scale, and a genuine clash below that threshold
+ * reclassifies as `touch`. That is not a bug in this function — at those
+ * magnitudes f32 genuinely cannot represent a finer distinction, so the
+ * "penetration" is not reliably measurable either way — but it means the
+ * floor tracks a limitation of the source data, not of clash detection.
+ * The fix for a model in that position is ingesting geometry closer to the
+ * origin (or in f64), not lowering this floor.
  */
 function precisionFloor(elA: ClashElement, elB: ClashElement): number {
   let extent = 1.0;

@@ -111,15 +111,22 @@ fn build_void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 /// must still panic. Folding both into one `Option` is what let three tests
 /// here read as skippable while actually panicking, and would equally let the
 /// other four silently pass on a genuine regression.
+/// `try_exists`, not `exists`: `Path::exists` collapses a permission error into
+/// `false`, which would skip the whole file while CI reported green. Only a
+/// definite "not there" is a skip; an undecidable answer is a broken setup and
+/// panics.
 fn fixture_present() -> bool {
-    if std::path::Path::new(FIXTURE).exists() {
-        return true;
+    match std::path::Path::new(FIXTURE).try_exists() {
+        Ok(true) => true,
+        Ok(false) => {
+            eprintln!(
+                "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
+                FIXTURE,
+            );
+            false
+        }
+        Err(e) => panic!("cannot determine whether fixture {FIXTURE} exists: {e}"),
     }
-    eprintln!(
-        "skipping: fixture {} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)",
-        FIXTURE,
-    );
-    false
 }
 
 /// Process one host. Callers must have checked [`fixture_present`] first, so

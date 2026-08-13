@@ -18,19 +18,22 @@
 /// Bytes of the catalogued fixture at `rel` (relative to `tests/models/`), or
 /// `None` when it has not been fetched.
 ///
-/// Only an absent/unreadable fixture yields `None`. Anything the test then does
-/// with the bytes is still expected to succeed, so callers must not use `None`
-/// to paper over a genuine failure.
+/// `None` means **`NotFound` specifically**, never "unreadable". A permission
+/// error, a directory where a file belongs, or any other I/O failure is a broken
+/// fixture setup, not an unfetched fixture, and it panics: treating those as
+/// absence would let a whole crate's tests skip while CI reported green, which
+/// is the exact failure mode this module exists to remove.
 pub(crate) fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
     let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
     match std::fs::read(&path) {
         Ok(bytes) => Some(bytes),
-        Err(e) => {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             eprintln!(
-                "skipping: fixture {rel} not present ({e}) — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+                "skipping: fixture {rel} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
             );
             None
         }
+        Err(e) => panic!("fixture {rel} exists but could not be read: {e}"),
     }
 }
 

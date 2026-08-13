@@ -362,6 +362,20 @@ describe('buildCesiumModelGLB — X-Ray ghosting (#2591)', () => {
     assert.deepEqual(glbTrianglesByMode(glb), { opaque: 1, blend: 1 });
   });
 
+  it('ghosts EVERYTHING for an empty except-set, which is not the same as no X-Ray', () => {
+    // "Except nothing" is a real state: it fades the whole model. Collapsing it
+    // to null — which is what the epoch tracker does to an empty FIRST argument,
+    // hence the argument order in useCesiumModel — would silently turn X-Ray off.
+    setRenderer([]);
+
+    const { glb } = buildCesiumModelGLB(
+      input([mesh(1, 0), mesh(2, 10)], { ghostExceptIds: new Set() }),
+    );
+
+    assert.deepEqual(glbTrianglesByMode(glb), { opaque: 0, blend: 2 });
+    assert.ok(glbAlphas(glb).every((a) => a === 31), 'every vertex ghosted');
+  });
+
   it('changes the cache key when the X-Ray set changes', () => {
     setRenderer([]);
 

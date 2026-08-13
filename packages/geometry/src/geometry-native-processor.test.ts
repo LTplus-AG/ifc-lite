@@ -43,7 +43,10 @@ vi.mock('./platform-bridge.js', async (importOriginal) => {
 
 import { GeometryProcessor } from './index.js';
 import type { GeometryBatch, GeometryStats, StreamingOptions } from './platform-bridge.js';
-import type { MeshData, StreamingGeometryEvent } from './types.js';
+import type { MeshData } from './types.js';
+// The streaming event union is declared and exported by index.ts, not types.ts
+// (geometry-native.ts and geometry-parallel.ts import it from there too).
+import type { StreamingGeometryEvent } from './index.js';
 
 const mesh = (expressId: number): MeshData => ({
   expressId,

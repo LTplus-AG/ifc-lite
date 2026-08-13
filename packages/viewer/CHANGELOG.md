@@ -1,5 +1,19 @@
 # @ifc-lite/viewer-core
 
+## 0.2.12
+
+### Patch Changes
+
+- [#2280](https://github.com/LTplus-AG/ifc-lite/pull/2280) [`160bf1f`](https://github.com/LTplus-AG/ifc-lite/commit/160bf1fda7ad5f2c7921b833982a53acd1ee79ad) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `ifc-lite view` rendering most elements collapsed near the world origin instead of at their real placement ([#2261](https://github.com/LTplus-AG/ifc-lite/issues/2261)). wasm's mesh geometry is stored in a per-element local frame by default (world position = `mesh.origin` + `position`, added to keep f32 vertex storage precise at building/georef scale); the standalone CLI viewer's minimal WebGL renderer read `positions` directly without folding `origin` back in, so every element rendered near its own local frame instead of its true world placement. The main web viewer (`@ifc-lite/geometry` / `@ifc-lite/renderer`) already applied this fold and was unaffected.
+
+- [#2351](https://github.com/LTplus-AG/ifc-lite/pull/2351) [`6d52ca3`](https://github.com/LTplus-AG/ifc-lite/commit/6d52ca369fa7cece428a15bedd69ae1d933b888f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `startViewerServer` hanging forever if the caller's `onReady` callback threw. The executor for the returned promise only took a `resolve` parameter; `onReady` runs inside the `server.listen` callback, outside any try/catch the caller can see, so a throw there silently skipped `promiseResolve` and the returned promise never settled. It now rejects with the thrown error, and closes the already-bound server first so the rejection doesn't leak a listening socket.
+
+  Also fix the same class of hang on a `server.listen()` bind failure (e.g. `EADDRINUSE`): a bind failure emits `error` and never runs the `listen` callback, so the returned promise hung forever with no way to observe the failure. It now rejects with the underlying error; since the server never bound on this path there is no listening socket to close.
+
+- Updated dependencies [[`5dd1d18`](https://github.com/LTplus-AG/ifc-lite/commit/5dd1d181437bf0d1d357f3c5505049f802beb2cf), [`6f5566f`](https://github.com/LTplus-AG/ifc-lite/commit/6f5566fa761f25a02818a750351b0b0db785ef9b), [`8d1972d`](https://github.com/LTplus-AG/ifc-lite/commit/8d1972d059fe5e8725fffbf661cc56bb6a23767b), [`5d763d6`](https://github.com/LTplus-AG/ifc-lite/commit/5d763d6bde10c0232cbf28e7d8e4e956ebaf4ff1)]:
+  - @ifc-lite/create@2.0.2
+  - @ifc-lite/sdk@2.0.3
+
 ## 0.2.11
 
 ### Patch Changes

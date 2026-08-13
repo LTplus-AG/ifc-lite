@@ -5,7 +5,10 @@
 import { describe, expect, it } from 'vitest';
 import { streamNativeGeometry } from './geometry-native.js';
 import { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData, StreamingGeometryEvent } from './types.js';
+import type { MeshData } from './types.js';
+// The streaming event union is declared and exported by index.ts, not types.ts
+// (geometry-native.ts and geometry-parallel.ts import it from there too).
+import type { StreamingGeometryEvent } from './index.js';
 import type { GeometryBatch, GeometryStats } from './platform-bridge.js';
 
 const emptyStats = (): GeometryStats => ({

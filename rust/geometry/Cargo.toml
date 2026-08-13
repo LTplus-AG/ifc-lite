@@ -44,7 +44,7 @@ earcutr = "0.5"
 earcut = { version = "0.4", optional = true }
 
 # 2D polygon boolean operations for profile-level void subtraction
-i_overlay = "7.0"
+i_overlay = "8.0"
 
 # Core IFC parsing
 ifc-lite-core.workspace = true

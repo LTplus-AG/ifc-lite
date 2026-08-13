@@ -1,5 +1,26 @@
 # @ifc-lite/codegen
 
+## 1.15.9
+
+### Patch Changes
+
+- [#2359](https://github.com/LTplus-AG/ifc-lite/pull/2359) [`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two corrupted cells in the generated CRC32 lookup table (index 111 and 245), which were hand-typed literals that had silently drifted from the correct reflected CRC-32 (polynomial `0xEDB88320`) values. `packages/codegen` now renders this table from a single `buildCRC32Table()` source of truth in both its TypeScript and Rust templates instead of hand-typing a second copy, so the two cannot diverge again.
+
+  The 256-entry `TYPE_IDS` map shipped for every named entity in the schema was never affected — those ids are computed with the correct table at generation time. The corruption only affected `crc32Hash()` / `crc32_hash()` at runtime for entity keywords that are NOT in the map, i.e. the `IfcType::from_str` `Unknown(crc32_hash(...))` fallback reached for unrecognized/vendor-extension entity keywords, which could get a silently wrong stable id for names whose hash computation happened to touch one of the two corrupted cells.
+
+  `packages/codegen/generated/ifc4/type-ids.ts`, `packages/parser/src/generated/type-ids.ts`, `rust/core/src/generated/schema.rs`, and `packages/codegen/generated/ifc4x3/type-ids.ts` were all regenerated to correct the same two cells; each diff is exactly those two constants. The `ifc4x3` copy (see the companion changeset) is not imported by `packages/parser` or `rust/core`, so it had no runtime reader today, but it is a checked-in generated artifact and now matches the canonical table like the other three.
+
+  `formatCRC32TableLiteral()` now validates `perLine` and throws for a zero, negative, or non-integer value instead of silently producing a broken or extremely slow result. No caller passes a non-default `perLine` today, so this is a hardening of the exported helper's contract rather than a behavioral fix to generated output — with the default (`perLine = 6`), this hardening by itself leaves the four regenerated artifacts above unchanged.
+
+- [#2359](https://github.com/LTplus-AG/ifc-lite/pull/2359) [`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a fourth checked-in copy of the corrupted CRC32 lookup table (index 111 and 245, see the earlier CRC32 table-corruption changeset) that the prior regeneration missed: `packages/codegen/generated/ifc4x3/type-ids.ts`. Its generator (`packages/codegen/src/type-ids-generator.ts`, run via `pnpm generate:ifc4x3`) already rendered the table from `formatCRC32TableLiteral()`/`buildCRC32Table()`, the single source of truth — the file itself simply hadn't been re-run after that fix landed, so it still shipped the two hand-typed-wrong cells.
+
+  This artifact is not imported by `packages/parser` or `rust/core` (unlike the sibling `generated/ifc4/type-ids.ts`, which is copied into `packages/parser/src/generated/`), so its `TYPE_IDS` map and its `crc32Hash()` runtime fallback were not reachable from any current runtime code path. Regenerating it corrects the checked-in artifact so it matches the canonical table and stays correct if it is ever consumed.
+
+  Regenerated diff is exactly the two constants (index 111 and 245), no unrelated churn. Added a test (`packages/codegen/test/type-ids-generator.test.ts`) that reads both checked-in `generated/ifc4/type-ids.ts` and `generated/ifc4x3/type-ids.ts` from disk and asserts their `CRC32_TABLE` matches `buildCRC32Table()` in all 256 cells, so a regenerated-but-not-committed (or committed-but-stale) artifact can't silently drift from the generator again.
+
+- Updated dependencies []:
+  - @ifc-lite/data@3.2.4
+
 ## 1.15.8
 
 ### Patch Changes

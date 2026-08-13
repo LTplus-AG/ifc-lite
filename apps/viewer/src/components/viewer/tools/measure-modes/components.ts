@@ -55,18 +55,23 @@ export function distanceComponents(start: Point3, end: Point3): DistanceComponen
   };
 }
 
-/** Format a signed delta, keeping the sign in front of the unit-scaled magnitude. */
-export function formatSignedDistance(meters: number): string {
-  const magnitude = formatDistance(Math.abs(meters));
+/**
+ * Format a signed delta, keeping the sign in front of the unit-scaled
+ * magnitude. `overrides` is the user's LENGTHUNIT display override (#1573,
+ * `unitDisplayOverrides`); omitting it (or passing `{}`) keeps the previous
+ * auto-scaled-metric behaviour.
+ */
+export function formatSignedDistance(meters: number, overrides: Record<string, string> = {}): string {
+  const magnitude = formatDistance(Math.abs(meters), overrides);
   return meters < 0 ? `-${magnitude}` : magnitude;
 }
 
 /** One-line per-axis readout, e.g. `dX 3.000 m  dY 12.000 m  dZ 4.000 m`. */
-export function formatAxisDeltas(c: DistanceComponents): string {
-  return `dX ${formatSignedDistance(c.dx)}  dY ${formatSignedDistance(c.dy)}  dZ ${formatSignedDistance(c.dz)}`;
+export function formatAxisDeltas(c: DistanceComponents, overrides: Record<string, string> = {}): string {
+  return `dX ${formatSignedDistance(c.dx, overrides)}  dY ${formatSignedDistance(c.dy, overrides)}  dZ ${formatSignedDistance(c.dz, overrides)}`;
 }
 
 /** One-line horizontal/vertical readout, e.g. `H 5.000 m  V 12.000 m`. */
-export function formatHorizontalVertical(c: DistanceComponents): string {
-  return `H ${formatDistance(c.horizontal)}  V ${formatDistance(c.vertical)}`;
+export function formatHorizontalVertical(c: DistanceComponents, overrides: Record<string, string> = {}): string {
+  return `H ${formatDistance(c.horizontal, overrides)}  V ${formatDistance(c.vertical, overrides)}`;
 }

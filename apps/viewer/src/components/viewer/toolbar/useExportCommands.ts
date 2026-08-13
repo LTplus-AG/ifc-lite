@@ -3,35 +3,74 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Data-export commands (CSV / JSON / screenshot) shared by the classic
- * toolbar and the ribbon. The dialog-based exporters (IFC, GLB, KMZ,
- * HBJSON) stay as dialog components with a `trigger` prop — each
- * toolbar style supplies its own trigger element.
+ * Runtime half of the export command registry: the handlers behind the
+ * one-click exports (CSV / JSON / screenshot) plus the gating that decides
+ * which registry entries are live right now.
+ *
+ * Both toolbar styles call this hook and render `commands` — the classic strip
+ * through `ClassicExportMenuItems`, the ribbon through `RibbonExportGroup` —
+ * so the enabled/disabled rule for a format is written once. The dialog-based
+ * formats stay dialog components with a `trigger` prop; each style supplies
+ * its own trigger element.
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useIfc } from '@/hooks/useIfc';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, downloadDataUrl } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
+import { EXPORT_COMMANDS, type CsvExportType, type RegisteredExportCommand } from './export-commands';
 
-export type CsvExportType = 'entities' | 'properties' | 'quantities' | 'spatial';
+export type { CsvExportType };
+
+/** A registry entry plus whether it can run against the current session. */
+export interface ResolvedExportCommand {
+  command: RegisteredExportCommand;
+  disabled: boolean;
+}
 
 export function useExportCommands() {
-  const { ifcDataStore } = useIfc();
+  const { ifcDataStore, models, geometryResult } = useIfc();
+
+  // Same rule as `useFileCommands.hasModelsLoaded`: federated sessions fill
+  // `models` and leave the legacy single-model `geometryResult` null.
+  const hasModelsLoaded =
+    models.size > 0 || Boolean(geometryResult?.meshes && geometryResult.meshes.length > 0);
+  const canExport = hasModelsLoaded || Boolean(ifcDataStore);
+
+  /**
+   * The data exports (CSV / JSON) read the single `ifcDataStore` slot, which
+   * `setActiveModel` keeps pointed at the ACTIVE model — so in a federated
+   * session they cover that one model and none of the others. That predates
+   * the registry (it is what `useExportCommands` did on main, and what both
+   * toolbars gated on) and making them span the federation is a real change of
+   * the output contract: express ids collide across models, so it means either
+   * one file per model or a new model column / envelope, which would break
+   * anything parsing today's shape. That decision belongs in its own change.
+   *
+   * What must not survive until then is a PARTIAL export presented as a whole
+   * one, so the toast says which it is. The geometry exports (IFC/GLB/KMZ/USD)
+   * are unaffected — they go through their own dialogs, which handle the
+   * federation themselves.
+   */
+  const otherModelCount = Math.max(0, models.size - 1);
+  const activeModelOnlyNote =
+    otherModelCount > 0
+      ? ` — active model only, ${otherModelCount} other loaded model${otherModelCount === 1 ? '' : 's'} not included`
+      : '';
 
   const handleExportCSV = useCallback(async (type: CsvExportType) => {
-    if (!ifcDataStore?.source) return;
+    if (!ifcDataStore || ifcDataStore.source.byteLength <= 0) return;
     try {
       const csv = await exportCsvFromBytes(ifcDataStore.source.materialize(), type, { includeProperties: type === 'entities' });
       const filename = type === 'spatial' ? 'spatial-hierarchy.csv' : `${type}.csv`;
       downloadFile(csv, filename, 'text/csv');
-      toast.success(`Exported ${type} CSV`);
+      toast.success(`Exported ${type} CSV${activeModelOnlyNote}`);
     } catch (err) {
       console.error('CSV export failed:', err);
       toast.error(`CSV export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore]);
+  }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleExportJSON = useCallback(() => {
     if (!ifcDataStore) return;
@@ -50,12 +89,12 @@ export function useExportCommands() {
 
       const json = JSON.stringify({ entities }, null, 2);
       downloadFile(json, 'model-data.json', 'application/json');
-      toast.success(`Exported ${entities.length} entities as JSON`);
+      toast.success(`Exported ${entities.length} entities as JSON${activeModelOnlyNote}`);
     } catch (err) {
       console.error('JSON export failed:', err);
       toast.error(`JSON export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
-  }, [ifcDataStore]);
+  }, [ifcDataStore, activeModelOnlyNote]);
 
   const handleScreenshot = useCallback(() => {
     const canvas = document.querySelector('canvas');
@@ -69,5 +108,27 @@ export function useExportCommands() {
     }
   }, []);
 
-  return { ifcDataStore, handleExportCSV, handleExportJSON, handleScreenshot };
+  /** Dispatch for the registry's one-click (`kind: 'action'`) commands. */
+  const runExportAction = useCallback((action: 'json' | 'screenshot') => {
+    if (action === 'json') handleExportJSON();
+    else handleScreenshot();
+  }, [handleExportJSON, handleScreenshot]);
+
+  const commands = useMemo<ResolvedExportCommand[]>(
+    () => EXPORT_COMMANDS.map((command) => ({
+      command,
+      disabled: command.requires === 'dataStore' ? !ifcDataStore : !canExport,
+    })),
+    [ifcDataStore, canExport],
+  );
+
+  return {
+    ifcDataStore,
+    canExport,
+    commands,
+    handleExportCSV,
+    handleExportJSON,
+    handleScreenshot,
+    runExportAction,
+  };
 }

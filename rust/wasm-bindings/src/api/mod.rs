@@ -12,6 +12,7 @@ mod clash;
 mod csg_diagnostics;
 mod diagnose;
 mod export_data;
+mod export_dfjson;
 mod export_glb;
 mod export_hbjson;
 mod export_obj;

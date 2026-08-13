@@ -19,6 +19,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BimContext } from '@ifc-lite/sdk';
 import { buildStoreNamespace } from './bridge-store.js';
+import type { BridgeCallContext } from './bridge-schema.js';
+
+/** Bridge calls take a per-call context; these unit tests invoke `call:` directly. */
+const CTX: BridgeCallContext = { sandboxSessionId: 'test' };
 
 function findMethod(name: string) {
   const ns = buildStoreNamespace();
@@ -43,7 +47,7 @@ describe('bim.store storeyExpressId guard — addBeam vs. its siblings', () => {
     const sdk = mockSdk();
     const call = findMethod('addColumn').call;
     expect(() =>
-      call(sdk, ['model', 0, { Position: [0, 0, 0], Width: 1, Depth: 1, Height: 1 }]),
+      call(sdk, ['model', 0, { Position: [0, 0, 0], Width: 1, Depth: 1, Height: 1 }], CTX),
     ).toThrow(/storeyExpressId must be a positive integer/);
     expect((sdk as unknown as { store: { addColumn: ReturnType<typeof vi.fn> } }).store.addColumn).not.toHaveBeenCalled();
   });
@@ -52,7 +56,7 @@ describe('bim.store storeyExpressId guard — addBeam vs. its siblings', () => {
     const sdk = mockSdk();
     const call = findMethod('addBeam').call;
     expect(() =>
-      call(sdk, ['model', 0, { Start: [0, 0, 0], End: [1, 0, 0], Width: 1, Height: 1 }]),
+      call(sdk, ['model', 0, { Start: [0, 0, 0], End: [1, 0, 0], Width: 1, Height: 1 }], CTX),
     ).toThrow();
     expect((sdk as unknown as { store: { addBeam: ReturnType<typeof vi.fn> } }).store.addBeam).not.toHaveBeenCalled();
   });
@@ -61,7 +65,7 @@ describe('bim.store storeyExpressId guard — addBeam vs. its siblings', () => {
     const sdk = mockSdk();
     const call = findMethod('addBeam').call;
     expect(() =>
-      call(sdk, ['model', -1, { Start: [0, 0, 0], End: [1, 0, 0], Width: 1, Height: 1 }]),
+      call(sdk, ['model', -1, { Start: [0, 0, 0], End: [1, 0, 0], Width: 1, Height: 1 }], CTX),
     ).toThrow();
     expect((sdk as unknown as { store: { addBeam: ReturnType<typeof vi.fn> } }).store.addBeam).not.toHaveBeenCalled();
   });

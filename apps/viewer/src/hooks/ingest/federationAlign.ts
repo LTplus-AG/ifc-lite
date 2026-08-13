@@ -7,8 +7,10 @@
  *
  * Extracted verbatim from useIfcFederation.ts so the unified model-load path
  * (useIfcLoader's finalizeModel) can reuse them without a circular dependency.
- * Behaviour-preserving move — do not change the georef maths or the issue-#595 /
- * issue-#658 comments, which encode subtle alignment behaviour.
+ * The extraction was behaviour-preserving; keep the issue-#595 / issue-#658
+ * comments, which encode subtle alignment behaviour. Since then, #2526 routed
+ * every read of a model's MapConversion through `effectiveConv` (the
+ * map-absolute guard); that is the only deliberate change to the maths.
  */
 
 import {
@@ -20,6 +22,7 @@ import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '../../store/index.js';
 import { getEffectiveGeoreference, getEffectiveHorizontalScale, hasStandardGeoreferencing, type GeorefMutationDataLike } from '../../lib/geo/effective-georef.js';
 import { resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
+import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { resolveProjection } from '../../lib/geo/reproject.js';
 import {
   alignEntityWorldAabbs,
@@ -46,8 +49,23 @@ function getMapUnitScale(georef: ModelGeoref): number {
   return resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, georef.lengthUnitScale ?? 1);
 }
 
+/**
+ * The conversion the alignment maths must apply for this model: the authored
+ * one, unless the model's geometry already sits at the declared map anchor —
+ * the map-absolute double-georeferencing signature (#2526) — in which case
+ * the neutralised (zero-offset, identity-rotation) conversion reads the
+ * geometry's absolute coordinates through instead of transforming them twice.
+ */
+function effectiveConv(georef: ModelGeoref): MapConversion {
+  return effectiveMapConversionForGeometry(
+    georef.mapConversion,
+    getMapUnitScale(georef),
+    georef.coordinateInfo,
+  );
+}
+
 function getAxis(georef: ModelGeoref): { a: number; o: number; scale: number; denom: number } {
-  const conversion = georef.mapConversion;
+  const conversion = effectiveConv(georef);
   const a = conversion.xAxisAbscissa ?? 1;
   const o = conversion.xAxisOrdinate ?? 0;
   // Use the effective horizontal scale: viewer geometry is already in metres,
@@ -132,8 +150,10 @@ function updateBounds(bounds: ReturnType<typeof emptyBounds>, x: number, y: numb
 }
 
 function buildGeorefAlignmentTransform(source: ModelGeoref, reference: ModelGeoref): AffineTransform3D | null {
-  const sourceConv = source.mapConversion;
-  const refConv = reference.mapConversion;
+  // Map-absolute geometry (#2526): per-model effective conversion, matching
+  // the axis pair getAxis() resolves from the same guard.
+  const sourceConv = effectiveConv(source);
+  const refConv = effectiveConv(reference);
   const sourceAxis = getAxis(source);
   const refAxis = getAxis(reference);
   const refDenom = refAxis.scale * refAxis.denom;
@@ -354,8 +374,9 @@ async function alignGeometryAcrossCrs(
   if (Math.abs(refDenom) < 1e-12) return false;
   const invRefDenom = 1 / refDenom;
 
-  const sourceConv = source.mapConversion;
-  const refConv = reference.mapConversion;
+  // Map-absolute geometry (#2526): same per-model guard as the same-CRS path.
+  const sourceConv = effectiveConv(source);
+  const refConv = effectiveConv(reference);
 
   const bounds = emptyBounds();
   let found = false;

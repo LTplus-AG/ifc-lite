@@ -18,7 +18,7 @@
  * So: never pass `store.source` straight to `postMessage`. Call this.
  */
 
-import type { IfcSourceBytes } from '@ifc-lite/parser';
+import type { IfcSourceBytes, IfcSourceTransfer } from '@ifc-lite/parser';
 
 /**
  * The minimum a caller must have. Structural on purpose: `IfcDataStore`
@@ -30,19 +30,23 @@ export interface WholeSourceStore {
 }
 
 /**
- * The model's whole IFC source, as one contiguous view, ready to hand to a
- * worker.
+ * A description of the model's whole IFC source, ready to `postMessage`.
  *
- * Not a copy. The source is normally `SharedArrayBuffer`-backed on the paths
- * that matter, so the worker shares it by reference and neither realm pays for
- * the bytes — which is also why callers must never put the returned view in a
- * `postMessage` transfer list (that would detach the viewer's own copy).
+ * An envelope, NOT bytes, and that is the point. A resident source describes
+ * itself as its underlying view, so this stays exactly as cheap as it was:
+ * the source is `SharedArrayBuffer`-backed on the paths that matter, and a SAB
+ * posted without a transfer list is shared by reference, so neither realm pays
+ * for the bytes. (Callers must still never put it in a transfer list — that
+ * would detach the viewer's own copy.)
+ *
+ * A block-compressed source describes itself as its compressed blocks instead,
+ * so the worker receives ~67 MB rather than 343 MB and the MAIN thread never
+ * inflates anything. Materialising here would have been the single worst place
+ * to do it: it would reintroduce, on the render thread, precisely the whole-
+ * file allocation #2183 exists to remove.
+ *
+ * The receiving worker rebuilds with `sourceBytesFromTransferable`.
  */
-export function getWholeSourceForWorker(store: WholeSourceStore): Uint8Array {
-  // Contiguous today, so this is the underlying view and costs nothing. When
-  // the source stops being contiguous this is the ONE function that has to
-  // learn how to hand a worker its bytes — post the parts and reassemble in
-  // the worker, rather than materialising the whole file on this thread,
-  // which is the very allocation the change is meant to remove.
-  return store.source.materialize();
+export function getWholeSourceForWorker(store: WholeSourceStore): IfcSourceTransfer {
+  return store.source.toTransferable();
 }

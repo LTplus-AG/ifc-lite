@@ -7,7 +7,9 @@ import assert from 'node:assert';
 
 import proj4 from 'proj4';
 
-import { computeGridConvergence, viewerToEnuRotation } from './cesium-bridge.js';
+import { computeGridConvergence, createCesiumBridge, viewerToEnuRotation } from './cesium-bridge.js';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 /**
  * Independent grid-convergence ground truth: reproject a grid-north step to
@@ -159,5 +161,55 @@ describe('viewerToEnuRotation — model/camera share one convergence-corrected r
     assert.ok(Math.abs(r.northFromVx - (sg * g.eastFromVx + cg * g.northFromVx)) < 1e-12);
     assert.ok(Math.abs(r.eastFromVz - (cg * g.eastFromVz - sg * g.northFromVz)) < 1e-12);
     assert.ok(Math.abs(r.northFromVz - (sg * g.eastFromVz + cg * g.northFromVz)) < 1e-12);
+  });
+});
+
+describe('createCesiumBridge with map-absolute geometry (#2526)', () => {
+  // Same fixture shape as reproject.test.ts's #2526 block: geometry already at
+  // the absolute EPSG:25833 coordinates (via wasmRtcOffset), MapConversion
+  // repeating the anchor with a 90-degree XAxis rotation.
+  const vwCoordinateInfo: CoordinateInfo = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: {
+      min: { x: -29.07, y: -0.2, z: -13.68 },
+      max: { x: 5.98, y: 3.76, z: 31.68 },
+    },
+    shiftedBounds: {
+      min: { x: -29.07, y: -0.2, z: -13.68 },
+      max: { x: 5.98, y: 3.76, z: 31.68 },
+    },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312018.898, y: 5996169.654, z: 14 },
+  };
+  const vwConversion: MapConversion = {
+    id: 73,
+    sourceCRS: 41,
+    targetCRS: 71,
+    eastings: 311988.181,
+    northings: 5996148.565,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 0,
+    xAxisOrdinate: 1,
+  };
+  const vwCrs: ProjectedCRS = {
+    id: 71,
+    name: 'EPSG:25833 ETRS89 / UTM zone 33N',
+    geodeticDatum: 'ETRS89',
+    mapUnit: 'METRE',
+    mapUnitScale: 1,
+  };
+
+  it('neutralises the double-applied rotation and reads viewer points at their absolute map position', async () => {
+    const bridge = await createCesiumBridge(vwConversion, vwCrs, vwCoordinateInfo, 0.001);
+    assert.ok(bridge, 'expected a bridge');
+    // The 90-degree XAxis rotation is already baked into the absolute
+    // geometry — re-applying it would spin the model around a correct origin.
+    assert.strictEqual(bridge.rotationAngle, 0);
+    // Viewer origin (0,0,0) = the rtc offset = IFC (312018.898, 5996169.654, 14).
+    const geo = bridge.viewerToGeodetic(0, 0, 0);
+    assert.ok(geo, 'expected a geodetic position');
+    assert.ok(Math.abs(geo.latitude - 54.0794) < 5e-3, `lat ${geo.latitude} should be Rostock`);
+    assert.ok(Math.abs(geo.longitude - 12.1264) < 5e-3, `lon ${geo.longitude} should be Rostock`);
+    assert.ok(Math.abs(geo.height - 14) < 1e-6, `height ${geo.height} should keep the absolute 14 m`);
   });
 });

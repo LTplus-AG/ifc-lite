@@ -37,6 +37,7 @@ import { evaluateFilterRulesFederated } from '@/lib/search/filter-evaluate';
 import { runTier0Scan, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
 import { downloadResult } from '@/lib/search/result-export';
+import { filterResultToSearchResults } from '@/lib/search/filter-result-to-search-results';
 import type { ListDefinition } from '@/lib/lists';
 import { SearchModalFilterBuilder } from './SearchModal.filter.builder';
 
@@ -65,6 +66,8 @@ export function SearchModalFilter() {
     activeModelId,
     setSelectedEntity,
     setSelectedEntityId,
+    setSelectedEntityIds,
+    enterVimCycle,
     cameraCallbacks,
     setPendingListDraft,
     setListPanelVisible,
@@ -86,6 +89,8 @@ export function SearchModalFilter() {
       activeModelId: s.activeModelId,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
+      enterVimCycle: s.enterVimCycle,
       cameraCallbacks: s.cameraCallbacks,
       setPendingListDraft: s.setPendingListDraft,
       setListPanelVisible: s.setListPanelVisible,
@@ -266,6 +271,18 @@ export function SearchModalFilter() {
     return -1;
   }, [searchFilterResult]);
 
+  // Frozen (per-run) conversion of the filter table into SearchResult-shaped
+  // entries so the existing vim-cycle machinery (enterVimCycle/stepVimCycle,
+  // stepped by SearchInline's n/N listener) can step through Filter-tab
+  // results the same way it steps through Search-tab results. Only recomputed
+  // when the result table itself changes, not per click, so the array identity
+  // stays stable across a run's clicks — the same 'frozen snapshot' semantics
+  // the Search tab's cycle documents (searchSlice.ts SearchVimCycleState).
+  const cycleResults = useMemo(
+    () => (searchFilterResult ? filterResultToSearchResults(searchFilterResult, activeModelId) : []),
+    [searchFilterResult, activeModelId],
+  );
+
   const handleRowClick = useCallback((row: unknown[]) => {
     if (selectionKeyIndex < 0) return;
     const rowModelId = modelIdColumnIndex >= 0 && typeof row[modelIdColumnIndex] === 'string'
@@ -275,17 +292,51 @@ export function SearchModalFilter() {
     const raw = row[selectionKeyIndex];
     const expressId = typeof raw === 'number'
       ? raw
-      : typeof raw === 'string' && !Number.isNaN(Number(raw))
+      : typeof raw === 'string'
         ? Number(raw)
         : null;
-    if (expressId === null || expressId <= 0) return;
+    // Kept in sync with filter-result-to-search-results.ts's identical
+    // guard: express ids are Uint32Array-backed integers, so a row must
+    // satisfy the same Number.isInteger check to be clickable as it does
+    // to enter the vim cycle (otherwise a row could be one but not the
+    // other).
+    if (expressId === null || !Number.isInteger(expressId) || expressId <= 0) return;
     const globalId = toGlobalIdFromModels(models, rowModelId, expressId);
+    // Clear any live multi-selection FIRST. `frameSelection` prefers the
+    // numeric `selectedEntityIds` set over `selectedEntityId`
+    // (Viewport.tsx:935), so a stale set left over from a previous
+    // box/basket selection would frame the OLD elements instead of this row.
+    // Ordering is load-bearing: `setSelectedEntityIds([])` also resets
+    // `selectedEntityId`, so it has to run before the two setters below —
+    // same sequence HierarchyPanel uses (HierarchyPanel.tsx:410-411).
+    setSelectedEntityIds([]);
     setSelectedEntityId(globalId);
     setSelectedEntity({ modelId: rowModelId, expressId });
     if (cameraCallbacks.frameSelection) {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
-  }, [activeModelId, cameraCallbacks, models, modelIdColumnIndex, selectionKeyIndex, setSelectedEntity, setSelectedEntityId]);
+    // Enter the vim cycle so n/N steps through the rest of this run's
+    // matches, same as the Search tab. Index is found by (modelId, expressId)
+    // rather than by row position, since filterResultToSearchResults can skip
+    // unselectable rows and the two arrays needn't stay position-aligned.
+    const cycleIndex = cycleResults.findIndex(
+      (r) => r.modelId === rowModelId && r.expressId === expressId,
+    );
+    if (cycleIndex >= 0) {
+      enterVimCycle(`filter: ${searchFilter.rules.length} rule${searchFilter.rules.length === 1 ? '' : 's'}`, cycleResults, cycleIndex);
+    }
+    // Close the modal so the framing is actually visible. The dialog overlay
+    // is `fixed inset-0 bg-black/80` (ui/dialog.tsx:23), so without this the
+    // camera does fly to the element behind a full-screen scrim and the click
+    // reads as doing nothing. The Search tab (SearchModal.text.tsx) and the
+    // inline bar (SearchInline.tsx) both already close on commit; this is
+    // parity with them and with the modal's own documented commit semantics
+    // ("select + frame + ... + close", SearchModal.tsx:19).
+    // Results survive: `searchFilterResult` is only dropped on a model change
+    // (store/index.ts:544), never on close, so reopening shows the same table
+    // without re-running the filter.
+    setSearchModalOpen(false);
+  }, [activeModelId, cameraCallbacks, cycleResults, enterVimCycle, models, modelIdColumnIndex, searchFilter.rules.length, selectionKeyIndex, setSearchModalOpen, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds]);
 
   const handleExport = useCallback((format: 'csv' | 'json') => {
     if (!searchFilterResult || searchFilterResult.rows.length === 0) return;

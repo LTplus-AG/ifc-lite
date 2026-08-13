@@ -275,7 +275,7 @@ describe('viewer blob — foldOrigin', () => {
     const positions = new Float32Array([0.4, -12.7, -0.4, -0.4, 12.7, 0.4]);
     const origin = [-0.4, 42.78, -0.55];
     const out = foldOrigin(positions, origin);
-    assert.deepEqual(Array.from(out).map(round), [0, 30.08, -0.95, -0.8, 55.48, -0.15]);
+    assert.deepEqual(nums(out).map(round), [0, 30.08, -0.95, -0.8, 55.48, -0.15]);
   });
 
   it('is a no-op when origin is [0,0,0] (positions already absolute)', () => {

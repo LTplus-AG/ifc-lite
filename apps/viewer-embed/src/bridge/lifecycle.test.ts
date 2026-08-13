@@ -38,14 +38,7 @@ interface Posted {
 interface FakeWindow {
   posted: Posted[];
   listenerCount: () => number;
-  /**
-   * `source` defaults to `win.parent` -- exactly what a real inbound
-   * MessageEvent's `event.source` is for a message actually sent by the
-   * host page, and what handler.ts's `event.source !== window.parent` check
-   * requires. Omit it to model the legitimate parent; the lifecycle tests
-   * here don't exercise forged senders (see handler.test.ts for that).
-   */
-  dispatch: (event: { data: unknown; origin: string; source?: unknown }) => void;
+  dispatch: (event: { data: unknown; origin: string }) => void;
 }
 
 function installWindow(): FakeWindow {
@@ -64,13 +57,19 @@ function installWindow(): FakeWindow {
       posted.push({ msg, targetOrigin });
     },
   };
-  (globalThis as any).window = win;
+  // `window` is a non-optional DOM-lib global, so a plain assignment/delete
+  // pair does not typecheck without a cast; define it as a configurable
+  // property instead so `afterEach` can remove it again.
+  Object.defineProperty(globalThis, 'window', {
+    value: win,
+    configurable: true,
+    writable: true,
+  });
   return {
     posted,
     listenerCount: () => listeners.size,
     dispatch: (event) => {
-      const withSource = { ...event, source: 'source' in event ? event.source : win.parent };
-      for (const fn of [...listeners]) fn(withSource);
+      for (const fn of [...listeners]) fn(event);
     },
   };
 }
@@ -88,6 +87,16 @@ function makeCtx(state: any) {
     getState: () => state,
     loadModelFromUrl: async () => ({ entities: 0, triangles: 0, vertices: 0 }),
     loadModelFromBuffer: async () => ({ entities: 0, triangles: 0, vertices: 0 }),
+    // Required on BridgeContext since #2361. These lifecycle tests never issue
+    // ADD_MODEL, but the double has to satisfy the real interface — typecheck
+    // covers test sources, and a cast here would silence the next field the
+    // interface grows as well.
+    addModelFromUrl: async () => ({
+      modelId: 'lifecycle-added-id',
+      entities: 0,
+      triangles: 0,
+      vertices: 0,
+    }),
   };
 }
 
@@ -99,7 +108,7 @@ function cmd(type: string) {
 
 afterEach(() => {
   destroyBridge();
-  delete (globalThis as any).window;
+  Reflect.deleteProperty(globalThis, 'window');
 });
 
 // ---------------------------------------------------------------------------

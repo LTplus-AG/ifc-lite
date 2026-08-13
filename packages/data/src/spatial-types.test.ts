@@ -15,6 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { EntityTableBuilder } from './entity-table.js';
 import {
   BUILDING_LIKE_SPATIAL_TYPE_ENUMS,
   SPACE_LIKE_SPATIAL_TYPE_ENUMS,
@@ -28,6 +29,7 @@ import {
   isStoreyLikeSpatialType,
   isStoreyLikeSpatialTypeName,
 } from './spatial-types.js';
+import { StringTable } from './string-table.js';
 import { IfcTypeEnum } from './types.js';
 
 describe('SPATIAL_STRUCTURE_TYPE_ENUMS membership', () => {
@@ -157,5 +159,30 @@ describe('name-based predicates', () => {
     expect(isStoreyLikeSpatialTypeName('IFCBUILDINGSTOREY')).toBe(true);
     expect(isSpaceLikeSpatialTypeName('IFCSPACE')).toBe(true);
     expect(isSpaceLikeSpatialTypeName('ifcspace')).toBe(true);
+  });
+});
+
+describe('retype override interop with isSpatialStructureTypeName', () => {
+  // `EntityTable.setTypeOverride` (entity-table.ts) is how a UI "change
+  // class" action re-labels an entity. Its `typeName` argument comes from a
+  // dropdown of raw IFC class tokens, which are UPPERCASE
+  // (`IFCBUILDINGSTOREY`, not `IfcBuildingStorey`) — the same casing
+  // `IFC_ENTITY_NAMES` and the rest of the raw-type-name plumbing use
+  // elsewhere in this file. `getTypeName` echoed that override back verbatim,
+  // so any caller that re-classifies an entity and then asks
+  // `isSpatialStructureTypeName(table.getTypeName(id))` whether it belongs in
+  // the spatial tree got a silent `false` for every retyped entity — even
+  // though `isStoreyLikeSpatialTypeName` (case-insensitive) correctly said
+  // `true`. Pins that the override is canonicalised to PascalCase on the way
+  // in, so `getTypeName` and the case-sensitive name predicate agree.
+  it('canonicalises an UPPERCASE retype so isSpatialStructureTypeName recognises it', () => {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(1, strings);
+    builder.add(501, 'IFCWALL', '4aaCT2_$X3_xJG3rzD8L_8', 'Wall-Retyped', '', '', true, false);
+    const table = builder.build();
+
+    table.setTypeOverride(501, 'IFCBUILDINGSTOREY');
+
+    expect(isSpatialStructureTypeName(table.getTypeName(501))).toBe(true);
   });
 });

@@ -192,6 +192,41 @@ self.onmessage = function(e) {
     } else if (ch === 0x0A) {
       line++;
       pos++;
+    } else if (ch === 0x27) { // quote
+      // Consume a string literal whole. HEADER records carry no '#', so this
+      // loop walks them byte by byte, and a '/*' inside a description would
+      // otherwise open a comment that never closes and take DATA with it.
+      var sp = pos + 1;
+      while (sp < len) {
+        if (buf[sp] === 0x27) {
+          if (sp + 1 < len && buf[sp + 1] === 0x27) { sp += 2; continue; }
+          sp++;
+          break;
+        }
+        if (buf[sp] === 0x0A) { line++; }
+        sp++;
+      }
+      pos = sp;
+    } else if (ch === 0x2F && pos + 1 < len && buf[pos + 1] === 0x2A) {
+      // Skip a /* */ region. A record that is commented out is still a
+      // well-formed #id = TYPE(...), so every check above accepts it and only
+      // skipping the region rejects it. Kept byte-identical to
+      // step-lexing.ts, which this cannot import: the worker source is a
+      // string, so the third copy of this loop has to carry its own copy of
+      // the rule. Comments do not nest, per ISO 10303-21.
+      var cp = pos + 2;
+      var closed = false;
+      while (cp + 1 < len) {
+        if (buf[cp] === 0x2A && buf[cp + 1] === 0x2F) { closed = true; break; }
+        if (buf[cp] === 0x0A) { line++; }
+        cp++;
+      }
+      if (!closed) {
+        // Unterminated: everything to EOF is commented out.
+        pos = len;
+        break;
+      }
+      pos = cp + 2;
     } else {
       pos++;
     }

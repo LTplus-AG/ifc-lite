@@ -35,5 +35,7 @@
     "src/**/*",
     "../viewer/src/**/*",
     "../../packages/renderer/src/webgpu-types.d.ts"
-  ]
+  ],
+  "//exclude": "Resets the root tsconfig's `\"**/*.test.ts\"`. `exclude` filters `include`, so without this the app's own tests are in no typecheck program at all (#2457). Nothing emits from this config — `build` is `vite build` — so there is no risk of tests reaching `dist/`.",
+  "exclude": ["node_modules", "dist"]
 }

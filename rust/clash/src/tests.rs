@@ -273,6 +273,27 @@ fn a_genuine_crossing_is_labelled_mesh_measured() {
 }
 
 #[test]
+fn a_box_member_piercing_clean_through_another_box_is_labelled_an_estimate() {
+    // Maintainer review on #2536, reproduced: a 0.4x0.4 duct, 2 m long,
+    // straight through the 200 mm thickness of a 5.0 x 0.2 x 3.0 m wall,
+    // both boxes, centred. The plain 15-axis box-box MTD picks the wall's
+    // thin Y axis as the winning separating axis — but along that axis the
+    // duct's own half-length (1.0 m) dominates the wall's half-thickness
+    // (0.1 m), so the "exact" depth comes out 1.1 m: 5.5x the true 0.2 m
+    // wall thickness. A through-penetration must not carry the box-exact
+    // label even though both operands ARE boxes. Mirrors the TS fixture in
+    // `engine-ts/depth-provenance.test.ts`.
+    let session = session_of_parts(&[
+        box_hxyz(0.0, 0.0, 0.0, 2.5, 0.1, 1.5),
+        box_hxyz(0.0, 0.0, 0.0, 0.2, 1.0, 0.2),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
 fn a_member_piercing_clean_through_is_labelled_an_estimate() {
     // A triangular-prism column passing right through a box slab. The column
     // is NOT a box (`detect_obb` declines it: 5 face-normal families, not 3),

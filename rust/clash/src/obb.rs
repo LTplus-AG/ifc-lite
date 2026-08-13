@@ -162,6 +162,16 @@ pub fn detect_obb<M: MeshLike>(mesh: &M) -> Option<Obb> {
     for i in 0..3 {
         half[i] = (max_off[i] - min_off[i]) / 2.0;
         c0[i] = (max_off[i] + min_off[i]) / 2.0;
+        // Reject a zero-thickness "box": a face family whose triangles are
+        // all coplanar passes the 2-plane test above (`min_off == max_off`,
+        // so both `near_min` and `near_max` hold for every vertex) with no
+        // positive extent along that axis. An open shell (a slab exported
+        // without its top face, or partial `IfcTriangulatedFaceSet`
+        // geometry) can produce exactly this. Faithful port of the same
+        // guard in the TS `detectObb` (review: #2536).
+        if !(half[i] > OBB_EPS) {
+            return None;
+        }
     }
     let center: Vec3 = [
         c0[0] * groups[0][0] + c0[1] * groups[1][0] + c0[2] * groups[2][0],
@@ -231,4 +241,79 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
     } else {
         Some(depth)
     }
+}
+
+/// `axes[i]` matched to `v` (parallel within `OBB_EPS`, sign-independent), or
+/// `None` if none of the three is.
+fn match_axis(v: Vec3, axes: &[Vec3; 3]) -> Option<usize> {
+    for (i, axis) in axes.iter().enumerate() {
+        if dot(*axis, v).abs() > 1.0 - OBB_EPS {
+            return Some(i);
+        }
+    }
+    None
+}
+
+/// Whether `a` and `b` are in a THROUGH-PENETRATION configuration: one box's
+/// cross-section, in the plane perpendicular to some shared axis, is
+/// strictly inside the other's footprint there, while along that axis it
+/// extends beyond the other and out the far side — a thin member piercing
+/// clean through a wall/slab, not a partial overlap.
+///
+/// Faithful port of the TS `isThroughPenetration` (review: #2536) — see its
+/// doc comment for the full rationale: `obb_penetration_depth` reports the
+/// minimum translation distance to separate the pair, which for this shape
+/// is dominated by the piercing member's own extent along the shared axis,
+/// not by how much material it actually crossed. Only attempted when `a`
+/// and `b` share a common frame; at a generic relative rotation this
+/// returns `false` and `obb_penetration_depth`'s result stands as-is.
+pub fn is_through_penetration(a: &Obb, b: &Obb) -> bool {
+    let mut perm = [0usize; 3];
+    let mut used = [false, false, false];
+    #[allow(clippy::needless_range_loop)]
+    for i in 0..3 {
+        match match_axis(a.axes[i], &b.axes) {
+            Some(j) if !used[j] => {
+                used[j] = true;
+                perm[i] = j;
+            }
+            _ => return false,
+        }
+    }
+
+    let d: Vec3 = [
+        b.center[0] - a.center[0],
+        b.center[1] - a.center[1],
+        b.center[2] - a.center[2],
+    ];
+    let offset = [dot(d, a.axes[0]), dot(d, a.axes[1]), dot(d, a.axes[2])];
+    let mut b_half_on_a = [0.0f64; 3];
+    for i in 0..3 {
+        b_half_on_a[i] = b.half[perm[i]];
+    }
+
+    let margin = |h: f64| OBB_EPS * 1.0f64.max(h);
+
+    for k in 0..3 {
+        let i = (k + 1) % 3;
+        let j = (k + 2) % 3;
+        // A pierces B along axis k: A's footprint on the other two axes is
+        // STRICTLY inside B's, and A's interval extends past B's on BOTH
+        // ends along k (not merely a bigger half-extent — a footing
+        // embedded partway into a slab from one side is longer than the
+        // slab but only pokes out ONE face, which is a partial overlap,
+        // not a through-penetration).
+        let a_inside_b = offset[i].abs() + a.half[i] <= b_half_on_a[i] - margin(b_half_on_a[i])
+            && offset[j].abs() + a.half[j] <= b_half_on_a[j] - margin(b_half_on_a[j]);
+        if a_inside_b && a.half[k] > b_half_on_a[k] + offset[k].abs() + margin(b_half_on_a[k]) {
+            return true;
+        }
+        // B pierces A along axis k: same test with the roles swapped.
+        let b_inside_a = offset[i].abs() + b_half_on_a[i] <= a.half[i] - margin(a.half[i])
+            && offset[j].abs() + b_half_on_a[j] <= a.half[j] - margin(a.half[j]);
+        if b_inside_a && b_half_on_a[k] > a.half[k] + offset[k].abs() + margin(a.half[k]) {
+            return true;
+        }
+    }
+    false
 }

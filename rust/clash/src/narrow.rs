@@ -9,7 +9,7 @@
 //! logic so this kernel and the TS engine agree on classification.
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
-use crate::obb::obb_penetration_depth;
+use crate::obb::{is_through_penetration, obb_penetration_depth};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
@@ -19,9 +19,18 @@ use crate::vec3::{centroid, mid, Vec3};
 /// for a distance that used to come from `TriMesh::max_penetration_into` — a
 /// nearest-crossing-vertex sampling probe that converges to 0 under
 /// retessellation instead of to the true depth (see `obb.rs`, `tests.rs`).
+///
+/// Declines (returns `None`, same as "not both boxes") for a THROUGH-
+/// PENETRATION pair — a thin member piercing clean through the other, e.g. a
+/// duct through a wall — where the minimum-translation-distance is dominated
+/// by the piercing member's own extent, not the material crossed. Faithful
+/// port of the TS `boxMeasuredDepth` (review: #2536).
 fn box_measured_depth(small: &TriMesh, large: &TriMesh) -> Option<f64> {
     let oa = small.get_obb()?;
     let ob = large.get_obb()?;
+    if is_through_penetration(&oa, &ob) {
+        return None;
+    }
     obb_penetration_depth(&oa, &ob)
 }
 

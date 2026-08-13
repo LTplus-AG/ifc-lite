@@ -8,7 +8,7 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
-import { obbPenetrationDepth } from './obb.js';
+import { isThroughPenetration, obbPenetrationDepth } from './obb.js';
 
 /**
  * Exact box-box penetration depth when BOTH meshes are (within tolerance)
@@ -16,11 +16,21 @@ import { obbPenetrationDepth } from './obb.js';
  * label for a distance that used to come from `TriMesh.maxPenetrationInto` —
  * a nearest-crossing-vertex sampling probe that converges to 0 under
  * retessellation instead of to the true depth (see `obb.ts`, `obb.test.ts`).
+ *
+ * Declines (returns `null`, same as "not both boxes") for a THROUGH-
+ * PENETRATION pair — a thin member piercing clean through the other, e.g. a
+ * duct through a wall. There, the minimum-translation-distance `obb.ts`
+ * computes is dominated by the piercing member's own extent along the
+ * shared axis, not by the material actually crossed (review: #2536,
+ * reproduced a 5.5x inflation on exactly this shape). Falling back to the
+ * caller's AABB estimate for that shape matches what `main` did before the
+ * box-exact metric existed, and is honest about not being a measurement.
  */
 function boxMeasuredDepth(small: TriMesh, large: TriMesh): number | null {
   const oa = small.getObb();
   const ob = large.getObb();
   if (!oa || !ob) return null;
+  if (isThroughPenetration(oa, ob)) return null;
   return obbPenetrationDepth(oa, ob);
 }
 

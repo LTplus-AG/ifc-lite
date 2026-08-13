@@ -115,6 +115,27 @@ describe('hard-clash distance provenance', () => {
     expect(res.distance).toBe(-0.040000006556510925);
   });
 
+  it('labels a BOX member piercing clean through another box as an AABB estimate, not the inflated MTD', () => {
+    // Maintainer review on #2536, reproduced: a 0.4x0.4 duct, 2 m long,
+    // straight through the 200 mm thickness of a 5.0 x 0.2 x 3.0 m wall, both
+    // boxes, centred. The plain 15-axis box-box MTD picks the wall's thin
+    // (Y) axis as the winning separating axis — but along THAT axis the
+    // duct's own half-length (1.0 m) dominates the wall's half-thickness
+    // (0.1 m), so the "exact" depth comes out 1.1 m: 5.5x the true 0.2 m
+    // wall thickness, in the direction of overstating severity, and
+    // (before this fix) certified as `'mesh'` — a measurement a coordinator
+    // would trust. `main` was honest here: it fell back to the AABB
+    // estimate for exactly this "thin member piercing straight through"
+    // shape. A through-penetration must not carry the box-exact label even
+    // though both operands ARE boxes.
+    const wall = boxEl('W', 'IfcWall', [-2.5, -0.1, -1.5], [2.5, 0.1, 1.5]);
+    const duct = boxEl('D', 'IfcDuct', [-0.2, -1.0, -0.2], [0.2, 1.0, 0.2]);
+    const res = pair(wall, duct);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+    expect(res.distance).toBe(-0.2);
+  });
+
   it('labels a non-box member piercing clean through as an AABB estimate', () => {
     // A triangular-prism column passing right through a box slab: the column
     // is NOT a box (detectObb declines it), so there is no certified box-box

@@ -138,6 +138,14 @@ export function detectObb(mesh: MeshLike): Obb | null {
   for (let i = 0; i < 3; i += 1) {
     half[i] = (maxOff[i] - minOff[i]) / 2;
     c0[i] = (maxOff[i] + minOff[i]) / 2;
+    // Reject a zero-thickness "box": a face family whose triangles are all
+    // coplanar passes the 2-plane test above (minOff == maxOff, so both
+    // `nearMin` and `nearMax` hold for every vertex) with no positive
+    // extent along that axis. An open shell (a slab exported without its
+    // top face, or partial `IfcTriangulatedFaceSet` geometry) can produce
+    // exactly this — 3 orthogonal families, but one degenerate — and must
+    // not be certified as a box (review: #2536).
+    if (!(half[i] > OBB_EPS)) return null;
   }
   const center: Vec3 = [
     c0[0] * groups[0][0] + c0[1] * groups[1][0] + c0[2] * groups[2][0],
@@ -192,4 +200,85 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
     }
   }
   return depth === Infinity ? null : depth;
+}
+
+/** `axes[i]` matched to `v` (parallel within `OBB_EPS`, sign-independent), or
+ * `null` if none of the three is. */
+function matchAxis(v: Vec3, axes: [Vec3, Vec3, Vec3]): number | null {
+  for (let i = 0; i < 3; i += 1) {
+    if (Math.abs(dot(axes[i], v)) > 1 - OBB_EPS) return i;
+  }
+  return null;
+}
+
+/**
+ * Whether `a` and `b` are in a THROUGH-PENETRATION configuration: one box's
+ * cross-section, in the plane perpendicular to some shared axis, is fully
+ * inside the other's footprint there, while along that axis it extends
+ * beyond the other and out the far side — a thin member piercing clean
+ * through a wall/slab, not a partial overlap.
+ *
+ * This matters because {@link obbPenetrationDepth} reports the minimum
+ * TRANSLATION distance to separate the pair, which for this shape is
+ * dominated by the piercing member's own extent along the shared axis, not
+ * by how much material it actually crossed (review: #2536 — a 2 m duct
+ * through a 200 mm wall reported 1.1 m, not 0.2 m). Detecting the shape lets
+ * the caller decline to certify that number as a measured depth.
+ *
+ * Only attempted when `a` and `b` share a common frame (every axis of one
+ * matches an axis of the other, up to sign and `OBB_EPS`) — the case this
+ * reduces to an interval-containment test in that shared frame, and the case
+ * the reproduced defect is in (an in-grid MEP member through an in-grid
+ * wall). At a generic relative rotation there is no such frame and this
+ * returns `false`, leaving {@link obbPenetrationDepth}'s result as-is — a
+ * narrower fix than a fully general one, but one that never makes an
+ * existing case worse.
+ */
+export function isThroughPenetration(a: Obb, b: Obb): boolean {
+  // `perm[i]` = the index into `b.axes` that matches `a.axes[i]`.
+  const perm: number[] = [];
+  const used = [false, false, false];
+  for (let i = 0; i < 3; i += 1) {
+    const j = matchAxis(a.axes[i], b.axes);
+    if (j === null || used[j]) return false;
+    used[j] = true;
+    perm.push(j);
+  }
+
+  const d: Vec3 = [b.center[0] - a.center[0], b.center[1] - a.center[1], b.center[2] - a.center[2]];
+  // Signed offset between the centres, projected onto each of `a`'s axes —
+  // valid because every axis of `b` is parallel to one of `a`'s.
+  const offset = [dot(d, a.axes[0]), dot(d, a.axes[1]), dot(d, a.axes[2])];
+  const bHalfOnA = [b.half[0], b.half[1], b.half[2]]; // reindexed below
+  for (let i = 0; i < 3; i += 1) bHalfOnA[i] = b.half[perm[i]];
+
+  for (let k = 0; k < 3; k += 1) {
+    const i = (k + 1) % 3;
+    const j = (k + 2) % 3;
+    // A pierces B along axis k: A's footprint on the other two axes is
+    // STRICTLY inside B's (a real margin, not merely touching edges — two
+    // slabs with the identical footprint and different thickness are NOT a
+    // piercing member, they are a genuine partial overlap and must keep the
+    // measured label), and A extends further than B along k so it is not
+    // merely contained — it exits the far side.
+    const margin = (h: number) => OBB_EPS * Math.max(1, h);
+    const aInsideB =
+      Math.abs(offset[i]) + a.half[i] <= bHalfOnA[i] - margin(bHalfOnA[i]) &&
+      Math.abs(offset[j]) + a.half[j] <= bHalfOnA[j] - margin(bHalfOnA[j]);
+    // "Exits the far side" along k means A's interval extends past B's on
+    // BOTH ends, not merely that A's half-extent is the bigger number — a
+    // footing embedded 75 mm into a slab from ABOVE is longer than the slab
+    // along Z (it does not fit inside it) but only pokes out the TOP, not
+    // the bottom, so it is a partial overlap, not a through-penetration.
+    // Requiring `a.half[k] > bHalfOnA[k] + |offset[k]|` is exactly "A's
+    // interval strictly contains B's interval on axis k", i.e. A pokes out
+    // past B on both sides.
+    if (aInsideB && a.half[k] > bHalfOnA[k] + Math.abs(offset[k]) + margin(bHalfOnA[k])) return true;
+    // B pierces A along axis k: same test with the roles swapped.
+    const bInsideA =
+      Math.abs(offset[i]) + bHalfOnA[i] <= a.half[i] - margin(a.half[i]) &&
+      Math.abs(offset[j]) + bHalfOnA[j] <= a.half[j] - margin(a.half[j]);
+    if (bInsideA && bHalfOnA[k] > a.half[k] + Math.abs(offset[k]) + margin(a.half[k])) return true;
+  }
+  return false;
 }

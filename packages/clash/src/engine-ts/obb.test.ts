@@ -323,6 +323,29 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     expect(detectObb(mesh)).toBeNull();
   });
 
+  it('declines an open shell (5 faces, no top) instead of certifying a zero-thickness box', () => {
+    // Review, #2536: a face family whose triangles are all coplanar passes
+    // the 2-plane test (`minOff == maxOff`, so both `nearMin` and `nearMax`
+    // hold trivially) — a slab exported without its top face, or partial
+    // `IfcTriangulatedFaceSet` geometry, produces exactly this: 3 orthogonal
+    // face-normal families (bottom, and the 4 sides split into an X and a Y
+    // family), but the "top" family has only the bottom's single plane, so
+    // the resulting Z half-extent is 0. Nothing checked that before.
+    const positions = new Float32Array([
+      0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, // 0-3: bottom ring, z=0
+      0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, // 4-7: top ring, z=1 (rim only, no cap)
+    ]);
+    const indices = new Uint32Array([
+      0, 2, 1, 0, 3, 2, // bottom cap only — no top cap (4,5,6)/(4,6,7)
+      0, 1, 5, 0, 5, 4,
+      1, 2, 6, 1, 6, 5,
+      2, 3, 7, 2, 7, 6,
+      3, 0, 4, 3, 4, 7,
+    ]);
+    const mesh = new TriMesh(positions, indices);
+    expect(detectObb(mesh)).toBeNull();
+  });
+
   it('obbPenetrationDepth returns null (not a wrong number) for boxes that do not actually overlap', () => {
     const a = subdividedBox('A', 'X', [0, 0, 0], [1, 1, 1], 1);
     const b = subdividedBox('B', 'Y', [5, 5, 5], [6, 6, 6], 1);

@@ -71,6 +71,18 @@ describe('planInstancedGhosting', () => {
     assert.equal(p.changed, false);
   });
 
+  it('still reports a change when a dirty pass has nothing to write', () => {
+    // Nothing is ghosted and nothing was, but the bytes went dirty. Both lists
+    // come back empty, and `changed` must still be true: the caller clears the
+    // dirty flag on the strength of it, and a `changed` derived from the list
+    // lengths would leave the flag set forever, forcing a full rewrite on
+    // every subsequent frame.
+    const p = plan({ ghostExceptIds: null, dirty: true });
+    assert.equal(p.changed, true);
+    assert.deepEqual(p.toFade, []);
+    assert.deepEqual(p.toRestore, []);
+  });
+
   it('restores ids that left the ghost set', () => {
     const p = plan({ ghostExceptIds: new Set([1, 2]), current: new Set([2, 3]) });
     assert.deepEqual(p.toRestore, [2]);

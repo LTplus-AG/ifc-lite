@@ -1512,6 +1512,33 @@ test('splitMeshByZones keeps an element no zone reaches, as the remainder', () =
   }
 });
 
+test('splitMeshByZones cuts by a prism footprint, not by its bounding box', () => {
+  // The triangle (0,0) - (6,0) - (0,1) halves the wall's 6 x 1 m plan along the
+  // diagonal, so it takes exactly half the volume. Its BOUNDING BOX is the
+  // whole wall, so a binding that dropped the footprint would answer 6.
+  const { positions, indices } = boxMesh(0, 0, 0, 6, 1, 1);
+  const zones = Float64Array.from([3, 0.5, 0.5, 6, 4, 1, 0]);
+  const split = splitMeshByZones(
+    positions,
+    indices,
+    zones,
+    Float64Array.from([0, 0, 6, 0, 0, 1]),
+    Uint32Array.from([3]),
+  );
+  try {
+    const piece = split.piece(0);
+    try {
+      assert.equal(piece.zoneIndex, 0);
+      assert.ok(Math.abs(piece.volume - 3) < 1e-6, `prism piece is ${piece.volume} m3, expected 3`);
+    } finally {
+      piece.free();
+    }
+    assert.ok(split.sumErrorRel < 1e-9, `sum error ${split.sumErrorRel}`);
+  } finally {
+    split.free();
+  }
+});
+
 // ===== Prepass class column across the real WASM boundary (#2088) =====
 // Self-contained suite in its own module (this file is already several times
 // the size guideline); it owns its fixture and its own IfcAPI handles.

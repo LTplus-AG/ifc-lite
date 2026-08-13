@@ -1654,6 +1654,13 @@ export function resolve2d(a: Contours2D): Contours2D;
  * (matching the viewer's `Zone.size`) and the rotation is radians about the
  * vertical axis. A trailing partial zone is ignored rather than guessed at.
  *
+ * A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is
+ * non-zero: it then takes that many `[x, z]` pairs from `footprints`, in
+ * order, and uses the 7-tuple only for its vertical extent
+ * (`cy +/- sy/2`). The footprint must be CONVEX; the viewer gates that on
+ * import, because a concave polygon fans into overlapping triangles and would
+ * cut wrong rather than fail. Passing empty arrays keeps every zone a box.
+ *
  * The caller must have established that the mesh is a closed orientable solid
  * first, exactly as it must before quoting a volume at all (#1891/#1993): a
  * clip of an open shell produces pieces whose volumes are arbitrary rather
@@ -1671,7 +1678,7 @@ export function resolve2d(a: Contours2D): Contours2D;
  * split.free();
  * ```
  */
-export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array): ZoneSplitJs;
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
 
 /**
  * `a ∪ b`.
@@ -1894,7 +1901,7 @@ export interface InitOutput {
     readonly spaceplatehandle_snapshot: (a: number, b: number) => void;
     readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
-    readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
+    readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly symboliccircle_centerX: (a: number) => number;
     readonly symboliccircle_centerY: (a: number) => number;
     readonly symboliccircle_endAngle: (a: number) => number;

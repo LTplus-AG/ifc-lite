@@ -78,14 +78,25 @@ function fakeSplit(
 describe('flattenZones', () => {
   it('writes seven numbers per zone, sizes as full extents', () => {
     const flat = flattenZones([ZONE]);
-    assert.equal(flat.length, ZONE_STRIDE);
-    assert.deepEqual([...flat], [1, 2, 3, 4, 5, 6, 0.5]);
+    assert.equal(flat.zones.length, ZONE_STRIDE);
+    assert.deepEqual([...flat.zones], [1, 2, 3, 4, 5, 6, 0.5]);
+    assert.deepEqual([...flat.footprintCounts], [0], 'a box must not claim footprint points');
   });
 
   it('keeps zone order, so a piece\'s zoneIndex means what the caller thinks', () => {
     const second: Zone = { ...ZONE, id: 'z-b', center: [9, 9, 9] };
     const flat = flattenZones([ZONE, second]);
-    assert.equal(flat[ZONE_STRIDE], 9);
+    assert.equal(flat.zones[ZONE_STRIDE], 9);
+  });
+
+  it('carries a prism\'s footprint alongside, index-aligned by its point count', () => {
+    // The counts array is what lets the binding find each zone's points
+    // without an offset table, so a box between two prisms must contribute a
+    // zero rather than nothing.
+    const prism: Zone = { ...ZONE, id: 'z-p', footprint: [[0, 0], [1, 0], [1, 1]] };
+    const flat = flattenZones([ZONE, prism, ZONE]);
+    assert.deepEqual([...flat.footprintCounts], [0, 3, 0]);
+    assert.deepEqual([...flat.footprints], [0, 0, 1, 0, 1, 1]);
   });
 });
 

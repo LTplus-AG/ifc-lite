@@ -49,6 +49,71 @@ pub struct ZoneBox {
     pub rotation_y: f64,
 }
 
+/// What a zone actually is: v1's oriented box, or the convex prism #2508 item 4
+/// adds. Both are convex, which is what keeps each piece one intersection.
+#[derive(Clone, Debug)]
+pub enum ZoneShape {
+    Box(ZoneBox),
+    /// A vertical prism over a CONVEX footprint in the caller's X/Z plane. The
+    /// convexity is the caller's guarantee (the viewer gates it at import);
+    /// a concave polygon fans into overlapping triangles and would cut wrong.
+    Prism {
+        footprint: Vec<[f64; 2]>,
+        min_y: f64,
+        max_y: f64,
+    },
+}
+
+impl ZoneShape {
+    fn to_tris(&self) -> Vec<Tri> {
+        match self {
+            ZoneShape::Box(b) => b.to_tris(),
+            ZoneShape::Prism { footprint, min_y, max_y } => prism_tris(footprint, *min_y, *max_y),
+        }
+    }
+
+    fn world_aabb(&self) -> ([f64; 3], [f64; 3]) {
+        match self {
+            ZoneShape::Box(b) => b.world_aabb(),
+            ZoneShape::Prism { footprint, min_y, max_y } => {
+                let mut lo = [f64::INFINITY, *min_y, f64::INFINITY];
+                let mut hi = [f64::NEG_INFINITY, *max_y, f64::NEG_INFINITY];
+                for p in footprint {
+                    lo[0] = lo[0].min(p[0]);
+                    hi[0] = hi[0].max(p[0]);
+                    lo[2] = lo[2].min(p[1]);
+                    hi[2] = hi[2].max(p[1]);
+                }
+                (lo, hi)
+            }
+        }
+    }
+}
+
+/// A convex footprint extruded between two heights: a triangle fan per cap and
+/// two triangles per side. Winding is CONSISTENT rather than provably outward,
+/// which is all the kernel needs -- `orient_outward` flips the whole operand if
+/// the signed volume comes out negative.
+fn prism_tris(footprint: &[[f64; 2]], min_y: f64, max_y: f64) -> Vec<Tri> {
+    let n = footprint.len();
+    if n < 3 {
+        return Vec::new();
+    }
+    let lo = |i: usize| [footprint[i][0], min_y, footprint[i][1]];
+    let hi = |i: usize| [footprint[i][0], max_y, footprint[i][1]];
+    let mut tris = Vec::with_capacity(4 * n);
+    for i in 1..n - 1 {
+        tris.push([lo(0), lo(i + 1), lo(i)]);
+        tris.push([hi(0), hi(i), hi(i + 1)]);
+    }
+    for i in 0..n {
+        let j = (i + 1) % n;
+        tris.push([lo(i), lo(j), hi(j)]);
+        tris.push([lo(i), hi(j), hi(i)]);
+    }
+    tris
+}
+
 impl ZoneBox {
     /// The box as an outward-wound triangle soup in world coordinates.
     fn to_tris(self) -> Vec<Tri> {
@@ -146,7 +211,7 @@ pub const NEGLIGIBLE_PIECE_REL: f64 = 1e-9;
 /// double-count, so [`ZoneSplit::sum_error_rel`] rises far above any floating
 /// point residue and the caller can refuse on it. That is the same signal the
 /// apportionment path reports as `overlapping`.
-pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneBox]) -> ZoneSplit {
+pub fn split_mesh_by_zones(host: &[Tri], zones: &[ZoneShape]) -> ZoneSplit {
     let host = orient_outward(host.to_vec());
     let whole_volume = signed_volume_of(&host);
     let negligible = whole_volume.abs() * NEGLIGIBLE_PIECE_REL;

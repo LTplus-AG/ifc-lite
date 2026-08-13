@@ -143,6 +143,38 @@ function ZoneRow({
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
+      {/* A PRISM zone (#2508 item 4) owns only its vertical extent: its X/Z
+          centre, size and rotation are DERIVED from the footprint, so offering
+          them as editable fields would show numbers that snap back on the next
+          import and change nothing in between. */}
+      {zone.footprint ? (
+        <div className="grid grid-cols-3 gap-1">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Base (Y)</span>
+            <NumberField
+              value={zone.center[1] - zone.size[1] / 2}
+              onCommit={(v) => onUpdate({ center: [zone.center[0], v + zone.size[1] / 2, zone.center[2]] })}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Height (Y)</span>
+            <NumberField
+              value={zone.size[1]}
+              onCommit={(v) => {
+                const height = Math.max(0.05, v);
+                const base = zone.center[1] - zone.size[1] / 2;
+                onUpdate({
+                  size: [zone.size[0], height, zone.size[2]],
+                  center: [zone.center[0], base + height / 2, zone.center[2]],
+                });
+              }}
+            />
+          </label>
+          <span className="self-end text-[10px] text-muted-foreground truncate" title="Footprint imported from JSON; the 3D handles edit boxes only">
+            prism, {zone.footprint.length} pts
+          </span>
+        </div>
+      ) : (
       <div className="grid grid-cols-3 gap-1">
         {(['Center X', 'Center Y', 'Center Z'] as const).map((label, i) => (
           <label key={label} className="flex flex-col gap-0.5">
@@ -175,6 +207,7 @@ function ZoneRow({
           <NumberField value={toDeg(zone.rotationY)} onCommit={(v) => onUpdate({ rotationY: fromDeg(v) })} />
         </label>
       </div>
+      )}
     </div>
   );
 }

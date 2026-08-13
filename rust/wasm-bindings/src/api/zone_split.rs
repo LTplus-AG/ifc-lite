@@ -18,7 +18,7 @@
 //!   boundary would put a crack back into every shared zone plane. The caller
 //!   narrows to f32 when it uploads to the GPU, once, at the end.
 
-use ifc_lite_geometry::zone_split::{split_mesh_by_zones, ZoneBox};
+use ifc_lite_geometry::zone_split::{split_mesh_by_zones, ZoneBox, ZoneShape};
 use wasm_bindgen::prelude::*;
 
 /// One closed solid of a split element.
@@ -110,6 +110,13 @@ impl ZoneSplitJs {
 /// (matching the viewer's `Zone.size`) and the rotation is radians about the
 /// vertical axis. A trailing partial zone is ignored rather than guessed at.
 ///
+/// A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is
+/// non-zero: it then takes that many `[x, z]` pairs from `footprints`, in
+/// order, and uses the 7-tuple only for its vertical extent
+/// (`cy +/- sy/2`). The footprint must be CONVEX; the viewer gates that on
+/// import, because a concave polygon fans into overlapping triangles and would
+/// cut wrong rather than fail. Passing empty arrays keeps every zone a box.
+///
 /// The caller must have established that the mesh is a closed orientable solid
 /// first, exactly as it must before quoting a volume at all (#1891/#1993): a
 /// clip of an open shell produces pieces whose volumes are arbitrary rather
@@ -131,6 +138,8 @@ pub fn split_mesh_by_zones_js(
     positions: &[f64],
     indices: &[u32],
     zones: &[f64],
+    footprints: Option<Vec<f64>>,
+    footprint_counts: Option<Vec<u32>>,
 ) -> ZoneSplitJs {
     let tris: Vec<[[f64; 3]; 3]> = indices
         .chunks_exact(3)
@@ -148,16 +157,40 @@ pub fn split_mesh_by_zones_js(
         })
         .collect();
 
-    let boxes: Vec<ZoneBox> = zones
+    let footprints = footprints.unwrap_or_default();
+    let counts = footprint_counts.unwrap_or_default();
+    let mut cursor = 0usize;
+    let shapes: Vec<ZoneShape> = zones
         .chunks_exact(7)
-        .map(|z| ZoneBox {
-            center: [z[0], z[1], z[2]],
-            size: [z[3], z[4], z[5]],
-            rotation_y: z[6],
+        .enumerate()
+        .map(|(i, z)| {
+            let points = counts.get(i).copied().unwrap_or(0) as usize;
+            let start = cursor * 2;
+            let end = start + points * 2;
+            cursor += points;
+            // A count that runs past the buffer is a caller bug; falling back to
+            // the box rather than panicking keeps one malformed zone from
+            // taking down the whole split.
+            if points >= 3 && end <= footprints.len() {
+                ZoneShape::Prism {
+                    footprint: footprints[start..end]
+                        .chunks_exact(2)
+                        .map(|p| [p[0], p[1]])
+                        .collect(),
+                    min_y: z[1] - z[4] / 2.0,
+                    max_y: z[1] + z[4] / 2.0,
+                }
+            } else {
+                ZoneShape::Box(ZoneBox {
+                    center: [z[0], z[1], z[2]],
+                    size: [z[3], z[4], z[5]],
+                    rotation_y: z[6],
+                })
+            }
         })
         .collect();
 
-    let split = split_mesh_by_zones(&tris, &boxes);
+    let split = split_mesh_by_zones(&tris, &shapes);
     let sum_error_rel = split.sum_error_rel();
     let pieces = split
         .pieces

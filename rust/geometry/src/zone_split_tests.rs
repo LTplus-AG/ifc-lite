@@ -21,12 +21,12 @@ fn wall() -> Vec<Tri> {
 }
 
 /// A zone spanning `[x0, x1]` in x and covering the wall entirely in y and z.
-fn slab(x0: f64, x1: f64) -> ZoneBox {
-    ZoneBox {
+fn slab(x0: f64, x1: f64) -> ZoneShape {
+    ZoneShape::Box(ZoneBox {
         center: [(x0 + x1) / 2.0, 0.5, 0.5],
         size: [x1 - x0, 4.0, 4.0],
         rotation_y: 0.0,
-    }
+    })
 }
 
 fn volume_of(split: &ZoneSplit, zone: Option<usize>) -> f64 {
@@ -119,7 +119,7 @@ fn a_rotated_zone_cuts_where_its_own_axes_are() {
     // rotation ignored, the same box is an axis-aligned 8 x 4 x 0.5 slab whose
     // z extent (0.5 m, centred at z = 0.5) still covers the wall, so a naive
     // implementation passes. Hence the second, tighter zone below.
-    let inside = ZoneBox { center: [3.0, 0.5, 0.5], size: [8.0, 4.0, 8.0], rotation_y: 45f64.to_radians() };
+    let inside = ZoneShape::Box(ZoneBox { center: [3.0, 0.5, 0.5], size: [8.0, 4.0, 8.0], rotation_y: 45f64.to_radians() });
     let split = split_mesh_by_zones(&wall(), &[inside]);
     assert!((volume_of(&split, Some(0)) - 6.0).abs() < EPS);
 
@@ -129,7 +129,7 @@ fn a_rotated_zone_cuts_where_its_own_axes_are() {
     // depth projected, i.e. the intersection is a parallelogram prism of area
     // (0.4/cos45) * 1 in the x/z plane... which is 0.5656854 m2, times the 1 m
     // height = 0.5656854 m3. Unrotated, the same blade would take 0.4 m3.
-    let blade = ZoneBox { center: [3.0, 0.5, 0.5], size: [0.4, 4.0, 8.0], rotation_y: 45f64.to_radians() };
+    let blade = ZoneShape::Box(ZoneBox { center: [3.0, 0.5, 0.5], size: [0.4, 4.0, 8.0], rotation_y: 45f64.to_radians() });
     let split = split_mesh_by_zones(&wall(), &[blade]);
     let expected = 0.4 * 2f64.sqrt();
     assert!(
@@ -145,7 +145,7 @@ fn a_rotated_zone_cuts_where_its_own_axes_are() {
 fn a_zone_bigger_than_the_element_takes_all_of_it_and_leaves_no_remainder() {
     let split = split_mesh_by_zones(
         &wall(),
-        &[ZoneBox { center: [3.0, 0.5, 0.5], size: [100.0, 100.0, 100.0], rotation_y: 0.0 }],
+        &[ZoneShape::Box(ZoneBox { center: [3.0, 0.5, 0.5], size: [100.0, 100.0, 100.0], rotation_y: 0.0 })],
     );
     assert_eq!(split.pieces.len(), 1);
     assert!((split.pieces[0].volume - 6.0).abs() < EPS);
@@ -155,7 +155,7 @@ fn a_zone_bigger_than_the_element_takes_all_of_it_and_leaves_no_remainder() {
 fn a_zero_size_zone_takes_nothing_and_does_not_crash() {
     let split = split_mesh_by_zones(
         &wall(),
-        &[ZoneBox { center: [3.0, 0.5, 0.5], size: [0.0, 0.0, 0.0], rotation_y: 0.0 }],
+        &[ZoneShape::Box(ZoneBox { center: [3.0, 0.5, 0.5], size: [0.0, 0.0, 0.0], rotation_y: 0.0 })],
     );
     assert!(volume_of(&split, Some(0)) < EPS);
     assert!((volume_of(&split, None) - 6.0).abs() < EPS);
@@ -222,4 +222,56 @@ fn the_pieces_are_closed_solids_and_not_merely_clipped_shells() {
             about_far,
         );
     }
+}
+
+#[test]
+fn a_prism_zone_cuts_by_its_polygon_and_not_by_its_bounding_box() {
+    // A triangle in plan whose bounding box covers the whole wall but which
+    // itself covers a known fraction of it. The wall spans x = 0..6, z = 0..1.
+    // The triangle (0,0) - (6,0) - (0,1) cuts the wall's plan rectangle along
+    // the diagonal, taking exactly half of its 6 m2 footprint, so half its
+    // volume. A box-shaped implementation would take all 6 m3.
+    let prism = ZoneShape::Prism {
+        footprint: vec![[0.0, 0.0], [6.0, 0.0], [0.0, 1.0]],
+        min_y: -1.0,
+        max_y: 2.0,
+    };
+    let split = split_mesh_by_zones(&wall(), &[prism]);
+
+    assert!(
+        (volume_of(&split, Some(0)) - 3.0).abs() < 1e-6,
+        "prism took {} m3, expected 3",
+        volume_of(&split, Some(0)),
+    );
+    assert!((volume_of(&split, None) - 3.0).abs() < 1e-6, "remainder {}", volume_of(&split, None));
+    assert!(split.sum_error_rel() < 1e-9, "sum error {}", split.sum_error_rel());
+}
+
+#[test]
+fn two_prisms_tiling_the_plan_split_the_element_between_them() {
+    let lower = ZoneShape::Prism {
+        footprint: vec![[-1.0, -1.0], [8.0, -1.0], [8.0, 2.0]],
+        min_y: -1.0,
+        max_y: 2.0,
+    };
+    let upper = ZoneShape::Prism {
+        footprint: vec![[-1.0, -1.0], [8.0, 2.0], [-1.0, 2.0]],
+        min_y: -1.0,
+        max_y: 2.0,
+    };
+    let split = split_mesh_by_zones(&wall(), &[lower, upper]);
+
+    assert!(volume_of(&split, None) < 1e-6, "the tiling should leave no remainder");
+    assert!(split.sum_error_rel() < 1e-9, "sum error {}", split.sum_error_rel());
+    // Neither zone took the lot, or the test would pass on a splitter that
+    // ignored the second polygon.
+    assert!(volume_of(&split, Some(0)) > 0.5 && volume_of(&split, Some(1)) > 0.5);
+}
+
+#[test]
+fn a_prism_with_too_few_points_takes_nothing_rather_than_panicking() {
+    let degenerate = ZoneShape::Prism { footprint: vec![[0.0, 0.0], [1.0, 0.0]], min_y: -1.0, max_y: 2.0 };
+    let split = split_mesh_by_zones(&wall(), &[degenerate]);
+    assert!(volume_of(&split, Some(0)) < EPS);
+    assert!((volume_of(&split, None) - 6.0).abs() < EPS);
 }

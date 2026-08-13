@@ -55,15 +55,31 @@ export type SplitMeshByZonesFn = (
   positions: Float64Array,
   indices: Uint32Array,
   zones: Float64Array,
+  footprints?: Float64Array,
+  footprintCounts?: Uint32Array,
 ) => ZoneSplitHandle;
 
 /** Seven numbers per zone, the order the binding documents. */
 export const ZONE_STRIDE = 7;
 
+/** Everything the binding needs to describe a zone set's shapes. */
+export interface FlatZones {
+  zones: Float64Array;
+  /** Every prism's footprint, `[x, z]` pairs concatenated in zone order. */
+  footprints: Float64Array;
+  /** Points per zone; `0` marks a box, so the two arrays stay index-aligned
+   *  with `zones` without a per-zone offset table. */
+  footprintCounts: Uint32Array;
+}
+
 /** Zones flattened for the binding: `[cx, cy, cz, sx, sy, sz, rotationY]` each,
- *  sizes as FULL extents, matching `Zone.size` rather than half-extents. */
-export function flattenZones(zones: readonly Zone[]): Float64Array {
+ *  sizes as FULL extents, matching `Zone.size` rather than half-extents. A
+ *  prism zone additionally contributes its footprint, and the binding then uses
+ *  the 7-tuple only for the vertical extent. */
+export function flattenZones(zones: readonly Zone[]): FlatZones {
   const out = new Float64Array(zones.length * ZONE_STRIDE);
+  const counts = new Uint32Array(zones.length);
+  const points: number[] = [];
   zones.forEach((zone, i) => {
     const b = i * ZONE_STRIDE;
     out[b] = zone.center[0];
@@ -73,8 +89,12 @@ export function flattenZones(zones: readonly Zone[]): Float64Array {
     out[b + 4] = zone.size[1];
     out[b + 5] = zone.size[2];
     out[b + 6] = zone.rotationY;
+    if (zone.footprint) {
+      counts[i] = zone.footprint.length;
+      for (const [x, z] of zone.footprint) points.push(x, z);
+    }
   });
-  return out;
+  return { zones: out, footprints: Float64Array.from(points), footprintCounts: counts };
 }
 
 /** One element's renderer pieces as a single absolute-world f64 mesh.
@@ -179,7 +199,8 @@ export function splitElementByZones(
   const { positions, indices, origin } = foldPiecesToWorld(pieces);
   if (indices.length === 0) return null;
 
-  const handle = split(positions, indices, flattenZones(zones));
+  const flat = flattenZones(zones);
+  const handle = split(positions, indices, flat.zones, flat.footprints, flat.footprintCounts);
   try {
     if (handle.sumErrorRel > tolerance) return null;
     const out: ZoneMeshPiece[] = [];

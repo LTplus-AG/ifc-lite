@@ -28,6 +28,11 @@ export {
 
 export { assignElementsToZoneSet, assignElementsToZoneSets, STRADDLE_PENETRATION_M } from './assignment.js';
 
+// `prism.ts` is deliberately NOT re-exported here: every consumer of a prism so
+// far is inside this folder (`geometry`, `apportionment`, `persistence`), and
+// an unused re-export is a maintenance liability rather than an affordance.
+// Add one when something outside needs it.
+
 export {
   generateStoreyZones,
   DEFAULT_STOREY_ZONE_HEIGHT_M,

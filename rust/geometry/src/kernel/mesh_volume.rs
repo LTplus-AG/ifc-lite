@@ -5,7 +5,7 @@
 //! Public, documented home for reading a [`Mesh`]'s volume.
 
 use super::mesh_bridge::mesh_to_tris;
-use super::signed_volume::signed_volume6;
+use super::signed_volume::signed_volume_of;
 use crate::mesh::Mesh;
 
 /// Signed volume of a `Mesh`, via the divergence theorem.
@@ -33,9 +33,16 @@ use crate::mesh::Mesh;
 /// zone piece's volume) must establish closedness first, same requirement
 /// [`signed_volume6`] itself carries.
 ///
-/// Delegates to [`signed_volume6`] rather than re-deriving the sum: that is
-/// the crate's ONE divergence-theorem implementation, and it deliberately sums
-/// about the OPERAND'S OWN AABB CENTRE rather than the world origin. That
+/// Delegates to [`signed_volume_of`] - itself one line over [`signed_volume6`],
+/// which returns SIX times the volume - rather than dividing here as well.
+/// #2579 landed that helper an hour before this file did, with a doc that says
+/// exactly why the divide belongs in one place: "a caller that wants the VOLUME
+/// divides once, here, rather than growing a second hand-rolled sum in another
+/// module, which is how two producers of the same number start to disagree."
+///
+/// The reference point is what makes the shared implementation matter:
+/// [`signed_volume6`] deliberately sums about the OPERAND'S OWN AABB CENTRE
+/// rather than the world origin. That
 /// choice is not cosmetic — see `signed_volume::signed_volume6`'s doc for the
 /// #198779 incident where a world-origin reference turned a crack sliver on a
 /// far-from-origin operand into a wildly wrong, sign-flipping volume. A split
@@ -69,7 +76,7 @@ use crate::mesh::Mesh;
 /// world-origin arithmetic for test-only use. Reusing [`signed_volume6`]
 /// avoids adding another divergence-theorem implementation to reconcile.
 pub fn mesh_volume(mesh: &Mesh) -> f64 {
-    signed_volume6(&mesh_to_tris(mesh)) / 6.0
+    signed_volume_of(&mesh_to_tris(mesh))
 }
 
 #[cfg(test)]

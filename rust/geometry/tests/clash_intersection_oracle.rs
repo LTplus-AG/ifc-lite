@@ -424,6 +424,55 @@ fn an_overlap_inside_the_near_coplanar_band_is_withheld_not_reported_wrong() {
 }
 
 #[test]
+fn rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_one_is() {
+    // The rotation-invariance counterpart of the test above, and the one that
+    // caught the review finding on #2573. The operands are the SAME pair —
+    // rigidly rotated as a unit by `ROT_Z_3_4_5`, which is an isometry, so the
+    // true overlap is the same 1-to-8-snap-cell slab and the answer must be the
+    // same too: withheld.
+    //
+    // Measured before the fix, with `thickness` taken against the world axes:
+    // every one of these cases came back as a SOLID, because the rotated
+    // wedge's thinnest WORLD-axis extent is ~0.6 m rather than the 15–122 µm
+    // the contact actually is. At 1, 2, 4 and 8 cells the volumes it returned
+    // ranged from 36 % to 103 % of the truth — not merely wrong but drifting
+    // with the tessellation at a fixed depth, which is the exact failure mode
+    // this whole file exists to catch. The gate now measures along the contact
+    // normal derived from the operands' own face planes, so the rotation makes
+    // no difference.
+    for cells in [1u32, 2, 4, 6, 8] {
+        let depth = (cells as f64) / 65536.0;
+        for &n in &TESSELLATIONS {
+            let a = rotated_box_mesh([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], n, ROT_Z_3_4_5);
+            let b = rotated_box_mesh([1.0 - depth, 0.0, 0.0], [2.0, 1.0, 1.0], n, ROT_Z_3_4_5);
+            let ctx = format!("{cells} cells n={n}");
+            match degenerate_reason(&intersection_solid(&a, &b), &ctx) {
+                DegenerateReason::BelowKernelResolution {
+                    thickness_m,
+                    required_m,
+                } => {
+                    // The measured thickness must be the TRUE contact depth,
+                    // not some world-frame projection of it. The tolerance is
+                    // one snap cell: the rotated operands' vertices no longer
+                    // land on the kernel's `2^-16` grid, so the arranged
+                    // geometry is the snapped one, and f32 `Mesh` positions add
+                    // ~6e-8 m on top. Both are far below the 488 µm gate.
+                    assert!(
+                        (thickness_m - depth).abs() < 1.0 / 65536.0,
+                        "{ctx}: reported thickness {thickness_m}, true depth {depth}"
+                    );
+                    assert!(
+                        required_m >= 4.0 * NEAR_BAND_FLOOR - 1e-12,
+                        "{ctx}: required {required_m} below the band floor"
+                    );
+                }
+                other => panic!("{ctx}: expected BelowKernelResolution, got {other:?}"),
+            }
+        }
+    }
+}
+
+#[test]
 fn intersection_is_exact_at_and_above_the_trust_threshold_at_every_world_scale() {
     // Above the gate the volume must be EXACT — not approximately right. The
     // world-offset sweep matters because the kernel's near-coplanar band widens

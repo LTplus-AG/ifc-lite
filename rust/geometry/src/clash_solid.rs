@@ -35,10 +35,28 @@
 //! something. This module therefore refuses to return a solid it cannot stand
 //! behind, and says why. The viewer draws the existing contact marker instead.
 //!
-//! This is a real limit, not a conservatism knob: on a real infrastructure model
-//! the genuine coordination issues graze by 0.3–1.5 µm, four orders of magnitude
-//! below one snap cell. **No intersection solid exists for those at this
-//! kernel's resolution**, and inventing one would be a sliver, not a finding.
+//! This is a real limit, not a conservatism knob: below the near band there is
+//! no exact solid to compute, only a coplanar contact, and the arrangement's
+//! own output cannot tell you otherwise. **No intersection solid exists for
+//! those pairs at this kernel's resolution**, and inventing one would be a
+//! sliver, not a finding.
+//!
+//! An earlier draft of this comment additionally claimed that "the genuine
+//! coordination issues on a real infrastructure model graze by 0.3–1.5 µm" —
+//! that figure was never measured against per-pair distances on any real
+//! model (the `clash_intersection_real_model.rs` harness it was attributed to
+//! only bins outcomes, and does not record a gap for `NoOverlap` pairs); it
+//! was carried over from a synthetic oracle test that picked those three
+//! depths for illustration. It is withdrawn: a later investigation of this
+//! same kernel's *reported* sub-micron pair distances (`Infra-Bridge.ifc`,
+//! `TriMesh` — geometry ingested as `f32`, stored and queried as `f64`) found
+//! them landing exactly on the `f32` ULP at the pair's coordinate magnitude
+//! (e.g. `2^-22 m ≈ 0.238 µm` for coordinates in `[2, 4)`), i.e. float
+//! precision noise from the f32→f64 widening, not a physical graze — and a
+//! separate regression fixture on that same model found its two genuine
+//! coordination issues to be ordinary-scale `IfcBeam`×`IfcBeam` clashes, not
+//! sub-micron ones. Do not restate a specific real-world graze distance here
+//! without a reproducible per-pair measurement backing it.
 
 use crate::clash_contact_axes::{dot3, gate_axes};
 use crate::kernel::arrangement::Tri;

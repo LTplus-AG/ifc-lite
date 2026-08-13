@@ -28,6 +28,10 @@ export function swapCesiumModel<T>(
   previous: T | null,
   next: T,
 ): void {
+  // Replacing a primitive with itself must touch nothing. Adding it a second
+  // time is not harmless on a real PrimitiveCollection — it would duplicate the
+  // draw or throw — and there would be nothing left to release afterwards.
+  if (previous === next) return;
   primitives.add(next);
-  if (previous !== null && previous !== next) primitives.remove(previous);
+  if (previous !== null) primitives.remove(previous);
 }

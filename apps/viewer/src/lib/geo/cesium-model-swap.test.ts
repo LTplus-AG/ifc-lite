@@ -68,16 +68,17 @@ describe('swapCesiumModel', () => {
     assert.deepEqual([...c.contents], ['first']);
   });
 
-  it('does not remove the model it just added when asked to replace itself', () => {
-    // Defensive: a caller that passes the same reference for both must not end
-    // up with an empty globe and a destroyed primitive.
+  it('touches nothing when asked to replace a model with itself', () => {
+    // Re-adding a primitive already in the collection is not harmless on the
+    // real one — it would duplicate the draw or throw — and there would be
+    // nothing left to release afterwards.
     const c = fakeCollection();
     c.add('same');
     c.ops.length = 0;
 
     swapCesiumModel(c, 'same', 'same');
 
+    assert.deepEqual(c.ops, [], 'no add, no remove');
     assert.deepEqual([...c.contents], ['same']);
-    assert.deepEqual(c.ops, ['add:same']);
   });
 });

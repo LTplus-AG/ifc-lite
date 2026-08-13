@@ -188,6 +188,9 @@ export function CesiumOverlay({
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
   const glbCacheRef = useRef<{ key: string; glb: Uint8Array } | null>(null);
+  // Key of the model actually ON the globe, which is not the same thing as the
+  // key of the last GLB built — see the gate in Effect 2c.
+  const loadedKeyRef = useRef<string | null>(null);
   // Active 3D context tileset (Google Photorealistic / OSM buildings) — kept so
   // solar mode can toggle its shadow casting/receiving.
   const tilesetRef = useRef<{ shadows?: any } | null>(null);
@@ -365,8 +368,11 @@ export function CesiumOverlay({
         viewerRef.current = null;
       }
       // Invalidate model ref — the destroyed viewer took the primitive with it,
-      // so Effect 2c must re-load the GLB into the next viewer instance.
+      // so Effect 2c must re-load the GLB into the next viewer instance. The
+      // store flag has to follow, or it advertises a model that is gone.
       cesiumModelRef.current = null;
+      loadedKeyRef.current = null;
+      setCesiumGlbLoaded(false);
       bridgeRef.current = null;
       // The destroyed viewer also took the tileset + sun-path entities.
       tilesetRef.current = null;
@@ -583,10 +589,11 @@ export function CesiumOverlay({
       const live = viewerRef.current;
       if (cesiumModelRef.current && live) {
         live.scene.primitives.remove(cesiumModelRef.current);
-        cesiumModelRef.current = null;
         live.scene.requestRender();
       }
-      if (cesiumModelRef.current === null) setCesiumGlbLoaded(false);
+      cesiumModelRef.current = null;
+      loadedKeyRef.current = null;
+      setCesiumGlbLoaded(false);
       return;
     }
     const viewer = viewerRef.current;
@@ -611,7 +618,12 @@ export function CesiumOverlay({
         };
         const key = cesiumModelGLBKey(glbInput);
         const cached = glbCacheRef.current;
-        if (cesiumModelRef.current && cached?.key === key) {
+        // Gate on what is ON THE GLOBE, not on what has been BUILT. The two
+        // diverge whenever a load is cancelled or `fromGltfAsync` rejects: the
+        // bytes cache already holds the new key while the old primitive is
+        // still displayed, and gating on the byte cache would then treat the
+        // stale model as current and never retry the load.
+        if (cesiumModelRef.current && loadedKeyRef.current === key) {
           // Model already loaded with same geometry — just update matrix
           return;
         }
@@ -679,6 +691,7 @@ export function CesiumOverlay({
 
         swapCesiumModel(viewer.scene.primitives, cesiumModelRef.current, model);
         cesiumModelRef.current = model;
+        loadedKeyRef.current = key;
         setCesiumGlbLoaded(true);
         // A rebuild no longer flips `cesiumGlbLoaded` false→true, so that flag
         // can no longer tell the solar effect "there is a different primitive

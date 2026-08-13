@@ -1,3 +1,9 @@
+// ERROR = the gate. Only rules whose every hit in this repo was a real defect;
+// a rule here fails CI. WARN = visible in the output, not blocking.
+//
+// `"categories": {}` does NOT switch oxlint's defaults off: about 35 further
+// rules run at warn severity, so 98 rules run in total and a rule you cannot
+// find below is one of those. The ERROR tier is exactly this list.
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": [
@@ -66,7 +72,7 @@
     "eslint/no-unused-expressions": "warn",
     "eslint/no-useless-escape": "warn",
     "eslint/no-unsafe-optional-chaining": "warn",
-    "eslint/no-loss-of-precision": "off",
+    "eslint/no-loss-of-precision": "error",
     "oxc/erasing-op": "off",
     "oxc/only-used-in-recursion": "warn"
   },

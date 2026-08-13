@@ -28,10 +28,13 @@ const TARGETS = ['apps', 'packages', 'scripts'];
  *  code. The repo lints several thousand files; 500 is a floor, not a target. */
 const MIN_FILES = 500;
 
+// `pnpm exec` rather than `npx`: npx silently DOWNLOADS the latest oxlint when
+// the workspace copy is missing, so a broken install would lint with an
+// unpinned version instead of failing. `pnpm exec` fails loudly.
 const result = spawnSync(
-  'npx',
-  ['oxlint', '--config', '.oxlintrc.json', '--format', 'default', ...TARGETS],
-  { encoding: 'utf8', shell: false },
+  'pnpm',
+  ['exec', 'oxlint', '--config', '.oxlintrc.json', '--format', 'default', ...TARGETS],
+  { encoding: 'utf8', shell: process.platform === 'win32', maxBuffer: 32 * 1024 * 1024 },
 );
 
 if (result.error) {
@@ -42,9 +45,14 @@ if (result.error) {
 const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
 process.stdout.write(output);
 
-// oxlint's summary line: "Found N warnings and M errors." plus a "Finished in
-// Xms on N files with M rules using K threads." line.
-const finished = output.match(/on (\d[\d,]*) files with (\d+) rules/);
+// oxlint's summary line: "Finished in Xms on N files with M rules using K
+// threads." Anchored on "Finished in", and the LAST match wins: the pattern
+// alone can appear earlier in the output, because a warning quotes the source
+// line it fired on and a source line can contain anything. A literal
+// `"ran on 1 files with 1 rules"` in a source file was enough to make an
+// unanchored first-match read report one file and fail a healthy run.
+const matches = [...output.matchAll(/Finished in [^\n]*? on (\d[\d,]*) files with (\d+) rules/g)];
+const finished = matches.at(-1);
 if (!finished) {
   console.error('lint: oxlint printed no summary, so it is not clear it ran at all');
   process.exit(1);

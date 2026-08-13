@@ -26,7 +26,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import type { SceneHandle, SelectionHit } from './playground-viewer-types';
-import type { LoadedPlaygroundModel } from './playground-dispatcher';
 import {
   buildEntityRecords,
   clearEntityRecords,
@@ -107,7 +106,6 @@ export function createScene(container: HTMLElement): SceneHandle {
   // ── per-entity registry ─────────────────────────────────────────────────
   const registry = createEntityRegistry();
   const records = registry.records;
-  let modelRef: LoadedPlaygroundModel | null = null;
   let selection: SelectionHit[] = [];
   // Multi-subscriber so a temporary listener (e.g. viewer_wait_for_selection)
   // doesn't displace the panel's permanent one. Anything calling
@@ -195,13 +193,11 @@ export function createScene(container: HTMLElement): SceneHandle {
   function clearModel() {
     clearEntityRecords(registry, modelGroup);
     selection = [];
-    modelRef = null;
   }
 
   return {
     loadMeshes(meshes, model) {
       clearModel();
-      modelRef = model;
 
       const { opaqueCount, transparentCount } = buildEntityRecords(registry, meshes, model, modelGroup, section);
 

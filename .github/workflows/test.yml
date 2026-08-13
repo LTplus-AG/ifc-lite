@@ -91,6 +91,10 @@ jobs:
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
+              # The lint CONFIG, so a PR that only edits it cannot skip the
+              # Lint job that reads it. Absent CI reads as green here, and a
+              # guard cannot fire in a job that never runs.
+              - '.oxlintrc.json'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -301,7 +305,7 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    # Free runner — eslint runs against source, no compile.
+    # Free runner — oxlint runs against source, no compile.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

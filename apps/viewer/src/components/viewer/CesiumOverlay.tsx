@@ -33,6 +33,7 @@ import {
 } from '@/lib/geo/cesium-placement';
 import { egm96Undulation } from '@/lib/geo/egm96-undulation';
 import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
+import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { applySolarScene, SunPathDome } from '@/lib/geo/cesium-sun';
@@ -136,6 +137,10 @@ export function CesiumOverlay({
   const [error, setError] = useState<string | null>(null);
   // Tracks bridge readiness as state (not just a ref) so terrain query effect re-runs
   const [bridgeVersion, setBridgeVersion] = useState(0);
+  // Bumped every time a NEW model primitive reaches the globe. `cesiumGlbLoaded`
+  // used to serve this purpose by flipping false→true around every rebuild, but
+  // the model now stays loaded across one (#2583), so the flag no longer moves.
+  const [cesiumModelEpoch, setCesiumModelEpoch] = useState(0);
 
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
@@ -179,10 +184,6 @@ export function CesiumOverlay({
   const setSolarSunInfo = useViewerStore((s) => s.setSolarSunInfo);
   // Environment sky toggle — atmosphere + sun + fog in geo mode.
   const envSkyEnabled = useViewerStore((s) => s.envSkyEnabled);
-  // Re-run the solar effect once the deferred GLB load completes, so the IFC
-  // model's shadow mode is applied even when the study was enabled before the
-  // model finished loading into Cesium.
-  const cesiumGlbLoaded = useViewerStore((s) => s.cesiumGlbLoaded);
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<{ modelMatrix: any; shadows?: any; destroy?: () => void } | null>(null);
@@ -575,7 +576,19 @@ export function CesiumOverlay({
   // ─── Effect 2c: Load GLB into Cesium (only when geometry changes) ───────
   // This is the heavy operation — only re-runs when geometry actually changes.
   useEffect(() => {
-    if (status !== 'ready' || !geometryResult?.meshes?.length) return;
+    if (status !== 'ready' || !geometryResult?.meshes?.length) {
+      // The model must not outlive its geometry. The effect cleanup no longer
+      // evicts it (#2583), so a session that unloads its model, or a viewer
+      // that leaves 'ready', is torn down here instead.
+      const live = viewerRef.current;
+      if (cesiumModelRef.current && live) {
+        live.scene.primitives.remove(cesiumModelRef.current);
+        cesiumModelRef.current = null;
+        live.scene.requestRender();
+      }
+      if (cesiumModelRef.current === null) setCesiumGlbLoaded(false);
+      return;
+    }
     const viewer = viewerRef.current;
     const bridge = bridgeRef.current;
     const Cesium = cesiumModule;
@@ -603,12 +616,9 @@ export function CesiumOverlay({
           return;
         }
 
-        // Remove previous model
-        if (cesiumModelRef.current) {
-          viewer.scene.primitives.remove(cesiumModelRef.current);
-          cesiumModelRef.current = null;
-        }
-
+        // The previous model deliberately stays on the globe while its
+        // replacement is built and loaded — `swapCesiumModel` exchanges them
+        // at the end, so the map never goes blank mid-rebuild (#2583).
         let glbBytes: Uint8Array;
         if (cached?.key === key) {
           glbBytes = cached.glb;
@@ -667,9 +677,13 @@ export function CesiumOverlay({
           return;
         }
 
-        viewer.scene.primitives.add(model);
+        swapCesiumModel(viewer.scene.primitives, cesiumModelRef.current, model);
         cesiumModelRef.current = model;
         setCesiumGlbLoaded(true);
+        // A rebuild no longer flips `cesiumGlbLoaded` false→true, so that flag
+        // can no longer tell the solar effect "there is a different primitive
+        // now, re-apply its shadow mode". This epoch does.
+        setCesiumModelEpoch((e) => e + 1);
         viewer.scene.requestRender();
       } catch (err) {
         console.warn('[CesiumOverlay] Failed to load IFC model into Cesium:', err);
@@ -678,14 +692,13 @@ export function CesiumOverlay({
 
     const deferTimer = setTimeout(startExport, 1000);
 
+    // Cancel the in-flight build only. Evicting the live model here is what
+    // blanked the map on every re-run (#2583); the model is exchanged for its
+    // replacement once that replacement exists, and torn down by the
+    // no-geometry branch above or with the viewer in Effect 1.
     return () => {
       cancelled = true;
       clearTimeout(deferTimer);
-      if (cesiumModelRef.current && viewerRef.current) {
-        viewerRef.current.scene.primitives.remove(cesiumModelRef.current);
-        cesiumModelRef.current = null;
-      }
-      setCesiumGlbLoaded(false);
     };
   }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion]);
 
@@ -802,7 +815,7 @@ export function CesiumOverlay({
   }, [
     status,
     bridgeVersion,
-    cesiumGlbLoaded,
+    cesiumModelEpoch,
     solarEnabled,
     solarDateMs,
     solarShowSunPath,

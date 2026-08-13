@@ -111,6 +111,27 @@ describe('fetchAllFilePages', () => {
     await assert.rejects(() => sweep(provider), /exceeded/, 'a single page above the item ceiling must fail');
   });
 
+  it('stops a cursor chain that never yields an item, which the item ceiling cannot see', async () => {
+    // The page backstop's only unique case: endless cursors over EMPTY pages.
+    // `items.length` never grows, so the item ceiling is unreachable and this
+    // would loop forever without the page limit. Not hypothetical for Dalux,
+    // whose listFiles filters client-side by folder scope and `*.ifc`, so a
+    // file area dominated by non-IFC files yields exactly these empty pages.
+    let served = 0;
+    const provider = {
+      listFiles: async (_c: PluginContext, _p: string, _cid: string, _f: unknown, opts: { cursor?: string }) => {
+        served += 1;
+        const n = opts.cursor === undefined ? 0 : Number(opts.cursor);
+        return { items: [], cursor: String(n + 1) };
+      },
+    } as unknown as FileSourceProvider;
+
+    await assert.rejects(() => sweep(provider), /exceeded/, 'empty pages must still hit the page ceiling');
+    // Bounded by the page ceiling, not by the item ceiling (which never moves).
+    assert.ok(served > 1000, `expected the page ceiling to bound the sweep, served ${served}`);
+    assert.ok(served <= 5_001, `sweep must stop at the page ceiling, served ${served}`);
+  });
+
   it('throws rather than hanging when a provider mints cursors forever', async () => {
     // Never yields a cursorless page: the runaway the ceiling exists for.
     const provider = {

@@ -114,7 +114,11 @@ export async function fetchAllFilePages(
   while (page.cursor !== undefined) {
     pageCount += 1;
     page = await fetchFilePage(provider, ctx, projectId, containerId, page.cursor, signal);
-    items.push(...page.items);
+    // Appended one at a time, not `push(...page.items)`: argument spread is
+    // bounded by the engine's stack (~120k elements in V8), so an oversized
+    // page would throw an opaque `RangeError` before `enforceCeiling` could
+    // report which listing blew the limit and why.
+    for (const item of page.items) items.push(item);
     enforceCeiling();
   }
 

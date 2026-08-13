@@ -28,11 +28,14 @@ installLayout();
 
 import { after, afterEach, before, describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { toast } from '@/components/ui/toast';
+import { Rule } from '@/lib/search/filter-rules';
 import { SearchModalFilter } from './SearchModal.filter.js';
 
 const MODEL_ID = 'model-a';
@@ -394,25 +397,83 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
     }
   });
 
-  // Driving a real `runFilter` run needs a mocked evaluator + Tier-0/Tier-1
-  // scan (filter-evaluate.test.ts's territory), too heavy for a wiring
-  // suite — so this one stays a source check rather than being dropped.
-  // Unlike the deleted suite's other assertions, this is the one the #2532
-  // review singled out as carrying real value: it fails the instant
-  // isolateEntities/setSelectedEntityIds get called from inside runFilter,
-  // which is exactly the "isolation is opt-in" contract.
+  // `evaluateFilterRulesFederated` is pure/in-memory — filter-evaluate.test.ts
+  // drives it directly, no worker/WASM — so a real `runFilter` run IS
+  // reachable here, no need for the "too heavy, keep it a source check"
+  // escape hatch. It does need a REAL `IfcDataStore`, though: the
+  // `fixtureDataStore` helper the rest of this file uses is a deliberately
+  // narrow stub (three fields) that the evaluator's iteration-plan machinery
+  // doesn't recognise, so this one test builds its model the same way
+  // filter-evaluate.test.ts does, via `EntityTableBuilder`.
+  //
+  // Clicking "Run" against a rule that actually matches proves the run
+  // reached the interesting code, not that it early-exited before it. Unlike
+  // the deleted suite's other assertions, this is the one the #2532 review
+  // singled out as carrying real value: isolateEntities/setSelectedEntityIds
+  // must never be called from inside runFilter — "isolation is opt-in".
   it('runFilter (the Run button) never calls isolateEntities or setSelectedEntityIds', async () => {
-    const here = new URL('.', import.meta.url).pathname;
-    const { readFileSync } = await import('node:fs');
-    const source = readFileSync(`${here}SearchModal.filter.tsx`, 'utf8');
-    const start = source.indexOf('const runFilter = useCallback(');
-    assert.notEqual(start, -1, 'runFilter must exist in SearchModal.filter.tsx');
-    const end = source.indexOf('}, [', start);
-    assert.notEqual(end, -1, 'runFilter must end with a dependency array');
-    const body = source.slice(start, end);
-    assert.ok(
-      !body.includes('isolateEntities(') && !body.includes('setSelectedEntityIds('),
-      'runFilter must never call isolateEntities or setSelectedEntityIds — isolation is opt-in, only handleIsolateResult may touch that state',
-    );
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(1, strings);
+    builder.add(42, 'IFCWALL', '1abcdefghijklmnopqrstu', 'Wall A', '', '', false, false);
+    const store = {
+      fileSize: 0,
+      schemaVersion: 'IFC4',
+      entityCount: 1,
+      parseTime: 0,
+      source: new Uint8Array(0),
+      entityIndex: { byId: { ranges: new Uint32Array(0), index: new Map() }, byType: new Map([['IFCWALL', [42]]]) },
+      strings,
+      entities: builder.build(),
+      properties: { count: 0 },
+      quantities: { count: 0 },
+      relationships: { count: 0 },
+    } as unknown as IfcDataStore;
+
+    framedIds = [];
+    useViewerStore.setState({
+      models: new Map([[MODEL_ID, {
+        id: MODEL_ID, name: MODEL_ID, visible: true, idOffset: ID_OFFSET, ifcDataStore: store,
+      } as never]]),
+      activeModelId: MODEL_ID,
+      searchFilter: { rules: [Rule.name('contains', 'Wall')], combinator: 'AND', limit: 500 } as never,
+      searchFilterResult: null,
+      searchFilterRunning: false,
+      searchFilterError: null,
+      searchModalOpen: true,
+      selectedEntityIds: new Set<number>(),
+      selectedEntityId: null,
+      selectedEntity: null,
+      isolatedEntities: null,
+      searchVimCycle: null,
+      cameraCallbacks: {
+        frameSelection: () => { framed += 1; },
+        frameEntities: (ids: number[]) => { framedIds.push(ids); },
+      } as never,
+    });
+    const isolateSpy = mock.method(useViewerStore.getState(), 'isolateEntities', () => {});
+    const selectSpy = mock.method(useViewerStore.getState(), 'setSelectedEntityIds', () => {});
+    try {
+      const container = render(<SearchModalFilter />);
+
+      const runButton = [...container.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === 'Run',
+      );
+      assert.ok(runButton, 'expected a "Run" button');
+      click(runButton);
+
+      // runFilter is async (awaits evaluateFilterRulesFederated); drain
+      // microtasks until it settles rather than a fixed timer count.
+      await advance(60);
+
+      // Prove the run actually reached the evaluator and matched something —
+      // otherwise a zero call count would just as well mean "didn't run".
+      const result = useViewerStore.getState().searchFilterResult;
+      assert.ok(result && result.rows.length > 0, 'precondition: the run must actually match the fixture entity');
+      assert.equal(isolateSpy.mock.callCount(), 0, 'runFilter must never call isolateEntities');
+      assert.equal(selectSpy.mock.callCount(), 0, 'runFilter must never call setSelectedEntityIds');
+    } finally {
+      isolateSpy.mock.restore();
+      selectSpy.mock.restore();
+    }
   });
 });

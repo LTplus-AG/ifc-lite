@@ -245,6 +245,9 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   // has not re-rendered yet at that point).
   const [exportingZoneId, setExportingZoneId] = useState<string | null>(null);
   const exportingRef = useRef(false);
+  // How far the cut has got. Only meaningful while a worker is doing the work:
+  // before this, the main thread was blocked and nothing could have painted it.
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -430,10 +433,18 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     if (exportingRef.current) return;
                     exportingRef.current = true;
                     setExportingZoneId(zone.id);
-                    await new Promise((resolve) => setTimeout(resolve, 0));
-                    let result: ReturnType<typeof exportZone>;
+                    setExportProgress(null);
+                    let result: Awaited<ReturnType<typeof exportZone>>;
                     try {
-                      result = exportZone(zs, zs.zones.indexOf(zone));
+                      // The cutting runs in a worker now, so this await yields
+                      // to the event loop rather than blocking it: the disabled
+                      // state paints, the progress below updates, and the model
+                      // can still be orbited while a section is being cut.
+                      result = await exportZone(
+                        zs,
+                        zs.zones.indexOf(zone),
+                        (done, total) => setExportProgress({ done, total }),
+                      );
                     } catch (error) {
                       // The kernel, the GLB build and the download can each
                       // throw. Inside an ASYNC handler a throw becomes an
@@ -447,6 +458,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     } finally {
                       exportingRef.current = false;
                       setExportingZoneId(null);
+                      setExportProgress(null);
                     }
                     if (!result.ok) {
                       toast.error(result.reason === 'no-binding'

@@ -41,7 +41,15 @@ import { useViewerStore } from '@/store';
 import { getGlobalRenderer } from './useBCF.js';
 import { buildMergedGLB } from '@/lib/geo/cesium-glb';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
-import { splitElementByZones, type SplitMeshByZonesFn } from '@/lib/zones/split.js';
+import { type SplitMeshByZonesFn } from '@/lib/zones/split.js';
+import {
+  splitZonesInWorker,
+  zoneSplitWorkerSupported,
+  type ZoneSplitBatchFn,
+  type ZoneSplitJob,
+  type ZoneSplitProgress,
+} from '@/lib/zones/split-worker-client.js';
+import { runZoneSplitBatch } from '@/workers/zoneSplit.worker.js';
 import {
   compileZone,
   isPointInCompiledZone,
@@ -139,6 +147,11 @@ export interface ZoneGeometryDeps {
   split?: SplitMeshByZonesFn;
   meshPieces?: (globalId: number) => MeshData[] | null;
   emit?: (bytes: Uint8Array, filename: string) => void;
+  /** Overrides where the cutting runs. Defaults to the worker, falling back
+   *  in-process; a test passes its own so no worker is spawned. */
+  batch?: ZoneSplitBatchFn;
+  /** Reported per element as the batch advances. */
+  onProgress?: ZoneSplitProgress;
 }
 
 /**
@@ -149,11 +162,11 @@ export interface ZoneGeometryDeps {
  * that looks like a model and round-trips as a fabrication. A GLB says what
  * this is, which is a geometric extract of one section.
  */
-export function exportZoneGeometry(
+export async function exportZoneGeometry(
   zoneSet: ZoneSet,
   zoneIndex: number,
   deps: ZoneGeometryDeps = {},
-): ZoneGeometryExportResult {
+): Promise<ZoneGeometryExportResult> {
   // `'split' in deps` rather than `??`: passing the key explicitly as
   // `undefined` is how a caller says "there is no binding", which is the state
   // of an older wasm bundle and the one branch a `??` fallback would make
@@ -165,16 +178,22 @@ export function exportZoneGeometry(
   if (!split) return { ok: false, reason: 'no-binding' };
   const zone = zoneSet.zones[zoneIndex];
   if (!zone) return { ok: false, reason: 'empty-zone' };
+  const batch = deps.batch ?? defaultBatch(split);
 
   const t0 = performance.now();
   const state = useViewerStore.getState();
   const proved = gatherProvedVolumes();
   const meshes: MeshData[] = [];
   let whole = 0;
-  let cut = 0;
   let refused = 0;
   let noGeometry = 0;
   let volumeM3: number | null = 0;
+
+  // Phase 1, on this thread: decide what happens to each element. Every input
+  // is main-thread state (the renderer's scene, the store, the proved volumes),
+  // so moving the decisions across would mean moving the state behind them.
+  const jobs: ZoneSplitJob[] = [];
+  const pending = new Map<number, { provedVolume: number; color: MeshData['color'] }>();
 
   for (const [globalId, record] of state.zoneAssignments) {
     const assignment = record[zoneSet.id];
@@ -208,16 +227,36 @@ export function exportZoneGeometry(
     // for it: clipping an open shell yields pieces whose volume is arbitrary
     // rather than approximate. Checked BEFORE the cut, so a refused element
     // costs no clipping at all (30 to 40% of meshed elements in real models do
-    // not qualify).
+    // not qualify) and never leaves this thread.
     const provedVolume = proved.byGlobalId.get(globalId);
     if (provedVolume === undefined || proved.rescaled.has(globalId)) {
       refused++;
       continue;
     }
-    // `null` here is the splitter's own refusal: the pieces did not sum to the
+    jobs.push({
+      globalId,
+      pieces: pieces.map((piece) => ({
+        positions: piece.positions,
+        indices: piece.indices,
+        origin: piece.origin ?? null,
+      })),
+    });
+    pending.set(globalId, { provedVolume, color: pieces[0].color });
+  }
+
+  // Phase 2, off this thread: the exact arrangements, which are the whole cost.
+  const outcomes = jobs.length > 0
+    ? await batch({ zones: zoneSet.zones, zoneIndex, jobs }, deps.onProgress)
+    : [];
+
+  // Phase 3, back here: the gate, which needs the proved volumes again.
+  let cut = 0;
+  for (const outcome of outcomes) {
+    const context = pending.get(outcome.globalId);
+    if (!context) continue;
+    // `ok: false` is the splitter's own refusal: the pieces did not sum to the
     // whole, whose expected cause is zones that overlap each other.
-    const elementSplit = splitElementByZones(split, pieces, zoneSet.zones);
-    if (!elementSplit) {
+    if (!outcome.ok) {
       refused++;
       continue;
     }
@@ -227,8 +266,8 @@ export function exportZoneGeometry(
     // colour-merged batch re-extracted per entity, which is a silently SHORT
     // mesh rather than a wrong one.
     const verdict = volumeGateVerdict(
-      provedVolume,
-      { wholeVolumeM3: elementSplit.wholeVolumeM3, unreliable: false },
+      context.provedVolume,
+      { wholeVolumeM3: outcome.wholeVolumeM3, unreliable: false },
       PROVED_VOLUME_AGREEMENT_REL,
       false,
     );
@@ -240,15 +279,15 @@ export function exportZoneGeometry(
     // already rejected the untrustworthy cases, so it means the element
     // reaches the zone's box without any solid inside it, which is exactly
     // what v1's negative straddle epsilon describes.
-    const piece = elementSplit.pieces.find((p) => p.zoneIndex === zoneIndex);
+    const piece = outcome.piece;
     if (!piece) continue;
     meshes.push({
-      expressId: globalId,
+      expressId: outcome.globalId,
       positions: piece.positions,
       normals: piece.normals,
       indices: piece.indices,
       origin: piece.origin,
-      color: pieces[0].color,
+      color: context.color,
     } as MeshData);
     cut++;
     if (volumeM3 !== null) volumeM3 += piece.volumeM3;
@@ -264,9 +303,33 @@ export function exportZoneGeometry(
   };
 }
 
+/**
+ * The batch splitter to use when the caller names none: the worker, falling
+ * back in-process.
+ *
+ * The fallback is not silent. A browser without workers, or one where spawning
+ * fails, gets the old frozen main thread - which is worth having, since the
+ * export still produces its file, and worth saying, because "the UI locked up"
+ * and "the UI locked up and we know why" are different bug reports.
+ */
+function defaultBatch(split: SplitMeshByZonesFn): ZoneSplitBatchFn {
+  const inProcess: ZoneSplitBatchFn = async (request, onProgress) =>
+    runZoneSplitBatch(split, { ...request, zones: request.zones as Zone[] }, onProgress);
+  if (!zoneSplitWorkerSupported()) return inProcess;
+  return async (request, onProgress) => {
+    try {
+      return await splitZonesInWorker(request, onProgress);
+    } catch (error) {
+      console.warn('[zones] the split worker failed; cutting on the main thread instead', error);
+      return inProcess(request, onProgress);
+    }
+  };
+}
+
 export function useZoneGeometrySplit() {
   const exportZone = useCallback(
-    (zoneSet: ZoneSet, zoneIndex: number) => exportZoneGeometry(zoneSet, zoneIndex),
+    (zoneSet: ZoneSet, zoneIndex: number, onProgress?: ZoneSplitProgress) =>
+      exportZoneGeometry(zoneSet, zoneIndex, onProgress ? { onProgress } : {}),
     [],
   );
   return { exportZone, available: splitFn !== undefined };

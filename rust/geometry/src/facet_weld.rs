@@ -56,10 +56,10 @@
 //!   in a fixed, facet-index-sorted order), and projected vertices are snapped
 //!   to the same `1/2^16` grid the kernel uses, so the welded mesh is
 //!   byte-identical on every target.
-//! - Normals and offsets are computed in a frame anchored at the first
-//!   canonical vertex rather than raw world position, which removes a
-//!   magnitude-amplification bug in `n·v` at large site coordinates — see
-//!   Step 1.5 below for the derivation and the determinism argument.
+//! - Normals and offsets are computed in a frame anchored at the canonical
+//!   vertex set's bounding-box minimum (order-independent) rather than raw
+//!   world position, which removes a magnitude-amplification bug in `n·v` at
+//!   large site coordinates — see Step 1.5 below for the derivation.
 //!
 //! ## Watertightness
 //!
@@ -200,16 +200,19 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
     // distance from the world origin), which removes the amplification without
     // touching any tolerance constant.
     //
-    // Anchor = the first canonical vertex (`canon_pos[0]`). It is already
-    // computed by Step 1 (zero extra passes) and is a fully deterministic
-    // function of the input mesh: `canon_of` assigns canonical ids in the
-    // fixed order vertices 0..vertex_count are visited, so `canon_pos[0]` is
-    // always the (deduped) position of the mesh's first vertex — same anchor
-    // for the same input, on every target, every call. It need not be
-    // geometrically special (a bbox-min would do as well); the invariant that
-    // matters is that it lands within the mesh's own extent, which any vertex
-    // of the mesh does.
-    let anchor = canon_pos[0];
+    // Anchor = the bounding-box minimum corner over all canonical vertices, a
+    // per-axis min-reduction. Unlike `canon_pos[0]` (the first canonical
+    // vertex), this is a function of the vertex SET, not of vertex ordering
+    // or visit order — permuting the input's vertex/triangle order (e.g. a
+    // different triangulator diagonal choice) yields the same min-reduction
+    // and therefore the same anchor, so the weld result no longer depends on
+    // which vertex happened to be numbered first. It is still within the
+    // mesh's own extent (an axis-wise min of vertices it contains), which is
+    // the property Step 1.5 needs: it bounds `|v - anchor|` by the mesh's own
+    // extent rather than the site's distance from the world origin.
+    let anchor = canon_pos.iter().fold([f64::INFINITY; 3], |acc, p| {
+        [acc[0].min(p[0]), acc[1].min(p[1]), acc[2].min(p[2])]
+    });
     let anchored = |p: [f64; 3]| -> [f64; 3] {
         [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]]
     };
@@ -1068,6 +1071,60 @@ mod tests {
         );
     }
 
+    /// The invariant this fix restores: the anchor must be a function of the
+    /// vertex SET, not of vertex numbering. Builds the same 3 facets (a weld
+    /// cluster + one unrelated far facet) in two vertex orders — far facet
+    /// first vs. last, so a different physical vertex would have been
+    /// `canon_pos[0]` under the old first-vertex anchor — and asserts every
+    /// vertex's welded position is bit-identical between the two orderings
+    /// once matched back to the same physical vertex.
+    ///
+    /// This encodes the invariant behind the census's #6588 finding (a host
+    /// newly dependent on the triangulator's diagonal choice) rather than
+    /// hand-reproducing its exact divergence: that divergence is a
+    /// corpus-scale, floating-point-boundary coincidence (the real
+    /// duplex.ifc #6426 fixture does not diverge at this synthetic scale
+    /// either) that resisted small hand-built reconstruction. The
+    /// bit-identity assertion below is correct-by-construction regardless:
+    /// two orderings of the same mesh must weld to the same result, full stop.
+    #[test]
+    fn anchor_is_stable_under_vertex_reordering() {
+        let j = 4.9e-5; // just under MAX_OFFSET_JITTER (5e-5): any perturbation can flip the bucket
+        let t = [5000.123_f64, 3000.456, 7000.789];
+        let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
+        let facet1 = [add([0.0, 0.0, 0.0]), add([10.0, 0.0, 0.0]), add([0.0, 10.0, 0.0])];
+        let facet2 = [add([10.0, 0.0, j]), add([10.0, 10.0, j]), add([0.0, 10.0, j])];
+        // Unrelated facet, 1 km from the cluster, distinct normal bucket.
+        let d0 = add([1000.0, 0.0, 0.0]);
+        let d1 = add([1000.0, 0.0, 1.0]);
+        let d2 = add([1001.0, 1.0, 0.5]);
+        let far_facet = [d0, d1, d2];
+
+        let vertex0_far = mesh_from_tris(&[far_facet, facet1, facet2]);
+        let vertex0_cluster = mesh_from_tris(&[facet1, facet2, far_facet]);
+
+        let welded_far_first = weld_near_coplanar_facets(&vertex0_far);
+        let welded_cluster_first = weld_near_coplanar_facets(&vertex0_cluster);
+
+        // `vertex0_far`'s raw vertex order is `vertex0_cluster`'s rotated by
+        // the far facet's 3 vertices (moved from last to first): raw index i
+        // in `vertex0_cluster` is the SAME physical vertex as raw index
+        // `(i + 3) % 9` in `vertex0_far`. Compare every vertex's welded
+        // position bit-for-bit through that correspondence.
+        for i in 0..9 {
+            let far_i = (i + 3) % 9;
+            let cluster_pos = &welded_cluster_first.positions[i * 3..i * 3 + 3];
+            let far_pos = &welded_far_first.positions[far_i * 3..far_i * 3 + 3];
+            assert_eq!(
+                cluster_pos, far_pos,
+                "vertex {i} (cluster-first raw id) / {far_i} (far-first raw \
+                 id) is the SAME physical vertex — its welded position must \
+                 be bit-identical regardless of which vertex was numbered \
+                 first. cluster-first={cluster_pos:?} far-first={far_pos:?}"
+            );
+        }
+    }
+
     /// Isolates the offset-formula fix from the full `weld_near_coplanar_facets`
     /// pipeline (so `POSITION_DEDUP_GRID`'s separate limitation, see above,
     /// can't interfere), using the smallest jitter that survives `f32`
@@ -1076,12 +1133,13 @@ mod tests {
     ///
     /// Asserts the ANCHORED gap clears `MAX_OFFSET_JITTER` when the anchor is
     /// on the shared edge (the common case, since `weld_near_coplanar_facets`
-    /// anchors at `canon_pos[0]`, typically part of or near the cluster being
-    /// welded), against a RAW gap orders of magnitude over tolerance. Also
-    /// PRINTS (doesn't assert) the gap for an anchor progressively farther
-    /// from the cluster: the residual scales with anchor-to-cluster distance
-    /// (mesh-scale) rather than world-origin distance (site-scale) — a large
-    /// improvement, not a complete elimination for a sprawling host.
+    /// anchors at the mesh's bbox-min corner, typically part of or near the
+    /// cluster being welded), against a RAW gap orders of magnitude over
+    /// tolerance. Also PRINTS (doesn't assert) the gap for an anchor
+    /// progressively farther from the cluster: the residual scales with
+    /// anchor-to-cluster distance (mesh-scale) rather than world-origin
+    /// distance (site-scale) — a large improvement, not a complete
+    /// elimination for a sprawling host.
     #[test]
     fn anchored_formula_removes_offset_amplification() {
         let t = [5000.123_f64, 3000.456, 7000.789];
@@ -1138,9 +1196,9 @@ mod tests {
                  anchored_gap={anchored_gap:e}"
             );
 
-            // WORST CASE: the global anchor (canon_pos[0], mesh's first
-            // vertex) belongs to a DIFFERENT part of a large host, `far_m`
-            // away from this cluster's shared edge — plausible for a big
+            // WORST CASE: the global anchor (bbox-min corner) belongs to a
+            // DIFFERENT part of a large host, `far_m` away from this
+            // cluster's shared edge — plausible for a big
             // multi-slope roof. Offset is a PLANE property (constant across
             // all 3 of a triangle's own vertices), so the gap is
             // `δn · (shared_edge_point − anchor)`; an anchor ON the shared

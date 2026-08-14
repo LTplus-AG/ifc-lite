@@ -73,7 +73,13 @@
 # weld case and an isolated offset-formula gap measurement (RAW vs anchored, at a jitter
 # magnitude that actually survives f32 storage at this scale) documenting the
 # anchor-to-cluster residual.
-         1171 rust/geometry/src/facet_weld.rs
+# +58: the first-canonical-vertex anchor from the entry above was itself order-dependent —
+# a different triangulator diagonal choice could pick a different `canon_pos[0]`, changing
+# the weld result for the SAME mesh (watertightness census, various/rvt01.ifc #6588).
+# Anchor is now the bbox-min corner (a min-reduction over all canonical vertices), a
+# function of the vertex SET, not of visit order. Plus a regression test permuting vertex
+# order and asserting the welded position of every physical vertex is bit-identical either way.
+         1229 rust/geometry/src/facet_weld.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.

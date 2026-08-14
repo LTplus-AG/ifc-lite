@@ -65,6 +65,7 @@ export const RELATIONSHIP_TYPES = new Set([
     'IFCRELASSOCIATESDOCUMENT',
     'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
+    'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',
     'IFCRELSPACEBOUNDARY',
     'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',
     'IFCRELREFERENCEDINSPATIALSTRUCTURE',
@@ -88,6 +89,8 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {
     'IFCRELFILLSELEMENT': RelationshipType.FillsElement,
     'IFCRELCONNECTSPATHELEMENTS': RelationshipType.ConnectsPathElements,
     'IFCRELCONNECTSELEMENTS': RelationshipType.ConnectsElements,
+    'IFCRELCONNECTSPORTTOELEMENT': RelationshipType.ConnectsPortToElement,
+    'IFCRELCONNECTSPORTS': RelationshipType.ConnectsPorts,
     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,
     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,
     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,
@@ -123,6 +126,11 @@ export const HIERARCHY_REL_TYPES = new Set([
     // Structural relationships (voids, fills, connections, groups)
     'IFCRELVOIDSELEMENT', 'IFCRELFILLSELEMENT',
     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',
+    // Plant topology. This set is the GATE — a relationship type missing here
+    // is never collected and so never reaches `extractRelFast`, which is why
+    // ports were invisible to the relationship graph even though the entities
+    // themselves were parsed.
+    'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',
     'IFCRELSPACEBOUNDARY',
     'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',
     'IFCRELREFERENCEDINSPATIALSTRUCTURE',

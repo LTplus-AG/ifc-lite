@@ -240,6 +240,15 @@ if (checkMode) {
     // Dry run: report files missing the header, write nothing, and fail CI
     // if any are found.
     const missing = [];
+    // A file that fails to read (permissions, a race with a deleting process,
+    // a broken symlink, ...) was previously `continue`d past silently: not
+    // added to `missing`, not counted in `excluded` either, so it still
+    // landed in the `files.length - excluded` "Checked" total below and the
+    // run could print "All files have the license header" having actually
+    // never looked at that file's content — the same false-pass class as the
+    // zero-files-scanned case above, just one file at a time instead of the
+    // whole scan. Track it separately and fail loudly instead.
+    const readErrors = [];
     let excluded = 0;
 
     for (const file of files) {
@@ -254,6 +263,7 @@ if (checkMode) {
             content = readFileSync(file, 'utf-8');
         } catch (error) {
             console.error(`Error reading ${file}:`, error.message);
+            readErrors.push(file);
             continue;
         }
 
@@ -263,9 +273,19 @@ if (checkMode) {
     }
 
     console.log(`\nResults:`);
-    console.log(`  Checked: ${files.length - excluded}`);
+    console.log(`  Checked: ${files.length - excluded - readErrors.length}`);
     console.log(`  Excluded: ${excluded}`);
+    console.log(`  Unreadable: ${readErrors.length}`);
     console.log(`  Missing header: ${missing.length}`);
+
+    if (readErrors.length > 0) {
+        console.error(
+            `\n❌ ${readErrors.length} file(s) could not be read, so their license header could not be ` +
+            'verified. That is a failed check, not a clean repo — refusing to report success for a check ' +
+            `that did not actually look at ${readErrors.length === 1 ? 'this file' : 'these files'}.`
+        );
+        process.exit(2);
+    }
 
     if (missing.length > 0) {
         console.log(`\nFiles missing the MPL license header:`);

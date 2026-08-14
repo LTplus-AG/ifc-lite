@@ -51,6 +51,41 @@ export class PolygonBuilder {
   }
 
   /**
+   * Run `fn` with `this.tolerance` floored to the float32 noise floor of
+   * `segments`' own 2D coordinate magnitude (`extent · 2⁻²²`), restoring the
+   * constructor tolerance afterward.
+   *
+   * Per-mesh RTC origins mean a segment's projected coordinate magnitude is
+   * normally the *element's own* extent, not its distance from the model
+   * origin (see #2621) — so this is scoped per entity, computed from that
+   * entity's own segments, not the whole drawing's. A short element a few
+   * metres across leaves the floor at the constructor's default untouched
+   * (bit-identical); only an element whose own extent is large enough that
+   * float32 rounding of its cut coordinates approaches the default 0.1mm
+   * weld tolerance gets a wider one — exactly the "same physical vertex,
+   * two independently-rounded float32 copies" case that a fixed tolerance
+   * can't absorb past that scale.
+   */
+  private withScaleAwareTolerance<T>(segments: CutSegment[], fn: () => T): T {
+    let maxAbs = 0;
+    for (const seg of segments) {
+      const a = seg.p0_2d;
+      const b = seg.p1_2d;
+      if (Math.abs(a.x) > maxAbs) maxAbs = Math.abs(a.x);
+      if (Math.abs(a.y) > maxAbs) maxAbs = Math.abs(a.y);
+      if (Math.abs(b.x) > maxAbs) maxAbs = Math.abs(b.x);
+      if (Math.abs(b.y) > maxAbs) maxAbs = Math.abs(b.y);
+    }
+    const original = this.tolerance;
+    this.tolerance = Math.max(original, maxAbs * 2 ** -22);
+    try {
+      return fn();
+    } finally {
+      this.tolerance = original;
+    }
+  }
+
+  /**
    * Build polygons from cut segments
    * Groups segments by entity and reconstructs closed loops
    */
@@ -70,7 +105,9 @@ export class PolygonBuilder {
     const polygonArrays: DrawingPolygon[][] = [];
 
     for (const [key, entitySegments] of byEntity) {
-      const entityPolygons = this.buildEntityPolygons(entitySegments);
+      const entityPolygons = this.withScaleAwareTolerance(entitySegments, () =>
+        this.buildEntityPolygons(entitySegments),
+      );
       polygonArrays.push(entityPolygons);
     }
 
@@ -105,8 +142,9 @@ export class PolygonBuilder {
       const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
       if (colors.size < 2) continue;
       // Colourless build ⇒ closed-loop path (the combined section is closed).
-      const base = this.buildColorGroupPolygons(entitySegments, undefined)
-        .map((p) => ({ ...p, isLayerBase: true }));
+      const base = this.withScaleAwareTolerance(entitySegments, () =>
+        this.buildColorGroupPolygons(entitySegments, undefined),
+      ).map((p) => ({ ...p, isLayerBase: true }));
       if (base.length > 0) out.push(base);
     }
     return out.flat();

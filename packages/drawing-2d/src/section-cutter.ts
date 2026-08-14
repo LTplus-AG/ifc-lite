@@ -137,8 +137,23 @@ export class SectionCutter {
       const d1 = signedDistanceToPlane(v1, this.planeNormal, this.planeDistance);
       const d2 = signedDistanceToPlane(v2, this.planeNormal, this.planeDistance);
 
+      // Plane-side classification epsilon. `dot(v, n)` sums three
+      // float32-quantized components, so even a vertex whose TRUE distance
+      // is 0 carries rounding noise proportional to its own coordinate
+      // magnitude (~coord · 2⁻²²), not just the fixed EPSILON. Without this
+      // floor, a face lying exactly on a non-axis-aligned cut plane gets its
+      // near-zero d0/d1 misclassified as a genuine crossing, and the
+      // resulting lerp — dividing one noise term by another — produces a
+      // wild extrapolated point instead of being skipped as coplanar.
+      const maxCoord = Math.max(
+        Math.abs(v0.x), Math.abs(v0.y), Math.abs(v0.z),
+        Math.abs(v1.x), Math.abs(v1.y), Math.abs(v1.z),
+        Math.abs(v2.x), Math.abs(v2.y), Math.abs(v2.z),
+      );
+      const planeEps = Math.max(EPSILON, maxCoord * 2 ** -22);
+
       // Intersect triangle with plane
-      const intersection = this.intersectTrianglePlane(v0, v1, v2, d0, d1, d2);
+      const intersection = this.intersectTrianglePlane(v0, v1, v2, d0, d1, d2, planeEps);
 
       if (intersection) {
         intersectedCount++;
@@ -210,13 +225,14 @@ export class SectionCutter {
     v2: Vec3,
     d0: number,
     d1: number,
-    d2: number
+    d2: number,
+    eps: number = EPSILON
   ): { p0: Vec3; p1: Vec3 } | null {
     // Count vertices on each side of the plane
     const pos =
-      (d0 > EPSILON ? 1 : 0) + (d1 > EPSILON ? 1 : 0) + (d2 > EPSILON ? 1 : 0);
+      (d0 > eps ? 1 : 0) + (d1 > eps ? 1 : 0) + (d2 > eps ? 1 : 0);
     const neg =
-      (d0 < -EPSILON ? 1 : 0) + (d1 < -EPSILON ? 1 : 0) + (d2 < -EPSILON ? 1 : 0);
+      (d0 < -eps ? 1 : 0) + (d1 < -eps ? 1 : 0) + (d2 < -eps ? 1 : 0);
 
     // No intersection if all vertices on same side
     if (pos === 3 || neg === 3) return null;
@@ -228,16 +244,16 @@ export class SectionCutter {
     const points: Vec3[] = [];
 
     // Check edge v0-v1
-    const p01 = this.edgePlaneIntersection(v0, v1, d0, d1);
+    const p01 = this.edgePlaneIntersection(v0, v1, d0, d1, eps);
     if (p01) points.push(p01);
 
     // Check edge v1-v2
-    const p12 = this.edgePlaneIntersection(v1, v2, d1, d2);
+    const p12 = this.edgePlaneIntersection(v1, v2, d1, d2, eps);
     if (p12) points.push(p12);
 
     // Check edge v2-v0
     if (points.length < 2) {
-      const p20 = this.edgePlaneIntersection(v2, v0, d2, d0);
+      const p20 = this.edgePlaneIntersection(v2, v0, d2, d0, eps);
       if (p20) points.push(p20);
     }
 
@@ -256,16 +272,17 @@ export class SectionCutter {
     v0: Vec3,
     v1: Vec3,
     d0: number,
-    d1: number
+    d1: number,
+    eps: number = EPSILON
   ): Vec3 | null {
     // Both vertices on the plane - edge lies on plane
-    if (Math.abs(d0) < EPSILON && Math.abs(d1) < EPSILON) {
+    if (Math.abs(d0) < eps && Math.abs(d1) < eps) {
       return null; // Handled separately as face-on-plane
     }
 
     // One vertex on plane - return that vertex
-    if (Math.abs(d0) < EPSILON) return v0;
-    if (Math.abs(d1) < EPSILON) return v1;
+    if (Math.abs(d0) < eps) return v0;
+    if (Math.abs(d1) < eps) return v1;
 
     // Both vertices on same side - no intersection
     if ((d0 > 0) === (d1 > 0)) return null;

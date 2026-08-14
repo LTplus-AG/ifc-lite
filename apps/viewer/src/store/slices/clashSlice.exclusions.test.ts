@@ -43,6 +43,13 @@ function ref(model: string, key: string, tag: string, name?: string): ClashEleme
 
 let seq = 0;
 function clash(a: ClashElementRef, b: ClashElementRef): Clash {
+  return clashAt(a, b, [0, 0, 0]);
+}
+
+/** Same as `clash`, but at a caller-chosen point — needed to make cluster
+ * grouping (which buckets by distance between `point`s) actually distinguish
+ * one epsilon from another. */
+function clashAt(a: ClashElementRef, b: ClashElementRef, point: [number, number, number]): Clash {
   seq += 1;
   return {
     id: `c${seq}`,
@@ -51,7 +58,7 @@ function clash(a: ClashElementRef, b: ClashElementRef): Clash {
     rule: 'all-clashes',
     status: 'hard',
     distance: -0.075,
-    point: [0, 0, 0],
+    point,
     bounds: { min: [0, 0, 0], max: [1, 1, 1] },
     severity: 'major',
   };
@@ -126,6 +133,45 @@ describe('user-defined clash exclusions (store)', () => {
     s.get().addClashExclusion(typePairExclusion('IfcRail', 'IfcCourse'));
     const after = s.get().clashGroups ?? [];
     assert.strictEqual(after.reduce((n, gr) => n + gr.members.length, 0), 1);
+  });
+
+  it('setClashClusterEpsilon re-derives clashGroups, so the Issues-view radius control is not inert (#2535)', () => {
+    // Two IfcRail-vs-IfcCourse clashes 5m apart. At the default 1.5m radius
+    // they are two separate cluster groups; raising the radius past 5m must
+    // merge them into one WITHOUT a new detection run — deriveFromExclusions
+    // is the only writer of clashGroups, and setClashClusterEpsilon used to
+    // never call it, so the control changed the persisted setting but the
+    // Issues view never regrouped.
+    const s = slice();
+    const clashes = [
+      clashAt(rail1, ballast, [0, 0, 0]),
+      clashAt(rail2, ballast, [5, 0, 0]),
+    ];
+    const result: ClashResult = {
+      clashes,
+      summary: {
+        total: 2,
+        byRule: { 'all-clashes': 2 },
+        byTypePair: { 'IfcCourse vs IfcRail': 2 },
+        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    s.get().setClashResult(result);
+    assert.strictEqual(s.get().clashClusterEpsilon, 1.5, 'default radius');
+    assert.strictEqual(s.get().clashGroups?.length, 2, 'default 1.5m radius keeps the two clashes apart');
+
+    s.get().setClashClusterEpsilon(10);
+
+    assert.strictEqual(s.get().clashClusterEpsilon, 10);
+    assert.strictEqual(
+      s.get().clashGroups?.length,
+      1,
+      'raising the radius past the 5m gap must merge the two clashes into one group, with no re-run',
+    );
+    // The filtered result itself must be untouched by a pure view-setting change.
+    assert.strictEqual(s.get().clashResult?.clashes.length, 2);
   });
 
   it('removing a rule restores the clashes it was hiding', () => {

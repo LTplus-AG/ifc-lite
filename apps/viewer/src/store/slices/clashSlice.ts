@@ -349,7 +349,12 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       persistSettings();
     },
     setClashClusterEpsilon: (clashClusterEpsilon) => {
-      set({ clashClusterEpsilon: clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon) });
+      const clamped = clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon);
+      const state = get();
+      // clashGroups is otherwise derived only from setClashResult / commitExclusions
+      // (deriveFromExclusions), so without this the Issues view's radius control —
+      // which now reads live from this same setting — silently did nothing.
+      set({ clashClusterEpsilon: clamped, ...deriveFromExclusions(state.clashRawResult, state.clashExclusions, clamped) });
       persistSettings();
     },
     setClashReportTouch: (clashReportTouch) => { set({ clashReportTouch }); persistSettings(); },

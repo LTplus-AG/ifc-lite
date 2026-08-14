@@ -119,4 +119,34 @@ describe('SectionCutter — plane-side classification epsilon (candidate a)', ()
     expect(result.segments[0].p0_2d).toEqual({ x: 0.5, y: 0 });
     expect(result.segments[0].p1_2d).toEqual({ x: -0.5, y: 0.5 });
   });
+
+  it('a small element at a large RTC origin still detects a genuine near-plane crossing (#2622)', () => {
+    // Regression for the OPPOSITE failure from the two tests above: a 2m
+    // element (local coordinate magnitude ~2) sitting at a large per-mesh
+    // RTC origin (500,000 in x/z — irrelevant to the y=0 cut plane, but the
+    // buggy code folds ALL of v0/v1/v2's world-lifted x/y/z components into
+    // one `maxCoord`). If the plane-classification epsilon is sized off the
+    // WORLD-lifted vertex magnitude (~500,000 → eps ≈ 0.119) instead of the
+    // element's own LOCAL magnitude (~2 → eps ≈ 4.8e-7), a real 0.01-unit
+    // crossing gets swallowed as "vertex on the plane" and the segment is
+    // dropped — exactly the reverse of the coplanar-face bug this file
+    // otherwise guards: real geometry vanishes instead of noise appearing.
+    const mesh: MeshData = {
+      expressId: 9,
+      ifcType: 'IfcWall',
+      modelIndex: 0,
+      positions: new Float32Array([
+        0, -0.01, 0,
+        1, 1, 0,
+        -1, 1, 1,
+      ]),
+      normals: new Float32Array(3 * 3),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1],
+      origin: [500_000, 0, 500_000],
+    } as unknown as MeshData;
+    const cutter = new SectionCutter({ axis: 'y', position: 0, flipped: false });
+    const result = cutter.cutSingleMesh(mesh);
+    expect(result.segments).toHaveLength(1);
+  });
 });

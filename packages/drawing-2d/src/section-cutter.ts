@@ -145,12 +145,18 @@ export class SectionCutter {
       // near-zero d0/d1 misclassified as a genuine crossing, and the
       // resulting lerp — dividing one noise term by another — produces a
       // wild extrapolated point instead of being skipped as coplanar.
-      const maxCoord = Math.max(
-        Math.abs(v0.x), Math.abs(v0.y), Math.abs(v0.z),
-        Math.abs(v1.x), Math.abs(v1.y), Math.abs(v1.z),
-        Math.abs(v2.x), Math.abs(v2.y), Math.abs(v2.z),
-      );
-      const planeEps = Math.max(EPSILON, maxCoord * 2 ** -22);
+      //
+      // Crucially, this must be measured on the LOCAL (pre-origin) vertex
+      // coordinates, not `v0`/`v1`/`v2` (world = origin + local). The
+      // quantization noise is a property of the `Float32Array` values as
+      // authored, not of where the element's per-mesh RTC origin happens to
+      // place it in the model. Using the world-lifted magnitude here scales
+      // the tolerance to the element's DISTANCE FROM THE MODEL ORIGIN
+      // instead of its own extent — a small element far from the model
+      // origin would get a tolerance orders of magnitude too loose, which
+      // misclassifies genuine close crossings as coplanar (#2622).
+      const localMaxCoord = this.localMaxCoord(positions, i0, i1, i2);
+      const planeEps = Math.max(EPSILON, localMaxCoord * 2 ** -22);
 
       // Intersect triangle with plane
       const intersection = this.intersectTrianglePlane(v0, v1, v2, d0, d1, d2, planeEps);
@@ -186,6 +192,11 @@ export class SectionCutter {
           // Per-sub-mesh colour so material-layer walls/slabs split per layer
           // in the polygon builder. One MeshData == one layer == one colour.
           color,
+          // LOCAL (pre-origin) magnitude — lets the polygon builder size its
+          // scale-aware weld tolerance off the element's own extent instead
+          // of `p0_2d`/`p1_2d`'s world-frame magnitude. See the field's
+          // doc comment in types.ts and `localMaxCoord` above.
+          localMaxCoord,
         });
       }
     }
@@ -213,6 +224,27 @@ export class SectionCutter {
           positions[base + 2] + origin[2],
         )
       : vec3(positions[base], positions[base + 1], positions[base + 2]);
+  }
+
+  /**
+   * Max |coordinate| of a triangle's LOCAL (pre-origin) vertex positions —
+   * the `Float32Array` values exactly as stored, before the per-mesh RTC
+   * `origin` translation. This is the quantity float32 rounding noise
+   * actually scales with; deliberately does NOT take `origin` as a
+   * parameter so a future edit can't accidentally fold it back in.
+   */
+  private localMaxCoord(positions: Float32Array, i0: number, i1: number, i2: number): number {
+    let m = 0;
+    for (const i of [i0, i1, i2]) {
+      const base = i * 3;
+      const ax = Math.abs(positions[base]);
+      const ay = Math.abs(positions[base + 1]);
+      const az = Math.abs(positions[base + 2]);
+      if (ax > m) m = ax;
+      if (ay > m) m = ay;
+      if (az > m) m = az;
+    }
+    return m;
   }
 
   /**

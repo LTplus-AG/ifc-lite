@@ -387,4 +387,58 @@ describe('PolygonBuilder — scale-aware weld tolerance (candidate b)', () => {
       { x: 0, y: 3 },
     ]);
   });
+
+  /**
+   * `p0_2d`/`p1_2d` are WORLD-frame (SectionCutter lifts by the per-mesh RTC
+   * origin and never subtracts it back out before 2D projection). A SMALL
+   * element (2m local extent) sitting at a large RTC origin (500,000) has
+   * that same large world-frame magnitude as the 500km single-element case
+   * above — but its `localMaxCoord` (attached by `SectionCutter`, measured
+   * on the pre-origin `Float32Array` values) stays small. Regression for
+   * #2622: without `localMaxCoord`, `withScaleAwareTolerance` conflates the
+   * two, scales the weld tolerance to the RTC origin's magnitude
+   * (500,000 · 2⁻²² ≈ 0.119), and incorrectly welds two genuinely distinct
+   * corners 1cm apart — a real notch in this element's own boundary
+   * vanishes.
+   */
+  function squareWithSplitCornerAtOrigin(
+    e: number,
+    L: number,
+    cornerEpsilon: number,
+    localMaxCoord: number,
+    entityId: number,
+  ): CutSegment[] {
+    const c00 = { x: e, y: e };
+    const c10 = { x: e + L, y: e };
+    const c11 = { x: e + L, y: e + L };
+    const c01 = { x: e, y: e + L };
+    const c11FromRightEdge = c11;
+    const c11FromTopEdge = { x: c11.x + cornerEpsilon, y: c11.y + cornerEpsilon };
+
+    const mk = (p0: { x: number; y: number }, p1: { x: number; y: number }): CutSegment => ({
+      p0: { x: p0.x, y: p0.y, z: 0 },
+      p1: { x: p1.x, y: p1.y, z: 0 },
+      p0_2d: p0,
+      p1_2d: p1,
+      entityId,
+      ifcType: 'IfcRoof',
+      modelIndex: 0,
+      localMaxCoord,
+    });
+
+    return [mk(c00, c10), mk(c10, c11FromRightEdge), mk(c11FromTopEdge, c01), mk(c01, c00)];
+  }
+
+  it('does NOT weld a genuinely distinct corner of a small element sitting at a large RTC origin (#2622)', () => {
+    const e = 500_000; // world-frame position (RTC origin), NOT the element's own extent
+    const L = 2; // the element's own extent — small
+    const cornerEpsilon = 0.01; // a real 1cm gap: bigger than the default 0.1mm tolerance,
+    // smaller than the WRONG world-scaled tolerance (500,000 · 2⁻²² ≈ 0.119) this
+    // guards against, so the buggy code welds it and the fixed code doesn't.
+    const segments = squareWithSplitCornerAtOrigin(e, L, cornerEpsilon, L, 1);
+    const polygons = new PolygonBuilder().buildPolygons(segments);
+    expect(polygons).toHaveLength(1);
+    // 5 distinct vertices: the split corner stays split, not welded into 4.
+    expect(polygons[0].polygon.outer).toHaveLength(5);
+  });
 });

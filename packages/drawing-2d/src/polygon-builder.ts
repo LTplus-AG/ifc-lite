@@ -52,23 +52,41 @@ export class PolygonBuilder {
 
   /**
    * Run `fn` with `this.tolerance` floored to the float32 noise floor of
-   * `segments`' own 2D coordinate magnitude (`extent · 2⁻²²`), restoring the
-   * constructor tolerance afterward.
+   * `segments`' own LOCAL (pre-origin) coordinate magnitude
+   * (`localMaxCoord · 2⁻²²`), restoring the constructor tolerance
+   * afterward.
    *
-   * Per-mesh RTC origins mean a segment's projected coordinate magnitude is
-   * normally the *element's own* extent, not its distance from the model
-   * origin (see #2621) — so this is scoped per entity, computed from that
-   * entity's own segments, not the whole drawing's. A short element a few
-   * metres across leaves the floor at the constructor's default untouched
-   * (bit-identical); only an element whose own extent is large enough that
-   * float32 rounding of its cut coordinates approaches the default 0.1mm
-   * weld tolerance gets a wider one — exactly the "same physical vertex,
-   * two independently-rounded float32 copies" case that a fixed tolerance
-   * can't absorb past that scale.
+   * `seg.p0_2d`/`p1_2d` are WORLD-frame (the section cutter lifts vertices
+   * by the per-mesh RTC `origin` before projecting to 2D, and never
+   * subtracts it back out) — so their magnitude is the element's distance
+   * from the model origin, NOT its own extent. Sizing the tolerance off
+   * that world magnitude would give a small element sitting at a large RTC
+   * origin a tolerance scaled to that distance, wide enough to weld
+   * genuinely distinct nearby vertices (#2622). `SectionCutter` attaches
+   * `localMaxCoord` — measured on the source triangle's `Float32Array`
+   * values BEFORE `origin` was added — for exactly this reason; that's
+   * what float32 rounding noise actually scales with. This is scoped per
+   * entity, computed from that entity's own segments, not the whole
+   * drawing's. A short element a few metres across leaves the floor at the
+   * constructor's default untouched (bit-identical); only an element whose
+   * own extent is large enough that float32 rounding of its cut
+   * coordinates approaches the default 0.1mm weld tolerance gets a wider
+   * one — exactly the "same physical vertex, two independently-rounded
+   * float32 copies" case that a fixed tolerance can't absorb past that
+   * scale.
+   *
+   * Segments not produced by `SectionCutter` (e.g. hand-built test
+   * fixtures) carry no `localMaxCoord`; those fall back to the segment's
+   * own 2D coordinate magnitude, preserving prior behaviour for callers
+   * that never had an origin to begin with.
    */
   private withScaleAwareTolerance<T>(segments: CutSegment[], fn: () => T): T {
     let maxAbs = 0;
     for (const seg of segments) {
+      if (seg.localMaxCoord !== undefined) {
+        if (seg.localMaxCoord > maxAbs) maxAbs = seg.localMaxCoord;
+        continue;
+      }
       const a = seg.p0_2d;
       const b = seg.p1_2d;
       if (Math.abs(a.x) > maxAbs) maxAbs = Math.abs(a.x);

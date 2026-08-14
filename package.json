@@ -47,7 +47,7 @@
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck && node scripts/typecheck-tests.mjs --audit",
     "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
-    "lint": "node scripts/check-unused-locals.mjs && node scripts/check-lint-ran.mjs",
+    "lint": "node scripts/check-changesets.mjs && node scripts/check-unused-locals.mjs && node scripts/check-lint-ran.mjs",
     "lint:baseline": "node scripts/check-unused-locals.mjs --update",
     "knip": "knip",
     "docs:serve": "python3 -m mkdocs serve",

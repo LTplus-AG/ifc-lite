@@ -86,6 +86,11 @@ jobs:
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             frontend:
+              # A changeset naming a package that does not exist fails the
+              # RELEASE workflow, which only runs on main - so the Lint job has
+              # to see changeset-only PRs, or the check it runs cannot fire on
+              # the PR that introduces the mistake.
+              - '.changeset/**'
               # oxlint lints all of `apps/` except `apps/landing`, but this
               # filter names the two apps individually rather than `apps/**` —
               # broadening it would drag every landing-page edit through the

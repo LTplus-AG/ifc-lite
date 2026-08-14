@@ -41,11 +41,15 @@
  * coordinator would make that landing on a boundary requires jitter of exactly
  * the wrong magnitude.
  *
- * Units are the file's own — the fingerprint is only ever compared against
- * another fingerprint from a model of the same pair, and a unit conversion
- * would just scale both sides. {@link composeWorldPlacement} likewise returns
- * native units; `describeChange.ts` applies `store.lengthUnitScale` when it
- * turns a displacement into the metres the panel shows.
+ * {@link composeWorldPlacement} returns native (per-file) units, but the
+ * viewer's compare lets a user pair any two loaded models — including a base
+ * and head exported with different length-unit presets, which is a routine
+ * re-export change and not a same-pair guarantee. `worldPlacementFingerprint`
+ * therefore scales each translation by `store.lengthUnitScale` before
+ * quantising, the same normalisation `describeChange.ts` / `geometrySummary.ts`
+ * already apply when turning a displacement into the metres the panel shows —
+ * so two fingerprints agree on a real-world-identical placement regardless of
+ * which file's native unit produced the raw coordinate.
  *
  * **Relation to `packages/export/src/lod0-generator.ts`.** The LOD0 exporter
  * carries its own placement composer over the same EXPRESS derivation. They are
@@ -402,6 +406,14 @@ export function worldPlacementFingerprint(
 ): string | undefined {
   const world = composeWorldPlacement(store, localId, cache);
   if (!world) return undefined;
+  // The viewer's compare can pair two models loaded with different length
+  // units (a routine unit-preset change on re-export, or two models from
+  // different tools) — see the module note above. Translations are scaled to
+  // metres by the same `lengthUnitScale` `geometrySummary.ts` already applies
+  // before quantising, so two fingerprints from the same real-world placement
+  // agree regardless of which file's native unit produced the raw value.
+  // Basis entries are direction cosines and are unit-independent.
+  const unitScale = store.lengthUnitScale ?? 1;
   const quantised: number[] = [];
   for (let row = 0; row < 3; row++) {
     for (let column = 0; column < 4; column++) {
@@ -412,7 +424,10 @@ export function worldPlacementFingerprint(
       // above double noise.
       quantised.push(
         column === 3
-          ? snap(Number(value.toPrecision(TRANSLATION_SIGNIFICANT_DIGITS)), TRANSLATION_GRID)
+          ? snap(
+              Number((value * unitScale).toPrecision(TRANSLATION_SIGNIFICANT_DIGITS)),
+              TRANSLATION_GRID,
+            )
           : snap(value, BASIS_GRID),
       );
     }

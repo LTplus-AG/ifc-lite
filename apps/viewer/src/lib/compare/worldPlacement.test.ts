@@ -327,3 +327,35 @@ describe('worldPlacementFingerprint - georeferenced-magnitude translations (revi
     );
   });
 });
+
+describe('worldPlacementFingerprint - cross-model unit mismatch (review find)', () => {
+  // The viewer's Compare lets a user pair ANY two loaded models, not
+  // necessarily a same-tool same-preset export of the same file — see the
+  // module note. A model re-exported from millimetres to metres carries the
+  // same real-world site at 40000 (mm) vs 40 (m); without scaling by
+  // `lengthUnitScale` those quantise to different buckets and every
+  // geometry-less product on the pair reports a phantom move.
+  it('is IDENTICAL for the same real-world position expressed in different native units', async () => {
+    const mm = await storeFromStep(siteUnderChain([40000, 0, 0], [0, 0, 0]));
+    const m = await storeFromStep(siteUnderChain([40, 0, 0], [0, 0, 0]));
+    (mm as unknown as { lengthUnitScale: number }).lengthUnitScale = 0.001; // mm -> m
+    (m as unknown as { lengthUnitScale: number }).lengthUnitScale = 1; // already m
+
+    const fMm = worldPlacementFingerprint(mm, siteId(mm));
+    const fM = worldPlacementFingerprint(m, siteId(m));
+    assert.ok(fMm, 'the millimetre-unit fixture must compose');
+    assert.strictEqual(fMm, fM);
+  });
+
+  it('still reports a real move once both sides are normalised to metres', async () => {
+    const mm = await storeFromStep(siteUnderChain([40000, 0, 0], [0, 0, 0])); // 40 m
+    const mmMoved = await storeFromStep(siteUnderChain([41000, 0, 0], [0, 0, 0])); // 41 m
+    (mm as unknown as { lengthUnitScale: number }).lengthUnitScale = 0.001;
+    (mmMoved as unknown as { lengthUnitScale: number }).lengthUnitScale = 0.001;
+
+    assert.notStrictEqual(
+      worldPlacementFingerprint(mm, siteId(mm)),
+      worldPlacementFingerprint(mmMoved, siteId(mmMoved)),
+    );
+  });
+});

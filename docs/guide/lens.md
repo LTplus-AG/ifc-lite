@@ -164,7 +164,7 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
 | `BUILTIN_LENSES` | The seven built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
-| `LENS_OPERATORS` | The eight comparison operators, for rule-editor dropdowns |
+| `LENS_OPERATORS` | The eight value operators, for rule-editor dropdowns |
 | `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two compound criteria types |
 | `MAX_COMPOUND_DEPTH` | Nesting cap (16) beyond which a compound matches nothing |
 

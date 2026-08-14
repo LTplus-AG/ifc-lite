@@ -17,7 +17,7 @@ import { AUTO_COLOR_SOURCES, MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
  * instead of crashing inside a React event handler on Edit/Duplicate.
  */
 function isCriteriaLike(value: unknown): value is LensCriteria {
-  return value !== null && typeof value === 'object';
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 /**

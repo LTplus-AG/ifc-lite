@@ -184,6 +184,23 @@ describe('cloneCriteria', () => {
     assert.notEqual(cloned.conditions![2], withBadMember.conditions![2], 'the well-formed member must still be a fresh clone');
   });
 
+  it('leaves an array compound member as-is instead of silently rewriting it into an object (review find)', () => {
+    // Hand-edited lens JSON can put an array where a member criteria is
+    // expected. `isCriteriaLike` used to accept arrays (`typeof [] ===
+    // 'object'`), so this recursed into the array and `{ ...arrayMember }`
+    // turned `[{"type":"ifcType", ...}]` into `{"0": {"type":"ifcType", ...}}`
+    // on the next Edit/Duplicate round-trip - a silent shape mutation of
+    // user data. An array must be treated the same as any other
+    // not-criteria-like value: left untouched.
+    const withArrayMember: LensCriteria = {
+      type: 'and',
+      conditions: [[{ type: 'ifcType', ifcType: 'IfcWall' }] as unknown as LensCriteria],
+    };
+    const cloned = cloneCriteria(withArrayMember);
+    assert.ok(Array.isArray(cloned.conditions![0]), 'array member must stay an array, not become {"0": ...}');
+    assert.equal(cloned.conditions![0], withArrayMember.conditions![0]);
+  });
+
   it('does not stack-overflow on a pathologically deep compound (RED against the PR before the depth cap)', () => {
     // Build a chain far deeper than MAX_COMPOUND_DEPTH (16) - a hand-edited
     // lens JSON is not depth-limited on import, so Edit/Duplicate must survive it.

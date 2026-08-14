@@ -47,8 +47,10 @@
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
 # +36: clip_mesh scales its vertex-vs-plane classification epsilon to the
-# operand's coordinate magnitude (near_band_from_extent) instead of a fixed
-# 1e-6, which misclassified flush-plane vertices once f32 ULP exceeded it.
+# operand's coordinate magnitude (extent * 2^-22, floored at the original
+# 1e-6) instead of a fixed 1e-6, which misclassified flush-plane vertices
+# once f32 ULP exceeded it. Deliberately not near_band_from_extent — its
+# floor is sized for the exact kernel's snap grid, not this clip test.
      824 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before

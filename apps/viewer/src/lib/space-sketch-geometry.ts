@@ -76,10 +76,10 @@ export function projectOnSeg(p: Pt, a: Pt, b: Pt): Pt {
  *  fit-to-bounds, wheel-zoom, and drag-pan. */
 export interface Fit { scale: number; offX: number; offY: number }
 
-/** Frame the rooms centred within a `w`×`h` canvas (PAD margin) as an affine. */
-export function computeFit(rooms: Room[], w: number, h: number): Fit {
+/** Frame an arbitrary point cloud centred within a `w`×`h` canvas (PAD margin). */
+export function computeFitFromPoints(pts: Pt[], w: number, h: number): Fit {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const r of rooms) for (const [x, y] of r.outline) {
+  for (const [x, y] of pts) {
     minX = Math.min(minX, x); minY = Math.min(minY, y);
     maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
   }
@@ -87,6 +87,11 @@ export function computeFit(rooms: Room[], w: number, h: number): Fit {
   const scale = Math.min((w - 2 * PAD) / Math.max(maxX - minX, 1e-6), (h - 2 * PAD) / Math.max(maxY - minY, 1e-6));
   const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
   return { scale, offX: w / 2 - cx * scale, offY: h / 2 + cy * scale };
+}
+
+/** Frame the rooms centred within a `w`×`h` canvas (PAD margin) as an affine. */
+export function computeFit(rooms: Room[], w: number, h: number): Fit {
+  return computeFitFromPoints(rooms.flatMap((r) => r.outline), w, h);
 }
 
 /** Zoom by `factor` about screen point `(ax, ay)` (keeps it fixed). */

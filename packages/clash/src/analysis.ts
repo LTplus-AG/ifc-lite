@@ -57,8 +57,53 @@ export function penetrationDepth(c: Clash): number {
 }
 
 /** Default band (m) under which a `hard` clash is really a face/edge *contact*
- *  rather than a genuine interpenetration — see {@link isTouching}. */
+ *  rather than a genuine interpenetration — see {@link isTouching}. Also the
+ *  floor for {@link touchingEpsilonFor}'s scale-relative default: near the
+ *  origin this constant IS the default (bit-for-bit), it only grows once the
+ *  pair's own coordinate magnitude pushes the f32 noise floor past it. */
 export const TOUCHING_EPSILON = 1e-4;
+
+/**
+ * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
+ * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
+ * larger magnitudes the ULP only grows. Same term (and reasoning) as
+ * `precisionFloor` in `engine-ts/narrow.ts` and `narrowPhase`'s `planeEps` in
+ * `contact/narrow-phase.ts` — kept local because this is a different job
+ * (the *reported* touching band, not the narrow-phase's own depth floor) on
+ * a `Clash`, which doesn't carry the element bounds those two derive from.
+ */
+const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
+
+/**
+ * The touching band for one specific clash, scaled to that clash's own
+ * coordinate magnitude rather than a fixed constant.
+ *
+ * Geometry is ingested from f32 buffers, so a fixed `TOUCHING_EPSILON` is
+ * only valid near the origin: the f32 ULP exceeds `1e-4` above roughly 1 km
+ * from the origin (a `Clash`'s own coordinate magnitude — see below — decides
+ * exactly where). Past that distance, a genuinely flush pair (a wall meeting
+ * a slab) can pick up more than `1e-4` of pure rounding noise in its measured
+ * penetration depth, and the fixed band then misses it, letting it reappear
+ * as a hard clash in a list the user asked to de-noise.
+ *
+ * `Clash` carries no element bounds (that lives on `ClashElement`, not on the
+ * detection result), but it does carry `bounds` — the contact/overlap region
+ * itself, in the same world coordinates as the elements — so that is the
+ * scale source: the max absolute coordinate over the clash's own contact
+ * box. Floored at {@link TOUCHING_EPSILON} (not the raw single-unit f32
+ * floor `precisionFloor` uses) so a clash near the origin gets exactly the
+ * old fixed band, unchanged.
+ */
+function touchingEpsilonFor(c: Clash): number {
+  let extent = 0;
+  for (const v of [c.bounds.min, c.bounds.max]) {
+    for (const coord of v) {
+      const a = Math.abs(coord);
+      if (a > extent) extent = a;
+    }
+  }
+  return Math.max(TOUCHING_EPSILON, extent * F32_ULP_SCALE);
+}
 
 /**
  * Whether a clash is effectively a zero-distance *contact* rather than a real
@@ -66,8 +111,12 @@ export const TOUCHING_EPSILON = 1e-4;
  * penetration is within `eps` — typically coincident faces (a wall meeting a
  * slab, a column sitting on a footing) reported with a ~0 m depth, which users
  * reasonably distrust when they appear in the clash list.
+ *
+ * `eps` defaults to {@link touchingEpsilonFor}, scaled to this clash's own
+ * coordinate magnitude (see that function) so the touching band stays valid
+ * far from the origin. An explicit `eps` overrides the default entirely.
  */
-export function isTouching(c: Clash, eps: number = TOUCHING_EPSILON): boolean {
+export function isTouching(c: Clash, eps: number = touchingEpsilonFor(c)): boolean {
   return c.status === 'touch' || (c.status === 'hard' && penetrationDepth(c) <= eps);
 }
 

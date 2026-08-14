@@ -20,7 +20,7 @@
  * happens.
  */
 
-import { IfcParser } from '@ifc-lite/parser';
+import { IfcParser, sourceBytesFromTransferable, type IfcSourceTransfer } from '@ifc-lite/parser';
 import {
   validateIDS,
   createTranslationService,
@@ -34,7 +34,7 @@ export interface IdsWorkerRequest {
   type: 'validate';
   id: number;
   /** Raw IFC/STEP bytes — a SharedArrayBuffer is shared zero-copy. */
-  source: ArrayBuffer | SharedArrayBuffer;
+  source: IfcSourceTransfer;
   /** IDS document already parsed on the main thread (no DOMParser here). */
   document: IDSDocument;
   schemaVersion: string;
@@ -60,7 +60,18 @@ self.onmessage = async (event: MessageEvent<IdsWorkerRequest>) => {
     const parser = new IfcParser();
     // The worker owns this buffer; a SAB is shared by reference, a plain
     // ArrayBuffer was copied by the caller, so parsing it here is safe.
-    const store = await parser.parseColumnar(req.source);
+    // Rebuild HERE, on the worker's thread. A compressed source arrives as
+    // blocks and is inflated in this realm, whose memory goes away when the
+    // worker is terminated -- unlike the main thread's.
+    const view = sourceBytesFromTransferable(req.source).materialize();
+    // `.buffer` is only the right bytes when the view covers it exactly; a
+    // subarray would hand the parser its neighbours as well. The old client
+    // guaranteed offset 0 and full length by copying before it posted, and
+    // that guarantee has to be re-established here now that it does not.
+    const buffer = view.byteOffset === 0 && view.byteLength === view.buffer.byteLength
+      ? (view.buffer as ArrayBuffer)
+      : (view.slice().buffer as ArrayBuffer);
+    const store = await parser.parseColumnar(buffer);
     store.schemaVersion =
       (req.schemaVersion as typeof store.schemaVersion) || store.schemaVersion;
 

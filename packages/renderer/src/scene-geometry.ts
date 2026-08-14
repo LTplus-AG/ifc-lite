@@ -11,6 +11,74 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { BATCH_CONSTANTS } from './constants.js';
+import type { BoundingBox } from './scene-raycaster.js';
+
+/** The subset of `MeshData` a world-space AABB needs. */
+export interface AabbPiece {
+  positions: Float32Array;
+  origin?: [number, number, number];
+}
+
+/**
+ * World-space AABB over an entity's mesh pieces, or `null` when they contain
+ * no vertex a box can be built from (issue #2480).
+ *
+ * Three copies of this loop lived in `Scene` — `getEntityBoundingBox`,
+ * `finishEphemeralStreaming` and `releaseGeometryData` — and all three seeded
+ * `±Infinity` and returned whatever the seed was left as. That is the correct
+ * identity value for a min/max *accumulation*, and `ModelBoundsTracker` still
+ * uses it that way deliberately, but it is not a correct *answer*: a piece
+ * with a zero-length positions array made `getEntityBoundingBox` compute — and
+ * **cache** — `{ min: +Infinity, max: -Infinity }` for a real entity, which
+ * then poisoned the entry for good even after the entity gained real geometry
+ * (the cache has no invalidation tied to that).
+ *
+ * `null` is the answer the class already gives for "this entity has no
+ * geometry", and `Scene.getBounds()` — the sibling accumulation over the very
+ * same `meshDataMap` — has always screened each vertex with `Number.isFinite`
+ * and returned `null` when none survived. This brings the per-entity path in
+ * line with the whole-scene one rather than inventing a new contract.
+ *
+ * Non-finite vertices are skipped rather than poisoning the box, for the same
+ * reason: #1645 records NaN placement matrices as a real input class, and one
+ * infinite coordinate would otherwise widen the entity's box to infinity and
+ * hand that to the camera, raycaster and clash consumers alike.
+ */
+export function worldAabbFromPieces(pieces: readonly AabbPiece[] | undefined): BoundingBox | null {
+  if (!pieces || pieces.length === 0) return null;
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let hasValidData = false;
+
+  for (const piece of pieces) {
+    const positions = piece.positions;
+    // world = origin + position (per-element local frame); origin absent or
+    // [0,0,0] for legacy absolute meshes.
+    const ox = piece.origin ? piece.origin[0] : 0;
+    const oy = piece.origin ? piece.origin[1] : 0;
+    const oz = piece.origin ? piece.origin[2] : 0;
+    for (let i = 0; i + 2 < positions.length; i += 3) {
+      const x = positions[i] + ox;
+      const y = positions[i + 1] + oy;
+      const z = positions[i + 2] + oz;
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+      hasValidData = true;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (z < minZ) minZ = z;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      if (z > maxZ) maxZ = z;
+    }
+  }
+
+  if (!hasValidData) return null;
+  return {
+    min: { x: minX, y: minY, z: minZ },
+    max: { x: maxX, y: maxY, z: maxZ },
+  };
+}
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;

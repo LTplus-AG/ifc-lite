@@ -1,5 +1,104 @@
 # @ifc-lite/sandbox
 
+## 2.2.0
+
+### Minor Changes
+
+- [#2509](https://github.com/LTplus-AG/ifc-lite/pull/2509) [`aae389a`](https://github.com/LTplus-AG/ifc-lite/commit/aae389a7a73441acdb30a277568e21e6490d1763) Thanks [@louistrue](https://github.com/louistrue)! - Survive the upstream QuickJS teardown abort ([#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922)) by retiring the WASM module it poisons, instead of leaving every later sandbox in the process on it.
+
+  A script that exhausts the memory limit inside a _drained promise job_ — the reported shape is the post-`await` body of an `async function run()` — leaves objects orphaned on `rt->gc_obj_list` with leaked refcounts, and upstream `JS_FreeRuntime` asserts that list is empty. `runtime.dispose()` therefore comes back as `Aborted(Assertion failed: list_empty(&rt->gc_obj_list))`. That is an emscripten `abort()`, and its `ABORT` flag is latched **per module instance** — so on the process-wide module behind `getQuickJS()`, which every sandbox shared, the first abort was also the last one that could report itself: a second runtime left in exactly the same broken state disposed "successfully" while silently leaking whatever `JS_FreeRuntime` had not reached (measured: `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1) -> ABORT`, `[#2](https://github.com/LTplus-AG/ifc-lite/issues/2) -> CLEAN`). In the browser the shared module also took scripting down with it until a page reload.
+
+  The abort itself is upstream and still unfixed — quickjs-emscripten 0.32 exposes no GC entry point, and forcing a collection, lifting the limit, re-draining the job queue and skipping the context free were all measured against the reproducer and all still abort. What is new is that it is no longer terminal:
+
+  - `Sandbox` now acquires its module through this package's own cache (`newQuickJSWASMModule()`, which is exactly what `getQuickJS()` memoizes) and remembers which instance its runtime came from.
+  - A `runtime.dispose()` that aborts retires that module, so the _next_ `Sandbox.init()` instantiates a fresh one — measured at 1-5 ms and ~1-2 MB, and only ever on this path. A later abort then reports itself again, because the new module's latch has not fired.
+  - Retiring also unpins the poisoned module, which upstream's singleton held for the life of the process.
+  - New `Sandbox.moduleRetired` tells a long-lived host (an extension runtime) that its sandbox is running on a module whose latch has fired: it still executes scripts, but can no longer report its own teardown, so it should be discarded and recreated.
+  - `isSandboxRuntimeAborted()` is unchanged in shape and still latched, but is now documented as a diagnostic rather than a health check — a `true` no longer means scripting is dead.
+  - `SandboxAbortError`'s message says the module was retired and the next sandbox will be fresh, instead of advising a reload.
+
+  Minor rather than major: nothing is removed or renamed. The package's export list is unchanged (`check:api-surface` reports no diff), `isSandboxRuntimeAborted()` keeps its signature and its trigger — true iff a teardown abort has happened in this process — and every existing call still compiles and still means what it meant. What is added is `Sandbox.moduleRetired`; what changes is behaviour on a path that previously ended in a dead module, so no working caller can regress.
+
+### Patch Changes
+
+- Updated dependencies [[`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831)]:
+  - @ifc-lite/sdk@2.1.0
+
+## 2.1.0
+
+### Minor Changes
+
+- [#2424](https://github.com/LTplus-AG/ifc-lite/pull/2424) [`dae94e2`](https://github.com/LTplus-AG/ifc-lite/commit/dae94e23f7514945ca60f7074f50f196a90dfc5d) Thanks [@louistrue](https://github.com/louistrue)! - Cancel clash detection when the script run that asked for it ends.
+
+  A sandbox run that exceeded `limits.timeoutMs`, or a sandbox disposed mid-run, stopped _waiting_ for `bim.clash.run` / `bim.clash.matrix` but never stopped the engine: it kept intersecting geometry to completion in the background, on the user's machine, for a result that was discarded on arrival. The bridge now hands every call an `AbortSignal` and aborts it on both paths, and the clash namespace forwards it as `ClashSettings.signal`.
+
+  `@ifc-lite/sandbox` is a minor rather than a patch because `BridgeCallContext.hostSignal` is new capability surface for schema authors, reachable through the `@ifc-lite/sandbox/schema` subpath. Nothing was removed or renamed.
+
+  `ClashSettings.signal` also now works the way its name implies. The TypeScript engine checked it periodically but only yielded to the event loop when an `onProgress` callback was supplied — and every realistic canceller (a deadline timer, a cancel button, a host teardown) fires _from_ the event loop, so without `onProgress` the flag could never flip mid-run. A caller that supplies a signal now gets the periodic yields too, the check runs every 256 candidate pairs rather than every 1024, and the signal is rechecked immediately after each yield, since the yield is the window the abort arrives in.
+
+  One bound is worth stating plainly: those handlers can only run during a yield, and the first yield comes after ~50 ms of held thread time, so a run that finishes inside that window completes rather than cancelling. Cancellation is for runs long enough to be worth cancelling.
+
+  No API changed shape: `ClashSettings.signal` already existed, and cancellation stays opt-in for direct engine callers.
+
+- [#2170](https://github.com/LTplus-AG/ifc-lite/pull/2170) [`b57f04c`](https://github.com/LTplus-AG/ifc-lite/commit/b57f04c45082bad7269e7f103f361b0947435cc4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Sandbox: serialize `eval()` per sandbox, and contain the upstream QuickJS teardown abort.
+
+  `Sandbox.eval` no longer runs overlapping calls concurrently. The bridge's log buffer, its byte budget and the `truncated` flag are built once per sandbox and shared by every run, and `eval()` resets them before each script — so two overlapping calls fought over one buffer and either run's `ScriptResult.logs` could come back short, empty, or carrying the other run's entries. Each call now queues behind the one before it on a per-sandbox promise chain. Sequential callers see no change; a caller that fanned out concurrent evals on one sandbox now gets serialized execution and correct per-run logs. A failed run does not block the runs queued behind it.
+
+  `Sandbox.dispose()` now reports the upstream `JS_FreeRuntime` abort as a `SandboxAbortError` naming the condition and the issue, instead of a bare emscripten assertion. That abort is upstream (`quickjs-emscripten`) and still cannot be prevented from here: an out-of-memory inside a drained promise job orphans objects with leaked refcounts, and forcing collection, lifting the memory limit, re-draining the job queue and skipping the context free were each measured — in a fresh process per trial — to abort anyway.
+
+  New exports supporting that:
+
+  - `SandboxAbortError` — thrown by `dispose()` when the runtime free aborts.
+  - `isSandboxRuntimeAborted()` — whether an abort has occurred in this process. It matters because emscripten latches its `ABORT` flag: only the _first_ abort throws, so every later broken teardown reports a false clean. A host that cares should reload rather than keep trusting sandbox teardown.
+  - `Sandbox.disposed` — a disposed sandbox now rejects `eval()` with "Sandbox disposed" instead of the misleading "Sandbox not initialized. Call init() first." That holds for a `dispose()` arriving _during_ a run too: disposal is re-checked after the TypeScript transpile, which is the run's only suspension point, so a React cleanup firing mid-eval rejects with "Sandbox disposed" rather than `TypeError: Cannot read properties of null (reading 'evalCode')`. Runs queued behind it settle with the same error. `init()` is guarded the same way on both sides of its own suspension point (`await getModule()`): a disposed sandbox — including one disposed while `createSandbox()` was still in flight — now rejects `init()` with "Sandbox disposed" instead of building a QuickJS runtime, context and bridge that nothing will ever run in and nothing will ever free.
+
+- [#2387](https://github.com/LTplus-AG/ifc-lite/pull/2387) [`0671811`](https://github.com/LTplus-AG/ifc-lite/commit/0671811856888b8b930d3068166cff286a21a8c2) Thanks [@louistrue](https://github.com/louistrue)! - Deliver async bridge results into the sandbox as real promises, and validate `ClashElement.tag` at the boundary ([#2305](https://github.com/LTplus-AG/ifc-lite/issues/2305)).
+
+  A schema method whose `call` returns a Promise — `bim.clash.run` and `bim.clash.matrix` — was marshalled as an ordinary object, so the script received `{}` and the host work carried on unobserved. When it failed, the rejection escaped as an unhandled host rejection: a `ClashElement` without its `tag` produced an uncaught `TypeError: Cannot read properties of undefined (reading 'toUpperCase')` that killed the script run.
+
+  Host promises are now handed to the realm via `vm.newPromise()` and settled between QuickJS job drains, bounded by the run's own timeout, so `await bim.clash.run(...)` returns the real result and a host rejection arrives as a catchable `bim.<namespace>.<method>: <message>` script error. `buildBridge` returns an additional `hostWork` queue for that drain. `bim.clash.run` / `bim.clash.matrix` also reject a `ClashElement` without a `tag` up front, naming the element index instead of failing deep inside the engine.
+
+  Behaviour change for fire-and-forget scripts: a script that calls `bim.clash.run(...)` without awaiting it used to return instantly (with `{}`), because the host work was never waited on. `eval()` now waits for in-flight host work before resolving, bounded by the run's `timeoutMs`, so such a script takes as long as the work it started — or reports `interrupted` if that exceeds the budget.
+
+  Also fixed alongside it: disposing a sandbox while a run is parked on host work used to leave the eval-result handle alive, which made `runtime.dispose()` trip the `JS_FreeRuntime` assertion and poison the shared WASM module for the rest of the document (the [#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922) failure mode); a run that gives up waiting no longer makes every later run on the same sandbox wait for the same stalled promise; and an error message that already names its own method is no longer prefixed twice (`bim.clash.run: bim.clash.run: ...`).
+
+  An async method's resolved value is converted by its own declared `returns` type, the same `marshalReturn` treatment the synchronous path applies, so a `returns: 'string'` or `returns: 'void'` method cannot diverge from its schema just because it is asynchronous. The rejection path can no longer strand a guest promise when the rejection value resists description (a throwing `toString` / `Symbol.toPrimitive`), and the `tag` validator describes a rejected value without `JSON.stringify`, which threw on a `bigint` and rendered `symbol`, `function` and `undefined` alike.
+
+- [#2437](https://github.com/LTplus-AG/ifc-lite/pull/2437) [`a803c35`](https://github.com/LTplus-AG/ifc-lite/commit/a803c3599d777669341b69309e7dab20cdf16db0) Thanks [@louistrue](https://github.com/louistrue)! - Give `bim.clash` a real declared type surface, and stop the generated `bim` declarations from needing a hand-maintained copy of another package's types.
+
+  Every `bim.clash` method was declared `Promise<unknown>` / `unknown[]` while the runtime returned a fully structured `ClashResult`. Sandbox scripts could not read `result.clashes` or `result.summary.total` off the declared type without a cast, even though both demonstrably exist — a declaration that lied by omission. `run` and `matrix` are now `Promise<BimClash.ClashResult>`, `group` takes `Pick<BimClash.ClashResult, "clashes"> & Partial<BimClash.ClashResult>` — exactly what the runtime accepts, since the guard requires only a `clashes` array — and returns `BimClash.ClashGroup[]`, `disciplineRules` returns `BimClash.ClashRule[]`, and `presets` returns `BimClash.ClashRulePreset[]` (a preset is the discipline _pair_, not a runnable rule). Narrowing `unknown` breaks nothing: nothing useful could be done with the old type, and `group` already rejected any argument without a `clashes` array.
+
+  Those `BimClash.*` declarations are **extracted** from `packages/clash/src` by `scripts/generate-bim-globals.mjs` rather than transcribed into it, so `pnpm check:bim-globals` goes red when the engine's types change, and a type the surface reaches but the generator cannot resolve is a hard error instead of a silent omission.
+
+  Also adds `SANDBOX_CONSOLE_LEVELS` and the `SandboxConsoleLevel` type as the single source for the console the sandbox installs, the `level` a `LogEntry` carries, and the generated ambient `console` declaration.
+
+  **Why minor and not major** (raised in review on [#2437](https://github.com/LTplus-AG/ifc-lite/issues/2437), for `bim.clash.group`). The narrowed signatures are `tsReturn` / `tsParamTypes` **string values** inside `NAMESPACE_SCHEMAS`, read by a code generator. They are not TypeScript types in this package, and they materialise only in `apps/viewer/.../bim-globals.d.ts` — an unpublished app file of ambient declarations for user-authored sandbox scripts. `MethodSchema` still declares `tsReturn?: string` and `tsParamTypes?: (string | undefined)[]`, unchanged.
+
+  So the published delta for a package consumer is: two additive exports, plus `LogEntry.level` restated as `SandboxConsoleLevel` — which resolves to `'log' | 'warn' | 'error' | 'info'`, the identical union, mutually assignable with what it replaced. Nothing is removed or renamed, which is what the house rule ties `major` to at >=1.0 (this package is 2.0.1).
+
+  On the specific claim: `group` was `unknown[]` before this change, so its return goes `unknown[]` -> `ClashGroup[]`. That is a **narrowing of a return type** — covariant, so existing code holding the result as `unknown[]` still compiles.
+
+  The direction that _would_ break callers is the parameter, since narrowing there is contravariant. Review caught it, and it was fixed rather than argued away: the parameter is `Pick<BimClash.ClashResult, "clashes"> & Partial<BimClash.ClashResult>`, which accepts everything the runtime accepts (the guard requires only a `clashes` array), so there is no contravariant break left to weigh.
+
+### Patch Changes
+
+- [#2334](https://github.com/LTplus-AG/ifc-lite/pull/2334) [`c777cad`](https://github.com/LTplus-AG/ifc-lite/commit/c777cadde939b4bc84b08bc0366d54d34601d66c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.store.addBeam` accepting `storeyExpressId: 0` in a sandboxed script. Every other `bim.store.addX` method (`addColumn`, `addWall`, `addSlab`, `addDoor`, `addWindow`, `addSpace`, `addRoof`, `addPlate`, `addMember`) shares `requireStoreyId`, which rejects `storeyExpressId <= 0` since EXPRESS ids are 1-based and `#0` is never a valid reference. `addBeam` alone duplicated the check inline and only rejected negative values, letting `0` through with a less specific downstream error (`resolveSpatialAnchor: storey #0 has no resolvable IfcLocalPlacement` instead of the bridge's own "storeyExpressId must be a positive integer" message). No entity was ever created either way — `resolveSpatialAnchor` throws before any STEP records are emitted — so this was an error-message inconsistency, not silent data corruption. `addBeam` now uses the same shared `requireStoreyId` helper as its siblings.
+
+- [#2420](https://github.com/LTplus-AG/ifc-lite/pull/2420) [`07d5309`](https://github.com/LTplus-AG/ifc-lite/commit/07d53098b7e9099152300e705d8a41430831f81c) Thanks [@louistrue](https://github.com/louistrue)! - Fix the grammar of the `bim.clash.group` doc string: it now reads "By default, grouping uses `cluster`." The string is user-visible — it feeds the script editor's completions, the generated `bim` type surface, and the LLM system prompt. No API change.
+
+- [#2449](https://github.com/LTplus-AG/ifc-lite/pull/2449) [`5d763d6`](https://github.com/LTplus-AG/ifc-lite/commit/5d763d6bde10c0232cbf28e7d8e4e956ebaf4ff1) Thanks [@louistrue](https://github.com/louistrue)! - Record why `EntityRelationshipsData`'s field names and the sandbox's dual-cased entity fields are not IFC-fidelity violations, so they stop being re-litigated.
+
+  `voids` / `fills` / `groups` / `connections` hold the related **objects**, never the `IfcRel*` entities: `voids` is the `IfcOpeningElement`s that void a host, `fills` the `IfcOpeningElement` a filler sits in. Renaming them to `IfcRelVoidsElement` / `IfcRelFillsElement` would name each field after a type none of its members has, and IFC's own names for these traversals (`HasOpenings`, `FillsVoids`, `HasAssignments`, `ConnectedTo`) are inverse attributes holding the `IfcRel*` entity — so "use the exact EXPRESS name" has no name to offer. `openings` fails too, because `voids` **and** `fills` both hold `IfcOpeningElement`s and only the voids/fills pair distinguishes the two directions. `EntityRelationshipsData` now carries that reasoning, pinned by a parser test.
+
+  `withAliases` keeps emitting every entity attribute under both spellings; its doc now names PascalCase as the canonical form (it is the EXPRESS spelling of `GlobalId`, `Name`, `Description` and `ObjectType`) and states why the camelCase half is kept rather than deprecated: sandbox scripts are user-authored with no version channel, and the script editor is CodeMirror with no TypeScript service, so a `@deprecated` tag would reach no one while a removal would break saved scripts silently at runtime. A new test pins the two spellings as symmetric — every attribute present under both, carrying one value — which an exact-shape assertion alone does not guarantee once a seventh attribute is added.
+
+  **Scope for these two packages: documentation and tests only** — no runtime, signature or shape change in `@ifc-lite/sdk` or `@ifc-lite/sandbox`.
+
+  The PR does migrate runtime code, but not in a published package. `apps/viewer`'s built-in template `construction-schedule.ts` moves from `e.type` / `e.globalId` to the canonical `e.Type` / `e.GlobalId` (identical values; it was the only shipped template still reading a `BimEntity` under the camelCase spelling). `@ifc-lite/viewer` is `"private": true` and carries no changeset for the same reason `apps/viewer/.../bim-globals.d.ts`, regenerated here, carries none: nothing in it is published to a registry.
+
+- Updated dependencies [[`8d1972d`](https://github.com/LTplus-AG/ifc-lite/commit/8d1972d059fe5e8725fffbf661cc56bb6a23767b), [`5d763d6`](https://github.com/LTplus-AG/ifc-lite/commit/5d763d6bde10c0232cbf28e7d8e4e956ebaf4ff1)]:
+  - @ifc-lite/sdk@2.0.3
+
 ## 2.0.1
 
 ### Patch Changes

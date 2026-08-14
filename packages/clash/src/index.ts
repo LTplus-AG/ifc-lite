@@ -32,7 +32,7 @@ export {
   parseTriageResponse,
   type ClashTriageResult,
 } from './triage.js';
-export { groupClashes, type GroupOptions } from './grouping.js';
+export { groupClashes, isClusterGroupingIneffective, type GroupOptions } from './grouping.js';
 export {
   clashReviewKey,
   aggregateReviewStatus,

@@ -238,6 +238,26 @@ export class MutablePropertyView {
   }
 
   /**
+   * Whether this view has anything UNDER its quantity overlay.
+   *
+   * Properties always do — `getBasePropertiesForEntity` falls back to the
+   * `baseTable` the constructor takes — but quantities have only
+   * `setQuantityExtractor`, which is opt-in and defaults to `null`. A view
+   * without one answers `getQuantitiesForEntity` from the overlay ALONE, so a
+   * session that edits one quantity of a source quantity set sees that one
+   * quantity and none of its siblings.
+   *
+   * Exposed so a consumer holding the base data can tell "this entity has no
+   * quantities" apart from "this view cannot see them" and supply the missing
+   * half rather than write the overlay out as if it were the whole set — which
+   * is how a full STEP export deleted a source `IfcElementQuantity`
+   * (github.com/LTplus-AG/ifc-lite/issues/2487).
+   */
+  hasQuantityBase(): boolean {
+    return this.quantityExtractor !== null;
+  }
+
+  /**
    * Set the base entity-attribute extractor (Name, Description, ObjectType,
    * Tag, ...), used only to resolve `previousValue` in `getEffectiveChanges()`.
    * Without one, attribute `previousValue` falls back to whatever `oldValue`
@@ -919,6 +939,79 @@ export class MutablePropertyView {
       this.mutationHistory.push(mutation);
     }
     return mutation;
+  }
+
+  /**
+   * Delete an entire quantity set - the inverse of `createQuantitySet`, and the
+   * exact mirror of `deletePropertySet` one level up.
+   *
+   * It was missing until #2508's zone write-back needed it, which is why
+   * `deletedQsets` existed but was only ever populated by the restore path.
+   * Without it, a writer that REPLACES an entity's quantity set can shrink it
+   * but never empty it: re-running with no quantities to write leaves the
+   * previous run's numbers in place, so the file states volumes beside a
+   * property saying the volume could not be computed.
+   */
+  deleteQuantitySet(entityId: number, qsetName: string): Mutation {
+    // In-session qsets carry their own quantity mutations, recorded by
+    // `createQuantitySet`. Drop both, for `deletePropertySet`'s reasons: an
+    // empty Map left behind keeps reporting the entity as modified, and an
+    // orphaned SET mutation re-adds the quantity to a base qset of the same
+    // name.
+    const entityQsets = this.newQsets.get(entityId);
+    const inSessionQset = entityQsets?.get(qsetName);
+    if (entityQsets && inSessionQset) {
+      entityQsets.delete(qsetName);
+      if (entityQsets.size === 0) {
+        this.newQsets.delete(entityId);
+      }
+      for (const quantity of inSessionQset.quantities) {
+        this.deleteQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name));
+      }
+    }
+
+    // A DELETE marker only earns its keep against a qset that genuinely exists
+    // in the base file - same argument as `deletePropertySet`'s. A purely
+    // in-session qset has nothing to mask, and recording one would tell the
+    // export review a set is being removed when the net change is zero.
+    const baseQset = this.getBaseQuantitiesForEntity(entityId).find(q => q.name === qsetName);
+    if (baseQset) {
+      this.deletedQsets.add(`${entityId}:${qsetName}`);
+      for (const quantity of baseQset.quantities) {
+        this.setQuantityMutation(entityId, quantityKey(entityId, qsetName, quantity.name), { operation: 'DELETE' });
+      }
+    }
+
+    const mutation: Mutation = {
+      // Its OWN type rather than a `DELETE_QUANTITY` with no `propName`: both
+      // replay consumers (`applyMutations` here, `change-set-to-ops`) key the
+      // member-delete case off `propName`, so a set removal filed under it
+      // matched nothing, resurrected the set on import and vanished from a
+      // layer publish without reaching `skipped`.
+      id: generateMutationId(),
+      type: 'DELETE_QUANTITY_SET',
+      timestamp: Date.now(),
+      modelId: this.modelId,
+      entityId,
+      psetName: qsetName,
+    };
+
+    this.mutationHistory.push(mutation);
+    return mutation;
+  }
+
+  /**
+   * Has this entity's quantity set been DELETED this session?
+   *
+   * `getQuantitiesForEntity` cannot answer it: a deleted set and a set that
+   * never existed both come back absent. The exporter needs the difference,
+   * because it withholds a source `IfcElementQuantity` when it is writing a
+   * REPLACEMENT for it, and a deletion has no replacement to recognise it by.
+   * Without this, `deleteQuantitySet` masked a base set in the panel while the
+   * exported file still carried it.
+   */
+  isQuantitySetDeleted(entityId: number, qsetName: string): boolean {
+    return this.deletedQsets.has(`${entityId}:${qsetName}`);
   }
 
   // ---------------------------------------------------------------------------
@@ -1821,6 +1914,22 @@ export class MutablePropertyView {
         case 'DELETE_PROPERTY_SET':
           if (mutation.psetName) {
             this.deletePropertySet(mutation.entityId, mutation.psetName);
+          }
+          break;
+
+        case 'DELETE_QUANTITY_SET':
+          if (mutation.psetName) {
+            this.deleteQuantitySet(mutation.entityId, mutation.psetName);
+            // The marker is recorded even when this view cannot SEE the base
+            // set, unlike the live path. `deleteQuantitySet` only masks a set
+            // the quantity extractor reports, and that extractor is opt-in
+            // (null by default, and several in-tree callers wire the property
+            // one beside it and not it). A replayed deletion is a decision the
+            // origin session already made, so dropping it here would let a
+            // later export regenerate a set the user removed. An inert marker
+            // on a set that does not exist costs a row in the change list;
+            // losing the deletion costs the user's edit.
+            this.deletedQsets.add(`${mutation.entityId}:${mutation.psetName}`);
           }
           break;
 

@@ -377,6 +377,9 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     hiddenEntities: new Set(),
     isolatedEntities: null,
     classFilter: null,
+    // "Show all" must also drop any X-ray context (clash focus, Space Sketch
+    // preview) — the single-model showAll already does.
+    ghostExceptEntities: null,
     hiddenEntitiesByModel: new Map(),
     isolatedEntitiesByModel: new Map(),
   }),

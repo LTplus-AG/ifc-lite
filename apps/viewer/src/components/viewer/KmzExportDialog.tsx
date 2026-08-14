@@ -70,9 +70,10 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
   const modelList = useMemo(() => {
     const list = Array.from(models.values())
       .filter((m) => m.geometryResult && m.ifcDataStore)
-      .map((m) => ({ id: m.id, name: m.name, geometryResult: m.geometryResult!, dataStore: m.ifcDataStore! }));
+      .map((m) => ({ id: m.id, name: m.name, geometryResult: m.geometryResult!, dataStore: m.ifcDataStore!, isPrimary: (m.idOffset ?? 0) === 0 }));
     if (list.length === 0 && legacyGeometryResult && legacyDataStore) {
-      list.push({ id: '__legacy__', name: 'Current Model', geometryResult: legacyGeometryResult, dataStore: legacyDataStore });
+      // The legacy single-model slot is always the primary model (idOffset 0).
+      list.push({ id: '__legacy__', name: 'Current Model', geometryResult: legacyGeometryResult, dataStore: legacyDataStore, isPrimary: true });
     }
     return list;
   }, [models, legacyGeometryResult, legacyDataStore]);
@@ -121,6 +122,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
       const result = await buildKmzForModel({
         geometryResult: selectedModel.geometryResult,
+        isPrimaryModel: selectedModel.isPrimary,
         dataStore: selectedModel.dataStore,
         mutations: selectedModelId === '__legacy__' ? undefined : georefMutations.get(selectedModelId),
         name: baseName,

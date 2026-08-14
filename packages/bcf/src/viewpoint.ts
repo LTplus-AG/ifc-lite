@@ -18,6 +18,7 @@ import type {
   BCFDirection,
 } from './types.js';
 import { generateUuid } from '@ifc-lite/encoding';
+import { usableTargetDistance } from './numeric.js';
 
 // ============================================================================
 // Camera State Types (matching ifc-lite viewer)
@@ -201,11 +202,23 @@ export function perspectiveToCamera(
   camera: BCFPerspectiveCamera,
   targetDistance = 10
 ): ViewerCameraState {
+  // The caller's reference distance is the viewer's live `camera.getDistance()`,
+  // which is raw by contract — `@ifc-lite/renderer` reports a malformed pose
+  // instead of hiding it. So once the camera is broken by any route, this
+  // multiplication turned every *restored* viewpoint into `viewPoint +
+  // direction * NaN`, and restoring a known-good viewpoint — the obvious way
+  // out — silently failed to repair anything (#2466). Falling back to the
+  // documented default is one guard at the sink every restore path funnels
+  // through, rather than one guard per app-layer consumer; there are six of
+  // those, and guarding them individually is the arrangement that produced
+  // this gap.
+  const distance = usableTargetDistance(targetDistance, 10);
+
   // Calculate target in BCF coordinates
   const bcfTarget = {
-    x: camera.cameraViewPoint.x + camera.cameraDirection.x * targetDistance,
-    y: camera.cameraViewPoint.y + camera.cameraDirection.y * targetDistance,
-    z: camera.cameraViewPoint.z + camera.cameraDirection.z * targetDistance,
+    x: camera.cameraViewPoint.x + camera.cameraDirection.x * distance,
+    y: camera.cameraViewPoint.y + camera.cameraDirection.y * distance,
+    z: camera.cameraViewPoint.z + camera.cameraDirection.z * distance,
   };
 
   // Convert to viewer coordinates (Y-up)
@@ -234,11 +247,14 @@ export function orthogonalToCamera(
   camera: BCFOrthogonalCamera,
   targetDistance = 10
 ): ViewerCameraState {
+  // Same sink, same reasoning as `perspectiveToCamera` (#2466).
+  const distance = usableTargetDistance(targetDistance, 10);
+
   // Calculate target in BCF coordinates
   const bcfTarget = {
-    x: camera.cameraViewPoint.x + camera.cameraDirection.x * targetDistance,
-    y: camera.cameraViewPoint.y + camera.cameraDirection.y * targetDistance,
-    z: camera.cameraViewPoint.z + camera.cameraDirection.z * targetDistance,
+    x: camera.cameraViewPoint.x + camera.cameraDirection.x * distance,
+    y: camera.cameraViewPoint.y + camera.cameraDirection.y * distance,
+    z: camera.cameraViewPoint.z + camera.cameraDirection.z * distance,
   };
 
   // Convert to viewer coordinates (Y-up)

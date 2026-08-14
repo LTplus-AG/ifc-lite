@@ -19,38 +19,26 @@
  *    source of truth for the codegen CLI's output.
  */
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { crc32, generateTypeIds, findCollisions } from '../src/crc32.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { crc32, generateTypeIds, findCollisions, formatCRC32TableLiteral } from '../src/crc32.js';
+import { TYPE_IDS } from '../../parser/src/generated/type-ids.js';
 
 /**
- * Parse the real, generated TYPE_IDS map (name -> pre-computed CRC32) out of
- * packages/parser/src/generated/type-ids.ts. This is the actual output the
- * codegen CLI produces and that @ifc-lite/parser ships at runtime, so it's
+ * The real, generated TYPE_IDS map (name -> pre-computed CRC32) that
+ * @ifc-lite/parser ships at runtime — the actual output of the codegen CLI, so
  * the real entity set / real known-value fixture for this contract.
+ *
+ * IMPORTED rather than regexed out of the file's text (#2434). The previous
+ * form matched `export const TYPE_IDS = {…} as const;` and then `(\w+):\s*(\d+),`
+ * per entry, which meant the fixture silently shrank whenever the emitted shape
+ * shifted: drop the `as const`, wrap the object, or emit hex ids and the outer
+ * regex stops matching (loud) — but a per-entry change quietly yields FEWER
+ * pairs, and every "agrees across the full entity set" loop below then agrees
+ * across a subset it never noticed it was handed. The import is the same data,
+ * from the module system, and cannot half-parse.
  */
 function loadGeneratedTypeIds(): Map<string, number> {
-  const generatedPath = path.resolve(
-    __dirname,
-    '../../parser/src/generated/type-ids.ts',
-  );
-  const source = readFileSync(generatedPath, 'utf-8');
-  const match = source.match(/export const TYPE_IDS = \{([\s\S]*?)\} as const;/);
-  if (!match) {
-    throw new Error('Could not locate TYPE_IDS block in generated type-ids.ts');
-  }
-  const body = match[1];
-  const entryRegex = /(\w+):\s*(\d+),/g;
-  const ids = new Map<string, number>();
-  let entry: RegExpExecArray | null;
-  while ((entry = entryRegex.exec(body)) !== null) {
-    ids.set(entry[1], Number(entry[2]));
-  }
-  return ids;
+  return new Map(Object.entries(TYPE_IDS));
 }
 
 /**
@@ -224,5 +212,34 @@ describe('findCollisions', () => {
     const [[hash, colliding]] = [...collisions.entries()];
     expect(hash).toBe(crc32('IfcWall'));
     expect(colliding.sort()).toEqual(['IFCWALL', 'IfcWall'].sort());
+  });
+});
+
+describe('formatCRC32TableLiteral perLine validation', () => {
+  // Review finding on PR #2359: perLine <= 0 makes the `i += perLine` loop
+  // non-terminating, and a non-integer perLine is a silent formatting
+  // footgun. The exported helper should reject these rather than hang or
+  // emit something no caller asked for.
+  it('rejects perLine = 0 instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', 0)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a negative perLine instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', -1)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a fractional perLine', () => {
+    expect(() => formatCRC32TableLiteral('  ', 2.5)).toThrow(/perLine/);
+  });
+
+  it('still accepts the default perLine (6) and produces the historical layout', () => {
+    const literal = formatCRC32TableLiteral('  ');
+    const lines = literal.split('\n');
+    expect(lines).toHaveLength(Math.ceil(256 / 6));
+    expect(lines[0]).toBe(
+      '  0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,'
+    );
+    // Last line has the 256 % 6 = 4 remaining entries.
+    expect(lines[lines.length - 1].match(/0x[0-9a-f]{8}/g)).toHaveLength(4);
   });
 });

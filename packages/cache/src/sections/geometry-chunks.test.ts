@@ -167,6 +167,147 @@ describe('v13 geometry section round-trip', () => {
   });
 });
 
+describe('corrupt geometry chunk directory', () => {
+  // A chunk record's byteOffset/byteLength are external, on-disk declared
+  // values (like a mesh's pool offset/length in the packed-geometry format).
+  // `Uint8Array.subarray` SATURATES instead of throwing when a range runs
+  // past the buffer, and `decodeGeometryChunk`'s own uncompressedLength
+  // check can be neutralised by lying about uncompressedLength AND meshCount
+  // to match whatever bytes the corrupted byteLength actually reaches —
+  // silently letting one chunk absorb a NEIGHBOURING chunk's real mesh
+  // records instead of erroring. Directory-level validation closes this
+  // independent of anything the corrupted entry itself claims.
+
+  // Locate a chunk's 44-byte directory entry by its known (byteOffset,
+  // byteLength) pair, so tests don't have to hand-derive the header layout.
+  function findDirectoryEntry(bytes: Uint8Array, byteOffset: number, byteLength: number): number {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    for (let o = 0; o + 44 <= bytes.byteLength; o += 1) {
+      if (dv.getUint32(o + 24, true) === byteOffset && dv.getUint32(o + 28, true) === byteLength) {
+        return o;
+      }
+    }
+    throw new Error('directory entry not found');
+  }
+
+  it('rejects a chunk whose declared range overruns the buffer', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])]; // forced into separate chunks
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const info0 = openGeometryChunksV13(section, 0, 13).chunks[0];
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    dv.setUint32(entry + 28, info0.byteLength + 10_000, true); // byteLength: reach past the buffer end
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+  });
+
+  it('rejects a chunk whose inflated byteLength/meshCount/uncompressedLength consistently absorb the next chunk', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    expect(open.chunks.length).toBe(2); // control: the fixture really did split into 2 chunks
+    const info0 = open.chunks[0];
+    const info1 = open.chunks[1];
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    // Extend chunk 0 to reach exactly to chunk 1's end (absorbing chunk 1's
+    // real bytes in full), and lie about uncompressedLength/meshCount to
+    // match — every *local* consistency check on this one entry passes.
+    const absorbedLength = info1.byteOffset + info1.byteLength - info0.byteOffset;
+    dv.setUint32(entry + 28, absorbedLength, true); // byteLength
+    dv.setUint32(entry + 32, absorbedLength, true); // uncompressedLength
+    dv.setUint32(entry + 36, info0.meshCount + info1.meshCount, true); // meshCount
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/not contiguous/);
+  });
+
+  it('bounding control: a valid multi-chunk directory (ranges reaching exactly to the next chunk) still decodes', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const open = openGeometryChunksV13(section, 0, 13);
+    expect(open.chunks.length).toBe(2);
+    const decoded0 = await open.readChunk(0);
+    const decoded1 = await open.readChunk(1);
+    expect([...decoded0, ...decoded1].map((m) => m.expressId).sort()).toEqual([1, 2]);
+  });
+
+  // The three tests above all validate an element against its PREDECESSOR.
+  // That can never anchor element 0, so a directory whose offsets are all
+  // shifted by the SAME amount stays perfectly contiguous and passes every
+  // one of them. `headLength` is the external anchor.
+  it('rejects a directory whose offsets are all shifted by the same amount (contiguous, but starting in the wrong place)', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+
+    // Shift EVERY chunk's byteOffset by the same delta. Relative spacing —
+    // and therefore contiguity — is untouched.
+    const SHIFT = 8;
+    for (const info of open.chunks) {
+      const entry = findDirectoryEntry(bytes, info.byteOffset, info.byteLength);
+      dv.setUint32(entry + 24, info.byteOffset + SHIFT, true);
+    }
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(
+      /chunk 0 byteOffset .* does not start at the end of the head/,
+    );
+  });
+
+  // The chunk-0 anchor above is *computed from* `head.headLength`, itself an
+  // on-disk declared field. The check `chunks[0].byteOffset === 4 +
+  // head.headLength` only cross-validates two independently-corruptible
+  // fields against EACH OTHER — never against where the head parse actually
+  // landed (reader.position). So corrupting headLength and echoing the same
+  // corruption into chunk 0's declared byteOffset keeps the two "consistent"
+  // and sails through, even though neither matches the true head size.
+  it('rejects a headLength that disagrees with the actual parsed head size, even when chunk 0 is forged to match it', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const info0 = open.chunks[0];
+    const trueHeadLength = dv.getUint32(0, true);
+    const entry = findDirectoryEntry(bytes, info0.byteOffset, info0.byteLength);
+
+    // Shrink the declared headLength by 4 bytes, and move chunk 0's declared
+    // byteOffset to match the new (wrong) anchor consistently.
+    const forgedHeadLength = trueHeadLength - 4;
+    dv.setUint32(0, forgedHeadLength, true);
+    dv.setUint32(entry + 24, 4 + forgedHeadLength, true);
+
+    expect(() => openGeometryChunksV13(section, 0, 13)).toThrow(/headLength/);
+  });
+
+  // `readChunk`'s own end-of-buffer check was unreachable from the tests
+  // above: enlarging chunk 0 breaks contiguity, so `openGeometryChunksV13`
+  // throws first and the guard never runs. Enlarging the LAST chunk leaves
+  // contiguity intact (it has no successor to disagree with), so this is the
+  // shape that actually exercises it.
+  it('rejects a LAST chunk whose declared range runs past the buffer (reaches readChunk, not the directory check)', async () => {
+    const meshes = [mesh(1, [0, 0, 0]), mesh(2, [5000, 5000, 5000])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const bytes = new Uint8Array(section);
+    const open = openGeometryChunksV13(section, 0, 13);
+    const last = open.chunks[open.chunks.length - 1];
+    const entry = findDirectoryEntry(bytes, last.byteOffset, last.byteLength);
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    dv.setUint32(entry + 28, last.byteLength + 10_000, true);
+
+    // The directory still validates: chunk 0 is anchored, and the last chunk
+    // has no successor for the contiguity loop to compare against.
+    const reopened = openGeometryChunksV13(section, 0, 13);
+    await expect(reopened.readChunk(open.chunks.length - 1)).rejects.toThrow(
+      /exceeds buffer length/,
+    );
+  });
+});
+
 describe('decodeGeometryChunk length verification', () => {
   // Mutation testing showed this guard's reject path was asserted nowhere:
   // deleting the `raw.byteLength !== info.uncompressedLength` check in

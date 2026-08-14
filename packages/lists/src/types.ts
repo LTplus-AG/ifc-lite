@@ -142,6 +142,26 @@ export interface ListDataProvider {
   /** Every zone set currently defined, for the column/condition picker to
    *  offer by name while storing the durable id. */
   getZoneSetNames?(): Array<{ id: string; name: string }>;
+  /**
+   * How much VOLUME of this element sits in each zone of `zoneSetId` (issue
+   * #2508) — the answer to "I cannot get clean quantities per zone without
+   * Excel" for the elements that cross a boundary.
+   *
+   * `null` when no apportionment has been computed for that set (it is an
+   * explicit, on-demand action, never part of load), when the element does not
+   * straddle, or when its mesh is not a proven closed solid so no volume may be
+   * stated for it at all.
+   *
+   * `value` is in the SAME unit the model declares for volumes, so the shared
+   * per-column unit resolver treats it exactly like a declared `NetVolume`
+   * rather than needing a second conversion path. `homeValue` is the share in
+   * the element's home zone, which is the single number a numeric column can
+   * carry; `shares` is the full breakdown for the text one.
+   */
+  getZoneVolumeShares?(expressId: number, zoneSetId: string): {
+    homeValue: number | null;
+    shares: Array<{ zoneName: string; value: number }>;
+  } | null;
 }
 
 /** A classification reference exposed to the list engine (code + name). */

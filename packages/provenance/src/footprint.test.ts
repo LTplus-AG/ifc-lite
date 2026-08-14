@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ProvenanceDag, type NodeSpec } from './dag-engine.js';
+import { ProvenanceDag, type AnyNodeSpec } from './dag-engine.js';
 import type { ElementPayload, GeometryMeshPayload, LayerPayload, PropertySetPayload, RelationshipPayload } from './node-hash.js';
 import {
   aabbFromMesh,
@@ -46,7 +46,7 @@ function mesh(expressId: number, origin: readonly [number, number, number] = [0,
 
 function buildFixedDag(): ProvenanceDag {
   const dag = new ProvenanceDag();
-  const specs: NodeSpec[] = [
+  const specs: AnyNodeSpec[] = [
     { id: 'meshA', kind: 'geometry-mesh', payload: mesh(100) },
     { id: 'meshB', kind: 'geometry-mesh', payload: mesh(200) },
     { id: 'meshC', kind: 'geometry-mesh', payload: mesh(300) },
@@ -210,7 +210,7 @@ describe('conflictPredicate: structural conflicts', () => {
     // with every edit on the host: exactly the false-conflict blowup the crux
     // rule exists to prevent (the M4 kill criterion).
     const dag = new ProvenanceDag();
-    const specs: NodeSpec[] = [
+    const specs: AnyNodeSpec[] = [
       { id: 'openMesh', kind: 'geometry-mesh', payload: mesh(400) },
       { id: 'hostMesh', kind: 'geometry-mesh', payload: mesh(500) },
       {

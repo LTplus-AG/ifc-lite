@@ -23,6 +23,7 @@ import {
   IfcTypeEnumFromString,
   type IfcTypeEnum,
   PropertyValueType,
+  IFCX_VERSION,
 } from '@ifc-lite/data';
 import { convertEntityType, type IfcSchemaVersion } from './schema-converter.js';
 import { getEffectiveEntityIndex } from './effective-index.js';
@@ -391,7 +392,7 @@ export class Ifc5Exporter {
     const file: IfcxFileOutput = {
       header: {
         id: `ifcx_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        ifcxVersion: 'ifcx_alpha',
+        ifcxVersion: IFCX_VERSION,
         dataVersion: options.dataVersion || '1.0.0',
         author: options.author || 'ifc-lite',
         timestamp: new Date().toISOString(),

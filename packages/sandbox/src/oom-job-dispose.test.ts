@@ -16,13 +16,16 @@
  * remedies that were measured and rejected. What this pins is the containment:
  * the failure is reported as a named error that says what happened and which
  * issue it is, the sandbox reads as disposed rather than half-alive, and the
- * process records that no *later* teardown failure can report itself.
+ * process records that an abort happened at all.
+ *
+ * Surviving it — retiring the poisoned WASM module so the next sandbox is
+ * built on a fresh one — is pinned separately, in `module-recovery.test.ts`.
  *
  * IMPORTANT — test order in this file is load-bearing. Emscripten latches its
- * `ABORT` flag, so the first abort in a process is the only one that throws;
- * every later one returns a false clean. The healthy-path test therefore runs
- * first, and no test after the reproducer may assume a throwing teardown.
- * The file is kept separate so vitest gives it a dedicated worker.
+ * `ABORT` flag per module instance, so the first abort on a given module is
+ * the only one that throws. The healthy-path test therefore runs first, and no
+ * test after the reproducer may assume a throwing teardown. The file is kept
+ * separate so vitest gives it a dedicated worker.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -95,11 +98,12 @@ describe('sandbox teardown after an OOM inside a drained job (#1922)', () => {
     await expect(sandbox.eval('1 + 1', { typescript: false })).rejects.toThrow(/disposed/i);
   }, 60000);
 
-  it('keeps the process flag set once the abort latch has swallowed the throw', async () => {
-    // The reason `isSandboxRuntimeAborted()` exists. A second sandbox broken
-    // exactly like the first tears down *silently*, because emscripten only
-    // reports the first abort in a process — so the throw is no longer a
-    // signal a host can rely on, and the flag is.
+  it('keeps the process flag set across a second abort', async () => {
+    // The flag is latched: once an abort has happened in this process it stays
+    // observable, whatever the second teardown does. Whether that teardown
+    // throws depends on which module it ran on — emscripten's latch is per
+    // module instance, and `module-recovery.test.ts` is where that is pinned —
+    // so this asserts only the part that holds either way.
     const sandbox = await createSandbox({} as BimContext, {
       limits: { memoryBytes: 8 * 1024 * 1024 },
     });
@@ -110,10 +114,9 @@ describe('sandbox teardown after an OOM inside a drained job (#1922)', () => {
     } catch (err) {
       caught = err;
     }
-    // Whether this throws at all is upstream's business — the abort latch
-    // usually swallows it by now — but if it does throw it must still arrive
-    // contained, not as a raw emscripten assertion. Bound rather than
-    // discarded (AGENTS.md: no silent `catch {}`).
+    // Whether this throws at all is upstream's business, but if it does throw
+    // it must still arrive contained, not as a raw emscripten assertion. Bound
+    // rather than discarded (AGENTS.md: no silent `catch {}`).
     if (caught !== undefined) expect(caught).toBeInstanceOf(SandboxAbortError);
     expect(isSandboxRuntimeAborted()).toBe(true);
   }, 60000);

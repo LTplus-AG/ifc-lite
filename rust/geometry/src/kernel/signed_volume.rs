@@ -76,3 +76,14 @@ pub(crate) fn signed_volume6(tris: &[Tri]) -> f64 {
         .map(|t| tetra_volume6(&t[0], &t[1], &t[2], &o))
         .sum()
 }
+
+/// Enclosed volume of a closed triangle soup, in the operands' own units.
+///
+/// [`signed_volume6`] returns SIX times the volume: it skips the constant
+/// divide per tetrahedron, which is free for the sign tests the boolean's
+/// keep/flip rules use it for. A caller that wants the VOLUME divides once,
+/// here, rather than growing a second hand-rolled sum in another module, which
+/// is how two producers of the same number start to disagree.
+pub(crate) fn signed_volume_of(tris: &[Tri]) -> f64 {
+    signed_volume6(tris) / 6.0
+}

@@ -10,7 +10,6 @@ import { MainToolbar } from './MainToolbar';
 import { MobileToolbar } from './MobileToolbar';
 import { RibbonToolbar } from './ribbon/RibbonToolbar';
 import { HierarchyPanel } from './HierarchyPanel';
-import { PropertiesPanel } from './PropertiesPanel';
 import { AddElementPanel } from './AddElementPanel';
 import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
@@ -29,15 +28,9 @@ import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
 import { HoverTooltip } from './HoverTooltip';
-import { BCFPanel } from './BCFPanel';
-import { IDSPanel } from './IDSPanel';
-import { LensPanel } from './LensPanel';
-import { ClashPanel } from './ClashPanel';
-import { ComparePanel } from './ComparePanel';
 import { ListPanel } from './lists/ListPanel';
 import { ScriptPanel } from './ScriptPanel';
 import { GanttPanel } from './schedule/GanttPanel';
-import { ExtensionsPanel } from '@/components/extensions/ExtensionsPanel';
 import { CommandPalette } from './CommandPalette';
 import { SearchModal } from './SearchModal';
 import { TourHost } from '@/components/tours/TourHost';
@@ -50,6 +43,10 @@ import {
   getAnalysisExtensionsSnapshot,
   subscribeAnalysisExtensions,
 } from '@/services/analysis-extensions';
+import { renderPanelBody } from '@/lib/panels/renderPanelBody';
+import { getPanelDef } from '@/lib/panels/registry';
+import { resolveMobileSheet } from '@/lib/panels/mobileSheet';
+import { usePanelControls } from '@/hooks/usePanelControls';
 
 const BOTTOM_PANEL_MIN_HEIGHT = 120;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -196,21 +193,15 @@ export function ViewerLayout() {
   const setLeftPanelCollapsed = useViewerStore((s) => s.setLeftPanelCollapsed);
   const setRightPanelCollapsed = useViewerStore((s) => s.setRightPanelCollapsed);
   const bcfPanelVisible = useViewerStore((s) => s.bcfPanelVisible);
-  const setBcfPanelVisible = useViewerStore((s) => s.setBcfPanelVisible);
   const activeTool = useViewerStore((s) => s.activeTool);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const idsPanelVisible = useViewerStore((s) => s.idsPanelVisible);
-  const setIdsPanelVisible = useViewerStore((s) => s.setIdsPanelVisible);
   const extensionsPanelVisible = useViewerStore((s) => s.extensionsPanelVisible);
-  const setExtensionsPanelVisible = useViewerStore((s) => s.setExtensionsPanelVisible);
   const listPanelVisible = useViewerStore((s) => s.listPanelVisible);
   const setListPanelVisible = useViewerStore((s) => s.setListPanelVisible);
   const lensPanelVisible = useViewerStore((s) => s.lensPanelVisible);
-  const setLensPanelVisible = useViewerStore((s) => s.setLensPanelVisible);
   const clashPanelVisible = useViewerStore((s) => s.clashPanelVisible);
-  const setClashPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
   const comparePanelVisible = useViewerStore((s) => s.comparePanelVisible);
-  const setComparePanelVisible = useViewerStore((s) => s.setComparePanelVisible);
   const scriptPanelVisible = useViewerStore((s) => s.scriptPanelVisible);
   const setScriptPanelVisible = useViewerStore((s) => s.setScriptPanelVisible);
   const ganttPanelVisible = useViewerStore((s) => s.ganttPanelVisible);
@@ -227,6 +218,16 @@ export function ViewerLayout() {
   const ganttDocked = ganttPanelVisible && !detachedIds.has('gantt');
   const scriptDocked = scriptPanelVisible && !detachedIds.has('script');
   const listDocked = listPanelVisible && !detachedIds.has('lists');
+
+  // ── Mobile bottom sheet ──
+  // Mobile shows exactly ONE panel at a time, so resolve which, then render it
+  // through the shared id → body map every other host uses. The hand-written
+  // chain this replaces knew seven panels and fell through to PropertiesPanel
+  // for the rest, so opening Compare, Clash, Cloud sources, the Layer stack,
+  // Location zones or the collab Room on a phone showed the Properties panel
+  // titled "Properties" — the wrong panel, not merely a wrong label.
+  const sidebarActivePanel = useViewerStore((s) => s.sidebarActivePanel);
+  const { closePanel } = usePanelControls();
   const analysisExtensionState = useSyncExternalStore(
     subscribeAnalysisExtensions,
     getAnalysisExtensionsSnapshot,
@@ -239,6 +240,15 @@ export function ViewerLayout() {
   const activeBottomAnalysisExtension = activeAnalysisExtension?.placement === 'bottom'
     ? activeAnalysisExtension
     : null;
+
+  const mobileSheet = useMemo(() => resolveMobileSheet({
+    hasAnalysisExtension: activeAnalysisExtension !== null && activeAnalysisExtension !== undefined,
+    activeTool,
+    ganttVisible: ganttPanelVisible,
+    scriptVisible: scriptPanelVisible,
+    listVisible: listPanelVisible,
+    sidebarActivePanel,
+  }), [activeAnalysisExtension, activeTool, ganttPanelVisible, scriptPanelVisible, listPanelVisible, sidebarActivePanel]);
 
   // Panel refs for programmatic collapse/expand (command palette, keyboard shortcuts).
   // The right region is now the unified sidebar (#1208), which owns its own
@@ -489,46 +499,39 @@ export function ViewerLayout() {
               </MobileBottomSheet>
             )}
 
-            {/* Mobile Bottom Sheet - Properties, BCF, IDS, or Lists */}
+            {/* Mobile Bottom Sheet — whichever single panel is open.
+                Analysis extensions and the Add Element tool are not registry
+                panels, so they keep their own branches; everything else routes
+                through `renderPanelBody`, the same map the sidebar, the
+                floating host and the pop-out windows render from. */}
             {!rightPanelCollapsed && (
               <MobileBottomSheet
-                title={activeAnalysisExtension ? activeAnalysisExtension.label : ganttPanelVisible ? 'Schedule' : scriptPanelVisible ? 'Script' : listPanelVisible ? 'Lists' : activeTool === 'addElement' ? 'Add element' : lensPanelVisible ? 'Lens' : idsPanelVisible ? 'IDS Validation' : bcfPanelVisible ? 'BCF Issues' : extensionsPanelVisible ? 'Extensions' : 'Properties'}
+                title={
+                  mobileSheet.kind === 'extension' ? (activeAnalysisExtension?.label ?? 'Analysis')
+                  : mobileSheet.kind === 'addElement' ? 'Add element'
+                  : getPanelDef(mobileSheet.id)?.title ?? 'Information'
+                }
                 bottomInset={bottomViewportInset}
                 onClose={() => {
                   setRightPanelCollapsed(true);
-                  if (scriptPanelVisible) setScriptPanelVisible(false);
-                  if (listPanelVisible) setListPanelVisible(false);
-                  if (ganttPanelVisible) setGanttPanelVisible(false);
-                  if (bcfPanelVisible) setBcfPanelVisible(false);
-                  if (lensPanelVisible) setLensPanelVisible(false);
-                  if (idsPanelVisible) setIdsPanelVisible(false);
-                  if (extensionsPanelVisible) setExtensionsPanelVisible(false);
-                  if (activeAnalysisExtension) closeActiveAnalysisExtension();
-                  if (activeTool === 'addElement') setActiveTool('select');
+                  // Close ONLY what the sheet is showing. The close chain used
+                  // to close the underlying sidebar panel as well, so dismissing
+                  // Add Element took an unrelated panel down with it.
+                  if (mobileSheet.kind === 'extension') closeActiveAnalysisExtension();
+                  else if (mobileSheet.kind === 'addElement') setActiveTool('select');
+                  // Clears the dock flag AND the float / pop-out channels, so
+                  // closing the sheet cannot leave the panel open somewhere the
+                  // phone has no room to show it.
+                  else closePanel(mobileSheet.id);
                 }}
               >
-                {activeBottomAnalysisExtension ? (
-                  activeBottomAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                ) : activeRightAnalysisExtension ? (
-                  activeRightAnalysisExtension.renderPanel({ onClose: closeActiveAnalysisExtension })
-                ) : ganttPanelVisible ? (
-                  <GanttPanel onClose={() => setGanttPanelVisible(false)} />
-                ) : scriptPanelVisible ? (
-                  <ScriptPanel onClose={() => setScriptPanelVisible(false)} />
-                ) : listPanelVisible ? (
-                  <ListPanel onClose={() => setListPanelVisible(false)} />
-                ) : activeTool === 'addElement' ? (
+                {mobileSheet.kind === 'extension' ? (
+                  (activeBottomAnalysisExtension ?? activeRightAnalysisExtension)
+                    ?.renderPanel({ onClose: closeActiveAnalysisExtension })
+                ) : mobileSheet.kind === 'addElement' ? (
                   <AddElementPanel onClose={() => setActiveTool('select')} />
-                ) : lensPanelVisible ? (
-                  <LensPanel onClose={() => setLensPanelVisible(false)} />
-                ) : idsPanelVisible ? (
-                  <IDSPanel onClose={() => setIdsPanelVisible(false)} />
-                ) : bcfPanelVisible ? (
-                  <BCFPanel onClose={() => setBcfPanelVisible(false)} />
-                ) : extensionsPanelVisible ? (
-                  <ExtensionsPanel onClose={() => setExtensionsPanelVisible(false)} />
                 ) : (
-                  <PropertiesPanel />
+                  renderPanelBody(mobileSheet.id, () => closePanel(mobileSheet.id))
                 )}
               </MobileBottomSheet>
             )}

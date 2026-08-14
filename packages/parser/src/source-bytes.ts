@@ -17,10 +17,10 @@
  * cannot retrofit later, and it is the precondition for storing the source
  * compressed in blocks.
  *
- * This module ships ONLY the contiguous implementation. It is deliberately a
- * behavioural no-op: `ContiguousSourceBytes.slice` is a `subarray`, so there
- * is no copy and no perf claim to defend. The blocked implementation lands
- * separately, behind the same interface.
+ * The accessor starts resident (`slice` is a `subarray`, no copy) and can
+ * switch to block-compressed storage IN PLACE via `compressInPlace`. See
+ * {@link MutableSourceBytes} for why in place rather than by replacement --
+ * that detail is the difference between a real saving and a silent no-op.
  *
  * Design notes that are load-bearing rather than stylistic:
  *
@@ -41,6 +41,9 @@
  */
 
 import { safeUtf8Decode } from '@ifc-lite/data';
+
+import { BlockStore, type BlockedPayload, type BlockStoreCounters } from './block-store.js';
+import type { CompressedSource } from './source-compress.js';
 
 /**
  * Structured-clone-safe description of a source, for handing it to a worker
@@ -139,9 +142,38 @@ function clampRange(start: number, end: number, len: number): [number, number] {
   return e < s ? [s, s] : [s, e];
 }
 
-class ContiguousSourceBytes implements IfcSourceBytes {
-  readonly isResident = true;
-  #view: Uint8Array;
+/**
+ * The source accessor. Starts resident and can switch to block-compressed
+ * storage IN PLACE.
+ *
+ * In place, not by replacement, and this is not a style choice (#2183):
+ * `attachDataStoreAccessors` captures this object in a `BufferEntitySource`
+ * whose `EntityExtractor` holds it for the store's lifetime, so `getEntity`
+ * would keep reading the old resident view after a replacement -- the original
+ * buffer would stay alive and the memory win would be exactly zero, silently.
+ * Worse, `getProperties` goes through `extractPropertiesOnDemand`, which
+ * constructs a fresh extractor from `store.source` on EVERY call, so a
+ * replacement would split-brain the store: properties served from the
+ * compressed source, entities from the resident one, both retained.
+ *
+ * Mutating the single shared instance makes every holder -- the captured
+ * extractors, the hook closures, the partial and final stores that already
+ * share one accessor by design -- observe the switch through object identity.
+ * The whole class of stale-holder bugs cannot arise.
+ */
+class MutableSourceBytes implements IfcSourceBytes {
+  /** Non-null exactly while resident. */
+  #view: Uint8Array | null;
+  /** Non-null exactly while compressed. Never both. */
+  #blocks: BlockStore | null = null;
+  /**
+   * Depth of open {@link withMaterialized} windows, and the buffer they share.
+   *
+   * Only meaningful while compressed: a resident `withMaterialized` hands out
+   * the real view and needs no window at all.
+   */
+  #windowDepth = 0;
+  #window: Uint8Array | null = null;
   /**
    * `undefined` = not computed yet, `string` = computed. Never `null` for a
    * non-empty source: the constructor no longer accepts one, so the state
@@ -155,39 +187,157 @@ class ContiguousSourceBytes implements IfcSourceBytes {
     this.#contentKey = contentKey;
   }
 
-  get byteLength(): number { return this.#view.byteLength; }
-  get length(): number { return this.#view.byteLength; }
+  get isResident(): boolean { return this.#view !== null; }
+
+  get byteLength(): number {
+    return this.#view !== null ? this.#view.byteLength : this.#blocks!.totalLength;
+  }
+
+  get length(): number { return this.byteLength; }
+
+  /** Compressed-storage stats, or null while resident. For the dev counter. */
+  get blockStats(): { stored: number; resident: number; counters: BlockStoreCounters } | null {
+    if (this.#blocks === null) return null;
+    return {
+      stored: this.#blocks.storedBytes,
+      resident: this.#blocks.residentBytes,
+      counters: this.#blocks.counters,
+    };
+  }
+
+  /**
+   * Switch to compressed storage, dropping the resident buffer.
+   *
+   * Synchronous and single-assignment, so no read can observe a torn state: a
+   * read either precedes the switch and sees the view, or follows it and
+   * inflates. Idempotent -- a second call is a no-op rather than a re-compress.
+   *
+   * Safe to call inside a `withMaterialized` callback. That callback holds a
+   * real `Uint8Array` reference, which stays valid and correct after the
+   * switch; it simply stops being the source's storage, and the buffer becomes
+   * collectable when the callback returns. (An earlier draft deferred the
+   * switch until the window closed. That branch was unreachable: window depth
+   * only rises while compressed, and this method returns early when compressed.
+   * Unreachable safety machinery is worse than none -- it reads as a handled
+   * case.)
+   */
+  compressInPlace(payload: CompressedSource): void {
+    // Length checked BEFORE the already-compressed short-circuit. Checking it
+    // after would skip validation exactly when a caller is confused enough to
+    // compress twice with two different payloads.
+    if (payload.totalLength !== this.byteLength) {
+      throw new Error(
+        `compressInPlace: payload is ${payload.totalLength} bytes but the source is `
+        + `${this.byteLength}; refusing to swap in bytes that are not this source`,
+      );
+    }
+    if (this.#view === null) return;
+    if (payload.totalLength !== this.#view.byteLength) {
+      throw new Error(
+        `compressInPlace: payload is ${payload.totalLength} bytes but the source is `
+        + `${this.#view.byteLength}; refusing to swap in bytes that are not this source`,
+      );
+    }
+    this.#applyCompression(payload);
+  }
+
+  /**
+   * Adopt already-compressed blocks, for rebuilding a source that crossed a
+   * thread boundary. Distinct from {@link compressInPlace}, which starts from
+   * resident bytes and must guard that the payload describes THIS source;
+   * here there are no bytes to check against.
+   */
+  adoptBlocks(payload: BlockedPayload & { contentKey: string }): void {
+    this.#contentKey ??= payload.contentKey;
+    this.#blocks = new BlockStore(payload);
+    this.#view = null;
+  }
+
+  #applyCompression(payload: CompressedSource): void {
+    // Take the key from the payload: it was computed while the bytes were
+    // contiguous, which is the only cheap moment. Never recompute after.
+    this.#contentKey ??= payload.contentKey;
+    this.#blocks = new BlockStore(payload);
+    this.#view = null;
+  }
 
   get contentKey(): string {
-    // Lazy: only the callers that key a cache on identity pay for it, and they
-    // pay once. Nothing on the load path needs it.
+    // Lazy while resident: only the callers that key a cache on identity pay
+    // for it, and they pay once. Nothing on the load path needs it.
     //
     // Always a string, never null: `contiguousSourceBytes` collapses a
-    // zero-length view to EMPTY_SOURCE_BYTES, so a ContiguousSourceBytes is
-    // non-empty by construction and the "no source" key has nowhere to appear.
-    this.#contentKey ??= fnv1a(this.#view);
+    // zero-length view to EMPTY_SOURCE_BYTES, so this is non-empty by
+    // construction and the "no source" key has nowhere to appear.
+    //
+    // Once compressed it is always already set -- compressInPlace takes it
+    // from the payload -- so this never inflates anything to hash it.
+    this.#contentKey ??= fnv1a(this.#view!);
     return this.#contentKey;
   }
 
   slice(start: number, end: number): Uint8Array {
-    const [s, e] = clampRange(start, end, this.#view.byteLength);
-    return this.#view.subarray(s, e);
+    const [s, e] = clampRange(start, end, this.byteLength);
+    if (this.#view !== null) return this.#view.subarray(s, e);
+    return this.#blocks!.read(s, e);
   }
 
   decodeUtf8(start: number, end: number): string {
-    const [s, e] = clampRange(start, end, this.#view.byteLength);
+    const [s, e] = clampRange(start, end, this.byteLength);
     if (e === s) return '';
-    // SAB-safe: the source is usually SharedArrayBuffer-backed, which raw
-    // `TextDecoder.decode` rejects.
-    return safeUtf8Decode(this.#view, s, e);
+    if (this.#view !== null) {
+      // SAB-safe: the source is usually SharedArrayBuffer-backed, which raw
+      // `TextDecoder.decode` rejects.
+      return safeUtf8Decode(this.#view, s, e);
+    }
+    return this.#blocks!.decodeUtf8(s, e);
   }
 
-  materialize(): Uint8Array { return this.#view; }
+  /**
+   * While compressed this inflates the WHOLE source (~1.8 s and 343 MB on the
+   * reference model), so prefer {@link withMaterialized}, which at least
+   * scopes the buffer and shares it between nested calls.
+   *
+   * The result MAY BE SHARED: while resident it is the accessor's own view,
+   * and inside an open materialization window it is that window's buffer, so
+   * two callers can hold the same array. Treat it as read-only.
+   */
+  materialize(): Uint8Array {
+    if (this.#view !== null) return this.#view;
+    return this.#window ?? this.#blocks!.materialize();
+  }
 
-  withMaterialized<T>(fn: (bytes: Uint8Array) => T): T { return fn(this.#view); }
+  withMaterialized<T>(fn: (bytes: Uint8Array) => T): T {
+    if (this.#view !== null) return fn(this.#view);
+    this.#openWindow();
+    try {
+      return fn(this.#window!);
+    } finally {
+      this.#closeWindow();
+    }
+  }
 
-  withMaterializedAsync<T>(fn: (bytes: Uint8Array) => Promise<T>): Promise<T> {
-    return fn(this.#view);
+  async withMaterializedAsync<T>(fn: (bytes: Uint8Array) => Promise<T>): Promise<T> {
+    if (this.#view !== null) return fn(this.#view);
+    this.#openWindow();
+    try {
+      return await fn(this.#window!);
+    } finally {
+      this.#closeWindow();
+    }
+  }
+
+  /**
+   * Inflate once for the duration of a callback. Nested windows share the one
+   * buffer, so two overlapping consumers do not each allocate the whole file.
+   */
+  #openWindow(): void {
+    if (this.#windowDepth === 0) this.#window = this.#blocks!.materialize();
+    this.#windowDepth++;
+  }
+
+  #closeWindow(): void {
+    this.#windowDepth--;
+    if (this.#windowDepth === 0) this.#window = null;
   }
 
   toTransferable(): IfcSourceTransfer {
@@ -198,7 +348,14 @@ class ContiguousSourceBytes implements IfcSourceBytes {
     // the whole 342 MB source on the main thread, which is what #2183 is about.
     // Pass the key on only when something has already computed it; a receiver
     // that needs one computes it lazily, on its own thread, to the same value.
-    return { kind: 'contiguous', bytes: this.#view, contentKey: this.#contentKey ?? null };
+    if (this.#view !== null) {
+      return { kind: 'contiguous', bytes: this.#view, contentKey: this.#contentKey ?? null };
+    }
+    // Compressed: post the BLOCKS, not the inflated file -- 67 MB instead of
+    // 343 MB on the reference model, and the receiving thread does any
+    // inflating. The key is always known by now (compressInPlace took it from
+    // the payload), which is why the blocked arm declares it required.
+    return { kind: 'blocked', ...this.#blocks!.toPayload(), contentKey: this.contentKey };
   }
 }
 
@@ -240,7 +397,7 @@ export function contiguousSourceBytes(
   contentKey?: string,
 ): IfcSourceBytes {
   if (!view || view.byteLength === 0) return EMPTY_SOURCE_BYTES;
-  return new ContiguousSourceBytes(view, contentKey);
+  return new MutableSourceBytes(view, contentKey);
 }
 
 /**
@@ -269,9 +426,41 @@ export function sourceBytesFromTransferable(transfer: IfcSourceTransfer): IfcSou
   if (transfer.kind === 'contiguous') {
     return contiguousSourceBytes(transfer.bytes, transfer.contentKey ?? undefined);
   }
-  throw new Error(
-    'sourceBytesFromTransferable: blocked sources are not implemented yet (#2183)',
-  );
+  // A blocked source rebuilds without inflating anything: the receiver gets
+  // the compressed blocks and pays only for the ranges it actually reads.
+  const rebuilt = new MutableSourceBytes(new Uint8Array(0), transfer.contentKey);
+  rebuilt.adoptBlocks(transfer);
+  return rebuilt;
+}
+
+/**
+ * Switch a source to block-compressed storage, in place.
+ *
+ * Returns true when the source is now compressed (or already was), false when
+ * this build cannot swap it (an empty source, or one that is not the mutable
+ * accessor). THROWS when the payload does not describe these bytes -- swapping
+ * in a different source's blocks would corrupt every subsequent read silently,
+ * which is worth a crash rather than a `false` a caller might ignore.
+ *
+ * Exported as a function rather than a method on `IfcSourceBytes`
+ * deliberately: consumers must never see a source that can change shape under
+ * them, so the capability lives with whoever owns the load, not on the read
+ * interface every hook holds.
+ */
+export function compressSourceInPlace(
+  source: IfcSourceBytes,
+  payload: CompressedSource,
+): boolean {
+  if (!(source instanceof MutableSourceBytes)) return false;
+  source.compressInPlace(payload);
+  return true;
+}
+
+/** Compressed-storage stats for the dev counter, or null while resident. */
+export function sourceBlockStats(
+  source: IfcSourceBytes,
+): { stored: number; resident: number; counters: BlockStoreCounters } | null {
+  return source instanceof MutableSourceBytes ? source.blockStats : null;
 }
 
 /**

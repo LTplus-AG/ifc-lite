@@ -16,6 +16,7 @@ import {
   PropertyValueType,
   QuantityType,
   RelationshipType,
+  isSpatialStructureTypeName,
 } from '@ifc-lite/data';
 import { BinaryCacheWriter, BinaryCacheReader, xxhash64, SchemaVersion, FORMAT_VERSION } from './index.js';
 import type { CacheDataStore } from './types.js';
@@ -459,6 +460,28 @@ describe('BinaryCacheWriter and BinaryCacheReader', () => {
     expect(entities.getName(1)).toBe('Test Project');
     expect(entities.getName(4)).toBe('Wall 1');
     expect(entities.getTypeName(4)).toBe('IfcWall');
+  });
+
+  // Regression test for the cache-restored `EntityTable` (the one that ships
+  // to users through the persisted cache): `setTypeOverride` must canonicalise
+  // the caller's raw UPPERCASE token to PascalCase, matching
+  // `entityTableFromColumns` (packages/data/src/entity-table.ts), so a
+  // retyped entity is still recognised by consumers like
+  // `isSpatialStructureTypeName` after a cache round-trip.
+  it('canonicalises a type override to PascalCase across a cache round-trip', async () => {
+    const writer = new BinaryCacheWriter();
+    const cacheBuffer = await writer.write(dataStore, undefined, sourceBuffer, {
+      includeGeometry: false,
+    });
+
+    const reader = new BinaryCacheReader();
+    const result = await reader.read(cacheBuffer);
+
+    const { entities } = result.dataStore;
+    entities.setTypeOverride(4, 'IFCBUILDINGSTOREY');
+
+    expect(entities.getTypeName(4)).toBe('IfcBuildingStorey');
+    expect(isSpatialStructureTypeName(entities.getTypeName(4))).toBe(true);
   });
 
   it('should preserve property data through round-trip', async () => {

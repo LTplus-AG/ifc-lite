@@ -261,6 +261,11 @@ function applyMutation(
         componentFor(entity, `pset:${mutation.psetName}`).set(`pset:${mutation.psetName}`, null);
       }
       break;
+    case 'DELETE_QUANTITY_SET':
+      if (mutation.psetName) {
+        componentFor(entity, `qset:${mutation.psetName}`).set(`qset:${mutation.psetName}`, null);
+      }
+      break;
     case 'UPDATE_ATTRIBUTE':
     case 'UPDATE_POSITIONAL_ATTRIBUTE':
       if (mutation.attributeName) {

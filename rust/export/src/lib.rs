@@ -7,10 +7,15 @@
 //! This is the Rust source of truth; CLI / SDK / wasm become thin callers (mirroring how
 //! geometry already flows through `ifc-lite-wasm`).
 
+#[cfg(test)]
+#[macro_use]
+mod test_support;
+
 mod adjacency;
 mod collada;
 mod constructions;
 mod csv;
+mod dfjson;
 mod error;
 mod frame;
 mod geom;
@@ -31,10 +36,12 @@ mod rooms;
 mod schema_convert;
 mod shades;
 mod step;
+mod step_text;
 mod usd;
 
 pub use collada::export_collada_from_meshes;
 pub use csv::{export_csv, CsvMode, CsvOptions};
+pub use dfjson::DfjsonStats;
 pub use error::ExportError;
 pub use gltf::{
     export_glb, export_glb_from_meshes, export_glb_streaming_bounded,
@@ -178,6 +185,41 @@ pub fn export_hbjson_with_stats(content: &[u8], opts: &HbjsonOptions) -> (String
     (json, stats)
 }
 
+/// Options for DFJSON (Dragonfly) export.
+pub struct DfjsonOptions {
+    /// Model identifier / display name.
+    pub name: String,
+    /// Geometry tolerance in metres (Ladybug Tools default 0.01).
+    pub tolerance: f64,
+}
+
+impl Default for DfjsonOptions {
+    fn default() -> Self {
+        Self { name: "ifc_lite_model".to_string(), tolerance: 0.01 }
+    }
+}
+
+/// Export the `IfcSpace` volumes in `content` (raw IFC/STEP bytes) as a Dragonfly DFJSON
+/// string. Each space becomes an extruded `Room2D` (floor polygon + heights) grouped into
+/// stories — the simpler Ladybug target for mostly-vertical-wall models.
+pub fn export_dfjson(content: &[u8], opts: &DfjsonOptions) -> String {
+    export_dfjson_with_stats(content, opts).0
+}
+
+/// Like [`export_dfjson`] but also returns coverage stats.
+pub fn export_dfjson_with_stats(content: &[u8], opts: &DfjsonOptions) -> (String, DfjsonStats) {
+    let profiles = extract_profiles(content, 0);
+    // Read the file's own IfcBuilding / IfcBuildingStorey containment so stories are the
+    // model's storeys rather than an elevation guess at them (#1911). An empty index
+    // (no spatial structure declared) falls back to the elevation heuristic inside
+    // `build_model`.
+    let spatial = dfjson::spatial_index(content);
+    let (model, stats) =
+        dfjson::build_model(&sanitize_identifier(&opts.name), &profiles, opts.tolerance, Some(&spatial));
+    let json = serde_json::to_string(&model).expect("DFJSON model serializes");
+    (json, stats)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,18 +227,13 @@ mod tests {
 
     /// Skip-if-absent fixture loader (matches the geometry crate convention — test
     /// models are staged, not git-tracked, so a fresh checkout returns `None`).
-    fn fixture(rel: &str) -> Option<Vec<u8>> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(path).ok()
-    }
-
     #[test]
     fn entity_count_reexport_matches_index() {
         // The re-exported cheap tally must equal the full index's entity count
         // (both walk the same scanner) — so a downstream can gate on the count
         // without paying for the index. Well-formed fixtures have unique ids, so
         // the index map length equals the scanned entity count.
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             eprintln!(
                 "skipping entity_count_reexport_matches_index: fixture absent — run `pnpm fixtures`"
             );
@@ -210,7 +247,7 @@ mod tests {
 
     #[test]
     fn duplex_exports_valid_room_model() {
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
@@ -279,7 +316,7 @@ mod tests {
     /// pins wall faces to the wall build-up and floor/roof faces to the slab build-up.
     #[test]
     fn duplex_faces_get_construction_by_face_type_not_swapped() {
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
@@ -314,7 +351,7 @@ mod tests {
     fn revit_georeferenced_model_does_not_collapse() {
         // rvt01 carries national-grid coordinates (~2.78e6); the origin-rebase must keep
         // room footprints sane (no f32 collapse).
-        let Some(bytes) = fixture("various/rvt01.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("various/rvt01.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());

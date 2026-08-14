@@ -52,6 +52,42 @@
       "decoded": "a\\Qb"
     },
     {
+      "name": "backslash_pair_is_one_backslash",
+      "_comment": "#2323. ISO 10303-21 doubles the reverse solidus inside a string literal, so a doubled backslash is ONE backslash. Neither decoder collapsed it before.",
+      "encoded": "C:\\\\temp",
+      "decoded": "C:\\temp"
+    },
+    {
+      "name": "backslash_pair_doubled",
+      "_comment": "Two escaped backslashes are two literal backslashes - exactly one collapsing pass, never a repeated one.",
+      "encoded": "\\\\\\\\",
+      "decoded": "\\\\"
+    },
+    {
+      "name": "directive_then_escaped_backslash",
+      "_comment": "A directive followed by an escaped backslash ends in THREE backslashes. The directive must consume its own \\X0\\ terminator first; a pre-pass collapsing pairs left-to-right would eat it and leave an unterminated \\X2\\.",
+      "encoded": "\\X2\\00FC\\X0\\\\\\",
+      "decoded": "\u00fc\\"
+    },
+    {
+      "name": "escaped_backslash_then_literal_directive_text",
+      "_comment": "The mirror case: an escaped backslash followed by the literal characters X2\\00FC\\X0\\ is NOT a directive, so that text survives verbatim.",
+      "encoded": "\\\\X2\\00FC\\X0\\",
+      "decoded": "\\X2\\00FC\\X0\\"
+    },
+    {
+      "name": "malformed_x4_empty_payload",
+      "_comment": "An empty hex payload is not a directive, so what remains is a doubled reverse solidus plus a dangling terminator backslash.",
+      "encoded": "\\X4\\\\X0\\",
+      "decoded": "\\X4\\X0\\"
+    },
+    {
+      "name": "doubled_quote_is_NOT_touched_by_the_decoder",
+      "_comment": "Contract pin: '' is un-doubled by the tokenizer's consumers BEFORE they call the decoder (see literal_cases). If a decoder collapsed it here too, those callers would double-collapse.",
+      "encoded": "O''Brien",
+      "decoded": "O''Brien"
+    },
+    {
       "name": "malformed_x2_no_terminator",
       "encoded": "\\X2\\00FC",
       "decoded": "\\X2\\00FC"
@@ -61,6 +97,62 @@
       "_comment": "Malformed: \\S\\ is spec-defined for ASCII only. Pins that both decoders read the whole code point (U+1F600) plus 128 (=U+1F680) and advance past the surrogate pair, rather than diverging on a trailing surrogate.",
       "encoded": "\\S\\\uD83D\uDE00",
       "decoded": "\uD83D\uDE80"
+    }
+  ],
+  "_literal_comment": "END-TO-END cases (#2323). `raw` is a STEP string literal's INNER bytes, exactly as the tokenizer hands them over with '' still doubled; `value` is what a consumer must surface. The two decoders agreeing is not enough: the '' escape is delegated to the caller, so the contract only holds if callers un-double FIRST and then decode. Rust drives these through AttributeValue::from_token, TS through decodeIfcString(raw.replace(/''/g, \"'\")).",
+  "literal_cases": [
+    {
+      "name": "plain_unchanged",
+      "raw": "Plain Wall Name",
+      "value": "Plain Wall Name"
+    },
+    {
+      "name": "apostrophe",
+      "raw": "O''Brien",
+      "value": "O'Brien"
+    },
+    {
+      "name": "entity_name_apostrophe",
+      "raw": "O''Brien Wall",
+      "value": "O'Brien Wall"
+    },
+    {
+      "name": "backslash",
+      "raw": "C:\\\\temp",
+      "value": "C:\\temp"
+    },
+    {
+      "name": "unicode_x2_still_works",
+      "raw": "caf\\X2\\00E9\\X0\\",
+      "value": "caf\u00e9"
+    },
+    {
+      "name": "mixed_both_escapes",
+      "raw": "a''b\\\\c",
+      "value": "a'b\\c"
+    },
+    {
+      "name": "four_quotes_are_two_apostrophes",
+      "_comment": "Over-collapse guard: exactly ONE un-doubling pass. A second would turn this into a single apostrophe.",
+      "raw": "''''",
+      "value": "''"
+    },
+    {
+      "name": "order_proof_two_separately_escaped_apostrophes",
+      "_comment": "ORDER PROOF. Un-double THEN decode yields two apostrophes (correct: two independent \\X\\27 escapes). Decode THEN un-double yields ONE, silently losing a character.",
+      "raw": "\\X\\27\\X\\27",
+      "value": "''"
+    },
+    {
+      "name": "order_proof_s_escape_over_a_doubled_quote",
+      "_comment": "ORDER PROOF. Un-double THEN decode makes the \\S\\ operand an apostrophe (0x27+128 = U+00A7). Decode THEN un-double consumes only the first quote as the operand and leaves a stray second one.",
+      "raw": "\\S\\''",
+      "value": "\u00a7"
+    },
+    {
+      "name": "unknown_escape_still_passes_through",
+      "raw": "a\\Qb",
+      "value": "a\\Qb"
     }
   ]
 }

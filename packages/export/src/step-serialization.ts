@@ -7,6 +7,14 @@
  *
  * All functions in this module are pure (no side-effects, no external state)
  * and deal exclusively with converting data to ISO 10303-21 STEP format strings.
+ *
+ * Two neighbours are deliberately NOT here, because neither turns a value into
+ * a token and both have rules of their own worth finding on their own:
+ *   - `step-argument-parser.ts` reads a record's arguments back OUT of a line
+ *     and writes one slot by index (`splitTopLevelArgs`, `replaceStepArgument`,
+ *     `splitTopLevelStepArguments`);
+ *   - `step-file-assembly.ts` joins a finished header and finished entity lines
+ *     into the delivered file (`assembleStepBytes`, `assembleStepBlob`).
  */
 
 import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
@@ -140,17 +148,67 @@ export function quantityTypeToIfcType(type: QuantityType): string {
 
 /**
  * Serialize a property value to STEP format (e.g. IFCLABEL, IFCREAL, etc.).
+ *
+ * The token this writes is the property's DECLARED TYPE in the exported file, so
+ * every member below has to name the IFC primitive the value was authored as —
+ * not merely one that can hold the characters. Two did not (#2472):
+ *
+ *   - `Text` was written as `IFCLABEL`. `IfcLabel` is a bounded, name-like
+ *     string; `IfcText` is unbounded prose. A consumer read a different type
+ *     than the property was created with, and a long value exceeded what
+ *     `IfcLabel` is specified to carry.
+ *   - `Logical` was written as `IFCBOOLEAN` for its two definite states.
+ *     `IfcBoolean` has two values; `IfcLogical` has three, and `.U.` is the
+ *     reason a property is Logical rather than Boolean in the first place.
+ *
+ * Neither could be caught by a value-level round-trip: the extractor collapses
+ * every string-valued token (`IFCLABEL`, `IFCTEXT`, `IFCIDENTIFIER`) to
+ * `PropertyValueType.String` and keeps the token name only in `dataType`, so
+ * the VALUE survives export/re-import through the wrong wrapper unchanged. Only
+ * an assertion on the emitted token sees the difference — which is what
+ * `property-value-serialization.test.ts` makes.
+ *
+ * `@ifc-lite/collab`'s `PROPERTY_TYPE_NAMES` is the same table for a different
+ * transport, and it already named `Text` and `Logical` correctly — so on THOSE
+ * TWO MEMBERS the two agree now. Not on the table as a whole, and this pass does
+ * not make them agree:
+ *
+ *   - `String`: collab says `IfcText`, this says `IFCLABEL`. Both are guesses
+ *     about a token the extractor did not keep, and they guess in opposite
+ *     directions (unbounded prose vs the conservative bounded name). Changing
+ *     either is a behaviour change to the OTHER transport's payload, out of
+ *     #2472's scope, and it needs the argument about which guess is right made
+ *     first — not a silent alignment.
+ *   - `List`: collab says `IfcText`; this writes a STEP aggregate `(...)` of
+ *     `IFCLABEL` items, which is not a NominalValue token at all.
+ *
+ * `Enum` was the third disagreement — collab said `IfcLabel`, this wrote a bare
+ * `.TOKEN.` — and #2488 settled it on collab's side, for the reason the case
+ * below states: the bare token is not a member of the SELECT at all.
+ *
+ * `Label`, `Identifier`, `Real`, `Integer`, `Boolean`, `Text`, `Logical`, `Enum`
+ * and `Reference` agree.
  */
 export function serializePropertyValue(value: unknown, type: PropertyValueType): string {
   if (value === null || value === undefined) {
+    // `Logical` is the one member with a value FOR "no value": the extractor
+    // reads `.U.` / `.X.` back as a null-valued Logical, so `$` here would
+    // turn an explicit unknown into an omitted attribute on re-export.
+    if (type === PropertyValueType.Logical) return `IFCLOGICAL(.U.)`;
     return '$';
   }
 
   switch (type) {
+    // `String` is the extractor's catch-all for any string-valued token whose
+    // declared type it did not keep, so it stays the bounded `IfcLabel`: the
+    // conservative direction for an unknown short string, and what
+    // `PROPERTY_TYPE_NAMES` calls `Enum` and `Reference` too.
     case PropertyValueType.String:
     case PropertyValueType.Label:
-    case PropertyValueType.Text:
       return `IFCLABEL('${escapeStepString(String(value))}')`;
+
+    case PropertyValueType.Text:
+      return `IFCTEXT('${escapeStepString(String(value))}')`;
 
     case PropertyValueType.Identifier:
       return `IFCIDENTIFIER('${escapeStepString(String(value))}')`;
@@ -165,13 +223,37 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
       return `IFCINTEGER(${Math.round(Number(value))})`;
 
     case PropertyValueType.Boolean:
-    case PropertyValueType.Logical:
       if (value === true) return `IFCBOOLEAN(.T.)`;
       if (value === false) return `IFCBOOLEAN(.F.)`;
+      // A Boolean whose value is neither: no `IfcBoolean` literal says that, and
+      // `.U.` is not in its domain, so the three-state primitive is the only
+      // thing that can carry it. Unchanged from before #2472 — the Logical case
+      // below is what stopped borrowing IfcBoolean's name for it.
       return `IFCLOGICAL(.U.)`;
 
+    case PropertyValueType.Logical:
+      if (value === true) return `IFCLOGICAL(.T.)`;
+      if (value === false) return `IFCLOGICAL(.F.)`;
+      return `IFCLOGICAL(.U.)`;
+
+    // `NominalValue` is declared `IfcValue`, and `IfcValue` has no ENUMERATION
+    // leaf in any schema this exporter targets (IFC2X3 / IFC4 / IFC4X3 all
+    // resolve it to IfcMeasureValue | IfcSimpleValue | IfcDerivedMeasureValue).
+    // So there is no wrapper for an enumeration token and a bare `.EXTERNAL.`
+    // is not a member of the SELECT at all — this was the one branch writing an
+    // unqualified token into a slot every other branch type-qualifies (#2488).
+    // `IfcLabel` is what the value can be expressed as, and what
+    // `@ifc-lite/collab`'s `PROPERTY_TYPE_NAMES` has always called this member.
+    //
+    // No `.toUpperCase()`: it existed to build an EXPRESS enumeration name,
+    // which is upper-case by construction. A label is not, and folding the case
+    // means an authored `'external'` reads back as `'EXTERNAL'`. Nothing
+    // EXTRACTS an `Enum` (the extractor collapses every string-valued token to
+    // `String`), so this branch only ever serializes a value a session authored
+    // through `setProperty(…, PropertyValueType.Enum)` — the value the caller
+    // wrote is the one to keep.
     case PropertyValueType.Enum:
-      return `.${String(value).toUpperCase()}.`;
+      return `IFCLABEL('${escapeStepString(String(value))}')`;
 
     case PropertyValueType.List:
       if (Array.isArray(value)) {
@@ -180,6 +262,10 @@ export function serializePropertyValue(value: unknown, type: PropertyValueType):
       }
       return '$';
 
+    // Includes `Reference`, which no extraction path produces (an
+    // `IfcPropertyReferenceValue` comes back as a String holding `#id`) and
+    // which this function could not express anyway: an entity reference is a
+    // different property CLASS, not a different `NominalValue` token.
     default:
       return `IFCLABEL('${escapeStepString(String(value))}')`;
   }
@@ -300,204 +386,4 @@ export function entityRef(expressId: number): string {
  */
 export function stepReal(value: number): { real: number } {
   return { real: value };
-}
-
-/**
- * Split a STEP argument list on top-level commas, respecting nested
- * parentheses and quoted strings. Used by `applyAttributeMutations`.
- */
-export function splitTopLevelArgs(text: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    current += char;
-
-    if (inString) {
-      if (char === '\'') {
-        if (text[i + 1] === '\'') {
-          current += text[i + 1];
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-      continue;
-    }
-
-    if (char === '\'') {
-      inString = true;
-      continue;
-    }
-
-    if (char === '(') {
-      depth++;
-      continue;
-    }
-
-    if (char === ')') {
-      depth--;
-      continue;
-    }
-
-    if (char === ',' && depth === 0) {
-      parts.push(current.slice(0, -1).trim());
-      current = '';
-    }
-  }
-
-  // Trailing tokens: only push if there's actual content. The previous
-  // `text.endsWith(',')` check pushed an empty trailing token for inputs
-  // like `"a,"`, producing `['a', '']` — STEP doesn't allow trailing
-  // commas, so the right answer is just `['a']`. Empty interior args
-  // (e.g. `"a,,b"` → `['a', '', 'b']`) are still produced because the
-  // comma branch above handles them.
-  if (current.trim()) {
-    parts.push(current.trim());
-  }
-
-  return parts;
-}
-
-/**
- * Split a STEP argument list on top-level commas while preserving nested syntax.
- * Similar to `splitTopLevelArgs` but uses a slightly different accumulation style
- * suited for the `replaceEntityAttribute` call-site.
- */
-export function splitTopLevelStepArguments(input: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-
-    if (char === "'") {
-      current += char;
-      if (inString && i + 1 < input.length && input[i + 1] === "'") {
-        current += input[i + 1];
-        i++;
-        continue;
-      }
-      inString = !inString;
-      continue;
-    }
-
-    if (!inString) {
-      if (char === '(') depth++;
-      else if (char === ')') depth--;
-      else if (char === ',' && depth === 0) {
-        parts.push(current);
-        current = '';
-        continue;
-      }
-    }
-
-    current += char;
-  }
-
-  parts.push(current);
-  return parts;
-}
-
-/**
- * Worst-case UTF-8 bytes per UTF-16 code unit: a lone BMP code unit needs at
- * most 3 bytes, and a surrogate pair (2 units) needs 4 bytes for its combined
- * codepoint — 2 bytes/unit, under the 3x bound. An unpaired surrogate is
- * replaced with U+FFFD (3 bytes) by both `TextEncoder` and `Blob`, which also
- * fits. `str.length * UTF8_WORST_CASE_BYTES_PER_UNIT` therefore always fits
- * the full encoding.
- */
-const UTF8_WORST_CASE_BYTES_PER_UNIT = 3;
-
-/**
- * Assemble a STEP file from header and entity lines as a Uint8Array.
- *
- * Two passes over `entities`, no intermediate per-entity byte arrays:
- * 1. `TextEncoder.encodeInto` each entity into a reusable (grow-on-demand)
- *    scratch buffer just to learn its exact encoded byte length — the
- *    scratch bytes themselves are discarded.
- * 2. Allocate the ONE final buffer sized from the lengths computed in pass 1,
- *    then `encodeInto` each entity directly into its slice.
- *
- * This replaces a previous single-pass version that kept a persistent
- * `Uint8Array[]` of every encoded entity alive simultaneously (a second full
- * copy of the file's content) purely to learn the sizes needed to allocate
- * the final buffer. Output is byte-identical to that version.
- *
- * Shared by the STEP and merged exporters (was duplicated byte-for-byte in
- * both — alignment audit).
- */
-export function assembleStepBytes(header: string, entities: string[]): Uint8Array {
-  const encoder = new TextEncoder();
-
-  const headBytes = encoder.encode(`${header}DATA;\n`);
-  const tailBytes = encoder.encode('ENDSEC;\nEND-ISO-10303-21;\n');
-
-  // Pass 1: exact per-entity byte length via encodeInto into scratch space
-  // (grown on demand), so the final buffer can be allocated once.
-  let scratch = new Uint8Array(4096);
-  const entityLengths = new Array<number>(entities.length);
-  let totalSize = headBytes.byteLength + tailBytes.byteLength;
-  for (let i = 0; i < entities.length; i++) {
-    const str = entities[i];
-    const worstCase = str.length * UTF8_WORST_CASE_BYTES_PER_UNIT;
-    if (scratch.byteLength < worstCase) {
-      scratch = new Uint8Array(Math.max(worstCase, scratch.byteLength * 2));
-    }
-    const { written } = encoder.encodeInto(str, scratch);
-    entityLengths[i] = written;
-    totalSize += written + 1; // +1 for the trailing '\n'
-  }
-
-  // Pass 2: encode each entity directly into its slice of the one final buffer.
-  const result = new Uint8Array(totalSize);
-  let offset = 0;
-
-  result.set(headBytes, offset);
-  offset += headBytes.byteLength;
-
-  for (let i = 0; i < entities.length; i++) {
-    const len = entityLengths[i];
-    encoder.encodeInto(entities[i], result.subarray(offset, offset + len));
-    offset += len;
-    result[offset] = 0x0a; // '\n'
-    offset += 1;
-  }
-
-  result.set(tailBytes, offset);
-  return result;
-}
-
-/**
- * Assemble a STEP file as a multi-part `Blob` instead of one contiguous
- * `Uint8Array`. Built directly from the header, entity strings, and
- * newlines as separate `BlobPart`s — there is no final contiguous copy of
- * the file's content in JS heap memory, since the browser stores/streams
- * each part (and encodes it to UTF-8) independently.
- *
- * Intended for the browser download path: `downloadBlob`
- * (`apps/viewer/src/lib/export/download.ts`) accepts a `Blob` directly,
- * sidestepping the `Uint8Array`-is-not-a-`BlobPart` copy `downloadFile`
- * otherwise has to do under TS 5.7's stricter `BlobPart` typing.
- *
- * Byte content is identical to `assembleStepBytes(header, entities)` — both
- * UTF-8-encode the same header/entity/newline/tail sequence, and `Blob`
- * string parts and `TextEncoder` follow the same WHATWG encoding spec
- * (including replacing unpaired surrogates with U+FFFD).
- */
-export function assembleStepBlob(header: string, entities: string[]): Blob {
-  const parts: BlobPart[] = new Array(entities.length * 2 + 2);
-  parts[0] = `${header}DATA;\n`;
-  let i = 1;
-  for (const entity of entities) {
-    parts[i++] = entity;
-    parts[i++] = '\n';
-  }
-  parts[i] = 'ENDSEC;\nEND-ISO-10303-21;\n';
-  return new Blob(parts, { type: 'model/step' });
 }

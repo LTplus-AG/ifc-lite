@@ -9,12 +9,19 @@
 export { WebGPUDevice } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
-export type { ProjectionMode } from './camera-controls.js';
+export type { ProjectionMode } from './camera-state.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
 export { Scene } from './scene.js';
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
+// The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
+// that a consumer which has to reconstruct the on-screen frame outside the
+// renderer derives it from the same substitution the picture used, instead of
+// recomputing `cross(forward, up)` and inventing its own answer for a
+// degenerate `up` (#2467 made this call inside the package; the Cesium overlay
+// is the same situation from outside it).
+export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
 export { Section2DOverlayRenderer } from './section-2d-overlay.js';
 
@@ -66,6 +73,15 @@ export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, L
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
 export { sumResidentGpuBytes } from './render-stats.js';
+
+// The hide/isolate rule and its change detection, shared with consumers that
+// render the model outside this package's pipeline (the Cesium world view,
+// #2578) and so must reach the same verdict the viewport does.
+export { isEntityVisible } from './entity-visibility.js';
+// Alpha constants the Cesium world view must match, since it renders the model
+// through its own glTF pipeline rather than this one (#2591).
+export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
 export type { RenderDegradationInfo } from './render-degradation.js';
@@ -94,7 +110,7 @@ import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
-import { MathUtils } from './math.js';
+import { MathUtils, viewBasis } from './math.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -105,10 +121,8 @@ import type {
     ClipBox,
     Mesh,
     BatchedMesh,
-    VisualEnhancementOptions,
-    ContactShadingQuality,
-    SeparationLinesQuality,
 } from './types.js';
+import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
 import type { CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
 import type {
@@ -125,13 +139,15 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { isEntityVisible } from './entity-visibility.js';
+import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -140,25 +156,6 @@ import { buildTriangleBVH } from './deviation/triangle-bvh.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
-
-type ResolvedVisualEnhancement = {
-    enabled: boolean;
-    edgeContrast: {
-        enabled: boolean;
-        intensity: number;
-    };
-    contactShading: {
-        quality: ContactShadingQuality;
-        intensity: number;
-        radius: number;
-    };
-    separationLines: {
-        enabled: boolean;
-        quality: SeparationLinesQuality;
-        intensity: number;
-        radius: number;
-    };
-};
 
 /**
  * Build a deterministic fingerprint of the BVH input mesh set so
@@ -218,6 +215,35 @@ function isDeviceLossThrow(error: unknown): boolean {
 }
 
 /**
+ * The reason `whenReady()` rejects when the renderer is destroyed.
+ *
+ * A plain `Error` carrying a stable `name` rather than an exported subclass:
+ * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
+ * without this package growing a new export (and without `instanceof` breaking
+ * across duplicated copies of the package).
+ */
+function rendererDestroyedError(): Error {
+    const error = new Error('Renderer was destroyed before it became ready');
+    error.name = 'RendererDestroyedError';
+    return error;
+}
+
+/**
+ * The reason `whenReady()` rejects once the GPU device has been lost.
+ *
+ * Deliberately NOT `RendererDestroyedError`: a destroyed renderer is finished,
+ * while a lost one is dead only until the host re-initialises it (`init()`
+ * clears the latch and readiness is published again). A caller that wants to
+ * retry needs to tell those apart, so the loss carries its own `name` — same
+ * plain-`Error` shape, for the same reasons.
+ */
+function rendererDeviceLostError(): Error {
+    const error = new Error('GPU device was lost before the renderer became ready');
+    error.name = 'RendererDeviceLostError';
+    return error;
+}
+
+/**
  * Main renderer class
  */
 export class Renderer {
@@ -236,7 +262,7 @@ export class Renderer {
     private readonly overlays = new RendererOverlays({
         getModelBounds: () => this.getModelBounds(),
         expandModelBoundsWithFlatVertices: (positions, stride) =>
-            this.expandModelBoundsWithFlatVertices(positions, stride),
+            this.modelBoundsTracker.expandWithFlatVertices(positions, stride),
         syncCameraSceneBounds: () => {
             if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
         },
@@ -255,16 +281,68 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
-    /** Set true at the end of `init()`; gates `whenReady()`. */
+    /**
+     * Set true at the end of the LATEST `init()`; gates `whenReady()` and
+     * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
+     * overridden (not cleared) by a device loss — see `deviceLost`, which the
+     * two readiness methods consult alongside this flag because the loss can
+     * land in the middle of the init that is about to set it.
+     */
     private ready = false;
-    private readyWaiters: Array<() => void> = [];
+    private readyWaiters: Array<{ resolve: () => void; reject: (reason: Error) => void }> = [];
+
+    /**
+     * Set by the public `destroy()`, cleared synchronously by `init()`. It is
+     * the difference between "not ready YET" and "never going to be ready":
+     * `whenReady()` parks for the first and rejects for the second.
+     *
+     * Without it a caller parked across the teardown waits forever, because
+     * nothing after `destroy()` will ever reach `markReady()` — the host's
+     * remount builds a NEW Renderer rather than re-initialising this one. The
+     * private `teardown()` deliberately does NOT set it: the teardown
+     * `initOnce()` runs on the previous init's objects is part of an init that
+     * IS going to publish readiness, and its waiters must survive to be flushed.
+     */
+    private destroyed = false;
+
+    /**
+     * The tail of the `init()` queue. `init()` chains onto this rather than
+     * running immediately, so two overlapping calls cannot both walk past the
+     * "a previous init completed" guard while the first is still awaiting its
+     * device and both allocate a full set of GPU objects (#2448). Always
+     * settled fulfilled — a rejected init is swallowed HERE (never for the
+     * caller) so one failure does not deadlock every later call.
+     */
+    private initChain: Promise<void> = Promise.resolve();
+
+    /**
+     * Incremented synchronously by every `init()` call AND by every public
+     * `destroy()`. It stamps "the lifecycle event an in-flight init belongs to":
+     * an init that no longer carries the current stamp has been superseded and
+     * must neither allocate nor publish readiness.
+     *
+     * Both bumps are load-bearing, for the same reason. Because the queue above
+     * defers the body, an init can finish while a later one is still waiting its
+     * turn; that later call is about to tear down everything the earlier one
+     * built, so the earlier one must not publish readiness. And a host that calls
+     * `destroy()` while an init is parked on `await device.init(...)` gets the
+     * same hazard from the other direction: without the bump that init resumes,
+     * allocates a full replacement GPU stack nothing references, and re-publishes
+     * `ready` against a renderer that has already been torn down (#2465).
+     *
+     * The teardown `initOnce()` runs as part of its OWN re-init deliberately does
+     * NOT bump it — see `destroy()` vs `teardown()`. Bumping there would make
+     * every re-init invalidate itself, and nothing would ever become ready again.
+     */
+    private initGeneration = 0;
 
     /**
      * Set once the GPU device is lost for a non-intentional reason (driver
      * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
-     * until the host re-initialises the renderer. Consumers learn of this via
-     * `onDeviceLost` and typically respond by reloading the model.
+     * and the renderer stops reporting itself ready (`isReady()` goes false,
+     * `whenReady()` rejects) until the host re-initialises it. Consumers learn
+     * of this via `onDeviceLost` and typically respond by reloading the model.
      *
      * Two signals set it: the async `device.lost` promise (Chromium), and a
      * frame throwing a `DOMException` out of `render()` (Safari 26.5, which
@@ -274,6 +352,29 @@ export class Renderer {
      * device, and it must cost one frame, not the session.
      */
     private deviceLost = false;
+    /**
+     * The lifecycle generation the latched loss belongs to (see
+     * `initGeneration`); null until the first loss, and never cleared
+     * afterwards. It is only ever read next to `deviceLost`, which is what
+     * makes a stale stamp harmless — and that pairing is required, not
+     * cosmetic: a loss that latched between `init()` bumping the generation and
+     * its queued body running is stamped with the CURRENT generation, and only
+     * the flag that body clears says the renderer has moved on.
+     *
+     * `whenReady()` rejects only while this still equals the CURRENT generation,
+     * which is what re-arms the wait the instant a host calls `init()` — before
+     * the queued body has had a chance to clear `deviceLost` itself. Without
+     * that, `renderer.init(); await renderer.whenReady();` — the recovery shape
+     * `init()` already revokes readiness synchronously for — would reject inside
+     * the microtask window on a renderer that is being brought back up.
+     *
+     * Scoping it here rather than clearing `deviceLost` in `init()` keeps the
+     * flag meaning exactly one thing everywhere else: `render()`, the pick path
+     * and `getGPUDevice()` must stay shut for the OLD device across that same
+     * window, and clearing early would let frames run against dead GPU objects
+     * (and, on Safari, re-latch and re-notify the loss they already reported).
+     */
+    private deviceLostGeneration: number | null = null;
     /** Retained so a listener registered AFTER the loss still learns of it. */
     private deviceLostInfo: { message: string; reason: string } | null = null;
     private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
@@ -286,15 +387,22 @@ export class Renderer {
      * want to pay that on every slider drag.
      */
     private deviationBvhFingerprint: string | null = null;
-    private visualEnhancementState: ResolvedVisualEnhancement = {
-        enabled: true,
-        edgeContrast: { enabled: true, intensity: 1.0 },
-        contactShading: { quality: 'off', intensity: 0.3, radius: 1.0 },
-        separationLines: { enabled: true, quality: 'low', intensity: 0.5, radius: 1.0 },
-    };
+    private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
-    // Model bounds for fitToView, section planes, camera
-    private modelBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null = null;
+    // Model bounds for fitToView, section planes, camera. The value itself
+    // lives in ModelBoundsTracker (issue #2425) so the four writers — point
+    // cloud upload, mesh load, overlay upload, and the public setModelBounds —
+    // share one owner instead of a private field. Camera notification stays at
+    // the call sites: they do not all push under the same policy.
+    private readonly modelBoundsTracker = new ModelBoundsTracker({
+        meshBounds: () => this.computeMeshBounds(),
+        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
+    });
+
+    /** Read-only view of the tracked scene AABB (live reference, not a copy). */
+    private get modelBounds(): ModelBoundsBox | null {
+        return this.modelBoundsTracker.get();
+    }
 
     // Composition: delegate to extracted managers
     private pickingManager: PickingManager;
@@ -425,17 +533,84 @@ export class Renderer {
     }
 
     /**
-     * Initialize renderer
+     * Initialize renderer.
+     *
+     * Safe to call on an already-initialised instance: the previous GPU objects
+     * are released first. The comment below advertises a `destroy()` + `init()`
+     * re-init flow, and the obvious device-loss auto-recovery is to call
+     * `init()` on the live instance — which, without this, silently orphaned
+     * two render pipelines, the picker, the post-processor, the point-cloud and
+     * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
+     * recovery (#2448). Making the method self-safe is cheaper than trusting
+     * every future caller to remember.
+     *
+     * Concurrent calls are SERIALISED, not coalesced: the second waits for the
+     * first to settle and then runs in full. Without that, `pipeline` — which
+     * only ever marks a COMPLETED init — is still null while the first call is
+     * awaiting `device.init()`, so both calls sail past the guard above and both
+     * allocate a full set of GPU objects, orphaning the first. Queueing turns
+     * the concurrent case into the sequential one the guard already handles,
+     * rather than adding a second, differently-shaped rule.
      */
     async init(): Promise<void> {
+        // Revoke readiness SYNCHRONOUSLY, before the body is queued. Everything
+        // below runs in a later microtask (or, for a queued call, only after the
+        // one ahead of it settles), so leaving `ready` set would let
+        // `renderer.init(); await renderer.whenReady();` resolve immediately
+        // against the GPU objects this init is about to destroy — the very
+        // hazard the re-arm inside `initOnce()` exists to prevent. On a first
+        // init there is nothing to invalidate and this is a no-op.
+        const generation = ++this.initGeneration;
+        this.ready = false;
+        // Re-arm `whenReady()`: this instance is being brought back up, so a
+        // wait requested from here on is "not ready yet" again, not "destroyed".
+        this.destroyed = false;
+        // A previous init that REJECTED must not block the next one, so the
+        // stored link swallows the outcome. The caller still receives `run`, so
+        // rejections continue to surface exactly as before.
+        const run = this.initChain.then(() => this.initOnce(generation), () => this.initOnce(generation));
+        this.initChain = run.then(() => undefined, () => undefined);
+        return run;
+    }
+
+    private async initOnce(generation: number): Promise<void> {
+        // `pipeline` is the marker for "a previous init() completed": it is
+        // assigned unconditionally there and nulled by destroy().
+        if (this.pipeline !== null) {
+            // Release the device the previous init() resolved on, and re-arm
+            // `whenReady()` so it cannot resolve against GPU objects that no
+            // longer exist. `teardown()`, not the public `destroy()`: this
+            // teardown is part of THIS init, so it must not invalidate this
+            // init's own generation.
+            this.teardown();
+        }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
+        // This also releases `whenReady()`'s rejection for the one case the
+        // generation stamp cannot: a loss that latched between `init()` bumping
+        // the generation and this body running is stamped with the generation
+        // that is clearing it. `deviceLostGeneration` deliberately keeps its
+        // stale value — it is only ever read alongside this flag.
         this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.
         this.device.onDeviceLost((info) => this.handleDeviceLost(info));
         await this.device.init(this.canvas);
+
+        // A `destroy()` (or a newer `init()`) landed while we were parked on the
+        // device. Everything below allocates a full GPU stack — two pipelines,
+        // the picker, the post-processor, the point-cloud and deviation
+        // pipelines, the EDL pass, the overlay glyph atlas — and this aborted
+        // path runs no second teardown, so all of it would be orphaned outright
+        // (#2465). `markReady()`'s generation check is not enough on its own: it
+        // withholds the readiness PUBLICATION, not the allocation. Release the
+        // device we just brought up and stop here; a queued init will bring up
+        // its own.
+        if (generation !== this.initGeneration) {
+            this.device.destroy();
+            return;
+        }
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
         // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
@@ -511,7 +686,7 @@ export class Renderer {
         // synchronous CPU code while pick() is an async GPU readback.
         this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
-        this.markReady();
+        this.markReady(generation);
     }
 
     /**
@@ -521,25 +696,78 @@ export class Renderer {
      * the async WebGPU init resolves — should `await renderer.whenReady()`
      * before `beginPointCloudStream`, which otherwise throws
      * "Renderer not initialized".
+     *
+     * REJECTS (with an `Error` whose `name` is `RendererDestroyedError`) if
+     * `destroy()` runs while the caller is waiting, or if it already ran and no
+     * `init()` has been started since. It never resolves against a destroyed
+     * renderer — that is what this method exists to prevent — so the only
+     * alternative would be a promise that never settles, which suspends the
+     * caller's async frame permanently and takes everything the frame captured
+     * with it. The viewer reaches that state on an ordinary path: `Viewport`
+     * builds a NEW `Renderer` per mount and destroys the old one in its effect
+     * cleanup, so a `destroy()` there is FINAL for the instance a consumer
+     * captured — a point-cloud drop that straddles a layout swap or a
+     * StrictMode remount would otherwise hang mid-load, with no error, forever.
+     * Callers should handle the rejection as "the target went away", not as a
+     * load failure.
+     *
+     * It also REJECTS (`RendererDeviceLostError`) while the GPU device is lost.
+     * The device is what this method promises, and a lost one cannot serve the
+     * call the caller is waiting to make — `getGPUDevice()` returns null, so
+     * `beginPointCloudStream` throws "Renderer not initialized" the moment the
+     * wait resolves. The third outcome is the one `destroy()` already ruled out:
+     * parking a waiter that only a host-initiated `init()` could ever settle,
+     * and that the viewer's usual response to a loss (drop this renderer, build
+     * a new one) guarantees will never come. Unlike the destroyed case this is
+     * NOT final — a later `init()` on the same instance re-arms the wait
+     * synchronously, so "retry after re-init" is a contract callers can act on,
+     * which is why the two rejections carry different names.
      */
     whenReady(): Promise<void> {
+        // Checked before `ready`, which an init that completed after the loss
+        // latched may well have published (`init()` subscribes to the device's
+        // loss signal before awaiting it, so a loss DURING init leaves both
+        // flags set). Readiness is about the device, and the device is gone.
+        if (this.deviceLost && this.deviceLostGeneration === this.initGeneration) {
+            return Promise.reject(rendererDeviceLostError());
+        }
         if (this.ready) return Promise.resolve();
-        return new Promise<void>((resolve) => { this.readyWaiters.push(resolve); });
+        if (this.destroyed) return Promise.reject(rendererDestroyedError());
+        return new Promise<void>((resolve, reject) => { this.readyWaiters.push({ resolve, reject }); });
     }
 
-    private markReady(): void {
+    private markReady(generation: number): void {
+        // A newer init() is already queued: it will tear all of this down before
+        // building its own, so publishing readiness here would hand callers a
+        // device with a demolition order on it.
+        if (generation !== this.initGeneration) return;
         this.ready = true;
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
-        for (const w of waiters) w();
+        for (const w of waiters) w.resolve();
+    }
+
+    /**
+     * Fail every parked `whenReady()` waiter with `error`. Called by `destroy()`
+     * and by `handleDeviceLost()` — the two events after which nothing this
+     * instance does on its own can make the wait true. NOT by `teardown()`,
+     * whose waiters belong to the re-init running it and must survive to be
+     * flushed by it.
+     */
+    private rejectReadyWaiters(error: Error): void {
+        const waiters = this.readyWaiters;
+        this.readyWaiters = [];
+        for (const w of waiters) w.reject(error);
     }
 
     /**
      * Subscribe to non-intentional GPU device loss (driver reset / VRAM
      * exhaustion — NOT an intentional `destroy()`). Fired at most once per
-     * device. After it fires, `render()` is a no-op until the renderer is
-     * re-initialised, so the typical response is to dispose this renderer and
-     * reload the model. Returns an unsubscribe function.
+     * device. After it fires, `render()` is a no-op and the renderer reports
+     * itself un-ready (`isReady()` false, `whenReady()` rejecting with
+     * `RendererDeviceLostError`) until it is re-initialised, so the typical
+     * response is to dispose this renderer and reload the model. Returns an
+     * unsubscribe function.
      *
      * Camera and model state live on the CPU (JS) and survive device loss, so a
      * reload restores the model at its current orientation — the loss is a GPU
@@ -594,8 +822,17 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
+        // Readiness describes the GPU objects, and every one of them just died:
+        // `isReady()` reports it from here on, and anyone parked in
+        // `whenReady()` is failed rather than left to be resolved by the init
+        // this loss may have landed in the middle of. Done BEFORE the listeners
+        // run, so a listener that recovers by calling `init()` synchronously
+        // finds the waiters already settled and re-arms the wait for the next
+        // caller rather than racing the flush.
+        this.rejectReadyWaiters(rendererDeviceLostError());
         for (const listener of this.deviceLostListeners) {
             try {
                 listener(info);
@@ -731,10 +968,10 @@ export class Renderer {
         }
         this.pointCloudRenderer.setAssets(assets);
         // Replace, not append — bounds may have shrunk (e.g. an IFCx
-        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // reload with a smaller scan). `expandForPointClouds`
         // alone only grows; recompute from scratch to keep
         // fit-to-view + section-plane sliders accurate.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -747,7 +984,7 @@ export class Renderer {
         for (const asset of assets) {
             this.pointCloudRenderer.addAsset(asset);
         }
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -765,7 +1002,7 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -788,7 +1025,7 @@ export class Renderer {
     ): void {
         if (!this.pointCloudRenderer) return;
         this.pointCloudRenderer.appendChunk(handle, chunk);
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -802,7 +1039,7 @@ export class Renderer {
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -820,36 +1057,6 @@ export class Renderer {
     ): void {
         this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
         this.requestRender();
-    }
-
-    /**
-     * Compute model bounds from triangle meshes + remaining point clouds.
-     * Called from removeAsset / clear paths so bounds shrink correctly.
-     * Triangle meshes still drive the bounds when present (existing
-     * Scene-driven path), so this only re-folds in the point cloud
-     * extents over whatever the mesh path left.
-     */
-    private recomputeModelBounds(): void {
-        // Always recompute from scratch: take mesh bounds as the
-        // baseline, then fold in the CURRENT point-cloud bounds on
-        // top. Folding only-up via expandModelBoundsForPointClouds()
-        // is correct when pc bounds grow but never shrinks them when
-        // an asset is removed, leaving stale oversized extents until
-        // every point cloud is gone.
-        const meshBounds = this.computeMeshBounds();
-        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
-
-        if (!meshBounds && !pcBounds) {
-            this.modelBounds = null;
-            return;
-        }
-        this.modelBounds = meshBounds ?? {
-            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
-            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
-        };
-        if (meshBounds && pcBounds) {
-            this.expandModelBoundsForPointClouds();
-        }
     }
 
     /** Aggregate bounds across all batched + individual meshes. Returns
@@ -894,7 +1101,7 @@ export class Renderer {
         // them to the camera (matching every other bounds-mutating
         // point-cloud method) so framing / zoom-to-fit targets where the
         // points actually render.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -1043,25 +1250,6 @@ export class Renderer {
         this.requestRender();
     }
 
-    private expandModelBoundsForPointClouds(): void {
-        const pcBounds = this.pointCloudRenderer?.getBounds();
-        if (!pcBounds) return;
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
-                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
-            };
-            return;
-        }
-        const m = this.modelBounds;
-        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
-        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
-        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
-        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
-        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
-        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
-    }
-
     /**
      * Load geometry from GeometryResult or MeshData array
      * This is the main entry point for loading IFC geometry into the renderer
@@ -1085,7 +1273,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, false);
 
         // Calculate and store model bounds for fitToView
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
@@ -1110,7 +1298,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
 
         // Update model bounds incrementally
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         // Update camera scene bounds for tight orthographic near/far planes
         this.camera.setSceneBounds(this.modelBounds);
@@ -1216,41 +1404,7 @@ export class Renderer {
      * Set model bounds (used when computing bounds from batches)
      */
     setModelBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): void {
-        this.modelBounds = bounds;
-    }
-
-    /**
-     * Update model bounds from mesh data
-     */
-    private updateModelBounds(meshes: import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity }
-            };
-        }
-
-        for (const mesh of meshes) {
-            const positions = mesh.positions;
-            // Positions are in the element's local frame (world = origin + position).
-            // Model bounds are world-space, so fold the per-mesh origin. No-op when
-            // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
-            const o = mesh.origin;
-            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-            for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i] + ox;
-                const y = positions[i + 1] + oy;
-                const z = positions[i + 2] + oz;
-                if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-                    this.modelBounds.min.x = Math.min(this.modelBounds.min.x, x);
-                    this.modelBounds.min.y = Math.min(this.modelBounds.min.y, y);
-                    this.modelBounds.min.z = Math.min(this.modelBounds.min.z, z);
-                    this.modelBounds.max.x = Math.max(this.modelBounds.max.x, x);
-                    this.modelBounds.max.y = Math.max(this.modelBounds.max.y, y);
-                    this.modelBounds.max.z = Math.max(this.modelBounds.max.z, z);
-                }
-            }
-        }
+        this.modelBoundsTracker.set(bounds);
     }
 
     /**
@@ -1408,32 +1562,6 @@ export class Renderer {
                 console.warn('[WebGPU] popErrorScope rejected (device likely lost):', error);
             }
         });
-    }
-
-    private resolveVisualEnhancement(options?: VisualEnhancementOptions): ResolvedVisualEnhancement {
-        if (!options) {
-            return this.visualEnhancementState;
-        }
-        const merged: ResolvedVisualEnhancement = {
-            enabled: options.enabled ?? this.visualEnhancementState.enabled,
-            edgeContrast: {
-                enabled: options.edgeContrast?.enabled ?? this.visualEnhancementState.edgeContrast.enabled,
-                intensity: options.edgeContrast?.intensity ?? this.visualEnhancementState.edgeContrast.intensity,
-            },
-            contactShading: {
-                quality: options.contactShading?.quality ?? this.visualEnhancementState.contactShading.quality,
-                intensity: options.contactShading?.intensity ?? this.visualEnhancementState.contactShading.intensity,
-                radius: options.contactShading?.radius ?? this.visualEnhancementState.contactShading.radius,
-            },
-            separationLines: {
-                enabled: options.separationLines?.enabled ?? this.visualEnhancementState.separationLines.enabled,
-                quality: options.separationLines?.quality ?? this.visualEnhancementState.separationLines.quality,
-                intensity: options.separationLines?.intensity ?? this.visualEnhancementState.separationLines.intensity,
-                radius: options.separationLines?.radius ?? this.visualEnhancementState.separationLines.radius,
-            },
-        };
-        this.visualEnhancementState = merged;
-        return merged;
     }
 
     /**
@@ -1616,7 +1744,7 @@ export class Renderer {
         if (options.restoreEvictedForCapture && this.pipeline) {
             this.scene.restoreAllEvicted(device, this.pipeline);
         }
-        const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
+        const visualEnhancement = this.visualEnhancementResolver.resolve(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
         // (the pass costs well under a ms on discrete/Apple GPUs at CSS
@@ -1729,7 +1857,12 @@ export class Renderer {
         // through the transparent pipeline with no extra call sites — and avoids
         // building a Map over every element just to fade "the rest".
         const ghostExceptIds = options.ghostExceptIds ?? null;
-        const ghostAlpha = options.ghostAlpha ?? 0.12;
+        const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
+        // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
+        // stopped at the flat geometry: on a model whose facade is instanced,
+        // the user asked to fade the building and got a solid facade standing
+        // in front of a ghosted interior.
+        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
         const hasGhost = ghostExceptIds != null;
         const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {
@@ -1806,12 +1939,11 @@ export class Renderer {
             }
         }
 
-        // Visibility filtering
-        if (options.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter(mesh => !options.hiddenIds!.has(mesh.expressId));
-        }
-        if (options.isolatedIds !== null && options.isolatedIds !== undefined) {
-            meshes = meshes.filter(mesh => options.isolatedIds!.has(mesh.expressId));
+        // Visibility filtering. Shares `isEntityVisible` with the instanced pass
+        // and with the Cesium world view, which renders through its own glTF
+        // pipeline and so cannot inherit this filter for free (#2578).
+        if ((options.hiddenIds && options.hiddenIds.size > 0) || options.isolatedIds != null) {
+            meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options.hiddenIds, options.isolatedIds));
         }
 
         // Resize depth texture if needed
@@ -2044,27 +2176,26 @@ export class Renderer {
                         sampleCount: this.pipeline.getSampleCount(),
                     }, skyShaderSource);
                 }
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUp = this.camera.getUp();
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                const flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, up)); true up = cross(right, forward).
-                let rx = fy * camUp.z - fz * camUp.y;
-                let ry = fz * camUp.x - fx * camUp.z;
-                let rz = fx * camUp.y - fy * camUp.x;
-                const rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
+                // The sky shader rebuilds a per-pixel view ray from this
+                // basis, so it must be the basis the frame's view matrix was
+                // built from — `viewBasis`, not a local re-derivation
+                // (#2489). The copy that used to live here guarded its two
+                // divisors with `|| 1` and neither numerator, so a non-finite
+                // camera coordinate made every axis NaN and the sky drew as a
+                // flat undefined colour over the whole viewport; and for a
+                // plan pose (`up` parallel to the view direction) it returned
+                // zero-length axes, which is the same picture. Reading the
+                // shared basis also keeps the horizon in the sky aligned with
+                // the horizon in the geometry for free.
+                const camBasis = viewBasis(
+                    this.camera.getPosition(),
+                    this.camera.getTarget(),
+                    this.camera.getUp(),
+                );
                 this.skyPass.draw(pass, {
-                    forward: [fx, fy, fz],
-                    right: [rx, ry, rz],
-                    up: [ux, uy, uz],
+                    forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
+                    right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
+                    up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                 }, environment);
@@ -3137,6 +3268,16 @@ export class Renderer {
      * Resize canvas
      */
     resize(width: number, height: number): void {
+        // `canvas.width` is an IDL `unsigned long`, so it silently coerces a
+        // non-finite or negative argument to **0** — a zero drawing buffer
+        // that every pick guard in this package misses, because they all
+        // check the bounding rect rather than the buffer. `unprojectToRay`
+        // then divides by it. This is documented public API of a published
+        // package (`docs/api/typescript.md`), so an external caller wiring a
+        // ResizeObserver to it is the reachable route; both in-repo callers
+        // already floor their own values. Keep the last usable size, the same
+        // policy `setAspect` uses for the ratio it derives (#2473).
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
         this.canvas.width = width;
         this.canvas.height = height;
         this.camera.setAspect(width / height);
@@ -3211,53 +3352,6 @@ export class Renderer {
      */
     uploadAnnotationLines3D(vertices: Float32Array): void {
         this.overlays.uploadAnnotationLines3D(vertices);
-    }
-
-    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and either initialises
-     *  or expands the cached `modelBounds` AABB. Used by the annotation
-     *  overlay upload paths so symbolic-only models can still be framed.
-     *
-     *  The geometry pipeline pre-seeds a placeholder `[-100, 100]` cube on
-     *  every render when there are 0 meshes (so the section-plane slider
-     *  always has a workable range). For an annotation-only model that
-     *  fallback drowns out the much-smaller annotation cluster and a plain
-     *  "expand" would no-op. We detect the placeholder by its exact symmetric
-     *  signature and replace it with the actual annotation AABB instead. */
-    private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
-        if (positions.length === 0) return;
-        const isPlaceholderCube = (b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean =>
-            b.min.x === -100 && b.min.y === -100 && b.min.z === -100
-                && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
-        if (!this.modelBounds || isPlaceholderCube(this.modelBounds)) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity },
-            };
-        }
-        let expanded = false;
-        for (let i = 0; i + 2 < positions.length; i += stride) {
-            const x = positions[i];
-            const y = positions[i + 1];
-            const z = positions[i + 2];
-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-            if (x < this.modelBounds.min.x) this.modelBounds.min.x = x;
-            if (y < this.modelBounds.min.y) this.modelBounds.min.y = y;
-            if (z < this.modelBounds.min.z) this.modelBounds.min.z = z;
-            if (x > this.modelBounds.max.x) this.modelBounds.max.x = x;
-            if (y > this.modelBounds.max.y) this.modelBounds.max.y = y;
-            if (z > this.modelBounds.max.z) this.modelBounds.max.z = z;
-            expanded = true;
-        }
-        if (!expanded) return;
-        // Guarantee non-degenerate extent on every axis so camera frustums
-        // don't collapse. 0.5 m margin matches what the section-plane fallback
-        // uses elsewhere in this file.
-        for (const axis of ['x', 'y', 'z'] as const) {
-            if (this.modelBounds.max[axis] - this.modelBounds.min[axis] < 1e-3) {
-                this.modelBounds.max[axis] += 0.5;
-                this.modelBounds.min[axis] -= 0.5;
-            }
-        }
     }
 
     /**
@@ -3373,10 +3467,27 @@ export class Renderer {
     }
 
     /**
-     * Check if renderer is fully initialized and ready to use
+     * Check if renderer is fully initialized and ready to use.
+     *
+     * `ready` is part of the test, not decoration: between `init()` being called
+     * and its queued body running, the device and pipeline still belong to the
+     * PREVIOUS init and are about to be destroyed, so the other two conditions
+     * alone would report a renderer that is on its way out as usable.
+     *
+     * So is the device-loss check. A lost device is never torn down —
+     * `WebGPUDevice.destroy()` is the only thing that nulls the handle and an
+     * involuntary loss (driver reset / VRAM exhaustion / GPU-process crash)
+     * never calls it — so `isInitialized()` stays true, the pipeline stays
+     * non-null, and `ready` stays set from the init that completed before the
+     * loss. All three conditions therefore still hold while `render()` is a
+     * no-op and `getGPUDevice()` returns null: the renderer would report itself
+     * usable through this third door alone. Unlike the two revocations above
+     * this one needs no generation scoping — an `init()` clears `ready`
+     * synchronously, so a latch left standing until the queued body clears it
+     * cannot make this method spuriously false in the meantime.
      */
     isReady(): boolean {
-        return this.device.isInitialized() && this.pipeline !== null;
+        return this.ready && !this.deviceLost && this.device.isInitialized() && this.pipeline !== null;
     }
 
     /**
@@ -3436,8 +3547,48 @@ export class Renderer {
      * post-processing buffers, section-plane renderers, and snap caches.
      * After calling this method the renderer is no longer usable.
      * Safe to call multiple times (idempotent).
+     *
+     * An `init()` still in flight is invalidated too. It is parked on
+     * `await device.init(...)`, and without the generation bump below it resumes
+     * after this returns, allocates a complete replacement GPU stack that nothing
+     * references, and re-publishes `ready` — resolving `whenReady()` waiters
+     * against a renderer the host has already torn down (#2465). The bump is what
+     * `initOnce()` re-checks after its await, and what makes `markReady()` refuse
+     * the stale completion.
+     *
+     * This is why the teardown itself lives in `teardown()`: `initOnce()` runs it
+     * on the PREVIOUS init's objects as part of its own re-init, and routing that
+     * through here would have every init invalidate its own generation, leaving
+     * `whenReady()` pending forever.
+     *
+     * Anyone parked in `whenReady()` is FAILED rather than left pending. Nothing
+     * after this call can make the wait true — the invalidation above is exactly
+     * what stops the in-flight init from publishing readiness, and a host that
+     * remounts builds a new `Renderer` rather than re-initialising this one — so
+     * leaving the promise unsettled suspends the caller's async frame for the
+     * lifetime of the page. `apps/viewer`'s point-cloud drop is one of those
+     * frames: it captured this instance before the teardown, and would stop
+     * mid-load with the spinner still up and no error to report. See
+     * `whenReady()` for the rejection contract.
      */
     destroy(): void {
+        this.initGeneration++;
+        this.destroyed = true;
+        this.teardown();
+        this.rejectReadyWaiters(rendererDestroyedError());
+    }
+
+    /**
+     * Release every GPU object this renderer owns, WITHOUT invalidating an
+     * in-flight init. Callers: the public `destroy()` (which invalidates first)
+     * and `initOnce()`, tearing down the previous init before building its own.
+     */
+    private teardown(): void {
+        // Nothing below survives this call, so `whenReady()` / `isReady()` must
+        // go back to waiting. Set first: every release below is synchronous, but
+        // the flag is what a caller holding a live reference actually reads.
+        this.ready = false;
+
         // Scene mesh GPU buffers
         this.scene.clear();
         // Re-arm the section-bounds diagnostic log for the next model.

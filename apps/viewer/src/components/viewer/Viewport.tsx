@@ -13,6 +13,7 @@ import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoi
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
+import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -264,7 +265,7 @@ export function Viewport({
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
-  const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
+  const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
   // the section tool (issue #243); the action setters are forwarded into

@@ -7,24 +7,6 @@
 
 use super::*;
 
-fn fixture(rel: &str) -> Vec<u8> {
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-}
-
-/// Like [`fixture`] but returns `None` when the catalogued fixture has not
-/// been fetched, so the test can SKIP (never throw) per the house rule.
-fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    match std::fs::read(&path) {
-        Ok(bytes) => Some(bytes),
-        Err(_) => {
-            eprintln!("skipping: fixture {rel} not fetched (run `pnpm fixtures`)");
-            None
-        }
-    }
-}
-
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
 fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
     // Assert the literal magic bytes (not a derived constant) so a wrong magic
@@ -173,7 +155,7 @@ fn with_index_glb_is_byte_identical() {
     // The shared-index path must emit byte-for-byte the same GLB as the
     // self-indexing path — it only injects an index equal to the one
     // `export_glb_with_stats` builds internally. Guards the two from drifting.
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions::default();
     let (plain, _) = export_glb_with_stats(&bytes, &opts);
     let idx = Arc::new(crate::build_entity_index(&bytes));
@@ -203,7 +185,7 @@ fn glb_container_size_does_not_truncate() {
 /// assembler builds internally, so only the redundant scan is removed.
 #[test]
 fn bounded_glb_with_index_is_byte_identical() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     for quantize in [false, true] {
         let opts = GltfOptions { quantize, ..GltfOptions::default() };
         let (plain, ps) = export_glb_streaming_bounded(&bytes, &opts);
@@ -218,7 +200,7 @@ fn bounded_glb_with_index_is_byte_identical() {
 /// and identical external buffers as the self-indexing one.
 #[test]
 fn gltf_streaming_with_index_is_byte_identical() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions::default();
     let cap = 256 * 1024;
 
@@ -240,7 +222,7 @@ fn gltf_streaming_with_index_is_byte_identical() {
 /// GLB vs multi-buffer without meshing to completion twice.
 #[test]
 fn project_glb_size_matches_bounded_output() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     for quantize in [false, true] {
         let opts = GltfOptions { quantize, ..GltfOptions::default() };
         let proj = project_glb_size(&bytes, &opts);
@@ -265,7 +247,7 @@ fn project_glb_size_matches_bounded_output() {
 /// changes the oversize behaviour (typed error vs panic).
 #[test]
 fn try_export_bounded_matches_export_for_fitting_model() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions::default();
     let (want, wstats) = export_glb_streaming_bounded(&bytes, &opts);
     let (got, gstats) = try_export_glb_streaming_bounded(&bytes, &opts)
@@ -396,7 +378,7 @@ fn quantized_glb_matches_f32_world_bounds() {
     // The quantized path reconstructs the same WORLD geometry as f32 — proves the
     // per-mesh dequant + placement (incl. the nested instanced dequant nodes)
     // compose correctly. Compared via world-space AABB within a few mm.
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let (f32_glb, _) = export_glb_with_stats(&bytes, &GltfOptions::default());
     let (q_glb, _) = export_glb_with_stats(
         &bytes,
@@ -433,7 +415,7 @@ fn multibuffer_splits_and_matches_single_glb() {
     // A tiny cap forces the geometry across several < cap buffers; the reconstructed
     // world geometry must equal the single-GLB output exactly (f32, same bytes, just
     // split). Proves the chunked bufferView/accessor reindexing is correct.
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions::default();
     let (glb, _) = export_glb_with_stats(&bytes, &opts);
     let (gj, gb) = parse_glb(&glb);
@@ -469,7 +451,7 @@ fn multibuffer_splits_and_matches_single_glb() {
 fn multibuffer_quantized_roundtrips() {
     // Quantization + multi-buffer compose: quantized geometry split across chunks
     // still reconstructs the f32 world bounds (within mm) and stays < cap.
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let (glb, _) = export_glb_with_stats(&bytes, &GltfOptions::default());
     let (gj, gb) = parse_glb(&glb);
     let (lo0, hi0) = world_aabb(&gj, &[&gb]);
@@ -519,7 +501,7 @@ fn quantized_normal_compensation_survives_nonuniform_scale() {
 
 #[test]
 fn multibuffer_is_deterministic() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions::default();
     let (j1, b1) = streaming_export(&bytes, &opts, 64 * 1024);
     let (j2, b2) = streaming_export(&bytes, &opts, 64 * 1024);
@@ -529,7 +511,7 @@ fn multibuffer_is_deterministic() {
 
 #[test]
 fn quantized_glb_is_structurally_valid() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let (glb, stats) = export_glb_with_stats(
         &bytes,
         &GltfOptions { quantize: true, ..Default::default() },
@@ -579,7 +561,7 @@ fn quantized_glb_is_structurally_valid() {
 
 #[test]
 fn quantized_glb_is_byte_deterministic() {
-    let bytes = fixture("ara3d/duplex.ifc");
+    let bytes = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions { quantize: true, ..Default::default() };
     let (a, _) = export_glb_with_stats(&bytes, &opts);
     let (b, _) = export_glb_with_stats(&bytes, &opts);
@@ -619,7 +601,7 @@ fn quantization_roundtrip_precision() {
 #[test]
 fn duplex_exports_valid_glb() {
     let (glb, stats) =
-        export_glb_with_stats(&fixture("ara3d/duplex.ifc"), &GltfOptions::default());
+        export_glb_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &GltfOptions::default());
     assert!(stats.meshes > 0 && stats.triangles > 0);
 
     let (json, bin) = parse_glb(&glb);
@@ -969,7 +951,7 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
 fn export_is_byte_deterministic() {
     // Instancing groups by HashMap keys (rep colour buckets, material dedup);
     // emission order must be fixed so repeated exports are byte-identical.
-    let content = fixture("ara3d/C20-Institute-Var-2.ifc");
+    let content = fixture_or_skip!("ara3d/C20-Institute-Var-2.ifc");
     let a = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
     let b = export_glb(&content, &GltfOptions { include_metadata: true, ..Default::default() });
     assert_eq!(a, b, "repeated GLB exports must be byte-identical");
@@ -979,7 +961,7 @@ fn export_is_byte_deterministic() {
 fn nodes_carry_global_id_and_model_id() {
     // From-bytes export with metadata + a model id: every element node carries
     // `modelId`, and elements with an IFC GlobalId carry `GlobalId`.
-    let content = fixture("ara3d/duplex.ifc");
+    let content = fixture_or_skip!("ara3d/duplex.ifc");
     let opts = GltfOptions {
         include_metadata: true,
         model_id: Some("model-42".to_string()),
@@ -1040,7 +1022,7 @@ fn glb_nodes_have_export_rows_for_legacy_products() {
         "ifcopenshell/1032-curve.ifc",
         "issues/860_solid_stratum.ifc",
     ] {
-        let Some(content) = fixture_opt(rel) else { continue };
+        let Some(content) = crate::test_support::fixture_opt(rel) else { continue };
         found += 1;
         let opts = GltfOptions {
             include_metadata: true,
@@ -1089,7 +1071,7 @@ fn instanced_occurrences_reconstruct_world_positions() {
     // position). This exercises the full chain — rep-identity grouping, the
     // Z-up→Y-up conjugation, scene-center folding, and the f32 node matrix — on
     // genuinely rotated, placed occurrences, so any frame/RTC error surfaces.
-    let content = fixture("ara3d/C20-Institute-Var-2.ifc");
+    let content = fixture_or_skip!("ara3d/C20-Institute-Var-2.ifc");
     let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
     let (glb, _stats) = export_glb_with_stats(&content, &opts);
     let (json, bin) = parse_glb(&glb);
@@ -1297,7 +1279,7 @@ fn emissive_takes_precedence_over_unlit() {
 #[test]
 fn metadata_and_isolation() {
     let with_meta = export_glb_with_stats(
-        &fixture("ara3d/duplex.ifc"),
+        &fixture_or_skip!("ara3d/duplex.ifc"),
         &GltfOptions { include_metadata: true, ..GltfOptions::default() },
     )
     .0;
@@ -1306,15 +1288,15 @@ fn metadata_and_isolation() {
     assert!(json["nodes"][0]["extras"]["expressId"].is_number());
 
     // Isolate one id ⇒ fewer or equal meshes than the full export.
-    let full = export_glb_with_stats(&fixture("ara3d/duplex.ifc"), &GltfOptions::default()).1;
-    let some_id = process_geometry(&fixture("ara3d/duplex.ifc")[..])
+    let full = export_glb_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &GltfOptions::default()).1;
+    let some_id = process_geometry(&fixture_or_skip!("ara3d/duplex.ifc")[..])
         .meshes
         .iter()
         .find(|m| super::mesh_visible(m, &GltfOptions::default()))
         .map(|m| m.express_id)
         .unwrap();
     let iso = export_glb_with_stats(
-        &fixture("ara3d/duplex.ifc"),
+        &fixture_or_skip!("ara3d/duplex.ifc"),
         &GltfOptions { isolated: vec![some_id], ..GltfOptions::default() },
     )
     .1;
@@ -1407,7 +1389,7 @@ fn too_large_error_code_and_message() {
 
 #[test]
 fn try_export_glb_matches_fail_open_path_when_nonempty() {
-    let Some(content) = fixture_opt("ifcopenshell/1019-column.ifc") else { return };
+    let Some(content) = crate::test_support::fixture_opt("ifcopenshell/1019-column.ifc") else { return };
     let (glb, stats) =
         try_export_glb_with_stats(&content, &GltfOptions::default()).expect("has geometry");
     assert!(stats.meshes >= 1);
@@ -1436,7 +1418,7 @@ fn streaming_bounded_is_byte_identical_on_flat_models() {
     // assemblers share (flat emission + content dedup); their output must be
     // byte-for-byte identical, JSON and BIN.
     for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
-        let Some(content) = fixture_opt(rel) else { continue };
+        let Some(content) = crate::test_support::fixture_opt(rel) else { continue };
         let opts = GltfOptions { include_metadata: true, ..GltfOptions::default() };
         let (in_memory, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
         let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
@@ -1450,7 +1432,7 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
     // duplex has rep-identity groups the streaming path deliberately skips
     // (bounded memory cannot hold every occurrence). World geometry must be
     // identical anyway: same element nodes, same total placed triangles.
-    let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
     let opts = GltfOptions::default();
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
     let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);
@@ -1483,7 +1465,7 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
 #[test]
 fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
     for rel in ["ifcopenshell/1019-column.ifc", "ifcopenshell/1030-sphere.ifc"] {
-        let Some(content) = fixture_opt(rel) else { continue };
+        let Some(content) = crate::test_support::fixture_opt(rel) else { continue };
         let opts = GltfOptions {
             quantize: true,
             include_metadata: true,
@@ -1498,7 +1480,7 @@ fn streaming_bounded_quantized_is_byte_identical_on_flat_models() {
 
 #[test]
 fn streaming_bounded_quantized_preserves_world_geometry_on_instanced_model() {
-    let Some(content) = fixture_opt("ara3d/duplex.ifc") else { return };
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
     let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
     let (streamed, stream_stats) = export_glb_streaming_bounded(&content, &opts);

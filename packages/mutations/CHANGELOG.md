@@ -1,5 +1,24 @@
 # @ifc-lite/mutations
 
+## 1.26.0
+
+### Minor Changes
+
+- [#2579](https://github.com/LTplus-AG/ifc-lite/pull/2579) [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee) Thanks [@louistrue](https://github.com/louistrue)! - `MutablePropertyView.deleteQuantitySet(entityId, qsetName)` - the inverse of `createQuantitySet`, and the exact mirror of the `deletePropertySet` that has always existed one level up.
+
+  It was missing, which is why `deletedQsets` was read by `getQuantitiesForEntity`, `hasPendingChanges` and `collectSetLevelChanges` while nothing populated it outside the restore path. Without it, a writer that REPLACES an entity's quantity set can shrink it but never empty it: re-running with nothing left to write leaves the previous run's numbers standing. [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508)'s zone write-back hits that directly, where it produces a file stating cubic metres beside a property saying the volume could not be computed.
+
+  It records its own `DELETE_QUANTITY_SET` mutation type rather than a `DELETE_QUANTITY` with no property name: both replay consumers (`applyMutations` and `change-set-to-ops`) key the member-delete case off the property name, so a whole-set removal filed under it matched nothing, resurrected the set on import and vanished from a layer publish without reaching `skipped`.
+
+  Semantics follow `deletePropertySet`: an in-session quantity set is dropped along with the per-quantity mutations its creation recorded, and a DELETE marker is recorded only against a set that genuinely exists in the base file, so a create-then-delete in one session nets to no reported change.
+
+  Paired with it, `MutablePropertyView.isQuantitySetDeleted(entityId, qsetName)`: `getQuantitiesForEntity` reports a deleted set and a never-existing one identically, and the STEP exporter needs the difference. It withholds a source `IfcElementQuantity` when it is writing a replacement for it, and a deletion has no replacement to be recognised by, so without this a set the session deleted was still in the exported bytes.
+
+### Patch Changes
+
+- Updated dependencies [[`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718)]:
+  - @ifc-lite/data@3.3.0
+
 ## 1.25.0
 
 ### Minor Changes

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { groupClashes } from './grouping.js';
+import { groupClashes, isClusterGroupingIneffective } from './grouping.js';
 import type {
   AABB,
   Clash,
@@ -284,5 +284,51 @@ describe('groupClashes — determinism', () => {
     const clashes = [clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] })];
     const [group] = groupClashes(makeResult(clashes), { by: 'cluster' });
     expect(group.id).toMatch(/^grp-[0-9a-f]{8}$/);
+  });
+});
+
+describe('isClusterGroupingIneffective', () => {
+  it('is true when every clash landed in its own singleton group (MEP distribution-run shape)', () => {
+    // Points 3m apart: well outside the 1.5m default epsilon, so nothing merges.
+    const clashes = [
+      clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] }),
+      clash({ id: 'c2', a: PIPE, b: BEAM, rule: 'R', point: [3, 0, 0] }),
+      clash({ id: 'c3', a: PIPE, b: BEAM, rule: 'R', point: [6, 0, 0] }),
+    ];
+    const groups = groupClashes(makeResult(clashes), { by: 'cluster' });
+    expect(groups).toHaveLength(3);
+    expect(isClusterGroupingIneffective(clashes, groups)).toBe(true);
+  });
+
+  it('is false when clustering merged at least one pair', () => {
+    const clashes = [
+      clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] }),
+      clash({ id: 'c2', a: PIPE, b: BEAM, rule: 'R', point: [0.5, 0, 0] }),
+      clash({ id: 'c3', a: PIPE, b: BEAM, rule: 'R', point: [100, 0, 0] }),
+    ];
+    const groups = groupClashes(makeResult(clashes), { by: 'cluster' });
+    expect(groups).toHaveLength(2);
+    expect(isClusterGroupingIneffective(clashes, groups)).toBe(false);
+  });
+
+  it('is false for 0 or 1 clashes — nothing to consolidate', () => {
+    expect(isClusterGroupingIneffective([], [])).toBe(false);
+    const clashes = [clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] })];
+    const groups = groupClashes(makeResult(clashes), { by: 'cluster' });
+    expect(isClusterGroupingIneffective(clashes, groups)).toBe(false);
+  });
+
+  it('is not tied to a specific grouping mode — only compares clash count to group count', () => {
+    // element mode can produce MORE groups than clashes (each clash files under
+    // both participants); that is not "ineffective clustering", it's a
+    // different mode entirely, so this helper is only meaningful for by: 'cluster'
+    // output, and this test pins that it does not special-case other modes.
+    const clashes = [
+      clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] }),
+      clash({ id: 'c2', a: PIPE, b: BEAM2, rule: 'R', point: [5, 0, 0] }),
+    ];
+    const elementGroups = groupClashes(makeResult(clashes), { by: 'element' });
+    expect(elementGroups.length).toBeGreaterThan(clashes.length);
+    expect(isClusterGroupingIneffective(clashes, elementGroups)).toBe(false);
   });
 });

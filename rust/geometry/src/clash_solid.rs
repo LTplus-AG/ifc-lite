@@ -35,11 +35,21 @@
 //! something. This module therefore refuses to return a solid it cannot stand
 //! behind, and says why. The viewer draws the existing contact marker instead.
 //!
-//! This is a real limit, not a conservatism knob: on a real infrastructure model
-//! the genuine coordination issues graze by 0.3–1.5 µm, four orders of magnitude
-//! below one snap cell. **No intersection solid exists for those at this
-//! kernel's resolution**, and inventing one would be a sliver, not a finding.
+//! This is a real limit, not a conservatism knob: below the near band there is
+//! no exact solid to compute, only a coplanar contact, and the arrangement's
+//! own output cannot tell you otherwise. **No intersection solid exists for
+//! those pairs at this kernel's resolution**, and inventing one would be a
+//! sliver, not a finding.
+//!
+//! Note what the sub-micron distances this kernel reports are NOT: evidence of
+//! fine coordination issues. `TriMesh` ingests geometry as `f32` and queries it
+//! in `f64`, so those distances land on the `f32` ULP at the pair's coordinate
+//! magnitude — `2^-22 m ≈ 0.238 µm` for coordinates in `[2, 4)` — repeated
+//! bit-identically across unrelated pairs, which is the signature of a
+//! quantization floor rather than a physical graze. Do not state a real-world
+//! graze distance here without a reproducible per-pair measurement behind it.
 
+use crate::clash_contact_axes::{dot3, gate_axes};
 use crate::kernel::arrangement::Tri;
 use crate::kernel::mesh_bridge::{intersection_tris, near_band_from_extent};
 use crate::mesh::Mesh;
@@ -68,7 +78,9 @@ pub enum DegenerateReason {
     /// resolve the overlap as a solid rather than a coplanar contact. The solid
     /// that would be returned here is systematically wrong (see the module
     /// docs), so it is withheld. `thickness_m` is the intersection's smallest
-    /// bounding-box extent, `required_m` the depth this pair would have needed.
+    /// extent over the candidate contact normals (see `gate_axes`), which for a
+    /// box-box pair is the true penetration depth whatever the pair's
+    /// orientation; `required_m` is the depth this pair would have needed.
     ///
     /// `thickness_m == 0.0` exactly is a real and distinct outcome, observed on
     /// the bridge model (`IfcColumn` #761 × `IfcWall` #828): the kernel returned
@@ -184,23 +196,48 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         return IntersectionSolid::Degenerate(reason);
     }
 
-    // Gate on the solid's thinnest bounding-box extent. It is a sound proxy for
-    // penetration depth here BECAUSE it is the one quantity the misclassification
-    // does not corrupt: the wedge the kernel returns for a sub-band overlap still
-    // spans the full slab, so its bounding box still reports the true (too small)
+    // Gate on the solid's thinnest extent. It is a sound proxy for penetration
+    // depth here BECAUSE it is the one quantity the misclassification does not
+    // corrupt: the wedge the kernel returns for a sub-band overlap still spans
+    // the full slab, so its extent still reports the true (too small)
     // thickness. Deriving the gate from the volume instead would be circular —
     // the volume is the thing under suspicion.
-    let mut lo = [f64::INFINITY; 3];
-    let mut hi = [f64::NEG_INFINITY; 3];
-    for t in &tris {
-        for v in t {
-            for k in 0..3 {
-                lo[k] = lo[k].min(v[k]);
-                hi[k] = hi[k].max(v[k]);
+    //
+    // WHICH DIRECTION that thickness is measured along is the other half of the
+    // argument, and measuring it against the WORLD axes (as this did until the
+    // #2573 review) is only right when the contact normal happens to be
+    // parallel to one. Rotate the oracle's own 15–122 µm slab overlaps
+    // obliquely and the wedge's min world-axis extent jumps to ~0.6 m: the gate
+    // passed every one of them, and the volumes it returned ranged from 36 % to
+    // 103 % of the truth, drifting with tessellation
+    // (`rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_
+    // one_is`, in the oracle). `gate_axes` supplies the contact normal
+    // analytically instead, from the operands' own face planes, and keeps the
+    // world axes in the set so the measure can only get stricter. See its doc
+    // for what happens when an operand is not a box.
+    //
+    // Two earlier candidates were tried and rejected, both of which tried to
+    // recover the direction from the KERNEL'S OUTPUT rather than from the
+    // operands: (1) PCA of the wedge's vertex cloud is numerically unstable at
+    // the aspect ratios this gate deals with and regressed the already-correct
+    // axis-aligned case. (2) The normal of the wedge's largest-area triangle is
+    // wrong precisely in the regime this gate exists for: below the near band
+    // the kernel returns a genuine WEDGE (module docs above), not a flat slab,
+    // so its largest face is not reliably the cap — measured thickness came out
+    // over 30x too large on the very cases the oracle pins. Working from the
+    // operands' face planes sidesteps the wedge entirely.
+    let mut thickness = f64::INFINITY;
+    for axis in &gate_axes(a, b) {
+        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+        for t in &tris {
+            for v in t {
+                let p = dot3(*v, *axis);
+                lo = lo.min(p);
+                hi = hi.max(p);
             }
         }
+        thickness = thickness.min(hi - lo);
     }
-    let thickness = (0..3).fold(f64::INFINITY, |m, k| m.min(hi[k] - lo[k]));
     let required = TRUST_BAND_MULTIPLE * near_band_from_extent(operand_extent(a, b));
     if thickness < required {
         return IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution {

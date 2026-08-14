@@ -39,6 +39,36 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { render, cleanup } from '@/test/render.js';
 import { LocationMap } from './LocationMap.js';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter.js';
+import { setGlobalRendererRef } from '@/hooks/useBCF.js';
+import type { Renderer } from '@ifc-lite/renderer';
+import type { RefObject } from 'react';
+
+/** A materialised instanced occurrence, as `getAllInstancedMeshData` returns
+ *  them: world-space positions, no `origin`, real typed arrays (the export
+ *  path sums their lengths). */
+function instancedOccurrence(expressId: number): MeshData {
+  return {
+    expressId,
+    positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1],
+  } as unknown as MeshData;
+}
+
+/** Install a fake global renderer whose scene reports `instanced` occurrences —
+ *  the compact-shard half of the model, absent from `geometryResult.meshes`. */
+function setInstancedScene(instanced: MeshData[] | null): void {
+  const scene = instanced === null
+    ? undefined
+    : {
+        getAllInstancedMeshData: () => instanced,
+        getInstancedEntityCount: () => new Set(instanced.map((m) => m.expressId)).size,
+      };
+  setGlobalRendererRef(
+    { current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>,
+  );
+}
 
 /**
  * The #2526 file: IfcSite placed at the absolute EPSG:25833 coordinate (the
@@ -73,6 +103,7 @@ const GEOMETRY_RESULT = {
 } as GeometryResult;
 
 interface RecordedCall {
+  meshes: MeshData[];
   altitude: number;
   xAxisAbscissa: number | undefined;
   xAxisOrdinate: number | undefined;
@@ -84,8 +115,8 @@ function makeStub() {
   const calls: RecordedCall[] = [];
   const gp: KmzProcessor = {
     async init() {},
-    exportKmzFromMeshes(_meshes, _lat, _lon, altitude, xAxisAbscissa, xAxisOrdinate, _name, altitudeMode) {
-      calls.push({ altitude, xAxisAbscissa, xAxisOrdinate, altitudeMode });
+    exportKmzFromMeshes(meshes, _lat, _lon, altitude, xAxisAbscissa, xAxisOrdinate, _name, altitudeMode) {
+      calls.push({ meshes: meshes as MeshData[], altitude, xAxisAbscissa, xAxisOrdinate, altitudeMode });
       return new Uint8Array([0x50, 0x4b, 0x03, 0x04]); // "PK\x03\x04"
     },
     dispose() {},
@@ -130,7 +161,10 @@ async function exportViaButton(): Promise<RecordedCall[]> {
 }
 
 describe('LocationMap — Google Earth (KMZ) export', () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  });
 
   it('exports a map-absolute model with the GUARDED heading, not the authored 90-degree axis', async () => {
     const calls = await exportViaButton();
@@ -151,6 +185,32 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
     assert.strictEqual(calls[0].altitude, 14);
   });
 
+  it('exports the GPU-instanced occurrences too, not just the flat mesh list (#2577)', async () => {
+    // `geometryResult.meshes` is only part of the model: repeated opaque
+    // geometry (facade panels, mullions, windows) renders from compact shards
+    // and is deliberately absent from it. Passing that list straight to the
+    // exporter shipped a KMZ with the repeated geometry missing — the same
+    // defect #2576 fixed for the on-screen world view.
+    setInstancedScene([instancedOccurrence(42)]);
+
+    const calls = await exportViaButton();
+
+    assert.strictEqual(calls.length, 1, 'expected exactly one KMZ export');
+    assert.deepStrictEqual(
+      calls[0].meshes.map((m) => m.expressId).sort((a, b) => a - b),
+      [1, 42],
+      'the exported file must carry the flat mesh AND the instanced occurrence',
+    );
+  });
+
+  it('exports the flat model unchanged when the scene holds no instanced geometry', async () => {
+    setInstancedScene([]);
+
+    const calls = await exportViaButton();
+
+    assert.deepStrictEqual(calls[0].meshes.map((m) => m.expressId), [1]);
+  });
+
   it('agrees with the Export KMZ dialog, which is the point of sharing one builder', async () => {
     const { gp, calls } = makeStub();
     const { buildKmzForResolvedGeoref } = await import('@/lib/geo/kmz-export.js');
@@ -159,7 +219,8 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       crs: EPSG_25833,
       coordinateInfo: MAP_ABSOLUTE_COORDINATE_INFO,
       lengthUnitScale: 1,
-      meshes: GEOMETRY_RESULT.meshes as MeshData[],
+      geometryResult: GEOMETRY_RESULT,
+      isPrimaryModel: true,
       name: 'IFC Model',
     }, () => gp);
     assert.ok(out instanceof Uint8Array);
@@ -167,9 +228,10 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
     const viaPanel = await exportViaButton();
     assert.strictEqual(viaPanel.length, 1, 'expected exactly one KMZ export from the panel');
     assert.strictEqual(calls.length, 1, 'expected exactly one KMZ export from the builder');
+    const placement = ({ meshes: _meshes, ...rest }: RecordedCall) => rest;
     assert.deepStrictEqual(
-      viaPanel[0],
-      calls[0],
+      placement(viaPanel[0]),
+      placement(calls[0]),
       'the panel and the dialog must place the same model identically',
     );
   });

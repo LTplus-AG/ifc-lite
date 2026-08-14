@@ -55,6 +55,20 @@ describe('plugin-api types', () => {
     expectTypeOf<SourceTag>().toHaveProperty('loadedAt');
   });
 
+  it('the source hierarchy types carry their identifying fields', () => {
+    // These three were imported and then never asserted on, which the unused-
+    // locals ratchet surfaced once it started measuring test files. Deleting
+    // the imports would have been the smaller change and the wrong one: the
+    // listing types are the provider contract, so the intent was clearly to
+    // cover them.
+    expectTypeOf<SourceProject>().toHaveProperty('id');
+    expectTypeOf<SourceProject>().toHaveProperty('name');
+    expectTypeOf<SourceContainer>().toHaveProperty('id');
+    expectTypeOf<SourceContainer>().toHaveProperty('name');
+    expectTypeOf<SourceFile>().toHaveProperty('id');
+    expectTypeOf<SourceFile>().toHaveProperty('name');
+  });
+
   it('PluginManifest has required fields', () => {
     expectTypeOf<PluginManifest>().toHaveProperty('name');
     expectTypeOf<PluginManifest>().toHaveProperty('title');

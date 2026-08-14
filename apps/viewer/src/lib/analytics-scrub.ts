@@ -418,6 +418,74 @@ const tagErrorKind = (
   event.properties.error_kind = kind;
 };
 
+// ── Wasm trap attribution (#1196, #2527) ────────────────────────────────────
+// A Rust panic in the wasm engine reaches JS as `RuntimeError: unreachable`
+// (`panic = "abort"`), so the second bare-trap PostHog issue in a row arrived
+// carrying nothing to triage — the panic hook had printed the real location to
+// the console, but the console is not captured. The engine's panic hook
+// (rust/wasm-bindings/src/utils.rs) now stashes the panic's SOURCE LOCATION on
+// the realm's global as `__ifclite_wasm_panic = { location, at }`; here — the
+// same realm, since posthog runs where the main-thread trap surfaced — it is
+// attached to the trap's exception event as `wasm_panic_location`.
+//
+// Only the source location ever travels: the panic's payload message can embed
+// model-derived text, so it stays console-only. The stash is consumed on
+// attach, ignored when stale (a trap surfaces within milliseconds of its
+// panic; anything older is a suppressed trap that must not mislabel a later
+// one), and left in place for a non-trap exception that merely interleaved.
+// Deliberately a property, never an `error_kind` or fingerprint — #1196
+// settled that bare traps stay ungrouped (see load-errors.ts).
+const WASM_PANIC_STASH_KEY = '__ifclite_wasm_panic';
+const WASM_PANIC_STASH_TTL_MS = 60_000;
+
+// Trap identity: the stable `.type` (the spec fixes `RuntimeError` for every
+// wasm trap) or, on the string-only path, the engine's trap phrasings.
+// Excludes bare "unreachable" inside network-failure phrasing ("network is
+// unreachable", "host unreachable", etc.) — those are not wasm traps, and
+// matching them would consume the panic stash and stamp a genuine Rust
+// panic location onto an unrelated network error while leaving the real
+// trap that arrives a moment later with nothing (Safari lookbehind support:
+// stable since 16.4, so this is safe to rely on across all supported
+// browsers). Kept in lockstep with the identical `WASM_TRAP_TEXT` in
+// `packages/geometry/src/wasm-panic-forward.ts` and
+// `packages/parser/src/wasm-panic-forward.ts`.
+const WASM_TRAP_TEXT =
+  /(?<!network is |host |destination |address )\bunreachable\b|\bRuntimeError\b|memory access out of bounds|index out of bounds|indirect call to null|integer (?:overflow|divide by zero)|call stack exhausted/i;
+
+const isWasmTrapException = (props: Record<string, unknown>): boolean => {
+  const list = props.$exception_list;
+  if (
+    Array.isArray(list) &&
+    list.some((e) => (e as { type?: unknown } | null)?.type === 'RuntimeError')
+  ) {
+    return true;
+  }
+  const message = exceptionMessage(props);
+  return message !== undefined && WASM_TRAP_TEXT.test(message);
+};
+
+const attachWasmPanicLocation = (
+  event: { event?: string; properties?: Record<string, unknown> },
+): void => {
+  if (event.event !== '$exception' || !event.properties) return;
+  const g = globalThis as Record<string, unknown>;
+  const stash = g[WASM_PANIC_STASH_KEY];
+  if (stash === undefined) return;
+  if (!isWasmTrapException(event.properties)) return;
+  // Consume-once for ANY trap exception — stale or malformed included — so one
+  // stash can never label two traps. Delete BEFORE validating shape: a
+  // non-object stash must not linger on the global just because it failed
+  // validation (that would contradict "malformed included" above).
+  delete g[WASM_PANIC_STASH_KEY];
+  if (typeof stash !== 'object' || stash === null) return;
+  const { location, at } = stash as { location?: unknown; at?: unknown };
+  if (typeof location !== 'string' || location === '') return;
+  if (typeof at !== 'number' || !(Date.now() - at <= WASM_PANIC_STASH_TTL_MS)) return;
+  // A location deliberately set at the capture site wins.
+  if (typeof event.properties.wasm_panic_location === 'string') return;
+  event.properties.wasm_panic_location = location;
+};
+
 // ── Issue grouping ──────────────────────────────────────────────────────────
 // PostHog groups exceptions into issues by hashing the exception type + message
 // (+ stack) unless the client supplies `$exception_fingerprint`, which takes
@@ -548,6 +616,9 @@ export const scrubEvent = <
   // still rely on the original wording.
   tagErrorKind(event);
   stampFingerprint(event);
+  // Before the property walk, so the attached location passes the same
+  // path-redaction net as every other property.
+  attachWasmPanicLocation(event);
   // After tagging (both read `error_kind`) and before the property walk, which
   // may delete keys these read.
   if (isOfflineNetworkFailure(event)) return null;

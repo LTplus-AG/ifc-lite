@@ -7,7 +7,6 @@ import type { Logger, PluginContext } from '@ifc-lite/plugin-api';
 import {
   LATEST_REVISION,
   convertListLenient,
-  currentRevisionId,
   decodeContainerId,
   fileAreaContainerId,
   folderContainerId,

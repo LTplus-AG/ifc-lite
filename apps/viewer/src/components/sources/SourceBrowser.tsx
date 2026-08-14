@@ -85,13 +85,19 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     [folders],
   );
 
+  // Always scoped to the selected folder's own containerId — even at the
+  // file area root, where a recursive-listing provider (e.g. Dalux) already
+  // holds every descendant file in `allFiles`. Showing that whole set at the
+  // root mixed files from every subfolder together, which broke both the
+  // "files only appear in their own folder" expectation and, downstream,
+  // made the per-folder alphabetical sort look wrong (it was sorting a
+  // cross-folder set, not that folder's files).
   const visibleFiles = useMemo(() => {
     if (search.active) return search.items;
     const targetId = selectedContainer?.id ?? selectedFileArea?.id;
     if (!targetId || !selectedFileArea) return [];
-    if (capabilities.listFilesIsRecursive && targetId === selectedFileArea.id) return allFiles;
     return allFiles.filter((file) => file.containerId === targetId);
-  }, [allFiles, capabilities.listFilesIsRecursive, search.active, search.items, selectedContainer, selectedFileArea]);
+  }, [allFiles, search.active, search.items, selectedContainer, selectedFileArea]);
 
   const sortedFiles = useMemo(
     () => [...visibleFiles].sort((left, right) => left.name.localeCompare(right.name, undefined, {
@@ -295,13 +301,10 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
             setError(null);
             catalog.loadMoreFolders(selectedContainerId);
           }}
-          filesHaveMore={
-            search.active ? search.hasMore : catalog.hasMoreFiles(selectedContainerId)
-          }
+          filesHaveMore={search.active && search.hasMore}
           onLoadMoreFiles={() => {
             setError(null);
             if (search.active) search.loadMore();
-            else catalog.loadMoreFiles(selectedContainerId);
           }}
           loadingMore={catalog.loadingMore || search.loadingMore}
           searchEnabled={capabilities.search && provider.searchFiles !== undefined}

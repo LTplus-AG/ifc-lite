@@ -21,12 +21,6 @@ import assert from 'node:assert/strict';
 import { RendererOverlays, type OverlayHost } from './renderer-overlays.js';
 import type { ClashSolidInput } from './clash-solid-pipeline.js';
 
-interface FakeClashSolidPipeline {
-  uploads: Array<ClashSolidInput | null>;
-  renders: number;
-  geometry: boolean;
-}
-
 function makeHarness() {
   const uploads: Array<ClashSolidInput | null> = [];
   let renders = 0;

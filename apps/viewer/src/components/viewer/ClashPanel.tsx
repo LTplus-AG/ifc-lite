@@ -844,7 +844,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         )}
 
         {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
-          <div className="flex flex-col items-center justify-center p-8 text-center" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
             <p className="text-sm font-medium">The matrix didn't apply to this model — it did NOT run.</p>
             <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
@@ -857,7 +857,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         )}
 
         {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
-          <div className="flex flex-col items-center justify-center p-8 text-center" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+          <div className="flex flex-col items-center justify-center p-8 text-center">
             <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
             <p className="text-sm font-medium">No comparison ran — a selector matched nothing.</p>
             <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">

@@ -1,5 +1,32 @@
 # @ifc-lite/wasm
 
+## 4.5.1
+
+### Patch Changes
+
+- [#2539](https://github.com/LTplus-AG/ifc-lite/pull/2539) [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the wasm panic hook so it actually survives `new IfcAPI()`: every realm was constructing an
+  `IfcAPI` before doing any work, and `IfcAPI::new()` called `console_error_panic_hook::set_once()`
+  directly — which owns its own `Once` and unconditionally replaces whatever panic hook is currently
+  installed. That silently overwrote the panic-location-stashing hook installed at module init,
+  so `globalThis.__ifclite_wasm_panic` was never written and the source-location attribution added
+  for [#2527](https://github.com/LTplus-AG/ifc-lite/issues/2527) was inert in production. `IfcAPI::new()` now calls the crate's own idempotent
+  `set_panic_hook()`, which no-ops if the stashing hook is already installed.
+
+  This is a runtime behavior change for the published `@ifc-lite/wasm` package: every uncaught Rust
+  panic now stashes `{ location, at }` on the realm's JS global (source location only, sanitised of
+  build-machine paths — never the panic message) for the duration of the panic hook's lifetime, where
+  downstream consumers (the viewer's error tracking) can read and consume it.
+
+## 4.5.0
+
+### Minor Changes
+
+- [#2579](https://github.com/LTplus-AG/ifc-lite/pull/2579) [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee) Thanks [@louistrue](https://github.com/louistrue)! - `splitMeshByZones(positions, indices, zones, footprints?, footprintCounts?)` cuts one element into one closed solid per location zone, plus the remainder (issue [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508) item 2).
+
+  Everything is in the caller's frame, and positions cross as f64: the split's whole value over an AABB estimate is exactness, and an f64 to f32 round trip at the boundary would put a crack back into every shared zone plane. A zone is an oriented box by default, or a vertical prism when its `footprintCounts` entry is non-zero.
+
+  Each result carries its own enclosed volume, and the handle carries `sumErrorRel` - how far the pieces are from summing to the whole. That is the invariant the issue puts above every other for this feature, and it is exposed rather than enforced: the expected cause of a failure is zones that overlap each other, and a number the caller can show beats a silent refusal.
+
 ## 4.4.1
 
 ### Patch Changes

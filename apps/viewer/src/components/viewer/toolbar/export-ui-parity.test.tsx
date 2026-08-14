@@ -575,6 +575,9 @@ describe('export UI parity (ifc-lite#2511)', () => {
       const message = successToasts.find((t) => t.includes(format));
       assert.ok(message, `no success toast mentions ${format}`);
       assert.ok(
+        // Asserting the PLACEHOLDER text itself: this is what a leaked template
+        // looks like in a toast, which is the bug the assertion exists for.
+        // eslint-disable-next-line no-template-curly-in-string
         message.includes('${activeModelOnlyNote}'),
         `the ${format} success toast must carry the partial-export note`,
       );
@@ -582,6 +585,8 @@ describe('export UI parity (ifc-lite#2511)', () => {
     const screenshotToast = successToasts.find((t) => t.includes('Screenshot'));
     assert.ok(screenshotToast, 'no success toast mentions the screenshot');
     assert.equal(
+      // As above: the placeholder text is the thing being looked for.
+      // eslint-disable-next-line no-template-curly-in-string
       screenshotToast.includes('${activeModelOnlyNote}'),
       false,
       'a screenshot captures the viewport, so it is not an active-model-only export',

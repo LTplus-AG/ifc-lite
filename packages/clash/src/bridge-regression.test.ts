@@ -7,32 +7,29 @@
  * arch bridge, PCERT-Sample-Scene). Pins the CLI-default clash count on this
  * model so it cannot silently drift.
  *
- * Investigated (2026-08): the user wanted this model to report 2 clashes —
- * the two real coordination issues, an abutment support beam clashing with
- * each of the two main girders. At CLI defaults it reports 81 hard clashes,
- * 73 of which are a masonry arch bridge interpenetrating itself *by design*
- * (arch segments, spandrel walls, fillers and pierstems overlapping the way
- * a masonry arch is modelled) and 8 of which are the 2 real IfcBeam x IfcBeam
- * issues (grouping to 2 clusters at epsilon >= 2.0 m; the CLI default 1.5 m
- * epsilon splits one abutment into two clusters, a known, unchanged default).
- *
- * A same-assembly/aggregate exclusion rule was tested as a principled way to
- * drop the 73 designed-interpenetration pairs without hand-listing types:
- * across all 81 clash pairs, ZERO share a common `IfcRelAggregates` ancestor
- * (`decomposedBy` chain) — the masonry elements involved (arch segment,
- * spandrel wall, filler, girder, slab) are not `IfcElementAssembly` members
- * at all in this file; only the piers (`rail bridge - pier`, `road river
- * bridge - pier`) use `IfcRelAggregates`, and none of their parts appear in
- * any of the 81 clashing pairs. `IfcRelConnectsElements` likewise matches
- * zero pairs. "Same spatial container" (e.g. the shared `IfcBridgePart`)
- * does match 37/81 pairs, but is not a safe default: it is exactly the
- * relationship that would also suppress a wall genuinely clashing with a
- * duct in the same storey on an ordinary building model, and it does not
- * even track the real/fake split here (none of the 8 real IfcBeam x IfcBeam
- * pairs share a container). Verdict: no principled relationship-based rule
- * reaches 2 without hand-listing types; the two real issues are only
- * reachable via the existing user-defined exclusions feature (PR #2535) plus
- * `groupClashes({ by: 'cluster', epsilon: 3 })`.
+ * At CLI defaults this model used to report 81 hard clashes. 31 of those were
+ * never real: the narrow phase found a genuine (non-coplanar) triangle
+ * crossing, but the "penetration" it measured was at or below the float32
+ * precision floor for that pair's coordinate scale — bit-noise from f32
+ * import (`rust/clash/src/tri_mesh.rs` ingests geometry from f32 buffers),
+ * not a measured overlap. 20 of the 31 were bit-identical at
+ * `-2.384185791015625e-7` (exactly the float32 ULP at magnitude `[2,4)`)
+ * across unrelated element-type pairs at different physical locations —
+ * the signature of a quantization floor, not independent measurements. The
+ * fix (`precisionFloor` in `narrow.ts` / `precision_floor` in `narrow.rs`)
+ * reclassifies a sub-floor crossing as `touch` (the surfaces genuinely are
+ * in contact — that's real information) instead of `hard`; CLI-default
+ * rules don't opt into `reportTouch`, so these pairs now report zero
+ * clashes instead of a spurious hard one. 50 hard clashes remain, none of
+ * them a real coordination defect: 27 carry fabricated depths from an AABB
+ * fallback on contained non-box pairs (a known, unfixed defect, tracked on
+ * #2536) and the other 23 (15 bearing/embedment + 8 `IfcBeam` x `IfcBeam`,
+ * grouping to 2 clusters at epsilon >= 2.0 m — the CLI default 1.5 m epsilon
+ * splits one abutment into two clusters, a known, unchanged default) are
+ * authored bearing details rather than defects. No exclusion rule reaches
+ * this model's "true" count of ~0 findings because there is nothing to
+ * exclude toward: reaching it needs #2536 fixed first, then an opt-in
+ * bearing rule (never a default — the file carries no connection metadata).
  */
 
 import { existsSync } from 'node:fs';
@@ -55,7 +52,7 @@ const canRun = existsSync(FIXTURE);
 
 describe.skipIf(!canRun)('regression: Infra-Bridge.ifc (buildingSMART sample) CLI-default clash count', () => {
   it(
-    'reports 81 hard clashes at CLI defaults, 8 of them IfcBeam x IfcBeam, grouping to 2 clusters at epsilon=3m',
+    'reports 50 hard clashes at CLI defaults, 8 of them IfcBeam x IfcBeam, grouping to 2 clusters at epsilon=3m',
     async () => {
       const bytes = await readFile(FIXTURE);
       const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -78,7 +75,7 @@ describe.skipIf(!canRun)('regression: Infra-Bridge.ifc (buildingSMART sample) CL
       const rules = [{ id: 'cli-rule', name: '* self-clash', a: '*', mode: 'hard' as const }];
       const clashResult = await engine.run(elements, rules, { exclusions });
 
-      expect(clashResult.summary.total).toBe(81);
+      expect(clashResult.summary.total).toBe(50);
 
       const beamBeam = clashResult.clashes.filter(
         (c) => c.a.tag === 'IfcBeam' && c.b.tag === 'IfcBeam',
@@ -87,8 +84,8 @@ describe.skipIf(!canRun)('regression: Infra-Bridge.ifc (buildingSMART sample) CL
 
       // Default epsilon (1.5m) splits one abutment's beam pairs into extra
       // clusters — a known, deliberately-unchanged default. At epsilon=3m
-      // (within the documented safe range [2.0, 6.5]) the 8 real pairs group
-      // to the 2 real coordination issues.
+      // (within the documented safe range [2.0, 6.5]) the 8 IfcBeam x IfcBeam
+      // pairs (authored bearing details, not defects) group to 2 clusters.
       const groups = groupClashes(clashResult, { by: 'cluster', epsilon: 3 });
       const beamBeamGroups = groups.filter((g) =>
         g.members.every((c) => c.a.tag === 'IfcBeam' && c.b.tag === 'IfcBeam'),

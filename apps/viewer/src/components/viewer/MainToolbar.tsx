@@ -68,7 +68,7 @@ import { goHomeFromStore, resetVisibilityForHomeFromStore } from '@/store/homeVi
 import { executeBasketIsolate } from '@/store/basket/basketCommands';
 import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
-import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box } from 'lucide-react';
+import { FileSpreadsheet, FileJson, FileText, Filter, Upload, Pencil, DraftingCompass, Box, Cloud } from 'lucide-react';
 import { BulkPropertyEditor } from './BulkPropertyEditor';
 import { DataConnector } from './DataConnector';
 import { ExportChangesButton } from './ExportChangesButton';
@@ -566,8 +566,8 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             Script Editor
           </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
-            checked={activeWorkspacePanels.has('list')}
-            onCheckedChange={() => handleToggleBottomPanel('list')}
+            checked={activeWorkspacePanels.has('lists')}
+            onCheckedChange={() => handleToggleBottomPanel('lists')}
           >
             <FileSpreadsheet className="h-4 w-4 mr-2" />
             Lists
@@ -618,6 +618,16 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
             <GitCompareArrows className="h-4 w-4 mr-2" />
             Compare Models
           </DropdownMenuCheckboxItem>
+          {/* Cloud sources (CDE integrations): the ActivityBar rail was its
+              only entry point, exactly as Location Zones was before #2508.
+              The ribbon files it under File, where models come from. */}
+          <DropdownMenuCheckboxItem
+            checked={activeWorkspacePanels.has('sources')}
+            onCheckedChange={() => handleToggleRightPanel('sources')}
+          >
+            <Cloud className="h-4 w-4 mr-2" />
+            Cloud Sources
+          </DropdownMenuCheckboxItem>
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('layers')}
             onCheckedChange={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
@@ -647,8 +657,13 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           <DropdownMenuLabel className="text-[10px] uppercase tracking-wide text-muted-foreground">
             Author
           </DropdownMenuLabel>
+          {/* Disabled for viewer/commenter roles, matching the ribbon. The
+              store rejects the tool change for them (`uiSlice`'s AUTHORING_TOOLS
+              gate), so an always-enabled item was a control that did nothing at
+              all when clicked, with nothing said about why. */}
           <DropdownMenuCheckboxItem
             checked={activeWorkspacePanels.has('addElement')}
+            disabled={!canEditInSession}
             onCheckedChange={() => handleToggleRightPanel('addElement')}
           >
             <PackagePlus className="h-4 w-4 mr-2" />
@@ -835,7 +850,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
         sense with a selection, so they don't get to live in the
         toolbar chrome at rest. When a user selects anything, the
         slot opens with a "N selected" pill + the three actions next
-        to it. Hotkeys (Del / F / I / =) keep working regardless of
+        to it. Hotkeys (Del / F / I) keep working regardless of
         whether the chip is rendered, so power users feel no change.
 
         The chip lives in the same separator zone the buttons used to
@@ -853,7 +868,7 @@ export function MainToolbar({ onShowShortcuts }: MainToolbarProps = {} as MainTo
           >
             {selectionCount} sel
           </span>
-          <ActionButton icon={Equal} label="Isolate Selection (Set Basket)" onClick={handleIsolate} shortcut="I / =" />
+          <ActionButton icon={Equal} label="Isolate Selection (Set Basket)" onClick={handleIsolate} shortcut="I" />
           <ActionButton icon={EyeOff} label="Hide Selection" onClick={handleHide} shortcut="Del / Space" />
           <ActionButton
             icon={Crosshair}

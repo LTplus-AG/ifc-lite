@@ -152,6 +152,9 @@ pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
 pub(crate) mod void_index;
+/// Cut one element into one closed solid per location zone (#2508 item 2), on
+/// top of the exact kernel rather than beside it.
+pub mod zone_split;
 
 // Re-export nalgebra types for convenience
 pub use nalgebra::{Point2, Point3, Vector2, Vector3};
@@ -169,6 +172,7 @@ pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
 pub use geom_hash::{
     hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
+    MIN_GEOM_HASH_TOLERANCE,
 };
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{

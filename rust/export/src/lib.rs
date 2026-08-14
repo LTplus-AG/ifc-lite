@@ -7,6 +7,10 @@
 //! This is the Rust source of truth; CLI / SDK / wasm become thin callers (mirroring how
 //! geometry already flows through `ifc-lite-wasm`).
 
+#[cfg(test)]
+#[macro_use]
+mod test_support;
+
 mod adjacency;
 mod collada;
 mod constructions;
@@ -223,18 +227,13 @@ mod tests {
 
     /// Skip-if-absent fixture loader (matches the geometry crate convention — test
     /// models are staged, not git-tracked, so a fresh checkout returns `None`).
-    fn fixture(rel: &str) -> Option<Vec<u8>> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(path).ok()
-    }
-
     #[test]
     fn entity_count_reexport_matches_index() {
         // The re-exported cheap tally must equal the full index's entity count
         // (both walk the same scanner) — so a downstream can gate on the count
         // without paying for the index. Well-formed fixtures have unique ids, so
         // the index map length equals the scanned entity count.
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             eprintln!(
                 "skipping entity_count_reexport_matches_index: fixture absent — run `pnpm fixtures`"
             );
@@ -248,7 +247,7 @@ mod tests {
 
     #[test]
     fn duplex_exports_valid_room_model() {
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
@@ -317,7 +316,7 @@ mod tests {
     /// pins wall faces to the wall build-up and floor/roof faces to the slab build-up.
     #[test]
     fn duplex_faces_get_construction_by_face_type_not_swapped() {
-        let Some(bytes) = fixture("ara3d/duplex.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());
@@ -352,7 +351,7 @@ mod tests {
     fn revit_georeferenced_model_does_not_collapse() {
         // rvt01 carries national-grid coordinates (~2.78e6); the origin-rebase must keep
         // room footprints sane (no f32 collapse).
-        let Some(bytes) = fixture("various/rvt01.ifc") else {
+        let Some(bytes) = crate::test_support::fixture_opt("various/rvt01.ifc") else {
             return;
         };
         let (json, stats) = export_hbjson_with_stats(&bytes, &HbjsonOptions::default());

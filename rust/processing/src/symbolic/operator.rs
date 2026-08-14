@@ -36,7 +36,24 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
     unit_scale: f32,
 ) -> Transform2D {
     // attr 2 = LocalOrigin (IfcCartesianPoint).
-    let (tx, ty) = match operator.get_ref(2) {
+    //
+    // Z is read alongside X and Y, and scaled the same way. It is NOT covered by
+    // the Axis3 argument below: that one is about the rotation columns, where the
+    // plan projection genuinely discards the third column. `LocalOrigin` Z is a
+    // TRANSLATION, and it survives a plan projection exactly the way the readers
+    // of `Transform2D::tz` expect it to.
+    //
+    // This transform reaches them through `items.rs`'s `composed_transform`
+    // (the MappedItem branch), and `tz` is then the annotation's world
+    // elevation at `items.rs:160` / `:201` / `:259` (polyline, indexed
+    // poly-curve, circle/ellipse), `trimmed_curve.rs:61`, `text.rs:105` and
+    // `fill.rs:52`. Dropping it put a MappedItem placed through an
+    // `IfcCartesianTransformationOperator3D` with a non-zero Z at the wrong
+    // elevation, and the viewer treats a finite `worldY` as authoritative --
+    // it wins over the storey-table fallback when bucketing, so a wrong value
+    // is worse than an absent one. A 2D operator has no third coordinate, so
+    // `get(2)` is `None` and `tz` stays 0.0.
+    let (tx, ty, tz) = match operator.get_ref(2) {
         Some(loc_ref) => match decoder.decode_by_id(loc_ref) {
             Ok(loc) if loc.ifc_type == IfcType::IfcCartesianPoint => {
                 let coords = loc
@@ -46,11 +63,12 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
                     .unwrap_or_default();
                 let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
-                (x * unit_scale, y * unit_scale)
+                let z = coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+                (x * unit_scale, y * unit_scale, z * unit_scale)
             }
-            _ => (0.0, 0.0),
+            _ => (0.0, 0.0, 0.0),
         },
-        None => (0.0, 0.0),
+        None => (0.0, 0.0, 0.0),
     };
 
     // Scale (attr 3), defaulting to 1.0 when absent/null or non-finite (the same
@@ -126,7 +144,7 @@ pub(in super::super) fn parse_cartesian_transformation_operator(
     Transform2D {
         tx,
         ty,
-        tz: 0.0,
+        tz,
         m00: x_axis.0 * scale,
         m10: x_axis.1 * scale,
         m01: y_axis.0 * scale,

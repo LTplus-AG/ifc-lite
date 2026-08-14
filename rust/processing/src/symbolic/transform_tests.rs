@@ -102,3 +102,63 @@ fn genuine_2d_placement_still_parses() {
     assert!((result.ty - 20.0).abs() < 1e-4);
     assert!((result.m10 - 1.0).abs() < 1e-4);
 }
+
+/// `LocalOrigin`'s Z must reach `Transform2D::tz`, scaled like X and Y.
+///
+/// `tz` is not decorative. This parser's transform reaches the item walk via
+/// `items.rs`'s `composed_transform`, and `tz` is the annotation's world
+/// elevation at `items.rs:160` / `:201` / `:259`, `trimmed_curve.rs:61`,
+/// `text.rs:105` and `fill.rs:52`. Hardcoding `tz: 0.0` put a MappedItem
+/// placed through an `IfcCartesianTransformationOperator3D` with a non-zero Z
+/// at the wrong elevation, silently. Delete the Z read and this goes red.
+#[test]
+fn operator_local_origin_z_reaches_tz() {
+    let body = "\
+#1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
+#2=IFCCARTESIANPOINT((1.,2.,3.));
+";
+    let entity = decode(body, 1);
+    let content = format!("{HEADER}{body}{FOOTER}");
+    let mut decoder = EntityDecoder::new(&content);
+    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+
+    assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
+    assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
+    assert!((result.tz - 3.0).abs() < 1e-4, "LocalOrigin Z must reach tz: {result:?}");
+}
+
+/// The same, under a unit scale: Z is scaled exactly like X and Y, so a
+/// millimetre-authored model does not land 1000x off in elevation alone.
+#[test]
+fn operator_local_origin_z_is_unit_scaled_like_x_and_y() {
+    let body = "\
+#1=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#2,$,$);
+#2=IFCCARTESIANPOINT((1000.,2000.,3000.));
+";
+    let entity = decode(body, 1);
+    let content = format!("{HEADER}{body}{FOOTER}");
+    let mut decoder = EntityDecoder::new(&content);
+    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 0.001);
+
+    assert!((result.tx - 1.0).abs() < 1e-4, "tx: {result:?}");
+    assert!((result.ty - 2.0).abs() < 1e-4, "ty: {result:?}");
+    assert!((result.tz - 3.0).abs() < 1e-4, "tz must take the same unit_scale: {result:?}");
+}
+
+/// Bounding control: a 2D operator has no third coordinate, so `tz` stays 0
+/// rather than picking up garbage from a short coordinate list.
+#[test]
+fn operator_2d_local_origin_leaves_tz_zero() {
+    let body = "\
+#1=IFCCARTESIANTRANSFORMATIONOPERATOR2D($,$,#2,$);
+#2=IFCCARTESIANPOINT((4.,5.));
+";
+    let entity = decode(body, 1);
+    let content = format!("{HEADER}{body}{FOOTER}");
+    let mut decoder = EntityDecoder::new(&content);
+    let result = parse_cartesian_transformation_operator(&entity, &mut decoder, 1.0);
+
+    assert!((result.tx - 4.0).abs() < 1e-4, "tx: {result:?}");
+    assert!((result.ty - 5.0).abs() < 1e-4, "ty: {result:?}");
+    assert!(result.tz.abs() < 1e-6, "2D operator must leave tz at 0: {result:?}");
+}

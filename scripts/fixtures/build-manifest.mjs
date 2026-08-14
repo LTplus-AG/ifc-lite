@@ -76,6 +76,8 @@ function globToRegExp(glob) {
       }
     } else if (c === '?') {
       re += '[^/]';
+      // A set of regex metacharacters to escape, not a template.
+      // eslint-disable-next-line no-template-curly-in-string
     } else if ('.+^${}()|[]\\'.includes(c)) {
       re += '\\' + c;
     } else {

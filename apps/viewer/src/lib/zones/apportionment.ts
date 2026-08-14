@@ -25,6 +25,7 @@ import {
   piecesAabb,
   type ElementMeshPiece,
 } from './apportionment-clip.js';
+import { clippedVolumeForPrism, compilePrism } from './prism.js';
 
 // Re-exported so `./apportionment-clip.js` stays an implementation detail for
 // every existing consumer (`lib/zones/index.ts`, the hook, the tests).
@@ -150,7 +151,12 @@ export function apportionElementVolume(
     for (const zone of zones) {
       const compiled = compileZone(zone);
       if (!zoneOverlapsAABBCompiled(aabb[0], aabb[1], aabb[2], aabb[3], aabb[4], aabb[5], compiled)) continue;
-      const v = clippedVolumeForZone(pieces, compiled) * sign;
+      // A prism integrates the same way against a different decomposition of
+      // the same field (see `prism.ts`). Routed here rather than inside the box
+      // clipper so the measured box path keeps its shape exactly.
+      const v = (zone.footprint
+        ? clippedVolumeForPrism(pieces, compilePrism(zone.footprint, compiled.minY, compiled.maxY))
+        : clippedVolumeForZone(pieces, compiled)) * sign;
       if (!Number.isFinite(v) || v <= negligible) {
         if (v < -negligible) unreliable = true;
         continue;

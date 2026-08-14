@@ -22,7 +22,6 @@
 
 import { describe, it, expect } from 'vitest';
 import ts from 'typescript';
-import { readFileSync } from 'node:fs';
 import { parseExpressSchema } from '../src/express-parser.js';
 import { generateTypeIds } from '../src/type-ids-generator.js';
 import { crc32, buildCRC32Table } from '../src/crc32.js';
@@ -133,25 +132,66 @@ describe('generateTypeIds — emitted source shape', () => {
  * the two-cell CRC32_TABLE corruption was fixed in the generator, but the
  * sibling `generated/ifc4x3/type-ids.ts` was not re-run and kept shipping
  * cells 111 and 245 wrong. Re-running `generateTypeIds` in-memory (as the
- * describe block above does) cannot catch that class of bug, because it
- * never reads the file that actually ships. This reads the real files from
- * disk instead.
+ * describe block above does) cannot catch that class of bug, because it never
+ * touches the file that actually ships.
+ *
+ * These RUN the shipped modules rather than reading their text (#2434). That
+ * is not just a change of idiom: the text version could only ever see the one
+ * construct it knew how to spell — a `new Uint32Array([...])` literal of
+ * eight-digit lowercase hex. A regenerated file that emitted the same table as
+ * decimals, in a different container, or built it at module scope would make
+ * `extractEmittedCRC32Table` throw (loud but wrong) while a corrupted `crc32Hash`
+ * around an intact literal stayed green. Executing `crc32Hash` asks the
+ * question the consumer actually asks, so any of those routes to a wrong hash
+ * fails here.
+ *
+ * `CRC32_TABLE` is not exported, so the cells are reached through `crc32Hash`.
+ * Every-cell coverage is not assumed — `cellsTouchedBy` replays the same index
+ * sequence against the canonical table and the test asserts all 256 are hit
+ * before trusting the comparison. Without that the suite would silently become
+ * "the cells this particular name list happens to touch", which is precisely
+ * how cells 111 and 245 shipped wrong in the first place.
  */
-describe('checked-in generated artifacts — CRC32_TABLE stays in sync with the source', () => {
-  const canonical = Array.from(buildCRC32Table());
+describe('checked-in generated artifacts — the shipped crc32Hash stays in sync with the source', () => {
+  const canonical = buildCRC32Table();
 
-  const generatedFiles = [
-    ['ifc4', new URL('../generated/ifc4/type-ids.ts', import.meta.url)],
-    ['ifc4x3', new URL('../generated/ifc4x3/type-ids.ts', import.meta.url)],
+  /** The CRC32_TABLE cell indexes hashing `name` reads, per the shipped algorithm. */
+  function cellsTouchedBy(name: string): number[] {
+    const upper = name.toUpperCase();
+    const touched: number[] = [];
+    let crc = 0xffffffff;
+    for (let i = 0; i < upper.length; i++) {
+      const cell = (crc ^ upper.charCodeAt(i)) & 0xff;
+      touched.push(cell);
+      crc = (canonical[cell] ^ (crc >>> 8)) >>> 0;
+    }
+    return touched;
+  }
+
+  const generatedModules = [
+    ['ifc4', () => import('../generated/ifc4/type-ids.js')],
+    ['ifc4x3', () => import('../generated/ifc4x3/type-ids.js')],
   ] as const;
 
-  for (const [schemaName, fileUrl] of generatedFiles) {
-    it(`generated/${schemaName}/type-ids.ts's CRC32_TABLE matches buildCRC32Table() in all 256 cells`, () => {
-      const code = readFileSync(fileUrl, 'utf8');
-      const emitted = extractEmittedCRC32Table(code);
-      expect(emitted, `${schemaName}: table length`).toHaveLength(256);
-      for (let i = 0; i < 256; i++) {
-        expect(emitted[i], `${schemaName}: cell ${i}`).toBe(canonical[i]);
+  for (const [schemaName, load] of generatedModules) {
+    it(`generated/${schemaName}/type-ids.ts hashes correctly through all 256 table cells`, async () => {
+      const mod = (await load()) as unknown as EmittedTypeIds;
+      const names = Object.keys(mod.TYPE_IDS);
+      expect(names.length, `${schemaName}: entity set`).toBeGreaterThan(500);
+
+      const covered = new Set<number>();
+      for (const name of names) for (const cell of cellsTouchedBy(name)) covered.add(cell);
+      expect(covered.size, `${schemaName}: table cells reached by the entity set`).toBe(256);
+
+      for (const name of names) {
+        expect(mod.crc32Hash(name), `${schemaName}: ${name}`).toBe(crc32(name));
+      }
+    });
+
+    it(`generated/${schemaName}/type-ids.ts's own TYPE_IDS agree with crc32()`, async () => {
+      const mod = (await load()) as unknown as EmittedTypeIds;
+      for (const [name, id] of Object.entries(mod.TYPE_IDS)) {
+        expect(id, `${schemaName}: ${name}`).toBe(crc32(name));
       }
     });
   }

@@ -58,11 +58,21 @@ interface BuiltChunk {
   result: number;
 }
 
-/** Builds the fixture at `target`, returning the single emitted chunk. */
-async function buildFixture(target: string, run: boolean): Promise<BuiltChunk> {
+/**
+ * Builds `source` (written as `entry.<ext>`) at `target`, returning the single
+ * emitted chunk — and, when `run`, its exports after evaluation.
+ */
+async function buildSource(
+  source: string,
+  ext: 'ts' | 'mjs',
+  target: string,
+  run: boolean,
+  plugins = [topLevelAwait()],
+): Promise<BuiltChunk> {
   const root = mkdtempSync(join(tmpdir(), 'ifclite-2130-'));
   try {
-    writeFileSync(join(root, 'entry.ts'), FIXTURE);
+    const entry = join(root, `entry.${ext}`);
+    writeFileSync(entry, source);
     const outDir = join(root, 'dist');
     mkdirSync(outDir, { recursive: true });
     await build({
@@ -73,9 +83,9 @@ async function buildFixture(target: string, run: boolean): Promise<BuiltChunk> {
         target,
         outDir,
         emptyOutDir: true,
-        lib: { entry: join(root, 'entry.ts'), formats: ['es'], fileName: 'chunk' },
+        lib: { entry, formats: ['es'], fileName: 'chunk' },
       },
-      plugins: [topLevelAwait()],
+      plugins,
     });
     const emitted = readdirSync(outDir).filter((f) => f.endsWith('.mjs') || f.endsWith('.js'));
     assert.equal(emitted.length, 1, `expected exactly one chunk, got ${emitted.join(', ')}`);
@@ -94,16 +104,29 @@ async function buildFixture(target: string, run: boolean): Promise<BuiltChunk> {
   }
 }
 
+const buildFixture = (target: string, run: boolean): Promise<BuiltChunk> =>
+  buildSource(FIXTURE, 'ts', target, run);
+
+const DISPOSAL_ORDER = ['open:a', 'open:b', 'body', 'close:b', 'close:a'];
+
 describe('using declarations survive the vite-plugin-top-level-await pipeline (#2130)', () => {
-  it('builds a chunk containing a `using` declaration at target esnext', async () => {
+  it('keeps the esnext chunk\'s disposal semantics through the SWC round trip', async () => {
     // Before the patches this rejected with an SWC parse error
     // ("Using declaration is not enabled"), surfacing in the real viewer build
     // as a miette panic with no line number.
     const { code } = await buildFixture('esnext', false);
-    // esnext keeps `using` un-lowered, so the plugin's SWC round trip has to
-    // both parse and re-print it. Assert it survived rather than being dropped:
-    // a chunk that silently lost the declaration would never dispose the handle.
-    assert.match(code, /\busing\b/, 'the `using` declaration was lost in the SWC round trip');
+
+    // esnext keeps `using` un-lowered, and node 22 cannot parse it — which is
+    // why this used to assert `/\busing\b/` on the chunk text (#2434). That
+    // match is satisfied by the word appearing anywhere, including inside an
+    // unrelated identifier's neighbour or a re-printed comment, and says
+    // nothing about whether the declaration still DISPOSES. So instead: feed
+    // the emitted chunk back through a second build that lowers it, and run
+    // the result. A round trip that dropped the declaration lowers to a body
+    // with no try/finally, and the ordering below is what notices.
+    const lowered = await buildSource(code, 'mjs', 'es2022', true, []);
+    assert.equal(lowered.result, 42);
+    assert.deepEqual(lowered.order, DISPOSAL_ORDER);
   });
 
   it('preserves disposal semantics when the target lowers `using`', async () => {
@@ -111,6 +134,6 @@ describe('using declarations survive the vite-plugin-top-level-await pipeline (#
     // chunk is executable here and the ordering contract can be asserted for real.
     const { order, result } = await buildFixture('es2022', true);
     assert.equal(result, 42);
-    assert.deepEqual(order, ['open:a', 'open:b', 'body', 'close:b', 'close:a']);
+    assert.deepEqual(order, DISPOSAL_ORDER);
   });
 });

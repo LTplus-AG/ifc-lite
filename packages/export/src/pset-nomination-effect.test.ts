@@ -42,7 +42,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { QuantityType } from '@ifc-lite/data';
-import { IfcParser, extractPropertiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, extractPropertiesOnDemand, extractQuantitiesOnDemand, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 
@@ -252,12 +252,11 @@ describe('a set edit that changes the file still counts', () => {
   });
 
   it('REPLACING a source quantity set counts, and the source lines are gone', async () => {
-    // No user-facing DELETE for a source quantity set — there is no
-    // delete-quantity-set on the view, `DELETE_QUANTITY` reaches no handler, and
-    // `deletedQsets` has no public populator. Editing one quantity is what a
-    // session can do to a source qset, and it is the case the count has to get
-    // right. It is NOT the only way the qset skip loop withholds source lines —
-    // see the undo-onto-a-colliding-name case below.
+    // Editing one quantity is the commonest thing a session does to a source
+    // qset, and the case the count has to get right. It is NOT the only way the
+    // qset skip loop withholds source lines: see the undo-onto-a-colliding-name
+    // case below, and the outright DELETE case after it (#2508 gave the view a
+    // `deleteQuantitySet`, which the comment here used to say did not exist).
     const store = await parseBaseWithQto();
     const view = new MutablePropertyView(null, 'test-model');
     view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
@@ -274,6 +273,28 @@ describe('a set edit that changes the file still counts', () => {
     expect(text).not.toContain("'0OSuGGYUFyIf0LtE29OSuW'");
     expect(text).toContain('Qto_WallBaseQuantities');
     expect(text).toContain('2.5');
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('DELETING a source quantity set leaves the file without it (#2508)', async () => {
+    // The case #2487's comment called impossible, because the view had no
+    // public qset delete then. Now it does, and a set the panel hid must not
+    // still be in the exported bytes: the skip loop withholds source lines when
+    // it is writing a REPLACEMENT, and a deletion has no replacement to be
+    // recognised by, so the exporter has to ask whether the set was deleted.
+    const store = await parseBaseWithQto();
+    const view = new MutablePropertyView(null, 'test-model');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.setQuantityExtractor((id: number) => extractQuantitiesOnDemand(store, id) as never);
+
+    view.deleteQuantitySet(WALL_ID, 'Qto_WallBaseQuantities');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).not.toContain('Qto_WallBaseQuantities');
+    expect(text).not.toContain('IFCQUANTITYVOLUME');
+    expect(text).not.toContain("'0OSuGGYUFyIf0LtE29OSuW'");
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 

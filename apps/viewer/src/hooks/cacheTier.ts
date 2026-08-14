@@ -106,3 +106,36 @@ export function decideMeshOnlyCacheHit(opts: {
   if (!mtimeKnown && !hasFullHash) return 'miss';
   return 'serve';
 }
+
+/**
+ * What the loader should do after `loadFromCache` resolves.
+ *
+ * `loadFromCache` returns the SAME `{ success: false }` for two very different
+ * situations — an ordinary cache miss (corrupt/absent entry: reparse) and a
+ * SUPERSEDED load (a newer file already owns the active model slot: stop). A
+ * caller that only branches on `success` therefore treats supersession as a
+ * miss and proceeds to a full server/WASM reparse of the OLD file while the
+ * newer load is painting — the same active-slot race the staleness guards
+ * inside `loadFromCache` exist to close, just moved one step later and made far
+ * more expensive. So the staleness re-check belongs at the call site too, and
+ * this function is where the three outcomes are named:
+ *   - `stale`: superseded — return immediately, write nothing, reparse nothing;
+ *   - `serve`: a good hit — finalize the model from the cache;
+ *   - `miss`: no usable entry — fall through to the server/WASM path as before.
+ *
+ * Staleness DOMINATES success: a load that succeeded but was superseded while
+ * it resolved must not finalize either, or the finalize writes the old file's
+ * store into the new model's slot.
+ *
+ * Pure and injected (not reading `loadSessionRef` itself) for the same reason
+ * as the helpers above: it stays node-testable without importing the loader.
+ */
+export function decideCacheLoadOutcome(opts: {
+  /** Did `loadFromCache` report a successful hit? */
+  loadSucceeded: boolean;
+  /** Has a newer load taken the active model slot in the meantime? */
+  isStale: boolean;
+}): 'serve' | 'stale' | 'miss' {
+  if (opts.isStale) return 'stale';
+  return opts.loadSucceeded ? 'serve' : 'miss';
+}

@@ -237,7 +237,7 @@ describe('contactClusters (contact interface geometry)', () => {
   // `scaledPlaneEps` sibling in narrow-phase.ts) originally floored only the
   // *extent* term at 1.0, not the final tolerance at the old fixed constant
   // they replace. `extent * F32_ULP_SCALE` with no floor on the result is
-  // FAR tighter than the old fixed `1e-3` for any extent under ~4.19 Mm —
+  // FAR tighter than the old fixed `1e-3` for any extent under ~4.19 km —
   // i.e. for essentially every ordinary building model — which reintroduces
   // the exact split-face bug this file's other tests exist to catch.
   //

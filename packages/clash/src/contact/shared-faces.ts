@@ -86,7 +86,7 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * the plane). The result is floored at the old fixed `1e-3`: scaling must
  * only ever *widen* the bucket relative to the constant it replaces, never
  * narrow it — a bare `extent * F32_ULP_SCALE` with only the 1.0 extent
- * floor is far tighter than `1e-3` for any extent under ~4.19 Mm, which
+ * floor is far tighter than `1e-3` for any extent under ~4.19 km, which
  * reintroduces the exact split-face bug this function exists to fix.
  */
 function scaledDistSnap(pairs: readonly TrianglePair[]): number {

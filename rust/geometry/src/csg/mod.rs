@@ -728,7 +728,7 @@ impl ClippingProcessor {
     ///
     /// The classification epsilon scales with the operand's coordinate
     /// magnitude: the plane is f64, vertices are f32-native, and the f32 ULP
-    /// exceeds a fixed 1e-6 above ~8.4 m, misclassifying on-plane vertices.
+    /// exceeds a fixed 1e-6 above 16 m, misclassifying on-plane vertices.
     /// Deliberately does NOT call `near_band_from_extent`
     /// (`kernel::mesh_bridge`): its floor (`8·SNAP_GRID` ≈ 1.22e-4) is sized
     /// for the exact kernel's snap grid and only gets overtaken past ~512 m,

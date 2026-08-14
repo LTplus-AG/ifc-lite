@@ -7,7 +7,7 @@ subtracts, layered-material band splitting) dropping or misclassifying geometry 
 from the model origin. `ClippingProcessor` classified each triangle vertex against
 the clip plane with a fixed `epsilon = 1e-6`, but the plane arrives in world
 coordinates (f64, from `IfcAxis2Placement3D`) while mesh vertices are f32-native.
-Once a world coordinate passes roughly 8.4 m from the origin, the f32 rounding step
+Once a world coordinate passes 16 m from the origin, the f32 rounding step
 exceeds that fixed epsilon, so a vertex meant to sit exactly on the plane (e.g. a cut
 flush with a box face) could land on the wrong side of it — non-monotonically, since
 it depends on which way the rounding lands rather than on distance alone. A unit-box

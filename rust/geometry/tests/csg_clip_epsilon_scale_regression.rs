@@ -10,7 +10,7 @@
 //! a clip plane with `d >= -epsilon`. That plane arrives in WORLD coordinates
 //! (`IfcAxis2Placement3D`, decoded in f64 — see `parse_half_space_solid` in
 //! `processors/boolean/mod.rs`), while mesh vertex positions are f32-native.
-//! Once a world coordinate exceeds ~8.4 m, the f32 ULP is larger than a fixed
+//! Once a world coordinate exceeds 16 m, the f32 ULP is larger than a fixed
 //! `1e-6`, so a vertex meant to sit exactly on the plane (signed distance 0,
 //! e.g. a cut flush with a box face) can be quantized to the wrong side of the
 //! epsilon band purely from float noise — dropping or flipping triangles that

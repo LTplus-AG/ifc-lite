@@ -138,3 +138,47 @@ fn flush_plane_clip_correct_near_origin() {
     let tris = clip_flush_top_face(0.7);
     assert_eq!(tris, 14, "flush top-face cut near the origin must keep 14 tris; got {tris}");
 }
+
+#[test]
+fn clip_mesh_epsilon_at_building_extent_is_unscaled() {
+    // Pin the effective classification epsilon at an ordinary building extent
+    // (28.76 m, from the corpus) by constructing a triangle that a correct
+    // `1e-6`-floored epsilon and a buggy `near_band_from_extent`-floored
+    // epsilon (8*SNAP_GRID ~= 1.22e-4) disagree on.
+    //
+    // `near_band_from_extent` is sized for the exact CSG kernel's snap grid,
+    // not this clip-plane test, and its scaling term only exceeds that floor
+    // past ~512 m — so at 28.76 m it would silently replace `1e-6` with a
+    // flat 122x-looser epsilon. A triangle sitting genuinely `5e-5` behind
+    // the plane is far enough to be classified "behind" under the correct
+    // `1e-6` floor (extent*2^-22 ~= 6.86e-6 here, still < 5e-5) but would be
+    // misclassified "front" under the buggy 1.22e-4 floor (5e-5 < 1.22e-4) —
+    // discriminating the two without depending on the flush-cut case, where
+    // either floor happens to give the right answer.
+    let offset = 28.76_f64;
+    let behind_z = (offset - 5e-5) as f32;
+    let mesh = Mesh {
+        positions: vec![0.0, 0.0, behind_z, 1.0, 0.0, behind_z, 0.0, 1.0, behind_z],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    let plane = Plane::new(Point3::new(0.0, 0.0, offset), Vector3::new(0.0, 0.0, 1.0));
+
+    let extent = offset; // matches ClippingProcessor::mesh_plane_extent (plane point z)
+    let scaled = extent * (1.0 / 4_194_304.0);
+    assert!(
+        scaled < 5e-5 && scaled >= 1e-6,
+        "test fixture must sit between the 1e-6 floor and the 5e-5 offset to \
+         discriminate; got scaled term {scaled}"
+    );
+
+    let clipper = ClippingProcessor::new();
+    let out = clipper.clip_mesh(&mesh, &plane).expect("clip must not error");
+    assert_eq!(
+        out.indices.len(),
+        0,
+        "a triangle genuinely 5e-5 behind the plane at 28.76 m extent must be \
+         discarded under the 1e-6-floored epsilon; a non-zero result means the \
+         epsilon regressed to the ~1.22e-4 near_band_from_extent floor"
+    );
+}

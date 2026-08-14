@@ -15,6 +15,9 @@ flush cut at 1e-6 lost its entire cross-section at a 100.7 m offset and again at
 50000.7 m offset, while surviving at 1000.7 m and 5000.7 m in between.
 
 `clip_mesh` now scales the classification epsilon to the clip operand's coordinate
-magnitude via `near_band_from_extent`, the same formula the exact CSG kernel already
-uses for its own near-coplanar band (`kernel::mesh_bridge`), rather than a second,
-disagreeing constant.
+magnitude directly (`extent · 2⁻²²`, the f32 ULP fraction), floored at the original
+`1e-6` constant. This does not reuse the exact CSG kernel's `near_band_from_extent`
+helper (`kernel::mesh_bridge`): that helper's floor is `8·SNAP_GRID` ≈ 1.22e-4, sized
+for its own snap grid, and its scaling term only exceeds that floor past ~512 m —
+so for ordinary building-scale models it would have replaced the old `1e-6` with a
+flat 122x-looser epsilon everywhere, not a magnitude-proportional one.

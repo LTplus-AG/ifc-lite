@@ -726,20 +726,20 @@ impl ClippingProcessor {
 
     /// Clip an entire mesh against a plane.
     ///
-    /// The vertex-vs-plane classification epsilon is scaled to the operand's
-    /// coordinate magnitude instead of using `self.epsilon` verbatim: the
-    /// plane is f64 world coordinates while mesh vertices are f32-native, and
-    /// the f32 ULP exceeds a fixed 1e-6 above ~8.4 m from the origin, so a
-    /// vertex meant to sit exactly on the plane can misclassify. Reuses
-    /// `near_band_from_extent` (`kernel::mesh_bridge`) — the exact-kernel
-    /// boolean path's own near-coplanar band formula — rather than a second,
-    /// disagreeing constant. `self.epsilon` still acts as a floor.
+    /// The classification epsilon scales with the operand's coordinate
+    /// magnitude: the plane is f64, vertices are f32-native, and the f32 ULP
+    /// exceeds a fixed 1e-6 above ~8.4 m, misclassifying on-plane vertices.
+    /// Deliberately does NOT call `near_band_from_extent`
+    /// (`kernel::mesh_bridge`): its floor (`8·SNAP_GRID` ≈ 1.22e-4) is sized
+    /// for the exact kernel's snap grid and only gets overtaken past ~512 m,
+    /// so at building extents it would flatten the epsilon 122x looser.
+    /// Instead `2⁻²²` (the f32 ULP fraction) is floored at `self.epsilon`.
     pub fn clip_mesh(&self, mesh: &Mesh, plane: &Plane) -> Result<Mesh> {
         record_csg_op(3, mesh.triangle_count(), 0);
         let mut result = Mesh::new();
 
         let extent = Self::mesh_plane_extent(mesh, plane);
-        let eps = crate::kernel::mesh_bridge::near_band_from_extent(extent).max(self.epsilon);
+        let eps = (extent * (1.0 / 4_194_304.0)).max(self.epsilon);
 
         // Process each triangle
         let vert_count = mesh.positions.len() / 3;

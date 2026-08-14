@@ -1,29 +1,32 @@
-# Test files that read a source file and assert on its text (#2434).
+# Test files that read a file and assert on its text (#2434).
 #
 # This list only ratchets DOWN. scripts/check-source-text-assertions.mjs fails
 # if a NEW file appears, and also fails if a file listed here no longer matches
 # — so a conversion cannot silently leave a stale entry behind.
 #
-# The 12 below are the baseline measured when the guard landed. One file was
-# converted at the same time to prove the harness works and is deliberately
-# absent: SearchModal.filter.wiring.test.tsx.
+# The baseline was 12 when the guard landed. Eight have since been converted:
+# SearchInline.wiring, SearchModal.text.wiring, measure-parity,
+# zone-apportionment-parity, using-declaration-build, the two codegen files, and
+# frameWait — whose absence sweep became scripts/check-unbounded-frame-wait.mjs,
+# because "nobody re-introduced a bare rAF" has nothing to drive.
+#
+# What made the rest convertible was not a new technique but a retired belief:
+# "this component cannot be mounted under `tsx --test`" was false for
+# MainToolbar, HomeTab, RibbonToolbar, AnalyzeTab, ZonesPanel, PropertiesPanel,
+# FileTab and even ViewportContainer — the last two needing only a
+# `fileCommands` prop and a stubbed `navigator.gpu`.
 #
 # Each line: path, then why it is still here.
 
-# ── Viewer components: convertible NOW that src/test/ carries the harness ──
-apps/viewer/src/components/viewer/SearchInline.wiring.test.ts               # same shape as the converted filter test; no virtualizer, cheapest next
-apps/viewer/src/components/viewer/SearchModal.text.wiring.test.ts           # same; needs installLayout()
-apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # FileTab renders under the harness now; the icon-set and export-cluster reads are convertible
-apps/viewer/src/components/viewer/tools/measure-parity.test.tsx             # landed after the harness existed; its header repeats the "cannot be mounted" claim
-apps/viewer/src/components/viewer/zone-apportionment-parity.test.tsx        # ditto, same week
-apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # part AST-based (keep) and part raw-text (convert); split it
-apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # asserts a Tailwind class pair; needs computed style, not text
+# ── Genuinely source-text, and genuinely blocked ──
+apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
+apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.
+packages/geometry/src/prepass-class-spans.test.ts                           # pins TS constants against `pub const` in rust/processing/src/shard_classes.rs. TS cannot import a Rust const; the root fix is emitting them, not rewriting the test.
 
-# ── Absence guards: a test is the wrong vehicle, move to a CI script ──
-apps/viewer/src/utils/frameWait.test.ts                                     # "nobody re-introduces a bare rAF" is a repo-wide grep, not a unit test; its executable RangeError cases stay
-apps/viewer/src/lib/using-declaration-build.test.ts                         # same shape: asserts a build-output property across files
-
-# ── Genuinely out of reach in node; the root fix is elsewhere ──
-packages/codegen/test/crc32.test.ts                                         # regex-loads generated TYPE_IDS; fix is to import the generated module (it exports them)
-packages/codegen/test/type-ids-generator.test.ts                            # ditto
-packages/create-ifc-lite/test/config-fixers.test.ts                         # would need vite + plugin devDeps in that package to load the generated config
+# ── Detector false positives: listed so the ratchet passes, not to be converted ──
+# The detector is deliberately lexical rather than data-flow (see the script
+# header), so it cannot tell "read a production module and assert on its text"
+# from "read the artifact this tool just GENERATED and assert on it", nor a text
+# predicate applied to source from one applied to a path.
+apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The hits are an ARRAY `.includes` and two PATH checks (`file.endsWith('.tsx')`) -- no assertion reads text.
+packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.

@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /* Diagnostic: why does a model yield no walls / no rooms in Space Sketch?
  * Usage: node scripts/space-diag.mjs <path-to.ifc>
  * Parses headlessly and reports, per storey: byStorey count, walls considered,

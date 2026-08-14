@@ -397,3 +397,72 @@ describe('getPointCloudAlignmentMatrix', () => {
     }
   });
 });
+
+describe('computePointCloudAlignment with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style reference model: geometry authored at the ABSOLUTE
+  // projected coordinates (rebased into wasmRtcOffset), IfcMapConversion
+  // repeating the same anchor with a 90-degree rotation. A .laz scan carries
+  // the SAME absolute coordinates, so aligning it must be a pure viewer-shift
+  // subtraction (identity conversion) — inverting the authored conversion
+  // would rotate the cloud away from the model it was scanned against.
+  const mapAbsInfo: NonNullable<ModelGeoref['coordinateInfo']> = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+  const mapAbsGeoref = (coordinateInfo?: ModelGeoref['coordinateInfo']) => makeGeoref({
+    mapConversion: {
+      eastings: 312000,
+      northings: 5996150,
+      orthogonalHeight: 0,
+      xAxisAbscissa: 0,
+      xAxisOrdinate: 1,
+    },
+    coordinateInfo,
+  });
+
+  it('lands a scan point exactly on the model: identity conversion, viewer shift only', () => {
+    const t = computePointCloudAlignment(mapAbsGeoref(mapAbsInfo));
+    assert.ok(t);
+    // Viewer origin in map space under the NEUTRALISED conversion is the
+    // total Y-up offset unswapped to Z-up: (312000, 5996150, 10).
+    assertClose(t.decodeOriginOffset[0], 312000, 1e-6, 'decode E');
+    assertClose(t.decodeOriginOffset[1], 5996150, 1e-6, 'decode N');
+    assertClose(t.decodeOriginOffset[2], 10, 1e-6, 'decode H');
+    // Raw scan point (E, N, H) = (312010, 5996140, 12) — same absolute frame
+    // as the geometry — must land at viewer (10, 2, 10).
+    const out = runAlignmentChain(t, [312010, 5996140, 12]);
+    assertClose(out.x, 10, 1e-6, 'x');
+    assertClose(out.y, 2, 1e-6, 'y');
+    assertClose(out.z, 10, 1e-6, 'z');
+  });
+
+  it('control: a compliant reference (no RTC rebase) keeps the authored rotation', () => {
+    const compliant = mapAbsGeoref({ ...mapAbsInfo, wasmRtcOffset: undefined });
+    const t = computePointCloudAlignment(compliant);
+    assert.ok(t);
+    // off = 0, authored conversion: decode offset is the anchor itself.
+    assertClose(t.decodeOriginOffset[0], 312000, 1e-6, 'decode E');
+    assertClose(t.decodeOriginOffset[1], 5996150, 1e-6, 'decode N');
+    assertClose(t.decodeOriginOffset[2], 0, 1e-6, 'decode H');
+    // map -> local under the authored 90-degree rotation, then Z-up -> Y-up:
+    // local = invert(anchor+90deg, raw); expected viewer = (local.x, local.z, -local.y).
+    const local = invertMapConversion(
+      {
+        eastings: 312000,
+        northings: 5996150,
+        orthogonalHeight: 0,
+        xAxisAbscissa: 0,
+        xAxisOrdinate: 1,
+      },
+      312010, 5996140, 12,
+    );
+    assert.ok(local);
+    const out = runAlignmentChain(t, [312010, 5996140, 12]);
+    assertClose(out.x, local.x, 1e-6, 'x');
+    assertClose(out.y, local.z, 1e-6, 'y');
+    assertClose(out.z, -local.y, 1e-6, 'z');
+  });
+});

@@ -1,5 +1,73 @@
 # @ifc-lite/renderer
 
+## 1.46.0
+
+### Minor Changes
+
+- [#2607](https://github.com/LTplus-AG/ifc-lite/pull/2607) [`2bb936c`](https://github.com/LTplus-AG/ifc-lite/commit/2bb936c213fdb7ca78d42b14a4cb207fbcfd6f18) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now reaches 3D World Context, and glass on the map looks like glass.
+
+  The world view drew every element fully opaque no matter its alpha. Clash focus in ghost mode, the Space Sketch preview and layer diff all faded the model in the viewport and changed nothing on the map; authored `IfcSurfaceStyleRendering` transparency was ignored there too. The cause was one line that was never written: a glTF material with no `alphaMode` is `OPAQUE` per spec, so Cesium discarded the per-vertex alpha the exporter had been packing all along.
+
+  The merged GLB now emits up to two primitives over the same vertex buffers — one opaque, one `alphaMode: 'BLEND'` — split by mesh alpha. Splitting rather than blending the whole model keeps the bulk of the geometry out of the translucent pass, where triangles are not depth-sorted against each other. A model with no translucent geometry still emits exactly one primitive, as before.
+
+  `@ifc-lite/renderer` exports `DEFAULT_GHOST_ALPHA` and `OPAQUE_ALPHA_CUTOFF` so the world view matches the viewport's ghosting rather than inventing its own; the ghost alpha was previously a literal inside `Renderer.render`. Selection is exempt from ghosting on the map exactly as it is in the viewport, and the GLB cache key carries a content-based ghost epoch so an equal set does not rebuild.
+
+  One deliberate difference: GPU-instanced occurrences ghost on the map but not in the viewport, because the renderer's instanced pass never receives the ghost set. That is the viewport being wrong, and replicating it to stay symmetrical would have meant copying a defect.
+
+### Patch Changes
+
+- [#2609](https://github.com/LTplus-AG/ifc-lite/pull/2609) [`c9953ec`](https://github.com/LTplus-AG/ifc-lite/commit/c9953ec6691003a2cfada80da28effcdfcf5e56c) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now fades GPU-instanced geometry too, instead of leaving it solid.
+
+  The instanced pass received only the hide and isolate sets, so ghosting stopped at the flat geometry. On a model whose facade is instanced — repeated panels, mullions, windows — asking to X-ray the building produced a solid facade standing in front of a ghosted interior. The Cesium world view had already started fading them correctly ([#2591](https://github.com/LTplus-AG/ifc-lite/issues/2591)), and that disagreement is what surfaced the gap.
+
+  `Scene.setInstancedGhosting` fades every occurrence outside the except-set to the same `DEFAULT_GHOST_ALPHA` the flat path uses, leaves the selection solid exactly as the flat path does, and reports the result through `hasTransparentInstances()` so the translucent sub-pass actually runs.
+
+  It composes with lens and IDS colour overrides rather than fighting them: the two share the instance colour bytes, so a ghosted occurrence keeps its override's RGB and takes the ghost alpha, and clearing X-Ray restores the override rather than the original colour.
+
+  The per-frame call is a no-op when nothing changed, but "nothing changed" cannot be judged by the ghost set alone — dropping an override writes full alpha, a streaming shard adds occurrences at their uploaded colour, and neither moves the set. Any of those marks the fade dirty so the next frame re-applies it.
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594)]:
+  - @ifc-lite/geometry@3.8.2
+
+## 1.45.1
+
+### Patch Changes
+
+- [#2587](https://github.com/LTplus-AG/ifc-lite/pull/2587) [`a38012f`](https://github.com/LTplus-AG/ifc-lite/commit/a38012f6d9fec6b9ea934b22016c9005579a54b7) Thanks [@louistrue](https://github.com/louistrue)! - The hide/isolate rule now has one definition inside the renderer, not six.
+
+  `isEntityVisible` was introduced for the draw paths so the Cesium world view could reach the same verdict the viewport does. Picking and raycasting still restated the rule inline — `pick`, `pickRect`, the pick piece-scan, both raycast-engine loops and the scene's instanced raycast each spelled out "not hidden, and isolated if isolation is active" in their own words. They agreed, but nothing held them together: the world view's disagreement began exactly this way.
+
+  Behaviour is unchanged; this is the same predicate, called instead of copied. The point-cloud query keeps its own rule deliberately — it filters whole assets on `hiddenIds` only, because a point cloud has no per-element ids to isolate on.
+
+## 1.45.0
+
+### Minor Changes
+
+- [#2581](https://github.com/LTplus-AG/ifc-lite/pull/2581) [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now hides what you hide: hide and isolate reach the map, not just the viewport.
+
+  The world view renders the model through its own glTF pipeline, so it never inherited the per-frame hide/isolate filtering the WebGPU renderer applies. It honoured type visibility (its mesh list arrives pre-filtered) but nothing else — hide an element, or isolate a storey, and the map kept drawing everything. Since [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) gave the world view the GPU-instanced half of the model as well, that gap covered both geometry channels.
+
+  `@ifc-lite/renderer` now exports the rule itself rather than leaving each surface to restate it. `isEntityVisible(expressId, hiddenIds, isolatedIds)` was written out separately at the flat-draw and instanced-draw sites; both now call the shared helper, and so does the world view. `VisibilityEpochTracker` — already used internally for content-based change detection on those two sets — is exported alongside it, so a consumer outside the render loop can tell a real visibility change from a store handing out a fresh Set with identical content.
+
+  Two details the shared rule pins down, both easy to get wrong when restating it: an EMPTY isolation set isolates _nothing_ (it hides everything) and is not the same as `null` (no isolation), and hiding wins over isolation.
+
+## 1.44.1
+
+### Patch Changes
+
+- [#2523](https://github.com/LTplus-AG/ifc-lite/pull/2523) [`bb0c1fe`](https://github.com/LTplus-AG/ifc-lite/commit/bb0c1feab74d0e4b76b66acbabf7bebe45144b25) Thanks [@louistrue](https://github.com/louistrue)! - Section cut caps and `IfcAnnotationFillArea` fills now subtract their holes. The shared triangulator bridged hole rings in but almost never clipped an ear from the bridged ring, so a 4x4 profile with a 2x2 hole covered an area of 2 instead of 12 and any cut through a wall opening or slab void rendered a near-empty cap. Rings are now nested by the even-odd rule, so an island inside a hole fills, matching the 2D canvas and SVG export paths which already fill with `evenodd`. Hole-free profiles are unchanged.
+
+- [#2399](https://github.com/LTplus-AG/ifc-lite/pull/2399) [`7ec9876`](https://github.com/LTplus-AG/ifc-lite/commit/7ec9876202b3fd4d83fda5f23931740a6b0e4e25) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden `Scene.flushPending`'s mesh-queue drain loop against a future regression, not an observed bug: today the chunk-end computation is provably always at least one mesh past the read cursor (three constants combine to guarantee this — see the comment at the call site), but nothing at the loop itself said so. Extracted the chunk-end computation into a pure `computeFlushChunkEnd` helper and added a zero-progress `break`, so that if a future change ever broke one of those three invariants the loop would stop instead of spinning the main thread at 100% CPU with zero allocation.
+
+  Also closed a latent gap in the same computation: `meshQueue[i].indices.length` was read unchecked when deciding whether a chunk exceeds the index-volume cap. A `NaN` there would have made the cap silently vacuous (`NaN > cap` is always `false`), producing one indivisible oversized chunk instead of stopping. The cap check is now written in the codebase's established NaN-rejecting form (`!(x <= cap)` instead of `x > cap`), which is a no-op for all valid input and closes the chunk defensively if it ever sees `NaN` or `+Infinity`.
+
+  No behavior change on any real input; this is defensive hardening surfaced while investigating [#2379](https://github.com/LTplus-AG/ifc-lite/issues/2379).
+
+  Also rejects `-Infinity` specifically, which the `!(x <= cap)` form above didn't already close (`-Infinity <= cap` is always `true`, so the check passes it through). Folding it into the running `chunkIndices` total then poisoned that total to `-Infinity` too, making the cap vacuous for every mesh after the malformed one, not just that one mesh. Every non-finite `indices.length` now closes the chunk explicitly, before it can reach either the cap comparison or the running total.
+
+- Updated dependencies [[`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa), [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d)]:
+  - @ifc-lite/geometry@3.8.1
+
 ## 1.44.0
 
 ### Minor Changes

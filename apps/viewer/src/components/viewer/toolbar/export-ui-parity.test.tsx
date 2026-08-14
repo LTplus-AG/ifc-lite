@@ -78,6 +78,24 @@ import {
 } from './export-commands.js';
 import { CLASSIC_EXPORT_ICONS, ClassicExportMenuItems } from './ClassicExportMenuItems.js';
 import { RibbonExportGroup } from '../ribbon/tabs/RibbonExportGroup.js';
+import { RIBBON_EXPORT_ICONS } from '../ribbon/tabs/ribbon-export-icons.js';
+import { MainToolbar } from '../MainToolbar.js';
+import { FileTab } from '../ribbon/tabs/FileTab.js';
+import type { FileCommands } from './useFileCommands.js';
+
+/**
+ * The real `FileCommands` contract, TYPED rather than cast: none of these are
+ * invoked here, so a cast would let the shape drift underneath the mount.
+ */
+const FILE_COMMANDS: FileCommands = {
+  fileInputs: null,
+  openShareDialog: () => {},
+  handleOpenClick: async () => {},
+  handleAddModelClick: async () => {},
+  handleRefresh: async () => {},
+  canRefresh: false,
+  hasModelsLoaded: true,
+};
 
 const VIEWER_SRC = fileURLToPath(new URL('../../..', import.meta.url));
 
@@ -366,12 +384,16 @@ describe('export UI parity (ifc-lite#2511)', () => {
   });
 
   it('the ribbon icon set covers every registered format', () => {
-    // Read as source: `@/icons` resolves only through the Vite plugin, so the
-    // real map cannot be imported here. Its keys must still be exhaustive.
-    const source = readSource('components/viewer/ribbon/tabs/ribbon-export-icons.ts');
-    const body = source.slice(source.indexOf('RIBBON_EXPORT_ICONS'));
-    const keys = [...body.matchAll(/^\s{2}([A-Za-z0-9_]+):/gm)].map((m) => m[1]);
-    assert.deepEqual(keys.sort(), [...EXPORT_COMMAND_IDS].sort());
+    // Imported, not read as source (#2434). The old comment said `@/icons`
+    // "resolves only through the Vite plugin, so the real map cannot be
+    // imported here" — the `src/test/` loader hooks collapse every `~icons/*`
+    // specifier onto a stub, so it can. That matters: the source form counted
+    // KEYS THAT LOOK LIKE KEYS, so a key inside a nested object or a commented
+    // block counted, and an entry whose value failed to resolve did not.
+    assert.deepEqual(Object.keys(RIBBON_EXPORT_ICONS).sort(), [...EXPORT_COMMAND_IDS].sort());
+    for (const id of EXPORT_COMMAND_IDS) {
+      assert.ok(RIBBON_EXPORT_ICONS[id], `the ribbon icon for ${id} must resolve to a component`);
+    }
   });
 
   it('neither toolbar hand-rolls an export entry beside the registry (#2511: routing around the single source)', () => {
@@ -408,44 +430,42 @@ describe('export UI parity (ifc-lite#2511)', () => {
   it('each toolbar style actually renders its export cluster (#2510: a cluster deleted with its import left behind kept this file green)', () => {
     // Every other test in this file renders ClassicExportMenuItems /
     // RibbonExportGroup itself, so it proves the clusters work — not that the
-    // shipped toolbars still host them. Neither host can be rendered here
-    // (MainToolbar drags in the whole viewer; FileTab reaches `@/icons`, a Vite
-    // virtual module), so the host edge is checked in source, with imports
-    // stripped so a leftover import line does not count as reach.
-    const hosts = [
-      {
-        surface: 'components/viewer/MainToolbar.tsx',
-        cluster: 'ClassicExportMenuItems',
-        extras: [] as string[],
-      },
-      {
-        surface: 'components/viewer/ribbon/tabs/FileTab.tsx',
-        cluster: 'RibbonExportGroup',
-        // The ribbon's real icon set only reaches the group through this prop;
-        // it appears in FileTab's import line whether or not it is passed.
-        extras: ['RIBBON_EXPORT_ICONS'],
-      },
-    ];
+    // shipped toolbars still host them. That host edge used to be checked in
+    // source on the claim that neither host could be rendered here; the
+    // `src/test/` loader hooks make both mountable, so it is now checked by
+    // MOUNTING them and reading the export controls off the screen (#2434).
+    //
+    // Stronger than the regex in a way that matters for #2510's actual defect:
+    // `<RibbonExportGroup />` rendered without its `icons` prop, or behind a
+    // condition that is never true, reads identically in source and ships no
+    // exports.
+    loadFakeModel();
 
-    for (const { surface, cluster, extras } of hosts) {
-      const body = bodyWithoutImports(readSource(surface));
-      assert.ok(
-        body.length > 0,
-        `${surface} has no body left after stripping imports — the import matcher is broken`,
-      );
-      assert.match(
-        body,
-        new RegExp(`<${cluster}[\\s/>]`),
-        `${surface} must render <${cluster} /> — without it this toolbar style ships ` +
-          'no exports at all, and every other test here still passes',
-      );
-      for (const extra of extras) {
-        assert.ok(
-          usedOutsideImports(readSource(surface), extra),
-          `${surface} imports ${extra} but never uses it`,
-        );
-      }
-    }
+    render(<MainToolbar />);
+    const exportTrigger = [...document.body.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'Export and download',
+    );
+    assert.ok(exportTrigger, 'the classic strip must have an export menu');
+    act(() => {
+      exportTrigger.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 } as PointerEventInit));
+    });
+    act(() => {
+      exportTrigger.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    assert.deepEqual(
+      renderedExportIds().sort(),
+      [...EXPORT_COMMAND_IDS].sort(),
+      'the classic strip must host the whole registry — without it this style ships no exports at all',
+    );
+
+    unmountAll();
+
+    render(<FileTab fileCommands={FILE_COMMANDS} />);
+    assert.deepEqual(
+      renderedExportIds().sort(),
+      [...EXPORT_COMMAND_IDS].sort(),
+      'the ribbon File tab must host the whole registry, with its icon set wired through',
+    );
   });
 
   it('the JSON export actually downloads a file from both toolbar styles', async () => {
@@ -555,6 +575,9 @@ describe('export UI parity (ifc-lite#2511)', () => {
       const message = successToasts.find((t) => t.includes(format));
       assert.ok(message, `no success toast mentions ${format}`);
       assert.ok(
+        // Asserting the PLACEHOLDER text itself: this is what a leaked template
+        // looks like in a toast, which is the bug the assertion exists for.
+        // eslint-disable-next-line no-template-curly-in-string
         message.includes('${activeModelOnlyNote}'),
         `the ${format} success toast must carry the partial-export note`,
       );
@@ -562,6 +585,8 @@ describe('export UI parity (ifc-lite#2511)', () => {
     const screenshotToast = successToasts.find((t) => t.includes('Screenshot'));
     assert.ok(screenshotToast, 'no success toast mentions the screenshot');
     assert.equal(
+      // As above: the placeholder text is the thing being looked for.
+      // eslint-disable-next-line no-template-curly-in-string
       screenshotToast.includes('${activeModelOnlyNote}'),
       false,
       'a screenshot captures the viewport, so it is not an active-model-only export',

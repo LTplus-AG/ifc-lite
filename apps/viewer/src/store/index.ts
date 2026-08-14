@@ -712,7 +712,7 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
 };
 
 /**
- * The six per-panel visibility flags that drive the single-tenant sidebar,
+ * The per-panel visibility flags that drive the single-tenant sidebar,
  * paired with their registry id. `properties` has no flag — it is the
  * fallback shown when none of these are on. (Script / Schedule / Lists are
  * NOT here: they live in the bottom panel and stay independent.)

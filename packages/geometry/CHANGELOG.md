@@ -1,5 +1,95 @@
 # @ifc-lite/geometry
 
+## 3.8.2
+
+### Patch Changes
+
+- [#2539](https://github.com/LTplus-AG/ifc-lite/pull/2539) [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Forward a geometry/parser worker's wasm panic-location stash to the main thread.
+
+  A follow-up to the wasm-trap source-location attribution: the Rust panic hook stashes
+  `{ location, at }` on whichever realm's JS global it runs in, but a panic inside a geometry
+  process worker or the parser worker left that stash stranded in the worker's own realm, invisible
+  to the main thread's `attachWasmPanicLocation` gate — so "Geometry worker error: unreachable" (and
+  the equivalent parser-worker error) still arrived without a location.
+
+  Both workers now read + consume their own realm's stash on the `{type:'error'}` message they post
+  back, and the main-thread pools (`geometry-parallel.ts`'s process-worker pool AND its streaming
+  pre-pass worker, `worker-parser.ts`) re-plant it on the main realm's global before the load error
+  propagates — so the existing consume-once, TTL-guarded attachment gate in the viewer picks a worker
+  trap up exactly as it would a main-thread one. The re-plant only happens when the accompanying error
+  message itself looks wasm-trap-shaped, so a stash forwarded alongside an ordinary, non-trap worker
+  error (the worker always forwards whatever it has, regardless of the error that triggered it) can't
+  sit on the main realm's global and mislabel an unrelated later trap. Location only, never the panic
+  message, matching the existing privacy contract.
+
+- [#2260](https://github.com/LTplus-AG/ifc-lite/pull/2260) [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `cap_half_space_clip` reporting `capped: true` while a boundary edge was left open.
+
+  The boundary chain walk dropped a dead-ended chain (no continuation back to
+  its start) and could also fold an unclosed chain into an already-visited
+  vertex, treating it as if it were a closed loop. Neither case affected
+  `outer_count`/`outer_filled`, the two counters the return value was computed
+  from, so an open edge from a dead-ended or merged chain never showed up in
+  the verdict.
+
+  On a non-watertight host — a routine input to
+  `BooleanClippingProcessor::clip_mesh_with_half_space` — this could report
+  `capped: true` with open boundary edges still present, contradicting the
+  function's own contract ("a boundary that does not close bails") and the
+  per-piece "was the cut closed" signal [#1810](https://github.com/LTplus-AG/ifc-lite/issues/1810) zone splitting depends on for a
+  trustworthy quoted volume.
+
+  The walk now tracks whether any chain failed to close, and that flag is
+  ANDed into the returned verdict alongside the existing counters.
+
+  The merge-into-an-already-visited-vertex arm had a second bug beyond the
+  verdict: it set the flag and `break`, matching the code comment ("do NOT
+  push it as if it were a closed loop"), but never cleared the partial walk
+  first, so the un-closed chain was still `>= 3` vertices long and got pushed
+  into `loops`, triangulated, and appended to the mesh — garbage cap geometry
+  landing in the output even on a call that correctly reported
+  `capped: false`. The merge arm now clears the partial walk before breaking,
+  matching its sibling dead-end arm.
+
+  Scope note: `capped` only measures whether the ON-PLANE cut section closed.
+  A host with pre-existing OPEN boundary edges off the cut plane still reports
+  `capped: true` — the boundary walk is filtered to on-plane endpoints by
+  design, so it never re-examines unrelated openness elsewhere on the mesh.
+
+  Also adds `kernel::mesh_volume`, a public, closedness-UNGATED divergence-
+  theorem volume reading for a `Mesh` (delegates to the crate's one
+  divergence-sum implementation, `signed_volume6`). It is a raw primitive, not
+  a replacement for `geom_closure::GeometryHasher::volume` — that one stays
+  the crate's closedness-gated, per-entity volume and requires the hasher's
+  accumulated state; `mesh_volume` is for a bare `Mesh` (e.g. a future
+  zone-split piece) that never went through it. Callers of `mesh_volume` must
+  establish closedness themselves first; see its doc for the exact
+  translation-stability guarantee (stable up to a documented quantization
+  noise floor, not exact).
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/wasm@4.5.1
+
+## 3.8.1
+
+### Patch Changes
+
+- [#2534](https://github.com/LTplus-AG/ifc-lite/pull/2534) [`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface `wasmRtcOffset` / `lengthUnitScale` on the batch `processMeshes` path, not just the incremental one.
+
+  `CoordinateHandler.processMeshes` — the path behind the synchronous `GeometryProcessor.process()` — returned its `CoordinateInfo` without the wasm metadata that `setWasmMetadata` had recorded, while the incremental/streaming path attached it. For a model whose placement the wasm pre-pass re-based (coordinates >10 km from the origin, e.g. a Vectorworks export with the IfcSite at absolute EPSG:25833 map coordinates, issue [#2526](https://github.com/LTplus-AG/ifc-lite/issues/2526)), every sync-path consumer then read the re-based bounds as if they were absolute: the site offset — including its elevation — silently vanished from georeferencing math. All `processMeshes` returns (empty, no-shift, and shifted) now attach the same metadata the incremental path reports, via one shared helper.
+
+- [#2537](https://github.com/LTplus-AG/ifc-lite/pull/2537) [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fixes to the STEP/IFC exporters' shared `FILE_SCHEMA` detection and header re-serialization, reached from `exportMerged` and the STEP re-export path (`ifc-lite-bridge.ts` defaults `schema` to `''`, which resolves to auto-detect on both):
+
+  - `detect_schema` now scans the whole HEADER section instead of only the first 4096 bytes, so a long earlier header field (e.g. a lengthy `FILE_DESCRIPTION`) no longer pushes `FILE_SCHEMA` out of range and silently defaults the output to IFC4.
+  - The `FILE_SCHEMA` search — and the HEADER-section boundary scan that bounds it — are now quote-aware, so a header string value that happens to contain the literal text `FILE_SCHEMA` or `ENDSEC;` is no longer mistaken for the real entry.
+  - `detect_schema` un-doubles a `\\` in the detected label before it is re-escaped on write, so a schema label carrying a literal `\` (synthetic, but reachable through the same code path as the labels above) round-trips instead of compounding.
+  - `exportMerged`'s `#`-reference rewriter now copies non-`#`-reference bytes through unchanged instead of widening each byte to a `char`, which corrupted every non-ASCII (UTF-8 multi-byte) character in a merged model's string literals.
+  - `exportMerged`'s header-string escaping now maps every ASCII control byte (not just `\n`/`\r`/`\t`) to a space, matching the STEP exporter and ISO 10303-21's basic graphic range.
+
+  `merged.rs`'s private forks of `detect_schema` and `escape` are removed; it now shares the hardened primitives in `step_text.rs` with the STEP exporter.
+
+- Updated dependencies []:
+  - @ifc-lite/data@3.2.4
+
 ## 3.8.0
 
 ### Minor Changes

@@ -23,7 +23,7 @@
  * So this checks the names on a PR, where the mistake is cheap to fix.
  */
 
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
 import parseChangeset from '@changesets/parse';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -47,9 +47,13 @@ function workspaceNames() {
     { cwd: repoRoot, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 },
   );
   const names = new Set();
+  // `process.cwd()` reports the realpath while `repoRoot` comes from this
+  // file's own path, so a symlinked checkout makes a string compare miss — and
+  // missing here would admit the repo root, the one name this exists to reject.
+  const rootReal = realpathSync(repoRoot);
   for (const dir of new Set(out.split('\n').map((l) => l.trim()).filter(Boolean))) {
     const manifest = join(dir, 'package.json');
-    if (dir === repoRoot || !existsSync(manifest)) continue;
+    if (dir === rootReal || dir === repoRoot || !existsSync(manifest)) continue;
     const pkg = JSON.parse(readFileSync(manifest, 'utf8'));
     if (pkg.name) names.add(pkg.name);
   }
@@ -69,9 +73,10 @@ function workspaceNames() {
  * the thing it is predicting.
  */
 function packagesIn(file) {
-  const raw = readFileSync(join(changesetDir, file), 'utf8');
   try {
-    return parseChangeset(raw).releases.map((r) => r.name);
+    // Reading is inside the try too: a directory named `x.md` throws EISDIR,
+    // and a guard should say so rather than exit on a stack trace.
+    return parseChangeset(readFileSync(join(changesetDir, file), 'utf8')).releases.map((r) => r.name);
   } catch (err) {
     return { error: err.message };
   }
@@ -96,10 +101,11 @@ for (const file of files) {
     unreadable.push({ file, error: packages.error });
     continue;
   }
-  if (packages.length === 0) {
-    unreadable.push({ file, error: 'no packages in the frontmatter' });
-    continue;
-  }
+  // Zero packages is NOT an error: `pnpm changeset --empty` writes exactly
+  // that, and Changesets consumes it without releasing anything. Rejecting it
+  // would make this guard stricter than the workflow it predicts, which is its
+  // own kind of wrong — the job is to agree with Release, not to have opinions
+  // (review, on this PR).
   for (const name of packages) {
     if (!known.has(name)) bad.push({ file, name });
   }
@@ -108,8 +114,8 @@ for (const file of files) {
 if (unreadable.length > 0) {
   console.error('❌ These changesets could not be read as changesets:\n');
   for (const { file, error } of unreadable) console.error(`   .changeset/${file}: ${error}`);
-  console.error('\nA changeset needs `--- "@ifc-lite/pkg": patch ---` frontmatter naming');
-  console.error('at least one package. Delete it if the change has no package.');
+  console.error('\nA changeset needs frontmatter Changesets can parse: `--- "@ifc-lite/pkg":');
+  console.error('patch ---`, or the empty `--- ---` that `pnpm changeset --empty` writes.');
   process.exit(1);
 }
 

@@ -6,10 +6,10 @@
 /**
  * Every changeset must name a package Changesets can actually release.
  *
- * A changeset for a name outside the workspace does not fail the PR - nothing
- * on a PR reads changesets. It fails the **Release** workflow, which only runs
- * on main, so the breakage lands after review and blocks every release until
- * someone notices:
+ * Until this existed, a changeset naming something outside the workspace passed
+ * every PR check — nothing on a PR read changesets — and failed the **Release**
+ * workflow, which only runs on main. The breakage landed after review and
+ * blocked every release until someone noticed:
  *
  *   Error: Found changeset lint-lane-unused-ratchet for package ifc-lite
  *   which is not in the workspace
@@ -20,7 +20,8 @@
  * and naming the repo feels like the honest answer. The honest answer is no
  * changeset at all.
  *
- * So this checks the names on a PR, where the mistake is cheap to fix.
+ * `pnpm lint` runs this, so the mistake now fails on the PR that makes it.
+ * Release stays the backstop; it simply should not be the first to know.
  */
 
 import { readFileSync, readdirSync, existsSync, realpathSync } from 'node:fs';
@@ -120,8 +121,9 @@ if (unreadable.length > 0) {
 }
 
 if (bad.length > 0) {
-  console.error('❌ These changesets name something that is not a workspace package,');
-  console.error('   which fails the Release workflow on main rather than here:\n');
+  console.error('❌ These changesets name something that is not a workspace package.');
+  console.error('   Left alone they would fail the Release workflow on main, after this');
+  console.error('   PR merged, and block every release until removed:\n');
   for (const { file, name } of bad) console.error(`   .changeset/${file}: "${name}"`);
   console.error('\nName a workspace package. A change with no package behind it - CI,');
   console.error('scripts, workflows, tests - needs no changeset at all; naming the repo');

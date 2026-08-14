@@ -358,7 +358,18 @@ jobs:
   verify-npm-publish:
     name: Verify npm publish
     needs: release
-    if: needs.release.outputs.published == 'true'
+    # `always()` is the load-bearing part. A failed `needs:` skips the dependent
+    # whatever the condition says, so the job that exists to confirm packages
+    # reached npm could not run on the case it exists for: a PARTIAL publish.
+    # On 2026-08-14 nine packages went out, @ifc-lite/source-dalux 404'd, the
+    # release job failed — and this was skipped, so nothing named the missing
+    # package. It was found by hand afterwards.
+    #
+    # `published` is still the right gate: changesets/action sets it true
+    # whenever any package published, INCLUDING the partial-failure path, and
+    # false on a run that merely opened the version PR. So this now runs exactly
+    # when something was published and never on the PR-opening runs.
+    if: always() && needs.release.outputs.published == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repo

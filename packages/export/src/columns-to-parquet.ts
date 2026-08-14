@@ -23,10 +23,17 @@
  * @param floatColumns names that must be Float64 even when every value in the
  *   sample happens to be a whole number - content inference alone would demote
  *   `3.0` to Int32, losing the schema and risking wrap beyond 2^31
+ * @param uintColumns names whose domain is an UNSIGNED 32-bit integer.
+ *   Inference reaches for Int32 on any whole number, which wraps a value at or
+ *   above 2_147_483_648 to a negative one. An IFC express id is a `u32`
+ *   everywhere else in this codebase - `Uint32Array` in the parser's entity
+ *   index and its transports, `u32` in the Rust crates - so without this the
+ *   export was the one place narrowing that domain.
  */
 export async function columnsToParquet(
     columns: Record<string, any[]>,
     floatColumns?: Set<string>,
+    uintColumns?: ReadonlySet<string>,
 ): Promise<Uint8Array> {
     try {
         // Dynamic imports for better tree-shaking. The package's
@@ -47,7 +54,9 @@ export async function columnsToParquet(
                 // which the Parquet writer rejects.
                 vectors[name] = floatColumns?.has(name)
                     ? arrow.vectorFromArray([], new arrow.Float64())
-                    : arrow.vectorFromArray([], new arrow.Utf8());
+                    : uintColumns?.has(name)
+                        ? arrow.vectorFromArray([], new arrow.Uint32())
+                        : arrow.vectorFromArray([], new arrow.Utf8());
                 continue;
             }
 
@@ -63,7 +72,9 @@ export async function columnsToParquet(
                 // here whenever no element in a zone set could be measured.
                 vectors[name] = floatColumns?.has(name)
                     ? arrow.vectorFromArray(data, new arrow.Float64())
-                    : arrow.vectorFromArray(data, new arrow.Utf8());
+                    : uintColumns?.has(name)
+                        ? arrow.vectorFromArray(data, new arrow.Uint32())
+                        : arrow.vectorFromArray(data, new arrow.Utf8());
             } else if (typeof sample === 'number') {
                 // Columns declared as REAL-typed by the caller (e.g. ValueReal,
                 // quantity Value) always use Float64 — content inference alone
@@ -71,6 +82,10 @@ export async function columnsToParquet(
                 // losing the float schema and risking wrap for |x| > 2^31.
                 if (floatColumns?.has(name)) {
                     vectors[name] = arrow.vectorFromArray(data, new arrow.Float64());
+                    continue;
+                }
+                if (uintColumns?.has(name)) {
+                    vectors[name] = arrow.vectorFromArray(data, new arrow.Uint32());
                     continue;
                 }
                 // Otherwise check if it's integer or float by content.

@@ -27,6 +27,7 @@ import {
   toColumns,
   zoneTableRows,
   ZONE_TABLE_FLOAT_COLUMNS,
+  ZONE_TABLE_UINT_COLUMNS,
   type ZoneTableRow,
   type ZoneTableElement,
   type VolumeBasis,
@@ -98,7 +99,7 @@ export async function exportZoneTable(
 
   const bytes = format === 'csv'
     ? new TextEncoder().encode(toCsv(rows))
-    : await columnsToParquet(toColumns(rows), new Set(ZONE_TABLE_FLOAT_COLUMNS));
+    : await columnsToParquet(toColumns(rows), new Set(ZONE_TABLE_FLOAT_COLUMNS), ZONE_TABLE_UINT_COLUMNS);
   // `columnsToParquet` degrades to Arrow IPC when its wasm writer cannot load.
   // Those bytes are still useful, but a `.parquet` file that is not Parquet
   // opens in nothing, and the reader is told it is corrupt rather than that it

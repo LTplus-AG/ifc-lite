@@ -23,12 +23,13 @@
  * to the not-ready branch, or to the viewer teardown itself via `invalidate`.
  */
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useViewerStore } from '@/store';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import { VisibilityEpochTracker } from '@ifc-lite/renderer';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
+import { ghostExemptSelection } from '@/lib/ghost-selection';
 import { buildCesiumModelGLB, cesiumModelGLBKey, type CesiumModelGLBInput } from '@/lib/geo/cesium-model-glb';
 import { swapCesiumModel } from '@/lib/geo/cesium-model-swap';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
@@ -185,6 +186,13 @@ export function useCesiumModel({
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const storeIsolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
+  // X-Ray context (#2591). Everything NOT in this set fades; selection is
+  // exempt, matching the renderer — which exempts BOTH the scalar selection and
+  // the multi-select set (`index.ts` folds `selectedId` into `selectedIds`), so
+  // a single click must count too.
+  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
+  const selectedEntityId = useViewerStore((s) => s.selectedEntityId);
+  const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   // The GLB effect keys on this version, NOT on the Set references. The store
   // hands out a fresh Set on every visibility action, and the effect's cleanup
   // pulls the model off the globe — so keying on identity blanks the map for a
@@ -196,9 +204,38 @@ export function useCesiumModel({
   // changed, so a double-invoked render (StrictMode) returns the same version.
   const visibilityEpochsRef = useRef(new VisibilityEpochTracker());
   const visibilityVersion = visibilityEpochsRef.current.update(hiddenEntities, isolatedEntities);
+  // Selection only matters while X-Ray is on, because that is the only time it
+  // changes a byte of the GLB. Tracking it unconditionally would rebuild a
+  // multi-megabyte model on every Ctrl-click in ordinary viewing.
+  const ghosting = ghostExceptEntities != null;
+  const selectionForGhost = useMemo(
+    () => (ghosting ? ghostExemptSelection(selectedEntityId, selectedEntityIds) : null),
+    [ghosting, selectedEntityIds, selectedEntityId],
+  );
+
+  // A second content-based epoch for the X-Ray set, for the same reason as the
+  // first: a fresh Set with equal content must not rebuild a multi-megabyte GLB.
+  //
+  // Argument ORDER matters. The tracker collapses an empty first argument to
+  // null and preserves an empty second one — so the ghost set goes second,
+  // where "except nothing" (ghost everything) stays distinguishable from null
+  // (no X-Ray at all). Selection goes first, where empty and null are the same
+  // thing, which for a selection they are.
+  const ghostEpochsRef = useRef(new VisibilityEpochTracker());
+  const ghostVersion = ghostEpochsRef.current.update(selectionForGhost, ghostExceptEntities);
   // Read inside the deferred build, which runs long after the effect fired.
-  const visibilityRef = useRef({ hiddenIds: hiddenEntities, isolatedIds: isolatedEntities });
-  visibilityRef.current = { hiddenIds: hiddenEntities, isolatedIds: isolatedEntities };
+  const visibilityRef = useRef({
+    hiddenIds: hiddenEntities,
+    isolatedIds: isolatedEntities,
+    ghostExceptIds: ghostExceptEntities,
+    selectedIds: selectionForGhost,
+  });
+  visibilityRef.current = {
+    hiddenIds: hiddenEntities,
+    isolatedIds: isolatedEntities,
+    ghostExceptIds: ghostExceptEntities,
+    selectedIds: selectionForGhost,
+  };
 
   // Track the Cesium model (IFC geometry loaded as glTF for correct world positioning)
   const cesiumModelRef = useRef<CesiumModelPrimitive | null>(null);
@@ -250,6 +287,9 @@ export function useCesiumModel({
           hiddenIds: visibilityRef.current.hiddenIds,
           isolatedIds: visibilityRef.current.isolatedIds,
           visibilityVersion,
+          ghostExceptIds: visibilityRef.current.ghostExceptIds,
+          selectedIds: visibilityRef.current.selectedIds,
+          ghostVersion,
         };
         const key = cesiumModelGLBKey(glbInput);
         const cached = glbCacheRef.current;
@@ -360,7 +400,7 @@ export function useCesiumModel({
       cancelled = true;
       clearTimeout(deferTimer);
     };
-  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion]);
+  }, [status, bridgeVersion, geometryResult, geometryContentVersion, visibilityVersion, ghostVersion]);
 
   // ─── Effect 2d: Update model matrix (instant, no reload) ────────────────
   // When terrain placement or georef changes, just update the

@@ -260,9 +260,22 @@ async function checkAll() {
   return failures === 0 ? 0 : 1;
 }
 
-const mode = process.argv[2];
-let exitCode;
-if (mode === '--audit') exitCode = await audit();
-else if (mode === '--all') exitCode = await checkAll();
-else exitCode = await checkOnePackage(process.cwd());
-process.exit(exitCode);
+// The generator is worth sharing: check-unused-locals.mjs needs the same test
+// program, or it measures a tree with the tests cut out of it. Exported rather
+// than duplicated, so the two cannot drift into disagreeing about what a
+// package's test program contains.
+export { writeTestProgram, GENERATED_CONFIG };
+
+// Only run the CLI when invoked as one — importing this must not typecheck the
+// repo and call process.exit.
+const invokedDirectly = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  const mode = process.argv[2];
+  let exitCode;
+  if (mode === '--audit') exitCode = await audit();
+  else if (mode === '--all') exitCode = await checkAll();
+  else exitCode = await checkOnePackage(process.cwd());
+  process.exit(exitCode);
+}

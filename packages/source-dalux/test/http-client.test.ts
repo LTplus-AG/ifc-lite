@@ -125,7 +125,33 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('throws when the nextPage bookmark echoes the one just requested', async () => {
+  it('treats a nextPage bookmark that echoes the one just requested as a clean end of listing, when the page is empty', async () => {
+    // Observed live on /6.1/projects/.../file_areas/.../files: Dalux can
+    // keep re-sending the same bookmark on what is genuinely the final page
+    // (0 items) rather than ever omitting the nextPage link. Matches the
+    // original Dalux Box integration (ifc-lite#1761) and the reference
+    // third-party client (bruadam/dalux-build), neither of which errors on this shape.
+    const mockFetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        json: () =>
+          Promise.resolve({
+            items: [],
+            metadata: { totalRemainingItems: 0 },
+            links: [{ rel: 'nextPage', href: 'https://node1.field.dalux.com/service/api/x?bookmark=same' }],
+          }),
+      }),
+    );
+    const result = await fetchPage(client(mockFetch), '/x', {}, 'same');
+    expect(result.items).toEqual([]);
+    expect(result.cursor).toBeUndefined();
+  });
+
+  it('throws when an echoed bookmark still has items on the page, instead of silently ending the listing', async () => {
+    // Dalux's pagination isn't reliable enough to trust that every echoed
+    // bookmark means "done" — only an echo on a genuinely empty page (as
+    // observed live) does. An echo that still carries items means the
+    // server stopped making forward progress while real data remains
+    // unread, which must surface as truncation, not a clean, short result.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
         json: () =>
@@ -139,13 +165,20 @@ describe('fetchPage', () => {
     await expect(fetchPage(client(mockFetch), '/x', {}, 'same')).rejects.toThrow(DaluxPaginationError);
   });
 
-  it('throws when metadata reports remaining items but sends no nextPage link', async () => {
+  it('treats a page with no nextPage link as the last page, even when metadata reports remaining items', async () => {
+    // An unofficial third-party client (dalux-build's `paginate` helper) never
+    // treats `totalRemainingItems` as authoritative — it only logs it and
+    // stops as soon as `links` has no `nextPage` entry. Real responses (e.g.
+    // `/5.1/projects` with exactly one project) can report a positive
+    // `totalRemainingItems` on the page that is genuinely the last one.
     const mockFetch = vi.fn().mockResolvedValue(
       mockResponse({
-        json: () => Promise.resolve({ items: [{ a: 1 }], metadata: { totalRemainingItems: 5 }, links: [] }),
+        json: () => Promise.resolve({ items: [{ a: 1 }], metadata: { totalRemainingItems: 1 }, links: [] }),
       }),
     );
-    await expect(fetchPage(client(mockFetch), '/x', {}, undefined)).rejects.toThrow(DaluxPaginationError);
+    const result = await fetchPage(client(mockFetch), '/x', {}, undefined);
+    expect(result.items).toEqual([{ a: 1 }]);
+    expect(result.cursor).toBeUndefined();
   });
 
   it('follows a nextPage link on an empty page instead of throwing (bookmark pager can signal "keep going" on an empty page)', async () => {
@@ -257,6 +290,10 @@ describe('fetchAllPages', () => {
     // (bookmark=b) -> bookmark "a" again. fetchPage's own immediate-echo
     // check can't see this (the echoed value is two hops back, not one),
     // so this specifically exercises fetchAllPages' own seenBookmarks set.
+    // Unlike an immediate, empty-page echo, a bookmark resurfacing several
+    // pages later means content already read is about to be handed back
+    // again instead of new content — a stuck listing, not a finished one —
+    // so this still throws regardless of whether the page has items on it.
     const mockFetch = vi.fn().mockImplementation((url: string) => {
       const bookmark = new URL(url).searchParams.get('bookmark');
       const next = bookmark === null ? 'a' : bookmark === 'a' ? 'b' : 'a';

@@ -26,6 +26,7 @@ import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
 import { isEntityVisible } from './entity-visibility.js';
+import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
@@ -252,7 +253,20 @@ export class Scene {
   private instancedSelected: Set<number> = new Set();              // currently flag-selected instanced express_ids
   private instancedHidden: Set<number> = new Set();               // currently hidden instanced express_ids (hide/isolate)
   private instancedOverridden: Set<number> = new Set();            // currently colour-overridden instanced express_ids
+  private instancedGhosted: Set<number> = new Set();               // currently X-Ray ghosted instanced express_ids
+  // The colours the instanced channel was last overridden with. Ghosting reads
+  // THIS rather than the flat path's `colorOverrides`: the two are set by
+  // different calls and can diverge, and a fade must compose with whatever is
+  // actually on the instance buffer.
+  private instancedOverrideColors: ReadonlyMap<number, readonly [number, number, number, number]> | null = null;
+  private lastGhostAlpha = 1;                                      // alpha the active X-Ray fade was written with
+  // Set when something OTHER than the ghost set changed the instance colour
+  // bytes — a shard streaming in, or an override applied/dropped. The
+  // membership diff cannot see those, so without this an occurrence can sit
+  // solid while the set says it is ghosted (#2606 review).
+  private instancedGhostDirty = false;
   private instancedHasTransparent = false;                         // an override made some instanced occurrence translucent
+  private instancedGhostTransparent = false;                       // X-Ray ghosting made some instanced occurrence translucent
   // Content-based change guard for setInstancedVisibility — same contract as
   // RenderOptions.hiddenIds (in-place mutation and fresh identical Sets both
   // behave), keeping the instanced path in lockstep with the batched path.
@@ -3351,8 +3365,11 @@ export class Scene {
     }
     // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
     // to recompute so an already-active isolate/hide also applies to geometry that
-    // streamed in after the visibility was set.
+    // streamed in after the visibility was set. X-Ray needs the same: new
+    // occurrences of an already-ghosted id arrive at their uploaded, solid
+    // colour, and the ghost set's membership has not changed to reveal it.
     this.instancedVisibilityDirty = true;
+    this.instancedGhostDirty = true;
   }
 
   /** Transform a template's local AABB by an occurrence's column-major mat4 (read
@@ -3608,20 +3625,94 @@ export class Scene {
     }
     let hasTransparent = false;
     for (const [eid, rgba] of next) {
-      this.writeInstanceColor(device, eid, rgba);
+      // An occurrence that is currently ghosted keeps the ghost alpha: X-Ray is
+      // a stronger statement about visibility than a lens tint, and the flat
+      // path resolves the same way.
+      const ghosted = this.instancedGhosted.has(eid);
+      this.writeInstanceColor(device, eid, ghosted ? [rgba[0], rgba[1], rgba[2], this.lastGhostAlpha] : rgba);
       // Instanced occurrences are opaque by partition; only an override can drop alpha
       // below the cutoff (lens-ghost / x-ray / compare). Track it so the renderer runs
       // the transparent instanced sub-pass only when something is actually translucent.
       if (rgba[3] < OPAQUE_ALPHA_CUTOFF) hasTransparent = true;
     }
     this.instancedOverridden = new Set(next.keys());
+    this.instancedOverrideColors = next.size > 0 ? next : null;
     this.instancedHasTransparent = hasTransparent;
+    // Restoring a dropped override writes FULL alpha, which un-fades a ghosted
+    // occurrence. The ghost set has not changed, so only this flag gets the
+    // fade re-applied on the next frame.
+    this.instancedGhostDirty = true;
   }
 
   /** True when an active colour override made some instanced occurrence translucent,
    *  so the renderer should run the transparent instanced sub-pass. */
   hasTransparentInstances(): boolean {
-    return this.instancedHasTransparent;
+    return this.instancedHasTransparent || this.instancedGhostTransparent;
+  }
+
+  /**
+   * Per-instance X-RAY GHOSTING: fade every instanced occurrence outside
+   * `ghostExceptIds` to `ghostAlpha`, leaving the excepted set and the current
+   * selection solid.
+   *
+   * The instanced pass used to receive only the hide and isolate sets, so
+   * ghosting stopped at the flat geometry: on a model whose facade is
+   * instanced, X-Ray left a solid facade in front of a ghosted interior
+   * (#2606). The Cesium world view had already started doing this correctly
+   * (#2591), which is what surfaced the gap.
+   *
+   * Composes with colour overrides instead of clobbering them: a ghosted
+   * occurrence keeps its override's RGB and takes the ghost alpha, and
+   * restoring re-applies the override rather than the original colour. The two
+   * channels share the instance colour bytes, so whichever wrote last would
+   * otherwise win.
+   *
+   * `ghostExceptIds == null` means no X-Ray: everything ghosted is restored.
+   */
+  setInstancedGhosting(
+    ghostExceptIds: ReadonlySet<number> | null | undefined,
+    selectedIds: ReadonlySet<number> | null | undefined,
+    ghostAlpha: number,
+  ): void {
+    const device = this.instancedDevice;
+    if (!device || this.instancedTemplates.length === 0) return;
+
+    const { next, toFade, toRestore, changed } = planInstancedGhosting({
+      ghostExceptIds,
+      selectedIds,
+      instancedIds: this.instancedEntityMap.keys(),
+      current: this.instancedGhosted,
+      ghostAlpha,
+      lastGhostAlpha: this.lastGhostAlpha,
+      dirty: this.instancedGhostDirty,
+    });
+    if (!changed) return;
+
+    for (const eid of toRestore) {
+      // Back to whatever owns the colour now: an override if one is active,
+      // otherwise the occurrence's baked colour.
+      const override = this.instancedOverrideColors?.get(eid);
+      if (override) this.writeInstanceColor(device, eid, override);
+      else this.restoreInstanceColor(device, eid);
+    }
+
+    for (const eid of toFade) {
+      const base = this.instancedOverrideColors?.get(eid) ?? this.originalInstanceColor(eid);
+      if (!base) continue;
+      this.writeInstanceColor(device, eid, [base[0], base[1], base[2], ghostAlpha]);
+    }
+
+    this.instancedGhosted = next;
+    this.lastGhostAlpha = ghostAlpha;
+    this.instancedGhostDirty = false;
+    this.instancedGhostTransparent = next.size > 0 && ghostAlpha < OPAQUE_ALPHA_CUTOFF;
+  }
+
+  /** The colour an occurrence was uploaded with, before any override or ghost. */
+  private originalInstanceColor(eid: number): readonly [number, number, number, number] | null {
+    const locs = this.instancedEntityMap.get(eid);
+    const first = locs?.[0];
+    return first ? first.originalColor : null;
   }
 
   /** Write the combined flag lane (selected | hidden) for every occurrence of `eid`.
@@ -3857,7 +3948,11 @@ export class Scene {
     this.instancedSelected.clear();
     this.instancedHidden.clear();
     this.instancedOverridden.clear();
+    this.instancedGhosted.clear();
+    this.instancedGhostDirty = false;
+    this.instancedOverrideColors = null;
     this.instancedHasTransparent = false;
+    this.instancedGhostTransparent = false;
     // Force the next setInstancedVisibility to recompute against fresh state.
     this.lastInstancedVisibilityVersion = -1;
     this.instancedVisibilityDirty = false;

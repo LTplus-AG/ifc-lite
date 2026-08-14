@@ -166,6 +166,7 @@ pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
 pub use geom_hash::{
     hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
+    MIN_GEOM_HASH_TOLERANCE,
 };
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{

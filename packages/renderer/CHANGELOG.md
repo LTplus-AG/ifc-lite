@@ -1,5 +1,34 @@
 # @ifc-lite/renderer
 
+## 1.46.0
+
+### Minor Changes
+
+- [#2607](https://github.com/LTplus-AG/ifc-lite/pull/2607) [`2bb936c`](https://github.com/LTplus-AG/ifc-lite/commit/2bb936c213fdb7ca78d42b14a4cb207fbcfd6f18) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now reaches 3D World Context, and glass on the map looks like glass.
+
+  The world view drew every element fully opaque no matter its alpha. Clash focus in ghost mode, the Space Sketch preview and layer diff all faded the model in the viewport and changed nothing on the map; authored `IfcSurfaceStyleRendering` transparency was ignored there too. The cause was one line that was never written: a glTF material with no `alphaMode` is `OPAQUE` per spec, so Cesium discarded the per-vertex alpha the exporter had been packing all along.
+
+  The merged GLB now emits up to two primitives over the same vertex buffers — one opaque, one `alphaMode: 'BLEND'` — split by mesh alpha. Splitting rather than blending the whole model keeps the bulk of the geometry out of the translucent pass, where triangles are not depth-sorted against each other. A model with no translucent geometry still emits exactly one primitive, as before.
+
+  `@ifc-lite/renderer` exports `DEFAULT_GHOST_ALPHA` and `OPAQUE_ALPHA_CUTOFF` so the world view matches the viewport's ghosting rather than inventing its own; the ghost alpha was previously a literal inside `Renderer.render`. Selection is exempt from ghosting on the map exactly as it is in the viewport, and the GLB cache key carries a content-based ghost epoch so an equal set does not rebuild.
+
+  One deliberate difference: GPU-instanced occurrences ghost on the map but not in the viewport, because the renderer's instanced pass never receives the ghost set. That is the viewport being wrong, and replicating it to stay symmetrical would have meant copying a defect.
+
+### Patch Changes
+
+- [#2609](https://github.com/LTplus-AG/ifc-lite/pull/2609) [`c9953ec`](https://github.com/LTplus-AG/ifc-lite/commit/c9953ec6691003a2cfada80da28effcdfcf5e56c) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now fades GPU-instanced geometry too, instead of leaving it solid.
+
+  The instanced pass received only the hide and isolate sets, so ghosting stopped at the flat geometry. On a model whose facade is instanced — repeated panels, mullions, windows — asking to X-ray the building produced a solid facade standing in front of a ghosted interior. The Cesium world view had already started fading them correctly ([#2591](https://github.com/LTplus-AG/ifc-lite/issues/2591)), and that disagreement is what surfaced the gap.
+
+  `Scene.setInstancedGhosting` fades every occurrence outside the except-set to the same `DEFAULT_GHOST_ALPHA` the flat path uses, leaves the selection solid exactly as the flat path does, and reports the result through `hasTransparentInstances()` so the translucent sub-pass actually runs.
+
+  It composes with lens and IDS colour overrides rather than fighting them: the two share the instance colour bytes, so a ghosted occurrence keeps its override's RGB and takes the ghost alpha, and clearing X-Ray restores the override rather than the original colour.
+
+  The per-frame call is a no-op when nothing changed, but "nothing changed" cannot be judged by the ghost set alone — dropping an override writes full alpha, a streaming shard adds occurrences at their uploaded colour, and neither moves the set. Any of those marks the fade dirty so the next frame re-applies it.
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594)]:
+  - @ifc-lite/geometry@3.8.2
+
 ## 1.45.1
 
 ### Patch Changes

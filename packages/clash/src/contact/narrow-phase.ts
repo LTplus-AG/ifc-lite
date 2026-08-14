@@ -24,15 +24,19 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * this pair's own coordinate magnitude rather than a fixed constant.
  *
  * Geometry is ingested from f32 buffers throughout this codebase, so a fixed
- * `1e-6` is only valid near the origin: the f32 ULP exceeds `1e-6` above
- * ~8.4 m and reaches ~4.9e-4 at 5 km. Two triangles authored to be flush at
- * ordinary building coordinates round to adjacent — not bit-identical — f32
- * values, and a too-tight fixed epsilon then reads that rounding noise as a
- * genuine non-coplanar separation, discarding the shared-face contact
- * entirely rather than reporting it as `touch`/`coplanar`. Extent is the max
- * abs coordinate over both meshes' AABBs (already computed by the BVH build,
- * so this costs nothing extra), floored at 1.0 so a model near the origin
- * still gets the single-unit ULP, not zero.
+ * `1e-6` is only valid near the origin: the true discrete f32 ULP exceeds
+ * `1e-6` above 16 m and reaches ~4.9e-4 at 5 km. Two triangles authored to be
+ * flush at ordinary building coordinates round to adjacent — not
+ * bit-identical — f32 values, and a too-tight fixed epsilon then reads that
+ * rounding noise as a genuine non-coplanar separation, discarding the
+ * shared-face contact entirely rather than reporting it as
+ * `touch`/`coplanar`. Extent is the max abs coordinate over both meshes'
+ * AABBs (already computed by the BVH build, so this costs nothing extra).
+ * The result is floored at the old fixed `1e-6`: scaling must only ever
+ * *widen* the tolerance relative to the constant it replaces, never narrow
+ * it — a bare `extent * F32_ULP_SCALE` with only the 1.0 extent floor is far
+ * tighter than `1e-6` for any extent under ~4.19 m, which reintroduces the
+ * exact dropped-shared-face bug this function exists to fix.
  */
 function scaledPlaneEps(aabbA: AABB, aabbB: AABB): number {
   let extent = 1.0;
@@ -44,7 +48,7 @@ function scaledPlaneEps(aabbA: AABB, aabbB: AABB): number {
       }
     }
   }
-  return extent * F32_ULP_SCALE;
+  return Math.max(1e-6, extent * F32_ULP_SCALE);
 }
 
 export type TrianglePair =

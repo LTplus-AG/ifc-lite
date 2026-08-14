@@ -57,10 +57,11 @@ describe('contactClusters (contact interface geometry)', () => {
   // elements authored to be exactly flush can round to *adjacent* — not
   // bit-identical — f32 values at their shared boundary once far from the
   // origin. `narrowPhase`'s default `planeEps` used to be a fixed 1e-6,
-  // which is below the f32 ULP above ~8.4 m and reaches ~4.9e-4 at 5 km, so
-  // it misread that rounding noise as a genuine gap and dropped the shared
-  // face entirely instead of reporting it. (follow-up to #2594, which fixed
-  // the equivalent defect in the narrow-phase penetration-depth floor.)
+  // which is below the true discrete f32 ULP above 16 m and reaches
+  // ~4.9e-4 at 5 km, so it misread that rounding noise as a genuine gap and
+  // dropped the shared face entirely instead of reporting it. (follow-up to
+  // #2594, which fixed the equivalent defect in the narrow-phase
+  // penetration-depth floor.)
   describe('scale-relative planeEps (flush boundary at large world coordinates)', () => {
     /** Bump an f32 value by exactly one ULP: adjacent-but-not-identical
      * float32 coordinates, as two independently authored elements meeting
@@ -229,6 +230,174 @@ describe('contactClusters (contact interface geometry)', () => {
         const withFixed = contactClusters(a, b, { planeDistSnap: 1e-3 });
         expect(withDefault).toEqual(withFixed);
       }
+    });
+  });
+
+  // Regression for a defect in the fix above: `scaledDistSnap` (and its
+  // `scaledPlaneEps` sibling in narrow-phase.ts) originally floored only the
+  // *extent* term at 1.0, not the final tolerance at the old fixed constant
+  // they replace. `extent * F32_ULP_SCALE` with no floor on the result is
+  // FAR tighter than the old fixed `1e-3` for any extent under ~4.19 Mm —
+  // i.e. for essentially every ordinary building model — which reintroduces
+  // the exact split-face bug this file's other tests exist to catch.
+  //
+  // The "unchanged near the origin" tests above are structurally incapable
+  // of catching this: they use axis-aligned, exactly-coincident box
+  // fixtures, so both patches round to bit-identical f32 offsets and pass
+  // for *any* tolerance, floored or not. This fixture instead uses a
+  // rotated (non-axis-aligned) wall face at ordinary building scale
+  // (~20-28 m extent): each patch's plane offset is computed independently
+  // through real sin/cos rounding then quantised to f32, so the patches
+  // land at genuinely different (not hand-picked) f32 offsets — an offset
+  // spread that comfortably exceeds an unfloored bucket at this scale but
+  // sits well inside the old fixed `1e-3` bucket.
+  describe('planeDistSnap floor (unfloored scaling reintroduces the split-face bug near ordinary building scale)', () => {
+    /** Round a vertex through f32 the way ingested-from-glTF geometry is
+     * represented in this codebase. */
+    function f32v(v: [number, number, number]): [number, number, number] {
+      const buf = new Float32Array(v);
+      return [buf[0] as number, buf[1] as number, buf[2] as number];
+    }
+
+    /** Bump an f32 value by exactly `n` ULPs. */
+    function nextF32(x: number, n: number): number {
+      const buf = new Float32Array([x]);
+      new Uint32Array(buf.buffer)[0] += n;
+      return buf[0] as number;
+    }
+
+    /** Rotate a local point about Z by `deg` degrees and translate it —
+     * ordinary rigid-body placement of an IFC element, computed in f64 then
+     * quantised to f32 like the rest of this codebase's ingested geometry.
+     * `bumpUlps` nudges the placed x coordinate by that many f32 ULPs,
+     * standing in for the accumulated rounding drift between
+     * independently-triangulated patches of the same physical plane (the
+     * same mechanism as `splitWallFixture` above, but applied to a rotated,
+     * non-axis-aligned face at ordinary building scale rather than an
+     * axis-aligned one at 5 km). */
+    function place(
+      local: [number, number, number],
+      deg: number,
+      translate: [number, number, number],
+      bumpUlps = 0,
+    ): [number, number, number] {
+      const rad = (deg * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const s = Math.sin(rad);
+      const [lx, ly, lz] = local;
+      const world: [number, number, number] = [
+        lx * c - ly * s + translate[0],
+        lx * s + ly * c + translate[1],
+        lz + translate[2],
+      ];
+      const [wx, wy, wz] = f32v(world);
+      return [bumpUlps ? nextF32(wx, bumpUlps) : wx, wy, wz];
+    }
+
+    /** Triangulated quad from four world-space corners. */
+    function quad4(
+      id: string,
+      v0: [number, number, number],
+      v1: [number, number, number],
+      v2: [number, number, number],
+      v3: [number, number, number],
+    ): Mesh {
+      return {
+        id,
+        positions: new Float64Array([...v0, ...v1, ...v2, ...v3]),
+        indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      };
+    }
+
+    /**
+     * One flat wall face (local plane x = 0, spanning y in [0, 20], z in
+     * [0, 3]) split into three independently-triangulated patches along its
+     * length — routine for a large IFC mesh — rotated 37° about Z and
+     * translated off-origin to ordinary building scale, flush against a
+     * matching box B. Each patch's corners are placed (rotated + f32
+     * quantised) independently, so unlike `splitWallFixture` above (a
+     * single hand-picked one-ULP bump) the offset spread here comes from
+     * ordinary rotation rounding.
+     */
+    function rotatedWallFixture(): { a: Mesh; b: Mesh; extent: number } {
+      const deg = 37;
+      const translate: [number, number, number] = [5, 5, 0];
+      const patchYRanges: Array<[number, number]> = [
+        [0, 7],
+        [7, 13],
+        [13, 20],
+      ];
+      const patches = patchYRanges.map(([y0, y1], i) => {
+        const bump = 6 * i; // patch 0 unbumped; patches 1, 2 drift further
+        return quad4(
+          `A${i}`,
+          place([0, y0, 0], deg, translate, bump),
+          place([0, y1, 0], deg, translate, bump),
+          place([0, y1, 3], deg, translate, bump),
+          place([0, y0, 3], deg, translate, bump),
+        );
+      });
+      const positions = new Float64Array(patches.flatMap((p) => Array.from(p.positions)));
+      const indices = new Uint32Array(
+        patches.flatMap((p, i) => Array.from(p.indices, (idx) => idx + i * 4)),
+      );
+      const a: Mesh = { id: 'A', positions, indices };
+
+      // B: a box in the *local* frame from x in [-0.5, 0] (behind the wall
+      // face) to x in [0, 0] would be degenerate — use a thin slab just
+      // touching the face, spanning the full local y/z range, then place
+      // its 8 corners with the same rotation + translation + f32 rounding.
+      const bLocalCorners: Array<[number, number, number]> = [
+        [-0.5, 0, 0],
+        [0, 0, 0],
+        [0, 20, 0],
+        [-0.5, 20, 0],
+        [-0.5, 0, 3],
+        [0, 0, 3],
+        [0, 20, 3],
+        [-0.5, 20, 3],
+      ];
+      const placed = bLocalCorners.map((c) => place(c, deg, translate));
+      const bFaces = [
+        [0, 1, 2],
+        [0, 2, 3],
+        [4, 6, 5],
+        [4, 7, 6],
+        [0, 5, 1],
+        [0, 4, 5],
+        [1, 6, 2],
+        [1, 5, 6],
+        [2, 6, 7],
+        [2, 7, 3],
+        [3, 7, 4],
+        [3, 4, 0],
+      ];
+      const b: Mesh = {
+        id: 'B',
+        positions: new Float64Array(placed.flat()),
+        indices: new Uint32Array(bFaces.flat()),
+      };
+
+      let extent = 0;
+      for (const c of [...Array.from(positions), ...placed.flat()]) {
+        if (Math.abs(c) > extent) extent = Math.abs(c);
+      }
+      return { a, b, extent };
+    }
+
+    it('RED: the unfloored scaled bucket (extent * F32_ULP_SCALE, no floor) splits one physical wall face into multiple surface clusters', () => {
+      const { a, b, extent } = rotatedWallFixture();
+      const unflooredDistSnap = extent * (1 / 4_194_304); // reproduces the pre-fix defect exactly
+      const clusters = contactClusters(a, b, { planeDistSnap: unflooredDistSnap });
+      const surfaces = clusters.filter((c) => c.kind === 'surface');
+      expect(surfaces.length).toBeGreaterThan(1);
+    });
+
+    it('GREEN: the floored default merges the same wall face into one surface cluster', () => {
+      const { a, b } = rotatedWallFixture();
+      const clusters = contactClusters(a, b);
+      const surfaces = clusters.filter((c) => c.kind === 'surface');
+      expect(surfaces.length).toBe(1);
     });
   });
 });

@@ -192,3 +192,11 @@ export function toColumns(rows: readonly ZoneTableRow[]): Record<string, unknown
 export const ZONE_TABLE_FLOAT_COLUMNS: ReadonlySet<string> = new Set([
   'VolumeM3', 'Fraction', 'ElementVolumeM3',
 ]);
+
+/** Column names whose domain is an unsigned 32-bit integer. An IFC express id
+ *  is a `u32` everywhere in this codebase, and Arrow's inference reaches for
+ *  Int32 on any whole number, so an id at or above 2^31 would land in the
+ *  spreadsheet as a negative number that still looks like an id. */
+export const ZONE_TABLE_UINT_COLUMNS: ReadonlySet<string> = new Set([
+  'ExpressId',
+]);

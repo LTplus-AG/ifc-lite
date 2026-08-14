@@ -126,6 +126,7 @@ export {
   refusalText,
   ZONE_TABLE_COLUMNS,
   ZONE_TABLE_FLOAT_COLUMNS,
+  ZONE_TABLE_UINT_COLUMNS,
   type ZoneTableRow,
   type ZoneTableElement,
 } from './table.js';

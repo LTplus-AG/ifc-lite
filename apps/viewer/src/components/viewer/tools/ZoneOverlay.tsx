@@ -17,7 +17,7 @@
  * other zone box (and this one outside of edit mode) is decorative only.
  */
 
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
@@ -26,13 +26,23 @@ import { computeZoneDragPatch, type DragKind, type DragState, type Vec2, type Ve
 
 type Project = (worldPos: Vec3) => Vec2 | null;
 
-/** Wireframe edges as pairs of corner indices, matching `zoneWorldCorners`'
- *  bottom-face-then-top-face order (0-3 bottom, 4-7 top). */
-const BOX_EDGES: ReadonlyArray<readonly [number, number]> = [
-  [0, 1], [1, 2], [2, 3], [3, 0], // bottom
-  [4, 5], [5, 6], [6, 7], [7, 4], // top
-  [0, 4], [1, 5], [2, 6], [3, 7], // verticals
-];
+/**
+ * Wireframe edges as pairs of corner indices, for a hull of `2n` corners in
+ * `zoneWorldCorners`' bottom-ring-then-top-ring order.
+ *
+ * Derived rather than listed since #2508 item 4: a box is the `n = 4` case, and
+ * a prism zone has as many corners as its footprint has points. A hardcoded
+ * 12-edge table drew a box-shaped lie around every prism.
+ */
+function hullEdges(cornerCount: number): Array<readonly [number, number]> {
+  const n = cornerCount / 2;
+  const edges: Array<readonly [number, number]> = [];
+  for (let i = 0; i < n; i++) {
+    const next = (i + 1) % n;
+    edges.push([i, next], [n + i, n + next], [i, n + i]);
+  }
+  return edges;
+}
 
 function rgbToCss([r, g, b]: readonly [number, number, number], alpha: number): string {
   return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${alpha})`;
@@ -67,12 +77,13 @@ function projectZones(
         corners.push(p);
       }
       if (!ok) return;
-      // Label anchors above the top face's center (average of corners 4-7).
-      const top = worldCorners.slice(4);
+      // Label anchors above the centre of the TOP ring, which is the second
+      // half of the corner list whatever the footprint's point count.
+      const top = worldCorners.slice(worldCorners.length / 2);
       const topCenter: Vec3 = {
-        x: top.reduce((s, c) => s + c[0], 0) / 4,
-        y: top.reduce((s, c) => s + c[1], 0) / 4 + 0.3,
-        z: top.reduce((s, c) => s + c[2], 0) / 4,
+        x: top.reduce((s, c) => s + c[0], 0) / top.length,
+        y: top.reduce((s, c) => s + c[1], 0) / top.length + 0.3,
+        z: top.reduce((s, c) => s + c[2], 0) / top.length,
       };
       const labelAnchor = project(topCenter);
       if (!labelAnchor) return;
@@ -90,6 +101,61 @@ function projectZones(
 }
 
 const HANDLE_HIT_RADIUS = 10;
+
+const LABEL_FONT_SIZE = 11;
+const LABEL_PAD_X = 6;
+const LABEL_HEIGHT = 18;
+
+/**
+ * The zone's name on a pill sized to the text.
+ *
+ * MEASURED rather than estimated. The width was `zone.name.length * 6.4`, which
+ * was wrong twice: it counted only the zone's name while the label also renders
+ * the SET's name and a separator, so every pill was short by that much and the
+ * text ran off its own background; and a per-character constant cannot size a
+ * proportional font, where "Wohnung West" and "Illinois III" differ by a third
+ * at the same character count.
+ *
+ * `getBBox` is the browser's own answer for the font that actually rendered, at
+ * whatever zoom. The character estimate survives only as the pre-measurement
+ * fallback - for the first paint before the layout effect runs, and for a test
+ * DOM that implements no SVG layout - and it now counts the WHOLE string.
+ */
+export function ZoneLabel({ text }: { text: string }) {
+  const textRef = useRef<SVGTextElement>(null);
+  const [measured, setMeasured] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (!element || typeof element.getBBox !== 'function') return;
+    try {
+      const width = element.getBBox().width;
+      // A detached or display:none SVG measures 0; keeping the estimate then is
+      // better than collapsing the pill to nothing.
+      if (width > 0) setMeasured(width);
+    } catch {
+      // Firefox throws on getBBox for an unrendered element rather than
+      // returning zeroes. The estimate covers it.
+    }
+  }, [text]);
+
+  const width = (measured ?? text.length * 6.2) + LABEL_PAD_X * 2;
+  return (
+    <>
+      <rect
+        x={-2}
+        y={-14}
+        width={width}
+        height={LABEL_HEIGHT}
+        rx={4}
+        fill="rgba(15, 23, 42, 0.85)"
+      />
+      <text ref={textRef} x={-2 + LABEL_PAD_X} y={-1} fontSize={LABEL_FONT_SIZE} fill="#fff">
+        {text}
+      </text>
+    </>
+  );
+}
 
 export function ZoneOverlay() {
   const zoneSets = useViewerStore((s) => s.zoneSets);
@@ -121,6 +187,13 @@ export function ZoneOverlay() {
   const editingEntry = editingZone
     ? projected.find((p) => p.setId === editingZone.setId && p.zone.id === editingZone.zoneId)
     : undefined;
+  // The move/resize/rotate gizmo edits `center` / `size` / `rotationY`, which
+  // for a PRISM are derived from its footprint rather than authoritative
+  // (#2508 item 4). Dragging them would move a bounding box the exact tests do
+  // not read, so the zone would visibly change and behave identically. No
+  // handles is the honest state until a footprint editor exists; the numeric
+  // fields stay available for the vertical extent, which IS authoritative.
+  const gizmoEntry = editingEntry?.zone.footprint ? undefined : editingEntry;
 
   /** Probe `+1` world unit along `dir` from `origin`, returning screen
    *  pixels-per-metre in that direction (or null if degenerate/offscreen). */
@@ -186,12 +259,12 @@ export function ZoneOverlay() {
         const isEditing = editingZone?.setId === entry.setId && editingZone.zoneId === entry.zone.id;
         const stroke = rgbToCss(entry.color, isEditing ? 1 : 0.85);
         const fill = rgbToCss(entry.color, isEditing ? 0.18 : 0.1);
-        const topFace = [entry.corners[4], entry.corners[5], entry.corners[6], entry.corners[7]]
+        const topFace = entry.corners.slice(entry.corners.length / 2)
           .map((p) => `${p.x},${p.y}`).join(' ');
         return (
           <g key={`${entry.setId}:${entry.zone.id}`}>
             <polygon points={topFace} fill={fill} stroke="none" />
-            {BOX_EDGES.map(([a, b], i) => (
+            {hullEdges(entry.corners.length).map(([a, b], i) => (
               <line
                 key={i}
                 x1={entry.corners[a].x} y1={entry.corners[a].y}
@@ -202,18 +275,14 @@ export function ZoneOverlay() {
               />
             ))}
             <g transform={`translate(${entry.labelAnchor.x}, ${entry.labelAnchor.y})`}>
-              <rect x={-2} y={-14} width={entry.zone.name.length * 6.4 + 12} height={18} rx={4}
-                fill="rgba(15, 23, 42, 0.85)" />
-              <text x={4} y={-1} fontSize={11} fill="#fff">
-                {entry.setName} / {entry.zone.name}
-              </text>
+              <ZoneLabel text={`${entry.setName} / ${entry.zone.name}`} />
             </g>
           </g>
         );
       })}
 
-      {editingEntry && (() => {
-        const zone = editingEntry.zone;
+      {gizmoEntry && (() => {
+        const zone = gizmoEntry.zone;
         const center: Vec3 = { x: zone.center[0], y: zone.center[1], z: zone.center[2] };
         const cos = Math.cos(zone.rotationY);
         const sin = Math.sin(zone.rotationY);
@@ -301,7 +370,7 @@ export function ZoneOverlay() {
                   stroke="#18181b"
                   strokeWidth={1.5}
                   style={{ cursor: h.op.kind === 'rotate' ? 'grab' : 'move' }}
-                  onPointerDown={(e) => startDrag(e, editingEntry, h.op, h.probeOrigin, h.probeDir)}
+                  onPointerDown={(e) => startDrag(e, gizmoEntry, h.op, h.probeOrigin, h.probeDir)}
                   onPointerMove={onDragMove}
                   onPointerUp={onDragEnd}
                   onPointerCancel={onDragEnd}

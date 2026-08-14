@@ -166,11 +166,42 @@ In the IFClite viewer:
 | Tab | Edits | Backed by |
 |---|---|---|
 | **Properties** | IfcRoot named attributes (Name, Description, …), property sets, classifications, materials, documents | `setProperty` / `setAttribute` |
-| **Quantities** | Quantity sets and individual quantities | `setQuantity` |
+| **Quantities** | Quantity sets and individual quantities | `setQuantity` / `createQuantitySet` / `deleteQuantitySet` |
 | **bSDD** | Add buildingSMART Data Dictionary properties | `setProperty` |
 | **Raw STEP** | Positional STEP arguments on the selected entity (one row per arg, inline pen-icon editor). Mutated rows show a purple dot. | `setPositionalAttribute` |
 
 The Raw STEP tab is the right place for non-IfcRoot edits — `IfcRectangleProfileDef.XDim`, `IfcCartesianPoint.Coordinates`, anything without a symbolic attribute name.
+
+### Zone shapes
+
+A zone is an oriented box by default. A zone whose JSON carries a `footprint` (an array of `[x, z]` points in world metres) is a vertical **prism** over that polygon instead, spanning the same `center[1] +/- size[1]/2`:
+
+```json
+{ "id": "z-1", "name": "Takt A", "center": [0, 1.5, 0], "size": [0, 3, 0], "rotationY": 0,
+  "footprint": [[0, 0], [12, 0], [12, 5], [4, 9]] }
+```
+
+- The polygon must be **convex**; a concave one is rejected on import, because the sweep, the point test and the overlap test are each silently wrong for it rather than visibly broken.
+- `center` / `size` in X/Z and `rotationY` are **derived** from the footprint on import, so every bounds consumer keeps working. The vertical extent stays yours to edit; the 3D handles stay off, since dragging a derived bounding box would change nothing.
+- Classification, apportionment and geometry splitting all follow the polygon. Apportionment costs a few times a box zone (one trapezoidal strip per footprint vertex pair), not a different order.
+
+### Zone assignment write-back
+
+The Zones panel writes a zone set's assignment onto the elements, so it survives an export instead of staying viewer state (issue #2508). Per element in the set:
+
+| Set | Name | Carries |
+|---|---|---|
+| Property set | `IfcLite_Zones [<set name>]` | `ZoneSet`, `Zone` (the home zone, empty when the centroid is in no zone), `Zones` (every touched zone, joined with `", "`), `Straddles`, and the basis labels |
+| Quantity set | `IfcLite_ZoneVolumes [<set name>] (<basis>)` | one `IfcQuantityVolume` per zone the element reaches, plus `Outside zones` when part of it is in none |
+
+Neither name uses the `Pset_` / `Qto_` prefix, which buildingSMART reserves for its own published definitions.
+
+Four things are deliberate:
+
+- **The basis is chosen, and it is in the name.** `mesh` is the as-built geometry; `net` / `gross` / `unqualified` apportion the file's own declared quantity by the measured fractions, so a `net` breakdown sums to the declared `NetVolume` by construction. Elements that declare nothing on the chosen basis are refused rather than quietly falling back to the mesh.
+- **Values are written in the model's declared volume unit**, converted per model, so a federated file in cubic millimetres and one in cubic metres both come out right.
+- **A refusal is written down.** An element whose mesh is not a proven closed solid gets its zone names plus a `VolumeUnavailable` sentence, and no quantities. A missing row would read as zero.
+- **The run does not enter the undo stack** - it writes to the overlay directly, because driving the per-mutation actions once per element is quadratic in the undo stack. Its inverse is the panel's own remove button, which clears the property set and the quantity set on every basis.
 
 ### Selection context menu
 

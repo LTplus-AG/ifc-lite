@@ -61,6 +61,11 @@ export type MutationType =
   | 'CREATE_QUANTITY'
   | 'UPDATE_QUANTITY'
   | 'DELETE_QUANTITY'
+  /** A whole quantity set removed, the twin of `DELETE_PROPERTY_SET`. Distinct
+   *  from `DELETE_QUANTITY`, which names one quantity inside a set: replaying a
+   *  set removal as a member removal drops the set's other members on the
+   *  floor, and both replay consumers key off `propName` being present. */
+  | 'DELETE_QUANTITY_SET'
   | 'UPDATE_ATTRIBUTE'
   | 'UPDATE_POSITIONAL_ATTRIBUTE'
   | 'UPDATE_ENTITY_TYPE'

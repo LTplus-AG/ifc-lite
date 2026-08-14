@@ -176,11 +176,6 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
     use crate::step::{export_step_with_stats, PropMutation, StepOptions};
     use ifc_lite_core::EntityScanner;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     // A STRICT ISO 10303-21 6.3.2.4/6.3.2.5 un-escaper: every literal `'`
     // and `\` in the string's plain-text value MUST appear doubled in the
     // literal. A run of backslashes with an ODD length is malformed under
@@ -225,7 +220,7 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
         out
     }
 
-    let src = fixture("ara3d/duplex.ifc");
+    let src = fixture_or_skip!("ara3d/duplex.ifc");
     let mut scanner = EntityScanner::new(&src[..]);
     let mut wall = None;
     while let Some((id, t, _s, _e)) = scanner.next_entity() {

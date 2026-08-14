@@ -45,13 +45,13 @@ export function AnalyzeTab() {
       <RibbonGroup label="Validate">
         <RibbonLargeButton
           icon={Issue}
-          label="BCF Issues"
+          label="BCF issues"
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
           icon={Check}
-          label="IDS Check"
+          label="IDS check"
           tooltip="IDS validation"
           active={activeWorkspacePanels.has('ids')}
           onClick={() => handleToggleRightPanel('ids')}
@@ -98,15 +98,15 @@ export function AnalyzeTab() {
       <RibbonGroup label="Data">
         <RibbonLargeButton
           icon={List}
-          label="List"
-          tooltip="Lists & schedules"
-          active={activeWorkspacePanels.has('list')}
-          onClick={() => handleToggleBottomPanel('list')}
+          label="Lists"
+          tooltip="Entity lists"
+          active={activeWorkspacePanels.has('lists')}
+          onClick={() => handleToggleBottomPanel('lists')}
         />
         <RibbonLargeButton
           icon={Schedule}
           label="Schedule"
-          tooltip="Schedule (Gantt)"
+          tooltip="Construction schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />

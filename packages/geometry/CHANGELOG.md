@@ -1,5 +1,74 @@
 # @ifc-lite/geometry
 
+## 3.8.2
+
+### Patch Changes
+
+- [#2539](https://github.com/LTplus-AG/ifc-lite/pull/2539) [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Forward a geometry/parser worker's wasm panic-location stash to the main thread.
+
+  A follow-up to the wasm-trap source-location attribution: the Rust panic hook stashes
+  `{ location, at }` on whichever realm's JS global it runs in, but a panic inside a geometry
+  process worker or the parser worker left that stash stranded in the worker's own realm, invisible
+  to the main thread's `attachWasmPanicLocation` gate — so "Geometry worker error: unreachable" (and
+  the equivalent parser-worker error) still arrived without a location.
+
+  Both workers now read + consume their own realm's stash on the `{type:'error'}` message they post
+  back, and the main-thread pools (`geometry-parallel.ts`'s process-worker pool AND its streaming
+  pre-pass worker, `worker-parser.ts`) re-plant it on the main realm's global before the load error
+  propagates — so the existing consume-once, TTL-guarded attachment gate in the viewer picks a worker
+  trap up exactly as it would a main-thread one. The re-plant only happens when the accompanying error
+  message itself looks wasm-trap-shaped, so a stash forwarded alongside an ordinary, non-trap worker
+  error (the worker always forwards whatever it has, regardless of the error that triggered it) can't
+  sit on the main realm's global and mislabel an unrelated later trap. Location only, never the panic
+  message, matching the existing privacy contract.
+
+- [#2260](https://github.com/LTplus-AG/ifc-lite/pull/2260) [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `cap_half_space_clip` reporting `capped: true` while a boundary edge was left open.
+
+  The boundary chain walk dropped a dead-ended chain (no continuation back to
+  its start) and could also fold an unclosed chain into an already-visited
+  vertex, treating it as if it were a closed loop. Neither case affected
+  `outer_count`/`outer_filled`, the two counters the return value was computed
+  from, so an open edge from a dead-ended or merged chain never showed up in
+  the verdict.
+
+  On a non-watertight host — a routine input to
+  `BooleanClippingProcessor::clip_mesh_with_half_space` — this could report
+  `capped: true` with open boundary edges still present, contradicting the
+  function's own contract ("a boundary that does not close bails") and the
+  per-piece "was the cut closed" signal [#1810](https://github.com/LTplus-AG/ifc-lite/issues/1810) zone splitting depends on for a
+  trustworthy quoted volume.
+
+  The walk now tracks whether any chain failed to close, and that flag is
+  ANDed into the returned verdict alongside the existing counters.
+
+  The merge-into-an-already-visited-vertex arm had a second bug beyond the
+  verdict: it set the flag and `break`, matching the code comment ("do NOT
+  push it as if it were a closed loop"), but never cleared the partial walk
+  first, so the un-closed chain was still `>= 3` vertices long and got pushed
+  into `loops`, triangulated, and appended to the mesh — garbage cap geometry
+  landing in the output even on a call that correctly reported
+  `capped: false`. The merge arm now clears the partial walk before breaking,
+  matching its sibling dead-end arm.
+
+  Scope note: `capped` only measures whether the ON-PLANE cut section closed.
+  A host with pre-existing OPEN boundary edges off the cut plane still reports
+  `capped: true` — the boundary walk is filtered to on-plane endpoints by
+  design, so it never re-examines unrelated openness elsewhere on the mesh.
+
+  Also adds `kernel::mesh_volume`, a public, closedness-UNGATED divergence-
+  theorem volume reading for a `Mesh` (delegates to the crate's one
+  divergence-sum implementation, `signed_volume6`). It is a raw primitive, not
+  a replacement for `geom_closure::GeometryHasher::volume` — that one stays
+  the crate's closedness-gated, per-entity volume and requires the hasher's
+  accumulated state; `mesh_volume` is for a bare `Mesh` (e.g. a future
+  zone-split piece) that never went through it. Callers of `mesh_volume` must
+  establish closedness themselves first; see its doc for the exact
+  translation-stability guarantee (stable up to a documented quantization
+  noise floor, not exact).
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/wasm@4.5.1
+
 ## 3.8.1
 
 ### Patch Changes

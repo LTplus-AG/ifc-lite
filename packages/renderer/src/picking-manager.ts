@@ -8,6 +8,7 @@
  */
 
 import { Camera } from './camera.js';
+import { isEntityVisible } from './entity-visibility.js';
 import { Scene } from './scene.js';
 import { Picker, type PointPickSizing } from './picker.js';
 import type { MeshData } from '@ifc-lite/geometry';
@@ -101,8 +102,7 @@ export class PickingManager {
         const requiredPieceCounts = new Map<string, number>();
         const visibleExpressIds: number[] = [];
         for (const expressId of expressIds) {
-            if (options?.hiddenIds?.has(expressId)) continue;
-            if (options?.isolatedIds !== null && options?.isolatedIds !== undefined && !options.isolatedIds.has(expressId)) continue;
+            if (!isEntityVisible(expressId, options?.hiddenIds, options?.isolatedIds)) continue;
             visibleExpressIds.push(expressId);
 
             const pieces = this.scene.getMeshDataPieces(expressId);
@@ -199,14 +199,9 @@ export class PickingManager {
 
         let meshes = this.scene.getMeshes();
 
-        // Apply visibility filtering to meshes before picking
-        // This ensures users can only select elements that are actually visible
-        if (options?.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter(mesh => !options.hiddenIds!.has(mesh.expressId));
-        }
-        if (options?.isolatedIds !== null && options?.isolatedIds !== undefined) {
-            meshes = meshes.filter(mesh => options.isolatedIds!.has(mesh.expressId));
-        }
+        // Apply visibility filtering to meshes before picking, with the same
+        // rule the draw paths use — users can only select what they can see.
+        meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options?.hiddenIds, options?.isolatedIds));
 
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.() ?? null;
@@ -334,12 +329,7 @@ export class PickingManager {
         }
 
         let meshes = this.scene.getMeshes();
-        if (options?.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter((m) => !options.hiddenIds!.has(m.expressId));
-        }
-        if (options?.isolatedIds !== null && options?.isolatedIds !== undefined) {
-            meshes = meshes.filter((m) => options.isolatedIds!.has(m.expressId));
-        }
+        meshes = meshes.filter((m) => isEntityVisible(m.expressId, options?.hiddenIds, options?.isolatedIds));
         const viewProj = this.camera.getViewProjMatrix().m;
         const pointSnap = this.pointPickProvider?.() ?? null;
         return this.picker.pickRect(

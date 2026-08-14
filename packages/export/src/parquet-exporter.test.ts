@@ -16,6 +16,7 @@ import {
   PropertyValueType,
   RelationshipType,
   QuantityType,
+  IfcTypeEnum,
 } from '@ifc-lite/data';
 import { tableFromIPC } from 'apache-arrow';
 import { readParquet } from 'parquet-wasm';
@@ -256,6 +257,66 @@ describe('ParquetExporter overlay deletions reach the geometry tables', () => {
     ];
     return { dataStore, geo: geometry(meshes) };
   }
+
+  it('keeps SpatialHierarchy\'s -1 "no parent" sentinel a -1', async () => {
+    // BuildingId / SiteId / SpaceId use -1 for "none" - a storey directly under
+    // the project has no building. Declaring those columns UNSIGNED turned that
+    // into 4294967295: an id-shaped number where an obviously-absent marker
+    // belongs, which is the same class of defect as the wrap the next test
+    // guards against. They are deliberately NOT in UINT32_COLUMNS.
+    //
+    // Read out of the .bos archive because `SpatialHierarchy.parquet` is
+    // written only there, not by `exportTable`.
+    // A storey directly under the project: no building, so BuildingId AND
+    // SiteId are both the sentinel. That is the shape the corruption showed up
+    // in, and the default fixture has no spatial hierarchy at all.
+    const dataStore = buildDataStoreWithById();
+    dataStore.spatialHierarchy = {
+      project: {
+        expressId: 100,
+        type: IfcTypeEnum.IfcProject,
+        name: 'P',
+        children: [{ expressId: 200, type: IfcTypeEnum.IfcBuildingStorey, name: 'Level 0', children: [], elements: [1] }],
+        elements: [],
+      },
+      byStorey: new Map([[200, [1]]]),
+      bySpace: new Map(),
+    } as unknown as MockDataStore['spatialHierarchy'];
+
+    const JSZip = (await import('jszip')).default;
+    const archive = await JSZip.loadAsync(
+      await new ParquetExporter(dataStore).exportBOS({ includeGeometry: false }),
+    );
+    const entry = archive.file('SpatialHierarchy.parquet');
+    expect(entry, 'the archive has no SpatialHierarchy.parquet').toBeTruthy();
+    const rows = decodeParquet(await entry!.async('uint8array'));
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const row of rows) {
+      // 4294967295 is -1 read as unsigned: the exact corruption being guarded.
+      expect(Number(row.BuildingId)).toBe(-1);
+      expect(Number(row.SiteId)).toBe(-1);
+    }
+  });
+
+  it('exports an express id above 2^31 without wrapping it negative', async () => {
+    // IFC entity ids are bounded only by the `u32` every reader here uses -
+    // `Uint32Array` in the parser's entity index, `u32` in the Rust crates - so
+    // an id at or above 2_147_483_648 is reachable input. Arrow's content
+    // inference reaches for Int32 on any whole number, which turned such an id
+    // NEGATIVE: still id-shaped, joins to nothing, in a file that opens fine.
+    const strings = new StringTable();
+    const big = 3_000_000_000;
+    const entityBuilder = new EntityTableBuilder(1, strings);
+    entityBuilder.add(big, 'IFCWALL', 'wall-big-guid', 'Wall Big', '', '');
+    const dataStore = {
+      ...buildDataStore(),
+      entities: entityBuilder.build(),
+    } as MockDataStore;
+
+    const rows = decodeParquet(await new ParquetExporter(dataStore).exportTable('entities'));
+    expect(rows.map((r) => Number(r.ExpressId))).toEqual([big]);
+  });
 
   it('omits a deleted entity from Meshes.parquet', async () => {
     const { dataStore, geo } = buildStoreAndGeometry();

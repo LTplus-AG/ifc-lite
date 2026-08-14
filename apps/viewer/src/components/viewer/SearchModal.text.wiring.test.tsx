@@ -182,6 +182,25 @@ describe('Search tab — committing a result row', () => {
     assert.deepEqual(s.selectedEntity, { modelId: MODEL_ID, expressId: 42 });
   });
 
+  it('clears a prior model-header selection, so PropertiesPanel switches off ModelMetadataPanel', () => {
+    // Mirrors clicking a model header row in HierarchyPanel (setSelectedModelId)
+    // before opening search. `setSelectedEntityIds` alone does not touch
+    // `selectedModelId` (selectionSlice.ts), so PropertiesPanel would keep
+    // rendering ModelMetadataPanel — the camera moves and the entity
+    // highlights, but the panel stays stuck on model metadata.
+    seedStore();
+    useViewerStore.setState({ selectedModelId: MODEL_ID });
+    const container = mount();
+
+    click(row(container, 'Wall A'));
+
+    assert.equal(
+      useViewerStore.getState().selectedModelId,
+      null,
+      'committing a search result must clear selectedModelId',
+    );
+  });
+
   it('resolves through resolveHighlightIds and puts the clicked id LAST, so it stays primary', () => {
     seedStore();
     // A geometry-less assembly (#1133): resolveHighlightIds expands it to its

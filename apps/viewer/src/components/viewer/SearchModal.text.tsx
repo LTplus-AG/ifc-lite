@@ -57,6 +57,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     clearSearchModelFilter,
     setSearchHighlightIndex,
     setSelectedEntity,
+    setSelectedEntityId,
     setSelectedEntityIds,
     addEntitiesToSelection,
     toggleEntitySelection,
@@ -76,6 +77,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       clearSearchModelFilter: s.clearSearchModelFilter,
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       setSelectedEntity: s.setSelectedEntity,
+      setSelectedEntityId: s.setSelectedEntityId,
       setSelectedEntityIds: s.setSelectedEntityIds,
       addEntitiesToSelection: s.addEntitiesToSelection,
       toggleEntitySelection: s.toggleEntitySelection,
@@ -136,6 +138,11 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       // Properties panel opens on the assembly, not an arbitrary part).
       const renderableParts = cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
       setSelectedEntityIds([...renderableParts, globalId]);
+      // setSelectedEntityIds doesn't touch selectedModelId, so a prior
+      // model-header click (HierarchyPanel -> setSelectedModelId) leaves
+      // PropertiesPanel stuck on ModelMetadataPanel. setSelectedEntityId
+      // clears selectedModelId as its side effect (selectionSlice.ts).
+      setSelectedEntityId(globalId);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
         window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
@@ -151,6 +158,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       onClose,
       searchQuery,
       setSelectedEntity,
+      setSelectedEntityId,
       setSelectedEntityIds,
     ],
   );

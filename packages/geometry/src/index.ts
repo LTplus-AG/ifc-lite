@@ -1500,6 +1500,31 @@ export class GeometryProcessor {
   }
 
   /**
+   * Export the `IfcSpace` volumes in `buffer` as a Dragonfly DFJSON string
+   * (Ladybug Tools energy model — extruded `Room2D` plates). Returns null if
+   * not initialized.
+   *
+   * WASM path only, deliberately: like {@link exportHbjson} and the other
+   * analytic readers here (`extractProfiles`, `parseGridLines`,
+   * `parseSymbolicRepresentations`, …) this reads `this.bridge` and so returns
+   * null under `isNative`. That is not an oversight specific to DFJSON —
+   * `IPlatformBridge` declares no energy export at all, and the native path
+   * needs a Tauri host (`isTauri()` requires `window.__TAURI_INTERNALS__`),
+   * which no longer ships: the desktop app is decommissioned and the repo
+   * carries no `src-tauri`. Giving DFJSON a native route alone would single out
+   * one of eight methods for a constraint the whole family shares.
+   *
+   * @param buffer IFC file buffer
+   * @param name Model identifier / display name
+   */
+  exportDfjson(buffer: Uint8Array, name: string): string | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    return this.bridge.exportDfjson(buffer, name);
+  }
+
+  /**
    * Cleanup resources: frees the underlying WASM `IfcAPI` handle
    * deterministically (AGENTS.md "Free every WASM handle deterministically").
    * `IfcLiteBridge.dispose()` also frees whatever the pre-pass / batch caches

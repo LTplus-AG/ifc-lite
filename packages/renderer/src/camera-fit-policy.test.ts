@@ -160,6 +160,43 @@ describe('pickFitPolicy', () => {
       assert.ok(dir.z > 0, 'should be looking +Z');
     });
 
+    it('actually tilts a Y-dominant model (issue #2441)', () => {
+      // 300 m tall, 5 m footprint: aspect 60 and longest 300, so the linear
+      // branch fires — a mast, chimney, shaft, lift core or turbine tower.
+      // The 20° tilt used to be applied around world Y, the very axis it was
+      // tilting from, so for a Y-dominant bbox it cancelled: forward came out
+      // exactly (0,1,0), parallel to the policy's own up, and every component
+      // of the view-projection matrix went NaN.
+      const policy = pickFitPolicy(bounds(0, 0, 0, 5, 300, 5), { fovY: FOV_45 });
+      assert.strictEqual(policy.kind, 'linear');
+      assert.deepStrictEqual(policy.up, { x: 0, y: 1, z: 0 });
+
+      const dir = {
+        x: policy.target.x - policy.position.x,
+        y: policy.target.y - policy.position.y,
+        z: policy.target.z - policy.position.z,
+      };
+      const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+      assert.ok(len > 0, 'position and target must differ');
+      const forward = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
+
+      // Still looking along the longest axis, but now genuinely tilted off it
+      // by the full 20°, against a perpendicular axis (world Z).
+      assertCloseTo(forward.x, 0, 6);
+      assertCloseTo(forward.y, Math.cos((20 * Math.PI) / 180), 6);
+      assertCloseTo(forward.z, -Math.sin((20 * Math.PI) / 180), 6);
+
+      // The load-bearing invariant: forward must not be parallel to up, or
+      // `MathUtils.lookAt` has no right axis to build the view matrix from.
+      const cross = {
+        x: forward.y * policy.up.z - forward.z * policy.up.y,
+        y: forward.z * policy.up.x - forward.x * policy.up.z,
+        z: forward.x * policy.up.y - forward.y * policy.up.x,
+      };
+      const crossLen = Math.sqrt(cross.x * cross.x + cross.y * cross.y + cross.z * cross.z);
+      assertCloseTo(crossLen, Math.sin((20 * Math.PI) / 180), 6);
+    });
+
     it('floors the feature size against pathological zero-thin bboxes', () => {
       // A 1000 × 0.0001 × 1 model — shortest dim is effectively zero,
       // would drive distance to ~zero if naively used. Policy must clamp.

@@ -773,7 +773,7 @@ END-ISO-10303-21;`;
       const dataStore = buildMinimalDataStore([
         { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
       ]);
-      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const exporter = new Ifc5Exporter(dataStore, null);
       const result = exporter.export({ onlyTreeEntities: false, applyMutations: true });
       const file = JSON.parse(result.content);
 
@@ -787,7 +787,7 @@ END-ISO-10303-21;`;
         { expressId: 1, type: 'IFCWALL', globalId: 'wall-1-guid', name: 'Wall1' },
         { expressId: 2, type: 'IFCWALL', globalId: 'wall-2-guid', name: 'Wall2' },
       ]);
-      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const exporter = new Ifc5Exporter(dataStore, null);
       const result = exporter.export({
         onlyTreeEntities: false,
         visibleOnly: true,
@@ -1318,7 +1318,7 @@ END-ISO-10303-21;`;
 
     for (const onlyTreeEntities of [true, false]) {
       it(`hidden child leaves no dangling reference on its visible parent (onlyTreeEntities: ${onlyTreeEntities})`, () => {
-        const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+        const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null);
         const file = JSON.parse(exporter.export({
           onlyTreeEntities,
           visibleOnly: true,
@@ -1340,7 +1340,7 @@ END-ISO-10303-21;`;
     }
 
     it('hidden intermediate container re-parents its visible child to the nearest visible ancestor', () => {
-      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null);
       const file = JSON.parse(exporter.export({
         visibleOnly: true,
         hiddenEntityIds: new Set([10]),
@@ -1364,7 +1364,7 @@ END-ISO-10303-21;`;
     });
 
     it('isolating a leaf still emits a document root that reaches it', () => {
-      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null, null);
+      const exporter = new Ifc5Exporter(buildVisibilityTreeStore(), null);
       const file = JSON.parse(exporter.export({
         visibleOnly: true,
         isolatedEntityIds: new Set([1]),
@@ -1418,7 +1418,7 @@ END-ISO-10303-21;`;
         },
       } as unknown as IfcDataStore;
 
-      const exporter = new Ifc5Exporter(dataStore, null, null);
+      const exporter = new Ifc5Exporter(dataStore, null);
       const file = JSON.parse(exporter.export({}).content);
 
       const names = file.data.map((n: IfcxNodeLike) => n.attributes?.['bsi::ifc::prop::Name']);

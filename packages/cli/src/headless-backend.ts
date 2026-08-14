@@ -81,9 +81,18 @@ import {
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
-import { exportHbjson } from './hbjson-export.js';
+import { exportHbjson, exportDfjson } from './energy-export.js';
 
 const MODEL_ID = 'default';
+
+/**
+ * Strip a real IFC source-file extension from a filename-derived model name.
+ * Only applied to the `modelName` fallback: an explicitly supplied export name
+ * is a display name where a trailing dotted segment is meaningful (`Tower.v2`).
+ */
+function stripIfcExtension(name: string): string {
+  return name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
+}
 
 const REL_TYPE_MAP: Record<string, RelationshipType> = {
   IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
@@ -678,9 +687,15 @@ export class HeadlessBackend implements BimBackend {
         }
         return exportToStep(store, exportOpts);
       },
+      // Both energy formats apply the mutation view — see energy-export.ts
+      // (issues #1908, #1344). An explicit `name` is a display/model name, so
+      // it is kept verbatim (dotted identifiers like `Tower.v2` are valid);
+      // only the `modelName` fallback is a filename, so only it gets a real
+      // IFC extension stripped.
       hbjson: (name?: string): Promise<string> =>
-        // See hbjson-export.ts for the mutation-view application (issue #1908).
-        exportHbjson(store, this.mutationView, name ?? modelName),
+        exportHbjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
+      dfjson: (name?: string): Promise<string> =>
+        exportDfjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
       },

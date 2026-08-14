@@ -15,7 +15,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import { comparableEntities, comparableGlobalIds } from './diff-scope.js';
 import { diffCommand } from './diff.js';
 import { loadIfcBytes } from '../loader.js';
@@ -139,8 +139,8 @@ describe('ifc-lite diff --by-entity', () => {
   let dir: string;
   let basePath: string;
   let headPath: string;
-  let stdoutSpy: ReturnType<typeof vi.spyOn>;
-  let stderrSpy: ReturnType<typeof vi.spyOn>;
+  let stdoutSpy: MockInstance<typeof process.stdout.write>;
+  let stderrSpy: MockInstance<typeof process.stderr.write>;
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), 'ifclite-by-entity-'));

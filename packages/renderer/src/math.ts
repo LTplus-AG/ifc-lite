@@ -8,6 +8,159 @@
 
 import type { Vec3, Mat4 } from './types.js';
 
+/**
+ * Squared sine of the angle between `up` and the view direction below which
+ * {@link MathUtils.lookAt} treats `up` as degenerate. 1e-12 means an angle
+ * under a microradian — orders of magnitude tighter than any pose the
+ * navigation code produces (the ViewCube top preset deliberately stops
+ * 0.01 rad off the pole), so the fallback only ever replaces a basis that
+ * carries no usable orientation.
+ *
+ * This is a threshold on the *angle*, never on a length: `up` is mutable
+ * public state that BCF viewpoint restore and `animateToWithUp` write
+ * verbatim without normalizing, so a short-but-valid `up` is a reachable
+ * input, and its direction is perfectly well defined.
+ */
+const DEGENERATE_UP_SIN_SQ = 1e-12;
+
+/**
+ * Replace a non-finite coordinate with 0. `lookAt`'s contract is that it
+ * always returns a finite matrix, and a single NaN or Infinity in an input
+ * would otherwise reach both the view direction and the translation row.
+ * Externally authored viewpoints (BCF) are file-supplied and reach the camera
+ * through the public setters unvalidated, so this is a real input class.
+ */
+function finiteOrZero(value: number): number {
+    return Number.isFinite(value) ? value : 0;
+}
+
+/** Largest magnitude representable in the Float32Array a Mat4 is stored in. */
+const F32_MAX = 3.4028234663852886e38;
+
+/**
+ * Clamp a translation component into f32 range. Only ever fires for
+ * coordinates so large that the alternative is an `Infinity` in the stored
+ * matrix, which `multiply` would then turn back into NaN.
+ */
+function clampToF32(value: number): number {
+    if (value > F32_MAX) return F32_MAX;
+    if (value < -F32_MAX) return -F32_MAX;
+    return value;
+}
+
+/**
+ * The orthonormal camera basis `lookAt` builds, exposed on its own.
+ *
+ * Extracted so the *only* other place that reconstructs a screen basis —
+ * `CameraProjection.unprojectToRay`'s orthographic branch, which turns a
+ * cursor position into a picking/measurement ray — derives it from this
+ * function instead of recomputing `cross(forward, up)` itself (#2467). The
+ * duplicate was not merely a second copy: it had none of the degeneracy
+ * handling below, so a non-finite `camera.up` returned a ray whose origin
+ * was `(NaN, NaN, NaN)` while the rendered frame was perfectly fine. A NaN
+ * origin does not throw; it makes every `t < tMin` / `dist < tolerance`
+ * hit test false, so picking reports "clicked empty space" and a
+ * measurement silently refuses to snap.
+ *
+ * That is also what settles what an unprojection should return when the
+ * basis is unusable, which is otherwise a matter of taste. It should
+ * return the ray for **the basis the user is actually looking at**: when
+ * `up` carries no usable orientation this function substitutes a
+ * deterministic hint and the view matrix — hence the rendered image — is
+ * built from that substitute. Deriving the ray from the same substitute
+ * makes picking agree with the picture. Returning `null` instead would
+ * fail a pick on a frame the user can see and interact with, and push a
+ * branch onto every caller of a published API.
+ *
+ * `eye` is returned alongside the axes because it is scrubbed here too,
+ * and a ray origin must come from the same scrubbed eye the view matrix's
+ * translation row does.
+ *
+ * All four vectors are always finite. `right`/`up` are unit length;
+ * `forward` points from eye towards target (the negation of `lookAt`'s
+ * third row, which is the camera's backward axis).
+ */
+export function viewBasis(eye: Vec3, target: Vec3, up: Vec3): {
+    eye: Vec3;
+    right: Vec3;
+    up: Vec3;
+    forward: Vec3;
+} {
+    // Scrub non-finite inputs up front: they would otherwise poison both
+    // the view direction and the translation row, no matter what the
+    // degenerate-basis guards below do. Finite inputs pass through
+    // untouched, so ordinary poses are unaffected.
+    const ex = finiteOrZero(eye.x);
+    const ey = finiteOrZero(eye.y);
+    const ez = finiteOrZero(eye.z);
+    const tx = finiteOrZero(target.x);
+    const ty = finiteOrZero(target.y);
+    const tz = finiteOrZero(target.z);
+    const upx = finiteOrZero(up.x);
+    const upy = finiteOrZero(up.y);
+    const upz = finiteOrZero(up.z);
+
+    let zx = ex - tx;
+    let zy = ey - ty;
+    let zz = ez - tz;
+    let zLenSq = zx * zx + zy * zy + zz * zz;
+    if (!(zLenSq > 0 && zLenSq < Infinity)) {
+        // eye coincides with target, or the separation squared overflowed:
+        // either way there is no usable view direction to derive. Look
+        // down -Z, the identity-camera convention.
+        zx = 0; zy = 0; zz = 1; zLenSq = 1;
+    }
+    const len = 1 / Math.sqrt(zLenSq);
+    const z0 = zx * len;
+    const z1 = zy * len;
+    const z2 = zz * len;
+
+    let xx = upy * z2 - upz * z1;
+    let xy = upz * z0 - upx * z2;
+    let xz = upx * z1 - upy * z0;
+    let xLenSq = xx * xx + xy * xy + xz * xz;
+    // The view direction is already a unit vector, so
+    // |cross(up, viewDir)| = |up| * sin(angle): scaling the test by |up|
+    // keys it on the angle alone. An absolute threshold would misread a
+    // valid but short `up` as degenerate and silently swap the caller's
+    // roll for the fallback. A zero-length `up` still lands here, since a
+    // zero threshold is not exceeded by a zero cross product.
+    const upLenSq = upx * upx + upy * upy + upz * upz;
+    if (!(xLenSq > DEGENERATE_UP_SIN_SQ * upLenSq && xLenSq < Infinity)) {
+        // `up` is parallel to the view direction, zero-length, or so large
+        // that the cross product overflowed, so it carries no usable
+        // orientation. Substitute a hint that does: world Y
+        // keeps the horizon level for any view direction that is not
+        // itself vertical, and a vertical view (a plan or soffit pose)
+        // falls back to -Z, which puts the same edge of the model at the
+        // top of the screen as the ViewCube's top preset. Either way the
+        // substitute is at least 30 degrees off the view direction, so
+        // the basis is well conditioned and the choice is deterministic.
+        const hintY = Math.abs(z1) < 0.5 ? 1 : 0;
+        const hintZ = hintY === 1 ? 0 : -1;
+        xx = hintY * z2 - hintZ * z1;
+        xy = hintZ * z0;
+        xz = -hintY * z0;
+        xLenSq = xx * xx + xy * xy + xz * xz;
+    }
+    const len2 = 1 / Math.sqrt(xLenSq);
+    const x0 = xx * len2;
+    const x1 = xy * len2;
+    const x2 = xz * len2;
+
+    const y0 = z1 * x2 - z2 * x1;
+    const y1 = z2 * x0 - z0 * x2;
+    const y2 = z0 * x1 - z1 * x0;
+
+    return {
+        eye: { x: ex, y: ey, z: ez },
+        right: { x: x0, y: x1, z: x2 },
+        up: { x: y0, y: y1, z: y2 },
+        forward: { x: -z0, y: -z1, z: -z2 },
+    };
+}
+
+
 export class MathUtils {
     /**
      * Create identity matrix
@@ -76,36 +229,34 @@ export class MathUtils {
     }
 
     /**
-     * Create look-at view matrix
+     * Create look-at view matrix.
+     *
+     * Degenerate inputs are absorbed rather than propagated (#2441): a view
+     * direction parallel to `up` (a plan/soffit pose, a Y-dominant auto-fit,
+     * an externally authored BCF viewpoint) leaves `cross(up, viewDir)` at
+     * zero length, and normalizing that used to write NaN into all sixteen
+     * components — the viewport then drew nothing at all. The same held for
+     * a zero-length `up`, for `eye === target`, and for a non-finite
+     * coordinate in any of the three inputs. All of them now fall back to a
+     * stable basis, so this function always returns a finite matrix.
+     *
+     * The basis itself lives in {@link viewBasis}; see there for why
+     * it is shared rather than inlined.
      */
     static lookAt(eye: Vec3, target: Vec3, up: Vec3): Mat4 {
-        const zx = eye.x - target.x;
-        const zy = eye.y - target.y;
-        const zz = eye.z - target.z;
-        const len = 1 / Math.sqrt(zx * zx + zy * zy + zz * zz);
-        const z0 = zx * len;
-        const z1 = zy * len;
-        const z2 = zz * len;
-
-        const xx = up.y * z2 - up.z * z1;
-        const xy = up.z * z0 - up.x * z2;
-        const xz = up.x * z1 - up.y * z0;
-        const len2 = 1 / Math.sqrt(xx * xx + xy * xy + xz * xz);
-        const x0 = xx * len2;
-        const x1 = xy * len2;
-        const x2 = xz * len2;
-
-        const y0 = z1 * x2 - z2 * x1;
-        const y1 = z2 * x0 - z0 * x2;
-        const y2 = z0 * x1 - z1 * x0;
+        const basis = viewBasis(eye, target, up);
+        const ex = basis.eye.x, ey = basis.eye.y, ez = basis.eye.z;
+        const x0 = basis.right.x, x1 = basis.right.y, x2 = basis.right.z;
+        const y0 = basis.up.x, y1 = basis.up.y, y2 = basis.up.z;
+        const z0 = -basis.forward.x, z1 = -basis.forward.y, z2 = -basis.forward.z;
 
         const m = new Float32Array(16);
         m[0] = x0; m[1] = y0; m[2] = z0; m[3] = 0;
         m[4] = x1; m[5] = y1; m[6] = z1; m[7] = 0;
         m[8] = x2; m[9] = y2; m[10] = z2; m[11] = 0;
-        m[12] = -(x0 * eye.x + x1 * eye.y + x2 * eye.z);
-        m[13] = -(y0 * eye.x + y1 * eye.y + y2 * eye.z);
-        m[14] = -(z0 * eye.x + z1 * eye.y + z2 * eye.z);
+        m[12] = clampToF32(-(x0 * ex + x1 * ey + x2 * ez));
+        m[13] = clampToF32(-(y0 * ex + y1 * ey + y2 * ez));
+        m[14] = clampToF32(-(z0 * ex + z1 * ey + z2 * ez));
         m[15] = 1;
         return { m };
     }
@@ -213,11 +364,18 @@ export class MathUtils {
     }
 
     /**
-     * Normalize vector
+     * Normalize a vector, degrading to the zero vector. **Total**: the result
+     * is always finite, which the bare `len < 1e-10` floor this used to carry
+     * was not (#2479). That floor is a magnitude test, so NaN divided instead
+     * of falling back, and an infinite component over an infinite length gave
+     * `{NaN, 0, 0}` — neither finite nor the zero vector a caller tests for.
+     * Reachable with nothing malformed anywhere: an inverse component past the
+     * `Float32Array` limit {@link MathUtils.invert} writes into saturates to
+     * `Infinity`, and `unprojectToRay` handed that back as a picking ray.
      */
     static normalize(v: Vec3): Vec3 {
         const len = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
-        if (len < 1e-10) return { x: 0, y: 0, z: 0 };
+        if (!(Number.isFinite(len) && len > 1e-10)) return { x: 0, y: 0, z: 0 };
         return { x: v.x / len, y: v.y / len, z: v.z / len };
     }
 

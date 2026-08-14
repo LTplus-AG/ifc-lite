@@ -16,6 +16,7 @@ import {
   formatAxisDeltas,
   formatHorizontalVertical,
 } from './measure-modes/components';
+import { inclination, formatInclination } from './measure-modes/inclination';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
@@ -28,9 +29,12 @@ export interface MeasurementOverlaysProps {
   hoverPosition?: { x: number; y: number } | null;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   constraintEdge?: MeasurementConstraintEdge | null;
+  /** The user's per-unit-type display override (#1573); defaults to none so
+   *  callers that don't pass it keep the previous auto-scaled-metric labels. */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge }: MeasurementOverlaysProps) {
+export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, unitDisplayOverrides = {} }: MeasurementOverlaysProps) {
   // Determine snap indicator position
   // Priority: activeMeasurement.current > snapTarget projected position > hoverPosition (fallback)
   const snapIndicatorPos = useMemo(() => {
@@ -129,13 +133,17 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (m.start.screenY + m.end.screenY) / 2,
             }}
           >
-            {formatDistance(m.distance)}
+            {formatDistance(m.distance, unitDisplayOverrides)}
             {/* Axis breakdown, derived on render (see measure-modes/components). */}
             <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatAxisDeltas(components)}
+              {formatAxisDeltas(components, unitDisplayOverrides)}
             </div>
             <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatHorizontalVertical(components)}
+              {formatHorizontalVertical(components, unitDisplayOverrides)}
+            </div>
+            {/* Inclination to horizontal (#2199 §4), from the same endpoints. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(components))}
             </div>
           </div>
         </div>
@@ -192,16 +200,19 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
             }}
           >
-            {formatDistance(activeMeasurement.distance)}
+            {formatDistance(activeMeasurement.distance, unitDisplayOverrides)}
             {/* Live axis breakdown, derived on render (see measure-modes/components).
                 Mirrors the completed-measurement label: axis deltas first, then
                 horizontal/vertical — the drag is exactly when a setting-out user
                 wants dX/dY/dZ, so the live readout must not be the poorer one. */}
             <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
+              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
             </div>
             <div className="font-normal text-[10px] leading-tight opacity-80">
-              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current))}
+              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(distanceComponents(activeMeasurement.start, activeMeasurement.current)))}
             </div>
           </div>
         </div>
@@ -594,6 +605,20 @@ export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProp
   if (!!prevProps.constraintEdge !== !!nextProps.constraintEdge) return false;
   if (prevProps.constraintEdge && nextProps.constraintEdge) {
     if (prevProps.constraintEdge.activeAxis !== nextProps.constraintEdge.activeAxis) return false;
+  }
+
+  // Compare unitDisplayOverrides — every distance label routes through it
+  // (#2199 formatDistance/unitDisplayOverrides gap). A shallow key/value
+  // compare, not a reference compare: the store spreads a new object on
+  // every `setUnitDisplayOverride` call, but an unrelated re-render must not
+  // force this component to re-render just because its identity changed.
+  const prevOverrides = prevProps.unitDisplayOverrides ?? {};
+  const nextOverrides = nextProps.unitDisplayOverrides ?? {};
+  const prevKeys = Object.keys(prevOverrides);
+  const nextKeys = Object.keys(nextOverrides);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (const key of prevKeys) {
+    if (prevOverrides[key] !== nextOverrides[key]) return false;
   }
 
   return true; // All props are equal, skip re-render

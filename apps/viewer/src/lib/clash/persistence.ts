@@ -156,7 +156,7 @@ function readStoredPresets(): ClashPreset[] {
   try {
     unwritableKeys.delete(PRESETS_KEY);
     const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
+    if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     const list = Array.isArray(parsed)
       ? parsed
@@ -271,15 +271,18 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
 
 export function loadSettings(): ClashGlobalSettings {
   try {
+    unwritableKeys.delete(SETTINGS_KEY);
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_CLASH_SETTINGS };
+    if (raw === null) return { ...DEFAULT_CLASH_SETTINGS };
     return normalizeSettings(JSON.parse(raw));
-  } catch {
+  } catch (err) {
+    onReadFailure(SETTINGS_KEY, err);
     return { ...DEFAULT_CLASH_SETTINGS };
   }
 }
 
 export function saveSettings(settings: ClashGlobalSettings): SaveResult {
+  if (unwritableKeys.has(SETTINGS_KEY)) return refuseOverwrite('clash settings');
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }));
     return { ok: true };
@@ -314,7 +317,7 @@ export function loadReviews(): Map<string, ClashReview> {
   try {
     unwritableKeys.delete(REVIEWS_KEY);
     const raw = localStorage.getItem(REVIEWS_KEY);
-    if (!raw) return map;
+    if (raw === null) return map;
     const parsed: unknown = JSON.parse(raw);
     const reviews =
       parsed && typeof parsed === 'object' ? (parsed as { reviews?: unknown }).reviews : null;

@@ -21,6 +21,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BimContext, EntityRef } from '@ifc-lite/sdk';
 import { buildViewerNamespace } from './bridge-viewer.js';
+import type { BridgeCallContext } from './bridge-schema.js';
+
+/** Bridge calls take a per-call context; these unit tests invoke `call:` directly. */
+const CTX: BridgeCallContext = { sandboxSessionId: 'test' };
 
 function findMethod(name: string) {
   const method = buildViewerNamespace().methods.find((m) => m.name === name);
@@ -54,7 +58,7 @@ describe('bim.viewer.colorizeAll — batch reshape', () => {
         { entities: [{ ref: refA, name: 'Wall A' }], color: '#ff0000' },
         { entities: [{ ref: refB, name: 'Wall B' }], color: '#00ff00' },
       ],
-    ]);
+    ], CTX);
     expect(sdk.viewer.colorizeAll).toHaveBeenCalledWith([
       { refs: [refA], color: '#ff0000' },
       { refs: [refB], color: '#00ff00' },
@@ -66,7 +70,7 @@ describe('bim.viewer.colorizeAll — batch reshape', () => {
     const bareRef = { modelId: 'm1', expressId: 3 };
     findMethod('colorizeAll').call(sdk, [
       [{ entities: [bareRef], color: '#0000ff' }],
-    ]);
+    ], CTX);
     expect(sdk.viewer.colorizeAll).toHaveBeenCalledWith([
       { refs: [bareRef], color: '#0000ff' },
     ]);
@@ -81,7 +85,7 @@ describe('bim.viewer.colorizeAll — batch reshape', () => {
     ];
     findMethod('colorizeAll').call(sdk, [
       [{ entities: refs.map((ref) => ({ ref })), color: '#fff' }],
-    ]);
+    ], CTX);
     const call = (sdk.viewer.colorizeAll as any).mock.calls[0][0];
     expect(call[0].refs).toEqual(refs);
   });

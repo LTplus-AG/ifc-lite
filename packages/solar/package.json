@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/solar",
-  "version": "1.15.2",
+  "version": "1.15.3",
   "description": "Solar position, sunrise/sunset and 3D sun-path geometry for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },

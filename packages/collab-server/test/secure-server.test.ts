@@ -14,7 +14,8 @@ function rawRequest(port: number, method: string, path = '/'): Promise<string> {
       sock.write(`${method} ${path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n`);
     });
     const chunks: Buffer[] = [];
-    sock.on('data', (c) => chunks.push(c));
+    // No encoding is set on the socket, so `data` always carries a Buffer.
+    sock.on('data', (c: Buffer) => chunks.push(c));
     sock.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     sock.on('error', reject);
   });

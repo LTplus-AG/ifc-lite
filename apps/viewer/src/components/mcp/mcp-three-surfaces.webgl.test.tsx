@@ -33,6 +33,8 @@ import { PlaygroundViewer } from './PlaygroundViewer.js';
 import type { ViewerController } from './playground-viewer-types.js';
 import { parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
 import { resetThreeWebglSupportForTests, getThreeWebglVerdict } from './three-webgl-support.js';
+import { posthog } from '@/lib/analytics';
+import { classifyLoadError } from '@/lib/load-errors';
 
 /** A minimal real model, parsed the way the playground parses one. */
 async function schemaOnlyModel(): Promise<LoadedPlaygroundModel> {
@@ -118,6 +120,40 @@ describe('HeroScene on a device that refuses a WebGL context', () => {
       assert.deepEqual(getThreeWebglVerdict(), first, 'the latched verdict must stand for the session');
     } finally {
       document.createElement = realCreateElement;
+    }
+  });
+});
+
+describe('what a refused device actually reports', () => {
+  it('files the degradation into the WebGL-unavailable family (#2458)', () => {
+    // End to end, with only the PostHog SDK stubbed: a real mount on a device
+    // that really has no `webgl2` produces a real error object, and THAT object
+    // is what the classifier has to recognise. Asserting on a hand-written
+    // message instead would prove the regex compiles, not that the error the
+    // code reports is in the family — the two came apart before, which is how
+    // three's wordings ended up outside it while the minimap's were inside.
+    const captured: Array<{ err: unknown; props?: Record<string, unknown> }> = [];
+    const captureMock = mock.method(
+      posthog,
+      'captureException',
+      (err: unknown, props?: Record<string, unknown>) => {
+        captured.push({ err, props });
+      },
+    );
+    try {
+      act(() => {
+        root.render(<HeroScene step={0} />);
+      });
+
+      assert.equal(captured.length, 1, 'the degradation is reported exactly once');
+      assert.equal(captured[0].props?.context, 'mcp_three_webgl');
+      assert.equal(
+        classifyLoadError(captured[0].err),
+        'webgl_unavailable',
+        'the reported error must land in the shared family, not open its own issue',
+      );
+    } finally {
+      captureMock.mock.restore();
     }
   });
 });

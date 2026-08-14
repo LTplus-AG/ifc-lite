@@ -92,6 +92,7 @@ import type { GeometryResult } from '@ifc-lite/geometry';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { dxfWorldShift } from './dxfUnderlayMath';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '@/lib/geo/geo-scale';
+import { effectiveMapConversionForGeometry } from '@/lib/geo/map-absolute';
 import {
   selectAnchorGeoref,
   type SelectAnchorGeorefParams,
@@ -103,6 +104,15 @@ export interface DxfExportGeoreference {
   projectedCRS: ProjectedCRS;
   /** IFC project length-unit → metres (from `IfcUnitAssignment`). */
   lengthUnitScale: number;
+  /**
+   * The ANCHOR model's coordinate info — the geometry the `mapConversion`
+   * belongs to. Feeds the map-absolute guard (#2526) in
+   * {@link resolveGeorefLinearParams}: geometry that already sits at the
+   * declared map anchor neutralises the conversion for both transform
+   * directions. Absent (older callers / no geometry yet) the authored
+   * conversion applies unchanged.
+   */
+  coordinateInfo?: GeometryResult['coordinateInfo'];
 }
 
 /**
@@ -125,7 +135,7 @@ export function resolveDxfExportGeoreference(
   const selection = selectAnchorGeoref(params);
   if (!selection) return null;
   const { mapConversion, projectedCRS, lengthUnitScale } = selection.eff;
-  return { mapConversion, projectedCRS, lengthUnitScale };
+  return { mapConversion, projectedCRS, lengthUnitScale, coordinateInfo: selection.coordinateInfo };
 }
 
 export interface DxfExportTransformParams {
@@ -194,8 +204,18 @@ function resolveGeorefLinearParams(georeference: DxfExportGeoreference): {
   abscissa: number;
   ordinate: number;
 } {
-  const { mapConversion, projectedCRS, lengthUnitScale } = georeference;
+  const { projectedCRS, lengthUnitScale } = georeference;
   const mapUnitScale = resolveMapUnitToMetreScale(projectedCRS.mapUnitScale, lengthUnitScale);
+  // Map-absolute geometry (#2526): geometry already at the declared anchor
+  // reads/writes map coordinates through a neutralised conversion. Routed
+  // HERE — the single point both the forward (buildDxfExportTransform) and
+  // inverse (buildDxfMapToWorldTransform) transforms resolve their linear
+  // params through — so the two directions can never disagree about it.
+  const mapConversion = effectiveMapConversionForGeometry(
+    georeference.mapConversion,
+    mapUnitScale,
+    georeference.coordinateInfo,
+  );
   // Guard the pathological IfcMapConversion.Scale = 0 (or negative/NaN):
   // getEffectiveHorizontalScale passes an explicit 0 through, which would
   // collapse every exported point onto the eastings/northings origin (or,

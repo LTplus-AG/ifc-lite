@@ -5,8 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { PickingManager, type PointPickProvider } from './picking-manager.ts';
-import type { PointPickNode } from './point-picker.ts';
+import { PickingManager, type PointPickProvider } from './picking-manager.js';
+import type { PointPickNode } from './point-picker.js';
 
 describe('PickingManager', () => {
   it('uses raycast when geometry data was released after finalize', async () => {

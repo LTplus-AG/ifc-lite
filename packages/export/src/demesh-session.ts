@@ -235,6 +235,13 @@ export class DemeshSession {
       upconverted = true;
     }
 
+    // Deliberately BARE. This view exists to carry `applySimplifiedGeometry`'s
+    // representation edits and records no property or quantity mutation of any
+    // kind, so it has nothing to resolve a base for; wiring extractors here
+    // would buy a per-entity source walk for a lookup nothing performs. It is
+    // named in #2487 as a site with no extractors, and it is the one site that
+    // does not need them — the exporter supplies the quantity base for any view
+    // that turns out to need one.
     const view = new MutablePropertyView(null, 'default');
     const editor = new StoreEditor(store, view);
     const elements: SimplifiedElementGeometry[] = [...this.applied.values()].map((el) => ({

@@ -18,6 +18,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { BimContext, EntityData, EntityRef } from '@ifc-lite/sdk';
 import { buildQueryNamespace } from './bridge-query.js';
+import type { BridgeCallContext } from './bridge-schema.js';
+
+/** Bridge calls take a per-call context; these unit tests invoke `call:` directly. */
+const CTX: BridgeCallContext = { sandboxSessionId: 'test' };
 
 function findMethod(name: string) {
   const method = buildQueryNamespace().methods.find((m) => m.name === name);
@@ -82,7 +86,7 @@ describe('bim.query — invalid-ref fallback shape', () => {
     const sdk = mockSdk();
     const method = findMethod(name);
     const args = name === 'related' ? [{}, 'IfcRelAggregates', 'forward'] : [{}];
-    const result = method.call(sdk, args);
+    const result = method.call(sdk, args, CTX);
     expect(result).toEqual([]);
   });
 
@@ -100,7 +104,7 @@ describe('bim.query — invalid-ref fallback shape', () => {
     const sdk = mockSdk();
     const method = findMethod(name);
     const args = name === 'property' || name === 'quantity' ? [{}, 'Pset', 'Prop'] : [{}];
-    const result = method.call(sdk, args);
+    const result = method.call(sdk, args, CTX);
     expect(result).toBeNull();
   });
 
@@ -112,7 +116,7 @@ describe('bim.query — invalid-ref fallback shape', () => {
   it('relationships returns an all-empty struct for an invalid ref, without calling the SDK', () => {
     const sdk = mockSdk();
     const method = findMethod('relationships');
-    const result = method.call(sdk, [{}]);
+    const result = method.call(sdk, [{}], CTX);
     expect(result).toEqual({ voids: [], fills: [], groups: [], connections: [] });
     expect(sdk.relationships).not.toHaveBeenCalled();
   });
@@ -131,7 +135,7 @@ describe('bim.query — invalid-ref fallback shape', () => {
         : name === 'property' || name === 'quantity'
           ? [{}, 'Pset', 'Prop']
           : [{}];
-      method.call(sdk, args);
+      method.call(sdk, args, CTX);
     }
     expect(sdk.attributes).not.toHaveBeenCalled();
     expect(sdk.properties).not.toHaveBeenCalled();
@@ -155,14 +159,14 @@ describe('bim.query — invalid-ref fallback shape', () => {
 describe('bim.query — valid ref reaches the SDK', () => {
   it('attributes forwards the resolved ref to sdk.attributes', () => {
     const sdk = mockSdk({ attributes: vi.fn(() => [{ name: 'Tag', value: 'x' }]) as any });
-    const result = findMethod('attributes').call(sdk, [DUMPED_ENTITY]);
+    const result = findMethod('attributes').call(sdk, [DUMPED_ENTITY], CTX);
     expect(sdk.attributes).toHaveBeenCalledWith(REF);
     expect(result).toEqual([{ name: 'Tag', value: 'x' }]);
   });
 
   it('storey unwraps ref, calls sdk.storey, and re-aliases a non-null result', () => {
     const sdk = mockSdk({ storey: vi.fn(() => ENTITY) as any });
-    const result = findMethod('storey').call(sdk, [DUMPED_ENTITY]) as Record<string, unknown>;
+    const result = findMethod('storey').call(sdk, [DUMPED_ENTITY], CTX) as Record<string, unknown>;
     expect(sdk.storey).toHaveBeenCalledWith(REF);
     expect(result.name).toBe('Basic Wall');
     expect(result.Name).toBe('Basic Wall');
@@ -180,7 +184,7 @@ describe('bim.query.properties / bim.query.quantities — named-property mapping
         },
       ]) as any,
     });
-    const result = findMethod('properties').call(sdk, [DUMPED_ENTITY]) as any[];
+    const result = findMethod('properties').call(sdk, [DUMPED_ENTITY], CTX) as any[];
     expect(result).toEqual([
       {
         name: 'Pset_WallCommon',
@@ -203,7 +207,7 @@ describe('bim.query.properties / bim.query.quantities — named-property mapping
         { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', value: 3.2, type: 'IfcLengthMeasure' }] },
       ]) as any,
     });
-    const result = findMethod('quantities').call(sdk, [DUMPED_ENTITY]) as any[];
+    const result = findMethod('quantities').call(sdk, [DUMPED_ENTITY], CTX) as any[];
     expect(result).toEqual([
       {
         name: 'Qto_WallBaseQuantities',
@@ -225,7 +229,7 @@ describe('bim.query.byType', () => {
     const toArray = vi.fn(() => [ENTITY]);
     const builder = { byType, toArray };
     const sdk = mockSdk({ query: vi.fn(() => builder) as any });
-    const result = findMethod('byType').call(sdk, [['IfcWall']]);
+    const result = findMethod('byType').call(sdk, [['IfcWall']], CTX);
     expect(byType).toHaveBeenCalledWith('IfcWall');
     expect((result as any[]).map((e) => e.name)).toEqual(['Basic Wall']);
   });
@@ -238,7 +242,7 @@ describe('bim.query.byType', () => {
     const toArray = vi.fn(() => [ENTITY]);
     const builder = { byType, toArray };
     const sdk = mockSdk({ query: vi.fn(() => builder) as any });
-    const result = findMethod('byType').call(sdk, [[]]);
+    const result = findMethod('byType').call(sdk, [[]], CTX);
     expect(byType).not.toHaveBeenCalled();
     expect((result as any[]).length).toBe(1);
   });
@@ -251,14 +255,14 @@ describe('bim.query.selection', () => {
       viewer: { getSelection: vi.fn(() => [REF, staleRef]) } as any,
       entity: vi.fn((ref: EntityRef) => (ref.expressId === 7 ? ENTITY : null)) as any,
     });
-    const result = findMethod('selection').call(sdk, []) as any[];
+    const result = findMethod('selection').call(sdk, [], CTX) as any[];
     expect(result).toHaveLength(1);
     expect(result[0].ref).toEqual(REF);
   });
 
   it('returns [] when nothing is selected', () => {
     const sdk = mockSdk({ viewer: { getSelection: vi.fn(() => []) } as any });
-    const result = findMethod('selection').call(sdk, []);
+    const result = findMethod('selection').call(sdk, [], CTX);
     expect(result).toEqual([]);
   });
 });
@@ -266,12 +270,12 @@ describe('bim.query.selection', () => {
 describe('bim.query.matchingActiveFilter', () => {
   it('returns null when no filter is active (matches the sdk value, not [])', () => {
     const sdk = mockSdk({ matchingActiveFilter: vi.fn(() => null) as any });
-    expect(findMethod('matchingActiveFilter').call(sdk, [])).toBeNull();
+    expect(findMethod('matchingActiveFilter').call(sdk, [], CTX)).toBeNull();
   });
 
   it('re-aliases entities when a filter is active', () => {
     const sdk = mockSdk({ matchingActiveFilter: vi.fn(() => [ENTITY]) as any });
-    const result = findMethod('matchingActiveFilter').call(sdk, []) as any[];
+    const result = findMethod('matchingActiveFilter').call(sdk, [], CTX) as any[];
     expect(result[0].Name).toBe('Basic Wall');
   });
 });
@@ -279,7 +283,7 @@ describe('bim.query.matchingActiveFilter', () => {
 describe('bim.query.entity', () => {
   it('returns null for an unresolved (modelId, expressId) pair without ref validation', () => {
     const sdk = mockSdk({ entity: vi.fn(() => null) as any });
-    const result = findMethod('entity').call(sdk, ['m1', 999]);
+    const result = findMethod('entity').call(sdk, ['m1', 999], CTX);
     expect(sdk.entity).toHaveBeenCalledWith({ modelId: 'm1', expressId: 999 });
     expect(result).toBeNull();
   });

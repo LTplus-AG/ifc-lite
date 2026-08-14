@@ -422,9 +422,18 @@ export class SectionPlaneRenderer {
     // have drifted from unit length by quantisation.
     let nx = normal[0]; let ny = normal[1]; let nz = normal[2];
     const nlen = Math.hypot(nx, ny, nz);
-    if (nlen < 1e-6) {
+    if (!(nlen >= 1e-6 && nlen < Infinity)) {
       // Degenerate; emit a zeroed buffer so nothing is drawn rather than
       // poisoning the GPU with NaN positions.
+      //
+      // The finiteness half is not decoration (#2489): `nlen < 1e-6` was
+      // false for BOTH a NaN length and an infinite one, so a non-finite
+      // component fell straight through to `nx /= nlen` and made every
+      // vertex below NaN. #2442 closed that input for the clip uniform, but
+      // it resolves `RenderOptions.sectionPlane` and the gizmo does not —
+      // `drawSectionOverlays` hands this method the raw, unresolved
+      // `options.sectionPlane.normal`, so this is the second consumer of the
+      // same public field and it needs its own guard.
       return new Float32Array(30);
     }
     nx /= nlen; ny /= nlen; nz /= nlen;

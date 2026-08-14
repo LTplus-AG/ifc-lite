@@ -28,7 +28,13 @@
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
     635 rust/export/src/collada.rs
      468 rust/export/src/model.rs
-     611 rust/export/src/step.rs
+# -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
+# split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
+# room for the backslash-doubling fix to escape() without raising this
+# budget. step_text.rs's own #[cfg(test)] block was further split into
+# step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
+# step_text.rs at 196 lines of production code (under 400, no row needed).
+     471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
@@ -212,7 +218,6 @@
     1661 rust/processing/src/processor/mod.rs
 # +410: NEW row — #858 palette guard added the indexed_colour_split_ids param to process_entity_job (already the extracted per-job worker body from the #1623 file split), pushing this existing large module one line over 400; splitting the single job function further would fragment the tightly-coupled worker setup.
      410 rust/processing/src/processor/jobs.rs
-     440 rust/processing/src/symbolic/items.rs
 # +6: wire per-batch point-cache hit/miss stats into record_pipeline_batch (perf/brep-point-cache-instrumentation).
 # +13: attach the per-worker shared IfcMappedItem source cache to each batch router, mirroring the item-dedup attach (#1623).
 # +155: #1623 Phase 3 browser don't-bake — produce_batch gains arm_instancing (batch-local plan arm + occurrence collection + finalize call/return-tuple change) and the partitioned path folds the kept occurrences into the IFNS shard as empty-geometry refs; the finalize + recovery bodies were extracted to gpu_meshes/instancing.rs (new, ~165 lines) to hold the net down.
@@ -230,7 +235,13 @@
 # +37: hold the per-worker shared IfcMappedItem source cache field + drop it on content swap / setEntityIndex / setTessellationQuality, mirroring cached_item_dedup (#1623).
 # +10: drop the shared mapped-item cache in set_skip_small_cuts too (boolean-processor swap; #1623 P1 settings-hole fix).
 # +65: #1623 Phase 3 — cached_mapped_instance_plan field (doc + init + clear on clearPrePassCache/setEntityIndex) + setMappedInstancePlan wasm setter + mapped_instance_plan accessor (mirrors setReferencedRepmaps).
-     1088 rust/wasm-bindings/src/api/mod.rs
+# +3: three disjoint one-line additions that each landed at exactly the old
+# budget alone and only breach in combination: the `clash_solid` mod
+# declaration (#2573), the `set_panic_hook()` call that keeps init()'s
+# panic-location stash (#2539), and the geometry-hash tolerance clamp doc
+# (#2528). Splitting this file is the real fix and is tracked separately; it
+# would conflict with all three of those PRs at once.
+     1091 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
 # +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
 # -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.

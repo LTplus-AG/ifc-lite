@@ -29,9 +29,9 @@ describe('diffCommand', () => {
       stderr += String(chunk);
       return true;
     });
-    exitSpy = vi.spyOn(process, 'exit').mockImplementation(((() => {
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((): never => {
       throw new Error('process.exit called');
-    }) as unknown) as (code?: number) => never);
+    });
   });
 
   afterEach(() => {

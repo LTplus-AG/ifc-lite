@@ -9,8 +9,22 @@
 import type { EntityRef, EntityData } from '@ifc-lite/sdk';
 
 /**
- * Add PascalCase IFC aliases to entity data for script flexibility.
- * Scripts can use either e.name or e.Name, e.type or e.Type, etc.
+ * Expose entity data under both spellings, symmetrically: `e.Name` and
+ * `e.name` are always present and always carry the same value.
+ *
+ * **PascalCase is the canonical spelling** — it is the EXPRESS attribute name
+ * for `GlobalId`, `Name`, `Description` and `ObjectType`, it is what the
+ * built-in templates and the assistant's system prompt write, and it is what
+ * new scripts should use. (`ref` and `type`/`Type` have no EXPRESS counterpart
+ * at all: `Type` is the entity's class name, not an attribute. The
+ * `IfcTypeObject` is reached with `bim.query.typeProperties`.)
+ *
+ * The camelCase half is kept, not deprecated (#2422). Sandbox scripts are
+ * user-authored and have no version channel, and the script editor is
+ * CodeMirror with syntax highlighting only — no TypeScript service — so a
+ * `@deprecated` tag would reach nobody while a removal would break saved
+ * scripts silently at runtime. Symmetry is pinned by `bridge-helpers.test.ts`;
+ * dropping a spelling here also makes `bim-globals.d.ts` wrong.
  */
 export function withAliases(entity: EntityData): Record<string, unknown> {
   return {

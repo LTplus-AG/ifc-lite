@@ -70,6 +70,7 @@ mod items;
 mod primitives;
 mod text;
 mod transform;
+mod trimmed_curve;
 
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
@@ -192,29 +193,44 @@ where
 
             // ContextOfItems WCS: some Plan reps use a different coord
             // system than Body. Compose it in when present and non-trivial.
+            // `ContextOfItems` (IfcRepresentation attr 0) and
+            // `WorldCoordinateSystem` (IfcGeometricRepresentationContext
+            // attr 4) are both MANDATORY, so a dangling ref or absent
+            // attribute is malformed data, not a legitimate default —
+            // `unresolved()` per #2352's convention. A resolved
+            // `IfcGeometricRepresentationSubContext`, in contrast, derives
+            // its WCS from `ParentContext` and legitimately does not store
+            // one inline, so it alone stays `identity()`.
             let context_transform = match shape_rep.get_ref(0) {
                 Some(context_ref) => match decoder.decode_by_id(context_ref) {
                     Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationContext => {
-                        match context.get_ref(2) {
+                        match context.get_ref(4) {
                             Some(wcs_ref) => match decoder.decode_by_id(wcs_ref) {
                                 Ok(wcs) => parse_axis2_placement_2d(&wcs, &mut decoder, unit_scale),
-                                Err(_) => Transform2D::identity(),
+                                Err(_) => Transform2D::unresolved(),
                             },
-                            None => Transform2D::identity(),
+                            None => Transform2D::unresolved(),
                         }
                     }
-                    // SubContext inherits from parent — left as identity
-                    // for now (the wasm pipeline does the same).
-                    _ => Transform2D::identity(),
+                    // SubContext inherits WCS from ParentContext — legitimately
+                    // has none inline (the wasm pipeline does the same).
+                    Ok(context) if context.ifc_type == IfcType::IfcGeometricRepresentationSubContext => {
+                        Transform2D::identity()
+                    }
+                    // Dangling context_ref, or a ref resolving to neither
+                    // Context nor SubContext: malformed data.
+                    _ => Transform2D::unresolved(),
                 },
-                None => Transform2D::identity(),
+                None => Transform2D::unresolved(),
             };
             let combined_transform = if context_transform.tx.abs() > 0.001
                 || context_transform.ty.abs() > 0.001
+                || context_transform.tz.abs() > 0.001
                 || (context_transform.m00 - 1.0).abs() > 0.0001
                 || context_transform.m01.abs() > 0.0001
                 || context_transform.m10.abs() > 0.0001
                 || (context_transform.m11 - 1.0).abs() > 0.0001
+                || context_transform.tz.is_nan()
             {
                 compose_transforms(&context_transform, &placement_transform)
             } else {

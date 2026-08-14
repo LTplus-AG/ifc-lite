@@ -15,9 +15,10 @@ const HEX8 = /^[0-9a-f]{8}$/i;
  * Parse hex color string to RGBA tuple (0–1 range).
  *
  * `hex` is not always a native `<input type="color">` value: it also arrives
- * from imported lens JSON (no schema validation) and from the SDK's
- * `bim.viewer.colorize()`, a published entry point any external caller can
- * pass an arbitrary string to. Both accept the 3-digit CSS shorthand and the
+ * from imported lens JSON (type-checked as a string, not format-validated)
+ * and from the SDK's `bim.viewer.colorize()`, a published entry point any
+ * external caller can pass an arbitrary string to. Both accept the 3-digit
+ * CSS shorthand and the
  * 8-digit `#RRGGBBAA` form, and neither is guaranteed well-formed. Rather
  * than let `parseInt` salvage whatever hex-looking prefix it can find in a
  * malformed string — which turns a typo like `'red'` into a plausible-but-
@@ -35,7 +36,7 @@ const HEX8 = /^[0-9a-f]{8}$/i;
  * @param alpha - Alpha value in 0–1 range
  */
 export function hexToRgba(hex: string, alpha: number): RGBAColor {
-  let h = hex.replace('#', '');
+  let h = hex.trim().replace('#', '');
   if (HEX3.test(h)) {
     h = h.split('').map((c) => c + c).join('');
   } else if (HEX8.test(h)) {

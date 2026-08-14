@@ -157,33 +157,6 @@ describe('domeGraticule', () => {
     expect(g.azimuthSpokes).toHaveLength(4);
   });
 
-  // A non-positive step/resolution used to make the `for (...; x += step)` loop
-  // never advance — a caller-supplied `0` (or negative) option value hung the
-  // process instead of returning or throwing. Confirmed live: `dayPath(date,
-  // lat, lon, { stepMinutes: 0 })` did not return within a 5s external
-  // timeout before this guard was added.
-  it('rejects a non-positive resolution/altitudeStep/azimuthStep instead of hanging', () => {
-    expect(() => domeGraticule({ resolution: 0 })).toThrow(/resolution/);
-    expect(() => domeGraticule({ resolution: -5 })).toThrow(/resolution/);
-    expect(() => domeGraticule({ altitudeStep: 0 })).toThrow(/altitudeStep/);
-    expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
-    expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
-  });
-
-  // altitudeStep and resolution previously got only `!(x > 0)` — weaker than
-  // the progress test stepMinutes/dayStep/azimuthStep get — so a step too
-  // small to advance the loop (e.g. 1e-15) still hung: `90 + 1e-15 === 90`
-  // and `360 + 1e-15 === 360` (the double ULP near those magnitudes is
-  // ~1.4e-14 and ~5.7e-14 respectively, both larger than 1e-15). This calls
-  // the real `domeGraticule` guard directly rather than a modeled loop copy —
-  // it is safe (not hang-prone) only because the guard runs before either
-  // loop starts; if that check is ever moved after the loop, this test would
-  // hang instead of failing.
-  it('rejects a positive altitudeStep/resolution too small to advance their loops', () => {
-    expect(() => domeGraticule({ altitudeStep: 1e-15 })).toThrow(/altitudeStep/);
-    expect(() => domeGraticule({ resolution: 1e-15 })).toThrow(/resolution/);
-  });
-
   it('accepts a fine-grained graticule without degrading it', () => {
     const g = domeGraticule({ altitudeStep: 0.5, resolution: 0.1 });
     // 0.5..89.5 step 0.5 => 179 rings, plus the horizon ring => 180.

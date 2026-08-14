@@ -96,9 +96,19 @@ describe('hexToRgba', () => {
     expect(a).toBe(0.7); // alpha argument wins, not the AA digits
   });
 
-  it('still rejects a 7-digit string as wrong length (not 3, 6, or 8)', () => {
-    const [r, g, b] = hexToRgba('#1234567', 1);
-    expect([r, g, b]).toEqual([0, 0, 0]);
+  // Hand-edited or imported lens JSON realistically carries stray leading/
+  // trailing whitespace around a hex value. On `main`, `parseInt` over the
+  // fixed-offset substrings silently ignored it and still parsed correctly;
+  // the strict post-shorthand length check would otherwise regress that to
+  // an opaque-black fallback.
+  it('tolerates surrounding whitespace instead of falling back to black', () => {
+    for (const padded of ['#E53935 ', ' #E53935', '#E53935\n', '\t#E53935\t']) {
+      const [r, g, b, a] = hexToRgba(padded, 1);
+      expect(r).toBeCloseTo(0xe5 / 255, 2);
+      expect(g).toBeCloseTo(0x39 / 255, 2);
+      expect(b).toBeCloseTo(0x35 / 255, 2);
+      expect(a).toBe(1);
+    }
   });
 });
 

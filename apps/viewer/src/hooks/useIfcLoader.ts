@@ -753,20 +753,12 @@ export function useIfcLoader() {
         // model is the federation anchor, not necessarily the one just
         // dropped. `null` (no loaded model has a usable IfcMapConversion)
         // leaves the scan at its raw native coordinates, unchanged from
-        // before this feature existed. LAS/LAZ only: other decoders can't
-        // consume the decode-time offset (ingestPointCloud gates too);
-        // tell the user instead of silently skipping.
-        const alignmentSupported = format === 'las' || format === 'laz';
+        // before this feature existed. Every format's decoder now consumes
+        // the decode-time offset (originally LAS/LAZ-only; extended to
+        // E57/PLY/PCD/PTS/XYZ), so alignment applies uniformly — no
+        // per-format gate or "unsupported format" toast needed.
         const reference = findReferenceGeorefModel();
-        const alignment = reference && alignmentSupported
-          ? computePointCloudAlignment(reference.georef)
-          : null;
-        if (reference && !alignmentSupported && computePointCloudAlignment(reference.georef)) {
-          toast.info(
-            `Georeference alignment currently supports LAS/LAZ only — this ${format.toUpperCase()} `
-            + 'scan loads at its raw coordinates.',
-          );
-        }
+        const alignment = reference ? computePointCloudAlignment(reference.georef) : null;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({

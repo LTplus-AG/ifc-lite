@@ -43,11 +43,12 @@
  * Precision (f32 vs f64): map coordinates run ~1e6-1e7 m. Subtracting
  * `Eastings`/`Northings`/`OrthogonalHeight` must happen in f64 BEFORE any
  * f32 narrowing, or the subtraction itself inherits the f32 quantisation
- * (~0.5-1 m at that magnitude) and defeats the whole feature. `las.ts`
- * decode narrows straight to f32 (`new Float32Array`), so
+ * (~0.5-1 m at that magnitude) and defeats the whole feature. Every
+ * format decoder narrows straight to f32 (`new Float32Array`), so
  * `decodeOriginOffset` here is threaded through the streaming pipeline
- * (`streamPointCloud` → the decode worker → `decodeLasPoints`) and
- * subtracted in f64 immediately before that narrowing.
+ * (`streamPointCloud` → the decode worker → the format's decoder — LAS,
+ * then extended to E57/PLY/PCD/PTS/XYZ) and subtracted in f64 immediately
+ * before that narrowing.
  *
  * The GPU uniform matrix is f32, so its TRANSLATION column must stay small
  * too: a reference model whose IfcMapConversion pairs with large local

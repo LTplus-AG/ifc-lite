@@ -8,26 +8,6 @@
 use super::*;
 use std::sync::Arc;
 
-fn fixture(rel: &str) -> Vec<u8> {
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-}
-
-/// Skip-if-absent loader (test models are staged, not git-tracked). Only a
-/// genuinely-missing file is a skip; any other read error (permission, I/O)
-/// fails the test rather than passing as a false green.
-fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    match std::fs::read(&path) {
-        Ok(b) => Some(b),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-            None
-        }
-        Err(e) => panic!("read {path}: {e}"),
-    }
-}
-
 /// #1518: a buildingSMART annex-E showcase file declares its geometry ONLY on
 /// an `IfcBoilerType` (an IfcTypeProduct, not an IfcProduct). #957 Route B
 /// meshes it under the type's expressId; the attribute pass must now emit a
@@ -36,7 +16,7 @@ fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
 fn type_only_geometry_emits_attribute_row() {
     let rel =
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
-    let Some(bytes) = fixture_opt(rel) else {
+    let Some(bytes) = crate::test_support::fixture_opt(rel) else {
         return;
     };
     let mut rows = Vec::new();
@@ -69,7 +49,7 @@ fn type_product_meshes_all_have_rows() {
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
     ] {
-        let Some(bytes) = fixture_opt(rel) else {
+        let Some(bytes) = crate::test_support::fixture_opt(rel) else {
             continue;
         };
         let result = ifc_lite_processing::process_geometry(&bytes);
@@ -99,7 +79,7 @@ fn type_product_meshes_all_have_rows() {
 
 #[test]
 fn duplex_model_has_products_and_psets() {
-    let model = build_export_model(&fixture("ara3d/duplex.ifc"));
+    let model = build_export_model(&fixture_or_skip!("ara3d/duplex.ifc"));
     assert!(model.entities.len() > 50, "expected many products, got {}", model.entities.len());
 
     // Every row carries a GlobalId + type.
@@ -127,12 +107,7 @@ fn stream_matches_build_row_for_row() {
     // two must agree byte-for-byte, in the same order, on the same input.
     // Guards against the streaming path ever drifting from the collected one.
     let rel = "ara3d/duplex.ifc";
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    if !std::path::Path::new(&path).exists() {
-        eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-        return;
-    }
-    let bytes = fixture(rel);
+    let bytes = fixture_or_skip!(rel);
     let collected = build_export_model(&bytes).entities;
     let mut streamed = Vec::new();
     stream_export_model(&bytes, |r| streamed.push(r));
@@ -145,12 +120,7 @@ fn stream_with_index_matches_plain() {
     // The injected-index path shares one index across passes; it must yield
     // identical rows to the self-indexing path. Guards the two from drifting.
     let rel = "ara3d/duplex.ifc";
-    let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-    if !std::path::Path::new(&path).exists() {
-        eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-        return;
-    }
-    let bytes = fixture(rel);
+    let bytes = fixture_or_skip!(rel);
     let mut plain = Vec::new();
     stream_export_model(&bytes, |r| plain.push(r));
     let idx = Arc::new(ifc_lite_core::build_entity_index(&bytes));
@@ -690,7 +660,7 @@ fn type_specific_attributes_are_rendered_by_schema_name() {
 fn orphan_type_rows_carry_attributes_as_well() {
     let rel =
         "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
-    let Some(bytes) = fixture_opt(rel) else {
+    let Some(bytes) = crate::test_support::fixture_opt(rel) else {
         return;
     };
     let opts = ModelOptions::default().with_attributes(true);

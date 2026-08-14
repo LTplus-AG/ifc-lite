@@ -15,7 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { planCacheWrite, decideMeshOnlyCacheHit } from './cacheTier.js';
+import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
@@ -1047,8 +1047,35 @@ export function useIfcLoader() {
             // Pass the freshly read file buffer as the source fallback: the
             // desktop cache doesn't persist a sourceBuffer, and without one the
             // restored store can't carry the lazy entity accessors.
-            const cacheLoadResult = await loadFromCache(cacheResult, file.name, modelId, cacheKey, buffer);
-            if (cacheLoadResult.success) {
+            // Pass the same staleness check `loadFromServer` already takes
+            // (see its `isStale` param): `getCached` above is an awaited
+            // IndexedDB read, so a second primary load can own the active
+            // slot by the time this resolves.
+            const cacheLoadResult = await loadFromCache(
+              cacheResult,
+              file.name,
+              modelId,
+              cacheKey,
+              buffer,
+              () => loadSessionRef.current !== currentSession,
+            );
+            // `loadFromCache` returns the SAME `{ success: false }` for a
+            // superseded load as for an ordinary miss, so branching on
+            // `success` alone would send a superseded load on to a full
+            // server/WASM reparse of the OLD file below — the very race the
+            // `isStale` guards close, just later and far more expensive.
+            // Re-check the session here (the predicate is already in scope) and
+            // name the three outcomes explicitly.
+            const cacheOutcome = decideCacheLoadOutcome({
+              loadSucceeded: cacheLoadResult.success,
+              isStale: loadSessionRef.current !== currentSession,
+            });
+            if (cacheOutcome === 'stale') {
+              // A newer load owns the active slot: write nothing, parse
+              // nothing. The newer load drives `setLoading`/progress itself.
+              return;
+            }
+            if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
                 loadState: 'complete',

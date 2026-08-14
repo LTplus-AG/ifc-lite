@@ -358,5 +358,24 @@ export function groupClashes(result: ClashResult, opts: GroupOptions): ClashGrou
   return groups;
 }
 
+/**
+ * Whether `by: 'cluster'` grouping achieved any spatial consolidation at all.
+ *
+ * On MEP models, distribution-run contact points routinely sit metres apart —
+ * well outside any defensible clustering radius (measured across 12 public
+ * models: no epsilon separates every real shape, and raising it collapses
+ * unrelated clashes on other models). The result is `groups.length ===
+ * clashes.length`: every clash lands alone, and clustering did nothing.
+ *
+ * This is a narrow, exact signal (all-singleton), not a fuzzy "mostly
+ * ineffective" heuristic — a threshold like "90% singleton" would itself be
+ * an undefensible constant, the same trap the epsilon default fell into.
+ * Returns `false` for 0 or 1 clashes: there is nothing to consolidate, so
+ * "did nothing" is not a meaningful complaint.
+ */
+export function isClusterGroupingIneffective(clashes: readonly Clash[], groups: readonly ClashGroup[]): boolean {
+  return clashes.length > 1 && groups.length === clashes.length;
+}
+
 /** Re-exported for callers that want the cluster centre of a group's bounds. */
 export { center as groupCenter };

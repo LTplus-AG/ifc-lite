@@ -1,5 +1,46 @@
 # @ifc-lite/clash
 
+## 1.6.7
+
+### Patch Changes
+
+- [#2604](https://github.com/LTplus-AG/ifc-lite/pull/2604) [`3af6d2a`](https://github.com/LTplus-AG/ifc-lite/commit/3af6d2ad076e76fc95e58a9252bf712f8513c6e9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Scale the "touching" band (`isTouching`, used by the viewer's `hideTouching` clash filter, touching-count badge, and per-row touching indicator) to a clash's own coordinate magnitude, not a fixed 1e-4 metres.
+
+  Geometry is ingested from f32 buffers, so a fixed `TOUCHING_EPSILON` is only valid near the origin: the f32 ULP for a coordinate of magnitude `extent` is `extent * 2^-22`, and exceeds `1e-4` once `extent` passes ~1 km. Past that distance, a genuinely flush pair (a wall meeting a slab) can pick up more than `1e-4` of pure f32 rounding noise in its measured penetration depth, and the fixed band then misses it — the pair silently reappears as a hard clash in a list the user explicitly asked to de-noise. Demonstrated directly through `isTouching`: a flush pair 1 f32 ULP apart at each corner classifies as touching near the origin, but past the ULP-crossover distance (~1024 m for a single-ULP-scale overlap; real models with multiple rounding operations can cross earlier) the same pair's measured depth exceeds the fixed `1e-4` and it stops being flagged touching, under the old fixed constant, while an epsilon scaled to the identical coordinates keeps it flagged.
+
+  The fix: `isTouching`'s default `eps` is now derived per-clash from `Clash.bounds` (the clash's own contact/overlap region — the only element-scale coordinates a bare `Clash` carries, since `ClashElement`'s bounds aren't available at this call site) as `max(TOUCHING_EPSILON, maxAbsCoord(bounds) * 2^-22)` — the same `2^-22` f32-ULP term used by `precisionFloor` in `engine-ts/narrow.ts` and `planeEps` in `contact/narrow-phase.ts`. Floored at `TOUCHING_EPSILON` itself (not the raw single-metre f32 floor those two use) so near the origin the new default is bit-for-bit identical to the old fixed constant — verified against the existing `analysis.test.ts` fixtures. An explicit `eps` argument is unchanged and still overrides the default entirely.
+
+  `TOUCHING_EPSILON` remains exported with its existing value and meaning (the near-origin/floor band); `isTouching`'s signature is unchanged.
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594), [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/geometry@3.8.2
+  - @ifc-lite/parser@4.0.3
+  - @ifc-lite/wasm@4.5.1
+
+## 1.6.6
+
+### Patch Changes
+
+- [#2571](https://github.com/LTplus-AG/ifc-lite/pull/2571) [`495cc38`](https://github.com/LTplus-AG/ifc-lite/commit/495cc388ea95f6e55aee76ea37bcf6d11c99558b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Report it when `groupClashes({ by: 'cluster' })` consolidates nothing, instead of silently returning one group per clash.
+
+  Measured on a real MEP model (self-clash among drainage `IfcFlowSegment`s, distribution-run contact points scattered several metres apart): cluster grouping at the default 1.5 m epsilon produced 15 groups from 18 clashes — barely different from no grouping at all. The default epsilon was investigated separately and deliberately kept: across 12 public models there is no defensible constant (raising it to 2.0 m collapses an unrelated structural model's 10 real clashes into one group), so this is not a tuning fix.
+
+  Adds `isClusterGroupingIneffective(clashes, groups)` to `@ifc-lite/clash`: a narrow, exact check — true only when every clash landed in its own singleton group (`groups.length === clashes.length`, with more than one clash) — deliberately not a fuzzy "mostly ineffective" threshold, which would repeat the epsilon problem with a different undefensible constant.
+
+  `ifc-lite clash --bcf ... --group cluster` now prints a stderr note when this fires, naming the other grouping modes (`rule`, `typePair`, `element`) rather than picking one — none of them is a reliable universal answer either: on the measured model, `--group element` produced _more_ groups than clashes (33 from 18), since it files each clash under both participating elements rather than merging along the run.
+
+- [`081ed7e`](https://github.com/LTplus-AG/ifc-lite/commit/081ed7e7e38072ecb307c01c0512cd911be886a6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop treating spatial containers as clash bodies in the STEP adapter.
+
+  `NON_CLASHABLE_TAGS` dropped `IfcSpace` and `IfcSpatialZone` ([#1464](https://github.com/LTplus-AG/ifc-lite/issues/1464)) but nothing else from the spatial structure, so any container that carries tessellated geometry became a clash body and collided with the elements assigned to it. That is not a coordination problem — a storey's geometry is its extent, and by construction it encloses its contents.
+
+  It bites hardest on IFC4.3 infrastructure models, where storeys and facility parts routinely carry real bodies. On one road/bridge certification model a default `ifc-lite clash` run reported 235 clashes, of which 89 (37.9%) were an `IfcBuildingStorey` against an element it contains.
+
+  The check is now derived from the schema instead of enumerated: an element is dropped when `getInheritanceChainAcrossSchemas` puts `IfcSpatialElement` or `IfcSpatialStructureElement` in its chain. That walks the bundled IFC2X3 + IFC4 + IFC4X3 union, so `IfcSite`, `IfcBuilding`, `IfcBuildingStorey`, `IfcExternalSpatialElement` and the IFC4.3 facility leaves (`IfcFacility`, `IfcFacilityPart`, `IfcBridge`, `IfcRoad`, `IfcRailway`, `IfcMarineFacility`, …) are all covered without a second hand-maintained list, and `IfcSpatialStructureElement` is checked alongside `IfcSpatialElement` because IFC2X3 has no `IfcSpatialElement`. The two hand-listed space entries are removed as redundant.
+
+  Elements _contained in_ a container are unaffected — they still clash with each other, and still carry the storey name as metadata. Measured on the road/bridge model: 235 → 146 clashes, 89 pairs removed and none added, every removed pair involving `IfcBuildingStorey`. Building-model controls: 274 → 274 and 469 → 469 with byte-identical pair sets; 282 → 279 on a third, the three removed pairs all being the site's own terrain body.
+
+  No API surface change.
+
 ## 1.6.5
 
 ### Patch Changes

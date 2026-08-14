@@ -11,8 +11,8 @@ import { describe, expect, it } from 'vitest';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { IFCLITE_ATTR } from '@ifc-lite/ifcx';
 import { planThreeWayMerge } from './three-way.js';
-import { applyResolutions, opsToNodes } from './merge-layer.js';
-import { extractStackState, componentEntries, snapshotOf } from './component-state.js';
+import { opsToNodes } from './merge-layer.js';
+import { extractStackState } from './component-state.js';
 import type { MergeOp } from './types.js';
 
 export function makeLayer(data: IfcxNode[], id = 'layer'): IfcxFile {

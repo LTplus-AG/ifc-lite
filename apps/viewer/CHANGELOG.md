@@ -1,5 +1,111 @@
 # @ifc-lite/viewer
 
+## 1.33.9
+
+### Patch Changes
+
+- [#2601](https://github.com/LTplus-AG/ifc-lite/pull/2601) [`ef09a5b`](https://github.com/LTplus-AG/ifc-lite/commit/ef09a5b7d8435f84d9f6534ab967aa56794e5c88) Thanks [@louistrue](https://github.com/louistrue)! - Split `CesiumOverlay.tsx` into the four responsibilities it had accumulated.
+
+  The file had grown past 1,000 lines carrying the Cesium viewer's lifecycle, the coordinate bridge, the model lifecycle and the solar study at once — four subjects with four different histories, interleaved. It is now 377 lines and reads as what it is: create the viewer, render the container, and call four hooks in the order their effects used to sit in.
+
+  `cesium/useCesiumBridge` owns where the model sits (ENU/ECEF framing, grid convergence, geoid undulation, terrain clamping, placement drafts). `cesium/useCesiumModel` owns what is drawn (GLB build, readiness-gated swap, matrix updates). `cesium/useCesiumSolar` owns lighting, shadows, the sun-path dome and the sky. `cesium/useCesiumCameraSync` owns the per-frame camera mirror, and `cesium/cesium-module` the lazy CesiumJS import they share.
+
+  Behaviour is unchanged, and the ordering that makes it unchanged is now written down: within a component React runs effect setups AND cleanups in declaration order, so the viewer effect — declared first — also cleans up first, and nothing in a later hook's cleanup may assume a live scene. Each hook documents where it must be called and what that buys it. Two teardown paths that the viewer effect cannot reach on unmount — the model's and the solar study's — are exposed as explicit `invalidate()` callbacks rather than left implicit.
+
+- [#2595](https://github.com/LTplus-AG/ifc-lite/pull/2595) [`4ea38db`](https://github.com/LTplus-AG/ifc-lite/commit/4ea38db9f7d9d8006ae1f29b27f075202d75d286) Thanks [@louistrue](https://github.com/louistrue)! - Ribbon search moves right, Cloud sources reaches the toolbars, and a detached panel stops lying about being closed.
+
+  The inline search field sat immediately after the ribbon tabs, competing with them for the same reading position and sliding sideways whenever the tab set changed. It now docks to the right, beside the rest of the always-on chrome, where users expect to find a search field. Load progress and the error line moved to the left of the spacer in the same pass. Parked on the right they shoved the search field every time a model started or finished loading.
+
+  Cloud sources (CDE integrations) had the ActivityBar rail as its only entry point. Location zones had the same gap before [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508). Cloud sources is now a command on both toolbar styles, routed through `useWorkspacePanelControls` so the panel's single-tenant docking, its float and pop-out re-docking, and its latched state are one implementation rather than two. Both panels reach the command palette too, along with World context, Sun & Sky and SpaceMouse. Location zones is the cautionary case: it was wired into both toolbars at [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508) and still never reached the palette, so a fix that looked complete left a third door shut.
+
+  **A detached panel now reads as open, and toggling it brings it home.** A panel lives in one of four places, but the toolbars only read the dock flags, and the two answers come apart the moment a panel is floated or popped out. `floatPanel` leaves the dock flag set, then the sidebar's exclusivity rule clears it as soon as any other panel docks, without touching the float channel. Float BCF, open IDS, and the BCF window sat on screen with every toolbar latch dark. Clicking a floating panel was worse than useless: the bottom strip cleared the flag and orphaned the window, while a side panel was torn down entirely instead of re-docking. The activity bar never had either bug because it asks `panelLocation`. The shared hook now asks the same question, and hands bottom-strip clicks to the store's `toggleBottomPanel` rather than re-deriving the flag flips. It could not delegate before, because it spelled the entity-list panel `'list'` where the registry and store spell it `'lists'`.
+
+  **The mobile bottom sheet showed the wrong panel.** It hand-wrote a chain over the seven panels it knew and fell through to the Properties panel for the rest, so Compare, Clash, Cloud sources, the Layer stack, Location zones and the collab Room all opened on a phone as Properties, titled "Properties". It now renders through `renderPanelBody`, the same map the sidebar, the floating host and the pop-out windows use, and titles from the registry.
+
+  **Controls that did nothing now say so.** Add Element is disabled for viewer and commenter roles on the classic Panels menu, matching the ribbon; the palette withholds its three authoring commands for those roles instead of listing commands the store silently rejects. The ribbon's collab Room button is no longer hidden until you are already in a room, which is how the other three surfaces have always offered it.
+
+  Naming and shortcut corrections across surfaces: the Information panel was also called "Inspector" and "Properties"; Hierarchy was also "Spatial Tree"; Frame Selection was "Focus" on the ribbon; Show all was "Display all". The Isolate button advertised `I / =`, but `=` runs set-basket, which differs once the basket is non-empty; the palette advertised `I` for a command that runs set-basket. Ribbon button labels were split between Title Case and sentence case, and the minority is converted.
+
+  Tests: `cloud-sources-parity` clicks the real control on all three surfaces, `detached-panel-latch` covers the float and pop-out cases in both regions, and `mobile-sheet-coverage` fails if a registry panel renders nothing or renders another panel's body. Each was mutation-checked against the defect it describes. Testing the palette needed one harness gap closed: `vite-module-hooks` now serves Vite's `?raw` imports as file text, which is what made `CommandPalette` unmountable under `tsx --test`.
+
+- [#2607](https://github.com/LTplus-AG/ifc-lite/pull/2607) [`2bb936c`](https://github.com/LTplus-AG/ifc-lite/commit/2bb936c213fdb7ca78d42b14a4cb207fbcfd6f18) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now reaches 3D World Context, and glass on the map looks like glass.
+
+  The world view drew every element fully opaque no matter its alpha. Clash focus in ghost mode, the Space Sketch preview and layer diff all faded the model in the viewport and changed nothing on the map; authored `IfcSurfaceStyleRendering` transparency was ignored there too. The cause was one line that was never written: a glTF material with no `alphaMode` is `OPAQUE` per spec, so Cesium discarded the per-vertex alpha the exporter had been packing all along.
+
+  The merged GLB now emits up to two primitives over the same vertex buffers — one opaque, one `alphaMode: 'BLEND'` — split by mesh alpha. Splitting rather than blending the whole model keeps the bulk of the geometry out of the translucent pass, where triangles are not depth-sorted against each other. A model with no translucent geometry still emits exactly one primitive, as before.
+
+  `@ifc-lite/renderer` exports `DEFAULT_GHOST_ALPHA` and `OPAQUE_ALPHA_CUTOFF` so the world view matches the viewport's ghosting rather than inventing its own; the ghost alpha was previously a literal inside `Renderer.render`. Selection is exempt from ghosting on the map exactly as it is in the viewport, and the GLB cache key carries a content-based ghost epoch so an equal set does not rebuild.
+
+  One deliberate difference: GPU-instanced occurrences ghost on the map but not in the viewport, because the renderer's instanced pass never receives the ghost set. That is the viewport being wrong, and replicating it to stay symmetrical would have meant copying a defect.
+
+- Updated dependencies [[`3af6d2a`](https://github.com/LTplus-AG/ifc-lite/commit/3af6d2ad076e76fc95e58a9252bf712f8513c6e9), [`9e6020d`](https://github.com/LTplus-AG/ifc-lite/commit/9e6020d116b2669cfb934cfa40b9f4f74d87fad5), [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594), [`c9953ec`](https://github.com/LTplus-AG/ifc-lite/commit/c9953ec6691003a2cfada80da28effcdfcf5e56c), [`bd92912`](https://github.com/LTplus-AG/ifc-lite/commit/bd92912965b6b1ab6573a4b304b1e54d494c22b7), [`9175e35`](https://github.com/LTplus-AG/ifc-lite/commit/9175e35b29ff57b39b671e5db33f38c7807fb0fd), [`9b4d791`](https://github.com/LTplus-AG/ifc-lite/commit/9b4d791990cf72786b04f5b02933395fed1fe085), [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`2bb936c`](https://github.com/LTplus-AG/ifc-lite/commit/2bb936c213fdb7ca78d42b14a4cb207fbcfd6f18), [`e51f5cb`](https://github.com/LTplus-AG/ifc-lite/commit/e51f5cb82d10b6c7d73186d8126f788b48c7f3a1)]:
+  - @ifc-lite/clash@1.6.7
+  - @ifc-lite/source-dalux@0.2.2
+  - @ifc-lite/geometry@3.8.2
+  - @ifc-lite/parser@4.0.3
+  - @ifc-lite/renderer@1.46.0
+  - @ifc-lite/extensions@0.4.2
+  - @ifc-lite/create@2.1.0
+  - @ifc-lite/export@2.9.0
+  - @ifc-lite/wasm@4.5.1
+  - @ifc-lite/ids@1.15.46
+
+## 1.33.8
+
+### Patch Changes
+
+- [#2588](https://github.com/LTplus-AG/ifc-lite/pull/2588) [`21fece1`](https://github.com/LTplus-AG/ifc-lite/commit/21fece1f4848fe34c8070f9e3d79b89a1ef0576b) Thanks [@louistrue](https://github.com/louistrue)! - Split the Location panel's helpers out of `LocationMap.tsx`, and cover them with tests they never had.
+
+  `LocationMap.tsx` was past the ~400-line rule and kept growing. Four units that had no business living inside a component moved out: MapLibre load/dispose/purge (`location-map-lifecycle`), the footprint polygon's matched add/remove pair (`location-map-footprint`), Nominatim place search (`location-map-geocode`), and the generic `useDebouncedValue` hook.
+
+  None of them had a single test before. They do now, covering the parts that actually bite: the footprint pair must leave nothing behind, because MapLibre throws on a duplicate source and the panel re-runs this on every style toggle; the geocoder must resolve to `[]` rather than reject on a rate-limit, an offline network or an HTML error page, because the panel calls it from an effect with no rejection handling; the debounce must DROP intermediate values, not merely delay them, or it would still hammer the geocoder per keystroke; and the map teardown must contain a throw from `map.remove()`, because it runs from an effect cleanup where an escaping error would strand the panel half torn down.
+
+- [#2586](https://github.com/LTplus-AG/ifc-lite/pull/2586) [`48683a0`](https://github.com/LTplus-AG/ifc-lite/commit/48683a0816f5332a40f73eabde613301026d9744) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context no longer blinks out while it rebuilds.
+
+  The world view dropped its model the moment anything invalidated it — a streaming geometry batch, a type toggle, a georef edit, a hide — and only then started a one-second debounce, a GLB build and a glTF load. The building disappeared from the map for over a second on every edit, which reads as the model being broken rather than reloading.
+
+  The model now stays on the globe while its replacement is built, and the two are exchanged only once the new one can actually draw. That last part matters: `Model.fromGltfAsync` resolving means the glTF was fetched and parsed, not that the model is renderable — Cesium creates its WebGL resources across later frames and skips one more frame after raising `readyEvent`. Swapping at construction time would have replaced a drawable primitive with a blank one and left the map empty for several frames, a much shorter version of the same defect. The effect cleanup only cancels the in-flight build; the model is torn down when its geometry goes away, or with the viewer.
+
+  A rebuild no longer flips `cesiumGlbLoaded` false and back, so the solar study — which relied on that flip to re-apply shadow settings to the new primitive — now keys on a model epoch that changes whenever a different primitive reaches the globe.
+
+- Updated dependencies [[`495cc38`](https://github.com/LTplus-AG/ifc-lite/commit/495cc388ea95f6e55aee76ea37bcf6d11c99558b), [`081ed7e`](https://github.com/LTplus-AG/ifc-lite/commit/081ed7e7e38072ecb307c01c0512cd911be886a6), [`a38012f`](https://github.com/LTplus-AG/ifc-lite/commit/a38012f6d9fec6b9ea934b22016c9005579a54b7)]:
+  - @ifc-lite/clash@1.6.6
+  - @ifc-lite/renderer@1.45.1
+
+## 1.33.7
+
+### Patch Changes
+
+- [#2576](https://github.com/LTplus-AG/ifc-lite/pull/2576) [`e09f824`](https://github.com/LTplus-AG/ifc-lite/commit/e09f8247eae1a7291f4e2ce18272ec4c2c7660ae) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now shows the whole model — repeated geometry (curtain-wall facades, mullions, windows) no longer disappears on the map.
+
+  The Cesium overlay built its GLB from `geometryResult.meshes`, which by design holds only part of the model: GPU-instanced occurrences render from compact shards and are deliberately absent from that flat list, as `utils/instancedExport.ts` documents and as the glTF and IFC exporters already compensate for. The world view never did, so every repeated occurrence was dropped from the map while the WebGPU viewport drew it correctly. On the model from issue [#2558](https://github.com/LTplus-AG/ifc-lite/issues/2558) that was 9,950 of 18,555 meshes and 396K of 655K triangles — a tower's entire facade gone, leaving bare floor slabs over Google's imagery.
+
+  Building the GLB and its cache key now live together in `lib/geo/cesium-model-glb.ts`, which materialises the instanced half through the same `withInstancedMeshes` helper the exporters use. The cache key also counts instanced entities rather than flat meshes alone, so a geometry batch whose occurrences are all instanced — one that adds no flat meshes at all — no longer reads as "unchanged". It also folds in `geometryContentVersion`, so an in-place edit such as a gizmo move, which changes no count at all, invalidates the cached bytes too.
+
+- [#2582](https://github.com/LTplus-AG/ifc-lite/pull/2582) [`f01588b`](https://github.com/LTplus-AG/ifc-lite/commit/f01588bc83593c621d521233cf697393c6df1936) Thanks [@louistrue](https://github.com/louistrue)! - KMZ export no longer ships a model with its repeated geometry missing.
+
+  `buildKmzForResolvedGeoref` was handed `geometryResult.meshes`, which holds only part of the model: GPU-instanced occurrences render from compact shards and are deliberately absent from that flat list. Both surfaces that export a KMZ — the Export KMZ dialog and the Location panel's "Google Earth" button — passed it, so a tower whose facade is repeated panels exported to Google Earth as bare floor slabs. Same defect [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) fixed for the on-screen world view, in the file the user hands to someone else.
+
+  The complete set is now derived inside the shared builder, from a `geometryResult` rather than a mesh array, so there is no way for a call site to pass a pre-flattened list — the same reason the builder refuses a pre-guarded conversion. Callers pass `isPrimaryModel` alongside it, since instanced shard occurrences live in the primary model's id space and a federated model must not adopt them.
+
+- [#2581](https://github.com/LTplus-AG/ifc-lite/pull/2581) [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now hides what you hide: hide and isolate reach the map, not just the viewport.
+
+  The world view renders the model through its own glTF pipeline, so it never inherited the per-frame hide/isolate filtering the WebGPU renderer applies. It honoured type visibility (its mesh list arrives pre-filtered) but nothing else — hide an element, or isolate a storey, and the map kept drawing everything. Since [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) gave the world view the GPU-instanced half of the model as well, that gap covered both geometry channels.
+
+  `@ifc-lite/renderer` now exports the rule itself rather than leaving each surface to restate it. `isEntityVisible(expressId, hiddenIds, isolatedIds)` was written out separately at the flat-draw and instanced-draw sites; both now call the shared helper, and so does the world view. `VisibilityEpochTracker` — already used internally for content-based change detection on those two sets — is exported alongside it, so a consumer outside the render loop can tell a real visibility change from a store handing out a fresh Set with identical content.
+
+  Two details the shared rule pins down, both easy to get wrong when restating it: an EMPTY isolation set isolates _nothing_ (it hides everything) and is not the same as `null` (no isolation), and hiding wins over isolation.
+
+- Updated dependencies [[`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee), [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe)]:
+  - @ifc-lite/export@2.8.6
+  - @ifc-lite/data@3.3.0
+  - @ifc-lite/ifcx@2.3.5
+  - @ifc-lite/mutations@1.26.0
+  - @ifc-lite/wasm@4.5.0
+  - @ifc-lite/renderer@1.45.0
+  - @ifc-lite/ids@1.15.45
+  - @ifc-lite/lists@1.23.1
+
 ## 1.33.6
 
 ### Patch Changes

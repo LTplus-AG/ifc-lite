@@ -109,14 +109,9 @@ pub fn export_json(content: &[u8], opts: &JsonOptions) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_json_array() {
-        let s = export_json(&fixture("ara3d/duplex.ifc"), &JsonOptions::default());
+        let s = export_json(&fixture_or_skip!("ara3d/duplex.ifc"), &JsonOptions::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
         let arr = v.as_array().expect("array");
         assert!(arr.len() > 50);

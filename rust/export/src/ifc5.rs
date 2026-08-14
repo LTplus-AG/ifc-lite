@@ -14,6 +14,15 @@ use crate::json::typed_value;
 use crate::model::{build_export_model, EntityRow};
 
 /// IFC5 schema-package import URIs (ifcx.dev v5a).
+/// The value every IFCX writer in this repo puts in `header.ifcxVersion`.
+///
+/// The TypeScript side owns the same constant (`IFCX_VERSION`, exported from
+/// `@ifc-lite/data` and re-exported by `@ifc-lite/ifcx`). The two are pinned
+/// together by the exportIfcx assertion in `scripts/test-wasm-contract.mjs`,
+/// which reads the header back out of a file this exporter produced — readers
+/// only match the substring `ifcx`, so nothing else would notice a drift.
+const IFCX_VERSION: &str = "ifcx_alpha";
+
 const IMPORT_CORE: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx";
 const IMPORT_PROP: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx";
 
@@ -191,7 +200,7 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
             // recognise a file at all — so under the old name every file this
             // exporter produced was rejected by our own parser with
             // "Invalid IFCX file: missing or invalid header.ifcxVersion".
-            "ifcxVersion": "ifcx_alpha",
+            "ifcxVersion": IFCX_VERSION,
             "author": opts.author,
             "dataVersion": opts.data_version,
         },
@@ -211,16 +220,11 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_ifcx() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
-        assert_eq!(v["header"]["ifcxVersion"], "ifcx_alpha");
+        assert_eq!(v["header"]["ifcxVersion"], IFCX_VERSION);
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
 
         let data = v["data"].as_array().expect("data array");
@@ -268,7 +272,7 @@ mod tests {
     /// other end of a round-trip.
     #[test]
     fn header_uses_the_key_readers_look_for() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
 
         let header = v["header"].as_object().expect("header object");
@@ -290,7 +294,7 @@ mod tests {
 
     #[test]
     fn unknown_props_filtered_by_default() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         // 'LoadBearing' / 'Reference' are IFC4 props NOT in the IFC5 known set.
         assert!(!s.contains("bsi::ifc::prop::LoadBearing"));
         assert!(!s.contains("bsi::ifc::prop::Reference\""));

@@ -26,6 +26,7 @@ import {
   Upload,
   MousePointerClick,
   Pencil,
+  Scissors,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,8 +37,10 @@ import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
 import { generateZonesFromStoreys } from '@/hooks/useZoneStoreyGeneration';
 import { selectElementsInZone } from '@/hooks/useZoneSelection';
+import { useZoneGeometrySplit } from '@/hooks/useZoneGeometrySplit';
 import type { Zone } from '@/lib/zones';
 import { ZoneApportionSummary } from './ZoneApportionSummary';
+import { ZoneWriteBackControl } from './ZoneWriteBackControl';
 
 interface ZonesPanelProps {
   onClose?: () => void;
@@ -93,15 +96,23 @@ function NumberField({
 }
 
 function ZoneRow({
-  setId, zone, editing, onEdit, onUpdate, onRemove, onSelect,
+  setId, zone, editing, exporting, exportProgress, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
 }: {
   setId: string;
   zone: Zone;
   editing: boolean;
+  /** A geometry export for THIS zone is running: the control is disabled and
+   *  says so, because the cut takes hundreds of milliseconds per element. */
+  exporting: boolean;
+  /** Elements cut so far, while `exporting`. Worth rendering only because the
+   *  cutting moved to a worker: on the main thread nothing could repaint
+   *  between the first element and the last. */
+  exportProgress?: { done: number; total: number } | null;
   onEdit: () => void;
   onUpdate: (patch: Partial<Omit<Zone, 'id'>>) => void;
   onRemove: () => void;
   onSelect: () => void;
+  onExportGeometry: () => void;
 }) {
   return (
     <div className={`rounded-md border p-2 text-xs space-y-1.5 ${editing ? 'border-amber-500 bg-amber-500/5' : 'border-border/60'}`}>
@@ -111,22 +122,80 @@ function ZoneRow({
           onChange={(e) => onUpdate({ name: e.target.value })}
           className="h-6 flex-1 px-1.5 text-xs font-medium"
         />
-        <Button
-          variant={editing ? 'default' : 'ghost'}
-          size="icon"
-          className="h-6 w-6"
-          title={editing ? 'Stop editing in 3D' : 'Edit in 3D (move / resize / rotate handles)'}
-          onClick={onEdit}
-        >
-          <Pencil className="h-3 w-3" />
-        </Button>
+        {/* Hidden for a prism: the 3D gizmo edits the box fields, which a
+            prism derives from its footprint, so the handles would move nothing
+            (see `ZoneOverlay`). A control that does nothing is worse than no
+            control. */}
+        {!zone.footprint && (
+          <Button
+            variant={editing ? 'default' : 'ghost'}
+            size="icon"
+            className="h-6 w-6"
+            title={editing ? 'Stop editing in 3D' : 'Edit in 3D (move / resize / rotate handles)'}
+            onClick={onEdit}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        )}
         <Button variant="ghost" size="icon" className="h-6 w-6" title="Select elements in this zone" onClick={onSelect}>
           <MousePointerClick className="h-3 w-3" />
         </Button>
+        {/* The geometry half of #2508: elements wholly in this zone plus the
+            CUT pieces of the straddlers, as one model of this section. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title={exporting
+            ? 'Cutting this zone\'s geometry, this can take a while'
+            : "Export this zone's geometry (straddlers cut at the boundary) as GLB"}
+          aria-label={`Export ${zone.name} geometry`}
+          disabled={exporting}
+          onClick={onExportGeometry}
+        >
+          <Scissors className={`h-3 w-3${exporting ? ' animate-pulse' : ''}`} />
+        </Button>
+        {exporting && exportProgress && (
+          <span className="text-[10px] tabular-nums text-muted-foreground" role="status" aria-live="polite">
+            Cutting {exportProgress.done}/{exportProgress.total}
+          </span>
+        )}
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Delete zone" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
         </Button>
       </div>
+      {/* A PRISM zone (#2508 item 4) owns only its vertical extent: its X/Z
+          centre, size and rotation are DERIVED from the footprint, so offering
+          them as editable fields would show numbers that snap back on the next
+          import and change nothing in between. */}
+      {zone.footprint ? (
+        <div className="grid grid-cols-3 gap-1">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Base (Y)</span>
+            <NumberField
+              value={zone.center[1] - zone.size[1] / 2}
+              onCommit={(v) => onUpdate({ center: [zone.center[0], v + zone.size[1] / 2, zone.center[2]] })}
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-muted-foreground">Height (Y)</span>
+            <NumberField
+              value={zone.size[1]}
+              onCommit={(v) => {
+                const height = Math.max(0.05, v);
+                const base = zone.center[1] - zone.size[1] / 2;
+                onUpdate({
+                  size: [zone.size[0], height, zone.size[2]],
+                  center: [zone.center[0], base + height / 2, zone.center[2]],
+                });
+              }}
+            />
+          </label>
+          <span className="self-end text-[10px] text-muted-foreground truncate" title="Footprint imported from JSON; the 3D handles edit boxes only">
+            prism, {zone.footprint.length} pts
+          </span>
+        </div>
+      ) : (
       <div className="grid grid-cols-3 gap-1">
         {(['Center X', 'Center Y', 'Center Z'] as const).map((label, i) => (
           <label key={label} className="flex flex-col gap-0.5">
@@ -159,6 +228,7 @@ function ZoneRow({
           <NumberField value={toDeg(zone.rotationY)} onCommit={(v) => onUpdate({ rotationY: fromDeg(v) })} />
         </label>
       </div>
+      )}
     </div>
   );
 }
@@ -178,6 +248,15 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   const replaceZonesInSet = useViewerStore((s) => s.replaceZonesInSet);
   const exportZoneSetsJSON = useViewerStore((s) => s.exportZoneSetsJSON);
   const importZoneSetsJSON = useViewerStore((s) => s.importZoneSetsJSON);
+  const { exportZone } = useZoneGeometrySplit();
+  // Which zone's geometry export is running, for the disabled state, plus a ref
+  // so a second click is refused in the same tick the first one starts (state
+  // has not re-rendered yet at that point).
+  const [exportingZoneId, setExportingZoneId] = useState<string | null>(null);
+  const exportingRef = useRef(false);
+  // How far the cut has got. Only meaningful while a worker is doing the work:
+  // before this, the main thread was blocked and nothing could have painted it.
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -351,11 +430,71 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     if (count > 0) toast.success(`Selected ${count} element(s)`);
                     else toast.info('No elements in this zone');
                   }}
+                  exporting={exportingZoneId === zone.id}
+                  exportProgress={exportProgress}
+                  onExportGeometry={async () => {
+                    // The split is seconds of synchronous work (~357 ms per cut
+                    // element, measured), so three things have to happen before
+                    // it starts: mark the zone busy, let the browser PAINT that
+                    // (a state change alone does not, since the handler blocks
+                    // the same frame), and refuse a second click. Without the
+                    // last one a queued click starts a whole second run the
+                    // moment the first returns.
+                    if (exportingRef.current) return;
+                    exportingRef.current = true;
+                    setExportingZoneId(zone.id);
+                    setExportProgress(null);
+                    let result: Awaited<ReturnType<typeof exportZone>>;
+                    try {
+                      // The cutting runs in a worker now, so this await yields
+                      // to the event loop rather than blocking it: the disabled
+                      // state paints, the progress below updates, and the model
+                      // can still be orbited while a section is being cut.
+                      result = await exportZone(
+                        zs,
+                        zs.zones.indexOf(zone),
+                        (done, total) => setExportProgress({ done, total }),
+                      );
+                    } catch (error) {
+                      // The kernel, the GLB build and the download can each
+                      // throw. Inside an ASYNC handler a throw becomes an
+                      // unhandled rejection, so the user would sit in front of
+                      // a control that reset itself and said nothing.
+                      console.error('[zones] geometry export failed', error);
+                      toast.error(
+                        `Could not export ${zone.name}: ${error instanceof Error ? error.message : 'unknown error'}`,
+                      );
+                      return;
+                    } finally {
+                      exportingRef.current = false;
+                      setExportingZoneId(null);
+                      setExportProgress(null);
+                    }
+                    if (!result.ok) {
+                      toast.error(result.reason === 'no-binding'
+                        ? 'The geometry engine in this build cannot split meshes'
+                        : result.reason === 'busy'
+                          // Reachable by closing the panel mid-export and
+                          // reopening it: this component's own guard resets,
+                          // the run behind it does not.
+                          ? 'Another zone is still being cut. Wait for it to finish.'
+                          : 'Nothing to export: no loaded geometry reaches this zone');
+                      return;
+                    }
+                    const { whole, cut, refused, noGeometry, elapsedMs } = result.summary;
+                    toast.success(
+                      `Exported ${whole} whole and ${cut} cut element(s) in ${(elapsedMs / 1000).toFixed(1)}s`
+                      + (refused > 0 ? `, ${refused} not cut (mesh not a proven closed solid, or the pieces did not add up)` : '')
+                      + (noGeometry > 0 ? `, ${noGeometry} with no loaded geometry` : ''),
+                    );
+                  }}
                 />
               ))}
               {/* Volume apportionment for this set's straddlers (#2508). On
                   demand only — never part of load. */}
               {zs.zones.length > 0 && <ZoneApportionSummary zoneSet={zs} />}
+              {/* ...and the way that result leaves the viewer (#2508 item 3). */}
+              {zs.zones.length > 0 && <ZoneWriteBackControl zoneSet={zs} />}
             </CollapsibleContent>
           </Collapsible>
         ))}

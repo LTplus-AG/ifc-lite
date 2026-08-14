@@ -11,6 +11,7 @@
 import type { IfcxFile, IfcxNode, IfcxHeader, ImportNode } from './types.js';
 import type { EntityTable, PropertyTable, PropertySet, SpatialHierarchy } from '@ifc-lite/data';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { IFCX_VERSION } from '@ifc-lite/data';
 
 // ============================================================================
 // Standard IFCX schema imports
@@ -124,7 +125,7 @@ export class IfcxWriter {
   private createHeader(options: IfcxExportOptions): IfcxHeader {
     return {
       id: this.generateId(),
-      ifcxVersion: 'IFCX-1.0',
+      ifcxVersion: IFCX_VERSION,
       dataVersion: options.dataVersion || '1.0.0',
       author: options.author || 'ifc-lite',
       timestamp: new Date().toISOString(),

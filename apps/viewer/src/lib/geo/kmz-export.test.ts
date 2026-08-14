@@ -2,14 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert';
+import type { RefObject } from 'react';
 
-import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 
-import type { MapConversion } from '@ifc-lite/parser';
+import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import type { Renderer } from '@ifc-lite/renderer';
 
-import { computeKmzAltitude, resolveKmzHeading } from './kmz-export.js';
+import { setGlobalRendererRef } from '../../hooks/useBCF.js';
+import type { KmzProcessor } from './kmz-exporter.js';
+import { buildKmzForResolvedGeoref, computeKmzAltitude, resolveKmzHeading } from './kmz-export.js';
 
 describe('computeKmzAltitude', () => {
   it('scales OrthogonalHeight from map units to metres (mm-CRS file is not 1000x off)', () => {
@@ -77,5 +81,105 @@ describe('resolveKmzHeading', () => {
     const heading = resolveKmzHeading(conversion, { mapUnitScale: 1 }, 1, coordinateInfo);
     assert.strictEqual(heading.xAxisAbscissa, 0.6);
     assert.strictEqual(heading.xAxisOrdinate, 0.8);
+  });
+});
+
+
+/**
+ * A model can have an EMPTY flat mesh list and still have geometry, because
+ * every occurrence is GPU-instanced. `buildKmzForModel` used to short-circuit
+ * on `geometryResult.meshes.length` and report "no geometry" for exactly that
+ * model; the check now lives here, against the complete set (#2577 review).
+ */
+describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', () => {
+  afterEach(() => {
+    setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
+  });
+
+  const CONVERSION: MapConversion = {
+    id: 1, sourceCRS: 0, targetCRS: 0,
+    eastings: 311_988.181, northings: 5_996_148.565, orthogonalHeight: 0,
+    xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
+  };
+  const CRS = { id: 2, name: 'EPSG:25833', mapUnitScale: 1 } as ProjectedCRS;
+
+  function occurrence(expressId: number): MeshData {
+    return {
+      expressId,
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1],
+    } as unknown as MeshData;
+  }
+
+  function setInstancedScene(instanced: MeshData[]): void {
+    const scene = {
+      getAllInstancedMeshData: () => instanced,
+      getInstancedEntityCount: () => new Set(instanced.map((m) => m.expressId)).size,
+    };
+    setGlobalRendererRef(
+      { current: { getScene: () => scene } as unknown as Renderer } as RefObject<Renderer | null>,
+    );
+  }
+
+  function stub() {
+    const seen: MeshData[][] = [];
+    const gp: KmzProcessor = {
+      async init() {},
+      exportKmzFromMeshes(meshes) {
+        seen.push(meshes as MeshData[]);
+        return new Uint8Array([0x50, 0x4b, 0x03, 0x04]);
+      },
+      dispose() {},
+    };
+    return { gp, seen };
+  }
+
+  const build = (meshes: MeshData[], gp: KmzProcessor) => buildKmzForResolvedGeoref({
+    conversion: CONVERSION,
+    crs: CRS,
+    coordinateInfo: undefined,
+    lengthUnitScale: 1,
+    geometryResult: { meshes } as GeometryResult,
+    isPrimaryModel: true,
+    name: 'IFC Model',
+  }, () => gp);
+
+  it('exports an instanced-only model, whose flat mesh list is empty', async () => {
+    setInstancedScene([occurrence(42)]);
+    const { gp, seen } = stub();
+
+    const out = await build([], gp);
+
+    assert.ok(out instanceof Uint8Array, 'expected KMZ bytes, not a no-geometry error');
+    assert.deepStrictEqual(seen[0].map((m) => m.expressId), [42]);
+  });
+
+  it("still reports no-geometry when the COMPLETE set is empty", async () => {
+    setInstancedScene([]);
+    const { gp, seen } = stub();
+
+    assert.strictEqual(await build([], gp), 'no-geometry');
+    assert.strictEqual(seen.length, 0, 'the exporter must not be driven with nothing');
+  });
+
+  it('does not adopt instanced occurrences for a federated (non-primary) model', async () => {
+    // Shard occurrences live in the primary model's id space.
+    setInstancedScene([occurrence(42)]);
+    const { gp, seen } = stub();
+
+    const out = await buildKmzForResolvedGeoref({
+      conversion: CONVERSION,
+      crs: CRS,
+      coordinateInfo: undefined,
+      lengthUnitScale: 1,
+      geometryResult: { meshes: [occurrence(7)] } as GeometryResult,
+      isPrimaryModel: false,
+      name: 'IFC Model',
+    }, () => gp);
+
+    assert.ok(out instanceof Uint8Array);
+    assert.deepStrictEqual(seen[0].map((m) => m.expressId), [7]);
   });
 });

@@ -36,6 +36,11 @@ import {
   type ComposedNodeWithSources,
 } from './federated-composition.js';
 
+// Re-exported so the IFCX version constant can be imported from the package
+// that owns the format. Defined in @ifc-lite/data for dependency reasons —
+// see the comment on IFCX_VERSION itself.
+export { IFCX_VERSION } from '@ifc-lite/data';
+
 // Re-export types
 export * from './types.js';
 export { composeIfcx, findRoots, getDescendants } from './composition.js';

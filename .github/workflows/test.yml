@@ -7,10 +7,28 @@ name: Test
 on:
   pull_request:
     branches: [main]
+  # Post-merge guard. Two PRs can each be green against their own base and be
+  # broken as a pair on main: #2551 removed a helper from
+  # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it
+  # at 06:35, and main was red from then on. Nothing ran on main, so it
+  # surfaced hours later on an unrelated first-time contributor's PR, and every
+  # open PR's Node lane was red until it was fixed.
+  push:
+    branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR runs share a group per ref, so a new commit supersedes the old run — the
+  # newer commit is the only one whose verdict matters.
+  #
+  # Push runs get a group PER COMMIT. Not merely `cancel-in-progress: false`:
+  # GitHub keeps only one running plus one PENDING run per group, and a newer
+  # queued run EVICTS the pending one even when cancellation is off. With three
+  # merges in quick succession, a docs-only third merge would evict the queued
+  # run for a frontend-breaking second merge, and its path filters would then
+  # skip the Node lane — leaving exactly the broken state this guard exists to
+  # catch unchecked. A per-commit group means no merge can displace another.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -50,6 +68,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # A push event filters against the previous commit, which a depth-1
+          # clone does not contain. PRs filter against the base ref and are
+          # unaffected, so only the push path pays the extra object.
+          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
@@ -64,11 +86,27 @@ jobs:
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             frontend:
+              # A changeset naming a package that does not exist fails the
+              # RELEASE workflow, which only runs on main - so the Lint job has
+              # to see changeset-only PRs, or the check it runs cannot fire on
+              # the PR that introduces the mistake.
+              - '.changeset/**'
+              # oxlint lints all of `apps/` except `apps/landing`, but this
+              # filter names the two apps individually rather than `apps/**` —
+              # broadening it would drag every landing-page edit through the
+              # full frontend lane. The cost of that choice: a NEW app under
+              # `apps/` gets linted without being able to trigger the Lint job,
+              # so the PR adding it skips the gate and drops its violations on
+              # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
+              # The lint CONFIG, so a PR that only edits it cannot skip the
+              # Lint job that reads it. Absent CI reads as green here, and a
+              # guard cannot fire in a job that never runs.
+              - '.oxlintrc.json'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -279,7 +317,12 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    # Free runner — eslint runs against source, no compile.
+    # Two gates, both free-runner: oxlint over the source (no compile), and the
+    # unused-locals ratchet (scripts/check-unused-locals.mjs), which needs the
+    # built dist below because it type-checks each package. Before #2603 this
+    # lane ran NOTHING: the root script was `pnpm -r lint` and no package
+    # defined one, so it passed in 20s having checked nothing, and dead imports
+    # shipped through it.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -293,7 +336,16 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # lint runs against source; doesn't need built dist.
+      # The unused-locals ratchet runs `tsc` per package, and a package resolves
+      # its workspace siblings through their built `dist` types — without the
+      # artifact every dependent package fails to compile, reads as
+      # unmeasurable, and the ratchet fails closed. (It was written assuming
+      # "lint needs no dist", which is true of eslint and false of this.)
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
       - run: pnpm lint
 
   node-tests:
@@ -420,7 +472,9 @@ jobs:
   viewer-e2e:
     name: Viewer E2E smoke
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # PR-only: see the `push:` trigger comment. The post-merge run repeats the
+    # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -541,7 +595,8 @@ jobs:
   geometry-census:
     name: Geometry watertightness census
     needs: changes
-    if: needs.changes.outputs.geometry == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
     runs-on: depot-ubuntu-24.04-4
     timeout-minutes: 45
     steps:
@@ -589,7 +644,8 @@ jobs:
   plato-check:
     name: Plato clash-math freshness
     needs: changes
-    if: needs.changes.outputs.plato == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ubuntu-latest

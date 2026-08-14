@@ -1,5 +1,27 @@
 # @ifc-lite/create
 
+## 2.1.0
+
+### Minor Changes
+
+- [#2589](https://github.com/LTplus-AG/ifc-lite/pull/2589) [`9175e35`](https://github.com/LTplus-AG/ifc-lite/commit/9175e35b29ff57b39b671e5db33f38c7807fb0fd) Thanks [@louistrue](https://github.com/louistrue)! - Add `addSpatialZonesToStore`, an anchored builder for `IfcSpatialZone`.
+
+  A location zone (a takt area, a construction section) is emitted as
+  `IfcSpatialZone` rather than `IfcZone`: that type groups spaces, so assigning
+  walls to one produces a file most readers, this one included, mis-read. Elements
+  attach through `IfcRelReferencedInSpatialStructure`, which is many-to-many and
+  additive, so emitting zones never re-parents anything and an element straddling
+  two zones can belong to both.
+
+  Boxes emit an `IfcRectangleProfileDef` with any rotation carried in the
+  placement; a convex footprint emits the polygon instead. `spatialZonesSupported`
+  reports whether the target schema has the type at all, since IFC2X3 does not.
+
+### Patch Changes
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/parser@4.0.3
+
 ## 2.0.3
 
 ### Patch Changes

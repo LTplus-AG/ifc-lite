@@ -290,7 +290,7 @@ fn sub_precision_floor_crossing_reclassifies_as_touch_not_hard() {
     // Two bars crossing at right angles (genuine, non-coplanar triangle
     // intersections — same construction as `crossing_members_report_the_
     // real_penetration_depth`), positioned far from the origin (z ~ 60,
-    // where float32 ULP is 2^-17 ≈ 7.6e-6) so the x/y overlap is a generous
+    // where float32 ULP is 2^-18 ≈ 3.8e-6) so the x/y overlap is a generous
     // 0.5 m but the z overlap is squeezed to 1e-5 m: above one f32 ULP at
     // this scale (so it round-trips as a real, non-zero, minimum-axis
     // overlap) but below `precision_floor`'s scaled floor (~60.75/2^22 ≈

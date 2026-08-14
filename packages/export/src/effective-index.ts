@@ -41,7 +41,7 @@
  *     instead of scanned out of the source buffer.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { getAllAttributesForEntity, type IfcDataStore } from '@ifc-lite/parser';
 import {
   OVERLAY_BYTE_OFFSET,
   type IfcAttributeValue,
@@ -80,6 +80,21 @@ export interface EffectiveEntityIndex extends CompleteEntityIndex {
   /** Outgoing `#id` references of an OVERLAY-created record, or undefined when
    *  the id has source bytes to scan instead. */
   refsOf(id: number): readonly number[] | undefined;
+  /**
+   * The effective `#id` value of ONE NAMED attribute of an OVERLAY-created
+   * record, or undefined when the id was not created by this overlay, the
+   * attribute carries no reference, or the record has since been tombstoned.
+   *
+   * `refsOf` cannot answer a positional question: it deliberately UNIONS the
+   * creation payload with every queued override (see its own doc), so a
+   * caller that needs a *specific* attribute — e.g. `IfcRelVoidsElement`'s
+   * `RelatingBuildingElement` — cannot recover it positionally from that
+   * union once the record has been edited after creation (#2347). This
+   * resolves by name instead: an attribute-name mutation wins, else the
+   * positional-mutation slot at that attribute's schema index, else the
+   * creation-payload value at that index.
+   */
+  effectiveAttributeRef(id: number, attrName: string): number | undefined;
   /** Effective UPPERCASE-type → ids index: tombstones removed, retypes moved to
    *  their new class, overlay creations added. */
   readonly byType: Map<string, number[]>;
@@ -136,6 +151,7 @@ function sourceOnly(base: CompleteEntityIndex, byType: Map<string, number[]>): E
     isOverlayCreated: () => false,
     isDeleted: () => false,
     refsOf: () => undefined,
+    effectiveAttributeRef: () => undefined,
     byType,
   };
 }
@@ -241,6 +257,35 @@ class OverlayIndex implements EffectiveEntityIndex {
     }
     this.cachedRefs.set(id, out);
     return out;
+  }
+
+  effectiveAttributeRef(id: number, attrName: string): number | undefined {
+    const entity = this.created.get(id);
+    if (!entity || this.tombstones.has(id)) return undefined;
+
+    // An attribute-name mutation is the most recent, most specific override —
+    // `setAttribute(id, 'RelatingBuildingElement', ...)` names exactly this
+    // slot, so it wins regardless of where it landed positionally.
+    if (typeof this.view.getAttributeMutationsForEntity === 'function') {
+      for (const { name, value } of this.view.getAttributeMutationsForEntity(id)) {
+        if (name === attrName) return authoredEntityRefs(value)[0];
+      }
+    }
+
+    // No named override — fall back to the positional slot the schema says
+    // this attribute lives at, so a positional mutation (or the untouched
+    // creation payload) still answers correctly.
+    const effectiveType = this.retypes.get(id)?.newType ?? entity.type;
+    const index = getAllAttributesForEntity(effectiveType).findIndex((attr) => attr.name === attrName);
+    if (index < 0) return undefined;
+
+    if (typeof this.view.getPositionalMutationsForEntity === 'function') {
+      const positional = this.view.getPositionalMutationsForEntity(id);
+      const value = positional?.get(index);
+      if (value !== undefined) return authoredEntityRefs(value)[0];
+    }
+
+    return authoredEntityRefs(entity.attributes[index])[0];
   }
 
   get byType(): Map<string, number[]> {

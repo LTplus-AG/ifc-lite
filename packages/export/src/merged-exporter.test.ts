@@ -10,6 +10,19 @@ import { MutablePropertyView as LiveMutablePropertyView } from '@ifc-lite/mutati
 type MockEntityRef = { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number };
 
 /**
+ * `IfcDataStore.entityIndex.byId` is the read-only `EntityByIdIndex` surface
+ * (satisfied by both a plain `Map` and the memory-optimised
+ * `CompactEntityIndex`), so it has no `set`. These fixtures build a real
+ * `Map` and a few of them splice extra entities in after the store is
+ * assembled, so the concrete `Map` type is kept on the fixture. Every
+ * `MockDataStore` is still an `IfcDataStore`.
+ */
+type MockDataStore = Omit<IfcDataStore, 'entityIndex'> & {
+  entityIndex: { byId: Map<number, MockEntityRef>; byType: Map<string, number[]> };
+};
+type MockMergeModelInput = Omit<MergeModelInput, 'dataStore'> & { dataStore: MockDataStore };
+
+/**
  * Helper: build a minimal IfcDataStore from STEP entity lines.
  * Each entry is [expressId, type, stepText].
  *
@@ -21,7 +34,7 @@ type MockEntityRef = { expressId: number; type: string; byteOffset: number; byte
 function buildMockDataStore(
   entries: Array<[number, string, string]>,
   deferredIds?: Set<number>,
-): IfcDataStore {
+): MockDataStore {
   const encoder = new TextEncoder();
   const parts: Uint8Array[] = [];
   const byId = new Map<number, MockEntityRef>();
@@ -60,10 +73,10 @@ function buildMockDataStore(
     source: asSourceBytes(source),
     entityIndex: { byId, byType },
     ...(deferred.size > 0 ? { deferredEntityIndex: deferred } : {}),
-  } as unknown as IfcDataStore;
+  } as unknown as MockDataStore;
 }
 
-function buildModel(id: string, name: string, entries: Array<[number, string, string]>, deferredIds?: Set<number>): MergeModelInput {
+function buildModel(id: string, name: string, entries: Array<[number, string, string]>, deferredIds?: Set<number>): MockMergeModelInput {
   return { id, name, dataStore: buildMockDataStore(entries, deferredIds) };
 }
 
@@ -946,7 +959,7 @@ describe('MergedExporter', () => {
     // Secondary = millimetres. A column at x=3000 mm, a storey at 3000 mm, a
     // 2500 mm extrusion depth, a 300 mm circle radius, a length quantity in mm and
     // an AREA quantity already in m² (Revit) that must NOT be length-rescaled.
-    const mmModel = (): MergeModelInput => {
+    const mmModel = (): MockMergeModelInput => {
       const m = buildModel('mm', 'Secondary-mm', [
         [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('mmProj')}',$,'Secondary',$,$,$,$,(#3),#2);`],
         [2, 'IFCUNITASSIGNMENT', '#2=IFCUNITASSIGNMENT((#8,#9,#10));'],
@@ -1108,7 +1121,7 @@ describe('MergedExporter', () => {
       let off = original.length;
       for (const [id, type, text] of [[18, 'IFCMAPCONVERSION', map], [19, 'IFCPROJECTEDCRS', crs]] as Array<[number, string, string]>) {
         const len = new TextEncoder().encode(text).length;
-        store.entityIndex.byId.set(id, { expressId: id, type, byteOffset: off, byteLength: len, lineNumber: 0 } as never);
+        store.entityIndex.byId.set(id, { expressId: id, type, byteOffset: off, byteLength: len, lineNumber: 0 });
         if (!store.entityIndex.byType.has(type)) store.entityIndex.byType.set(type, []);
         store.entityIndex.byType.get(type)!.push(id);
         off += len;

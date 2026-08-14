@@ -50,10 +50,49 @@ export interface ConformanceFixtures {
   readonly secondProjectId?: string;
 }
 
+/**
+ * How the suite forces a listing across a real page boundary.
+ *
+ * `ListOptions.limit` is documented as "Hint only; providers clamp to
+ * whatever their API allows" — so a provider that never forwards it is
+ * *conformant*, and the suite must not fail it for that. `DaluxBuildProvider`
+ * is exactly that provider: Dalux pages by minting an opaque `bookmark`, the
+ * caller has no say in the page size, and nothing in the request carries
+ * `limit` at all.
+ *
+ * - `'limit'` (default) — the provider honors `limit` (clamping down is
+ *   fine), so passing `smallPageLimit` is enough to split the result set.
+ * - `'backend'` — the provider treats `limit` as the hint it is. Nothing the
+ *   suite passes can split a page, so the *caller* must seed the backing
+ *   data or mock API so the provider's own server-side page size is smaller
+ *   than the fixture result sets. The suite then pages with no limit at all
+ *   and still requires more than one request, which is the assertion that
+ *   was ever worth making: cursor-following works.
+ */
+export type PageBoundaryMode = 'limit' | 'backend';
+
 export interface ConformanceOptions {
   /** Produces a fresh `PluginContext` per call — some checks need isolated storage (e.g. auth state). */
   readonly createContext: () => PluginContext;
   readonly fixtures: ConformanceFixtures;
-  /** Page size small enough to force multiple pages against the fixtures above. Default `1`. */
+  /**
+   * Page size small enough to force multiple pages against the fixtures
+   * above. Default `1`. Ignored under `pageBoundary: 'backend'`, where the
+   * provider is declared not to honor `limit` in the first place.
+   */
   readonly smallPageLimit?: number;
+  /** Default `'limit'`. See {@link PageBoundaryMode}. */
+  readonly pageBoundary?: PageBoundaryMode;
+  /**
+   * `true` when the provider is backed by a delta/change feed, so
+   * `watchRevisions` can hand back a resumable token.
+   *
+   * Default `false`, because `RevisionWatchResult.cursor` is optional in the
+   * contract and documented as what "providers with a delta endpoint" return
+   * — a polling provider (Dalux: no delta endpoint, every call re-sweeps the
+   * given refs) has nothing to resume from and correctly returns none.
+   * Requiring one unconditionally, as this suite once did, failed a provider
+   * that was behaving exactly as specified.
+   */
+  readonly watchRevisionsHasDeltaFeed?: boolean;
 }

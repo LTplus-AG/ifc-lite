@@ -260,6 +260,115 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(out.typeOf(opening.expressId)).toBeNull();
   });
 
+  it('excludes a created opening after its relation is EDITED post-creation (#2347)', async () => {
+    // The overlay appends positional/attribute-mutation refs AFTER the
+    // creation-payload refs (`OverlayIndex.refsOf`), so a caller that reads
+    // an overlay-created IfcRelVoidsElement's ends by taking the LAST TWO
+    // entries of that union reads the wrong pair once the relation has been
+    // edited after creation. Create voids(EXISTING_WALL_ID, opening), then
+    // redirect RelatingBuildingElement at a second wall and hide THAT wall.
+    // The opening must still be excluded — its host is gone either way.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const opening = editor.addEntity('IfcOpeningElement', [
+      guid('opening'), null, 'Opening', null, null, null, null, null, null,
+    ]);
+    const otherWall = editor.addEntity('IfcWall', [
+      guid('otherwall'), null, 'Other Wall', null, null, null, null, null, null,
+    ]);
+    const rel = editor.addEntity('IfcRelVoidsElement', [
+      guid('voids'), null, null, null, `#${EXISTING_WALL_ID}`, `#${opening.expressId}`,
+    ]);
+    // Edit APPLIED AFTER creation — the scenario the issue calls out. A
+    // create-only fixture (the previous test) passes on both old and new
+    // code; this is what actually exercises the bug.
+    editor.setAttribute(rel.expressId, 'RelatingBuildingElement', `#${otherWall.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([otherWall.expressId]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(otherWall.expressId)).toBeNull();
+    // The wrong outcome this reproduces: reading the union's last two as
+    // (opening, otherWall) instead of the effective
+    // (RelatingBuildingElement, RelatedOpeningElement) = (otherWall, opening)
+    // leaves the opening in the file because its relating-element slot
+    // never resolves to a hidden id.
+    expect(out.typeOf(opening.expressId)).toBeNull();
+    // The relation itself must not survive dangling either.
+    expect(out.typeOf(rel.expressId)).toBeNull();
+    // Control: the ORIGINAL wall was never hidden, and is no longer the
+    // relation's relating element after the edit, so it must still be
+    // present — proves the exclusion followed the EDITED end, not a stale
+    // union member.
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+  });
+
+  it('excludes an opening whose voiding relation was RETYPED into IfcRelVoidsElement (schema lookup must use the effective type)', async () => {
+    // Created under a DIFFERENT relationship type (same positional shape,
+    // different attribute names: IfcRelAggregates has RelatingObject /
+    // RelatedObjects at slots 4/5 where IfcRelVoidsElement has
+    // RelatingBuildingElement / RelatedOpeningElement) and only retyped to
+    // IfcRelVoidsElement afterward. `effectiveAttributeRef` resolves
+    // 'RelatingBuildingElement' by looking up its POSITION in the entity's
+    // schema — if that lookup uses the entity's authored (pre-retype) type
+    // instead of its effective (post-retype) type, `findIndex` finds no
+    // attribute of that name in IfcRelAggregates' schema and returns
+    // undefined, so `propagateOpeningExclusions` can never learn the
+    // relation's host and the opening survives a hidden host.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const opening = editor.addEntity('IfcOpeningElement', [
+      guid('opening'), null, 'Opening', null, null, null, null, null, null,
+    ]);
+    const rel = editor.addEntity('IfcRelAggregates', [
+      guid('voids'), null, null, null, `#${EXISTING_WALL_ID}`, [`#${opening.expressId}`],
+    ]);
+    expect(editor.setEntityType(rel.expressId, 'IfcRelVoidsElement')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_WALL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).toBeNull();
+    expect(out.typeOf(opening.expressId)).toBeNull();
+  });
+
+  it('withholds a SOURCE record retyped ACROSS the IFCREL boundary that now names a hidden entity (#2398)', async () => {
+    // #13 is authored IFCWALLTYPE — not a relationship, so the source-iteration
+    // pass's hidden-ref filter must be OFF for it. Retyped here into
+    // IfcRelAggregates, it becomes one. `filterHiddenRefsFromRelationshipLine`
+    // has to key off the EFFECTIVE (post-retype) class, not the authored one:
+    // classifying by `entityRef.type` (frozen at parse time) would still read
+    // "IFCWALLTYPE" after the retype and skip the filter entirely, shipping a
+    // `#N` with no defining line — the exact dangling ref #2398 exists to close.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_TYPE_ID, 'IfcRelAggregates')).toBe(true);
+    editor.setPositionalAttribute(EXISTING_TYPE_ID, 4, `#${STOREY_ID}`);
+    editor.setPositionalAttribute(EXISTING_TYPE_ID, 5, [`#${EXISTING_WALL_ID}`]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_WALL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).toBeNull();
+    // RelatedObjects names only the hidden wall, so removing it empties the
+    // list and the whole retyped relation must be withheld — not shipped with
+    // a dangling `#8`.
+    expect(out.typeOf(EXISTING_TYPE_ID)).toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
   it('emits no pset for a host the closure excluded', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);
@@ -278,13 +387,19 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     const out = await reparse(result.content);
 
     expect(out.typeOf(LONE_WALL_ID)).toBeNull();
-    // Only the source relation survives (relationships are always closure
-    // roots); no NEW one was generated for a host outside the export.
-    expect(out.relDefinesTargeting(LONE_WALL_ID)).toEqual([LONE_REL_ID]);
+    // The source relation is itself withheld now, not merely un-augmented:
+    // relationships are always closure roots, so `LONE_REL_ID`'s bytes would
+    // otherwise be copied verbatim into the file naming a host with no
+    // defining line — a dangling reference and an invalid file (#2398). Its
+    // RelatedObjects list names only the excluded host, so removing that id
+    // leaves it empty and `filterHiddenRefsFromRelationshipLine` withholds
+    // the whole relation rather than emit `(...)` with nothing in it.
+    expect(out.relDefinesTargeting(LONE_WALL_ID)).toEqual([]);
     const psetNames = (out.store.entityIndex.byType.get('IFCPROPERTYSET') ?? []).map(
       (id) => out.attributes(id)?.[2],
     );
     expect(psetNames).not.toContain('Pset_Fresh');
+    expect(out.danglingRefs()).toEqual([]);
   });
 });
 
@@ -858,6 +973,38 @@ END-ISO-10303-21;`;
 
     expect(out.typeOf(EXISTING_REL_ID)).toBe('IFCRELDEFINESBYPROPERTIES');
     expect(out.relDefinesTargeting(EXISTING_WALL_ID)).toEqual([EXISTING_REL_ID]);
+  });
+
+  it('rewrites a SOURCE containment relation instead of shipping a tombstoned member (#2398)', async () => {
+    // The deletion sweep a few lines up in `step-exporter.ts` only withholds
+    // an `IfcRelDefinesByProperties` whose RelatedObjects is EMPTIED entirely,
+    // and only for that one relationship class — it says so in its own
+    // comment ("nothing here rewrites a RelatedObjects list"). A
+    // spatial-containment relation naming two walls, one of which the session
+    // deletes, is untouched by that sweep: pre-fix, #9's bytes are copied
+    // verbatim and the tombstoned wall's id ships with no defining line — the
+    // exact invalid-file shape `filterHiddenRefsFromRelationshipLine` exists
+    // to close for `visibleOnly`, on a plain full export with no
+    // `visibleOnly` involved at all.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    // #9 authored contains only #8 (EXISTING_WALL_ID). Widen it to also name
+    // #14 (LONE_WALL_ID) — a second, otherwise-independent source wall — so
+    // deleting #14 exercises a PARTIAL-list rewrite, not a whole-relation
+    // withhold.
+    editor.setPositionalAttribute(9, 4, [`#${EXISTING_WALL_ID}`, `#${LONE_WALL_ID}`]);
+    editor.removeEntity(LONE_WALL_ID);
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC4' });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(LONE_WALL_ID)).toBeNull();
+    // The relation survives — #8 is still validly contained — but must no
+    // longer name #14.
+    expect(out.typeOf(9)).toBe('IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    const containment = (out.attributes(9) ?? [])[4];
+    expect(Array.isArray(containment) ? containment : []).toEqual([EXISTING_WALL_ID]);
+    expect(out.danglingRefs()).toEqual([]);
   });
 });
 

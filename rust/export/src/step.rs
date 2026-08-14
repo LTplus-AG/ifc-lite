@@ -75,138 +75,7 @@ pub struct StepStats {
     pub written: usize,
 }
 
-/// Escape a STEP string literal body (double single-quotes; drop control chars).
-fn escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '\'' => out.push_str("''"),
-            '\n' | '\r' | '\t' => out.push(' '),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Detect the source `FILE_SCHEMA` label (e.g. `IFC2X3`); defaults to `IFC4`.
-fn detect_schema(content: &[u8]) -> String {
-    // Only look in the header region (before DATA;).
-    let head_len = content.len().min(4096);
-    let head = String::from_utf8_lossy(&content[..head_len]);
-    if let Some(idx) = head.find("FILE_SCHEMA") {
-        let rest = &head[idx..];
-        if let Some(q1) = rest.find('\'') {
-            if let Some(q2) = rest[q1 + 1..].find('\'') {
-                let label = &rest[q1 + 1..q1 + 1 + q2];
-                if !label.is_empty() {
-                    return label.to_string();
-                }
-            }
-        }
-    }
-    "IFC4".to_string()
-}
-
-/// Collect outgoing `#<digits>` references in a STEP entity line, skipping the
-/// contents of single-quoted strings (where a `#` is literal text).
-fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
-    let mut i = 0;
-    let mut in_quote = false;
-    while i < line.len() {
-        let b = line[i];
-        if b == b'\'' {
-            // STEP escapes a quote as '' — toggling twice is a no-op, which is fine.
-            in_quote = !in_quote;
-            i += 1;
-            continue;
-        }
-        if !in_quote && b == b'#' {
-            let mut j = i + 1;
-            let mut n: u32 = 0;
-            let mut any = false;
-            while j < line.len() && line[j].is_ascii_digit() {
-                n = n.wrapping_mul(10).wrapping_add((line[j] - b'0') as u32);
-                j += 1;
-                any = true;
-            }
-            if any {
-                out.push(n);
-                i = j;
-                continue;
-            }
-        }
-        i += 1;
-    }
-}
-
-/// Split a STEP attribute list into its top-level arguments (parens/strings aware).
-fn split_top_level_args(attrs: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut depth = 0i32;
-    let mut in_string = false;
-    let mut current = String::new();
-    let bytes = attrs.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
-        if ch == '\'' && !in_string {
-            in_string = true;
-            current.push(ch);
-        } else if ch == '\'' && in_string {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
-                current.push_str("''");
-                i += 2;
-                continue;
-            }
-            in_string = false;
-            current.push(ch);
-        } else if in_string {
-            current.push(ch);
-        } else if ch == '(' {
-            depth += 1;
-            current.push(ch);
-        } else if ch == ')' {
-            depth -= 1;
-            current.push(ch);
-        } else if ch == ',' && depth == 0 {
-            out.push(std::mem::take(&mut current));
-        } else {
-            current.push(ch);
-        }
-        i += 1;
-    }
-    out.push(current);
-    out
-}
-
-/// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
-/// when it cannot be parsed.
-fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
-    let trimmed = line.trim_end();
-    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
-    let eq = match body.find('=') {
-        Some(e) => e,
-        None => return line.to_string(),
-    };
-    let after = &body[eq + 1..];
-    let popen = match after.find('(') {
-        Some(p) => p,
-        None => return line.to_string(),
-    };
-    let aclose = match after.rfind(')') {
-        Some(c) if c > popen => c,
-        _ => return line.to_string(),
-    };
-    let prefix = &body[..=eq];
-    let type_name = &after[..popen];
-    let mut args = split_top_level_args(&after[popen + 1..aclose]);
-    for (idx, val) in muts {
-        if *idx < args.len() {
-            args[*idx] = val.clone();
-        }
-    }
-    format!("{prefix}{type_name}({});", args.join(","))
-}
+use crate::step_text::{apply_attr_mutations, detect_schema, escape, refs_in_line};
 
 // ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
 
@@ -434,11 +303,6 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     /// Count `#id=` entity lines in a STEP DATA section + grab the FILE_SCHEMA label.
     fn parse_back(step: &str) -> (usize, HashSet<u32>, String) {
         let bytes = step.as_bytes();
@@ -453,7 +317,7 @@ mod tests {
 
     #[test]
     fn full_roundtrip_preserves_all_entities() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let (step, stats) = export_step_with_stats(&src, &StepOptions::default());
 
         // Source entity count == written count == re-parsed count.
@@ -467,7 +331,7 @@ mod tests {
 
     #[test]
     fn subset_export_is_reference_closed() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         // Pick a real wall id from the model.
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall_id = None;
@@ -500,7 +364,7 @@ mod tests {
 
     #[test]
     fn attribute_mutation_renames_entity() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         // Find a wall to rename (attribute index 2 = Name on IfcRoot products).
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall_id = None;
@@ -540,7 +404,7 @@ mod tests {
 
     #[test]
     fn property_synthesis_attaches_new_pset() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall = None;
         while let Some((id, t, _s, _e)) = scanner.next_entity() {
@@ -585,17 +449,8 @@ mod tests {
     }
 
     #[test]
-    fn split_top_level_args_respects_nesting() {
-        let args = "'a',$,(#1,#2,#3),IFCBOOLEAN(.T.),#9";
-        let parts = split_top_level_args(args);
-        assert_eq!(parts.len(), 5);
-        assert_eq!(parts[2], "(#1,#2,#3)");
-        assert_eq!(parts[3], "IFCBOOLEAN(.T.)");
-    }
-
-    #[test]
     fn schema_conversion_to_ifc4_keeps_model_parseable() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let (step, stats) = export_step_with_stats(
             &src,
             &StepOptions { schema: Some("IFC4".to_string()), ..StepOptions::default() },

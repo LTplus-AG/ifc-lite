@@ -65,8 +65,12 @@ function buildDataPackets(points: TestPoint[], pointsPerPacket: number): Uint8Ar
 
 /** Inflate a logical byte stream into the physical (CRC-paged) form —
  *  the exact inverse of `stripPageCrc`. CRC tails are left zeroed (the
- *  decoder never validates them). */
-function inflateToPhysical(logical: Uint8Array, pageSize: number): Uint8Array {
+ *  decoder never validates them).
+ *
+ *  The return type is pinned to `Uint8Array<ArrayBuffer>` (not the default
+ *  `ArrayBufferLike`) because the result is handed straight to `new Blob([…])`,
+ *  and `BlobPart` excludes `SharedArrayBuffer`-backed views. */
+function inflateToPhysical(logical: Uint8Array, pageSize: number): Uint8Array<ArrayBuffer> {
   const payloadPerPage = pageSize - 4;
   const fullPages = Math.floor(logical.length / payloadPerPage);
   const tail = logical.length - fullPages * payloadPerPage;

@@ -127,4 +127,40 @@ describe('measurementOverlaysPropsEqual', () => {
 
     assert.equal(measurementOverlaysPropsEqual(a, b), false);
   });
+
+  // #2199: every distance label now routes through `unitDisplayOverrides`
+  // (formatDistanceDisplay). Without this clause the memo would keep an old
+  // measurement showing metres after the user switched the LENGTHUNIT
+  // display override to feet — same class of staleness the world-coordinate
+  // clauses above exist to prevent, just triggered by a store change instead
+  // of a drag.
+  it('re-renders when unitDisplayOverrides changes with no other prop different', () => {
+    const a = completed(pt(0, 0, 0), pt(1, 2, 3));
+    const withFeet = { ...a, unitDisplayOverrides: { LENGTHUNIT: 'ft' } };
+    const empty = { ...a, unitDisplayOverrides: {} };
+
+    assert.equal(measurementOverlaysPropsEqual(empty, withFeet), false);
+    assert.equal(measurementOverlaysPropsEqual(withFeet, empty), false);
+  });
+
+  it('re-renders when switching between two different override units', () => {
+    const a = { ...completed(pt(0, 0, 0), pt(1, 2, 3)), unitDisplayOverrides: { LENGTHUNIT: 'ft' } };
+    const b = { ...completed(pt(0, 0, 0), pt(1, 2, 3)), unitDisplayOverrides: { LENGTHUNIT: 'mm' } };
+
+    assert.equal(measurementOverlaysPropsEqual(a, b), false);
+  });
+
+  it('treats a missing unitDisplayOverrides the same as an empty one', () => {
+    const a = completed(pt(0, 0, 0), pt(1, 2, 3)); // unitDisplayOverrides omitted
+    const b = { ...a, unitDisplayOverrides: {} };
+
+    assert.equal(measurementOverlaysPropsEqual(a, b), true);
+  });
+
+  it('still skips the re-render when unitDisplayOverrides is unchanged', () => {
+    const a = { ...completed(pt(0, 0, 0), pt(1, 2, 3)), unitDisplayOverrides: { LENGTHUNIT: 'ft' } };
+    const b = { ...completed(pt(0, 0, 0), pt(1, 2, 3)), unitDisplayOverrides: { LENGTHUNIT: 'ft' } };
+
+    assert.equal(measurementOverlaysPropsEqual(a, b), true);
+  });
 });

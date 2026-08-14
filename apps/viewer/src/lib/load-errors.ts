@@ -3,26 +3,29 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Classification + humanisation of model-load failures.
+ * Classification of model-load failures. This module owns the taxonomy and the
+ * ORDER the buckets are tried in; the user-facing humanisation lives in
+ * ./load-error-message.ts, and the two families whose matchers carry more
+ * rationale than pattern have their own modules (./webgl-unavailable.ts,
+ * ./cancelled-and-network-errors.ts) rather than a longer file here.
  *
  * Despite the name, this is the viewer's ONLY error-family classifier —
  * `analytics-scrub.ts` runs it over every captured `$exception` — so a non-load
- * family needing grouping belongs here too, not in a second one that would drift.
+ * family needing grouping belongs here too, not in a second one that would
+ * drift. The sibling modules are not that: they hold a family's WORDINGS, while
+ * every kind and the order it is tried in stays in {@link classifyLoadError}.
  *
- * The geometry/parser workers both initialise the same `@ifc-lite/wasm`
- * binary. wasm-bindgen's streaming loader rethrows on a non-OK HTTP status
- * (it only falls back for the wrong-MIME case), surfacing as a cryptic
- * `TypeError: Failed to execute 'compile' on 'WebAssembly': HTTP status code
- * is not ok`. That message is meaningless to a user and, captured raw, is
- * hard to triage in error tracking.
- *
- * This module maps such failures to a stable `kind` (for analytics
- * grouping) and a human-readable message (for the toast / model loadError).
+ * The geometry/parser workers both initialise the same `@ifc-lite/wasm` binary.
+ * wasm-bindgen's streaming loader rethrows on a non-OK HTTP status (it only
+ * falls back for the wrong-MIME case), surfacing as a cryptic `TypeError:
+ * Failed to execute 'compile' on 'WebAssembly': HTTP status code is not ok` —
+ * meaningless to a user and, captured raw, hard to triage. This module maps
+ * such failures to a stable `kind` for analytics grouping; `formatLoadError` in
+ * ./load-error-message.ts turns that kind into the user-facing message.
  */
 
-// Imported, not restated: a second copy of MapLibre's wordings would drift on
-// the next upgrade. That module imports nothing, so this adds no dependency.
-import { isWebglContextCreationError } from './geo/map-webgl-support.js';
+import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
+import { isWebglUnavailable } from './webgl-unavailable.js';
 
 /** Stable, analytics-friendly classification of a load failure. */
 export type LoadErrorKind =
@@ -69,21 +72,21 @@ export type LoadErrorKind =
   | 'cancelled'
   /**
    * A fetch failed at the transport layer and the browser told us nothing else
-   * — WebKit says `Load failed`, Chromium `Failed to fetch`, Gecko
-   * `NetworkError when attempting to fetch resource`. The connection dropped,
-   * went offline, or was killed mid-flight. Nothing in the app is broken and
-   * nothing about the model is wrong, so this is deliberately the LAST bucket
-   * checked: any failure that identified itself keeps its own kind.
+   * (the per-engine wordings are enumerated on `BARE_TRANSPORT_FAILURE`, in
+   * ./cancelled-and-network-errors.ts).
+   * The connection dropped, went offline, or was killed mid-flight. Nothing in
+   * the app is broken, so this is deliberately the LAST bucket checked: any
+   * failure that identified itself keeps its own kind.
    */
   | 'network_unavailable'
   /**
-   * The browser refused a WebGL context to the location minimap (#2354). Not a
-   * load failure and never reaches {@link formatLoadError}; classified so the
-   * family gets ONE fingerprint instead of one issue per deploy. Membership is
-   * by MESSAGE, not by who caught it: `isWebglContextCreationError` matches only
-   * MapLibre's own wordings and the two strings `LocationMap` synthesizes, all
-   * of them anchored, so an error that merely MENTIONS the phrase keeps its own
-   * identity and its `error` severity.
+   * The browser refused a WebGL context: to the location minimap (#2354) or to
+   * either `/mcp` three.js scene (#2458). Not a load failure and never reaches
+   * `formatLoadError`; classified so the family gets ONE fingerprint instead of
+   * one issue per deploy and per wording. Membership is by MESSAGE, not by who
+   * caught it, and both libraries' wordings live together in
+   * ./webgl-unavailable.ts — anchored, so an error that merely MENTIONS one of
+   * the phrases keeps its own identity and its `error` severity.
    */
   | 'webgl_unavailable'
   /** Anything else. */
@@ -101,7 +104,8 @@ function errorNameOf(err: unknown): string {
   return typeof name === 'string' ? name : '';
 }
 
-function messageOf(err: unknown): string {
+/** Exported for ./load-error-message.ts, which needs the same stringification. */
+export function messageOf(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
   return String(err);
@@ -212,51 +216,10 @@ function isGeometryWorkerCrashError(message: string): boolean {
  * object carries its `.name`, so nothing real is lost. Checked AFTER the worker
  * bucket so a worker-attributed trap keeps its own bucket.
  */
-const WASM_RUNTIME_UNRECOVERABLE_MARKER = 'WASM_RUNTIME_UNRECOVERABLE'; // == @ifc-lite/geometry's WASM_RUNTIME_UNRECOVERABLE_CODE
+export const WASM_RUNTIME_UNRECOVERABLE_MARKER = 'WASM_RUNTIME_UNRECOVERABLE'; // == @ifc-lite/geometry's WASM_RUNTIME_UNRECOVERABLE_CODE
 function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
   return (
     errorNameOf(err) === 'RuntimeError' || message.includes(WASM_RUNTIME_UNRECOVERABLE_MARKER)
-  );
-}
-
-function isCancelledError(message: string): boolean {
-  return /\bcancel(?:led|ed)?\b|aborterror|the operation was aborted/i.test(message);
-}
-
-/**
- * A bare transport failure: the request never completed and the browser gave
- * us nothing but its two-word house phrasing. Because these strings originate
- * inside `fetch()` rather than in our frames, they arrive with an EMPTY stack —
- * which is exactly how #1903 reached error tracking as an unattributable
- * `TypeError: Load failed`.
- *
- * Matched on the engine-specific wording only, and checked LAST, so a failure
- * that named itself (the engine binary, the file, a worker) keeps its own,
- * more actionable kind.
- *
- * A failed *module import* is excluded for the same reason `wasm-init-retry.ts`
- * excludes it from the engine-binary attribution: Chromium words a rotated JS
- * chunk `Failed to fetch dynamically imported module: …/assets/Foo-<hash>.js`,
- * which contains "failed to fetch" but is NOT the user's connection dropping —
- * it is our deployment having rotated an asset under a still-open tab. Bucketing
- * it here would fingerprint it with genuine offline blips AND hand it to the
- * benign-severity downgrade in ./analytics-scrub.ts, silencing a breakage that
- * is ours and that survived `main.tsx`'s one-shot chunk-reload budget. The
- * engine binary's own dynamic-import failure is unaffected: `.wasm` messages are
- * claimed by `isWasmEngineLoadError` above, which runs first.
- */
-function isNetworkUnavailableError(message: string): boolean {
-  if (/dynamically imported module|importing a module script failed|module script/i.test(message)) {
-    return false;
-  }
-  return (
-    // WebKit/Safari, Chromium, Gecko — the generic "fetch rejected" strings.
-    /\bload failed\b|failed to fetch|networkerror when attempting to fetch/i.test(message) ||
-    // Darwin's CFNetwork wording, surfaced verbatim by Safari/WebKit when the
-    // connection drops, the device is offline, or DNS cannot resolve the host.
-    /the network connection was lost|internet connection appears to be offline|a server with the specified hostname could not be found/i.test(
-      message,
-    )
   );
 }
 
@@ -280,9 +243,9 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   if (name === 'AbortError') return 'cancelled';
   // BEFORE the memory/network buckets: MapLibre's failure carries the driver's
   // own `statusMessage`, vendor prose we do not control and free to contain the
-  // words those matchers key on ("allocation failed"). Safe to claim first — it
-  // takes only MapLibre's authored wordings and its event token, not a name.
-  if (isWebglContextCreationError(err)) return 'webgl_unavailable';
+  // words those matchers key on ("allocation failed"). Safe to claim first —
+  // every arm of it is anchored or structural (see ./webgl-unavailable.ts).
+  if (isWebglUnavailable(err, message)) return 'webgl_unavailable';
   if (isWasmEngineLoadError(message)) return 'wasm_engine_load';
   // Explicit memory-exhaustion signals win over the worker-crash bucket so a
   // worker that died with a clear OOM message is grouped as out_of_memory.
@@ -328,74 +291,4 @@ export function errorCaptureProps(err: unknown): Record<string, unknown> {
   const nav = (globalThis as { navigator?: { onLine?: unknown } }).navigator;
   if (typeof nav?.onLine === 'boolean') props.online = nav.onLine;
   return props;
-}
-
-/**
- * Produce a user-facing message for a load failure. Known failure modes get
- * actionable guidance; everything else falls back to the raw error text so we
- * never hide useful detail.
- *
- * @param fileName Optional file name to attribute the failure to.
- */
-export function formatLoadError(err: unknown, fileName?: string): string {
-  const kind = classifyLoadError(err);
-  const subject = fileName ? `"${fileName}"` : 'the model';
-  switch (kind) {
-    case 'wasm_engine_load':
-      return (
-        `Couldn't load the 3D geometry engine — a required file failed to download. ` +
-        `This usually means the app updated in the background, or a proxy/antivirus blocked it. ` +
-        `Please reload the page (Ctrl/Cmd+Shift+R). If it persists, check your network or extensions.`
-      );
-    case 'out_of_memory':
-      return (
-        `Ran out of memory while processing ${subject}. ` +
-        `Try closing other tabs, or load fewer/smaller models at once.`
-      );
-    case 'geometry_worker_crash':
-      return (
-        `A geometry worker stopped unexpectedly while processing ${subject}. ` +
-        `This usually means the model is too large for this device's available memory. ` +
-        `Try closing other tabs, or load fewer/smaller models at once.`
-      );
-    case 'geometry_stream_stalled':
-      return (
-        `Processing ${subject} stalled and was stopped. ` +
-        `The model may be too large or complex for this device. ` +
-        `Try closing other tabs, or load fewer/smaller models at once.`
-      );
-    case 'file_unreadable':
-      return (
-        `Couldn't read ${subject} — the file is no longer available to the browser. ` +
-        `It may have been moved, renamed, deleted, or unloaded by a cloud-sync client ` +
-        `(OneDrive/Dropbox/iCloud) since you picked it. Please select the file again.`
-      );
-    case 'wasm_runtime_crashed':
-      // Two sub-cases, and the difference matters to the user: a trap taken by
-      // one operation costs only that operation (the engine rebuilds itself on
-      // the next one), while a trap taken while the engine was starting cannot
-      // be undone without a new document. Never show the raw engine text here —
-      // the reported occurrence put an internal sentence about "recreating the
-      // worker process" in front of a user (#1898).
-      return messageOf(err).includes(WASM_RUNTIME_UNRECOVERABLE_MARKER)
-        ? (
-          `The 3D geometry engine crashed and can't restart in this tab. ` +
-          `Please reload the page (Ctrl/Cmd+R) — your work in other tabs is unaffected. ` +
-          `If it happens again on the same model, it is likely too large for this device's memory.`
-        )
-        : (
-          `The 3D geometry engine crashed while processing ${subject} and the operation was stopped. ` +
-          `This is usually memory pressure on a large or complex model — try closing other tabs, ` +
-          `or exporting/loading a smaller selection. Reload the page if it keeps happening.`
-        );
-    case 'cancelled':
-      return `Loading ${subject} was cancelled.`;
-    case 'network_unavailable':
-      return (
-        `Couldn't load ${subject}: the connection dropped while downloading. ` +
-        `Check your network and try again. Nothing was lost, so loading the same file again is safe.`
-      );
-    default:
-      return `Failed to load ${subject}: ${messageOf(err)}`;
-  }
 }

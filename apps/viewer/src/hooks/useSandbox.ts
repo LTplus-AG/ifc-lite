@@ -20,25 +20,7 @@ import {
   formatDiagnosticsForDisplay,
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
-import { describeSandboxAbort } from '../lib/sandboxAbort.js';
-
-/**
- * Tear a sandbox down without letting a teardown failure escape.
- *
- * An out-of-memory or CPU-timeout exception raised inside a drained promise
- * job leaves QuickJS holding objects with leaked refcounts, and upstream
- * `JS_FreeRuntime` aborts on it (#1922). Every call site here runs in a
- * `finally` or a React cleanup, where a throw would discard the run's own
- * result or escape an unmount — so report it and carry on. `Sandbox.dispose()`
- * has already released everything it owns by the time it throws.
- */
-function disposeSandbox(sandbox: Sandbox): void {
-  try {
-    sandbox.dispose();
-  } catch (err) {
-    console.error('[ifc-lite] sandbox teardown failed', err);
-  }
-}
+import { describeSandboxAbort, disposeSandboxReportingAbort } from '../lib/sandboxAbort.js';
 
 /** Type guard for ScriptError shape (has logs + durationMs) */
 function isScriptError(err: unknown): err is { message: string; logs: Array<{ level: string; args: unknown[]; timestamp: number }>; durationMs: number } {
@@ -180,18 +162,30 @@ export function useSandbox(config?: SandboxConfig) {
     }
 
     let sandbox: Sandbox | null = null;
-    try {
-      // Create a fresh sandbox for every execution — full isolation
-      const { createSandbox, isSandboxRuntimeAborted } = await import('@ifc-lite/sandbox');
-
-      // The shared QuickJS WASM module is dead for the rest of the document
-      // once a teardown abort has latched (#1922) — fail fast instead of
-      // creating a sandbox that cannot tear down cleanly either.
-      const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
-      if (abortedBeforeAttempt) {
-        setError(abortedBeforeAttempt);
-        return null;
+    let torndown = false;
+    /**
+     * Tear the sandbox down exactly once and report a #1922 teardown abort.
+     *
+     * Called from the success path *before* the run is reported, and from the
+     * `finally` for every other path; whichever arrives second is a no-op.
+     */
+    const teardown = (): string | null => {
+      if (torndown) return null;
+      torndown = true;
+      const message = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
+      if (activeSandboxRef.current === sandbox) {
+        activeSandboxRef.current = null;
       }
+      return message;
+    };
+
+    try {
+      // Create a fresh sandbox for every execution — full isolation. Because
+      // it is fresh, a prior run's #1922 teardown abort costs this one
+      // nothing: the package retired that WASM module, so this sandbox is
+      // built on a healthy one. (The pre-flight refusal that used to stand
+      // here reported "reload the page" for the rest of the document.)
+      const { createSandbox } = await import('@ifc-lite/sandbox');
 
       sandbox = await createSandbox(bim, {
         permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
@@ -200,6 +194,33 @@ export function useSandbox(config?: SandboxConfig) {
       activeSandboxRef.current = sandbox;
 
       const result = await sandbox.eval(code);
+
+      // Settle the run BEFORE reporting it, because teardown is where this
+      // run's real outcome lives. A teardown abort is the *only* signal that
+      // the script exhausted the sandbox heap inside a drained job (#1922):
+      // that eval() resolves normally — the reproducer returns "started".
+      //
+      // Disposing here rather than only in the `finally` is what lets the
+      // failure reach the RETURN value. A `finally` runs after the return
+      // expression has already been evaluated, so reporting the abort only
+      // there left `execute()` resolving with a truthy ScriptResult for a run
+      // that died, and every caller reads success off exactly that:
+      // `ExecutableCodeBlock.handleRun` treats any non-null result as success,
+      // and ChatPanel's auto-execute path only handles failure when the result
+      // is null. The store said "error" while the UI said "ran fine".
+      const teardownAbortMessage = teardown();
+      if (teardownAbortMessage) {
+        // Keep the captured logs — they are the only record of how far the
+        // script got — but not the value, which is a lie about a dead run.
+        setResult({
+          value: undefined,
+          logs: result.logs,
+          durationMs: result.durationMs,
+        });
+        setError(teardownAbortMessage);
+        return null;
+      }
+
       setResult({
         value: result.value,
         logs: result.logs,
@@ -207,15 +228,16 @@ export function useSandbox(config?: SandboxConfig) {
       });
       // Successful-run signal for baseline consumers (scripting tour run
       // gate). Deliberately NOT bumped on the error-path setResult below
-      // (that call only preserves captured logs) or on reset().
+      // (that call only preserves captured logs), on reset(), or on the
+      // teardown-abort path above — a crashed run must not count as a run.
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
-      // A dispose() thrown from a prior run's teardown latches the runtime as
-      // aborted (#1922); a SandboxAbortError surfacing here means this very
-      // attempt hit it. Either way the fix is "reload", not the generic
-      // script-error diagnostics below.
-      const abortMessage = describeSandboxAbort(false, err);
+      // A SandboxAbortError surfacing from create/eval is the #1922 teardown
+      // abort, not a fault in the script — the generic diagnostics below would
+      // only mislead. (The ordinary route is the `finally`: the abort happens
+      // during teardown, after this run has already returned.)
+      const abortMessage = describeSandboxAbort(err);
       if (abortMessage) {
         setError(abortMessage);
         return null;
@@ -236,12 +258,14 @@ export function useSandbox(config?: SandboxConfig) {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      // Always dispose the sandbox after execution
-      if (sandbox) {
-        disposeSandbox(sandbox);
-      }
-      if (activeSandboxRef.current === sandbox) {
-        activeSandboxRef.current = null;
+      // Always dispose the sandbox after execution. A no-op on the success
+      // path, which already settled itself above; this covers create/eval
+      // throwing, and a teardown abort on the way out of a failed run.
+      // Reported after the result is set, because setResult clears the
+      // store's error.
+      const teardownAbortMessage = teardown();
+      if (teardownAbortMessage) {
+        setError(teardownAbortMessage);
       }
     }
   }, [bim, config?.permissions, config?.limits, setDiagnostics, setExecutionState, setResult, setError]);
@@ -249,7 +273,7 @@ export function useSandbox(config?: SandboxConfig) {
   /** Reset clears any active sandbox (no-op if none running) */
   const reset = useCallback(() => {
     if (activeSandboxRef.current) {
-      disposeSandbox(activeSandboxRef.current);
+      disposeSandboxReportingAbort(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
     setExecutionState('idle');
@@ -262,7 +286,7 @@ export function useSandbox(config?: SandboxConfig) {
   useEffect(() => {
     return () => {
       if (activeSandboxRef.current) {
-        disposeSandbox(activeSandboxRef.current);
+        disposeSandboxReportingAbort(activeSandboxRef.current);
         activeSandboxRef.current = null;
       }
     };

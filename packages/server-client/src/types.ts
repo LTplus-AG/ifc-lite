@@ -229,6 +229,16 @@ export interface GeometryDiagnostics {
 // ============================================
 // 2D Symbol Data (IfcAnnotation + IfcGrid)
 // ============================================
+//
+// UNRESOLVED SCALARS. `world_y` and `hatch_angle_secondary` arrive as `null`
+// when the server could not resolve them — the Rust model spells that
+// `f32::NAN` and `serde_json` writes a non-finite float as JSON `null`.
+//
+// `null` is NOT `0`. `world_y: 0` is a real elevation at datum; `world_y:
+// null` means the placement chain never produced one. Branch on `x === null`
+// (or `typeof x === 'number'`) — do not coerce, because `Number(null)` is `0`
+// and would silently invent a datum-level elevation. Anything that buckets or
+// sorts by elevation must exclude the `null`s rather than treat them as zero.
 
 /**
  * A single `IfcGridAxis` tag + axis curve (compact endpoint-pair shape).
@@ -239,7 +249,11 @@ export interface SymbolicGridAxis {
   tag: string;
   /** Endpoint pair `[x0, y0, x1, y1]` in metres (plan view). */
   endpoints: [number, number, number, number];
-  world_y: number;
+  /**
+   * World-Y elevation in metres, or `null` when unresolved. See the
+   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
+   */
+  world_y: number | null;
 }
 
 /**
@@ -252,7 +266,11 @@ export interface SymbolicPolyline {
   /** Flat `[x0, y0, x1, y1, …]` plan-view coordinates. */
   points: number[];
   closed: boolean;
-  world_y: number;
+  /**
+   * World-Y elevation in metres, or `null` when unresolved. See the
+   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
+   */
+  world_y: number | null;
   representation: string;
 }
 
@@ -265,7 +283,11 @@ export interface SymbolicCircle {
   center_x: number;
   center_y: number;
   radius: number;
-  world_y: number;
+  /**
+   * World-Y elevation in metres, or `null` when unresolved. See the
+   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
+   */
+  world_y: number | null;
   /** Start angle in radians (0 for a full circle). */
   start_angle: number;
   /** End angle in radians (`2π` for a full circle). */
@@ -289,7 +311,11 @@ export interface SymbolicText {
   content: string;
   /** IFC `BoxAlignment` (`top-left`, `center`, …). Empty when absent. */
   alignment: string;
-  world_y: number;
+  /**
+   * World-Y elevation in metres, or `null` when unresolved. See the
+   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
+   */
+  world_y: number | null;
   /** sRGB straight-alpha colour `[r, g, b, a]`. */
   color: [number, number, number, number];
   /** Per-instance target screen-pixel cap height (`0` = renderer default). */
@@ -317,7 +343,11 @@ export interface SymbolicFillArea {
    */
   hatch_angle_secondary: number | null;
   hatch_line_width: number;
-  world_y: number;
+  /**
+   * World-Y elevation in metres, or `null` when unresolved. See the
+   * "UNRESOLVED SCALARS" note at the top of this section — `null` is not `0`.
+   */
+  world_y: number | null;
   representation: string;
 }
 

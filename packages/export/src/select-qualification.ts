@@ -42,7 +42,18 @@ function isDefinedType(type: string): boolean {
 // they serialize as `#ref`, never qualified).
 const selectLeafCache = new Map<string, Map<string, string>>();
 
-function getSelectDefinedLeaves(selectName: string): Map<string, string> {
+/**
+ * `selectName` → its DEFINED-TYPE leaves, mapped to the EXPRESS primitive each
+ * bottoms out in (`IfcText` → `STRING`, `IfcLengthMeasure` → `REAL`). Nested
+ * selects are flattened; entity members are skipped (they serialize as `#ref`
+ * and are never type-qualified).
+ *
+ * Exported for `declared-property-type.ts`, which asks the same question of
+ * `IfcValue` for a different reason: not "which member does this bare value
+ * imply" but "is this token a member at all, and does it agree with the value".
+ * One walk, one cache, one definition of what a qualifiable member is.
+ */
+export function getSelectDefinedLeaves(selectName: string): Map<string, string> {
   const cached = selectLeafCache.get(selectName);
   if (cached) return cached;
   const leaves = new Map<string, string>();

@@ -32,6 +32,13 @@
  * what lets `dispose()` free any deferred that never settled — an unfreed
  * resolver handle is exactly the orphan that makes `runtime.dispose()` abort
  * the whole WASM module (#1905).
+ *
+ * The queue also owns the *cancellation* of that work (#2419). Bounding the
+ * wait is not the same as bounding the work: a `bim.clash.run` that outlived
+ * its run's deadline kept intersecting geometry to completion in the
+ * background, for a result discarded the moment it arrived. The signal below
+ * is handed to every bridge call and aborted when the run stops waiting or the
+ * sandbox is torn down.
  */
 
 import type { QuickJSContext, QuickJSDeferredPromise, QuickJSHandle } from 'quickjs-emscripten';
@@ -70,10 +77,35 @@ export class HostWorkQueue {
    */
   private readonly disposeWaiters = new Set<() => void>();
   private isDisposed = false;
+  /**
+   * Cancellation for the host work started through this queue.
+   *
+   * Un-awaiting a host promise is not the same as stopping it: a `bim.clash.run`
+   * over a large model that outlives its run's deadline kept meshing and
+   * intersecting to completion on the user's machine, with the result thrown
+   * away on arrival. Correct, but it is sustained CPU nobody is waiting for.
+   * Bridge methods pass this signal down to the SDK (see `bridge-clash.ts`), so
+   * `abandonInFlight()` and `dispose()` really do end the work.
+   *
+   * Replaced rather than reused after a timeout: the queue is sandbox-scoped
+   * and the extension host runs many evals against one sandbox, so a later run
+   * must not be handed a signal that is already aborted.
+   */
+  private controller = new AbortController();
 
   /** How many host promises have not settled yet. */
   get size(): number {
     return this.inFlight.size;
+  }
+
+  /**
+   * The cancellation signal for host work started *now*.
+   *
+   * Read per call, never cached: after a timeout this is a fresh signal, and a
+   * call made after `dispose()` correctly gets an already-aborted one.
+   */
+  get signal(): AbortSignal {
+    return this.controller.signal;
   }
 
   /**
@@ -119,9 +151,35 @@ export class HostWorkQueue {
    * The deferreds stay registered. A late settle still delivers into the realm
    * (or is absorbed once the realm is gone), and `dispose()` still frees them,
    * so abandoning the wait leaks nothing.
+   *
+   * Cancels before it abandons: work the run has stopped waiting for is work
+   * nobody will ever read, and a clash run over a large model would otherwise
+   * carry on burning CPU long after the script that asked for it was gone.
    */
   abandonInFlight(): void {
+    // A dispose landing while a run is parked in `settle()` wakes that wait,
+    // and `settleHostWork` then calls this on its way out. There is no next run
+    // to protect on a disposed queue, and installing a live controller on one
+    // would undo the disposal's own abort.
+    if (this.isDisposed) {
+      this.inFlight.clear();
+      return;
+    }
+    this.cancel('the script run stopped waiting for this call');
+    // The next run on this sandbox starts from a signal that is not aborted.
+    this.controller = new AbortController();
     this.inFlight.clear();
+  }
+
+  /**
+   * Abort the current signal with a described reason.
+   *
+   * Idempotent by construction — `AbortController.abort()` on an already
+   * aborted controller is a no-op, so a dispose following a timeout, or two
+   * disposes, cancel once and keep the first reason.
+   */
+  private cancel(reason: string): void {
+    this.controller.abort(new DOMException(reason, 'AbortError'));
   }
 
   /**
@@ -135,6 +193,11 @@ export class HostWorkQueue {
    */
   dispose(): void {
     this.isDisposed = true;
+    // Before the deferreds are freed, so host work that honours the signal
+    // stops at its next checkpoint instead of running on against a dead realm.
+    // No controller replaces this one: a call made after disposal must see an
+    // aborted signal.
+    this.cancel('the sandbox was disposed');
     for (const wake of this.disposeWaiters) wake();
     this.disposeWaiters.clear();
     for (const deferred of this.deferreds) {

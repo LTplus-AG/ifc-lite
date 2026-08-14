@@ -27,6 +27,7 @@ import {
   type DataStoreTransport,
   type ParserMemorySnapshot,
 } from './data-store-transport.js';
+import { takeWasmPanicStash } from './wasm-panic-forward.js';
 
 /** Input message: pass the SAB-backed source bytes and an opaque request id. */
 export interface ParserWorkerInputMessage {
@@ -87,6 +88,12 @@ export interface ParserWorkerErrorMessage {
   type: 'error';
   id: string;
   message: string;
+  /** This worker realm's wasm panic-location stash (#2527 follow-up), forwarded
+   *  so the main thread can re-plant it on ITS global for the existing
+   *  `attachWasmPanicLocation` gate. Location only, never the panic message.
+   *  Absent when there was no stash. See `wasm-panic-forward.ts`. */
+  wasmPanicLocation?: string;
+  wasmPanicAt?: number;
 }
 
 export type ParserWorkerOutputMessage =
@@ -317,10 +324,15 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     };
     postOutput({ type: 'complete', id, payload, memory }, transfers);
   } catch (err) {
+    // #2527 follow-up: forward this realm's panic-location stash (set by the
+    // Rust panic hook if this failure was a wasm trap) so the main thread can
+    // re-plant it on ITS global for `attachWasmPanicLocation`.
+    const panic = takeWasmPanicStash(self);
     postOutput({
       type: 'error',
       id,
       message: err instanceof Error ? err.message : String(err),
+      ...(panic ? { wasmPanicLocation: panic.location, wasmPanicAt: panic.at } : {}),
     });
   }
 };

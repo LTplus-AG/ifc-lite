@@ -17,6 +17,8 @@ import type {
   IDSValidationReport,
   ValidationProgress,
 } from '@ifc-lite/ids';
+import type { IfcSourceTransfer } from '@ifc-lite/parser';
+
 import type {
   IdsWorkerRequest,
   IdsWorkerResponse,
@@ -28,7 +30,22 @@ export function idsWorkerSupported(): boolean {
 
 export interface RunInWorkerArgs {
   /** Raw IFC/STEP bytes from the loaded model's data store. */
-  source: Uint8Array;
+  /**
+   * The source as an envelope rather than bytes (#2183).
+   *
+   * A resident source's envelope carries its underlying view, and a
+   * SharedArrayBuffer survives structured clone by reference, so on the paths
+   * that matter this is the same zero-copy handoff it always was.
+   *
+   * For a NON-shared buffer this is a simplification rather than a saving:
+   * structured clone serializes on the sending thread, so the main thread pays
+   * an O(N) write either way. It drops the explicit `slice()`, not the copy.
+   *
+   * A compressed source crosses as its blocks, so the worker inflates on its
+   * own thread. Materializing on this one would allocate the whole file on the
+   * render thread, which is the allocation #2183 exists to remove.
+   */
+  source: IfcSourceTransfer;
   document: IDSDocument;
   schemaVersion: string;
   modelId: string;
@@ -39,7 +56,8 @@ export interface RunInWorkerArgs {
 
 /**
  * Hand the model bytes + parsed IDS document to the worker and resolve
- * with the validation report. A SharedArrayBuffer-backed source is
+ * with the validation report. The source crosses as an envelope (#2183); a
+ * SharedArrayBuffer-backed source is
  * shared zero-copy; a plain ArrayBuffer is copied and transferred so
  * the main-thread store is never detached.
  */
@@ -63,7 +81,7 @@ export function runValidationInWorker(
     }
 
     const id = Date.now();
-    const { buffer, transfer } = prepareSource(args.source);
+
 
     const settle = (fn: () => void) => {
       worker.onmessage = null;
@@ -99,38 +117,14 @@ export function runValidationInWorker(
     const request: IdsWorkerRequest = {
       type: 'validate',
       id,
-      source: buffer,
+      source: args.source,
       document: args.document,
       schemaVersion: args.schemaVersion,
       modelId: args.modelId,
       locale: args.locale,
       includePassingEntities: args.includePassingEntities,
     };
-    worker.postMessage(request, transfer);
+    worker.postMessage(request);
   });
 }
 
-/**
- * Resolve the exact source bytes into a worker-postable buffer.
- * SharedArrayBuffer is shared by reference (zero copy); a plain
- * ArrayBuffer (or a partial view) is copied into a fresh, transferable
- * ArrayBuffer so the caller's store keeps its bytes.
- */
-function prepareSource(source: Uint8Array): {
-  buffer: ArrayBuffer | SharedArrayBuffer;
-  transfer: Transferable[];
-} {
-  const sharedAvailable = typeof SharedArrayBuffer !== 'undefined';
-  if (
-    sharedAvailable &&
-    source.buffer instanceof SharedArrayBuffer &&
-    source.byteOffset === 0 &&
-    source.byteLength === source.buffer.byteLength
-  ) {
-    // Shared by reference — no copy, the worker only reads it.
-    return { buffer: source.buffer, transfer: [] };
-  }
-  // Copy the exact bytes; transfer the copy (never the original).
-  const copy = source.slice();
-  return { buffer: copy.buffer, transfer: [copy.buffer] };
-}

@@ -32,12 +32,16 @@ pub(super) fn extract_text_literal(
         None => return,
     };
 
+    // `Placement` (IfcTextLiteral attribute 1) is MANDATORY per schema — not
+    // OPTIONAL like IfcProduct.ObjectPlacement (see transform.rs). A dangling
+    // ref or an absent/null attribute here is malformed data, not a
+    // legitimate zero, so both are genuine failures (#2256).
     let placement_transform = match item.get_ref(1) {
         Some(p_ref) => match decoder.decode_by_id(p_ref) {
             Ok(p) => parse_axis2_placement_2d(&p, decoder, unit_scale),
-            Err(_) => Transform2D::identity(),
+            Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
         },
-        None => Transform2D::identity(),
+        None => Transform2D::unresolved(), // mandatory attr absent (#2256)
     };
     let composed = compose_transforms(transform, &placement_transform);
 

@@ -68,9 +68,8 @@ function delta(nodes: IfcxNode[], id: string): IfcxFile {
 for (const model of MODELS) {
   const available = existsSync(model.path);
 
-  describe(`real-model partition fuzz: ${model.rel}`, {
-    skip: !available && `${model.rel} missing — run \`pnpm fixtures\``,
-  }, () => {
+  // Skipped when the model file is missing on disk — run `pnpm fixtures`.
+  describe.skipIf(!available)(`real-model partition fuzz: ${model.rel}`, () => {
     const base = available ? loadModel(model.path) : delta([], 'unreachable');
     const baseState = extractStackState([base]);
     // Live entities only; deletes are restricted to childless entities so

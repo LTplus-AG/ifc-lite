@@ -34,9 +34,9 @@ import {
   type RuntimeSandboxFactory,
   type RuntimeSandboxHandle,
 } from '@ifc-lite/extensions';
-import { createSandbox, isSandboxRuntimeAborted, type Sandbox } from '@ifc-lite/sandbox';
+import { createSandbox, type Sandbox } from '@ifc-lite/sandbox';
 import type { BimContext } from '@ifc-lite/sdk';
-import { describeSandboxAbort } from '../../lib/sandboxAbort.js';
+import { describeSandboxAbort, SANDBOX_MODULE_RETIRED_MESSAGE } from '../../lib/sandboxAbort.js';
 
 export interface SandboxFactoryOptions {
   sdk: BimContext;
@@ -162,12 +162,21 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
   async run(source: string, _opts?: RuntimeRunOptions): Promise<RuntimeRunResult> {
     if (this.disposed) throw new Error('Sandbox disposed.');
 
-    // The shared QuickJS WASM module is dead for the rest of the document
-    // once a teardown abort has latched (#1922) — fail fast instead of
-    // running an extension against a module that cannot tear down cleanly.
-    const abortedBeforeAttempt = describeSandboxAbort(isSandboxRuntimeAborted());
-    if (abortedBeforeAttempt) {
-      throw new Error(abortedBeforeAttempt);
+    // This handle is long-lived, so unlike the viewer's per-run sandbox it can
+    // outlive a #1922 teardown abort raised by some *other* sandbox on the
+    // same WASM module. It would still run scripts, but its own teardown could
+    // no longer report a failure — emscripten's ABORT latch is per module and
+    // has already fired — so it would leak silently on dispose. Drop it and
+    // let the runtime reactivate; the replacement is built on a fresh module,
+    // which is why this says "run again" rather than "reload".
+    if (this.sandbox.moduleRetired) {
+      this.disposed = true;
+      try {
+        this.sandbox.dispose();
+      } catch (err) {
+        console.warn('[sandbox-factory] teardown of a retired-module sandbox failed', err);
+      }
+      throw new Error(SANDBOX_MODULE_RETIRED_MESSAGE);
     }
 
     const prelude = [...this.globals.values()].join('\n');
@@ -177,10 +186,12 @@ export class BimSandboxHandle implements RuntimeSandboxHandle {
       result = await this.sandbox.eval(wrapped, { typescript: false });
     } catch (err) {
       // A SandboxAbortError here means this attempt hit the #1922 teardown
-      // abort (or a prior run's dispose() already latched it). Reload is the
-      // only remedy, so say that instead of the generic passthrough below.
-      const abortMessage = describeSandboxAbort(false, err);
+      // abort. The sandbox is gone with it, so mark this handle disposed and
+      // say what happened instead of the generic passthrough below; the next
+      // activation gets a sandbox on a fresh module.
+      const abortMessage = describeSandboxAbort(err);
       if (abortMessage) {
+        this.disposed = true;
         throw new Error(abortMessage);
       }
 

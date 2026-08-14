@@ -32,8 +32,8 @@
  *
  * Deliberately NOT done here, so their existing coverage keeps applying to the
  * code that ships: circle/polyline tessellation (`circleToSegments` /
- * `polylineToSegments`) and text decoding (`decodeIfcString` + the multi-line
- * split) stay on the main thread.
+ * `polylineToSegments`) and the multi-line text split stay on the main
+ * thread.
  */
 
 import type { SymbolicRepresentationCollection } from '@ifc-lite/wasm';
@@ -305,8 +305,9 @@ export function collectFlatSymbolic(
     try {
       const ifcType = text.ifcType;
       if (!keep(ifcType)) continue;
-      // Content crosses verbatim: `decodeIfcString` and the multi-line split
-      // stay main-side so the encoding behaviour is unchanged.
+      // Content crosses verbatim. It is already decoded — the Rust extractor
+      // decodes at the parse boundary (`AttributeValue::from_token`) — so the
+      // main side only splits it into lines.
       textContent.push(text.content);
       textAlignment.push(text.alignment);
       textX.push(text.x);

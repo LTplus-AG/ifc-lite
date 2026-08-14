@@ -13,6 +13,7 @@ import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoi
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
+import { effectiveIsolatedIds } from '@/lib/effective-isolation';
 import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
 import {
   useSelectionState,
@@ -36,7 +37,9 @@ import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
   getEntityBounds,
+  unionEntityBounds,
   getThemeClearColor,
+  accumulateBoundsExcludingTypes,
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -60,7 +63,7 @@ import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
 import { useGridLines3D } from '../../hooks/useGridLines3D.js';
 import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
 import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
-import { reportDeviceLost } from './device-loss-report.js';
+import { subscribeViewportHealth } from './device-loss-report.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -262,7 +265,7 @@ export function Viewport({
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
-  const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
+  const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
   // the section tool (issue #243); the action setters are forwarded into
@@ -528,6 +531,36 @@ export function Viewport({
   const ghostExceptEntitiesRef = useLatestRef(ghostExceptEntities);
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
+  const ifcDataStoreRef = useLatestRef(ifcDataStore);
+  // Express-ids of the Space Sketch draft ghost meshes currently in the scene
+  // (added directly via appendToBatches, outside geometryResult) so they can be
+  // swapped/cleared without touching the streaming geometry pipeline.
+  const spaceOverlayIdsRef = useRef<Set<number>>(new Set());
+
+  /**
+   * Overlay ids that are still safe to remove from the scene.
+   *
+   * `removeMeshesForEntities` deletes EVERY mesh registered under an id, and the
+   * Space Sketch ghost band is not reserved: `GHOST_ID_BASE` is 0x70000000
+   * (~1.879e9) while `FederationRegistry.MAX_SAFE_OFFSET` is 2e9, and unloading a
+   * model burns its offset space permanently. A long federated session can
+   * therefore hand a real model a global id inside the band that a live ghost
+   * already occupies, and clearing the overlay would delete that model's geometry.
+   *
+   * `fromGlobalId` returns null for anything outside every registered range (it
+   * bounds-checks against `maxExpressId`, not just the offset), so an id that now
+   * resolves to a real model is dropped from the removal set. The residual failure
+   * is a leaked ghost mesh, not deleted building geometry.
+   */
+  const removableOverlayIds = useCallback((ids: Set<number>): Set<number> => {
+    const resolve = useViewerStore.getState().fromGlobalId;
+    const safe = new Set<number>();
+    for (const id of ids) {
+      if (!resolve(id)) safe.add(id);
+    }
+    return safe;
+  }, []);
+
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
   // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
   // animation loop reads the latest without re-subscribing.
@@ -610,7 +643,14 @@ export function Viewport({
     canvasHeight: number;
   } | null>(null);
 
-  // activeTool has a side effect (first-person mode), so keep as useEffect
+  // activeTool has a side effect (first-person mode), so keep as useEffect.
+  //
+  // isInitialized is a dependency, not decoration: the camera now *refuses* to
+  // walk while first-person mode is off, so this is the only thing that turns
+  // walking on. Without the dep, selecting the walk tool before the renderer
+  // mounts would leave the flag unset with no later effect run to correct it,
+  // and walk mode would be silently dead for the session. Same reasoning as
+  // the clash-focus effect above.
   useEffect(() => {
     activeToolRef.current = activeTool;
     const renderer = rendererRef.current;
@@ -619,7 +659,7 @@ export function Viewport({
       firstPersonModeRef.current = isWalk;
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
-  }, [activeTool]);
+  }, [activeTool, isInitialized]);
   useEffect(() => {
     if (!hoverTooltipsEnabled) {
       clearHover();
@@ -724,7 +764,7 @@ export function Viewport({
 
     let aborted = false;
     let resizeObserver: ResizeObserver | null = null;
-    let unsubscribeDeviceLost: (() => void) | null = null;
+    let unsubscribeViewportHealth: (() => void) | null = null;
 
     // Helper to align canvas dimensions to WebGPU requirements
     // WebGPU texture row pitch must be aligned to 256 bytes
@@ -970,6 +1010,113 @@ export function Viewport({
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
         },
+        frameEntities: (ids: number[]) => {
+          // Frame an explicit id set. Ids are federated GLOBAL ids — the same
+          // id space the scene meshes carry (single model: global === express).
+          // Same aggregation as frameSelection: flat-mesh AABB with an
+          // instanced-occurrence fallback.
+          //
+          // Deliberately NOT gated on `geometryRef.current`: once streaming has
+          // released the mesh arrays, the renderer scene is the only source of
+          // bounds left, and returning early here would have made the instanced
+          // fallback below unreachable in exactly that case.
+          if (ids.length === 0) return;
+          const geom = geometryRef.current;
+          const scene = rendererRef.current?.getScene();
+          const bounds = unionEntityBounds(geom, ids, (id) => scene?.getInstancedEntityBounds(id));
+          const min = bounds?.min ?? null;
+          const max = bounds?.max ?? null;
+          if (min && max) {
+            // Guard against a degenerate / corrupted bound flinging the camera
+            // off-model: every component must be finite and the span sane.
+            const finite = [min.x, min.y, min.z, max.x, max.y, max.z].every(Number.isFinite);
+            const span = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+            if (finite && span >= 0 && span < 1e5) {
+              camera.frameBounds(min, max, 300);
+              calculateScale();
+            }
+          }
+        },
+        frameBuildingExtent: () => {
+          // Frame the building shell: bounds of all rendered geometry EXCEPT
+          // IfcSite/terrain and IfcSpace, so a georeferenced model frames the
+          // building rather than the much larger site extent. Combines flat
+          // meshes with instanced occurrences; falls back to the full extent
+          // when nothing else is available.
+          const geom = geometryRef.current;
+          const scene = rendererRef.current?.getScene();
+          const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
+          let bounds = geom ? accumulateBoundsExcludingTypes(geom, EXCLUDE) : null;
+          // Merge in instanced occurrences (not present in flat meshes), skipping
+          // excluded types via each id's OWN model store — instanced ids are
+          // federated global ids, so resolve them through the registry instead
+          // of assuming the active model (fromGlobalId is null pre-federation,
+          // where global === express and the active store is the right one).
+          if (scene) {
+            const state = useViewerStore.getState();
+            for (const id of scene.getInstancedEntityIds()) {
+              const loc = state.fromGlobalId(id);
+              const store = loc
+                ? state.models.get(loc.modelId)?.ifcDataStore
+                : ifcDataStoreRef.current;
+              const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+              if (type && EXCLUDE.has(type)) continue;
+              const b = scene.getInstancedEntityBounds(id);
+              if (!b) continue;
+              if (!bounds) {
+                bounds = { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+              } else {
+                bounds.min.x = Math.min(bounds.min.x, b.min.x); bounds.min.y = Math.min(bounds.min.y, b.min.y); bounds.min.z = Math.min(bounds.min.z, b.min.z);
+                bounds.max.x = Math.max(bounds.max.x, b.max.x); bounds.max.y = Math.max(bounds.max.y, b.max.y); bounds.max.z = Math.max(bounds.max.z, b.max.z);
+              }
+            }
+          }
+          const target = bounds ?? geometryBoundsRef.current;
+          // Same sanity gate `frameEntities` applies: a degenerate or corrupted
+          // bound here would fling the camera off-model with no way back. The
+          // instanced-occurrence merge above unions bounds from the scene, so a
+          // single bad entry can poison the whole extent.
+          const finite = [target.min.x, target.min.y, target.min.z, target.max.x, target.max.y, target.max.z]
+            .every(Number.isFinite);
+          const span = Math.max(target.max.x - target.min.x, target.max.y - target.min.y, target.max.z - target.min.z);
+          if (finite && span >= 0 && span < 1e5) {
+            camera.frameBounds(target.min, target.max, 300);
+            calculateScale();
+          }
+        },
+        setSpaceOverlayMeshes: (meshes) => {
+          // Space Sketch draft ghosts go straight to the scene (NOT through
+          // geometryResult), so per-edit churn never trips the streaming
+          // reclassifier (which would reset the camera / un-pick new spaces).
+          const renderer = rendererRef.current;
+          const scene = renderer?.getScene();
+          const device = renderer?.getGPUDevice();
+          const pipeline = renderer?.getPipeline();
+          if (!renderer || !scene || !device || !pipeline) return;
+          if (spaceOverlayIdsRef.current.size > 0) {
+            scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
+            spaceOverlayIdsRef.current = new Set();
+          }
+          if (meshes.length > 0) {
+            scene.appendToBatches(meshes, device, pipeline, false);
+            spaceOverlayIdsRef.current = new Set(meshes.map((m) => m.expressId));
+          }
+          if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          renderer.clearCaches();
+          renderer.requestRender();
+        },
+        clearSpaceOverlayMeshes: () => {
+          const renderer = rendererRef.current;
+          const scene = renderer?.getScene();
+          if (!renderer || !scene || spaceOverlayIdsRef.current.size === 0) return;
+          scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
+          spaceOverlayIdsRef.current = new Set();
+          const device = renderer.getGPUDevice();
+          const pipeline = renderer.getPipeline();
+          if (device && pipeline && scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          renderer.clearCaches();
+          renderer.requestRender();
+        },
         frameClashRegion: (min, max) => {
           // Frame the clash's (already context-padded) contact box from the
           // canonical isometric pose so the penetration is read at a 3/4 angle,
@@ -1010,8 +1157,15 @@ export function Viewport({
           const rect = c.getBoundingClientRect();
           const cssX = clientX - rect.left;
           const cssY = clientY - rect.top;
-          const x = (cssX / rect.width) * c.width;
-          const y = (cssY / rect.height) * c.height;
+          // `rect.width > 0` before dividing, matching the five sibling
+          // scalers (selectionHandlers, picking-manager, raycast-engine,
+          // CesiumPlacementEditor, projectScreen). This was the one that did
+          // not: a collapsed viewport gives `cssX / 0` = ±Infinity, or NaN
+          // when the cursor sits exactly on the left edge, and a pointer drag
+          // under `setPointerCapture` keeps delivering events after the
+          // layout collapses (#2473).
+          const x = rect.width > 0 ? (cssX / rect.width) * c.width : cssX;
+          const y = rect.height > 0 ? (cssY / rect.height) * c.height : cssY;
           const ray = camera.unprojectToRay(x, y, c.width, c.height);
           if (!ray) return null;
           const dy = ray.direction.y;
@@ -1046,11 +1200,12 @@ export function Viewport({
         applyViewpoint,
       });
 
-      // Device loss (#2229). The renderer contains a loss on its own — every
-      // later frame and pick becomes a quiet no-op — so without a subscriber
-      // it reaches the user as a viewer that silently stopped, and reaches us
-      // not at all. This is the subscriber: one toast, one tagged capture.
-      unsubscribeDeviceLost = renderer.onDeviceLost(reportDeviceLost);
+      // Device loss (#2229) and persistent render degradation (#2417). The
+      // renderer contains both on its own — every later frame and pick becomes
+      // a quiet no-op — so without a subscriber they reach the user as a viewer
+      // that silently stopped, and reach us not at all. This is the subscriber:
+      // one toast, one tagged capture, per failure.
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
 
       // ResizeObserver — let renderer handle its own dimension alignment
       resizeObserver = new ResizeObserver(() => {
@@ -1080,7 +1235,7 @@ export function Viewport({
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
-      unsubscribeDeviceLost?.();
+      unsubscribeViewportHealth?.();
       setIsInitialized(false);
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from './analytics-scrub.js';
 import { beforeSend, ensureCapturableStack } from './analytics.js';
@@ -348,6 +348,301 @@ describe('scrubEvent — noise filter + PII guard (regression)', () => {
   });
 });
 
+// ── The noise filter's whole-value invariant ─────────────────────────────────
+// Every matcher in `analytics-scrub.ts`'s noise-filter section DELETES the
+// event. That is silent and irreversible: unlike a misclassification, which
+// leaves a stored event to re-derive the truth from, a drop leaves no record
+// anywhere that the event existed.
+//
+// So the invariant is not "the flagged arm is anchored", it is: EVERY arm of
+// EVERY matcher there matches the value as a whole — anchored at BOTH ends, or
+// structural — and an unrelated, actionable error that merely QUOTES one of
+// these strings still reaches PostHog with its own kind, level and grouping.
+// #1914 anchored one arm of this matcher and named the hazard in a comment; the
+// sibling arm in the same expression stayed a bare substring test, and survived
+// three later rounds of fixing this very defect class next door in the classify
+// path (#2354) — which is what a comment buys you. This list is the structural
+// version: adding an arm to the noise filter means adding its wording here, and
+// the quoted-in-context tests below then fail until the new arm constrains the
+// whole value — at both ends, which the CARRIERS table is what actually proves.
+//
+// Scope, stated plainly: this protects every arm REGISTERED here, and cannot be
+// weakened without turning red. It does not protect an arm nobody registers —
+// a fresh loose clause with no entry in this list passes the whole suite.
+// Registration is a convention, not a gate.
+//
+// And assert the property the test is NAMED for, not a proxy for it. Survival
+// (`!== null`) does not pin classification; `error_kind` does not pin the
+// message; "verbatim" is only pinned by comparing the message to the input.
+// Three findings in this PR's reviews were all this same substitution — the
+// assertion checked that something was present rather than what it was.
+const DROPPED_NOISE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    label: 'cesium request error (#1175)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode",
+  },
+  {
+    label: 'outlook safelinks crawler (#1855)',
+    value:
+      'Non-Error promise rejection captured with value: '
+      + 'Object Not Found Matching Id:2, MethodName:update, ParamCount:4',
+  },
+  {
+    label: 'maplibre bare wording (#1914)',
+    value: 'Failed to initialize WebGL',
+  },
+  {
+    label: 'maplibre v5 JSON payload (#1914)',
+    value: JSON.stringify({
+      requestedAttributes: { alpha: true, depth: true, stencil: true },
+      statusMessage: 'OES_packed_depth_stencil support is required.',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    }),
+  },
+  { label: 'opaque cross-origin (#1855)', value: 'Script error.' },
+  {
+    label: 'resizeobserver loop (#2120, PR #2124)',
+    value: 'ResizeObserver loop completed with undelivered notifications.',
+  },
+];
+
+// The mirror of the list above: values that LOOK like registered noise and must
+// NOT be dropped, each asserted to keep its own kind, level and fingerprint.
+//
+// DROPPED_NOISE_SAMPLES plus the carriers pin the EXTENT axis — how much of the
+// value an arm may match. This list pins the IDENTITY axis — whether what
+// matched is really the third-party failure. `isCesiumRequestError` was precise
+// about shape and vague about identity: "carries these three key names among
+// its keys" is a generic HTTP-ish shape, so a throwable of ours with those
+// fields plus its own was deleted as Cesium noise (#2402 review).
+const KEPT_LOOKALIKE_SAMPLES: ReadonlyArray<{ label: string; value: string }> = [
+  {
+    // Cesium's three own properties AND one of ours. Not Cesium's object, so
+    // not ours to delete — the arm now requires the own-property set EXACTLY.
+    label: 'cesium-shaped keys plus a fourth of our own (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, responseHeaders, statusCode, uploadId",
+  },
+  {
+    // Same three keys, readable ctor, but one key short of Cesium's object.
+    label: 'a subset of cesium\'s keys (#2402 review)',
+    value: "'HttpProbe' captured as exception with keys: response, statusCode",
+  },
+  {
+    // Cesium's key COUNT and one of its names, but not its object. Pins that
+    // the check is set equality and not "three keys, one of which is theirs" —
+    // a mutation to `.some(...)` passed everything until this sample existed.
+    label: 'three keys, only one of them cesium\'s (#2402 review)',
+    value: "'UploadError' captured as exception with keys: response, requestId, uploadId",
+  },
+  {
+    // The v5 token present but not as the `type` field's value.
+    label: 'v5 token in the wrong JSON field (#2402)',
+    value: JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    }),
+  },
+  {
+    // Cesium's exact stringification on line one, our diagnostic underneath.
+    // Multi-line is how a message of ours carries its own context, and the
+    // whole-value constraint has to hold across the newline too.
+    label: 'cesium stringification with our own second line (#2402 review)',
+    value: "'D_' captured as exception with keys: response, responseHeaders, statusCode\n"
+      + 'raised while our uploader was writing chunk 3 of 9',
+  },
+];
+
+// THREE carriers, because one is blind. Each catches a different half-anchored
+// matcher, and a matcher anchored at one end passes the other two:
+//
+//   surrounded     text on both sides — catches an unanchored substring test
+//   leading only   text before, sample at the end — catches a `$`-only matcher
+//   trailing only  sample first, text after — catches a `^`-only matcher
+//
+// The first review of #2402 shipped a `^`-only Cesium arm and the harness said
+// nothing, because the single carrier it had was `surrounded`: leading text
+// already fails `^`, so the arm never fired and the event survived for the
+// wrong reason. A carrier set that only probes one end can only find looseness
+// at that end.
+//
+// Module-scoped because #2410 needs the same table one layer down, against the
+// benign CLASSIFIER wordings rather than the noise filter's drop arms. One
+// definition, so a carrier added for either use protects both.
+const CARRIERS: ReadonlyArray<{ label: string; wrap: (value: string) => string }> = [
+  { label: 'surrounded', wrap: (v) => `Upload failed: driver shim logged ${v} while retrying` },
+  { label: 'leading only', wrap: (v) => `Upload failed: driver shim logged ${v}` },
+  { label: 'trailing only', wrap: (v) => `${v} and our upload pipeline then wrote 0 bytes` },
+  // Comma-led, because a structural matcher that SPLITS the value has a
+  // second way to be loose: glue the sentence onto the last member and it
+  // fails the member test, but hand it its own delimiter and it can sail
+  // through as one more member. Mutating away the member validation left the
+  // three sentences above all passing; this one kills it.
+  { label: 'trailing only, comma-led', wrap: (v) => `${v}, and our upload pipeline then wrote 0 bytes` },
+];
+
+describe('scrubEvent — the noise filter never drops on a substring', () => {
+  /** An autocaptured (uncaught) exception, error-level, with no frames. */
+  const autocaptured = (value: string): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'Error', value, mechanism: { handled: false, synthetic: false, type: 'generic' } }],
+      $exception_level: 'error',
+    },
+  });
+
+  it('drops every genuine noise sample (the control for the test below)', () => {
+    // Runs first on purpose: without it, the quoted-in-context test could pass
+    // vacuously against a matcher that had stopped matching anything at all.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      assert.equal(scrubEvent(autocaptured(value)), null, label);
+    }
+  });
+
+  it('KEEPS a real failure that merely quotes a noise sample, with its identity intact', () => {
+    // The reported repro (this PR): an uncaught `Upload failed: driver shim
+    // logged {"type":"webglcontextcreationerror"} while retrying` was deleted
+    // outright by the MapLibre arm's bare substring test. Sweeping the siblings
+    // found the Cesium and Outlook arms doing the same, and sweeping the
+    // carriers one axis over found the Cesium arm again from the other end.
+    //
+    // Presence (`!== null`) is deliberately NOT the whole assertion: an event
+    // can survive and still be relabelled benign, fingerprinted into someone
+    // else's issue and downgraded off the error list, which buries it just as
+    // effectively. Assert the classification, not just the survival.
+    for (const { label, value } of DROPPED_NOISE_SAMPLES) {
+      for (const carrier of CARRIERS) {
+        const where = `${label} / ${carrier.label}`;
+        const out = scrubEvent(autocaptured(carrier.wrap(value)));
+        assert.notEqual(out, null, where);
+        assert.equal(out?.properties?.error_kind, undefined, where);
+        assert.equal(out?.properties?.$exception_fingerprint, undefined, where);
+        assert.equal(out?.properties?.$exception_level, 'error', where);
+      }
+    }
+  });
+
+  it('KEEPS the reported repro verbatim (#2402)', () => {
+    // "Verbatim" is the claim in the name, so the message itself is asserted,
+    // not just the event's survival and labels: a scrubber that rewrote
+    // `$exception_list[0].value` — the redaction pass two functions below walks
+    // exactly this field — would satisfy every other assertion here while
+    // destroying the thing the test is named for.
+    const repro = 'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying';
+    const out = scrubEvent(autocaptured(repro));
+    assert.notEqual(out, null);
+    const list = out?.properties?.$exception_list as Array<{ value?: unknown }> | undefined;
+    assert.equal(list?.[0]?.value, repro);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS every noise LOOKALIKE with its identity intact (identity axis)', () => {
+    // Same assertions as the carrier loop, different axis: these are not the
+    // registered noise wrapped in text, they are values whose SHAPE resembles
+    // it closely enough that a matcher vague about identity would delete them.
+    for (const { label, value } of KEPT_LOOKALIKE_SAMPLES) {
+      const out = scrubEvent(autocaptured(value));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, undefined, label);
+      assert.equal(out?.properties?.$exception_fingerprint, undefined, label);
+      assert.equal(out?.properties?.$exception_level, 'error', label);
+    }
+  });
+
+  it('never drops the v6 wording, even UNCAUGHT (#2354 keeps that family queryable)', () => {
+    // The non-widening decision, pinned END TO END rather than on the helper.
+    // `isMapWebglInitFailureMessage` deliberately excludes v6's wording, and the
+    // map-webgl unit tests pin that — but nothing there stops a future editor
+    // restating the wording in the drop arm itself, which would silently undo
+    // #2354's keep-and-downgrade. This asserts through `scrubEvent`: the event
+    // survives AND arrives classified, downgraded and fingerprinted, which is
+    // the outcome #2354 chose over deleting it.
+    const out = scrubEvent(autocaptured(
+      'WebGL2 is required to display this map. The map could not start: MapLibre built no painter.',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+  });
+
+  it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {
+    // The `^`-only arm's exact escape (CodeRabbit, round two of this PR): the
+    // three key names are all present and the value starts correctly, so every
+    // lookahead was satisfied and our trailing sentence went with it.
+    const out = scrubEvent(autocaptured(
+      'RequestErrorEvent captured as exception with keys: statusCode, response, '
+      + 'responseHeaders and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('KEEPS a Cesium-shaped value whose key list runs past the bounded scan', () => {
+    // The bound on the captured key list is not cosmetic. posthog caps its key
+    // list at 40 characters, so a tail this long is by construction not its
+    // stringification — and if the end anchor were dropped, the matcher would
+    // read the first few hundred characters, find a tidy key list, and delete
+    // whatever our sentence said after it. Mutating the `$` away is invisible
+    // to every other test here, because the capture is greedy to end-of-line.
+    const padding = Array.from({ length: 60 }, (_, i) => `padKey${String(i).padStart(4, '0')}`).join(', ');
+    const out = scrubEvent(autocaptured(
+      `'D_' captured as exception with keys: statusCode, response, responseHeaders, ${padding} `
+      + 'and our uploader then wrote 0 bytes',
+    ));
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_level, 'error');
+  });
+
+  it('still drops Cesium\'s stringification whatever the key order or spacing', () => {
+    // Validating the list instead of matching it literally is what buys this:
+    // posthog sorts and `", "`-joins the keys today, and that is not our
+    // contract to depend on.
+    assert.equal(
+      scrubEvent(autocaptured('Object captured as exception with keys: statusCode,response,responseHeaders')),
+      null,
+    );
+    assert.equal(
+      scrubEvent(autocaptured("'D_' captured as exception with keys: responseHeaders, statusCode, response")),
+      null,
+    );
+  });
+
+  it('still drops a genuine v5 payload whose statusMessage quotes a carrier sentence', () => {
+    // The structural arm keys on the `type` FIELD, so hostile-looking prose in
+    // the driver's own `statusMessage` — vendor text we do not control — cannot
+    // rescue an event that IS MapLibre's failure.
+    const payload = JSON.stringify({
+      statusMessage: 'Upload failed: while retrying, "type": "webglcontextcreationerror"',
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL',
+    });
+    assert.equal(scrubEvent(autocaptured(payload)), null);
+  });
+
+  it('KEEPS a JSON payload that carries the token in the wrong field', () => {
+    // Structural, not "contains a type key": a serialized log line whose `type`
+    // is something else entirely, or whose message is not MapLibre's wording,
+    // is not MapLibre's failure and is not ours to delete.
+    const wrongType = JSON.stringify({
+      type: 'upload_retry',
+      message: 'Failed to initialize WebGL',
+      note: '"type": "webglcontextcreationerror"',
+    });
+    const wrongMessage = JSON.stringify({
+      type: 'webglcontextcreationerror',
+      message: 'Failed to initialize WebGL renderer for the section overlay',
+    });
+    assert.notEqual(scrubEvent(autocaptured(wrongType)), null);
+    assert.notEqual(scrubEvent(autocaptured(wrongMessage)), null);
+  });
+});
+
 describe('scrubEvent — issue grouping', () => {
   it('collapses every stream-watchdog variant onto one fingerprint', () => {
     // The volatile mesh count used to mint a separate PostHog issue (and a
@@ -543,6 +838,129 @@ describe('scrubEvent — nested + message redaction', () => {
   });
 });
 
+// Issues #1196 and #2527: a Rust panic in the wasm engine reaches error
+// tracking as a content-free `unreachable` — the panic hook printed the real
+// message + location to the console, but the console is not captured, so the
+// auto-filed GitHub issue carries nothing to triage. The engine's panic hook
+// now stashes the panic's SOURCE LOCATION (never the payload message, which
+// can embed model data) on `globalThis.__ifclite_wasm_panic`; scrubEvent
+// attaches it to the trap exception as `wasm_panic_location`. These pin that
+// contract.
+describe('scrubEvent — wasm trap panic-location attribution (#2527)', () => {
+  type PanicGlobal = { __ifclite_wasm_panic?: unknown };
+  const g = globalThis as PanicGlobal;
+  const stashPanic = (
+    location: unknown = 'geometry/src/mesh_weld.rs:412:9',
+    at: unknown = Date.now(),
+  ): void => {
+    g.__ifclite_wasm_panic = { location, at };
+  };
+  afterEach(() => {
+    delete g.__ifclite_wasm_panic;
+  });
+
+  it('attaches the stashed location to a bare `unreachable` trap and consumes the stash', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'stash must be consumed');
+    // A later identical trap without a fresh stash carries nothing.
+    const later = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(later?.properties?.wasm_panic_location, undefined);
+  });
+
+  it('recognises the trap by its stable `.type` when the message is unfamiliar', () => {
+    stashPanic();
+    // The value deliberately matches NONE of the known trap phrasings, so this
+    // test discriminates the `.type === 'RuntimeError'` arm from the message
+    // fallback (a fixture that matched both would let either arm rot).
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_list: [{ type: 'RuntimeError', value: 'Aborted(native code crashed)' }],
+      },
+    } as CaptureEvent);
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('recognises a known trap phrasing when the type is a plain Error', () => {
+    // The other arm, isolated: string-only path where the wrap lost the type.
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('memory access out of bounds'));
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('leaves the stash alone for a non-trap exception (no mislabelling)', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent("Cannot read properties of undefined (reading 'x')"));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    // Still there for the trap that IS about to be captured.
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+  });
+
+  it('ignores a stale stash (a suppressed trap from long ago must not mislabel)', () => {
+    stashPanic('geometry/src/old.rs:1:1', Date.now() - 10 * 60_000);
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'stale stash is still consumed');
+  });
+
+  it('never clobbers a location set explicitly at the capture site', () => {
+    stashPanic('geometry/src/other.rs:2:2');
+    const out = scrubEvent(exceptionEvent('unreachable', { wasm_panic_location: 'chosen/at/site.rs:1:1' }));
+    assert.equal(out?.properties?.wasm_panic_location, 'chosen/at/site.rs:1:1');
+  });
+
+  it('still passes the attached value through the privacy net', () => {
+    // The Rust side sanitises build-machine prefixes, but the scrub is the
+    // net: a location that still looks like a local absolute path is redacted.
+    stashPanic('/Users/dev/secret-project/lib.rs:3:3');
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, '[redacted]');
+  });
+
+  it('does not attach to non-exception events even with a fresh stash', () => {
+    stashPanic();
+    const out = scrubEvent({ event: 'ifc_model_loaded', properties: {} } as CaptureEvent);
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+  });
+
+  it('survives a malformed stash without attaching or crashing, and consumes it on the trap', () => {
+    g.__ifclite_wasm_panic = 'not-an-object';
+    const a = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(a?.properties?.wasm_panic_location, undefined);
+    // The malformed stash must be consumed by the trap that saw it, not left
+    // to linger on the global and mislabel a later one.
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'malformed stash must be consumed');
+    g.__ifclite_wasm_panic = { location: 42, at: Date.now() };
+    const b = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(b?.properties?.wasm_panic_location, undefined);
+  });
+
+  // A bare "unreachable" also appears in ordinary network-failure phrasing
+  // ("network is unreachable", "host unreachable") — none of them are wasm
+  // traps. Matching them would consume the panic stash and stamp a genuine
+  // Rust panic location onto an unrelated network error, leaving the real
+  // trap that arrives a moment later with nothing.
+  it('does not treat a network-unreachable failure as a wasm trap', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('Failed to fetch: network is unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    // The stash survives for the real trap that follows.
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+    const trap = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(trap?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('keeps the #1196 doctrine: attribution adds a property, never a kind or fingerprint', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+  });
+});
+
 // Issue #1903. A transient user-side network drop reached error tracking at
 // `$exception_level: 'error'` with `error_kind: 'unknown'` and no fingerprint —
 // indistinguishable from the app being broken. These pin the new contract:
@@ -605,6 +1023,110 @@ describe('scrubEvent — benign network failures (#1903)', () => {
   it('never clobbers a level deliberately chosen at the capture site', () => {
     const out = scrubEvent(safariLoadFailed({ $exception_level: 'fatal' }));
     assert.equal(out?.properties?.$exception_level, 'fatal');
+  });
+
+  // ── #2410 ────────────────────────────────────────────────────────────────
+  // The drop above was keyed on a bare-substring classifier one layer down, so
+  // an actionable failure of OURS that merely quoted a transport phrase was
+  // classified `network_unavailable`, downgraded off the error list, and —
+  // whenever `navigator.onLine` happened to be false — deleted outright.
+  //
+  // This is DROPPED_NOISE_SAMPLES' structural trick applied one layer down:
+  // registering the wordings each benign classifier arm matches means the
+  // carrier test below fails the moment an arm stops constraining the whole
+  // value. `cancelled` is registered alongside them because it is in the same
+  // `BENIGN_ERROR_KINDS` set and its arm had the identical defect — no offline
+  // gate needed to trip it, since the downgrade half applies unconditionally.
+  const BENIGN_CLASSIFIER_WORDINGS: ReadonlyArray<{ label: string; kind: string; value: string }> = [
+    { label: 'webkit transport (#1903)', kind: 'network_unavailable', value: 'Load failed' },
+    { label: 'chromium transport (#1903)', kind: 'network_unavailable', value: 'Failed to fetch' },
+    {
+      label: 'gecko transport (#1903)',
+      kind: 'network_unavailable',
+      value: 'NetworkError when attempting to fetch resource.',
+    },
+    {
+      label: 'cfnetwork connection lost (#1903)',
+      kind: 'network_unavailable',
+      value: 'The network connection was lost.',
+    },
+    { label: 'bare cancellation (#2410)', kind: 'cancelled', value: 'cancelled' },
+    { label: 'gecko abort wording (#2410)', kind: 'cancelled', value: 'The operation was aborted' },
+  ];
+
+  /** Autocaptured, error-level, frameless — and `online` under our control. */
+  const offlineCapture = (value: string, online: boolean): CaptureEvent => ({
+    event: '$exception',
+    properties: {
+      $exception_list: [{ type: 'TypeError', value, mechanism: { handled: false, synthetic: false, type: 'generic' } }],
+      $exception_level: 'error',
+      online,
+    },
+  });
+
+  it('classifies every registered benign wording (the control for the carriers)', () => {
+    // Runs first on purpose: without it the carrier test could pass vacuously
+    // against a matcher that had been tightened into matching nothing at all.
+    for (const { label, kind, value } of BENIGN_CLASSIFIER_WORDINGS) {
+      const out = scrubEvent(offlineCapture(value, true));
+      assert.notEqual(out, null, label);
+      assert.equal(out?.properties?.error_kind, kind, label);
+      assert.equal(out?.properties?.$exception_level, 'warning', label);
+      assert.equal(out?.properties?.$exception_fingerprint, `ifc-lite:${kind}`, label);
+    }
+  });
+
+  it('KEEPS a failure that merely quotes a benign wording — offline or not (#2410)', () => {
+    // Both halves of the harm, asserted separately, because they have different
+    // gates: the DROP needs `online === false`, the DOWNGRADE needs nothing at
+    // all. A fix to only the drop would leave the second column silently
+    // relabelling actionable failures as benign.
+    for (const { label, value } of BENIGN_CLASSIFIER_WORDINGS) {
+      for (const carrier of CARRIERS) {
+        for (const online of [false, true]) {
+          const where = `${label} / ${carrier.label} / online=${online}`;
+          const out = scrubEvent(offlineCapture(carrier.wrap(value), online));
+          assert.notEqual(out, null, where);
+          assert.equal(out?.properties?.error_kind, undefined, where);
+          assert.equal(out?.properties?.$exception_fingerprint, undefined, where);
+          assert.equal(out?.properties?.$exception_level, 'error', where);
+        }
+      }
+    }
+  });
+
+  it('KEEPS an offline transport failure that carries OUR OWN frames (#2410)', () => {
+    // Not hypothetical: `network_unavailable`'s doc comment rests on these
+    // strings arriving with an EMPTY stack, and before this PR nothing enforced
+    // it — the reported reproduction confirmed the drop fired just as readily on
+    // an exception with our frames on it. A stack of ours is positive evidence
+    // that the throw happened in our code, whatever `navigator.onLine` said.
+    const withFrames = offlineCapture('Load failed', false);
+    (withFrames.properties!.$exception_list as Array<Record<string, unknown>>)[0].stacktrace = {
+      frames: [{ source: '/assets/main-DnUx64at.js', function: 'loadModel' }],
+    };
+    const out = scrubEvent(withFrames);
+    assert.notEqual(out, null);
+    // Still recognised and still downgraded — kept, not promoted.
+    assert.equal(out?.properties?.error_kind, 'network_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+  });
+
+  it('KEEPS an offline transport failure with no $exception_list at all (#2410)', () => {
+    // An irreversible drop must require positive evidence of its premise, never
+    // the mere absence of counter-evidence. `$exception_values` is posthog's
+    // older shape and carries no frames either way, so it cannot prove frameless.
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_values: ['Load failed'],
+        $exception_level: 'error',
+        online: false,
+      },
+    } as CaptureEvent);
+    assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, 'network_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
   });
 
   it('keeps every discriminating capture-site property (key-naming contract)', () => {
@@ -700,16 +1222,36 @@ describe('scrubEvent — handled WebGL degradation (#2354)', () => {
     );
   });
 
-  it('keeps three.js\'s WebGL failure LOUD — nothing catches that one', () => {
-    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the MCP playground's
-    // mount effect. An uncaught throw in a React effect tears the tree down, so
-    // it is real breakage, not a degradation. It must not inherit the minimap's
-    // fingerprint or its severity.
+  it('takes three.js\'s WebGL failure into the family too, now that it is caught (#2458)', () => {
+    // Issue 019fc458, thrown by THREE.WebGLRenderer out of the /mcp hero's
+    // mount effect. It USED to be real breakage — an uncaught throw in a React
+    // effect that took the route down — which is why this test previously
+    // asserted the opposite. #2401 put both /mcp scenes behind `useThreeScene`:
+    // the throw is caught, one panel degrades to a static notice, and the
+    // condition is reported once as a handled exception. Same device fact as
+    // the minimap's, so: same fingerprint, same warning severity, still sent.
     const out = scrubEvent(exceptionEvent(
       'THREE.WebGLRenderer: Error creating WebGL context.',
+      { $exception_level: 'error', context: 'mcp_three_webgl', three_surface: 'hero' },
+    ));
+    assert.notEqual(out, null, 'the degradation must still be reported');
+    assert.equal(out?.properties?.error_kind, 'webgl_unavailable');
+    assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
+    assert.equal(out?.properties?.$exception_level, 'warning');
+    assert.equal(out?.properties?.three_surface, 'hero', 'which surface died must survive the scrub');
+  });
+
+  it('keeps a message that merely QUOTES three\'s wording LOUD (#2458)', () => {
+    // The other half of the reversal. Membership is by three's exact authored
+    // message; one of our own bugs that wraps it for context is not a device
+    // fact and must keep its own identity, its own issue and `error` severity —
+    // inheriting a benign fingerprint is how a real bug stops being triaged.
+    const out = scrubEvent(exceptionEvent(
+      'HeroScene: THREE.WebGLRenderer: Error creating WebGL context. after 3 retries',
       { $exception_level: 'error' },
     ));
     assert.notEqual(out, null);
+    assert.equal(out?.properties?.error_kind, undefined);
     assert.equal(out?.properties?.$exception_fingerprint, undefined);
     assert.equal(out?.properties?.$exception_level, 'error');
   });

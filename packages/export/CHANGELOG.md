@@ -1,5 +1,44 @@
 # @ifc-lite/export
 
+## 2.9.0
+
+### Minor Changes
+
+- [#2602](https://github.com/LTplus-AG/ifc-lite/pull/2602) [`e51f5cb`](https://github.com/LTplus-AG/ifc-lite/commit/e51f5cb82d10b6c7d73186d8126f788b48c7f3a1) Thanks [@louistrue](https://github.com/louistrue)! - Export `columnsToParquet`, the Arrow-to-Parquet conversion `ParquetExporter`
+  already used internally.
+
+  A caller with a table that is not an `IfcDataStore` view - the viewer's
+  per-element x per-zone quantity breakdown is the first - now writes Parquet
+  through the same type inference and the same Arrow IPC fallback, rather than a
+  second conversion beside it. `ParquetExporter` delegates to it, so there is one
+  implementation of the schema inference rather than two that agree today.
+
+  Also exports `isParquet`, and fixes the browser path: the package resolves to
+  its wasm-bindgen ESM build there, which does nothing until its default export is
+  awaited. Without that every browser call threw inside `Table.fromIPCStream` and
+  fell through to the Arrow IPC fallback silently, so a caller naming a file
+  `.parquet` wrote Arrow IPC into it. `isParquet` lets a caller name the file
+  after what it actually got.
+
+### Patch Changes
+
+- [#2580](https://github.com/LTplus-AG/ifc-lite/pull/2580) [`9b4d791`](https://github.com/LTplus-AG/ifc-lite/commit/9b4d791990cf72786b04f5b02933395fed1fe085) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `StepExporter` no longer emits a relationship record that names an entity the export itself excluded. A hidden PRODUCT under `visibleOnly` keeps its own defining line out of the file, but `IFCREL*` records are unconditional roots and their bytes used to be copied to the output verbatim — so a relationship naming both a kept and a hidden product still named the hidden one, shipping a `#N` reference with no `#N=` defining line. Strict STEP readers reject that file; lenient ones silently mis-place the geometry it pointed at.
+
+  A new `filterHiddenRefsFromRelationshipLine` (`reference-collector.ts`) runs on every relationship's line right before it is written, for both source-parsed and overlay-authored relationships: a hidden or deleted id is dropped from a nested list attribute (`RelatedObjects`, `RelatedElements`, …), and the relationship is withheld entirely when a hidden/deleted id sits in a bare scalar attribute (`RelatingSpace`, `RelatedOpeningElement`, …) or when dropping it from a list would leave that list empty.
+
+  Two exclusion sources are covered, both previously unhandled:
+
+  - **`visibleOnly` hidden products** — the case above.
+  - **Deleted (tombstoned) entities, on any export, `visibleOnly` or not.** The existing deletion-path guard only withholds an `IfcRelDefinesByProperties` when _every_ related object was deleted, and only for that one relationship class — a spatial-containment relation (or any other `IFCREL*` type) still naming a partially-deleted related list shipped the same dangling reference on a plain full export.
+
+  The relationship's excluded/effective type is resolved through `EffectiveEntityIndex.effectiveType`, not the record's authored (pre-retype) class: an entity retyped across the `IFCREL*` boundary — into or out of a relationship class — is now classified by what the export actually writes, not by the class it started as. Classifying by the authored class alone let a retyped relationship skip the filter (or apply it wrongly) depending on retype direction.
+
+  This is a behaviour change to STEP export output, split out of [#2398](https://github.com/LTplus-AG/ifc-lite/issues/2398) to stand on its own: the surrounding source-guard refactor in that PR is a provable no-op and does not touch this code path.
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594)]:
+  - @ifc-lite/geometry@3.8.2
+  - @ifc-lite/parser@4.0.3
+
 ## 2.8.6
 
 ### Patch Changes

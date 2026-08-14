@@ -24,6 +24,7 @@
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import parseChangeset from '@changesets/parse';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -55,12 +56,25 @@ function workspaceNames() {
   return names;
 }
 
-/** The package names in one changeset's frontmatter. */
+/**
+ * The package names in one changeset, read with the parser Changesets itself
+ * uses.
+ *
+ * Not a regex over the frontmatter. The first version of this matched
+ * `"name": patch` with the quotes required, and `ifc-lite: patch` without them
+ * is valid YAML that Changesets accepts and that regex silently returned
+ * nothing for — so the guard would have passed the exact breakage it exists to
+ * stop, in the one spelling a person is most likely to reach for (review, on
+ * this PR). Parsing with `@changesets/parse` means this cannot disagree with
+ * the thing it is predicting.
+ */
 function packagesIn(file) {
   const raw = readFileSync(join(changesetDir, file), 'utf8');
-  const frontmatter = raw.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-  if (!frontmatter) return [];
-  return [...frontmatter[1].matchAll(/^\s*["']([^"']+)["']\s*:/gm)].map((m) => m[1]);
+  try {
+    return parseChangeset(raw).releases.map((r) => r.name);
+  } catch (err) {
+    return { error: err.message };
+  }
 }
 
 const files = readdirSync(changesetDir)
@@ -73,10 +87,30 @@ if (files.length === 0) {
 
 const known = workspaceNames();
 const bad = [];
+const unreadable = [];
 for (const file of files) {
-  for (const name of packagesIn(file)) {
+  const packages = packagesIn(file);
+  if (!Array.isArray(packages)) {
+    // Frontmatter Changesets cannot parse. Not "no packages named" — that is
+    // the same mistake in a different coat.
+    unreadable.push({ file, error: packages.error });
+    continue;
+  }
+  if (packages.length === 0) {
+    unreadable.push({ file, error: 'no packages in the frontmatter' });
+    continue;
+  }
+  for (const name of packages) {
     if (!known.has(name)) bad.push({ file, name });
   }
+}
+
+if (unreadable.length > 0) {
+  console.error('❌ These changesets could not be read as changesets:\n');
+  for (const { file, error } of unreadable) console.error(`   .changeset/${file}: ${error}`);
+  console.error('\nA changeset needs `--- "@ifc-lite/pkg": patch ---` frontmatter naming');
+  console.error('at least one package. Delete it if the change has no package.');
+  process.exit(1);
 }
 
 if (bad.length > 0) {

@@ -90,6 +90,7 @@ function dispatchInbound(msg: { type: string; data?: unknown; requestId?: string
       new MessageEvent('message', {
         data: { source: EMBED_SOURCE, version: PROTOCOL_VERSION, ...msg },
         origin: 'https://parent.example',
+        source: window.parent,
       }),
     );
   });

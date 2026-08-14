@@ -38,7 +38,7 @@ interface Posted {
 interface FakeWindow {
   posted: Posted[];
   listenerCount: () => number;
-  dispatch: (event: { data: unknown; origin: string }) => void;
+  dispatch: (event: { data: unknown; origin: string; source?: unknown }) => void;
 }
 
 function installWindow(): FakeWindow {
@@ -69,7 +69,11 @@ function installWindow(): FakeWindow {
     posted,
     listenerCount: () => listeners.size,
     dispatch: (event) => {
-      for (const fn of [...listeners]) fn(event);
+      // The inbound guard is fail-closed on `event.source !== window.parent`
+      // (#2363), so a fixture that posts no source is rejected before any
+      // handler runs. Default it to the parent the real embed replies to.
+      const withSource = { source: win.parent, ...event };
+      for (const fn of [...listeners]) fn(withSource);
     },
   };
 }

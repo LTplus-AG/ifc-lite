@@ -18,8 +18,8 @@
  * quantity set's name.
  */
 
-import { useState } from 'react';
-import { FileOutput, Undo2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -30,6 +30,9 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/components/ui/toast';
 import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
+import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
+import { useZoneTableExport, type ZoneTableFormat } from '@/hooks/useZoneTableExport';
+import { emitRefusalText } from '@/lib/zones/emit-spatial-zones';
 import {
   zonePropertySetName,
   zoneQuantitySetName,
@@ -43,6 +46,47 @@ const BASES: readonly VolumeBasis[] = ['mesh', 'net', 'gross', 'unqualified'];
 export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
+  const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
+  const { exportTable } = useZoneTableExport();
+  // A table export gathers every element and may recompute the apportionment,
+  // so a second click while the first runs pays for two full gathers and
+  // downloads the same file twice.
+  //
+  // A REF as well as the state, and the ref is what guards: state has not
+  // re-rendered yet in the tick the first click starts, so a double click would
+  // pass a state-only check and disable a button that is already too late. The
+  // state exists only to say so in the UI. Same pairing, for the same reason,
+  // as the geometry export in `ZonesPanel`.
+  const exportingTableRef = useRef(false);
+  const [exportingTable, setExportingTable] = useState<ZoneTableFormat | null>(null);
+
+  const runTableExport = async (format: ZoneTableFormat) => {
+    if (exportingTableRef.current) return;
+    exportingTableRef.current = true;
+    setExportingTable(format);
+    try {
+      const result = await exportTable(zoneSet, basis, format);
+      if (result.blocked === 'no-members') {
+        toast.info('No element is in a zone of this set, so the table would be empty');
+        return;
+      }
+      toast.success(
+        `Exported ${result.rows.toLocaleString()} row(s) for ${result.elements.toLocaleString()} element(s)`
+        // Said rather than left to be discovered by summing a column.
+        + (result.unmeasured > 0 ? `, ${result.unmeasured.toLocaleString()} with no volume and a stated reason` : ''),
+      );
+    } catch (error) {
+      // Parquet loads its wasm writer on demand, so this is the one export here
+      // that can fail for a reason outside the model.
+      console.error('[zones] table export failed', error);
+      toast.error(`Could not export the table: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      // In a `finally` so a Parquet writer that fails to load does not leave
+      // both buttons dead for the rest of the session.
+      exportingTableRef.current = false;
+      setExportingTable(null);
+    }
+  };
 
   return (
     <div className="space-y-1 rounded border-t pt-1.5">
@@ -117,6 +161,101 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
       <p className="text-[10px] text-muted-foreground leading-snug break-words">
         {zonePropertySetName(zoneSet.name)} · {zoneQuantitySetName(zoneSet.name, basis)}
       </p>
+      {/* The direct answer to #1763's "manual work in Excel": one row per
+          (element, zone), which pivots without unpivoting first. */}
+      <div className="flex items-center gap-1">
+        {(['csv', 'parquet'] as const).map((format) => (
+          <Button
+            key={format}
+            variant="outline"
+            size="sm"
+            className="h-6 flex-1 text-[11px]"
+            disabled={exportingTable !== null}
+            title={`Download the per-element breakdown for this set as ${format.toUpperCase()}, one row per element and zone`}
+            onClick={() => { void runTableExport(format); }}
+          >
+            <Sheet className="h-3 w-3 mr-1" />
+            {exportingTable === format ? 'Building...' : format.toUpperCase()}
+          </Button>
+        ))}
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-6 flex-1 text-[11px]"
+          title="Emit the zones themselves as IfcSpatialZone entities, each referencing the elements it contains"
+          onClick={() => {
+            const result = emitZones(zoneSet);
+            if (result.blocked === 'collab-role') {
+              toast.error('Your role in this session is read-only, so nothing was emitted');
+              return;
+            }
+            if (result.blocked === 'no-members') {
+              toast.info(
+                result.staleRemoved > 0
+                  ? `No element is in a zone of this set any more, so ${result.staleRemoved.toLocaleString()} emitted zone(s) were removed`
+                  : 'No element is in a zone of this set, so there is nothing to reference',
+              );
+              return;
+            }
+            if (result.blocked === 'duplicate-set-name') {
+              // The set's name is what identifies its zones in the FILE, so two
+              // sets sharing one would each delete the other's on the next run.
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before emitting.`);
+              return;
+            }
+            const written = result.models.filter((m) => m.zonesEmitted > 0);
+            // Every refused model is named, rather than folded into a count: in
+            // a federation the answer "which file did NOT get the zones" is the
+            // one the user has to act on.
+            const refused = result.models.filter((m) => m.refusal);
+            for (const model of refused) {
+              toast.error(emitRefusalText(model.refusal as NonNullable<typeof model.refusal>, model.modelName));
+            }
+            if (written.length === 0) {
+              // A model with no parsed store is skipped without a refusal, so
+              // without this the click produces no feedback at all.
+              if (refused.length === 0) toast.info('No loaded model could take the zones');
+              return;
+            }
+            const zones = written.reduce((sum, m) => sum + m.zonesEmitted, 0);
+            const elements = written.reduce((sum, m) => sum + m.elementsReferenced, 0);
+            const replaced = written.reduce((sum, m) => sum + m.zonesReplaced, 0);
+            toast.success(
+              `Emitted ${zones.toLocaleString()} IfcSpatialZone(s) across ${written.length} model(s), `
+              + `referencing ${elements.toLocaleString()} element(s)`
+              + (replaced > 0 ? `, replacing ${replaced.toLocaleString()} from an earlier run` : '')
+              + (result.staleRemoved > 0 ? `, and clearing ${result.staleRemoved.toLocaleString()} from a model this set no longer reaches` : ''),
+            );
+          }}
+        >
+          <Box className="h-3 w-3 mr-1" />
+          Emit zones as IfcSpatialZone
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          title="Remove the IfcSpatialZone entities emitted for this set"
+          aria-label="Remove emitted spatial zones"
+          onClick={() => {
+            const { removed, blocked } = removeZones(zoneSet);
+            if (blocked === 'collab-role') {
+              toast.error('Your role in this session is read-only, so nothing was removed');
+              return;
+            }
+            if (blocked === 'duplicate-set-name') {
+              toast.error(`Another zone set is also called "${zoneSet.name}". Rename one before removing.`);
+              return;
+            }
+            if (removed === 0) toast.info('No emitted zones to remove for this set');
+            else toast.success(`Removed ${removed.toLocaleString()} IfcSpatialZone(s)`);
+          }}
+        >
+          <Undo2 className="h-3 w-3" />
+        </Button>
+      </div>
     </div>
   );
 }

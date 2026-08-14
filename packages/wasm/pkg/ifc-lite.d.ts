@@ -603,11 +603,13 @@ export class IfcAPI {
      * Enable or disable per-entity geometry fingerprinting in
      * `processGeometryBatch`, used by the viewer's revision-diff feature.
      *
-     * Pass a positive `tolerance` (metres) to enable — it is the quantization
-     * grid the hash snaps positions to (larger = more tolerant of float noise,
-     * smaller = catches finer edits; the `f32` precision floor of model-local
-     * coordinates means values below ~1 mm mostly hash noise). Pass `null`/
-     * `undefined` (or a non-positive value) to disable. Default: disabled.
+     * Pass a positive `tolerance` (metres) to enable — the quantization grid
+     * positions snap to (larger tolerates more float noise, smaller catches
+     * finer edits; below the `f32` precision floor of model-local coordinates,
+     * ~1 mm, mostly hashes noise). Finer than
+     * `ifc_lite_geometry::MIN_GEOM_HASH_TOLERANCE` (1e-6 m) is clamped up to it
+     * — see that constant's doc for why (an `i128` overflow surface, not a
+     * precision win). `null`/`undefined`/non-positive disables. Default: off.
      */
     setComputeGeometryHashes(tolerance?: number | null): void;
     /**

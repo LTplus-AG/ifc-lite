@@ -30,10 +30,12 @@ import type { EntityFingerprint } from './types.js';
  *   from a reshape.
  * - `reshaped`     — one base and one head entity share a data hash but not a
  *   geometry hash, and their bounding boxes differ in size beyond
- *   `DiffOptions.reshapeTolerance` — or agree entirely, which is what a
- *   re-tessellation looks like. A bounding box genuinely cannot separate a
- *   re-tessellation from a reshape confined to the interior, and this kind
- *   does not pretend otherwise.
+ *   `DiffOptions.reshapeTolerance` — or agree entirely, which is what a reshape
+ *   confined to the interior looks like. A pure re-triangulation of an
+ *   unchanged surface no longer lands here (the geometry hash is
+ *   retriangulation-invariant), but a re-tessellation that introduces new
+ *   vertices still does, and a bounding box genuinely cannot separate that from
+ *   an interior reshape. This kind does not pretend otherwise.
  * - `duplicated`   — one base entity's content matches several head entities
  *   (it looks like it was copied).
  * - `deduplicated` — several base entities' content matches one head entity

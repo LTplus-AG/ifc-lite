@@ -329,7 +329,7 @@ impl GeometryRouter {
         // Total depth span + a tolerance for coalescing near-identical z-boundaries.
         let span_lo = fps.iter().map(|f| f.z_lo).fold(f64::INFINITY, f64::min);
         let span_hi = fps.iter().map(|f| f.z_hi).fold(f64::NEG_INFINITY, f64::max);
-        if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON {
+        if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON { // NORMALIZE_EPSILON is a 1e-12 direction-vector guard (voids/mod.rs), a no-op vs this world-scale span; inert only because z_tol's 1mm floor (below) dominates first
             return None;
         }
         let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of the span + 1 mm
@@ -366,7 +366,7 @@ impl GeometryRouter {
         for w in coalesced.windows(2) {
             let (slab_lo, slab_hi) = (w[0], w[1]);
             let slab_depth = slab_hi - slab_lo;
-            if slab_depth <= NORMALIZE_EPSILON {
+            if slab_depth <= NORMALIZE_EPSILON { // same world-scale-vs-direction-vector gap as above; z_tol dominates
                 continue;
             }
             let mid = 0.5 * (slab_lo + slab_hi);
@@ -630,7 +630,7 @@ fn cutter_footprint(
         z_lo = z_lo.min(s);
         z_hi = z_hi.max(s);
     }
-    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON {
+    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON { // same gap noted in union_many above; z_tol dominates
         return None;
     }
     for t in mesh.indices.chunks_exact(3) {
@@ -677,7 +677,7 @@ fn cutter_footprint(
         .sum();
     let area = 0.5 * cap_area_sum;
     let depth = z_hi - z_lo;
-    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON {
+    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON { // area/depth are world-scale too; same z_tol-dominated gap
         return None;
     }
     // PRISM RECONCILIATION: a true prism along `d` satisfies `area × depth ==

@@ -109,8 +109,17 @@ mod surface;
 mod accumulate;
 
 /// Default quantization grid in metres (1 mm). Chosen as a starting point near
-/// the `f32` precision floor of RTC-local coordinates; tune empirically with
-/// the `tolerance_sweep` test against real revision pairs.
+/// the `f32` precision floor of RTC-local coordinates; `tolerance_sweep` only
+/// exercises a synthetic cube today; real-revision-pair calibration is still
+/// open (see that test's doc comment).
+///
+/// Safety margin is narrower than the "near-origin" framing above suggests:
+/// measured `f32` ULP is 9.77e-4 m (98% of this bucket) at both 8192 m and
+/// 10 km, only just under 1 mm before crossing it at 16384 m. It stays safe
+/// only because [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS)
+/// re-centres coordinates before they reach that range — an incidental
+/// dependency, not a designed one. Raising that threshold past ~16 km would
+/// need this tolerance revisited.
 pub const DEFAULT_GEOM_HASH_TOLERANCE: f64 = 1.0e-3;
 
 /// Floor on the quantization tolerance ([`GeometryHasher::new`] clamps any

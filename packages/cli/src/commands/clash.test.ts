@@ -311,6 +311,52 @@ describe('clash --matrix rule coverage (#2536)', () => {
     },
     180_000,
   );
+
+  it.skipIf(!canRun)(
+    'the default --a/--b path never blames "the clash matrix" when one selector is just empty (maintainer review)',
+    async () => {
+      // buildStructuralOnlyModel has beams and columns but no IfcRoof — the
+      // default (non --matrix) path builds exactly one ad-hoc rule, so
+      // `matchedA > 0` (beams) and `matchedB === 0` (no roofs) is a single
+      // empty selector on ONE hand-built rule, never "the matrix".
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-empty-selector-'));
+      const modelPath = join(dir, 'model.ifc');
+      try {
+        await writeFile(modelPath, buildStructuralOnlyModel());
+
+        const [{ stdout: humanOut }, { stdout: jsonOut }] = await Promise.all([
+          execFileAsync(process.execPath, [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcBeam', '--b', 'IfcRoof'], {
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+          execFileAsync(
+            process.execPath,
+            [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcBeam', '--b', 'IfcRoof', '--json'],
+            { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+          ),
+        ]);
+
+        const payload = JSON.parse(jsonOut) as {
+          summary: { total: number };
+          ruleCoverageOutcome: string;
+          ruleCoverage: Array<{ rule: string; matchedA: number; matchedB: number | null }> | null;
+        };
+        expect(payload.summary.total).toBe(0);
+        expect(payload.ruleCoverageOutcome).toBe('no-match');
+        expect(payload.ruleCoverage).not.toBeNull();
+        expect(payload.ruleCoverage![0]?.matchedA).toBeGreaterThan(0); // IfcBeam matched
+        expect(payload.ruleCoverage![0]?.matchedB).toBe(0); // IfcRoof matched nothing
+
+        // The fix: names the empty selector, never claims a matrix ran.
+        expect(humanOut).toContain('WARNING');
+        expect(humanOut).toContain('selector B ("IfcRoof")');
+        expect(humanOut).not.toMatch(/matrix/i);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
 });
 
 describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {

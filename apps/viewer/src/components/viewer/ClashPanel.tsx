@@ -332,6 +332,29 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     const names = new Map(result.rulesRun.map((r) => [r.id, r.name]));
     return result.ruleCoverage.filter(ruleHadNoMatch).map((c) => names.get(c.rule) ?? c.rule);
   }, [result]);
+  // Describes WHICH selector side(s) matched nothing, per empty rule — used
+  // when the run was a single ad-hoc rule (`runAll`/`runPreset`, one rule),
+  // where "the matrix didn't apply" would be a false claim: there was no
+  // matrix, just one rule whose A or B selector doesn't describe this model.
+  const emptySelectorDescriptions = useMemo(() => {
+    if (!result?.ruleCoverage) return [] as string[];
+    const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
+    return result.ruleCoverage
+      .filter(ruleHadNoMatch)
+      .map((c) => {
+        const rule = rules.get(c.rule);
+        if (!rule) return c.rule;
+        const emptySides: string[] = [];
+        if (c.matchedA === 0) emptySides.push(`selector A ("${rule.a}")`);
+        if (c.matchedB === 0) emptySides.push(`selector B ("${rule.b}")`);
+        return `${emptySides.length > 0 ? emptySides.join(' and ') : 'a selector'} matched 0 elements`;
+      });
+  }, [result]);
+  // Only a real multi-rule discipline-matrix run (`runMatrix`) can be
+  // truthfully described as "the matrix didn't run" — a single ad-hoc rule
+  // (`runAll`'s self-clash, or a one-off `runPreset`) never involved a
+  // matrix at all, so that case must name the empty selector instead.
+  const isMultiRuleRun = (result?.rulesRun.length ?? 0) > 1;
 
   // Flatten sections → a single row list (group header, clash row, and an
   // expanded-detail row for opened clashes) so the list virtualizes cleanly and
@@ -820,7 +843,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </div>
         )}
 
-        {result && total === 0 && coverageOutcome === 'no-match' && (
+        {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
           <div className="flex flex-col items-center justify-center p-8 text-center" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
             <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
             <p className="text-sm font-medium">The matrix didn't apply to this model — it did NOT run.</p>
@@ -830,6 +853,17 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               fire coordination; it may not describe this model's disciplines.
             </p>
             <p className="mt-1.5 text-[11px] text-muted-foreground max-w-xs">Empty rules: {emptyRuleNames.join(', ')}</p>
+          </div>
+        )}
+
+        {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
+          <div className="flex flex-col items-center justify-center p-8 text-center" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
+            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+            <p className="text-sm font-medium">No comparison ran — a selector matched nothing.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
+              "0 clashes" doesn't mean this model is clean — {emptySelectorDescriptions.join(', ')}, so this rule
+              never compared a single pair.
+            </p>
           </div>
         )}
 

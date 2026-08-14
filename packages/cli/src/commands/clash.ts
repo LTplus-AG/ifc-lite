@@ -141,13 +141,24 @@ function formatClashRow(clash: Clash): string {
 
 /**
  * Rule ids whose selectors matched nothing to compare (on either side) in
- * THIS model, with their human-readable names for a printable list.
+ * THIS model, described by WHICH side(s) were empty — never blames "the
+ * matrix" when the run had no matrix to blame (the default `--a`/`--b` path
+ * has exactly one hand-built rule; only `--matrix` runs the discipline
+ * matrix).
  */
-function emptyRuleNames(result: ClashResult): string[] {
-  const names = new Map(result.rulesRun.map((r) => [r.id, r.name]));
+function emptyRuleDescriptions(result: ClashResult): string[] {
+  const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
   return (result.ruleCoverage ?? [])
     .filter(ruleHadNoMatch)
-    .map((c) => names.get(c.rule) ?? c.rule);
+    .map((c) => {
+      const rule = rules.get(c.rule);
+      if (!rule) return c.rule;
+      const emptySides: string[] = [];
+      if (c.matchedA === 0) emptySides.push(`selector A ("${rule.a}")`);
+      if (c.matchedB === 0) emptySides.push(`selector B ("${rule.b}")`);
+      const sides = emptySides.length > 0 ? emptySides.join(' and ') : 'a selector';
+      return `"${rule.name}": ${sides} matched 0 elements`;
+    });
 }
 
 /**
@@ -155,26 +166,41 @@ function emptyRuleNames(result: ClashResult): string[] {
  * matched anything, so the check never really ran". Reported as a warning,
  * never as an error — zero clashes is a legitimate outcome, this only says
  * which kind of zero it is. See {@link classifyRuleCoverage}.
+ *
+ * `isMatrix` gates the matrix-specific wording: the discipline matrix
+ * (`--matrix`) runs many rules and its "no-match" case really does mean the
+ * matrix as a whole never ran. The default `--a`/`--b` path builds exactly
+ * one ad-hoc rule — when that rule's selector matches nothing on one side
+ * (e.g. `--a IfcWall --b IfcRoof` on a model with no roofs), the OTHER side
+ * still matched and no matrix was ever involved, so the message must name
+ * the empty selector instead of claiming the matrix didn't run.
  */
-function printCoverageWarning(result: ClashResult): void {
+function printCoverageWarning(result: ClashResult, isMatrix: boolean): void {
   const outcome = classifyRuleCoverage(result);
   if (outcome === 'no-match') {
-    process.stdout.write(
-      `\n  WARNING: none of the ${result.rulesRun.length} rule(s) matched any elements in this model.\n` +
-        `  The clash matrix did NOT run — "${result.summary.total} clashes" means nothing was checked,\n` +
-        `  not that the model is clean. This matrix is shaped for MEP/HVAC/electrical/fire coordination;\n` +
-        `  it may simply not describe this model's disciplines (e.g. an infrastructure model).\n` +
-        `  Empty rules: ${emptyRuleNames(result).join(', ')}\n`,
-    );
+    if (isMatrix) {
+      process.stdout.write(
+        `\n  WARNING: none of the ${result.rulesRun.length} rule(s) matched any elements in this model.\n` +
+          `  The clash matrix did NOT run — "${result.summary.total} clashes" means nothing was checked,\n` +
+          `  not that the model is clean. This matrix is shaped for MEP/HVAC/electrical/fire coordination;\n` +
+          `  it may simply not describe this model's disciplines (e.g. an infrastructure model).\n` +
+          `  Empty rules: ${emptyRuleDescriptions(result).join(', ')}\n`,
+      );
+    } else {
+      process.stdout.write(
+        `\n  WARNING: ${emptyRuleDescriptions(result).join(', ')} — no comparison ran, so\n` +
+          `  "${result.summary.total} clashes" means nothing was checked, not that the model is clean.\n`,
+      );
+    }
   } else if (outcome === 'partial') {
     process.stdout.write(
-      `\n  Note: ${emptyRuleNames(result).length} of ${result.rulesRun.length} rule(s) matched no elements ` +
-        `and never ran a comparison: ${emptyRuleNames(result).join(', ')}\n`,
+      `\n  Note: ${emptyRuleDescriptions(result).length} of ${result.rulesRun.length} rule(s) never ran a ` +
+        `comparison: ${emptyRuleDescriptions(result).join(', ')}\n`,
     );
   }
 }
 
-function printHumanSummary(result: ClashResult): void {
+function printHumanSummary(result: ClashResult, isMatrix: boolean): void {
   const { summary } = result;
   process.stdout.write(`\n  Clash Detection Results\n`);
   process.stdout.write(`  -----------------------\n`);
@@ -185,7 +211,7 @@ function printHumanSummary(result: ClashResult): void {
     process.stdout.write(`  Truncated:     ${result.truncated.reason} (${result.truncated.droppedPairs} pairs dropped)\n`);
   }
 
-  printCoverageWarning(result);
+  printCoverageWarning(result, isMatrix);
 
   if (summary.total > 0) {
     const shown = result.clashes.slice(0, HUMAN_CLASH_CAP);
@@ -216,6 +242,7 @@ export async function clashCommand(args: string[]): Promise<void> {
   }
 
   const jsonOutput = hasFlag(args, '--json');
+  const isMatrix = hasFlag(args, '--matrix');
   const mode = parseMode(getFlag(args, '--mode'));
   const tolerance = parseNumberFlag(getFlag(args, '--tolerance'), '--tolerance');
   const clearance = parseNumberFlag(getFlag(args, '--clearance'), '--clearance');
@@ -299,7 +326,7 @@ export async function clashCommand(args: string[]): Promise<void> {
       return;
     }
 
-    printHumanSummary(result);
+    printHumanSummary(result, isMatrix);
   } finally {
     // Reset BEFORE disposing, and never let a cleanup failure escape.
     //

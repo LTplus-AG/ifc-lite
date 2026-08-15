@@ -23,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
+import { extractProjectUnits } from '@ifc-lite/parser';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
 import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
@@ -155,6 +156,7 @@ export function Section2DPanel({
   const activeTool = useViewerStore((s) => s.activeTool);
   const models = useViewerStore((s) => s.models);
   const { geometryResult: legacyGeometryResult, ifcDataStore } = useIfc();
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
 
   // Use merged geometry from props if available (multi-model), otherwise fall back to legacy single-model
   const geometryResult = mergedGeometry ?? legacyGeometryResult;
@@ -222,6 +224,12 @@ export function Section2DPanel({
     }
     return map;
   }, [geometryResult]);
+
+  // Extract project units from the data store
+  const projectUnits = useMemo(() => {
+    if (!ifcDataStore?.source?.length || !ifcDataStore?.entityIndex) return undefined;
+    return extractProjectUnits(ifcDataStore.source, ifcDataStore.entityIndex);
+  }, [ifcDataStore]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // VISIBILITY STATE
@@ -452,6 +460,7 @@ export function Section2DPanel({
     sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
     ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
     scanSection: scanSectionLayer,
+    projectUnits, unitDisplayOverrides,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1105,6 +1114,8 @@ export function Section2DPanel({
               dxfUnderlays={dxfUnderlayData}
               scanPoints={displayOptions.showScanSection ? scanSectionLayer.points : undefined}
               scanOpacity={displayOptions.scanSectionOpacity}
+              projectUnits={projectUnits}
+              unitDisplayOverrides={unitDisplayOverrides}
             />
             {/* Subtle updating indicator - shows while regenerating without hiding the drawing */}
             {isRegenerating && (

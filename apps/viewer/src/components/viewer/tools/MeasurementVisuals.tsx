@@ -21,9 +21,11 @@ export interface MeasurementOverlaysProps {
   hoverPosition?: { x: number; y: number } | null;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   constraintEdge?: MeasurementConstraintEdge | null;
+  projectUnits?: any;
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge }: MeasurementOverlaysProps) {
+export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, projectUnits, unitDisplayOverrides }: MeasurementOverlaysProps) {
   // Determine snap indicator position
   // Priority: activeMeasurement.current > snapTarget projected position > hoverPosition (fallback)
   const snapIndicatorPos = useMemo(() => {
@@ -120,7 +122,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (m.start.screenY + m.end.screenY) / 2,
             }}
           >
-            {formatDistance(m.distance)}
+            {formatDistance(m.distance, projectUnits, unitDisplayOverrides)}
           </div>
         </div>
       ))}
@@ -175,7 +177,7 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
             }}
           >
-            {formatDistance(activeMeasurement.distance)}
+            {formatDistance(activeMeasurement.distance, projectUnits, unitDisplayOverrides)}
           </div>
         </div>
       )}

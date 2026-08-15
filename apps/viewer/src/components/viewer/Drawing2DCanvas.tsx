@@ -383,6 +383,9 @@ interface Drawing2DCanvasProps {
   // Point-cloud scan overlay, already in drawing space (issue #1805)
   scanPoints?: readonly ScanBandPoint[];
   scanOpacity?: number;
+  // Unit display overrides
+  projectUnits?: any;
+  unitDisplayOverrides?: Record<string, string>;
 }
 
 export function Drawing2DCanvas({
@@ -418,6 +421,8 @@ export function Drawing2DCanvas({
   dxfUnderlays,
   scanPoints,
   scanOpacity = 1,
+  projectUnits,
+  unitDisplayOverrides = {},
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
@@ -1371,7 +1376,7 @@ export function Drawing2DCanvas({
       const midY = (screenStart.y + screenEnd.y) / 2;
 
       // Format distance using shared utility
-      const labelText = formatDistance(distance);
+      const labelText = formatDistance(distance, projectUnits, unitDisplayOverrides);
 
       // Background for label
       ctx.font = '12px system-ui, sans-serif';
@@ -1488,7 +1493,7 @@ export function Drawing2DCanvas({
       const cx = drawingToScreenX(centroid.x);
       const cy = drawingToScreenY(centroid.y);
       const areaText = formatArea(result.area);
-      const perimText = `P: ${formatDistance(result.perimeter)}`;
+      const perimText = `P: ${formatDistance(result.perimeter, projectUnits, unitDisplayOverrides)}`;
 
       ctx.font = 'bold 12px system-ui, sans-serif';
       const areaMetrics = ctx.measureText(areaText);

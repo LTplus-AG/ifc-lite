@@ -6,7 +6,7 @@
  * Measure tool panel UI (measurement list, controls)
  */
 
-import React, { useCallback, useState, useEffect } from 'react';
+import React, { useCallback, useState, useEffect, useMemo } from 'react';
 import { X, Trash2, Ruler, ChevronDown, GripVertical, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useViewerStore, type Measurement } from '@/store';
@@ -21,6 +21,7 @@ import {
   reprojectionInputKey,
   type LatLon,
 } from '@/lib/geo/reproject';
+import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 
 interface Vec3Like { x: number; y: number; z: number }
 interface Enh { e: string; n: string; h: string }
@@ -120,6 +121,14 @@ export function MeasureOverlay() {
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
+  const ifcDataStore = useViewerStore((s) => s.ifcDataStore);
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+
+  // Extract project units from the data store
+  const projectUnits = useMemo(() => {
+    if (!ifcDataStore?.source?.length || !ifcDataStore?.entityIndex) return undefined;
+    return extractProjectUnits(ifcDataStore.source, ifcDataStore.entityIndex);
+  }, [ifcDataStore]);
 
   // Track cursor position in ref (no re-renders on mouse move)
   const cursorPosRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -300,12 +309,14 @@ export function MeasureOverlay() {
                     index={i}
                     onDelete={handleDeleteMeasurement}
                     geoAnchor={showGeo ? anchor : null}
+                    projectUnits={projectUnits}
+                    unitDisplayOverrides={unitDisplayOverrides}
                   />
                 ))}
                 {measurements.length > 1 && (
                   <div className="flex items-center justify-between border-t pt-1 mt-1 text-xs font-medium">
                     <span>Total</span>
-                    <span className="font-mono">{formatDistance(totalDistance)}</span>
+                    <span className="font-mono">{formatDistance(totalDistance, projectUnits, unitDisplayOverrides)}</span>
                   </div>
                 )}
               </div>
@@ -372,6 +383,8 @@ export function MeasureOverlay() {
         hoverPosition={snapIndicatorPos}
         projectToScreen={projectToScreen}
         constraintEdge={measurementConstraintEdge}
+        projectUnits={projectUnits}
+        unitDisplayOverrides={unitDisplayOverrides}
       />
     </>
   );
@@ -383,14 +396,16 @@ interface MeasurementItemProps {
   onDelete: (id: string) => void;
   /** When set, show real-world E/N/H for the measurement's two endpoints. */
   geoAnchor: AnchorGeoreference | null;
+  projectUnits?: any;
+  unitDisplayOverrides?: Record<string, string>;
 }
 
-function MeasurementItem({ measurement, index, onDelete, geoAnchor }: MeasurementItemProps) {
+function MeasurementItem({ measurement, index, onDelete, geoAnchor, projectUnits, unitDisplayOverrides }: MeasurementItemProps) {
   return (
     <div className="bg-muted/50 rounded px-2 py-0.5 text-xs">
       <div className="flex items-center justify-between">
         <span className="text-muted-foreground text-xs">#{index + 1}</span>
-        <span className="font-mono font-medium">{formatDistance(measurement.distance)}</span>
+        <span className="font-mono font-medium">{formatDistance(measurement.distance, projectUnits, unitDisplayOverrides)}</span>
         <Button
           variant="ghost"
           size="icon-sm"

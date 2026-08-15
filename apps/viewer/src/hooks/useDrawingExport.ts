@@ -164,6 +164,10 @@ interface UseDrawingExportParams {
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
   /** Point-cloud scan overlay, already in drawing space (issue #1805) */
   scanSection: { points: readonly ScanBandPoint[] };
+  /** Project units from the model (issue #2199) */
+  projectUnits?: any;
+  /** Unit display overrides (issue #2199) */
+  unitDisplayOverrides?: Record<string, string>;
 }
 
 interface UseDrawingExportResult {
@@ -191,6 +195,8 @@ function useDrawingExport({
   ifcDataStore,
   coordinateInfo,
   scanSection,
+  projectUnits,
+  unitDisplayOverrides = {},
 }: UseDrawingExportParams): UseDrawingExportResult {
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
@@ -953,7 +959,7 @@ function useDrawingExport({
   }, [generateExportSVG, generateSheetSVG, sheetEnabled, activeSheet, sectionPlane]);
 
   return {
-    formatDistance,
+    formatDistance: (distance: number) => formatDistance(distance, projectUnits, unitDisplayOverrides),
     handleExportSVG,
     handleExportDXF,
     handlePrint,

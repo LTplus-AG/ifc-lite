@@ -167,6 +167,16 @@ export function buildDeviceLossContext(source: DeviceLossContextSource): DeviceL
 
   // Size of the last completed load (recorded at the `ifc_model_loaded`
   // capture site). Omitted when no load completed - itself a signal.
+  //
+  // TRIAGE CAVEAT: the triangle/mesh figures count the flat mesh path only.
+  // Fully GPU-instanced entities never enter `GeometryResult.meshes` - the
+  // partial-model property behind #2558 - so on the wasm STEP and cache load
+  // paths these UNDERCOUNT heavily instanced models, sometimes substantially.
+  // Do not read `last_load_total_triangles` as "how big the model was"; it is
+  // "what the flat path uploaded", kept because it matches `ifc_model_loaded`
+  // for the same load by design. `gpu_resident_mb` above is the figure to
+  // trust for what was actually on the device: it sums instanced templates
+  // too.
   put('last_load_file_size_mb', () => {
     const snapshot = getModelLoadedSnapshot();
     return snapshot ? Math.round(snapshot.fileSizeMB * 100) / 100 : undefined;

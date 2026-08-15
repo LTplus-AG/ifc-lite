@@ -200,25 +200,55 @@ export interface ViewportHealthSource extends DeviceLossContextSource {
 }
 
 /**
+ * Run the context builder without letting it take down the base report.
+ *
+ * `buildDeviceLossContext` is designed never to throw (every field read is
+ * individually contained), and no known input makes it throw today. This
+ * wrapper is the SECOND line of that defence, at the call site: if a future
+ * edit ever breaks the builder's own guarantee (a read added outside `put`,
+ * or the warn path itself throwing), the loss must still be reported WITHOUT
+ * context - the renderer's per-listener catch would otherwise swallow the
+ * whole report, base fields included, which is the exact #2229 invisibility
+ * this module exists to end. Logged, never silent: a builder that throws is a
+ * defect of ours and must leave a breadcrumb.
+ */
+function buildContextSafely(
+  build: (source: DeviceLossContextSource) => DeviceLossContext,
+  renderer: DeviceLossContextSource,
+): DeviceLossContext | undefined {
+  try {
+    return build(renderer);
+  } catch (err) {
+    console.warn('[Viewport] device-loss context build failed; reporting without context:', err);
+    return undefined;
+  }
+}
+
+/**
  * Subscribe to every way the 3D view can stop being useful, and return one
  * unsubscribe for all of them.
  *
  * Both channels are wired HERE rather than at the `Viewport` call site so that
  * adding a third one, or forgetting the second, is a change to a tested unit
  * instead of an invisible omission inside a 400-line effect.
+ *
+ * `buildContext` is a TEST SEAM, nothing else: production callers pass only
+ * the renderer, and the parameter exists so a test can hand in a builder that
+ * throws and prove the base report survives it (`buildContextSafely` above).
  */
-export function subscribeViewportHealth(renderer: ViewportHealthSource): () => void {
+export function subscribeViewportHealth(
+  renderer: ViewportHealthSource,
+  buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
+): () => void {
   const unsubscribes = [
     // The context is built AT LOSS TIME, inside the listener, not at subscribe
     // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
     // must describe the moment the device died, not the Viewport mount.
-    // `buildDeviceLossContext` never throws (every field is individually
-    // contained), so the base report cannot be lost to its own enrichment.
     renderer.onDeviceLost((info) =>
-      reportDeviceLost(info, buildDeviceLossContext(renderer)),
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer)),
     ),
     renderer.onPersistentRenderDegradation((info) =>
-      reportPersistentRenderDegradation(info, buildDeviceLossContext(renderer)),
+      reportPersistentRenderDegradation(info, buildContextSafely(buildContext, renderer)),
     ),
   ];
   return () => {

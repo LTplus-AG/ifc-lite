@@ -141,6 +141,19 @@ export function resetModelLoadedSnapshotForTests(): void {
  * `null`/`undefined` geometry (the store slot can legitimately hold null on
  * the cache/server paths) records only the file size - absent, not zero, per
  * the `ModelLoadedSnapshot` contract above.
+ *
+ * ACCURACY CAVEAT: `geometry.meshes` and `totalTriangles` cover the FLAT mesh
+ * path only. An entity whose whole mesh set went to the GPU-instanced shard
+ * never appears in `GeometryResult.meshes` (the partial-model property behind
+ * #2558), and its triangles are counted nowhere here - so on the load paths
+ * where instancing runs (wasm STEP, and the cache path that replays it) a
+ * heavily instanced model records substantially fewer meshes/triangles than
+ * are actually resident. The IFCX/GLB/server paths carry no instanced shard,
+ * so their counts are complete. This is deliberate, not fixable here: the
+ * figures must match what `ifc_model_loaded` reported for the same load, and
+ * that event has always counted the same way. For true device residency on a
+ * loss report, `gpu_resident_mb` is the field to trust - the scene sum behind
+ * it includes instanced templates.
  */
 export function snapshotFromGeometry(
   fileSizeMB: number,

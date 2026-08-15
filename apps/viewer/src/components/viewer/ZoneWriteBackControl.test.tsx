@@ -125,6 +125,46 @@ function emittedZones(): string[] {
     .map((e) => String(e.attributes[2]));
 }
 
+describe('ZonesPanel: exporting the table', () => {
+  beforeEach(async () => {
+    await seed();
+  });
+
+  it('downloads a CSV when the panel button is clicked', async () => {
+    // A presence check would pass with `onClick={() => {}}`, which is the
+    // failure #2434 catalogued, so the assertion is the file: its bytes, its
+    // name, and a row for the element that is actually in a zone.
+    const downloads: Array<{ name: string; text: string }> = [];
+    const originalCreate = URL.createObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    let pending: Blob | null = null;
+    (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = (blob: Blob) => {
+      pending = blob;
+      return 'blob:zone-table';
+    };
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+      if (this.download && pending) downloads.push({ name: this.download, text: '' });
+    };
+
+    try {
+      const container = render(<ZonesPanel />);
+      click(button(container, 'CSV'));
+      // The export is async (Parquet loads a wasm writer, so both formats go
+      // through a promise); let it settle before asserting on the download.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      assert.equal(downloads.length, 1, 'the CSV button downloaded nothing');
+      assert.equal(downloads[0].name, 'Takt areas-zone-quantities.csv');
+      const text = await (pending as Blob | null)?.text();
+      assert.ok(text?.startsWith('GlobalId,ExpressId,Model'), `unexpected header: ${text?.slice(0, 60)}`);
+      assert.match(text ?? '', /0Wall00000000000000042/);
+    } finally {
+      (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+});
+
 describe('ZonesPanel: emitting the zones themselves', () => {
   beforeEach(async () => {
     await seed();
@@ -138,6 +178,40 @@ describe('ZonesPanel: emitting the zones themselves', () => {
 
     assert.deepEqual(emittedZones(), ['Takt A']);
     assert.ok(useViewerStore.getState().dirtyModels.has('m1'));
+  });
+
+  it('refuses a second click in the same tick as the first', async () => {
+    // The guard has to be a REF: state has not re-rendered in the tick the
+    // first click starts, so a state-only check lets a double click start two
+    // full gathers and download the same table twice.
+    const downloads: string[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalClick = HTMLAnchorElement.prototype.click;
+    (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = () => 'blob:zone-table';
+    HTMLAnchorElement.prototype.click = function click(this: HTMLAnchorElement) {
+      if (this.download) downloads.push(this.download);
+    };
+    try {
+      const container = render(<ZonesPanel />);
+      const csv = button(container, 'CSV');
+      // Dispatched RAW rather than through the test helper's `click`: that one
+      // wraps each event in `act`, which flushes the state update in between,
+      // so a state-only guard would pass a check it cannot pass in the tick
+      // the events actually share.
+      csv.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      csv.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(downloads.length, 1, `two clicks produced ${downloads.length} downloads`);
+    } finally {
+      (URL as { createObjectURL: (b: Blob) => string }).createObjectURL = originalCreate;
+      HTMLAnchorElement.prototype.click = originalClick;
+    }
+  });
+});
+
+describe('ZonesPanel: emitting the zones themselves (removal)', () => {
+  beforeEach(async () => {
+    await seed();
   });
 
   it('takes them out again from the same panel', () => {

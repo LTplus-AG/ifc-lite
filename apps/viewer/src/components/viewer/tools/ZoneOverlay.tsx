@@ -17,7 +17,7 @@
  * other zone box (and this one outside of edit mode) is decorative only.
  */
 
-import { useMemo, useRef } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useViewerStore } from '@/store';
 import { useCameraTickSubscription } from '@/hooks/useCameraTickSubscription';
 import { useZoneAssignmentSync } from '@/hooks/useZoneAssignmentSync';
@@ -101,6 +101,61 @@ function projectZones(
 }
 
 const HANDLE_HIT_RADIUS = 10;
+
+const LABEL_FONT_SIZE = 11;
+const LABEL_PAD_X = 6;
+const LABEL_HEIGHT = 18;
+
+/**
+ * The zone's name on a pill sized to the text.
+ *
+ * MEASURED rather than estimated. The width was `zone.name.length * 6.4`, which
+ * was wrong twice: it counted only the zone's name while the label also renders
+ * the SET's name and a separator, so every pill was short by that much and the
+ * text ran off its own background; and a per-character constant cannot size a
+ * proportional font, where "Wohnung West" and "Illinois III" differ by a third
+ * at the same character count.
+ *
+ * `getBBox` is the browser's own answer for the font that actually rendered, at
+ * whatever zoom. The character estimate survives only as the pre-measurement
+ * fallback - for the first paint before the layout effect runs, and for a test
+ * DOM that implements no SVG layout - and it now counts the WHOLE string.
+ */
+export function ZoneLabel({ text }: { text: string }) {
+  const textRef = useRef<SVGTextElement>(null);
+  const [measured, setMeasured] = useState<number | null>(null);
+
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (!element || typeof element.getBBox !== 'function') return;
+    try {
+      const width = element.getBBox().width;
+      // A detached or display:none SVG measures 0; keeping the estimate then is
+      // better than collapsing the pill to nothing.
+      if (width > 0) setMeasured(width);
+    } catch {
+      // Firefox throws on getBBox for an unrendered element rather than
+      // returning zeroes. The estimate covers it.
+    }
+  }, [text]);
+
+  const width = (measured ?? text.length * 6.2) + LABEL_PAD_X * 2;
+  return (
+    <>
+      <rect
+        x={-2}
+        y={-14}
+        width={width}
+        height={LABEL_HEIGHT}
+        rx={4}
+        fill="rgba(15, 23, 42, 0.85)"
+      />
+      <text ref={textRef} x={-2 + LABEL_PAD_X} y={-1} fontSize={LABEL_FONT_SIZE} fill="#fff">
+        {text}
+      </text>
+    </>
+  );
+}
 
 export function ZoneOverlay() {
   const zoneSets = useViewerStore((s) => s.zoneSets);
@@ -220,11 +275,7 @@ export function ZoneOverlay() {
               />
             ))}
             <g transform={`translate(${entry.labelAnchor.x}, ${entry.labelAnchor.y})`}>
-              <rect x={-2} y={-14} width={entry.zone.name.length * 6.4 + 12} height={18} rx={4}
-                fill="rgba(15, 23, 42, 0.85)" />
-              <text x={4} y={-1} fontSize={11} fill="#fff">
-                {entry.setName} / {entry.zone.name}
-              </text>
+              <ZoneLabel text={`${entry.setName} / ${entry.zone.name}`} />
             </g>
           </g>
         );

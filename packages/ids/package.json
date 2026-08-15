@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/ids",
-  "version": "1.15.45",
+  "version": "1.15.46",
   "description": "IDS (Information Delivery Specification) support for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

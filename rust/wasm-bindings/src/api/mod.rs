@@ -258,8 +258,9 @@ impl IfcAPI {
     /// Create and initialize the IFC API
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        #[cfg(feature = "console_error_panic_hook")]
-        console_error_panic_hook::set_once();
+        // MUST be `set_panic_hook()`, never `console_error_panic_hook::set_once()`
+        // directly — that would replace init()'s panic-location stash. Idempotent.
+        crate::utils::set_panic_hook();
 
         Self {
             initialized: true,
@@ -650,11 +651,13 @@ impl IfcAPI {
     /// Enable or disable per-entity geometry fingerprinting in
     /// `processGeometryBatch`, used by the viewer's revision-diff feature.
     ///
-    /// Pass a positive `tolerance` (metres) to enable — it is the quantization
-    /// grid the hash snaps positions to (larger = more tolerant of float noise,
-    /// smaller = catches finer edits; the `f32` precision floor of model-local
-    /// coordinates means values below ~1 mm mostly hash noise). Pass `null`/
-    /// `undefined` (or a non-positive value) to disable. Default: disabled.
+    /// Pass a positive `tolerance` (metres) to enable — the quantization grid
+    /// positions snap to (larger tolerates more float noise, smaller catches
+    /// finer edits; below the `f32` precision floor of model-local coordinates,
+    /// ~1 mm, mostly hashes noise). Finer than
+    /// `ifc_lite_geometry::MIN_GEOM_HASH_TOLERANCE` (1e-6 m) is clamped up to it
+    /// — see that constant's doc for why (an `i128` overflow surface, not a
+    /// precision win). `null`/`undefined`/non-positive disables. Default: off.
     #[wasm_bindgen(js_name = setComputeGeometryHashes)]
     pub fn set_compute_geometry_hashes(&self, tolerance: Option<f64>) {
         use std::sync::atomic::Ordering::Relaxed;

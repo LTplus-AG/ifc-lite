@@ -18,8 +18,8 @@
  * quantity set's name.
  */
 
-import { useState } from 'react';
-import { Box, FileOutput, Undo2 } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Box, FileOutput, Sheet, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Select,
@@ -31,6 +31,7 @@ import {
 import { toast } from '@/components/ui/toast';
 import { useZoneWriteBack } from '@/hooks/useZoneWriteBack';
 import { useZoneSpatialZones } from '@/hooks/useZoneSpatialZones';
+import { useZoneTableExport, type ZoneTableFormat } from '@/hooks/useZoneTableExport';
 import { emitRefusalText } from '@/lib/zones/emit-spatial-zones';
 import {
   zonePropertySetName,
@@ -46,6 +47,46 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
   const [basis, setBasis] = useState<VolumeBasis>('mesh');
   const { write, remove } = useZoneWriteBack();
   const { emit: emitZones, remove: removeZones } = useZoneSpatialZones();
+  const { exportTable } = useZoneTableExport();
+  // A table export gathers every element and may recompute the apportionment,
+  // so a second click while the first runs pays for two full gathers and
+  // downloads the same file twice.
+  //
+  // A REF as well as the state, and the ref is what guards: state has not
+  // re-rendered yet in the tick the first click starts, so a double click would
+  // pass a state-only check and disable a button that is already too late. The
+  // state exists only to say so in the UI. Same pairing, for the same reason,
+  // as the geometry export in `ZonesPanel`.
+  const exportingTableRef = useRef(false);
+  const [exportingTable, setExportingTable] = useState<ZoneTableFormat | null>(null);
+
+  const runTableExport = async (format: ZoneTableFormat) => {
+    if (exportingTableRef.current) return;
+    exportingTableRef.current = true;
+    setExportingTable(format);
+    try {
+      const result = await exportTable(zoneSet, basis, format);
+      if (result.blocked === 'no-members') {
+        toast.info('No element is in a zone of this set, so the table would be empty');
+        return;
+      }
+      toast.success(
+        `Exported ${result.rows.toLocaleString()} row(s) for ${result.elements.toLocaleString()} element(s)`
+        // Said rather than left to be discovered by summing a column.
+        + (result.unmeasured > 0 ? `, ${result.unmeasured.toLocaleString()} with no volume and a stated reason` : ''),
+      );
+    } catch (error) {
+      // Parquet loads its wasm writer on demand, so this is the one export here
+      // that can fail for a reason outside the model.
+      console.error('[zones] table export failed', error);
+      toast.error(`Could not export the table: ${error instanceof Error ? error.message : 'unknown error'}`);
+    } finally {
+      // In a `finally` so a Parquet writer that fails to load does not leave
+      // both buttons dead for the rest of the session.
+      exportingTableRef.current = false;
+      setExportingTable(null);
+    }
+  };
 
   return (
     <div className="space-y-1 rounded border-t pt-1.5">
@@ -120,6 +161,24 @@ export function ZoneWriteBackControl({ zoneSet }: { zoneSet: ZoneSet }) {
       <p className="text-[10px] text-muted-foreground leading-snug break-words">
         {zonePropertySetName(zoneSet.name)} · {zoneQuantitySetName(zoneSet.name, basis)}
       </p>
+      {/* The direct answer to #1763's "manual work in Excel": one row per
+          (element, zone), which pivots without unpivoting first. */}
+      <div className="flex items-center gap-1">
+        {(['csv', 'parquet'] as const).map((format) => (
+          <Button
+            key={format}
+            variant="outline"
+            size="sm"
+            className="h-6 flex-1 text-[11px]"
+            disabled={exportingTable !== null}
+            title={`Download the per-element breakdown for this set as ${format.toUpperCase()}, one row per element and zone`}
+            onClick={() => { void runTableExport(format); }}
+          >
+            <Sheet className="h-3 w-3 mr-1" />
+            {exportingTable === format ? 'Building...' : format.toUpperCase()}
+          </Button>
+        ))}
+      </div>
       <div className="flex items-center gap-1">
         <Button
           variant="outline"

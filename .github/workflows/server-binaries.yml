@@ -22,6 +22,17 @@ on:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      upload-to-tag:
+        # Backfill lever: a plain dispatch only produces 1-day artifacts, so
+        # before this input existed a release missing an archive (issue
+        # #2619, v1.16.6 shipped without the win32-x64 zip) could not be
+        # repaired self-service. Supplying an existing v* tag uploads the
+        # rebuilt archives to that release and re-verifies its assets.
+        description: 'Existing release tag (e.g. v1.16.6) to upload the built archives to; leave empty for artifacts only'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -232,15 +243,52 @@ jobs:
           retention-days: 1
 
       - name: Upload to GitHub Release
-        if: github.event_name == 'release'
+        # Also runs on a manual dispatch that names an existing tag, so a
+        # release with a missing archive can be backfilled (issue #2619).
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
         # Force bash so the backslash line-continuation parses on Windows
         # runners too (default shell there is PowerShell, which reads the
         # bare `--clobber` continuation as the unary decrement operator →
         # win32-x64 release upload failed with a ParserError).
         shell: bash
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
+          gh release upload "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}" \
             ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }} \
             --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Verify the release actually carries one archive per supported platform.
+  # The upload matrix above can partially fail, and a missing archive makes
+  # every install on that platform 404 at postinstall (issue #2619).
+  verify-release-assets:
+    name: Verify release assets
+    needs: release-server-binaries
+    # `always()` is the load-bearing part. A failed `needs:` skips the
+    # dependent whatever the condition says, so without it the job that
+    # exists to name a missing archive could not run on the case it exists
+    # for: a matrix leg that failed or was cancelled. That is exactly how
+    # v1.16.6 shipped without the win32-x64 zip and nothing said so.
+    #
+    # Runs on version-tagged releases, and on a manual dispatch that names
+    # a tag to backfill - the same two paths that upload assets.
+    if: |
+      always()
+      && (
+        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+        || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Verify release carries every supported platform archive
+        run: node scripts/check-server-bin-targets.mjs --release "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

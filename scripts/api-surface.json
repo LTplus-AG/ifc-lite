@@ -3673,6 +3673,7 @@
     "SQLResult: interface"
   ],
   "@ifc-lite/renderer": [
+    "AdapterInfoSnapshot: interface",
     "BVH: class",
     "BatchedMesh: interface",
     "Bounds3: interface",

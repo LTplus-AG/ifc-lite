@@ -73,7 +73,7 @@ import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
-import { buildModelLoadedPayload } from '../utils/loadTelemetry.js';
+import { buildModelLoadedPayload, recordModelLoadedSnapshot } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
 
@@ -1994,6 +1994,10 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
+      const totalTriangles = allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
+      // Retained for the device-loss report (#2624): if the GPU device later
+      // dies, its capture can say how big the model on the device was.
+      recordModelLoadedSnapshot({ fileSizeMB, totalTriangles, meshCount: allMeshes.length });
       // Single home for this payload — see `utils/loadTelemetry.ts` for why
       // `was_hidden: false` and `total_csg_failures: 0` must survive to the wire.
       posthog.capture('ifc_model_loaded', buildModelLoadedPayload({
@@ -2004,7 +2008,7 @@ export function useIfcLoader() {
         meshCount: allMeshes.length,
         totalElapsedMs,
         totalVertices,
-        totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
+        totalTriangles,
         fileReadMs,
         metadataCompleteMs,
         firstGeometryBatchMs: firstAppendGeometryBatchMs,

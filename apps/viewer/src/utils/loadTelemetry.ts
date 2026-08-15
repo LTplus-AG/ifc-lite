@@ -78,3 +78,38 @@ export function buildModelLoadedPayload(
     was_hidden: input.wasHidden,
   };
 }
+
+/**
+ * The size of the last completed load, retained for the device-loss report
+ * (issue #2624). `ifc_model_loaded`'s totals are computed transiently at the
+ * capture site and stored nowhere else, so a later GPU loss had no way to say
+ * how big the model on the device was. Module state is deliberate, for the
+ * same reason as the once-per-session latches in `device-loss-report.ts`: the
+ * last load is a property of the session, not of a component instance.
+ */
+export interface ModelLoadedSnapshot {
+  fileSizeMB: number;
+  totalTriangles: number;
+  meshCount: number;
+}
+
+let lastLoadSnapshot: ModelLoadedSnapshot | null = null;
+
+/**
+ * Record the just-completed load. Called next to the existing
+ * `posthog.capture('ifc_model_loaded', ...)` site in `useIfcLoader.ts` -
+ * recording anywhere else would drift from what the load event reported.
+ */
+export function recordModelLoadedSnapshot(snapshot: ModelLoadedSnapshot): void {
+  lastLoadSnapshot = snapshot;
+}
+
+/** The last recorded load, or null when no load has completed this session. */
+export function getModelLoadedSnapshot(): ModelLoadedSnapshot | null {
+  return lastLoadSnapshot;
+}
+
+/** Reset the retained snapshot. Test seam - not used in production. */
+export function resetModelLoadedSnapshotForTests(): void {
+  lastLoadSnapshot = null;
+}

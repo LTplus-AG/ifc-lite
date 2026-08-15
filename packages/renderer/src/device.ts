@@ -6,6 +6,20 @@
  * WebGPU device initialization
  */
 
+/**
+ * Vendor/architecture identity of the GPU adapter, copied out of
+ * `GPUAdapterInfo` during `init()` (issue #2624 device-loss telemetry).
+ * Plain copied strings, never the live `GPUAdapterInfo` object, so reading
+ * the snapshot after a device loss (or during teardown) touches no GPU state.
+ * Either field is absent when the runtime did not report it as a string.
+ */
+export interface AdapterInfoSnapshot {
+  /** `GPUAdapterInfo.vendor`, e.g. "apple", "nvidia", "intel". */
+  vendor?: string;
+  /** `GPUAdapterInfo.architecture`, e.g. "common-3", "gen-12lp". */
+  architecture?: string;
+}
+
 export class WebGPUDevice {
   private adapter: GPUAdapter | null = null;
   private device: GPUDevice | null = null;
@@ -32,6 +46,8 @@ export class WebGPUDevice {
   private deviceLostHandler: ((info: { message: string; reason: string }) => void) | null = null;
   /** Guards against firing the handler more than once for a single device. */
   private deviceLostFired: boolean = false;
+  /** See `getAdapterInfo()`. Null until `init()` succeeds in reading it. */
+  private adapterInfoSnapshot: AdapterInfoSnapshot | null = null;
 
   /**
    * Initialize WebGPU device and canvas context
@@ -49,6 +65,29 @@ export class WebGPUDevice {
     this.adapter = await navigator.gpu.requestAdapter();
     if (!this.adapter) {
       throw new Error('Failed to get GPU adapter');
+    }
+
+    // Snapshot the adapter's identity for device-loss telemetry (issue #2624).
+    // `adapter.info` shipped in Chrome/Edge 128 and Safari 26, so the whole
+    // read is defensive: a runtime without it (or with a throwing getter)
+    // leaves the snapshot null rather than failing init. The strings are
+    // COPIED - retaining the live GPUAdapterInfo would pin browser-internal
+    // state to this instance for no benefit. `info.description`
+    // (fingerprint-adjacent free text, usually empty) and `info.device`
+    // (blank in default Chrome) are deliberately not captured.
+    this.adapterInfoSnapshot = null;
+    try {
+      const info = this.adapter.info;
+      if (info) {
+        const snapshot: AdapterInfoSnapshot = {};
+        if (typeof info.vendor === 'string') snapshot.vendor = info.vendor;
+        if (typeof info.architecture === 'string') snapshot.architecture = info.architecture;
+        this.adapterInfoSnapshot = snapshot;
+      }
+    } catch {
+      // Deliberate swallow: adapter identity is telemetry enrichment, and a
+      // throwing `info` getter must not break device init. The loss report
+      // simply goes out without it (snapshot stays null).
     }
 
     // Request the adapter's maximum buffer limits. The WebGPU default maxBufferSize
@@ -212,6 +251,17 @@ export class WebGPUDevice {
    */
   getMaxTextureDimension(): number {
     return this.device?.limits?.maxTextureDimension2D ?? 8192;
+  }
+
+  /**
+   * Vendor/architecture snapshot copied from `GPUAdapterInfo` during `init()`,
+   * or null when the runtime does not expose adapter info (pre-Chrome-128
+   * browsers, or a throwing getter). Deliberately NOT cleared by `destroy()`:
+   * a device-loss report can race teardown, and two retained strings leak
+   * nothing.
+   */
+  getAdapterInfo(): AdapterInfoSnapshot | null {
+    return this.adapterInfoSnapshot;
   }
 
   getContext(): GPUCanvasContext {

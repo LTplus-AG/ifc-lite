@@ -14,19 +14,49 @@
  * test signal (this has happened on real PRs — see the PR description for
  * this change). Running the same gates before pushing catches it for free.
  *
- * Coverage — the five freshness gates in .github/workflows/test.yml:
- *   1. check:bim-globals        (node-tests, before `pnpm test`)
- *   2. check:api-surface        (node-tests, before `pnpm test`)
+ * Coverage was originally claimed as "the five freshness gates in
+ * .github/workflows/test.yml" — that claim was wrong. PR #2632 (a brand-new
+ * package, @ifc-lite/oauth-pkce) hit two more generated/baseline gates this
+ * script didn't run — `generate-docs-sections.mjs --check` (node-tests) and
+ * `check-unused-locals.mjs` (Lint) — and both fast-failed CI with zero test
+ * signal, exactly the failure mode this script exists to catch locally. The
+ * list below is re-derived from scratch against every step in the
+ * `build` / `lint` / `node-tests` jobs, not assumed:
+ *   1. check:bim-globals         (node-tests, before `pnpm test`)
+ *   2. check:api-surface         (node-tests, before `pnpm test`)
  *   3. check:server-attr-indices (node-tests, before `pnpm test`)
- *   4. plato clash-math freshness (plato-check job)          -- INFO only, see below
- *   5. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
+ *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`)
+ *   5. check-unused-locals.mjs   (lint job)
+ *   6. plato clash-math freshness (plato-check job)          -- INFO only, see below
+ *   7. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *
- * (1)-(3) each need only a single-package `turbo build` (bim-globals ->
- * @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser) or an
- * already-built `dist/` (api-surface, across all published packages) and run
- * in low tens of seconds, so they run unconditionally here.
+ * Steps deliberately NOT treated as a generated-artifact gate here, and why:
+ *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
+ *     checksums against tests/models/manifest.json. Not derived from repo
+ *     source — there's nothing in this repo to regenerate it from — and it
+ *     needs the ~1GB fixture set on disk. Wrong shape for a pre-push script.
+ *   - `check-changesets.mjs`, `check-lint-ran.mjs`, `check-test-wiring.mjs`,
+ *     `check-package-readmes.mjs` (docs/), `check-doc-samples.mjs` (docs/):
+ *     structural/policy checks (a script ran, a file exists, a changeset
+ *     names a real package) — nothing generated, nothing to regenerate.
+ *   - `check-source-text-assertions.mjs` and `check-wasm-disposal.mjs`
+ *     (node-tests): ratchets against an allowlist, but the allowlist is
+ *     hand-maintained (no `--update` / generator) — a violation means "don't
+ *     add that pattern", not "stale file, regenerate it". No fix command to
+ *     offer, so out of scope for this script.
+ *   - `check-unbounded-frame-wait.mjs` (node-tests): scans for an absent
+ *     pattern, no baseline file at all.
+ *   - `pnpm --filter=@ifc-lite/viewer check:templates` (node-tests):
+ *     typechecks against bim-globals.d.ts (gate 1's output) but doesn't
+ *     itself compare a generated artifact — covered transitively by gate 1.
  *
- * (4) and (5) are deliberately NOT run by default:
+ * (1)-(5) each need only a single-package `turbo build` (bim-globals ->
+ * @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser), an
+ * already-built `dist/` across all published packages (api-surface,
+ * unused-locals), or nothing at all (docs-sections), and run in well under
+ * two minutes total, so they run unconditionally here.
+ *
+ * (6) and (7) are deliberately NOT run by default:
  *   - Plato clones `plato` + `ara3d-sdk` at pinned SHAs and does a `dotnet
  *     build` of Plato.CLI (needs the .NET 9 SDK) on first run. Minutes, plus
  *     a toolchain most contributors don't have installed.
@@ -144,7 +174,7 @@ if (BUILD_FIRST) {
     run('pnpm', ['build']);
     console.log('✅ pnpm build succeeded');
   } catch (e) {
-    console.log('❌ pnpm build failed — cannot evaluate check:api-surface reliably.');
+    console.log('❌ pnpm build failed — cannot evaluate check:api-surface / check-unused-locals reliably.');
     console.log((e.stdout || e.stderr || e.message).toString().trim().replace(/^/gm, '   '));
   }
 }
@@ -165,7 +195,47 @@ runGate(
   'pnpm generate:server-attr-indices   (then `cargo fmt -p ifc-lite-server` and commit attr_indices.rs)',
 );
 
-// 3. API surface — needs the FULL workspace dist/, which this script does
+// 3. Generated doc sections (docs/api/typescript.md package index,
+// docs/guide/cli.md, docs/guide/performance.md, apps/landing/app.jsx) — no
+// build needed, reads package.json/source directly. Fast (well under a
+// second). This is the gate PR #2632 actually hit: a new package's row was
+// missing from the package-index region.
+runGate(
+  'docs:check-generated',
+  'pnpm',
+  ['run', 'docs:check-generated'],
+  'pnpm docs:generate   (then commit the regenerated doc file(s))',
+);
+
+// 4. Unused-locals baseline (scripts/unused-locals-baseline.json) — a
+// package added but never `pnpm lint:baseline`-d silently has no ratchet at
+// all (this is the OTHER gate PR #2632 hit). Like api-surface, this
+// type-checks every package against its siblings' BUILT dist/ types, so it
+// shares the same "needs dist/" precondition — reuse allDistBuilt() below.
+if (!BUILD_FIRST && !allDistBuilt()) {
+  record(
+    'check-unused-locals',
+    'skip',
+    'No packages/*/dist found — nothing built yet, so this gate has nothing to\n' +
+      'type-check siblings against. This is a SKIP, not a pass.',
+    'pnpm build && node scripts/check-unused-locals.mjs   (or re-run this script with --build)',
+  );
+} else {
+  runGate(
+    'check-unused-locals',
+    'node',
+    ['scripts/check-unused-locals.mjs'],
+    'pnpm lint:baseline   (then commit scripts/unused-locals-baseline.json)',
+  );
+  if (!BUILD_FIRST) {
+    console.log(
+      '   note: ran against whatever dist/ was already on disk (no rebuild) — same\n' +
+        '   caveat as check:api-surface above. Re-run with --build for a from-scratch answer.',
+    );
+  }
+}
+
+// 5. API surface — needs the FULL workspace dist/, which this script does
 // not build by default (see header comment).
 if (!BUILD_FIRST && !allDistBuilt()) {
   record(
@@ -191,7 +261,7 @@ if (!BUILD_FIRST && !allDistBuilt()) {
   }
 }
 
-// 4. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
+// 6. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
 if (FULL) {
   if (which('dotnet')) {
     runGate(
@@ -219,7 +289,7 @@ if (FULL) {
   );
 }
 
-// 5. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
+// 7. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
 if (FULL) {
   if (which('wasm-pack') && which('cargo')) {
     hr();

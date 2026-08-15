@@ -362,7 +362,18 @@ jobs:
                     exit 1
                     ;;
                 esac
+                if [ -z "${SHA256_TOOL:-}" ]; then
+                  echo "ERROR: SHA256_TOOL is unset; refusing to backfill a sidecar without a checksum tool" >&2
+                  exit 1
+                fi
                 (cd published && $SHA256_TOOL "$asset" > "../$sidecar")
+                # Same self-check the build path applies before anything can
+                # reach a release: exactly the "<64-hex>  <archive>" line the
+                # install-time parser accepts. A backfilled sidecar is what
+                # fail-closed installs will trust, so it must be validated on
+                # this path too, not only on the build path.
+                grep -Eq "^[0-9a-f]{64} [ *]?$asset\$" "$sidecar"
+                cat "$sidecar"
                 gh release upload "$RELEASE_TAG" "$sidecar"
               fi
             else

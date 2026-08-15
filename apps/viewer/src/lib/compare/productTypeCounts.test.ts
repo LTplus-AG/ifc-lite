@@ -116,4 +116,33 @@ describe('groupHeaderCount (review find: two totals for one quantity in one pane
     const entries: DiffEntry<CompareRef>[] = [entry('added', 'IfcWall', 'p-1')];
     assert.strictEqual(groupHeaderCount(productTypeSplit(entries), 'added'), '1');
   });
+
+  it('drops the leading "0" when a section is ALL type objects (review find)', () => {
+    // A section renders whenever it has rows (products + typeObjects > 0). A
+    // state that is entirely type objects has products[state] === 0, so
+    // printing "0 +4 type objects" directly above 4 visible rows would
+    // reproduce the exact two-totals confusion this split exists to remove.
+    const entries: DiffEntry<CompareRef>[] = Array.from({ length: 4 }, (_, i) =>
+      entry('modified', 'IfcBuildingElementProxyType', `t-${i}`),
+    );
+    assert.strictEqual(
+      groupHeaderCount(productTypeSplit(entries), 'modified'),
+      '4 type objects',
+    );
+  });
+
+  it('locale-formats the type-object remainder the same way as the product count', () => {
+    // Both numbers in one header string must use the same format, or a large
+    // model reads e.g. "1,234 +1000 type objects" — mismatched grouping.
+    const entries: DiffEntry<CompareRef>[] = [
+      ...Array.from({ length: 1234 }, (_, i) => entry('modified', 'IfcWall', `p-${i}`)),
+      ...Array.from({ length: 1000 }, (_, i) =>
+        entry('modified', 'IfcBuildingElementProxyType', `t-${i}`),
+      ),
+    ];
+    assert.strictEqual(
+      groupHeaderCount(productTypeSplit(entries), 'modified'),
+      '1,234 +1,000 type objects',
+    );
+  });
 });

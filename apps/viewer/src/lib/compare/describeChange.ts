@@ -274,6 +274,14 @@ function geometrySummary(
   if (!ba && !bb) {
     const placement = placementMoveSummary(a, aRef, b, bRef);
     if (placement) return placement;
+    // Both sides are the recorded-geometry-less case
+    // (`ref.meshed === false` on BOTH — `placementMoveSummary` re-checks this
+    // itself) and the placement composition abstained (unreadable chain,
+    // cycle, missing store). There is no box AND no trustworthy placement
+    // delta, so answering `summarizeGeometryChange(null, null)`'s "Reshaped"
+    // would be the exact false positive this function exists to avoid,
+    // arriving from the abstention path instead of the meshed-mismatch path.
+    if (aRef.meshed === false && bRef.meshed === false) return null;
   }
   return summarizeGeometryChange(ba, bb);
 }

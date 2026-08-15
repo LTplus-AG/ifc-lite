@@ -68,7 +68,7 @@ export function hasTypeObjectChanges(split: ProductTypeSplit): boolean {
  * split existed, never a "+0 type objects" badge.
  */
 export function typeObjectHint(n: number): string | undefined {
-  return n > 0 ? `+${n} type object${n === 1 ? '' : 's'}` : undefined;
+  return n > 0 ? `+${n.toLocaleString()} type object${n === 1 ? '' : 's'}` : undefined;
 }
 
 /**
@@ -79,14 +79,22 @@ export function typeObjectHint(n: number): string | undefined {
  * showed "26 Changed" and "Changed (30)" for the same quantity — the exact
  * two-numbers confusion the split exists to remove, relocated rather than
  * fixed.
+ *
+ * A section renders (has rows) whenever `products[state] + typeObjects[state]
+ * > 0`, so a state that is ALL type objects has `products[state] === 0` while
+ * still showing rows — printing "0 +4 type objects" directly above four
+ * visible rows reproduces that same two-numbers confusion from the other
+ * direction. When the product count is 0 and a type-object remainder exists,
+ * drop the leading "0" and show only the remainder.
  */
 export function groupHeaderCount(
   split: ProductTypeSplit,
   state: keyof ProductTypeTally,
 ): string {
   const hint = typeObjectHint(split.typeObjects[state]);
-  const products = split.products[state].toLocaleString();
-  return hint ? `${products} ${hint}` : products;
+  if (!hint) return split.products[state].toLocaleString();
+  const count = split.products[state];
+  return count === 0 ? hint.replace(/^\+/, '') : `${count.toLocaleString()} ${hint}`;
 }
 
 /**

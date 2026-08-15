@@ -141,10 +141,13 @@ function classifyModified(
     // for a product with no shape, and it leaves `MovedDistance_m` empty on
     // the one row that column was made for. Same helper as the detail panel
     // (`describeChange.ts`), so the CSV and the panel cannot disagree.
-    const geom =
-      (!ba && !bb && entry.base && entry.head
-        ? placementMoveSummary(baseModel, entry.base.ref, headModel, entry.head.ref)
-        : null) ?? summarizeGeometryChange(ba, bb);
+    const bothMeshless =
+      !ba && !bb && entry.base?.ref.meshed === false && entry.head?.ref.meshed === false;
+    const geom = bothMeshless
+      ? (entry.base && entry.head
+          ? placementMoveSummary(baseModel, entry.base.ref, headModel, entry.head.ref)
+          : null)
+      : summarizeGeometryChange(ba, bb);
     if (geom) {
       movedDistance = geom.movedDistance;
       if (geom.movedDistance > 0) parts.push('Moved');

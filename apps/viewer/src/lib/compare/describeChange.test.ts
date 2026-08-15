@@ -286,6 +286,24 @@ describe('describeChange - a geometry-less product that was re-georeferenced', (
     );
   });
 
+  it('reports no geometry change, not a phantom reshape, when the placement itself cannot be composed', async () => {
+    // Both sides are geometry-less (meshed: false) but their placement is an
+    // `IfcGridPlacement`, which `composeWorldPlacement` whitelists out and
+    // abstains on (worldPlacement.ts: only IfcLocalPlacement is composed).
+    // `placementMoveSummary` therefore also abstains (null), and falling
+    // through to `summarizeGeometryChange(null, null)` would answer
+    // "Reshaped" — the exact false positive this path exists to avoid,
+    // reached via abstention instead of a meshed mismatch.
+    const grid = [
+      "#1=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'environment - site',$,$,#30,$,$,.ELEMENT.,$,$,$,$,$);",
+      '#30=IFCGRIDPLACEMENT($,$);',
+    ].join('\n');
+    const aStore = await storeFromStep(grid);
+    const bStore = await storeFromStep(grid);
+    const detail = describeChange(geometryEntry(), modelsFor(aStore, bStore));
+    assert.strictEqual(detail!.geometry, null, 'no trustworthy geometry signal, so no summary at all');
+  });
+
   it('keeps a GPU-instanced element off the placement path (meshed, but no flat mesh)', async () => {
     // An instanced-only entity (#924) carries a real WASM hash folded from
     // `instancedGeometryHashes`, but appears in neither side's flat

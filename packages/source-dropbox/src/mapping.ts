@@ -136,7 +136,9 @@ export function searchResultContainerId(pathLower: string | undefined): string {
 }
 
 const DEFAULT_PAGE_SIZE = 200;
-/** Dropbox's own ceiling for `limit` on `files/list_folder`. */
+/** Dropbox's own ceiling for `limit` on `files/list_folder` and
+ *  `files/search_v2` (`ListFolderArg.limit` / `SearchOptions.max_results`
+ *  in Dropbox's `files.stone` API spec). */
 const MAX_PAGE_SIZE = 2000;
 
 /** Clamps `ListOptions.limit` ("Hint only; providers clamp to whatever their
@@ -145,4 +147,19 @@ const MAX_PAGE_SIZE = 2000;
 export function clampPageSize(limit: number | undefined): number {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_PAGE_SIZE;
   return Math.min(requested, MAX_PAGE_SIZE);
+}
+
+const DEFAULT_REVISIONS_PAGE_SIZE = 10;
+/** Dropbox's own ceiling for `limit` on `files/list_revisions` —
+ *  `ListRevisionsArg.limit` in Dropbox's `files.stone` API spec documents
+ *  `min: 1, max: 100, default: 10`. This is a different, much lower ceiling
+ *  than `list_folder`'s 2000 (`MAX_PAGE_SIZE` above); sending `limit` above
+ *  100 here is out of range for this endpoint. */
+const MAX_REVISIONS_PAGE_SIZE = 100;
+
+/** Clamps `ListOptions.limit` to a value `files/list_revisions`'s `limit`
+ *  argument will accept — see {@link MAX_REVISIONS_PAGE_SIZE}. */
+export function clampRevisionsPageSize(limit: number | undefined): number {
+  const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_REVISIONS_PAGE_SIZE;
+  return Math.min(requested, MAX_REVISIONS_PAGE_SIZE);
 }

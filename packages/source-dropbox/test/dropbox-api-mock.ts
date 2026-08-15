@@ -259,9 +259,27 @@ export function createDropboxApiMock(world: DropboxMockWorld, options: DropboxMo
 
     if (path === 'files/list_revisions') {
       const fileId = typeof body?.path === 'string' ? body.path : '';
-      const revisions = world.revisionsByFileId?.[fileId] ?? [];
-      const limit = typeof body?.limit === 'number' ? body.limit : 100;
-      const entries = revisions.slice(0, limit).map((r) => ({
+      const allRevisions = world.revisionsByFileId?.[fileId] ?? [];
+      const limit = typeof body?.limit === 'number' ? body.limit : 10;
+
+      // Mirrors real Dropbox's `before_rev`: "only return revisions prior to
+      // before_rev" — since `entries` here (like the real API) is ordered
+      // newest-first, "prior to" means everything *after* that rev's index.
+      // A `before_rev` naming a rev this mock doesn't know about (already
+      // paged past, or never existed) yields no further rows rather than
+      // silently restarting from the top.
+      const beforeRev = typeof body?.before_rev === 'string' ? body.before_rev : undefined;
+      const startIndex = beforeRev
+        ? (() => {
+            const idx = allRevisions.findIndex((r) => r.rev === beforeRev);
+            return idx === -1 ? allRevisions.length : idx + 1;
+          })()
+        : 0;
+
+      const remaining = allRevisions.slice(startIndex);
+      const page = remaining.slice(0, limit);
+      const hasMore = remaining.length > limit;
+      const entries = page.map((r) => ({
         '.tag': 'file',
         id: fileId,
         name: findItem(world, fileId)?.name ?? fileId,
@@ -269,7 +287,7 @@ export function createDropboxApiMock(world: DropboxMockWorld, options: DropboxMo
         size: r.size,
         server_modified: r.server_modified,
       }));
-      return Promise.resolve(mockResponse({ json: { is_deleted: false, entries } }));
+      return Promise.resolve(mockResponse({ json: { is_deleted: false, entries, has_more: hasMore } }));
     }
 
     if (path === 'files/search_v2' || path === 'files/search/continue_v2') {

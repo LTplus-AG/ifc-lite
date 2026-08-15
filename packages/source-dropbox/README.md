@@ -74,10 +74,12 @@ normal authenticated POST.
 `cursor`/`has_more` shape across listing folders, files, and (via
 `files/list_folder/continue` again) the `changeDetection` feed. This differs
 from Microsoft Graph's `@odata.nextLink`/`@odata.deltaLink` split in one
-respect worth knowing: `files/list_revisions` (revision history) is **not**
-cursor-paginated at all — one call returns up to `limit` (Dropbox's own cap:
-100) revisions with no continuation concept. `listRevisions()` in
-`provider.ts` always returns `cursor: undefined` for exactly this reason.
+respect worth knowing: `files/list_revisions` (revision history) paginates
+through a different mechanism — `has_more` plus `before_rev` (Dropbox's own
+cap on `limit`: 100, default 10) rather than an opaque token. `listRevisions()`
+in `provider.ts` surfaces the last page's oldest revision id as `Page.cursor`
+and forwards a supplied cursor back as `before_rev`, so callers follow it the
+same way they follow every other paged method here.
 
 ## Auth
 

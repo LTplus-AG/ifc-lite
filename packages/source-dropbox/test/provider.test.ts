@@ -24,6 +24,16 @@ const WORLD: DropboxMockWorld = {
       { rev: 'rev-v2', size: 12, server_modified: '2026-08-10T00:00:00Z', content: 'MODEL-BYTES-1' },
       { rev: 'rev-v1', size: 8, server_modified: '2026-08-01T00:00:00Z', content: 'MODEL-BYTES-1-OLD' },
     ],
+    // Five revisions, newest first, matching real Dropbox's own ordering —
+    // exercises `before_rev`/`has_more` cursor-following across more than
+    // one page boundary (the reviewer's repro: `limit: 2` over 5 revisions).
+    'id:file-many-revs': [
+      { rev: 'rev-5', size: 50, server_modified: '2026-08-05T00:00:00Z' },
+      { rev: 'rev-4', size: 40, server_modified: '2026-08-04T00:00:00Z' },
+      { rev: 'rev-3', size: 30, server_modified: '2026-08-03T00:00:00Z' },
+      { rev: 'rev-2', size: 20, server_modified: '2026-08-02T00:00:00Z' },
+      { rev: 'rev-1', size: 10, server_modified: '2026-08-01T00:00:00Z' },
+    ],
   },
 };
 
@@ -167,8 +177,35 @@ describe('DropboxProvider', () => {
       const page = await provider.listRevisions!(ctx, { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-1' });
       expect(page.items.map((r) => r.id)).toEqual(['rev-v2', 'rev-v1']);
       expect(page.items[0].sizeBytes).toBe(12);
-      // list_revisions is not cursor-paginated — always a single page.
+      // Only 2 revisions exist and the default page size (10) comfortably
+      // covers them, so `has_more` is false and there is no next page.
       expect(page.cursor).toBeUndefined();
+    });
+
+    // Regression test for the bug this replaces: `listRevisions()` used to
+    // never read `has_more`/send `before_rev`, so a file with more revisions
+    // than fit in one page was silently and permanently truncated with no
+    // way to reach the rest. `files/list_revisions` *does* paginate — via
+    // `before_rev`/`has_more`, not an opaque cursor token, but a real
+    // continuation mechanism (Dropbox's `files.stone` API spec).
+    it('follows before_rev/has_more to reach revisions past the first page', async () => {
+      const ctx = createDropboxMockContext(WORLD);
+      const ref = { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-many-revs' };
+
+      const firstPage = await provider.listRevisions!(ctx, ref, { limit: 2 });
+      expect(firstPage.items.map((r) => r.id)).toEqual(['rev-5', 'rev-4']);
+      expect(firstPage.cursor).toBe('rev-4');
+
+      const allIds: string[] = [];
+      let cursor: string | undefined;
+      for (let guard = 0; guard < 10; guard++) {
+        const page = await provider.listRevisions!(ctx, ref, { limit: 2, cursor });
+        allIds.push(...page.items.map((r) => r.id));
+        if (!page.cursor) break;
+        cursor = page.cursor;
+      }
+
+      expect(allIds).toEqual(['rev-5', 'rev-4', 'rev-3', 'rev-2', 'rev-1']);
     });
   });
 

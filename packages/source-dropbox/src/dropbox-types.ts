@@ -52,6 +52,11 @@ export interface DropboxListFolderResult {
 export interface DropboxListRevisionsResult {
   readonly is_deleted: boolean;
   readonly entries: readonly unknown[];
+  /** Dropbox's own continuation flag: "If true, then there are more entries
+   *  available. Call list_revisions again with before_rev equal to the
+   *  revision of the last returned entry to retrieve the rest." (Dropbox's
+   *  `files.stone` API spec, `ListRevisionsResult.has_more`). */
+  readonly has_more: boolean;
 }
 
 export interface DropboxSearchMatch {
@@ -152,7 +157,7 @@ export function decodeListFolderResult(raw: unknown): DropboxListFolderResult {
 export function decodeListRevisionsResult(raw: unknown): DropboxListRevisionsResult {
   if (!isRecord(raw)) throw new Error('Dropbox list_revisions result: not an object');
   const entries = Array.isArray(raw.entries) ? raw.entries : [];
-  return { is_deleted: raw.is_deleted === true, entries };
+  return { is_deleted: raw.is_deleted === true, entries, has_more: raw.has_more === true };
 }
 
 export function decodeSearchResult(raw: unknown): DropboxSearchResult {

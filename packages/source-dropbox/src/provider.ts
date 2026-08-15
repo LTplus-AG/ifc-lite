@@ -26,6 +26,7 @@ import { BrowserDropboxApiClient, DropboxHttpError } from './http-client.js';
 import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult, decodeSearchResult } from './dropbox-types.js';
 import {
   clampPageSize,
+  clampRevisionsPageSize,
   decodeFileRevisions,
   decodeMetadataEntries,
   pathArgFor,
@@ -161,20 +162,42 @@ export class DropboxProvider implements FileSourceProvider {
     return client.downloadContent(path, options?.signal);
   }
 
+  /**
+   * `files/list_revisions` **does** paginate, just not via an opaque cursor
+   * token the way `files/list_folder`/`search_v2` do: Dropbox's
+   * `ListRevisionsResult.has_more` and `ListRevisionsArg.before_rev` (its
+   * `files.stone` API spec) form a real continuation mechanism — "Call
+   * list_revisions again with before_rev equal to the revision of the last
+   * returned entry to retrieve the rest." Revisions come back newest-first
+   * (see `provider.test.ts`), so the last entry of a page is its oldest, and
+   * `before_rev` set to that `rev` asks for the next-older page. This
+   * provider surfaces that as `Page.cursor` like every other paged method
+   * here: the opaque value it hands back is simply the last entry's `rev`,
+   * and `options?.cursor` is forwarded straight through as `before_rev`
+   * (`before_rev` is only honored in `mode: 'path'`, which this call already
+   * uses). `limit` is capped at 100, not `files/list_folder`'s 2000 — see
+   * `clampRevisionsPageSize`.
+   */
   async listRevisions(ctx: PluginContext, ref: SourceFileRef, options?: ListOptions): Promise<Page<SourceRevision>> {
     const client = await this.createClient(ctx);
     const raw = await client.rpc(
       '/files/list_revisions',
-      { path: pathArgFor(ref.fileId), mode: 'path', limit: clampPageSize(options?.limit) },
+      {
+        path: pathArgFor(ref.fileId),
+        mode: 'path',
+        limit: clampRevisionsPageSize(options?.limit),
+        ...(options?.cursor ? { before_rev: options.cursor } : {}),
+      },
       options?.signal,
     );
     const result = decodeListRevisionsResult(raw);
     const revisions = decodeFileRevisions(ctx, result.entries);
+    const oldestOfPage = revisions[revisions.length - 1];
 
-    // `files/list_revisions` is not cursor-paginated — it always returns its
-    // full (capped at 100) result in one call, so there is never a next page
-    // to hand back a cursor for, regardless of `options?.cursor`.
-    return { items: revisions.map(toSourceRevision), cursor: undefined };
+    return {
+      items: revisions.map(toSourceRevision),
+      cursor: result.has_more && oldestOfPage ? oldestOfPage.rev : undefined,
+    };
   }
 
   /**

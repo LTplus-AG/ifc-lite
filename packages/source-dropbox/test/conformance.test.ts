@@ -53,21 +53,15 @@ const fixtures: ConformanceFixtures = {
   containerWithChildrenId: 'id:f-alpha',
   containerWithFilesId: 'id:f-alpha',
   searchQuery: 'model',
-  // No `fileWithRevisions`, deliberately — for a *different* reason than
-  // `source-msgraph`'s (theirs: `downloadHistoricalRevisions` is `false`,
-  // gating the check off regardless). Here `downloadHistoricalRevisions` is
-  // `true` — Dropbox's `files/download` genuinely serves a `"rev:<rev-id>"`
-  // path directly — but supplying this fixture would also opt into
-  // `packages/source-fixture/src/conformance/paging.ts`'s unconditional
-  // "listRevisions: a real page boundary forces cursor-following to work"
-  // check, which assumes every `revisionHistory` provider's revision list is
-  // cursor-paginated. Dropbox's `files/list_revisions` genuinely is not: one
-  // call returns up to `limit` (max 100) entries with no continuation
-  // concept at all (see the doc comment on `listRevisions()` in
-  // `provider.ts`) — there is no second page for that check to force. Both
-  // properties this fixture would otherwise exercise — `download()` honoring
-  // `revisionId` with distinct bytes, and `listRevisions` ordering/size — are
-  // covered directly in `provider.test.ts` instead.
+  // `files/list_revisions` *does* cursor-paginate, via `before_rev`/
+  // `has_more` rather than an opaque token (see the doc comment on
+  // `listRevisions()` in `provider.ts`) — so, unlike an earlier version of
+  // this fixture list assumed, there is a real page boundary here for
+  // `packages/source-fixture/src/conformance/paging.ts`'s "listRevisions: a
+  // real page boundary forces cursor-following to work" check to exercise.
+  // `id:file-1` has 2 revisions in `WORLD` below, enough to cross
+  // `smallPageLimit: 1`.
+  fileWithRevisions: { containerId: 'id:f-alpha', fileId: 'id:file-1' },
   //
   // No `secondProjectId`: this provider exposes exactly one project (the
   // signed-in user's own Dropbox) — see `MY_DROPBOX_PROJECT_ID`'s doc

@@ -264,12 +264,11 @@ jobs:
         # failed the win32-x64 release upload with a ParserError).
         shell: bash
         run: |
-          tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}"
           asset="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
-          if [ "${{ github.event_name }}" = "release" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
             # Fresh release: assets are being created for the first time, so
             # --clobber is the correct idempotent choice for job re-runs.
-            gh release upload "$tag" "$asset" --clobber
+            gh release upload "$RELEASE_TAG" "$asset" --clobber
           else
             # Manual backfill of an existing release: every matrix leg runs,
             # including platforms whose assets are already healthy, and
@@ -278,15 +277,22 @@ jobs:
             # lost"). A transient failure would then destroy a working
             # archive for a platform that was never broken. So only upload
             # what is actually missing, and never clobber.
-            existing="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+            existing="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
             if printf '%s\n' "$existing" | grep -qxF "$asset"; then
-              echo "$asset already exists on $tag; leaving the healthy asset untouched"
+              echo "$asset already exists on $RELEASE_TAG; leaving the healthy asset untouched"
             else
-              gh release upload "$tag" "$asset"
+              gh release upload "$RELEASE_TAG" "$asset"
             fi
           fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The tag must reach bash as DATA, never as source: `${{ }}` expands
+          # before bash parses the script, so inlining it would let a tag name
+          # or `upload-to-tag` input containing shell metacharacters (git
+          # refnames allow $, (, ), ; and friends) execute in a job holding a
+          # contents:write token. The matrix.* values inlined above are
+          # literals defined in this file, so they are not injectable.
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}
 
   # Verify the release actually carries one archive per supported platform.
   # The upload matrix above can partially fail, and a missing archive makes
@@ -319,6 +325,22 @@ jobs:
           persist-credentials: false
 
       - name: Verify release carries every supported platform archive
-        run: node scripts/check-server-bin-targets.mjs --release "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}"
+        # The script reads the expected archive set from the TAG'S OWN
+        # platform.ts (git show), not from this checkout: on a manual
+        # backfill the checkout is the workflow ref (main), whose
+        # SUPPORTED_TARGETS may have drifted since the tag - main's set
+        # would demand archives the old release never claimed to ship, a
+        # false red on exactly the repair path this job exists for. The
+        # checker code itself still runs from the workflow ref. A `release`
+        # event checkout already carries the tag ref, a backfill checkout
+        # does not, so fetch it explicitly (anonymous fetch works: the repo
+        # is public and persist-credentials is off); if the ref is absent
+        # the script fails closed rather than falling back to today's set.
+        run: |
+          git fetch --depth=1 origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          node scripts/check-server-bin-targets.mjs --release "$RELEASE_TAG"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Same hardening as the upload step: the tag reaches bash as data
+          # through env, never spliced into the script source via ${{ }}.
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}

@@ -36,10 +36,21 @@
  *
  * With `--release <tag>` the script instead asserts the published release
  * carries every expected archive by name, so a failed matrix leg cannot
- * leave a silent hole.
+ * leave a silent hole. The expected set is read from the TAG'S OWN
+ * platform.ts (`git show refs/tags/<tag>:...`), not from the checked-out
+ * tree: a manual backfill dispatch checks out the workflow ref (main), and
+ * as the platform set drifts, main's SUPPORTED_TARGETS would demand
+ * archives an old release never claimed to ship (a false red on exactly
+ * the repair path this check exists for) or miss ones it still needs (a
+ * false green). The checked-out tree still gets the full source-parity
+ * check first, and the checker code itself always runs from the workflow
+ * ref.
  *
- * Fail-closed: an unfindable list, a parse yielding no entries, or an
- * unreadable/empty release asset list is an ERROR, never a vacuous pass.
+ * Fail-closed: an unfindable list, a parse yielding no entries, an
+ * unreadable/empty release asset list, or a release tag whose ref is not
+ * available locally is an ERROR, never a vacuous pass. In particular an
+ * absent tag ref tells the operator to fetch it instead of silently
+ * falling back to the checked-out tree's target set.
  */
 
 import { readFileSync } from 'node:fs';
@@ -110,21 +121,53 @@ function assertSetEquals(label, actual, expected) {
   }
 }
 
-/** Parse the SUPPORTED_TARGETS set literal out of platform.ts. */
-function parseSupportedTargets() {
-  const source = readFileSync(join(repoRoot, PLATFORM_TS), 'utf8');
+/** Parse the SUPPORTED_TARGETS set literal out of platform.ts source text. */
+function parseSupportedTargets(source, origin = PLATFORM_TS) {
   const m = source.match(/const SUPPORTED_TARGETS = new Set\(\[([^\]]*)\]\)/);
   if (!m) {
     fail(
-      `cannot find the "const SUPPORTED_TARGETS = new Set([...])" list in ${PLATFORM_TS}; ` +
+      `cannot find the "const SUPPORTED_TARGETS = new Set([...])" list in ${origin}; ` +
       `if the const moved or was renamed, update this check - it must not pass without the list`,
     );
   }
   const targets = [...m[1].matchAll(/'([^']+)'/g)].map((q) => q[1]);
   if (targets.length < 2) {
-    fail(`parsed only ${targets.length} target(s) from SUPPORTED_TARGETS in ${PLATFORM_TS}; refusing a vacuous pass`);
+    fail(`parsed only ${targets.length} target(s) from SUPPORTED_TARGETS in ${origin}; refusing a vacuous pass`);
   }
   return targets;
+}
+
+/**
+ * SUPPORTED_TARGETS as of the release tag's own source. A release is
+ * verified against what ITS resolver downloads: the install-time resolver
+ * ships inside the published package at that version, so the tag's
+ * platform.ts is the contract, and the checked-out tree's may have drifted
+ * (a backfill dispatch checks out the workflow ref, not the tag). The
+ * tag's package.json os/cpu is deliberately not consulted here - it only
+ * gates npm installs, cannot change which archives the tag's resolver
+ * downloads, and is unfixable post-publish anyway.
+ *
+ * Fail-closed: an absent tag ref is an ERROR telling the operator to fetch
+ * it, never a silent fallback to the checked-out tree's set - that
+ * fallback would recreate the vacuous pass this script exists to prevent.
+ */
+function parseTagSupportedTargets(tag) {
+  let source;
+  try {
+    source = execFileSync('git', ['show', `refs/tags/${tag}:${PLATFORM_TS}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    const detail = String(err?.stderr || err?.message || err).trim().split('\n')[0];
+    fail(
+      `cannot read ${PLATFORM_TS} at tag "${tag}" via git show (${detail}); ` +
+      `fetch the tag first (git fetch --depth=1 origin tag ${tag}) - refusing to fall back ` +
+      `to the checked-out tree's target set, which may not be the tag's`,
+    );
+  }
+  return parseSupportedTargets(source, `${PLATFORM_TS} at tag ${tag}`);
 }
 
 /** Extract one job's block from the workflow (2-space-indented job keys). */
@@ -203,7 +246,7 @@ function checkUploadAssetName(workflow) {
 
 /** Default mode: the three functional lists must agree. */
 function checkSourceParity() {
-  const targets = parseSupportedTargets();
+  const targets = parseSupportedTargets(readFileSync(join(repoRoot, PLATFORM_TS), 'utf8'));
   const targetSet = new Set(targets);
 
   // package.json os/cpu: prefix/arch projection of the triples.
@@ -303,12 +346,16 @@ async function fetchReleaseAssetNames(tag) {
 
 /**
  * --release mode: every expected archive must exist on the release, by the
- * exact name the resolver downloads. Deliberately does NOT expect .sha256 /
- * SHA256SUMS sidecars: no workflow publishes them today, so expecting them
- * would turn every release red.
+ * exact name the resolver downloads. The expected set is the TAG's own
+ * SUPPORTED_TARGETS (see parseTagSupportedTargets); the checked-out tree is
+ * still source-parity-checked first, since on a `release` event it IS the
+ * tag and on a backfill it is the gated workflow ref. Deliberately does NOT
+ * expect .sha256 / SHA256SUMS sidecars: no workflow publishes them today,
+ * so expecting them would turn every release red.
  */
 async function checkReleaseAssets(tag) {
-  const targets = checkSourceParity();
+  checkSourceParity();
+  const targets = parseTagSupportedTargets(tag);
   const names = await fetchReleaseAssetNames(tag);
   if (names.length === 0) {
     fail(`release ${tag} has no assets at all; an empty list is a failure, not a pass`);
@@ -317,18 +364,23 @@ async function checkReleaseAssets(tag) {
   const missing = expected.filter((name) => !names.includes(name));
   if (missing.length) {
     fail(
-      `release ${tag} is missing ${missing.length} of ${expected.length} expected archives:\n` +
+      `release ${tag} is missing ${missing.length} of ${expected.length} archives its own SUPPORTED_TARGETS names:\n` +
       missing.map((name) => `  ${name}`).join('\n'),
     );
   }
-  console.log(`check-server-bin-targets: OK - release ${tag} carries all ${expected.length} expected archives`);
+  console.log(
+    `check-server-bin-targets: OK - release ${tag} carries all ${expected.length} archives ` +
+    `its own SUPPORTED_TARGETS names (${targets.join(', ')})`,
+  );
 }
 
 const args = process.argv.slice(2);
 const releaseIdx = args.indexOf('--release');
 if (releaseIdx !== -1) {
   const tag = args[releaseIdx + 1];
-  if (!tag || tag.startsWith('--')) fail('--release requires a tag argument (e.g. --release v1.16.6)');
+  // Reject a leading '-' outright: the tag is passed as an argv to gh, where
+  // it would parse as a flag (git refnames cannot start with '-' anyway).
+  if (!tag || tag.startsWith('-')) fail('--release requires a tag argument (e.g. --release v1.16.6)');
   await checkReleaseAssets(tag);
 } else {
   checkSourceParity();

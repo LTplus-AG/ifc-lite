@@ -16,21 +16,16 @@
 
 use crate::mesh::Mesh;
 
-/// Tolerance for collapsing per-triangle face normals into direction families.
-/// Same literal as the sibling OBB kernel's `OBB_EPS` (`rust/clash/src/obb.rs`,
-/// `packages/clash/src/engine-ts/obb.ts`), which certifies boxes the same way.
-const AXIS_EPS: f64 = 1.0e-6;
-
 /// Tolerance for "these three families are mutually perpendicular".
 ///
-/// Deliberately looser than [`AXIS_EPS`]: [`Mesh::positions`] is **f32**, so a
-/// face normal reconstructed from a tessellated box's edge vectors carries
-/// ~1e-6 rad of round-off, which a 1e-6 dot-product test would reject — and a
-/// rejection here silently drops back to the world axes, i.e. back to the very
-/// bug this machinery exists to fix. 1e-4 (0.006 rad) admits that round-off
-/// while still rejecting a genuinely non-orthogonal frame; the axes are only
-/// ever used as *directions to measure an extent along*, where a 0.006 rad
-/// error is worth ~2e-5 of the extent.
+/// [`Mesh::positions`] is **f32**, so a face normal reconstructed from a
+/// tessellated box's edge vectors carries ~1e-6 rad of round-off, which a
+/// 1e-6 dot-product test would reject — and a rejection here silently drops
+/// back to the world axes, i.e. back to the very bug this machinery exists to
+/// fix. 1e-4 (0.006 rad) admits that round-off while still rejecting a
+/// genuinely non-orthogonal frame; the axes are only ever used as *directions
+/// to measure an extent along*, where a 0.006 rad error is worth ~2e-5 of the
+/// extent.
 const ORTHO_EPS: f64 = 1.0e-4;
 
 /// Flip `n` so its largest-magnitude component is positive, collapsing a face
@@ -63,9 +58,17 @@ fn cross3(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
     ]
 }
 
+/// Reject only a truly degenerate (zero-length or non-finite) vector — not a
+/// scale-dependent magnitude threshold. `v` is a cross product of edge
+/// vectors reconstructed from f32 mesh positions, so its length scales with
+/// the *square* of the operand's own dimensions: a fixed absolute epsilon
+/// here would silently drop every face-normal candidate for any operand
+/// small enough that its triangle areas fall under that epsilon, collapsing
+/// `orthogonal_face_axes` back to `None` (i.e. the world-axes-only fallback)
+/// for small but perfectly valid box operands.
 fn normalize3(v: [f64; 3]) -> Option<[f64; 3]> {
     let len = dot3(v, v).sqrt();
-    if !(len > AXIS_EPS) {
+    if !(len.is_finite()) || len == 0.0 {
         return None;
     }
     Some([v[0] / len, v[1] / len, v[2] / len])

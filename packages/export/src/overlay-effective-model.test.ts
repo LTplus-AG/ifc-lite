@@ -369,6 +369,87 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(out.danglingRefs()).toEqual([]);
   });
 
+  // Coverage gap flagged on #2637: the retype-INTO-IFCREL test above combines
+  // a retype with a from-scratch positional rewrite of BOTH class-specific
+  // slots, never with round 5's own gap shape — a mutation that retargets
+  // ONE relationship attribute onto an entity nothing else in the file names.
+  // A record retyped into `IFCREL*` has no ORIGINAL `IFCREL*` bytes to parse
+  // (its source text is still the OLD class's), so `sourceRelGroups` here
+  // comes from parsing the STALE (pre-retype) text and then splicing the
+  // queued override on top via `refGroupsOf` → `sourceBackedRefGroups` — a
+  // different code path than an entity that was ALWAYS `IFCREL*` takes, and
+  // one round 5 never exercised on its own.
+  it('does not leave a dangling ref when a SOURCE record retyped INTO IfcRelDefinesByProperties is also retargeted onto an otherwise-unreferenced entity', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_TYPE_ID, 'IfcRelDefinesByProperties')).toBe(true);
+    // Reachable only via the retype + retarget below — nothing else in the
+    // base fixture names it.
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('retypedpset'), null, 'Pset_AfterRetype', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_TYPE_ID, 4, [`#${EXISTING_WALL_ID}`]);
+    editor.setAttribute(EXISTING_TYPE_ID, 'RelatingPropertyDefinition', `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.typeOf(EXISTING_TYPE_ID)).toBe('IFCRELDEFINESBYPROPERTIES');
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  // The other direction: a record retyped OUT of `IFCREL*`. `getVisibleEntityIds`
+  // and `step-exporter.ts`'s emission gate both classify by the EFFECTIVE
+  // type, so once #EXISTING_REL_ID stops being an `IFCREL*` class it must (a)
+  // stop being an unconditional root — it is now subject to ordinary
+  // PRODUCT_TYPES visibility like anything else classified `IfcWall` — and
+  // (b) stop having `filterHiddenRefsFromRelationshipLine` applied to its own
+  // line. Hiding it directly is the check that (a) actually happens: a stale
+  // classification that still treated it as `IFCREL*` would keep it in the
+  // file regardless of `hiddenEntityIds`.
+  it('reclassifies a SOURCE record retyped OUT of IfcRelDefinesByProperties as an ordinary product for visibility', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_REL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    // Hidden — proves it is no longer treated as an unconditional IFCREL root.
+    expect(out.typeOf(EXISTING_REL_ID)).toBeNull();
+    // Unaffected: the wall is still contained via the SEPARATE #9
+    // IfcRelContainedInSpatialStructure, not through the retyped record.
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('control: a SOURCE record retyped OUT of IfcRelDefinesByProperties ships normally when left visible', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_REL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
   it('emits no pset for a host the closure excluded', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);

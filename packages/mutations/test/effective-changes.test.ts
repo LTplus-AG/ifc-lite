@@ -586,16 +586,22 @@ describe('collectQuantityChanges coverage (previously zero — maintainer findin
     ]);
   });
 
-  it('reports a deleted quantity set as a single qset-deleted row (pure function — no MutablePropertyView setter exists yet)', () => {
-    // Unlike pset deletes (`deletePropertySet`), `MutablePropertyView` has no
-    // public qset-delete method — `deletedQsets` is read by `getQuantitiesForEntity`
-    // / `hasPendingChanges` / `collectSetLevelChanges` but nothing populates it.
-    // Exercise the enumeration directly against the snapshot shape so this row
-    // kind has coverage even though the view can't produce it yet.
-    const snapshot = emptySnapshot();
-    (snapshot.deletedQsets as Set<string>).add('12:Qto_Base');
+  it('reports a deleted quantity set as a single qset-deleted row', () => {
+    // This used to drive `collectEffectiveChanges` against a hand-built
+    // snapshot, because `deletedQsets` was read by `getQuantitiesForEntity` /
+    // `hasPendingChanges` / `collectSetLevelChanges` and populated by nothing:
+    // there was no public qset delete to mirror `deletePropertySet`. #2508's
+    // zone write-back needed one, so the row kind is now driven through the
+    // real method rather than through its storage.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setQuantityExtractor((entityId) => entityId === 12 ? [{
+      name: 'Qto_Base',
+      quantities: [{ name: 'Area', type: QuantityType.Area, value: 10 }],
+    }] : []);
 
-    expect(collectEffectiveChanges(snapshot, noopResolvers)).toEqual([
+    view.deleteQuantitySet(12, 'Qto_Base');
+
+    expect(view.getEffectiveChanges()).toEqual([
       { entityId: 12, kind: 'qset-deleted', setName: 'Qto_Base' },
     ]);
   });

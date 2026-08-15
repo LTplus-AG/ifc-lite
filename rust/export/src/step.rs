@@ -303,11 +303,6 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     /// Count `#id=` entity lines in a STEP DATA section + grab the FILE_SCHEMA label.
     fn parse_back(step: &str) -> (usize, HashSet<u32>, String) {
         let bytes = step.as_bytes();
@@ -322,7 +317,7 @@ mod tests {
 
     #[test]
     fn full_roundtrip_preserves_all_entities() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let (step, stats) = export_step_with_stats(&src, &StepOptions::default());
 
         // Source entity count == written count == re-parsed count.
@@ -336,7 +331,7 @@ mod tests {
 
     #[test]
     fn subset_export_is_reference_closed() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         // Pick a real wall id from the model.
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall_id = None;
@@ -369,7 +364,7 @@ mod tests {
 
     #[test]
     fn attribute_mutation_renames_entity() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         // Find a wall to rename (attribute index 2 = Name on IfcRoot products).
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall_id = None;
@@ -409,7 +404,7 @@ mod tests {
 
     #[test]
     fn property_synthesis_attaches_new_pset() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let mut scanner = EntityScanner::new(&src[..]);
         let mut wall = None;
         while let Some((id, t, _s, _e)) = scanner.next_entity() {
@@ -455,7 +450,7 @@ mod tests {
 
     #[test]
     fn schema_conversion_to_ifc4_keeps_model_parseable() {
-        let src = fixture("ara3d/duplex.ifc");
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
         let (step, stats) = export_step_with_stats(
             &src,
             &StepOptions { schema: Some("IFC4".to_string()), ..StepOptions::default() },

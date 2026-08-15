@@ -22,6 +22,7 @@ import {
   createClashEngine,
   disciplineMatrixRules,
   groupClashes,
+  isClusterGroupingIneffective,
   type Clash,
   type ClashMode,
   type ClashResult,
@@ -228,6 +229,15 @@ export async function clashCommand(args: string[]): Promise<void> {
 
     if (bcfPath) {
       const groups = groupClashes(result, { by: bcfGroupBy });
+      if (bcfGroupBy === 'cluster' && isClusterGroupingIneffective(result.clashes, groups)) {
+        // Common on MEP models: distribution-run contact points sit metres apart,
+        // outside any defensible clustering radius, so clustering consolidates
+        // nothing (every clash landed in its own group). Say so and name the
+        // other modes rather than silently reporting one group per clash.
+        process.stderr.write(
+          `  Note: cluster grouping did not consolidate any clashes (${groups.length} groups from ${result.clashes.length} clashes) — try --group rule, --group typePair, or --group element instead.\n`,
+        );
+      }
       const project = await createBCFFromClashResult(result, groups, {
         author: 'ifc-lite clash',
         projectName: 'Clash report',

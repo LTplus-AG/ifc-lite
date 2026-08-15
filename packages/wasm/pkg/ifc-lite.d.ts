@@ -604,11 +604,13 @@ export class IfcAPI {
      * Enable or disable per-entity geometry fingerprinting in
      * `processGeometryBatch`, used by the viewer's revision-diff feature.
      *
-     * Pass a positive `tolerance` (metres) to enable — it is the quantization
-     * grid the hash snaps positions to (larger = more tolerant of float noise,
-     * smaller = catches finer edits; the `f32` precision floor of model-local
-     * coordinates means values below ~1 mm mostly hash noise). Pass `null`/
-     * `undefined` (or a non-positive value) to disable. Default: disabled.
+     * Pass a positive `tolerance` (metres) to enable — the quantization grid
+     * positions snap to (larger tolerates more float noise, smaller catches
+     * finer edits; below the `f32` precision floor of model-local coordinates,
+     * ~1 mm, mostly hashes noise). Finer than
+     * `ifc_lite_geometry::MIN_GEOM_HASH_TOLERANCE` (1e-6 m) is clamped up to it
+     * — see that constant's doc for why (an `i128` overflow surface, not a
+     * precision win). `null`/`undefined`/non-positive disables. Default: off.
      */
     setComputeGeometryHashes(tolerance?: number | null): void;
     /**
@@ -1537,6 +1539,69 @@ export class SymbolicText {
 }
 
 /**
+ * One closed solid of a split element.
+ */
+export class ZonePieceJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Flat triangle indices into `positions`.
+     */
+    readonly indices: Uint32Array;
+    /**
+     * Flat `[x, y, z, ...]` in the caller's frame.
+     */
+    readonly positions: Float64Array;
+    /**
+     * Enclosed volume of this piece, cubic units of the caller's frame.
+     */
+    readonly volume: number;
+    /**
+     * Index into the zone array that was passed in, or `-1` for the part of
+     * the element inside no zone.
+     */
+    readonly zoneIndex: number;
+}
+
+/**
+ * The result of splitting one element.
+ */
+export class ZoneSplitJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Piece `index`, or `undefined` when out of range. Each call COPIES the
+     * piece out, matching the rest of this API surface.
+     */
+    piece(index: number): ZonePieceJs | undefined;
+    readonly pieceCount: number;
+    /**
+     * The part of the element inside NO zone could not be built.
+     *
+     * Separate from `sumErrorRel` because the two have opposite fixes: a
+     * raised sum means the zones overlap and want redrawing, while this means
+     * real volume is MISSING from the result. A caller must refuse the split
+     * outright rather than publish the zone pieces alone.
+     */
+    readonly remainderFailed: boolean;
+    /**
+     * How far the pieces are from summing to the whole, relative.
+     *
+     * The invariant #2508 puts above everything else here. Exposed rather than
+     * enforced: the caller decides what to do with a split that does not add
+     * up (the expected cause is zones that overlap each other), and a number
+     * it can show beats a silent refusal.
+     */
+    readonly sumErrorRel: number;
+    /**
+     * Enclosed volume of the input element.
+     */
+    readonly wholeVolume: number;
+}
+
+/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -1593,6 +1658,50 @@ export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axi
 export function resolve2d(a: Contours2D): Contours2D;
 
 /**
+ * Split a mesh into one closed solid per zone, plus the remainder.
+ *
+ * `positions` is flat XYZ (f64, caller's frame), `indices` flat triangle
+ * indices. `zones` is flat, SEVEN numbers per zone:
+ * `[cx, cy, cz, sx, sy, sz, rotationY]`, where the sizes are FULL extents
+ * (matching the viewer's `Zone.size`) and the rotation is radians about the
+ * vertical axis. A trailing partial zone is ignored rather than guessed at.
+ *
+ * A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is at
+ * least 3: it then takes that many `[x, z]` pairs from `footprints`, in order,
+ * and uses the 7-tuple only for its vertical extent (`cy +/- sy/2`). The
+ * footprint must be CONVEX; the viewer gates that on import, because a concave
+ * polygon fans into overlapping triangles and would cut wrong rather than
+ * fail. A count of 1 or 2 is not a polygon: it still consumes its pairs, so
+ * later zones stay aligned, and leaves that zone a box. Passing empty arrays
+ * keeps every zone a box.
+ *
+ * The caller must have established that the mesh is a closed orientable solid
+ * first, exactly as it must before quoting a volume at all (#1891/#1993): a
+ * clip of an open shell produces pieces whose volumes are arbitrary rather
+ * than approximate.
+ *
+ * A triangle with an out-of-range index or a non-finite coordinate is DROPPED
+ * rather than reported, matching `kernel::mesh_bridge::mesh_to_tris`, which is
+ * panic-free for the same reason: the alternative is a crash deep in the
+ * predicates. It does mean a malformed caller can open the surface and get
+ * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
+ * above is the caller's responsibility and not a formality.
+ *
+ * ```javascript
+ * const split = splitMeshByZones(positions, indices, new Float64Array([
+ *   0, 0, 0, 10, 10, 10, 0,
+ * ]));
+ * for (let i = 0; i < split.pieceCount; i++) {
+ *   const piece = split.piece(i);
+ *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
+ *   piece.free();
+ * }
+ * split.free();
+ * ```
+ */
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
+
+/**
  * `a ∪ b`.
  */
 export function union2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -1635,6 +1744,8 @@ export interface InitOutput {
     readonly __wbg_symbolicpolyline_free: (a: number, b: number) => void;
     readonly __wbg_symbolicrepresentationcollection_free: (a: number, b: number) => void;
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
+    readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
+    readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
@@ -1812,6 +1923,7 @@ export interface InitOutput {
     readonly spaceplatehandle_snapshot: (a: number, b: number) => void;
     readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly symboliccircle_centerX: (a: number) => number;
     readonly symboliccircle_centerY: (a: number) => number;
     readonly symboliccircle_endAngle: (a: number) => number;
@@ -1862,6 +1974,14 @@ export interface InitOutput {
     readonly symbolictext_targetPx: (a: number) => number;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
+    readonly zonepiecejs_indices: (a: number) => number;
+    readonly zonepiecejs_positions: (a: number) => number;
+    readonly zonepiecejs_volume: (a: number) => number;
+    readonly zonepiecejs_zoneIndex: (a: number) => number;
+    readonly zonesplitjs_piece: (a: number, b: number) => number;
+    readonly zonesplitjs_pieceCount: (a: number) => number;
+    readonly zonesplitjs_remainderFailed: (a: number) => number;
+    readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
@@ -1878,6 +1998,7 @@ export interface InitOutput {
     readonly symbolictext_worldY: (a: number) => number;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly zonesplitjs_wholeVolume: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

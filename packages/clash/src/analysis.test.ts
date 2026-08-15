@@ -68,6 +68,65 @@ describe('isTouching', () => {
   });
 });
 
+describe('isTouching (scale-relative default, far from origin)', () => {
+  // Geometry is ingested from f32 buffers, so a fixed TOUCHING_EPSILON=1e-4
+  // is only valid near the origin: the f32 ULP for a coordinate of magnitude
+  // `extent` is `extent * 2^-22`, which exceeds 1e-4 once `extent` passes
+  // 1024 m (1e-4 / 2^-22 = 419.4, and the ULP only takes power-of-two steps,
+  // so the first step that actually exceeds 1e-4 lands at 1024 m). Past that
+  // distance, a genuinely flush pair's measured depth can exceed the fixed
+  // band on pure rounding noise and reappear as a hard clash.
+  function clashAt(id: string, distance: number, extent: number): Clash {
+    return {
+      id,
+      a: ref(`${id}a`, 'IfcWall'),
+      b: ref(`${id}b`, 'IfcSlab'),
+      rule: 'r',
+      status: 'hard',
+      distance,
+      point: [extent, extent, extent],
+      bounds: { min: [extent - 0.01, extent - 0.01, extent - 0.01], max: [extent, extent, extent] },
+      severity: 'info',
+    };
+  }
+
+  it('RED (documents the old fixed-1e-4 result): a flush pair 5 km out, with only f32-noise-scale penetration, would NOT have been flagged as touching under the fixed constant alone', () => {
+    const c = clashAt('far', -0.00048828125, 5000); // measured noise floor at 5 km, see engine.test.ts-style repro
+    expect(penetrationDepth(c)).toBeGreaterThan(TOUCHING_EPSILON); // the old, unscaled comparison
+  });
+
+  it('GREEN: the same clash IS flagged touching by the scale-relative default', () => {
+    const c = clashAt('far', -0.00048828125, 5000);
+    expect(isTouching(c)).toBe(true);
+  });
+
+  it('also recovers it at 50 km', () => {
+    const c = clashAt('far50k', -0.00390625, 50_000);
+    expect(isTouching(c)).toBe(true);
+  });
+
+  it('still rejects a genuine interpenetration at the same distance (scaling does not hide real clashes)', () => {
+    const c = clashAt('real-clash-5km', -0.05, 5000); // 5 cm, far above any plausible f32 noise floor
+    expect(isTouching(c)).toBe(false);
+  });
+
+  it('unchanged near the origin: matches the fixed TOUCHING_EPSILON exactly on the existing near-origin fixtures', () => {
+    // Same fixtures as the plain `isTouching` describe block above (extent ~1 m,
+    // via the shared `clash()` helper) — near the origin the scale-relative
+    // default must floor to exactly TOUCHING_EPSILON, so behaviour is identical.
+    expect(isTouching(clash('a', 0, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON / 2, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON * 1.5, 'info'))).toBe(false);
+    expect(isTouching(clash('a', -0.05, 'major'))).toBe(false);
+  });
+
+  it('an explicit eps still overrides the scale-relative default entirely', () => {
+    const c = clashAt('explicit', -0.00048828125, 5000);
+    expect(isTouching(c, 1e-6)).toBe(false);
+    expect(isTouching(c, 1)).toBe(true);
+  });
+});
+
 describe('sortClashes', () => {
   it('orders by severity then depth (#1274)', () => {
     const list = [

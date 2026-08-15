@@ -7,7 +7,6 @@ import {
   computeNodeHash,
   createCertificate,
   verifyCertificate,
-  type Certificate,
   type GeometryMeshPayload,
   type NodeResolver,
   type PropertySetPayload,
@@ -250,7 +249,6 @@ describe('verifyCertificate: hash-equality claim', () => {
 
   it('tamper: fails when one side was rewritten after the certificate was minted', async () => {
     const doorA = wallMesh(1);
-    const doorB = wallMesh(1);
     const hash = await computeNodeHash('geometry-mesh', doorA);
     const cert = createCertificate({
       kernelVersion: KERNEL_VERSION,

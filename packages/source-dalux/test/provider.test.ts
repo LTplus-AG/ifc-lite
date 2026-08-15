@@ -80,6 +80,10 @@ describe('DaluxBuildProvider', () => {
       downloadHistoricalRevisions: true,
       changeDetection: true,
       search: false,
+      // #2613: Dalux opts into the eager file sweep -- its own UI has no
+      // per-folder "load more files" concept, so the host must keep draining
+      // a folder's file listing in full rather than paging it incrementally.
+      eagerFileSweep: true,
     });
   });
 

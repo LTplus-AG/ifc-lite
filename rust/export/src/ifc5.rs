@@ -220,14 +220,9 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_ifcx() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
         assert_eq!(v["header"]["ifcxVersion"], IFCX_VERSION);
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
@@ -277,7 +272,7 @@ mod tests {
     /// other end of a round-trip.
     #[test]
     fn header_uses_the_key_readers_look_for() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
 
         let header = v["header"].as_object().expect("header object");
@@ -299,7 +294,7 @@ mod tests {
 
     #[test]
     fn unknown_props_filtered_by_default() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         // 'LoadBearing' / 'Reference' are IFC4 props NOT in the IFC5 known set.
         assert!(!s.contains("bsi::ifc::prop::LoadBearing"));
         assert!(!s.contains("bsi::ifc::prop::Reference\""));

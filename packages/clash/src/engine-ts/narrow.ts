@@ -48,6 +48,58 @@ export interface NarrowResult {
 }
 
 /**
+ * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
+ * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
+ * larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
+ * `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` — see
+ * that function's doc for the derivation; kept here rather than shared
+ * because the two live in different language runtimes.
+ */
+const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
+
+/**
+ * Penetration-depth floor below which a computed overlap cannot be
+ * distinguished from float32 rounding noise, scaled to the pair's own
+ * coordinate magnitude (not a fixed constant — infra models sit far from the
+ * origin, where a fixed epsilon would be far too tight, and small models sit
+ * near it, where a fixed epsilon would be far too loose).
+ *
+ * `rust/clash/src/tri_mesh.rs` ingests geometry from f32 buffers and stores/
+ * queries it in f64, so f64 arithmetic cannot recover precision the source
+ * data never had: two surfaces authored to be flush round to adjacent f32
+ * values, and the resulting "penetration" is bit-noise at the ULP of
+ * whichever operand coordinate is largest, not a measured overlap. Extent is
+ * the max abs coordinate over both elements' AABBs (world space, matching
+ * `near_band_from_extent`'s use of the actual compared coordinates) with a
+ * floor of 1.0 so a model near the origin still gets the single-unit ULP,
+ * not zero.
+ *
+ * The floor grows linearly with the pair's distance from the origin — that
+ * is the point, since f32 precision itself degrades the same way. The
+ * consequence: on a georeferenced model whose elements sit at real map
+ * coordinates (hundreds of kilometres out, which real IFC files do), the
+ * floor reaches decimetre scale, and a genuine clash below that threshold
+ * reclassifies as `touch`. That is not a bug in this function — at those
+ * magnitudes f32 genuinely cannot represent a finer distinction, so the
+ * "penetration" is not reliably measurable either way — but it means the
+ * floor tracks a limitation of the source data, not of clash detection.
+ * The fix for a model in that position is ingesting geometry closer to the
+ * origin (or in f64), not lowering this floor.
+ */
+function precisionFloor(elA: ClashElement, elB: ClashElement): number {
+  let extent = 1.0;
+  for (const b of [elA.bounds, elB.bounds]) {
+    for (const v of [b.min, b.max]) {
+      for (const c of v) {
+        const a = Math.abs(c);
+        if (a > extent) extent = a;
+      }
+    }
+  }
+  return extent * F32_ULP_SCALE;
+}
+
+/**
  * Narrow-phase test for one candidate element pair.
  *
  * Gathers candidate triangle pairs through the per-element triangle BVHs (work
@@ -179,6 +231,21 @@ export function testPair(
     const penetration = measured
       ? boxDepth
       : Math.max(0, -signedGap(elA.bounds, elB.bounds));
+    // The f32 precision floor is checked BEFORE the through-penetration guard
+    // decides distanceKind: a pair that is both a through-penetration (AABB
+    // estimate, no crossing-triangle vertex inside either solid) and below the
+    // floor for this pair's coordinate scale reports `touch`, not a `mesh`- or
+    // `estimate`-labelled `hard` clash — the number is not measurable at that
+    // magnitude regardless of which quantity produced it (see `precisionFloor`).
+    // The floor wins: it is checked first, so the guard below only chooses
+    // between `estimate` and `mesh` for pairs already above the floor.
+    if (penetration <= precisionFloor(elA, elB)) {
+      if (!rule.reportTouch) return null;
+      // distance is exactly 0 here (the classification, not a measurement, is
+      // what changed), so `mesh` — consistent with the other exact-distance
+      // `touch` result below.
+      return { status: 'touch', distance: 0, distanceKind: 'mesh', point, bounds: contactBounds };
+    }
     return {
       status: 'hard',
       distance: -penetration,

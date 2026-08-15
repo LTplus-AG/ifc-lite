@@ -30,6 +30,7 @@
   "packages/mcp": 4,
   "packages/merge": 0,
   "packages/mutations": 2,
+  "packages/oauth-pkce": 0,
   "packages/parser": 115,
   "packages/plugin-api": 0,
   "packages/pointcloud": 1,

@@ -1,0 +1,11 @@
+---
+"@ifc-lite/drawing-2d": major
+---
+
+Hidden-line removal now actually occludes (issue #2639). The occluder depth buffer previously rasterized the cut-away half-space, and projection lines carried depth 0 or a negative flip-adjusted depth, so classification degenerated to "everything visible" - or, when no occluder vertex fell in the window and no bounds were passed, to "everything hidden" via NaN buffer indexing. The classifier now rasterizes the kept half of the section, and both the buffer and line depths carry the VIEW DEPTH convention: the negated flip-adjusted signed depth, 0 at the cut plane, increasing into the kept half, smaller means nearer the viewer.
+
+Breaking changes:
+
+- `HiddenLineClassifier.buildDepthBuffer(meshes, axis, position, maxDepth, flipped, bounds?)` is now `buildDepthBuffer(meshes, plane, occluderDepth, bounds?)`, taking the full `SectionPlaneConfig`. It honours `plane.customPlane`, so custom (face-picked) planes classify in their own basis instead of silently falling back to the stale cardinal fields.
+- `DrawingLine.depth` semantics change to view depth at the line's start point. A new optional `DrawingLine.depthEnd` carries the view depth at the end point; the classifier interpolates between the two along the line.
+- Drawings will show more dashed/hidden projection lines than before, because the previous output never hid correctly occluded geometry.

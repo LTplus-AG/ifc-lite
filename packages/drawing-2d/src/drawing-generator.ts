@@ -316,14 +316,11 @@ export class Drawing2DGenerator {
       // changes occlusion — and dropping it could only ever REVEAL a
       // through-wall line that should stay hidden. Don't "tidy" this to the
       // filtered set.
-      this.hiddenLineClassifier.buildDepthBuffer(
-        meshes,
-        config.plane.axis,
-        config.plane.position,
-        occluderDepth,
-        config.plane.flipped,
-        bounds
-      );
+      //
+      // The FULL plane config is passed (issue #2639) so a custom
+      // (face-picked) plane classifies in its own basis instead of the stale
+      // cardinal fields.
+      this.hiddenLineClassifier.buildDepthBuffer(meshes, config.plane, occluderDepth, bounds);
 
       // Occlusion only DOWNGRADES visible → hidden; it can never reveal an
       // already-dashed OVERHEAD line. So classify the visible (below-cut)

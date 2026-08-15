@@ -4,6 +4,11 @@
 
 import type { RenderDegradationInfo } from '@ifc-lite/renderer';
 import { posthog } from '@/lib/analytics';
+import {
+  buildDeviceLossContext,
+  type DeviceLossContext,
+  type DeviceLossContextSource,
+} from './device-loss-context.js';
 
 /**
  * What the user and error tracking are told when the GPU device dies.
@@ -41,7 +46,10 @@ export function resetDeviceLossReportForTests(): void {
  * session. Never throws: it runs from a renderer callback whose other
  * listeners must still fire.
  */
-export function reportDeviceLost(info: { message: string; reason: string }): void {
+export function reportDeviceLost(
+  info: { message: string; reason: string },
+  context?: DeviceLossContext,
+): void {
   if (reported) return;
   reported = true;
 
@@ -51,6 +59,12 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
     posthog.captureException(
       new Error(`GPU device lost (${info.reason}): ${info.message}`),
       {
+        // Enrichment (issue #2624) FIRST, base fields LAST: whatever keys a
+        // context builder emits - today's or a future one's - can never shadow
+        // the event's identity (`context` / `device_lost_reason` /
+        // `device_lost_detail`). Reordering this spread is a silent spoofing
+        // hole; the shadowing test in device-loss-context.test.ts pins it.
+        ...context,
         context: 'device_lost',
         device_lost_reason: info.reason,
         // `_detail`, NOT `_message`. The privacy scrubber in
@@ -109,7 +123,10 @@ export function reportDeviceLost(info: { message: string; reason: string }): voi
  * Never throws: it runs from a renderer callback whose other listeners must
  * still fire.
  */
-export function reportPersistentRenderDegradation(info: RenderDegradationInfo): void {
+export function reportPersistentRenderDegradation(
+  info: RenderDegradationInfo,
+  context?: DeviceLossContext,
+): void {
   if (degradationReported) return;
   degradationReported = true;
 
@@ -126,6 +143,10 @@ export function reportPersistentRenderDegradation(info: RenderDegradationInfo): 
         `Rendering persistently degraded (${info.origin}, ${info.consecutiveDegradedFrames} consecutive frames): ${info.detail}`,
       ),
       {
+        // Enrichment first, base fields last - same shadowing rule as
+        // `reportDeviceLost` above. The two events are triaged together, so
+        // they carry the same context.
+        ...context,
         context: 'render_degraded',
         render_degraded_origin: info.origin,
         // Named for what it is: an unbroken run, not a session total. The
@@ -169,11 +190,38 @@ export function reportPersistentRenderDegradation(info: RenderDegradationInfo): 
 /**
  * The minimum of a `Renderer` this module needs. Structural so the wiring can
  * be tested without a GPU (and without a React harness the viewer deliberately
- * does not have).
+ * does not have). The context accessors inherited from
+ * `DeviceLossContextSource` are all OPTIONAL, so a fake that only exercises
+ * the subscription channels still compiles.
  */
-export interface ViewportHealthSource {
+export interface ViewportHealthSource extends DeviceLossContextSource {
   onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void;
   onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void;
+}
+
+/**
+ * Run the context builder without letting it take down the base report.
+ *
+ * `buildDeviceLossContext` is designed never to throw (every field read is
+ * individually contained), and no known input makes it throw today. This
+ * wrapper is the SECOND line of that defence, at the call site: if a future
+ * edit ever breaks the builder's own guarantee (a read added outside `put`,
+ * or the warn path itself throwing), the loss must still be reported WITHOUT
+ * context - the renderer's per-listener catch would otherwise swallow the
+ * whole report, base fields included, which is the exact #2229 invisibility
+ * this module exists to end. Logged, never silent: a builder that throws is a
+ * defect of ours and must leave a breadcrumb.
+ */
+function buildContextSafely(
+  build: (source: DeviceLossContextSource) => DeviceLossContext,
+  renderer: DeviceLossContextSource,
+): DeviceLossContext | undefined {
+  try {
+    return build(renderer);
+  } catch (err) {
+    console.warn('[Viewport] device-loss context build failed; reporting without context:', err);
+    return undefined;
+  }
 }
 
 /**
@@ -183,11 +231,25 @@ export interface ViewportHealthSource {
  * Both channels are wired HERE rather than at the `Viewport` call site so that
  * adding a third one, or forgetting the second, is a change to a tested unit
  * instead of an invisible omission inside a 400-line effect.
+ *
+ * `buildContext` is a TEST SEAM, nothing else: production callers pass only
+ * the renderer, and the parameter exists so a test can hand in a builder that
+ * throws and prove the base report survives it (`buildContextSafely` above).
  */
-export function subscribeViewportHealth(renderer: ViewportHealthSource): () => void {
+export function subscribeViewportHealth(
+  renderer: ViewportHealthSource,
+  buildContext: (source: DeviceLossContextSource) => DeviceLossContext = buildDeviceLossContext,
+): () => void {
   const unsubscribes = [
-    renderer.onDeviceLost(reportDeviceLost),
-    renderer.onPersistentRenderDegradation(reportPersistentRenderDegradation),
+    // The context is built AT LOSS TIME, inside the listener, not at subscribe
+    // time: `ms_since_last_frame`, `gpu_resident_mb` and the last-load fields
+    // must describe the moment the device died, not the Viewport mount.
+    renderer.onDeviceLost((info) =>
+      reportDeviceLost(info, buildContextSafely(buildContext, renderer)),
+    ),
+    renderer.onPersistentRenderDegradation((info) =>
+      reportPersistentRenderDegradation(info, buildContextSafely(buildContext, renderer)),
+    ),
   ];
   return () => {
     for (const unsubscribe of unsubscribes) unsubscribe();

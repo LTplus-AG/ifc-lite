@@ -75,7 +75,7 @@ import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
 import { nextFrameOrTimeout } from '../utils/frameWait.js';
 import { visibilityWitness } from '../utils/visibilityWitness.js';
-import { buildModelLoadedPayload } from '../utils/loadTelemetry.js';
+import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
 import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
 import { formatLoadError } from '../lib/load-error-message.js';
 
@@ -315,6 +315,22 @@ export function useIfcLoader() {
 
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
+
+    // Device-loss telemetry (#2624), fail-safe half: a primary load REPLACES
+    // the model, so the previous model's last-load snapshot is wrong the
+    // moment this load starts. Clear it now, before any completing path can
+    // return - a path that then records nothing (an error exit, or a future
+    // load path missing its `captureModelLoaded` call) makes a later loss
+    // report OMIT the last-load fields instead of describing a model that is
+    // no longer on the GPU. Federated adds do not clear: while the add is in
+    // flight the retained snapshot (the last COMPLETED load) is still true,
+    // and when the add completes its own `captureModelLoaded` replaces the
+    // snapshot with the added file's numbers. So `last_load_*` describes the
+    // last completed load, primary or federated - not the whole resident
+    // scene, and after a federated add not the primary model either.
+    if (target.kind === 'primary') {
+      clearModelLoadedSnapshot();
+    }
 
     // Records the tier the WASM tessellation path actually ran at, for the
     // resource-retry decision in the catch. Declared out here (not in the try)
@@ -889,7 +905,10 @@ export function useIfcLoader() {
           pointCloudHandleId: ingest.rendererHandle.id,
         });
         setProgress({ phase: 'Complete', percent: 100 });
-        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
+        // Snapshot: points, not meshes - the ingest GeometryResult's zero
+        // triangle/mesh totals are placeholders, not measurements, so only the
+        // file size is recorded (absent != 0, see ModelLoadedSnapshot).
+        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, { fileSizeMB });
         setLoading(false);
         return;
       }
@@ -908,7 +927,7 @@ export function useIfcLoader() {
           await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
+          captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -950,7 +969,7 @@ export function useIfcLoader() {
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
+          captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -1089,7 +1108,7 @@ export function useIfcLoader() {
                 cacheState: 'hit',
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-              posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1150,7 +1169,7 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() });
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
           setLoading(false);
           return;
         }
@@ -2002,40 +2021,47 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
+      const totalTriangles = allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
       // Single home for this payload — see `utils/loadTelemetry.ts` for why
-      // `was_hidden: false` and `total_csg_failures: 0` must survive to the wire.
-      posthog.capture('ifc_model_loaded', {
-        ...buildModelLoadedPayload({
-          format,
-          fileSizeMB,
-          loadTarget: target.kind,
-          loadPath: 'wasm',
-          meshCount: allMeshes.length,
-          totalElapsedMs,
-          totalVertices,
-          totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
-          fileReadMs,
-          metadataCompleteMs,
-          firstGeometryBatchMs: firstAppendGeometryBatchMs,
-          firstVisibleGeometryMs,
-          streamCompleteMs,
-          totalCsgFailures: finalCsgFailures,
-          wasHidden: wasHidden(),
-        }),
-        // Geometry attribution (#2388): the CSG-failure counts this load
-        // actually recorded, plus the two fidelity inputs (tier + small-cut
-        // skip) that change triangle counts WITHOUT changing the mesh roster
-        // and that no failure counter can see. Without these, a repeat of
-        // #2388 is unattributable from telemetry. `total_csg_failures` here
-        // is the same value `buildModelLoadedPayload` already put on the
-        // payload (both read the streaming `complete` event's diagnostics),
-        // so the spread below is a same-value overwrite, not a conflicting one.
-        ...buildModelLoadedGeometryProps({
-          diagnostics: loadDiagnostics,
-          tessellationTier: loadTessellationTier,
-          skipSmallCuts: skipSmallCutsAtLoad,
-        }),
-      });
+      // `was_hidden: false` and `total_csg_failures: 0` must survive to the
+      // wire. captureModelLoaded also retains the snapshot for the device-loss
+      // report (#2624): if the GPU device later dies, its capture can say how
+      // big the model on the device was.
+      captureModelLoaded(
+        {
+          ...buildModelLoadedPayload({
+            format,
+            fileSizeMB,
+            loadTarget: target.kind,
+            loadPath: 'wasm',
+            meshCount: allMeshes.length,
+            totalElapsedMs,
+            totalVertices,
+            totalTriangles,
+            fileReadMs,
+            metadataCompleteMs,
+            firstGeometryBatchMs: firstAppendGeometryBatchMs,
+            firstVisibleGeometryMs,
+            streamCompleteMs,
+            totalCsgFailures: finalCsgFailures,
+            wasHidden: wasHidden(),
+          }),
+          // Geometry attribution (#2388): the CSG-failure counts this load
+          // actually recorded, plus the two fidelity inputs (tier + small-cut
+          // skip) that change triangle counts WITHOUT changing the mesh roster
+          // and that no failure counter can see. Without these, a repeat of
+          // #2388 is unattributable from telemetry. `total_csg_failures` here
+          // is the same value `buildModelLoadedPayload` already put on the
+          // payload (both read the streaming `complete` event's diagnostics),
+          // so the spread below is a same-value overwrite, not a conflicting one.
+          ...buildModelLoadedGeometryProps({
+            diagnostics: loadDiagnostics,
+            tessellationTier: loadTessellationTier,
+            skipSmallCuts: skipSmallCutsAtLoad,
+          }),
+        },
+        { fileSizeMB, totalTriangles, meshCount: allMeshes.length },
+      );
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this

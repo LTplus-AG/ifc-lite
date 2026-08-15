@@ -133,15 +133,19 @@ function stripLineComments(text: string): string {
 }
 
 /**
- * The argument list of the wasm-path `posthog.capture('ifc_model_loaded', …)`
- * call — a balanced-paren extraction anchored on `...buildModelLoadedPayload(`,
- * which is unique in this file (the import line reads `buildModelLoadedPayload
- * }`, with no following paren) and is a call this PR does not touch, so it
+ * The argument list of the wasm-path `captureModelLoaded(…)` call — a
+ * balanced-paren extraction anchored on `...buildModelLoadedPayload(`, which
+ * is unique in this file (the import line reads `buildModelLoadedPayload }`,
+ * with no following paren) and is a call this PR does not touch, so it
  * survives mutation of the `buildModelLoadedGeometryProps` wiring under test.
  * Matching against this span only — rather than the whole file — means the
  * assertion can't be satisfied by a comment, an import line, or one of the
  * other five `ifc_model_loaded` capture sites in this file that don't carry
  * geometry diagnostics.
+ *
+ * Anchored on `captureModelLoaded(`, not `posthog.capture(`: `posthog.capture`
+ * for this event is private to `loadTelemetry.ts` (#2624) — every call site
+ * in this file, including the wasm path, goes through `captureModelLoaded`.
  */
 function wasmCaptureArgs(): string {
   const src = stripLineComments(
@@ -149,9 +153,9 @@ function wasmCaptureArgs(): string {
   );
   const payloadSpreadIdx = src.indexOf('...buildModelLoadedPayload(');
   assert.notEqual(payloadSpreadIdx, -1, 'buildModelLoadedPayload must be spread somewhere in useIfcLoader.ts');
-  const callStart = src.lastIndexOf('posthog.capture(', payloadSpreadIdx);
-  assert.notEqual(callStart, -1, 'the buildModelLoadedPayload spread must sit inside a posthog.capture(...) call');
-  const argsOpen = callStart + 'posthog.capture('.length - 1; // index of the call's own `(`
+  const callStart = src.lastIndexOf('captureModelLoaded(', payloadSpreadIdx);
+  assert.notEqual(callStart, -1, 'the buildModelLoadedPayload spread must sit inside a captureModelLoaded(...) call');
+  const argsOpen = callStart + 'captureModelLoaded('.length - 1; // index of the call's own `(`
   assert.equal(src[argsOpen], '(');
   let depth = 0;
   let argsClose = -1;

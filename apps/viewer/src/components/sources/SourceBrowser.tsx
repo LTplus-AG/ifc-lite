@@ -301,10 +301,11 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
             setError(null);
             catalog.loadMoreFolders(selectedContainerId);
           }}
-          filesHaveMore={search.active && search.hasMore}
+          filesHaveMore={search.active ? search.hasMore : catalog.hasMoreFiles(selectedContainerId)}
           onLoadMoreFiles={() => {
             setError(null);
             if (search.active) search.loadMore();
+            else catalog.loadMoreFiles(selectedContainerId);
           }}
           loadingMore={catalog.loadingMore || search.loadingMore}
           searchEnabled={capabilities.search && provider.searchFiles !== undefined}

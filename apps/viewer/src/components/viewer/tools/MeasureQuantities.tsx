@@ -44,7 +44,18 @@
  *   `NetSideArea`/`GrossSideArea` and is labelled its own "mesh" row.
  *   GPU-instanced-only elements have no flat mesh to sum and are reported as
  *   "no mesh" here too — there is no per-entity area side channel analogous
- *   to `instancedGeometryVolumes`.
+ *   to `instancedGeometryVolumes`. A mesh record that IS present but never
+ *   triangulated anything (`indices.length < 3`, including the empty-array
+ *   case) is likewise "no mesh", not "measured 0 m²" — those are different
+ *   claims, and only the second one is true of a record with no triangles to
+ *   have summed (`measure-modes/mesh-area.ts`'s `collectMeshAreas`). A mesh
+ *   whose triangles genuinely sum to zero (e.g. every triangle degenerate)
+ *   IS "measured" — that zero is a real answer, not an absence.
+ *   Mesh area needs no `IfcDataStore`, so its collection never depends on
+ *   one: `collectMeshAreas` takes mesh data alone (see its own doc comment)
+ *   specifically so a future store-related early return elsewhere in this
+ *   component cannot end up gating it, structurally rather than by
+ *   convention.
  *
  * Values are normalised to SI at read time, while each value is still next to
  * the `ProjectUnits` that explain it, because a federation can mix a
@@ -81,7 +92,7 @@ import {
   type PickedQuantity,
   type QuantityBasis,
 } from './measure-modes/quantities';
-import { meshSurfaceArea } from './measure-modes/mesh-area';
+import { collectMeshAreas } from './measure-modes/mesh-area';
 
 const QUANTITY_TYPE_LABEL: Record<number, string> = {
   0: 'Length',
@@ -213,61 +224,42 @@ export function MeasureQuantities() {
     }
 
     // Mesh-derived surface area (issue #2199, "mesh analysis reachable from
-    // TypeScript"): summed live from each submesh's `positions`/`indices` via
-    // `meshSurfaceArea`, unlike `geometryVolume` which is a scalar the wasm
-    // hashing pass computed once. Because it re-reads `positions` every time,
-    // it is NOT invalidated by federation re-baking the way `geometryVolume`
-    // is — a `'same-crs'`/`'reprojected'` alignment mutates `positions` in
-    // place (`geometryVolumesSurviveAlignment`'s own contract), so summing
+    // TypeScript"): summed live from each submesh's `positions`/`indices`
+    // (`measure-modes/mesh-area.ts`'s `collectMeshAreas`), unlike
+    // `geometryVolume` which is a scalar the wasm hashing pass computed once.
+    // Because it re-reads `positions` every time, it is NOT invalidated by
+    // federation re-baking the way `geometryVolume` is — a
+    // `'same-crs'`/`'reprojected'` alignment mutates `positions` in place
+    // (`geometryVolumesSurviveAlignment`'s own contract), so summing
     // triangles from the CURRENT positions already reflects the geometry on
-    // screen. `rescaledModelIds` therefore does not gate this collection.
-    //
-    // One entity can be split across several `MeshData` pieces (materials,
-    // instanced occurrences). Pieces are grouped by `occurrenceKey` (falling
-    // back to `expressId` when absent, per that field's own cache-key
-    // contract) and summed WITHIN a group — that is genuinely one occurrence's
-    // area split across pieces. Area is placement-invariant, so every
-    // occurrence of the same `expressId` has the identical total; only the
-    // first group seen per `expressId` is kept, exactly mirroring how the
-    // volume collection above takes the first mesh's `geometryVolume` rather
-    // than summing across occurrences.
-    const meshAreaByGlobalId = new Map<number, number>();
-    const collectMeshAreas = (
-      meshes: ReadonlyArray<{ expressId: number; occurrenceKey?: string; positions?: ArrayLike<number>; indices?: ArrayLike<number> }> | undefined,
-    ) => {
-      if (!meshes) return;
-      const groupAreas = new Map<string, { expressId: number; area: number }>();
-      for (const mesh of meshes) {
-        // A mesh record with no render geometry (metadata-only piece, or a
-        // test double built for a different field) has nothing to sum — skip
-        // it entirely rather than seed a false "measured, 0 m²" group for an
-        // entity whose OTHER pieces might still carry real geometry.
-        if (!mesh.positions || !mesh.indices) continue;
-        const groupKey = mesh.occurrenceKey ?? `e:${mesh.expressId}`;
-        let group = groupAreas.get(groupKey);
-        if (!group) {
-          group = { expressId: mesh.expressId, area: 0 };
-          groupAreas.set(groupKey, group);
-        }
-        group.area += meshSurfaceArea(mesh);
-      }
-      for (const group of groupAreas.values()) {
-        if (!meshAreaByGlobalId.has(group.expressId)) {
-          meshAreaByGlobalId.set(group.expressId, group.area);
-        }
-      }
-    };
-    if (models.size > 0) {
-      for (const [, m] of models) collectMeshAreas(m.geometryResult?.meshes);
-    } else {
-      collectMeshAreas(geometryResult?.meshes);
-    }
+    // screen. `rescaledModelIds` therefore does not gate this collection —
+    // and neither, by construction, does `store`: `collectMeshAreas` takes
+    // mesh data alone, so there is no `store`-shaped parameter for a future
+    // early return to gate it on (see the resolution below, and the
+    // adversarial review of 85ebf7d1's confirmed defect: the lookup used to
+    // sit after `if (!store) continue` and silently drop an already-computed
+    // area for any ref whose model lacked an `IfcDataStore`).
+    const meshAreaByGlobalId = collectMeshAreas(
+      models.size > 0
+        ? [...models.values()].map((m) => m.geometryResult?.meshes)
+        : [geometryResult?.meshes],
+    );
+
+    // Resolved directly from `refs`, BEFORE the store-dependent loop below —
+    // not inside it — so no store-related branch in that loop can ever skip
+    // it again. `meshAreaByGlobalId` needs no store to build or to read.
+    let meshAreaIncomplete = 0;
+    const meshAreas: Array<number | undefined> = refs.map((ref) => {
+      const entry = meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId));
+      if (!entry) return undefined;
+      if (entry.incomplete) meshAreaIncomplete += 1;
+      return entry.area;
+    });
 
     const unitsCache = new Map<string, ProjectUnits>();
     const typeCaches = new Map<string, Map<number, ReturnType<typeof extractQuantitiesOnDemand>>>();
     const perElement: PickedQuantity[][] = [];
     const geometryVolumes: Array<number | undefined> = [];
-    const meshAreas: Array<number | undefined> = [];
     let withoutStore = 0;
     let rescaled = 0;
 
@@ -316,16 +308,13 @@ export function MeasureQuantities() {
           volumeByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId)),
         );
       }
-      // Not gated on `rescaledModelIds` — see the comment on `collectMeshAreas`.
-      meshAreas.push(
-        meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId)),
-      );
     }
 
     return {
       declared: rollupQuantities(perElement),
       geometry: rollupGeometryVolumes(geometryVolumes),
       meshArea: rollupMeshArea(meshAreas),
+      meshAreaIncomplete,
       elements: refs.length,
       withoutStore,
       rescaled,
@@ -350,7 +339,7 @@ export function MeasureQuantities() {
     );
   }
 
-  const { declared, geometry, meshArea, elements, withoutStore, rescaled } = summary;
+  const { declared, geometry, meshArea, meshAreaIncomplete, elements, withoutStore, rescaled } = summary;
   const nothing = declared.length === 0 && geometry.proved === 0 && meshArea.withMesh === 0;
 
   return (
@@ -453,6 +442,17 @@ export function MeasureQuantities() {
         <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
           {meshArea.withoutMesh} element{meshArea.withoutMesh === 1 ? '' : 's'} had
           no triangulated mesh to measure (e.g. instanced-only geometry).
+        </div>
+      )}
+      {meshAreaIncomplete > 0 && (
+        <div className="flex items-start gap-1.5 font-mono text-[9px] leading-tight text-amber-600 dark:text-amber-500">
+          <TriangleAlert className="mt-0.5 h-2.5 w-2.5 shrink-0" />
+          <span>
+            {meshAreaIncomplete} element{meshAreaIncomplete === 1 ? '' : 's'} included in
+            the mesh area total {meshAreaIncomplete === 1 ? 'has' : 'have'} a submesh with
+            invalid vertex data; {meshAreaIncomplete === 1 ? 'its' : 'their'} contribution
+            is a partial sum, not a complete measurement.
+          </span>
         </div>
       )}
       {rescaled > 0 && (

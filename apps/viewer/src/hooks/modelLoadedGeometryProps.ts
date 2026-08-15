@@ -42,7 +42,7 @@ export interface ModelLoadedGeometryPropsInputs {
 /** PostHog property bag; `undefined` values are dropped by posthog-js. */
 export function buildModelLoadedGeometryProps(
   inputs: ModelLoadedGeometryPropsInputs,
-): Record<string, unknown> {
+): Record<string, string | number | boolean | undefined> {
   const d = inputs.diagnostics ?? undefined;
   return {
     total_csg_failures: d?.totalCsgFailures,

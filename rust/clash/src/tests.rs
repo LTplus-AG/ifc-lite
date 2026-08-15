@@ -395,8 +395,10 @@ fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_
 #[test]
 fn a_member_piercing_clean_through_is_labelled_an_estimate() {
     // A triangular-prism column passing right through a box slab. The column
-    // is NOT a box (`detect_obb` declines it: 5 face-normal families, not 3),
-    // so there is no certified box-box depth and the number reported is the
+    // is NOT a box (`detect_obb` declines it: the two triangular caps are
+    // antipodal and canonicalize into one family, plus three side-quad
+    // families, so 4 face-normal families, not 3), so there is no certified
+    // box-box depth and the number reported is the
     // smallest overlapping AABB dimension — an estimate, not a measured depth.
     let session = session_of_parts(&[
         box_hxyz(5.0, 5.0, 0.1, 5.0, 5.0, 0.1),

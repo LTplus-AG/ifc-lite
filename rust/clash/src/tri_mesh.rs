@@ -241,6 +241,10 @@ impl TriMesh {
     /// as dead weight. Driven by the triangle BVH rather than a linear scan so
     /// it stays cheap when it IS called:
     ///
+    /// TODO(remove-by: no production caller has appeared by the next
+    /// clash-engine feature pass, or on maintainer request): tracking issue
+    /// https://github.com/LTplus-AG/ifc-lite/issues/2646.
+    ///
     /// 1. Query the cube of half-size `h` centred on `p`. Every triangle within
     ///    distance `h` of `p` has its closest point inside that cube, hence its
     ///    AABB intersects the cube, hence it is in the candidate set.

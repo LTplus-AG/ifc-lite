@@ -210,6 +210,10 @@ export class TriMesh {
    * called. The BVH is used through a plain `queryAABB`, so the value is still
    * the exact global minimum:
    *
+   * TODO(remove-by: no production caller has appeared by the next
+   * clash-engine feature pass, or on maintainer request): tracking issue
+   * https://github.com/LTplus-AG/ifc-lite/issues/2646.
+   *
    * 1. Query the cube of half-size `h` centred on `p`. Every triangle within
    *    distance `h` of `p` has its closest point inside that cube, hence its
    *    AABB intersects the cube, hence it is in the candidate set.

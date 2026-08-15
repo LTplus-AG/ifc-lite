@@ -27,7 +27,7 @@
  * true 1.5 m at every tessellation, in both the TS and the WASM/Rust kernel.
  */
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
@@ -364,7 +364,17 @@ describe('analytic oracle: TS/WASM kernel parity on the held fixture', () => {
   const wasm = new WasmClashEngine();
 
   beforeAll(async () => {
+    // Fail loudly, not silently: a `describe.skipIf` here would let this
+    // suite read as green when the WASM/Rust kernel it exists to cross-check
+    // was never built, which is exactly the parity gap this suite is for.
+    // Point at the fix instead of a bare ENOENT (matches `differential.test.ts`,
+    // the sibling parity suite, and `pnpm test:wasm-contract`'s own message).
     const wasmPath = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
+    if (!existsSync(wasmPath)) {
+      throw new Error(
+        `WASM runtime missing at ${wasmPath} — run \`bash scripts/build-wasm.sh\` before this suite can cross-check the Rust kernel.`,
+      );
+    }
     await initClashWasm(readFileSync(wasmPath));
   });
 

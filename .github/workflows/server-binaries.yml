@@ -233,6 +233,7 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
+        shell: bash
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }} \

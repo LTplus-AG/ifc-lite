@@ -115,11 +115,25 @@ mod accumulate;
 ///
 /// Safety margin is narrower than the "near-origin" framing above suggests:
 /// measured `f32` ULP is 9.77e-4 m (98% of this bucket) at both 8192 m and
-/// 10 km, only just under 1 mm before crossing it at 16384 m. It stays safe
-/// only because [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS)
-/// re-centres coordinates before they reach that range — an incidental
-/// dependency, not a designed one. Raising that threshold past ~16 km would
-/// need this tolerance revisited.
+/// 10 km, only just under 1 mm before crossing it at 16384 m.
+///
+/// What it actually depends on is the **post-rebase coordinate spread** staying
+/// under ~16 km — an incidental dependency, not a designed one. RTC re-centring
+/// makes that typical but does not guarantee it, in two ways worth stating
+/// rather than implying:
+///
+///  - `rtc_offset_from_translations` takes the **median** element translation
+///    and returns `(0,0,0)` unless it exceeds
+///    [`LARGE_COORD_THRESHOLD_METERS`](crate::LARGE_COORD_THRESHOLD_METERS).
+///    A model whose bulk sits near the origin but whose outlying elements sit
+///    on a national grid is therefore not re-centred at all, and those vertices
+///    are hashed from `f32` world coordinates already past this bucket.
+///  - Even when the rebase does fire, it subtracts one offset. A model spanning
+///    more than ~32 km still leaves local coordinates beyond 16384 m.
+///
+/// So raising that threshold is not the only thing that would need this
+/// tolerance revisited; a wide-spread model reaches the same place without any
+/// constant changing.
 pub const DEFAULT_GEOM_HASH_TOLERANCE: f64 = 1.0e-3;
 
 /// Floor on the quantization tolerance ([`GeometryHasher::new`] clamps any

@@ -73,6 +73,9 @@ export function Section2DPanel({
   const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  // LENGTHUNIT display override for the on-canvas measure distance/perimeter
+  // labels (#2199 slice not covered by #2538 — see Drawing2DCanvas.tsx).
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   // Class-level Visibility toggles — the section honours them like the 3D
   // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -1174,6 +1177,7 @@ export function Section2DPanel({
               dxfUnderlays={dxfUnderlayData}
               scanPoints={displayOptions.showScanSection ? scanSectionLayer.points : undefined}
               scanOpacity={displayOptions.scanSectionOpacity}
+              unitDisplayOverrides={unitDisplayOverrides}
             />
             {/* Subtle updating indicator - shows while regenerating without hiding the drawing */}
             {isRegenerating && (

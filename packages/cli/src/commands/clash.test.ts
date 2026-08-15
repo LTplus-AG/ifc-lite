@@ -279,7 +279,11 @@ function buildMepAndStructuralModel(): string {
 }
 
 describe('clash --matrix rule coverage (#2536)', () => {
-  it.skipIf(!canRun)(
+  beforeAll(() => {
+    assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
+  });
+
+  it(
     'warns "no rule matched anything" instead of reporting a silent 0 on an infrastructure-shaped model',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-no-match-'));
@@ -321,7 +325,7 @@ describe('clash --matrix rule coverage (#2536)', () => {
     180_000,
   );
 
-  it.skipIf(!canRun)(
+  it(
     'exits zero even when no rule matched anything — this is a signal, not an error',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-no-match-exit-'));
@@ -342,7 +346,7 @@ describe('clash --matrix rule coverage (#2536)', () => {
     180_000,
   );
 
-  it.skipIf(!canRun)(
+  it(
     'a model the matrix DOES apply to is unaffected: real clash reported, coverage reads clean/partial',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-has-match-'));
@@ -368,7 +372,7 @@ describe('clash --matrix rule coverage (#2536)', () => {
     180_000,
   );
 
-  it.skipIf(!canRun)(
+  it(
     'the default --a/--b path never blames "the clash matrix" when one selector is just empty (maintainer review)',
     async () => {
       // buildStructuralOnlyModel has beams and columns but no IfcRoof — the

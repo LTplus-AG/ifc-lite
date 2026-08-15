@@ -321,6 +321,76 @@ describe('MeasurementSlice', () => {
       state.finishPolyline(false);
       assert.strictEqual(state.polylineMeasurements.length, 0);
     });
+
+    // PR #2641 review — Enter on a 1-point sequence was a silent no-op: the
+    // Enter shortcut called finishPolyline(false) unconditionally, and
+    // finishPolyline had no way to tell its caller "nothing happened" so the
+    // keyboard handler could not surface feedback. finishPolyline's return
+    // value is that signal — the Enter handler in useKeyboardShortcuts.ts
+    // shows a toast when it comes back false.
+    it('reports success/failure via its return value so callers can give feedback on a no-op', () => {
+      state.startPolyline(p(0, 0, 0));
+      assert.strictEqual(state.finishPolyline(false), false, 'fewer than 2 points must report failure, not just silently return');
+
+      state.addPolylinePoint(p(3, 4, 0));
+      assert.strictEqual(state.finishPolyline(false), true, 'a valid 2-point open polyline must report success');
+    });
+
+    it('reports failure when nothing is in progress', () => {
+      assert.strictEqual(state.finishPolyline(false), false);
+    });
+  });
+
+  describe('finishPolyline — double-click-to-finish does not duplicate the last point', () => {
+    // Browsers dispatch click, click, dblclick for one physical double-click
+    // (never just dblclick). handlePolylineClick runs on both leading
+    // clicks, so by the time finishPolyline(false) fires from the dblclick
+    // handler, the sequence already has a near-duplicate point appended a
+    // few CSS px from the one the user intended as the final vertex.
+    it('drops the trailing near-duplicate point before recording the measurement', () => {
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 0, screenX: 100, screenY: 0 });
+      // First `click` of the physical double-click:
+      state.addPolylinePoint({ x: 3, y: 4, z: 0, screenX: 100, screenY: 100 });
+      // Second `click` of the SAME physical double-click — ~1.4px away on
+      // screen, a hair off in world space (real raycasts of two closely
+      // spaced pixels rarely land on the exact same world point):
+      state.addPolylinePoint({ x: 3.001, y: 4.001, z: 0, screenX: 101, screenY: 101 });
+      state.finishPolyline(false);
+
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.points.length, 3, 'the duplicate must not survive into the recorded measurement');
+      // Length matches the 3-4-5 triangle's two legs, not a triangle plus a
+      // near-zero extra segment.
+      assert.ok(Math.abs(m.length - 7) < 0.01, `expected ~7, got ${m.length}`);
+    });
+
+    it('keeps a deliberate point placed outside the duplicate-click radius', () => {
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 0, screenX: 100, screenY: 0 });
+      // 3-4-5 triangle's third vertex again, but this time in world space it
+      // is genuinely > the duplicate-click screen radius from the previous
+      // point — a real, separate click.
+      state.addPolylinePoint({ x: 3, y: 4, z: 0, screenX: 100, screenY: 100 });
+      state.finishPolyline(false);
+
+      assert.strictEqual(state.polylineMeasurements[0].points.length, 3);
+    });
+
+    it('a double-click placing (and finishing on) the first point stays a no-op (below minPoints after dedup)', () => {
+      // startPolyline already seeds point 1; a physical double-click right
+      // after that appends only ONE more near-duplicate point (the click
+      // that lands, then the dblclick that finishes) — so after dropping the
+      // duplicate, only 1 point remains, one short of the 2 an open polyline
+      // needs.
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
+      state.addPolylinePoint({ x: 0.001, y: 0.001, z: 0, screenX: 1, screenY: 1 });
+      state.finishPolyline(false);
+
+      assert.strictEqual(state.polylineMeasurements.length, 0);
+      assert.ok(state.activePolyline, 'sequence must still be in progress, not silently dropped');
+    });
   });
 
   describe('cancelPolyline (cancel mid-sequence)', () => {

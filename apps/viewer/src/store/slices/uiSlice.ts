@@ -259,15 +259,28 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     // state, so the panel is never stranded collapsed after switching tools and
     // a fresh open of the tool always starts expanded. A tool change the collab
     // gate below rejects is not a tool change, so it leaves the flag alone.
+    //
+    // Leaving the Measure tool (activeTool currently 'measure', landing on
+    // something else) must discard any in-progress measurement gesture —
+    // MeasureOverlay only mounts while activeTool === 'measure' (see
+    // ToolOverlays.tsx), so this is the ONE place a stray drag or polyline
+    // click-sequence can be left stranded. Routed through
+    // measurementSlice's resetMeasureGesture rather than duplicating the
+    // clear here, so there's exactly one place that has to know what
+    // "in-progress gesture" means (see measurementSlice.ts's measureMode
+    // doc comment).
+    const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
       const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
       if (canEdit && !canEdit()) return;
+      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
       set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
       return;
     }
+    if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
     set({ activeTool, spaceSketchMinimized: false });
   },
   setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),

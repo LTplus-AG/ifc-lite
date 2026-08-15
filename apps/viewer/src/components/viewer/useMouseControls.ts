@@ -859,7 +859,17 @@ export function useMouseControls(params: UseMouseControlsParams): void {
       const state = useViewerStore.getState();
       if (state.measureMode !== 'polyline' || !state.activePolyline) return;
       e.preventDefault();
-      state.finishPolyline(false);
+      // finishPolyline drops a double-click's own duplicate near-final point
+      // before checking the minimum (see measurementSlice.ts), so
+      // double-clicking right after the very first placed point can still
+      // collapse below the 2-point minimum — same "did nothing register"
+      // gap as Enter on a 1-point sequence (useKeyboardShortcuts.ts), same
+      // fix: surface it instead of leaving it silent.
+      if (!state.finishPolyline(false)) {
+        import('@/components/ui/toast').then(({ toast }) => {
+          toast.error('Polyline needs at least 2 points');
+        });
+      }
     };
 
     canvas.addEventListener('pointerdown', handleMouseDown);

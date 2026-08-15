@@ -298,9 +298,25 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       // Finish an in-progress polyline as OPEN with Enter (#2199) — reports
       // the sum-of-segments length, not a perimeter. Closing the loop is a
       // click gesture, not a keyboard one (see handlePolylineClick).
+      //
+      // finishPolyline is a no-op below its point minimum (2 open / 3
+      // closed) — most reachable right after a single click, since Enter
+      // can't fire before startPolyline runs. Its return value says whether
+      // it actually recorded anything; when it didn't, surface a toast
+      // instead of leaving Enter a silent, indistinguishable-from-working
+      // dead keypress. The sequence itself is left in progress (not
+      // cancelled) — same "reject and let the user keep going" choice
+      // `commitAddElementSlabPolygon` above makes for the analogous
+      // too-few-points case.
       if (key === 'enter' && activePolyline) {
         e.preventDefault();
-        finishPolyline(false);
+        if (!finishPolyline(false)) {
+          // Lazy import keeps toast out of the keyboard hook's synchronous
+          // bundle, same as the addElement branch above.
+          import('@/components/ui/toast').then(({ toast }) => {
+            toast.error('Polyline needs at least 2 points');
+          });
+        }
         return;
       }
       // Clear all measurements with Ctrl+C or Cmd+C

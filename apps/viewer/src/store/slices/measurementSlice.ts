@@ -23,6 +23,7 @@ import type {
 } from '../types.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
+import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
 
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
@@ -59,10 +60,19 @@ export interface MeasurementSlice {
 
   /**
    * Which Measure gesture is active (#2199): the original mousedown→mouseup
-   * drag, or the multi-click polyline mode. The two are mutually exclusive —
-   * {@link setMeasureMode} clears whichever in-progress state belongs to the
-   * mode being left, so a sequence started in one can never leak into the
-   * other.
+   * drag, or the multi-click polyline mode. The two are mutually exclusive
+   * within a Measure session — {@link setMeasureMode} clears whichever
+   * in-progress state belongs to the mode being left, so a sequence started
+   * in one can never leak into the other while the tool stays active.
+   *
+   * Leaving the Measure tool entirely is a *different* boundary, enforced by
+   * {@link resetMeasureGesture}: `setActiveTool` (uiSlice.ts) calls it
+   * whenever the tool changes away from `'measure'`, which is the only way
+   * `MeasureOverlay` ever unmounts (it is gated purely on
+   * `activeTool === 'measure'` — see `ToolOverlays.tsx`), so this one call
+   * site covers every route out of the tool: toolbar click, keyboard
+   * shortcut, or the panel's own Close button (which itself calls
+   * `setActiveTool('select')`).
    */
   measureMode: MeasureMode;
   /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
@@ -125,12 +135,29 @@ export interface MeasurementSlice {
    * from screen-space proximity to the first point; Enter/double-click
    * always finish open) — never inferred here. No-op if fewer than 2 points
    * are accumulated (or fewer than 3 for `closed`, since a 2-point loop has
-   * no interior).
+   * no interior) — a double-click's duplicate near-final point is dropped
+   * before this check, so a physical double-click never counts as 2 points.
+   *
+   * Returns whether a measurement was actually recorded, so a caller (the
+   * Enter shortcut) can tell "finished" apart from "did nothing register"
+   * and give feedback instead of leaving the no-op silent.
    */
-  finishPolyline: (closed: boolean) => void;
+  finishPolyline: (closed: boolean) => boolean;
   /** Discard the in-progress polyline without recording a measurement. */
   cancelPolyline: () => void;
   deletePolylineMeasurement: (id: string) => void;
+
+  /**
+   * Discard whatever measurement gesture is in progress — a drag mid-flight
+   * or a polyline click sequence — without touching finished measurements,
+   * snap/geo toggles, or the user's last-picked {@link measureMode}.
+   *
+   * This is the single call `setActiveTool` (uiSlice.ts) makes whenever the
+   * tool changes away from `'measure'`. See the {@link measureMode} doc
+   * comment for why that one call site is enough to cover every way the
+   * Measure tool can be left.
+   */
+  resetMeasureGesture: () => void;
 }
 
 const getDefaultEdgeLockState = (): EdgeLockState => ({
@@ -400,27 +427,58 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return { activePolyline: { points: [...state.activePolyline.points, point] } };
   }),
 
-  finishPolyline: (closed) => set((state) => {
-    const active = state.activePolyline;
-    if (!active) return {};
-    const minPoints = closed ? 3 : 2;
-    if (active.points.length < minPoints) return {};
-    measurementCounter++;
-    const measurement: PolylineMeasurement = {
-      id: `pl-${Date.now()}-${measurementCounter}`,
-      points: active.points,
-      closed,
-      length: polylineLength(active.points, closed),
-    };
-    return {
-      polylineMeasurements: [...state.polylineMeasurements, measurement],
-      activePolyline: null,
-    };
-  }),
+  finishPolyline: (closed) => {
+    // Reports whether a measurement was actually recorded (as opposed to a
+    // no-op — no active sequence, or too few points to satisfy `minPoints`
+    // even after dropping a double-click's duplicate). The Enter shortcut
+    // (useKeyboardShortcuts.ts) uses this to tell "finished" apart from
+    // "did nothing register" and surface a toast for the latter — Enter on
+    // a 1-point sequence used to be silently indistinguishable from a
+    // successful finish.
+    let recorded = false;
+    set((state) => {
+      const active = state.activePolyline;
+      if (!active) return {};
+      // Browsers dispatch click, click, dblclick for one physical double-click
+      // (never just dblclick) — handlePolylineClick runs on both leading
+      // clicks before this fires from the dblclick handler, so a double-click
+      // meant to "place the last point and finish" has already appended a
+      // near-duplicate a few px from the one the user intended. Drop trailing
+      // duplicate point(s) before validating/recording, mirroring
+      // SpaceSketchOverlay's `commitDraw` (same double-click-to-close gesture,
+      // same fix).
+      let points = active.points;
+      while (points.length >= 2 && isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])) {
+        points = points.slice(0, -1);
+      }
+      const minPoints = closed ? 3 : 2;
+      if (points.length < minPoints) return {};
+      measurementCounter++;
+      const measurement: PolylineMeasurement = {
+        id: `pl-${Date.now()}-${measurementCounter}`,
+        points,
+        closed,
+        length: polylineLength(points, closed),
+      };
+      recorded = true;
+      return {
+        polylineMeasurements: [...state.polylineMeasurements, measurement],
+        activePolyline: null,
+      };
+    });
+    return recorded;
+  },
 
   cancelPolyline: () => set({ activePolyline: null }),
 
   deletePolylineMeasurement: (id) => set((state) => ({
     polylineMeasurements: state.polylineMeasurements.filter((m) => m.id !== id),
   })),
+
+  resetMeasureGesture: () => set({
+    activeMeasurement: null,
+    activePolyline: null,
+    snapTarget: null,
+    measurementConstraintEdge: null,
+  }),
 });

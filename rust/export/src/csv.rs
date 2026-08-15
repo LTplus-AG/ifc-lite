@@ -73,9 +73,7 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     // The project node isn't an IfcProduct, so decode its GlobalId + Name directly.
     let (mut proj_gid, mut proj_name) = (String::new(), String::new());
     if let Some(pid) = project {
-        let index = ifc_lite_core::build_entity_index(content);
-        let mut dec = ifc_lite_core::EntityDecoder::with_index(content, index);
-        if let Ok(e) = dec.decode_by_id(pid) {
+        if let Some(e) = crate::ifc5::decode_one(content, pid) {
             proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
             proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
         }

@@ -17,7 +17,7 @@
  * rather than proving nothing on a silent model.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
@@ -35,10 +35,47 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const CLI_ENTRY = join(__dirname, '../../dist/index.js');
 const WASM_RUNTIME = join(__dirname, '../../../wasm/pkg/ifc-lite_bg.wasm');
 
-// Meshing needs the built CLI plus the wasm runtime (gitignored, rebuilt per
-// host). Skip cleanly when either is absent: build with
-// `pnpm turbo run build --filter=@ifc-lite/cli` and `scripts/build-wasm.sh`.
-const canRun = existsSync(CLI_ENTRY) && existsSync(WASM_RUNTIME);
+// Fail loudly, not silently. The suites below run the built CLI as a
+// subprocess and need the wasm runtime (gitignored, rebuilt per host); they
+// used to `it.skipIf(!canRun)` with no message. Under vitest's DEFAULT
+// reporter, `it.skipIf` prints only a bare "N skipped" COUNT — the reason is
+// invisible unless you already know to pass `--reporter=verbose` (verified
+// empirically: a `console.warn` inside a skip branch does not appear in
+// `vitest run`'s default output). That read as green with zero indication
+// these subprocess tests never ran — the same failure mode a corpus census
+// hit when it self-skipped without a feature flag and was quoted as
+// evidence it had run.
+//
+// `apps/viewer/src/lib/clash/intersection-solid.test.ts` legitimately skips
+// instead: it's a `node:test` suite, and `node:test`'s default TAP reporter
+// prints `# SKIP <reason>` per test with no extra flags. The two suites
+// reach different answers because their runners differ in what "skip"
+// costs, not because the repo disagrees with itself. This file follows the
+// vitest-side precedent set in `packages/clash/src/engine-ts/obb.test.ts`.
+//
+// Either way this branch is unreachable in CI: `.github/workflows/test.yml`
+// builds the CLI and uploads the wasm artifact with `if-no-files-found:
+// error` in the `build` job, and `node-tests` `needs: [build]` and
+// downloads it before `pnpm test` — a missing artifact fails the build job
+// outright, before this suite is ever collected, skipped or not. So this
+// only ever fires on a local run with a stale/missing build, where it tells
+// the developer exactly what to run instead of silently proving nothing.
+function assertBuildArtifactsAvailable(cliPath: string, wasmPath: string): void {
+  const missing: string[] = [];
+  if (!existsSync(cliPath)) {
+    missing.push(
+      `built CLI missing at ${cliPath} — run \`pnpm turbo run build --filter=@ifc-lite/cli\` before this suite can run it as a subprocess.`,
+    );
+  }
+  if (!existsSync(wasmPath)) {
+    missing.push(
+      `WASM runtime missing at ${wasmPath} — run \`bash scripts/build-wasm.sh\` before this suite can exercise the opening/meshing pipeline.`,
+    );
+  }
+  if (missing.length > 0) {
+    throw new Error(missing.join(' '));
+  }
+}
 
 function buildClashModel(): string {
   const creator = new IfcCreator({ Name: 'ClashJsonTest' });
@@ -85,8 +122,23 @@ function buildClusteredClashModel(): string {
   return creator.toIfc().content;
 }
 
+describe('clash --json stdout hygiene: subprocess guard behaviour', () => {
+  it('throws an actionable error (not a bare ENOENT, not a silent skip) when the built CLI or WASM runtime is missing', () => {
+    expect(() => assertBuildArtifactsAvailable('/no/such/cli/dist/index.js', WASM_RUNTIME)).toThrow(
+      /built CLI missing at .*pnpm turbo run build --filter=@ifc-lite\/cli/,
+    );
+    expect(() => assertBuildArtifactsAvailable(CLI_ENTRY, '/no/such/wasm/ifc-lite_bg.wasm')).toThrow(
+      /WASM runtime missing at .*bash scripts\/build-wasm\.sh/,
+    );
+  });
+});
+
 describe('clash --group cluster ineffectiveness note', () => {
-  it.skipIf(!canRun)(
+  beforeAll(() => {
+    assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
+  });
+
+  it(
     'warns on stderr when cluster grouping consolidates nothing',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-cluster-noop-'));
@@ -113,7 +165,7 @@ describe('clash --group cluster ineffectiveness note', () => {
     180_000,
   );
 
-  it.skipIf(!canRun)(
+  it(
     'stays silent when cluster grouping actually consolidates',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-cluster-ok-'));
@@ -149,7 +201,11 @@ describe('clash --group cluster ineffectiveness note', () => {
 });
 
 describe('clash --json stdout hygiene', () => {
-  it.skipIf(!canRun)(
+  beforeAll(() => {
+    assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
+  });
+
+  it(
     'stdout is exactly one parseable JSON document; diagnostics go to stderr',
     async () => {
       const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-json-'));

@@ -8,7 +8,7 @@ import type { EntityRef, FederatedModel } from './types.js';
  *  drop the `as unknown as Map<...>` cast when threading the store's
  *  federated `models` map through downstream helpers. */
 export type ForwardModelMapLike = ReadonlyMap<string, { idOffset?: number }>;
-type ReverseModelMapLike = ReadonlyMap<string, Pick<FederatedModel, 'idOffset' | 'maxExpressId'>>;
+export type ReverseModelMapLike = ReadonlyMap<string, Pick<FederatedModel, 'idOffset' | 'maxExpressId'>>;
 
 /**
  * Convert a local expressId to the renderer/global ID space.

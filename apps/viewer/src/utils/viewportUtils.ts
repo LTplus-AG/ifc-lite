@@ -109,6 +109,16 @@ export function getEntityBounds(
     return null;
   }
 
+  return boundsFromMeshes(matchingMeshes);
+}
+
+/**
+ * Aggregate a bounding box across an entity's already-collected submeshes.
+ * Shared by `getEntityBounds` (single id, one `.filter()` pass) and
+ * `unionEntityBounds`'s indexed path (many ids, one shared index) — the
+ * vertex-aggregation loop used to live only in `getEntityBounds`.
+ */
+function boundsFromMeshes(meshes: MeshData[]): BoundingBox3D | null {
   let minX = Infinity,
     minY = Infinity,
     minZ = Infinity;
@@ -118,7 +128,7 @@ export function getEntityBounds(
 
   // Aggregate bounds across all submeshes
   // Filter out corrupted/unshifted vertices (> 10km from origin)
-  for (const mesh of matchingMeshes) {
+  for (const mesh of meshes) {
     // world = origin + position (per-element local frame; absent → absolute).
     const ox = mesh.origin ? mesh.origin[0] : 0;
     const oy = mesh.origin ? mesh.origin[1] : 0;
@@ -404,8 +414,29 @@ export function unionEntityBounds(
 ): { min: Point3D; max: Point3D } | null {
   let min: Point3D | null = null;
   let max: Point3D | null = null;
+
+  // For more than a handful of ids, index the mesh array by expressId ONCE
+  // rather than re-filtering the whole array per id: `getEntityBounds` is
+  // O(meshes) per call, so an unindexed loop over N ids is O(N × meshes) —
+  // a large isolate/frame set (e.g. the Filter tab's "Isolate in 3D", #2532)
+  // against a big model would stall the main thread for seconds. Indexing
+  // makes this O(meshes + N) instead. Skipped for tiny id counts (the common
+  // case — a clash pair, a row click) where the index-build cost isn't worth it.
+  let byExpressId: Map<number, MeshData[]> | null = null;
+  if (geometry && ids.length > 4) {
+    byExpressId = new Map();
+    for (const mesh of geometry) {
+      if (mesh.positions.length < 3) continue;
+      const list = byExpressId.get(mesh.expressId);
+      if (list) list.push(mesh);
+      else byExpressId.set(mesh.expressId, [mesh]);
+    }
+  }
+
   for (const id of ids) {
-    const b = getEntityBounds(geometry, id) ?? instancedBounds(id) ?? null;
+    const b = (byExpressId
+      ? boundsFromIndexedMeshes(byExpressId, id)
+      : getEntityBounds(geometry, id)) ?? instancedBounds(id) ?? null;
     if (!b) continue;
     if (!min || !max) {
       min = { x: b.min.x, y: b.min.y, z: b.min.z };
@@ -420,4 +451,9 @@ export function unionEntityBounds(
     }
   }
   return min && max ? { min, max } : null;
+}
+
+function boundsFromIndexedMeshes(index: Map<number, MeshData[]>, entityId: number): BoundingBox3D | null {
+  const meshes = index.get(entityId);
+  return meshes ? boundsFromMeshes(meshes) : null;
 }

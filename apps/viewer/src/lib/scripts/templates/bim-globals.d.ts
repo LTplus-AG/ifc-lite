@@ -264,16 +264,24 @@ declare namespace BimClash {
    * How a clash's `distance` was obtained — the two are NOT interchangeable and
    * were indistinguishable in the output before this field existed.
    *
-   * - `'mesh'` — measured on the triangle meshes. For a hard clash that is the
-   *   deepest crossing-triangle vertex's distance to the other solid's surface;
-   *   for `clearance`/`touch` it is the exact triangle-to-triangle gap.
+   * - `'mesh'` — measured on the triangle meshes. For `clearance`/`touch` it is
+   *   the exact triangle-to-triangle gap. For a hard clash it is the exact
+   *   box-box penetration depth (minimum translation distance along a
+   *   separating axis, Gottschalk), certified only when BOTH elements are —
+   *   within tolerance — rectangular boxes (`obb.ts`); this replaced an
+   *   earlier "deepest crossing-triangle vertex" probe that was a sampling
+   *   artifact, converging to 0 as a mesh was retessellated instead of to the
+   *   true depth (PR #2536).
    * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
-   *   dimension. Reported for a hard clash whenever the narrow phase had no
-   *   crossing-triangle vertex strictly INSIDE the other solid to measure from.
-   *   That happens in three shapes, all common in real models: surfaces that only
-   *   coincide (stacked layers sharing a footprint), one solid modelled wholly
-   *   inside another, and a member piercing clean through so every crossing
-   *   vertex sticks out the far side. The value is then a property of the two
+   *   dimension. Reported for a hard clash whenever the narrow phase could not
+   *   certify a box-box depth. That happens in four shapes, all common in real
+   *   models: either element is not (confirmed) a box; surfaces that only
+   *   coincide (stacked layers sharing a footprint); one solid modelled wholly
+   *   inside another; and a member piercing clean through the other — even
+   *   when BOTH are boxes, because the box-box minimum-translation-distance is
+   *   then dominated by the piercing member's own extent along the shared
+   *   axis, not by the material it actually crossed, and is withheld from
+   *   `'mesh'` for exactly that reason. The value is then a property of the two
    *   BOXES, not of the solids — it can equal an element's own thickness rather
    *   than how far the two actually interpenetrate. Treat it as an indication of
    *   scale, not as a measurement.

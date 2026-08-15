@@ -761,6 +761,39 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // #2548: the closure-walk fix that stops a HIDDEN product's pset from
+  // riding along on the relationship that named it (see
+  // `visible-only-dangling-refs.test.ts`) has to recognise a DELETED subject
+  // too, not just a hidden one — `getVisibleEntityIds` never adds a
+  // tombstoned entity to `hiddenProductIds` (the effective index's iteration
+  // skips it outright, so it is never classified at all), so a naive
+  // `hiddenProductIds`-only check would still treat a relationship whose sole
+  // subject was DELETED as "surviving filtering" and bridge into its pset.
+  it('does not ship a deleted door’s property set under visibleOnly', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [3, 'IFCDOOR', "#3=IFCDOOR('1ys5Xwuxz8gPJk6N$NGhA3',$,'Door',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhA0',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('CONFIDENTIAL'),$);"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#3),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.deleteEntity(3);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#3=IFCDOOR');
+    expect(content).not.toContain('CONFIDENTIAL');
+    expect(content).not.toContain('IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

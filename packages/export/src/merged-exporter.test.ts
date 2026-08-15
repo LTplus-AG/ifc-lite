@@ -216,6 +216,34 @@ describe('MergedExporter', () => {
     expect(decode(result.content)).not.toContain("#3=IFCDOOR"); // hidden door
   });
 
+  // #2548: `MergedExporter`'s `visibleOnly` shares `getVisibleEntityIds` /
+  // `collectReferencedEntityIds` with `StepExporter` — the same closure-walk
+  // fix that stops a hidden PRODUCT's pset from riding along on the
+  // relationship that named it applies here too, with no merged-export-
+  // specific code required.
+  it('does not ship a hidden door’s property set in a merged export', () => {
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [3, 'IFCDOOR', "#3=IFCDOOR('g3',$,'D1',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('g10',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('CONFIDENTIAL'),$);"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('g22',$,$,$,(#3),#10);"],
+    ]);
+
+    const exporter = new MergedExporter([model1]);
+    const result = exporter.export({
+      schema: 'IFC4',
+      projectStrategy: 'keep-first',
+      visibleOnly: true,
+      hiddenEntityIdsByModel: new Map([['m1', new Set([3])]]), // Hide door
+    });
+
+    const content = decode(result.content);
+    expect(content).not.toContain('IFCDOOR');
+    expect(content).not.toContain('CONFIDENTIAL');
+    expect(content).not.toContain('IFCPROPERTYSET');
+  });
+
   it('should unify single site and remap spatial chain', () => {
     // Model1: Project#1 → Site#2 (via RelAgg#3)
     const model1 = buildModel('m1', 'Arch', [

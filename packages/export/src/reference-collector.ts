@@ -32,6 +32,17 @@ import { asSourceBytes } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
 
+/**
+ * UTF-8 decode of `[start, end)` of the source. Mirrors `step-exporter.ts` /
+ * `merged-exporter.ts`'s local `decodeRange` (SAB-safe via the accessor);
+ * duplicated rather than shared because this is the only place in the file
+ * that needs text instead of raw bytes, and it is only reached for `IFCREL*`
+ * entities under `visibleOnly` (see `collectReferencedEntityIds`).
+ */
+function decodeRange(src: IfcSourceBytes, start: number, end: number): string {
+  return src.decodeUtf8(start, end);
+}
+
 /** ASCII code points for byte-level scanning. */
 const HASH = 0x23;  // '#'
 const ZERO = 0x30;  // '0'
@@ -293,16 +304,27 @@ export function collectRefsInByteRange(
  *   list rather than in the source buffer — without that hook the walk stops
  *   dead at a created entity and everything reachable only through it is
  *   silently dropped from the export (#2012).
- * @param excludeIds - Entity IDs to NEVER follow during the walk.
+ * @param excludeIds - Entity IDs to NEVER follow during the walk. Also gates
+ *   whether an `IFCREL*` entity may act as a BRIDGE into what it references:
+ *   when every id it names would be filtered out by
+ *   {@link filterHiddenRefsFromRelationshipLine} (same predicate — the
+ *   relationship's own line would be withheld entirely), the walk does not
+ *   follow ANY of its references. Without this, a relationship whose sole
+ *   subject is excluded still pulled its pset/material/type/classification
+ *   target into the closure — those are never themselves in `excludeIds` (not
+ *   products) — so the target shipped as an orphan line nothing in the output
+ *   names (#2548).
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
- * Uses byte-level scanning — no TextDecoder, no regex, no string allocation.
+ * Uses byte-level scanning — no TextDecoder, no regex, no string allocation —
+ * except for `IFCREL*` entities when `excludeIds` was passed at all, which decode
+ * once to run the same regex-based filter the emission passes use.
  */
 export function collectReferencedEntityIds(
   rootIds: Set<number>,
   source: Uint8Array | IfcSourceBytes,
   entityIndex: {
-    get(id: number): { byteOffset: number; byteLength: number } | undefined;
+    get(id: number): { byteOffset: number; byteLength: number; type?: string } | undefined;
     has(id: number): boolean;
     refsOf?(id: number): readonly number[] | undefined;
   },
@@ -332,8 +354,46 @@ export function collectReferencedEntityIds(
     // the authored attribute list instead.
     const authored = entityIndex.refsOf?.(entityId);
     refs.length = 0;
-    if (authored) refs.push(...authored);
-    else {
+    if (authored) {
+      refs.push(...authored);
+    } else {
+      // A source-backed `IFCREL*` entity only bridges into what it names when
+      // its own line would survive `filterHiddenRefsFromRelationshipLine`
+      // (same predicate the emission passes apply to its OUTPUT line). If
+      // every id it names is excluded, that function withholds the line
+      // entirely — so the walk must not follow any of its refs either, or a
+      // target unreachable by anything else in the file (a pset, material,
+      // type, classification) still ends up in the closure (#2548).
+      // Gated on `excludeIds !== undefined` — its PRESENCE, not its size —
+      // because a visibleOnly export with nothing explicitly hidden but a
+      // deletion in effect passes an EMPTY `hiddenProductIds` Set; `size > 0`
+      // would skip the decode and miss the deletion case below. Callers with
+      // no filtering at all (`demesh-prune.ts`) pass `excludeIds` as
+      // `undefined`, not an empty Set, so they still take the fast path.
+      //
+      // The predicate also treats a referenced id NOT IN the index as
+      // excluded — an id `excludeIds` alone would miss is a TOMBSTONED one:
+      // `getVisibleEntityIds` never adds a deleted entity to `hiddenProductIds`
+      // (it never sees it — the effective index's iteration skips tombstones
+      // entirely, same as it skips them here), so a relationship whose sole
+      // subject was DELETED, not merely hidden, would otherwise still read as
+      // "survives filtering" and bridge into its pset. This is the same
+      // union `isExcludedFromRelationshipRefs` in `step-exporter.ts` computes
+      // for the relationship's own OUTPUT line — `hiddenProductIds.has(id) ||
+      // effective.isDeleted(id)` — restated as `excludeIds.has(id) ||
+      // !entityIndex.has(id)` because this function only has the index, not
+      // the effective wrapper itself.
+      if (
+        excludeIds !== undefined
+        && ref.type !== undefined && ref.type.toUpperCase().startsWith('IFCREL')
+      ) {
+        const text = decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength);
+        const isBridgeTargetExcluded = (id: number): boolean =>
+          excludeIds.has(id) || !entityIndex.has(id);
+        if (filterHiddenRefsFromRelationshipLine(text, isBridgeTargetExcluded) === null) {
+          continue;
+        }
+      }
       // Hand the byte scanner an already-narrowed record. `slice` is a
       // `subarray` on a contiguous source, so this is the same zero-copy read.
       const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);

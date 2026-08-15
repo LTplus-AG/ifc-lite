@@ -212,18 +212,25 @@ describe('visibleOnly does not emit dangling references to excluded products', (
 });
 
 /**
- * A second, independent consequence of the same design, recorded here because
- * it is what a user is most likely to notice: hiding an element does NOT keep
- * its property data out of the file. The `IFCRELDEFINESBYPROPERTIES` root is
- * emitted, and the closure walks THROUGH it into the pset and its atoms, which
- * are not products and so are never in `excludeIds`.
+ * #2548: hiding an element must also keep its associated data out of the
+ * file, not just its own defining line and geometry. Before the fix, the
+ * `IFCRELDEFINESBYPROPERTIES` root was emitted unconditionally and the
+ * closure walked THROUGH it into the pset and its atoms — which are not
+ * products, so were never in `excludeIds` — shipping the hidden element's
+ * property values as an orphaned line nothing in the output names.
  *
- * This case passes on this branch: it characterises current behaviour rather
- * than asserting the desired one, because "should a filtered export carry a
- * hidden element's properties" is a product question, not a spec violation.
+ * `getVisibleEntityIds` treating every `IFCREL*` as an unconditional root is
+ * still correct — relationships must stay reachable so a VISIBLE element's
+ * psets, materials, types etc. survive. The gap was that the closure walk
+ * did not check whether a relationship's own line would survive
+ * `filterHiddenRefsFromRelationshipLine` before using it as a bridge into
+ * its target. A relationship whose every subject is hidden now propagates no
+ * forward references at all, so its target becomes unreachable and is
+ * dropped from the closure — the same test this file already applies to
+ * `IFCREL*` lines themselves, run one step earlier.
  */
-describe('visibleOnly still exports a hidden element’s property set (characterisation)', () => {
-  it('keeps Pset content reachable only from the hidden wall', () => {
+describe('visibleOnly does not ship a hidden element’s associated data (#2548)', () => {
+  it('drops Pset content reachable only from the hidden wall', () => {
     const store = buildParsedStore([
       [1, 'IFCPROJECT', PROJECT],
       [4, 'IFCWALL', "#4=IFCWALL('0walB0000000000000000',$,'HiddenWall',$,$,$,$,$);\n"],
@@ -239,6 +246,83 @@ describe('visibleOnly still exports a hidden element’s property set (character
     }).content);
 
     expect(content).not.toContain('#4=IFCWALL');
-    expect(content).toContain('CONFIDENTIAL');
+    expect(content).not.toContain('CONFIDENTIAL');
+    expect(content).not.toContain('IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('drops quantity sets, the type object, material and classification associated only with the hidden wall', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROJECT', PROJECT],
+      [4, 'IFCWALL', "#4=IFCWALL('0walB0000000000000000',$,'HiddenWall',$,$,$,$,$);\n"],
+      [13, 'IFCELEMENTQUANTITY', "#13=IFCELEMENTQUANTITY('0qset0000000000000000',$,'Qto_WallBaseQuantities',$,(#14));\n"],
+      [14, 'IFCQUANTITYLENGTH', "#14=IFCQUANTITYLENGTH('Length',$,$,42.);\n"],
+      [23, 'IFCRELDEFINESBYPROPERTIES', "#23=IFCRELDEFINESBYPROPERTIES('0rdbq0000000000000000',$,$,$,(#4),#13);\n"],
+      [12, 'IFCWALLTYPE', "#12=IFCWALLTYPE('0wtyp0000000000000000',$,'SecretWallType',$,$,$,$,$,$,.STANDARD.);\n"],
+      [24, 'IFCRELDEFINESBYTYPE', "#24=IFCRELDEFINESBYTYPE('0rdbt0000000000000000',$,$,$,(#4),#12);\n"],
+      [15, 'IFCMATERIAL', "#15=IFCMATERIAL('SecretMaterial',$,$);\n"],
+      [25, 'IFCRELASSOCIATESMATERIAL', "#25=IFCRELASSOCIATESMATERIAL('0rdam0000000000000000',$,$,$,(#4),#15);\n"],
+      [16, 'IFCCLASSIFICATION', "#16=IFCCLASSIFICATION($,$,$,'SecretClassificationSource');\n"],
+      [17, 'IFCCLASSIFICATIONREFERENCE', "#17=IFCCLASSIFICATIONREFERENCE($,'SEC.001','SecretClassRef',#16,$,$);\n"],
+      [26, 'IFCRELASSOCIATESCLASSIFICATION', "#26=IFCRELASSOCIATESCLASSIFICATION('0rdac0000000000000000',$,$,$,(#4),#17);\n"],
+    ]);
+
+    const content = decode(new StepExporter(store).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set([4]),
+    }).content);
+
+    expect(content).not.toContain('#4=IFCWALL');
+    expect(content).not.toContain('IFCELEMENTQUANTITY');
+    expect(content).not.toContain('IFCWALLTYPE');
+    expect(content).not.toContain('IFCMATERIAL');
+    expect(content).not.toContain('SecretClassificationSource');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('control: a VISIBLE wall’s pset, material and type still ship, filter is not over-broad', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROJECT', PROJECT],
+      [3, 'IFCWALL', "#3=IFCWALL('0walA0000000000000000',$,'KeptWall',$,$,$,$,$);\n"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('0pset0000000000000000',$,'Pset_Custom',$,(#11));\n"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('VISIBLE_COST'),$);\n"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('0rdbp0000000000000000',$,$,$,(#3),#10);\n"],
+      [15, 'IFCMATERIAL', "#15=IFCMATERIAL('VisibleMaterial',$,$);\n"],
+      [25, 'IFCRELASSOCIATESMATERIAL', "#25=IFCRELASSOCIATESMATERIAL('0rdam0000000000000000',$,$,$,(#3),#15);\n"],
+    ]);
+
+    const content = decode(new StepExporter(store).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    }).content);
+
+    expect(content).toContain('#3=IFCWALL');
+    expect(content).toContain('VISIBLE_COST');
+    expect(content).toContain('VisibleMaterial');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  it('keeps a pset shared by a visible AND a hidden wall — the relationship line drops the hidden member, not the pset', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROJECT', PROJECT],
+      [3, 'IFCWALL', "#3=IFCWALL('0walA0000000000000000',$,'KeptWall',$,$,$,$,$);\n"],
+      [4, 'IFCWALL', "#4=IFCWALL('0walB0000000000000000',$,'HiddenWall',$,$,$,$,$);\n"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('0pset0000000000000000',$,'Pset_Shared',$,(#11));\n"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Reference',$,IFCTEXT('SHARED'),$);\n"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('0rdbp0000000000000000',$,$,$,(#3,#4),#10);\n"],
+    ]);
+
+    const content = decode(new StepExporter(store).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set([4]),
+    }).content);
+
+    expect(content).not.toContain('#4=IFCWALL');
+    expect(content).toContain('#3=IFCWALL');
+    expect(content).toContain('SHARED');
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 });

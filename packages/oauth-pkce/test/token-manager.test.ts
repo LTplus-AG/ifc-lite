@@ -26,6 +26,20 @@ function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
+/** Drains pending microtasks. `TokenManager` now routes every storage
+ *  access through its internal serialization queue (see `token-manager.ts`),
+ *  which adds extra promise-chain hops beyond a bare `await storage.get()` —
+ *  a fixed handful of `await Promise.resolve()` calls that was enough to
+ *  reach a specific await point before is no longer a reliable tick count.
+ *  Looping considerably past what's needed is harmless (there are no timers
+ *  or real I/O involved, just promise microtasks) and keeps these tests from
+ *  being coupled to the exact number of internal `await`s the queue adds. */
+async function flush(times = 30): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
 describe('TokenManager.getValidAccessToken', () => {
   it('returns the stored access token without a network call when it is not near expiry', async () => {
     const storage = createMemoryStorage();
@@ -141,9 +155,7 @@ describe('TokenManager.getValidAccessToken', () => {
     const second = manager.getValidAccessToken();
 
     // Let both calls reach the refresh step before the token endpoint responds.
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     resolveFetch(jsonResponse({ access_token: 'refreshed-once', refresh_token: 'new-refresh', expires_in: 3600 }));
 
@@ -202,9 +214,7 @@ describe('TokenManager.getValidAccessToken', () => {
     // A refresh is triggered (e.g. by a background call) and is still
     // in flight when the user signs out.
     const pending = manager.getValidAccessToken();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     await manager.clear();
 
@@ -247,9 +257,7 @@ describe('TokenManager.getValidAccessToken', () => {
 
     // A starts a refresh; it's still in flight when the user signs out.
     const pendingA = manager.getValidAccessToken();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     await manager.clear();
 
@@ -259,9 +267,7 @@ describe('TokenManager.getValidAccessToken', () => {
 
     // B calls under the new session, needing its own refresh.
     const pendingB = manager.getValidAccessToken();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -309,14 +315,25 @@ describe('TokenManager storage-write TOCTOU (async backends whose set()/delete()
     };
   }
 
-  it('does not let a stale refresh write resurrect the session when clear()"s delete lands first', async () => {
-    // Reviewer-confirmed defect (narrower, storage-backend-dependent): the
-    // generation check at token-manager.ts:143 reads an in-memory counter
-    // and passes, but the storage write it gates is a *separate* awaited
-    // step. On a backend where writes/deletes aren't ordered by invocation
-    // time, clear()'s delete() can complete before the in-flight refresh's
-    // set() does, and the session is resurrected at the storage layer even
-    // though clear() "won" logically and `generation` is already bumped.
+  it('clear() strictly waits for an in-flight refresh write instead of racing it, even against a slow backend', async () => {
+    // Historical context: the design this replaced kept a generation
+    // counter and re-checked it before persisting, but the storage write it
+    // gated was a *separate* awaited step from the check. On a backend
+    // where writes/deletes aren't ordered by invocation time, clear()'s
+    // delete() could complete before the in-flight refresh's set() did,
+    // resurrecting the session at the storage layer even though clear()
+    // had "won" logically.
+    //
+    // `TokenManager` now serializes every storage operation it performs
+    // through its own queue (see `token-manager.ts`), regardless of what
+    // ordering guarantees the backend itself offers — so that specific
+    // interleaving (an independently-issued delete() outrunning an
+    // independently-issued set()) can no longer happen: there are no two
+    // independent calls to race, only one queue. The trade-off this buys is
+    // exactly what this test checks: `clear()` now *waits* for the gated
+    // write ahead of it rather than resolving early, and only then deletes
+    // — so the end state is deterministically signed-out no matter how slow
+    // that write is.
     const storage = createGatedStorage();
     let resolveFetch: (value: Response) => void = () => {};
     const fetchMock = vi.fn(
@@ -337,31 +354,235 @@ describe('TokenManager storage-write TOCTOU (async backends whose set()/delete()
     storage.armGate();
 
     const pending = manager.getValidAccessToken();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
-    // The refresh response arrives; refresh()'s generation check passes
+    // The refresh response arrives; refresh()'s session check passes
     // (clear() hasn't run yet) and it starts (but does not finish) the
-    // gated storage write.
+    // gated storage write — the write is now queued and holding the queue.
     resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
-    for (let i = 0; i < 10; i++) {
-      await Promise.resolve();
-    }
+    await flush();
 
-    // clear() now runs while that write is still in flight. Its delete()
-    // resolves immediately — landing before the gated set() does.
-    await manager.clear();
+    // clear() is called while that write is still gated. It must not
+    // resolve until the write ahead of it in the queue does.
+    let clearResolved = false;
+    const clearPromise = manager.clear().then(() => {
+      clearResolved = true;
+    });
+    await flush();
+    expect(clearResolved).toBe(false);
 
-    // Only now does the stale write actually complete.
+    // Only now does the gated write actually complete — clear()'s delete()
+    // is queued behind it and can only run afterwards.
     storage.releaseGate();
+    await clearPromise;
+    expect(clearResolved).toBe(true);
     await pending.catch(() => {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await flush();
 
-    // Storage must read as signed-out. If the stale write landed after
-    // clear()'s delete, this reads the resurrected token set instead.
+    // Storage must read as signed-out: the delete always runs after the
+    // write it was ordered behind, never before it.
     const stored = await manager.getTokens();
     expect(stored).toBeUndefined();
+  });
+});
+
+describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (reviewer-confirmed against ccaaee1c8)', () => {
+  // Two defects were confirmed here against `ccaaee1c8`'s compare-then-
+  // rollback (token-manager.ts:209-215 at that commit): (1) the rollback's
+  // own `get()`-then-`delete()` is a second check-then-act, so a legitimate
+  // new sign-in's `set()` landing in the gap between them got wiped by the
+  // "unconditional" `delete()`; (2) a throwing rollback `delete()` left the
+  // session resurrected in storage while `clear()` itself had already
+  // resolved successfully. Both were reproduced RED against `ccaaee1c8`
+  // with a gated/interleaving storage double before this redesign (a
+  // `get()` double using `queueMicrotask` to land a competing `set()`
+  // between its return and the caller's continuation, plus an `armWriteGate`
+  // double to hold a refresh's write open while `clear()` ran), confirmed
+  // GREEN once the check-then-write became a single queued unit, and RED
+  // again on reverting the fix alone.
+  //
+  // The redesign removes the rollback code path entirely rather than
+  // patching it — `refresh()`'s session check and its storage write are now
+  // one task on `TokenManager`'s own serialization queue (see
+  // `token-manager.ts`), so there is no `await` boundary between them for a
+  // concurrent `clear()`/`setTokens()` to land in, and nothing to detect
+  // and undo afterwards. That makes the original interleavings themselves
+  // unreachable: the exact repro doubles above can no longer force the
+  // rollback branch, because there is no rollback branch. What's left to
+  // test is the invariant that superseded it — the two tests below.
+  /** Like the gate in the describe block above, but also keeps an
+   *  invocation log — `log` records, in real invocation order, when each
+   *  storage call actually starts and finishes. That is what makes this
+   *  test a real test of serialization rather than an accident of timing:
+   *  a `delete()`/`set()` call that fires *while the gated `set()` is still
+   *  blocked* — i.e. that doesn't serialize — shows up as `"delete:start"`
+   *  appearing before `"set:end:..."` in the log, regardless of what final
+   *  value ends up in storage once everything settles. The gate itself is
+   *  single-use (cleared after the first call consumes it) so only the
+   *  refresh's write is held open; a later call's own timing is what the
+   *  log is there to catch. */
+  function createGatedLoggingStorage(): TokenStorage & {
+    armWriteGate: () => void;
+    releaseWriteGate: () => void;
+    log: string[];
+  } {
+    const map = new Map<string, string>();
+    let writeGate: Promise<void> | null = null;
+    let releaseWrite: () => void = () => {};
+    const log: string[] = [];
+    return {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        log.push(`set:start:${value}`);
+        if (writeGate) {
+          await writeGate;
+          writeGate = null;
+        }
+        map.set(key, value);
+        log.push(`set:end:${value}`);
+      },
+      async delete(key) {
+        log.push('delete:start');
+        map.delete(key);
+        log.push('delete:end');
+      },
+      armWriteGate() {
+        writeGate = new Promise((resolve) => {
+          releaseWrite = resolve;
+        });
+      },
+      releaseWriteGate: () => releaseWrite(),
+      log,
+    };
+  }
+
+  it('lets a legitimate new sign-in survive a stale refresh write, clear(), and the new sign-in all queuing behind one slow backend call — no rollback required', async () => {
+    const storage = createGatedLoggingStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+    storage.log.length = 0; // drop the seed write from the log
+
+    // A refresh starts; its eventual write is held open by the gate.
+    storage.armWriteGate();
+    const pending = manager.getValidAccessToken();
+    await flush();
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+    await flush();
+
+    // The write's session check has already passed (clear() hasn't run
+    // yet) and it is now blocked on the gate, holding the queue. clear()
+    // and a fresh sign-in are both issued now — under a serialized manager
+    // neither can even *invoke* its storage call until the gated write
+    // settles; under an unserialized one they'd fire immediately.
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    const clearPromise = manager.clear();
+    const setNewPromise = manager.setTokens(newTokens);
+    await flush();
+
+    // Before the gate is released, nothing but the gated write's own
+    // "set:start" should have reached the log — clear()'s delete() and the
+    // new sign-in's set() must not have been invoked yet.
+    expect(storage.log).toEqual(['set:start:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}']);
+
+    storage.releaseWriteGate();
+    await Promise.all([pending.catch(() => {}), clearPromise, setNewPromise]);
+    await flush();
+
+    // Real invocation order, not just final state: the stale write starts
+    // and finishes first, only then does the delete start and finish, only
+    // then does the new sign-in's write start and finish. No operation's
+    // call to storage began while another was still in flight.
+    expect(storage.log).toEqual([
+      'set:start:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}',
+      'set:end:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}',
+      'delete:start',
+      'delete:end',
+      `set:start:${JSON.stringify(newTokens)}`,
+      `set:end:${JSON.stringify(newTokens)}`,
+    ]);
+
+    // And because of that strict ordering, the legitimate new sign-in
+    // survives — no compare, no rollback, nothing to accidentally wipe.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
+  });
+
+  it('propagates a clear() storage-delete failure to its caller and still leaves no resurrected session behind', async () => {
+    // The rollback this replaced is gone, so the only remaining path where
+    // a `delete()` failure could hide a resurrected session is clear()'s
+    // own delete(). Session invalidation (`this.session = new Session()`)
+    // is synchronous and unconditional — it does not depend on the storage
+    // delete succeeding — so even when the physical delete fails, a
+    // concurrently in-flight refresh's write, when its turn in the queue
+    // comes, still sees `session !== this.session` and refuses to write.
+    const map = new Map<string, string>();
+    let deleteCalls = 0;
+    const storage: TokenStorage = {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        map.set(key, value);
+      },
+      async delete(key) {
+        deleteCalls += 1;
+        if (deleteCalls === 1) {
+          throw new Error('backend delete failed');
+        }
+        map.delete(key);
+      },
+    };
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is in flight when the user signs out.
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    // clear()'s delete() (the first and only delete call in this test)
+    // fails — the failure must reach the caller, not be swallowed.
+    await expect(manager.clear()).rejects.toThrow('backend delete failed');
+
+    // The in-flight refresh answers after clear() (and its failed delete)
+    // have already run. Session invalidation happened regardless of the
+    // delete's outcome, so the refresh's write must still be refused.
+    resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage was never touched by the refresh (no resurrection); it still
+    // holds whatever the failed delete() left behind (the pre-sign-out
+    // tokens), not the stale refreshed ones.
+    const stored = await manager.getTokens();
+    expect(stored?.accessToken).not.toBe('resurrected');
   });
 });

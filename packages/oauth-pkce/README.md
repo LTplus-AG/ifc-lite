@@ -31,8 +31,21 @@ package, built on top of this one.
 ## Token storage — the trade-off, and this package's default
 
 `TokenStorage` is a caller-supplied interface (`get`/`set`/`delete`); this
-package never picks a storage medium for you. The two obvious choices have
-opposite failure modes:
+package never picks a storage medium for you. `TokenManager` serializes every
+`get`/`set`/`delete` it issues against a given storage key through its own
+internal queue, so a `TokenStorage` implementation never needs to guard
+against concurrent calls *from the same `TokenManager` instance* — it does
+not need to be atomic, and it does not need `set`/`delete` calls it receives
+to complete in the order they were invoked. (It's still up to the caller to
+avoid running two `TokenManager` instances against the same storage key
+concurrently — the serialization is per-instance, not per-key across
+instances.) A refresh's "is my session still current, and if so, persist the
+new tokens" check and write happen as a single unit on that queue, which is
+also why `TokenManager.clear()` (sign-out) can end up waiting for whatever
+storage operation was already ahead of it — in practice a refresh write, at
+most one storage round trip away.
+
+The two obvious storage-medium choices have opposite failure modes:
 
 - **`localStorage`** (or any persistent storage) survives a page reload —
   good UX — but is readable by any script running on the page, so an XSS

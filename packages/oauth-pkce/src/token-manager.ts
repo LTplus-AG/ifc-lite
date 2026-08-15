@@ -52,13 +52,10 @@ const DEFAULT_REFRESH_SKEW_MS = 60_000;
  * this operation still working on behalf of the session that's current
  * right now?" — with two independent fields: `pendingRefresh` (the in-flight
  * refresh-dedup promise) and a `generation` counter bumped by `clear()`.
- * Splitting the question across two fields is what caused the last two
- * defects: `clear()` bumped `generation` but forgot to also clear
- * `pendingRefresh`, so a stale in-flight refresh could still be handed to a
- * brand-new caller by the dedup check, which never consulted `generation` at
- * all. Adding a third field alongside the first two — which is what the
- * obvious next patch would have done — would only have produced a third
- * place for a future fix to forget.
+ * Splitting the question across two fields is what caused a defect:
+ * `clear()` bumped `generation` but forgot to also clear `pendingRefresh`,
+ * so a stale in-flight refresh could still be handed to a brand-new caller
+ * by the dedup check, which never consulted `generation` at all.
  *
  * Folding both into one `Session` object removes the field to forget: the
  * dedup promise now *lives inside* the session it was started under, so
@@ -71,6 +68,12 @@ const DEFAULT_REFRESH_SKEW_MS = 60_000;
  * on the fresh object, so they can never be handed the stale promise, and
  * the closure's own identity check (`session !== this.session`) fails
  * wherever it still checks. There is no second field left to go stale.
+ *
+ * This part of the design was independently re-verified as correct across
+ * several rounds of review and is unchanged here — what follows fixes a
+ * *different* problem: the session check and the storage write it gates
+ * used to be two separate `await`s, which is a gap a concurrent write can
+ * land in no matter how carefully the check is written. See `queue` below.
  */
 class Session {
   pendingRefresh: Promise<TokenSet> | null = null;
@@ -79,12 +82,61 @@ class Session {
 export class TokenManager {
   private session = new Session();
 
+  /**
+   * Every `TokenStorage` operation this manager performs against
+   * `config.storage` — `get`, `set`, `delete`, and the session-check-then-
+   * write a refresh does before persisting — runs through this promise
+   * chain, one at a time, in the order it was enqueued. That is what
+   * replaces the old check-then-rollback machinery: a refresh's "is my
+   * session still current, and if so, write" is now a *single* queued task,
+   * so there is no `await` boundary between the check and the write for a
+   * concurrent `clear()` or `setTokens()` to land in, and therefore nothing
+   * to detect after the fact and undo. Two previous rounds tried to make a
+   * check-then-write pair safe by re-validating after the write and rolling
+   * back on mismatch (`git log` on this file has the details); the rollback
+   * was itself a second check-then-act with the same shape of gap, one
+   * level down. Serializing the operations removes the gap instead of
+   * chasing it to a smaller time window.
+   *
+   * This does mean an operation can wait behind whatever this manager's own
+   * previous operation is still doing — most concretely, `clear()`
+   * (sign-out) can wait behind a refresh's in-flight write. That trade-off
+   * was rejected in an earlier round on the grounds that sign-out could
+   * then hang on a slow backend. That concern is real, but the queue this
+   * manager owns only ever holds *this manager's* own handful of
+   * operations for *one* storage key — a refresh write, a `clear()`, an
+   * occasional explicit `setTokens()` — so the wait is bounded by one
+   * storage round trip already in flight, not by unrelated traffic
+   * elsewhere in the app. A storage backend that hangs outright is a
+   * problem for every caller of it, serialized or not; this queue does not
+   * make that failure mode worse, it just makes sign-out share it with the
+   * write that was already in progress.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+
   constructor(private readonly config: TokenManagerConfig) {}
+
+  /** Chains `task` onto `queue` so it runs after every previously-enqueued
+   *  task has settled and before any task enqueued after it starts — the
+   *  serialization point every storage access goes through. `task` runs
+   *  regardless of whether the previous task fulfilled or rejected (a
+   *  failed operation must not wedge every later one behind a permanently-
+   *  rejected chain); the caller gets `task`'s own outcome via the returned
+   *  promise, error included — nothing is swallowed here. */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.queue.then(task, task);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
 
   /** Persists a freshly obtained token set (from `exchangeAuthorizationCode`,
    *  typically). Overwrites whatever was stored under this key. */
   async setTokens(tokens: TokenSet): Promise<void> {
-    await this.config.storage.set(this.config.storageKey, JSON.stringify(tokens));
+    const json = JSON.stringify(tokens);
+    await this.enqueue(() => this.config.storage.set(this.config.storageKey, json));
   }
 
   /** Reads the stored token set as-is, with no expiry check and no refresh.
@@ -94,7 +146,7 @@ export class TokenManager {
    *  `restore()` is expected to handle "no session" silently per the plugin
    *  contract's `SourceAuth.restore` doc (no popups, no navigation). */
   async getTokens(): Promise<TokenSet | undefined> {
-    const raw = await this.config.storage.get(this.config.storageKey);
+    const raw = await this.enqueue(() => this.config.storage.get(this.config.storageKey));
     if (!raw) return undefined;
     try {
       return JSON.parse(raw) as TokenSet;
@@ -111,9 +163,16 @@ export class TokenManager {
     // Replacing the session object (rather than mutating a counter on the
     // existing one) is what disarms any refresh already in flight: it holds
     // a closure over the *old* `Session`, which nothing reachable from
-    // `this` points to any more.
+    // `this` points to any more. This swap is synchronous and immediate —
+    // it does not wait for the queue — so a refresh's check
+    // (`session !== this.session`) sees it the moment `clear()` is called,
+    // regardless of where `clear()`'s own `delete()` lands in the queue.
     this.session = new Session();
-    await this.config.storage.delete(this.config.storageKey);
+    // The delete itself still goes through the queue, so it is strictly
+    // ordered against any write already ahead of it: if a refresh's write
+    // was enqueued first, this delete runs after it (and the delete wins,
+    // since it's last) rather than racing it at the storage layer.
+    await this.enqueue(() => this.config.storage.delete(this.config.storageKey));
   }
 
   /**
@@ -179,40 +238,28 @@ export class TokenManager {
       const merged: TokenSet = { ...refreshed, refreshToken: refreshed.refreshToken ?? refreshToken };
       const mergedJson = JSON.stringify(merged);
 
-      if (session !== this.session) {
-        // clear() ran while the token-endpoint request was in flight.
-        // Persisting `merged` now would write a live token set back under
-        // the storage key the user just signed out of, resurrecting the
-        // session — skip the write entirely.
-        throw new NotSignedInError('signed out while the token refresh was in flight');
-      }
-
-      await this.config.storage.set(this.config.storageKey, mergedJson);
-
-      // The write above is itself an awaited step, separate from the check
-      // just before it — for a `TokenStorage` whose `set`/`delete` can
-      // complete out of invocation order (IndexedDB, extension storage, a
-      // network-backed store), a `clear()` that starts *after* the check
-      // above already passed can still have its `delete()` reach the
-      // backend before this `set()` does, resurrecting the session at the
-      // storage layer even though `this.session` had already moved on.
-      // A check-then-write pair can't be made atomic against such a backend
-      // by ordering alone — so re-validate after the write instead, and if
-      // a `clear()` did land in the interim, undo it. The undo reads the
-      // current value back and only deletes if it still holds exactly what
-      // this call just wrote, rather than deleting unconditionally: between
-      // this write settling and the check below running, a *legitimate*
-      // new sign-in may already have written its own tokens over ours (see
-      // the "new sign-in after clear()" case this module's tests cover) —
-      // deleting unconditionally would destroy that instead of the stale
-      // write it's meant to undo.
-      if (session !== this.session) {
-        const stillOurs = await this.config.storage.get(this.config.storageKey);
-        if (stillOurs === mergedJson) {
-          await this.config.storage.delete(this.config.storageKey);
+      // The session check and the write are one queued task: nothing else
+      // that touches storage for this key — a concurrent clear()'s
+      // delete(), a concurrent setTokens() from a brand-new sign-in — can
+      // run between the check and the write, because they all go through
+      // the same `queue` and this task holds it until both steps are done.
+      // If clear() ran (on this session or a later one) at any point before
+      // this task reaches the front of the queue, `session !== this.session`
+      // is already true by the time this task runs — clear()'s session swap
+      // is synchronous and immediate, not itself queued — so the write is
+      // skipped outright rather than needing to be undone afterwards.
+      await this.enqueue(async () => {
+        if (session !== this.session) {
+          // clear() ran (or a new session started) before this write's
+          // turn came up. Persisting `merged` now would write a live token
+          // set back under the storage key the user signed out of, or
+          // clobber a legitimate new session's tokens with a stale refresh
+          // result — skip the write entirely. There is nothing to roll
+          // back: the write never happened.
+          throw new NotSignedInError('signed out while the token refresh was in flight');
         }
-        throw new NotSignedInError('signed out while the token refresh was in flight');
-      }
+        await this.config.storage.set(this.config.storageKey, mergedJson);
+      });
 
       return merged;
     };

@@ -334,8 +334,10 @@ export function collectRefsInByteRange(
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
  * Uses byte-level scanning — no TextDecoder, no regex, no string allocation —
- * except for `IFCREL*` entities when `excludeIds` was passed at all, which decode
- * once to run the same regex-based filter the emission passes use.
+ * except for a SOURCE-BACKED `IFCREL*` entity when `excludeIds` was passed at
+ * all, which decodes and parses its line once, for BOTH the bridge decision
+ * and the refs enqueued (the same parsed groups feed both — see
+ * `sourceRelGroups` below), rather than once per purpose.
  */
 export function collectReferencedEntityIds(
   rootIds: Set<number>,
@@ -430,6 +432,21 @@ export function collectReferencedEntityIds(
         ? entityIndex.effectiveType(entityId, ref.type)
         : ref.type
     );
+
+    // Mutation-aware groups for a SOURCE-BACKED `IFCREL*` entity — computed
+    // ONCE below and consumed by BOTH the bridge decision and the refs
+    // actually enqueued further down, so the two cannot answer differently.
+    // Round 4 fed this same mutation-aware answer only to the bridge
+    // decision and left the enqueue step re-scanning the entity's ORIGINAL
+    // bytes, so an override that survived the gate (the relationship keeps
+    // bridging) was then invisible to what got walked: the emitted line
+    // named the retargeted id, but the closure never queued it, shipping a
+    // dangling ref (#2637 follow-up). Left undefined — and the walk falls
+    // back to the raw byte scan, unchanged — whenever there is no bridge
+    // decision to share it with (a non-relationship entity, or a caller with
+    // no `excludeIds` at all, e.g. `demesh-prune.ts`).
+    let sourceRelGroups: ReadonlyArray<number | readonly number[]> | undefined;
+
     if (
       isBridgeTargetExcluded !== null
       && bridgeType !== undefined && bridgeType.toUpperCase().startsWith('IFCREL')
@@ -452,12 +469,15 @@ export function collectReferencedEntityIds(
         // text alone cannot know that (#2637 follow-up: CodeRabbit found the
         // emitted line and this bridge check could disagree on exactly that
         // case). `refGroupsOf` returns undefined when nothing overrides
-        // anything for this id, so the parsed-from-text answer stands.
-        : relationshipRefGroupsFromSourceLine(
+        // anything for this id, so the parsed-from-text answer stands. Stored
+        // in `sourceRelGroups` (not just a local) so the enqueue step below
+        // reuses this SAME answer instead of re-deriving it from the stale
+        // original bytes.
+        : (sourceRelGroups = relationshipRefGroupsFromSourceLine(
             entityIndex,
             entityId,
             decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
-          );
+          ));
       if (!relationshipRefsSurviveExclusion(groups, isBridgeTargetExcluded)) {
         continue;
       }
@@ -465,6 +485,16 @@ export function collectReferencedEntityIds(
 
     if (authored) {
       refs.push(...authored);
+    } else if (sourceRelGroups) {
+      // The exact groups the bridge decision above just used to let this
+      // entity through — walk THOSE, not a fresh scan of the original bytes,
+      // so a queued override that retargeted one of this relationship's own
+      // references is reachable by the closure the same way it will be named
+      // in the emitted line.
+      for (const group of sourceRelGroups) {
+        if (Array.isArray(group)) refs.push(...group);
+        else refs.push(group as number);
+      }
     } else {
       // Hand the byte scanner an already-narrowed record. `slice` is a
       // `subarray` on a contiguous source, so this is the same zero-copy read.

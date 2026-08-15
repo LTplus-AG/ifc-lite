@@ -959,6 +959,84 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Fifth-layer maintainer finding on #2637 (review comment 5303864666): round
+  // 4 gave `refGroupsOf` a `sourceGroups` splice so the closure's BRIDGE
+  // DECISION for a SOURCE-backed relationship accounts for a queued mutation
+  // — but the refs actually ENQUEUED into the closure still came exclusively
+  // from byte-scanning the entity's ORIGINAL bytes. So a mutation that
+  // retargets a relationship's single-valued attribute (here
+  // `RelatingPropertyDefinition`) onto an entity nothing else in the file
+  // names lets the bridge decision through (correctly — the emitted line will
+  // name the new target, so the relationship's own line survives) but the
+  // retargeted id is never queued for the walk, so its defining line never
+  // ships: a dangling ref, structurally invalid IFC, emitted with no error.
+  it('does not leave a dangling ref when a SOURCE-backed relationship’s single-valued attribute is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhAA',$,'Pset_Original',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('ORIGINAL_COST'),$);"],
+      // #50/#51: an entirely separate pset, named by NOTHING in the source
+      // bytes — reachable only once the mutation below retargets #22 onto it.
+      [50, 'IFCPROPERTYSET', "#50=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhBB',$,'Pset_Retargeted',$,(#51));"],
+      [51, 'IFCPROPERTYSINGLEVALUE', "#51=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('RETARGETED_COST'),$);"],
+      // SOURCE-backed relationship — not created via `view.createEntity` —
+      // still naming #10 (RelatingPropertyDefinition, a single-valued
+      // attribute) in the source bytes.
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#8),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    // Retarget RelatingPropertyDefinition (a single-valued attribute, named
+    // by the reviewer's repro) from #10 onto #50 — a named-attribute
+    // mutation on a SOURCE line, exactly the reviewer's failing case.
+    view.setAttribute(22, 'RelatingPropertyDefinition', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain('RETARGETED_COST');
+    expect(content).toContain('#50=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // Same fix, a different `IFCREL*` arity — `relationshipRefGroupsFromSourceLine`
+  // / `extractRelationshipRefGroupsIndexed` are generic over STEP argument
+  // position, not a per-subtype table, so this is a cheap generality check
+  // rather than a new gap: `IfcRelAssociatesMaterial`'s `RelatingMaterial` is
+  // a single-valued attribute at a DIFFERENT index than
+  // `IfcRelDefinesByProperties`'s `RelatingPropertyDefinition` above.
+  it('does not leave a dangling ref when IfcRelAssociatesMaterial’s RelatingMaterial is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [10, 'IFCMATERIAL', "#10=IFCMATERIAL('OriginalMaterial');"],
+      // #50: an unreferenced material — reachable only once the mutation
+      // below retargets #22's RelatingMaterial onto it.
+      [50, 'IFCMATERIAL', "#50=IFCMATERIAL('RetargetedMaterial');"],
+      [22, 'IFCRELASSOCIATESMATERIAL', "#22=IFCRELASSOCIATESMATERIAL('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#8),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setAttribute(22, 'RelatingMaterial', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain("#50=IFCMATERIAL('RetargetedMaterial')");
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

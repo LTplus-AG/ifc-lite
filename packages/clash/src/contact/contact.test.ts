@@ -5,6 +5,11 @@
 import { describe, it, expect } from 'vitest';
 import { contactClusters, type Mesh } from './index.js';
 
+// The "scale-relative planeEps", "scale-relative planeDistSnap", and
+// "planeDistSnap floor" describe blocks below are regression coverage for
+// PR #2600 (scaled contact tolerances in narrow-phase.ts/shared-faces.ts),
+// following on from #2594.
+
 /** Axis-aligned box [min..max] as a triangulated mesh (12 triangles). */
 function box(id: string, min: [number, number, number], max: [number, number, number]): Mesh {
   const [x0, y0, z0] = min;

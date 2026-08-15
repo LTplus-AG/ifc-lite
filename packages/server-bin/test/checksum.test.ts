@@ -108,7 +108,7 @@ describe('verifyArchiveChecksum - mismatching digest fails closed', () => {
   });
 });
 
-describe('verifyArchiveChecksum - missing checksum fails closed', () => {
+describe('verifyArchiveChecksum - missing checksum fails closed (PR #2650)', () => {
   // The fail-open branch this replaces was the ONLY branch that ever ran in
   // production: no workflow published a sidecar, so every install executed an
   // unverified binary while the code read as though a check existed. Failing

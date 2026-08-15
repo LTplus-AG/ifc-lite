@@ -293,7 +293,7 @@ describe('runBinary - argument and signal plumbing', () => {
  * seams here (fetch, checksum.js, tar/execFileSync are mocked), so the
  * assertions bind the sequence, not just the presence of a call.
  */
-describe('downloadBinary - checksum verification gates extraction', () => {
+describe('downloadBinary - checksum verification gates extraction (PR #2650)', () => {
   /** Minimal fetch response whose body streams one chunk. */
   function fakeDownloadResponse() {
     const bytes = new TextEncoder().encode('archive-bytes');

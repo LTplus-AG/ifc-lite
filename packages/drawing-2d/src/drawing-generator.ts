@@ -73,6 +73,11 @@ export interface GeneratorOptions {
    * this footprint outline instead of the normal-based mesh silhouette (which
    * ifc-lite's unreliable winding can break). Return `null` to fall back to
    * silhouette extraction for that mesh.
+   *
+   * CARDINAL planes only: the callback receives just (axis, flipped) and its
+   * output is in cardinal projection space, so on a custom (face-picked)
+   * plane the generator bypasses it and uses the plane-aware silhouette path
+   * instead (PR #2644 review).
    */
   outlineProvider?: (mesh: MeshData, axis: SectionAxis, flipped: boolean) => MeshOutline2D | null;
   /** Progress callback */
@@ -247,9 +252,24 @@ export class Drawing2DGenerator {
         );
 
         const viewDir = getViewDirectionForPlane(config.plane);
+
+        // The outline provider contract is CARDINAL-only: it receives just
+        // (axis, flipped) and returns contours and axisMin/axisMax in cardinal
+        // projection space (the Rust `meshOutline2d` binding knows nothing of
+        // custom planes). The depth raster and every other line producer work
+        // in the custom tangent/bitangent basis when `customPlane` is set, so
+        // provider output would be band-classified against the wrong offset
+        // and occlusion-sampled against a raster in a DIFFERENT coordinate
+        // system (PR #2644 review). Bypass the provider on custom planes and
+        // take the silhouette path below, which is plane-aware end to end.
+        // Do NOT "optimise" the provider back in here without making its
+        // callback contract (and the WASM binding behind it) custom-basis
+        // aware.
+        const outlineProvider = config.plane.customPlane ? undefined : opts.outlineProvider;
+
         for (const mesh of meshesForSilhouette) {
-          const outline = opts.outlineProvider
-            ? opts.outlineProvider(mesh, config.plane.axis, config.plane.flipped)
+          const outline = outlineProvider
+            ? outlineProvider(mesh, config.plane.axis, config.plane.flipped)
             : null;
           if (outline && outline.contours.length > 0) {
             projectionLines.push(

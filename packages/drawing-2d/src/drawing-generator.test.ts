@@ -16,7 +16,14 @@
 import { describe, it, expect } from 'vitest';
 import type { MeshData } from '@ifc-lite/geometry';
 import { Drawing2DGenerator } from './drawing-generator.js';
-import type { DrawingLine, ProfileEntry, SectionConfig } from './types.js';
+import { projectTo2D } from './math.js';
+import type {
+  DrawingLine,
+  MeshOutline2D,
+  ProfileEntry,
+  SectionAxis,
+  SectionConfig,
+} from './types.js';
 
 const GEN_OPTIONS = {
   useGPU: false,
@@ -207,5 +214,158 @@ describe('generate() hidden-line removal (issue #2639)', () => {
     expect(nearLines.length).toBeGreaterThan(0);
     expect(farLines.every((l) => l.visibility === 'hidden')).toBe(true);
     expect(nearLines.every((l) => l.visibility === 'visible')).toBe(true);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Outline-provider basis agreement (PR #2644 review)
+//
+// The outlineProvider contract is CARDINAL-only: it receives (axis, flipped)
+// and returns contours + axisMin/axisMax in cardinal projection space, like
+// the Rust meshOutline2d binding it models. The depth raster, by contrast,
+// honours the FULL plane config. These tests pin that generate() never mixes
+// the two bases: on a cardinal plane the provider is used; on a custom plane
+// it is bypassed for the plane-aware silhouette path.
+// -----------------------------------------------------------------------------
+
+/**
+ * A faithful stand-in for the Rust `meshOutline2d` provider: the world-space
+ * footprint bounding box of the mesh in cardinal `projectTo2D` space, with
+ * `axisMin`/`axisMax` along the cardinal cut axis. The ring is INSET by 0.25
+ * so provider-derived lines are distinguishable from silhouette-derived ones
+ * (a box silhouette lands exactly on the footprint, the inset ring cannot).
+ */
+function makeCardinalOutlineProvider(): {
+  calls: Array<{ expressId: number; axis: SectionAxis; flipped: boolean }>;
+  provider: (mesh: MeshData, axis: SectionAxis, flipped: boolean) => MeshOutline2D | null;
+} {
+  const calls: Array<{ expressId: number; axis: SectionAxis; flipped: boolean }> = [];
+  const provider = (mesh: MeshData, axis: SectionAxis, flipped: boolean): MeshOutline2D | null => {
+    calls.push({ expressId: mesh.expressId, axis, flipped });
+    const o = mesh.origin ?? [0, 0, 0];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let axisMin = Infinity;
+    let axisMax = -Infinity;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const world = {
+        x: mesh.positions[i] + o[0],
+        y: mesh.positions[i + 1] + o[1],
+        z: mesh.positions[i + 2] + o[2],
+      };
+      const p = projectTo2D(world, axis, flipped);
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+      axisMin = Math.min(axisMin, world[axis]);
+      axisMax = Math.max(axisMax, world[axis]);
+    }
+    const inset = 0.25;
+    const x0 = minX + inset;
+    const y0 = minY + inset;
+    const x1 = maxX - inset;
+    const y1 = maxY - inset;
+    return {
+      contours: [[x0, y0, x1, y0, x1, y1, x0, y1]],
+      axisMin,
+      axisMax,
+    };
+  };
+  return { calls, provider };
+}
+
+const INSET_RING_COORDS = [0.25, 9.75];
+
+describe('generate() outline provider basis agreement (PR #2644 review)', () => {
+  it('cardinal plane: uses the outline provider and classifies its lines correctly', async () => {
+    const config = sectionConfig({ axis: 'z', position: 0, flipped: false });
+    const { calls, provider } = makeCardinalOutlineProvider();
+
+    const generator = new Drawing2DGenerator();
+    await generator.initialize();
+    const drawing = await generator.generate([farBox(), nearBox()], config, {
+      ...GEN_OPTIONS,
+      outlineProvider: provider,
+    });
+
+    // The provider must still be used on cardinal planes (capability pin:
+    // the custom-plane bypass below must not disable it everywhere).
+    expect(calls.map((c) => c.expressId).sort()).toEqual([1, 2]);
+    expect(calls.every((c) => c.axis === 'z' && c.flipped === false)).toBe(true);
+
+    const farLines = projectionLinesOf(drawing.lines, 1);
+    const nearLines = projectionLinesOf(drawing.lines, 2);
+    expect(farLines.length).toBeGreaterThan(0);
+    expect(nearLines.length).toBeGreaterThan(0);
+
+    // Provider output (the inset ring), not the silhouette (the exact
+    // footprint), must be what reaches the drawing: every far-line endpoint
+    // coordinate is an inset-ring value, which the silhouette path can never
+    // produce for a box.
+    for (const l of farLines) {
+      for (const p of [l.line.start, l.line.end]) {
+        expect(INSET_RING_COORDS).toContain(p.x);
+        expect(INSET_RING_COORDS).toContain(p.y);
+      }
+    }
+
+    // Same occlusion truth as Case A: the far footprint lies fully under the
+    // near box, the near box is unoccluded.
+    expect(farLines.every((l) => l.visibility === 'hidden')).toBe(true);
+    expect(nearLines.every((l) => l.visibility === 'visible')).toBe(true);
+  });
+
+  it('custom plane: bypasses the cardinal-only provider so lines and raster share one basis', async () => {
+    // Same geometry and same expected outcome as the cardinal case above,
+    // but the plane carries a customPlane whose tangent basis is TRANSLATED
+    // (origin x = 100): custom-basis 2D coordinates are (x - 100, y) while
+    // the cardinal provider would emit (x, y). If generate() fed the
+    // provider's cardinal-space contours to the classifier, they would be
+    // sampled against a raster built in the custom basis 100 units away --
+    // no occluder information there, so the far box would wrongly classify
+    // VISIBLE. The provider must be bypassed in favour of the plane-aware
+    // silhouette path, reproducing the cardinal occlusion outcome.
+    const config = sectionConfig({
+      axis: 'z',
+      position: 0,
+      flipped: false,
+      customPlane: {
+        normal: { x: 0, y: 0, z: 1 },
+        distance: 0,
+        origin: { x: 100, y: 0, z: 0 },
+        tangent: { x: 1, y: 0, z: 0 },
+        bitangent: { x: 0, y: 1, z: 0 },
+      },
+    });
+    const { calls, provider } = makeCardinalOutlineProvider();
+
+    const generator = new Drawing2DGenerator();
+    await generator.initialize();
+    const drawing = await generator.generate([farBox(), nearBox()], config, {
+      ...GEN_OPTIONS,
+      outlineProvider: provider,
+    });
+
+    const farLines = projectionLinesOf(drawing.lines, 1);
+    const nearLines = projectionLinesOf(drawing.lines, 2);
+    expect(farLines.length).toBeGreaterThan(0);
+    expect(nearLines.length).toBeGreaterThan(0);
+
+    // Occlusion outcome must match the equivalent cardinal case (far box
+    // hidden under the near box, near box visible) -- the whole point of
+    // basis agreement.
+    expect(farLines.every((l) => l.visibility === 'hidden')).toBe(true);
+    expect(nearLines.every((l) => l.visibility === 'visible')).toBe(true);
+
+    // Mechanism pin: the cardinal-only provider must not run at all on a
+    // custom plane (its output cannot be expressed in the custom basis).
+    expect(calls).toEqual([]);
+
+    // And the lines must come from the silhouette path in the CUSTOM basis:
+    // the far footprint x in [0, 10] world maps to [-100, -90] there.
+    expect(farLines.every((l) => l.line.start.x <= -90 && l.line.end.x <= -90)).toBe(true);
   });
 });

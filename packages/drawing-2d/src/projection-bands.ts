@@ -236,11 +236,13 @@ export function outlineToProjectionLines(
   depths: ProjectionBandDepths,
 ): DrawingLine[] {
   // The outline provider itself is cardinal-only: `axisMin`/`axisMax` are
-  // coordinates along the cardinal cut axis (the Rust `meshOutline2d` binding
-  // knows nothing of custom planes, and the generator invokes it with
-  // `plane.axis`). Classify against the cardinal plane position; the
-  // custom-plane `distance` is only the best-available offset if a caller
-  // ever passes one despite that.
+  // coordinates along the cardinal cut axis, and the contours are in cardinal
+  // projection space (the Rust `meshOutline2d` binding knows nothing of
+  // custom planes). The generator therefore never calls this with a custom
+  // plane active - it bypasses the provider for the plane-aware silhouette
+  // path (PR #2644 review). Classify against the cardinal plane position; the
+  // custom-plane `distance` is only the best-available offset if a direct
+  // caller ever passes one despite that.
   const pos = plane.customPlane ? plane.customPlane.distance : plane.position;
   const dMin = signedAxisDepth(outline.axisMin, pos, plane.flipped);
   const dMax = signedAxisDepth(outline.axisMax, pos, plane.flipped);

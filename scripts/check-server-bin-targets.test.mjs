@@ -211,6 +211,21 @@ test('a block comment inside the Set is green', () => {
   assertGreen(result);
 });
 
+// Same class one level down: the comment stripper itself. A lone apostrophe
+// in unquoted shell text once opened a quote state that never closed, hiding
+// every later `#` on the line - here the hidden comment carries a hostile
+// upload invocation, so a stripper regression turns this green case red.
+test('an apostrophe in unquoted shell text does not blind the comment stripper', () => {
+  const result = runChecker({
+    workflow: (s) => mutate(
+      s,
+      ASSIGN_LINE,
+      `${ASSIGN_LINE}\n          echo the tag can't clobber healthy assets # gh release upload "$RELEASE_TAG" "stale-$asset"`,
+    ),
+  });
+  assertGreen(result);
+});
+
 test('an upload argument that braces the asset variable is green', () => {
   const result = runChecker({
     workflow: (s) => mutate(s, RELEASE_UPLOAD, RELEASE_UPLOAD.replace('"$asset"', BRACED_ASSET_ARG)),

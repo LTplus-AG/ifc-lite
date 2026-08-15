@@ -36,6 +36,17 @@ export function fail(message) {
  * blocks uses the same `#`-to-end-of-line form, so one strip is correct for
  * both. Quote state is per-line on purpose - a stray quote in one line must
  * not hide a comment marker in the next.
+ *
+ * A quote only OPENS a scalar when its closing quote exists later on the same
+ * line. A lone apostrophe in unquoted prose ("it's a tag # note") is literal
+ * text; treating it as an opener left the line stuck in quote state with
+ * every later `#` invisible, so comment text leaked into parsed values - the
+ * same silent live-vs-commented confusion this module exists to prevent, one
+ * level down. The lookahead makes that stuck state unreachable: quote state
+ * always closes before the line ends. The residual misread is a matched
+ * FALSE pair straddling a `#` (it's a # x's), which UNDER-strips - the
+ * leaked text corrupts a value every consumer compares exactly, so that
+ * direction fails red, never green.
  */
 export function stripYamlComments(source) {
   return source.split('\n').map((line) => {
@@ -45,7 +56,7 @@ export function stripYamlComments(source) {
       if (quote) {
         if (quote === '"' && c === '\\') i++;
         else if (c === quote) quote = null;
-      } else if (c === "'" || c === '"') {
+      } else if ((c === "'" || c === '"') && hasClosingQuote(line, c, i + 1)) {
         quote = c;
       } else if (c === '#' && (i === 0 || line[i - 1] === ' ' || line[i - 1] === '\t')) {
         return line.slice(0, i).replace(/[ \t]+$/, '');
@@ -53,6 +64,20 @@ export function stripYamlComments(source) {
     }
     return line;
   }).join('\n');
+}
+
+/**
+ * True when `quote` closes again at or after `from`, with the same escape
+ * rule as the scanner above: a backslashed `"` never closes a double-quoted
+ * scalar. Sharing the rule matters - the scanner may only enter quote state
+ * when this predicate guarantees it will exit again on the same line.
+ */
+function hasClosingQuote(line, quote, from) {
+  for (let j = from; j < line.length; j++) {
+    if (quote === '"' && line[j] === '\\') j++;
+    else if (line[j] === quote) return true;
+  }
+  return false;
 }
 
 /**

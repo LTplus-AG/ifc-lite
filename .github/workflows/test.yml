@@ -429,8 +429,10 @@ jobs:
       # literal in a comment satisfied the upload check) that hand-testing
       # had missed. Each hostile mutation now runs against the real inputs
       # in a temp tree and must turn the gate red with an accurate message.
+      # The second file unit-tests stripYamlComments, the primitive the gate's
+      # comment-awareness rests on (a lone apostrophe once blinded it).
       - name: Check server-bin parity gate regressions
-        run: node --test scripts/check-server-bin-targets.test.mjs
+        run: node --test scripts/check-server-bin-targets.test.mjs scripts/lib/server-bin-targets-parse.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

@@ -63,17 +63,25 @@ pub struct KmzOptions {
 }
 
 /// Convert the IFC angle-to-grid-north (counter-clockwise from map east, via the
-/// `IfcMapConversion` X-axis abscissa/ordinate) into a KML heading (clockwise from
-/// north: 0 = N, 90 = E, 180 = S, 270 = W). Returns `0` when either component is absent.
+/// `IfcMapConversion` X-axis abscissa/ordinate) into a KML `<Model><Orientation><heading>`
+/// (clockwise **rotation** applied to a model whose local X-axis starts pointing east).
+/// Returns `0` when either component is absent.
+///
+/// KML heading is not a compass bearing: with `heading = 0` the model's X-axis already
+/// points east (KML's baseline), and rotating clockwise by `heading` moves it to true
+/// bearing `90 + heading`. So for the X-axis to reach the IFC grid-north-derived bearing
+/// `B`, the required heading is `B - 90` (mod 360), not `B` itself.
 pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>) -> f64 {
     match (x_abscissa, x_ordinate) {
-        // A zero-length axis is degenerate (atan2(0,0) = 0 would otherwise map to 90);
-        // treat it like a missing axis → no rotation.
+        // A zero-length axis is degenerate (atan2(0,0) = 0 would otherwise map to a
+        // spurious rotation); treat it like a missing axis → no rotation.
         (Some(x), Some(y)) if x == 0.0 && y == 0.0 => 0.0,
         (Some(x), Some(y)) => {
             let angle_from_east_ccw = y.atan2(x).to_degrees();
-            // heading = 90 - angle (CCW-from-east → CW-from-north), normalized to [0, 360).
-            (90.0 - angle_from_east_ccw).rem_euclid(360.0)
+            // bearing = 90 - angle (CCW-from-east → CW-from-north); heading = bearing - 90
+            // = -angle, normalized to [0, 360). `+ 0.0` folds a resulting -0.0 (e.g. when
+            // angle is exactly 0) back to +0.0 so it doesn't render as "<heading>-0</heading>".
+            (-angle_from_east_ccw).rem_euclid(360.0) + 0.0
         }
         _ => 0.0,
     }
@@ -284,12 +292,12 @@ mod tests {
         assert_eq!(ifc_angle_to_kml_heading(None, None), 0.0);
         // Degenerate zero-length axis → 0 (not 90 from atan2(0,0)).
         assert_eq!(ifc_angle_to_kml_heading(Some(0.0), Some(0.0)), 0.0);
-        // X-axis along east (1,0): angle-from-east 0 → heading 90.
-        assert!((ifc_angle_to_kml_heading(Some(1.0), Some(0.0)) - 90.0).abs() < 1e-9);
-        // X-axis along north (0,1): angle-from-east 90 CCW → heading 0.
-        assert!((ifc_angle_to_kml_heading(Some(0.0), Some(1.0)) - 0.0).abs() < 1e-9);
-        // X-axis along west (-1,0): angle 180 → heading 90-180 = -90 → 270.
-        assert!((ifc_angle_to_kml_heading(Some(-1.0), Some(0.0)) - 270.0).abs() < 1e-9);
+        // X-axis along east (1,0): bearing 90, heading = bearing - 90 = 0.
+        assert!((ifc_angle_to_kml_heading(Some(1.0), Some(0.0)) - 0.0).abs() < 1e-9);
+        // X-axis along north (0,1): bearing 0, heading = 0 - 90 = -90 → 270.
+        assert!((ifc_angle_to_kml_heading(Some(0.0), Some(1.0)) - 270.0).abs() < 1e-9);
+        // X-axis along west (-1,0): bearing 270, heading = 270 - 90 = 180.
+        assert!((ifc_angle_to_kml_heading(Some(-1.0), Some(0.0)) - 180.0).abs() < 1e-9);
     }
 
     #[test]
@@ -308,7 +316,7 @@ mod tests {
         assert!(kml.contains("<longitude>8.5</longitude>"));
         assert!(kml.contains("<altitude>412</altitude>"));
         assert!(kml.contains("<altitudeMode>absolute</altitudeMode>"));
-        assert!(kml.contains("<heading>90</heading>"));
+        assert!(kml.contains("<heading>0</heading>"));
         assert!(kml.contains("<href>model.dae</href>"));
         assert!(kml.contains("Bldg &lt;A&gt;"), "name is XML-escaped");
     }

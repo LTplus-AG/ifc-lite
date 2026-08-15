@@ -7,7 +7,7 @@
  */
 
 import React, { useMemo } from 'react';
-import type { Measurement, SnapVisualization } from '@/store';
+import type { Measurement, SnapVisualization, ActivePolyline, PolylineMeasurement } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
 import { formatDistance } from './formatDistance';
@@ -17,6 +17,8 @@ import {
   formatHorizontalVertical,
 } from './measure-modes/components';
 import { inclination, formatInclination } from './measure-modes/inclination';
+import { polylineOpenLength, polylineBasisLabel } from './measure-modes/polyline';
+import { CLOSE_LOOP_SCREEN_RADIUS_PX } from '../measureHandlers';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
@@ -32,9 +34,14 @@ export interface MeasurementOverlaysProps {
   /** The user's per-unit-type display override (#1573); defaults to none so
    *  callers that don't pass it keep the previous auto-scaled-metric labels. */
   unitDisplayOverrides?: Record<string, string>;
+  /** In-progress multi-click polyline sequence (#2199), or null when the
+   *  Measure tool is in drag mode / has nothing accumulated yet. */
+  activePolyline?: ActivePolyline | null;
+  /** Finished polyline measurements (open length or closed perimeter). */
+  polylineMeasurements?: PolylineMeasurement[];
 }
 
-export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, unitDisplayOverrides = {} }: MeasurementOverlaysProps) {
+export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, unitDisplayOverrides = {}, activePolyline = null, polylineMeasurements = [] }: MeasurementOverlaysProps) {
   // Determine snap indicator position
   // Priority: activeMeasurement.current > snapTarget projected position > hoverPosition (fallback)
   const snapIndicatorPos = useMemo(() => {
@@ -149,6 +156,96 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
         </div>
         );
       })}
+
+      {/* Completed polyline measurements (#2199 multi-click mode) */}
+      {polylineMeasurements.map((pl) => {
+        if (pl.points.length < 2) return null;
+        const pathPoints = pl.closed ? [...pl.points, pl.points[0]] : pl.points;
+        const d = pathPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.screenX} ${p.screenY}`).join(' ');
+        // Label at the vertex centroid — stable regardless of point order,
+        // and always inside a closed loop rather than off to one side.
+        const cx = pl.points.reduce((sum, p) => sum + p.screenX, 0) / pl.points.length;
+        const cy = pl.points.reduce((sum, p) => sum + p.screenY, 0) / pl.points.length;
+        return (
+          <div key={pl.id} className="pointer-events-none">
+            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={d} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" filter="url(#glow)" />
+              {pl.points.map((p, i) => (
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+              ))}
+            </svg>
+            <div
+              className="absolute pointer-events-none z-20 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-2 py-1 font-mono text-xs font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-zinc-900 dark:border-zinc-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]"
+              style={{ left: cx, top: cy }}
+            >
+              {/* Basis is printed alongside the number, never left implicit
+                  (#2199 panel discipline: an open length and a closed
+                  perimeter are different claims). */}
+              <div className="font-normal text-[10px] leading-tight opacity-80">{polylineBasisLabel(pl.closed)}</div>
+              {formatDistance(pl.length, unitDisplayOverrides)}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* In-progress polyline sequence (#2199 multi-click mode) */}
+      {activePolyline && activePolyline.points.length >= 1 && (() => {
+        const points = activePolyline.points;
+        const last = points[points.length - 1];
+        const first = points[0];
+        const canClose = points.length >= 3;
+        const placedD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.screenX} ${p.screenY}`).join(' ');
+        const runningLength = polylineOpenLength(points);
+        return (
+          <div className="pointer-events-none">
+            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={placedD} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter="url(#glow)" />
+              {/* Rubber-band segment to the cursor's current snap/hover position. */}
+              {hoverPosition && (
+                <line
+                  x1={last.screenX}
+                  y1={last.screenY}
+                  x2={hoverPosition.x}
+                  y2={hoverPosition.y}
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="1.5"
+                  strokeDasharray="3,3"
+                  strokeOpacity="0.5"
+                />
+              )}
+              {points.map((p, i) => (
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+              ))}
+              {/* First point gets a visible "close the loop here" ring once
+                  there are enough points to close (>= 3) — clicking inside
+                  this ring finishes as a closed perimeter instead of adding
+                  another point (see isNearPolylineStart in measureHandlers.ts,
+                  same radius). */}
+              {canClose && (
+                <circle
+                  cx={first.screenX}
+                  cy={first.screenY}
+                  r={CLOSE_LOOP_SCREEN_RADIUS_PX}
+                  fill="none"
+                  stroke="#FFEB3B"
+                  strokeWidth="1.5"
+                  strokeDasharray="2,2"
+                  strokeOpacity="0.8"
+                />
+              )}
+            </svg>
+            <div
+              className="absolute pointer-events-none z-20 bg-primary text-primary-foreground px-2.5 py-1 font-mono text-sm font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-primary shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]"
+              style={{ left: last.screenX, top: last.screenY - 20 }}
+            >
+              <div className="font-normal text-[10px] leading-tight opacity-90">
+                {polylineBasisLabel(false)} so far - {points.length} pts
+              </div>
+              {formatDistance(runningLength, unitDisplayOverrides)}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Active measurement (live preview while dragging) */}
       {activeMeasurement && (
@@ -605,6 +702,31 @@ export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProp
   if (!!prevProps.constraintEdge !== !!nextProps.constraintEdge) return false;
   if (prevProps.constraintEdge && nextProps.constraintEdge) {
     if (prevProps.constraintEdge.activeAxis !== nextProps.constraintEdge.activeAxis) return false;
+  }
+
+  // Compare activePolyline — points array by length + last point (the only
+  // part that changes on every accumulate/click) plus point count for the
+  // in-between points, since a point inserted anywhere would otherwise be
+  // invisible to a length+last-point-only check.
+  const prevPoly = prevProps.activePolyline;
+  const nextPoly = nextProps.activePolyline;
+  if (!!prevPoly !== !!nextPoly) return false;
+  if (prevPoly && nextPoly) {
+    if (prevPoly.points.length !== nextPoly.points.length) return false;
+    for (let i = 0; i < prevPoly.points.length; i++) {
+      const a = prevPoly.points[i];
+      const b = nextPoly.points[i];
+      if (a.screenX !== b.screenX || a.screenY !== b.screenY || a.x !== b.x || a.y !== b.y || a.z !== b.z) return false;
+    }
+  }
+
+  // Compare polylineMeasurements — id list is enough (points are immutable
+  // once a measurement is finished; only additions/deletions change it).
+  const prevPls = prevProps.polylineMeasurements ?? [];
+  const nextPls = nextProps.polylineMeasurements ?? [];
+  if (prevPls.length !== nextPls.length) return false;
+  for (let i = 0; i < prevPls.length; i++) {
+    if (prevPls[i].id !== nextPls[i].id) return false;
   }
 
   // Compare unitDisplayOverrides — every distance label routes through it

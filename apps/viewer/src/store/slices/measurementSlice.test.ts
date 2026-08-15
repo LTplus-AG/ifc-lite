@@ -214,4 +214,217 @@ describe('MeasurementSlice', () => {
       assert.strictEqual(state.snapEnabled, true);
     });
   });
+
+  // ── Multi-click polyline mode (#2199) ─────────────────────────────────
+
+  const p = (x: number, y: number, z: number) => ({ x, y, z, screenX: x * 10, screenY: y * 10 });
+
+  describe('polyline initial state', () => {
+    it('defaults to drag mode with nothing accumulated', () => {
+      assert.strictEqual(state.measureMode, 'drag');
+      assert.strictEqual(state.activePolyline, null);
+      assert.deepStrictEqual(state.polylineMeasurements, []);
+    });
+  });
+
+  describe('startPolyline / addPolylinePoint (accumulating 3+ points)', () => {
+    it('starts a sequence and accumulates points in order', () => {
+      state.startPolyline(p(0, 0, 0));
+      assert.deepStrictEqual(state.activePolyline?.points, [p(0, 0, 0)]);
+
+      state.addPolylinePoint(p(3, 0, 0));
+      state.addPolylinePoint(p(3, 4, 0));
+      state.addPolylinePoint(p(0, 4, 0));
+
+      assert.strictEqual(state.activePolyline?.points.length, 4);
+      assert.deepStrictEqual(state.activePolyline?.points, [
+        p(0, 0, 0), p(3, 0, 0), p(3, 4, 0), p(0, 4, 0),
+      ]);
+    });
+
+    it('startPolyline is a no-op once a sequence is already active', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.startPolyline(p(99, 99, 99)); // must not reset or clobber
+      assert.deepStrictEqual(state.activePolyline?.points, [p(0, 0, 0), p(1, 0, 0)]);
+    });
+
+    it('addPolylinePoint is a no-op with no sequence in progress', () => {
+      state.addPolylinePoint(p(1, 1, 1));
+      assert.strictEqual(state.activePolyline, null);
+    });
+  });
+
+  describe('finishPolyline — the finish gesture, open vs. closed', () => {
+    it('finishes OPEN: length is the sum of segments, no closing segment', () => {
+      // 3-4-5 right triangle path: legs 3 and 4.
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(3, 0, 0));
+      state.addPolylinePoint(p(3, 4, 0));
+      state.finishPolyline(false);
+
+      assert.strictEqual(state.activePolyline, null, 'finishing clears the in-progress sequence');
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.closed, false);
+      assert.strictEqual(m.length, 7); // 3 + 4, no hypotenuse
+    });
+
+    it('finishes CLOSED: length is the perimeter (adds the closing segment)', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(3, 0, 0));
+      state.addPolylinePoint(p(3, 4, 0));
+      state.finishPolyline(true);
+
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.closed, true);
+      assert.strictEqual(m.length, 12); // 3 + 4 + 5 (hypotenuse closes the loop)
+    });
+
+    it('open and closed report DIFFERENT numbers for the identical points', () => {
+      const points = [p(0, 0, 0), p(3, 0, 0), p(3, 4, 0)];
+
+      state.startPolyline(points[0]);
+      state.addPolylinePoint(points[1]);
+      state.addPolylinePoint(points[2]);
+      state.finishPolyline(false);
+      const openLength = state.polylineMeasurements[0].length;
+
+      state.startPolyline(points[0]);
+      state.addPolylinePoint(points[1]);
+      state.addPolylinePoint(points[2]);
+      state.finishPolyline(true);
+      const closedLength = state.polylineMeasurements[1].length;
+
+      assert.notStrictEqual(openLength, closedLength);
+      assert.strictEqual(state.polylineMeasurements[0].closed, false);
+      assert.strictEqual(state.polylineMeasurements[1].closed, true);
+    });
+
+    it('rejects finishing OPEN with fewer than 2 points (no-op)', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.finishPolyline(false);
+      assert.strictEqual(state.polylineMeasurements.length, 0);
+      assert.ok(state.activePolyline, 'sequence must still be in progress, not silently dropped');
+    });
+
+    it('rejects finishing CLOSED with fewer than 3 points (no-op)', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.finishPolyline(true);
+      assert.strictEqual(state.polylineMeasurements.length, 0);
+      assert.ok(state.activePolyline, 'a 2-point loop has no interior — must not be recorded as closed');
+    });
+
+    it('is a no-op with nothing in progress', () => {
+      state.finishPolyline(false);
+      assert.strictEqual(state.polylineMeasurements.length, 0);
+    });
+  });
+
+  describe('cancelPolyline (cancel mid-sequence)', () => {
+    it('discards an in-progress sequence without recording a measurement', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.addPolylinePoint(p(1, 1, 0));
+
+      state.cancelPolyline();
+
+      assert.strictEqual(state.activePolyline, null);
+      assert.deepStrictEqual(state.polylineMeasurements, [], 'cancel must not record anything');
+    });
+
+    it('is a no-op with nothing in progress', () => {
+      state.cancelPolyline();
+      assert.strictEqual(state.activePolyline, null);
+    });
+  });
+
+  describe('deletePolylineMeasurement', () => {
+    it('removes a finished polyline by id without touching others', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.finishPolyline(false);
+
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(2, 0, 0));
+      state.finishPolyline(false);
+
+      const firstId = state.polylineMeasurements[0].id;
+      state.deletePolylineMeasurement(firstId);
+
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+      assert.strictEqual(state.polylineMeasurements[0].length, 2);
+    });
+  });
+
+  describe('clearMeasurements also clears polyline state', () => {
+    it('drops both an in-progress sequence and finished polylines', () => {
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.finishPolyline(false);
+      state.startPolyline(p(5, 5, 5)); // leave one in progress too
+
+      state.clearMeasurements();
+
+      assert.strictEqual(state.activePolyline, null);
+      assert.deepStrictEqual(state.polylineMeasurements, []);
+    });
+  });
+
+  describe('setMeasureMode — the two gestures cannot corrupt each other', () => {
+    it('entering polyline mode cancels an in-progress DRAG measurement', () => {
+      state.startMeasurement(p(0, 0, 0));
+      state.updateMeasurement(p(1, 0, 0));
+      assert.ok(state.activeMeasurement, 'precondition: a drag is in progress');
+
+      state.setMeasureMode('polyline');
+
+      assert.strictEqual(state.measureMode, 'polyline');
+      assert.strictEqual(state.activeMeasurement, null, 'drag state must not survive the mode switch');
+    });
+
+    it('leaving polyline mode discards an in-progress CLICK sequence', () => {
+      state.setMeasureMode('polyline');
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      assert.ok(state.activePolyline, 'precondition: a polyline sequence is in progress');
+
+      state.setMeasureMode('drag');
+
+      assert.strictEqual(state.measureMode, 'drag');
+      assert.strictEqual(state.activePolyline, null, 'polyline state must not survive the mode switch');
+    });
+
+    it('switching to the mode already active is a no-op (state undisturbed)', () => {
+      state.setMeasureMode('polyline');
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+
+      state.setMeasureMode('polyline'); // already polyline — must not cancel itself
+
+      assert.ok(state.activePolyline, 'a same-mode switch must not discard the in-progress sequence');
+      assert.strictEqual(state.activePolyline?.points.length, 2);
+    });
+
+    it('a finished measurement list of either kind survives a mode switch', () => {
+      // Only IN-PROGRESS state is mode-exclusive; completed measurements are
+      // not gestures in progress and must not be touched by switching modes.
+      state.startMeasurement(p(0, 0, 0));
+      state.updateMeasurement(p(1, 0, 0));
+      state.finalizeMeasurement();
+
+      state.setMeasureMode('polyline');
+      state.startPolyline(p(0, 0, 0));
+      state.addPolylinePoint(p(1, 0, 0));
+      state.addPolylinePoint(p(1, 1, 0));
+      state.finishPolyline(false);
+
+      state.setMeasureMode('drag');
+
+      assert.strictEqual(state.measurements.length, 1);
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+    });
+  });
 });

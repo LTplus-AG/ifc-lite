@@ -17,8 +17,12 @@ import type {
   SnapVisualization,
   MeasurementConstraintEdge,
   OrthogonalAxis,
+  MeasureMode,
+  ActivePolyline,
+  PolylineMeasurement,
 } from '../types.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
+import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
@@ -52,6 +56,21 @@ export interface MeasurementSlice {
    * coordinate readout is relative to.
    */
   measureReferencePoint: Vec3 | null;
+
+  /**
+   * Which Measure gesture is active (#2199): the original mousedown→mouseup
+   * drag, or the multi-click polyline mode. The two are mutually exclusive —
+   * {@link setMeasureMode} clears whichever in-progress state belongs to the
+   * mode being left, so a sequence started in one can never leak into the
+   * other.
+   */
+  measureMode: MeasureMode;
+  /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
+  activePolyline: ActivePolyline | null;
+  /** Finished polyline measurements — kept separate from `measurements`
+   *  (distance-only) rather than folded in, since they carry an extra basis
+   *  (open length vs. closed perimeter) that a drag measurement never has. */
+  polylineMeasurements: PolylineMeasurement[];
 
   // Legacy measurement actions
   addMeasurePoint: (point: MeasurePoint) => void;
@@ -89,6 +108,29 @@ export interface MeasurementSlice {
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge | null) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
   clearMeasurementConstraintEdge: () => void;
+
+  // Polyline (multi-click) measurement actions (#2199)
+  /** Switch gesture. Leaving 'drag' cancels any in-progress drag measurement;
+   *  leaving 'polyline' discards any in-progress click sequence. A no-op if
+   *  already in the requested mode (does not disturb in-progress state). */
+  setMeasureMode: (mode: MeasureMode) => void;
+  /** Begin a polyline sequence at `point`. No-op if one is already active —
+   *  use {@link addPolylinePoint} to extend it. */
+  startPolyline: (point: MeasurePoint) => void;
+  /** Append a point to the in-progress polyline. No-op if none is active. */
+  addPolylinePoint: (point: MeasurePoint) => void;
+  /**
+   * Finish the in-progress polyline and push it to `polylineMeasurements`.
+   * `closed` is the caller's explicit basis (the click handler decides this
+   * from screen-space proximity to the first point; Enter/double-click
+   * always finish open) — never inferred here. No-op if fewer than 2 points
+   * are accumulated (or fewer than 3 for `closed`, since a 2-point loop has
+   * no interior).
+   */
+  finishPolyline: (closed: boolean) => void;
+  /** Discard the in-progress polyline without recording a measurement. */
+  cancelPolyline: () => void;
+  deletePolylineMeasurement: (id: string) => void;
 }
 
 const getDefaultEdgeLockState = (): EdgeLockState => ({
@@ -112,6 +154,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   edgeLockState: getDefaultEdgeLockState(),
   measurementConstraintEdge: null,
   measureReferencePoint: null,
+  measureMode: 'drag',
+  activePolyline: null,
+  polylineMeasurements: [],
 
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
@@ -197,6 +242,11 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
+    // "Clear all" clears every kind of measurement the panel lists,
+    // including any polyline sequence still in progress — a partial
+    // click-sequence left behind by "clear" would be a stale trap.
+    activePolyline: null,
+    polylineMeasurements: [],
   }),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
@@ -322,4 +372,55 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     };
   }),
   clearMeasurementConstraintEdge: () => set({ measurementConstraintEdge: null }),
+
+  // Polyline (multi-click) measurement actions (#2199)
+  setMeasureMode: (mode) => set((state) => {
+    if (mode === state.measureMode) return {};
+    if (mode === 'polyline') {
+      // Entering polyline mode: cancel any in-progress drag so the two
+      // gestures can never both be "active" at once.
+      return {
+        measureMode: mode,
+        activeMeasurement: null,
+        snapTarget: null,
+        measurementConstraintEdge: null,
+      };
+    }
+    // Leaving polyline mode: discard any in-progress click sequence.
+    return { measureMode: mode, activePolyline: null };
+  }),
+
+  startPolyline: (point) => set((state) => {
+    if (state.activePolyline) return {}; // already accumulating — use addPolylinePoint
+    return { activePolyline: { points: [point] } };
+  }),
+
+  addPolylinePoint: (point) => set((state) => {
+    if (!state.activePolyline) return {};
+    return { activePolyline: { points: [...state.activePolyline.points, point] } };
+  }),
+
+  finishPolyline: (closed) => set((state) => {
+    const active = state.activePolyline;
+    if (!active) return {};
+    const minPoints = closed ? 3 : 2;
+    if (active.points.length < minPoints) return {};
+    measurementCounter++;
+    const measurement: PolylineMeasurement = {
+      id: `pl-${Date.now()}-${measurementCounter}`,
+      points: active.points,
+      closed,
+      length: polylineLength(active.points, closed),
+    };
+    return {
+      polylineMeasurements: [...state.polylineMeasurements, measurement],
+      activePolyline: null,
+    };
+  }),
+
+  cancelPolyline: () => set({ activePolyline: null }),
+
+  deletePolylineMeasurement: (id) => set((state) => ({
+    polylineMeasurements: state.polylineMeasurements.filter((m) => m.id !== id),
+  })),
 });

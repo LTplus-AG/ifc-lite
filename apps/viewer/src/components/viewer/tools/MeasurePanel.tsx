@@ -24,6 +24,7 @@ import {
   formatHorizontalVertical,
 } from './measure-modes/components';
 import { inclination, formatInclination } from './measure-modes/inclination';
+import { polylineBasisLabel } from './measure-modes/polyline';
 import {
   projectedEnh,
   useProjectedLatLon,
@@ -65,6 +66,13 @@ export function MeasureOverlay() {
   const setActiveTool = useViewerStore((s) => s.setActiveTool);
   const projectToScreen = useViewerStore((s) => s.cameraCallbacks.projectToScreen);
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+  // Multi-click polyline mode (#2199).
+  const measureMode = useViewerStore((s) => s.measureMode);
+  const setMeasureMode = useViewerStore((s) => s.setMeasureMode);
+  const activePolyline = useViewerStore((s) => s.activePolyline);
+  const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
+  const cancelPolyline = useViewerStore((s) => s.cancelPolyline);
+  const deletePolylineMeasurement = useViewerStore((s) => s.deletePolylineMeasurement);
 
   // Track cursor position in ref (no re-renders on mouse move)
   const cursorPosRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -113,12 +121,21 @@ export function MeasureOverlay() {
     deleteMeasurement(id);
   }, [deleteMeasurement]);
 
+  const handleDeletePolyline = useCallback((id: string) => {
+    deletePolylineMeasurement(id);
+  }, [deletePolylineMeasurement]);
+
   const handleClose = useCallback(() => {
     setActiveTool('select');
   }, [setActiveTool]);
 
+  const toggleMeasureMode = useCallback(() => {
+    setMeasureMode(measureMode === 'polyline' ? 'drag' : 'polyline');
+  }, [measureMode, setMeasureMode]);
+
   // Calculate total distance
   const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
+  const totalItemCount = measurements.length + polylineMeasurements.length;
 
   // Real-world XYZ readout. `anchor` is non-null only when the georef anchor
   // model carries a usable IfcMapConversion (projected CRS + offsets, not a
@@ -170,13 +187,13 @@ export function MeasureOverlay() {
             <div className="flex items-center gap-2 px-2 py-1 min-w-0">
               <Ruler className="h-4 w-4 text-primary" />
               <span className="font-medium text-sm">Measure</span>
-              {measurements.length > 0 && (
-                <span className="text-xs text-muted-foreground">({measurements.length})</span>
+              {totalItemCount > 0 && (
+                <span className="text-xs text-muted-foreground">({totalItemCount})</span>
               )}
             </div>
           </div>
           <div className="flex items-center gap-1">
-            {measurements.length > 0 && (
+            {totalItemCount > 0 && (
               <Button variant="ghost" size="icon-sm" onClick={handleClear} title="Clear all">
                 <Trash2 className="h-3 w-3" />
               </Button>
@@ -192,6 +209,19 @@ export function MeasureOverlay() {
             rendered, whether the panel is collapsed or expanded, so the
             controls are never hidden. */}
         <div className="flex items-center gap-1.5 border-t px-2 py-2">
+          {/* Distance (drag) / Polyline (multi-click) mode toggle (#2199).
+              Lives in the panel, not either toolbar — see measure-parity.test.tsx. */}
+          <button
+            onClick={toggleMeasureMode}
+            className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
+              measureMode === 'polyline'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+            }`}
+            title="Toggle multi-click polyline mode — click to accumulate points, double-click or Enter to finish open, click near the start point to close the loop, Esc to cancel"
+          >
+            {measureMode === 'polyline' ? 'Polyline' : 'Distance'}
+          </button>
           <button
             onClick={toggleSnap}
             className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
@@ -268,9 +298,47 @@ export function MeasureOverlay() {
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : totalItemCount === 0 ? (
                 <div className="text-center py-2 text-muted-foreground text-xs">
                   No measurements
+                </div>
+              ) : null}
+
+              {/* Polyline results (#2199) — kept in their own list rather than
+                  merged into the distance list above: an open length and a
+                  closed perimeter are a different KIND of number from a
+                  point-to-point distance, so blending the two "Total" rows
+                  would add numbers that don't share a basis. */}
+              {activePolyline && (
+                <div className="flex items-center justify-between bg-primary/10 rounded px-2 py-1 text-xs mt-2">
+                  <span className="font-mono">
+                    Polyline in progress — {activePolyline.points.length} pt{activePolyline.points.length === 1 ? '' : 's'}
+                  </span>
+                  <Button variant="ghost" size="icon-sm" className="h-4 w-4" onClick={cancelPolyline} title="Cancel (Esc)">
+                    <X className="h-2.5 w-2.5" />
+                  </Button>
+                </div>
+              )}
+              {polylineMeasurements.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {polylineMeasurements.map((pl, i) => (
+                    <div key={pl.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">
+                          Poly #{i + 1} · {polylineBasisLabel(pl.closed)}
+                        </span>
+                        <span className="font-mono font-medium">{formatDistance(pl.length, unitDisplayOverrides)}</span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-4 w-4 hover:bg-destructive/20"
+                          onClick={() => handleDeletePolyline(pl.id)}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -294,7 +362,13 @@ export function MeasureOverlay() {
         }}
       >
         <span className="font-mono text-xs uppercase tracking-wide">
-          {activeMeasurement ? 'Release to complete' : 'Drag to measure'}
+          {measureMode === 'polyline'
+            ? activePolyline
+              ? 'Click to add point · dbl-click/Enter to finish · click start to close · Esc to cancel'
+              : 'Click to start polyline'
+            : activeMeasurement
+              ? 'Release to complete'
+              : 'Drag to measure'}
         </span>
       </div>
 
@@ -335,6 +409,8 @@ export function MeasureOverlay() {
         projectToScreen={projectToScreen}
         constraintEdge={measurementConstraintEdge}
         unitDisplayOverrides={unitDisplayOverrides}
+        activePolyline={activePolyline}
+        polylineMeasurements={polylineMeasurements}
       />
     </>
   );

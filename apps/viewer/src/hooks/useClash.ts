@@ -203,9 +203,32 @@ export function useClash() {
     return { elements, exclusions };
   }, []);
 
+  /**
+   * Drop any in-flight or already-applied intersection-solid presentation
+   * before a detection flow replaces the clash result set. `focusClash`'s
+   * async solid compute is keyed to `solidRequestGuard`; without this, `run()`
+   * / `runDuplicates()` cleared `clashSelectedId` but left the guard token
+   * valid, so a compute that was still in flight for the OLD result set could
+   * resolve after the new run finished and repaint its stale mesh plus the
+   * full-model ghosting over results the user can no longer see the pair for
+   * (CodeRabbit #2574). Mirrors the teardown `clearHighlight` already does.
+   */
+  const discardSolidPresentation = useCallback((): void => {
+    const state = useViewerStore.getState();
+    solidRequestGuard.current.begin();
+    state.clearClashSolid();
+    state.clearGhost();
+    state.clearIsolation();
+    state.setClashHighlightColors(null);
+    state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
+    state.setClashOverlapBox(null);
+    state.setClashContactLines(null);
+  }, []);
+
   const run = useCallback(
     async (rules: ClashRule[]): Promise<void> => {
       const state = useViewerStore.getState();
+      discardSolidPresentation();
       state.setClashRunning(true);
       state.setClashError(null);
       // Indeterminate "preparing" state until the engine reports candidate counts.
@@ -250,7 +273,7 @@ export function useClash() {
         state.setClashProgress(null);
       }
     },
-    [gatherElements],
+    [gatherElements, discardSolidPresentation],
   );
 
   /**
@@ -305,6 +328,7 @@ export function useClash() {
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
     const state = useViewerStore.getState();
+    discardSolidPresentation();
     state.setClashRunning(true);
     state.setClashError(null);
     state.setClashProgress({ phase: 'broad', rule: 'duplicates', done: 0, total: 0 });
@@ -332,7 +356,7 @@ export function useClash() {
       state.setClashRunning(false);
       state.setClashProgress(null);
     }
-  }, [gatherElements]);
+  }, [gatherElements, discardSolidPresentation]);
 
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
     return useViewerStore.getState().fromGlobalId(ref.ref);

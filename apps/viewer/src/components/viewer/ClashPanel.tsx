@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
+import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
@@ -803,7 +804,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <div className="text-[11px] text-muted-foreground" data-testid="clash-solid-status">
               {clashSolidStatus === 'computing' && 'Computing the true overlap volume…'}
               {clashSolidStatus === 'solid' &&
-                `True overlap volume shown as a solid: ${clashSolidVolumeM3.toFixed(3)} m³. Both elements are ghosted so it reads through them.`}
+                `True overlap volume shown as a solid: ${formatClashSolidVolumeM3(clashSolidVolumeM3)}. Both elements are ghosted so it reads through them.`}
               {clashSolidStatus === 'unavailable' && (
                 <>
                   {clashSolidReason === 'below-kernel-resolution'

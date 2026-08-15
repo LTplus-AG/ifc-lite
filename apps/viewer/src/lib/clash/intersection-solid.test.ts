@@ -12,9 +12,9 @@
  * cleanly with `no-overlap` and zero geometry).
  */
 
-import { describe, it, before } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { initSync } from '@ifc-lite/wasm';
@@ -28,13 +28,27 @@ import { computeClashIntersectionSolid } from './intersection-solid.js';
 // from disk — the same pattern `packages/wasm/test/*.test.mjs` uses — makes
 // `computeClashIntersectionSolid`'s own `init()` call a no-op, and every other
 // line of the wrapper under test runs unmodified.
-before(() => {
-  const wasmPath = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..', '..', '..', '..', '..', 'packages', 'wasm', 'pkg', 'ifc-lite_bg.wasm',
-  );
+//
+// The binary is a BUILD artifact (`bash scripts/build-wasm.sh`), not one of
+// the `tests/models/` fixtures `pnpm fixtures` downloads — same distinction
+// `packages/wasm/test/*.test.mjs` draws. Checked and skipped inside each
+// `it`, not a top-level `before()`, so a missing binary skips every case
+// individually instead of throwing before the suite's first test even starts.
+const wasmPath = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..', '..', '..', '..', '..', 'packages', 'wasm', 'pkg', 'ifc-lite_bg.wasm',
+);
+let wasmReady = false;
+function ensureWasm(t: { skip: (msg: string) => void }): boolean {
+  if (wasmReady) return true;
+  if (!existsSync(wasmPath)) {
+    t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first');
+    return false;
+  }
   initSync({ module: readFileSync(wasmPath) });
-});
+  wasmReady = true;
+  return true;
+}
 
 /** Flat triangle-list box mesh, 12 triangles, CCW-ish (winding doesn't matter to the kernel). */
 function boxMesh(min: [number, number, number], max: [number, number, number]): { positions: Float32Array; indices: Uint32Array } {
@@ -60,7 +74,8 @@ function boxMesh(min: [number, number, number], max: [number, number, number]): 
 }
 
 describe('computeClashIntersectionSolid (real wasm)', () => {
-  it('resolves a solid for a deep 1x1x1 m overlap between two 2x2x2 m boxes', async () => {
+  it('resolves a solid for a deep 1x1x1 m overlap between two 2x2x2 m boxes', async (t) => {
+    if (!ensureWasm(t)) return;
     const a = boxMesh([0, 0, 0], [2, 2, 2]);
     const b = boxMesh([1, 1, 1], [3, 3, 3]);
     const result = await computeClashIntersectionSolid(a.positions, a.indices, b.positions, b.indices);
@@ -72,7 +87,8 @@ describe('computeClashIntersectionSolid (real wasm)', () => {
     assert.ok(Math.abs(result.volumeM3 - 1) < 1e-3, `expected ~1 m³, got ${result.volumeM3}`);
   });
 
-  it('falls back cleanly (no solid, empty geometry) for two disjoint boxes', async () => {
+  it('falls back cleanly (no solid, empty geometry) for two disjoint boxes', async (t) => {
+    if (!ensureWasm(t)) return;
     const a = boxMesh([0, 0, 0], [1, 1, 1]);
     const b = boxMesh([5, 5, 5], [6, 6, 6]);
     const result = await computeClashIntersectionSolid(a.positions, a.indices, b.positions, b.indices);
@@ -81,7 +97,8 @@ describe('computeClashIntersectionSolid (real wasm)', () => {
     assert.equal(result.reason, 'no-overlap');
   });
 
-  it('reports empty-operand when one mesh has no triangles', async () => {
+  it('reports empty-operand when one mesh has no triangles', async (t) => {
+    if (!ensureWasm(t)) return;
     const a = boxMesh([0, 0, 0], [1, 1, 1]);
     const empty = { positions: new Float32Array(0), indices: new Uint32Array(0) };
     const result = await computeClashIntersectionSolid(a.positions, a.indices, empty.positions, empty.indices);

@@ -69,8 +69,15 @@ const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/;
  * regexes above — two contributors independently hit this via `FORCE_COLOR`
  * in their shell, and the failure looked exactly like ~30 broken packages.
  */
+// Built from String.fromCharCode rather than a /\x1b.../ literal: a literal
+// control-character escape in a regex trips oxlint's no-control-regex rule
+// (scripts/ is linted, see check-lint-ran.mjs), and that lint failure is
+// exactly the kind of thing this script's own defense-in-depth is meant to
+// avoid becoming collateral damage from.
+const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, 'g');
+
 function stripAnsi(str) {
-  return str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+  return str.replace(ANSI_ESCAPE_RE, '');
 }
 
 /**

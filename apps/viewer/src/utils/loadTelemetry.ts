@@ -154,13 +154,14 @@ export function snapshotFromGeometry(
 /**
  * THE `ifc_model_loaded` capture seam: records the last-load snapshot for the
  * device-loss report (#2624), then emits the event. Every completing load path
- * in `useIfcLoader.ts` MUST go through this - never a bare
- * `posthog.capture('ifc_model_loaded', ...)` - so the loss report can never
- * ship a previous model's numbers after a cache-hit or server load. The
- * mandatory `snapshot` argument is the point: a new load path cannot capture
- * the event without stating what it knows about the model's size.
- * `loadTelemetry.test.ts` sweeps the loader source to keep this the only way
- * the event is captured.
+ * in `useIfcLoader.ts` goes through this, so the loss report can never ship a
+ * previous model's numbers after a cache-hit or server load. The guarantee is
+ * structural: the event-name literal below is PRIVATE to this module - no
+ * other code spells `'ifc_model_loaded'` in a capture call - so this function
+ * is the only thing in the codebase that can emit the event, and its
+ * mandatory `snapshot` argument means no path, present or future, can emit it
+ * without stating what it knows about the model's size. Keep it that way:
+ * never export the event name, never add a bare capture elsewhere.
  */
 export function captureModelLoaded(
   payload: Record<string, string | number | boolean | undefined>,

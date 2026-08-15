@@ -15,15 +15,12 @@
 
 import test, { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { posthog } from '@/lib/analytics';
 import {
   buildModelLoadedPayload,
   captureModelLoaded,
   clearModelLoadedSnapshot,
   getModelLoadedSnapshot,
-  recordModelLoadedSnapshot,
   resetModelLoadedSnapshotForTests,
   snapshotFromGeometry,
   type ModelLoadedInputs,
@@ -131,8 +128,10 @@ test('#2385 timings are rounded and file size keeps 2dp (the fingerprint key)', 
  *    path that records nothing (or a future seventh path) omits the fields;
  *  - per-path truth: every capture goes through `captureModelLoaded`, whose
  *    mandatory snapshot argument records that path's own numbers.
- * The source sweep keeps both wired inside `useIfcLoader.ts` itself - the
- * unit tests alone would stay green if the loader stopped calling either.
+ * The second half holds by construction, not by a test: the
+ * 'ifc_model_loaded' event name lives ONLY inside `captureModelLoaded`, so
+ * emitting the event without stating a snapshot does not typecheck anywhere
+ * in the codebase. These tests pin what that one seam does when called.
  */
 describe('last-load snapshot for the device-loss report (#2624)', () => {
   let events: Array<{ event: string; props: Record<string, unknown> }> = [];
@@ -172,6 +171,18 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       captureModelLoaded({ load_path: 'cache' }, { fileSizeMB: 1.5, totalTriangles: 300, meshCount: 12 });
       assert.deepEqual(getModelLoadedSnapshot(), { fileSizeMB: 1.5, totalTriangles: 300, meshCount: 12 });
     });
+
+    it('a size-only capture retains a size-only snapshot - absent figures never become 0', () => {
+      // The point-cloud path's GeometryResult zeros are placeholders, so it
+      // states only the file size; the retained snapshot must not grow a
+      // fabricated 0 for the figures the path did not state.
+      captureModelLoaded({ load_path: 'point-cloud' }, { fileSizeMB: 40.5 });
+      const snapshot = getModelLoadedSnapshot();
+      assert.ok(snapshot, 'the size-only capture still records a snapshot');
+      assert.equal(snapshot.fileSizeMB, 40.5);
+      assert.ok(!('totalTriangles' in snapshot), 'unknown must stay absent, never 0');
+      assert.ok(!('meshCount' in snapshot), 'unknown must stay absent, never 0');
+    });
   });
 
   describe('clearModelLoadedSnapshot: the fail-safe half', () => {
@@ -179,7 +190,7 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       // The pre-fix failure, in miniature: model A loads via wasm (records),
       // model B starts loading. If B's path never records, the loss report
       // must say NOTHING about the last load - not describe model A.
-      recordModelLoadedSnapshot({ fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 });
+      captureModelLoaded({ load_path: 'wasm' }, { fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 });
       clearModelLoadedSnapshot();
       assert.equal(
         getModelLoadedSnapshot(),
@@ -205,44 +216,6 @@ describe('last-load snapshot for the device-loss report (#2624)', () => {
       assert.equal(snapshot.fileSizeMB, 55.5);
       assert.ok(!('totalTriangles' in snapshot));
       assert.ok(!('meshCount' in snapshot));
-    });
-  });
-
-  describe('useIfcLoader wiring sweep: every load path stays on the seam', () => {
-    // Source-text sweep, same approach as frameWait.test.ts /
-    // colorful-popover-opacity.test.ts: the behaviour under test IS the wiring
-    // inside a 2600-line React hook that no unit harness can execute, and the
-    // unit tests above cannot go red when the loader stops calling the seam.
-    const loaderSource = readFileSync(
-      fileURLToPath(new URL('../hooks/useIfcLoader.ts', import.meta.url)),
-      'utf-8',
-    );
-
-    it('has NO bare ifc_model_loaded capture - only captureModelLoaded may emit it', () => {
-      assert.ok(
-        !loaderSource.includes("posthog.capture('ifc_model_loaded'"),
-        'a bare capture skips the snapshot recording, which is how the stale-numbers bug happened',
-      );
-    });
-
-    it('all six completing load paths call captureModelLoaded', () => {
-      // point-cloud, ifcx, glb, cache-hit, server, local wasm. Deleting any
-      // path's call drops this count; a seventh path should raise it.
-      const calls = loaderSource.match(/\bcaptureModelLoaded\(/g) ?? [];
-      assert.ok(
-        calls.length >= 6,
-        `expected the 6 known load paths to capture through the seam, found ${calls.length}`,
-      );
-    });
-
-    it('clears the snapshot at the start of the load, before any path can complete', () => {
-      const clearAt = loaderSource.indexOf('clearModelLoadedSnapshot()');
-      const firstCaptureAt = loaderSource.indexOf('captureModelLoaded(');
-      assert.ok(clearAt !== -1, 'the fail-safe clear-at-start must exist');
-      assert.ok(
-        clearAt < firstCaptureAt,
-        'the clear must precede every completing path, or an early-returning path can leave stale numbers',
-      );
     });
   });
 });

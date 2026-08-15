@@ -320,8 +320,12 @@ export function useIfcLoader() {
     // return - a path that then records nothing (an error exit, or a future
     // load path missing its `captureModelLoaded` call) makes a later loss
     // report OMIT the last-load fields instead of describing a model that is
-    // no longer on the GPU. Federated adds keep it: the primary model stays
-    // resident, so its numbers stay true.
+    // no longer on the GPU. Federated adds do not clear: while the add is in
+    // flight the retained snapshot (the last COMPLETED load) is still true,
+    // and when the add completes its own `captureModelLoaded` replaces the
+    // snapshot with the added file's numbers. So `last_load_*` describes the
+    // last completed load, primary or federated - not the whole resident
+    // scene, and after a federated add not the primary model either.
     if (target.kind === 'primary') {
       clearModelLoadedSnapshot();
     }

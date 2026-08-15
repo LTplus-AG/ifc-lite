@@ -28,6 +28,7 @@ import { posthog } from '@/lib/analytics';
 import { scrubEvent } from '@/lib/analytics-scrub.js';
 import { useViewerStore } from '@/store';
 import {
+  clearModelLoadedSnapshot,
   recordModelLoadedSnapshot,
   resetModelLoadedSnapshotForTests,
 } from '@/utils/loadTelemetry.js';
@@ -130,6 +131,18 @@ describe('buildDeviceLossContext field content', () => {
     assert.ok(!('last_load_file_size_mb' in context));
     assert.ok(!('last_load_total_triangles' in context));
     assert.ok(!('last_load_mesh_count' in context));
+  });
+
+  it('clearModelLoadedSnapshot makes a subsequent report omit the last-load fields', () => {
+    // The fail-safe half of #2624: useIfcLoader clears at the start of every
+    // primary load, so a load that then never records leaves the loss report
+    // silent about the last load rather than describing the replaced model.
+    recordModelLoadedSnapshot({ fileSizeMB: 900, totalTriangles: 9_000_000, meshCount: 90_000 });
+    clearModelLoadedSnapshot();
+    const context = buildDeviceLossContext(makeFullSource());
+    assert.ok(!('last_load_file_size_mb' in context), 'cleared size must not resurface');
+    assert.ok(!('last_load_total_triangles' in context), 'cleared triangles must not resurface');
+    assert.ok(!('last_load_mesh_count' in context), 'cleared mesh count must not resurface');
   });
 
   it('reports the load-time fidelity config from the store', () => {

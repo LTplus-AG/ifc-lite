@@ -53,6 +53,25 @@ function packageDirs() {
 const UNUSED_CODES = [6133, 6138, 6192, 6196, 6198, 6199];
 const UNUSED_RE = new RegExp(`error TS(${UNUSED_CODES.join('|')}):`, 'g');
 const OTHER_ERROR_RE = new RegExp(`error TS(?!(?:${UNUSED_CODES.join('|')})\\b)\\d+:`);
+// A generic "tsc did print at least one diagnostic" signal, independent of the
+// two regexes above. Used only to tell "tsc ran and reported something we
+// failed to parse" apart from "tsc genuinely produced no diagnostic text",
+// which need different, honest failure messages (see countViolations).
+const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/;
+
+/**
+ * Strip ANSI escape sequences (SGR colour/style codes) from captured child
+ * output before matching. `--pretty false` below already asks tsc for plain
+ * text, but this is the defense-in-depth layer: it also covers colour
+ * injected by pnpm's own wrapper output, or by any future tool in this
+ * spawn chain that doesn't have an equivalent flag. Un-stripped ANSI codes
+ * land mid-token (`\x1b[91merror\x1b[0m TS6196:`) and silently break both
+ * regexes above — two contributors independently hit this via `FORCE_COLOR`
+ * in their shell, and the failure looked exactly like ~30 broken packages.
+ */
+function stripAnsi(str) {
+  return str.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+}
 
 /**
  * The project to measure a package through.
@@ -78,12 +97,23 @@ function projectFor(dir) {
 function countViolations(dir) {
   const project = projectFor(dir);
   try {
-    execFileSync('pnpm', ['exec', 'tsc', '--noEmit', '--noUnusedLocals', '-p', project], {
+    execFileSync('pnpm', ['exec', 'tsc', '--noEmit', '--noUnusedLocals', '--pretty', 'false', '-p', project], {
       cwd: join(repoRoot, dir), encoding: 'utf8', stdio: 'pipe', maxBuffer: 32 * 1024 * 1024,
+      // `--pretty false` is the primary defense: it is tsc's own supported flag
+      // for stable, colour-free, machine-readable diagnostics, verified against
+      // the pinned TypeScript 6.0.3 (`--help` lists it; a plain-text run under
+      // FORCE_COLOR=3 confirmed it strips colour regardless of the parent
+      // environment). FORCE_COLOR/NO_COLOR here are the belt-and-suspenders
+      // second layer, covering pnpm's own wrapper output in case a future pnpm
+      // version colourises it even when the child doesn't.
+      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' },
     });
     return { count: 0, unmeasurable: false };
   } catch (err) {
-    const output = `${err.stdout ?? ''}${err.stderr ?? ''}`;
+    // Third layer: strip any ANSI that made it through anyway (e.g. a tool
+    // upstream of tsc in this spawn chain that ignores both of the above)
+    // before matching, rather than trusting the two defenses above blindly.
+    const output = stripAnsi(`${err.stdout ?? ''}${err.stderr ?? ''}`);
     const count = output.match(UNUSED_RE)?.length ?? 0;
     if (OTHER_ERROR_RE.test(output)) {
       // The package does not compile. That belongs to the typecheck lane, not
@@ -92,12 +122,29 @@ function countViolations(dir) {
       return { count, unmeasurable: true };
     }
     if (count === 0) {
+      if (ANY_TS_DIAGNOSTIC_RE.test(output)) {
+        // tsc printed at least one `TS####` diagnostic, but it matched neither
+        // the unused-locals codes nor the "any other error" pattern. That is
+        // not a compile error to report and fold into the ratchet like the
+        // branch above — it means this script's own parsing is broken (a tsc
+        // output-format change, an escape sequence the strip above doesn't
+        // cover, etc). Reporting that as "does not compile standalone" would
+        // be a confidently wrong answer wearing the same clothes as a real
+        // compile failure. Fail the whole run loudly instead of guessing.
+        console.error(`❌ check-unused-locals cannot parse tsc's output for ${dir}.`);
+        console.error('   tsc reported at least one TS diagnostic, but it matched neither the');
+        console.error('   unused-locals codes nor the generic "other error" pattern — this is a');
+        console.error('   bug in the check\'s parsing, not a compile error in the package.');
+        console.error('\n   Raw (ANSI-stripped) output:\n');
+        console.error(output.split('\n').map((l) => `   ${l}`).join('\n'));
+        process.exit(1);
+      }
       // Non-zero exit, and nothing here explains it: no unused diagnostics, no
-      // other `error TS####`. tsc never ran, or died without reporting — a
-      // missing binary, a killed process, a failure printed in a shape this
-      // does not parse. The one thing that must not happen is calling it zero,
-      // which would read as a clean package and could be written into the
-      // baseline as one (review, #2603).
+      // other `error TS####`, no TS diagnostic of any kind. tsc never ran, or
+      // died without reporting — a missing binary, a killed process, a failure
+      // printed in a shape this does not parse. The one thing that must not
+      // happen is calling it zero, which would read as a clean package and
+      // could be written into the baseline as one (review, #2603).
       return { count: 0, unmeasurable: true };
     }
     return { count, unmeasurable: false };

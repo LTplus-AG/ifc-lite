@@ -210,9 +210,56 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
     // mesh's own extent (an axis-wise min of vertices it contains), which is
     // the property Step 1.5 needs: it bounds `|v - anchor|` by the mesh's own
     // extent rather than the site's distance from the world origin.
-    let anchor = canon_pos.iter().fold([f64::INFINITY; 3], |acc, p| {
-        [acc[0].min(p[0]), acc[1].min(p[1]), acc[2].min(p[2])]
+    //
+    // GATE (watertightness census #2611 regression): the anchor itself is not
+    // free. `Facet::offset` (Step 2, below) is `n·(v - anchor)` using EACH
+    // FACET'S OWN normal — not one shared reference normal — so comparing two
+    // facets' offsets (Step 4's clustering gap) carries a residual
+    // `(n_i − n_j)·anchor` cross-term that the pre-anchor `n·v` formulation
+    // never had. `(n_i − n_j)` is bounded only by the `NORMAL_QUANT` bucket
+    // width (~0.057°) — normal-computation noise from anywhere upstream, not
+    // only the f32 import jitter this module targets (measured contributor on
+    // the regressed hosts: the void-cut local-frame rotation, `mesh_to_frame`
+    // in `router/voids/mod.rs`, perturbs a facet's normal by ~5e-5, two orders
+    // above plain f32 jitter) — and `anchor` is a WHOLE-MESH bbox-min, so it
+    // can be metres from the specific facet pair being compared even on a
+    // small local mesh. At ordinary building scale that cross-term (~tens of
+    // µm to single-digit mm here) can swallow a genuine sub-millimetre plane
+    // separation (over-merge, losing triangles) or inflate a genuinely-mergeable
+    // gap past `MAX_OFFSET_JITTER` in a triangulation-dependent way (the
+    // exact two failure shapes the census caught: `dental_clinic.ifc #1311`,
+    // `ISSUE_129…IGC_V17.ifc #81562`, `rvt01.ifc #6588` — none of which is a
+    // large-site host: `max|raw| < 30 m` on every one, well under this gate).
+    //
+    // The amplification this anchor exists to fix only bites once `|v|` is
+    // large enough for `δn·|v|` (δn ~ genuine f32 import jitter, empirically
+    // single-digit µm per component at building scale — see the module's
+    // opening comment) to approach `MAX_OFFSET_JITTER` on its own — hundreds
+    // of metres at minimum, thousands in the motivating case (this file's own
+    // `anchored_formula_removes_offset_amplification` test uses ~5000–7000 m).
+    // Below that, subtracting the anchor buys nothing (the un-anchored
+    // amplification is already negligible) while still paying the cross-term
+    // risk above. So: use the anchor only once the mesh's own raw coordinates
+    // are large enough to need it; otherwise anchor at the origin, which
+    // reproduces the pre-anchor `n·v` formulation exactly (bit-for-bit) and
+    // is what the golden watertightness census was blessed against.
+    //
+    // `ANCHOR_ENGAGE_METERS = 100.0`: above the three regressed hosts'
+    // `max|raw| < 30 m` (with a >3x margin) and below the 150 m this file's
+    // own `welds_offset_jitter_at_large_site_coordinates` test validates the
+    // anchor at, and far below the ~5000–7000 m scale
+    // `anchored_formula_removes_offset_amplification` validates it at.
+    const ANCHOR_ENGAGE_METERS: f64 = 100.0;
+    let max_raw = canon_pos.iter().fold(0.0f64, |m, p| {
+        m.max(p[0].abs()).max(p[1].abs()).max(p[2].abs())
     });
+    let anchor = if max_raw >= ANCHOR_ENGAGE_METERS {
+        canon_pos.iter().fold([f64::INFINITY; 3], |acc, p| {
+            [acc[0].min(p[0]), acc[1].min(p[1]), acc[2].min(p[2])]
+        })
+    } else {
+        [0.0, 0.0, 0.0]
+    };
     let anchored = |p: [f64; 3]| -> [f64; 3] {
         [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]]
     };
@@ -346,12 +393,17 @@ pub fn weld_near_coplanar_facets(mesh: &Mesh) -> Mesh {
             }
             // Plane: unit normal `pn`, offset `pd` so pn·x = pd (anchor-local —
             // `acc_off` was accumulated from anchor-local per-facet offsets).
-            // `acc_off` is Σ wᵢ (nᵢ·vᵢ) with each |nᵢ|=1 and sign-aligned, so the
-            // weighted mean offset `acc_off / wsum` is already expressed against
-            // a unit normal and is consistent with `pn` (the same area-weighted
-            // mean direction, renormalised).
+            // `acc_n · x = acc_off` is the accumulated (non-unit) plane
+            // equation: Σ wᵢnᵢ · x = Σ wᵢ(nᵢ·vᵢ), true by construction for any
+            // x each member facet's own plane passes through. Converting it to
+            // unit-normal form means dividing BOTH sides by the SAME scalar —
+            // `|acc_n|` (`len`) — not dividing `acc_n` by `len` while dividing
+            // `acc_off` by `wsum`: those differ whenever member facets' normals
+            // aren't identical (`len ≤ wsum`, Cauchy–Schwarz, equality only at
+            // zero spread), which scales the two sides of the SAME equation by
+            // different amounts and desyncs `pd` from `pn` (review: PR #2611).
             let pn = [acc_n[0] / len, acc_n[1] / len, acc_n[2] / len];
-            let pd = acc_off / wsum;
+            let pd = acc_off / len;
             // Project each cluster vertex onto the plane, capped by MAX_VERTEX_MOVE.
             // Same anchor-local frame as the plane: `p` is `v - anchor`, so
             // `dist` multiplies a mesh-extent magnitude, not the raw world
@@ -848,380 +900,6 @@ fn refine_high_aspect_slivers_impl(
     // hosts whose cuts slivered. `instance_meta` is dropped (the refined mesh no
     // longer matches its canonical rep) — see `Mesh::rebuilt_like`.
     mesh.rebuilt_like(positions, normals, indices)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn mesh_from_tris(tris: &[[[f64; 3]; 3]]) -> Mesh {
-        let mut m = Mesh::new();
-        for t in tris {
-            let base = (m.positions.len() / 3) as u32;
-            for p in t {
-                m.positions
-                    .extend_from_slice(&[p[0] as f32, p[1] as f32, p[2] as f32]);
-                m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-            }
-            m.indices.extend_from_slice(&[base, base + 1, base + 2]);
-        }
-        m
-    }
-
-    fn vert(m: &Mesh, i: usize) -> [f64; 3] {
-        [
-            m.positions[i * 3] as f64,
-            m.positions[i * 3 + 1] as f64,
-            m.positions[i * 3 + 2] as f64,
-        ]
-    }
-
-    /// Distinct 1 µm-offset planes within one quantised-normal group — this is
-    /// exactly what `consolidate_coplanar` buckets on.
-    fn distinct_offset_buckets(m: &Mesh) -> usize {
-        use std::collections::BTreeSet;
-        let mut set: BTreeSet<i64> = BTreeSet::new();
-        for c in m.indices.chunks_exact(3) {
-            let a = vert(m, c[0] as usize);
-            let b = vert(m, c[1] as usize);
-            let d = vert(m, c[2] as usize);
-            if let Some((n, _)) = super::tri_normal(a, b, d) {
-                let s = if n[0] + n[1] + n[2] < 0.0 { -1.0 } else { 1.0 };
-                let off = (n[0] * a[0] + n[1] * a[1] + n[2] * a[2]) * s;
-                set.insert((off * 1.0e6).round() as i64);
-            }
-        }
-        set.len()
-    }
-
-    /// Same as [`distinct_offset_buckets`] but anchored at the mesh's vertex
-    /// centroid, not the raw vertex — `distinct_offset_buckets` itself
-    /// inherits the amplification bug at site-scale coordinates (`f32` ULP at
-    /// ~8.7 km is ~1 mm, a hundred times coarser than the 1 µm bucket grid,
-    /// so an already-coplanar mesh reads back as multiple raw-frame buckets
-    /// from storage quantization alone). This is the fair check for whether
-    /// the weld's OWN clustering worked.
-    fn distinct_offset_buckets_anchored(m: &Mesh) -> usize {
-        use std::collections::BTreeSet;
-        let vertex_count = m.positions.len() / 3;
-        if vertex_count == 0 {
-            return 0;
-        }
-        // Centroid, not a single facet's own corner (which would trivially
-        // zero the offset for any facet containing it).
-        let mut anchor = [0.0f64, 0.0, 0.0];
-        for i in 0..vertex_count {
-            let p = vert(m, i);
-            anchor[0] += p[0];
-            anchor[1] += p[1];
-            anchor[2] += p[2];
-        }
-        let inv = 1.0 / vertex_count as f64;
-        anchor = [anchor[0] * inv, anchor[1] * inv, anchor[2] * inv];
-        let mut set: BTreeSet<i64> = BTreeSet::new();
-        for c in m.indices.chunks_exact(3) {
-            let sub = |p: [f64; 3]| [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]];
-            let a = sub(vert(m, c[0] as usize));
-            let b = sub(vert(m, c[1] as usize));
-            let d = sub(vert(m, c[2] as usize));
-            if let Some((n, _)) = super::tri_normal(a, b, d) {
-                let s = if n[0] + n[1] + n[2] < 0.0 { -1.0 } else { 1.0 };
-                let off = (n[0] * a[0] + n[1] * a[1] + n[2] * a[2]) * s;
-                set.insert((off * 1.0e6).round() as i64);
-            }
-        }
-        set.len()
-    }
-
-    /// Two coplanar facets whose plane offset jitters by ~15 µm (the #1112
-    /// signature) MUST weld to ONE offset bucket; two facets 0.4 m apart MUST
-    /// NOT merge.
-    #[test]
-    fn welds_offset_jitter_not_distinct_plane() {
-        // A flat z=0 slab split into 2 triangles, the second lifted 15 µm in z
-        // (a pure offset jitter — same normal).
-        let j = 15.0e-6;
-        let jitter = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[1.0, 0.0, j], [1.0, 1.0, j], [0.0, 1.0, j]],
-        ]);
-        assert_eq!(
-            distinct_offset_buckets(&jitter),
-            2,
-            "pre-weld the two facets must sit on distinct 1µm offset buckets"
-        );
-        let welded = weld_near_coplanar_facets(&jitter);
-        assert_eq!(
-            distinct_offset_buckets(&welded),
-            1,
-            "15µm offset jitter must weld to ONE offset bucket"
-        );
-
-        // Same normal but 0.4 m apart — a genuinely distinct parallel plane.
-        let distinct = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[1.0, 0.0, 0.4], [1.0, 1.0, 0.4], [0.0, 1.0, 0.4]],
-        ]);
-        let welded_d = weld_near_coplanar_facets(&distinct);
-        assert_eq!(
-            distinct_offset_buckets(&welded_d),
-            2,
-            "0.4m-apart planes must NOT merge"
-        );
-    }
-
-    /// Two facets ~0.09° apart by NORMAL weld; ~0.5° apart do NOT — the angular
-    /// over-weld guard (distinct normal buckets keep real pitch apart).
-    #[test]
-    fn welds_small_angle_not_real_feature() {
-        let small = (0.09_f64).to_radians().tan();
-        let big = (0.5_f64).to_radians().tan();
-
-        // Shared edge along X at y=0; second facet tilted by the jitter angle.
-        let jitter = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, small]],
-        ]);
-        let welded = weld_near_coplanar_facets(&jitter);
-        // After weld both facets share the fitted plane (offset bucket count 1).
-        assert_eq!(
-            distinct_offset_buckets(&welded),
-            1,
-            "0.09° + same-bucket-normal jitter must weld coplanar"
-        );
-
-        let feature = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.5, 1.0, big]],
-        ]);
-        let before = distinct_offset_buckets(&feature);
-        let welded_f = weld_near_coplanar_facets(&feature);
-        let after = distinct_offset_buckets(&welded_f);
-        assert_eq!(
-            before, after,
-            "a real 0.5° feature must NOT weld (distinct normal bucket)"
-        );
-    }
-
-    #[test]
-    fn flat_pair_is_noop_topology() {
-        let flat = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
-        ]);
-        let welded = weld_near_coplanar_facets(&flat);
-        assert_eq!(welded.indices, flat.indices, "topology must be preserved");
-        assert_eq!(welded.positions.len(), flat.positions.len());
-    }
-
-    #[test]
-    fn weld_is_deterministic() {
-        let j = 15.0e-6;
-        let m = mesh_from_tris(&[
-            [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            [[1.0, 0.0, j], [1.0, 1.0, j], [0.0, 1.0, j]],
-            [[2.0, 0.0, j], [3.0, 0.0, 0.0], [2.0, 1.0, j]],
-        ]);
-        let a = weld_near_coplanar_facets(&m);
-        let b = weld_near_coplanar_facets(&m);
-        assert_eq!(a.positions, b.positions);
-        assert_eq!(a.indices, b.indices);
-    }
-
-    /// Ordinary site coordinates (~150 m, well under
-    /// `LARGE_COORD_THRESHOLD_METERS`) must weld exactly as well as the
-    /// near-origin case. Same structure as `welds_offset_jitter_not_distinct_plane`,
-    /// just translated. 150 m, not thousands: beyond ~840 m `f32`'s ULP
-    /// exceeds `POSITION_DEDUP_GRID`, a separate pre-existing dedup
-    /// limitation this change doesn't touch (see
-    /// `anchored_formula_removes_offset_amplification`); below that, this
-    /// isolates the one thing that IS fixed here.
-    #[test]
-    fn welds_offset_jitter_at_large_site_coordinates() {
-        let j = 2.0e-5; // > 1 f32-ULP at ~150m (survives storage), < POSITION_DEDUP_GRID
-        let t = [120.123_f64, 150.456, 100.789];
-        let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
-        let jittered = mesh_from_tris(&[
-            [
-                add([0.0, 0.0, 0.0]),
-                add([10.0, 0.0, 0.0]),
-                add([0.0, 10.0, 0.0]),
-            ],
-            [
-                add([10.0, 0.0, j]),
-                add([10.0, 10.0, j]),
-                add([0.0, 10.0, j]),
-            ],
-        ]);
-
-        // Anchored check — see `distinct_offset_buckets_anchored` doc.
-        let pre_buckets = distinct_offset_buckets_anchored(&jittered);
-        let welded = weld_near_coplanar_facets(&jittered);
-        let post_buckets = distinct_offset_buckets_anchored(&welded);
-
-        eprintln!(
-            "large-site weld: anchor={t:?} j={j:e} pre_buckets={pre_buckets} post_buckets={post_buckets}"
-        );
-        assert_eq!(
-            post_buckets, 1,
-            "two facets of one authored plane at a real site offset must weld \
-             to ONE offset bucket, same as the near-origin \
-             `welds_offset_jitter_not_distinct_plane` case — got {post_buckets} \
-             (pre-weld: {pre_buckets})"
-        );
-    }
-
-    /// The invariant this fix restores: the anchor must be a function of the
-    /// vertex SET, not of vertex numbering. Builds the same 3 facets (a weld
-    /// cluster + one unrelated far facet) in two vertex orders — far facet
-    /// first vs. last, so a different physical vertex would have been
-    /// `canon_pos[0]` under the old first-vertex anchor — and asserts every
-    /// vertex's welded position is bit-identical between the two orderings
-    /// once matched back to the same physical vertex.
-    ///
-    /// This encodes the invariant behind the census's #6588 finding (a host
-    /// newly dependent on the triangulator's diagonal choice) rather than
-    /// hand-reproducing its exact divergence: that divergence is a
-    /// corpus-scale, floating-point-boundary coincidence (the real
-    /// duplex.ifc #6426 fixture does not diverge at this synthetic scale
-    /// either) that resisted small hand-built reconstruction. The
-    /// bit-identity assertion below is correct-by-construction regardless:
-    /// two orderings of the same mesh must weld to the same result, full stop.
-    #[test]
-    fn anchor_is_stable_under_vertex_reordering() {
-        let j = 4.9e-5; // just under MAX_OFFSET_JITTER (5e-5): any perturbation can flip the bucket
-        let t = [5000.123_f64, 3000.456, 7000.789];
-        let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
-        let facet1 = [add([0.0, 0.0, 0.0]), add([10.0, 0.0, 0.0]), add([0.0, 10.0, 0.0])];
-        let facet2 = [add([10.0, 0.0, j]), add([10.0, 10.0, j]), add([0.0, 10.0, j])];
-        // Unrelated facet, 1 km from the cluster, distinct normal bucket.
-        let d0 = add([1000.0, 0.0, 0.0]);
-        let d1 = add([1000.0, 0.0, 1.0]);
-        let d2 = add([1001.0, 1.0, 0.5]);
-        let far_facet = [d0, d1, d2];
-
-        let vertex0_far = mesh_from_tris(&[far_facet, facet1, facet2]);
-        let vertex0_cluster = mesh_from_tris(&[facet1, facet2, far_facet]);
-
-        let welded_far_first = weld_near_coplanar_facets(&vertex0_far);
-        let welded_cluster_first = weld_near_coplanar_facets(&vertex0_cluster);
-
-        // `vertex0_far`'s raw vertex order is `vertex0_cluster`'s rotated by
-        // the far facet's 3 vertices (moved from last to first): raw index i
-        // in `vertex0_cluster` is the SAME physical vertex as raw index
-        // `(i + 3) % 9` in `vertex0_far`. Compare every vertex's welded
-        // position bit-for-bit through that correspondence.
-        for i in 0..9 {
-            let far_i = (i + 3) % 9;
-            let cluster_pos = &welded_cluster_first.positions[i * 3..i * 3 + 3];
-            let far_pos = &welded_far_first.positions[far_i * 3..far_i * 3 + 3];
-            assert_eq!(
-                cluster_pos, far_pos,
-                "vertex {i} (cluster-first raw id) / {far_i} (far-first raw \
-                 id) is the SAME physical vertex — its welded position must \
-                 be bit-identical regardless of which vertex was numbered \
-                 first. cluster-first={cluster_pos:?} far-first={far_pos:?}"
-            );
-        }
-    }
-
-    /// Isolates the offset-formula fix from the full `weld_near_coplanar_facets`
-    /// pipeline (so `POSITION_DEDUP_GRID`'s separate limitation, see above,
-    /// can't interfere), using the smallest jitter that survives `f32`
-    /// storage at ~5000-7000 m (a true 15 µm #1112-scale jitter is
-    /// unrepresentable there).
-    ///
-    /// Asserts the ANCHORED gap clears `MAX_OFFSET_JITTER` when the anchor is
-    /// on the shared edge (the common case, since `weld_near_coplanar_facets`
-    /// anchors at the mesh's bbox-min corner, typically part of or near the
-    /// cluster being welded), against a RAW gap orders of magnitude over
-    /// tolerance. Also PRINTS (doesn't assert) the gap for an anchor
-    /// progressively farther from the cluster: the residual scales with
-    /// anchor-to-cluster distance (mesh-scale) rather than world-origin
-    /// distance (site-scale) — a large improvement, not a complete
-    /// elimination for a sprawling host.
-    #[test]
-    fn anchored_formula_removes_offset_amplification() {
-        let t = [5000.123_f64, 3000.456, 7000.789];
-        // Smallest vertex divergence that survives f32 storage at this magnitude.
-        let ulp_at_t2 = {
-            let f = t[2] as f32;
-            (f32::from_bits(f.to_bits() + 1) - f) as f64
-        };
-        eprintln!("f32 ULP near {}: {ulp_at_t2:e}", t[2]);
-
-        for edge in [1.0_f64, 10.0_f64] {
-            let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
-            // Facet1 flat, not axis-aligned (avoids a spurious zero dot
-            // product from an orthogonal edge/normal). Facet2 shares the
-            // (A,B) edge; its unique corner is lifted by one f32 ULP.
-            let a = add([0.0, 0.0, 0.0]);
-            let b = add([edge, 0.3 * edge, 0.05 * edge]);
-            let c1 = add([0.2 * edge, edge, 0.1 * edge]);
-            let c2 = add([0.2 * edge, edge, 0.1 * edge + ulp_at_t2]);
-
-            // Evaluate at the vertex that moved (c1/c2) — a shared-edge
-            // vertex would vanish by construction regardless of the gap.
-            let raw_gap = {
-                let n1 = super::tri_normal(a, b, c1).unwrap().0;
-                let n2 = super::tri_normal(b, c2, a).unwrap().0;
-                let off1 = n1[0] * c1[0] + n1[1] * c1[1] + n1[2] * c1[2];
-                let off2 = n2[0] * c2[0] + n2[1] * c2[1] + n2[2] * c2[2];
-                (off1 - off2).abs()
-            };
-            let anchored_gap = {
-                let anchor = a;
-                let s = |p: [f64; 3]| [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]];
-                let (a2, b2, c1a) = (s(a), s(b), s(c1));
-                let (b2b, c2a, a2a) = (s(b), s(c2), s(a));
-                let n1 = super::tri_normal(a2, b2, c1a).unwrap().0;
-                let n2 = super::tri_normal(b2b, c2a, a2a).unwrap().0;
-                let off1 = n1[0] * c1a[0] + n1[1] * c1a[1] + n1[2] * c1a[2];
-                let off2 = n2[0] * c2a[0] + n2[1] * c2a[1] + n2[2] * c2a[2];
-                (off1 - off2).abs()
-            };
-            eprintln!(
-                "edge={edge}m: raw_gap={raw_gap:e} anchored_gap={anchored_gap:e} \
-                 MAX_OFFSET_JITTER={MAX_OFFSET_JITTER:e}"
-            );
-            assert!(
-                raw_gap > MAX_OFFSET_JITTER,
-                "RAW formula must be shown failing (amplified) for this to \
-                 be a meaningful RED case; edge={edge}m raw_gap={raw_gap:e}"
-            );
-            assert!(
-                anchored_gap < MAX_OFFSET_JITTER,
-                "ANCHORED formula must bring the gap back under tolerance \
-                 when the anchor is on the shared edge; edge={edge}m \
-                 anchored_gap={anchored_gap:e}"
-            );
-
-            // WORST CASE: the global anchor (bbox-min corner) belongs to a
-            // DIFFERENT part of a large host, `far_m` away from this
-            // cluster's shared edge — plausible for a big
-            // multi-slope roof. Offset is a PLANE property (constant across
-            // all 3 of a triangle's own vertices), so the gap is
-            // `δn · (shared_edge_point − anchor)`; an anchor ON the shared
-            // edge cancels EXACTLY (see the `anchored_gap≈0` result above) —
-            // an anchor `far_m` away does not.
-            for far_m in [1.0_f64, 10.0_f64, 50.0_f64] {
-                let anchor = [a[0] - far_m, a[1], a[2]];
-                let s = |p: [f64; 3]| [p[0] - anchor[0], p[1] - anchor[1], p[2] - anchor[2]];
-                let (a2, b2, c1a) = (s(a), s(b), s(c1));
-                let (b2b, c2a, a2a) = (s(b), s(c2), s(a));
-                let n1 = super::tri_normal(a2, b2, c1a).unwrap().0;
-                let n2 = super::tri_normal(b2b, c2a, a2a).unwrap().0;
-                let off1 = n1[0] * c1a[0] + n1[1] * c1a[1] + n1[2] * c1a[2];
-                let off2 = n2[0] * c2a[0] + n2[1] * c2a[1] + n2[2] * c2a[2];
-                let gap_far = (off1 - off2).abs();
-                eprintln!(
-                    "  edge={edge}m anchor {far_m}m from cluster: gap={gap_far:e} \
-                     ({} MAX_OFFSET_JITTER)",
-                    if gap_far < MAX_OFFSET_JITTER { "<" } else { ">=" }
-                );
-            }
-        }
-    }
 }
 
 #[cfg(test)]

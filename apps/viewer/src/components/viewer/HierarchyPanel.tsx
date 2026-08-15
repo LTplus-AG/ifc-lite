@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useViewerStore, resolveEntityRef } from '@/store';
-import { toGlobalIdFromModels, fromGlobalIdFromModels } from '@/store/globalId';
+import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useEntityListMultiSelect, type MultiSelectItem } from '@/hooks/useEntityListMultiSelect';
 import { Rule, type FilterRule } from '@/lib/search/filter-rules';
@@ -30,6 +30,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
@@ -95,26 +96,15 @@ export function HierarchyPanel() {
   // geometryResult.meshes per id. Only label with a single type name when
   // EVERY isolated id shares it — a heterogeneous isolation must not claim
   // a class the user never isolated (#2532 review: the chip mislabelled a
-  // mixed-class Filter result by sampling only the first id).
-  const typeIsolationLabel = useMemo(() => {
-    if (!isolatedEntities || isolatedEntities.size === 0) return null;
-    let sampleType: string | undefined;
-    let homogeneous = true;
-    for (const id of isolatedEntities) {
-      const loc = fromGlobalIdFromModels(models, id);
-      const store = loc ? (models.get(loc.modelId)?.ifcDataStore ?? ifcDataStore) : ifcDataStore;
-      const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
-      if (!type) continue;
-      if (sampleType === undefined) {
-        sampleType = type;
-      } else if (sampleType !== type) {
-        homogeneous = false;
-        break;
-      }
-    }
-    if (sampleType && homogeneous) return sampleType;
-    return `${isolatedEntities.size} elements`;
-  }, [isolatedEntities, models, ifcDataStore]);
+  // mixed-class Filter result by sampling only the first id). Extracted to
+  // `hierarchy/typeIsolationLabel.ts` (pure, unit-tested) — it also skips ids
+  // that don't resolve to any federated model rather than querying the
+  // fallback store with a raw, un-offset id (#2532 review: could hit an
+  // unrelated entity in a multi-model scene and mislabel the chip).
+  const typeIsolationLabel = useMemo(
+    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore),
+    [isolatedEntities, models, ifcDataStore],
+  );
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 

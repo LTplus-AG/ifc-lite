@@ -794,6 +794,85 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Maintainer-found defect on this PR (predicate asymmetry): the closure's
+  // bridge check treats a referenced id that never existed in the file the
+  // same as one that was excluded (`excludeIds.has(id) || !entityIndex.has(id)`
+  // in `isBridgeTargetExcluded`), while emission's own predicate
+  // (`isExcludedFromRelationshipRefs`) only excludes a HIDDEN product or a
+  // TOMBSTONED id — never "never existed". A relationship whose OwnerHistory
+  // slot already names a dangling `#999` (a pre-existing corrupt/truncated
+  // source, not something this export pass created) therefore blocks the
+  // closure from bridging into the SAME relationship's RelatingPropertyDefinition
+  // (`#10`), even though that relationship's own line ships unfiltered and
+  // still names both. Net effect: a VISIBLE wall silently loses its pset, and
+  // the file gains a second dangling ref (`#10`) alongside the pre-existing one
+  // (`#999`) that was already there before this export ran.
+  it('does not drop a visible element’s pset when another attribute on the same relationship names an id that never existed', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [3, 'IFCWALL', "#3=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA3',$,'Wall',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhA0',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('VISIBLE_COST'),$);"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('1ys5Xwuxz8gPJk6N$NGh22',#999,$,$,(#3),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('VISIBLE_COST');
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    // `#999` is a pre-existing dangling ref in the SOURCE file itself (out of
+    // scope for this fix — a truncated file / another tool's exporter bug);
+    // `#10` must not join it.
+    expect(findDanglingRefs(content)).toEqual([999]);
+  });
+
+  // Maintainer-found defect on this PR (`refGroupsOf` unions stale values into
+  // a BLOCKING predicate): an overlay-created relationship's authored refs are
+  // read as the UNION of the creation payload plus every queued override, the
+  // same shape `refsOf` uses (safe there because closure GROWTH from a stale
+  // entry is harmless). Feeding that union to `relationshipRefsSurviveExclusion`
+  // is unsafe: a stale, since-superseded group can still BLOCK bridging even
+  // though the override retargeted the relationship at a visible entity.
+  it('does not drop a visible element’s pset when an overlay-created relationship is retargeted away from a hidden one', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [9, 'IFCWALL', "#9=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA9',$,'HiddenWall',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhAA',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('VISIBLE_COST'),$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(11);
+    const rel = view.createEntity('IFCRELDEFINESBYPROPERTIES', [
+      '1ys5Xwuxz8gPJk6N$NGh22', null, null, null, ['#9'], '#10',
+    ]);
+    // Retarget RelatedObjects (attribute index 4) from the hidden wall to the
+    // visible one, after creation — the shape #2347 already documents as
+    // unsafe for a positional "last two" read; here it is unsafe for the
+    // UNIONED refGroupsOf read instead.
+    view.setPositionalAttribute(rel.expressId, 4, ['#8']);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set([9]),
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#9=IFCWALL');
+    expect(content).toContain('VISIBLE_COST');
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

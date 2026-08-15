@@ -314,6 +314,23 @@ export function collectRefsInByteRange(
  *   target into the closure — those are never themselves in `excludeIds` (not
  *   products) — so the target shipped as an orphan line nothing in the output
  *   names (#2548).
+ * @param isRefExcluded - The caller's OWN "is this id excluded from what a
+ *   relationship names" predicate — the exact one it will use to filter that
+ *   relationship's OUTPUT line (`isExcludedFromRelationshipRefs` in
+ *   `step-exporter.ts`). When supplied, the bridge decision above uses THIS
+ *   predicate instead of inventing `excludeIds.has(id) || !entityIndex.has(id)`
+ *   as a proxy for it. The proxy and a caller's real predicate can disagree on
+ *   an id that never existed in the file at all (not hidden, not deleted —
+ *   just absent, e.g. a pre-existing dangling ref in a truncated source): the
+ *   proxy treats "not in the index" as excluded, blocking the bridge, while a
+ *   caller whose predicate only excludes a hidden PRODUCT or a TOMBSTONED id
+ *   does not, and still emits the relationship's line naming it. Left to
+ *   disagree, that combination drops a VISIBLE sibling's pset from the
+ *   closure while the unfiltered output line still names it — a dangling ref
+ *   the emission pass did not intend to create. Callers with no caller-side
+ *   emission predicate to share (`demesh-prune.ts`, `merged-exporter.ts`,
+ *   whose own `IFCREL*` output-line filter already reduces to the same
+ *   `!entityIndex.has` proxy) omit this and keep the previous behaviour.
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
  * Uses byte-level scanning — no TextDecoder, no regex, no string allocation —
@@ -328,8 +345,10 @@ export function collectReferencedEntityIds(
     has(id: number): boolean;
     refsOf?(id: number): readonly number[] | undefined;
     refGroupsOf?(id: number): ReadonlyArray<number | readonly number[]> | undefined;
+    effectiveType?(id: number, recordType: string): string;
   },
   excludeIds?: Set<number>,
+  isRefExcluded?: (id: number) => boolean,
 ): Set<number> {
   const src = asSourceBytes(source);
   const visited = new Set<number>();
@@ -346,18 +365,19 @@ export function collectReferencedEntityIds(
   // Reusable buffer for extracted refs (avoids per-entity allocation)
   const refs: number[] = [];
 
-  // A referenced id NOT IN the index counts as excluded too — a TOMBSTONED
-  // one: `getVisibleEntityIds` never adds a deleted entity to
-  // `hiddenProductIds` (it never sees it — the effective index's iteration
-  // skips tombstones entirely), so a relationship whose sole subject was
-  // DELETED, not merely hidden, would otherwise still read as "survives
-  // filtering" and bridge into its pset. Same union `isExcludedFromRelationshipRefs`
-  // in `step-exporter.ts` computes for the relationship's own OUTPUT line —
-  // `hiddenProductIds.has(id) || effective.isDeleted(id)` — restated here as
-  // `excludeIds.has(id) || !entityIndex.has(id)` because this function only
-  // has the index, not the effective wrapper itself.
+  // The bridge decision below needs "is this id excluded from what a
+  // relationship names" — ideally the CALLER's own answer to that question
+  // (`isRefExcluded`), since that is the exact predicate it will also use to
+  // filter the relationship's OUTPUT line. When a caller has none to share,
+  // fall back to `excludeIds.has(id) || !entityIndex.has(id)` — the same
+  // proxy as before, which also correctly covers a TOMBSTONED id (a deleted
+  // entity is absent from the effective index too, so `!entityIndex.has`
+  // catches it), but additionally — and wrongly, for a caller whose own
+  // predicate would not — treats an id that never existed in the file at all
+  // as excluded. See the `isRefExcluded` param doc for why that divergence
+  // matters (#2548 follow-up).
   const isBridgeTargetExcluded = excludeIds
-    ? (id: number): boolean => excludeIds.has(id) || !entityIndex.has(id)
+    ? (isRefExcluded ?? ((id: number): boolean => excludeIds.has(id) || !entityIndex.has(id)))
     : null;
 
   while (queue.length > 0) {
@@ -391,9 +411,25 @@ export function collectReferencedEntityIds(
     // would skip this and miss the deletion case. Callers with no filtering at
     // all (`demesh-prune.ts`) pass `excludeIds` as `undefined`, not an empty
     // Set, so they still take the fast path.
+    //
+    // Classified by the EFFECTIVE type (`entityIndex.effectiveType`) when the
+    // index can answer it, not the authored/source `ref.type`: a retype can
+    // move a record across the `IFCREL*` boundary in either direction, and
+    // emission (`step-exporter.ts`'s `effectiveRelType` check ahead of its own
+    // `filterHiddenRefsFromRelationshipLine` call) already classifies by the
+    // effective class. A closure walk that classified by the stale authored
+    // type could block-or-bridge on a class the file will not actually emit
+    // for this id. Falls back to the authored `ref.type` when the index has no
+    // `effectiveType` (a test double, or a caller with no overlay at all,
+    // where authored and effective always agree).
+    const bridgeType = (
+      entityIndex.effectiveType && ref.type !== undefined
+        ? entityIndex.effectiveType(entityId, ref.type)
+        : ref.type
+    );
     if (
       isBridgeTargetExcluded !== null
-      && ref.type !== undefined && ref.type.toUpperCase().startsWith('IFCREL')
+      && bridgeType !== undefined && bridgeType.toUpperCase().startsWith('IFCREL')
     ) {
       const groups = authored
         ? (entityIndex.refGroupsOf?.(entityId)

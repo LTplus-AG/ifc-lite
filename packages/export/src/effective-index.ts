@@ -276,29 +276,49 @@ class OverlayIndex implements EffectiveEntityIndex {
   }
 
   /**
-   * See the interface doc: same union as {@link refsOf} (creation payload
-   * plus every queued override), but each authored attribute value becomes
-   * ONE group — an array if the value itself is an array (a SET/LIST
-   * attribute), a bare id otherwise — instead of being flattened into `refsOf`'s
-   * single list. Not cached: only called for `IFCREL*` entities, and only when
-   * a `visibleOnly`/deletion filter is active, so the extra pass is rare.
+   * See the interface doc: unlike {@link refsOf} (a deliberate UNION — see its
+   * own doc for why over-inclusion is harmless there), this is the EFFECTIVE
+   * groups: an override REPLACES its slot's group rather than adding a second
+   * one alongside it. `refsOf`'s union is safe only for a consumer that treats
+   * extra ids as harmless closure growth; `relationshipRefsSurviveExclusion`
+   * is a BLOCKING predicate, so a stale, since-superseded group (e.g. a
+   * `RelatedObjects` list retargeted away from a hidden entity by a later
+   * `setPositionalAttribute`) must not still be able to veto bridging on the
+   * value it was overridden away from.
+   *
+   * Resolved per authored attribute SLOT, same precedence
+   * {@link effectiveAttributeRef} uses for one named attribute: a
+   * `getAttributeMutationsForEntity` override (most specific — names the slot
+   * by schema attribute name) wins, else a `getPositionalMutationsForEntity`
+   * override at that index, else the creation payload's own value at that
+   * index. Not cached: only called for `IFCREL*` entities, and only when a
+   * `visibleOnly`/deletion filter is active, so the extra pass is rare.
    */
   refGroupsOf(id: number): ReadonlyArray<number | readonly number[]> | undefined {
     const entity = this.created.get(id);
     if (!entity || this.tombstones.has(id)) return undefined;
-    const groups: Array<number | number[]> = [];
-    const pushGroup = (value: IfcAttributeValue | string | undefined): void => {
-      const ids = authoredEntityRefs(value);
-      if (ids.length === 0) return;
-      groups.push(Array.isArray(value) || ids.length > 1 ? ids : ids[0]);
-    };
-    for (const value of entity.attributes) pushGroup(value);
+
+    const effective: Array<IfcAttributeValue | string | undefined> = entity.attributes.slice();
+
     if (typeof this.view.getPositionalMutationsForEntity === 'function') {
       const positional = this.view.getPositionalMutationsForEntity(id);
-      if (positional) for (const value of positional.values()) pushGroup(value);
+      if (positional) for (const [index, value] of positional) effective[index] = value;
     }
+
     if (typeof this.view.getAttributeMutationsForEntity === 'function') {
-      for (const { value } of this.view.getAttributeMutationsForEntity(id)) pushGroup(value);
+      const effectiveType = this.retypes.get(id)?.newType ?? entity.type;
+      const schema = getAllAttributesForEntity(effectiveType);
+      for (const { name, value } of this.view.getAttributeMutationsForEntity(id)) {
+        const index = schema.findIndex((attr) => attr.name === name);
+        if (index >= 0) effective[index] = value;
+      }
+    }
+
+    const groups: Array<number | number[]> = [];
+    for (const value of effective) {
+      const ids = authoredEntityRefs(value);
+      if (ids.length === 0) continue;
+      groups.push(Array.isArray(value) || ids.length > 1 ? ids : ids[0]);
     }
     return groups;
   }

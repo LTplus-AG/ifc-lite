@@ -179,4 +179,42 @@ describe('TokenManager.getValidAccessToken', () => {
     expect(token2).toBe('second-refresh');
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('does not let a refresh that was already in flight resurrect the session after clear()', async () => {
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is triggered (e.g. by a background call) and is still
+    // in flight when the user signs out.
+    const pending = manager.getValidAccessToken();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    await manager.clear();
+
+    // The token endpoint now answers the refresh that started before sign-out.
+    resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage must still read as signed-out — the in-flight refresh's result
+    // must not have been persisted after clear() ran.
+    const stored = await manager.getTokens();
+    expect(stored).toBeUndefined();
+  });
 });

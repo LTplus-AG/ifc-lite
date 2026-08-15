@@ -46,6 +46,12 @@ const DEFAULT_REFRESH_SKEW_MS = 60_000;
 
 export class TokenManager {
   private pendingRefresh: Promise<TokenSet> | null = null;
+  /** Bumped by `clear()`. A refresh started before sign-out captures the
+   *  generation it was launched under; if that no longer matches by the
+   *  time the token endpoint responds, `clear()` ran in the meantime and
+   *  the refreshed token set must not be persisted — writing it would
+   *  resurrect a session the user just signed out of. */
+  private generation = 0;
 
   constructor(private readonly config: TokenManagerConfig) {}
 
@@ -76,6 +82,7 @@ export class TokenManager {
    *  out of this package's scope; callers should revoke first if they want
    *  server-side revocation, then call this. */
   async clear(): Promise<void> {
+    this.generation += 1;
     await this.config.storage.delete(this.config.storageKey);
   }
 
@@ -118,6 +125,7 @@ export class TokenManager {
       );
     }
     const refreshToken = current.refreshToken;
+    const generation = this.generation;
 
     const run = async (): Promise<TokenSet> => {
       const refreshed = await refreshAccessToken({
@@ -132,6 +140,12 @@ export class TokenManager {
       // field at all, and the existing one remains valid and must keep being
       // used; dropping it here would strand the session on the next expiry.
       const merged: TokenSet = { ...refreshed, refreshToken: refreshed.refreshToken ?? refreshToken };
+      if (generation !== this.generation) {
+        // clear() ran while this refresh was in flight. Persisting `merged`
+        // now would write a live token set back under the storage key the
+        // user just signed out of, resurrecting the session.
+        throw new NotSignedInError('signed out while the token refresh was in flight');
+      }
       await this.setTokens(merged);
       return merged;
     };

@@ -79,6 +79,40 @@ describe('exchangeAuthorizationCode', () => {
     }
   });
 
+  it('accepts a numeric-string expires_in (some providers send it as a string, not a JSON number)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'access-1', expires_in: '60' }));
+
+    const tokens = await exchangeAuthorizationCode({
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      redirectUri: 'https://app.example.com/callback',
+      code: 'auth-code',
+      codeVerifier: 'verifier-value',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+
+    // Must honor the real 60s lifetime, not silently fall back to the 3600s
+    // default — the fallback would make an already-rejected token look fresh.
+    expect(tokens.expiresAt).toBe(1_000_000 + 60 * 1000);
+  });
+
+  it('falls back to the 3600s default when expires_in is absent, non-numeric, or non-positive', async () => {
+    for (const badValue of [undefined, 'not-a-number', -5, 0]) {
+      const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'access-1', expires_in: badValue }));
+      const tokens = await exchangeAuthorizationCode({
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        redirectUri: 'https://app.example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier-value',
+        fetch: fetchMock as unknown as typeof fetch,
+        now: () => 1_000_000,
+      });
+      expect(tokens.expiresAt).toBe(1_000_000 + 3600 * 1000);
+    }
+  });
+
   it('rejects a response missing access_token', async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ token_type: 'Bearer' }, 200));
     await expect(

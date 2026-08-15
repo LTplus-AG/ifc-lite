@@ -68,7 +68,9 @@ export async function refreshAccessToken(params: RefreshAccessTokenParams): Prom
 interface TokenEndpointResponseBody {
   readonly access_token?: string;
   readonly refresh_token?: string;
-  readonly expires_in?: number;
+  // RFC 6749 §5.1 says number, but some providers send it as a numeric
+  // string; `requestToken` below coerces either shape with `Number(...)`.
+  readonly expires_in?: number | string;
   readonly scope?: string;
   readonly token_type?: string;
   readonly error?: string;
@@ -111,7 +113,13 @@ async function requestToken(
     throw new TokenExchangeError('token endpoint response is missing "access_token"');
   }
 
-  const expiresInSeconds = typeof parsed.expires_in === 'number' && parsed.expires_in > 0 ? parsed.expires_in : 3600;
+  // RFC 6749 §5.1 specifies `expires_in` as a JSON number, but some
+  // providers send it as a numeric string (e.g. `"3600"`). `Number(...)`
+  // accepts both; `Number(undefined)` and `Number("not-a-number")` both
+  // produce `NaN`, so a genuinely missing or malformed value still falls
+  // through to the 3600s default instead of being coerced into `0`.
+  const rawExpiresIn = Number(parsed.expires_in);
+  const expiresInSeconds = Number.isFinite(rawExpiresIn) && rawExpiresIn > 0 ? rawExpiresIn : 3600;
 
   return {
     accessToken: parsed.access_token,

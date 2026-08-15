@@ -32,6 +32,19 @@
  *     COUNTED SEPARATELY — "we scaled it away" is a different statement from
  *     "the kernel could not prove it", and collapsing the two would be the
  *     silent blend this whole panel exists to avoid.
+ * - **Area mesh** — the triangulated mesh's total surface area, summed live
+ *   from each submesh's `positions`/`indices` (`measure-modes/mesh-area.ts`,
+ *   using `triangleArea` newly re-exported from `@ifc-lite/clash`'s public
+ *   surface — the "mesh analysis reachable from TypeScript" prerequisite
+ *   #2199 names). Unlike `geometryVolume` this needs no closed-solid proof, so
+ *   it covers open shells and layered walls too; and because it re-reads
+ *   `positions` on every call rather than trusting a value cached before
+ *   alignment, it is NOT invalidated by federation re-baking. It is the sum of
+ *   EVERY meshed face, not one side, so it is never comparable to a
+ *   `NetSideArea`/`GrossSideArea` and is labelled its own "mesh" row.
+ *   GPU-instanced-only elements have no flat mesh to sum and are reported as
+ *   "no mesh" here too — there is no per-entity area side channel analogous
+ *   to `instancedGeometryVolumes`.
  *
  * Values are normalised to SI at read time, while each value is still next to
  * the `ProjectUnits` that explain it, because a federation can mix a
@@ -64,9 +77,11 @@ import {
   pickElementQuantities,
   rollupQuantities,
   rollupGeometryVolumes,
+  rollupMeshArea,
   type PickedQuantity,
   type QuantityBasis,
 } from './measure-modes/quantities';
+import { meshSurfaceArea } from './measure-modes/mesh-area';
 
 const QUANTITY_TYPE_LABEL: Record<number, string> = {
   0: 'Length',
@@ -197,10 +212,62 @@ export function MeasureQuantities() {
       collectVolumes(geometryResult?.meshes, geometryResult?.instancedGeometryVolumes);
     }
 
+    // Mesh-derived surface area (issue #2199, "mesh analysis reachable from
+    // TypeScript"): summed live from each submesh's `positions`/`indices` via
+    // `meshSurfaceArea`, unlike `geometryVolume` which is a scalar the wasm
+    // hashing pass computed once. Because it re-reads `positions` every time,
+    // it is NOT invalidated by federation re-baking the way `geometryVolume`
+    // is — a `'same-crs'`/`'reprojected'` alignment mutates `positions` in
+    // place (`geometryVolumesSurviveAlignment`'s own contract), so summing
+    // triangles from the CURRENT positions already reflects the geometry on
+    // screen. `rescaledModelIds` therefore does not gate this collection.
+    //
+    // One entity can be split across several `MeshData` pieces (materials,
+    // instanced occurrences). Pieces are grouped by `occurrenceKey` (falling
+    // back to `expressId` when absent, per that field's own cache-key
+    // contract) and summed WITHIN a group — that is genuinely one occurrence's
+    // area split across pieces. Area is placement-invariant, so every
+    // occurrence of the same `expressId` has the identical total; only the
+    // first group seen per `expressId` is kept, exactly mirroring how the
+    // volume collection above takes the first mesh's `geometryVolume` rather
+    // than summing across occurrences.
+    const meshAreaByGlobalId = new Map<number, number>();
+    const collectMeshAreas = (
+      meshes: ReadonlyArray<{ expressId: number; occurrenceKey?: string; positions?: ArrayLike<number>; indices?: ArrayLike<number> }> | undefined,
+    ) => {
+      if (!meshes) return;
+      const groupAreas = new Map<string, { expressId: number; area: number }>();
+      for (const mesh of meshes) {
+        // A mesh record with no render geometry (metadata-only piece, or a
+        // test double built for a different field) has nothing to sum — skip
+        // it entirely rather than seed a false "measured, 0 m²" group for an
+        // entity whose OTHER pieces might still carry real geometry.
+        if (!mesh.positions || !mesh.indices) continue;
+        const groupKey = mesh.occurrenceKey ?? `e:${mesh.expressId}`;
+        let group = groupAreas.get(groupKey);
+        if (!group) {
+          group = { expressId: mesh.expressId, area: 0 };
+          groupAreas.set(groupKey, group);
+        }
+        group.area += meshSurfaceArea(mesh);
+      }
+      for (const group of groupAreas.values()) {
+        if (!meshAreaByGlobalId.has(group.expressId)) {
+          meshAreaByGlobalId.set(group.expressId, group.area);
+        }
+      }
+    };
+    if (models.size > 0) {
+      for (const [, m] of models) collectMeshAreas(m.geometryResult?.meshes);
+    } else {
+      collectMeshAreas(geometryResult?.meshes);
+    }
+
     const unitsCache = new Map<string, ProjectUnits>();
     const typeCaches = new Map<string, Map<number, ReturnType<typeof extractQuantitiesOnDemand>>>();
     const perElement: PickedQuantity[][] = [];
     const geometryVolumes: Array<number | undefined> = [];
+    const meshAreas: Array<number | undefined> = [];
     let withoutStore = 0;
     let rescaled = 0;
 
@@ -249,11 +316,16 @@ export function MeasureQuantities() {
           volumeByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId)),
         );
       }
+      // Not gated on `rescaledModelIds` — see the comment on `collectMeshAreas`.
+      meshAreas.push(
+        meshAreaByGlobalId.get(toGlobalIdFromModels(models, ref.modelId, ref.expressId)),
+      );
     }
 
     return {
       declared: rollupQuantities(perElement),
       geometry: rollupGeometryVolumes(geometryVolumes),
+      meshArea: rollupMeshArea(meshAreas),
       elements: refs.length,
       withoutStore,
       rescaled,
@@ -278,8 +350,8 @@ export function MeasureQuantities() {
     );
   }
 
-  const { declared, geometry, elements, withoutStore, rescaled } = summary;
-  const nothing = declared.length === 0 && geometry.proved === 0;
+  const { declared, geometry, meshArea, elements, withoutStore, rescaled } = summary;
+  const nothing = declared.length === 0 && geometry.proved === 0 && meshArea.withMesh === 0;
 
   return (
     <div className="border-t px-2 py-2 space-y-1.5">
@@ -297,10 +369,9 @@ export function MeasureQuantities() {
         <div className="flex items-start gap-1.5 text-[10px] leading-tight text-muted-foreground">
           <TriangleAlert className="mt-0.5 h-3 w-3 shrink-0 text-amber-500" />
           <span>
-            The selection declares no quantities
-            {rescaled === elements
-              ? '.'
-              : ', and no enclosed volume could be proved from its geometry.'}
+            The selection declares no quantities, no enclosed volume could be
+            proved from its geometry, and no triangulated mesh area could be
+            measured either.
           </span>
         </div>
       ) : (
@@ -339,6 +410,23 @@ export function MeasureQuantities() {
               )}
             </div>
           )}
+
+          {meshArea.withMesh > 0 && (
+            <div
+              className="flex items-baseline gap-2 whitespace-nowrap"
+              title="Total triangulated surface of the meshed geometry — every face, not one side. Not an IFC NetSideArea/GrossSideArea."
+            >
+              <span className="w-[5.5rem] shrink-0 font-mono text-[9px] uppercase tracking-wider text-muted-foreground/70">
+                Area mesh
+              </span>
+              <span className="font-mono text-[11px] tabular-nums">{render(meshArea.total, 1)}</span>
+              {meshArea.withoutMesh > 0 && (
+                <span className="font-mono text-[9px] text-amber-600 dark:text-amber-500">
+                  {meshArea.withMesh}/{elements}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -351,7 +439,7 @@ export function MeasureQuantities() {
       {!nothing && (
         <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
           net = openings excluded · gross = openings included · mesh = as built,
-          after opening cuts
+          after opening cuts (volume) or total triangulated surface (area)
         </div>
       )}
 
@@ -359,6 +447,12 @@ export function MeasureQuantities() {
         <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
           {geometry.unproved} element{geometry.unproved === 1 ? '' : 's'} had no
           provable enclosed volume (open shell, layered or multi-part geometry).
+        </div>
+      )}
+      {meshArea.withoutMesh > 0 && (
+        <div className="font-mono text-[9px] leading-tight text-muted-foreground/70">
+          {meshArea.withoutMesh} element{meshArea.withoutMesh === 1 ? '' : 's'} had
+          no triangulated mesh to measure (e.g. instanced-only geometry).
         </div>
       )}
       {rescaled > 0 && (

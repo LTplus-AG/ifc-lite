@@ -149,6 +149,7 @@
     "Mat4: type",
     "SEVERITY_RANK: const",
     "TOUCHING_EPSILON: const",
+    "Triangle: interface",
     "Vec3: type",
     "aggregateReviewStatus: function",
     "buildTriageSystemPrompt: function",
@@ -170,7 +171,8 @@
     "penetrationDepth: function",
     "reviewStatusToBcfTopicStatus: function",
     "rulesFromPresets: function",
-    "sortClashes: function"
+    "sortClashes: function",
+    "triangleArea: function"
   ],
   "@ifc-lite/clash/bcf": [
     "ClashBcfOptions: interface",

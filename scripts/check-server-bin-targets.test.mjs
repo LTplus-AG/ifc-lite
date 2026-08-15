@@ -391,12 +391,18 @@ const preSidecarWorkflow = (s) => mutate(s, `${SIDECAR_ASSIGN_LINE}\n`, '');
  * Commit (optionally mutated) inputs as tag v9.9.9 in a temp repo, restore
  * the working tree to the real inputs (the workflow ref, exactly as on a
  * real run), and run the checker in --release mode against a fake gh that
- * reports `assets` as the release's asset names.
+ * reports `assets` as the release's asset names. `tagOmit` names input keys
+ * left OUT of the tagged commit while still restored to the working tree
+ * afterwards - reproducing git's "exists on disk, but not in <tag>" shape,
+ * the one a pre-package tag shows on a real checkout. `tag` overrides which
+ * tag the checker is asked to verify (the temp repo only ever tags v9.9.9,
+ * so any other name is an unfetched tag).
  */
-function runReleaseChecker({ tagMutations = {}, assets }) {
+function runReleaseChecker({ tagMutations = {}, tagOmit = [], tag = 'v9.9.9', assets }) {
   const dir = mkdtempSync(join(tmpdir(), 'server-bin-gate-rel-'));
   try {
     for (const [key, rel] of Object.entries(INPUTS)) {
+      if (tagOmit.includes(key)) continue;
       const target = join(dir, rel);
       mkdirSync(dirname(target), { recursive: true });
       writeFileSync(target, tagMutations[key] ? tagMutations[key](real[key]) : real[key]);
@@ -410,6 +416,7 @@ function runReleaseChecker({ tagMutations = {}, assets }) {
     git('-c', 'user.email=gate@test.invalid', '-c', 'user.name=gate', 'commit', '-qm', 'tag inputs');
     git('tag', 'v9.9.9');
     for (const [key, rel] of Object.entries(INPUTS)) {
+      mkdirSync(dirname(join(dir, rel)), { recursive: true });
       writeFileSync(join(dir, rel), real[key]);
     }
     const bin = join(dir, 'fake-bin');
@@ -418,7 +425,7 @@ function runReleaseChecker({ tagMutations = {}, assets }) {
     const shim = join(bin, 'gh');
     writeFileSync(shim, '#!/bin/sh\ncat "$(dirname "$0")/assets.json"\n');
     chmodSync(shim, 0o755);
-    const r = spawnSync(process.execPath, [CHECKER, '--root', dir, '--release', 'v9.9.9'], {
+    const r = spawnSync(process.execPath, [CHECKER, '--root', dir, '--release', tag], {
       encoding: 'utf8',
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
     });
@@ -459,4 +466,55 @@ releaseTest('release: a pre-sidecar tag missing an archive is still red', () => 
     assets: ARCHIVES.filter((a) => a !== 'ifc-lite-server-win32-x64.zip'),
   });
   assertRed(result, /missing 1 of 6[\s\S]*ifc-lite-server-win32-x64\.zip/);
+});
+
+// ---- Tag-vs-path classification. `git show refs/tags/<tag>:<path>` reports
+// an absent path with TWO different messages ("does not exist in" when the
+// path is nowhere, "exists on disk, but not in" when the working tree has
+// it - the shape every real pre-package tag produces on a real checkout, and
+// the shape tagOmit reproduces). The checker once matched only the first
+// form, so a fetched tag that merely predated a file was misreported as an
+// unfetched one with a wrong remedy. The classification must be structural:
+// tag resolvability and path presence are separate questions, and neither
+// may quietly degrade into "no sidecars expected".
+
+releaseTest('release: a tag predating the workflow file is classified pre-sidecar, not a read failure', () => {
+  const result = runReleaseChecker({ tagOmit: ['workflow'], assets: ARCHIVES });
+  assertGreen(result);
+  assert.match(result.output, /tag predates checksum sidecars, none required/);
+});
+
+releaseTest('release: a tag predating platform.ts is red naming the real cause, never the fetch remedy', () => {
+  const result = runReleaseChecker({ tagOmit: ['platform'], assets: ARCHIVES });
+  assertRed(result, /platform\.ts does not exist at tag "v9\.9\.9"/);
+  assert.match(result.output, /predates/, 'the message must state the tag predates the file');
+  assert.ok(!result.output.includes('git fetch'), `the tag IS fetched; the fetch remedy is a lie here: ${result.output}`);
+  assert.ok(!result.output.includes('none required'), `a missing required file must never read as "nothing expected": ${result.output}`);
+});
+
+releaseTest('release: an unfetched tag stays a hard error with the fetch remedy, never pre-sidecar', () => {
+  const result = runReleaseChecker({ tag: 'v0.0.0-unfetched', assets: ARCHIVES });
+  assertRed(result, /tag "v0\.0\.0-unfetched" does not resolve locally/);
+  assert.match(result.output, /git fetch --depth=1 origin tag v0\.0\.0-unfetched/, 'the unfetched case must keep the fetch remedy');
+  assert.ok(!result.output.includes('predates'), `an unclassifiable tag must not be presented as pre-anything: ${result.output}`);
+});
+
+// The same two facts against a REAL tag, so the suite binds to real git
+// behaviour rather than only to the temp-repo simulation: v1.0.0 predates
+// packages/server-bin entirely. Skipped when the tag is not fetched (CI
+// checkouts are shallow and tagless); the temp-repo cases above always run.
+const v1TagResolves = spawnSync(
+  'git',
+  ['rev-parse', '--verify', '--quiet', 'refs/tags/v1.0.0^{commit}'],
+  { cwd: ROOT },
+).status === 0;
+const realTagTest = v1TagResolves ? test : test.skip;
+
+realTagTest('release: the real v1.0.0 tag (predates the package) is red with an accurate message', () => {
+  // Fails at the tag's platform.ts read, before any gh/network call.
+  const r = spawnSync(process.execPath, [CHECKER, '--root', ROOT, '--release', 'v1.0.0'], { encoding: 'utf8' });
+  const result = { code: r.status, output: `${r.stdout}${r.stderr}` };
+  assertRed(result, /packages\/server-bin\/src\/platform\.ts does not exist at tag "v1\.0\.0"/);
+  assert.match(result.output, /predates/);
+  assert.ok(!result.output.includes('git fetch'), `v1.0.0 is fetched; the fetch remedy is a lie here: ${result.output}`);
 });

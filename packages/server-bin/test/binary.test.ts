@@ -14,25 +14,42 @@ import { join } from 'node:path';
  */
 
 const spawnMock = vi.hoisted(() => vi.fn());
+const execFileSyncMock = vi.hoisted(() => vi.fn());
 const existsSyncMock = vi.hoisted(() => vi.fn((_path: string) => true));
+const chmodSyncMock = vi.hoisted(() => vi.fn());
+const unlinkSyncMock = vi.hoisted(() => vi.fn());
+const mkdirSyncMock = vi.hoisted(() => vi.fn());
 const readFileMock = vi.hoisted(() => vi.fn());
+const writeFileMock = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const verifyChecksumMock = vi.hoisted(() =>
+  vi.fn(async (_archivePath: string, _assetUrl: string, _archiveName: string) => undefined)
+);
+const tarExtractMock = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 
 vi.mock('child_process', async (importOriginal) => ({
   ...(await importOriginal<typeof import('child_process')>()),
   spawn: spawnMock,
+  execFileSync: execFileSyncMock,
 }));
 
 vi.mock('fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('fs')>()),
   existsSync: existsSyncMock,
+  chmodSync: chmodSyncMock,
+  unlinkSync: unlinkSyncMock,
+  mkdirSync: mkdirSyncMock,
 }));
 
 vi.mock('fs/promises', async (importOriginal) => ({
   ...(await importOriginal<typeof import('fs/promises')>()),
   readFile: readFileMock,
+  writeFile: writeFileMock,
 }));
 
-import { runBinary, getBinaryPath, getBinaryInfo, isBinaryCached } from '../src/binary.js';
+vi.mock('../src/checksum.js', () => ({ verifyArchiveChecksum: verifyChecksumMock }));
+vi.mock('tar', () => ({ extract: tarExtractMock }));
+
+import { runBinary, downloadBinary, getBinaryPath, getBinaryInfo, isBinaryCached } from '../src/binary.js';
 
 const PKG_VERSION = '1.16.6';
 
@@ -60,8 +77,18 @@ beforeEach(() => {
   child = new FakeChild();
   spawnMock.mockReset();
   spawnMock.mockReturnValue(child);
+  execFileSyncMock.mockReset();
   existsSyncMock.mockReset();
   existsSyncMock.mockReturnValue(true);
+  chmodSyncMock.mockReset();
+  unlinkSyncMock.mockReset();
+  mkdirSyncMock.mockReset();
+  writeFileMock.mockReset();
+  writeFileMock.mockImplementation(async () => undefined);
+  verifyChecksumMock.mockReset();
+  verifyChecksumMock.mockImplementation(async () => undefined);
+  tarExtractMock.mockReset();
+  tarExtractMock.mockImplementation(async () => undefined);
   readFileMock.mockReset();
   readFileMock.mockImplementation(async (path: string) =>
     String(path).endsWith('package.json')
@@ -254,5 +281,84 @@ describe('runBinary - argument and signal plumbing', () => {
       await promise;
     }
     expect(process.listenerCount('SIGINT')).toBe(before);
+  });
+});
+
+/**
+ * The checksum gate exists so that unverified bytes are never extracted,
+ * chmod'd or executed - but until these tests, nothing pinned that ORDER:
+ * deleting the verifyArchiveChecksum call, or moving it after extraction,
+ * kept every test green while reinstating exactly the fail-open defect the
+ * gate replaced. Download, verification and extraction are all observable
+ * seams here (fetch, checksum.js, tar/execFileSync are mocked), so the
+ * assertions bind the sequence, not just the presence of a call.
+ */
+describe('downloadBinary - checksum verification gates extraction', () => {
+  /** Minimal fetch response whose body streams one chunk. */
+  function fakeDownloadResponse() {
+    const bytes = new TextEncoder().encode('archive-bytes');
+    let drained = false;
+    return {
+      ok: true,
+      headers: { get: () => String(bytes.length) },
+      body: {
+        getReader: () => ({
+          read: async () =>
+            drained ? { done: true, value: undefined } : ((drained = true), { done: false, value: bytes }),
+        }),
+      },
+    };
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn(async () => fakeDownloadResponse()));
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Extraction is platform-forked: tar for tar.gz, execFileSync for zip. */
+  function extractionCallOrders(): number[] {
+    return [
+      ...tarExtractMock.mock.invocationCallOrder,
+      ...execFileSyncMock.mock.invocationCallOrder,
+    ];
+  }
+
+  it('verifies the downloaded archive before extracting or chmodding it', async () => {
+    await downloadBinary();
+
+    expect(verifyChecksumMock).toHaveBeenCalledTimes(1);
+    const [archivePath, assetUrl, archiveName] = verifyChecksumMock.mock.calls[0];
+    const { platform } = getBinaryInfo();
+    expect(archiveName).toBe(platform.archiveName);
+    expect(String(archivePath).endsWith(platform.archiveName)).toBe(true);
+    expect(String(assetUrl).endsWith(`/v${PKG_VERSION}/${platform.archiveName}`)).toBe(true);
+
+    // Extraction must actually have been observed, or the ordering claim
+    // below would be vacuously true.
+    const extractions = extractionCallOrders();
+    expect(extractions.length).toBeGreaterThan(0);
+
+    const verifiedAt = verifyChecksumMock.mock.invocationCallOrder[0];
+    for (const extractedAt of extractions) {
+      expect(verifiedAt).toBeLessThan(extractedAt);
+    }
+    for (const chmoddedAt of chmodSyncMock.mock.invocationCallOrder) {
+      expect(verifiedAt).toBeLessThan(chmoddedAt);
+    }
+  });
+
+  it('extracts, chmods and persists NOTHING when verification fails', async () => {
+    verifyChecksumMock.mockRejectedValueOnce(new Error('checksum mismatch (test)'));
+
+    await expect(downloadBinary()).rejects.toThrow(/checksum mismatch \(test\)/);
+
+    expect(extractionCallOrders()).toHaveLength(0);
+    expect(chmodSyncMock).not.toHaveBeenCalled();
+    const versionWrites = writeFileMock.mock.calls.filter(([p]) => String(p).endsWith('version.txt'));
+    expect(versionWrites).toHaveLength(0);
   });
 });

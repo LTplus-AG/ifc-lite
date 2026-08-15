@@ -333,6 +333,35 @@ jobs:
                 # checksum.
                 mkdir -p published
                 gh release download "$RELEASE_TAG" --pattern "$asset" --dir published
+                # Probe the published archive before certifying it: a corrupt
+                # or truncated upload must not receive a valid sidecar, or the
+                # fail-closed install check would bless exactly the bytes it
+                # exists to reject. A listing probe catches corruption only,
+                # NOT tampering - a deliberately altered but well-formed
+                # archive still gets certified (see the limit above). Each
+                # matrix leg backfills its own archive type on its own runner:
+                # tar ships with ubuntu and macos; the win32 leg runs bash on
+                # windows-latest, where unzip may be absent but 7z is on PATH.
+                # No probe tool at all is a hard error, never a skip.
+                case "$asset" in
+                  *.zip)
+                    if command -v unzip >/dev/null 2>&1; then
+                      unzip -t "published/$asset" >/dev/null
+                    elif command -v 7z >/dev/null 2>&1; then
+                      7z t "published/$asset" >/dev/null
+                    else
+                      echo "ERROR: neither unzip nor 7z exists on this runner; refusing to certify an unprobed zip" >&2
+                      exit 1
+                    fi
+                    ;;
+                  *.tar.gz)
+                    tar -tzf "published/$asset" >/dev/null
+                    ;;
+                  *)
+                    echo "ERROR: no integrity probe for $asset; refusing to certify unprobed bytes" >&2
+                    exit 1
+                    ;;
+                esac
                 (cd published && $SHA256_TOOL "$asset" > "../$sidecar")
                 gh release upload "$RELEASE_TAG" "$sidecar"
               fi

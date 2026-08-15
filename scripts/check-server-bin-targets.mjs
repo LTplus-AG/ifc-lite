@@ -53,7 +53,10 @@
  * unreadable/empty release asset list, or a release tag whose ref is not
  * available locally is an ERROR, never a vacuous pass. In particular an
  * absent tag ref tells the operator to fetch it instead of silently
- * falling back to the checked-out tree's target set.
+ * falling back to the checked-out tree's target set - and that case is
+ * distinguished structurally (not by git's error prose) from a tag that IS
+ * fetched but simply predates a file, which is a fact about the revision:
+ * see scripts/lib/server-bin-tag-read.mjs.
  *
  * Source-text matching is comment-aware (rationale in
  * scripts/lib/server-bin-targets-parse.mjs); the upload check (in
@@ -77,6 +80,7 @@ import {
   checkUploadStep,
   uploadStepPublishesSidecars,
 } from './lib/server-bin-upload-check.mjs';
+import { readFileAtTag } from './lib/server-bin-tag-read.mjs';
 
 // --root <dir>: read the input files from an alternate tree (in --release
 // mode, git also runs there). Exists for the regression harness, which points
@@ -147,34 +151,6 @@ function assertSetEquals(label, actual, expected) {
 }
 
 /**
- * Read one file at the release tag's own revision via git show.
- *
- * Fail-closed: an absent tag ref is an ERROR telling the operator to fetch
- * it, never a silent fallback to the checked-out tree - that fallback would
- * recreate the vacuous pass this script exists to prevent. A path that does
- * not exist at an EXISTING tag is a different, answerable case: the caller
- * may treat it as a definite absence, so it is surfaced as null when
- * `optional` is set.
- */
-function readFileAtTag(tag, path, { optional = false } = {}) {
-  try {
-    return execFileSync('git', ['show', `refs/tags/${tag}:${path}`], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (err) {
-    const detail = String(err?.stderr || err?.message || err).trim().split('\n')[0];
-    if (optional && /does not exist/.test(detail)) return null;
-    fail(
-      `cannot read ${path} at tag "${tag}" via git show (${detail}); ` +
-      `fetch the tag first (git fetch --depth=1 origin tag ${tag}) - refusing to fall back ` +
-      `to the checked-out tree, which may not be the tag's`,
-    );
-  }
-}
-
-/**
  * SUPPORTED_TARGETS as of the release tag's own source. A release is
  * verified against what ITS resolver downloads: the install-time resolver
  * ships inside the published package at that version, so the tag's
@@ -185,7 +161,7 @@ function readFileAtTag(tag, path, { optional = false } = {}) {
  * downloads, and is unfixable post-publish anyway.
  */
 function parseTagSupportedTargets(tag) {
-  const source = readFileAtTag(tag, PLATFORM_TS);
+  const source = readFileAtTag(repoRoot, tag, PLATFORM_TS);
   return parseSupportedTargets(source, `${PLATFORM_TS} at tag ${tag}`);
 }
 
@@ -203,7 +179,7 @@ function parseTagSupportedTargets(tag) {
  * silently disarming this detection for future releases.
  */
 function tagWorkflowPublishesSidecars(tag) {
-  const source = readFileAtTag(tag, WORKFLOW, { optional: true });
+  const source = readFileAtTag(repoRoot, tag, WORKFLOW, { optional: true });
   if (source === null) return false;
   return uploadStepPublishesSidecars(stripYamlComments(source));
 }

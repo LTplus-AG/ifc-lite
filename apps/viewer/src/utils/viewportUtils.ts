@@ -421,3 +421,36 @@ export function unionEntityBounds(
   }
   return min && max ? { min, max } : null;
 }
+
+/**
+ * The subset of measurement-slice state that decides whether the animation
+ * loop's per-frame reprojection pass (`updateMeasurementScreenCoords`) needs
+ * to run at all. Kept as a plain shape (not imported from the store) so this
+ * stays a pure function callable from a test with a minimal fixture.
+ */
+export interface PendingMeasurementState {
+  measurements: { length: number };
+  activeMeasurement: unknown;
+  /** In-progress multi-click polyline sequence (#2199), or null. */
+  activePolyline: unknown;
+  /** Finished multi-click polylines (#2199) — their placed vertices still
+   *  need reprojecting on every camera move, same as drag measurements. */
+  polylineMeasurements: { length: number };
+}
+
+/**
+ * True when there is any measurement state whose screen coordinates could
+ * be stale after a camera move — drag-mode measurements/gesture, or
+ * polyline-mode sequences/finished polylines (#2641 review defect: this used
+ * to check only `measurements`/`activeMeasurement`, so with polyline-only
+ * state the reprojection pass never ran and placed points, segments and
+ * labels froze at their click-time screen position while orbiting).
+ */
+export function hasPendingMeasurementState(state: PendingMeasurementState): boolean {
+  return (
+    state.measurements.length > 0 ||
+    state.activeMeasurement !== null ||
+    state.activePolyline !== null ||
+    state.polylineMeasurements.length > 0
+  );
+}

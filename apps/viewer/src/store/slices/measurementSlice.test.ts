@@ -443,6 +443,51 @@ describe('MeasurementSlice', () => {
     });
   });
 
+  // PR #2641 review — maintainer's second-pass defect: `updateMeasurementScreenCoords`
+  // reprojected `measurements`/`activeMeasurement` only. Polyline points kept
+  // their click-time screenX/screenY forever, so placed segments/vertices/labels
+  // froze while orbiting (and hit-testing against them, e.g. isNearPolylineStart,
+  // corrupted along with it).
+  describe('updateMeasurementScreenCoords also reprojects polyline state', () => {
+    it('reprojects every point of an in-progress polyline sequence', () => {
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 999, screenY: 999 });
+      state.addPolylinePoint({ x: 1, y: 0, z: 0, screenX: 999, screenY: 999 });
+      state.addPolylinePoint({ x: 1, y: 1, z: 0, screenX: 999, screenY: 999 });
+
+      state.updateMeasurementScreenCoords((worldPos) => ({ x: worldPos.x * 100, y: worldPos.y * 100 }));
+
+      assert.deepStrictEqual(
+        state.activePolyline?.points.map((p) => [p.screenX, p.screenY]),
+        [[0, 0], [100, 0], [100, 100]],
+        'every accumulated point must be reprojected from its world position, not left at click-time coords',
+      );
+    });
+
+    it('reprojects every point of a FINISHED polyline measurement', () => {
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 999, screenY: 999 });
+      state.addPolylinePoint({ x: 2, y: 0, z: 0, screenX: 888, screenY: 888 });
+      state.finishPolyline(false);
+      assert.strictEqual(state.polylineMeasurements.length, 1);
+
+      state.updateMeasurementScreenCoords((worldPos) => ({ x: worldPos.x * 10, y: worldPos.y * 10 }));
+
+      assert.deepStrictEqual(
+        state.polylineMeasurements[0].points.map((p) => [p.screenX, p.screenY]),
+        [[0, 0], [20, 0]],
+        'a finished polyline (e.g. drawn, then camera orbited) must also reproject, not just an in-progress one',
+      );
+    });
+
+    it('leaves polyline screen coords untouched when the projector returns null (off-screen)', () => {
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 42, screenY: 43 });
+      state.updateMeasurementScreenCoords(() => null);
+      assert.deepStrictEqual(
+        [state.activePolyline?.points[0].screenX, state.activePolyline?.points[0].screenY],
+        [42, 43],
+      );
+    });
+  });
+
   describe('setMeasureMode — the two gestures cannot corrupt each other', () => {
     it('entering polyline mode cancels an in-progress DRAG measurement', () => {
       state.startMeasurement(p(0, 0, 0));

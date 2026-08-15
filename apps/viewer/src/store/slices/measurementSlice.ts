@@ -158,6 +158,32 @@ export interface MeasurementSlice {
    * Measure tool can be left.
    */
   resetMeasureGesture: () => void;
+
+  /**
+   * Reset EVERY piece of state this slice owns to its just-loaded default —
+   * finished measurements of both kinds, any in-progress gesture, the
+   * relative-coordinate datum, and the gesture mode itself. This is the one
+   * place a new model's `resetViewerState` (`store/index.ts`) reaches into
+   * the measurement slice: a model switch is a new scene, and every field
+   * here is either keyed to the outgoing model's geometry (world-space
+   * points) or a session choice that should not silently outlive it.
+   *
+   * Deliberately broader than {@link clearMeasurements} (the user-facing
+   * "Clear all" button), which intentionally PRESERVES `measureReferencePoint`
+   * and `measureMode` — tidying up a distance list must not move the user's
+   * setting-out origin or flip their tool mode underneath them. A model
+   * switch has no such continuity to protect.
+   *
+   * #2641 review: `resetViewerState` used to list a hand-picked subset of
+   * these fields inline (`measurements`, `activeMeasurement`, `snapTarget`,
+   * `measureReferencePoint`) and silently missed `activePolyline`,
+   * `polylineMeasurements` and `measureMode` — the previous model's
+   * world-space polylines kept rendering against the new one. Owning the
+   * full field list here, beside the state declarations, means a future
+   * field added to this slice is far more likely to be added to this one
+   * function than to be remembered at every call site that resets state.
+   */
+  resetAllMeasurementState: () => void;
 }
 
 const getDefaultEdgeLockState = (): EdgeLockState => ({
@@ -333,6 +359,34 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       };
     }
 
+    // Reproject a single point, returning it unchanged if the projector
+    // can't place it (e.g. behind the camera) — same fallback the
+    // measurements/activeMeasurement paths above use.
+    const reprojectPoint = (point: MeasurePoint): MeasurePoint => {
+      const screen = projectToScreen(point);
+      const newX = screen?.x ?? point.screenX;
+      const newY = screen?.y ?? point.screenY;
+      if (newX !== point.screenX || newY !== point.screenY) {
+        hasChanges = true;
+      }
+      return { ...point, screenX: newX, screenY: newY };
+    };
+
+    // Polyline points keep their click-time screenX/screenY forever unless
+    // reprojected here too (#2641 review) — both the in-progress sequence
+    // (segments/vertices/close-loop hit-testing all read live screen coords)
+    // and every FINISHED polyline (its placed vertices are still rendered
+    // and can still be re-selected after the camera moves).
+    let updatedActivePolyline = state.activePolyline;
+    if (state.activePolyline) {
+      updatedActivePolyline = { points: state.activePolyline.points.map(reprojectPoint) };
+    }
+
+    const updatedPolylineMeasurements = state.polylineMeasurements.map((m) => ({
+      ...m,
+      points: m.points.map(reprojectPoint),
+    }));
+
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -341,6 +395,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     set({
       measurements: updatedMeasurements,
       activeMeasurement: updatedActiveMeasurement,
+      activePolyline: updatedActivePolyline,
+      polylineMeasurements: updatedPolylineMeasurements,
     });
   },
 
@@ -480,5 +536,21 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     activePolyline: null,
     snapTarget: null,
     measurementConstraintEdge: null,
+  }),
+
+  resetAllMeasurementState: () => set({
+    measurements: [],
+    pendingMeasurePoint: null,
+    activeMeasurement: null,
+    snapTarget: null,
+    snapVisualization: null,
+    edgeLockState: getDefaultEdgeLockState(),
+    measurementConstraintEdge: null,
+    // #2199 §5: RENDERER-space datum belongs to the scene it was picked in —
+    // a new file is a new scene, so (unlike clearMeasurements) this must go.
+    measureReferencePoint: null,
+    measureMode: 'drag',
+    activePolyline: null,
+    polylineMeasurements: [],
   }),
 });

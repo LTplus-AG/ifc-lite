@@ -71,7 +71,8 @@
     "check:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs --check",
     "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
-    "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates"
+    "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
+    "check:generated": "node scripts/check-generated.mjs"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",

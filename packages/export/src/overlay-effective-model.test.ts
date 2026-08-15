@@ -450,6 +450,97 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(out.danglingRefs()).toEqual([]);
   });
 
+  // Sixth layer on #2637 (round 6): the retype-OUT test above and every
+  // retarget test elsewhere touch DIFFERENT records — nothing exercised
+  // retype-OUT and a retarget mutation on the SAME id in the SAME export.
+  // Probing that combination surfaced a REAL dangling ref: once a record is
+  // retyped OUT of `IFCREL*`, `collectReferencedEntityIds` stops treating it
+  // as a relationship (correctly — see the test above), but nothing then
+  // picks up ITS OWN queued mutation either. `sourceRelGroups` (the
+  // mutation-aware answer round 5 built) is only ever computed on the
+  // `IFCREL*` bridge path, so an ordinary product's retargeted reference fell
+  // through to a plain byte scan of the STALE original bytes — which never
+  // named the new target — while emission (which does apply the mutation)
+  // wrote the retargeted id into the output line anyway: a dangling ref, no
+  // `visibleOnly` filtering even involved. Confirmed this reproduces with NO
+  // retype at all (see the control below): the gap is general, not
+  // retype-specific — retype-out just happened to be the shape that found
+  // it. Fixed by extending the same mutation-aware-groups mechanism to any
+  // source-backed entity with a queued mutation (`hasSourceMutation` /
+  // `relationshipRefGroupsFromSourceLine`, `reference-collector.ts`), gated
+  // on a cheap check so an unmutated entity pays no parse cost.
+  it('does not leave a dangling ref when a record retyped OUT of IfcRelDefinesByProperties is ALSO retargeted on the SAME id', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+    // Reachable only via the retarget below — nothing else in the base
+    // fixture names it.
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('fusedpset'), null, 'Pset_Fused', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_REL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_REL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('excludes the SAME record’s retargeted reference when it is hidden, still classified as an ordinary product', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('fusedhid'), null, 'Pset_FusedHidden', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_REL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_REL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    // Hidden — proves it is still classified as an ordinary product (not an
+    // unconditional IFCREL root) even with a mutation queued on it.
+    expect(out.typeOf(EXISTING_REL_ID)).toBeNull();
+    // Reachable only through the hidden record, so it must not ship either.
+    expect(out.typeOf(pset.expressId)).toBeNull();
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  // Control proving the gap above is general, not retype-specific: the SAME
+  // retarget shape on a record that was ALWAYS `IfcWall` (never touched
+  // `IFCREL*` at all) reproduced the identical dangling ref before the fix.
+  it('does not leave a dangling ref when an ordinary (never-retyped) product’s reference is retargeted onto a brand-new entity', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('ctrlfusedpset'), null, 'Pset_CtrlFused', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_WALL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
   it('emits no pset for a host the closure excluded', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);

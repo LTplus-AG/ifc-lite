@@ -111,6 +111,30 @@ export interface EffectiveEntityIndex extends CompleteEntityIndex {
     sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
   ): ReadonlyArray<number | readonly number[]> | undefined;
   /**
+   * Cheap existence check — no decode, no parse — for "does this SOURCE-backed
+   * id carry ANY queued positional or named-attribute mutation at all". False
+   * for an overlay-created id (its refs come from {@link refsOf} instead) and
+   * for a tombstoned one.
+   *
+   * `collectReferencedEntityIds` in `reference-collector.ts` only pays for
+   * decoding a SOURCE-backed entity's STEP line and re-deriving mutation-aware
+   * groups (via {@link refGroupsOf}) on the `IFCREL*` bridge path, because
+   * that path already needs the parse for its own bridge decision regardless
+   * of whether a mutation exists. An ordinary PRODUCT never takes that path,
+   * so a plain `setPositionalAttribute`/`setAttribute` retargeting one of its
+   * references onto an id the source bytes never named was invisible to the
+   * closure — the byte scan of the original bytes has no way to see it — while
+   * emission (which does apply the mutation) still wrote the new id into the
+   * output line: a dangling ref with no `visibleOnly` involved (#2637
+   * follow-up, round 6: found via a retype-out-of-`IFCREL*` fused with a
+   * same-record retarget, but reproduces identically with NO retype at all —
+   * it is a general gap in the closure, not a retype-specific one). This
+   * method exists so the walk can gate the SAME per-entity decode/parse cost
+   * behind a cheap map lookup for every OTHER entity type too, instead of
+   * paying it unconditionally for every source-backed entity in the file.
+   */
+  hasSourceMutation?(id: number): boolean;
+  /**
    * The effective `#id` value of ONE NAMED attribute of an OVERLAY-created
    * record, or undefined when the id was not created by this overlay, the
    * attribute carries no reference, or the record has since been tombstoned.
@@ -178,6 +202,20 @@ export function getEffectiveEntityIndex(
 const EMPTY_IDS: ReadonlySet<number> = new Set<number>();
 const EMPTY_RETYPES: ReadonlyMap<number, { newType: string }> = new Map();
 
+/** Shared by {@link sourceOnly} and {@link OverlayIndex}'s `hasSourceMutation` —
+ *  see that method's doc on `EffectiveEntityIndex` for why this needs to stay
+ *  a cheap map-lookup-only check with no decode or parse. */
+function hasQueuedSourceMutation(view: MutablePropertyView, id: number): boolean {
+  const positional = typeof view.getPositionalMutationsForEntity === 'function'
+    ? view.getPositionalMutationsForEntity(id)
+    : null;
+  if (positional && positional.size > 0) return true;
+  const attributeMutations = typeof view.getAttributeMutationsForEntity === 'function'
+    ? view.getAttributeMutationsForEntity(id)
+    : [];
+  return attributeMutations.length > 0;
+}
+
 /** The no-overlay answer: the source view, with the extra questions answered
  *  the only way the buffer can answer them.
  *
@@ -205,6 +243,7 @@ function sourceOnly(
     refGroupsOf: view
       ? (id, sourceGroups) => sourceBackedRefGroups(view, base, EMPTY_RETYPES, id, sourceGroups)
       : undefined,
+    hasSourceMutation: view ? (id) => hasQueuedSourceMutation(view, id) : undefined,
     effectiveAttributeRef: () => undefined,
     byType,
   };
@@ -372,6 +411,14 @@ class OverlayIndex implements EffectiveEntityIndex {
     // bearing on THIS id's own positional/attribute edits).
     if (this.tombstones.has(id)) return undefined;
     return sourceBackedRefGroups(this.view, this.base, this.retypes, id, sourceGroups);
+  }
+
+  hasSourceMutation(id: number): boolean {
+    // Overlay-created ids answer through `refsOf` instead — see that method's
+    // own doc for why its UNION is the right answer there. A tombstoned id
+    // has no line to walk into regardless of what it once carried.
+    if (this.created.has(id) || this.tombstones.has(id)) return false;
+    return hasQueuedSourceMutation(this.view, id);
   }
 
   effectiveAttributeRef(id: number, attrName: string): number | undefined {

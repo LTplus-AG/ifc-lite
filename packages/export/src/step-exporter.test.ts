@@ -1186,6 +1186,207 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Coverage gap flagged on #2637 round 6: `IfcRelAssociatesClassification`
+  // had no retargeting test at all. Retargets its trailing single-valued
+  // attribute, `RelatingClassification` (index 5) — same shape the
+  // `IfcRelAssociatesMaterial` test above already covers positionally, but a
+  // distinct class, and the closure/bridge mechanism is generic over class,
+  // not a per-subtype table, so this is a cheap generality check.
+  it('does not leave a dangling ref when IfcRelAssociatesClassification’s RelatingClassification is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [10, 'IFCCLASSIFICATION', "#10=IFCCLASSIFICATION($,$,$,'OriginalSource');"],
+      // #50/#51: an entirely separate classification reference, named by
+      // NOTHING in the source bytes — reachable only once the mutation below
+      // retargets #22's RelatingClassification onto it.
+      [50, 'IFCCLASSIFICATIONREFERENCE', "#50=IFCCLASSIFICATIONREFERENCE($,'RET.001','RetargetedClassRef',$,$,$);"],
+      [22, 'IFCRELASSOCIATESCLASSIFICATION', "#22=IFCRELASSOCIATESCLASSIFICATION('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#8),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setAttribute(22, 'RelatingClassification', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain("#50=IFCCLASSIFICATIONREFERENCE($,'RET.001'");
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // Coverage gap flagged on #2637 round 6: `IfcRelDefinesByType` had a
+  // dangling-refs test for a HIDDEN member (`visible-only-dangling-refs.test.ts`)
+  // but no retargeting test. Retargets `RelatingType` (index 5, trailing
+  // single-valued), the same position `IfcRelDefinesByProperties`'s
+  // `RelatingPropertyDefinition` test above exercises, one class over.
+  it('does not leave a dangling ref when IfcRelDefinesByType’s RelatingType is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [10, 'IFCWALLTYPE', "#10=IFCWALLTYPE('1ys5Xwuxz8gPJk6N$NGhAA',$,'OriginalType',$,$,$,$,$,$,.STANDARD.);"],
+      // #50: an entirely separate type, named by NOTHING in the source bytes —
+      // reachable only once the mutation below retargets #22's RelatingType.
+      [50, 'IFCWALLTYPE', "#50=IFCWALLTYPE('1ys5Xwuxz8gPJk6N$NGhBB',$,'RetargetedType',$,$,$,$,$,$,.STANDARD.);"],
+      [22, 'IFCRELDEFINESBYTYPE', "#22=IFCRELDEFINESBYTYPE('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#8),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setAttribute(22, 'RelatingType', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain("#50=IFCWALLTYPE('1ys5Xwuxz8gPJk6N$NGhBB',$,'RetargetedType'");
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // Coverage gap flagged on #2637 round 6: `IfcRelSpaceBoundary` had a
+  // hidden-member test (`visible-only-dangling-refs.test.ts`) but no
+  // retargeting test. Like `IfcRelVoidsElement`, EVERY class-specific
+  // attribute is single-valued — no list at all — but unlike it, the pair is
+  // (RelatingSpace, RelatedBuildingElement) at indices 4/5 with THREE more
+  // trailing attributes (ConnectionGeometry, PhysicalOrVirtualBoundary,
+  // InternalOrExternalBoundary). Retargets the LEADING bare attribute
+  // (RelatingSpace, index 4) — the position the `IfcRelVoidsElement` test
+  // above did not exercise (it retargeted the TRAILING one). The retarget
+  // target is an `IfcPropertySet` chain, not another `IfcSpace` — `IFCSPACE`
+  // is itself a `PRODUCT_TYPES` member, so it would become a root on its own
+  // regardless of this relationship's bridging and the test would pass
+  // vacuously (caught by the non-vacuity check: an early draft using
+  // `IFCSPACE` as the target stayed GREEN even with `reference-collector.ts`
+  // reverted to before the closure fix existed).
+  it('does not leave a dangling ref when IfcRelSpaceBoundary’s RelatingSpace is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [20, 'IFCSPACE', "#20=IFCSPACE('1ys5Xwuxz8gPJk6N$NGhB0',$,'OriginalSpace',$,$,$,$,$,$,$);"],
+      // #50/#51: an entirely separate pset, named by NOTHING in the source
+      // bytes — reachable only once the mutation below retargets #22's
+      // RelatingSpace onto it. Not itself a `PRODUCT_TYPES` member, so it
+      // only ships if the relationship actually bridges into it.
+      [50, 'IFCPROPERTYSET', "#50=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhBB',$,'Pset_Retargeted',$,(#51));"],
+      [51, 'IFCPROPERTYSINGLEVALUE', "#51=IFCPROPERTYSINGLEVALUE('Marker',$,IFCTEXT('RETARGETED_SPACEBOUNDARY_TARGET'),$);"],
+      [22, 'IFCRELSPACEBOUNDARY', "#22=IFCRELSPACEBOUNDARY('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,#20,#8,$,.PHYSICAL.,.EXTERNAL.);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setAttribute(22, 'RelatingSpace', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain('RETARGETED_SPACEBOUNDARY_TARGET');
+    expect(content).toContain('#50=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // Coverage gap flagged on #2637 round 6: `IfcRelContainedInSpatialStructure`
+  // is exercised extensively for hidden-member filtering
+  // (`visible-only-dangling-refs.test.ts`) but never for a RETARGET. Its
+  // shape is `RelatedElements` (list, index 4) then `RelatingStructure`
+  // (single, index 5) — the SAME order `IfcRelDefinesByProperties` uses, but
+  // exercised here via `setPositionalAttribute` on the LIST rather than a
+  // named override on the single attribute. The retarget target is an
+  // `IfcPropertySet` chain, not another `IfcWall` — `IFCWALL` is itself a
+  // `PRODUCT_TYPES` member, so it would become a root on its own regardless
+  // of this relationship's bridging (same non-vacuity trap the
+  // `IfcRelSpaceBoundary` test above notes: an early draft using `IFCWALL`
+  // as the target stayed GREEN even with the closure fix reverted).
+  it('does not leave a dangling ref when a SOURCE-backed IfcRelContainedInSpatialStructure’s RelatedElements list is retargeted onto an otherwise-unreferenced entity', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCBUILDINGSTOREY', "#2=IFCBUILDINGSTOREY('1ys5Xwuxz8gPJk6N$NGhA2',$,'Storey',$,$,$,$,$,$,0.);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'OriginalMember',$,$,$,$,$);"],
+      // #50/#51: an entirely separate pset, named by NOTHING in the source
+      // bytes — reachable only once the mutation below retargets #22's
+      // RelatedElements list onto it. Not itself a `PRODUCT_TYPES` member, so
+      // it only ships if the relationship actually bridges into it.
+      [50, 'IFCPROPERTYSET', "#50=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhBB',$,'Pset_Retargeted',$,(#51));"],
+      [51, 'IFCPROPERTYSINGLEVALUE', "#51=IFCPROPERTYSINGLEVALUE('Marker',$,IFCTEXT('RETARGETED_CONTAINMENT_TARGET'),$);"],
+      [22, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', "#22=IFCRELCONTAINEDINSPATIALSTRUCTURE('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#8),#2);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setPositionalAttribute(22, 4, ['#50']);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#2=IFCBUILDINGSTOREY');
+    expect(content).toContain('RETARGETED_CONTAINMENT_TARGET');
+    expect(content).toContain('#50=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // A GENUINE IFC2X3 arity difference — verified against the generated
+  // schema tables in `@ifc-lite/data`: `entities-ifc4.ts` gives
+  // `IfcRelSequence` NINE attributes (GlobalId, OwnerHistory, Name,
+  // Description, RelatingProcess, RelatedProcess, TimeLag, SequenceType,
+  // UserDefinedSequenceType); `entities-ifc2x3.ts` gives it EIGHT — IFC4 adds
+  // the trailing `UserDefinedSequenceType`. (The earlier IFC2X3 test above
+  // used `IfcRelAggregates`, whose attribute list is IDENTICAL between
+  // schemas — see that test's own comment — so it pinned parity, not an
+  // arity difference. A repo-wide diff of every `IFCREL*` class shared by
+  // both `entities-ifc*.ts` tables found exactly one other non-abstract
+  // divergence, `IfcRelCoversSpaces`, and that is a same-arity attribute
+  // RENAME [RelatingSpace ↔ RelatedSpace], not a count difference.
+  // `IfcRelDecomposes`/`IfcRelDefines` also differ, but both are abstract
+  // EXPRESS supertypes never instantiated on their own — IFC4 simply moved
+  // their shared attributes down into concrete subtypes, which stayed
+  // identical, as already confirmed.) `RelatingProcess`/`RelatedProcess` sit
+  // at the SAME indices (4/5) in both schemas — the shorter arity is a
+  // TRAILING difference — so this exercises the same retarget shape as the
+  // IFC4 tests above, just on the schema that genuinely has fewer attributes
+  // to parse `splitTopLevelArgs` over.
+  it('does not leave a dangling ref for a retargeted IfcRelSequence on an IFC2X3 source (a genuine arity difference)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCTASK', "#8=IFCTASK('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleTask',$,$,$,$,$,.NOTDEFINED.);"],
+      [20, 'IFCTASK', "#20=IFCTASK('1ys5Xwuxz8gPJk6N$NGhB0',$,'OriginalPredecessor',$,$,$,$,$,.NOTDEFINED.);"],
+      [50, 'IFCPROPERTYSET', "#50=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhBB',$,'Pset_Retargeted',$,(#51));"],
+      [51, 'IFCPROPERTYSINGLEVALUE', "#51=IFCPROPERTYSINGLEVALUE('Marker',$,IFCTEXT('RETARGETED_SEQ_2X3_TARGET'),$);"],
+      // IFC2X3 IfcRelSequence: [GlobalId, OwnerHistory, Name, Description,
+      // RelatingProcess, RelatedProcess, TimeLag, SequenceType] — 8 attrs,
+      // no trailing UserDefinedSequenceType.
+      [22, 'IFCRELSEQUENCE', "#22=IFCRELSEQUENCE('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,#20,#8,$,$);"],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC2X3';
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setAttribute(22, 'RelatingProcess', '#50');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC2X3',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#8=IFCTASK');
+    expect(content).toContain('RETARGETED_SEQ_2X3_TARGET');
+    expect(content).toContain('#50=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

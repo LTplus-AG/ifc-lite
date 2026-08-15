@@ -351,6 +351,7 @@ export function collectReferencedEntityIds(
       sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
     ): ReadonlyArray<number | readonly number[]> | undefined;
     effectiveType?(id: number, recordType: string): string;
+    hasSourceMutation?(id: number): boolean;
   },
   excludeIds?: Set<number>,
   isRefExcluded?: (id: number) => boolean,
@@ -492,6 +493,29 @@ export function collectReferencedEntityIds(
       // references is reachable by the closure the same way it will be named
       // in the emitted line.
       for (const group of sourceRelGroups) {
+        if (Array.isArray(group)) refs.push(...group);
+        else refs.push(group as number);
+      }
+    } else if (entityIndex.hasSourceMutation?.(entityId)) {
+      // Same gap as `sourceRelGroups` above, one level more general: this
+      // entity did not take the `IFCREL*` bridge path above at all (an
+      // ordinary product, or a caller with no `excludeIds` to bridge on), but
+      // it DOES carry a queued positional/named-attribute mutation, and a
+      // mutation can retarget a reference onto an id the original bytes never
+      // named — invisible to a plain byte scan, but still what emission will
+      // write (#2637 general follow-up: the round-5 fix only closed this for
+      // `IFCREL*`; any other source-backed entity's retargeted reference
+      // dangled the same way, discovered via a retype-out-of-`IFCREL*` fused
+      // with a same-record retarget, but reproducing with no retype involved
+      // at all). Gated on the cheap `hasSourceMutation` check so an entity
+      // with nothing queued — the overwhelming majority — still takes the
+      // plain byte scan below with no decode/parse cost.
+      const generalGroups = relationshipRefGroupsFromSourceLine(
+        entityIndex,
+        entityId,
+        decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
+      );
+      for (const group of generalGroups) {
         if (Array.isArray(group)) refs.push(...group);
         else refs.push(group as number);
       }
@@ -692,14 +716,21 @@ function extractRelationshipRefGroupsIndexed(line: string): Array<number | numbe
 }
 
 /**
- * The source-backed half of the groups {@link relationshipRefsSurviveExclusion}
- * checks: parse `line` into the position-aligned shape, then — when
- * `entityIndex` can answer for `entityId` — let it splice in a queued
- * positional or named-attribute override before flattening. Falls back to
- * the plain parsed-from-text groups when the index has no `refGroupsOf`, or
- * answers undefined for this id (the common case: most `IFCREL*` entities
- * carry no mutation at all, so this stays a cheap parse plus a couple of map
- * lookups, not extra allocation).
+ * Parse `line` into the position-aligned shape, then — when `entityIndex` can
+ * answer for `entityId` — let it splice in a queued positional or
+ * named-attribute override before flattening. Falls back to the plain
+ * parsed-from-text groups when the index has no `refGroupsOf`, or answers
+ * undefined for this id (the common case: most entities carry no mutation at
+ * all, so this stays a cheap parse plus a couple of map lookups, not extra
+ * allocation).
+ *
+ * Used two ways in `collectReferencedEntityIds`: for the `IFCREL*` bridge
+ * decision — {@link relationshipRefsSurviveExclusion} checks the groups this
+ * returns — and, more generally, for ANY source-backed entity's own enqueued
+ * refs once `hasSourceMutation` says a mutation is queued for it, `IFCREL*`
+ * or not. Despite the name, nothing here is relationship-specific: it is
+ * purely syntactic `#N=TYPE(...)` positional parsing, the same reason
+ * {@link filterHiddenRefsFromRelationshipLine} needs no per-subtype table.
  */
 function relationshipRefGroupsFromSourceLine(
   entityIndex: {

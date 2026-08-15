@@ -221,12 +221,28 @@ export class HiddenLineClassifier {
 
     const { bounds, width, height, buffer } = raster;
 
+    // A sample outside the raster bounds has no occluder information: the
+    // raster only covers where occluders rasterized (plus margin), so had it
+    // extended here the pixels would read Infinity (visible). Clamping onto
+    // a border pixel instead can wrongly HIDE a line far from any occluder,
+    // e.g. when a straddling occluder's self-computed bounds collapse to a
+    // sliver of in-window vertices. Visible is the only safe default: it can
+    // at worst under-hide, never erase real geometry.
+    if (
+      point.x < bounds.min.x ||
+      point.x > bounds.max.x ||
+      point.y < bounds.min.y ||
+      point.y > bounds.max.y
+    ) {
+      return true;
+    }
+
     // Convert to pixel coordinates
     const px = ((point.x - bounds.min.x) / (bounds.max.x - bounds.min.x)) * (width - 1);
     const py = ((point.y - bounds.min.y) / (bounds.max.y - bounds.min.y)) * (height - 1);
     if (!Number.isFinite(px) || !Number.isFinite(py)) return true;
 
-    // Clamp to buffer bounds
+    // Clamp to guard the floating-point edge at bounds.max.
     const ix = Math.max(0, Math.min(width - 1, Math.floor(px)));
     const iy = Math.max(0, Math.min(height - 1, Math.floor(py)));
 

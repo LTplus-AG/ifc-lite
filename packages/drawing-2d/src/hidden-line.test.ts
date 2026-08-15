@@ -75,6 +75,90 @@ describe('HiddenLineClassifier with no in-window occluder and no bounds (issue #
   });
 });
 
+describe('HiddenLineClassifier out-of-raster samples (no bounds argument)', () => {
+  /**
+   * A sloped quad STRADDLING the cut plane: z = 5 - y over x,y in [0, 10],
+   * so the y = 0 edge (z = +5) is above the cut (cut away) and the y = 10
+   * edge (z = -5) is in the kept half. `computeOccluderBounds` walks
+   * vertices only and keeps just the two in-window ones (y = 10), so the
+   * self-computed raster bounds collapse to a sliver along the y = 10 edge.
+   */
+  function straddlingSlopedQuad(): MeshData {
+    return {
+      expressId: 1,
+      positions: new Float32Array([
+        0, 0, 5,
+        10, 0, 5,
+        10, 10, -5,
+        0, 10, -5,
+      ]),
+      normals: new Float32Array(12),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      color: [1, 1, 1, 1],
+    };
+  }
+
+  it('classifies a line outside the raster as visible instead of clamping onto border pixels', () => {
+    const classifier = new HiddenLineClassifier({ resolution: 1024 });
+    // No bounds argument: the classifier computes bounds itself, which
+    // collapse to the sliver described above. The sliver still rasterizes
+    // finite depths (about 4.9 at its lower border).
+    classifier.buildDepthBuffer([straddlingSlopedQuad()], { axis: 'z', position: 0, flipped: false }, 10);
+
+    // A line at y = 2 sits under the CUT-AWAY part of the quad (z = +3
+    // there): nothing occludes it, so it must be visible. Clamping its
+    // samples onto the sliver's border row (view depth ~4.9) would wrongly
+    // classify this depth-7 line hidden.
+    const line: DrawingLine = {
+      line: { start: { x: 2, y: 2 }, end: { x: 8, y: 2 } },
+      category: 'projection',
+      visibility: 'visible',
+      entityId: 1,
+      ifcType: 'IfcWall',
+      modelIndex: 0,
+      depth: 7,
+    };
+
+    const [result] = classifier.classifyLines([line]);
+    expect(result.overallVisibility).toBe('visible');
+  });
+});
+
+describe('HiddenLineClassifier per-sample depth lerp (depthEnd, issue #2639)', () => {
+  it('splits a depth-sloped line where it crosses the occluder depth', () => {
+    // Flat occluder at view depth 5 over x,y in [0, 10]. The line runs from
+    // (1, 5) at view depth 2 (in front) to (9, 5) at view depth 7 (behind):
+    // depth(t) = 2 + 5t crosses the occluder at t = 0.6, i.e. x = 5.8. A
+    // lerp bug (swapped endpoints, or depthEnd ignored) moves or removes
+    // the split entirely.
+    const classifier = new HiddenLineClassifier({ resolution: 256, samplesPerLine: 100 });
+    classifier.buildDepthBuffer([occluderMesh()], { axis: 'z', position: 0, flipped: false }, 10);
+
+    const line: DrawingLine = {
+      line: { start: { x: 1, y: 5 }, end: { x: 9, y: 5 } },
+      category: 'projection',
+      visibility: 'visible',
+      entityId: 1,
+      ifcType: 'IfcWall',
+      modelIndex: 0,
+      depth: 2,
+      depthEnd: 7,
+    };
+
+    const [result] = classifier.classifyLines([line]);
+    expect(result.overallVisibility).toBe('partial');
+    expect(result.segments).toHaveLength(2);
+    // Near end visible, far end hidden - in that order.
+    expect(result.segments[0].visible).toBe(true);
+    expect(result.segments[1].visible).toBe(false);
+    // The split must land at the geometric crossing x = 5.8, within about
+    // one sample spacing (8 units / 100 samples = 0.08).
+    expect(Math.abs(result.segments[0].end.x - 5.8)).toBeLessThanOrEqual(0.1);
+    expect(result.segments[1].start.x).toBe(result.segments[0].end.x);
+    expect(result.segments[0].end.y).toBe(5);
+  });
+});
+
 describe('HiddenLineClassifier with a non-zero MeshData.origin (PR #2621)', () => {
   /**
    * A small occluder quad plus one far, degenerate (zero-area) marker vertex.

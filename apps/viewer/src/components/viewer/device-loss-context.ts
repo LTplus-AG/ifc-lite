@@ -18,7 +18,10 @@
  *
  *  - Each field is read inside its own try/catch and degrades to "omitted".
  *    One half-dead accessor must cost its own field, never the base report
- *    (the reason/detail this event exists to carry).
+ *    (the reason/detail this event exists to carry). A read that THROWS is
+ *    still surfaced - named in the `failed_fields` marker and warned once
+ *    within a session-capped budget - so a broken accessor of ours stays
+ *    distinguishable from a browser that simply lacks the metric.
  *  - Only JS-side state is read: the adapter snapshot is strings copied at
  *    init, `getResidentGpuBytes()` sums retained `.size` fields, and
  *    `getFrameStats()` returns a plain object. No GPU calls.
@@ -52,30 +55,36 @@ export interface DeviceLossContextSource {
 }
 
 /**
- * Read one field, keeping any failure inside the field. `undefined` (returned
- * or thrown-into) means the key is omitted entirely - same null-means-omitted
- * convention as `loadTelemetry.ts`, because PostHog treats an absent property
- * and an explicit null differently in `IS NOT NULL` filters.
+ * Console-warn budget for throwing field accessors. A read that THROWS is a
+ * defect in our own enrichment (an unavailable metric returns `undefined`
+ * instead), so it must be surfaced - but this runs on the loss/teardown path,
+ * where a repeatedly-throwing accessor could otherwise flood the console and
+ * bury the loss breadcrumb. Failures past the cap still reach telemetry via
+ * the `failed_fields` marker on every report.
  */
-function put(
-  context: DeviceLossContext,
-  key: string,
-  read: () => string | number | boolean | undefined,
-): void {
-  try {
-    const value = read();
-    if (value !== undefined) context[key] = value;
-  } catch {
-    // Deliberate swallow: this runs on the device-loss path, where a hostile
-    // or half-torn-down accessor must cost its own field, never the base
-    // report - and per-field console noise would bury the loss breadcrumb.
-  }
+const MAX_FIELD_FAILURE_WARNS = 8;
+let fieldFailureWarns = 0;
+
+/** Reset the warn budget. Test seam - not used in production. */
+export function resetDeviceLossContextWarnsForTests(): void {
+  fieldFailureWarns = 0;
+}
+
+function warnFieldFailure(key: string, err: unknown): void {
+  if (fieldFailureWarns >= MAX_FIELD_FAILURE_WARNS) return;
+  fieldFailureWarns++;
+  // `[Viewport]`, like the rest of the loss-path modules (see
+  // device-loss-report.ts on why the prefix names the subsystem).
+  console.warn(`[Viewport] device-loss context accessor threw; field omitted: ${key}`, err);
 }
 
 /**
  * Build the enrichment properties for a device-loss (or persistent
  * render-degradation) capture. Never throws; a field whose source is missing
- * or broken is omitted.
+ * or broken is omitted, and every field that failed by THROWING (as opposed to
+ * legitimately reporting `undefined`) is named in a `failed_fields` marker -
+ * so the telemetry itself distinguishes "this browser lacks the metric" from
+ * "our accessor is broken", the exact ambiguity this feature exists to remove.
  *
  * Call this AT LOSS TIME, not at subscribe time: the point of
  * `ms_since_last_frame` and `gpu_resident_mb` is to describe the moment the
@@ -83,46 +92,69 @@ function put(
  */
 export function buildDeviceLossContext(source: DeviceLossContextSource): DeviceLossContext {
   const context: DeviceLossContext = {};
+  const failedFields: string[] = [];
+
+  /**
+   * Read one field, keeping any failure inside the field. `undefined`
+   * (returned or thrown-into) means the key is omitted entirely - same
+   * null-means-omitted convention as `loadTelemetry.ts`, because PostHog
+   * treats an absent property and an explicit null differently in
+   * `IS NOT NULL` filters. A THROW additionally lands the key in
+   * `failed_fields` and a capped console.warn: it must cost only its own
+   * field, never the base report, but never silently either.
+   */
+  const put = (
+    key: string,
+    read: () => string | number | boolean | undefined,
+  ): void => {
+    try {
+      const value = read();
+      if (value !== undefined) context[key] = value;
+    } catch (err) {
+      failedFields.push(key);
+      warnFieldFailure(key, err);
+    }
+  };
 
   // Adapter identity, snapshotted at init (plain strings; see AdapterInfoSnapshot).
-  put(context, 'gpu_vendor', () => source.getAdapterInfo?.()?.vendor);
-  put(context, 'gpu_architecture', () => source.getAdapterInfo?.()?.architecture);
+  put('gpu_vendor', () => source.getAdapterInfo?.()?.vendor);
+  put('gpu_architecture', () => source.getAdapterInfo?.()?.architecture);
 
   // GPU-resident geometry at the moment of loss. Allocation-accurate JS-side
   // sum (`Scene.getResidentGpuBytes()` reads retained `.size` fields), so it
   // is safe to read after the device died. Rounded to MB - the question is
   // "was VRAM plausibly exhausted?", not byte accounting.
-  put(context, 'gpu_resident_mb', () => {
+  put('gpu_resident_mb', () => {
     const scene = source.getScene?.();
     return scene ? Math.round(scene.getResidentGpuBytes().total / (1024 * 1024)) : undefined;
   });
 
   // Did the device die before ever completing a frame? A loss during init or
   // first upload is a different bug family from one mid-session.
-  put(context, 'had_rendered_frame', () =>
+  put('had_rendered_frame', () =>
     source.getFrameStats ? source.getFrameStats() !== null : undefined,
   );
-  put(context, 'ms_since_last_frame', () => {
+  put('ms_since_last_frame', () => {
     const stats = source.getFrameStats?.();
     return stats ? Math.round(performance.now() - stats.timestamp) : undefined;
   });
 
   // No app-level session-start concept exists; the page's own clock is the
   // right "how long into the session" measure.
-  put(context, 'ms_since_page_load', () => Math.round(performance.now()));
+  put('ms_since_page_load', () => Math.round(performance.now()));
 
   // A loss in a backgrounded tab points at the browser reclaiming the GPU
   // rather than at anything the model did. Guarded: this module's tests run
   // under node:test where `document` genuinely does not exist.
-  put(context, 'tab_visibility', () =>
+  put('tab_visibility', () =>
     typeof document !== 'undefined' ? document.visibilityState : undefined,
   );
 
   // Surface size: an oversized canvas (zoomed display, huge DPR) is a known
   // way to exhaust a weak GPU.
-  put(context, 'canvas_width', () => source.getCanvas?.().width);
-  put(context, 'canvas_height', () => source.getCanvas?.().height);
-  put(context, 'device_pixel_ratio', () =>
+  put('canvas_width', () => source.getCanvas?.().width);
+  put('canvas_height', () => source.getCanvas?.().height);
+  put('device_pixel_ratio', () =>
     typeof window !== 'undefined' && typeof window.devicePixelRatio === 'number'
       ? window.devicePixelRatio
       : undefined,
@@ -130,17 +162,24 @@ export function buildDeviceLossContext(source: DeviceLossContextSource): DeviceL
 
   // Load-time fidelity config (Fast/Exact and the sticky `?geomTier=` pin,
   // #2544): both change how much geometry a given file puts on the GPU.
-  put(context, 'geometry_mode', () => useViewerStore.getState().geometryMode);
-  put(context, 'geom_tier_override', () => useViewerStore.getState().geomTierOverride);
+  put('geometry_mode', () => useViewerStore.getState().geometryMode);
+  put('geom_tier_override', () => useViewerStore.getState().geomTierOverride);
 
   // Size of the last completed load (recorded at the `ifc_model_loaded`
   // capture site). Omitted when no load completed - itself a signal.
-  put(context, 'last_load_file_size_mb', () => {
+  put('last_load_file_size_mb', () => {
     const snapshot = getModelLoadedSnapshot();
     return snapshot ? Math.round(snapshot.fileSizeMB * 100) / 100 : undefined;
   });
-  put(context, 'last_load_total_triangles', () => getModelLoadedSnapshot()?.totalTriangles);
-  put(context, 'last_load_mesh_count', () => getModelLoadedSnapshot()?.meshCount);
+  put('last_load_total_triangles', () => getModelLoadedSnapshot()?.totalTriangles);
+  put('last_load_mesh_count', () => getModelLoadedSnapshot()?.meshCount);
+
+  // Which enrichment accessors THREW (comma-joined keys from the fixed
+  // vocabulary above - never user data). Absent when everything read cleanly.
+  // Key checked against the analytics-scrub SENSITIVE_KEY word list like every
+  // other key here ("failed"/"fields" are not on it), pinned by the real-
+  // scrubEvent test in device-loss-context.test.ts.
+  if (failedFields.length > 0) context.failed_fields = failedFields.join(',');
 
   return context;
 }

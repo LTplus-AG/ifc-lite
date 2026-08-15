@@ -23,6 +23,8 @@
  * `IS NOT NULL` filters.
  */
 
+import { posthog } from '@/lib/analytics';
+
 export interface ModelLoadedInputs {
   format: string;
   fileSizeMB: number;
@@ -89,19 +91,39 @@ export function buildModelLoadedPayload(
  */
 export interface ModelLoadedSnapshot {
   fileSizeMB: number;
-  totalTriangles: number;
-  meshCount: number;
+  /**
+   * Absent = this load path genuinely has no triangle figure (a point cloud's
+   * resident geometry is points, not triangles). A real measured 0 and an
+   * unknown are different facts, and a substituted 0 would read as a
+   * measurement - so unknown stays `undefined` and the loss report omits the
+   * field.
+   */
+  totalTriangles?: number;
+  /** Same absent-vs-zero contract as `totalTriangles`. */
+  meshCount?: number;
 }
 
 let lastLoadSnapshot: ModelLoadedSnapshot | null = null;
 
 /**
- * Record the just-completed load. Called next to the existing
- * `posthog.capture('ifc_model_loaded', ...)` site in `useIfcLoader.ts` -
- * recording anywhere else would drift from what the load event reported.
+ * Record the just-completed load. Fused into `captureModelLoaded` below so
+ * every `ifc_model_loaded` capture site records the numbers IT reported -
+ * recording anywhere else would drift from what the load event said.
  */
 export function recordModelLoadedSnapshot(snapshot: ModelLoadedSnapshot): void {
   lastLoadSnapshot = snapshot;
+}
+
+/**
+ * Forget the previous model's numbers. Called at the START of every primary
+ * (replace-everything) load in `useIfcLoader.ts`, so a load path that never
+ * records a snapshot - a future seventh path, or a load that dies midway -
+ * leaves the device-loss fields ABSENT rather than describing a model that is
+ * no longer the one on the GPU. Stale numbers mislead triage worse than
+ * missing ones; this is the fail-safe half, per-path recording is the other.
+ */
+export function clearModelLoadedSnapshot(): void {
+  lastLoadSnapshot = null;
 }
 
 /** The last recorded load, or null when no load has completed this session. */
@@ -112,4 +134,38 @@ export function getModelLoadedSnapshot(): ModelLoadedSnapshot | null {
 /** Reset the retained snapshot. Test seam - not used in production. */
 export function resetModelLoadedSnapshotForTests(): void {
   lastLoadSnapshot = null;
+}
+
+/**
+ * Derive a snapshot from a load path's `GeometryResult`-shaped totals.
+ * `null`/`undefined` geometry (the store slot can legitimately hold null on
+ * the cache/server paths) records only the file size - absent, not zero, per
+ * the `ModelLoadedSnapshot` contract above.
+ */
+export function snapshotFromGeometry(
+  fileSizeMB: number,
+  geometry: { totalTriangles: number; meshes: readonly unknown[] } | null | undefined,
+): ModelLoadedSnapshot {
+  return geometry
+    ? { fileSizeMB, totalTriangles: geometry.totalTriangles, meshCount: geometry.meshes.length }
+    : { fileSizeMB };
+}
+
+/**
+ * THE `ifc_model_loaded` capture seam: records the last-load snapshot for the
+ * device-loss report (#2624), then emits the event. Every completing load path
+ * in `useIfcLoader.ts` MUST go through this - never a bare
+ * `posthog.capture('ifc_model_loaded', ...)` - so the loss report can never
+ * ship a previous model's numbers after a cache-hit or server load. The
+ * mandatory `snapshot` argument is the point: a new load path cannot capture
+ * the event without stating what it knows about the model's size.
+ * `loadTelemetry.test.ts` sweeps the loader source to keep this the only way
+ * the event is captured.
+ */
+export function captureModelLoaded(
+  payload: Record<string, string | number | boolean | undefined>,
+  snapshot: ModelLoadedSnapshot,
+): void {
+  recordModelLoadedSnapshot(snapshot);
+  posthog.capture('ifc_model_loaded', payload);
 }

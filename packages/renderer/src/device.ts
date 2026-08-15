@@ -84,10 +84,13 @@ export class WebGPUDevice {
         if (typeof info.architecture === 'string') snapshot.architecture = info.architecture;
         this.adapterInfoSnapshot = snapshot;
       }
-    } catch {
-      // Deliberate swallow: adapter identity is telemetry enrichment, and a
-      // throwing `info` getter must not break device init. The loss report
-      // simply goes out without it (snapshot stays null).
+    } catch (e) {
+      // Contained, not swallowed: adapter identity is telemetry enrichment,
+      // and a throwing `info` getter must not break device init - but a THROW
+      // here is a runtime/compat defect worth a trace, or a null snapshot
+      // (also what a browser that merely lacks `adapter.info` reports) would
+      // hide it. The loss report simply goes out without the identity.
+      console.warn('[WebGPU] adapter.info read threw; loss telemetry will omit adapter identity:', e);
     }
 
     // Request the adapter's maximum buffer limits. The WebGPU default maxBufferSize

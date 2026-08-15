@@ -33,6 +33,7 @@ import {
 } from '@/utils/loadTelemetry.js';
 import {
   buildDeviceLossContext,
+  resetDeviceLossContextWarnsForTests,
   type DeviceLossContextSource,
 } from './device-loss-context.js';
 import {
@@ -71,6 +72,7 @@ function stubDocument(visibilityState: string): void {
 beforeEach(() => {
   resetDeviceLossReportForTests();
   resetModelLoadedSnapshotForTests();
+  resetDeviceLossContextWarnsForTests();
   captures = [];
   console.warn = () => { /* keep the loss breadcrumbs out of test output */ };
   posthog.captureException = ((err: unknown, props?: Record<string, unknown>) => {
@@ -108,6 +110,17 @@ describe('buildDeviceLossContext field content', () => {
     assert.equal(context.last_load_total_triangles, 4_200_000);
     assert.equal(context.last_load_mesh_count, 51_000);
     assert.equal(typeof context.ms_since_page_load, 'number');
+  });
+
+  it('a size-only snapshot reports the size and OMITS triangles/meshes - absent, not 0', () => {
+    // The point-cloud load path genuinely has no triangle/mesh figures (its
+    // resident geometry is points); a substituted 0 would read as a measured
+    // "tiny mesh model" and mislead the loss triage.
+    recordModelLoadedSnapshot({ fileSizeMB: 40.5 });
+    const context = buildDeviceLossContext(makeFullSource());
+    assert.equal(context.last_load_file_size_mb, 40.5);
+    assert.ok(!('last_load_total_triangles' in context), 'unknown must stay absent, never 0');
+    assert.ok(!('last_load_mesh_count' in context), 'unknown must stay absent, never 0');
   });
 
   it('omits the last-load fields when no load has completed - absent, not null', () => {
@@ -162,6 +175,28 @@ describe('context keys survive the REAL privacy scrubber (#2624)', () => {
     assert.equal(props.device_lost_reason, 'unknown');
     assert.equal(props.device_lost_detail, DAWN_LOST);
 
+    // failed_fields (the broken-accessor marker) must survive too, or the
+    // very signal that distinguishes "browser lacks it" from "our accessor
+    // threw" would ship blind. Built from a real throwing accessor, not
+    // hand-written, so this pins the production key spelling.
+    const degraded = buildDeviceLossContext({
+      ...makeFullSource(),
+      getScene: () => { throw new Error('scene gone'); },
+    });
+    reportPersistentRenderDegradation(
+      { consecutiveDegradedFrames: 16, detail: 'boom', origin: 'frame' },
+      degraded,
+    );
+    const sentDegraded = scrubEvent({
+      event: '$exception',
+      properties: { ...captures[1].props },
+    });
+    assert.equal(
+      sentDegraded?.properties?.failed_fields,
+      'gpu_resident_mb',
+      'failed_fields must survive before_send with its value intact',
+    );
+
     // Control: the scrubber is live in this test. A key spelled into its word
     // list really is deleted, so the assertions above cannot pass vacuously.
     const withBadKey = scrubEvent({
@@ -204,6 +239,62 @@ describe('a hostile source cannot break the loss path', () => {
     const context = buildDeviceLossContext(midCall);
     assert.ok(!('gpu_resident_mb' in context));
     assert.equal(context.gpu_vendor, 'testvendor', 'the neighbouring fields are untouched');
+  });
+
+  it('a throwing accessor is SURFACED: named in failed_fields and warned about', () => {
+    // The review finding on #2643: a silent per-field catch made a BROKEN
+    // enrichment accessor indistinguishable from a browser that lacks the
+    // metric - the exact ambiguity this feature exists to remove.
+    const warns: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warns.push(args); };
+    const context = buildDeviceLossContext({
+      ...makeFullSource(),
+      getScene: () => { throw new Error('scene torn down'); },
+    });
+    assert.equal(
+      context.failed_fields,
+      'gpu_resident_mb',
+      'the telemetry itself must name which accessor threw',
+    );
+    assert.equal(warns.length, 1, 'exactly one warn for one throwing field');
+    assert.ok(
+      typeof warns[0][0] === 'string' && warns[0][0].includes('gpu_resident_mb'),
+      'the warn must name the field',
+    );
+    assert.ok(
+      warns[0].some((a) => a instanceof Error && a.message === 'scene torn down'),
+      'the warn must carry the actual error',
+    );
+  });
+
+  it('failed_fields is ABSENT when every accessor reads cleanly - including undefined reads', () => {
+    // An unavailable metric (accessor returns undefined, e.g. no getScene at
+    // all) is NOT a failure; only a throw is. The marker must stay absent so
+    // "browser lacks it" never reads as "our accessor is broken".
+    const context = buildDeviceLossContext({ getAdapterInfo: () => null });
+    assert.ok(!('failed_fields' in context));
+  });
+
+  it('repeated throws cannot flood the console: warns are capped at 8', () => {
+    const warns: unknown[][] = [];
+    console.warn = (...args: unknown[]) => { warns.push(args); };
+    const hostile: DeviceLossContextSource = {
+      getAdapterInfo: () => { throw new Error('adapter gone'); },
+      getFrameStats: () => { throw new Error('stats gone'); },
+      getScene: () => { throw new Error('scene gone'); },
+      getCanvas: () => { throw new Error('canvas gone'); },
+    };
+    // 7 source-backed fields throw per build; 50 builds would be 350 warns
+    // without the cap - teardown storms must not bury the loss breadcrumb.
+    for (let i = 0; i < 50; i++) buildDeviceLossContext(hostile);
+    assert.equal(warns.length, 8, 'the session warn budget is 8, then silence');
+    // The marker is NOT capped: telemetry still names the failures every time.
+    const last = buildDeviceLossContext(hostile);
+    assert.equal(
+      last.failed_fields,
+      'gpu_vendor,gpu_architecture,gpu_resident_mb,had_rendered_frame,ms_since_last_frame,canvas_width,canvas_height',
+      'past the console cap the report itself still carries the full failure list',
+    );
   });
 
   it('reportDeviceLost still captures the base reason with a degraded context', () => {

@@ -113,7 +113,7 @@ describe('WebGPUDevice adapter-info snapshot (#2624)', () => {
     assert.ok(!keys.includes('device'), 'device must not be captured at all');
   });
 
-  it('survives an adapter whose info getter throws: init resolves, snapshot null', async () => {
+  it('survives an adapter whose info getter throws: init resolves, snapshot null, failure logged', async () => {
     const adapter = {
       limits: { maxBufferSize: 1 << 20, maxStorageBufferBindingSize: 1 << 20 },
       requestDevice: async () => makeFakeDevice(),
@@ -123,10 +123,27 @@ describe('WebGPUDevice adapter-info snapshot (#2624)', () => {
     };
     installNavigator(adapter);
 
+    // A throw here is a runtime/compat defect and must leave a trace: a silent
+    // catch would make it indistinguishable from a browser that merely lacks
+    // `adapter.info` (both read back as a null snapshot).
+    const warns: unknown[][] = [];
+    const realWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args); };
     const device = new WebGPUDevice();
-    await device.init(makeCanvas());
+    try {
+      await device.init(makeCanvas());
+    } finally {
+      console.warn = realWarn;
+    }
     assert.equal(device.isInitialized(), true, 'a throwing info getter must not break init');
     assert.equal(device.getAdapterInfo(), null, 'no usable info means a null snapshot, not a throw');
+    const infoWarn = warns.find((args) =>
+      typeof args[0] === 'string' && args[0].includes('adapter.info'));
+    assert.ok(infoWarn, 'the caught info-getter throw must be logged, not swallowed');
+    assert.ok(
+      infoWarn.some((arg) => arg instanceof Error && arg.message.includes('no adapter info')),
+      'the log must carry the actual error, not just a generic line',
+    );
   });
 
   it('drops non-string fields instead of forwarding them', async () => {

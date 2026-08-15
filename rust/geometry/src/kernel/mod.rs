@@ -27,6 +27,7 @@ pub mod interner;
 pub mod interval;
 pub mod manifest;
 pub mod mesh_bridge;
+pub mod mesh_volume;
 pub mod predicates;
 pub mod rational;
 pub(crate) mod signed_volume;

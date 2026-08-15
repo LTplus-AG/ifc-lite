@@ -97,7 +97,7 @@ export class EdgeExtractor {
    * Extract all feature edges from a mesh
    */
   extractEdges(mesh: MeshData): EdgeData[] {
-    const { positions, indices, expressId, ifcType, modelIndex } = mesh;
+    const { positions, indices, expressId, ifcType, modelIndex, origin } = mesh;
 
     // Build edge-to-face adjacency map
     const edgeMap = new Map<string, EdgeInfo>();
@@ -111,10 +111,11 @@ export class EdgeExtractor {
       const i1 = indices[t * 3 + 1];
       const i2 = indices[t * 3 + 2];
 
-      // Get vertices
-      const v0 = this.getVertex(positions, i0);
-      const v1 = this.getVertex(positions, i1);
-      const v2 = this.getVertex(positions, i2);
+      // Get vertices in WORLD space (positions are stored in the element's
+      // local frame; world = origin + local) — see section-cutter.ts.
+      const v0 = this.getVertex(positions, i0, origin);
+      const v1 = this.getVertex(positions, i1, origin);
+      const v2 = this.getVertex(positions, i2, origin);
 
       // Compute face normal
       const faceNormal = this.computeFaceNormal(v0, v1, v2);
@@ -130,8 +131,8 @@ export class EdgeExtractor {
     const edges: EdgeData[] = [];
 
     for (const [, edgeInfo] of edgeMap) {
-      const v0 = this.getVertex(positions, edgeInfo.v0Idx);
-      const v1 = this.getVertex(positions, edgeInfo.v1Idx);
+      const v0 = this.getVertex(positions, edgeInfo.v0Idx, origin);
+      const v1 = this.getVertex(positions, edgeInfo.v1Idx, origin);
 
       let face0Normal: Vec3 | null = null;
       let face1Normal: Vec3 | null = null;
@@ -272,9 +273,19 @@ export class EdgeExtractor {
   // PRIVATE HELPERS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  private getVertex(positions: Float32Array, index: number): Vec3 {
+  private getVertex(
+    positions: Float32Array,
+    index: number,
+    origin?: [number, number, number],
+  ): Vec3 {
     const base = index * 3;
-    return vec3(positions[base], positions[base + 1], positions[base + 2]);
+    return origin
+      ? vec3(
+          positions[base] + origin[0],
+          positions[base + 1] + origin[1],
+          positions[base + 2] + origin[2],
+        )
+      : vec3(positions[base], positions[base + 1], positions[base + 2]);
   }
 
   private computeFaceNormal(v0: Vec3, v1: Vec3, v2: Vec3): Vec3 {

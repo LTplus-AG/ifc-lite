@@ -137,15 +137,10 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_well_formed_obj() {
         let (obj, stats) =
-            export_obj_with_stats(&fixture("ara3d/duplex.ifc"), &ObjOptions::default());
+            export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default());
         assert!(stats.meshes > 0, "expected meshes");
         assert!(stats.vertices > 0, "expected vertices");
         assert!(stats.triangles > 0, "expected triangles");
@@ -165,9 +160,9 @@ mod tests {
 
     #[test]
     fn isolation_filter_limits_output() {
-        let all = export_obj_with_stats(&fixture("ara3d/duplex.ifc"), &ObjOptions::default()).1;
+        let all = export_obj_with_stats(&fixture_or_skip!("ara3d/duplex.ifc"), &ObjOptions::default()).1;
         // Find one express id that was emitted by re-reading meshes through the pipeline.
-        let result = process_geometry(&fixture("ara3d/duplex.ifc")[..]);
+        let result = process_geometry(&fixture_or_skip!("ara3d/duplex.ifc")[..]);
         let some_id = result
             .meshes
             .iter()
@@ -176,7 +171,7 @@ mod tests {
             .expect("at least one visible mesh");
 
         let isolated = export_obj_with_stats(
-            &fixture("ara3d/duplex.ifc"),
+            &fixture_or_skip!("ara3d/duplex.ifc"),
             &ObjOptions { isolated: vec![some_id], ..ObjOptions::default() },
         )
         .1;
@@ -196,7 +191,7 @@ mod tests {
     /// mutation applied to both.
     #[test]
     fn obj_faces_reverse_the_source_mesh_winding() {
-        let bytes = fixture("ara3d/duplex.ifc");
+        let bytes = fixture_or_skip!("ara3d/duplex.ifc");
         let result = process_geometry(&bytes);
 
         // `mesh_visible` only requires a NON-EMPTY index buffer, so a visible

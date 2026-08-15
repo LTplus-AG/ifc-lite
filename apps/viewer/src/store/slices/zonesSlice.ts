@@ -21,6 +21,7 @@ import type { StateCreator } from 'zustand';
 import type { Zone, ZoneSet, ZoneAssignmentsByElement } from '../../lib/zones/types.js';
 import type { ZoneApportionmentEntry } from '../../lib/zones/apportionment-cache.js';
 import { serializeZoneSets, parseZoneSetFile } from '../../lib/zones/persistence.js';
+import { isConvexFootprint, normalizePrismBounds } from '../../lib/zones/prism.js';
 
 const ZONE_SETS_STORAGE_KEY = 'ifc-lite:zone-sets';
 
@@ -139,6 +140,29 @@ const DEFAULT_ZONE: Omit<Zone, 'id'> = {
   rotationY: 0,
 };
 
+/**
+ * The one door every zone goes through on its way INTO the store.
+ *
+ * A prism zone (#2508 item 4) carries two things the rest of the app relies on
+ * and cannot check for itself: its footprint is CONVEX (the sweep, the point
+ * test and the overlap test are each silently wrong otherwise), and its
+ * `center` / `size` in X/Z are that footprint's bounding box (every bounds
+ * consumer reads them). `parseZoneSetFile` enforces both for the import path;
+ * these three mutators are the other way in, and a caller reaching them with a
+ * hand-built footprint would otherwise install a zone that misreports volumes.
+ * A non-convex footprint is dropped rather than kept, leaving a plain box: a
+ * zone that is visibly the wrong shape beats one that quietly answers wrong.
+ */
+function acceptZone(zone: Zone): Zone {
+  if (!zone.footprint) return zone;
+  if (!isConvexFootprint(zone.footprint)) {
+    const { footprint: _dropped, ...box } = zone;
+    console.warn('[zones] ignoring a non-convex footprint; the zone stays a box', zone.id);
+    return box;
+  }
+  return normalizePrismBounds(zone);
+}
+
 export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (set, get) => ({
   zoneSets: loadPersistedZoneSets(),
   zoneAssignments: new Map(),
@@ -185,7 +209,9 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
   }),
 
   replaceZonesInSet: (setId, zones) => set((state) => {
-    const zoneSets = state.zoneSets.map((zs) => (zs.id === setId ? { ...zs, zones, updatedAt: Date.now() } : zs));
+    const zoneSets = state.zoneSets.map((zs) => (zs.id === setId
+      ? { ...zs, zones: zones.map(acceptZone), updatedAt: Date.now() }
+      : zs));
     savePersistedZoneSets(zoneSets);
     // Replacing a set's zones wholesale (e.g. "generate from storeys") can
     // remove the zone an edit session points at — same invariant as
@@ -202,7 +228,7 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
     const zoneSet = get().zoneSets.find((zs) => zs.id === setId);
     if (!zoneSet) return null;
     const id = crypto.randomUUID();
-    const newZone: Zone = { ...DEFAULT_ZONE, ...zone, id };
+    const newZone: Zone = acceptZone({ ...DEFAULT_ZONE, ...zone, id });
     set((state) => {
       const zoneSets = state.zoneSets.map((zs) => (zs.id === setId ? { ...zs, zones: [...zs.zones, newZone], updatedAt: Date.now() } : zs));
       savePersistedZoneSets(zoneSets);
@@ -216,7 +242,7 @@ export const createZonesSlice: StateCreator<ZonesSlice, [], [], ZonesSlice> = (s
       if (zs.id !== setId) return zs;
       return {
         ...zs,
-        zones: zs.zones.map((z) => (z.id === zoneId ? { ...z, ...patch } : z)),
+        zones: zs.zones.map((z) => (z.id === zoneId ? acceptZone({ ...z, ...patch }) : z)),
         updatedAt: Date.now(),
       };
     });

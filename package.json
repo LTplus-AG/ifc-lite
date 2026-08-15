@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.4.1",
+  "version": "4.5.1",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -47,7 +47,8 @@
     "collab:demo:3d": "pnpm turbo build --filter=@ifc-lite/collab --filter=@ifc-lite/collab-server && node scripts/collab-demo-3d.mjs",
     "typecheck": "turbo typecheck && node scripts/typecheck-tests.mjs --audit",
     "check:test-typecheck": "node scripts/typecheck-tests.mjs --audit",
-    "lint": "pnpm -r lint",
+    "lint": "node scripts/check-changesets.mjs && node scripts/check-unused-locals.mjs && node scripts/check-lint-ran.mjs",
+    "lint:baseline": "node scripts/check-unused-locals.mjs --update",
     "knip": "knip",
     "docs:serve": "python3 -m mkdocs serve",
     "docs:build": "python3 -m mkdocs build",
@@ -75,10 +76,12 @@
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",
     "@changesets/cli": "^2.31.1",
+    "@changesets/parse": "0.4.3",
     "@playwright/test": "^1.62.1",
     "@posthog/cli": "0.9.4",
     "@types/node": "^26.1.2",
     "knip": "^6.29.0",
+    "oxlint": "^1.42.0",
     "tsx": "^4.23.1",
     "turbo": "^2.10.7",
     "typescript": "^6.0.3"

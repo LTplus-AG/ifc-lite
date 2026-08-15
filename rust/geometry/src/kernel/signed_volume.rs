@@ -76,3 +76,100 @@ pub(crate) fn signed_volume6(tris: &[Tri]) -> f64 {
         .map(|t| tetra_volume6(&t[0], &t[1], &t[2], &o))
         .sum()
 }
+
+/// Enclosed volume of a closed triangle soup, in the operands' own units.
+///
+/// [`signed_volume6`] returns SIX times the volume: it skips the constant
+/// divide per tetrahedron, which is free for the sign tests the boolean's
+/// keep/flip rules use it for. A caller that wants the VOLUME divides once,
+/// here, rather than growing a second hand-rolled sum in another module, which
+/// is how two producers of the same number start to disagree.
+pub(crate) fn signed_volume_of(tris: &[Tri]) -> f64 {
+    signed_volume6(tris) / 6.0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A near-closed box with a thin sliver crack along one top edge: the
+    /// two triangles that should share vertex `p6` instead use two slightly
+    /// different copies of it, `eps` apart. The result is an OPEN surface
+    /// (not a full missing face, a genuine narrow gap), same defect shape as
+    /// #198779's flush-interface seam. `offset` places the whole box at a
+    /// given distance from the world origin without changing its own
+    /// geometry at all — same sliver, same box, only translated.
+    fn box_with_sliver_crack(offset: [f64; 3]) -> Vec<Tri> {
+        let lo = [offset[0], offset[1], offset[2]];
+        let hi = [offset[0] + 2.2, offset[1] + 2.2, offset[2] + 2.2];
+        let eps = 0.9; // sliver, comparable scale to #198779's 2.65 m crack
+        let p0 = [lo[0], lo[1], lo[2]];
+        let p1 = [hi[0], lo[1], lo[2]];
+        let p2 = [hi[0], hi[1], lo[2]];
+        let p3 = [lo[0], hi[1], lo[2]];
+        let p4 = [lo[0], lo[1], hi[2]];
+        let p5 = [hi[0], lo[1], hi[2]];
+        let p6 = [hi[0], hi[1], hi[2]];
+        // Asymmetric perturbation (NOT parallel to the offset vector below,
+        // i.e. not a scalar multiple of [1,1,1]) — a shift parallel to a
+        // uniform per-axis translation cancels out of the
+        // reference-point-dependence term entirely (t×delta = 0 when both
+        // are multiples of the same vector), which would silently make this
+        // fixture insensitive to the very regression it exists to catch.
+        // Only ONE of the two top-face triangles sees this copy, so the
+        // shared edge `(p4, p6)` no longer matches vertex-for-vertex between
+        // them: a thin open boundary, not a full missing face.
+        let p6_cracked = [hi[0] + eps, hi[1] + eps * 0.6, hi[2] + eps * 1.3];
+        let p7 = [lo[0], hi[1], hi[2]];
+        vec![
+            // bottom (closed)
+            [p0, p3, p2],
+            [p0, p2, p1],
+            // top (cracked: first tri uses p6_cracked, second uses p6)
+            [p4, p5, p6_cracked],
+            [p4, p6, p7],
+            // sides (closed)
+            [p0, p4, p7],
+            [p0, p7, p3],
+            [p1, p2, p6],
+            [p1, p6, p5],
+            [p0, p1, p5],
+            [p0, p5, p4],
+            [p3, p7, p6],
+            [p3, p6, p2],
+        ]
+    }
+
+    /// The #198779 orientation-sign regression, directly on
+    /// [`signed_volume6`]: a box carrying a thin sliver crack (open surface,
+    /// same defect shape as the flush-interface seam in #198779's tunnel
+    /// wall) must read the SAME sign whether it sits near the world origin
+    /// or hundreds of metres out — because the AABB-centre reference
+    /// co-moves with the operand, unlike a world-origin reference, whose
+    /// boundary-loop flux term grows with the distance to the reference
+    /// point and previously flipped an outward-wound operand's sign
+    /// negative purely from being far away (issue #198779's −59.8 from a
+    /// +0.30 m³ solid). The control (near the origin, where both reference
+    /// choices coincide) and the far case (translated only, same sliver)
+    /// isolate the reference-point choice as the only thing that can
+    /// explain a sign difference between them.
+    #[test]
+    fn far_from_origin_sliver_crack_does_not_flip_the_sign_198779() {
+        let near = box_with_sliver_crack([0.0, 0.0, 0.0]);
+        let far = box_with_sliver_crack([300.0, 250.0, 410.0]); // #198779's tunnel wall sat 250-410 m out
+
+        let v_near = signed_volume6(&near);
+        let v_far = signed_volume6(&far);
+
+        assert!(
+            v_near > 0.0,
+            "control (near origin) should read outward-wound positive, got {v_near}"
+        );
+        assert!(
+            v_far > 0.0,
+            "far-from-origin operand flipped sign to {v_far} (near-origin control was \
+             {v_near}): the AABB-centre reference should make the sign independent of \
+             where the operand sits, same defect shape as #198779"
+        );
+    }
+}

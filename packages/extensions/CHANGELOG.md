@@ -1,5 +1,13 @@
 # @ifc-lite/extensions
 
+## 0.4.2
+
+### Patch Changes
+
+- [#2610](https://github.com/LTplus-AG/ifc-lite/pull/2610) [`bd92912`](https://github.com/LTplus-AG/ifc-lite/commit/bd92912965b6b1ab6573a4b304b1e54d494c22b7) Thanks [@louistrue](https://github.com/louistrue)! - Internal tidy-up only, no behaviour change: the sandbox's `try { value = fn(...) } catch (err) { throw err }` is now a plain call, which is what rethrowing an unchanged error already did.
+
+  This ships because the repo's new lint gate flagged it (`no-useless-catch`), not because anything was wrong at runtime.
+
 ## 0.4.1
 
 ### Patch Changes

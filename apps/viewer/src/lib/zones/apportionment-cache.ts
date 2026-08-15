@@ -83,6 +83,12 @@ export function zoneSetRevision(zoneSet: ZoneSet): string {
       `${z.id.length}:${z.id}${z.name.length}:${z.name}`,
       `${z.center[0]},${z.center[1]},${z.center[2]};`,
       `${z.size[0]},${z.size[1]},${z.size[2]};${z.rotationY};`,
+      // The FOOTPRINT of a prism zone (#2508 item 4). Two prisms can share a
+      // bounding box and cut differently -- move any vertex that is not a
+      // bounding-box extreme and the box fields above do not move at all -- so
+      // omitting it serves the old polygon's cubic metres for the new one.
+      // Length-prefixed like the ids, for the same reason.
+      z.footprint ? `${z.footprint.length}:${z.footprint.map((p) => `${p[0]},${p[1]}`).join(';')};` : '0;',
     );
   }
   return parts.join('');

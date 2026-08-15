@@ -30,6 +30,7 @@
 import { useMemo } from 'react';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
+import type { FederatedModel } from '@/store/types';
 import { geometryVolumesSurviveAlignment } from '@/lib/compare/alignmentTrust';
 import type { RenderFrameOffsets } from '@/components/viewer/tools/measure-modes/coordinates';
 
@@ -47,36 +48,48 @@ export interface RenderFrameProvenance {
 
 export type RenderFrameResult = RenderFrameOffsets & RenderFrameProvenance;
 
+/**
+ * The frame resolution itself, off React.
+ *
+ * Split out so a non-component caller (the `IfcSpatialZone` emission, which
+ * runs from a click rather than a render) resolves the frame by the SAME rule
+ * as the readouts. Two rules would be two answers about where a point is.
+ */
+export function resolveRenderFrame(
+  models: Map<string, FederatedModel>,
+  geometryResult: { coordinateInfo?: CoordinateInfo | null } | null | undefined,
+): RenderFrameResult {
+  // Federated: the earliest-loaded model owns the frame every other model
+  // was aligned to.
+  let earliest = Infinity;
+  let info: CoordinateInfo | null = null;
+  let anchorName: string | null = null;
+  let rebased = false;
+  for (const [, m] of models) {
+    if (m.loadedAt < earliest && m.geometryResult?.coordinateInfo) {
+      earliest = m.loadedAt;
+      info = m.geometryResult.coordinateInfo;
+      anchorName = m.name ?? null;
+    }
+    // `geometryVolumesSurviveAlignment` is the same two-status question
+    // asked of the same alignment pass (#1993): those are exactly the
+    // statuses under which vertices were re-baked into the anchor frame.
+    if (!geometryVolumesSurviveAlignment(m.federationAlignmentStatus)) rebased = true;
+  }
+  // Legacy single-model load: no federated entry, one geometry result.
+  if (!info) info = geometryResult?.coordinateInfo ?? null;
+
+  return {
+    originShift: info?.originShift ?? null,
+    wasmRtcOffsetIfc: info?.wasmRtcOffset ?? null,
+    rebased,
+    anchorName,
+  };
+}
+
 export function useRenderFrameOffsets(): RenderFrameResult {
   const models = useViewerStore((s) => s.models);
   const geometryResult = useViewerStore((s) => s.geometryResult);
 
-  return useMemo(() => {
-    // Federated: the earliest-loaded model owns the frame every other model
-    // was aligned to.
-    let earliest = Infinity;
-    let info: CoordinateInfo | null = null;
-    let anchorName: string | null = null;
-    let rebased = false;
-    for (const [, m] of models) {
-      if (m.loadedAt < earliest && m.geometryResult?.coordinateInfo) {
-        earliest = m.loadedAt;
-        info = m.geometryResult.coordinateInfo;
-        anchorName = m.name ?? null;
-      }
-      // `geometryVolumesSurviveAlignment` is the same two-status question
-      // asked of the same alignment pass (#1993): those are exactly the
-      // statuses under which vertices were re-baked into the anchor frame.
-      if (!geometryVolumesSurviveAlignment(m.federationAlignmentStatus)) rebased = true;
-    }
-    // Legacy single-model load: no federated entry, one geometry result.
-    if (!info) info = geometryResult?.coordinateInfo ?? null;
-
-    return {
-      originShift: info?.originShift ?? null,
-      wasmRtcOffsetIfc: info?.wasmRtcOffset ?? null,
-      rebased,
-      anchorName,
-    };
-  }, [models, geometryResult]);
+  return useMemo(() => resolveRenderFrame(models, geometryResult), [models, geometryResult]);
 }

@@ -209,7 +209,12 @@ describe('verifyArchiveChecksum - checksum source resolution', () => {
 
   it('does not fetch a third url after SHA256SUMS misses', async () => {
     serve({});
-    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow();
+    // Assert the missing-checksum reason, not merely that something threw:
+    // a bare rejects.toThrow() would also pass if a fetch bug threw a
+    // TypeError, hiding the fact that the fail-closed path never ran.
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

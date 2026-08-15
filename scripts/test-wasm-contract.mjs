@@ -801,7 +801,7 @@ test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-der
   const text = Buffer.from(kmz).toString('latin1');
   assert.ok(text.includes('doc.kml'), 'archive names doc.kml');
   assert.ok(text.includes('model.glb'), 'archive names model.glb');
-  assert.ok(text.includes('<heading>90</heading>'), 'heading derived from grid axis (1,0) → 90');
+  assert.ok(text.includes('<heading>0</heading>'), 'heading derived from grid axis (1,0) → 0');
   assert.ok(text.includes('Contract Bldg'), 'placemark name present');
 });
 

@@ -138,6 +138,27 @@ export interface ProviderCapabilities {
    * paste-a-URL affordance instead of presenting a list as complete.
    */
   readonly projectsAreDiscoverableOnly?: boolean;
+  /**
+   * Whether the host should eagerly drain every page of a container's file
+   * listing up front, rather than loading one page at a time with an
+   * explicit "load more" (the same incremental pattern already used for
+   * folders — see `containerListing`).
+   *
+   * Defaults to `false` (off) when omitted, so a provider that does not set
+   * this gets ordinary incremental file paging. Set `true` only when the
+   * provider's own UI has no per-folder "load more files" concept — Dalux is
+   * the reference case: its UI always shows a folder's files as one complete
+   * set, with no paginated affordance to partially match, so partial paging
+   * in the host would be inventing UX the provider itself doesn't have.
+   *
+   * A provider with a genuine per-folder file endpoint (the expected case for
+   * anything landing after Dalux — Graph-backed stores included) should leave
+   * this off: incremental paging avoids blocking a folder's first render on a
+   * full drain, and avoids the sweep's bounded-but-real cap on very large
+   * folders (`MAX_FILE_SWEEP_ITEMS` / `MAX_FILE_SWEEP_PAGES` in
+   * `apps/viewer/src/components/sources/sourceCatalogPaging.ts`).
+   */
+  readonly eagerFileSweep?: boolean;
 }
 
 // ---------------------------------------------------------------------------

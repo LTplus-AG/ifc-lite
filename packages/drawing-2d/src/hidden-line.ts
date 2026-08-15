@@ -183,14 +183,11 @@ export class HiddenLineClassifier {
     const axes = this.getProjectionAxes(axis);
 
     for (const mesh of meshes) {
-      const { positions } = mesh;
+      const { positions, origin } = mesh;
       const vertexCount = positions.length / 3;
 
       for (let i = 0; i < vertexCount; i++) {
-        const x = positions[i * 3];
-        const y = positions[i * 3 + 1];
-        const z = positions[i * 3 + 2];
-        const v = { x, y, z };
+        const v = this.getVertex(positions, i, origin);
 
         // Check if vertex is in depth range
         const depth = v[axis] - sectionPosition;
@@ -235,7 +232,7 @@ export class HiddenLineClassifier {
     maxDepth: number,
     flipped: boolean
   ): void {
-    const { positions, indices } = mesh;
+    const { positions, indices, origin } = mesh;
     const axes = this.getProjectionAxes(axis);
     const triangleCount = indices.length / 3;
 
@@ -244,10 +241,14 @@ export class HiddenLineClassifier {
       const i1 = indices[t * 3 + 1];
       const i2 = indices[t * 3 + 2];
 
-      // Get 3D vertices
-      const v0 = this.getVertex(positions, i0);
-      const v1 = this.getVertex(positions, i1);
-      const v2 = this.getVertex(positions, i2);
+      // Get 3D vertices in WORLD space (positions are stored in the
+      // element's local frame; world = origin + local) — see
+      // section-cutter.ts / edge-extractor.ts. The depth buffer must be
+      // rasterized in the same frame as the lines sampled against it
+      // (drawing-generator.ts passes world-space lines from edge-extractor).
+      const v0 = this.getVertex(positions, i0, origin);
+      const v1 = this.getVertex(positions, i1, origin);
+      const v2 = this.getVertex(positions, i2, origin);
 
       // Check if triangle is in depth range
       const d0 = v0[axis] - sectionPosition;
@@ -272,9 +273,19 @@ export class HiddenLineClassifier {
     }
   }
 
-  private getVertex(positions: Float32Array, index: number): Vec3 {
+  private getVertex(
+    positions: Float32Array,
+    index: number,
+    origin?: [number, number, number]
+  ): Vec3 {
     const base = index * 3;
-    return vec3(positions[base], positions[base + 1], positions[base + 2]);
+    return origin
+      ? vec3(
+          positions[base] + origin[0],
+          positions[base + 1] + origin[1],
+          positions[base + 2] + origin[2]
+        )
+      : vec3(positions[base], positions[base + 1], positions[base + 2]);
   }
 
   private projectVertex(

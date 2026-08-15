@@ -80,7 +80,7 @@ DATA;
 #1=IFCWALL('${WALL_GUID}',$,'Test Wall',$,$,$,$,$,$);
 #2=IFCWALLTYPE('${WALLTYPE_GUID}',$,'Wall Type',$,$,$,$,$,$,.STANDARD.);
 #3=IFCSPACETYPE('${SPACETYPE_GUID}',$,'Space Type',$,$,$,$,$,$,.SPACE.,$);
-#4=IFCDOORSTYLE('${DOORSTYLE_GUID}',$,'Door Style',$,$,$,$,.NOTDEFINED.,.NOTDEFINED.,.F.,.F.);
+#4=IFCDOORSTYLE('${DOORSTYLE_GUID}',$,'Door Style',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.,.F.,.F.);
 ENDSEC;
 END-ISO-10303-21;
 `;

@@ -33,8 +33,9 @@ import type { Clash, ClashElementRef, ClashGroup, ClashResult } from './types.js
  *
  * Two properties worth stating plainly:
  *
- * - **Transitivity is approximated, knowingly.** A≈B and B≈C under an IoU
- *   threshold does not imply A≈C, yet connected components put all three in one
+ * - **Transitivity is approximated, knowingly.** A≈B and B≈C under
+ *   `positionTolerance` (the default corner-distance gate) does not imply A≈C,
+ *   yet connected components put all three in one
  *   set. We accept that: a chain of near-coincident objects is a single
  *   coordination issue, and the strict alternative (maximal cliques) is
  *   exponential and would put the same object back into several findings —

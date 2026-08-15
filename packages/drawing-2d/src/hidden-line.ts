@@ -29,6 +29,15 @@ export interface VisibilitySegment {
   start: Point2D;
   end: Point2D;
   visible: boolean;
+  /**
+   * Affine parameters of `start`/`end` along the parent line (0..1), the
+   * same parameterisation the classifier sampled visibility with. Callers
+   * carrying per-endpoint metadata (view depth) over onto split segments
+   * must lerp with these so the metadata and the visibility decision
+   * cannot disagree.
+   */
+  tStart: number;
+  tEnd: number;
 }
 
 export interface VisibilityResult {
@@ -51,6 +60,19 @@ const DEFAULT_OPTIONS: HiddenLineOptions = {
   samplesPerLine: 10,
   depthBias: 0.001,
 };
+
+/**
+ * View depth along a line as an affine function of the line parameter t
+ * (0 = start, 1 = end). An absent `depthEnd` means constant depth - `??`,
+ * never `||`: `depthEnd: 0` is a real value, an endpoint exactly ON the cut
+ * plane. Single source for sampling (classifySingleLine) and for re-deriving
+ * split-segment depths (applyVisibility), so the two cannot disagree.
+ */
+function lineDepthAt(line: DrawingLine): (t: number) => number {
+  const depthStart = line.depth;
+  const depthEnd = line.depthEnd ?? line.depth;
+  return (t: number) => depthStart + (depthEnd - depthStart) * t;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HIDDEN LINE CLASSIFIER
@@ -132,13 +154,31 @@ export class HiddenLineClassifier {
       } else if (result.overallVisibility === 'hidden') {
         output.push({ ...result.line, visibility: 'hidden' });
       } else {
-        // Partial visibility - split into segments
+        // Partial visibility - split into segments, re-deriving each split
+        // segment's depth/depthEnd AT ITS OWN ENDPOINTS via the same affine
+        // parameterisation the classifier sampled with. Spreading the parent
+        // line's original pair onto every split (the pre-fix behaviour)
+        // attached depths describing the PARENT's endpoints to segments that
+        // start or end elsewhere, and line-merger then faithfully propagated
+        // those stale values into merged output (PR #2644 review).
+        const depthAt = lineDepthAt(result.line);
         for (const seg of result.segments) {
-          output.push({
+          const depth = depthAt(seg.tStart);
+          const depthEnd = depthAt(seg.tEnd);
+          const split: DrawingLine = {
             ...result.line,
             line: { start: seg.start, end: seg.end },
             visibility: seg.visible ? 'visible' : 'hidden',
-          });
+            depth,
+          };
+          if (depthEnd !== depth) {
+            split.depthEnd = depthEnd;
+          } else {
+            // "Omitted means constant depth" - don't leak the parent's
+            // depthEnd onto a constant-depth split.
+            delete split.depthEnd;
+          }
+          output.push(split);
         }
       }
     }
@@ -156,27 +196,35 @@ export class HiddenLineClassifier {
 
     // View depth varies along the line when the producer supplied a
     // per-endpoint `depthEnd` (e.g. a sloped edge); lerp it per sample.
-    const depthStart = line.depth;
-    const depthEnd = line.depthEnd ?? line.depth;
-    const depthAt = (t: number) => depthStart + (depthEnd - depthStart) * t;
+    const depthAt = lineDepthAt(line);
 
     // For very short lines, just test the midpoint
     const numSamples = lineLength < EPSILON ? 1 : Math.max(2, samplesPerLine);
 
     const segments: VisibilitySegment[] = [];
     let currentStart = line.line.start;
+    let currentT = 0;
     let currentVisible = this.sampleVisibility(line.line.start, depthAt(0), depthBias);
     let visibleCount = currentVisible ? 1 : 0;
 
     for (let i = 1; i <= numSamples; i++) {
       const t = i / numSamples;
-      const point = point2DLerp(line.line.start, line.line.end, t);
+      // The final sample is the EXACT endpoint: a lerp at t = 1 can
+      // overshoot it by one ulp on sign-straddling coordinates (e.g.
+      // -0.3 + (0.1 - -0.3) > 0.1) and land outside the raster bounds,
+      // misreading a fully occluded endpoint as visible (PR #2644 review).
+      const point =
+        i === numSamples ? line.line.end : point2DLerp(line.line.start, line.line.end, t);
       const isVisible = this.sampleVisibility(point, depthAt(t), depthBias);
 
       if (isVisible) visibleCount++;
 
-      // Check for visibility change
-      if (isVisible !== currentVisible && i < numSamples) {
+      // Open a transition on any visibility change - INCLUDING one at the
+      // final sample. The previous `i < numSamples` guard swallowed a flip
+      // there, so `overallVisibility` (counted over ALL samples) could say
+      // 'partial' while the emitted segments were one uniform run; now the
+      // two derive from the same transitions and cannot disagree.
+      if (isVisible !== currentVisible) {
         // Find transition point (approximate)
         const transitionT = (i - 0.5) / numSamples;
         const transitionPoint = point2DLerp(line.line.start, line.line.end, transitionT);
@@ -185,9 +233,12 @@ export class HiddenLineClassifier {
           start: currentStart,
           end: transitionPoint,
           visible: currentVisible,
+          tStart: currentT,
+          tEnd: transitionT,
         });
 
         currentStart = transitionPoint;
+        currentT = transitionT;
         currentVisible = isVisible;
       }
     }
@@ -197,9 +248,14 @@ export class HiddenLineClassifier {
       start: currentStart,
       end: line.line.end,
       visible: currentVisible,
+      tStart: currentT,
+      tEnd: 1,
     });
 
-    // Determine overall visibility
+    // Determine overall visibility. With transitions opened on every flip
+    // this is equivalent to deriving it from the segments: all samples
+    // visible = one visible segment, none visible = one hidden segment,
+    // anything else opened at least one transition.
     let overallVisibility: VisibilityState;
     if (visibleCount === numSamples + 1) {
       overallVisibility = 'visible';

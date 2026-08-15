@@ -240,6 +240,37 @@ describe('mergeDrawingLines grouping', () => {
     expect(merged[0].depthEnd).toBeCloseTo(2, 9);
   });
 
+  it('ignores a CONTAINED segment\'s depths: every merged endpoint is a source endpoint (PR #2644 review)', () => {
+    // [0,10] with depths (1,2) swallows a contained [2,3] carrying wild
+    // depths (99,98). Containment must not move the far endpoint's
+    // provenance: the merged line still ends at x = 10, so unconditionally
+    // adopting the later interval's provenance (instead of only when it
+    // EXTENDS the run) would report depthEnd 98 for a point whose source
+    // depth is 2. All the other merge-depth cases use touching segments and
+    // cannot see this.
+    const merged = mergeDrawingLines([
+      drawingLine(seg(0, 0, 10, 0), { depth: 1, depthEnd: 2 }),
+      drawingLine(seg(2, 0, 3, 0), { depth: 99, depthEnd: 98 }),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(lengthOf(merged[0].line)).toBeCloseTo(10, 9);
+    expect(merged[0].depth).toBeCloseTo(1, 9);
+    expect(merged[0].depthEnd).toBeCloseTo(2, 9);
+  });
+
+  it('carries a source depthEnd of 0 (endpoint ON the cut plane) onto the merged end (PR #2644 review)', () => {
+    // depthEnd: 0 is a real value - the endpoint sits exactly on the cut
+    // plane. The valid-but-falsy defect class (`depthEnd || depth`) would
+    // read the second segment's end depth as 1 instead of 0.
+    const merged = mergeDrawingLines([
+      drawingLine(a, { depth: 2, depthEnd: 1 }),
+      drawingLine(b, { depth: 1, depthEnd: 0 }),
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].depth).toBeCloseTo(2, 9);
+    expect(merged[0].depthEnd).toBe(0);
+  });
+
   it('carries the group metadata onto the merged line', () => {
     const merged = mergeDrawingLines([
       drawingLine(a, { entityId: 42, ifcType: 'IfcSlab', category: 'hidden' }),

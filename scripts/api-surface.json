@@ -4214,6 +4214,11 @@
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"
   ],
+  "@ifc-lite/source-msgraph": [
+    "MSGRAPH_MANIFEST: const",
+    "MsGraphProvider: class",
+    "REDIRECT_PATH: const"
+  ],
   "@ifc-lite/spatial": [
     "AABB: interface",
     "AABBUtils: class",

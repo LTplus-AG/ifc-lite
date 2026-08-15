@@ -21,7 +21,7 @@ import {
   reprojectionInputKey,
   type LatLon,
 } from '@/lib/geo/reproject';
-import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
+import { extractProjectUnits, type IfcDataStore, type ProjectUnits } from '@ifc-lite/parser';
 
 interface Vec3Like { x: number; y: number; z: number }
 interface Enh { e: string; n: string; h: string }
@@ -396,7 +396,7 @@ interface MeasurementItemProps {
   onDelete: (id: string) => void;
   /** When set, show real-world E/N/H for the measurement's two endpoints. */
   geoAnchor: AnchorGeoreference | null;
-  projectUnits?: any;
+  projectUnits?: ProjectUnits;
   unitDisplayOverrides?: Record<string, string>;
 }
 

@@ -17,6 +17,7 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotati
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
+import type { ProjectUnits } from '@ifc-lite/parser';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -384,7 +385,7 @@ interface Drawing2DCanvasProps {
   scanPoints?: readonly ScanBandPoint[];
   scanOpacity?: number;
   // Unit display overrides
-  projectUnits?: any;
+  projectUnits?: ProjectUnits;
   unitDisplayOverrides?: Record<string, string>;
 }
 

@@ -460,7 +460,6 @@ export function Section2DPanel({
     sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
     ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
     scanSection: scanSectionLayer,
-    projectUnits, unitDisplayOverrides,
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

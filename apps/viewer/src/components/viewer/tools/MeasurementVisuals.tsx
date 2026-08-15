@@ -10,6 +10,7 @@ import React, { useMemo } from 'react';
 import type { Measurement, SnapVisualization } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
+import type { ProjectUnits } from '@ifc-lite/parser';
 import { formatDistance } from './formatDistance';
 
 export interface MeasurementOverlaysProps {
@@ -21,7 +22,7 @@ export interface MeasurementOverlaysProps {
   hoverPosition?: { x: number; y: number } | null;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   constraintEdge?: MeasurementConstraintEdge | null;
-  projectUnits?: any;
+  projectUnits?: ProjectUnits;
   unitDisplayOverrides?: Record<string, string>;
 }
 

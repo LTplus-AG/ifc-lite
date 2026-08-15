@@ -299,6 +299,11 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release'
+        # Force bash so the backslash line-continuation parses on Windows
+        # runners too (default shell there is PowerShell, which reads the
+        # bare `--clobber` continuation as the unary decrement operator →
+        # win32-x64 release upload failed with a ParserError).
+        shell: bash
         run: |
           gh release upload "${{ github.event.release.tag_name }}" \
             ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }} \

@@ -96,14 +96,18 @@ function NumberField({
 }
 
 function ZoneRow({
-  setId, zone, editing, exporting, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
+  setId, zone, editing, exporting, exportProgress, onEdit, onUpdate, onRemove, onSelect, onExportGeometry,
 }: {
   setId: string;
   zone: Zone;
   editing: boolean;
   /** A geometry export for THIS zone is running: the control is disabled and
-   *  says so, because the split blocks the main thread for seconds. */
+   *  says so, because the cut takes hundreds of milliseconds per element. */
   exporting: boolean;
+  /** Elements cut so far, while `exporting`. Worth rendering only because the
+   *  cutting moved to a worker: on the main thread nothing could repaint
+   *  between the first element and the last. */
+  exportProgress?: { done: number; total: number } | null;
   onEdit: () => void;
   onUpdate: (patch: Partial<Omit<Zone, 'id'>>) => void;
   onRemove: () => void;
@@ -151,6 +155,11 @@ function ZoneRow({
         >
           <Scissors className={`h-3 w-3${exporting ? ' animate-pulse' : ''}`} />
         </Button>
+        {exporting && exportProgress && (
+          <span className="text-[10px] tabular-nums text-muted-foreground" role="status" aria-live="polite">
+            Cutting {exportProgress.done}/{exportProgress.total}
+          </span>
+        )}
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Delete zone" onClick={onRemove}>
           <Trash2 className="h-3 w-3" />
         </Button>
@@ -245,6 +254,9 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
   // has not re-rendered yet at that point).
   const [exportingZoneId, setExportingZoneId] = useState<string | null>(null);
   const exportingRef = useRef(false);
+  // How far the cut has got. Only meaningful while a worker is doing the work:
+  // before this, the main thread was blocked and nothing could have painted it.
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
 
   const [newSetName, setNewSetName] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -419,6 +431,7 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     else toast.info('No elements in this zone');
                   }}
                   exporting={exportingZoneId === zone.id}
+                  exportProgress={exportProgress}
                   onExportGeometry={async () => {
                     // The split is seconds of synchronous work (~357 ms per cut
                     // element, measured), so three things have to happen before
@@ -430,10 +443,18 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     if (exportingRef.current) return;
                     exportingRef.current = true;
                     setExportingZoneId(zone.id);
-                    await new Promise((resolve) => setTimeout(resolve, 0));
-                    let result: ReturnType<typeof exportZone>;
+                    setExportProgress(null);
+                    let result: Awaited<ReturnType<typeof exportZone>>;
                     try {
-                      result = exportZone(zs, zs.zones.indexOf(zone));
+                      // The cutting runs in a worker now, so this await yields
+                      // to the event loop rather than blocking it: the disabled
+                      // state paints, the progress below updates, and the model
+                      // can still be orbited while a section is being cut.
+                      result = await exportZone(
+                        zs,
+                        zs.zones.indexOf(zone),
+                        (done, total) => setExportProgress({ done, total }),
+                      );
                     } catch (error) {
                       // The kernel, the GLB build and the download can each
                       // throw. Inside an ASYNC handler a throw becomes an
@@ -447,11 +468,17 @@ export function ZonesPanel({ onClose }: ZonesPanelProps) {
                     } finally {
                       exportingRef.current = false;
                       setExportingZoneId(null);
+                      setExportProgress(null);
                     }
                     if (!result.ok) {
                       toast.error(result.reason === 'no-binding'
                         ? 'The geometry engine in this build cannot split meshes'
-                        : 'Nothing to export: no loaded geometry reaches this zone');
+                        : result.reason === 'busy'
+                          // Reachable by closing the panel mid-export and
+                          // reopening it: this component's own guard resets,
+                          // the run behind it does not.
+                          ? 'Another zone is still being cut. Wait for it to finish.'
+                          : 'Nothing to export: no loaded geometry reaches this zone');
                       return;
                     }
                     const { whole, cut, refused, noGeometry, elapsedMs } = result.summary;

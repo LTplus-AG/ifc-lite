@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
-import { isEntityVisible } from '@ifc-lite/renderer';
+import { isEntityVisible, DEFAULT_GHOST_ALPHA } from '@ifc-lite/renderer';
 import { getGlobalRenderer } from '../../hooks/useBCF.js';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { buildMergedGLB } from './cesium-glb.js';
@@ -22,6 +22,17 @@ export interface CesiumModelGLBInput {
    *  so it survives both in-place mutation of a set and a fresh Set with equal
    *  content — neither of which an identity check would catch. */
   visibilityVersion: number;
+  /**
+   * X-Ray context: when non-null, everything NOT in this set renders ghosted.
+   * The inverse sense of `isolatedIds` — isolation hides the rest, ghosting
+   * fades it. `null` means no X-Ray is active.
+   */
+  ghostExceptIds: ReadonlySet<number> | null | undefined;
+  /** Selection is exempt from ghosting, exactly as in the renderer. */
+  selectedIds: ReadonlySet<number> | null | undefined;
+  /** Version from a tracker fed the ghost set, for the same reason as
+   *  `visibilityVersion`. */
+  ghostVersion: number;
 }
 
 /**
@@ -48,6 +59,7 @@ export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
     input.geometryResult.meshes.length,
     instancedEntities,
     input.visibilityVersion,
+    input.ghostVersion,
   ].join(':');
 }
 
@@ -84,7 +96,42 @@ export function buildCesiumModelGLB(input: CesiumModelGLBInput): {
   const key = cesiumModelGLBKey(input);
   const complete = withInstancedMeshes(input.geometryResult, true);
   const visible = filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
-  return { glb: buildMergedGLB(visible), key };
+  const shaded = applyGhostAlpha(visible, input.ghostExceptIds, input.selectedIds);
+  return { glb: buildMergedGLB(shaded), key };
+}
+
+/**
+ * Fade everything outside the X-Ray context set, the way the renderer does.
+ *
+ * The rule is the renderer's, restated only because the world view builds its
+ * own glTF and cannot inherit the render pass: everything not in
+ * `ghostExceptIds` drops to `DEFAULT_GHOST_ALPHA` — the constant this imports
+ * rather than a second literal — and the current selection is exempt. RGB is
+ * untouched; ghosting is an alpha change only.
+ *
+ * Returns the input untouched when no X-Ray is active, which is the common
+ * case, so nothing is copied for nothing.
+ *
+ * GPU-instanced occurrences ARE ghosted here, and that is a deliberate
+ * divergence from the viewport, which does not: `Scene.setInstancedVisibility`
+ * takes only the hide and isolate sets, so an instanced facade panel stays
+ * solid there while everything around it fades. That is the viewport being
+ * wrong rather than the map — the user asked to X-ray everything outside the
+ * focus, and a solid facade in front of a ghosted building answers a question
+ * nobody asked. Replicating it to stay symmetrical would mean copying a defect.
+ * Filed against the renderer separately; when it is fixed the two agree again.
+ */
+function applyGhostAlpha(
+  meshes: readonly MeshData[],
+  ghostExceptIds: ReadonlySet<number> | null | undefined,
+  selectedIds: ReadonlySet<number> | null | undefined,
+): MeshData[] {
+  if (ghostExceptIds == null) return meshes as MeshData[];
+  return meshes.map((m) => {
+    if (ghostExceptIds.has(m.expressId) || selectedIds?.has(m.expressId)) return m;
+    const [r, g, b] = m.color ?? [0.7, 0.7, 0.7, 1];
+    return { ...m, color: [r, g, b, DEFAULT_GHOST_ALPHA] as [number, number, number, number] };
+  });
 }
 
 /** No-op (and no copy) when neither filter is active — the common case. */

@@ -5,7 +5,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { classifyCacheTier, planCacheWrite, decideMeshOnlyCacheHit, type CacheTierOptions } from './cacheTier.js';
+import {
+  classifyCacheTier,
+  planCacheWrite,
+  decideMeshOnlyCacheHit,
+  decideCacheLoadOutcome,
+  type CacheTierOptions,
+} from './cacheTier.js';
 
 // Mirror the production constants (ifcConfig.ts). Not imported: ifcConfig reads
 // import.meta.env at module load and can't be evaluated under `node:test`.
@@ -111,5 +117,48 @@ describe('decideMeshOnlyCacheHit', () => {
     assert.equal(decideMeshOnlyCacheHit({ storedMtime: 0, freshMtime: 1000, hasFullHash: false }), 'miss');
     assert.equal(decideMeshOnlyCacheHit({ freshMtime: 1000, hasFullHash: true }), 'serve');
     assert.equal(decideMeshOnlyCacheHit({ hasFullHash: false }), 'miss');
+  });
+});
+
+describe('decideCacheLoadOutcome', () => {
+  it('SERVES a successful hit that still owns the active model slot', () => {
+    assert.equal(
+      decideCacheLoadOutcome({ loadSucceeded: true, isStale: false }),
+      'serve',
+    );
+  });
+
+  it('reports MISS (fall through to server/WASM) for an ordinary failed hit', () => {
+    // The bounding control for the whole fix: a real cache miss must keep
+    // falling through to a fresh parse. An over-eager early return here would
+    // silently disable caching's fallback and leave the model unloaded.
+    assert.equal(
+      decideCacheLoadOutcome({ loadSucceeded: false, isStale: false }),
+      'miss',
+    );
+  });
+
+  it('reports STALE — distinct from a miss — when the load was superseded', () => {
+    // `loadFromCache` returns the same `success: false` for a superseded load
+    // as for a miss. Collapsing the two sends the superseded load into a full
+    // server/WASM reparse of the OLD file while the newer load owns the slot,
+    // so the two MUST NOT map to the same outcome.
+    assert.equal(
+      decideCacheLoadOutcome({ loadSucceeded: false, isStale: true }),
+      'stale',
+    );
+    assert.notEqual(
+      decideCacheLoadOutcome({ loadSucceeded: false, isStale: true }),
+      decideCacheLoadOutcome({ loadSucceeded: false, isStale: false }),
+    );
+  });
+
+  it('STALE dominates success: a superseded load never finalizes either', () => {
+    // A hit can succeed and *then* be superseded while it resolves. Finalizing
+    // it would write the old file's store into the new model's slot.
+    assert.equal(
+      decideCacheLoadOutcome({ loadSucceeded: true, isStale: true }),
+      'stale',
+    );
   });
 });

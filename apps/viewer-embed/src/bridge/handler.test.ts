@@ -46,9 +46,17 @@ interface Posted {
 interface FakeWindow {
   posted: Posted[];
   listenerCount: () => number;
-  dispatch: (event: { data: unknown; origin: string }) => void;
+  /**
+   * `source` defaults to the legitimate parent window reference (`win.parent`,
+   * exactly what a real inbound MessageEvent's `event.source` would be for a
+   * message actually sent by the host page). Pass an explicit `source` to
+   * model a message forged from some OTHER window.
+   */
+  dispatch: (event: { data: unknown; origin: string; source?: unknown }) => void;
   /** Grab the live listeners so a message can be replayed after teardown. */
   captureListeners: () => Array<(e: unknown) => void>;
+  /** The legitimate parent window reference, i.e. what `event.source` is for real inbound traffic. */
+  parentSource: unknown;
 }
 
 function installWindow({ inIframe = true }: { inIframe?: boolean } = {}): FakeWindow {
@@ -74,8 +82,10 @@ function installWindow({ inIframe = true }: { inIframe?: boolean } = {}): FakeWi
     posted,
     listenerCount: () => listeners.size,
     captureListeners: () => [...listeners],
+    parentSource: win.parent,
     dispatch: (event) => {
-      for (const fn of [...listeners]) fn(event);
+      const withSource = { ...event, source: 'source' in event ? event.source : win.parent };
+      for (const fn of [...listeners]) fn(withSource);
     },
   };
 }
@@ -105,13 +115,29 @@ function makeState() {
     5: { globalId: 'GUID-A', name: 'Wall A', type: 'IfcWall' },
     7: { globalId: 'GUID-B', name: 'Slab B', type: 'IfcSlab' },
   });
+  // Real pset/qset data, keyed by expressId: entity 7 (Slab B) has some;
+  // entity 5 (Wall A) genuinely has none — the bounding control.
+  const getProperties = (id: number) =>
+    id === 7
+      ? [{ name: 'Pset_SlabCommon', properties: [
+          { name: 'IsExternal', value: false },
+          { name: 'FireRating', value: '90min' },
+        ] }]
+      : [];
+  const getQuantities = (id: number) =>
+    id === 7
+      ? [{ name: 'Qto_SlabBaseQuantities', quantities: [
+          { name: 'GrossArea', value: 12.5 },
+          { name: 'Perimeter', value: 14 },
+        ] }]
+      : [];
   const models = new Map<string, any>([
     ['m1', {
       id: 'm1',
       name: 'model-one.ifc',
       idOffset: 1000,
       visible: true,
-      ifcDataStore: { entities },
+      ifcDataStore: { entities, getProperties, getQuantities },
       geometryResult: { totalTriangles: 42 },
     }],
   ]);
@@ -127,7 +153,13 @@ function makeState() {
       setPresetView: rec('setPresetView'),
     },
     setTheme: rec('setTheme'),
-    removeModel: rec('removeModel'),
+    // Mirrors the real implementation's Map.delete semantics exactly
+    // (apps/viewer/src/store/slices/modelSlice.ts ~147-213): deleting an
+    // absent key is a silent no-op, no throw. The bridge is responsible for
+    // distinguishing "removed something" from "nothing to remove" — this
+    // double must NOT paper over that by throwing on an unknown id, or the
+    // handler-level test would be proving the wrong thing.
+    removeModel: (id: string) => { calls.push(['removeModel', id]); models.delete(id); },
     clearEntitySelection: rec('clearEntitySelection'),
     setSelectedEntityId: rec('setSelectedEntityId'),
     setSelectedEntityIds: rec('setSelectedEntityIds'),
@@ -144,7 +176,10 @@ function makeState() {
     flipSectionPlane: rec('flipSectionPlane'),
     toggleTypeVisibility: rec('toggleTypeVisibility'),
     resolveGlobalIdFromModels: (id: number) =>
-      id === 1005 ? { modelId: 'm1', expressId: 5 } : undefined,
+      id === 1005 ? { modelId: 'm1', expressId: 5 }
+      : id === 1007 ? { modelId: 'm1', expressId: 7 }
+      : id === 9009 ? { modelId: 'm-nostream', expressId: 9 }
+      : undefined,
   };
   return state;
 }
@@ -174,13 +209,22 @@ function cmd(type: string, data?: unknown, requestId?: string) {
   return { source: EMBED_SOURCE, version: PROTOCOL_VERSION, type, requestId, data };
 }
 
-/** Post a message and let the async handleCommand chain settle. */
+/**
+ * Post a message and let the async handleCommand chain settle. `eventSource`
+ * models the postMessage `event.source` window; omit it to use the
+ * legitimate parent window (see FakeWindow.dispatch's default).
+ */
 async function send(
   fw: FakeWindow,
   message: unknown,
   origin = PARENT,
+  eventSource?: unknown,
 ) {
-  fw.dispatch({ data: message, origin });
+  fw.dispatch(
+    eventSource === undefined
+      ? { data: message, origin }
+      : { data: message, origin, source: eventSource },
+  );
   // handleCommand is async; two macrotask hops cover the awaited load paths.
   await new Promise((r) => setTimeout(r, 0));
   await new Promise((r) => setTimeout(r, 0));
@@ -245,6 +289,77 @@ describe('inbound origin filtering', () => {
     emitEvent('MODEL_LOADED', { entities: 1, triangles: 1, vertices: 1 });
     // Still '*' internally, so the content event is withheld entirely.
     expect(names(fw.posted)).toEqual(['READY']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Inbound source filtering
+//
+// Mirrors the SDK side (packages/embed-sdk/src/index.ts onMessage), which
+// checks `event.source !== this.iframe.contentWindow`. This side's fixed
+// reference is `window.parent` -- the one window `emitToParent` ever posts
+// to. Every inbound message is checked against it from message zero: there
+// is no latch, no first-message gap, and nothing for destroyBridge to reset
+// here.
+// ---------------------------------------------------------------------------
+
+describe('inbound source filtering', () => {
+  it('BOUNDING CONTROL: the full READY -> INIT -> INIT_ACK handshake and a following command still work from the legitimate source', async () => {
+    initBridge(makeCtx(state));
+    expect(names(fw.posted)).toEqual(['READY']);
+    await send(fw, cmd('INIT', { config: { theme: 'dark' } }, 'r0'));
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK']);
+    expect(called(state, 'setTheme')).toBe(true);
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK', 'RESPONSE']);
+  });
+
+  it('rejects the very FIRST inbound message when it does not come from window.parent -- fail-closed from message zero', async () => {
+    initBridge(makeCtx(state));
+    // Models an impostor window winning the race to be first: unlike the old
+    // latch, there is nothing to "capture" here -- the check runs against
+    // window.parent immediately, so the impostor is rejected outright.
+    await send(fw, cmd('INIT', {}, 'r0'), PARENT, { postMessage() {} });
+    expect(names(fw.posted)).toEqual(['READY']);
+    expect(called(state, 'setTheme')).toBe(false);
+  });
+
+  it('drops a same-origin command from any window other than window.parent', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'), PARENT, { postMessage() {} });
+    expect(called(state, 'showAllInAllModels')).toBe(false);
+  });
+
+  it('LOCKOUT: an impostor winning the race first does not block the real parent -- the impostor is ignored and the real parent still works', async () => {
+    initBridge(makeCtx(state));
+    // Impostor fires first, forged from a different window object.
+    await send(fw, cmd('INIT', { token: 'whatever' }, 'r-evil'), PARENT, { postMessage() {} });
+    expect(names(fw.posted)).toEqual(['READY']);
+    // The real parent (event.source === window.parent) still gets through --
+    // no latch was created by the impostor to lock it out.
+    await send(fw, cmd('INIT', {}, 'r0'));
+    expect(names(fw.posted)).toEqual(['READY', 'RESPONSE', 'INIT_ACK']);
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+  });
+
+  it('continues accepting later commands from window.parent', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('INIT', {}, 'r0'));
+    await send(fw, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state, 'showAllInAllModels')).toBe(true);
+  });
+
+  it('accepts commands from window.parent across a destroyBridge/initBridge cycle on a fresh window', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('INIT', {}, 'r0'));
+    destroyBridge();
+    const fw2 = installWindow();
+    const state2 = makeState();
+    initBridge(makeCtx(state2));
+    await send(fw2, cmd('SHOW_ALL', undefined, 'r1'));
+    expect(called(state2, 'showAllInAllModels')).toBe(true);
   });
 });
 
@@ -527,6 +642,27 @@ describe('command dispatch', () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
     expect(argsOf(state, 'removeModel')).toEqual(['m1']);
+  });
+
+  it('BOUNDING CONTROL: REMOVE_MODEL for an id that exists succeeds AND actually removes it from the registry', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('m1')).toBe(true);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'm1' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toBeUndefined();
+    // Not just "the call resolved" — the model must actually be gone.
+    expect(state.models.has('m1')).toBe(false);
+  });
+
+  it('REMOVE_MODEL reports NOT_FOUND for an unknown modelId instead of a bare success', async () => {
+    initBridge(makeCtx(state));
+    expect(state.models.has('does-not-exist')).toBe(false);
+    await send(fw, cmd('REMOVE_MODEL', { modelId: 'does-not-exist' }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.error).toEqual({
+      code: 'NOT_FOUND',
+      message: 'Model does-not-exist not found',
+    });
+    // Nothing to remove, so no data payload on the response either.
+    expect(fw.posted.at(-1)!.msg.data).toBeUndefined();
   });
 
   // -------------------------------------------------------------------------
@@ -815,6 +951,44 @@ describe('read commands', () => {
     });
   });
 
+  it('GET_PROPERTIES returns real property and quantity sets for an entity that has them', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 1007 }, 'r1'));
+    const response = fw.posted.at(-1)!.msg.data;
+    // Assert actual set names and property values, not merely length > 0.
+    expect(response.propertySets).toEqual([
+      { name: 'Pset_SlabCommon', properties: { IsExternal: false, FireRating: '90min' } },
+    ]);
+    expect(response.quantitySets).toEqual([
+      { name: 'Qto_SlabBaseQuantities', quantities: { GrossArea: 12.5, Perimeter: 14 } },
+    ]);
+    // The rest of the response is unchanged real data for this entity.
+    expect(response.expressId).toBe(7);
+    expect(response.ifcType).toBe('IfcSlab');
+    expect(response.name).toBe('Slab B');
+    expect(response.globalId).toBe('GUID-B');
+  });
+
+  it('GET_PROPERTIES returns empty (not undefined) psets/qsets for an entity with genuinely none, leaving the rest of the response unchanged', async () => {
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 1005 }, 'r1'));
+    expect(fw.posted.at(-1)!.msg.data).toEqual({
+      expressId: 5,
+      ifcType: 'IfcWall',
+      name: 'Wall A',
+      globalId: 'GUID-A',
+      attributes: {
+        GlobalId: 'GUID-A',
+        Name: 'Wall A',
+        Description: '',
+        ObjectType: '',
+        Type: 'IfcWall',
+      },
+      propertySets: [],
+      quantitySets: [],
+    });
+  });
+
   it('GET_PROPERTIES reports NOT_FOUND for an unresolvable id', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('GET_PROPERTIES', { id: 999 }, 'r1'));
@@ -822,6 +996,28 @@ describe('read commands', () => {
       code: 'NOT_FOUND',
       message: 'Entity 999 not found',
     });
+  });
+
+  it('GET_PROPERTIES for an entity whose data store has no property/quantity accessors (not yet streamed) returns empty arrays without throwing', async () => {
+    // A model whose ifcDataStore has entity data but no getProperties /
+    // getQuantities accessors attached — models an entity resolvable by id
+    // whose property/quantity data has not (yet) streamed in. Added only to
+    // this test's state so it doesn't shift GET_MODEL_INFO's shared totals.
+    state.models.set('m-nostream', {
+      id: 'm-nostream',
+      name: 'model-nostream.ifc',
+      idOffset: 9000,
+      visible: true,
+      ifcDataStore: { entities: makeEntities({ 9: { globalId: 'GUID-C', name: 'Beam C', type: 'IfcBeam' } }) },
+      geometryResult: { totalTriangles: 0 },
+    });
+    initBridge(makeCtx(state));
+    await send(fw, cmd('GET_PROPERTIES', { id: 9009 }, 'r1'));
+    const response = fw.posted.at(-1)!.msg.data;
+    expect(response.propertySets).toEqual([]);
+    expect(response.quantitySets).toEqual([]);
+    expect(response.expressId).toBe(9);
+    expect(response.ifcType).toBe('IfcBeam');
   });
 
   it('GET_PROPERTIES stays silent without a requestId', async () => {

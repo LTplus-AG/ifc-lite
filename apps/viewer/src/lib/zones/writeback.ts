@@ -93,10 +93,15 @@ export interface ElementZoneFacts {
   /** Every zone the element reaches, in zone-set order. Empty means the element
    *  belongs to this set not at all - those are skipped, not written blank. */
   touchedZoneNames: readonly string[];
+  /** The same zones, by ID and in the same order. Names are unique only by
+   *  convention (`types.ts`), so anything that MATCHES a zone must match on
+   *  this: two zones a user called "Section 2" would otherwise collapse into
+   *  one share and report it for both. */
+  touchedZoneIds: readonly string[];
   straddles: boolean;
   /** Per-zone volume, SI cubic metres, on the basis named in the options. Empty
    *  when no volume could be established. */
-  shares: ReadonlyArray<{ zoneName: string; valueM3: number }>;
+  shares: ReadonlyArray<{ zoneId: string; zoneName: string; valueM3: number }>;
   /** SI cubic metres inside no zone of the set. */
   outsideM3: number;
   /** Why there are no volumes. `null` when `shares` is trustworthy - including

@@ -295,5 +295,6 @@ export const createSelectionSlice: StateCreator<SelectionSlice, [], [], Selectio
     selectedEntity: null,
     selectedEntities: [],
     selectedEntityId: null,
+    selectedEntityIds: new Set(),
   }),
 });

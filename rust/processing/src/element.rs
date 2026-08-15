@@ -38,13 +38,19 @@ use crate::style::{FullIndexedColourMap, GeometryStyleInfo};
 use crate::types::mesh::{MeshData, MeshTextureData, RawInstanceOccurrence};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use ifc_lite_geometry::{
-    calculate_normals, compose_instance_world_row_major, orient_mesh_outward, BoolFailure,
+    calculate_normals, compose_instance_world_row_major, orient_mesh_outward_verdict, BoolFailure,
     GeometryHasher, GeometryRouter, Mesh, ResolvedTextureMap, SubMeshCollection,
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
 use crate::processor::{convert_mesh_to_site_local, get_refs_from_list};
+
+/// The f32-collapse degenerate backstop, its per-element tally, and the reason
+/// that tally now gates the closure verdict. A CHILD module: it exists only to
+/// serve this file's produce/emit cycle.
+#[path = "element_degenerate.rs"]
+mod degenerate;
 
 /// Element-level metadata stamped on every produced [`MeshData`]. The native
 /// pipeline resolves these during its metadata phase; the browser passes
@@ -175,6 +181,32 @@ pub struct ProducedElementMeshes {
     /// `None` when hashing is off, nothing was produced, or the job is a
     /// TypeProduct.
     pub geometry_hash: Option<u64>,
+    /// The same pass's world-space AABB, `[minx, miny, minz, maxx, maxy, maxz]`
+    /// in unquantized `f64` world coordinates (the file's RTC folded back in),
+    /// over every triangle corner the hasher saw. `Some` exactly when
+    /// [`Self::geometry_hash`] is `Some`, so the two stay index-parallel at the
+    /// FFI boundary.
+    ///
+    /// Why the diff engine needs it: the hash conflates moved / reshaped /
+    /// re-tessellated into one "different" bit. The box separates them — same
+    /// extent at a new centre is a MOVE, a different extent is a reshape, an
+    /// identical box with a different hash is retriangulation.
+    pub geometry_aabb: Option<[f64; 6]>,
+    /// The element's enclosed volume in m³ from the SAME pass — `Some` ONLY
+    /// when the produced geometry was provably a single closed orientable
+    /// solid, `None` otherwise (#1891). `None` is the common case for
+    /// material-layered walls, open `SurfaceModel` geometry, and any element
+    /// assembled from more than one representation item.
+    ///
+    /// Read `ifc_lite_geometry::GeometryHasher::volume` before widening any
+    /// clause of that gate: the alternative is not a slightly-off volume, it is
+    /// a confidently wrong one with nothing about it that looks wrong.
+    pub geometry_volume: Option<f64>,
+    /// The folded per-segment topology verdict behind [`Self::geometry_volume`]
+    /// — which clause held and which refused. `Some` exactly when
+    /// [`Self::geometry_hash`] is. A model checker wants it: "open shell" and
+    /// "multi-item assembly" are different findings with different fixes.
+    pub geometry_closure: Option<ifc_lite_geometry::GeometryClosure>,
     /// CSG diagnostics recorded while producing THIS element, attributed by
     /// product id. The router is fully drained on return, so a warm router
     /// reused across a batch never leaks one element's failures into the
@@ -183,10 +215,12 @@ pub struct ProducedElementMeshes {
     /// returned meshes contributes.
     pub csg_failures: FxHashMap<u32, Vec<BoolFailure>>,
     /// Triangles dropped by the f32-collapse degenerate-triangle backstop
-    /// (`drop_degenerate_triangles` in `build_mesh_data`) across ALL of this
-    /// element's meshes. Zero when the backstop is disabled or nothing was
-    /// degenerate. Request-local (scoped per `produce_element_meshes` call)
-    /// so concurrent passes never cross-contaminate.
+    /// (see the `degenerate` child module) across ALL of this element's meshes.
+    /// Zero when the backstop is disabled or nothing was degenerate.
+    /// Request-local (scoped per `produce_element_meshes` call) so concurrent
+    /// passes never cross-contaminate. Non-zero also RETRACTS
+    /// [`Self::geometry_closure`] and [`Self::geometry_volume`] — the drop
+    /// happens after the verdict was taken and can open a certified shell.
     pub degenerate_triangles_dropped: u64,
 }
 
@@ -215,12 +249,8 @@ pub fn produce_element_meshes(
     ifc_lite_geometry::kernel::budget::begin_element();
 
     // Open this element's degenerate-backstop scope (same begin/drain shape as
-    // the kernel budget above): `build_mesh_data` adds to the thread-local as
-    // it drops collapsed triangles, and we drain it into the result below.
-    // Thread-local is correct on both pipelines: the native rayon loop runs
-    // one element entirely on one worker thread, and the wasm batch loop is
-    // serial.
-    DEGENERATE_DROPPED.with(|c| c.set(0));
+    // the kernel budget above); see the `degenerate` child module.
+    degenerate::begin_element();
 
     let mut hasher = match (&job.kind, opts.geometry_hash) {
         (ElementJobKind::Product, Some(cfg)) => {
@@ -235,24 +265,36 @@ pub fn produce_element_meshes(
     // a warm (batch-reused) router starts the next element clean.
     let csg_failures = router.take_csg_failures();
 
-    let geometry_hash = hasher.and_then(|h| if h.is_empty() { None } else { Some(h.finish()) });
+    // A hash with NO box is reachable and deliberately KEPT (a NaN axis hashes
+    // but never accumulates); `push_geometry_hash` reserves NaN slots so the FFI
+    // arrays still cannot misalign. Box-without-hash is impossible. VOLUME may
+    // likewise be `None` within an emitted entry (landing as NaN) — the normal
+    // answer for most elements. See `world_aabb` / `GeometryHasher::volume`.
+    let degenerate_triangles_dropped = degenerate::dropped_this_element();
 
-    let degenerate_triangles_dropped = DEGENERATE_DROPPED.with(|c| c.get());
+    // The verdict was taken where the orienter runs; `build_mesh_data` then ran
+    // the degenerate backstop over the same triangles, and a dropped triangle
+    // opens every neighbour along its three edges. Retract before reading, so
+    // what ships describes the mesh actually returned (see
+    // `retract_closure_if_mesh_edited`).
+    let (geometry_hash, geometry_aabb, geometry_volume, geometry_closure) = match hasher {
+        Some(mut h) if !h.is_empty() => {
+            h.retract_closure_if_mesh_edited(degenerate_triangles_dropped);
+            (Some(h.finish()), h.world_aabb(), h.volume(), Some(h.closure()))
+        }
+        _ => (None, None, None, None),
+    };
 
     ProducedElementMeshes {
         meshes,
         instance_occurrences,
         geometry_hash,
+        geometry_aabb,
+        geometry_volume,
+        geometry_closure,
         csg_failures,
         degenerate_triangles_dropped,
     }
-}
-
-thread_local! {
-    /// Per-element degenerate-backstop drop tally. Reset at the top of
-    /// `produce_element_meshes`, incremented by `build_mesh_data`, drained
-    /// into [`ProducedElementMeshes::degenerate_triangles_dropped`].
-    static DEGENERATE_DROPPED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 fn produce_inner(
@@ -376,7 +418,12 @@ fn produce_inner(
     // volume and the smooth normals computed below. No-op for already-consistent
     // bodies (every extrusion), so their index buffer + normals are untouched; a
     // flip invalidates any baked normals, so recompute them.
-    if orient_mesh_outward(&mut mesh) {
+    //
+    // The verdict rides along to the hasher below: this pass is the only place
+    // that knows whether the assembled body is a closed orientable solid, and
+    // without that a per-element volume cannot be emitted honestly (#1891).
+    let verdict = orient_mesh_outward_verdict(&mut mesh);
+    if verdict.flipped {
         calculate_normals(&mut mesh);
     }
 
@@ -392,7 +439,10 @@ fn produce_inner(
             let geometry_id = full.geometry_id;
             if let Some(groups) = crate::style::split_mesh_by_indexed_colour(&mesh, full) {
                 if let Some(h) = hasher.as_mut() {
-                    h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
+                    // The palette split below only partitions triangles; the
+                    // verdict from the un-split body is the one that describes
+                    // this hashed buffer.
+                    h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
                 }
                 let mut out: Vec<MeshData> = Vec::with_capacity(groups.len());
                 for (color, mut part) in groups {
@@ -421,7 +471,7 @@ fn produce_inner(
         calculate_normals(&mut mesh);
     }
     if let Some(h) = hasher.as_mut() {
-        h.add_mesh_with_origin(&mesh.positions, &mesh.indices, mesh.origin);
+        h.add_oriented_mesh(&mesh.positions, &mesh.indices, mesh.origin, verdict);
     }
     (
         vec![build_mesh_data(job, mesh, element_color, None, None, 0, ctx, None)],
@@ -489,7 +539,10 @@ fn emit_sub_meshes(
         }
         // Consistently outward-wind each sub-body (see the single-mesh path); a
         // flip invalidates baked normals, so recompute on flip or when absent.
-        if orient_mesh_outward(&mut sub_mesh) || sub_mesh.normals.len() != sub_mesh.positions.len() {
+        // The verdict is per SUB-BODY, which is also the hasher's segment
+        // granularity, so closedness is attributed to exactly what it describes.
+        let verdict = orient_mesh_outward_verdict(&mut sub_mesh);
+        if verdict.flipped || sub_mesh.normals.len() != sub_mesh.positions.len() {
             calculate_normals(&mut sub_mesh);
         }
 
@@ -511,7 +564,7 @@ fn emit_sub_meshes(
             .or_else(|| infer_opening_subpart_material_name(&job.ifc_type, color, sub.geometry_id));
 
         if let Some(h) = hasher.as_mut() {
-            h.add_mesh_with_origin(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin);
+            h.add_oriented_mesh(&sub_mesh.positions, &sub_mesh.indices, sub_mesh.origin, verdict);
         }
 
         // Textured face set (#1781): thread the per-vertex UVs through the
@@ -639,19 +692,11 @@ fn produce_type_geometry(
     out
 }
 
-/// Whether the f32-collapse degenerate-triangle backstop is disabled.
-///
-/// On by default. Set `IFC_LITE_DISABLE_DEGENERATE_BACKSTOP=1` to keep the raw
-/// (possibly fan-corrupted) triangles — an escape hatch for debugging the
-/// heuristic or measuring exactly what it removes. Read once and cached.
-fn degenerate_backstop_disabled() -> bool {
-    static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *DISABLED.get_or_init(|| std::env::var("IFC_LITE_DISABLE_DEGENERATE_BACKSTOP").is_ok())
-}
-
 /// Construct the final [`MeshData`]: metadata stamp, style metadata,
 /// geometry-class tag, and the optional site-local rotation. ALWAYS the last
-/// step — geometry hashing happens before this (native IFC frame).
+/// step — geometry hashing happens before this (native IFC frame), which is why
+/// the degenerate drop below has to report what it removed: it edits a mesh the
+/// hasher has already ruled on.
 #[allow(clippy::too_many_arguments)] // distinct per-mesh funnel inputs
 fn build_mesh_data(
     job: &ElementMeshJob<'_>,
@@ -667,24 +712,10 @@ fn build_mesh_data(
     // difference also keeps a texture seam's coincident corners split.
     uvs: Option<Vec<f32>>,
 ) -> MeshData {
-    // Backstop for f32 vertex-storage collapse: at building-scale world
-    // coordinates an f32 mantissa can't separate sub-15µm-apart vertices, so
-    // triangles collapse into zero-area / long-thin "fan" slivers that visibly
-    // span large georeferenced models. Drop the unambiguously-degenerate ones
-    // here — the single funnel for every element MeshData. With local-frame
-    // precision on, the mesh is stored relative to `origin` (small coords) so
-    // collapse is PREVENTED upstream and this drops nothing; it stays as the
-    // defence-in-depth safety net for any element still too large for its frame.
-    if !degenerate_backstop_disabled() {
-        let indices_before = mesh.indices.len();
-        mesh.drop_degenerate_triangles();
-        let dropped = ((indices_before - mesh.indices.len()) / 3) as u64;
-        if dropped > 0 {
-            // Diagnostic tally only — the drop itself is unchanged. Drained
-            // per element by `produce_element_meshes` (see DEGENERATE_DROPPED).
-            DEGENERATE_DROPPED.with(|c| c.set(c.get() + dropped));
-        }
-    }
+    // Backstop for f32 vertex-storage collapse, at the single funnel for every
+    // element MeshData, tallying what it removed — `produce_element_meshes`
+    // drains that tally both into the result and into the closure retraction.
+    degenerate::clean(&mut mesh);
     // Source vertex weld (see `mesh_weld::weld_indexed`): the faceted-brep
     // mesher emits per-`IfcFace` geometry duplicating every shared corner once
     // per incident face (~3-6x). Collapse coincident vertices (identical f32

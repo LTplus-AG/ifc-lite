@@ -14,9 +14,11 @@ import type { StateCreator } from 'zustand';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@ifc-lite/lens';
 import { BUILTIN_LENSES } from '@ifc-lite/lens';
 import { duplicateLensConfig, mergeImportedLenses, reserveUniqueId } from '@/components/viewer/lens-editor-utils';
+import { saveJson, type SaveResult } from '@/lib/storage/save-result';
 
 // Re-export types so existing consumer imports from this file still work
 export type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData };
+export type { SaveResult };
 
 // Re-export constants for consumers that import from this file
 export {
@@ -60,11 +62,19 @@ function loadSavedLenses(): { custom: Lens[]; builtinOverrides: Map<string, Lens
   }
 }
 
+/** What the save messages call the thing being persisted. */
+const SAVE_SUBJECT = 'lens changes';
+
 /**
  * Persist lenses to localStorage.
  * Saves custom lenses + any built-in lenses the user has edited (overrides).
+ *
+ * Returns a `SaveResult` rather than swallowing the failure: every CRUD action
+ * below commits to the store only when the write actually landed, so the panel
+ * can never show a lens that will be gone on reload.
  */
-function saveLenses(lenses: Lens[]): void {
+function saveLenses(lenses: Lens[]): SaveResult {
+  let toStore: Lens[];
   try {
     // Save non-builtin custom lenses, but never the ephemeral
     // "color from list column" lens — it is intentionally transient and must
@@ -82,10 +92,13 @@ function saveLenses(lenses: Lens[]): void {
         JSON.stringify(l.rules) !== JSON.stringify(original.rules) ||
         JSON.stringify(l.autoColor) !== JSON.stringify(original.autoColor);
     });
-    localStorage.setItem(STORAGE_KEY, JSON.stringify([...custom, ...builtinOverrides]));
+    toStore = [...custom, ...builtinOverrides];
   } catch {
-    // quota exceeded or unavailable — silently ignore
+    // The override check stringifies rules/autoColor, so a non-serializable
+    // lens fails here rather than in saveJson. Same class of failure.
+    return { ok: false, reason: 'serialize', message: `Could not save ${SAVE_SUBJECT}.` };
   }
+  return saveJson(STORAGE_KEY, toStore, SAVE_SUBJECT);
 }
 
 /** Build initial lens list: builtins (with overrides applied) + custom */
@@ -96,6 +109,11 @@ function buildInitialLenses(): Lens[] {
   );
   return [...builtins, ...custom];
 }
+
+/** `duplicateLens` carries the new copy alongside the save outcome. */
+export type DuplicateLensResult =
+  | { ok: true; lens: Lens | null }
+  | Extract<SaveResult, { ok: false }>;
 
 export interface LensSlice {
   // State
@@ -132,16 +150,18 @@ export interface LensSlice {
   /** Discovered data from loaded models (classes instant, rest lazy) */
   discoveredLensData: DiscoveredLensData | null;
 
-  // Actions
-  createLens: (lens: Lens) => void;
-  updateLens: (id: string, patch: Partial<Lens>) => void;
-  deleteLens: (id: string) => void;
+  // Lens CRUD (persisted). Each returns a SaveResult so the panel can surface a
+  // quota / storage failure; none of them commits to the store unless the write
+  // landed, so what the user sees is what survives a reload.
+  createLens: (lens: Lens) => SaveResult;
+  updateLens: (id: string, patch: Partial<Lens>) => SaveResult;
+  deleteLens: (id: string) => SaveResult;
   /**
    * Duplicate a lens (including a built-in) into an editable custom copy
-   * inserted right after the original. Returns the new lens, or null if the
-   * source id was not found. (#1403)
+   * inserted right after the original. On success `lens` is the new copy, or
+   * null if the source id was not found. (#1403)
    */
-  duplicateLens: (id: string) => Lens | null;
+  duplicateLens: (id: string) => DuplicateLensResult;
   setActiveLens: (id: string | null) => void;
   toggleLensPanel: () => void;
   setLensPanelVisible: (visible: boolean) => void;
@@ -163,14 +183,14 @@ export interface LensSlice {
    * so an export → edit → re-import round-trip updates lenses in place rather
    * than silently no-op'ing on id collisions. (#1403)
    */
-  importLenses: (lenses: readonly unknown[]) => void;
+  importLenses: (lenses: readonly unknown[]) => SaveResult;
   /**
    * Replace the entire saved-lens set (custom + builtin overrides). Used
    * when activating a flavor: the flavor's stored lens snapshot becomes
    * the new viewer state. Builtins missing from `lenses` are restored
    * from defaults so the user never ends up with an empty lens panel.
    */
-  setSavedLenses: (lenses: Lens[]) => void;
+  setSavedLenses: (lenses: Lens[]) => SaveResult;
   /** Export all lenses (builtins + custom) as serializable array */
   exportLenses: () => Lens[];
   /** Create and activate an auto-color lens from a data column spec */
@@ -193,40 +213,47 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
   discoveredLensData: null,
 
   // Actions
-  createLens: (lens) => set((state) => {
-    const next = [...state.savedLenses, lens];
-    saveLenses(next);
-    return { savedLenses: next };
-  }),
+  createLens: (lens) => {
+    const next = [...get().savedLenses, lens];
+    const result = saveLenses(next);
+    if (result.ok) set({ savedLenses: next });
+    return result;
+  },
 
-  updateLens: (id, patch) => set((state) => {
-    const next = state.savedLenses.map(l => l.id === id ? { ...l, ...patch } : l);
-    saveLenses(next);
-    return { savedLenses: next };
-  }),
+  updateLens: (id, patch) => {
+    const next = get().savedLenses.map(l => l.id === id ? { ...l, ...patch } : l);
+    const result = saveLenses(next);
+    if (result.ok) set({ savedLenses: next });
+    return result;
+  },
 
-  deleteLens: (id) => set((state) => {
+  deleteLens: (id) => {
+    const state = get();
     const lens = state.savedLenses.find(l => l.id === id);
-    if (lens?.builtin) return {};
+    if (lens?.builtin) return { ok: true }; // built-ins are reset, never deleted
     const next = state.savedLenses.filter(l => l.id !== id);
-    saveLenses(next);
-    return {
-      savedLenses: next,
-      activeLensId: state.activeLensId === id ? null : state.activeLensId,
-    };
-  }),
+    const result = saveLenses(next);
+    if (result.ok) {
+      set({
+        savedLenses: next,
+        activeLensId: state.activeLensId === id ? null : state.activeLensId,
+      });
+    }
+    return result;
+  },
 
   duplicateLens: (id) => {
     const state = get();
     const index = state.savedLenses.findIndex(l => l.id === id);
-    if (index === -1) return null;
+    if (index === -1) return { ok: true, lens: null };
     const taken = new Set(state.savedLenses.map(l => l.id));
     const copy = duplicateLensConfig(state.savedLenses[index], () => reserveUniqueId(`lens-${Date.now()}`, taken));
     const next = [...state.savedLenses];
     next.splice(index + 1, 0, copy);
-    saveLenses(next);
+    const result = saveLenses(next);
+    if (!result.ok) return result;
     set({ savedLenses: next });
-    return copy;
+    return { ok: true, lens: copy };
   },
 
   setActiveLens: (activeLensId) => set({ activeLensId }),
@@ -253,9 +280,10 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
     return savedLenses.find(l => l.id === activeLensId) ?? null;
   },
 
-  importLenses: (lenses) => set((state) => {
+  importLenses: (lenses) => {
     // Upsert by id: replace existing lenses in place, append new ones.
     // Makes the export → edit-JSON → re-import round-trip work (#1403).
+    const state = get();
     const ts = Date.now();
     const taken = new Set(state.savedLenses.map(l => l.id));
     const next = mergeImportedLenses(
@@ -263,9 +291,10 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       lenses,
       (i) => reserveUniqueId(`lens-imported-${ts}-${i}`, taken),
     );
-    saveLenses(next);
-    return { savedLenses: next };
-  }),
+    const result = saveLenses(next);
+    if (result.ok) set({ savedLenses: next });
+    return result;
+  },
 
   exportLenses: () => {
     // Skip the ephemeral "color from list column" lens — it is not a saved lens
@@ -279,26 +308,31 @@ export const createLensSlice: StateCreator<LensSlice, [], [], LensSlice> = (set,
       });
   },
 
-  setSavedLenses: (lenses) => set((state) => {
+  setSavedLenses: (lenses) => {
     // Keep builtins available even if the incoming snapshot dropped
     // them — otherwise switching flavors could leave the user with no
     // BY IFC CLASS / STRUCTURAL / etc. The incoming list takes
     // precedence (it may carry user overrides).
+    const state = get();
     const incomingIds = new Set(lenses.map((l) => l.id));
     const builtinsToKeep = BUILTIN_LENSES
       .filter((b) => !incomingIds.has(b.id))
       .map((b) => ({ ...b }));
     const next = [...builtinsToKeep, ...lenses];
-    saveLenses(next);
+    const result = saveLenses(next);
+    // Leaving the previous set in place beats showing a flavor's lenses that
+    // vanish on reload — the caller reports the failure.
+    if (!result.ok) return result;
     // If the previously active lens id is gone, clear the pointer so
     // the viewer doesn't try to render a missing rule set.
     const activeStillThere = state.activeLensId !== null
       && next.some((l) => l.id === state.activeLensId);
-    return {
+    set({
       savedLenses: next,
       activeLensId: activeStillThere ? state.activeLensId : null,
-    };
-  }),
+    });
+    return result;
+  },
 
   activateAutoColorFromColumn: (spec, label) => set((state) => {
     const lensId = AUTO_COLOR_FROM_LIST_ID;

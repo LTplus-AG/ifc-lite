@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
@@ -11,6 +11,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
+import { createStatusBarStatsAccumulator } from './statusBarStats.js';
 
 export function StatusBar() {
   const { loading, geometryResult, ifcDataStore } = useIfc();
@@ -59,8 +60,14 @@ export function StatusBar() {
   // Memory usage (if available)
   useEffect(() => {
     const updateMemory = () => {
-      if ((performance as any).memory) {
-        setMemory((performance as any).memory.usedJSHeapSize);
+      // Avoid `as any` per repo TypeScript rules — narrow to a concrete shape.
+      // `performance.memory` is Chromium-only and absent from lib.dom.
+      type PerformanceWithMemory = Performance & {
+        memory?: { usedJSHeapSize: number };
+      };
+      const memoryInfo = (performance as PerformanceWithMemory).memory;
+      if (memoryInfo) {
+        setMemory(memoryInfo.usedJSHeapSize);
       }
     };
 
@@ -69,31 +76,21 @@ export function StatusBar() {
     return () => clearInterval(interval);
   }, []);
 
-  const stats = useMemo(() => {
-    if (!geometryResult) {
-      return { elements: 0, triangles: 0 };
-    }
-    // Count actual entities: for color-merged meshes, count unique entity IDs
-    let elements = 0;
-    const meshes = geometryResult.meshes;
-    if (meshes) {
-      for (let i = 0; i < meshes.length; i++) {
-        const m = meshes[i] as { entityIds?: Uint32Array };
-        if (m.entityIds && m.entityIds.length > 0) {
-          // Count unique entity IDs in this merged mesh
-          const seen = new Set<number>();
-          for (let j = 0; j < m.entityIds.length; j++) seen.add(m.entityIds[j]);
-          elements += seen.size;
-        } else {
-          elements += 1;
-        }
-      }
-    }
-    return {
-      elements,
-      triangles: geometryResult.totalTriangles ?? 0,
-    };
-  }, [geometryResult]);
+  // PERF: geometryResult is a NEW object on every streaming batch commit
+  // (dataSlice.ts appendGeometryBatch), so this memo's dependency never
+  // hits during a stream — it re-derives stats every commit. A full O(meshes
+  // + entityIds) rescan there made a 16.7K-mesh stream spend ~524ms total in
+  // this memo alone (30 commits, allocating a `Set` per merged mesh on EVERY
+  // commit — not just the new ones). The accumulator below tracks how many
+  // meshes it has already folded in (by array identity + length) and only
+  // scans meshes appended since the last call — `geometryResult.meshes` is
+  // the same array reference mutated in place across a stream, so this is
+  // safe; see statusBarStats.ts for the full identity contract.
+  const statsAccRef = useRef(createStatusBarStatsAccumulator());
+  const stats = useMemo(
+    () => statsAccRef.current.update(geometryResult),
+    [geometryResult],
+  );
 
   const visibleElements = useMemo(() => {
     if (selectedStoreys.size === 0 || !ifcDataStore?.spatialHierarchy) {

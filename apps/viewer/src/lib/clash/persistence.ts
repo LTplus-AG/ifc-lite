@@ -26,6 +26,7 @@ import {
   type ClashSeverity,
 } from '@ifc-lite/clash';
 import { downloadFile } from '../export/download.js';
+import { optionalLocalStorage, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
 /** A built-in or user-defined clash rule preset, with editor/runtime flags. */
 export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
@@ -45,7 +46,7 @@ export interface ClashGlobalSettings {
 
 export type SaveResult =
   | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many'; message: string };
+  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable'; message: string };
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
@@ -86,6 +87,30 @@ let builtinPresetIdsCache: Set<string> | null = null;
 function builtinPresetIds(): Set<string> {
   return (builtinPresetIdsCache ??= new Set(CLASH_RULE_PRESETS.map((p) => p.id)));
 }
+
+/**
+ * Keys whose stored value we failed to read *and* failed to move aside. Both
+ * loaders below degrade to defaults on a read failure, so without this the next
+ * ordinary edit would serialize those defaults over data we never managed to
+ * see. Entries are added by the loader and cleared by a later clean read.
+ */
+const unwritableKeys = new Set<string>();
+
+/** Handle a loader throwing: preserve what is stored, or block writes to `key`. */
+function onReadFailure(key: string, cause: unknown): void {
+  if (preserveUnreadableEntry(optionalLocalStorage(), key, cause)) unwritableKeys.delete(key);
+  else unwritableKeys.add(key);
+}
+
+/** A refusal to overwrite a value we could neither read nor preserve. */
+function refuseOverwrite(what: string): SaveResult {
+  return {
+    ok: false,
+    reason: 'unreadable',
+    message: `Stored ${what} could not be read and could not be backed up — they were left untouched.`,
+  };
+}
+
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const GROUP_BYS: ClashSettingsGroupBy[] = ['severity', 'rule', 'typePair'];
 
@@ -122,8 +147,9 @@ function isValidStoredPreset(p: unknown): p is ClashPreset {
 /** Read stored presets, accepting the versioned wrapper or a legacy bare array. */
 function readStoredPresets(): ClashPreset[] {
   try {
+    unwritableKeys.delete(PRESETS_KEY);
     const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
+    if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     const list = Array.isArray(parsed)
       ? parsed
@@ -142,7 +168,8 @@ function readStoredPresets(): ClashPreset[] {
         enabled: p.enabled !== false,
         builtin: builtinPresetIds().has(p.id),
       }));
-  } catch {
+  } catch (err) {
+    onReadFailure(PRESETS_KEY, err);
     return [];
   }
 }
@@ -198,6 +225,7 @@ export function presetsToStore(presets: ClashPreset[]): ClashPreset[] {
 
 /** Persist only custom presets + modified built-ins (quota-safe). */
 export function savePresets(presets: ClashPreset[]): SaveResult {
+  if (unwritableKeys.has(PRESETS_KEY)) return refuseOverwrite('clash rules');
   const custom = presets.filter((p) => !p.builtin);
   if (custom.length > MAX_PRESETS) {
     return { ok: false, reason: 'too_many', message: `Too many custom rules (max ${MAX_PRESETS}).` };
@@ -235,15 +263,18 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
 
 export function loadSettings(): ClashGlobalSettings {
   try {
+    unwritableKeys.delete(SETTINGS_KEY);
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_CLASH_SETTINGS };
+    if (raw === null) return { ...DEFAULT_CLASH_SETTINGS };
     return normalizeSettings(JSON.parse(raw));
-  } catch {
+  } catch (err) {
+    onReadFailure(SETTINGS_KEY, err);
     return { ...DEFAULT_CLASH_SETTINGS };
   }
 }
 
 export function saveSettings(settings: ClashGlobalSettings): SaveResult {
+  if (unwritableKeys.has(SETTINGS_KEY)) return refuseOverwrite('clash settings');
   try {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }));
     return { ok: true };
@@ -276,8 +307,9 @@ function isReviewStatus(v: unknown): v is ClashReviewStatus {
 export function loadReviews(): Map<string, ClashReview> {
   const map = new Map<string, ClashReview>();
   try {
+    unwritableKeys.delete(REVIEWS_KEY);
     const raw = localStorage.getItem(REVIEWS_KEY);
-    if (!raw) return map;
+    if (raw === null) return map;
     const parsed: unknown = JSON.parse(raw);
     const reviews =
       parsed && typeof parsed === 'object' ? (parsed as { reviews?: unknown }).reviews : null;
@@ -295,7 +327,11 @@ export function loadReviews(): Map<string, ClashReview> {
       // Skip default entries a stale writer may have left behind.
       if (isMeaningfulReview(review)) map.set(key, review);
     }
-  } catch {
+  } catch (err) {
+    // A half-built map is as destructive as an empty one: the next triage edit
+    // writes it back and the entries we never parsed are gone. (#2085)
+    map.clear();
+    onReadFailure(REVIEWS_KEY, err);
     return map;
   }
   return map;
@@ -303,6 +339,7 @@ export function loadReviews(): Map<string, ClashReview> {
 
 /** Persist reviews (default-state entries pruned, capped, quota-safe). */
 export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
+  if (unwritableKeys.has(REVIEWS_KEY)) return refuseOverwrite('clash reviews');
   const entries: Record<string, ClashReview> = {};
   let count = 0;
   for (const [key, review] of reviews) {

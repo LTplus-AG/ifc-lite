@@ -700,6 +700,18 @@ export interface MutationSlice {
   clearAllMutations: () => void;
   /** Manually bump mutation version (for bulk operations that bypass store) */
   bumpMutationVersion: () => void;
+  /**
+   * Mark models as having unsaved changes, and bump the mutation version, in
+   * ONE update.
+   *
+   * For bulk writers that go straight to a model's `MutablePropertyView`
+   * (zone write-back, #2508). Those cannot drive the per-mutation actions
+   * above: each of them copies the model's whole undo stack, so calling one
+   * per element is quadratic. `bumpMutationVersion` alone is not enough  - 
+   * without the dirty flag the model reports no unsaved changes while its
+   * overlay holds thousands of them.
+   */
+  markModelsDirty: (modelIds: readonly string[]) => void;
 }
 
 function generateChangeSetId(): string {
@@ -1320,6 +1332,19 @@ export const createMutationSlice: StateCreator<
 
   // Quantity Mutations
   setQuantity: (modelId, entityId, qsetName, quantName, value, quantityType = QuantityType.Count, unit) => {
+    // Same gate as setProperty/setAttribute/createPropertySet, for the reason
+    // spelled out there: a viewer-role user must not accumulate local-only
+    // edits that silently never reach the room. This was missing here, so a
+    // read-only participant's quantity edits committed locally, marked the
+    // model dirty and entered their undo stack.
+    //
+    // NOTE the sync half of that comment is NOT yet true for quantities even
+    // for an editor: there is no `mirrorQuantityEdit`, and `attachRemoteApply`
+    // has no `quantities` arm, so a quantity edit still reaches no peer. That
+    // is a separate, larger gap — see the tests below and the PR discussion.
+    // Gating here at least stops an unauthorised writer, and stops the local
+    // state diverging further than it already does.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -1348,6 +1373,8 @@ export const createMutationSlice: StateCreator<
   },
 
   createQuantitySet: (modelId, entityId, qsetName, quantities) => {
+    // See setQuantity above — same omission, same reason.
+    if (!get().canCollabEdit()) return null;
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
@@ -3204,5 +3231,26 @@ export const createMutationSlice: StateCreator<
     set((state) => ({
       mutationVersion: state.mutationVersion + 1,
     }));
+  },
+
+  markModelsDirty: (modelIds) => {
+    if (modelIds.length === 0) return;
+    set((state) => {
+      const newDirty = new Set(state.dirtyModels);
+      // Redo is cleared for the same reason every per-mutation action clears
+      // it: a new edit invalidates the branch an undone one could be replayed
+      // onto. A bulk writer is no different, and leaving it alone let Ctrl+Y
+      // replay an edit made before the bulk write, on top of it.
+      const newRedo = new Map(state.redoStacks);
+      for (const id of modelIds) {
+        newDirty.add(id);
+        newRedo.set(id, []);
+      }
+      return {
+        dirtyModels: newDirty,
+        redoStacks: newRedo,
+        mutationVersion: state.mutationVersion + 1,
+      };
+    });
   },
 });

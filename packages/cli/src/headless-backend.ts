@@ -41,7 +41,6 @@ import type {
 } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
-import { GeometryProcessor } from '@ifc-lite/geometry';
 import {
   addBeamToStore,
   addColumnToStore,
@@ -74,14 +73,26 @@ import {
   extractAllEntityAttributes,
   extractClassificationsOnDemand,
   extractMaterialsOnDemand,
+  extractPropertiesOnDemand,
+  extractQuantitiesOnDemand,
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { exportHbjson, exportDfjson } from './energy-export.js';
 
 const MODEL_ID = 'default';
+
+/**
+ * Strip a real IFC source-file extension from a filename-derived model name.
+ * Only applied to the `modelName` fallback: an explicitly supplied export name
+ * is a display name where a trailing dotted segment is meaningful (`Tower.v2`).
+ */
+function stripIfcExtension(name: string): string {
+  return name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
+}
 
 const REL_TYPE_MAP: Record<string, RelationshipType> = {
   IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
@@ -342,8 +353,36 @@ export class HeadlessBackend implements BimBackend {
           }
         }
 
-        if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-        if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+        // `!= null` alone lets a NaN offset/limit through (NaN is neither
+        // null nor undefined); a bare `> 0` then silently drops it (every
+        // NaN comparison is false), which used to IGNORE a garbage value
+        // instead of rejecting it -- and, by the same reasoning, silently
+        // ignored a deliberate `limit: 0`. Reject non-finite/negative
+        // values loudly instead of quietly serving the wrong slice; the
+        // The CLI's own `--limit`/`--offset` flags are validated before they
+        // reach this descriptor, so this guards callers that build one
+        // directly — and it makes `limit: 0` mean "no rows" rather than being
+        // silently ignored, matching what `--limit 0` documents.
+        //
+        // NOTE this does NOT cover @ifc-lite/mcp. That package has its own
+        // backend (`packages/mcp/src/backend-query.ts`), a parallel
+        // implementation rather than a shared import, and its equivalent lines
+        // still read `descriptor.limit && descriptor.limit > 0` — so a NaN is
+        // silently ignored there and `limit: 0` is a no-op. Same defect,
+        // different package, its own tests and release cadence; tracked as a
+        // separate change rather than folded into this CLI-scoped PR.
+        if (descriptor.offset != null) {
+          if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+            throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+          }
+          if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+        }
+        if (descriptor.limit != null) {
+          if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+            throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+          }
+          filtered = filtered.slice(0, descriptor.limit);
+        }
 
         return filtered;
       },
@@ -439,6 +478,19 @@ export class HeadlessBackend implements BimBackend {
   private getOrCreateStoreEditor(): StoreEditor {
     if (this.storeEditor) return this.storeEditor;
     this.mutationView = new MutablePropertyView(this.dataStore.properties || null, MODEL_ID);
+    // Give the overlay a base to merge against. The columnar parser leaves
+    // `store.properties` empty and serves properties on demand, so without these
+    // the view's *only* source is the overlay itself and `getForEntity` answers
+    // with the one edited pset and nothing else. `StepExporter` re-emits
+    // `getForEntity(id)` for every entity with a property mutation and skips the
+    // original records, so editing one property would drop every sibling
+    // property in that pset on save. Same wiring, same reason, as
+    // `packages/mcp/src/headless-backend.ts` and
+    // `apps/viewer/src/utils/configureMutationView.ts` (#2000, #2004).
+    if (this.dataStore.source?.length > 0) {
+      this.mutationView.setOnDemandExtractor((entityId) => extractPropertiesOnDemand(this.dataStore, entityId));
+      this.mutationView.setQuantityExtractor((entityId) => extractQuantitiesOnDemand(this.dataStore, entityId));
+    }
     this.storeEditor = new StoreEditor(this.dataStore, this.mutationView);
     return this.storeEditor;
   }
@@ -635,24 +687,15 @@ export class HeadlessBackend implements BimBackend {
         }
         return exportToStep(store, exportOpts);
       },
-      hbjson: async (name?: string): Promise<string> => {
-        // HBJSON is rebuilt analytically from the source IFC bytes (rooms/openings/
-        // shades/constructions/adjacency) via the wasm geometry engine.
-        const bytes = store.source;
-        if (!bytes || bytes.length === 0) {
-          throw new Error('HBJSON export needs the source IFC bytes, which this store did not retain.');
-        }
-        const processor = new GeometryProcessor();
-        await processor.init();
-        const baseName = (name ?? modelName).replace(/\.[^.]+$/, '');
-        const result = processor.exportHbjson(bytes, baseName);
-        if (result === null) {
-          throw new Error('Geometry engine unavailable for HBJSON export.');
-        }
-        // The lens contract carries a string; HBJSON payloads are far below the
-        // V8 string ceiling, so decoding here is safe.
-        return new TextDecoder().decode(result);
-      },
+      // Both energy formats apply the mutation view — see energy-export.ts
+      // (issues #1908, #1344). An explicit `name` is a display/model name, so
+      // it is kept verbatim (dotted identifiers like `Tower.v2` are valid);
+      // only the `modelName` fallback is a filename, so only it gets a real
+      // IFC extension stripped.
+      hbjson: (name?: string): Promise<string> =>
+        exportHbjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
+      dfjson: (name?: string): Promise<string> =>
+        exportDfjson(store, this.mutationView, name ?? stripIfcExtension(modelName)),
       download(_content: string, _filename: string, _mimeType: string): void {
         /* no-op — CLI writes to stdout/file directly */
       },

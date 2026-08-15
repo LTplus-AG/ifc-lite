@@ -34,6 +34,13 @@ export { mergeGeometryDiagnostics } from './diagnostics.js';
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
 
+// The index-parallel layouts the geometry-hash pass emits — six values per id
+// for the world box (#1891), one for the proved volume (#1993) — shared with
+// consumers that read the instanced-only side-channel off the streaming `batch`
+// event rather than off a `MeshData`. Both resolve the absent `NaN` sentinel to
+// `undefined`, which is the only place that conversion is allowed to happen.
+export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
 export { CoordinateHandler } from './coordinate-handler.js';
@@ -87,7 +94,7 @@ import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQu
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
-import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
+import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 
 /**
@@ -204,6 +211,16 @@ export type StreamingGeometryEvent =
        *  repeated opaque elements. Present only when geometry hashing is on. */
       instancedGeometryHashIds?: Uint32Array;
       instancedGeometryHashValues?: BigUint64Array;
+      /** World boxes (#1891) for those same instanced-only entities: SIX values
+       *  per `instancedGeometryHashIds` entry, `minXYZ` then `maxXYZ`, absolute
+       *  world in the renderer's Y-up frame. A NaN span means that entity
+       *  produced no box; the whole array is omitted when none did. */
+      instancedGeometryAabbValues?: Float64Array;
+      /** Proved enclosed volumes in m³ (#1993) for those same instanced-only
+       *  entities: ONE value per `instancedGeometryHashIds` entry, `NaN` where
+       *  the kernel could not prove one. The whole array is omitted when no
+       *  entity in the batch had a volume. */
+      instancedGeometryVolumeValues?: Float64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
@@ -626,99 +643,40 @@ export class GeometryProcessor {
     // Reset coordinate handler for new file
     this.coordinateHandler.reset();
 
-    // Yield start event FIRST so UI can update before heavy processing
-    yield { type: 'start', totalEstimate: buffer.length / 1000 };
-
-    // Yield to main thread before heavy processing begins
-    await new Promise(resolve => setTimeout(resolve, 0));
-
     if (this.isNative && this.platformBridge) {
-      yield { type: 'model-open', modelID: 0 };
-
-      // NATIVE PATH - Use Tauri streaming (simpler queue without coalescing)
+      // NATIVE PATH — Tauri streaming. This used to carry its own near-identical
+      // copy of the drain loop, which meant the stream-failure handling in
+      // `streamNativeGeometry` (hang on a bare rejection, `complete` for a
+      // stream that reported `onError`, a post-completion teardown rejection
+      // retro-failing a finished load) had to be fixed and tested twice — and
+      // only the copy in `geometry-native.ts` had tests. The two differed on
+      // exactly two axes, both now explicit options; the loop itself is shared,
+      // so one test covers every native route.
       console.time('[GeometryProcessor] native-streaming');
-      const queuedEvents: QueuedNativeStreamingEvent[] = [];
-      let resolvePending: (() => void) | null = null;
-      let completed = false;
-      let streamError: Error | null = null;
-      let completedTotalMeshes: number | undefined;
-      let totalMeshes = 0;
-
-      const wake = () => {
-        if (resolvePending) {
-          resolvePending();
-          resolvePending = null;
-        }
-      };
-
-      const streamingPromise = this.platformBridge.processGeometryStreaming(buffer, {
-        onBatch: (batch) => {
-          queuedEvents.push({ type: 'batch', meshes: batch.meshes, nativeTelemetry: batch.nativeTelemetry });
-          wake();
-        },
-        onColorUpdate: (updates) => {
-          queuedEvents.push({ type: 'colorUpdate', updates: new Map(updates) });
-          wake();
-        },
-        onComplete: (stats) => {
-          this.lastNativeStats = stats;
-          completedTotalMeshes = stats.totalMeshes;
-          completed = true;
-          wake();
-        },
-        onError: (error) => {
-          streamError = error;
-          completed = true;
-          wake();
-        },
-      });
-
       try {
-        while (!completed || queuedEvents.length > 0) {
-          while (queuedEvents.length > 0) {
-            const event = queuedEvents.shift()!;
-            if (event.type === 'colorUpdate') {
-              yield { type: 'colorUpdate', updates: event.updates };
-              continue;
-            }
-            this.coordinateHandler.processMeshesIncremental(event.meshes);
-            totalMeshes += event.meshes.length;
-            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-            yield {
-              type: 'batch',
-              meshes: event.meshes,
-              totalSoFar: totalMeshes,
-              coordinateInfo: coordinateInfo || undefined,
-              nativeTelemetry: event.nativeTelemetry,
-            };
-          }
-
-          if (streamError) {
-            throw streamError;
-          }
-
-          if (!completed) {
-            await new Promise<void>((resolve) => {
-              resolvePending = resolve;
-            });
-          }
-        }
+        yield* streamNativeGeometry(
+          (options) => this.platformBridge!.processGeometryStreaming(buffer, options),
+          buffer.length / 1000,
+          this.coordinateHandler,
+          (stats) => { this.lastNativeStats = stats; },
+          {
+            coalesce: false,
+            processMeshes: (meshes) => this.coordinateHandler.processMeshesIncremental(meshes),
+          },
+        );
       } finally {
-        // Ensure the native stream and its Tauri listeners are torn down
-        // deterministically even when this generator is abandoned (.return())
-        // while suspended at a `yield` or the pending-wake promise.
-        try {
-          await streamingPromise;
-        } catch {
-          /* cleanup — safe to ignore */
-        }
+        // In a `finally` because the loop can now throw: leaving the timer open
+        // makes the next load's `console.time` warn about a duplicate label.
+        console.timeEnd('[GeometryProcessor] native-streaming');
       }
-
-      const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
-      yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
-
-      console.timeEnd('[GeometryProcessor] native-streaming');
     } else {
+      // Yield start event FIRST so UI can update before heavy processing
+      // (the native branch above emits its own `start` / `model-open` pair).
+      yield { type: 'start', totalEstimate: buffer.length / 1000 };
+
+      // Yield to main thread before heavy processing begins
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       // WASM PATH — single-threaded fallback (no SAB / Worker). Route ALL
       // sizes through the Family-A pre-pass + job-batch streamer; the old
       // 256 MB gate (above which we already used `processStreamingBytes`)
@@ -977,6 +935,14 @@ export class GeometryProcessor {
    * attaches to each `MeshData.geometryHash`. RTC-invariant + tolerance-
    * quantized; default tolerance is {@link DEFAULT_GEOM_HASH_TOLERANCE} (1 mm).
    *
+   * The same switch also populates `MeshCollection.geometryAabbValues`, which
+   * lands on `MeshData.geometryAabb` (#1891) — the absolute world box that lets
+   * a consumer tell a move from a reshape instead of reading one changed-hash
+   * bit — and `MeshCollection.geometryVolumeValues`, which lands on
+   * `MeshData.geometryVolume` (#1993), the proved enclosed volume the diff
+   * engine's split/merge detector weighs one element against several. Nothing
+   * is computed while this is off.
+   *
    * Safe to call before `init()` — the bridge caches the value and replays
    * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
    * Tauri pipeline does not emit hashes yet). Pass `null` to disable.
@@ -1226,6 +1192,12 @@ export class GeometryProcessor {
   exportIfcx(buffer: Uint8Array, onlyKnownProperties = true, pretty = false): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
+  }
+
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  exportUsd(buffer: Uint8Array): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportUsd(buffer);
   }
 
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
@@ -1525,6 +1497,31 @@ export class GeometryProcessor {
       return null;
     }
     return this.bridge.exportHbjson(buffer, name);
+  }
+
+  /**
+   * Export the `IfcSpace` volumes in `buffer` as a Dragonfly DFJSON string
+   * (Ladybug Tools energy model — extruded `Room2D` plates). Returns null if
+   * not initialized.
+   *
+   * WASM path only, deliberately: like {@link exportHbjson} and the other
+   * analytic readers here (`extractProfiles`, `parseGridLines`,
+   * `parseSymbolicRepresentations`, …) this reads `this.bridge` and so returns
+   * null under `isNative`. That is not an oversight specific to DFJSON —
+   * `IPlatformBridge` declares no energy export at all, and the native path
+   * needs a Tauri host (`isTauri()` requires `window.__TAURI_INTERNALS__`),
+   * which no longer ships: the desktop app is decommissioned and the repo
+   * carries no `src-tauri`. Giving DFJSON a native route alone would single out
+   * one of eight methods for a constraint the whole family shares.
+   *
+   * @param buffer IFC file buffer
+   * @param name Model identifier / display name
+   */
+  exportDfjson(buffer: Uint8Array, name: string): string | null {
+    if (!this.bridge || !this.bridge.isInitialized()) {
+      return null;
+    }
+    return this.bridge.exportDfjson(buffer, name);
   }
 
   /**

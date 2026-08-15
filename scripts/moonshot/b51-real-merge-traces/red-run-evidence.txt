@@ -1,0 +1,38 @@
+B5.1 red-run evidence -- instrument 8.
+
+Every assertion this exam makes is driven, here, with the specific violation it
+exists to detect, through the SAME assert() the green run uses. A tripwire that
+reports "FIRED" means the exam assertion path threw on the violation; the green
+run of that same assertion is what produces the verdict in scorecard.json.
+
+WHAT "FIRED" MEANS ON r5, SPECIFICALLY. r5 is the only tripwire whose violation
+is raised by a module rather than by an assertion in run.mjs, so it is the only
+one where an unrelated failure could be mistaken for a successful refusal. The
+guard's refusal is a TYPE (IdentifierGuardRefusal), r5 tests for it with
+`instanceof`, and any other error is logged and rethrown into the red run's own
+failure path. A broken guard therefore fails this run instead of passing it.
+r4 likewise drives the same two calls the green run makes either side of the
+scorecard write, so the kill-bar verdict has one implementation and not two.
+
+Reproduce: node scripts/moonshot/b51-real-merge-traces/run.mjs --red
+Machine-readable form: red-run.json
+
+--- transcript, verbatim ---
+
+  FIRED  r1-admissibility: a corpus short of one criterion is called admissible
+  FIRED  r2-spatial-bar: the lazy-cut count is graded against the derived-cut bar
+  FIRED  r3-read-set: a read-set check with the hosting edge removed
+  FIRED  r4-kill-bar: a false-conflict rate above the kill bar is called a pass
+  FIRED  r5-identifier-guard: a planted user identifier reaches the only write path
+  FIRED  r6-null-space: the predicate under test is required to clear a pair whose orders diverge
+red run: 6 of 6 tripwires fired
+
+exit code: 0
+
+--- self-test transcript, verbatim ---
+
+self-test: guard cases caught 14 of 14,
+           clean control passes: true, tripwires fired 6 of 6
+B5.1 self-test PASS
+
+exit code: 0

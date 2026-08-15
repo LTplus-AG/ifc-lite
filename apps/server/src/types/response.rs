@@ -88,3 +88,63 @@ pub enum StreamEvent {
         message: String,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `Option` fields on `StreamEvent::Complete` are omitted from the
+    /// wire when absent (`skip_serializing_if = "Option::is_none"`) — older
+    /// clients / cached blobs never carried them, and re-adding the key
+    /// unconditionally would be a silent shape change nothing else pins.
+    #[test]
+    fn complete_omits_absent_optional_fields_from_the_wire() {
+        let event = StreamEvent::Complete {
+            stats: ProcessingStats::default(),
+            metadata: ModelMetadata::default(),
+            cache_key: "k".to_string(),
+            mesh_coordinate_space: None,
+            site_transform: None,
+            building_transform: None,
+            symbolic_data: SymbolicData::default(),
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        let obj = json.as_object().unwrap();
+        assert!(
+            !obj.contains_key("mesh_coordinate_space"),
+            "None mesh_coordinate_space must be omitted, got: {json}"
+        );
+        assert!(
+            !obj.contains_key("site_transform"),
+            "None site_transform must be omitted, got: {json}"
+        );
+        assert!(
+            !obj.contains_key("building_transform"),
+            "None building_transform must be omitted, got: {json}"
+        );
+        assert!(
+            !obj.contains_key("symbolic_data"),
+            "empty symbolic_data must be omitted, got: {json}"
+        );
+    }
+
+    /// The inverse: when present, each optional field MUST actually reach
+    /// the wire (an over-eager `skip_serializing_if` predicate would drop a
+    /// real value silently).
+    #[test]
+    fn complete_includes_present_optional_fields_on_the_wire() {
+        let event = StreamEvent::Complete {
+            stats: ProcessingStats::default(),
+            metadata: ModelMetadata::default(),
+            cache_key: "k".to_string(),
+            mesh_coordinate_space: Some("site_local".to_string()),
+            site_transform: Some(vec![1.0; 16]),
+            building_transform: Some(vec![2.0; 16]),
+            symbolic_data: SymbolicData::default(),
+        };
+        let json = serde_json::to_value(&event).unwrap();
+        assert_eq!(json["mesh_coordinate_space"], "site_local");
+        assert_eq!(json["site_transform"].as_array().unwrap().len(), 16);
+        assert_eq!(json["building_transform"].as_array().unwrap().len(), 16);
+    }
+}

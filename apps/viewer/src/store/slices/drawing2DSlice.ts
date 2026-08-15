@@ -73,14 +73,54 @@ export interface DxfUnderlayState {
   name: string;
   /** Parsed + converted geometry in drawing space */
   underlay: DxfUnderlay;
-  /** Master visibility toggle */
+  /** Master visibility toggle for the 2D drawing panel underlay */
   visible: boolean;
-  /** Render opacity (0-1) */
+  /**
+   * Visibility toggle for the 3D viewport overlay (issue #2043, follow-up
+   * to #1782/#1929's 2D-only underlay). Independent of `visible` — the
+   * user loads a DXF once and then chooses where it shows, per the issue's
+   * explicit rejection of a load-time 2D-vs-3D choice. Defaults to `true`
+   * in both contexts (`addDxfUnderlay` below), matching `visible`.
+   */
+  visible3D: boolean;
+  /** Render opacity (0-1), shared by the 2D and 3D renderers */
   opacity: number;
   /** Per-DXF-layer visibility, seeded from the DXF layer table */
   layerVisibility: Record<string, boolean>;
   /** User placement (offset/rotation/scale) in drawing space */
   placement: DxfPlacement;
+  /**
+   * Whether this underlay's raw coordinates are map/CRS (eastings,
+   * northings) rather than IFC world coordinates — issue #1929, made
+   * TRI-STATE by the PR #1965 review round:
+   *
+   *   - `true` / `false`: explicit — written ONLY by the user flipping the
+   *     "Align to model georeference" checkbox (`setDxfUnderlayGeoreferenced`).
+   *     Always wins, regardless of whether an anchor georeference is
+   *     currently available.
+   *   - `undefined` ("auto"): follow anchor georeference availability,
+   *     resolved LAZILY at render time (`resolveEffectiveGeoreferenced` in
+   *     `dxfUnderlayMath.ts`, fed by `useDxfMapToWorldTransform`'s
+   *     `available` flag) instead of once at import time. This closes the
+   *     race where a combined model+DXF drop ingests the DXF before the
+   *     model has finished loading (`ViewportContainer.handleDrop` fires
+   *     `ingestDxfFiles` concurrently with model loading — see
+   *     `dxfIngest.ts`'s module doc) and also covers the anchor being
+   *     removed/re-added later in the session.
+   *
+   * `addDxfUnderlay` defaults a caller that doesn't explicitly request
+   * `'auto'` to `false`, NEVER to `undefined` — see its doc below. Only
+   * `ingestDxfFile` (the DXF-import feature itself) opts a freshly-created
+   * entry into `'auto'`; every other construction path, including a
+   * hypothetical future load/migration path for entries that predate this
+   * field, is conservative by construction and never starts following the
+   * anchor on its own. `dxfUnderlayToDrawing`/`dxfUnderlayDrawingBounds`
+   * apply the inverse IfcMapConversion (the federation anchor's, via
+   * `resolveDxfExportGeoreference`) before the existing world→drawing
+   * mapping and per-underlay placement, gated on the EFFECTIVE (tri-state
+   * resolved) value, not the raw field.
+   */
+  georeferenced?: boolean;
 }
 
 export interface Drawing2DState {
@@ -279,14 +319,29 @@ export interface Drawing2DSlice extends Drawing2DState {
   clearAllAnnotations2D: () => void;
 
   // DXF Underlay Actions (issue #1782)
-  /** Register an imported DXF underlay; returns its id */
-  addDxfUnderlay: (underlay: DxfUnderlay) => string;
+  /**
+   * Register an imported DXF underlay; returns its id. `options.georeferenced`
+   * (issue #1929, made tri-state by the PR #1965 review) seeds the
+   * per-underlay "DXF is in map/CRS coordinates" toggle:
+   *   - omitted, or `true`/`false`: written verbatim (default `false` when
+   *     omitted — the pre-#1929, always-safe behaviour for any call site
+   *     that isn't the DXF-ingest feature itself).
+   *   - `'auto'`: stored as `undefined`, meaning "follow anchor
+   *     georeference availability, resolved at render time" — only
+   *     `ingestDxfFile` passes this, so an entry only ever starts in auto
+   *     mode when it was created by THIS feature's own import path.
+   */
+  addDxfUnderlay: (underlay: DxfUnderlay, options?: { georeferenced?: boolean | 'auto' }) => string;
   removeDxfUnderlay: (id: string) => void;
   setDxfUnderlayVisible: (id: string, visible: boolean) => void;
+  /** Toggle the 3D viewport overlay independently of the 2D underlay (issue #2043) */
+  setDxfUnderlayVisible3D: (id: string, visible3D: boolean) => void;
   setDxfUnderlayOpacity: (id: string, opacity: number) => void;
   /** Toggle one DXF layer within an underlay */
   toggleDxfUnderlayLayer: (id: string, layerName: string) => void;
   updateDxfUnderlayPlacement: (id: string, placement: Partial<DxfPlacement>) => void;
+  /** Flip whether an underlay's coordinates are map/CRS vs. IFC world (issue #1929) */
+  setDxfUnderlayGeoreferenced: (id: string, georeferenced: boolean) => void;
   clearDxfUnderlays: () => void;
 }
 
@@ -721,18 +776,27 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
   },
 
   // DXF Underlay Actions (issue #1782)
-  addDxfUnderlay: (underlay) => {
+  addDxfUnderlay: (underlay, options) => {
     const id = `dxf-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
     const layerVisibility: Record<string, boolean> = {};
     for (const layer of underlay.layers) layerVisibility[layer.name] = layer.visible;
+    // Tri-state resolution (PR #1965 review, see the field doc above):
+    // 'auto' -> undefined; anything else (including omitted) -> boolean,
+    // defaulting to false. A caller that doesn't explicitly ask for 'auto'
+    // can never accidentally create an auto entry.
+    const georeferenced = options?.georeferenced === 'auto'
+      ? undefined
+      : (options?.georeferenced ?? false);
     const entry: DxfUnderlayState = {
       id,
       name: underlay.name,
       underlay,
       visible: true,
+      visible3D: true,
       opacity: 1,
       layerVisibility,
       placement: { ...DEFAULT_DXF_PLACEMENT },
+      georeferenced,
     };
     set((state) => ({ dxfUnderlays: [...state.dxfUnderlays, entry] }));
     return id;
@@ -744,6 +808,10 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
 
   setDxfUnderlayVisible: (id, visible) => set((state) => ({
     dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible } : u)),
+  })),
+
+  setDxfUnderlayVisible3D: (id, visible3D) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, visible3D } : u)),
   })),
 
   setDxfUnderlayOpacity: (id, opacity) => set((state) => ({
@@ -766,6 +834,10 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     dxfUnderlays: state.dxfUnderlays.map((u) =>
       u.id === id ? { ...u, placement: { ...u.placement, ...placement } } : u
     ),
+  })),
+
+  setDxfUnderlayGeoreferenced: (id, georeferenced) => set((state) => ({
+    dxfUnderlays: state.dxfUnderlays.map((u) => (u.id === id ? { ...u, georeferenced } : u)),
   })),
 
   clearDxfUnderlays: () => set({ dxfUnderlays: [] }),

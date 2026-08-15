@@ -133,7 +133,7 @@ export function ComboInput({
           // so selecting a value doesn't also close the whole modal.
           style={{ position: 'fixed', left: anchor.left, top: anchor.top + 4, minWidth: anchor.width, pointerEvents: 'auto' }}
           onPointerDown={(e) => e.stopPropagation()}
-          className="z-[120] max-h-60 w-max max-w-[20rem] overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
+          className="popover-surface z-[120] max-h-60 w-max max-w-[20rem] overflow-y-auto rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-950"
         >
           {filtered.map((o, i) => (
             <button

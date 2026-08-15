@@ -37,12 +37,12 @@ Each `ColumnDefinition` has a `source` that says where the value comes from:
 |--------|-------------|---------|
 | `attribute` | Direct IFC attribute | `Name`, `GlobalId`, `ObjectType`, `Class` |
 | `property` | Property from a pset | `Pset_WallCommon.FireRating` |
-| `quantity` | Quantity from a qset | `Qto_WallBaseQuantities.NetArea` |
+| `quantity` | Quantity from a qset | `Qto_WallBaseQuantities.NetSideArea` |
 | `material` | Associated material names (joined with `", "`) | `Concrete, Insulation` |
 | `classification` | Classification references (joined with `", "`) | `Uniclass Ss_25_10` |
 | `spatial` | Containing spatial element name; `propertyName` picks the level (`Storey` (default), `Building`, `Site`, `Project`) | `Level 2` |
 | `model` | Source file name | `office.ifc` |
-| `zone` | Location-zone assignment (user-defined 3D zone boxes, viewer-computed); `psetName` holds the zone-set id, `propertyName` picks `Zone` (default, the zone name — straddling elements show every touched zone joined with `", "`) or `Straddles` (boolean) | `Section A` |
+| `zone` | Location-zone assignment and per-zone volume (user-defined 3D zone boxes, viewer-computed); `psetName` holds the zone-set id, `propertyName` picks the mode — see [Zone columns](#zone-columns) | `Section A` |
 
 A column looks like:
 
@@ -59,6 +59,50 @@ const fireRating: ColumnDefinition = {
 ```
 
 For `quantity` columns, `psetName` holds the quantity set name (e.g. `Qto_DoorBaseQuantities`).
+
+### Zone columns
+
+`psetName` holds the **zone-set id** (durable; the set's display name is not unique). `propertyName` is the mode:
+
+| Mode | Cell | Notes |
+|------|------|-------|
+| `Zone` (default) | Zone name | A straddling element shows every touched zone, joined with `", "`. |
+| `Straddles` | Boolean | Whether the element crosses a zone boundary. |
+| `volume (mesh)` | Number | The element's volume inside its HOME zone. Exported as `ZONE_MODE_VOLUME`. |
+| `volume breakdown (mesh)` | Text | Every zone with a share, as `Zone A: 1.2, Zone B: 0.8`. Exported as `ZONE_MODE_BREAKDOWN`. |
+
+Three things about the volume modes are load-bearing:
+
+- **The basis is in the mode name.** `mesh` is the as-built geometry, *after* opening cuts — the only basis whose per-zone split is measured rather than inferred. It is not a `NetVolume` and not a `GrossVolume`; a zone volume derived from a net wall and one derived from a gross wall are not comparable, so the label travels with the number rather than living in a tooltip. The declared net/gross breakdowns are shown side by side in the viewer's properties panel, where there is room for all of them.
+- **They are `null` until someone asks.** Apportionment is an explicit on-demand action, never part of model load, so adding the column never triggers a model-wide clip. A cell is also `null` when the element does not straddle, or when its mesh is not a proven closed solid — in which case no volume may be stated for it at all, let alone split.
+- **The unit is the model's declared volume unit.** A `volume (mesh)` column is tagged with `QuantityType.Volume`, so the shared per-column unit resolver converts and labels it exactly like a declared `NetVolume`. Use `isZoneVolumeMode(mode)` rather than comparing strings if you need to make the same decision.
+
+```typescript
+import { ZONE_MODE_VOLUME, type ColumnDefinition } from '@ifc-lite/lists';
+
+// `psetName` is the durable zone-set id, not the set's display name.
+const zoneSetId = 'a3f1c0de-...';
+
+const zoneVolume: ColumnDefinition = {
+  id: 'zone-volume',
+  source: 'zone',
+  psetName: zoneSetId,
+  propertyName: ZONE_MODE_VOLUME,
+  label: 'Volume in zone',
+};
+```
+
+A provider supplies the numbers through one optional method on `ListDataProvider`:
+
+```typescript
+import type { ListDataProvider } from '@ifc-lite/lists';
+
+type ZoneVolumeShares = NonNullable<ListDataProvider['getZoneVolumeShares']>;
+//   (expressId: number, zoneSetId: string) => {
+//     homeValue: number | null;
+//     shares: Array<{ zoneName: string; value: number }>;
+//   } | null
+```
 
 ## Built-in Presets
 
@@ -143,7 +187,7 @@ for (const row of scheduleRows) {
 
 ## The Data Provider
 
-`executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, `getZoneAssignment`, `getZoneSetNames`, ...) unlock the `material`, `classification`, `spatial`, `model`, and `zone` column sources, and the engine degrades gracefully when they are absent (a `zone` column simply resolves to `null` on a provider without zone data).
+`executeList` reads model data through the `ListDataProvider` interface, so the package has no hard dependency on how you parsed the model. Required methods include `getEntitiesByType`, `getEntityName`, `getEntityGlobalId`, `getPropertySets`, and `getQuantitySets`; optional methods (`getMaterialNames`, `getClassifications`, `getStoreyName`, `getProjectName`, `getZoneAssignment`, `getZoneSetNames`, `getZoneVolumeShares`, ...) unlock the `material`, `classification`, `spatial`, `model`, and `zone` column sources, and the engine degrades gracefully when they are absent (a `zone` column simply resolves to `null` on a provider without zone data). The two volume modes go through `getZoneVolumeShares` specifically, so a provider that implements `getZoneAssignment` but not `getZoneVolumeShares` still answers `Zone` and `Straddles` and returns `null` for the volumes.
 
 ## Discovering Columns
 

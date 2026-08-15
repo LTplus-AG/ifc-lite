@@ -67,6 +67,27 @@ function optReal(v: number | undefined | null): string {
 // IfcCreator
 // ============================================================================
 
+/**
+ * PLACEMENT CONTRACT
+ *
+ * Every `addIfcXxx(storeyId, …)` / `addElement(storeyId, …)` method takes the
+ * storey as its first argument and emits an `IfcRelContainedInSpatialStructure`
+ * putting the product in that storey. The product's `IfcLocalPlacement` is
+ * therefore chained to the STOREY's placement, never to the world: the
+ * placement hierarchy has to agree with the containment hierarchy, or moving a
+ * storey leaves its own contents behind.
+ *
+ * Consequence for callers: **coordinates passed to these methods are
+ * storey-relative.** `IfcBuildingStorey.Elevation` is applied exactly once, by
+ * the storey's own placement (`[0, 0, Elevation]`, the only placement in this
+ * class that is chained to the world). A wall whose floor sits on a storey at
+ * `Elevation: 3` is created with `Z = 0`, not `Z = 3`.
+ *
+ * Before 2.0.0 only `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`,
+ * `addIfcStair`, `addIfcRoof` and `addIfcGableRoof` behaved this way; the other
+ * 21 constructors chained to the world, so a caller mixing them on a storey
+ * with a non-zero elevation got two different datums in one model.
+ */
 export class IfcCreator {
   private nextId = 1;
   private lines: string[] = [];
@@ -192,9 +213,22 @@ export class IfcCreator {
     return id;
   }
 
-  /** Get the IfcLocalPlacement for a storey (falls back to world if unknown) */
+  /**
+   * The `IfcLocalPlacement` every product of this storey chains to.
+   *
+   * Throws on an unknown storey rather than falling back to the world
+   * placement: the fallback silently produced a product on a different datum
+   * from its siblings, which is the exact failure this parent is here to make
+   * impossible. `trackElement` rejects the same id a few lines later anyway,
+   * so failing here only means the half-built placement entities are never
+   * emitted.
+   */
   private getStoreyPlacement(storeyId: number): number {
-    return this.storeyPlacements.get(storeyId) ?? this.worldPlacementId;
+    const placementId = this.storeyPlacements.get(storeyId);
+    if (placementId === undefined) {
+      throw new Error(`Unknown storeyId #${storeyId} — call addIfcBuildingStorey() first`);
+    }
+    return placementId;
   }
 
   // ============================================================================
@@ -654,7 +688,7 @@ export class IfcCreator {
    * Create a door element. Width × Height × Thickness panel.
    */
   addIfcDoor(storeyId: number, params: DoorParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -686,7 +720,7 @@ export class IfcCreator {
    * Create a window element. Width × Height × Thickness frame.
    */
   addIfcWindow(storeyId: number, params: WindowParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -727,7 +761,7 @@ export class IfcCreator {
       refDir = [Math.cos(slopeAngle), 0, -Math.sin(slopeAngle)];
     }
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
       Axis: axis,
       RefDirection: refDir,
@@ -768,7 +802,7 @@ export class IfcCreator {
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
     // Use identity orientation so posts can extrude vertically along world Z
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
     });
 
@@ -831,7 +865,7 @@ export class IfcCreator {
    * Create a plate (thin flat element, e.g. steel plate).
    */
   addIfcPlate(storeyId: number, params: PlateParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -872,7 +906,7 @@ export class IfcCreator {
     const memberLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -904,7 +938,7 @@ export class IfcCreator {
    */
   addIfcFooting(storeyId: number, params: FootingParams): number {
     // Offset placement downward so extrusion starts at bottom
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: [params.Position[0], params.Position[1], params.Position[2] - params.Height],
     });
 
@@ -935,7 +969,7 @@ export class IfcCreator {
    * Uses circular cross-section by default, rectangular if IsRectangular is set.
    */
   addIfcPile(storeyId: number, params: PileParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: [params.Position[0], params.Position[1], params.Position[2] - params.Length],
     });
 
@@ -971,7 +1005,7 @@ export class IfcCreator {
    * Create a space (room volume).
    */
   addIfcSpace(storeyId: number, params: SpaceParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -1014,7 +1048,7 @@ export class IfcCreator {
     const dir: Point3D = vecNorm([dx, dy, dz]);
     const thickness = params.Thickness ?? 0.05;
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       RefDirection: dir,
     });
@@ -1045,7 +1079,7 @@ export class IfcCreator {
    */
   addIfcFurnishingElement(storeyId: number, params: FurnishingParams): number {
     const direction = params.Direction ?? 0;
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
       RefDirection: direction !== 0 ? [Math.cos(direction), Math.sin(direction), 0] : undefined,
     });
@@ -1075,7 +1109,7 @@ export class IfcCreator {
    * Create a proxy element (generic element for custom/unclassified objects).
    */
   addIfcBuildingElementProxy(storeyId: number, params: ProxyParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -1119,7 +1153,7 @@ export class IfcCreator {
     Radius: number;
     Height: number;
   } & ElementAttributes): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -1162,7 +1196,7 @@ export class IfcCreator {
     const beamLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -1210,7 +1244,7 @@ export class IfcCreator {
     const memberLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -1255,7 +1289,7 @@ export class IfcCreator {
     const memberLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -1304,7 +1338,7 @@ export class IfcCreator {
     const memberLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -1344,7 +1378,7 @@ export class IfcCreator {
     WallThickness: number;
     Height: number;
   } & ElementAttributes): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
@@ -1387,7 +1421,7 @@ export class IfcCreator {
     const beamLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,
       RefDirection: this.computeRefDirection(dir),
@@ -2372,7 +2406,7 @@ ENDSEC;
    * ```
    */
   addElement(storeyId: number, params: GenericElementParams): number {
-    const placementId = this.addLocalPlacement(this.worldPlacementId, params.Placement);
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), params.Placement);
     const profileId = this.createProfile(params.Profile);
 
     // Handle custom extrusion direction
@@ -2452,7 +2486,7 @@ ENDSEC;
     }
     perp = vecNorm(perp);
 
-    const placementId = this.addLocalPlacement(this.worldPlacementId, {
+    const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
       Axis: dir,           // local Z = along axis (extrusion direction)
       RefDirection: perp,  // local X = perpendicular to axis

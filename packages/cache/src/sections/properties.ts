@@ -6,9 +6,31 @@
  * PropertyTable serialization
  */
 
-import type { PropertyTable, PropertySet, StringTable } from '@ifc-lite/data';
-import { PropertyValueType } from '@ifc-lite/data';
+import type { PropertyTable, PropertySet, PropertyValue, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues, PropertyValueType } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+
+/**
+ * List-value parse failures are per-property on a cache-rehydration path, so
+ * the warning is latched: a corrupt cache would otherwise emit one line per
+ * row.
+ */
+let listParseWarningShown = false;
+
+/** @internal test seam — reset the once-per-process list-parse warning latch. */
+export function __resetListParseWarningLatch(): void {
+  listParseWarningShown = false;
+}
+
+function warnListParseFailureOnce(listStr: string, err: unknown): void {
+  if (listParseWarningShown) return;
+  listParseWarningShown = true;
+  console.warn(
+    `[cache] cached property list value is not valid JSON; reporting an empty ` +
+      `list (further occurrences suppressed). value=${JSON.stringify(listStr.slice(0, 120))}`,
+    err,
+  );
+}
 
 /**
  * Write PropertyTable to buffer
@@ -92,13 +114,23 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       case PropertyValueType.Logical:
         const boolVal = valueBool[idx];
         return boolVal === 255 ? null : boolVal === 1;
-      case PropertyValueType.List:
-        const listStr = strings.get(valueString[idx]);
+      case PropertyValueType.List: {
+        // Mirrors the string branch above (and @ifc-lite/data's
+        // `getPropertyValue`): the NULL sentinel -1 wraps to 4294967295 and
+        // `strings.get` answers '' for it, so without this guard a NULL list
+        // property was rehydrated from cache as `[]` — a real empty list —
+        // with the silent catch hiding the difference.
+        const li = valueString[idx];
+        if (!(li >= 0 && li < strings.count)) return null;
+        const listStr = strings.get(li);
+        if (listStr === '') return null;
         try {
           return JSON.parse(listStr);
-        } catch {
+        } catch (err) {
+          warnListParseFailureOnce(listStr, err);
           return [];
         }
+      }
       default:
         return null;
     }
@@ -178,7 +210,7 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       for (const idx of rowIndices) {
         if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(idx);
-        if (compareValues(propValue, operator, value)) {
+        if (comparePropertyValues(propValue, operator, value)) {
           results.push(entityId[idx]);
         }
       }
@@ -186,36 +218,6 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
       return results;
     },
   };
-}
-
-type PropertyValue = string | number | boolean | null | PropertyValue[];
-
-function compareValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
-  if (propValue === null || value === null) return false;
-
-  if (typeof propValue === 'number' && typeof value === 'number') {
-    switch (operator) {
-      case '>=': return propValue >= value;
-      case '>': return propValue > value;
-      case '<=': return propValue <= value;
-      case '<': return propValue < value;
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-    }
-  }
-
-  if (typeof propValue === 'string' && typeof value === 'string') {
-    switch (operator) {
-      case '=':
-      case '==': return propValue === value;
-      case '!=': return propValue !== value;
-      case 'contains': return propValue.includes(value);
-      case 'startsWith': return propValue.startsWith(value);
-    }
-  }
-
-  return false;
 }
 
 function writeIndex(writer: BufferWriter, index: Map<number, number[]>): void {

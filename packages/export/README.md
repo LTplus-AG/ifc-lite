@@ -79,6 +79,19 @@ const entities = await exporter.exportTable('entities');
 // Loadable directly from DuckDB, Polars, pandas, BigQuery, …
 ```
 
+Editing via `@ifc-lite/mutations`? Pass the `MutablePropertyView` as the third constructor
+argument to drop overlay-deleted entities (and every row that references one) from
+`Entities`, `Properties`, `Quantities` and `Relationships`:
+
+```typescript
+const exporter = new ParquetExporter(store, geometryResult, mutationView);
+```
+
+Property/quantity/attribute *edits* aren't reflected yet — the table writers
+column-copy straight out of the store rather than looping per entity, so
+there is nowhere for those to apply. `StepExporter`/`Ifc5Exporter` cover the
+full edit surface today.
+
 ## IFC5 IFCX — JSON + USD geometry
 
 ```typescript

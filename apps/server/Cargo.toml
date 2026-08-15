@@ -91,7 +91,7 @@ flate2 = "1.0"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Base64 encoding for SSE payloads
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

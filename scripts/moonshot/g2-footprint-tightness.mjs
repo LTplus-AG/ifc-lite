@@ -257,7 +257,11 @@ async function main() {
   await processor.init();
   const bytes =
     store.source && store.source.byteLength > 0
-      ? store.source
+      // `store.source` is an IfcSourceBytes ACCESSOR since #2339, not a
+      // Uint8Array. It still answers `byteLength`, so this guard passes --
+      // but `GeometryProcessor.process(buffer: Uint8Array)` then meshes
+      // nothing and returns 0 entries. Materialize the whole file.
+      ? store.source.materialize()
       : new Uint8Array(await (await import('node:fs/promises')).readFile(FIXTURE));
   const geomResult = await processor.process(bytes);
   console.error(`[g2] meshed (${geomResult.meshes.length} MeshData entries, ${geomResult.totalTriangles} triangles)`);

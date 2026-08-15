@@ -1,5 +1,348 @@
 # @ifc-lite/renderer
 
+## 1.46.0
+
+### Minor Changes
+
+- [#2607](https://github.com/LTplus-AG/ifc-lite/pull/2607) [`2bb936c`](https://github.com/LTplus-AG/ifc-lite/commit/2bb936c213fdb7ca78d42b14a4cb207fbcfd6f18) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now reaches 3D World Context, and glass on the map looks like glass.
+
+  The world view drew every element fully opaque no matter its alpha. Clash focus in ghost mode, the Space Sketch preview and layer diff all faded the model in the viewport and changed nothing on the map; authored `IfcSurfaceStyleRendering` transparency was ignored there too. The cause was one line that was never written: a glTF material with no `alphaMode` is `OPAQUE` per spec, so Cesium discarded the per-vertex alpha the exporter had been packing all along.
+
+  The merged GLB now emits up to two primitives over the same vertex buffers — one opaque, one `alphaMode: 'BLEND'` — split by mesh alpha. Splitting rather than blending the whole model keeps the bulk of the geometry out of the translucent pass, where triangles are not depth-sorted against each other. A model with no translucent geometry still emits exactly one primitive, as before.
+
+  `@ifc-lite/renderer` exports `DEFAULT_GHOST_ALPHA` and `OPAQUE_ALPHA_CUTOFF` so the world view matches the viewport's ghosting rather than inventing its own; the ghost alpha was previously a literal inside `Renderer.render`. Selection is exempt from ghosting on the map exactly as it is in the viewport, and the GLB cache key carries a content-based ghost epoch so an equal set does not rebuild.
+
+  One deliberate difference: GPU-instanced occurrences ghost on the map but not in the viewport, because the renderer's instanced pass never receives the ghost set. That is the viewport being wrong, and replicating it to stay symmetrical would have meant copying a defect.
+
+### Patch Changes
+
+- [#2609](https://github.com/LTplus-AG/ifc-lite/pull/2609) [`c9953ec`](https://github.com/LTplus-AG/ifc-lite/commit/c9953ec6691003a2cfada80da28effcdfcf5e56c) Thanks [@louistrue](https://github.com/louistrue)! - X-Ray now fades GPU-instanced geometry too, instead of leaving it solid.
+
+  The instanced pass received only the hide and isolate sets, so ghosting stopped at the flat geometry. On a model whose facade is instanced — repeated panels, mullions, windows — asking to X-ray the building produced a solid facade standing in front of a ghosted interior. The Cesium world view had already started fading them correctly ([#2591](https://github.com/LTplus-AG/ifc-lite/issues/2591)), and that disagreement is what surfaced the gap.
+
+  `Scene.setInstancedGhosting` fades every occurrence outside the except-set to the same `DEFAULT_GHOST_ALPHA` the flat path uses, leaves the selection solid exactly as the flat path does, and reports the result through `hasTransparentInstances()` so the translucent sub-pass actually runs.
+
+  It composes with lens and IDS colour overrides rather than fighting them: the two share the instance colour bytes, so a ghosted occurrence keeps its override's RGB and takes the ghost alpha, and clearing X-Ray restores the override rather than the original colour.
+
+  The per-frame call is a no-op when nothing changed, but "nothing changed" cannot be judged by the ghost set alone — dropping an override writes full alpha, a streaming shard adds occurrences at their uploaded colour, and neither moves the set. Any of those marks the fade dirty so the next frame re-applies it.
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d), [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594)]:
+  - @ifc-lite/geometry@3.8.2
+
+## 1.45.1
+
+### Patch Changes
+
+- [#2587](https://github.com/LTplus-AG/ifc-lite/pull/2587) [`a38012f`](https://github.com/LTplus-AG/ifc-lite/commit/a38012f6d9fec6b9ea934b22016c9005579a54b7) Thanks [@louistrue](https://github.com/louistrue)! - The hide/isolate rule now has one definition inside the renderer, not six.
+
+  `isEntityVisible` was introduced for the draw paths so the Cesium world view could reach the same verdict the viewport does. Picking and raycasting still restated the rule inline — `pick`, `pickRect`, the pick piece-scan, both raycast-engine loops and the scene's instanced raycast each spelled out "not hidden, and isolated if isolation is active" in their own words. They agreed, but nothing held them together: the world view's disagreement began exactly this way.
+
+  Behaviour is unchanged; this is the same predicate, called instead of copied. The point-cloud query keeps its own rule deliberately — it filters whole assets on `hiddenIds` only, because a point cloud has no per-element ids to isolate on.
+
+## 1.45.0
+
+### Minor Changes
+
+- [#2581](https://github.com/LTplus-AG/ifc-lite/pull/2581) [`645b066`](https://github.com/LTplus-AG/ifc-lite/commit/645b066cfb2ab0f09c076df17cadca9a79d525fe) Thanks [@louistrue](https://github.com/louistrue)! - 3D World Context now hides what you hide: hide and isolate reach the map, not just the viewport.
+
+  The world view renders the model through its own glTF pipeline, so it never inherited the per-frame hide/isolate filtering the WebGPU renderer applies. It honoured type visibility (its mesh list arrives pre-filtered) but nothing else — hide an element, or isolate a storey, and the map kept drawing everything. Since [#2576](https://github.com/LTplus-AG/ifc-lite/issues/2576) gave the world view the GPU-instanced half of the model as well, that gap covered both geometry channels.
+
+  `@ifc-lite/renderer` now exports the rule itself rather than leaving each surface to restate it. `isEntityVisible(expressId, hiddenIds, isolatedIds)` was written out separately at the flat-draw and instanced-draw sites; both now call the shared helper, and so does the world view. `VisibilityEpochTracker` — already used internally for content-based change detection on those two sets — is exported alongside it, so a consumer outside the render loop can tell a real visibility change from a store handing out a fresh Set with identical content.
+
+  Two details the shared rule pins down, both easy to get wrong when restating it: an EMPTY isolation set isolates _nothing_ (it hides everything) and is not the same as `null` (no isolation), and hiding wins over isolation.
+
+## 1.44.1
+
+### Patch Changes
+
+- [#2523](https://github.com/LTplus-AG/ifc-lite/pull/2523) [`bb0c1fe`](https://github.com/LTplus-AG/ifc-lite/commit/bb0c1feab74d0e4b76b66acbabf7bebe45144b25) Thanks [@louistrue](https://github.com/louistrue)! - Section cut caps and `IfcAnnotationFillArea` fills now subtract their holes. The shared triangulator bridged hole rings in but almost never clipped an ear from the bridged ring, so a 4x4 profile with a 2x2 hole covered an area of 2 instead of 12 and any cut through a wall opening or slab void rendered a near-empty cap. Rings are now nested by the even-odd rule, so an island inside a hole fills, matching the 2D canvas and SVG export paths which already fill with `evenodd`. Hole-free profiles are unchanged.
+
+- [#2399](https://github.com/LTplus-AG/ifc-lite/pull/2399) [`7ec9876`](https://github.com/LTplus-AG/ifc-lite/commit/7ec9876202b3fd4d83fda5f23931740a6b0e4e25) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden `Scene.flushPending`'s mesh-queue drain loop against a future regression, not an observed bug: today the chunk-end computation is provably always at least one mesh past the read cursor (three constants combine to guarantee this — see the comment at the call site), but nothing at the loop itself said so. Extracted the chunk-end computation into a pure `computeFlushChunkEnd` helper and added a zero-progress `break`, so that if a future change ever broke one of those three invariants the loop would stop instead of spinning the main thread at 100% CPU with zero allocation.
+
+  Also closed a latent gap in the same computation: `meshQueue[i].indices.length` was read unchecked when deciding whether a chunk exceeds the index-volume cap. A `NaN` there would have made the cap silently vacuous (`NaN > cap` is always `false`), producing one indivisible oversized chunk instead of stopping. The cap check is now written in the codebase's established NaN-rejecting form (`!(x <= cap)` instead of `x > cap`), which is a no-op for all valid input and closes the chunk defensively if it ever sees `NaN` or `+Infinity`.
+
+  No behavior change on any real input; this is defensive hardening surfaced while investigating [#2379](https://github.com/LTplus-AG/ifc-lite/issues/2379).
+
+  Also rejects `-Infinity` specifically, which the `!(x <= cap)` form above didn't already close (`-Infinity <= cap` is always `true`, so the check passes it through). Folding it into the running `chunkIndices` total then poisoned that total to `-Infinity` too, making the cap vacuous for every mesh after the malformed one, not just that one mesh. Every non-finite `indices.length` now closes the chunk explicitly, before it can reach either the cap comparison or the running total.
+
+- Updated dependencies [[`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa), [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d)]:
+  - @ifc-lite/geometry@3.8.1
+
+## 1.44.0
+
+### Minor Changes
+
+- [#2479](https://github.com/LTplus-AG/ifc-lite/pull/2479) [`d38e71f`](https://github.com/LTplus-AG/ifc-lite/commit/d38e71feb2778cc2e9a5ee333b4f01339600dc9e) Thanks [@louistrue](https://github.com/louistrue)! - Close the five remaining paths by which a non-finite value reaches camera state: gesture arguments, model bounds, the unprojection basis, the `normalize` floor that both the picking ray and the pose pass through, and a viewpoint restore's reference distance.
+
+  The gestures validated the pose but took their arguments on trust, so a finite pose could be destroyed from the caller's side instead of the file's. `orbit`, `pan` and `moveFirstPerson` each turned a healthy pose non-finite in one call for both NaN and Infinity, and `zoom` did for NaN — its delta clamp `Math.min(|d| * s, MAX)` absorbs Infinity but not NaN, an asymmetry the rest of this family does not share. The inertia velocities are worse than one bad frame: they accumulate in place and are only spent while `Math.abs(v) > minVelocity`, which is false for NaN, so a single poisoned argument would latch orbit, pan or zoom inertia dead for the session, never applied and never decaying. The cursor-anchored zoom divides by the canvas dimensions; the old truthiness test rejected `0` and `NaN` because both are falsy, but accepted a negative width, which mirrors the anchor, and `Infinity`, which pins it to a screen edge — and it never checked the cursor coordinates at all. A non-finite gesture argument now leaves the pose exactly as it found it, and an unusable cursor anchor — a non-finite coordinate or an unusable canvas extent — degrades to the un-anchored zoom, `orthoSize` included, rather than refusing to zoom. In-app event handlers cannot produce these values — wheel and pointer deltas are browser-guaranteed finite, the SpaceMouse driver clamps its axes, the pinch delta is a subtraction rather than a division, and every canvas writer floors the drawing buffer — so the route this guards is the published one, which `docs/guide/quickstart.md` and the `create-ifc-lite` template both teach by wiring raw browser input straight into these methods. `Renderer.resize` is hardened for the same reason: `canvas.width` is an IDL `unsigned long`, so it silently coerces a non-finite argument to `0`, and no pick guard in the package checks the drawing buffer.
+
+  `frameBounds`, `zoomExtent`, `fitToBounds`, `setPresetView` and `fitBoundsAdaptive` all compute a centre and an extent from an AABB and write both into the pose — and, orthographically, into `orthoSize`, which `getOrthoSize()` reads and a saved viewpoint persists, so a bad fit outlived the session. The bounds are not caller-authored constants: every AABB accumulator in the package seeds `min = +Infinity, max = -Infinity` and narrows on a bare comparison, which is false for a non-finite vertex, so a mesh with no finite vertex hands out that inverted sentinel as if it were a real box — `model-bounds-tracker.test.ts` already pinned exactly that value — and `Scene.getEntityBoundingBox` neither filters it nor declines to cache it. An unusable box is now rejected and the camera keeps the pose it had, which is the same policy `setAspect`, `setFOV` and `setOrthoSize` settled on; there is no meaningful clamp for an infinite extent and no previous bounds to fall back to at these stateless entry points. A _degenerate_ box — a flat wall, a single point — is explicitly still framed. The two writers that bypassed `setOrthoSize` (the orthographic zoom and the animator's interpolation) now go through the same clamp, which also catches the reachable overflow of a legitimately huge half-height scaled by one more zoom-out notch.
+
+  `unprojectToRay` returned a `(NaN, NaN, NaN)` ray origin for a non-finite `camera.up`, for both flavours, while the rendered frame stayed perfectly finite. That value leaves the package into picking and measurement, which test hits with comparisons — all false against NaN — so the click read as empty space rather than as an error. The orthographic branch was rebuilding its own screen basis with none of `lookAt`'s degeneracy handling, and that is what settles the design question: because `lookAt` substitutes a deterministic basis when `up` carries no usable orientation, there _is_ a well-defined frame on screen, and the ray must belong to it. `viewBasis` is now the single source of both, so they cannot drift; returning `null` instead would have failed a pick on a frame the user can see and pushed a branch onto every caller of a published API. The same function supplies the ray origin, so a non-finite camera position no longer produces a ray for a pose that was never rendered, and a viewport with no extent reads as a centred cursor rather than as an infinite one.
+
+  The last member of the family is the floor inside `normalize` itself, in both copies of it: `MathUtils.normalize` (published) floored on `len < 1e-10` and the camera controls' private copy on `len > 1e-10`. Both are magnitude tests, so an infinite length passes them, and scaling by `1 / Infinity` turns an infinite component into NaN while the finite ones go to a clean `0` — a result that is neither finite nor the zero vector every caller falls back on, so the degenerate-case branch could not see it. Both are reached from inputs that are finite throughout, which is why no earlier guard in this family caught them: `MathUtils.invert` stores its result in a `Float32Array`, so an inverse component past 3.4e38 saturates to `Infinity` and `unprojectToRay` returned a direction of `{NaN, 0, -0}` — the silent picking miss again, this time in the perspective branch; and `cross(forward, up)` overflows component-wise for an `up` at the top of the double range, which put NaN into all six coordinates of `position` and `target` on one cursor-anchored wheel notch, past an `isUsableUp` that is a finiteness test and therefore accepts `Number.MAX_VALUE`. `normalize` is now total in both places: everything it cannot normalize is the zero vector, which is what its callers already handle.
+
+  On the BCF side, `parsePoint` extracted coordinates with a bare `parseFloat`, which has no out-of-band failure value: `"NaN"` parses to `NaN` and the well-formed literal `"1e999"` parses to `Infinity`. A coordinate, `FieldOfView` or `ViewToWorldScale` that is not a real number is now reported the same way a missing element already was, so the camera is dropped and the rest of the viewpoint — selection, visibility, clipping, snapshot — still applies; every call site already handled that signal, so this adds no new branch. Separately, the conversions that turn a viewpoint into a viewer pose take the viewer's live `camera.getDistance()` as their reference distance, and that value is raw by contract, so once a pose was broken by any route every restore computed `target = viewPoint + direction * NaN` — meaning restoring a known-good viewpoint, the obvious way out, could not repair the camera. `perspectiveToCamera`, `orthogonalToCamera` and `computeMarkerPositions` now fall back to their documented defaults for a reference distance that is not usable, which is one guard at the sink every restore path funnels through rather than one per app-layer consumer; there are six of those, and guarding them individually is the arrangement that produced the gap.
+
+- [#2498](https://github.com/LTplus-AG/ifc-lite/pull/2498) [`11daf52`](https://github.com/LTplus-AG/ifc-lite/commit/11daf5260bdc433d238dc8ba8bca07334aced840) Thanks [@louistrue](https://github.com/louistrue)! - Export `viewBasis`, the orthonormal camera basis `MathUtils.lookAt` renders through.
+
+  `lookAt` has always resolved a degenerate `up` — parallel to the view direction, zero-length, or non-finite — by substituting a deterministic hint, so a plan view still renders a well-conditioned frame. That substitution was only observable inside the package, which left any consumer that has to reconstruct the on-screen basis from `getPosition()` / `getTarget()` / `getUp()` recomputing `cross(forward, up)` itself and inventing a different answer for the same degenerate pose. [#2467](https://github.com/LTplus-AG/ifc-lite/issues/2467) removed one such duplicate inside the package; the Cesium map overlay is the same situation from outside it, and a second answer there means the basemap is rotated against the model precisely in the plan view the overlay is most used in.
+
+  Pure addition: no existing export changes shape or behaviour.
+
+- [#2499](https://github.com/LTplus-AG/ifc-lite/pull/2499) [`b7e9ad4`](https://github.com/LTplus-AG/ifc-lite/commit/b7e9ad4679a0d5d7a92488a5ab92c5b4dba4bb59) Thanks [@louistrue](https://github.com/louistrue)! - Close the four remaining normalize-style floors that reject NaN but admit Infinity, all of which end up in GPU state rather than in camera state, so they misdraw instead of mis-picking. `len > eps` is true for `Infinity` and `Infinity / Infinity` is `NaN`; `!Number.isNaN` does not help, only a finiteness test does.
+
+  `resolveEnvironment` floored the sun direction on `len > 1e-6`, so `sunDirection: [Infinity, 1, 0.3]` normalized to `[NaN, 0, 0]` and `packEnvironmentUniforms` wrote that into the lighting uniform, where `dot(N, sunDirection)` is NaN for every fragment of every surface. `LightingEnvironment` is public `RenderOptions` surface and the viewer also forwards a computed direction from its solar-position hook, so the input is reachable rather than hypothetical. An unusable direction now falls back to the default sun, which is what the same branch already did for a zero-length one. The floor is unchanged and still a lower bound on length: a short direction is a real direction.
+
+  `planeBasis` is now total. It read the caller's magnitudes directly, so each of its magnitude tests answered a question about _length_ while its comment claimed an _angle_, and three separate defects followed. A non-finite component passed both tests — `Infinity > 1e-9` is true, `NaN < 1e-9` is false — and both axes came back all-NaN, which the section gizmo writes into a vertex buffer and the cap renderer uses to lift 2D cut polygons back to 3D. The `|ny| < 0.9` reference-axis pick only measures the angle to world Y for a unit normal, so `[10, 1, 0]` — six degrees off horizontal — was routed down the near-vertical fallback and its hatch axis flipped 180 degrees purely because the caller had not normalised. And the `1e-9` tangent floor scales with the normal, so a short but perfectly valid normal such as `[1e-12, 0, 0]` was declared degenerate and returned a zero-length bitangent, violating the function's own documented unit-length guarantee — as the zero normal already did. Normalising the normal up front fixes all three at once and makes every threshold in the function angular, as the docstring always described them. A normal that carries no usable direction now degrades to the horizontal-plane basis, the same way `resolveSectionPlaneFrame` degrades an unusable section normal to a cardinal preset. This is a behaviour change for callers passing non-unit or degenerate normals, hence minor; every in-repo caller already normalises, so the basis for any normal the viewer actually produces is bit-identical.
+
+  The gizmo quad that consumes that basis needed its own guard. `resolveSectionPlaneFrame` screens a non-finite `sectionPlane.normal` for the clip uniform, but `drawSectionOverlays` does not read the resolved frame — it forwards the raw `RenderOptions.sectionPlane.normal` to the gizmo, whose own check was `nlen < 1e-6`, false for a NaN length and for an infinite one alike. All thirty floats of the preview quad came out NaN. The sibling field `distance` is already screened by `draw()` before this branch is taken, and deliberately gets no second check here.
+
+  The two remaining copies of the camera basis — the billboard axes for world-space text labels, and the sky pass's view ray — now come from `viewBasis` instead of deriving `cross(forward, up)` from the raw pose themselves. This is the drift the unprojection ray closed: three places building the basis the view matrix is built from, disagreeing about degenerate input. Both guarded their two divisors with `Math.hypot(...) || 1` and neither numerator, so a non-finite coordinate anywhere in the pose produced NaN axes; and both let through two _finite_ degeneracies that no finiteness test would have caught — `eye === target`, and an `up` parallel to the view direction, as a plan pose or a restored viewpoint produces — as zero-length axes, which collapses every glyph quad to a point and flattens the sky to one undefined colour. Taking `viewBasis`'s deterministic substitute is also what makes the labels billboard against, and the sky horizon line up with, the basis the frame was actually drawn with.
+
+- [#2464](https://github.com/LTplus-AG/ifc-lite/pull/2464) [`2fcbabc`](https://github.com/LTplus-AG/ifc-lite/commit/2fcbabc2484557c59cf175a7c034232f3f0336cd) Thanks [@louistrue](https://github.com/louistrue)! - Renderer readiness now tracks the objects it describes ([#2448](https://github.com/LTplus-AG/ifc-lite/issues/2448), [#2465](https://github.com/LTplus-AG/ifc-lite/issues/2465)). No exported surface is added or removed, but `whenReady()` can now reject where it previously only ever resolved, which is a behaviour change for consumers of a published package rather than a patch.
+
+  - `whenReady()` and `isReady()` stop reporting the outgoing device as usable while a re-init is queued ([#2448](https://github.com/LTplus-AG/ifc-lite/issues/2448)). Serialising `init()` moved its whole body behind the queue, so the `ready = false` that the release above depends on no longer ran before `init()` returned to its caller: `renderer.init(); await renderer.whenReady();` resolved in the microtask window against GPU objects the queued body was about to destroy. `init()` now revokes readiness synchronously, before it queues anything, `destroy()` revokes it too (a host tearing the renderer down directly left `whenReady()` resolving forever), and `isReady()` requires that state alongside its device and pipeline checks. An init that completes while a LATER one is still queued no longer publishes readiness, since that later call will destroy everything it built. A first `init()` has nothing to invalidate and is unaffected.
+
+  - `destroy()` now invalidates an `init()` that is still in flight ([#2465](https://github.com/LTplus-AG/ifc-lite/issues/2465)). Revoking `ready` was not enough: the init is parked on `await device.init(...)`, so it resumed after the teardown, allocated a complete replacement GPU stack — two pipelines, the picker, the post-processor, the point-cloud and deviation pipelines, the EDL pass, the overlay glyph atlas — that nothing references and no second teardown releases, and then re-published readiness, resolving `whenReady()` waiters against a renderer the host had already torn down. Reachable from the viewer: the viewport's effect cleanup destroys the renderer, React StrictMode unmounts every dev mount while the first `init()` is still awaiting its device, and the mobile/desktop layout swap does the same in production; a consumer that captured the renderer before the teardown (the point-cloud loader holds it across `await whenReady()`) then observes the republish. `destroy()` advances the init generation and `initOnce()` re-checks it after the device resolves, releasing that device and stopping before the allocation. The teardown `init()` performs on the PREVIOUS init's objects deliberately does not advance the generation — it is part of the init running it, and invalidating there would leave every re-init permanently un-ready.
+
+  - A lost GPU device revokes readiness too, through the third door the two revocations above left open. An involuntary loss (driver reset, VRAM exhaustion, GPU-process crash) kills every GPU object the renderer owns and makes `render()` a no-op, but the device is never torn down — `isInitialized()` stays true, the pipeline stays non-null, and `ready` stays set from the init that completed before the loss — so `isReady()` kept answering true and `whenReady()` kept resolving against a renderer that demonstrably was not usable. `isReady()` now requires a live device alongside its other checks, and `whenReady()` rejects with an `Error` whose `name` is `RendererDeviceLostError`. The name is deliberately not `RendererDestroyedError`: a destroyed renderer is finished, a lost one is dead only until the host re-initialises it, and a caller deciding whether to retry needs to tell those apart. Waiters parked when the loss lands are failed rather than left for the init the loss interrupted to flush — `init()` subscribes to the device's loss signal before awaiting it, so a loss during initialisation reaches a renderer that then goes on to publish readiness. A later `init()` re-arms the wait at the call, before its queued body runs, so the documented `renderer.init(); await renderer.whenReady();` recovery is not rejected by the loss it is clearing.
+
+  - `whenReady()` REJECTS when `destroy()` runs, instead of leaving the caller parked forever. Withholding the resolve (above) is only half a contract: "neither resolve nor reject" is not an outcome an `await` can act on, so the caller's async frame stays suspended for the lifetime of the page, holding everything it captured, with no error anywhere and no later event that can free it — a host that remounts builds a NEW `Renderer` rather than re-initialising the destroyed one, so the parked waiter has nothing left to wait for. (When the same instance IS re-initialised, waiters parked across the re-init are still preserved and flushed by that init; the teardown `initOnce()` runs deliberately does not fail them.) The rejection is an `Error` whose `name` is `RendererDestroyedError`, so callers can tell "the renderer went away" from a real failure; `whenReady()` called after `destroy()` rejects the same way rather than parking a new waiter, and a later `init()` re-arms it. Callers that do not handle the rejection will see an unhandled rejection where they previously saw a wait that never returned.
+
+### Patch Changes
+
+- [#2463](https://github.com/LTplus-AG/ifc-lite/pull/2463) [`d092990`](https://github.com/LTplus-AG/ifc-lite/commit/d092990b18fad1e832aa952433c5831465b0eae4) Thanks [@louistrue](https://github.com/louistrue)! - Treat a non-finite camera distance as unusable rather than as small, so a malformed pose cannot be spread by a navigation gesture.
+
+  The same NaN-transparency ran through the navigation gestures, which had all been written as `dist < eps` early returns — a magnitude test, not a finiteness one, since every comparison involving NaN is false. Pan, orbit, zoom and first-person movement therefore acted on a malformed pose and wrote the result back into both the camera position and the camera target, so one non-finite coordinate became all six on the first drag and the pose could never be recovered from; the first-person walk velocity additionally latched, staying dead for the life of the camera because a NaN velocity is neither spent nor damped by the `Math.abs(v) > minVelocity` loop that drives it and nothing else ever resets it; pan inertia latches the same way but clears on the next `stopInertia()`, which the viewer calls whenever the cursor leaves the canvas. Each of those now leaves an unusable pose exactly as it found it, and `getRotation()` — which fell through the same comparison and returned a NaN elevation into the viewer's rotation readout and the measurement handlers — returns its neutral angles instead, the same answer it already gave for a zero-distance pose. `getDistance()` itself is deliberately left unsanitized: it is a measurement read back by the viewpoint-restore path and the BCF overlay's marker scale, and no single substitute is right for every reader, so reporting one would both hide the broken pose and contradict `getPosition()`/`getTarget()`, which are raw.
+
+  The pose's third vector needed the same treatment, and a guard on the distance did not provide it. `up` is authored by the same files as the other two — BCF's `CameraUpVector`, axis-swapped and written straight through by the viewpoint restore, which on its default animated path reaches `camera.up` via `animateToWithUp` without passing the setter at all — and the cursor-anchored zoom derives its screen basis from it and writes the result into the camera target, which the zoom then copies into the camera position. `normalize`'s length floor is a lower bound only, so it absorbs a NaN `up` but scales an infinite one by `1 / Infinity` and hands back NaN: a single infinite component turned an otherwise finite pose fully non-finite in one wheel notch, in both projection modes, and the view-projection matrix stayed finite throughout because `lookAt` scrubs its inputs, so nothing looked wrong until every later gesture refused to move. The cursor anchor is now dropped for an unusable `up`, exactly as it already was for a zero-length or view-parallel one, and the zoom still happens, centred; pan's plan-view fallback, the only other gesture that reads `up`, no longer stalls on an infinite one either. Finiteness is the whole test — a short but valid `up` still steers the anchor, since `animateToWithUp` and viewpoint restore both write `up` unnormalized — and `up` itself is left exactly as authored, so a restored viewpoint is not rewritten on its way back out.
+
+- [#2500](https://github.com/LTplus-AG/ifc-lite/pull/2500) [`0d1083f`](https://github.com/LTplus-AG/ifc-lite/commit/0d1083f69f44afbfb4a91b26891633b1d1b8588c) Thanks [@louistrue](https://github.com/louistrue)! - Split the camera module family along its subject seams. `camera-animation.ts` gave up free framing (`camera-framing.ts`, pure pose pickers), the ViewCube's preset directions (`camera-preset-view.ts`) and first-person navigation (`camera-first-person.ts`); `camera.ts` gave up matrix derivation (`camera-matrices.ts`); the shared `CameraInternalState`/`ProjectionMode` types moved out of `camera-controls.ts` into `camera-state.ts`. No public API change.
+
+  The split surfaced six pre-existing defects in the code it moved, all fixed here:
+
+  - `enableFirstPersonMode` now actually gates `moveFirstPerson`. The flag was written and never read, so an embedder driving `moveFirstPerson` walked the camera whether or not walk mode had been entered. Leaving walk mode, and `Camera.reset()`, now also drop the accumulated walk velocity so it cannot be spent as a lurch on the next model.
+  - Fit distances (`frameBounds`, `zoomExtent`, `setPresetView`) honour the horizontal field of view. On a portrait viewport (`aspect < 1`) the horizontal field is the narrower one, and a fit derived from the vertical field alone clipped the box it was asked to frame. Landscape viewports are bit-for-bit unchanged.
+  - `zoomExtent` on a degenerate box (`max === min` — a flat wall, a single point) no longer puts the camera on its own target.
+  - The orthographic near/far derivation brackets the scene when position and target coincide, instead of centring a range on the camera and clipping the model away.
+  - The orthographic projection backstop rejects a zero or negative half-height, not only a non-finite one.
+  - A non-finite `buildingRotation`, or a rotation-cycle index outside 0-3, no longer produces a non-finite preset pose.
+
+- [#2498](https://github.com/LTplus-AG/ifc-lite/pull/2498) [`11daf52`](https://github.com/LTplus-AG/ifc-lite/commit/11daf5260bdc433d238dc8ba8bca07334aced840) Thanks [@louistrue](https://github.com/louistrue)! - Report "no geometry" rather than the inverted-empty box for an entity with no usable vertex, and stop caching that answer.
+
+  `Scene.getEntityBoundingBox` seeded a min/max accumulation at `±Infinity` and returned whatever the seed was left as, so a mesh piece with a zero-length positions array produced `{ min: +Infinity, max: -Infinity }`. That value is exactly right as the _seed_ of an accumulation — `ModelBoundsTracker` still relies on it that way, and folding it into a union gives the correct answer — but it is not a box, and it was being handed out as one to every consumer that reads `min`/`max` as coordinates: the CPU raycast pre-filter, rectangle select, the zone-assignment element list, and the BCF marker placement. It also disagreed with `Scene.getBounds()`, the sibling accumulation over the very same `meshDataMap`, which has always screened each vertex with `Number.isFinite` and returned `null` when none survived. `getEntityBoundingBox` now returns `null` in that case, which is the answer the method already gave for an entity with no mesh pieces at all and which every in-repo consumer already handles.
+
+  Caching it was the sharper half. Nothing invalidates this per-entity cache when `addMeshData` later adds a piece, so a single transient empty piece poisoned the entry permanently: an entity that afterwards gained real geometry kept answering with the sentinel for the life of the scene. The "no geometry yet" answer is therefore no longer written to the cache at all, while a real box is still memoised exactly as before. The two other copies of the same loop — the bounds snapshots taken by `finishEphemeralStreaming` and `releaseGeometryData`, now sharing one implementation with it — follow the same rule, which matters more there than anywhere else: after release the keys of that cache _are_ the authoritative entity set, so a cached sentinel published a geometry-less id to every CPU consumer and made the released-path `getBounds()` return the sentinel as the scene box while the pre-release path returned `null` for identical data.
+
+  Non-finite vertices are now skipped instead of being folded in, matching what `getBounds()` and `ModelBoundsTracker` already do. [#1645](https://github.com/LTplus-AG/ifc-lite/issues/1645) records NaN placement matrices as a real input class, and one infinite coordinate previously widened an entity's box to infinity and handed that on to the camera, the raycaster and clash. Finiteness is the entire test: a legitimately huge but finite coordinate — a georeferenced model authored in millimetres sits around 1e9 — is untouched, as is a zero-extent single-point entity.
+
+- [#2502](https://github.com/LTplus-AG/ifc-lite/pull/2502) [`51dd6ef`](https://github.com/LTplus-AG/ifc-lite/commit/51dd6ef30b0198dffab89c6f45fa82ad928ba95b) Thanks [@louistrue](https://github.com/louistrue)! - Split `section-2d-overlay.ts` (1176 lines) along the resource/description seam.
+
+  The WGSL for both pipelines moves to `shaders/section-2d-overlay.wgsl.ts`, the 2D→3D lift and cap triangulation to `section-2d-lift.ts`, and the per-family vertex buffer to a `WorldLineBuffer` value object in `section-2d-line-buffer.ts`. None of those own a shared GPU resource: the two pipelines, the bind-group layout, the bind group and the uniform buffer stay owned by `Section2DOverlayRenderer` and are passed to a draw rather than held. The public API is unchanged.
+
+  Also fixes three defects the split surfaced, all pre-existing:
+
+  - **Every overlay draw in a frame shared one uniform record.** The cut cap and the five world-space line families are encoded into one render pass, and each wrote byte 0 of the same 160-byte buffer. `queue.writeBuffer` is a queue operation applied before the command buffer executes, so the last write won and every draw read it: the clash-overlap box's colour bled onto the annotation, alignment, grid and DXF overlays, and the cut cap lost its fill colour and hatch to the zeroed cap-style tail a line draw writes. Each draw site now owns a slot in the buffer, addressed by a dynamic bind-group offset sized to the device's `minUniformBufferOffsetAlignment`.
+  - **A line-list array that was not a whole number of segments produced a fractional vertex count**, which is a WebGPU validation error that fails the whole command buffer — taking every other overlay in the pass with it. Uploads now truncate to complete segments.
+  - **`Section2DOverlayRenderer.dispose()` did not release the clash-overlap-box vertex buffer** ([#1277](https://github.com/LTplus-AG/ifc-lite/issues/1277) added the sixth line family and never wired it into disposal), leaking it on every renderer teardown.
+
+  The brick hatch's band parity uses a signed comparison, so it stays correct if the pattern is ever evaluated at a negative coordinate.
+
+- Updated dependencies [[`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd), [`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831), [`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd), [`8bddeca`](https://github.com/LTplus-AG/ifc-lite/commit/8bddeca78313c6a2575e46975471055982389f12), [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328), [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328), [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328)]:
+  - @ifc-lite/geometry@3.8.0
+
+## 1.43.0
+
+### Minor Changes
+
+- [#2172](https://github.com/LTplus-AG/ifc-lite/pull/2172) [`ef2accf`](https://github.com/LTplus-AG/ifc-lite/commit/ef2accf9bde98e0e5dd9fcb56a1b82d385f604ff) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Model-tagged instanced-template storage in `Scene`. `InstancedTemplateGPU` now carries a `modelIndex`, `addInstancedShard(device, shard, modelIndex = 0)` takes the owning model, and the new `removeInstancedTemplatesForModel(modelIndex)` frees exactly that model's GPU buffers and occurrences. Template slots are stable — a removal blanks its slots instead of splicing, so no other model's `templateIndex` shifts — and `getInstancedModelIndices()` reports which models hold templates. `getResidentGpuBytes()` counts live templates only.
+
+  Also fixes a latent slot misalignment: after `releaseGeometryData()` a subsequently uploaded shard's CPU template landed at CPU index 0 instead of its GPU slot, so CPU consumers (raycast / measure / section / export) could read a different template's triangles than the occurrence named.
+
+  Behaviour is unchanged for existing callers (`modelIndex` defaults to 0 and the single `addInstancedShard` call site does not pass one).
+
+- [#2423](https://github.com/LTplus-AG/ifc-lite/pull/2423) [`f9f5fb7`](https://github.com/LTplus-AG/ifc-lite/commit/f9f5fb701ea0ace55a68c7d53085774052ee8995) Thanks [@louistrue](https://github.com/louistrue)! - Give the encode region the same device-loss discrimination as the rest of the frame, and report a viewport that degrades without recovering.
+
+  `render()`'s outer catch already told a synchronous device loss (a `DOMException`) apart from host memory pressure on a live device (a `RangeError`). The frame body's own catch — covering encoder work, the render passes and `submit` — did not, so a device that died after `getCurrentTexture()` had succeeded degraded quietly forever: no latch, no `onDeviceLost`, and no re-requested frame. Both catches now run one shared policy.
+
+  Adds `Renderer.onPersistentRenderDegradation(listener)` and the exported `RenderDegradationInfo` type: fired once per renderer when frames have degraded _consecutively_ well past the transient-retry budget, so a wedged viewport can be surfaced to the user and to error tracking by the host. Any frame that completes resets the run, so a session that failed occasionally and recovered every time never reports. The renderer itself files no telemetry.
+
+### Patch Changes
+
+- [#2450](https://github.com/LTplus-AG/ifc-lite/pull/2450) [`341901f`](https://github.com/LTplus-AG/ifc-lite/commit/341901f94c7ae16cb6b2e34542ee2958f1a9ae95) Thanks [@louistrue](https://github.com/louistrue)! - Fix a camera pose that made the entire view-projection matrix NaN, so the viewport rendered nothing.
+
+  `MathUtils.lookAt` had no degenerate-up guard: when the view direction is parallel to `up`, `cross(up, viewDir)` is exactly zero and normalizing it wrote NaN into all sixteen components. Nothing threw — the viewport just went blank. It now substitutes an up hint that carries real orientation, and likewise returns a finite matrix when `up` is zero-length, when `eye` coincides with `target`, and when any input coordinate is non-finite (a malformed viewpoint read from a file reaches the public camera setters unvalidated). The camera's own near/far derivation is guarded the same way, in both projection modes. So are the other three values feeding the projection matrix — the orthographic half-height, the field of view and the aspect ratio — whose existing clamps did not in fact reject a malformed value: `Math.max`/`Math.min` propagate NaN, so `Math.max(0.01, NaN)` is `NaN`, not the floor. Each of those setters now keeps its last usable value instead, which also stops a NaN leaking back out through `getOrthoSize()` / `getFOV()` into a saved viewpoint, and the orthographic half-height is additionally guarded where the projection matrix reads it, since the zoom and the animator write it without going through the setter. Well-conditioned poses are byte-identical to before.
+
+  Three routes reached that pose. The load-path one needed a second fix: `pickFitPolicy`'s linear branch applied its 20-degree downward tilt around world Y, the same axis it was tilting _from_, so for a Y-dominant bounding box the tilt cancelled and the view direction came back exactly parallel to the policy's own up vector. Any tall thin model past the linear gates (aspect > 50, longest >= 100 m) — a mast, chimney, shaft, lift core or turbine tower — auto-fitted to a dead viewport with no user action. Those now tilt away from a genuinely perpendicular axis. The other two routes, an exact overhead pose via `setPosition`/`setTarget` and an externally authored BCF viewpoint restore, are covered by the `lookAt` guard.
+
+  No exported surface change: every function keeps its signature, and only degenerate inputs behave differently.
+
+- [#2239](https://github.com/LTplus-AG/ifc-lite/pull/2239) [`d4d980b`](https://github.com/LTplus-AG/ifc-lite/commit/d4d980bc3847ae94bfb043f447cb893b43d48077) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `Scene.removeInstancedTemplatesForModel` leaving stale cached bounding boxes behind ([#2073](https://github.com/LTplus-AG/ifc-lite/issues/2073)).
+
+  The method already freed a model's GPU-instanced templates and pruned `instancedEntityMap`, but never touched the `boundingBoxes` cache it also feeds. For an id whose occurrences were entirely in the removed model (instanced-only), the cached world AABB lingered after the geometry was gone, so `getEntityBoundingBox()` kept returning a box for nothing and the released-geometry bounding-box raycast could still pick an element with no remaining mesh. For an id shared across models (occurrences in more than one), the cached box is a union built at upload time, so pruning only the removed model's occurrences left the box sized for occurrences that no longer exist.
+
+  An id that also owns flat (non-instanced) geometry is unaffected: that mixed case is owned by `removeMeshesForEntity`'s flat-removal path, which already clears the cache on its own schedule.
+
+  `removeInstancedTemplatesForModel` has no caller yet (step 1 of the [#2073](https://github.com/LTplus-AG/ifc-lite/issues/2073)/[#1912](https://github.com/LTplus-AG/ifc-lite/issues/1912) fix); this closes the gap before step 2 wires it up.
+
+- [#2258](https://github.com/LTplus-AG/ifc-lite/pull/2258) [`e47a8f0`](https://github.com/LTplus-AG/ifc-lite/commit/e47a8f0f56800af1d6cbee3d63dfe9b106c9b343) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `Scene.clearFlatGeometry()`: resets flat/batched geometry (meshes, batches, buckets, textured meshes, colour overlays, streaming state) without destroying GPU-instanced templates. `Scene.clear()` is unchanged (still a full reset — flat geometry AND instanced templates) but is now implemented as `destroyAllInstancedTemplates()` + `clearFlatGeometry()` internally.
+
+  This exists so a caller that reshapes the scene (a visibility toggle, an in-place content mutation, a federated model add) while at least one model is still present can retain that model's instanced geometry instead of losing it permanently — nothing re-uploads GPU-instanced templates once they're destroyed, since the instancing shard bytes are dropped after their one-time drain. Pair `clearFlatGeometry()` with `removeInstancedTemplatesForModel()` for any model that did NOT survive the reshape, to keep the invariant that only present models' instanced geometry stays visible.
+
+  `clearFlatGeometry()` also stops unconditionally clearing `boundingBoxes`: an id with a surviving instanced occurrence keeps its cached box (needed for raycast/measure to keep working on retained geometry); an id with no surviving occurrence anywhere (flat or instanced) still has its box dropped, matching the previous behaviour for pure flat geometry.
+
+- [#2350](https://github.com/LTplus-AG/ifc-lite/pull/2350) [`2618511`](https://github.com/LTplus-AG/ifc-lite/commit/26185118071131a995b2d6a7e9f83bf1c9d578e4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `Scene.finalizeStreamingAsync` (the time-sliced twin of the synchronous streaming finalize, used for large/streamed models) so a mid-rebuild GPU failure — e.g. `createBuffer` OOM — no longer corrupts scene state.
+
+  The chunked rebuild runs across `setTimeout` continuations. A throw inside a later chunk is a separate macrotask, so it was never caught by anything and silently became an unhandled exception: the returned promise stayed unsettled forever, `finalizeInProgress` stayed stuck `true`, `streamingFragments` had already been emptied by the synchronous preamble with no way back, a live `partialBatchCache` entry (backing an active hide/isolate view) had already been destroyed before the rebuild could fail, and `pendingBatchKeys`/`streamingFragments` being cleared unconditionally defeated `releaseGeometryData`'s in-flight guard, letting it run concurrently and further corrupt GPU state.
+
+  The synchronous preamble and every chunked continuation now run under their own `try/catch` that mirrors `finalizeStreamingInner`'s existing contract: on failure, restore the previous `streamingFragments`/`batchedMeshes`, free only the GPU resources this attempt created (not anything still being rendered), leave partial-batch caches alone (they are only dropped once the rebuild has actually succeeded), always clear `finalizeInProgress`, and reject the returned promise so callers can observe the failure.
+
+  Freeing what the attempt created is only half of the restore: the rebuild publishes each new batch into its owning bucket (`bucket.batchedMesh`) as it goes, so freeing those batches while the bucket map still referenced them would have left a dangling pointer — the next bucket-driven access (residency restore, recolour, partial-batch build) touching destroyed GPU resources, surfacing as a device-lost or validation error far from the original failure. Each created batch is now tracked together with its owning bucket and the value it displaced, and the rollback restores that value on the bucket before freeing the batch: `null` for the buckets this attempt built, and the previous shell for a carried cold bucket that a re-grouped mesh landed in — which the restored `batchedMeshes` still holds and which must not be dropped.
+
+- [#2439](https://github.com/LTplus-AG/ifc-lite/pull/2439) [`acdddd9`](https://github.com/LTplus-AG/ifc-lite/commit/acdddd91b205d83374e2f820fcfe17db1c9abc4d) Thanks [@louistrue](https://github.com/louistrue)! - Internal file split: move the overlay layer and the per-frame section-plane resolution out of `index.ts`, which was 3946 lines against the ~400-line house rule (issue [#2425](https://github.com/LTplus-AG/ifc-lite/issues/2425)).
+
+  - `renderer-overlays.ts` (`RendererOverlays`) now owns the section-plane gizmo, the 2D section drawing / cut cap, and the standalone 3D line overlays (IfcAnnotation lines, IfcAlignment centrelines, IfcGridAxis, the DXF reference layer, and the focused clash's box / contact lines). They were already one unit in everything but location: created together in `init()`, destroyed together in `destroy()`, drawn consecutively at the tail of the render pass.
+  - `renderer-symbolic-overlays.ts` (`SymbolicOverlays`) owns the symbolic fill + text pipelines, which are a genuinely separate pair of GPU objects sharing no state with the `Section2DOverlayRenderer` behind the cap and the line layers. `RendererOverlays` composes it and keeps the draw order, which is the one thing the two families share.
+  - `render-section-plane.ts` (`resolveSectionPlaneFrame`) owns the per-frame clip-plane resolution: the bounds aggregation the section slider is expressed in, the terrain-clip and explicit-plane branches, and the one-shot diagnostic.
+
+  `index.ts` goes 3946 -> 3499 lines.
+
+  **No behaviour change and no public API change.** Every moved method keeps a one-line delegate on `Renderer`, so the exported surface is byte-identical — `scripts/api-surface.json` needs no update. The move was verified against `main` by normalised diff (indentation, comments and the `this.` prefix stripped): the section-plane body, the overlay draw body, the upload facade and the camera-basis math all compare identical, and the nine-call overlay draw sequence is unchanged. The renderer suite stays at 494 tests with the same 111 suites.
+
+  This is a `patch` because consumers do receive different built code even though nothing they can call has changed.
+
+- [#2430](https://github.com/LTplus-AG/ifc-lite/pull/2430) [`641530e`](https://github.com/LTplus-AG/ifc-lite/commit/641530e73c73bda24b6dc69d3a9fd8910ee16ec8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Give the renderer's scene AABB a single owner.
+
+  `Renderer.modelBounds` was a private field written from four unrelated
+  concerns — point-cloud upload (`recomputeModelBounds` /
+  `expandModelBoundsForPointClouds`), mesh load (`updateModelBounds`), the
+  annotation and alignment overlay uploads (`expandModelBoundsWithFlatVertices`),
+  and the public `setModelBounds()` — and read by fit-to-view, `getDiagnostics()`
+  and the section-plane range. Every bounds-mutating method reached into that
+  field, which is why the point-cloud and 3D-overlay surfaces could not be lifted
+  out of `index.ts`.
+
+  The value now lives in `ModelBoundsTracker`, which pulls its two inputs (mesh
+  bounds, point-cloud bounds) through injected accessors. No behaviour change:
+  the tracker deliberately does not notify the camera, because the call sites do
+  not all push under the same policy — the point-cloud paths push
+  unconditionally (so an emptied scene clears the camera's bounds), the overlay
+  paths push only when the value is non-null, the public `setModelBounds()` does
+  not push at all, and the section-plane branch of `render()` pushes a separate
+  wrapper object. The mutate-then-`setSceneBounds` pairing therefore stays where
+  it was, kept atomic by the caller.
+
+  No public API change; `index.ts` drops 117 lines.
+
+- [#2376](https://github.com/LTplus-AG/ifc-lite/pull/2376) [`858fd6b`](https://github.com/LTplus-AG/ifc-lite/commit/858fd6bb0c92140bf6c3752cdc37e705e8202425) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a GPU buffer leak on two paired-allocation paths where a throw on the second `createBuffer` orphaned the first, already-created buffer.
+
+  `appendPointSubBuffer` (point cloud chunk upload) creates a `vertexBuffer` then a `deviationBuffer`; if the second allocation throws (e.g. out of memory — the exact scenario `appendChunkToNode` splits large uploads to survive), the `vertexBuffer` was created and written but never referenced again and never destroyed. `DeviationPipeline.uploadBvh` has the same shape with `nodeBuf` then `triBuf`. Both sites now destroy the first buffer before the error propagates.
+
+  No change to the success path.
+
+- [#2451](https://github.com/LTplus-AG/ifc-lite/pull/2451) [`c589d5a`](https://github.com/LTplus-AG/ifc-lite/commit/c589d5af185d25efc20ec56b8f97849e2a20de7e) Thanks [@louistrue](https://github.com/louistrue)! - Section and lifecycle fixes in the renderer, covering issues [#2447](https://github.com/LTplus-AG/ifc-lite/issues/2447), [#2442](https://github.com/LTplus-AG/ifc-lite/issues/2442) and [#2448](https://github.com/LTplus-AG/ifc-lite/issues/2448). No exported surface changes.
+
+  - Fix the section slider's distance range on a rotated building ([#2447](https://github.com/LTplus-AG/ifc-lite/issues/2447)). The shader clips on `dot(worldPos, normal) = distance`, but the cardinal-axis branch read its range off one axis of the model AABB — the same quantity only while the normal IS that unit axis. With a non-zero `buildingRotation` the slider therefore travelled a shorter span than the model occupies along the direction it cuts, leaving a wedge at each end that the plane could never reach (a 40 x 10 x 20 bbox cut on `side` at 45 degrees spanned -20..20 where the true extent is -21.213..21.213). The range is now the min/max of `dot(corner, normal)` over the eight bbox corners, which collapses to the plain axis extent bit-for-bit when the normal is a unit axis, so unrotated models are unchanged. The `min`/`max` storey override arrives in axis-aligned elevation units and is now honoured only while the resolved normal is still the positive unit axis it is expressed along (every unrotated model, and `axis: 'down'` at any rotation) rather than being compared against a distance along a tilted normal. `uploadSection2DOverlay` shares the same range function, passing the un-rotated axis normal on purpose: its `planePosition` is a world axis coordinate that the 2D-to-3D lift and the upstream cut both depend on, not a plane distance.
+
+  - Reject non-finite explicit section planes ([#2442](https://github.com/LTplus-AG/ifc-lite/issues/2442)). `SectionPlane.normal` / `.distance` are caller-supplied, but only `distance` was checked for finiteness; an `Infinity` component passed the `len > 1e-6` test and wrote `normal = [NaN, NaN, NaN]` into both the shader's clip uniform and the GPU pick's plane. All three components must now be finite, and the computed length must be finite as well as non-degenerate (a finite `1e200` still squares to `Infinity`). Bad input degrades to the cardinal-axis preset instead of propagating.
+
+  - Reject a non-finite `buildingRotation` too ([#2442](https://github.com/LTplus-AG/ifc-lite/issues/2442)). The cardinal-axis branch rotated its normal whenever the angle was neither `undefined` nor `0`, and `Math.cos` is `NaN` for both `NaN` and `Infinity`, so a non-finite angle produced a `NaN` normal and a `NaN` clip distance — the same failure as above on the model-derived sibling input. The angle is not authored by the caller: it is the Z-rotation of the resolved `IfcSite` placement, and a malformed placement direction whose components overflow to `Infinity` normalises to a `NaN` matrix, so `atan2(NaN, NaN)` = `NaN` is what the pre-pass emits and nothing between there and `RenderOptions` filters it. A non-finite angle now degrades to no rotation; finite angles are unchanged.
+
+  - `uploadSection2DOverlay` / `clearSection2DOverlay` now `requestRender()` on every path that changes overlay geometry, including the custom-plane path ([#2442](https://github.com/LTplus-AG/ifc-lite/issues/2442)). Rendering is dirty-flag gated, so a section drawing uploaded or cleared while nothing else dirtied the frame did not appear or disappear until an unrelated interaction drove one.
+
+  - `Renderer.init()` releases the previous init's GPU objects instead of orphaning them ([#2448](https://github.com/LTplus-AG/ifc-lite/issues/2448)). The method's own comment advertises a `destroy()` + `init()` re-init flow, and the obvious device-loss auto-recovery is to call `init()` on the live instance — which leaked two render pipelines, the picker, the post-processor, the point-cloud and deviation pipelines, the EDL pass and the overlay layer's glyph atlas (the `SymbolicTextPipeline` that owns it) per recovery. A first `init()` still destroys nothing.
+
+  - Overlapping `Renderer.init()` calls are serialised ([#2448](https://github.com/LTplus-AG/ifc-lite/issues/2448)). The release above keys on `pipeline`, which only marks a COMPLETED init, so while the first call was awaiting its device the field was still null and a second call walked past the guard — both then allocated a full set of GPU objects and orphaned the first, the very leak the guard closes. `init()` now queues, so the second call waits for the first to settle and then runs in full; a rejected init does not block later ones, and callers still see the rejection.
+
+- [#2283](https://github.com/LTplus-AG/ifc-lite/pull/2283) [`6668c66`](https://github.com/LTplus-AG/ifc-lite/commit/6668c66f02542cfb31e9c9c679e0c80f9a3abc40) Thanks [@louistrue](https://github.com/louistrue)! - Contain a synchronous GPU device loss inside `render()`.
+
+  Safari 26.5 reports device loss by throwing `InvalidStateError` from the next
+  GPU call rather than (or long before) resolving `device.lost`. The frame's
+  canvas-resize branch calls `RenderPipeline.resize()` outside the inner
+  try/catch, so that throw escaped `render()` entirely: the host's animation loop
+  never reached its tail `requestAnimationFrame`, and the viewport froze
+  permanently with an uncaught exception and no `onDeviceLost` notification.
+
+  `render()` now never throws, and what a throw MEANS depends on its type:
+
+  - a `DOMException` is the device reporting its own death. It latches the same
+    `deviceLost` state the async `device.lost` promise would — later frames
+    degrade to quiet skips, `isDeviceLost()` reports true, and `onDeviceLost`
+    listeners fire once with `reason: 'render-exception'`.
+  - anything else costs only that frame. A `RangeError` from a buffer the host
+    cannot allocate ("createBuffer failed, size (…) is too large … when
+    mappedAtCreation == true") happens on a perfectly live device under memory
+    pressure, and is reachable from capture frames
+    (`restoreEvictedForCapture`). Latching there would kill the viewport for a
+    failure whose blast radius should be one export, so instead the swap-chain
+    config is invalidated, the failure is counted in `getDiagnostics()`, and the
+    frame is re-requested so rendering actually resumes.
+
+  That re-request matters: hosts consume the dirty flag before calling `render()`,
+  so a failed frame has already spent its request and an idle viewer would
+  otherwise stay on the stale frame until the user next interacted. It is bounded
+  (three consecutive degraded frames) and reset by any frame that completes, so a
+  persistently failing path cannot self-perpetuate a throwing frame every tick.
+
+  `onDeviceLost` also replays to a listener that subscribes after the loss has
+  already latched, so a loss during `init()` still reaches the host.
+
+- Updated dependencies [[`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933)]:
+  - @ifc-lite/geometry@3.7.1
+
+## 1.42.0
+
+### Minor Changes
+
+- [#2114](https://github.com/LTplus-AG/ifc-lite/pull/2114) [`58f0473`](https://github.com/LTplus-AG/ifc-lite/commit/58f0473b792e6bd29b42f16bac41fc398ecb600d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a 3D DXF reference-layer overlay to the WebGPU renderer: `uploadDxfLines3D` / `clearDxfLines3D` upload a flat `[x,y,z,x,y,z,...]` line-list (mirroring the existing `uploadGridLines3D`/`uploadAlignmentLines3D` pattern — a dedicated buffer, drawn through the shared reference-overlay line pipeline and colour) and render it alongside the grid/alignment/annotation overlays.
+
+  Follow-up to the viewer's DXF import feature (issue [#1782](https://github.com/LTplus-AG/ifc-lite/issues/1782)/[#1929](https://github.com/LTplus-AG/ifc-lite/issues/1929)), which only ever rendered the imported DXF as a 2D drawing-panel underlay. Issue [#2043](https://github.com/LTplus-AG/ifc-lite/issues/2043) adds a 3D viewport toggle for the same DXF data (`apps/viewer`'s `DxfUnderlayPanel`, private package, no changeset needed for that half); this changeset covers the new renderer API those toggles call into.
+
+  Only line paths (walls/boundaries) are lifted to 3D in this iteration — DXF fills/hatches and text labels are not yet rendered in the 3D scene, and per-DXF-layer colour is not carried through (the 3D overlay shares one colour with the grid/alignment/annotation line family, same as those already do among themselves).
+
+### Patch Changes
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`a77fbd1`](https://github.com/LTplus-AG/ifc-lite/commit/a77fbd1f4c52a5d13bd51fe37a70d306315df7fa), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+  - @ifc-lite/spatial@1.14.13
+
+## 1.41.1
+
+### Patch Changes
+
+- [#1974](https://github.com/LTplus-AG/ifc-lite/pull/1974) [`4af7d75`](https://github.com/LTplus-AG/ifc-lite/commit/4af7d7590759bbcc7a39b0b48f06f980bb57414b) Thanks [@louistrue](https://github.com/louistrue)! - Fix textured face sets rendering collapsed toward the world origin ([#1973](https://github.com/LTplus-AG/ifc-lite/issues/1973)).
+
+  `transform_mesh_world_framed` (on by default for wasm) stores each element's vertices relative to a per-element `MeshData.origin`, keeping the world magnitude out of f32 so building-scale coordinates can't collapse adjacent vertices into degenerate fans. The contract downstream is `world = origin + position`.
+
+  The batch path honours it — `mergeGeometry` folds `origin` into the shared frame and draws with `translate(sharedFrameOrigin)`. The textured sub-pass hard-zeroed its model translation, so every textured mesh drew offset by `-origin`. On a typical textured export that is metres: on the reported model, 107 of 109 meshes are textured and every one of them has a non-zero origin, up to ~19 m. The whole model rendered as a crushed heap around the origin. CPU picking uses the correctly placed geometry, so clicking a visible texture selected nothing.
+
+  The zeroing was correct when written: the [#961](https://github.com/LTplus-AG/ifc-lite/issues/961) orphan type-geometry path runs `transform_mesh_local`, which leaves positions absolute and `origin` at zero. [#1793](https://github.com/LTplus-AG/ifc-lite/issues/1793) then added the occurrence path (a `Body` textured `IfcTriangulatedFaceSet`, which is what real exporters write) via `apply_submesh_placement` → `transform_mesh_world`, producing local-frame positions and a non-zero origin — and the textured pass was not updated for it.
+
+  `TexturedMesh` now carries `origin`, applied as the draw's model translation. Interleaved vertex positions stay local: folding the world magnitude back into f32 vertex data would defeat the local frame this origin exists to provide. Both cases are covered — `origin == 0` for the orphan path is a no-op, `origin != 0` for occurrences is the fix.
+
+## 1.41.0
+
+### Minor Changes
+
+- [#1928](https://github.com/LTplus-AG/ifc-lite/pull/1928) [`193cecb`](https://github.com/LTplus-AG/ifc-lite/commit/193cecbfd4bf39384337231d8213842bfef09c0d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix rectangle select returning nothing on batched models. `PickingManager.pickRect` passed `Scene.getMeshes()` straight to the GPU pick pass, but batched geometry lives in `batchedMeshes` and never reaches that list, so Ctrl+drag deterministically produced an empty selection — reproducible at 8 meshes, not just on large models.
+
+  `pickRect` now takes the same route as `pick()`: hydrate the missing individual meshes when that fits the pick-mesh budget, otherwise fall back to CPU. The hydrate-or-fall-back decision both paths share is now a single code path, so they cannot drift again.
+
+  Adds `Scene.selectRect(...)`, the rectangle counterpart of `Scene.raycast(...)`, for the CPU fallback used when geometry data has been released or hydration would exceed the budget. Boxes are clipped against the near and far planes before projecting, so an element crossing the camera plane — the floor, ceiling and surrounding walls whenever you stand inside a model, which is exactly the population this path serves — contributes only its actually-visible screen extent rather than its full projected bounds.
+
+  Three divergences from the pixel-exact GPU pass remain, all of them over-selecting:
+
+  - Bounding-box granularity, so a rect covering only empty space inside an element's bounds still selects it.
+  - No depth test, so it selects through occlusion, where the GPU rect pass only ever sees front-most fragments.
+  - Whole-box section-plane and crop-box filtering: the CPU path skips an entity only when nothing of its box could be visible, whereas the pick shader discards per fragment, so a rect over the sectioned-away half of a box still selects it.
+
+  Hidden and isolation filtering do apply, per entity, exactly as on the GPU path.
+
+  Point clouds keep working on this path: splats render into the pick pass whether or not per-element mesh buffers were hydrated, so the CPU branch still runs a point-only GPU pass and unions its hits into the bounding-box result. Those point hits carry the section plane (the point picker clips on it) but not the crop box, and not the hidden/isolated sets — unchanged from the existing GPU rect pass, which has never filtered point nodes by those sets. If that point pass fails at readback, the rectangle select degrades to the bounding-box hits and logs, rather than failing outright.
+
+  Closes [#1904](https://github.com/LTplus-AG/ifc-lite/issues/1904).
+
 ## 1.40.0
 
 ### Minor Changes

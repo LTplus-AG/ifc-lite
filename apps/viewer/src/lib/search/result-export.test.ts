@@ -93,6 +93,41 @@ describe('__internal helpers', () => {
     assert.strictEqual(__internal.escapeCsvCell('a\nb'), '"a\nb"');
   });
 
+  /**
+   * A leading BOM is treated as file metadata by spreadsheet importers, so a
+   * formula trigger hidden behind one still executes -- while the apostrophe
+   * guard, applied without stripping it, lands in front of the BOM rather than
+   * the `=`. The Lists exporter (lib/lists/export/model.ts) already strips it
+   * and its comment explains why; this exporter and the compare-report one did
+   * not, so the same crafted IFC value was neutralised in one CSV and live in
+   * the other two.
+   */
+  for (const [label, invisible] of [
+    ['BOM', '\uFEFF'],
+    ['zero-width space', '\u200B'],
+    ['left-to-right mark', '\u200E'],
+    ['non-breaking space', '\u00A0'],
+    // Zl / Zp -- NOT covered by `\p{Zs}`, so these two survived a guard that
+    // had already widened past the BOM.
+    ['line separator', '\u2028'],
+    ['paragraph separator', '\u2029'],
+  ] as const) {
+    it(`neutralises a formula trigger hidden behind a leading ${label}`, () => {
+      const out = __internal.escapeCsvCell(`${invisible}=cmd|'/c calc'!A1`);
+      assert.ok(
+        out.startsWith("'"),
+        `expected the guard to land in front, got ${JSON.stringify(out)}`,
+      );
+      assert.ok(!out.includes(invisible), 'the invisible itself must not survive into the cell');
+    });
+  }
+
+  it('still neutralises a bare trigger, and leaves ordinary text alone', () => {
+    // Control: the fix must not be satisfiable by prefixing everything.
+    assert.ok(__internal.escapeCsvCell('=1+1').startsWith("'"));
+    assert.strictEqual(__internal.escapeCsvCell('Wall A'), 'Wall A');
+  });
+
   // Filename sanitisation now lives in lib/export/download.ts (sanitizeFilename),
   // which preserves case and dots — see download.test.ts. downloadResult() routes
   // its stem through it, so there is no module-local helper to test here anymore.

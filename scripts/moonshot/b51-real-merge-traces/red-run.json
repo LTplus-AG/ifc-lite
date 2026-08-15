@@ -1,0 +1,46 @@
+{
+  "bet": "B5.1",
+  "mode": "red",
+  "registeredOn": "2026-08-02",
+  "tripwires": [
+    {
+      "id": "r1-admissibility",
+      "why": "a corpus short of one criterion is called admissible",
+      "tripwireFired": true,
+      "note": "the exam assertion path rejected it"
+    },
+    {
+      "id": "r2-spatial-bar",
+      "why": "the lazy-cut count is graded against the derived-cut bar",
+      "tripwireFired": true,
+      "note": "the exam assertion path rejected it"
+    },
+    {
+      "id": "r3-read-set",
+      "why": "a read-set check with the hosting edge removed",
+      "tripwireFired": true,
+      "note": "the exam assertion path rejected it"
+    },
+    {
+      "id": "r4-kill-bar",
+      "why": "a false-conflict rate above the kill bar is called a pass",
+      "tripwireFired": true,
+      "note": "the exam assertion path rejected it"
+    },
+    {
+      "id": "r5-identifier-guard",
+      "why": "a planted user identifier reaches the only write path",
+      "tripwireFired": true,
+      "note": "the guard refused the write"
+    },
+    {
+      "id": "r6-null-space",
+      "why": "the predicate under test is required to clear a pair whose orders diverge",
+      "tripwireFired": true,
+      "note": "the construction was built and evaluated"
+    }
+  ],
+  "tripwiresFired": 6,
+  "tripwiresTotal": 6,
+  "allFired": true
+}

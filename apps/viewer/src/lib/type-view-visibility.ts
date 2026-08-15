@@ -54,3 +54,59 @@ export function isMeshVisibleInViewMode(
   // class 0 (occurrence) and class 3 (layer slice) are the real model.
   return true;
 }
+
+/**
+ * The real-model subset of a mesh list — what a 2D drawing cuts (#2058).
+ *
+ * `geometryResult.meshes` carries the whole scene, type library included, and
+ * the Model/Types switch is a 3D control: a standard 2D section, plan or
+ * sketch underlay always draws the building. So this resolves
+ * `hasOccurrenceGeometry` over the list and applies `isMeshVisibleInViewMode`
+ * pinned to `'model'` — one predicate for every consumer rather than a second,
+ * differently-shaped guard that drifts. A pure type-library file (no placed
+ * occurrence at all) still keeps its orphan class-1 geometry, exactly as the
+ * Model view does.
+ */
+export function selectModelMeshes<T extends { geometryClass?: number }>(meshes: readonly T[]): T[] {
+  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(m.geometryClass ?? 0));
+  return meshes.filter((m) =>
+    isMeshVisibleInViewMode(m.geometryClass ?? 0, 'model', hasOccurrenceGeometry),
+  );
+}
+
+/**
+ * `selectModelMeshes`'s gate, keyed by express id instead of by mesh — for
+ * anything that reaches a 2D drawing WITHOUT going through the mesh list
+ * (construction-projection profiles, `extractProfiles` output). Filtering
+ * `meshesToProcess` alone leaves that second route ungated: if a profile ever
+ * carries the express id of type-library geometry (today `extractProfiles`
+ * only walks `IfcProduct` entities, so it doesn't — but that is a property of
+ * the Rust extractor, not of this filter, and nothing pins it), the profile
+ * would project the exact geometry the mesh filter just removed from the cut.
+ *
+ * Reuses `isMeshVisibleInViewMode` — the SAME predicate `selectModelMeshes`
+ * applies — so the two filter sites can't drift back apart; call this with
+ * `geometryResult.meshes` and it derives one id → verdict lookup for every
+ * consumer.
+ *
+ * An id with NO mesh at all (e.g. an `IfcSpace` with a body representation but
+ * no rendered mesh) never went through the class gate in the first place, so
+ * it passes through unaffected here — hiding/isolation/`isTypeVisible` are
+ * what govern it, exactly as before this function existed.
+ */
+export function buildModelViewIdFilter(
+  meshes: readonly { expressId: number; geometryClass?: number }[],
+): (expressId: number) => boolean {
+  const hasOccurrenceGeometry = meshes.some((m) => meshClassIsPlaced(m.geometryClass ?? 0));
+  const classById = new Map<number, number>();
+  for (const m of meshes) {
+    // An express id's geometryClass is consistent across its own mesh
+    // entries (e.g. material-layer slices are all class 3), so first-write
+    // is as good as any.
+    if (!classById.has(m.expressId)) classById.set(m.expressId, m.geometryClass ?? 0);
+  }
+  return (expressId: number) => {
+    const geometryClass = classById.get(expressId);
+    return geometryClass === undefined || isMeshVisibleInViewMode(geometryClass, 'model', hasOccurrenceGeometry);
+  };
+}

@@ -1,0 +1,55 @@
+{
+  "bet": "B5.2",
+  "pass": "diagnostics",
+  "side": "foreign",
+  "alias": "model-b",
+  "modelSha256Prefix": "90ddf9c3403a",
+  "bytes": 90264955,
+  "elapsedMs": 14054.5,
+  "diagnostics": {
+    "present": true,
+    "schemaVersion": 2,
+    "totalCsgFailures": 108,
+    "productsWithFailures": 2,
+    "hostsWithOpenings": 605,
+    "silentNoOps": 39,
+    "classification": {
+      "rectangular": 1708,
+      "diagonal": 0,
+      "nonRectangular": 544,
+      "total": 2252
+    },
+    "failuresByReason": [
+      {
+        "reason": "OperandTooLarge",
+        "count": 108
+      }
+    ],
+    "rectFast": {
+      "fired": 0,
+      "openingsCut": 0,
+      "deferHostNotBox": 346,
+      "deferNotThrough": 0,
+      "deferOffFace": 206,
+      "deferNearEdge": 0,
+      "deferNoOpenings": 0,
+      "deferTooManyOpenings": 0
+    },
+    "worstHosts": [
+      {
+        "ifcType": "IfcBuildingElementPart",
+        "openings": 91,
+        "csgFailures": 91,
+        "firstFailureLabel": "OperandTooLarge",
+        "triangleCount": 38052
+      },
+      {
+        "ifcType": "IfcBuildingElementPart",
+        "openings": 17,
+        "csgFailures": 17,
+        "firstFailureLabel": "OperandTooLarge",
+        "triangleCount": 8351
+      }
+    ]
+  }
+}

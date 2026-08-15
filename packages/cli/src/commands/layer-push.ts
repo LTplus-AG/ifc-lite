@@ -55,6 +55,8 @@ function errorOf(body: string): string {
     const parsed = JSON.parse(body) as { error?: string; reason?: string };
     return parsed.error ?? parsed.reason ?? body;
   } catch {
+    // Legitimately silent: this only formats an error the caller is already
+    // reporting. A non-JSON body is surfaced verbatim, so nothing is lost.
     return body;
   }
 }

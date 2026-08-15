@@ -87,15 +87,22 @@ impl IfcAPI {
     /// range_end)` shard; the main thread stitches the returned columns into the
     /// full entity index (byte-identical to the single-threaded
     /// `build_entity_index`) by binary-searching each shard for the previous
-    /// shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard`, the
-    /// exact per-chunk primitive the native `build_entity_index_parallel` fans
-    /// across cores — so the sharded merge cannot drift from the serial builder.
+    /// shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard_classified`
+    /// — a separately-maintained loop over the same `EntityScanner` primitive as
+    /// `scan_shard` (the one the native `build_entity_index_parallel` fans across
+    /// cores), plus a per-record class column this sharded path also needs. The
+    /// two loops' records/handoff are kept in parity by a dedicated test
+    /// (`rust/processing/tests/issue_2053_shard_scan_parity.rs`), not by
+    /// delegation — edit one without the other and that test catches the drift.
     ///
     /// Byte offsets returned are GLOBAL (relative to file start), so shards
     /// concatenate without rewriting. Returns a plain object:
     ///   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-    ///      handoff: number }`
-    /// where `handoff` is the global start of the first entity at/after
+    ///      classes: Uint8Array, handoff: number }`
+    /// where `classes` is the parallel per-record prepass class byte
+    /// (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
+    /// type-candidate flags) the host filters on to rebuild pre-pass span
+    /// lists, and `handoff` is the global start of the first entity at/after
     /// `range_end` (the next shard's first real entity), or `-1` at EOF.
     #[wasm_bindgen(js_name = scanEntityIndexShard)]
     pub fn scan_entity_index_shard(

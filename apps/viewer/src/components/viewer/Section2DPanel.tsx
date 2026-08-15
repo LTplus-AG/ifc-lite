@@ -22,10 +22,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
-import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
+import { GraphicOverrideEngine, COMMON_SCALES } from '@ifc-lite/drawing-2d';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { DxfUnderlayPanel } from './DxfUnderlayPanel';
@@ -39,8 +40,8 @@ import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
-import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
-import { useDxfUnderlaysForDrawing, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
+import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 
 interface Section2DPanelProps {
@@ -72,6 +73,9 @@ export function Section2DPanel({
   const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  // Class-level Visibility toggles — the section honours them like the 3D
+  // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Graphic overrides
   const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
@@ -277,7 +281,7 @@ export function Section2DPanel({
   // ═══════════════════════════════════════════════════════════════════════════
 
   const { generateDrawing, doRegenerate, isRegenerating } = useDrawingGeneration({
-    geometryResult, ifcDataStore, sectionPlane, displayOptions,
+    geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
     models, panelVisible, drawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
@@ -326,7 +330,7 @@ export function Section2DPanel({
   }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
-    enabled: displayOptions.showIfcAnnotations && status === 'ready',
+    enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),
     axis: sectionPlane.axis,
     sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
     viewDepth: ifcAnnotationsForDrawing.viewDepth,
@@ -416,20 +420,44 @@ export function Section2DPanel({
 
   // Centre an underlay on the generated drawing: offset = model-drawing
   // centre − underlay centre at zero offset (same world→drawing mapping
-  // the render hook applies, including the current rotation/scale).
+  // the render hook applies, including the current rotation/scale and,
+  // for a georeferenced underlay, the inverse IfcMapConversion — issue
+  // #1929, same transform `dxfUnderlayData` above resolves).
+  const { transform: dxfMapToWorld, available: dxfGeoreferenceAvailable } = useDxfMapToWorldTransform();
   const handleCenterDxfUnderlay = useCallback((id: string) => {
     const entry = dxfUnderlays.find((u) => u.id === id);
     if (!entry || !drawing) return;
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
     const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
-    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX);
-    if (!underlayBounds) return;
+    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable);
+    if (!underlayBounds) {
+      // PR #1965 review: this guard fires when the underlay has no usable
+      // bounds AT ALL (missing extents) OR the georeference produced a
+      // non-finite corner (`dxfUnderlayDrawingBounds` collapses both into
+      // `null` — see its docstring). Either way the button used to do
+      // nothing with no explanation; tell the user so a malformed
+      // `IfcMapConversion` doesn't read as an unresponsive button.
+      toast.error("Couldn't centre this underlay: its bounds are missing or the georeference produced non-finite coordinates.");
+      return;
+    }
     const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
     const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
     const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
     const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
-    updateDxfUnderlayPlacement(id, { offsetX: modelCx - underlayCx, offsetY: modelCy - underlayCy });
-  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement]);
+    const offsetX = modelCx - underlayCx;
+    const offsetY = modelCy - underlayCy;
+    // Defense-in-depth (PR #1965 review): `dxfUnderlayDrawingBounds`
+    // already returns null on a non-finite bound (so `underlayBounds`
+    // above would have short-circuited), but guard the DERIVED offset too
+    // — `drawing.bounds` comes from the generated drawing, not the
+    // underlay, and a NaN here would otherwise still get written into the
+    // stored placement, which survives toggling georeferencing back off.
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      toast.error("Couldn't centre this underlay: the drawing bounds are not finite.");
+      return;
+    }
+    updateDxfUnderlayPlacement(id, { offsetX, offsetY });
+  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME
@@ -445,7 +473,7 @@ export function Section2DPanel({
     legacyPointClouds: geometryResult?.pointClouds,
   });
 
-  const { formatDistance, handleExportSVG, handleExportDXF, handlePrint } = useDrawingExport({
+  const { formatDistance, handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
     drawing, displayOptions, sectionPlane, activePresetId,
     entityColorMap, overridesEnabled, overrideEngine,
     measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
@@ -453,6 +481,34 @@ export function Section2DPanel({
     ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
     scanSection: scanSectionLayer,
   });
+
+  // Scale prompt for the scaled PDF export (issue #2042). A proper
+  // scale-selector dropdown (presets + custom input, matching the issue's
+  // exact wording) is a follow-up; this is the "smallest useful version"
+  // — it still gives every requested scale (defaults to "as displayed",
+  // accepts any of the common presets or a fully custom denominator) and
+  // never guesses silently. `window.prompt` matches this hook's existing
+  // `alert`-based error surface (no toast wiring here); see useDrawingExport.
+  const handleExportPdfPrompt = useCallback(() => {
+    const presetHint = COMMON_SCALES.map((s) => s.name).join(', ');
+    const asDisplayed = displayOptions.scale || 100;
+    const input = window.prompt(
+      `Export PDF at scale 1:N — enter N, or leave blank for "as displayed" (currently 1:${asDisplayed}).\nCommon scales: ${presetHint}`,
+      String(asDisplayed)
+    );
+    if (input === null) return; // cancelled
+    const trimmed = input.trim();
+    if (trimmed === '') {
+      handleExportPDF();
+      return;
+    }
+    const n = Number(trimmed.replace(/^1:/, ''));
+    if (!Number.isFinite(n) || n <= 0) {
+      window.alert(`Invalid scale "${input}". Enter a positive number, e.g. 100 for 1:100.`);
+      return;
+    }
+    handleExportPDF(n);
+  }, [displayOptions.scale, handleExportPDF]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CALLBACKS
@@ -880,6 +936,15 @@ export function Section2DPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
+                onClick={handleExportPdfPrompt}
+                disabled={!drawing}
+                title="Download PDF (to scale)"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={handlePrint}
                 disabled={!drawing}
                 title="Print"
@@ -1005,6 +1070,10 @@ export function Section2DPanel({
                   <DropdownMenuItem onClick={handleExportDXF} disabled={!drawing}>
                     <FileDown className="h-4 w-4 mr-2" />
                     Download DXF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportPdfPrompt} disabled={!drawing}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download PDF (to scale)
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePrint} disabled={!drawing}>
                     <Printer className="h-4 w-4 mr-2" />
@@ -1249,6 +1318,7 @@ export function Section2DPanel({
             onClose={() => setDxfPanelOpen(false)}
             onCenterOnModel={handleCenterDxfUnderlay}
             planViewActive={sectionPlane.axis === 'down' && sectionPlane.custom === undefined}
+            georeferenceAvailable={dxfGeoreferenceAvailable}
           />
         </div>
       )}

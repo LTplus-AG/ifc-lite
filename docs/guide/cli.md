@@ -324,6 +324,9 @@ ifc-lite export model.ifc --format csv --type IfcWall \
 # IFC STEP re-export with schema conversion
 ifc-lite export model.ifc --format ifc --schema IFC4 --out filtered.ifc
 
+# OpenUSD (.usda) — a real Z-up USD stage (whole model; opens in usdview/Blender/Omniverse)
+ifc-lite export model.ifc --format usd --out model.usda
+
 # Limit results
 ifc-lite export model.ifc --format csv --type IfcWall --limit 50
 
@@ -335,7 +338,7 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 | Flag | Description |
 |------|-------------|
-| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, or `hbjson` |
+| `--format <fmt>` | `csv`, `json`, `ifc`, `obj`, `gltf`, `glb`, `jsonld`, `step`, `ifcx`, `usd`, `hbjson`, or `dfjson` |
 | `--type <T>` | Filter entities by type |
 | `--where <filter>` | Property filter: `PsetName.PropName=Value` |
 | `--storey <name>` | Filter to elements in a storey |
@@ -529,6 +532,10 @@ ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
 ### `create` — Create IFC Files
 
 Generate IFC building elements from CLI flags or JSON input. Supports **29 element types** with property sets, quantities, materials, and colors.
+
+> **Coordinates are storey-relative.** `--position`, `--start`, and `--end` are passed through unchanged to `@ifc-lite/create`, and every element is placed against the storey created by `--storey` / `--elevation`. The storey placement is what applies `--elevation`, exactly once — so an element standing on the floor of a storey created with `--elevation 3` takes `Z = 0`, not `Z = 3`.
+>
+> **Changed in `@ifc-lite/create` 2.0.0.** 21 of the 28 element types previously read these flags as world coordinates while the other 7 were already storey-relative, so a nonzero `--elevation` put them on two different datums. They are now uniformly storey-relative. If you were compensating by adding the elevation into `--position` / `--start` / `--end` yourself, drop it — otherwise the element lands at twice the elevation. Nothing changes when `--elevation` is `0` or omitted (the default).
 
 ```bash
 # Basic elements
@@ -760,8 +767,35 @@ Reports:
 
 | Flag | Description |
 |------|-------------|
-| `--by-entity` | Compare entities by GlobalId |
+| `--by-entity` | Compare every `IfcObjectDefinition` by GlobalId (added / removed / common) |
+| `--by-content` | Per-entity comparison via the `@ifc-lite/diff` engine, pairing re-GUIDed elements by content |
+| `--identity-out <file>` | Write the accepted matches to an identity-map sidecar (implies `--by-content`) |
+| `--identity-in <file>` | Replay a sidecar's claims so those elements are matched by key (implies `--by-content`) |
 | `--json` | JSON output |
+
+Both comparison modes cover the same entities: every `IfcObjectDefinition` in the file. See [what gets compared](#what-gets-compared) below.
+
+#### Re-GUIDed models: `--by-content` and the identity map
+
+A model re-exported from scratch by another tool gets entirely new GlobalIds, so the comparison above reports the whole file as deleted-and-added. `--by-content` runs the real diff engine with content-keyed matching instead, and can write the matches it accepted into a sidecar you review once and replay afterwards:
+
+```bash
+# Run 1: recognise the re-GUIDed elements and write the claims down.
+ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+
+# Review renames.json, then replay it — those elements are now matched by key.
+ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
+```
+
+The sidecar pins the SHA-256 of both files, and `--identity-in` refuses a map that was verified against a different pair. Nothing in the files is ever rewritten: an identity map is a reviewable claim alongside the models, not an edit to them. This path compares **data only** — the CLI has no geometry pipeline — so every unambiguous match reports as `renamed`. See [Model Diff](model-diff.md#identity-maps) for the full semantics.
+
+`--identity-out` refuses to write over either input model.
+
+#### What gets compared
+
+Both `--by-entity` and `--by-content` compare every `IfcObjectDefinition` in the file — every `IfcObject` (products, but also tasks, actors, controls, resources and groups), plus `IfcTypeObject` and `IfcProject`. The other two `IfcRoot` branches are left out on purpose: an `IfcRelationship` is identified by its endpoints rather than in its own right, and a property set's contents are already part of its owner's comparison, so including it would report every edited property twice.
+
+Membership comes from the schema inheritance chain, so an entity that is not an `IfcRoot` at all — a material, a surface style, a classification, a projected CRS — is not compared under its name, and a schedule task or actor is compared even though it carries no geometry. The chain is read from every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3), so a class that only one of them declares — `IfcMove` and `IfcSpaceProgram` in IFC2X3, `IfcRoad` and `IfcAlignment` in IFC4X3 — is classified as what it is, not as an unknown. One consequence is deliberate: a vendor-specific `IfcRoot` subtype that no IFC schema declares is not compared unless its class name ends in `Type`, because there is no chain to prove it is an object rather than a resource.
 
 ---
 
@@ -779,7 +813,7 @@ Checks:
 - Required entities (IfcProject, IfcSite, IfcBuilding)
 - Single IfcProject presence
 - Building storeys existence
-- GlobalId uniqueness
+- GlobalId uniqueness — across every `IfcRoot` subtype the file holds, read from the inheritance chain of every schema ifc-lite bundles (IFC2X3, IFC4 and IFC4X3). Classes only one schema declares (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife` in IFC2X3; `IfcCourse`, `IfcBorehole` in IFC4X3) are checked like any other. Entities that are not `IfcRoot` subtypes — materials, surface styles, classifications — are deliberately left out, because they carry a name where an `IfcRoot` carries a GlobalId and two same-named materials are not a duplicate
 - Named elements
 - Reference integrity (every `#N` attribute reference must point at an entity that exists in the file; each dangling reference is reported with the referencing entity, attribute slot, and missing target — detailed up to the first 50, after which a single rollup issue reports the count of remaining dangling references)
 
@@ -1170,7 +1204,7 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `info` | Model summary (schema, entities, storeys) |
 | `query` | Query entities by type/properties/quantities |
 | `props` | All properties for a single entity |
-| `export` | Export data / Honeybee energy model |
+| `export` | Export data / geometry / energy model |
 | `diagnose-geometry` | CSG / opening diagnostics (failures, classification) |
 | `extract-entities` | Isolate entities into a small, viewable standalone IFC |
 | `ids` | Validate against IDS rules |

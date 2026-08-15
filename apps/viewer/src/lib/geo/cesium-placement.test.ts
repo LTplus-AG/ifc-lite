@@ -16,10 +16,14 @@ import {
   metersToMapUnits,
   orthometricTargetForTerrain,
   projectedDeltaToViewerDelta,
+  projectedDeltaToViewerDeltaForGeometry,
   shouldApplyGeoidUndulation,
   shouldPreferOrthometricTerrain,
   viewerDeltaToProjectedDelta,
+  viewerDeltaToProjectedDeltaForGeometry,
 } from './cesium-placement.js';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
+import type { MapConversion } from '@ifc-lite/parser';
 
 describe('cesium placement helpers', () => {
   it('defaults to METRES when MapUnit is absent (overrides project length unit)', () => {
@@ -110,6 +114,16 @@ describe('cesium placement helpers', () => {
   });
 
   it('computes OrthogonalHeight from target base altitude with shift and RTC', () => {
+    // storeyElevations picks the clamp anchor (ground-floor storey) that
+    // targetBaseAltitude gets measured from — see findClampAnchorY. A
+    // storey at elevation 0 makes that term vanish from the subtraction,
+    // silently passing even if the anchor-Y term were dropped entirely.
+    // Use a genuinely non-zero elevation so the anchor term is load-bearing.
+    const storeyElevations = new Map([[1, 5]]);
+    assert.notStrictEqual(storeyElevations.get(1), 0, 'fixture must use a non-zero storey elevation');
+    // Producer contract (localParsingUtils.ts createCoordinateInfo):
+    // shiftedBounds = originalBounds - originShift. originalBounds is ALREADY
+    // world-frame, so shiftedBounds is not a free variable here.
     const orthogonalHeight = computeOrthogonalHeightForBaseAltitude({
       coordinateInfo: {
         originShift: { x: 0, y: 2, z: 0 },
@@ -118,19 +132,23 @@ describe('cesium placement helpers', () => {
           max: { x: 10, y: 11, z: 10 },
         },
         shiftedBounds: {
-          min: { x: 0, y: -1, z: 0 },
-          max: { x: 10, y: 11, z: 10 },
+          min: { x: 0, y: -3, z: 0 },
+          max: { x: 10, y: 9, z: 10 },
         },
         hasLargeCoordinates: false,
         wasmRtcOffset: { x: 0, y: 0, z: 3 },
       },
       projectedCRS: { mapUnitScale: 0.3048 },
       lengthUnitScale: 1,
-      storeyElevations: new Map([[1, 0]]),
+      storeyElevations,
       targetBaseAltitude: 245,
     });
 
-    assert.strictEqual(orthogonalHeight, 787.4);
+    // anchorY comes from originalBounds (already world-frame, per
+    // findClampAnchorY/cesium-placement.ts control reads) so originShift
+    // must NOT be subtracted again here — only the RTC offset still needs
+    // folding in: 245 - rtcYupY(3) - anchorY(5) = 237 meters; /0.3048 mapUnitScale.
+    assert.strictEqual(orthogonalHeight, 777.56);
   });
 
   it('computes the IFC origin height from OrthogonalHeight and model center', () => {
@@ -177,6 +195,42 @@ describe('cesium placement helpers', () => {
     );
 
     assert.deepStrictEqual(viewer, { x: 2, z: -1 });
+  });
+
+  it('rotates viewer XY drag deltas by a genuine (non-identity) grid rotation', () => {
+    // A no-rotation fixture (xAxisAbscissa: 1, xAxisOrdinate: 0) zeroes the
+    // cross terms of the rotation matrix (`ordinate * deltaZ` in eastMeters,
+    // `abscissa * deltaZ` cancelling with a zero ordinate elsewhere), so a
+    // sign error in those terms is invisible to it. Use a real rotation
+    // (cos/sin of a 3-4-5 angle) with both delta components nonzero so every
+    // term of the 2x2 rotation actually contributes to the result.
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    // Decay-proofing: the fixture itself must stay a genuine rotation — both
+    // axes nonzero and distinct — or this test silently degrades back to the
+    // identity case it was written to replace.
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    const projected = viewerDeltaToProjectedDelta(1, 2, rotation, { mapUnitScale: 1 }, 1);
+
+    // eastMeters = 0.6*1 + 0.8*2 = 2.2; northMeters = 0.8*1 - 0.6*2 = -0.4.
+    assert.ok(Math.abs(projected.eastings - 2.2) < 1e-9, `eastings = ${projected.eastings}`);
+    assert.ok(Math.abs(projected.northings - -0.4) < 1e-9, `northings = ${projected.northings}`);
+  });
+
+  it('rotates projected map deltas back to viewer deltas by a genuine (non-identity) grid rotation', () => {
+    const rotation = { xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 1 };
+    assert.notStrictEqual(rotation.xAxisAbscissa, 0);
+    assert.notStrictEqual(rotation.xAxisOrdinate, 0);
+    assert.notStrictEqual(rotation.xAxisAbscissa, rotation.xAxisOrdinate);
+
+    // Inverse of the forward-rotation case above: (2.2, -0.4) must round-trip
+    // back to the original (1, 2) viewer delta.
+    const viewer = projectedDeltaToViewerDelta(2.2, -0.4, rotation, { mapUnitScale: 1 }, 1);
+
+    assert.ok(Math.abs(viewer.x - 1) < 1e-9, `x = ${viewer.x}`);
+    assert.ok(Math.abs(viewer.z - 2) < 1e-9, `z = ${viewer.z}`);
   });
 
   it('intersects a downward ray with a horizontal plane at the expected point', () => {
@@ -297,5 +351,89 @@ describe('snap-to-terrain geoid round-trip (#1456)', () => {
       Math.abs((orthogonalHeight + appliedN) - ellipsoidalTerrain) < 0.02,
       `expected round-trip to ${ellipsoidalTerrain}, got ${orthogonalHeight + appliedN}`,
     );
+  });
+});
+
+describe('placement-gizmo deltas with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style file: geometry at the ABSOLUTE map coordinates (folded
+  // into wasmRtcOffset), IfcMapConversion repeating the anchor with a
+  // 90-degree rotation. A gizmo drag is a DELTA: it has no offsets to double
+  // apply, but the bogus authored rotation still turns "drag east" into a
+  // northing change. For map-absolute geometry the viewer axes ARE the map
+  // axes, so the delta must go through the neutralised (identity-rotation)
+  // conversion.
+  const mapAbsInfo: CoordinateInfo = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+  const mapAbsConversion: MapConversion = {
+    id: 1,
+    sourceCRS: 0,
+    targetCRS: 0,
+    eastings: 312000,
+    northings: 5996150,
+    orthogonalHeight: 0,
+    xAxisAbscissa: 0,
+    xAxisOrdinate: 1,
+    scale: 1,
+  };
+  const crs = { mapUnitScale: 1 };
+  const near = (a: number, b: number, label: string) =>
+    assert.ok(Math.abs(a - b) < 1e-9, `${label}: expected ${b}, got ${a}`);
+
+  it('viewerDeltaToProjectedDeltaForGeometry expresses a drag in the map frame (identity rotation)', () => {
+    const delta = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    // Viewer +X is map east, viewer -Z is map north for absolute geometry.
+    near(delta.eastings, 5, 'eastings');
+    near(delta.northings, 7, 'northings');
+  });
+
+  it('projectedDeltaToViewerDeltaForGeometry previews an E/N delta along the map axes', () => {
+    const delta = projectedDeltaToViewerDeltaForGeometry(
+      5, 7, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    near(delta.x, 5, 'x');
+    near(delta.z, -7, 'z');
+  });
+
+  it('round-trips through both directions', () => {
+    const projected = viewerDeltaToProjectedDeltaForGeometry(
+      3.25, -1.5, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    const viewer = projectedDeltaToViewerDeltaForGeometry(
+      projected.eastings, projected.northings, mapAbsConversion, crs, 1, mapAbsInfo,
+    );
+    near(viewer.x, 3.25, 'x');
+    near(viewer.z, -1.5, 'z');
+  });
+
+  it('control: a compliant file (no RTC rebase) keeps the authored rotation for the delta', () => {
+    const compliant = { ...mapAbsInfo, wasmRtcOffset: undefined };
+    const guarded = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, compliant,
+    );
+    const authored = viewerDeltaToProjectedDelta(5, -7, mapAbsConversion, crs, 1);
+    near(guarded.eastings, authored.eastings, 'eastings');
+    near(guarded.northings, authored.northings, 'northings');
+    const guardedViewer = projectedDeltaToViewerDeltaForGeometry(
+      5, 7, mapAbsConversion, crs, 1, compliant,
+    );
+    const authoredViewer = projectedDeltaToViewerDelta(5, 7, mapAbsConversion, crs, 1);
+    near(guardedViewer.x, authoredViewer.x, 'x');
+    near(guardedViewer.z, authoredViewer.z, 'z');
+  });
+
+  it('control: no coordinateInfo keeps the authored rotation', () => {
+    const guarded = viewerDeltaToProjectedDeltaForGeometry(
+      5, -7, mapAbsConversion, crs, 1, undefined,
+    );
+    const authored = viewerDeltaToProjectedDelta(5, -7, mapAbsConversion, crs, 1);
+    near(guarded.eastings, authored.eastings, 'eastings');
+    near(guarded.northings, authored.northings, 'northings');
   });
 });

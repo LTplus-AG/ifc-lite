@@ -1,0 +1,668 @@
+{
+  "bet": "B5.2",
+  "title": "Foreign IFC: the World Gym benchmark and its defect detector on two real delivered models",
+  "instrument": {
+    "note": "nothing under tools/world-gym was modified by this bet; every check is the committed function, imported",
+    "benchmark": "ifc-lite-world-gym",
+    "specVersion": "1.0.0"
+  },
+  "corpus": {
+    "synthetic": {
+      "split": "dev",
+      "models": 1000,
+      "clean": 681,
+      "corrupted": 319,
+      "corruptRate": 0.3,
+      "entityCountMedian": 665,
+      "entityCountMax": 4749,
+      "committedRows": {
+        "heuristic-text": {
+          "defect-detection": 1,
+          "quantity-estimation": 0.977655,
+          "validity-triage": 1,
+          "aggregate": 0.992552
+        },
+        "oracle-kernel": {
+          "defect-detection": 0.857143,
+          "quantity-estimation": 0.977655,
+          "validity-triage": 0.959139,
+          "aggregate": 0.931312
+        },
+        "always-clean": {
+          "defect-detection": 0,
+          "quantity-estimation": 0,
+          "validity-triage": 0.5,
+          "aggregate": 0.166667
+        }
+      },
+      "resample": {
+        "sampledModels": 200,
+        "cleanModels": 139,
+        "corruptedModels": 61,
+        "entityCount": {
+          "min": 245,
+          "median": 649,
+          "mean": 1287.63,
+          "max": 4749
+        },
+        "fileBytes": {
+          "min": 12522,
+          "median": 33134.5,
+          "mean": 65451.515,
+          "max": 245712
+        },
+        "oracleMsPerModel": {
+          "min": 1.096,
+          "median": 2.846,
+          "mean": 4.415,
+          "max": 19.136
+        },
+        "heuristicMsPerModel": {
+          "min": 0.099,
+          "median": 0.305,
+          "mean": 0.534,
+          "max": 2.208
+        },
+        "falsePositives": {
+          "note": "a false positive is a defect verdict of true where the plant-time ground truth for that seed says false",
+          "oracleByType": {
+            "clash-pair": 0,
+            "degenerate-geometry": 0,
+            "duplicate-globalid": 0,
+            "missing-site": 0,
+            "multiple-project": 0,
+            "dangling-ref": 0,
+            "missing-quantities": 0
+          },
+          "oracleTotal": 0,
+          "heuristicByType": {
+            "clash-pair": 0,
+            "degenerate-geometry": 0,
+            "duplicate-globalid": 0,
+            "missing-site": 0,
+            "multiple-project": 0,
+            "dangling-ref": 0,
+            "missing-quantities": 0
+          },
+          "heuristicTotal": 0,
+          "cleanModelsInSample": 139,
+          "oracleModelsFiringOnClean": 0,
+          "heuristicModelsFiringOnClean": 0,
+          "oracleCleanModelFirePct": 0,
+          "heuristicCleanModelFirePct": 0
+        },
+        "referenceIntegrityProbe": {
+          "note": "baselines.mjs hardcodes dangling-ref:false citing a missing reference-integrity rule; computeValidationIssues has one. This is whether it fires on the corpus's own planted dangling refs.",
+          "modelsWithPlantedDanglingRef": 17,
+          "modelsWhereValidateFlaggedReferenceIntegrity": 17,
+          "detectionPct": 100
+        }
+      }
+    },
+    "foreign": [
+      {
+        "alias": "model-a",
+        "modelSha256Prefix": "1eac13348753",
+        "authoringToolFamily": "ifcopenshell",
+        "schema": "IFC4",
+        "bytes": 75511560,
+        "megabytes": 75.51,
+        "entityCount": 1083664,
+        "distinctEntityTypes": 97,
+        "elementHistogram": {
+          "IFCBEAM": 8145,
+          "IFCSLAB": 3509,
+          "IFCCOLUMN": 2597,
+          "IFCCOLUMNTYPE": 2445,
+          "IFCWALLSTANDARDCASE": 1128,
+          "IFCOPENINGELEMENT": 659,
+          "IFCBEAMTYPE": 326,
+          "IFCSLABTYPE": 153,
+          "IFCPLATE": 148,
+          "IFCBUILDINGELEMENTPROXY": 100,
+          "IFCWALL": 59,
+          "IFCWALLTYPE": 28,
+          "IFCBUILDINGELEMENTPROXYTYPE": 11,
+          "IFCBUILDINGSTOREY": 6,
+          "IFCROOF": 5,
+          "IFCBUILDING": 1,
+          "IFCSITE": 1
+        },
+        "meshRecordCount": 20809,
+        "distinctMeshedElements": 19530,
+        "totalTriangles": 1027657
+      },
+      {
+        "alias": "model-b",
+        "modelSha256Prefix": "90ddf9c3403a",
+        "authoringToolFamily": "archicad",
+        "schema": "IFC4",
+        "bytes": 90264955,
+        "megabytes": 90.26,
+        "entityCount": 1040356,
+        "distinctEntityTypes": 122,
+        "elementHistogram": {
+          "IFCFURNITURE": 5894,
+          "IFCWINDOW": 3944,
+          "IFCWALL": 2352,
+          "IFCOPENINGELEMENT": 1819,
+          "IFCDOOR": 1452,
+          "IFCSPACE": 1034,
+          "IFCCOVERING": 885,
+          "IFCBUILDINGELEMENTPROXY": 761,
+          "IFCSLAB": 493,
+          "IFCMEMBER": 401,
+          "IFCCOLUMN": 112,
+          "IFCDOORPANELPROPERTIES": 112,
+          "IFCSTAIR": 86,
+          "IFCDOORTYPE": 83,
+          "IFCDOORLININGPROPERTIES": 80,
+          "IFCRAILING": 70,
+          "IFCFURNITURETYPE": 59,
+          "IFCSLABTYPE": 43,
+          "IFCWALLTYPE": 42,
+          "IFCWINDOWTYPE": 40,
+          "IFCCOVERINGTYPE": 25,
+          "IFCROOF": 20,
+          "IFCSHADINGDEVICE": 20,
+          "IFCWINDOWPANELPROPERTIES": 20,
+          "IFCBEAM": 18,
+          "IFCWINDOWLININGPROPERTIES": 18,
+          "IFCFOOTING": 16,
+          "IFCSPACETYPE": 15,
+          "IFCBUILDINGELEMENTPROXYTYPE": 13,
+          "IFCCURTAINWALL": 8,
+          "IFCBUILDINGSTOREY": 8,
+          "IFCROOFTYPE": 7,
+          "IFCBEAMTYPE": 4,
+          "IFCFOOTINGTYPE": 3,
+          "IFCSTAIRTYPE": 3,
+          "IFCCOLUMNTYPE": 2,
+          "IFCCURTAINWALLTYPE": 2,
+          "IFCMEMBERTYPE": 2,
+          "IFCRAILINGTYPE": 2,
+          "IFCSITE": 1,
+          "IFCBUILDING": 1,
+          "IFCSHADINGDEVICETYPE": 1
+        },
+        "meshRecordCount": 77290,
+        "distinctMeshedElements": 22634,
+        "totalTriangles": 1200133
+      }
+    ]
+  },
+  "validity": {
+    "note": "the exam asked for ifc-lite validate and the clash engine on foreign input; both ran clean",
+    "model-a": {
+      "inProcess": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 0,
+        "issueCount": 1,
+        "byRule": [
+          {
+            "rule": "quantity-completeness",
+            "severity": "info",
+            "count": 1
+          }
+        ]
+      },
+      "cli": {
+        "ok": true,
+        "exitCode": 0,
+        "errorCode": null,
+        "wallMs": 2100.2,
+        "schema": "IFC4",
+        "entityCount": 1083664,
+        "valid": true,
+        "errors": 0,
+        "warnings": 0,
+        "info": 1,
+        "issueCount": 1,
+        "ruleCounts": {
+          "quantity-completeness/info": 1
+        }
+      },
+      "clash": {
+        "total": 0,
+        "byRule": {},
+        "cliSummaryTotal": 0,
+        "cliWallMs": 29051.8
+      }
+    },
+    "model-b": {
+      "inProcess": {
+        "valid": true,
+        "errors": 0,
+        "warnings": 0,
+        "issueCount": 2,
+        "byRule": [
+          {
+            "rule": "named-elements",
+            "severity": "info",
+            "count": 1
+          },
+          {
+            "rule": "quantity-completeness",
+            "severity": "info",
+            "count": 1
+          }
+        ]
+      },
+      "cli": {
+        "ok": true,
+        "exitCode": 0,
+        "errorCode": null,
+        "wallMs": 1920.1,
+        "schema": "IFC4",
+        "entityCount": 1040356,
+        "valid": true,
+        "errors": 0,
+        "warnings": 0,
+        "info": 2,
+        "issueCount": 2,
+        "ruleCounts": {
+          "named-elements/info": 1,
+          "quantity-completeness/info": 1
+        }
+      },
+      "clash": {
+        "total": 0,
+        "byRule": {},
+        "cliSummaryTotal": 0,
+        "cliWallMs": 16496.7
+      }
+    }
+  },
+  "defectDetection": {
+    "syntheticMacroF1": {
+      "heuristic-text": 1,
+      "oracle-kernel": 0.857143
+    },
+    "syntheticFalsePositives": {
+      "note": "committed dev row, 1,000 models, per-type fp counts",
+      "heuristic-text": {
+        "clash-pair": 0,
+        "degenerate-geometry": 0,
+        "duplicate-globalid": 0,
+        "missing-site": 0,
+        "multiple-project": 0,
+        "dangling-ref": 0,
+        "missing-quantities": 0
+      },
+      "oracle-kernel": {
+        "clash-pair": 0,
+        "degenerate-geometry": 0,
+        "duplicate-globalid": 0,
+        "missing-site": 0,
+        "multiple-project": 0,
+        "dangling-ref": 0,
+        "missing-quantities": 0
+      },
+      "heuristicTotalFp": 0,
+      "oracleTotalFp": 0,
+      "heuristicTotalTp": 658,
+      "oracleTotalTp": 564,
+      "totalVerdicts": 14000,
+      "positiveVerdicts": 1222
+    },
+    "foreignVerdictMatrix": {
+      "model-a": {
+        "heuristic-text": {
+          "clash-pair": false,
+          "degenerate-geometry": false,
+          "duplicate-globalid": false,
+          "missing-site": false,
+          "multiple-project": false,
+          "dangling-ref": false,
+          "missing-quantities": true
+        },
+        "oracle-kernel": {
+          "clash-pair": false,
+          "degenerate-geometry": true,
+          "duplicate-globalid": false,
+          "missing-site": false,
+          "multiple-project": false,
+          "dangling-ref": false,
+          "missing-quantities": true
+        }
+      },
+      "model-b": {
+        "heuristic-text": {
+          "clash-pair": true,
+          "degenerate-geometry": false,
+          "duplicate-globalid": true,
+          "missing-site": false,
+          "multiple-project": false,
+          "dangling-ref": false,
+          "missing-quantities": false
+        },
+        "oracle-kernel": {
+          "clash-pair": false,
+          "degenerate-geometry": false,
+          "duplicate-globalid": false,
+          "missing-site": false,
+          "multiple-project": false,
+          "dangling-ref": false,
+          "missing-quantities": true
+        }
+      }
+    },
+    "foreignVerdictCounts": {
+      "models": 2,
+      "detectors": 2,
+      "defectTypes": 7,
+      "totalVerdicts": 28,
+      "positiveVerdicts": 6,
+      "negativeVerdicts": 22,
+      "adjudicatedFalsePositives": 5,
+      "adjudicatedTruePositives": 0,
+      "adjudicatedTrueSignalWrongLabel": 1,
+      "labelPrecisionOnForeignPct": 0,
+      "anySignalPrecisionOnForeignPct": 16.6667,
+      "falsePositiveShareOfPositivesPct": 83.3333,
+      "falsePositivesPerModel": 2.5,
+      "syntheticLabelPrecisionPct": 100,
+      "syntheticFalsePositivesOver1000Models": 0
+    },
+    "adjudication": [
+      {
+        "model": "model-a",
+        "detector": "heuristic-text",
+        "defect": "missing-quantities",
+        "verdict": "false-positive",
+        "rule": "some IfcElementQuantity is not bound by an IfcRelDefinesByProperties",
+        "decidedBy": "adjudication.quantityBinding.heuristicRegexCoveragePct = 0 while orphanQuantitySets = 0",
+        "reading": "the baseline's IfcRelDefinesByProperties regex matched none of this exporter's relationship lines, so every quantity set looked unbound; the file in fact binds all of them"
+      },
+      {
+        "model": "model-b",
+        "detector": "heuristic-text",
+        "defect": "clash-pair",
+        "verdict": "false-positive",
+        "rule": "IFCFOOTING count > 0",
+        "decidedBy": "adjudication.footings.footingSelfClashesFound = 0 against ifcFootingCount = 16",
+        "reading": "the rule treats the mere existence of a footing as a clash; the clash engine finds no overlapping footing pair in this model"
+      },
+      {
+        "model": "model-b",
+        "detector": "heuristic-text",
+        "defect": "duplicate-globalid",
+        "verdict": "false-positive",
+        "rule": "any repeated 22-character base64 first attribute",
+        "decidedBy": "adjudication.globalIdScan.entitiesInDuplicateGroupsByEntityType is entirely IFCPROPERTYSINGLEVALUE, with kernelUniqueGlobalIdErrors = 0",
+        "reading": "the repeated string is a property NAME on a non-rooted entity, not a GlobalId; nothing in the file has a duplicate GlobalId"
+      },
+      {
+        "model": "model-a",
+        "detector": "oracle-kernel",
+        "defect": "missing-quantities",
+        "verdict": "false-positive",
+        "rule": "quantifiableElements - elementsWithQuantities > unmeshedColumns, over the pset literally named GymQuantities",
+        "decidedBy": "kernel.authoredQuantities.elementsWithAnyQsetPct = 99.0507 while gymQuantityReRead.elementsWithQuantities = 0",
+        "reading": "no file authored outside this program can carry a pset named GymQuantities, so this verdict fires on every foreign model by construction"
+      },
+      {
+        "model": "model-b",
+        "detector": "oracle-kernel",
+        "defect": "missing-quantities",
+        "verdict": "false-positive",
+        "rule": "quantifiableElements - elementsWithQuantities > unmeshedColumns, over the pset literally named GymQuantities",
+        "decidedBy": "kernel.authoredQuantities.elementsWithAnyQsetPct = 98.892 while gymQuantityReRead.elementsWithQuantities = 0",
+        "reading": "same structural miss as model-a"
+      },
+      {
+        "model": "model-a",
+        "detector": "oracle-kernel",
+        "defect": "degenerate-geometry",
+        "verdict": "true-signal-wrong-label",
+        "rule": "at least one IfcColumn produced no mesh",
+        "decidedBy": "adjudication.unmeshedColumns.unmeshedRepresentationIdentifierAndType plus unmeshedMappedTargetIdentifierAndType (see foreignDefectSignal.degenerateGeometryModelA.evidenceState)",
+        "reading": "every one of the 29 unmeshed columns declares a Representation, and the whole declared set is Axis/MappedRepresentation - no Body IDENTIFIER. That is as far as this artifact goes: the RepresentationType is MappedRepresentation, which ifc-lite's own canonical predicate (rep_filter.rs::is_body_representation) counts as body geometry, and the probe that produced this artifact did not follow the mapping. So the file declares no Body-identified shape on these columns, and whether the mapping targets a solid the kernel failed to expand is NOT established here. Either way the verdict points at something real in the file and names a defect type that is not what is there (\"degenerate-geometry\" is planted in the corpus as a zero-depth extrusion), so the class is true-signal-wrong-label under both readings.",
+        "evidenceState": "mapping-not-followed"
+      }
+    ],
+    "structurallyImpossibleOnForeignData": [
+      {
+        "detector": "oracle-kernel",
+        "defect": "missing-quantities",
+        "why": "the verdict is computed over quantities re-read from a pset literally named GymQuantities, which only this program's generator writes; on any foreign file elementsWithQuantities is 0 and the verdict is true whenever the model has more quantifiable elements than unmeshed columns"
+      },
+      {
+        "detector": "heuristic-text",
+        "defect": "clash-pair",
+        "why": "the verdict is `IFCFOOTING count > 0`; the corpus only emits footings as an injected defect, so on any real file with foundations it fires unconditionally"
+      },
+      {
+        "detector": "oracle-kernel",
+        "defect": "dangling-ref",
+        "why": "hardcoded false in baselines.mjs; see referenceIntegrityGap - the kernel rule it says is missing exists and detects 100% of the corpus's own planted dangling references"
+      }
+    ]
+  },
+  "referenceIntegrityGap": {
+    "note": "baselines.mjs oraclePrediction hardcodes dangling-ref:false with the comment 'The kernel's validate has no reference-integrity rule'. computeValidationIssues has had one; this measures whether it fires.",
+    "modelsWithPlantedDanglingRef": 17,
+    "modelsWhereValidateFlaggedReferenceIntegrity": 17,
+    "detectionPct": 100,
+    "committedOracleDefectF1": 0.857143,
+    "committedOracleDanglingRefF1": 0,
+    "committedOracleDanglingRefFn": 94,
+    "oracleDefectF1IfWired": 1,
+    "consequence": "the leaderboard's \"deliberately not perfect\" upper bound is understated by one whole type; wiring the existing rule would put oracle-kernel at parity with heuristic-text, i.e. BOTH anchors saturate the defect task"
+  },
+  "quantityEstimation": {
+    "syntheticTaskScore": 0.977655,
+    "syntheticTaskNote": "plant-time ground truth; the prediction is a re-read of the same GymQuantities literals the generator embedded, so it measures round-trip fidelity of numbers, not geometry",
+    "foreignNote": "authored IfcElementQuantity NetVolume as truth, kernel mesh volume as prediction, scored with the identical score.mjs expression; this measures the geometry kernel against an independently authored reference",
+    "model-a": {
+      "pairedElements": 15409,
+      "meanElementScore": 0.993931,
+      "medianElementScore": 0.999999,
+      "within1PctOfPairedPct": 96.3658,
+      "within5PctOfPairedPct": 97.0277,
+      "zeroScoreCount": 0,
+      "modelTotalBenchScore": 0.999431,
+      "buildingElementParts": 3209,
+      "buildingElementPartsWithMesh": 3209,
+      "perGroup": {
+        "wall": {
+          "pairedElements": 1187,
+          "meshCoveragePct": 100,
+          "meanElementBenchScore": 0.999651,
+          "modelTotalBenchScore": 0.999582
+        },
+        "slab": {
+          "pairedElements": 3509,
+          "meshCoveragePct": 100,
+          "meanElementBenchScore": 0.999619,
+          "modelTotalBenchScore": 0.99892
+        },
+        "column": {
+          "pairedElements": 2568,
+          "meshCoveragePct": 98.8833,
+          "meanElementBenchScore": 0.999669,
+          "modelTotalBenchScore": 0.999821
+        },
+        "beam": {
+          "pairedElements": 8145,
+          "meshCoveragePct": 100,
+          "meanElementBenchScore": 0.988837,
+          "modelTotalBenchScore": 0.996984
+        }
+      },
+      "deltaVsSyntheticTaskScore": 0.016276,
+      "benchmarkKeyQuantitiesPredicted": 0,
+      "authoredQsetCoveragePct": 99.0507
+    },
+    "model-b": {
+      "pairedElements": 2387,
+      "meanElementScore": 0.984277,
+      "medianElementScore": 1,
+      "within1PctOfPairedPct": 97.3607,
+      "within5PctOfPairedPct": 97.7377,
+      "zeroScoreCount": 23,
+      "modelTotalBenchScore": 0.999116,
+      "buildingElementParts": 4093,
+      "buildingElementPartsWithMesh": 4093,
+      "perGroup": {
+        "wall": {
+          "pairedElements": 2134,
+          "meshCoveragePct": 90.7313,
+          "meanElementBenchScore": 0.982414,
+          "modelTotalBenchScore": 0.997926
+        },
+        "slab": {
+          "pairedElements": 112,
+          "meshCoveragePct": 22.7181,
+          "meanElementBenchScore": 0.999991,
+          "modelTotalBenchScore": 0.999897
+        },
+        "column": {
+          "pairedElements": 112,
+          "meshCoveragePct": 100,
+          "meanElementBenchScore": 1,
+          "modelTotalBenchScore": 1
+        },
+        "beam": {
+          "pairedElements": 18,
+          "meshCoveragePct": 100,
+          "meanElementBenchScore": 0.999998,
+          "modelTotalBenchScore": 1
+        },
+        "member": {
+          "pairedElements": 11,
+          "meshCoveragePct": 2.7431,
+          "meanElementBenchScore": 1,
+          "modelTotalBenchScore": 1
+        }
+      },
+      "deltaVsSyntheticTaskScore": 0.006622,
+      "benchmarkKeyQuantitiesPredicted": 0,
+      "authoredQsetCoveragePct": 98.892
+    }
+  },
+  "openingsAndCsg": {
+    "note": "the geometry kernel's own typed diagnostics contract, which no benchmark task consumes",
+    "synthetic": {
+      "sampledModels": 200,
+      "total": 848,
+      "rectangular": 848,
+      "diagonal": 0,
+      "nonRectangular": 0,
+      "rectangularPct": 100,
+      "rectFastFired": 400,
+      "rectFastOpeningsCut": 848,
+      "rectFastDeferrals": 0,
+      "totalCsgFailures": 0,
+      "silentNoOps": 0,
+      "openingsCutByFastPathPct": 100
+    },
+    "model-a": {
+      "total": 674,
+      "rectangular": 119,
+      "diagonal": 238,
+      "nonRectangular": 317,
+      "rectangularPct": 17.6558,
+      "hostsWithOpenings": 324,
+      "rectFastFired": 88,
+      "rectFastOpeningsCut": 111,
+      "rectFastDeferrals": 30,
+      "totalCsgFailures": 0,
+      "productsWithFailures": 0,
+      "failuresByReason": [],
+      "silentNoOps": 1,
+      "openingsCutByFastPathPct": 16.4688
+    },
+    "model-b": {
+      "total": 2252,
+      "rectangular": 1708,
+      "diagonal": 0,
+      "nonRectangular": 544,
+      "rectangularPct": 75.8437,
+      "hostsWithOpenings": 605,
+      "rectFastFired": 0,
+      "rectFastOpeningsCut": 0,
+      "rectFastDeferrals": 552,
+      "totalCsgFailures": 108,
+      "productsWithFailures": 2,
+      "failuresByReason": [
+        {
+          "reason": "OperandTooLarge",
+          "count": 108
+        }
+      ],
+      "silentNoOps": 39,
+      "openingsCutByFastPathPct": 0
+    },
+    "delta": {
+      "syntheticNonRectangularOpenings": 0,
+      "syntheticDiagonalOpenings": 0,
+      "syntheticCsgFailures": 0,
+      "foreignCsgFailures": 108,
+      "foreignNonRectangularOpenings": 861,
+      "foreignDiagonalOpenings": 238,
+      "foreignSilentNoOps": 40,
+      "reading": "the corpus exercises exactly one opening class and the rect_fast fast path takes 100% of it, so the general CSG path - where every foreign failure lives - is never entered by the benchmark"
+    }
+  },
+  "scale": {
+    "syntheticMedianEntityCount": 649,
+    "syntheticMedianBytes": 33134.5,
+    "syntheticMedianOracleMs": 2.846,
+    "syntheticMedianHeuristicMs": 0.305,
+    "syntheticOracleUsPerEntity": 4.385,
+    "foreign": [
+      {
+        "alias": "model-a",
+        "entityCount": 1083664,
+        "entityCountVsSyntheticMedian": 1669.7,
+        "bytes": 75511560,
+        "bytesVsSyntheticMedian": 2278.9,
+        "oracleMs": 29754.1,
+        "oracleMsVsSyntheticMedian": 10454.7,
+        "heuristicMs": 565.6,
+        "heuristicMsVsSyntheticMedian": 1854.4,
+        "oracleRssAtExitMb": 1106.8,
+        "oracleUsPerEntity": 27.457
+      },
+      {
+        "alias": "model-b",
+        "entityCount": 1040356,
+        "entityCountVsSyntheticMedian": 1603,
+        "bytes": 90264955,
+        "bytesVsSyntheticMedian": 2724.2,
+        "oracleMs": 16535.3,
+        "oracleMsVsSyntheticMedian": 5810,
+        "heuristicMs": 527.4,
+        "heuristicMsVsSyntheticMedian": 1729.2,
+        "oracleRssAtExitMb": 1348.8,
+        "oracleUsPerEntity": 15.894
+      }
+    ]
+  },
+  "foreignDefectSignal": {
+    "degenerateGeometryModelA": {
+      "totalColumns": 2597,
+      "unmeshedColumns": 29,
+      "unmeshedPct": 1.1167,
+      "declaringRepresentation": 29,
+      "declaringNoRepresentation": 0,
+      "representationIdentifierAndType": {
+        "Axis/MappedRepresentation": 29
+      },
+      "representationItemTypes": {
+        "Unknown": 29
+      },
+      "evidenceState": "mapping-not-followed",
+      "mappedTargetIdentifierAndType": {}
+    }
+  },
+  "notMeasured": [
+    "validity-triage cannot be scored on foreign models: the task is a concordance index against planted severity, and a delivered file has no planted severity. Predicted triage values are reported; no score is.",
+    "defect-detection cannot be scored as macro-F1 on foreign models for the same reason. What is reported instead is the per-verdict adjudication, which is the strongest claim two files support.",
+    "the benchmark's roomNetFloorArea key has no mesh-side estimator in the kernel geometry output, so the fifth quantity key is unmeasured on foreign data rather than approximated.",
+    "two models is not a sample. Every foreign figure here is a case study, and the per-model spread between model-a and model-b is the only variance estimate this bet has.",
+    "the two foreign models are both IFC4 and neither is a Revit or Tekla export, so the plan's \"at least one file exported from Revit or Tekla\" clause is NOT satisfied by this run."
+  ]
+}

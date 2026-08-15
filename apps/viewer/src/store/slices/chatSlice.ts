@@ -201,6 +201,14 @@ function loadStoredMessages(userId: string | null): ChatMessage[] {
   }
 }
 
+/** One-shot latch for the persist-failure warning (see persistMessages). */
+let persistWarned = false;
+
+/** Reset the persist-failure latch. Test-only seam. */
+export function __resetChatPersistWarningForTests(): void {
+  persistWarned = false;
+}
+
 /** Persist messages to localStorage. */
 function persistMessages(messages: ChatMessage[], userId: string | null) {
   try {
@@ -216,7 +224,20 @@ function persistMessages(messages: ChatMessage[], userId: string | null) {
       execResults: m.execResults ? Array.from(m.execResults.entries()) : undefined,
     }));
     localStorage.setItem(getMessagesStorageKey(userId), JSON.stringify(toStore));
-  } catch { /* quota exceeded — ignore */ }
+  } catch (err) {
+    // Non-fatal: the in-memory conversation is unaffected, but nothing will
+    // survive a reload. Latched to once per session — this runs on EVERY
+    // message add / exec-result update, so an unlatched log would flood the
+    // console for the whole session once the quota is full.
+    if (!persistWarned) {
+      persistWarned = true;
+      console.warn(
+        '[chat] Could not persist chat history to localStorage (quota exceeded or storage blocked); '
+        + 'this conversation will not survive a reload. Further failures are not logged.',
+        err,
+      );
+    }
+  }
 }
 
 function trimChatMessages(messages: ChatMessage[]): ChatMessage[] {

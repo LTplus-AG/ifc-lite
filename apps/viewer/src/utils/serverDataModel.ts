@@ -16,9 +16,11 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import {
   REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
   CompactEntityIndexBuilder,
+  EMPTY_SOURCE_BYTES,
   type CompactEntityIndex,
 } from '@ifc-lite/parser';
 import {
+  comparePropertyValues,
   findStoreyByElevation,
   IfcTypeEnum,
   RelationshipType,
@@ -29,6 +31,7 @@ import {
   QuantityType,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
+  IFC_ENTITY_NAMES,
   type SpatialHierarchy,
   type SpatialNode,
   type EntityTable,
@@ -400,7 +403,13 @@ function buildEntityTable(
     },
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise on the way in, matching `entityTableFromColumns`
+      // (packages/data/src/entity-table.ts) and the cache-restored table.
+      // `getTypeName` echoes the override back verbatim and consumers like
+      // `isSpatialStructureTypeName` match the PascalCase form, so storing
+      // the caller's raw UPPERCASE token makes a retyped entity invisible to
+      // them. All three EntityTable implementations must agree here.
+      else typeOverrides.set(id, IFC_ENTITY_NAMES[typeName.toUpperCase()] ?? typeName.toUpperCase());
     },
     getExpressIdByGlobalId: (gid) => {
       return globalIdToExpressId.get(gid) ?? -1;
@@ -664,20 +673,24 @@ export function convertServerDataModel(
     },
     findByProperty: (
       propName: string,
-      _operator: string,
+      operator: string,
       value: PropertyValue,
       psetName?: string,
     ): number[] => {
       // Server-converted data: search psets for matching property name + value.
       // When a pset is named, restrict to it so a same-named property in
-      // another pset does not match.
+      // another pset does not match. The comparison must go through
+      // `comparePropertyValues` (the same function the columnar
+      // `PropertyTable.findByProperty` uses) — a bare `===` here silently
+      // degraded every relational operator to equality, so `'>' 10` answered
+      // `= 10`.
       const matchingEntityIds: number[] = [];
       for (const [entityId, psets] of entityToPsets) {
         let found = false;
         for (const pset of psets) {
           if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
-            if (prop.property_name === propName && materializeValue(prop) === value) {
+            if (prop.property_name === propName && comparePropertyValues(materializeValue(prop), operator, value)) {
               matchingEntityIds.push(entityId);
               found = true;
               break;
@@ -786,7 +799,7 @@ export function convertServerDataModel(
     schemaVersion,
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
-    source: new Uint8Array(0),
+    source: EMPTY_SOURCE_BYTES,
     entityIndex: { byId: entityById, byType },
     strings,
     entities,

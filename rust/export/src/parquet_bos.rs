@@ -294,14 +294,9 @@ mod tests {
     use super::*;
     use std::io::Read;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_bos() {
-        let bos = export_bos(&fixture("ara3d/duplex.ifc"), &ParquetBosOptions::default())
+        let bos = export_bos(&fixture_or_skip!("ara3d/duplex.ifc"), &ParquetBosOptions::default())
             .expect("bos export");
         assert!(bos.len() > 1000, "non-trivial archive");
 

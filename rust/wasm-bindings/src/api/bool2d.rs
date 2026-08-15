@@ -67,7 +67,7 @@ impl Contours2D {
     /// boolean would keep rather than exposing an unsanitised soup.
     #[wasm_bindgen(constructor)]
     pub fn new(coords: &[f64], ring_lengths: &[u32]) -> Result<Contours2D, JsValue> {
-        if coords.len() % 2 != 0 {
+        if !coords.len().is_multiple_of(2) {
             return Err(js_sys::Error::new("Contours2D: coords length must be even").into());
         }
         // Checked arithmetic: on wasm32 `usize` is 32-bit, so a crafted
@@ -242,5 +242,51 @@ pub fn intersection_2d(a: &Contours2D, b: &Contours2D) -> Contours2D {
 pub fn resolve_2d_js(a: &Contours2D) -> Contours2D {
     Contours2D {
         set: resolve_2d(&a.set.rings),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `Contours2D::new` walks the flat `coords` buffer with a running `at`
+    /// offset (vertex count, not float count) so each ring reads
+    /// `coords[at*2..(at+n)*2]`. Rings of DIFFERENT lengths matter here: with
+    /// equal-length rings a stuck or over-advanced offset can still land on a
+    /// plausible-looking (wrong) slice, masking the bug.
+    #[test]
+    fn new_keeps_multi_ring_offsets_distinct_for_rings_of_different_lengths() {
+        #[rustfmt::skip]
+        let coords: Vec<f64> = vec![
+            0.0, 0.0,  4.0, 0.0,  0.0, 3.0, // triangle (3 verts)
+            10.0, 10.0,  14.0, 10.0,  14.0, 14.0,  10.0, 14.0, // quad (4 verts)
+            20.0, 20.0,  24.0, 20.0,  26.0, 23.0,  22.0, 26.0,  18.0, 23.0, // pentagon (5 verts)
+        ];
+        let ring_lengths: Vec<u32> = vec![3, 4, 5];
+
+        let contours = Contours2D::new(&coords, &ring_lengths).expect("well-formed rings");
+
+        assert_eq!(contours.set.rings.len(), 3, "one ring per input, none dropped/merged");
+        assert_eq!(
+            contours.set.rings[0],
+            vec![[0.0, 0.0], [4.0, 0.0], [0.0, 3.0]],
+            "triangle ring must read its own 3 vertices, not a shifted slice"
+        );
+        assert_eq!(
+            contours.set.rings[1],
+            vec![[10.0, 10.0], [14.0, 10.0], [14.0, 14.0], [10.0, 14.0]],
+            "quad ring must start right after the triangle's 3 vertices"
+        );
+        assert_eq!(
+            contours.set.rings[2],
+            vec![
+                [20.0, 20.0],
+                [24.0, 20.0],
+                [26.0, 23.0],
+                [22.0, 26.0],
+                [18.0, 23.0]
+            ],
+            "pentagon ring must start right after the quad's 4 vertices"
+        );
     }
 }

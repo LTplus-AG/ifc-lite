@@ -1,5 +1,265 @@
 # @ifc-lite/geometry
 
+## 3.8.2
+
+### Patch Changes
+
+- [#2539](https://github.com/LTplus-AG/ifc-lite/pull/2539) [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Forward a geometry/parser worker's wasm panic-location stash to the main thread.
+
+  A follow-up to the wasm-trap source-location attribution: the Rust panic hook stashes
+  `{ location, at }` on whichever realm's JS global it runs in, but a panic inside a geometry
+  process worker or the parser worker left that stash stranded in the worker's own realm, invisible
+  to the main thread's `attachWasmPanicLocation` gate — so "Geometry worker error: unreachable" (and
+  the equivalent parser-worker error) still arrived without a location.
+
+  Both workers now read + consume their own realm's stash on the `{type:'error'}` message they post
+  back, and the main-thread pools (`geometry-parallel.ts`'s process-worker pool AND its streaming
+  pre-pass worker, `worker-parser.ts`) re-plant it on the main realm's global before the load error
+  propagates — so the existing consume-once, TTL-guarded attachment gate in the viewer picks a worker
+  trap up exactly as it would a main-thread one. The re-plant only happens when the accompanying error
+  message itself looks wasm-trap-shaped, so a stash forwarded alongside an ordinary, non-trap worker
+  error (the worker always forwards whatever it has, regardless of the error that triggered it) can't
+  sit on the main realm's global and mislabel an unrelated later trap. Location only, never the panic
+  message, matching the existing privacy contract.
+
+- [#2260](https://github.com/LTplus-AG/ifc-lite/pull/2260) [`b85b2be`](https://github.com/LTplus-AG/ifc-lite/commit/b85b2be4dd79045f1dd02ed344d102f27ecc2594) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `cap_half_space_clip` reporting `capped: true` while a boundary edge was left open.
+
+  The boundary chain walk dropped a dead-ended chain (no continuation back to
+  its start) and could also fold an unclosed chain into an already-visited
+  vertex, treating it as if it were a closed loop. Neither case affected
+  `outer_count`/`outer_filled`, the two counters the return value was computed
+  from, so an open edge from a dead-ended or merged chain never showed up in
+  the verdict.
+
+  On a non-watertight host — a routine input to
+  `BooleanClippingProcessor::clip_mesh_with_half_space` — this could report
+  `capped: true` with open boundary edges still present, contradicting the
+  function's own contract ("a boundary that does not close bails") and the
+  per-piece "was the cut closed" signal [#1810](https://github.com/LTplus-AG/ifc-lite/issues/1810) zone splitting depends on for a
+  trustworthy quoted volume.
+
+  The walk now tracks whether any chain failed to close, and that flag is
+  ANDed into the returned verdict alongside the existing counters.
+
+  The merge-into-an-already-visited-vertex arm had a second bug beyond the
+  verdict: it set the flag and `break`, matching the code comment ("do NOT
+  push it as if it were a closed loop"), but never cleared the partial walk
+  first, so the un-closed chain was still `>= 3` vertices long and got pushed
+  into `loops`, triangulated, and appended to the mesh — garbage cap geometry
+  landing in the output even on a call that correctly reported
+  `capped: false`. The merge arm now clears the partial walk before breaking,
+  matching its sibling dead-end arm.
+
+  Scope note: `capped` only measures whether the ON-PLANE cut section closed.
+  A host with pre-existing OPEN boundary edges off the cut plane still reports
+  `capped: true` — the boundary walk is filtered to on-plane endpoints by
+  design, so it never re-examines unrelated openness elsewhere on the mesh.
+
+  Also adds `kernel::mesh_volume`, a public, closedness-UNGATED divergence-
+  theorem volume reading for a `Mesh` (delegates to the crate's one
+  divergence-sum implementation, `signed_volume6`). It is a raw primitive, not
+  a replacement for `geom_closure::GeometryHasher::volume` — that one stays
+  the crate's closedness-gated, per-entity volume and requires the hasher's
+  accumulated state; `mesh_volume` is for a bare `Mesh` (e.g. a future
+  zone-split piece) that never went through it. Callers of `mesh_volume` must
+  establish closedness themselves first; see its doc for the exact
+  translation-stability guarantee (stable up to a documented quantization
+  noise floor, not exact).
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/wasm@4.5.1
+
+## 3.8.1
+
+### Patch Changes
+
+- [#2534](https://github.com/LTplus-AG/ifc-lite/pull/2534) [`0ab480d`](https://github.com/LTplus-AG/ifc-lite/commit/0ab480dd78fbce9f8159b6248579356cfa25bfaa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface `wasmRtcOffset` / `lengthUnitScale` on the batch `processMeshes` path, not just the incremental one.
+
+  `CoordinateHandler.processMeshes` — the path behind the synchronous `GeometryProcessor.process()` — returned its `CoordinateInfo` without the wasm metadata that `setWasmMetadata` had recorded, while the incremental/streaming path attached it. For a model whose placement the wasm pre-pass re-based (coordinates >10 km from the origin, e.g. a Vectorworks export with the IfcSite at absolute EPSG:25833 map coordinates, issue [#2526](https://github.com/LTplus-AG/ifc-lite/issues/2526)), every sync-path consumer then read the re-based bounds as if they were absolute: the site offset — including its elevation — silently vanished from georeferencing math. All `processMeshes` returns (empty, no-shift, and shifted) now attach the same metadata the incremental path reports, via one shared helper.
+
+- [#2537](https://github.com/LTplus-AG/ifc-lite/pull/2537) [`c532d6a`](https://github.com/LTplus-AG/ifc-lite/commit/c532d6a9cb9397a24e718bcfe09f1c515067852d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fixes to the STEP/IFC exporters' shared `FILE_SCHEMA` detection and header re-serialization, reached from `exportMerged` and the STEP re-export path (`ifc-lite-bridge.ts` defaults `schema` to `''`, which resolves to auto-detect on both):
+
+  - `detect_schema` now scans the whole HEADER section instead of only the first 4096 bytes, so a long earlier header field (e.g. a lengthy `FILE_DESCRIPTION`) no longer pushes `FILE_SCHEMA` out of range and silently defaults the output to IFC4.
+  - The `FILE_SCHEMA` search — and the HEADER-section boundary scan that bounds it — are now quote-aware, so a header string value that happens to contain the literal text `FILE_SCHEMA` or `ENDSEC;` is no longer mistaken for the real entry.
+  - `detect_schema` un-doubles a `\\` in the detected label before it is re-escaped on write, so a schema label carrying a literal `\` (synthetic, but reachable through the same code path as the labels above) round-trips instead of compounding.
+  - `exportMerged`'s `#`-reference rewriter now copies non-`#`-reference bytes through unchanged instead of widening each byte to a `char`, which corrupted every non-ASCII (UTF-8 multi-byte) character in a merged model's string literals.
+  - `exportMerged`'s header-string escaping now maps every ASCII control byte (not just `\n`/`\r`/`\t`) to a space, matching the STEP exporter and ISO 10303-21's basic graphic range.
+
+  `merged.rs`'s private forks of `detect_schema` and `escape` are removed; it now shares the hardened primitives in `step_text.rs` with the STEP exporter.
+
+- Updated dependencies []:
+  - @ifc-lite/data@3.2.4
+
+## 3.8.0
+
+### Minor Changes
+
+- [#1344](https://github.com/LTplus-AG/ifc-lite/pull/1344) [`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831) Thanks [@louistrue](https://github.com/louistrue)! - Add DFJSON (Dragonfly) energy-model export alongside HBJSON. Each `IfcSpace` becomes an extruded `Room2D` (floor polygon + floor-to-ceiling height) grouped into stories — the simpler Ladybug Tools target for mostly-vertical-wall models. Surfaces:
+
+  - `GeometryProcessor.exportDfjson(buffer, name)` (`@ifc-lite/geometry`)
+  - `bim.export.dfjson({ name, filename })` + `ExportDfjsonOptions` (`@ifc-lite/sdk`)
+  - `ifc-lite export <file> --format dfjson` (`@ifc-lite/cli`)
+
+  The Rust source of truth is `ifc-lite-export::export_dfjson`, reusing the same analytic floor-footprint extraction as HBJSON, so the two exports agree on where a footprint lands.
+
+  They do not cover the same set of spaces, by design: each builder applies its own admissibility rules downstream of that shared extraction. A `Room2D` is a floor polygon swept straight up, so DFJSON reports a space as `skipped` when it cannot be represented that way — a zero-height extrusion, an extrusion that leans more than ~2° off vertical, or a sloped floor ring — where HBJSON still emits a solid. Emitting those as vertical plates anyway would land the floor correctly and every wall wrongly, with nothing in the stats to say so. Conversely DFJSON keeps a space that HBJSON's watertightness gate rejects, since a 2D plate has nothing to fail. On real models that runs in both directions — 19 HBJSON rooms vs 17 DFJSON on one file, 46 vs 47 on another.
+
+  A model carrying duplicated `IfcSpace` geometry (Revit does this) runs the same `dedupe_colliding` pass HBJSON uses, so overlapping plates drop the same copies rather than double-counting floor area.
+
+  The `Building` → `Story` → `Room2D` nesting comes from the file's own `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` containment, and both carry their IFC `Name` into `display_name` — the point of the format for an IFC-shaped model, and the thing HBJSON's flat `rooms` array drops. Grouping by floor elevation instead would only approximate the partition the file already states: on `Office_A_20110811.ifc` a 1 m elevation band splits the model's two populated storeys into three stories. That heuristic survives as the fallback for spaces the file places nowhere, and for models that declare no spatial structure at all.
+
+  Known v1 limitation: `Room2D.display_name` is still `R{expressId}` rather than the `IfcSpace` `Name` — the same as HBJSON's rooms today, so the two stay in step.
+
+  Both energy exports apply the mutation view, so entities authored in-session (drawn spaces, in particular) are visible to the analytic exporter rather than silently missing — the DFJSON half of [#1908](https://github.com/LTplus-AG/ifc-lite/issues/1908). Regeneration through `StepExporter` happens only when the overlay actually carries edits (`hasPendingChanges()`), so an unedited model still hands its retained source bytes straight to the exporter. The gate, the byte resolution and the WASM handle lifecycle are shared between the two formats rather than written twice.
+
+### Patch Changes
+
+- [#2391](https://github.com/LTplus-AG/ifc-lite/pull/2391) [`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a WASM handle leak in `IfcLiteBridge.init()`: the `IfcAPI` handle is constructed at `new IfcAPI()` and then four cached settings (`applyMergeLayers`, `applyComputeGeometryHashes`, `applyTessellationQuality`, `applySkipSmallCuts`) are replayed onto it before `init()` marks itself ready. If any of those four throws, the `catch` block called `reset()`, which only nulled the JS reference — it never called `free()` on the handle that had just been built, so the wasm-bindgen pointer leaked for the life of the document (no later `dispose()` can reach a `null` handle).
+
+  `init()`'s failure path now best-effort frees the handle before dropping the reference, on both the ordinary-error and the fatal WASM-runtime-trap branches — the same "drop (and free) the handle, propagate the error unchanged" contract every other WASM-calling method in this file already follows via `recordWasmRuntimeTrap`. The free is wrapped so a secondary failure from `free()` itself (the runtime can re-trap while freeing) can never replace or mask the original `init()` error reaching the caller.
+
+  Not changed: what happens when the WASM trap occurs before the handle exists (during module instantiation) — there is nothing to free in that case, and the fatal error/reload-advisory behavior for that path is unchanged.
+
+- [#2391](https://github.com/LTplus-AG/ifc-lite/pull/2391) [`a8da187`](https://github.com/LTplus-AG/ifc-lite/commit/a8da187054ffb2992974e8592bbdd13a559ff8cd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `IfcLiteBridge.disposeBestEffort()`'s recovery `catch` — reached when `free()` itself throws or traps while cleaning up after a primary WASM failure — silently dropped the secondary error, unlike every other catch site in `ifc-lite-bridge.ts`, which reports what it recovered from via `log.error`. It now does the same, so a `free()` failure during recovery leaves a trace instead of vanishing.
+
+  This is diagnostics only: `reset()` still runs unconditionally and `disposeBestEffort()` still never throws, so the original error the caller is already unwinding with (including the fatal `isWasmRuntimeError` path in `init()`) is unaffected — the `log.error` call is itself wrapped so a throwing logger cannot defeat that guarantee.
+
+- [#2408](https://github.com/LTplus-AG/ifc-lite/pull/2408) [`8bddeca`](https://github.com/LTplus-AG/ifc-lite/commit/8bddeca78313c6a2575e46975471055982389f12) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportMerged` now doubles a literal reverse solidus (`\`) inside STEP string literals, matching the apostrophe doubling it already did. ISO 10303-21 requires both `'` and `\` to be doubled in a string literal; only the apostrophe was, so the FILE_SCHEMA label was written as an under-escaped, non-conformant literal whenever it contained a `\`. `exportMerged`'s `schema` parameter is the only header field the wasm binding exposes to JS callers — the underlying `MergedOptions` also lets `description` and `application` be overridden, but the wasm binding always passes their fixed, special-character-free defaults — so this only changes output for schema labels containing `'` or `\`. Strings with no `'` or `\` are emitted byte-identically, as before.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep` now doubles a literal reverse solidus (`\`) inside STEP string literals, matching the apostrophe doubling it already did. ISO 10303-21 requires both `'` and `\` to be doubled in a string literal; only the apostrophe was, so a property or pset name containing a Windows path or a regex (e.g. `C:\temp`, `Pset_MyProps\Sub`) was written as an under-escaped, non-conformant literal. Values that are already STEP-serialized (`AttrMutation.value` / `PropMutation.value`) are untouched — only the property/pset name and header fields that flow through this exporter's own `escape()` are affected. Strings with no `'` or `\` are emitted byte-identically, as before.
+
+  Also closes a related gap in the same `escape()` function: it already mapped `\n`, `\r`, and `\t` to a space, but left every other ASCII control character (NUL, vertical tab, unit separator, DEL, etc.) unchanged. ISO 10303-21 restricts a string literal's plain-text bytes to the basic graphic range 32-126, so those bytes were not legal literal content — a property or pset name containing one of them was written as a raw, non-conformant control byte instead of the space every other control character already gets. All ASCII control characters (the C0 range and DEL) now map to a space, consistently.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep`'s source-schema detection (`detect_schema`) used to scan only the first 4096 bytes of a STEP file looking for `FILE_SCHEMA`. A real HEADER section can push `FILE_SCHEMA` past that fixed cutoff when an earlier header field (e.g. a long `FILE_DESCRIPTION`) carries enough text, silently falling back to the `IFC4` default and applying the wrong schema conversion to the export. Schema detection now scans through the HEADER section's closing `ENDSEC;` instead of a fixed byte budget.
+
+- [#2405](https://github.com/LTplus-AG/ifc-lite/pull/2405) [`086e5dd`](https://github.com/LTplus-AG/ifc-lite/commit/086e5ddab3e72428fd262f0033598df5b714e328) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `exportStep`'s source-schema detection (`detect_schema`) located the HEADER section's closing `ENDSEC;` and the `FILE_SCHEMA` entry with a raw byte search that did not know about STEP string literals. A header field whose string value happened to contain the literal text `ENDSEC;` or `FILE_SCHEMA` (e.g. inside a `FILE_DESCRIPTION`) could therefore produce a false match and detect the wrong schema. The scan is now quote-aware, tracking whether it is inside a single-quoted string (including the `''`-doubled-apostrophe escape) so text inside a string value can no longer be mistaken for header structure.
+
+- Updated dependencies [[`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831), [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/wasm@4.4.0
+  - @ifc-lite/data@3.2.3
+
+## 3.7.1
+
+### Patch Changes
+
+- [#2322](https://github.com/LTplus-AG/ifc-lite/pull/2322) [`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bounds-check each mesh's declared positions/normals/indices range against the shared data pool when decoding packed geometry batches, so a malformed or corrupted offset/length pair throws a diagnosable error instead of being silently accepted.
+
+  `decodePackedGeometryCacheShard` (the binary `packed-cache-shard` reader used by the desktop native cache path) and `convertPackedNativeBatch` (the Tauri-native packed-mesh-array conversion) both sliced each mesh's vertex/normal/index data out of a shared pool via `TypedArray.subarray(offset, offset + length)` with no check that `offset + length` stayed inside the pool. `subarray` saturates rather than throwing on an out-of-range end, so a mesh whose declared length ran past its pool silently received truncated data — or, when the overrun reached into a neighbouring mesh's range, silently absorbed that mesh's vertices instead. Either way the result renders as plausible-looking geometry with no error anywhere on the read path. The sibling instanced-shard decoder (`packed-instanced-decoder.ts`) already carried this exact guard; these two were missing it.
+
+  `decodePackedGeometryCacheShard` also now rejects a payload truncated below the header size or inside the data section, matching the truncation check the instanced decoder already had.
+
+  `convertPackedNativeBatch` additionally requires each offset and length to be a non-negative integer, which the binary decoder gets for free: its values come from `getUint32`, while these arrive as plain JS numbers on an IPC payload. An upper-bound comparison alone does not cover that — `NaN + length > poolLength` is false, so a NaN offset would pass and `subarray(NaN, NaN)` returns an empty view, reporting a successfully converted mesh that carries no geometry at all; a negative offset likewise passes and makes `subarray` count from the end of the pool.
+
+  No change to well-formed input; all of these are purely defensive checks on malformed/truncated/corrupted data.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+
+## 3.7.0
+
+### Minor Changes
+
+- [#2052](https://github.com/LTplus-AG/ifc-lite/pull/2052) [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9) Thanks [@louistrue](https://github.com/louistrue)! - Add OpenUSD ASCII (`.usda`) export — a real Z-up USD stage, distinct from the existing IFCX (USD-flavored JSON) export.
+
+  The stage mirrors the IFC spatial hierarchy as `Xform` prims with `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, and IFC metadata (`ifc:class`, `ifc:GlobalId`, property/quantity sets) as custom attributes; it opens in usdview / Blender / Omniverse. Geometry outside the spatial tree (opening elements, type-product meshes) is placed under a synthetic `Unassigned` prim rather than dropped, and each mesh carries its placement as a `double3 xformOp:translate` so georeferenced models keep full precision.
+
+  - `@ifc-lite/geometry`: `GeometryProcessor.exportUsd(bytes)` (and `IfcLiteBridge.exportUsd`) returning the `.usda` bytes.
+  - `@ifc-lite/cli`: `ifc-lite export --format usd` (whole-model; entity filters do not apply).
+  - `@ifc-lite/mcp`: the `export_usd` tool.
+
+### Patch Changes
+
+- [#2082](https://github.com/LTplus-AG/ifc-lite/pull/2082) [`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop the native geometry streaming loop from hanging on — or silently completing after — a failed stream, and report the failures the geometry package used to swallow.
+
+  Auditing the silent `catch {}` blocks in `packages/geometry` surfaced two real defects in the native (Tauri desktop) streaming drain loop, which existed in two near-identical copies — `streamNativeGeometry` and an inline one in `GeometryProcessor.processStreaming`, only the first of which had tests. The two are now a single loop, so both fixes and their tests apply to every native route:
+
+  - **A stream failure that never reached `onError` hung the load forever.** The loop only ends when `onError`/`onComplete` sets `completed`, so a bridge promise that simply _rejected_ left it parked on a wake promise nothing resolved — no error, no `complete`, just a load that never finishes, with the reason visible only as an unhandled rejection. That is reachable today: `NativeBridge.processGeometryStreamingPath` has no `try/catch` at all, so its missing-cache-key throw and every failure of the packed-shard stream it delegates to — including the Rust-reported `failed` status and the 60-second stall guard — reject straight out, and even the siblings that do route through `onError` can reject from the `init()`/`listen()` calls preceding their `try`. A rejected stream promise is now treated as a stream error, without shadowing a richer message an `onError` already reported.
+  - **A stream failure that _did_ reach `onError` was dropped.** The `if (streamError) throw` check sat inside the drain loop's body, but `onError` both sets `completed` and leaves the queue empty — so the wake it triggers exits the loop past that check, and the generator reported `complete` for a stream that had failed. The check is now repeated on the way out.
+
+  Both are behaviour changes on failing loads: a failure that previously hung or was reported as a successful `complete` now throws the underlying error.
+
+  A load is only failed while the stream is still running, though. `NativeBridge.processGeometryStreaming` runs its three `unlisten()` calls in a `finally` — i.e. _after_ `onComplete` — so a throwing `unlisten` rejects the promise of a load that fully succeeded. Treating that as a stream failure would retro-fail a finished load and discard every mesh already delivered, and whether it did so depended on whether the rejection landed on the microtask queue or a turn later. A rejection that only ever reaches the detached `.catch()` after `onComplete`/`onError` has already settled the stream is therefore logged as teardown fallout and does not change the load's outcome.
+
+  A `streamError` set by `onError` is a different signal, and is never gated on `completed` for exactly that reason: `onError` reporting a genuine failure must win no matter when it arrives. Both existing exit-guard checks only run while the drain loop still has a reason to spin or right as it exits, so an `onError` that fires later — while this generator is inside the teardown `finally`, awaiting the same `streamingPromise` — was recorded but never read again, and the caller still got `complete`. That gap is now closed by a third check after the `finally`, immediately before the `complete` yield.
+
+  Collapsing the duplicate loop also changes three smaller things on `GeometryProcessor.processStreaming`'s native path, all of which bring it into line with the path- and cache-based native routes: its `complete` event now carries the native CSG/opening `diagnostics` when the bridge reports them; the pre-processing yield uses `scheduler.yield()` where the host provides it instead of always `setTimeout(0)`; and the `native-streaming` console timer is closed in a `finally`, so a failed load no longer leaves the label open for the next one. Queue coalescing and coordinate handling on that route are deliberately unchanged, passed through as explicit options.
+
+  Newly logged rather than swallowed, at levels matching the surrounding code: a wasm-bindgen `free()` that throws while the geometry worker recovers from a failed batch (which means the abandoned engine instance keeps its file-sized source copy in the worker's never-shrinking wasm heap — logged once per worker, because the per-entity recovery path can run thousands of times in one load); a failed wasm heap-size read at session end; a `WebAssembly.compileStreaming` rejection that forces the shared-module compile onto the buffer path, and with it a second download of the engine binary; a worker `terminate()` that threw during pool teardown; and a failure to broadcast the `wasm-asset-unavailable` / `wasm-runtime-unrecoverable` events, which are the only way a host hears that the engine is gone.
+
+  The parallel (multi-worker) streaming path had the same shape of gap at its own stream-end, in `processParallel`'s `sendStreamEnd`: a pool worker's `complete` is posted only in response to `stream-end` (`geometry.worker.ts`'s `emitSessionEnd`, called only from its `stream-end` handler), and the drain loop's completion barrier waits for a `complete` from every worker. A `stream-end` `postMessage` that failed for one worker was previously only logged — leaving that worker's `complete` never sent, so the barrier never closed and the load hung forever rather than erroring or falsely succeeding. It now sets the same load-failure state a worker crash does and terminates the unreachable worker, so the load throws instead of hanging.
+
+- [#2134](https://github.com/LTplus-AG/ifc-lite/pull/2134) [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Extract the streaming `complete` event's diagnostics payload builder (`geometry.worker.ts`'s `emitSessionEnd`) into a standalone `buildGeometryWorkerCompleteMessage` in `diagnostics.ts`, and have the worker call it instead of inlining the conditional spread. No behaviour change: the emitted payload is identical (diagnostics still omitted entirely, not sent as `undefined`, on a clean load). This lets `diagnostics.test.ts` exercise the real production logic directly — the worker module cannot be imported under vitest (it assigns `self.onmessage` at module load time), so the payload shape is now factored out where a plain unit test can reach it.
+
+- [#2100](https://github.com/LTplus-AG/ifc-lite/pull/2100) [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop four package-level failures from being reported as ordinary results.
+
+  - `@ifc-lite/data` / `@ifc-lite/cache`: a List-typed property with no value
+    came back as `[]` — a real empty list — because the NULL string sentinel
+    resolved to `''` and the resulting `JSON.parse` throw was swallowed. NULL
+    now reads as `null`, matching the string branch beside it, and a genuinely
+    unparseable list value logs once (latched) before falling back to `[]`.
+  - `@ifc-lite/create`: `extractWallSegmentsForStorey` silently defaulted to a
+    metre length-unit scale when unit extraction threw, mis-scaling every
+    extracted wall segment on a millimetre model. It now warns with the error,
+    matching `resolveSpatialAnchor` / `resolveDuplicateSource`.
+  - `@ifc-lite/cli`: `ifc-lite schema` printed a reduced built-in schema as if
+    it were the full SDK surface when `@ifc-lite/sandbox/schema` could not be
+    loaded; it now says so on stderr and exits non-zero (stdout is still pure
+    JSON, unchanged shape), so a piping caller that discards stderr still sees
+    the failure. `--version` no longer reports a hard-coded `0.4.0` when
+    `package.json` is unreadable — it reports `0.0.0-unknown` and explains why
+    on stderr.
+  - `@ifc-lite/geometry`: the shard and finalise paths that fall back from a
+    SharedArrayBuffer view to a materialised (file-sized) copy now say so once
+    per worker, matching the streaming-prepass path that already did.
+
+- [#2072](https://github.com/LTplus-AG/ifc-lite/pull/2072) [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Mask the prepass class byte before comparing it on the host ([#2065](https://github.com/LTplus-AG/ifc-lite/issues/2065)).
+
+  `rust/processing/src/shard_classes.rs` defines the per-record prepass class byte as a named code in the low bits (`PREPASS_CLASS_CODE_MASK` = `0x3F`) with flag bits composed on top (`PREPASS_CLASS_FLAG_GEOMETRY_JOB` = `0x80`, `PREPASS_CLASS_FLAG_TYPE_CANDIDATE` = `0x40`). The Rust consumer masks before matching (`gpu_meshes/prepass_discovery.rs`); the sharded-scan span-list rebuild in `geometry-parallel.ts` compared the whole byte against bare literals `4..10`.
+
+  No output changes today: `classify_type_name` returns the named codes early, and the one later flag OR-in (`classify_type_name_with_content`) is gated on a spatial-container predicate that none of those keywords satisfy, so classes 4–10 never carry a flag bit as the classification rules stand. The failure mode if that ever changed was silent and total for the affected record — a flagged byte such as `0x80 | 4 = 132` is an out-of-bounds `Uint32Array` write (discarded without error) and misses the span-list map entirely, so the styled item, void, fill or aggregate would simply never appear.
+
+  The span-list rebuild now lives in an exported, unit-tested `extractPrepassSpanLists()` that masks both comparisons, sizes its count table by the code mask rather than by the highest class the host consumes (so a class added on the Rust side can no longer write out of bounds), and names the codes as constants instead of restating them in a comment. A test pins those constants to the Rust source of truth.
+
+- Updated dependencies [[`d85ef9b`](https://github.com/LTplus-AG/ifc-lite/commit/d85ef9bb725843f682463496e7a8f2d2ab9b83f1), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/wasm@4.3.1
+  - @ifc-lite/data@3.2.1
+
+## 3.6.0
+
+### Minor Changes
+
+- [#2015](https://github.com/LTplus-AG/ifc-lite/pull/2015) [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f) Thanks [@louistrue](https://github.com/louistrue)! - Carry the per-entity **proved enclosed volume** out of wasm, so the diff engine can weigh one element against several (issue [#1891](https://github.com/LTplus-AG/ifc-lite/issues/1891)).
+
+  `MeshCollection.geometryVolumeValues` shipped in [#1993](https://github.com/LTplus-AG/ifc-lite/issues/1993) and had no TypeScript consumer; [#2005](https://github.com/LTplus-AG/ifc-lite/issues/2005) plumbed the world AABB and deliberately left the volume behind, because carrying an array nothing reads is dead weight on every batch. The split/merge detector reads it, so it is plumbed now, along exactly the same three paths the box takes:
+
+  - `MeshData.geometryVolume`, off the shared extractor in `geometry-fingerprints.ts`, gated by the same `enableGeometryHashes()` switch as the hash it travels with.
+  - the worker boundary, as a transferable `Float64Array` with one value per hashed id — the same index-parallel layout the wasm getter uses, `NaN` reserving the slot of an entity whose volume was not proved rather than shortening the array.
+  - `GeometryResult.instancedGeometryVolumes`, the instanced-only side-channel. Not an afterthought: an element is GPU-instanced precisely because it is one of many identical copies, and a precast slab field is exactly the population a split claim is made of.
+
+  `geometryVolumeAt` is exported alongside `geometryAabbAt` for consumers decoding that side-channel off the streaming `batch` event.
+
+  **Absent means NOT PROVED.** A value exists only where the meshed geometry was provably a single closed, orientable, single-component solid; measured coverage on a real corpus is 71.4% (24,073 of 33,701 elements). The `NaN` sentinel is resolved to `undefined` at the wasm boundary — as is a zero or a negative, which is a degenerate or inside-out solid rather than a small one — so nothing downstream ever holds a number it cannot believe. It is the volume of what was actually meshed, after opening cuts, so it is not an IFC `BaseQuantities` `GrossVolume` and must not be compared against one.
+
+- [#2005](https://github.com/LTplus-AG/ifc-lite/pull/2005) [`263c3ef`](https://github.com/LTplus-AG/ifc-lite/commit/263c3efba5baf503f192700ba7f70ce08a1dafc8) Thanks [@louistrue](https://github.com/louistrue)! - Carry the per-entity world AABB out of WASM: `MeshData.geometryAabb`, `GeometryResult.instancedGeometryAabbs`, `geometryAabbAt`.
+
+  Additive public API. `MeshCollection.geometryAabbValues` has existed since the WASM side shipped it, but nothing on this side of the FFI boundary read it, so the box had no consumers at all.
+
+  - `MeshData.geometryAabb` — the whole-entity box, alongside `geometryHash` and populated by the same `GeometryProcessor.enableGeometryHashes()` switch. Every submesh of one entity carries the same box, exactly as it carries the same hash.
+  - `GeometryResult.instancedGeometryAabbs` — the same boxes for entities whose entire geometry went to the GPU-instanced shard and therefore never appears in `meshes`. Keyed by express id, like the existing `instancedGeometryHashes`. Without this the boxes would be missing for precisely the repeated components a positional diff exists to pair.
+  - `geometryAabbAt(values, index)` — the reader for the six-values-per-id layout, exported because that layout also crosses the geometry-worker boundary as the `batch` event's `instancedGeometryAabbValues`.
+
+  Frame: **absolute world in the renderer's WebGL Y-up frame**, with the file's RTC offset and the per-element `origin` already folded in by the producer. Do not add `origin` to it, and do not substitute a box folded from `positions` — those are RTC- and origin-relative, so an element that moved would measure as stationary.
+
+  The WASM side writes six `NaN`s for an entity it could not box, so the arrays stay index-parallel. That sentinel is resolved to `undefined` at this boundary: a `geometryAabb` you hold is always a real box, never a NaN-bearing one. A WASM build predating the getter degrades to hashes only, as before.
+
+  `geometryVolumeValues` and `geometryClosureFlags` are deliberately NOT plumbed. Volume is groundwork for the split/merge detector, which is a later change; carrying an array nothing reads would be dead weight on every batch.
+
+### Patch Changes
+
+- Updated dependencies [[`59792cc`](https://github.com/LTplus-AG/ifc-lite/commit/59792cc7d15bba68708a88475861f499f7b15647), [`40e9c59`](https://github.com/LTplus-AG/ifc-lite/commit/40e9c5931fab27b0de05655e08804562dd794389), [`af869bd`](https://github.com/LTplus-AG/ifc-lite/commit/af869bd6c8133d8d13c9d62edecf04c37baa0245), [`e4782e8`](https://github.com/LTplus-AG/ifc-lite/commit/e4782e8362c0899d0df1070d5eafb70ef18481b6), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`c868444`](https://github.com/LTplus-AG/ifc-lite/commit/c868444e94348a34cbea2b130968a6c7affc474e), [`8967a03`](https://github.com/LTplus-AG/ifc-lite/commit/8967a033704a7edbb03140291df7a8536d3dd892)]:
+  - @ifc-lite/wasm@4.3.0
+  - @ifc-lite/data@3.2.0
+
 ## 3.5.0
 
 ### Minor Changes

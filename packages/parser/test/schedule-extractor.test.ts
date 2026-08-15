@@ -87,6 +87,22 @@ describe('parseIso8601Duration', () => {
     expect(parseIso8601Duration('')).toBeUndefined();
     expect(parseIso8601Duration(undefined)).toBeUndefined();
   });
+
+  it('parses the ISO 8601-2 signed extension into negative seconds', () => {
+    // PR #1963 maintainer ruling: a lead time (negative lag) is emitted as
+    // a signed duration on export, so the decoder has to accept the
+    // leading "-" it previously rejected.
+    expect(parseIso8601Duration('-P2D')).toBe(-2 * 86400);
+    expect(parseIso8601Duration('-PT1H30M')).toBe(-(3600 + 30 * 60));
+  });
+
+  it('rejects a bare "-P" / "-PT" the same way it rejects bare "P" / "PT"', () => {
+    // A sign with no components would otherwise silently return -0.
+    expect(parseIso8601Duration('P')).toBeUndefined();
+    expect(parseIso8601Duration('PT')).toBeUndefined();
+    expect(parseIso8601Duration('-P')).toBeUndefined();
+    expect(parseIso8601Duration('-PT')).toBeUndefined();
+  });
 });
 
 describe('extractScheduleOnDemand', () => {

@@ -7,13 +7,22 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_core::{build_entity_index, EntityDecoder};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
 use crate::model::{build_export_model, EntityRow};
 
 /// IFC5 schema-package import URIs (ifcx.dev v5a).
+/// The value every IFCX writer in this repo puts in `header.ifcxVersion`.
+///
+/// The TypeScript side owns the same constant (`IFCX_VERSION`, exported from
+/// `@ifc-lite/data` and re-exported by `@ifc-lite/ifcx`). The two are pinned
+/// together by the exportIfcx assertion in `scripts/test-wasm-contract.mjs`,
+/// which reads the header back out of a file this exporter produced — readers
+/// only match the substring `ifcx`, so nothing else would notice a drift.
+const IFCX_VERSION: &str = "ifcx_alpha";
+
 const IMPORT_CORE: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx";
 const IMPORT_PROP: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx";
 
@@ -67,56 +76,19 @@ fn prim_name(name: &str, fallback_type: &str, id: u32) -> String {
     format!("{out}_{id}")
 }
 
-/// Spatial parent→children edges from IfcRelAggregates + IfcRelContainedInSpatialStructure.
-/// Returns the edge map and the first `IfcProject` id. Shared with the CSV spatial export.
+/// Spatial parent→children edges plus the first `IfcProject`.
+///
+/// A shim over [`crate::relationships`], which resolves these in the same pass
+/// as the type edges. Kept because the three in-crate callers want only this
+/// pair. Shared with the CSV and USD spatial exports.
 pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Option<u32>) {
-    // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
-    let index = ifc_lite_processing::build_entity_index_parallel(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
-    let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut project: Option<u32> = None;
-
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, start, end)) = scanner.next_entity() {
-        match type_name {
-            "IFCPROJECT" => project = project.or(Some(id)),
-            // IfcRelAggregates: RelatingObject(4), RelatedObjects(5, list)
-            "IFCRELAGGREGATES" => {
-                if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                    if let Some(parent) = rel.get(4).and_then(|a| a.as_entity_ref()) {
-                        if let Some(list) = rel.get(5).and_then(|a| a.as_list()) {
-                            for c in list {
-                                if let Some(cid) = c.as_entity_ref() {
-                                    children.entry(parent).or_default().push(cid);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            // IfcRelContainedInSpatialStructure: RelatedElements(4, list), RelatingStructure(5)
-            "IFCRELCONTAINEDINSPATIALSTRUCTURE" => {
-                if let Ok(rel) = decoder.decode_at_with_id(id, start, end) {
-                    if let Some(parent) = rel.get(5).and_then(|a| a.as_entity_ref()) {
-                        if let Some(list) = rel.get(4).and_then(|a| a.as_list()) {
-                            for c in list {
-                                if let Some(cid) = c.as_entity_ref() {
-                                    children.entry(parent).or_default().push(cid);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    (children, project)
+    let r = crate::relationships::relationships(content);
+    (r.spatial_children, r.project)
 }
 
 /// Decode the IfcProject node (id, name) — it is not an IfcProduct so the export
-/// model doesn't carry it.
-fn project_name(content: &[u8], project_id: u32) -> String {
+/// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
+pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
     let index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, index);
     decoder
@@ -223,7 +195,12 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 
     let doc = json!({
         "header": {
-            "version": "ifcx_alpha",
+            // `ifcxVersion`, not `version`. That is the key buildingSMART's own
+            // reference files carry, and the one `@ifc-lite/ifcx` requires to
+            // recognise a file at all — so under the old name every file this
+            // exporter produced was rejected by our own parser with
+            // "Invalid IFCX file: missing or invalid header.ifcxVersion".
+            "ifcxVersion": IFCX_VERSION,
             "author": opts.author,
             "dataVersion": opts.data_version,
         },
@@ -243,16 +220,11 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_ifcx() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
-        assert_eq!(v["header"]["version"], "ifcx_alpha");
+        assert_eq!(v["header"]["ifcxVersion"], IFCX_VERSION);
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
 
         let data = v["data"].as_array().expect("data array");
@@ -289,9 +261,40 @@ mod tests {
         assert!(has_prop, "expected a typed IFC5 property somewhere");
     }
 
+    /// The header key a READER looks for, which is not the same thing as the
+    /// key this exporter happens to write.
+    ///
+    /// The assertion above was previously `header.version`, mirroring the
+    /// implementation — so it passed while every exported file was rejected by
+    /// `@ifc-lite/ifcx` ("missing or invalid header.ifcxVersion") and did not
+    /// match buildingSMART's own reference files either. Pinning the absence of
+    /// the old key is what makes that regression fail here instead of at the
+    /// other end of a round-trip.
+    #[test]
+    fn header_uses_the_key_readers_look_for() {
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let v: Value = serde_json::from_str(&s).expect("valid JSON");
+
+        let header = v["header"].as_object().expect("header object");
+        assert!(
+            header.contains_key("ifcxVersion"),
+            "header must carry ifcxVersion; got keys {:?}",
+            header.keys().collect::<Vec<_>>(),
+        );
+        assert!(
+            !header.contains_key("version"),
+            "the old `version` key is what readers ignore — it must not come back",
+        );
+        // Readers match case-insensitively on the substring "ifcx".
+        assert!(
+            header["ifcxVersion"].as_str().unwrap().to_lowercase().contains("ifcx"),
+            "ifcxVersion must contain 'ifcx'",
+        );
+    }
+
     #[test]
     fn unknown_props_filtered_by_default() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         // 'LoadBearing' / 'Reference' are IFC4 props NOT in the IFC5 known set.
         assert!(!s.contains("bsi::ifc::prop::LoadBearing"));
         assert!(!s.contains("bsi::ifc::prop::Reference\""));

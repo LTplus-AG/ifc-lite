@@ -108,3 +108,91 @@ describe('entityTableToColumns / entityTableFromColumns round-trip', () => {
     expect(rebuilt.expressId.buffer).toBe(table.expressId.buffer);
   });
 });
+
+describe('EntityTable GlobalId index', () => {
+  // The sample table's entity 401 carries an EMPTY GlobalId (the IFC file
+  // omitted it, or the row is a non-rooted entity). Without the emptiness
+  // guard on the index build, '' maps to a real expressId and every BCF
+  // lookup of a missing GUID resolves to whatever entity happened to be
+  // last with a blank GlobalId.
+  it('never indexes the empty GlobalId', () => {
+    const { table } = buildSampleTable();
+    expect(table.getExpressIdByGlobalId('')).toBe(-1);
+  });
+
+  it('still indexes every non-empty GlobalId', () => {
+    const { table } = buildSampleTable();
+    expect(table.getExpressIdByGlobalId('0YvCT2_$X3_xJG3rzD8L_8')).toBe(101);
+    expect(table.getExpressIdByGlobalId('3qqCT2_$X3_xJG3rzD8L_8')).toBe(301);
+  });
+
+  it('keeps the empty GlobalId unindexed through the columns round-trip', () => {
+    const { strings, table } = buildSampleTable();
+    const rebuilt = entityTableFromColumns(entityTableToColumns(table), strings);
+    expect(rebuilt.getExpressIdByGlobalId('')).toBe(-1);
+    expect(rebuilt.getExpressIdByGlobalId('1abCT2_$X3_xJG3rzD8L_8')).toBe(102);
+  });
+});
+
+describe('EntityTable typeRanges derived from interleaved columns', () => {
+  // `entityTableFromColumns` derives typeRanges only when the caller omits
+  // them (worker-transport rebuild). IFC streams interleave types freely,
+  // and the range for a type is [firstRow, lastRow+1] — NOT the number of
+  // rows of that type, which only coincides when each type is contiguous
+  // and starts at row 0. The sample table above is fully contiguous, so it
+  // cannot tell the two apart; this fixture interleaves deliberately.
+  function interleaved() {
+    const strings = new StringTable();
+    const builder = new EntityTableBuilder(8, strings);
+    builder.add(1, 'IFCWALL', 'gid-1', 'W1', '', '', false, false); // row 0
+    builder.add(2, 'IFCSPACE', 'gid-2', 'S1', '', '', false, false); // row 1
+    builder.add(3, 'IFCWALL', 'gid-3', 'W2', '', '', false, false); // row 2
+    builder.add(4, 'IFCSPACE', 'gid-4', 'S2', '', '', false, false); // row 3
+    builder.add(5, 'IFCWALL', 'gid-5', 'W3', '', '', false, false); // row 4
+    return { strings, table: builder.build() };
+  }
+
+  it('spans first row to last row + 1 for an interleaved type', () => {
+    const { strings, table } = interleaved();
+    const columns = entityTableToColumns(table);
+    delete (columns as { typeRanges?: unknown }).typeRanges;
+    const rebuilt = entityTableFromColumns(columns, strings);
+
+    // IfcWall occupies rows 0, 2, 4 -> [0, 5); IfcSpace rows 1, 3 -> [1, 4).
+    expect(rebuilt.typeRanges.get(IfcTypeEnum.IfcWall)).toEqual({ start: 0, end: 5 });
+    expect(rebuilt.typeRanges.get(IfcTypeEnum.IfcSpace)).toEqual({ start: 1, end: 4 });
+  });
+
+  it('produces a range that contains every row of that type', () => {
+    const { strings, table } = interleaved();
+    const columns = entityTableToColumns(table);
+    delete (columns as { typeRanges?: unknown }).typeRanges;
+    const rebuilt = entityTableFromColumns(columns, strings);
+
+    for (const [type, range] of rebuilt.typeRanges) {
+      for (let row = 0; row < rebuilt.count; row++) {
+        if (rebuilt.typeEnum[row] === type) {
+          expect(row).toBeGreaterThanOrEqual(range.start);
+          expect(row).toBeLessThan(range.end);
+        }
+      }
+    }
+  });
+
+  it('prefers supplied typeRanges over the derived ones', () => {
+    const { strings, table } = interleaved();
+    const columns = entityTableToColumns(table);
+    columns.typeRanges = new Map([[IfcTypeEnum.IfcWall, { start: 7, end: 9 }]]);
+    const rebuilt = entityTableFromColumns(columns, strings);
+    expect(rebuilt.typeRanges.get(IfcTypeEnum.IfcWall)).toEqual({ start: 7, end: 9 });
+  });
+
+  it('getByType stays exact for interleaved types (index, not range, decides)', () => {
+    const { strings, table } = interleaved();
+    const columns = entityTableToColumns(table);
+    delete (columns as { typeRanges?: unknown }).typeRanges;
+    const rebuilt = entityTableFromColumns(columns, strings);
+    expect(rebuilt.getByType(IfcTypeEnum.IfcWall)).toEqual([1, 3, 5]);
+    expect(rebuilt.getByType(IfcTypeEnum.IfcSpace)).toEqual([2, 4]);
+  });
+});

@@ -20,6 +20,7 @@ import {
   formatDiagnosticsForDisplay,
   type RuntimeScriptDiagnostic,
 } from '../lib/llm/script-diagnostics.js';
+import { describeSandboxAbort, disposeSandboxReportingAbort } from '../lib/sandboxAbort.js';
 
 /** Type guard for ScriptError shape (has logs + durationMs) */
 function isScriptError(err: unknown): err is { message: string; logs: Array<{ level: string; args: unknown[]; timestamp: number }>; durationMs: number } {
@@ -40,9 +41,9 @@ function augmentScriptError(message: string, code?: string): { message: string; 
   const looksDetachedCreateSnippet = /\bbim\.create\.[A-Za-z]+\(\s*h\s*,/.test(source)
     && !/\b(?:const|let|var)\s+h\b/.test(source)
     && !/bim\.create\.project\(/.test(source);
-  const looksWorldPlacementScript = /\bbim\.create\.(addIfcCurtainWall|addIfcMember|addIfcPlate)\(/.test(source)
+  const looksElevationDoubledScript = /\bbim\.create\.addIfc\w+\(/.test(source)
     && /\baddIfcBuildingStorey\(/.test(source)
-    && /\bconst\s+elevation\b|\bz\s*=/.test(source);
+    && /\bconst\s+elevation\b/.test(source);
 
   if (lower.includes(`can't access property "location", placement is undefined`)) {
     const diagnostic = createRuntimeDiagnostic(
@@ -78,15 +79,15 @@ function augmentScriptError(message: string, code?: string): { message: string; 
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };
     }
-    if (looksWorldPlacementScript) {
+    if (looksElevationDoubledScript) {
       const diagnostic = createRuntimeDiagnostic(
-        'world_placement_elevation',
-        'Likely cause: a repeated world-placement method (such as `addIfcCurtainWall(...)`, `addIfcMember(...)`, or `addIfcPlate(...)`) is missing the current level elevation in its Z coordinates. These methods do not inherit storey-relative Z automatically.',
+        'storey_elevation_double_applied',
+        'Likely cause: a repeated create call inside a storey loop is writing the level elevation into its Z coordinate. Every `bim.create.addIfc*(h, storey, ...)` coordinate is already relative to that storey, whose placement carries `Elevation`, so this puts the element at 2x the level height.',
         'error',
         {
-          failureKind: 'world_placement',
+          failureKind: 'storey_elevation_double_applied',
           repairScope: 'block',
-          fixHint: 'Include the current level/storey elevation in `Start`, `End`, or `Position` Z coordinates.',
+          fixHint: 'Use storey-relative Z (usually `0`) in `Start`, `End`, or `Position` — do not add the level elevation.',
         },
       );
       return { message: `${message}\n${diagnostic.message}`, diagnostics: [diagnostic] };
@@ -161,9 +162,31 @@ export function useSandbox(config?: SandboxConfig) {
     }
 
     let sandbox: Sandbox | null = null;
+    let torndown = false;
+    /**
+     * Tear the sandbox down exactly once and report a #1922 teardown abort.
+     *
+     * Called from the success path *before* the run is reported, and from the
+     * `finally` for every other path; whichever arrives second is a no-op.
+     */
+    const teardown = (): string | null => {
+      if (torndown) return null;
+      torndown = true;
+      const message = sandbox ? disposeSandboxReportingAbort(sandbox) : null;
+      if (activeSandboxRef.current === sandbox) {
+        activeSandboxRef.current = null;
+      }
+      return message;
+    };
+
     try {
-      // Create a fresh sandbox for every execution — full isolation
+      // Create a fresh sandbox for every execution — full isolation. Because
+      // it is fresh, a prior run's #1922 teardown abort costs this one
+      // nothing: the package retired that WASM module, so this sandbox is
+      // built on a healthy one. (The pre-flight refusal that used to stand
+      // here reported "reload the page" for the rest of the document.)
       const { createSandbox } = await import('@ifc-lite/sandbox');
+
       sandbox = await createSandbox(bim, {
         permissions: { model: true, query: true, viewer: true, mutate: true, store: true, lens: true, export: true, files: true, ...config?.permissions },
         limits: { timeoutMs: 30_000, ...config?.limits },
@@ -171,6 +194,33 @@ export function useSandbox(config?: SandboxConfig) {
       activeSandboxRef.current = sandbox;
 
       const result = await sandbox.eval(code);
+
+      // Settle the run BEFORE reporting it, because teardown is where this
+      // run's real outcome lives. A teardown abort is the *only* signal that
+      // the script exhausted the sandbox heap inside a drained job (#1922):
+      // that eval() resolves normally — the reproducer returns "started".
+      //
+      // Disposing here rather than only in the `finally` is what lets the
+      // failure reach the RETURN value. A `finally` runs after the return
+      // expression has already been evaluated, so reporting the abort only
+      // there left `execute()` resolving with a truthy ScriptResult for a run
+      // that died, and every caller reads success off exactly that:
+      // `ExecutableCodeBlock.handleRun` treats any non-null result as success,
+      // and ChatPanel's auto-execute path only handles failure when the result
+      // is null. The store said "error" while the UI said "ran fine".
+      const teardownAbortMessage = teardown();
+      if (teardownAbortMessage) {
+        // Keep the captured logs — they are the only record of how far the
+        // script got — but not the value, which is a lie about a dead run.
+        setResult({
+          value: undefined,
+          logs: result.logs,
+          durationMs: result.durationMs,
+        });
+        setError(teardownAbortMessage);
+        return null;
+      }
+
       setResult({
         value: result.value,
         logs: result.logs,
@@ -178,10 +228,21 @@ export function useSandbox(config?: SandboxConfig) {
       });
       // Successful-run signal for baseline consumers (scripting tour run
       // gate). Deliberately NOT bumped on the error-path setResult below
-      // (that call only preserves captured logs) or on reset().
+      // (that call only preserves captured logs), on reset(), or on the
+      // teardown-abort path above — a crashed run must not count as a run.
       useViewerStore.getState().bumpScriptRunSeq();
       return result;
     } catch (err: unknown) {
+      // A SandboxAbortError surfacing from create/eval is the #1922 teardown
+      // abort, not a fault in the script — the generic diagnostics below would
+      // only mislead. (The ordinary route is the `finally`: the abort happens
+      // during teardown, after this run has already returned.)
+      const abortMessage = describeSandboxAbort(err);
+      if (abortMessage) {
+        setError(abortMessage);
+        return null;
+      }
+
       const runtime = augmentScriptError(err instanceof Error ? err.message : String(err), code);
 
       // If the error is a ScriptError with captured logs, preserve them.
@@ -197,12 +258,14 @@ export function useSandbox(config?: SandboxConfig) {
       setError(runtime.message, runtime.diagnostics);
       return null;
     } finally {
-      // Always dispose the sandbox after execution
-      if (sandbox) {
-        sandbox.dispose();
-      }
-      if (activeSandboxRef.current === sandbox) {
-        activeSandboxRef.current = null;
+      // Always dispose the sandbox after execution. A no-op on the success
+      // path, which already settled itself above; this covers create/eval
+      // throwing, and a teardown abort on the way out of a failed run.
+      // Reported after the result is set, because setResult clears the
+      // store's error.
+      const teardownAbortMessage = teardown();
+      if (teardownAbortMessage) {
+        setError(teardownAbortMessage);
       }
     }
   }, [bim, config?.permissions, config?.limits, setDiagnostics, setExecutionState, setResult, setError]);
@@ -210,7 +273,7 @@ export function useSandbox(config?: SandboxConfig) {
   /** Reset clears any active sandbox (no-op if none running) */
   const reset = useCallback(() => {
     if (activeSandboxRef.current) {
-      activeSandboxRef.current.dispose();
+      disposeSandboxReportingAbort(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
     setExecutionState('idle');
@@ -223,7 +286,7 @@ export function useSandbox(config?: SandboxConfig) {
   useEffect(() => {
     return () => {
       if (activeSandboxRef.current) {
-        activeSandboxRef.current.dispose();
+        disposeSandboxReportingAbort(activeSandboxRef.current);
         activeSandboxRef.current = null;
       }
     };

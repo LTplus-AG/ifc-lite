@@ -32,6 +32,7 @@ import type {
   WorkScheduleInfo,
 } from './schedule-extractor.js';
 import { deterministicGlobalId } from './deterministic-global-id.js';
+import { secondsToIso8601Duration } from './iso8601-duration.js';
 
 export interface SerializeScheduleOptions {
   /** First free express ID for the synthesized entities. */
@@ -95,19 +96,6 @@ function optReal(v: number | undefined | null): string {
 
 function ownerRef(ownerHistoryId: number | undefined): string {
   return ownerHistoryId !== undefined ? `#${ownerHistoryId}` : '$';
-}
-
-/**
- * Format seconds as an ISO 8601 duration string suitable for IfcDuration.
- * Prefers the coarsest integer unit that divides cleanly to avoid noisy
- * "PT432000S" style output for round values like "P5D".
- */
-function secondsToIso8601Duration(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds <= 0) return 'PT0S';
-  if (seconds % 86_400 === 0) return `P${seconds / 86_400}D`;
-  if (seconds % 3_600 === 0) return `PT${seconds / 3_600}H`;
-  if (seconds % 60 === 0) return `PT${seconds / 60}M`;
-  return `PT${Math.round(seconds)}S`;
 }
 
 function refList(ids: number[]): string {
@@ -229,14 +217,17 @@ export function serializeScheduleToStep(
     const relatedId = taskExpressIdByGlobalId.get(seq.relatedTaskGlobalId);
     if (relatingId === undefined || relatedId === undefined) continue;
 
-    // Preserve lag on export even when the upstream extractor only knew the
-    // numeric seconds value (e.g. IFC2X3 round-trips where the original
-    // IfcDuration string got dropped). We reconstruct an ISO 8601 duration so
-    // the emitted IfcLagTime stays schema-valid.
-    const lagDuration = seq.timeLagDuration
-      ?? (seq.timeLagSeconds !== undefined && seq.timeLagSeconds !== 0
-          ? secondsToIso8601Duration(seq.timeLagSeconds)
-          : undefined);
+    // Preserve lag (and lead) on export even when the upstream extractor
+    // only knew the numeric seconds value (e.g. IFC2X3 round-trips where the
+    // original IfcDuration string got dropped, or a schedule built in
+    // memory that only ever set `timeLagSeconds`). `secondsToIso8601Duration`
+    // is signed — a lead (negative `timeLagSeconds`) emits the ISO 8601-2
+    // signed form (`-P2D`) rather than losing its sign or its magnitude. See
+    // `iso8601-duration.ts` for why: a dropped or wrongly-signed lag is
+    // silently lossy in our own round trip, which is the worse failure.
+    const lagDuration =
+      seq.timeLagDuration ??
+      (seq.timeLagSeconds !== undefined ? secondsToIso8601Duration(seq.timeLagSeconds) : undefined);
     let lagRef = '$';
     if (lagDuration) {
       const lagId = nextId++;

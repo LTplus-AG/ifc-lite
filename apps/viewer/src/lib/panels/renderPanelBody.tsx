@@ -13,6 +13,7 @@
 
 import { lazy, Suspense, type ReactNode } from 'react';
 import type { WorkspacePanelId } from './registry';
+import { ChunkErrorBoundary } from '@/components/ChunkErrorBoundary';
 import { HierarchyPanel } from '@/components/viewer/HierarchyPanel';
 import { PropertiesPanel } from '@/components/viewer/PropertiesPanel';
 import { ComparePanel } from '@/components/viewer/ComparePanel';
@@ -30,6 +31,11 @@ import { ZonesPanel } from '@/components/viewer/ZonesPanel';
 // dynamic chunk keeps it out of the initial bundle until first opened.
 const LayersPanel = lazy(() =>
   import('@/components/viewer/layers/LayersPanel').then((m) => ({ default: m.LayersPanel })),
+);
+// Lazy: the Sources panel (cloud-source browser + provider plumbing) is only
+// needed once a user opens it — keep it out of the first-paint bundle.
+const SourcesPanel = lazy(() =>
+  import('@/components/sources/SourcesPanel').then((m) => ({ default: m.SourcesPanel })),
 );
 
 /**
@@ -55,8 +61,15 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
     case 'layers': return (
+      <ChunkErrorBoundary label="Layers panel">
+        <Suspense fallback={null}>
+          <LayersPanel onClose={onClose} />
+        </Suspense>
+      </ChunkErrorBoundary>
+    );
+    case 'sources': return (
       <Suspense fallback={null}>
-        <LayersPanel onClose={onClose} />
+        <SourcesPanel onClose={onClose} />
       </Suspense>
     );
   }

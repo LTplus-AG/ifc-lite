@@ -31,7 +31,7 @@ One primitive, no special cases:
 - An edit session publishes a layer
 - A merge produces a merge layer (resolutions are ops)
 - A revert is a layer of inverse ops
-- An import (e.g. Motif native IFC import, a Revit export) is a base layer
+- An import (e.g. a native IFC import, a Revit export) is a base layer
 - A check waiver is recorded in the merge layer manifest
 - A rename/identity correction is an `identity_map` entry in a layer manifest
 

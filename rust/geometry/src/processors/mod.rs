@@ -23,7 +23,7 @@ mod alignment;
 mod boolean;
 mod brep;
 mod csg_primitive;
-mod extrusion;
+pub(crate) mod extrusion;
 mod extrusion_tapered;
 mod helpers;
 mod sectioned;

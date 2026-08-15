@@ -29,6 +29,23 @@
  * corruption, with zero label access.
  *
  * ---------------------------------------------------------------------------
+ * WHAT SPEC v1.2 DOES TO IT (B4.3)
+ * ---------------------------------------------------------------------------
+ * The two `generateModel` calls above are the attack, and they are exactly the
+ * step a salt removes: under a salted reporting split the attacker's twins are
+ * a different building entirely, so the diff isolates the difference between
+ * two unrelated models rather than the planted corruption. This file is NOT
+ * weakened for that - it stays committed, unchanged in substance, and is
+ * re-run as the regression. It gained one optional salt input (`--salt-env` /
+ * `--salt-file`; a salt is never accepted in argv - see lib/salt.mjs), used
+ * only by the B4.3 control run to demonstrate that handing the attack the
+ * secret restores it to 1.000, i.e. that the collapse is the salt's doing and
+ * not a broken harness. Measured numbers: scripts/moonshot/b43-benchmark-salt/.
+ *
+ * It also keeps working, at full strength, on dev - which is deliberate. Dev is
+ * open by design and carries no integrity claim.
+ *
+ * ---------------------------------------------------------------------------
  * WHY IT IS (arguably) LEGAL UNDER THE v1.0 RULES
  * ---------------------------------------------------------------------------
  * BENCHMARK.md section 4, rule 1 forbids exactly two things for the evaluated
@@ -76,6 +93,7 @@ import {
   BENCHMARK_NAME, SPEC_VERSION, CORRUPT_RATE, FAMILY, TASK_NAMES,
   DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
 } from '../splits.mjs';
+import { resolveSaltFromArgs, describeSalt, redactSalt } from '../../lib/salt.mjs';
 
 // ============================================================================
 // Byte-only structural summary (reads a raw STEP string; no labels involved)
@@ -291,12 +309,23 @@ function diffDefects(cleanS, corruptS) {
 // Per-seed prediction
 // ============================================================================
 
-export function cleanTwinDiffPrediction(seed) {
+/**
+ * @param {number} seed
+ * @param {{ salt?: string }} [opts] - THE ATTACKER'S salt, which is '' in the
+ *   attack proper: an adversary does not have the reporting split's secret.
+ *   The parameter exists for the B4.3 control run, where the attack is handed
+ *   the salt on purpose to show that the harness still works and it is the
+ *   secret doing the defending, not a broken attack. Nothing about the attack
+ *   is weakened by it - with `salt` omitted this is byte-for-byte the v1.1
+ *   attack against the v1.1 corpus.
+ */
+export function cleanTwinDiffPrediction(seed, opts = {}) {
+  const salt = opts.salt ?? '';
   // The corrupted bytes: exactly what a consumer receives for this seed. We
   // read ONLY `.content` - never `.defects`, `.expected`, or `.labels`.
-  const corruptContent = generateModel(seed, FAMILY, { corruptRate: CORRUPT_RATE }).content;
+  const corruptContent = generateModel(seed, FAMILY, { corruptRate: CORRUPT_RATE, salt }).content;
   // The clean twin: same seed, corruption disabled. Again ONLY `.content`.
-  const cleanContent = generateModel(seed, FAMILY, { corruptRate: 0 }).content;
+  const cleanContent = generateModel(seed, FAMILY, { corruptRate: 0, salt }).content;
 
   const corruptS = structuralSummary(corruptContent);
   const cleanS = structuralSummary(cleanContent);
@@ -320,6 +349,13 @@ function submissionText(name, split, predictions) {
   return [header, ...predictions].map((o) => JSON.stringify(o)).join('\n') + '\n';
 }
 
+/**
+ * Set once `main` has resolved the salt, so the fatal-error printer at the
+ * bottom can scrub it out of anything it is about to write. The attack itself
+ * never prints it, but an error path is exactly where a secret escapes.
+ */
+let RESOLVED_SALT = '';
+
 async function main() {
   const args = process.argv.slice(2);
   const getFlag = (name) => {
@@ -330,19 +366,26 @@ async function main() {
   const split = getFlag('--split') ?? 'dev';
   const outPath = getFlag('--out');
   const name = getFlag('--name') ?? 'clean-twin-diff';
+  // Control only (B4.3): hand the attack the salt it is not supposed to have.
+  // Never from argv - `--salt <value>` is refused outright (lib/salt.mjs).
+  const salt = resolveSaltFromArgs(args);
+  RESOLVED_SALT = salt;
   if (!outPath) {
-    process.stderr.write('Usage: node clean-twin-diff.mjs --split dev --out <file.jsonl> [--name <label>]\n');
+    process.stderr.write('Usage: node clean-twin-diff.mjs --split dev --out <file.jsonl> [--name <label>] [--salt-env <VAR> | --salt-file <PATH>]\n');
     process.exit(1);
   }
 
   const seeds = seedsForSplit(split);
-  process.stderr.write(`CLEAN-TWIN-DIFF attack over split "${split}" (${seeds.length} models, spec ${SPEC_VERSION})...\n`);
+  process.stderr.write(
+    `CLEAN-TWIN-DIFF attack over split "${split}" (${seeds.length} models, spec ${SPEC_VERSION}, `
+    + `${salt ? `${describeSalt(salt)} - control run, not the attack` : 'no salt - the attack proper'})...\n`,
+  );
 
   const predictions = [];
   const t0 = performance.now();
   let done = 0;
   for (const seed of seeds) {
-    predictions.push(cleanTwinDiffPrediction(seed));
+    predictions.push(cleanTwinDiffPrediction(seed, { salt }));
     done++;
     if (done % 100 === 0 || done === seeds.length) {
       process.stderr.write(`  ${done}/${seeds.length} (${((performance.now() - t0) / 1000).toFixed(1)}s)\n`);
@@ -360,7 +403,10 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    // A SaltFormatError is an operator message, not a bug: print it without a
+    // stack. Everything else prints its stack, scrubbed of the salt.
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, RESOLVED_SALT)}\n`);
     process.exit(1);
   });
 }

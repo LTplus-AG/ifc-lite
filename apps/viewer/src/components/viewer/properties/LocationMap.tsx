@@ -24,21 +24,18 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
-import { buildKmz } from '@/lib/geo/kmz-exporter';
+import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
+import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
-  getMapWebglVerdict, describeMapInitFailure, type MapWebglFailureReason,
+  getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
+  reconstructMapInitFailure, type MapWebglFailureReason,
 } from '@/lib/geo/map-webgl-support';
 import { posthog } from '@/lib/analytics';
-
-// Lazy-load maplibre-gl to avoid bloating the initial bundle
-let maplibrePromise: Promise<typeof import('maplibre-gl')> | null = null;
-function loadMaplibre() {
-  if (!maplibrePromise) {
-    maplibrePromise = import('maplibre-gl');
-  }
-  return maplibrePromise;
-}
+import { addFootprintToMap, removeFootprintFromMap } from './location-map-footprint';
+import { geocodeSearch, type GeocodeResult } from './location-map-geocode';
+import { loadMaplibre, disposeMap, purgeMapContainer } from './location-map-lifecycle';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 /** Position picked on the map, ready to be applied to IfcMapConversion */
 export interface PickedPosition {
@@ -60,6 +57,16 @@ export interface LocationMapProps {
   editable?: boolean;
   /** Called when the user applies a new position from the map */
   onApplyPosition?: (position: PickedPosition) => void;
+  /**
+   * wasm seam for the KMZ export, forwarded to `buildKmzForResolvedGeoref`.
+   * Production leaves it undefined and gets the real `GeometryProcessor`;
+   * `LocationMap.kmz.test.tsx` passes a stub so the Google Earth button can be
+   * driven end to end under `tsx --test`, where the engine cannot load. Same
+   * seam `buildKmz` has always exposed to `kmz-exporter.test.ts`, one level up
+   * — without it this call site is untestable, which is exactly how it drifted
+   * out of sync with the Export KMZ dialog (#2526 follow-up).
+   */
+  createKmzProcessor?: () => KmzProcessor;
 }
 
 type MapState = 'idle' | 'loading' | 'ready' | 'error';
@@ -76,105 +83,9 @@ type MapState = 'idle' | 'loading' | 'ready' | 'error';
  */
 type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
 
-/**
- * Dispose a MapLibre map, containing any throw from its teardown.
- *
- * After a context loss MapLibre has already run `painter.destroy()`, and
- * `remove()` runs it again and then reaches through `painter.context.gl` — so
- * teardown is exactly the moment a second throw is most likely. This runs from
- * React cleanup, where an uncaught throw unmounts the surrounding tree, so the
- * failure has to stop here.
- */
-function disposeMap(map: InstanceType<typeof import('maplibre-gl').Map>) {
-  try {
-    map.remove();
-  } catch (err) {
-    console.warn('[location-map] map teardown failed; continuing:', err);
-  }
-}
-
-// Debounce helper
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
-}
-
-/** Geocode a query string via Nominatim */
-async function geocodeSearch(query: string): Promise<Array<{ lat: number; lon: number; display_name: string }>> {
-  if (!query.trim()) return [];
-  try {
-    const q = encodeURIComponent(query.trim());
-    const resp = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${q}`,
-      { headers: { 'Accept-Language': 'en' } },
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json();
-    return data.map((r: { lat: string; lon: string; display_name: string }) => ({
-      lat: parseFloat(r.lat),
-      lon: parseFloat(r.lon),
-      display_name: r.display_name,
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/** Add or update the building footprint GeoJSON polygon on a MapLibre map */
-function addFootprintToMap(map: InstanceType<typeof import('maplibre-gl').Map>, ring: [number, number][]) {
-  const geojson: GeoJSON.Feature = {
-    type: 'Feature',
-    properties: {},
-    geometry: {
-      type: 'Polygon',
-      coordinates: [ring],
-    },
-  };
-
-  if (map.getSource('building-footprint')) {
-    (map.getSource('building-footprint') as import('maplibre-gl').GeoJSONSource).setData(geojson);
-    return;
-  }
-
-  map.addSource('building-footprint', { type: 'geojson', data: geojson });
-
-  map.addLayer({
-    id: 'building-footprint-fill',
-    type: 'fill',
-    source: 'building-footprint',
-    paint: {
-      'fill-color': '#14b8a6',
-      'fill-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.15, 18, 0.25],
-    },
-  });
-
-  map.addLayer({
-    id: 'building-footprint-outline',
-    type: 'line',
-    source: 'building-footprint',
-    paint: {
-      'line-color': '#0d9488',
-      'line-width': ['interpolate', ['linear'], ['zoom'], 15, 0.5, 18, 2.5],
-      'line-opacity': ['interpolate', ['linear'], ['zoom'], 15, 0, 16, 0.7, 18, 1],
-    },
-  });
-
-}
-
-/** Remove footprint layers and source from a MapLibre map */
-function removeFootprintFromMap(map: InstanceType<typeof import('maplibre-gl').Map>) {
-  if (map.getLayer('building-footprint-outline')) map.removeLayer('building-footprint-outline');
-  if (map.getLayer('building-footprint-fill')) map.removeLayer('building-footprint-fill');
-  if (map.getSource('building-footprint')) map.removeSource('building-footprint');
-}
-
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult,
-  lengthUnitScale = 1, editable, onApplyPosition,
+  lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
 }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
@@ -219,6 +130,16 @@ export function LocationMap({
    * point: an explicit capture is recorded as HANDLED, so an unsupported GPU
    * stops arriving as an error-level uncaught exception for something no user
    * and no code change can fix.
+   *
+   * Handled is not the same as low-severity, though, and posthog-js stamps
+   * every capture `$exception_level: 'error'` regardless. Grouping and severity
+   * are settled downstream in `lib/analytics-scrub.ts`, off the
+   * `webgl_unavailable` kind `classifyLoadError` derives from the message: ONE
+   * fingerprint for the whole family (the default hash includes the stack, so
+   * this minted a new issue per deploy — #2354) and `error` rewritten to
+   * `warning`. Nothing here needs to opt in; do not add a second reporting path
+   * for it. `map_load_failed` is deliberately outside that family — a chunk
+   * that would not download is ours to fix and stays loud.
    */
   const degradeMap = useCallback((reason: MapUnavailableReason, err: unknown) => {
     // A missing GPU capability is a property of the device, so latch it for the
@@ -248,7 +169,7 @@ export function LocationMap({
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ lat: number; lon: number; display_name: string }>>([]);
+  const [searchResults, setSearchResults] = useState<GeocodeResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const debouncedQuery = useDebouncedValue(searchQuery, 400);
 
@@ -375,21 +296,29 @@ export function LocationMap({
     if (!editableRef.current) return;
     const pos = { lat: e.lngLat.lat, lon: e.lngLat.lng };
     setPickedLatLon(pos);
-    loadMaplibre().then(ml => updatePickedMarker(pos, ml));
+    // These two chains reach maplibre only to move a marker, so a failed chunk
+    // is not worth degrading the panel for: the pin state above is already set
+    // and the coordinate readout still updates. Without a handler the rejection
+    // would surface as an uncaught error (see lib/chunk-version-skew.ts).
+    loadMaplibre()
+      .then(ml => updatePickedMarker(pos, ml))
+      .catch(err => console.warn('[location-map] could not update the picked marker:', err));
   }, [updatePickedMarker]);
 
   // Handle search result selection
-  const handleSearchSelect = useCallback((result: { lat: number; lon: number; display_name: string }) => {
+  const handleSearchSelect = useCallback((result: GeocodeResult) => {
     const pos = { lat: result.lat, lon: result.lon };
     setPickedLatLon(pos);
     setSearchOpen(false);
     setSearchQuery('');
     setSearchResults([]);
 
-    loadMaplibre().then(ml => {
-      updatePickedMarker(pos, ml);
-      mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
-    });
+    loadMaplibre()
+      .then(ml => {
+        updatePickedMarker(pos, ml);
+        mapRef.current?.flyTo({ center: [pos.lon, pos.lat], zoom: 16, duration: 1200 });
+      })
+      .catch(err => console.warn('[location-map] could not move to the search result:', err));
   }, [updatePickedMarker]);
 
   // Handle apply position (waits for elevation to finish loading)
@@ -454,6 +383,10 @@ export function LocationMap({
       // *unhandled rejection* — which is exactly how this reached error
       // tracking as an uncaught error.
       const container = containerRef.current;
+      // Must be listening BEFORE the constructor runs: the canvas it asks for a
+      // context is created inside that call, and the driver's explanation
+      // arrives as a DOM event on it. See `watchContextCreationStatus`.
+      const contextStatus = watchContextCreationStatus(container);
       let map: InstanceType<typeof maplibregl.Map>;
       try {
         map = new maplibregl.Map({
@@ -469,11 +402,50 @@ export function LocationMap({
         // containers to our div. `mapRef` was never assigned, so the unmount
         // cleanup cannot reach them — purge them here, before the fallback
         // renders, so no frame shows a dead canvas.
-        container.replaceChildren();
-        container.classList.remove('maplibregl-map');
+        contextStatus.stop();
+        purgeMapContainer(container);
         degradeMap('map_construction_failed', err);
         return;
       }
+
+      // v6 stopped THROWING this failure, so the try/catch above no longer
+      // sees it. `_setupPainter` now asks for `webgl2`, and on refusal fires an
+      // `error` event carrying a `GPUInitializationError` and returns, leaving
+      // `painter` undefined. The event goes out from inside the constructor,
+      // before any `map.on('error')` of ours could be attached; `Evented.fire`
+      // console.errors it for us (verified in the browser, not assumed), but
+      // console output is not a control-flow signal we can act on. Without this
+      // check the map object looks fine until the first call that touches the
+      // painter throws somewhere unrelated.
+      //
+      // `painter` is on the public class surface, so testing it is a supported
+      // read rather than a reach into internals.
+      if (!map.painter) {
+        // No painter means nothing will ever render, but the constructor still
+        // built the canvas and control containers into our div. Same cleanup as
+        // the throwing path, for the same reason.
+        //
+        // `remove()` can only ever run PARTWAY here, and deliberately so: it
+        // reaches `this.painter.destroy()` fifth and throws on the undefined
+        // painter, so the hash, the controls, the frame request and the render
+        // queue are released while `_handlers.destroy()`, `setStyle(null)`, the
+        // window `online` listener, the image-queue handle, the ResizeObserver
+        // and the canvas listeners are not. There is no public API that gets
+        // further on a painter-less map, and partial teardown beats none, so
+        // this stays: `disposeMap` contains the throw, and the warning it logs
+        // on this path is expected rather than a symptom to chase.
+        queueMicrotask(() => disposeMap(map));
+        purgeMapContainer(container);
+        // Rebuilt from the DOM event rather than invented, so this path reports
+        // the driver's own words. A bare `new Error(...)` here would have made
+        // `describeMapInitFailure` return nothing and collapsed every v6 map
+        // failure into one bucket with no `webgl_status`.
+        const failure = reconstructMapInitFailure(contextStatus.statusMessage());
+        contextStatus.stop();
+        degradeMap('map_construction_failed', failure);
+        return;
+      }
+      contextStatus.stop();
 
       // A lost context would otherwise be restored by MapLibre calling
       // `_setupPainter()` again from inside a DOM listener — where a throw is
@@ -581,24 +553,40 @@ export function LocationMap({
   }, [latLon]);
 
   const handleExportKmz = useCallback(async () => {
-    if (!latLon || !geometryResult || !mapConversion) return;
+    if (!latLon || !geometryResult || !mapConversion || !projectedCRS) return;
     try {
       // Embed the model as COLLADA (Rust exporter): Google Earth's <Model> only loads
       // COLLADA, renders it bright via emission, and clampToGround keeps it on the
       // terrain so the MSL orthogonal height no longer floats it (#1427).
-      const kmz = await buildKmz({
-        latLon,
-        altitude: mapConversion.orthogonalHeight,
-        xAxisAbscissa: mapConversion.xAxisAbscissa,
-        xAxisOrdinate: mapConversion.xAxisOrdinate,
-        meshes: geometryResult.meshes as MeshData[],
+      //
+      // Placement is NOT computed here. This used to call `buildKmz` directly
+      // with the authored axis and a raw `orthogonalHeight`, which skipped all
+      // three corrections the Export KMZ dialog got: the map-absolute guard
+      // (#2526), the map-unit altitude scaling, and the RTC Z fold-back. Same
+      // model, two buttons, two different files. `buildKmzForResolvedGeoref` is
+      // now the single source for both (#2526 follow-up).
+      const kmz = await buildKmzForResolvedGeoref({
+        conversion: mapConversion,
+        crs: projectedCRS,
+        coordinateInfo,
+        lengthUnitScale: lengthUnitScale ?? 1,
+        // The COMPLETE mesh set is derived inside the builder — passing
+        // `geometryResult.meshes` here dropped every GPU-instanced occurrence
+        // from the exported file (#2577). The Location panel only ever shows
+        // the primary model's georeference.
+        geometryResult,
+        isPrimaryModel: true,
         name: 'IFC Model',
-      });
+      }, createKmzProcessor);
+      if (typeof kmz === 'string') {
+        console.error('KMZ export failed:', kmz);
+        return;
+      }
       downloadBlob(new Blob([kmz as BlobPart], { type: 'application/vnd.google-earth.kmz' }), 'model.kmz');
     } catch (err) {
       console.error('KMZ export failed:', err);
     }
-  }, [latLon, geometryResult, mapConversion]);
+  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor]);
 
   const isDarkRef = useRef(false);
 

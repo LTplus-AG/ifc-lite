@@ -148,6 +148,101 @@ describe('ModelSlice', () => {
     });
   });
 
+  describe('upsertModel', () => {
+    it('MERGES into an existing entry instead of replacing it', () => {
+      // The ingest pipeline upserts a model twice: a metadata-only stub
+      // first, then the parsed payload. A replacing (non-merging) upsert
+      // would drop whatever the second call omits — the model's name /
+      // georef / visibility silently reverting mid-load.
+      const original = { ...createMockModel('model-1', 'Original'), maxExpressId: 999 };
+      state.upsertModel(original);
+
+      const geometry = { tag: 'late' } as unknown as GeometryResult;
+      state.upsertModel({ id: 'model-1', geometryResult: geometry } as unknown as FederatedModel);
+
+      assert.strictEqual(state.models.get('model-1')?.name, 'Original');
+      assert.strictEqual(state.models.get('model-1')?.maxExpressId, 999);
+      assert.strictEqual(state.models.get('model-1')?.geometryResult, geometry);
+    });
+
+    it('adopts the first upserted model as active and mirrors its payload', () => {
+      const store = { tag: 'a' } as unknown as IfcDataStore;
+      const geometry = { tag: 'a' } as unknown as GeometryResult;
+      state.upsertModel({ ...createMockModel('model-1', 'A'), ifcDataStore: store, geometryResult: geometry });
+
+      assert.strictEqual(state.activeModelId, 'model-1');
+      assert.strictEqual(state.ifcDataStore, store);
+      assert.strictEqual(state.geometryResult, geometry);
+    });
+
+    it('does not steal the active slot from an already-active model', () => {
+      state.upsertModel(createMockModel('model-1', 'A'));
+      state.upsertModel(createMockModel('model-2', 'B'));
+      assert.strictEqual(state.activeModelId, 'model-1');
+    });
+  });
+
+  describe('updateModel', () => {
+    it('re-mirrors ifcDataStore / geometryResult when the ACTIVE model is patched', () => {
+      // This is how the loader attaches parsed data to a model that was
+      // registered earlier. If the mirror is not refreshed, the whole app
+      // (properties panel, exports, queries) keeps reading the pre-parse
+      // store while the model list shows the file as loaded.
+      state.addModel(createMockModel('model-1', 'A'));
+      const store = { tag: 'patched' } as unknown as IfcDataStore;
+      const geometry = { tag: 'patched' } as unknown as GeometryResult;
+
+      state.updateModel('model-1', { ifcDataStore: store, geometryResult: geometry });
+
+      assert.strictEqual(state.models.get('model-1')?.ifcDataStore, store);
+      assert.strictEqual(state.ifcDataStore, store);
+      assert.strictEqual(state.geometryResult, geometry);
+    });
+
+    it('leaves the active mirror alone when a NON-active model is patched', () => {
+      // Opposite direction of the same branch: patching a background model
+      // must not swap the active model's data out from under the UI.
+      const activeStore = { tag: 'active' } as unknown as IfcDataStore;
+      const activeGeometry = { tag: 'active' } as unknown as GeometryResult;
+      state.addModel({
+        ...createMockModel('model-1', 'A'),
+        ifcDataStore: activeStore,
+        geometryResult: activeGeometry,
+      });
+      state.addModel(createMockModel('model-2', 'B'));
+      assert.strictEqual(state.activeModelId, 'model-1');
+
+      const otherStore = { tag: 'other' } as unknown as IfcDataStore;
+      const otherGeometry = { tag: 'other' } as unknown as GeometryResult;
+      state.updateModel('model-2', { ifcDataStore: otherStore, geometryResult: otherGeometry });
+
+      // BOTH mirrors are gated on `activeModelId` (modelSlice.ts:112-113), so
+      // both directions need pinning. Patching only `ifcDataStore` here left
+      // the geometry gate free to be deleted outright without any test
+      // noticing — and the geometry mirror is what the viewport renders.
+      assert.strictEqual(state.ifcDataStore, activeStore);
+      assert.strictEqual(state.geometryResult, activeGeometry);
+      assert.strictEqual(state.models.get('model-2')?.ifcDataStore, otherStore);
+      assert.strictEqual(state.models.get('model-2')?.geometryResult, otherGeometry);
+    });
+
+    it('is a no-op for an unknown model id', () => {
+      state.addModel(createMockModel('model-1', 'A'));
+      state.updateModel('does-not-exist', { name: 'Ghost' });
+
+      assert.strictEqual(state.models.size, 1);
+      assert.ok(!state.models.has('does-not-exist'));
+      assert.strictEqual(state.models.get('model-1')?.name, 'A');
+      // "No-op" has to mean the rest of the slice too, not just the map:
+      // an early return that still emits a state patch would point the
+      // active-model pointer (and the mirrored stores) at an id that does
+      // not exist. Asserting only the map cannot see that — measured.
+      assert.strictEqual(state.activeModelId, 'model-1');
+      assert.strictEqual(state.ifcDataStore, state.models.get('model-1')?.ifcDataStore ?? null);
+      assert.strictEqual(state.geometryResult, state.models.get('model-1')?.geometryResult ?? null);
+    });
+  });
+
   describe('removeModel', () => {
     it('should remove a model from the map', () => {
       const model = createMockModel('model-1', 'Test Model');
@@ -391,6 +486,42 @@ describe('ModelSlice', () => {
       // so callers can fall back to the legacy single-model path.
       const phantom = state.resolveGlobalIdFromModels(99_999);
       assert.strictEqual(phantom, null);
+    });
+  });
+
+  describe('resolveGlobalIdFromModels — maxExpressId boundary', () => {
+    it('resolves the highest parsed express id through the fast (first) pass', () => {
+      const model = createMockModel('model-1', 'First');
+      model.idOffset = 0;
+      model.maxExpressId = 10_000;
+      state.addModel(model);
+
+      // No mutation views registered at all — if the boundary id fell
+      // through to the second pass, there would be nothing to catch it
+      // and this would resolve to null instead of the model.
+      const boundary = state.resolveGlobalIdFromModels(model.maxExpressId);
+      assert.deepStrictEqual(boundary, { modelId: 'model-1', expressId: model.maxExpressId });
+    });
+
+    it('resolves the first model boundary id in a federated (offset) setup, not the second model', () => {
+      const first = createMockModel('model-1', 'First');
+      first.idOffset = 0;
+      first.maxExpressId = 10_000;
+      state.addModel(first);
+
+      const second = createMockModel('model-2', 'Second');
+      second.idOffset = 10_000;
+      second.maxExpressId = 5_000;
+      state.addModel(second);
+
+      // globalId 10_000 is the last express id parsed for `model-1`
+      // (localId = 10_000 - 0 = 10_000 === maxExpressId) and simultaneously
+      // localId 0 of `model-2` (10_000 - 10_000 = 0), which is also in
+      // range for the second model. Models are sorted by offset ascending,
+      // so the first model — the one that actually owns this id as its
+      // boundary — must win.
+      const boundary = state.resolveGlobalIdFromModels(10_000);
+      assert.deepStrictEqual(boundary, { modelId: 'model-1', expressId: 10_000 });
     });
   });
 });

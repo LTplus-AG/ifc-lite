@@ -28,10 +28,16 @@ import { toGlobalIdFromModels } from '@/store/index.js';
 /** Reference to the store's getState / setState for imperative access */
 interface BridgeContext {
   getState: () => ViewerState;
-  /** Callback to load a model from URL (async) */
+  /** Callback to load a model from URL (async). Replaces the whole scene — used by LOAD_MODEL. */
   loadModelFromUrl: (url: string) => Promise<{ entities: number; triangles: number; vertices: number }>;
   /** Callback to load a model from ArrayBuffer */
   loadModelFromBuffer: (buffer: ArrayBuffer, name?: string) => Promise<{ entities: number; triangles: number; vertices: number }>;
+  /**
+   * Callback to ADD a model to the federation alongside whatever is already
+   * loaded (does not replace existing models). Returns the real, freshly
+   * minted model id so the host can later target it with REMOVE_MODEL.
+   */
+  addModelFromUrl: (url: string) => Promise<{ modelId: string; entities: number; triangles: number; vertices: number }>;
 }
 
 /** Optional security knobs for the bridge (all opt-in; defaults preserve the public-widget behaviour). */
@@ -146,6 +152,22 @@ function onMessage(event: MessageEvent) {
   // accepted, preserving generic embedding.
   if (!isOriginAllowed(event.origin)) return;
 
+  // Mirror the SDK side's event.source check (packages/embed-sdk/src/index.ts
+  // onMessage: `event.source !== this.iframe.contentWindow`). Unlike the SDK,
+  // the embed side does not know its host's window at construction time --
+  // but `emitToParent` already has a fixed reference: it only ever posts to
+  // `window.parent` (and treats `window.parent === window` as "not in an
+  // iframe", see below). So `window.parent` is the exact mirror of the SDK's
+  // `this.iframe.contentWindow`: the one window this side could ever reply
+  // to. An event.source that isn't window.parent is rejected from message
+  // zero -- fail-closed, no first-message gap, no latch to reset.
+  //
+  // A grandparent (or other ancestor) frame is rejected here too. That is
+  // consistent, not a new limitation: emitToParent never targets anything
+  // but window.parent, so an ancestor further up the chain could never have
+  // received a reply anyway.
+  if (event.source !== window.parent) return;
+
   const msg = event.data as EmbedMessageEnvelope;
 
   // Capture the first valid inbound origin as the outbound targetOrigin so all
@@ -169,6 +191,39 @@ function onMessage(event: MessageEvent) {
   handleCommand(type as InboundCommandType, data).catch(() => {
     // Silently ignore errors on fire-and-forget commands
   });
+}
+
+/** The `ifcDataStore` field of a model entry in `ViewerState.models`. */
+type EntityDataStore = NonNullable<ReturnType<ViewerState['models']['get']>>['ifcDataStore'] | undefined;
+
+/**
+ * Real property-set extraction for GET_PROPERTIES, reusing the same
+ * `IfcDataStore.getProperties` accessor the main viewer's properties panel
+ * calls via `EntityNode.properties()` (apps/viewer/src/components/viewer/
+ * PropertiesPanel.tsx -> packages/query/src/entity-node.ts). That accessor is
+ * synchronous over data already attached at load time (see
+ * packages/parser/src/data-store-accessors.ts) — there is no separate
+ * "streamed later" pset state to account for here, so an empty result
+ * genuinely means the entity has no property sets, not that they have not
+ * loaded yet. The wire shape flattens each set's properties into a
+ * name->value record per the embed-protocol's `PropertySet` (a deliberately
+ * simpler public shape than the internal `Property[]` array).
+ */
+function extractPropertySets(ds: EntityDataStore, expressId: number) {
+  if (!ds?.getProperties) return [];
+  return ds.getProperties(expressId).map((pset) => ({
+    name: pset.name,
+    properties: Object.fromEntries(pset.properties.map((p) => [p.name, p.value])),
+  }));
+}
+
+/** Same rationale as {@link extractPropertySets}, for quantity sets. */
+function extractQuantitySets(ds: EntityDataStore, expressId: number) {
+  if (!ds?.getQuantities) return [];
+  return ds.getQuantities(expressId).map((qset) => ({
+    name: qset.name,
+    quantities: Object.fromEntries(qset.quantities.map((q) => [q.name, q.value])),
+  }));
 }
 
 async function handleCommand(type: InboundCommandType, data: unknown, requestId?: string) {
@@ -219,13 +274,30 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'ADD_MODEL': {
       const payload = data as InboundPayloads['ADD_MODEL'];
-      const stats = await ctx.loadModelFromUrl(payload.url);
-      if (requestId) emitToParent(createResponse(requestId, { modelId: 'latest', ...stats }));
+      // Federation-aware add: does NOT replace existing models (unlike
+      // LOAD_MODEL, which is destructive by design). The response carries the
+      // real minted model id so REMOVE_MODEL can target it later.
+      const result = await ctx.addModelFromUrl(payload.url);
+      if (requestId) emitToParent(createResponse(requestId, result));
       return;
     }
 
     case 'REMOVE_MODEL': {
       const payload = data as InboundPayloads['REMOVE_MODEL'];
+      // Map.delete on an absent key is a silent no-op (same for the
+      // federation registry's unregisterModel), so removeModel() itself
+      // cannot tell "removed something" from "nothing to remove". Check
+      // existence first and report NOT_FOUND for an unknown id, matching the
+      // convention GET_PROPERTIES already uses for a missing entity id.
+      if (!state.models.has(payload.modelId)) {
+        if (requestId) {
+          emitToParent(createResponse(requestId, undefined, {
+            code: 'NOT_FOUND',
+            message: `Model ${payload.modelId} not found`,
+          }));
+        }
+        return;
+      }
       state.removeModel(payload.modelId);
       if (requestId) emitToParent(createResponse(requestId));
       return;
@@ -397,8 +469,8 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
             ObjectType: entities?.getObjectType(lookup.expressId) ?? '',
             Type: entities?.getTypeName(lookup.expressId) ?? '',
           },
-          propertySets: [],
-          quantitySets: [],
+          propertySets: extractPropertySets(ds, lookup.expressId),
+          quantitySets: extractQuantitySets(ds, lookup.expressId),
         }));
       }
       return;

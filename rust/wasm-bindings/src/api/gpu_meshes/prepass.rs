@@ -402,6 +402,23 @@ impl IfcAPI {
                         // RTC_SAMPLE_THRESHOLD jobs have been collected.
                         buffered_jobs.push((id, start, end, ifc_type));
                         total_jobs += 1;
+                    } else if !disabled_types.contains(type_name)
+                        && ifc_lite_core::is_representationless_spatial_container_by_name(
+                            type_name,
+                        )
+                        && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
+                    {
+                        // #1910: mirrors the identical exception in
+                        // `rust/processing/src/processor/mod.rs` — a spatial
+                        // container `has_geometry_by_name` blocks by name
+                        // (`IfcBuilding` et al.) that exceptionally carries a
+                        // real `Representation` (e.g. a DGM/terrain export
+                        // with no `IfcBuildingElement` children at all) must
+                        // still be scheduled for meshing, or the browser
+                        // viewer renders nothing despite a correct scene tree.
+                        let ifc_type = IfcType::from_str(type_name);
+                        buffered_jobs.push((id, start, end, ifc_type));
+                        total_jobs += 1;
                     }
                 }
             }

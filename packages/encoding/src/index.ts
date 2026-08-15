@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { decodeIfcString, encodeIfcString } from './ifc-string.js';
+export { decodeStepStringLiteral } from './step-string-literal.js';
 export {
   uuidToIfcGuid,
   ifcGuidToUuid,

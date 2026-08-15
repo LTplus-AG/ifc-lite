@@ -45,6 +45,7 @@ import {
   type ClashSettingsGroupBy,
   type SaveResult,
 } from '@/lib/clash/persistence';
+import { reportClashSettingsSaveFailure } from '@/lib/clash/settings-save-notice';
 
 export type ClashGroupBy = ClashSettingsGroupBy;
 export type { ClashPreset, ClashGlobalSettings, SaveResult };
@@ -155,13 +156,17 @@ export interface ClashSlice {
   setClashOverlapBox: (box: { min: [number, number, number]; max: [number, number, number] } | null) => void;
   setClashContactLines: (lines: { vertices: number[]; color: [number, number, number, number] } | null) => void;
   setShowClashRegionBox: (show: boolean) => void;
-  // Preset CRUD (persisted). create/update/import return a SaveResult so the UI
-  // can surface quota / cap failures; the rest are best-effort.
+  // Preset CRUD (persisted). Every one of these returns a SaveResult and only
+  // commits to the store when the write actually landed, so the panel can never
+  // show a rule change as applied that a refused write (quota, or storage
+  // blocked entirely) would undo on the next reload. Callers surface the
+  // failure via `result.message`.
   createClashPreset: (input: NewClashPreset) => SaveResult;
   updateClashPreset: (id: string, patch: Partial<Omit<ClashPreset, 'id' | 'builtin'>>) => SaveResult;
-  deleteClashPreset: (id: string) => void;
-  setClashPresetEnabled: (id: string, enabled: boolean) => void;
-  resetClashPresets: () => void;
+  /** No-op (and `{ ok: true }`) for a built-in or unknown id: nothing to persist. */
+  deleteClashPreset: (id: string) => SaveResult;
+  setClashPresetEnabled: (id: string, enabled: boolean) => SaveResult;
+  resetClashPresets: () => SaveResult;
   importClashPresets: (presets: ClashPreset[]) => SaveResult;
   /** Merge a patch into a clash's review (status and/or comment) and persist.
    *  Resetting to the default (open, empty comment) drops the entry. (#1468) */
@@ -190,8 +195,32 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
 
 export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (set, get) => {
   const initial = loadSettings();
-  // Persist the current settings snapshot after a state change.
-  const persistSettings = () => saveSettings(snapshotSettings(get()));
+  /**
+   * Whether this session has already reported a refused settings write. Lives
+   * in the store's closure, so "once" means once per store instance.
+   */
+  let settingsSaveFailureReported = false;
+  /**
+   * Persist the current settings snapshot after a state change.
+   *
+   * The caller has already committed the change with `set`, and that stays
+   * committed even when the write is refused (quota, or storage blocked by the
+   * browser's site settings): the detection controls are controlled inputs fed
+   * from this state (`NumberField` / `Select` / `Switch` in
+   * `ClashSettingsDialog.tsx`), so rolling the commit back would freeze the
+   * field the user is typing into. What must not happen is the failure being
+   * silent — the setting then reverts on the next reload with nothing said.
+   *
+   * So: commit, and report the refusal ONCE per session. Once, because these
+   * setters fire per keystroke and per spinner step, and a per-write notice
+   * would bury the user in duplicates of the same message.
+   */
+  const persistSettings = () => {
+    const result = saveSettings(snapshotSettings(get()));
+    if (result.ok || settingsSaveFailureReported) return;
+    settingsSaveFailureReported = true;
+    reportClashSettingsSaveFailure(result.message);
+  };
 
   return {
     clashPanelVisible: false,
@@ -303,22 +332,27 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     deleteClashPreset: (id) => {
       const target = get().clashPresets.find((p) => p.id === id);
-      if (!target || target.builtin) return; // built-ins are reset, never deleted
+      // Built-ins are reset, never deleted. Nothing was asked of storage, so
+      // this is a success, not a failure the caller should report.
+      if (!target || target.builtin) return { ok: true };
       const next = get().clashPresets.filter((p) => p.id !== id);
-      savePresets(next);
-      set({ clashPresets: next });
+      const result = savePresets(next);
+      if (result.ok) set({ clashPresets: next });
+      return result;
     },
 
     setClashPresetEnabled: (id, enabled) => {
       const next = get().clashPresets.map((p) => (p.id === id ? { ...p, enabled } : p));
-      savePresets(next);
-      set({ clashPresets: next });
+      const result = savePresets(next);
+      if (result.ok) set({ clashPresets: next });
+      return result;
     },
 
     resetClashPresets: () => {
       const next = defaultPresets(); // drops all overrides + customs
-      savePresets(next);
-      set({ clashPresets: next });
+      const result = savePresets(next);
+      if (result.ok) set({ clashPresets: next });
+      return result;
     },
 
     importClashPresets: (presets) => {

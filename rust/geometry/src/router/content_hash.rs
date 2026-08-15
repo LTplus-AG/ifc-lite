@@ -192,6 +192,44 @@ fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Opti
     Some(acc)
 }
 
+/// Face-count threshold above which [`faceted_brep_face_count`] tells the
+/// caller to skip the structural signature walk entirely (#1909). The walk in
+/// [`try_faceted_brep_signature`] mirrors the mesher's own traversal
+/// face-by-face, bound-by-bound, point-by-point — for dedup to pay off there
+/// must be at least one OTHER item sharing this exact signature. Tekla-style
+/// duplication (thousands of connection plates/bolts, the case this cache
+/// exists for) tops out at low hundreds of faces per part; a SINGLE huge
+/// faceted import — a terrain, a scanned mesh, one big BREP with no sibling —
+/// has none, so hashing every point is pure loss that DOUBLES the traversal
+/// cost of an already-expensive mesh with no possible payback. Set well above
+/// any plausible detail-part face count and well below the scale where a
+/// single giant mesh becomes measurably worse — a 2.5 M-triangle model
+/// reported ~30 s where web-ifc took ~2.85 s, traced to this hash.
+///
+/// `pub` (re-exported through `router` and the crate root — see `lib.rs`,
+/// same pattern as `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`) rather than
+/// `pub(super)`/`pub(crate)`, specifically so the #1909 regression test
+/// (`tests/issue_1909_large_single_brep_dedup.rs`, an external integration
+/// test crate that only sees this crate's public API) reads the real
+/// threshold instead of hard-coding `20_000` a second time (PR #1977
+/// review: that duplication is exactly the shape of the 341/88 checklist
+/// drift on #1963 — assertion and constant silently disagreeing).
+pub const FACETED_BREP_DEDUP_FACE_LIMIT: usize = 20_000;
+
+/// Cheap pre-check for [`FACETED_BREP_DEDUP_FACE_LIMIT`]: the face count of the
+/// `IfcFacetedBrep` at `brep_id`, read via the SAME fast ref-list path
+/// [`try_faceted_brep_signature`] uses for its first two hops (shell ref, face
+/// list) — no per-point decode, so this stays O(faces) even when the full
+/// signature would be O(faces × points). `None` on any structural surprise
+/// (missing shell ref, malformed list): the caller then falls through to
+/// computing the full signature as before, so a surprise never silently skips
+/// a legitimately dedupable item — only a confirmed large brep does.
+pub(super) fn faceted_brep_face_count(decoder: &mut EntityDecoder, brep_id: u32) -> Option<usize> {
+    let bytes = decoder.get_raw_bytes(brep_id)?;
+    let shell_id = parse_first_ref(bytes)?;
+    decoder.get_entity_ref_list_fast(shell_id).map(|v| v.len())
+}
+
 /// 128-bit structural hash of the representation item rooted at `root_id`. `memo`
 /// caches per-entity hashes so shared sub-entities (a profile reused by many
 /// solids, the representation context) are visited once; it keys on entity ids,

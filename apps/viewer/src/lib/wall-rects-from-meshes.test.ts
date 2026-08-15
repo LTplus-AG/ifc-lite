@@ -119,8 +119,11 @@ describe('wallRectsFromMeshes', () => {
       originShift: shift,
       wasmRtcOffset: rtc,
       hasLargeCoordinates: true,
+      // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+      // invariant); wallRectsFromMeshes never reads either bounds field, but
+      // a fixture no producer could emit is still worth avoiding.
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
-      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: -100, y: -5, z: -20 }, max: { x: -100, y: -5, z: -20 } },
     } as unknown as CoordinateInfo;
 
     // Wall render box: renderX[0..4], renderZ[0..0.8], renderY[0..3].
@@ -153,8 +156,11 @@ describe('wallRectsFromMeshes', () => {
       originShift: { x: 100, y: 5, z: 20 },
       wasmRtcOffset: { x: 1000, y: 2000, z: 3000 },
       hasLargeCoordinates: true,
+      // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+      // invariant); wallRectsFromMeshes never reads either bounds field, but
+      // a fixture no producer could emit is still worth avoiding.
       originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
-      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: -100, y: -5, z: -20 }, max: { x: -100, y: -5, z: -20 } },
     } as unknown as CoordinateInfo;
     // Wall ifcZ ∈ [3005, 3008]; a band at ifcZ [0, 3] does NOT overlap it.
     const rects = wallRectsFromMeshes([wallBox(1, 0, 4, 0, 0.8, 0, 3)], coord, 0, 3);

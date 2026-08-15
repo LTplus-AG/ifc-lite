@@ -1,4 +1,48 @@
-# Node-hash v0 (decisions resolved 2026-07-24, see §6; format not yet frozen)
+# Node-hash v0 (FROZEN 2026-07-25)
+
+> **FROZEN.**
+>
+> - **Spec version:** `node-hash-v0` / **1.0.0**
+> - **Freeze date:** 2026-07-25 (an explicit human act per the ABI-freeze rule,
+>   `docs/vision/moonshots-execution-plan.md` §6 — performed by Louis by merging the freeze PR)
+> - **Change policy:** the wire format defined in this document — the byte encodings in §3, the
+>   tagged-hash string forms, the `NHV0` header, the kind tags, the sort rules, and the Merkle
+>   rule in §3.5 — may no longer change. Any wire-format change, however small, requires a **new
+>   versioned spec file** (`node-hash-v1.md`, with a new magic/version byte) and a **major
+>   version bump of `@ifc-lite/provenance`**. Bug-for-bug behavior of the frozen encoding is the
+>   contract; golden wire-format vectors in `packages/provenance/test/golden/` pin it in CI.
+> - **Additive reserved fields** (already specified, additive-only, do not alter any hash):
+>   - `Certificate.signatures?: {alg: 'ed25519', key, sig}[]` — reserved per §6 Q5 (decision
+>     2026-07-24), ignored by v0 verification; actual signing lands with M4. Two normative
+>     constraints on that landing:
+>     1. **v0 defines no canonical certificate byte encoding.** The frozen format below covers
+>        *node* hashes only — there is no specified, reproducible byte stream for a `Certificate`
+>        itself, and therefore **nothing well-defined for M4 to sign over**. Defining that encoding
+>        is part of the signing work, not a detail M4 can assume it inherits; until it exists, a
+>        `signatures` array is decoration, and any claim that a v0 certificate is "signed" is
+>        unbacked. v0 verification consequently ignores the field entirely, and `createCertificate`
+>        only enforces its *shape* (one reserved algorithm, `ed25519`; non-empty `key` and `sig`)
+>        so the slot M4 inherits is either absent or well-formed.
+>     2. **M4 must mint a NEW version string and must never sign under `node-hash-v0`.** A signed
+>        certificate is a different security artifact from an unsigned one: today the only thing
+>        separating "signature-bearing" from "signature-ignoring" is the exact match on
+>        `version === 'node-hash-v0'`, so signing under the v0 string would leave verifiers that
+>        legitimately ignore signatures indistinguishable from verifiers that check them — a
+>        downgrade with no wire-visible signal. The M4 version string (and its certificate byte
+>        encoding) is introduced alongside the signing scheme; v0 keeps ignoring the reserved field
+>        forever.
+>   - `GeometryMeshPayload.semanticHash?` — the RTC-invariant annotation per §6 Q2, deliberately
+>     NOT folded into the node hash (pinned by test).
+> - **Scope: this freeze covers the node-hash wire format only.** The commutation certificate
+>   (`commutation-v0`, `packages/provenance/src/commutation.ts`) is a *separate* artifact — a
+>   merge-model / epsilon / op-set schema layered on top of node hashes — with its **own version
+>   string and its own change rule**: it may advance to `commutation-v1` independently, without
+>   requiring node-hash-v1 and without a wire-format change here. The reverse also holds: a
+>   node-hash-v1 does not by itself rev the commutation schema. Each format's version pin is
+>   asserted separately in `packages/provenance/test/frozen-surface.test.ts`.
+>
+> The five design questions in §6 (now an appendix) were all resolved by Louis on 2026-07-24;
+> this freeze locks the format that implements those decisions.
 
 Bet B0.1 (`docs/vision/moonshots-execution-plan.md` line 232) toward M1 "Proof-carrying
 buildings" (`docs/vision/moonshots-tech.md` §M1). Unifies the repo's existing hash systems into
@@ -6,9 +50,9 @@ one canonical node-hash spec so a certificate can claim, and a verifier can chec
 did not change" across the whole building DAG (mesh → property set → relationship → layer →
 element).
 
-Status 2026-07-24: the five §6 questions were decided by Louis (decisions recorded inline
-below and in §6); the prototype implements them. The v0 FORMAT is still not frozen — freezing
-is an explicit human-calendar act (ABI-freeze rule), separate from deciding the design.
+Status 2026-07-25: FROZEN. The five §6 questions were decided by Louis on 2026-07-24 (decisions
+recorded inline below and in §6); the prototype implements them; the v0 format was frozen on
+2026-07-25 under the change policy in the header block above.
 
 ## 0. Why unify, and why now
 
@@ -95,15 +139,29 @@ harness (`determinism.ts` in the same directory), not by the blob store itself.
 
 This is the one the B0.1 brief calls "`packages/diff/src/fingerprint.ts` +
 `component-fingerprint.ts`" — that description undersells it. `packages/diff/src/fingerprint.ts`
-(`fingerprint.ts:1-202`) is actually the **data** fingerprint: `buildDataFingerprint` (line 105)
-FNV-1a32-hashes (`stableHash`, `fingerprint.ts:49-56`, a textbook 32-bit FNV-1a over UTF-16 code
+(`fingerprint.ts:1-298`) is actually the **data** fingerprint: `buildDataFingerprint` (line 171)
+FNV-1a64-hashes (`stableHash`, `fingerprint.ts:95-101`, a textbook FNV-1a over UTF-16 code
 units) a `JSON.stringify` of the entity's attrs/psets/qsets/type-assignments, each level
-recursively key-sorted (`stableSerialize`, `fingerprint.ts:63-73`) so key-insertion order can't
-produce a spurious diff. `buildComponentFingerprints` (`fingerprint.ts:174-202`) is the same
+recursively key-sorted (`stableSerialize`, `fingerprint.ts:108-118`) so key-insertion order can't
+produce a spurious diff. `buildComponentFingerprints` (`fingerprint.ts:270-298`) is the same
 scheme, split into one sub-hash per `attr:core` / `pset:<Name>` / `qset:<Name>` /
 `type-assignment` key — there is no separate `component-fingerprint.ts` file; that logic lives in
 `fingerprint.ts` itself (confirmed: only `component-fingerprint.test.ts` exists, importing from
 `./fingerprint.js`).
+
+> **Post-freeze correction (2026-08-02, #1962).** `stableHash` was 32-bit FNV-1a when this
+> survey was written; it is now FNV-1a64 (same offset basis and prime as `determinism.rs`),
+> because `packages/diff`'s content-keyed matching treats hash equality as *identity* and 32
+> bits is too narrow for that. This is a descriptive correction to §1, not a format change:
+> the freeze covers the §3 wire format, which uses only fnv1a64 and SHA-256 and never
+> `stableHash`. System 1c is surveyed here as pre-existing prior art and §0 explicitly scopes
+> changing these systems as out of scope for v0.
+>
+> The same change also stopped both functions folding the *assigned type's* `GlobalId` into
+> the payload — an assigned type is now identified by its name and IFC class — because
+> `IfcTypeObject` is an `IfcRoot` and a re-export re-GUIDs it, which broke content matching
+> for every typed element. "attrs/psets/qsets/type-assignments" above still describes what is
+> hashed; only the type-assignment projection narrowed.
 
 The **geometry** half — the actual "RTC-invariant hash" the brief means — is computed in Rust,
 not TypeScript: `rust/geometry/src/geom_hash.rs`. `GeometryHasher` (lines 74-204) is built per
@@ -217,6 +275,21 @@ the pinned entries in `mesh_determinism.json`'s `meshes[]` array (same `position
 `normals_hash` construction, plus the same 3-hash fold as the per-mesh slice of `top`). Offset
 basis and prime are the pinned constants (`0xcbf2_9ce4_8422_2325`, `0x0000_0100_0000_01b3`).
 
+**Field domains are normative, and out-of-domain payloads are rejected, not coerced.** The
+encoding above is a verbatim port of a Rust wire format, so the fields carry Rust's types:
+`express_id` and every index are `u32` (integers in `[0, 4294967295]`), `geometry_class` is a `u8`
+(integer in `[0, 255]`), positions and normals are `f32` (finite, and finite once narrowed to
+`f32`), and `origin` is exactly three finite `f64`. A host language with one numeric type (a
+TypeScript port hashing `number`) must **reject** anything outside those domains rather than
+truncate it: masking `geometry_class` with `& 0xff` or forcing an index through `v >>> 0` maps
+distinct payloads onto one hash (`1`/`257`/`-255`; `100`/`100.9`/`100 + 2**32`; `[-1]`/
+`[4294967295]`), which is a second preimage a certificate would verify. Rejection is a
+**conformance rule, not part of the wire format** — it changes no accepted payload's bytes, and no
+golden vector can pin it, because a vector fixes how an accepted payload encodes while this fixes
+which payloads are accepted at all. In-range `f64 → f32` narrowing is inherent to the frozen format
+and stays as-is; only values with no `f32` at all (NaN, ±Infinity, and finite doubles like `1e39`
+that narrow to Infinity) are out of domain.
+
 This hash is **byte-exact, not RTC-invariant** — it is a proof of "the kernel reproduced this
 exact geometry," not "this geometry is semantically the same shape." That is the correct choice
 for a certificate whose whole point is proving deterministic replay (§4), and it is deliberately
@@ -232,8 +305,8 @@ engine), which is the constraint the B0.1 prototype must satisfy. A **common bin
 shared across all four composite kinds so the encoding rules are stated once:
 
 - All multi-byte integers are **little-endian**.
-- Every **string** field (already NFC-normalized) is encoded as `u32` LE byte-length prefix, then
-  its UTF-8 bytes.
+- Every **string** field is **NFC-normalized by the hasher** (Unicode Normalization Form C) and
+  then encoded as `u32` LE byte-length prefix, followed by its UTF-8 bytes.
 - Every **f64** field is its raw IEEE-754 bit pattern, 8 bytes, little-endian
   (`DataView.setFloat64(offset, v, /* littleEndian */ true)`).
 - Every **count** (array/map length) is a `u32` LE prefix before the elements it introduces.
@@ -253,6 +326,43 @@ shared across all four composite kinds so the encoding rules are stated once:
   `IfcRelAggregates.RelatedObjects` is a set) and preserves order exactly where it's semantic
   (e.g. a layer's op sequence, per `02-layer-format.md` §2.4's own "same-path opinion order is
   preserved" rule for the pre-existing `computeLayerId`).
+- **Normalization applies to sorting as well as to encoding.** Set ordering compares the
+  **NFC-normalized UTF-8 bytes** — byte-for-byte the same bytes the string encoding above will
+  write — never the producer's raw pre-normalization spelling. Sorting raw and encoding normalized
+  would let the *spelling* pick the order: `{"é"(NFD), "z"}` and `{"é"(NFC), "z"}` are one and the
+  same set after NFC, but raw-byte order puts NFD `é` (`0x65 0xcc 0x81`) before `z` and NFC `é`
+  (`0xc3 0xa9`) after it, so one canonical input would produce two different hashes. That dual is
+  worse than a collision for a verifier: "recompute and compare" would fail on honest data.
+- **Keys of a keyed set MUST be unique after NFC normalization; a payload that violates this is
+  invalid and MUST be rejected, not sorted.** This applies to the three sets whose entries are
+  keyed and carry a value beyond the key: `property-set` properties (keyed by `name`),
+  `relationship` roles (keyed by `roleName`), and `element` components (keyed by `componentKey`).
+  Two entries whose spellings differ but whose NFC forms are equal — `"Ä"` (U+00C4) and `"Ä"`
+  (U+0041 U+0308) — compare equal under the rule above, and equal keys have no defined order, so
+  the set has **no canonical form**. Both failure directions are real:
+  - *One model, two hashes.* The entries carry different values, so whichever order the sort emits
+    decides the value bytes. `{"Ä"(pre): 1, "Ä"(dec): 2}` and the same set listed the other way
+    round hash differently. Relying on the host's sort being stable does not fix this — stability
+    of a particular runtime's `Array.prototype.sort` is not a property this spec may assume, and
+    even a perfectly stable sort only makes the ambiguity reproducible per producer, not canonical.
+  - *Two models, one hash.* Because the sort key and the encoded key are the same NFC bytes,
+    `{"Ä"(pre): A, "Ä"(dec): B}` and `{"Ä"(dec): A, "Ä"(pre): B}` — which disagree about which
+    spelling holds which value — encode to **byte-identical** streams. That is a second preimage,
+    and a certificate would verify the wrong model against it.
+
+  Rejection is normative rather than a tiebreak (e.g. falling back to raw pre-normalization byte
+  order). A tiebreak would restore determinism, but it does so by blessing two distinct models as
+  one: it keeps the second preimage and only hides the ambiguity. Like the `geometry-mesh` domain
+  checks of §3.1, this is a **conformance rule, not part of the wire format** — it changes no
+  accepted payload's bytes, and no golden vector can pin it, because a vector fixes how an accepted
+  payload encodes while this fixes which payloads are accepted at all. Exactly-repeated keys
+  (the same string twice) are the degenerate case of the same rule and are rejected identically.
+
+  The rule deliberately does **not** extend to the bare child-hash sets (a relationship role's
+  `refs`, a layer's `childHashes`). There an entry *is* its key: it carries no payload beyond the
+  string that was sorted, so entries that compare equal also encode to identical bytes and the byte
+  stream genuinely does not depend on their relative order. No ambiguity exists there, so extending
+  the rejection would narrow the set of accepted inputs without closing any defect.
 
 Per kind:
 
@@ -264,7 +374,10 @@ boolean: 1 byte; null: no payload). Mirrors `buildComponentFingerprints`'s per-p
 
 **`relationship`**: header, `relType` (string, e.g. `"IfcRelVoidsElement"`), `roleCount` (u32),
 then roles **sorted by role name**, each: `roleName` (string), `refCount` (u32), then child-hash
-references **sorted by tagged hash string** (the role's members are a set).
+references **sorted by tagged hash string** (a role's members are encoded as a set; a role whose
+IFC attribute is singular simply carries one reference). A payload commits only the roles its
+producer includes — omitting a role and carrying it with zero refs are different byte streams and
+therefore different hashes.
 
 **`layer`**: header, `layerId` (string — the ifcx layer identity, see §6 Q1), `opCount` (u32),
 then child-hash references (the element/entity hashes this
@@ -278,6 +391,29 @@ existing `ComponentKey` vocabulary from `packages/diff/src/fingerprint.ts:162` /
 `02-layer-format.md` §2.2: `attr:core`, `pset:<Name>`, `qset:<Name>`, `type-assignment`,
 `geometry-mesh`, `relationship:<RelType>`), each: `componentKey` (string), child-hash reference
 (string).
+
+### 3.2.1 Identifier conventions (normative, frozen)
+
+Every IFC identifier that reaches a hash — `relationship.relType`, `relationship.roleName`,
+`element.ifcType`, and the `<RelType>` / `<Name>` parts of a `componentKey` — is encoded
+**verbatim** as an ordinary NFC UTF-8 string field. The hasher applies **no case folding, no
+aliasing, and no schema lookup**: it commits to exactly the string the producer supplied, so two
+producers only agree if they spell identifiers the same way. The freeze therefore pins the
+spelling, not just the bytes:
+
+- **Relationship type and role names are the exact IFC EXPRESS names** of the relationship
+  (AGENTS.md "IFC schema fidelity": full names, never invented aliases). `IfcRelVoidsElement`
+  carries `RelatingBuildingElement` and the **singular** `RelatedOpeningElement`;
+  `IfcRelAggregates` carries `RelatingObject` and `RelatedObjects`;
+  `IfcRelContainedInSpatialStructure` carries `RelatingStructure` and `RelatedElements`. A
+  pluralized or otherwise invented role name is a non-conforming payload: its hash is
+  well-defined but no schema-faithful implementation can reproduce it.
+- **`element.ifcType` is the exact IFC EXPRESS PascalCase type name** (`IfcWallStandardCase`) —
+  what the canonical load path yields via `store.entities.getTypeName(id)` — **not** the
+  uppercase STEP storage spelling (`IFCWALLSTANDARDCASE`). Both are technically hashable strings,
+  and the uppercase form deliberately hashes differently; the golden vectors pin that difference
+  (`el-basic` vs `el-step-uppercase-name`) so the mismatch surfaces as a distinct hash rather
+  than as a silent interoperability failure.
 
 ### 3.3 Why two algorithms, not one
 
@@ -304,10 +440,9 @@ disagrees with §3.2's `layer` node kind on both algorithm (blake3 vs SHA-256) a
 (canonical JSON text vs the binary framing above). v0 does **not** attempt to silently reconcile
 this; see §6 Q1. The honest state today: `computeLayerId` hashes *whole layer documents* for
 IFCX content-addressing / registry refs (`packages/merge`), while node-hash-v0's `layer` kind is
-scoped to *this DAG's* Merkle linkage (one node among many, referenced by parents). They may turn
-out to be the same concept wearing two hats, or genuinely different concepts that happen to share
-a name — that's a design call, not an engineering one, and it needs Louis's input before v0
-freezes.
+scoped to *this DAG's* Merkle linkage (one node among many, referenced by parents). Resolved by
+§6 Q1 (2026-07-24, part of the frozen format): the DAG `layer` node EMBEDS the ifcx blake3
+`layerId` as its first payload field and keeps SHA-256 for its own hash — embed, don't compete.
 
 ### 3.5 Merkle rule
 
@@ -355,9 +490,10 @@ walks from any claimed-unchanged ancestor down through the resolver only far eno
 its hash matches — it does not need to re-walk the whole DAG, which is the whole point (cheap
 subtree replay, per the Gate G0 framing in `moonshots-execution-plan.md` line 241-243).
 
-## 6. Decisions (resolved by Louis, 2026-07-24)
+## 6. Appendix: design decisions (ALL RESOLVED by Louis, 2026-07-24)
 
-All five questions below were decided on 2026-07-24; the original question text is preserved
+Historical record. All five questions below were decided on 2026-07-24 and the decisions are
+part of the frozen format (see the FROZEN header block); the original question text is preserved
 for the record, each followed by the decision. Summary:
 
 - **Q1 — Embed, don't compete.** The DAG `layer` node EMBEDS the ifcx blake3 `layerId`
@@ -380,6 +516,9 @@ for the record, each followed by the decision. Summary:
 - **Q5 — Reserve now, sign in M4.** `Certificate.signatures?` mirrors the ifcx
   provenance-manifest signature shape (`{alg: 'ed25519', key, sig}`) and is ignored by v0
   verification; actual signing lands with M4 (Phase 2); key custody is a human-calendar item.
+  See the FROZEN header block's reserved-fields entry for the two constraints on that landing:
+  v0 defines no canonical certificate byte encoding (so there is nothing well-defined to sign
+  over yet), and M4 must mint a new version string rather than sign under `node-hash-v0`.
 
 ### Original questions (for the record)
 

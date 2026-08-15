@@ -46,6 +46,7 @@ import {
 
 import { CompactEntityIndex } from './compact-entity-index.js';
 import type { EntityRef } from './types.js';
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
 import { attachDataStoreAccessors } from './data-store-accessors.js';
 
@@ -456,7 +457,10 @@ export function toTransport(store: IfcDataStore): DataStoreTransportEnvelope {
  * `DataStoreTransport` payload and the `source` buffer view that lives on
  * the receiving thread.
  */
-export function fromTransport(payload: DataStoreTransport, source: Uint8Array): IfcDataStore {
+export function fromTransport(
+  payload: DataStoreTransport,
+  source: Uint8Array | IfcSourceBytes,
+): IfcDataStore {
   const strings: DataStringTable = StringTable.fromArray(payload.strings);
   const entities = entityTableFromColumns(payload.entities, strings);
   const properties = propertyTableFromColumns(payload.properties, strings);
@@ -491,7 +495,7 @@ export function fromTransport(payload: DataStoreTransport, source: Uint8Array): 
     parseTime: payload.parseTime,
     lengthUnitScale: payload.lengthUnitScale,
 
-    source,
+    source: asSourceBytes(source),
     entityIndex,
     deferredEntityIndex: deferredEntityIndex as unknown as EntityByIdIndex | undefined,
 

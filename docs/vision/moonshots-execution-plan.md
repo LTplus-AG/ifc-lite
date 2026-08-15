@@ -67,6 +67,10 @@ research that consume everything before them.
 | M6b threaded CSG | validated, not wired | 5 | docs/architecture/csg-threading-design.md: 2.9-4.2x CSG-step |
 | M6c exact predicates on GPU | untested principle | 1 | predicate cascade well-factored in kernel/predicates.rs; nothing on GPU |
 
+<!-- numeral-ok: 1.71x :: the wasm wide-arithmetic end-to-end speedup, measured by
+     docs/architecture/wasm-wide-arithmetic.md and its benchmark, not by any
+     scripts/moonshot artifact. Cited here, produced elsewhere. -->
+
 ## 2. Heilmeier catechism per moonshot
 
 Format: the eight answers, compressed. Costs are in agent-cycles (one focused Shape Up bet by
@@ -119,6 +123,20 @@ an agent team) plus named human time, because that is the actual currency here.
    IfcOpenShell differential oracle, five reward channels behind one env API. Final: one
    external group post-trains a model on the gym and improves measurably on a held-out split;
    leaderboard runs the verifier client-side.
+   **RE-SEQUENCED 2026-08-02 (betting table, amendment 13 of
+   moonshots-finishing-plan.md section 9). PROVISIONAL until the docs PR on branch
+   `docs/moonshot-amendments-phase5` is merged by the repo-owner account.** The
+   exam is unchanged; what it is gated on is not. It no longer follows from
+   delivering B4.3's salt. B5.2 measured two things a salt does not touch: the
+   corpus's openings are all rectangular through-cuts that the `rect_fast` path
+   takes with zero deferrals, so the general CSG path is never entered by the
+   benchmark while every foreign failure lives there; and both leaderboard anchors
+   saturate the defect task once the existing reference-integrity rule is wired,
+   leaving the headline metric no headroom. So the order is: rebuild the task
+   layer (defects re-substrated on real models, plus generator families that enter
+   the general CSG path), take the salt-versus-substrate decision once for that v2
+   set, then recruit the lab against v2. B2.2 stays CONFIRMED, UNFIXED throughout
+   and dev stays attackable-by-design.
 
 ### M3. Differentiable buildings
 
@@ -141,6 +159,19 @@ an agent team) plus named human time, because that is the actual currency here.
    of created elements match finite differences to 1e-6 on 95% of a randomized battery, and
    one 20-parameter optimization converges to a valid certified state. Final: browser demo,
    multi-objective descent, projection + certificate < 200 ms per step on the flagship model.
+   **AMENDED 2026-08-02 (betting table, amendment 12 of moonshots-finishing-plan.md
+   section 9). PROVISIONAL until the docs PR on branch
+   `docs/moonshot-amendments-phase5` is merged by the repo-owner account.** The
+   per-step budget clause is **withdrawn along with M3's INTERACTIVITY claim**,
+   deliberately and ahead of G5, by firing M6b's own kill clause. The evidence is
+   already in this file's ledger: N4 (threaded wasm at 0.87x on the full pipeline,
+   an atomics tax) plus the memory-bandwidth dead end in `scripts/perf/README.md`,
+   with M6c's economic loss (amendment 2) having already removed the GPU from the
+   projection-speed story. The M3 final becomes: multi-objective descent over the
+   same objectives with an exact-kernel projection and a certificate per
+   intermediate state, **batch rather than interactive**, no per-step wall-clock
+   clause. This is a deliberate withdrawal on evidence in hand, not a failure
+   discovered late. Ledger entry N5.
 
 ### M4. Convergence you can prove
 
@@ -187,9 +218,40 @@ an agent team) plus named human time, because that is the actual currency here.
    scan input in Phase 3.
 8. **Exams.** Midterm: 100% of emitted programs compile by construction (invalid ops
    unreachable at decode time), quality scored on the M2 benchmark, beats unconstrained
-   baseline of the same base model by a wide, stated margin. Final: one real scanned room to
+   baseline of the same base model by a wide, stated margin.
+   **AMENDED 2026-07-26 (betting table, amendment 1 of moonshots-finishing-plan.md
+   section 9).** The "wide, stated margin" clause is replaced by: correctly handles
+   infeasible briefs at a rate exceeding budget-matched baselines, and recovers from
+   held-out-rule violations, both with pre-registered paired CIs, with feasible-brief
+   quality reported as a null result. Rationale: two tiers and one fresh-sample
+   replication support the amended quantity and not the original. Tier-1 was
+   instrument-limited (saturated rubric, validator rules serialized into the prompt).
+   Tier-2 held five rules out of prompts, proved rubric headroom (mediocre proposer at
+   mean 0.847), and ran three budget-matched arms: the feasible-quality margin was
+   +0.008 [0.000, 0.025] vs validator-filtered best-of-3 and 0.000 vs unfiltered; the
+   replication put both at +0.05 [0, 0.15]. Every CI touches or straddles zero. What
+   replicated exactly: infeasibility handling 3/3 vs 1/3 for both baselines, zero
+   constraint laundering. Compile-by-construction (100%) is unamended and met.
+   Final: one real scanned room to
    parametric IFC with headline quantities within 5% of a manually modeled reference, plus one
    world-model scene imported with a bill of quantities.
+   **AMENDED 2026-08-02 (betting table, amendment 10 of moonshots-finishing-plan.md
+   section 9). PROVISIONAL until the docs PR on branch
+   `docs/moonshot-amendments-phase5` is merged by the repo-owner account, which is
+   what sign-off means in this program - see that file's section 9.1.** The
+   world-model clause is **CUT**. The M5 final is the scan clause alone. Four
+   reasons, all in amendment 10: the world-model import shares no machinery with
+   the scan path; its whole bar is that a bill of quantities exists, so it cannot
+   come back FAIL; it is the one clause that is trend-chasing rather than
+   thesis-bearing; and the scan clause has already produced the least deniable
+   number in the program without it. The world-model story moves to **B6.5's demo
+   (moonshots-finishing-plan.md section 5, Phase 6)**, which now names it: it is a
+   stage artifact inside the demo's M5 act, with no pass/fail bar, no number of
+   its own and no G6 clause, and the act is dropped if it does not run. Ledger
+   entry N6.
+   **Status of the surviving clause (B5.5, delivered 2026-08-02, #1932): partial
+   pass** - met for floor area, clear height and volume at model scale and for
+   every quantity in one of three rooms; not met for the bounding wall surface.
 
 ### M6. Geometry at silicon speed
 
@@ -215,10 +277,45 @@ an agent team) plus named human time, because that is the actual currency here.
 8. **Exams.** M6a: weekly CI lane builds with +wide-arithmetic and reproduces the determinism
    manifests byte-identically, >= 1.5x e2e CSG confirmed. M6b: threaded path on by default in
    the browser, determinism manifest unchanged, >= 1.5x wall-clock on the CSG-heavy corpus
-   half. M6c midterm (spike gate): batched orientation3d/incircle on WebGPU with sign-exact
+   half. **Note added 2026-08-02 (amendment 12): M6b's own exam is unchanged and it
+   remains a validated lever at TRL 5, but it no longer carries M3's interactivity
+   claim - that claim is withdrawn, and M6b's kill clause is what withdrew it. M6b
+   is now UNWIRED with a dated re-entry condition (a workload shape that changes
+   the atomics arithmetic) rather than on any critical path. Ledger entry N5.** M6c midterm (spike gate): batched orientation3d/incircle on WebGPU with sign-exact
    agreement vs CPU on 10^8 random + adversarial near-degenerate inputs, >= 10x throughput.
    Final: one kernel stage (candidate: pairwise triangle intersection classification) running
    GPU-side with end-to-end manifest parity and >= 5x stage speedup on real models.
+   **RESOLVED 2026-07-25, met literally and lost economically (amendment 2).** On real
+   workloads extracted from the production CSG pipeline (194/194 fidelity-gated jobs
+   byte-identical), sign-for-sign manifest parity is EXACT and the speedup clause is met
+   against the equivalent exact CPU evaluation: 5.8x to 25.1x with model-wide batching.
+   Against the path that actually ships (native Shewchuk adaptive filtering) the GPU
+   LOSES on every model, 0.05x to 0.20x realized and ~0.2x asymptotic (~80 ns/tuple GPU
+   vs ~15 ns native; the degenerate-only subset cannot win either at ~65 ns, since
+   identifying it requires running the filter anyway). Per-op dispatch, the batch shape
+   the current kernel structure produces, sinks to 0.8x-1.1x on three of five models.
+   Remaining M6c exam is retargeted to publication (B6.3), not a speedup. Consequence:
+
+<!-- numeral-src: 0.20x :: none - endpoint of a RANGE against the production adaptive-Shewchuk path; no artifact emits it. Negative-bound 2026-08-01 because a union hit made it read as backed by an unrelated slab thickness in B5.5's scorecard - a speedup ratio must not be cleared by a length in metres. -->
+<!-- numeral-src: 194 :: none - the size of the fidelity-gated job corpus extracted from
+     the production CSG benchmark. It IS derivable from a committed moonshot artifact,
+     but not as a field: scripts/moonshot/b34-kernel-stage/report.b34.json carries it as
+     five per-model meta.fidelityChecked counts, 10 + 13 + 2 + 68 + 101, and emits no
+     aggregate. A binding names one field and this figure is a sum over five, so the
+     binding is negative and this note carries the derivation instead. Negative-bound
+     2026-08-02 for the same reason 0.20x was bound the day before: B5.1's scorecard
+     happens to hold 194 as a count of schedules where the spatial rule fired alone, and a
+     corpus size must not be cleared by a conflict count. This is the union-index failure
+     mode the checker's own header describes, arriving for the second time in two days. -->
+   M3's per-step projection budget re-plans around CPU threading only, which puts M6b on
+   the critical path. See scripts/moonshot/b34-kernel-stage/REPORT.md.
+   **SUPERSEDED 2026-08-02 (betting table, amendment 12 of
+   moonshots-finishing-plan.md section 9). PROVISIONAL until the docs PR on branch
+   `docs/moonshot-amendments-phase5` is merged by the repo-owner account.** The
+   per-step projection budget is itself withdrawn with M3's interactivity claim
+   (see the M3 exam amendment above), so this consequence does not stand: **M6b is
+   on no critical path.** Its own exam is unchanged and it stays a validated lever
+   at TRL 5, now UNWIRED with a dated re-entry condition. Ledger entry N5.
 
 ## 3. Phased roadmap with gates
 
@@ -227,7 +324,7 @@ Each phase ends at a betting table that doubles as the gate review. Gate criteri
 exams above; they are pre-committed and only the betting table can amend them, in writing, in
 this file.
 
-### Phase 0, one cycle (target: through early Sep 2026). "Foundations and first proof."
+### Phase 0, one cycle (target: through early Sep 2026; ACTUAL: executed 2026-07-24). "Foundations and first proof."
 
 Bets:
 - **B0.1 Hash spec + certificate v0 (M1).** Unify mesh manifests, blob hashes, and diff
@@ -243,7 +340,7 @@ Gate G0: B0.1 demo passes the M1 midterm timing on a real 100 MB fixture; B0.3 s
 without manifest changes; B0.4 runs an agent loop end to end. Fail on B0.1 = the program's
 core premise (cheap subtree replay) is wrong; stop and rethink before spending more.
 
-### Phase 1, two cycles (target: Sep-Dec 2026). "The root and the factory."
+### Phase 1, two cycles (target: Sep-Dec 2026; ACTUAL: executed and gated 2026-07-24, M6c verdict 2026-07-25). "The root and the factory."
 
 Bets:
 - **B1.1 Merkle DAG + memoized recompute (M1).** Dependency-tracked recomputation through the
@@ -258,7 +355,7 @@ Bets:
 Gate G1: M1 midterm + M2 midterm + M6c spike gate, each as specified in section 2. M6c fail =
 kill M6c (ledger entry), M3's step-time budget re-planned around CPU threading only.
 
-### Phase 2, two cycles (target: Dec 2026-Mar 2027). "Theorems and training."
+### Phase 2, two cycles (target: Dec 2026-Mar 2027; ACTUAL: executed 2026-07-24/25). "Theorems and training."
 
 Bets:
 - **B2.1 Merge soundness contract (M4):** commutation certificates + conflict predicates +
@@ -274,17 +371,31 @@ Bets:
 Gate G2: M4 midterm, M5 midterm, M3 spike gate. M3 fail = downgrade M3 to derivative-free
 optimizer over the same objectives (still demo-able, no longer a moonshot claim), ledger entry.
 
-### Phase 3, two cycles (target: Mar-Jun 2027). "The compounding demo."
+### Phase 3, two cycles (target: Mar-Jun 2027; ACTUAL: executed 2026-07-24/25). "The compounding demo."
+
+**STATUS 2026-07-26 (amendment 3): three of five bets delivered.** B3.3, B3.4 and B3.5
+landed. **B3.1 (encrypted provable multiplayer) and B3.2 (scan-to-parametric) were never
+built** and are carried into Phase 5 as B5.4 and B5.5 rather than silently absorbed.
+Both skipped bets are the two that required contact with something outside the
+parametric sandbox; see the "building on the safe side of the risk" pre-mortem entry in
+moonshots-finishing-plan.md section 8.
 
 Bets:
 - **B3.1 Encrypted provable multiplayer (M4 final).**
-- **B3.2 Scan-to-parametric (M5 final), plus world-model import demo.**
+- **B3.2 Scan-to-parametric (M5 final), plus world-model import demo.** *(Ran as
+  B5.5 on 2026-08-02, #1932, partial pass. The world-model half was CUT before it
+  was built - amendment 10 - and moves to B6.5's demo. Ledger entry N6.)*
 - **B3.3 Differentiable flagship demo (M3 final, budget depends on M6 outcomes).**
 - **B3.4 Kernel stage on GPU with manifest parity (M6c final).**
 - **B3.5 The integrated jaw-drop:** one scripted 10-minute demo chaining them: scan a room,
   ground it to parametric IFC (M5), three parties co-edit encrypted with certified merges
-  (M4), descend carbon under compliance (M3), every step certified (M1), interactive because
-  of M6, all in browser tabs. This is the artifact for stages and data rooms.
+  (M4), descend carbon under compliance (M3), every step certified (M1), ~~interactive because
+  of M6~~, all in browser tabs. This is the artifact for stages and data rooms.
+  *(The "interactive because of M6" clause is struck 2026-08-02 by amendment 12,
+  which withdraws M3's interactivity claim; ledger entry N5. B3.5 as delivered was
+  Node and seeded, and its successor B6.5 in moonshots-finishing-plan.md carries
+  the same five acts with a batch descent and a certificate stream, not a building
+  relaxing live in a tab.)*
 
 Gate G3 = the final exams. Publications track (human calendar): M6c predicate paper and the
 M4 convergence-theorem writeup are the two publishable results; target venues chosen by Louis.
@@ -310,6 +421,42 @@ Pre-committed kill conditions (ledger entry mandatory, resurrection requires new
   held-out tasks by G2, the realism gap is structural; pivot corpus to augmented-real and
   re-gate once.
 - **M3:** spike gate is binary. No adjoint battery pass, no differentiable moonshot.
+  **AMENDED 2026-07-29 (betting table, amendment 6 of moonshots-finishing-plan.md
+  section 9). PROVISIONAL: this amendment carries gate-holder sign-off when
+  docs PR #1897 is merged by the repo-owner account, which is what sign-off
+  means in this program - see that file's section 9.1. Until then it is the
+  proposed record, and the claim is checkable with `gh pr view 1897`.** The Phase 4 spike (B4.4) was run against the **extrusion mesher**,
+  not the CSG/void path this criterion was written about (see the kill risk at
+  section 2, M3, risk 6). Its own oracle then showed the extrusion volume is a
+  smooth closed form, so that exam could not have failed. **B4.4's PASS therefore
+  neither passes nor fails this criterion.** M3's status is
+  **UNADJUDICATED**, and it stays that way until a CSG-adjoint bet is run.
+  ~~**That bet is NOT scheduled.** Phase 5 contains B5.1 to B5.5 and nothing else;
+  the CSG-adjoint work has no number, no exam, no kill clause, no statement of
+  which of B5.1 to B5.5 it would displace against the five-bet cap, and no
+  cycle-budget line.~~ Entering a bet is a betting-table act, not a sentence in an
+  amendment. What existed when this paragraph was written was an input to that
+  decision: `scripts/moonshot/b44-kernel-adjoint/DESIGN.md` section 6.1 scopes the
+  obstruction at two cycles and names it (the exact-predicate tier is a
+  fixed-width integer type with no derivative slot).
+  **SUPERSEDED 2026-08-02 (betting table, amendment 11 of
+  moonshots-finishing-plan.md section 9). PROVISIONAL until the docs PR on branch
+  `docs/moonshot-amendments-phase5` is merged by the repo-owner account.** The
+  betting table sat and **the bet is now scheduled as B5.6**, with all five things
+  the paragraph above says it needs: a number (B5.6), an exam (adjoints through
+  `subtract_many` on the opening-cut family, FD-matched to 1e-6 relative on 95% of
+  a 200-point battery restricted to topology-stable neighbourhoods, plus a
+  mandatory reported measurement across one topology-change boundary), a kill
+  clause (FAIL fires the downgrade in the sentence below; PASS adjudicates M3 as
+  BATCH-differentiable only), a displacement statement (**none** - B5.6 displaces
+  no bet, and **Phase 5's cap is raised from five to six** rather than held,
+  because cutting a clause inside B5.5 frees no slot; the argument is in that
+  file's section 5, B5.6), and a cycle-budget update (Phase 5 moves from 6-8 to
+  8-10 agent-cycles). M3 stays UNADJUDICATED until B5.6 reports.
+  Note also what the PROVISIONAL marker above does and does not mean: merging
+  #1897 makes this amendment *signed by the gate holder*, i.e. part of the
+  record. It is not approval of a CSG-adjoint bet, and it is certainly not
+  completion of one.
 - **M4:** if footprint tightening cannot get false-conflict rate below 20% on real traces,
   provable merging is technically true but practically annoying; keep the theorem, drop the
   auto-merge product claim.
@@ -325,6 +472,18 @@ Pre-mortem, the three most likely ways the whole program dies, and their antidot
 2. **The human calendar slips.** Agents finish, gates stack, and review becomes the
    bottleneck (this happened in the 14-agent planning workflow). Antidote: gates are betting
    tables Louis already holds; no separate ceremony, max 5 bets per phase.
+   **AMENDED 2026-08-02 (betting table, amendment 11 of
+   moonshots-finishing-plan.md section 9): the cap is 6 for Phase 5 only and
+   stays 5 for every other phase.** B5.6 enters as a **full sixth bet** and
+   displaces nothing. The exception is written here rather than left implicit
+   because this antidote is the cap's home, and a rule that says 5 while the
+   betting table runs 6 is the kind of gap this program's record exists to
+   close. It does not reintroduce what the antidote guards against: the scarce
+   resource here is gate time, and B5.6 is adjudicated at G5 with the other
+   five - no extra gate, no extra ceremony, one binary verdict on the day - while
+   Phase 5's two hardest bets (B5.2, B5.5) are already run and measured, and a
+   cycle-1 NO on B5.6 is a pre-committed early stop. The argument and the price
+   are in `moonshots-finishing-plan.md` section 5 (B5.6) and section 7.
 3. **Maintenance starves the program.** The main repo's issue/perf cadence (300+ commits per
    month) absorbs everything. Antidote: moonshot bets are explicit betting-table line items
    with their own worktrees; if a phase gets zero bets twice in a row, that is a deliberate
@@ -356,3 +515,97 @@ Serial human calendar (the real schedule):
 2. Bet B0.2: add the wide-arithmetic CI lane next to determinism.yml.
 3. Bet B0.4: prototype `ifc-lite gym` as a thin CLI subcommand over existing checks.
 4. Schedule the Phase 0 betting table.
+
+---
+
+## 8. Negative-results ledger (backfilled 2026-07-26, amendment 4)
+
+Section 1 mandates a ledger entry for every killed or downgraded item so they are
+not accidentally re-spiked in a year. Until now it held effectively nothing. Backfill,
+newest first. Each entry states what was believed, what was measured, and what the
+belief costs to revive.
+
+**N1. M6c: exact predicates on GPU lose to adaptive filtering at the classification
+stage (2026-07-25).** Believed: a sign-exact GPU predicate library would accelerate the
+kernel's hot classification stage. Measured: parity exact and >= 5x versus exact CPU
+evaluation, but 0.05x-0.20x versus the production adaptive-Shewchuk path, asymptotically
+included. The adaptive filter resolves almost every predicate in floating point and never
+pays the exact-arithmetic cost the GPU is optimizing. Reviving requires either a stage
+whose realized arithmetic is genuinely exact-dominated (the escalated LPI/TPI tiers are
+the named candidate, ~5000x per call) or a consumer with no adaptive filter. Do not
+re-spike the classification stage.
+
+<!-- numeral-ok: 5000x :: order-of-magnitude cost of an escalated LPI/TPI exact tier per
+     call, from the kernel's own predicate profiling, not from a b25 report. -->
+
+**N2. M2 benchmark v1.0 integrity is broken by construction (2026-07-25).** Believed:
+forbidding access to the label fields was sufficient to protect the answer key. Measured:
+`benchmark/attacks/clean-twin-diff.mjs` regenerates each seed's clean twin
+(`corruptRate: 0`, corruption lives on an independent RNG stream), diffs the bytes, and
+scores an exact 1.000 aggregate through the real scorer, above the kernel oracle (0.931)
+and the text heuristic (0.993), reading only `model.content`. Adding geometric or organic
+defect families does NOT fix this: any defect on an independent stream is isolated by the
+same diff. Reviving a public launch requires denying the adversary the clean twin
+(a secret per-split salt mixed into every RNG stream, or a real-model substrate that has
+no procedural twin), not a longer defect list.
+*Corrected with spec v1.1: this list originally read "hosted bytes, secret per-split
+salt, or a real-model substrate". Hosted bytes alone deny nothing - splits are seed
+arithmetic over a public universe and `generateModel` takes no secret, so the adversary
+regenerates both twins locally and never requests the served bytes. Hosting is the
+delivery channel a salt needs, not an integrity mechanism; see the benchmark spec's
+integrity-model section.* The attack stays committed as a regression.
+
+**N3. M5 feasible-brief quality margin is null (2026-07-25, replicated).** Believed:
+per-op kernel feedback would produce better programs than the same model generating
+freely. Measured across two tiers and one fresh-sample replication: no detectable
+feasible-quality margin against a budget-matched informed baseline (+0.008 [0.000, 0.025]
+and +0.05 [0, 0.15]; both CIs touch zero). The value that does replicate is at the
+infeasibility boundary (3/3 vs 1/3) and in recovery from rules held out of the prompt.
+Reviving the margin claim requires a weaker proposer or briefs whose constraint
+interactions defeat three informed samples; at Haiku strength on these tiers it is not
+there. See amendment 1.
+
+**N4. Threaded WASM as a whole-pipeline lever, re-refuted (2026-07-23, pre-dates the
+moonshot program but bears on M6b).** Measured 0.87x on the full pipeline (atomics tax).
+M6b's 2.9x-4.2x is a CSG-stage figure and must not be restated as an end-to-end one.
+
+**N5. M3's INTERACTIVITY claim, withdrawn deliberately (2026-08-02, amendment 12).**
+Believed: exact-kernel projection could be made cheap enough to sit inside an
+interactive descent loop, first via GPU predicates and then, after M6c's economic
+loss, via threaded CSG. Measured, and already on this list before the withdrawal:
+N4's 0.87x whole-pipeline result for threaded wasm, and the memory-bandwidth dead
+end recorded in `scripts/perf/README.md` ("more geometry workers -> zero CSG
+speedup: memory-bandwidth bound, not CPU"). Nothing new was measured to withdraw
+the claim; a conclusion already available was acted on rather than left to trip
+M6b's own kill clause at G5. What is withdrawn is the per-step wall-clock clause of
+M3's final exam and the word "interactive" in every M3 sentence. What survives:
+M3 as **batch-differentiable**, which B5.6 adjudicates, and which is still
+publishable and still what certified descent needs. **M6b is not killed.** It is a
+validated, UNWIRED lever at TRL 5 with a dated re-entry condition: re-enter when a
+workload shape changes the atomics arithmetic - a CSG stage whose per-element work
+is large enough to amortize the atomics tax, or a path measured to be
+arithmetic-bound rather than bandwidth-bound. Per this section's resurrection rule,
+that measurement comes first and the claim second.
+
+**N6. The M5 final's world-model import clause, retired before it was built
+(2026-08-02, amendment 10).** Believed: grounding a generated world-model scene
+into a building with a bill of quantities was a third input class worth an exam
+clause of its own. Not measured, and that is the point: its whole bar was that a
+bill of quantities exists, so it could not have come back FAIL, and it shares no
+pipeline stage with the scan clause it was bundled into. It is the one clause in
+the program that is trend-chasing rather than thesis-bearing - it demonstrates the
+proposing half of "neural systems propose, the kernel disposes", which is the half
+the rest of the industry is already funding. Reviving it as an exam requires a
+falsifiable bar (a reference quantity set a generated scene can miss), not a
+better generator. Until then it lives in **B6.5's demo (moonshots-finishing-plan.md
+section 5, Phase 6) as a stage artifact** inside that demo's M5 act - no pass/fail
+bar, no number of its own, no G6 clause, act dropped if it does not run - which is
+what it always was.
+
+**Calendar note (amendment 5).** Phases 0 through 3 were executed 2026-07-24/25, roughly
+eight months ahead of the targets recorded above, because the agent-build track ran far
+faster than the plan assumed while the human-calendar items (spec freeze, integrity
+decision, external recruitment) did not move. The targets are left in place as written
+rather than rewritten, since the gap between them and the actuals is itself the finding:
+agent-cycles were never the scarce resource. Phase 4 to 6 targets live in
+moonshots-finishing-plan.md.

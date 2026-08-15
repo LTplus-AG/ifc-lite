@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/spatial",
-  "version": "1.14.12",
+  "version": "1.14.13",
   "description": "Spatial indexing for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,13 +14,16 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ifc-lite/geometry": "workspace:^"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

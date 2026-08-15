@@ -18,16 +18,19 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, Search, ChevronDown, ArrowUpDown, GripVertical } from 'lucide-react';
+import { X, EyeOff, Palette, Check, Plus, Trash2, Pencil, Copy, Save, Download, Upload, Sparkles, ArrowUpDown, GripVertical } from 'lucide-react';
 import { discoverDataSources } from '@ifc-lite/lens';
+import { SearchableSelect } from './SearchableSelect';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { downloadFile } from '@/lib/export/download';
+import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS, lensCardAnchor } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
 import { useLens } from '@/hooks/useLens';
 import { createLensDataProvider } from '@/lib/lens';
 import { buildAutoColorLensToSave, moveItem } from './lens-editor-utils';
+import { importLensFile } from './lens-import';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
 import {
@@ -57,109 +60,6 @@ const TYPE_LABELS: Record<string, string> = {
 
 interface LensPanelProps {
   onClose?: () => void;
-}
-
-// ─── Searchable dropdown (for large dynamic lists) ──────────────────────────
-
-function SearchableSelect({
-  value,
-  options,
-  onChange,
-  placeholder,
-  className,
-  displayFn,
-}: {
-  value: string;
-  options: readonly string[];
-  onChange: (value: string) => void;
-  placeholder?: string;
-  className?: string;
-  displayFn?: (v: string) => string;
-}) {
-  const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const filtered = useMemo(() => {
-    if (!filter) return options;
-    const q = filter.toLowerCase();
-    return options.filter(o => o.toLowerCase().includes(q));
-  }, [options, filter]);
-
-  // Close on outside click
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setFilter('');
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const display = displayFn ?? ((v: string) => v);
-
-  return (
-    <div ref={containerRef} className={cn('relative', className)}>
-      <button
-        type="button"
-        onClick={() => {
-          setOpen(!open);
-          if (!open) setTimeout(() => inputRef.current?.focus(), 0);
-        }}
-        className={cn(
-          'w-full flex items-center justify-between gap-1 text-left',
-          'text-xs px-1.5 py-1 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 text-zinc-900 dark:text-zinc-100 rounded-sm',
-          !value && 'text-zinc-400 dark:text-zinc-500',
-        )}
-      >
-        <span className="truncate">{value ? display(value) : (placeholder ?? 'Select...')}</span>
-        <ChevronDown className="h-3 w-3 flex-shrink-0 opacity-50" />
-      </button>
-      {open && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-0.5 bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-sm shadow-lg max-h-[200px] flex flex-col">
-          {options.length > 8 && (
-            <div className="flex items-center gap-1 px-1.5 py-1 border-b border-zinc-200 dark:border-zinc-700">
-              <Search className="h-3 w-3 text-zinc-400 flex-shrink-0" />
-              <input
-                ref={inputRef}
-                type="text"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                placeholder="Search..."
-                className="flex-1 text-xs bg-transparent border-0 outline-none text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
-              />
-            </div>
-          )}
-          <div className="overflow-y-auto flex-1">
-            {filtered.length === 0 && (
-              <div className="px-2 py-1.5 text-xs text-zinc-400">No matches</div>
-            )}
-            {filtered.map(opt => (
-              <button
-                key={opt}
-                type="button"
-                className={cn(
-                  'w-full text-left px-2 py-1 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-700 truncate',
-                  opt === value && 'bg-primary/10 text-primary font-medium',
-                )}
-                onClick={() => {
-                  onChange(opt);
-                  setOpen(false);
-                  setFilter('');
-                }}
-              >
-                {display(opt)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }
 
 // ─── Rule display (read-only, clickable for isolation) ──────────────────────
@@ -1415,7 +1315,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   /** Duplicate a lens (incl. a builtin) and open the editable copy for editing. */
   const handleDuplicateLens = useCallback((id: string) => {
-    const copy = duplicateLens(id);
+    const result = duplicateLens(id);
+    if (!result.ok) {
+      toast.error(result.message);
+      return;
+    }
+    const copy = result.lens;
     if (!copy) return;
     setCreatingAutoColor(false);
     setEditingLens({ ...copy, rules: copy.rules.map(r => ({ ...r })) });
@@ -1423,10 +1328,15 @@ export function LensPanel({ onClose }: LensPanelProps) {
 
   const handleSaveLens = useCallback((lens: Lens) => {
     const exists = savedLenses.some(l => l.id === lens.id);
-    if (exists) {
-      updateLens(lens.id, { name: lens.name, rules: lens.rules, autoColor: lens.autoColor });
-    } else {
-      createLens(lens);
+    const result = exists
+      ? updateLens(lens.id, { name: lens.name, rules: lens.rules, autoColor: lens.autoColor })
+      : createLens(lens);
+    if (!result.ok) {
+      // The store rejected the edit because it could not be persisted. Keep the
+      // editor open so the user's work is still there to retry or export,
+      // rather than closing over a lens that was never saved.
+      toast.error(result.message);
+      return;
     }
     setEditingLens(null);
     setCreatingAutoColor(false);
@@ -1440,7 +1350,11 @@ export function LensPanel({ onClose }: LensPanelProps) {
       releaseRuleIsolation();
       setActiveLens(null);
     }
-    deleteLens(id);
+    // A delete that could not be persisted is not applied: the lens stays in
+    // the list (merely deactivated, which is not persisted state anyway) so it
+    // cannot reappear out of nowhere on the next reload.
+    const result = deleteLens(id);
+    if (!result.ok) toast.error(result.message);
   }, [activeLensId, setActiveLens, deleteLens, releaseRuleIsolation]);
 
   // Sync the active lens's hidden ids into the GLOBAL hiddenEntities channel.
@@ -1471,23 +1385,16 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const handleImport = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(reader.result as string);
-        // Upsert-by-id happens in the store (mergeImportedLenses), so just
-        // hand it the parsed value normalized to an array. Re-importing an
-        // edited export now updates lenses in place instead of no-op'ing. (#1403)
-        importLenses(Array.isArray(parsed) ? parsed : [parsed]);
-      } catch (err) {
-        // Malformed JSON (or an unreadable file). Surface it instead of
-        // swallowing — well-formed-but-invalid lenses are filtered silently by
-        // the importer, but a parse failure is worth logging.
-        console.error('Lens import failed:', err);
-      }
-    };
-    reader.readAsText(file);
     e.target.value = '';
+    // Upsert-by-id happens in the store (mergeImportedLenses), so this just
+    // hands it the parsed value normalized to an array. Re-importing an
+    // edited export updates lenses in place instead of no-op'ing. (#1403)
+    // `importLensFile` wires BOTH `FileReader#onload` and `#onerror` — a read
+    // that fails (removed/unreadable file) reports a failure here instead of
+    // never resolving at all (PR #2091 review).
+    void importLensFile(file, importLenses).then((result) => {
+      if (!result.ok) toast.error(result.message);
+    });
   }, [importLenses]);
 
   return (

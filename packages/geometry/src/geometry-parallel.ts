@@ -31,10 +31,82 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
+import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 // The compiled-module memo lives in its own module so the main-thread
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
+
+/**
+ * Prepass class-byte layout, mirroring the `PREPASS_CLASS_*` definitions in
+ * `rust/processing/src/shard_classes.rs` (the source of truth — these are
+ * pinned to it by `prepass-class-spans.test.ts`).
+ *
+ * The producer packs a named code in the LOW bits and composes FLAG bits on
+ * top (`PREPASS_CLASS_FLAG_GEOMETRY_JOB` 0x80, `..._FLAG_TYPE_CANDIDATE`
+ * 0x40), so a consumer must mask before comparing — the Rust consumer does
+ * (`gpu_meshes/prepass_discovery.rs`), and so does {@link extractPrepassSpanLists}.
+ */
+export const PREPASS_CLASS_CODE_MASK = 0x3f;
+/** `IFCSTYLEDITEM`. */
+export const PREPASS_CLASS_STYLED_ITEM = 4;
+/** `IFCINDEXEDCOLOURMAP`. */
+export const PREPASS_CLASS_INDEXED_COLOUR_MAP = 5;
+/** `IFCMATERIALDEFINITIONREPRESENTATION`. */
+export const PREPASS_CLASS_MATERIAL_DEF_REPR = 6;
+/** `IFCRELASSOCIATESMATERIAL`. */
+export const PREPASS_CLASS_REL_ASSOCIATES_MATERIAL = 7;
+/** `IFCRELVOIDSELEMENT`. */
+export const PREPASS_CLASS_REL_VOIDS = 8;
+/** `IFCRELFILLSELEMENT`. */
+export const PREPASS_CLASS_REL_FILLS = 9;
+/** `IFCRELAGGREGATES`. */
+export const PREPASS_CLASS_REL_AGGREGATES = 10;
+
+/** The classes the host builds span lists for (every other code is ignored). */
+const HOST_SPAN_CLASSES = [
+  PREPASS_CLASS_STYLED_ITEM,
+  PREPASS_CLASS_INDEXED_COLOUR_MAP,
+  PREPASS_CLASS_MATERIAL_DEF_REPR,
+  PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+  PREPASS_CLASS_REL_VOIDS,
+  PREPASS_CLASS_REL_FILLS,
+  PREPASS_CLASS_REL_AGGREGATES,
+] as const;
+
+/**
+ * Build one `(id, start, length)` span list per host-consumed prepass class
+ * from the stitched shard columns, in FILE ORDER. Every comparison goes
+ * through {@link PREPASS_CLASS_CODE_MASK}, so a record that carries a flag bit
+ * alongside its named code still lands in its list instead of being dropped.
+ * Returns exact-size arrays (one entry per class in `HOST_SPAN_CLASSES`,
+ * empty when the file has none).
+ */
+export function extractPrepassSpanLists(
+  classes: Uint8Array,
+  ids: Uint32Array,
+  starts: Uint32Array,
+  lengths: Uint32Array,
+): Map<number, Uint32Array> {
+  // Sized by the code mask rather than by the highest class the host consumes:
+  // a masked code is always < 64, so a class added on the Rust side cannot
+  // write out of bounds here (typed arrays discard such writes silently).
+  const counts = new Uint32Array(PREPASS_CLASS_CODE_MASK + 1);
+  for (let i = 0; i < classes.length; i++) counts[classes[i] & PREPASS_CLASS_CODE_MASK]++;
+  const slots = new Map<number, { arr: Uint32Array; w: number }>();
+  for (const k of HOST_SPAN_CLASSES) slots.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
+  for (let i = 0; i < classes.length; i++) {
+    const slot = slots.get(classes[i] & PREPASS_CLASS_CODE_MASK);
+    if (!slot) continue;
+    slot.arr[slot.w] = ids[i];
+    slot.arr[slot.w + 1] = starts[i];
+    slot.arr[slot.w + 2] = lengths[i];
+    slot.w += 3;
+  }
+  const spans = new Map<number, Uint32Array>();
+  for (const [k, slot] of slots) spans.set(k, slot.arr);
+  return spans;
+}
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -107,6 +179,26 @@ function readShardScanFlag(): boolean {
   // other #1682 load/render knobs).
   if (v === 0 || v === '0' || v === false) return false;
   return true;
+}
+
+/**
+ * Terminate a pool worker on a teardown path that is already unwinding.
+ *
+ * `Worker.terminate()` is specified never to throw, and is a no-op on a worker
+ * that is already gone — so every one of these teardown calls is expected to
+ * succeed and a throw means something unexpected about the host, not a
+ * double-terminate. Worth one line; never worth failing a teardown that runs
+ * while a real error is on its way to the caller.
+ *
+ * Bounded by construction: each caller terminates the pool once and then
+ * throws, returns, or leaves the generator.
+ */
+function terminateWorkerQuietly(worker: Worker, label: string): void {
+  try {
+    worker.terminate();
+  } catch (err) {
+    console.warn(`[stream] ${label} terminate failed:`, err);
+  }
 }
 
 /** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
@@ -544,6 +636,15 @@ export async function* processParallel(
           (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
         const instancedGeometryHashValues =
           (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
+        // #1891: the world boxes for those same ids, six values per id. Travels
+        // with the ids, never on its own — an aabb array without its id array
+        // indexes nothing.
+        const instancedGeometryAabbValues =
+          (msg as { instancedGeometryAabbValues?: Float64Array }).instancedGeometryAabbValues;
+        // #1993: and their proved volumes, one per id. Same rule as the boxes —
+        // it travels with the ids or not at all.
+        const instancedGeometryVolumeValues =
+          (msg as { instancedGeometryVolumeValues?: Float64Array }).instancedGeometryVolumeValues;
         if (
           meshes.length > 0 ||
           (instancedShards && instancedShards.length > 0) ||
@@ -568,7 +669,12 @@ export async function* processParallel(
             coordinateInfo: coordinateInfo || undefined,
             ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
             ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
-              ? { instancedGeometryHashIds, instancedGeometryHashValues }
+              ? {
+                  instancedGeometryHashIds,
+                  instancedGeometryHashValues,
+                  ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
+                  ...(instancedGeometryVolumeValues ? { instancedGeometryVolumeValues } : {}),
+                }
               : {}),
           });
           wake();
@@ -593,6 +699,11 @@ export async function* processParallel(
         // A rotated/missing engine binary after a redeploy (#1363) surfaces
         // here as the worker's wasm-init failure — let the host reload.
         notifyIfWasmAssetUnavailable(msg.message);
+        // #2527 follow-up: re-plant the worker realm's panic-location stash
+        // (if this error was a wasm trap) on THIS realm's global, before the
+        // error below is thrown/captured, so `attachWasmPanicLocation` in
+        // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+        restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();
@@ -716,7 +827,25 @@ export async function* processParallel(
     for (const w of workers) {
       try {
         w.postMessage({ type: 'stream-end' });
-      } catch { /* worker terminated already — safe to ignore */ }
+      } catch (err) {
+        // A structured-clonable payload posted to a terminated worker is a
+        // no-op, not a throw — so this means the port is in a state we did
+        // not expect. That worker will never flush its tail: `complete` is
+        // posted ONLY from `emitSessionEnd` in geometry.worker.ts, which
+        // fires ONLY in response to `stream-end`. The drain loop below waits
+        // for a `complete` from every worker (`workersCompleted >=
+        // workers.length`), so leaving this as a log would make the load
+        // hang forever instead of failing loudly — the same "swallowed
+        // failure" shape as the fixes already on this branch, just a stall
+        // instead of a false success. Surface it as a load error and
+        // terminate the unreachable worker so it isn't left dangling.
+        console.warn('[stream] stream-end postMessage failed; failing the load instead of hanging on that worker:', err);
+        workerError = workerError ?? new Error(
+          `Geometry worker failed: stream-end could not be delivered (${err instanceof Error ? err.message : String(err)})`,
+        );
+        terminateWorkerQuietly(w, 'process worker');
+        wake();
+      }
     }
   };
 
@@ -1001,32 +1130,17 @@ export async function* processParallel(
     // stitched columns, split into one contiguous slice per worker, and
     // resolve them in parallel while everyone waits on the pre-pass scan.
     const classes = stitched.classes;
-    // Class codes (see Rust PREPASS_CLASS_*): 4 styled, 5 colour map,
-    // 6 material def repr, 7 rel-associates-material, 8 voids, 9 fills,
-    // 10 aggregates. Extract each list in FILE ORDER.
-    const counts = new Uint32Array(11);
-    for (let i = 0; i < classes.length; i++) counts[classes[i]]++;
-    const kinds = [4, 5, 6, 7, 8, 9, 10] as const;
-    const spanLists = new Map<number, { arr: Uint32Array; w: number }>();
-    for (const k of kinds) spanLists.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
-    for (let i = 0; i < classes.length; i++) {
-      const slot = spanLists.get(classes[i]);
-      if (!slot) continue;
-      slot.arr[slot.w] = ids[i];
-      slot.arr[slot.w + 1] = starts[i];
-      slot.arr[slot.w + 2] = lengths[i];
-      slot.w += 3;
-    }
+    const spanLists = extractPrepassSpanLists(classes, ids, starts, lengths);
     supportSpans = {
-      colourMapSpans: spanLists.get(5)!.arr,
-      materialDefSpans: spanLists.get(6)!.arr,
-      relMaterialSpans: spanLists.get(7)!.arr,
-      voidSpans: spanLists.get(8)!.arr,
-      fillsSpans: spanLists.get(9)!.arr,
-      aggregateSpans: spanLists.get(10)!.arr,
+      colourMapSpans: spanLists.get(PREPASS_CLASS_INDEXED_COLOUR_MAP)!,
+      materialDefSpans: spanLists.get(PREPASS_CLASS_MATERIAL_DEF_REPR)!,
+      relMaterialSpans: spanLists.get(PREPASS_CLASS_REL_ASSOCIATES_MATERIAL)!,
+      voidSpans: spanLists.get(PREPASS_CLASS_REL_VOIDS)!,
+      fillsSpans: spanLists.get(PREPASS_CLASS_REL_FILLS)!,
+      aggregateSpans: spanLists.get(PREPASS_CLASS_REL_AGGREGATES)!,
     };
-    const styledCount = counts[4];
-    const styledSpans = spanLists.get(4)!.arr;
+    const styledSpans = spanLists.get(PREPASS_CLASS_STYLED_ITEM)!;
+    const styledCount = styledSpans.length / 3;
     // 2 slices per worker (round-robin): the tail is set by the SLOWEST
     // worker, and macOS occasionally schedules one onto a slow core — halving
     // the slice size halves the damage a slow core can do to the tail.
@@ -1376,6 +1490,15 @@ export async function* processParallel(
       // so a stale-deploy 404 of the wasm (#1363) lands here — let the host
       // reload onto the current deployment.
       notifyIfWasmAssetUnavailable(data.message);
+      // #2527 follow-up: re-plant the worker realm's panic-location stash
+      // (if this error was a wasm trap) on THIS realm's global, before the
+      // error below is thrown, so `attachWasmPanicLocation` in
+      // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+      // This is the SAME `geometry.worker.ts` as the main process-worker
+      // pool below, so it forwards the same `wasmPanicLocation`/`wasmPanicAt`
+      // fields on its `{type:'error'}` message — this handler previously
+      // dropped them on the floor.
+      restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
       prepassError = new Error(data.message);
       prepassDone = true;
       prepassWorker.terminate();
@@ -1506,14 +1629,14 @@ export async function* processParallel(
     }
     if (workerError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
-      try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
       throw workerError;
     }
     if (prepassError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       throw prepassError;
     }
@@ -1525,7 +1648,7 @@ export async function* processParallel(
     // explicit terminate to exit.
     if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: 0, coordinateInfo };
@@ -1566,8 +1689,8 @@ export async function* processParallel(
   };
   } finally {
     for (const w of workers) {
-      try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(w, 'process worker');
     }
-    try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+    terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
   }
 }

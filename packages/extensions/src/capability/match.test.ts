@@ -76,6 +76,19 @@ describe('matchCapability — wildcards', () => {
     ).toBe(false);
   });
 
+  it('prefix glob does not match a value that merely contains the prefix', () => {
+    // Regression: the prefix check must be startsWith, not includes. A
+    // grant of Pset_* must not match a value where "Pset_" appears
+    // mid-string (e.g. behind an attacker-controlled prefix) — that would
+    // turn a prefix glob into an over-permissive substring match.
+    expect(
+      matchCapability(
+        parse('model.mutate:Pset_*'),
+        parse('model.mutate:Custom_Pset_Secret'),
+      ),
+    ).toBe(false);
+  });
+
   it('bare-* segment matches a single segment', () => {
     expect(
       matchCapability(parse('command.invoke:*.export'), parse('command.invoke:ext-foo.export')),

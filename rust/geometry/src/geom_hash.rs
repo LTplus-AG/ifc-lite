@@ -6,7 +6,12 @@
 //!
 //! The viewer's "compare two revisions" feature needs a stable per-entity
 //! signature so an unchanged element hashes identically across two files,
-//! while a genuine edit (moved, reshaped, retriangulated) hashes differently.
+//! while a genuine edit (moved, or reshaped so the surface itself changes)
+//! hashes differently. Re-cutting an unchanged surface over the SAME corners is
+//! *not* an edit and deliberately does not move the hash — see
+//! **Retriangulation-invariant** below for the exact scope of that guarantee,
+//! and [`GeometryHasher::finish`] for what the fingerprint can and cannot
+//! distinguish.
 //!
 //! ## Design invariants
 //!
@@ -24,23 +29,106 @@
 //!   Each triangle's three quantized vertices are sorted before hashing, and
 //!   triangles are combined commutatively, so reordering/rewinding does not move
 //!   the hash.
+//! * **Retriangulation-invariant, over a fixed vertex set.** So is the
+//!   triangulator's DIAGONAL CHOICE. The hash is therefore taken over the
+//!   SURFACE, in two channels re-cutting cannot move — the SET of distinct
+//!   quantized vertices, and the total area within each supporting PLANE (see
+//!   [`surface`]).
+//!
+//!   The guarantee is exactly this: re-cutting a region over the corners it
+//!   already has (a re-split diagonal, a re-rooted fan) does not move the hash.
+//!   It does **not** extend to a tessellation that INTRODUCES vertices — a quad
+//!   refanned through a new centre point, or an edge split at a new midpoint,
+//!   adds a member to the vertex-set channel and so does hash differently, even
+//!   though the surface and its per-plane area are unchanged. Distinguishing
+//!   that from a genuine edit needs a channel this fingerprint does not have.
+//!   See [`GeometryHasher::finish`] for the rest of the limits.
 //! * **Tolerance-quantized.** Positions are snapped to a grid of `tolerance`
 //!   metres before hashing. Larger tolerance absorbs float noise (fewer false
 //!   "changed") at the cost of missing sub-tolerance edits. See
 //!   [`DEFAULT_GEOM_HASH_TOLERANCE`] and the `tolerance_sweep` test for the
 //!   trade-off — the effective floor is the `f32` precision of the local
 //!   positions (~1e-4 m near origin), so tolerances below ~1 mm mostly hash
-//!   float noise.
+//!   float noise. A request finer than [`MIN_GEOM_HASH_TOLERANCE`] is clamped
+//!   up to it: below that grid, [`surface::plane_of`]'s `i128` plane-offset
+//!   arithmetic is an overflow surface on a georeferenced model, not a
+//!   precision win — see that constant for the measured bound.
 //!
 //! All inputs must be in a single consistent frame for both files (i.e. unit
 //! scaled to metres, and either both pre- or both post- any axis convention
 //! swap). The caller is responsible for feeding `positions` and `rtc_offset`
 //! in the same frame.
+//!
+//! ## World AABB (#1891 follow-on)
+//!
+//! The same pass also accumulates an UNQUANTIZED `f64` world axis-aligned
+//! bounding box ([`GeometryHasher::world_aabb`]). The hash alone cannot say
+//! WHY two revisions differ — "hash changed" conflates moved, reshaped and
+//! re-tessellated — so the diff engine needs a second, interpretable signal.
+//! The box is free here: `add_mesh_with_origin` already reconstructs the exact
+//! `f64` world coordinate of every triangle corner in order to quantize it.
+//!
+//! ## Volume, and its gate (#1891)
+//!
+//! [`GeometryHasher::volume`] is the divergence-theorem volume of the same
+//! geometry — but only for entities whose produced mesh is PROVABLY a single
+//! closed orientable solid. That proof comes from
+//! [`crate::orient_mesh_outward_verdict`], which the producer runs on each
+//! segment immediately before feeding it here; the hasher cannot derive it
+//! itself, because the adjacency needed to decide closedness is exactly what
+//! that pass builds.
+//!
+//! Everything else gets `None`. Read [`GeometryHasher::volume`] before
+//! loosening any clause of that gate — each one is there because a specific,
+//! measured class of element reports a confidently wrong number without it,
+//! and none of the wrong numbers look wrong. [`GeometryClosure`] rides along so
+//! a consumer can say WHICH clause refused.
+
+/// The volume gate (`GeometryClosure` + `GeometryHasher::volume`). A CHILD
+/// module, not a sibling, so it can read this module's private accumulators
+/// without widening their visibility.
+#[path = "geom_closure.rs"]
+mod closure;
+pub use closure::GeometryClosure;
+
+/// The world AABB (`GeometryHasher::extend_bounds` + `::world_aabb`). A CHILD
+/// module, not a sibling, so it can read this module's private accumulators
+/// without widening their visibility.
+#[path = "geom_bounds.rs"]
+mod bounds;
+
+/// The two surface channels the fingerprint is built from. A CHILD module, not
+/// a sibling, so it can use this module's private `mix64`/`fold_i64`.
+#[path = "geom_surface.rs"]
+mod surface;
+
+/// The per-segment triangle fold (`add_mesh` / `add_mesh_with_origin` /
+/// `add_oriented_mesh`). A CHILD module, not a sibling, so it can read this
+/// module's private accumulators without widening their visibility.
+#[path = "geom_accumulate.rs"]
+mod accumulate;
 
 /// Default quantization grid in metres (1 mm). Chosen as a starting point near
 /// the `f32` precision floor of RTC-local coordinates; tune empirically with
 /// the `tolerance_sweep` test against real revision pairs.
 pub const DEFAULT_GEOM_HASH_TOLERANCE: f64 = 1.0e-3;
+
+/// Floor on the quantization tolerance ([`GeometryHasher::new`] clamps any
+/// smaller request up to this).
+///
+/// `plane_of`'s plane offset `d = n·point` is an `i128` product of a quantized
+/// normal and a quantized corner, both scaled by `1/tolerance`; it grows
+/// roughly as `1/tolerance²`. Measured on a georeferenced point (~2.6e6 m) and
+/// a 100 m triangle, `tolerance = 1e-9` pushes `d` to ~1.6e38 — within a factor
+/// of ~1 of `i128::MAX` (1.7e38), i.e. one differently-shaped input away from
+/// overflow (debug builds panic, release wraps and two unrelated planes can
+/// alias to the same key). At this floor the same inputs land `d` around
+/// 1.6e26 — six orders of magnitude of headroom. It is also three orders of
+/// magnitude finer than the documented useful floor (~1 mm, the `f32`
+/// precision limit of RTC-local coordinates — see the module docs'
+/// "Tolerance-quantized" bullet), so no real caller loses precision by being
+/// clamped to it.
+pub const MIN_GEOM_HASH_TOLERANCE: f64 = 1.0e-6;
 
 /// splitmix64 finalizer — strong avalanche for a single `u64`. Shared with
 /// `router::content_hash`'s 128-bit content hash, which uses this SAME
@@ -75,110 +163,59 @@ fn quantize(world: f64, inv_tol: f64) -> i64 {
 pub struct GeometryHasher {
     inv_tol: f64,
     rtc: [f64; 3],
-    /// Commutative running sum of per-triangle hashes.
-    triangle_accum: u64,
+    /// The distinct quantized world vertices seen so far, over every
+    /// non-degenerate triangle (a degenerate one's corners are triangulation
+    /// noise, and are excluded here for the same reason they are excluded from
+    /// the hash). Membership only — [`Self::vertex_accum`] carries the hash.
+    vertices: rustc_hash::FxHashSet<[i64; 3]>,
+    /// Commutative running sum over the DISTINCT vertices in [`Self::vertices`]
+    /// (one term added on first insertion), so vertex-buffer order, duplicated
+    /// corners and segment splitting cannot move it.
+    vertex_accum: u64,
+    /// Commutative running sum of `plane_key * (twice-area)` over every
+    /// triangle. Multiplication distributes over the wrapping sum, so this is
+    /// exactly `Σ_planes plane_key * (that plane's total twice-area)`: a
+    /// per-plane area total in O(1) space, invariant to how each plane's region
+    /// was cut into triangles.
+    plane_area_accum: u64,
     triangle_count: u64,
+    /// Unquantized `f64` world bounds over every in-range triangle corner.
+    /// An axis still holding its `INFINITY..NEG_INFINITY` sentinel never
+    /// accumulated; axes can diverge here, so [`Self::world_aabb`] tests all
+    /// three rather than assuming they move together.
+    min: [f64; 3],
+    max: [f64; 3],
+    /// Running Σ 6·V over every contributing segment. Only read through
+    /// [`GeometryHasher::volume`], which decides whether it means anything.
+    volume6: f64,
+    /// Folded [`GeometryClosure`] over the segments seen so far.
+    closure: GeometryClosure,
 }
 
 impl GeometryHasher {
     /// Create a hasher for one entity.
     ///
-    /// * `tolerance` — quantization grid in metres (must be `> 0`).
+    /// * `tolerance` — quantization grid in metres (must be `> 0`). Clamped up
+    ///   to [`MIN_GEOM_HASH_TOLERANCE`] — see that constant for why a smaller
+    ///   request is an `i128` overflow surface in [`surface::plane_of`], not a
+    ///   precision win.
     /// * `rtc_offset` — the file's RTC offset, added back to local positions to
     ///   reconstruct world coordinates. Pass `[0.0; 3]` if positions are
     ///   already in world space.
     pub fn new(tolerance: f64, rtc_offset: [f64; 3]) -> Self {
         debug_assert!(tolerance > 0.0, "geometry hash tolerance must be positive");
+        let tolerance = tolerance.max(MIN_GEOM_HASH_TOLERANCE);
         Self {
             inv_tol: 1.0 / tolerance,
             rtc: rtc_offset,
-            triangle_accum: 0,
+            vertices: rustc_hash::FxHashSet::default(),
+            vertex_accum: 0,
+            plane_area_accum: 0,
             triangle_count: 0,
-        }
-    }
-
-    /// Hash the quantized world position of one vertex into a per-corner value.
-    /// `origin` is the per-mesh local-frame origin (`world = origin + position`);
-    /// pass `[0.0; 3]` for absolute-coordinate positions.
-    #[inline]
-    fn corner(&self, positions: &[f32], vi: usize, origin: &[f64; 3]) -> [i64; 3] {
-        let base = vi * 3;
-        [
-            quantize(positions[base] as f64 + origin[0] + self.rtc[0], self.inv_tol),
-            quantize(positions[base + 1] as f64 + origin[1] + self.rtc[1], self.inv_tol),
-            quantize(positions[base + 2] as f64 + origin[2] + self.rtc[2], self.inv_tol),
-        ]
-    }
-
-    /// Add one mesh segment (a flat `[x,y,z, ...]` position buffer and a
-    /// triangle index buffer). Indices that run past the position buffer or
-    /// trailing non-triangle remainder are skipped defensively.
-    pub fn add_mesh(&mut self, positions: &[f32], indices: &[u32]) {
-        self.add_mesh_with_origin(positions, indices, [0.0; 3]);
-    }
-
-    /// Like [`add_mesh`] but for positions stored in a per-element LOCAL frame:
-    /// `origin` (the per-mesh AABB-centre origin) is folded back so the hash is
-    /// over absolute world coordinates. This keeps the fingerprint identical
-    /// whether the producer emitted absolute positions (native) or local +
-    /// origin (the wasm local-frame path), and still detects element MOVES.
-    pub fn add_mesh_with_origin(&mut self, positions: &[f32], indices: &[u32], origin: [f64; 3]) {
-        let vertex_limit = positions.len() / 3;
-        let triangle_end = indices.len() - (indices.len() % 3);
-        let mut i = 0;
-        while i < triangle_end {
-            let i0 = indices[i] as usize;
-            let i1 = indices[i + 1] as usize;
-            let i2 = indices[i + 2] as usize;
-            i += 3;
-            if i0 >= vertex_limit || i1 >= vertex_limit || i2 >= vertex_limit {
-                continue;
-            }
-
-            // Sort the three quantized corners so triangle winding and the
-            // starting vertex don't affect the hash — only the (multiset of)
-            // positions and their adjacency as a triangle.
-            let mut tri = [
-                self.corner(positions, i0, &origin),
-                self.corner(positions, i1, &origin),
-                self.corner(positions, i2, &origin),
-            ];
-            tri.sort_unstable();
-
-            // Skip degenerate (zero-area) triangles. After quantization,
-            // coincident or colinear corners carry no shape signal, and
-            // counting them lets triangulation noise (sliver/zero-area faces)
-            // flip the fingerprint even when the rendered geometry is
-            // unchanged. The cross product of two edges is the zero vector
-            // exactly when the three quantized corners are colinear (which
-            // includes the coincident case). i128 avoids overflow on the
-            // quantized-coordinate products.
-            let e1 = [
-                tri[1][0] as i128 - tri[0][0] as i128,
-                tri[1][1] as i128 - tri[0][1] as i128,
-                tri[1][2] as i128 - tri[0][2] as i128,
-            ];
-            let e2 = [
-                tri[2][0] as i128 - tri[0][0] as i128,
-                tri[2][1] as i128 - tri[0][1] as i128,
-                tri[2][2] as i128 - tri[0][2] as i128,
-            ];
-            let cross_x = e1[1] * e2[2] - e1[2] * e2[1];
-            let cross_y = e1[2] * e2[0] - e1[0] * e2[2];
-            let cross_z = e1[0] * e2[1] - e1[1] * e2[0];
-            if cross_x == 0 && cross_y == 0 && cross_z == 0 {
-                continue;
-            }
-
-            let mut h = 0x5bd1_e995_u64; // arbitrary non-zero seed
-            for corner in tri {
-                for c in corner {
-                    h = fold_i64(h, c);
-                }
-            }
-            // Commutative combine across triangles within and across segments.
-            self.triangle_accum = self.triangle_accum.wrapping_add(mix64(h));
-            self.triangle_count = self.triangle_count.wrapping_add(1);
+            min: [f64::INFINITY; 3],
+            max: [f64::NEG_INFINITY; 3],
+            volume6: 0.0,
+            closure: GeometryClosure::EMPTY,
         }
     }
 
@@ -189,16 +226,31 @@ impl GeometryHasher {
         self.triangle_count == 0
     }
 
-    /// Finalize the entity's geometry hash. Folds in the triangle count so two
-    /// distinct shapes that happen to collide on the commutative triangle sum
-    /// are still separated by their cardinality. Vertex count is intentionally
-    /// excluded: it is ambiguous under shared-vs-duplicated vertices and under
-    /// segment splitting (the same entity may arrive as one mesh or several
-    /// sharing a position buffer), whereas the triangle count is intrinsic and
-    /// additive across segments.
+    /// Finalize the entity's geometry hash: the distinct-vertex sum and the
+    /// per-plane area total.
+    ///
+    /// ## What a difference here means, and what it does not
+    ///
+    /// Two entities hash the same when they use the same set of quantized world
+    /// vertices AND every plane carries the same total area. That covers the
+    /// invariances the surface actually has — retriangulation, a re-rooted fan,
+    /// triangle/segment order, winding — and still separates every genuine edit
+    /// measured against it: a move, a scale, a face lifted out of its plane (new
+    /// plane key), and faces deleted, whether or not their corners survive
+    /// elsewhere in the mesh (the area falls either way).
+    ///
+    /// It is deliberately a weaker discriminator than the triangle set it
+    /// replaced. What it can no longer separate: two arrangements over the SAME
+    /// vertex set giving every plane the same total area (retriangulation is
+    /// the benign member of that family; a re-cut into a different region of
+    /// equal area on the same corners is the malign one, and is not something a
+    /// re-export produces), and a change of TRIANGLE COUNT alone — the count is
+    /// no longer folded in, being exactly what a retriangulation changes.
+    ///
+    /// Unchanged from before: winding is invisible, as is anything below the
+    /// quantization grid.
     pub fn finish(&self) -> u64 {
-        let mut h = self.triangle_accum;
-        h = fold_i64(h, self.triangle_count as i64);
+        let h = fold_i64(self.vertex_accum, self.plane_area_accum as i64);
         mix64(h)
     }
 }
@@ -216,195 +268,5 @@ pub fn hash_mesh_world(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A unit cube (8 verts, 12 triangles) centred near `origin` in world
-    /// coordinates. Returns positions already in world space.
-    fn cube(origin: [f32; 3]) -> (Vec<f32>, Vec<u32>) {
-        let [ox, oy, oz] = origin;
-        let mut positions = Vec::with_capacity(8 * 3);
-        for &x in &[0.0_f32, 1.0] {
-            for &y in &[0.0_f32, 1.0] {
-                for &z in &[0.0_f32, 1.0] {
-                    positions.extend_from_slice(&[ox + x, oy + y, oz + z]);
-                }
-            }
-        }
-        // 12 triangles over the 8 corners (not a watertight ordering — only
-        // needs to be a deterministic, non-degenerate triangle soup).
-        let indices = vec![
-            0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6,
-            4, 1, 5, 7, 1, 7, 3,
-        ];
-        (positions, indices)
-    }
-
-    const TOL: f64 = 1.0e-3;
-
-    #[test]
-    fn rtc_invariance_same_world_geometry() {
-        // Same wall at world position (1_000_000, 0, 0), expressed two ways:
-        //   file A: local = world,            rtc = [0,0,0]
-        //   file B: local = world - 999_000,  rtc = [999_000,0,0]
-        // f32 can't hold 1e6 + sub-metre detail, so build the geometry at a
-        // realistic magnitude where the two encodings reconstruct the same
-        // world coords within f32 precision.
-        let world_origin = [1234.5_f32, -67.25, 8.5];
-        let (pos_a, idx) = cube(world_origin);
-        let a = hash_mesh_world(&pos_a, &idx, [0.0, 0.0, 0.0], TOL);
-
-        let shift = [999_000.0_f64, -2_000.0, 5_000.0];
-        let pos_b: Vec<f32> = pos_a
-            .chunks_exact(3)
-            .flat_map(|c| {
-                [
-                    (c[0] as f64 - shift[0]) as f32,
-                    (c[1] as f64 - shift[1]) as f32,
-                    (c[2] as f64 - shift[2]) as f32,
-                ]
-            })
-            .collect();
-        let b = hash_mesh_world(&pos_b, &idx, shift, TOL);
-
-        assert_eq!(a, b, "RTC offset must not change the geometry hash");
-    }
-
-    #[test]
-    fn translation_is_detected() {
-        let (pos, idx) = cube([0.0, 0.0, 0.0]);
-        let moved: Vec<f32> = pos.chunks_exact(3).flat_map(|c| [c[0] + 1.0, c[1], c[2]]).collect();
-        assert_ne!(
-            hash_mesh_world(&pos, &idx, [0.0; 3], TOL),
-            hash_mesh_world(&moved, &idx, [0.0; 3], TOL),
-            "a 1 m move must change the hash"
-        );
-    }
-
-    #[test]
-    fn degenerate_triangles_do_not_affect_hash() {
-        let (pos, idx) = cube([0.0, 0.0, 0.0]);
-        let base = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);
-
-        // Append zero-area triangles (repeated/coincident corners) — the kind
-        // of triangulation noise that must not move the fingerprint.
-        let mut noisy = idx.clone();
-        noisy.extend_from_slice(&[0, 0, 1]);
-        noisy.extend_from_slice(&[2, 2, 2]);
-        let with_noise = hash_mesh_world(&pos, &noisy, [0.0; 3], TOL);
-
-        assert_eq!(base, with_noise, "zero-area triangles must not change the hash");
-    }
-
-    #[test]
-    fn sub_tolerance_jitter_is_ignored() {
-        // `round(v/tol)` puts cell *centres* at integer multiples of `tol` and
-        // cell *boundaries* at the half-grid `(k+0.5)*tol`. Place verts at
-        // centres (here `10*tol` apart, well clear of boundaries) so a jitter
-        // below half a cell stays inside the same quantization cell.
-        let cell = TOL * 10.0;
-        let base: Vec<f32> = (0..24).map(|i| (i as f32) * (cell as f32)).collect();
-        let idx: Vec<u32> = (0..(base.len() as u32 / 3) - 2)
-            .flat_map(|i| [i, i + 1, i + 2])
-            .collect();
-
-        let jitter = (TOL as f32) * 0.1;
-        let perturbed: Vec<f32> = base.iter().map(|v| v + jitter).collect();
-
-        assert_eq!(
-            hash_mesh_world(&base, &idx, [0.0; 3], TOL),
-            hash_mesh_world(&perturbed, &idx, [0.0; 3], TOL),
-            "jitter below the quantization grid must not change the hash"
-        );
-    }
-
-    #[test]
-    fn triangle_and_vertex_order_invariant() {
-        let (pos, idx) = cube([3.0, 3.0, 3.0]);
-        let canonical = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);
-
-        // Reverse triangle order and rotate each triangle's corners.
-        let mut shuffled = Vec::with_capacity(idx.len());
-        for tri in idx.chunks_exact(3).rev() {
-            shuffled.extend_from_slice(&[tri[1], tri[2], tri[0]]);
-        }
-        assert_eq!(
-            canonical,
-            hash_mesh_world(&pos, &shuffled, [0.0; 3], TOL),
-            "reordering triangles / rotating corners must not change the hash"
-        );
-    }
-
-    #[test]
-    fn winding_invariant() {
-        let (pos, idx) = cube([0.0, 0.0, 0.0]);
-        let canonical = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);
-        let flipped: Vec<u32> =
-            idx.chunks_exact(3).flat_map(|t| [t[0], t[2], t[1]]).collect();
-        assert_eq!(
-            canonical,
-            hash_mesh_world(&pos, &flipped, [0.0; 3], TOL),
-            "reversing winding must not change the hash"
-        );
-    }
-
-    #[test]
-    fn segment_split_matches_single_segment() {
-        // Hashing an entity as one 12-triangle mesh must equal hashing it as
-        // two 6-triangle segments (entities arrive split across submeshes).
-        let (pos, idx) = cube([10.0, 0.0, -4.0]);
-        let single = hash_mesh_world(&pos, &idx, [0.0; 3], TOL);
-
-        let (first, second) = idx.split_at(idx.len() / 2);
-        let mut hasher = GeometryHasher::new(TOL, [0.0; 3]);
-        hasher.add_mesh(&pos, first);
-        hasher.add_mesh(&pos, second);
-        assert_eq!(single, hasher.finish(), "split segments must match a single mesh");
-    }
-
-    #[test]
-    fn distinct_shapes_differ() {
-        let (cube_pos, cube_idx) = cube([0.0, 0.0, 0.0]);
-        let (big_pos, big_idx) = cube([0.0, 0.0, 0.0]);
-        let scaled: Vec<f32> = big_pos.iter().map(|v| v * 2.0).collect();
-        assert_ne!(
-            hash_mesh_world(&cube_pos, &cube_idx, [0.0; 3], TOL),
-            hash_mesh_world(&scaled, &big_idx, [0.0; 3], TOL),
-            "a 2x-scaled cube must hash differently"
-        );
-    }
-
-    /// Documents the tolerance trade-off empirically: a move of exactly one
-    /// grid cell is always detected; the same geometry under pure
-    /// reconstruction noise stays stable. This is the harness to extend with
-    /// real revision pairs when tuning `DEFAULT_GEOM_HASH_TOLERANCE`.
-    #[test]
-    fn tolerance_sweep_sensitivity() {
-        let (pos, idx) = cube([100.0, 50.0, 25.0]);
-        for &tol in &[1.0e-4_f64, 1.0e-3, 1.0e-2, 1.0e-1] {
-            let baseline = hash_mesh_world(&pos, &idx, [0.0; 3], tol);
-
-            // A move of one full grid cell must always register as changed.
-            let one_cell = tol as f32;
-            let moved: Vec<f32> =
-                pos.chunks_exact(3).flat_map(|c| [c[0] + one_cell, c[1], c[2]]).collect();
-            assert_ne!(
-                baseline,
-                hash_mesh_world(&moved, &idx, [0.0; 3], tol),
-                "tol={tol}: a one-cell move must be detected"
-            );
-
-            // A move of one thousandth of a cell must be absorbed. The cube
-            // sits at integer coords; for every tolerance here those land on
-            // cell centres (integer multiples of `tol`), so a tiny nudge stays
-            // in-cell.
-            let tiny = (tol as f32) * 1.0e-3;
-            let nudged: Vec<f32> = pos.iter().map(|v| v + tiny).collect();
-            assert_eq!(
-                baseline,
-                hash_mesh_world(&nudged, &idx, [0.0; 3], tol),
-                "tol={tol}: sub-grid jitter must be absorbed"
-            );
-        }
-    }
-}
+#[path = "geom_hash_tests.rs"]
+mod tests;

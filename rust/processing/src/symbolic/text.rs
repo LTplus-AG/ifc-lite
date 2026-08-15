@@ -32,12 +32,16 @@ pub(super) fn extract_text_literal(
         None => return,
     };
 
+    // `Placement` (IfcTextLiteral attribute 1) is MANDATORY per schema — not
+    // OPTIONAL like IfcProduct.ObjectPlacement (see transform.rs). A dangling
+    // ref or an absent/null attribute here is malformed data, not a
+    // legitimate zero, so both are genuine failures (#2256).
     let placement_transform = match item.get_ref(1) {
         Some(p_ref) => match decoder.decode_by_id(p_ref) {
             Ok(p) => parse_axis2_placement_2d(&p, decoder, unit_scale),
-            Err(_) => Transform2D::identity(),
+            Err(_) => Transform2D::unresolved(), // dangling ref (#2256)
         },
-        None => Transform2D::identity(),
+        None => Transform2D::unresolved(), // mandatory attr absent (#2256)
     };
     let composed = compose_transforms(transform, &placement_transform);
 
@@ -63,6 +67,22 @@ pub(super) fn extract_text_literal(
     };
 
     let (wx, wy) = composed.transform_point(0.0, 0.0);
+    let raw_scale = composed.scale();
+    // Height keeps a ZERO scale (the glyph collapses exactly as the symbol does);
+    // only a non-finite scale falls back. The direction below needs the stricter
+    // positive test, since it divides.
+    let text_scale = if raw_scale.is_finite() { raw_scale } else { 1.0 };
+    // Only the X-axis column (m00, m10) feeds the direction — NOT the Y
+    // column, which is where a mirroring MappingTarget's reflection lives
+    // (see `parse_cartesian_transformation_operator`). Glyphs therefore stay
+    // readable (non-mirrored) under a mirroring transform, same as before
+    // #1994: Axis1 is unaffected by an Axis2 mirror by construction, so this
+    // is not a special case — it falls out of reading only the X column.
+    let dir = if raw_scale.is_finite() && raw_scale > 0.0 {
+        (composed.m00 / raw_scale, -composed.m10 / raw_scale)
+    } else {
+        (1.0, 0.0)
+    };
     let color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.05, 0.05, 0.05, 1.0]);
 
@@ -71,9 +91,15 @@ pub(super) fn extract_text_literal(
         ifc_type: ifc_type.to_string(),
         x: wx - rtc_x,
         y: -wy + rtc_z,
-        dir_x: composed.cos_theta,
-        dir_y: -composed.sin_theta, // mirror to match Y-flipped coord system
-        height: height_model_units * unit_scale,
+        // Direction must stay UNIT: `composed`'s linear block can carry a
+        // mapped-item Scale (#1985), and consumers read this pair as a bare
+        // direction vector. Any scale that is not finite and positive (a
+        // degenerate transform) falls back to +X rather than emitting NaN.
+        dir_x: dir.0,
+        dir_y: dir.1,
+        // The glyph height has to pick that same scale up here: a height never
+        // passes through `transform_point`.
+        height: height_model_units * unit_scale * text_scale,
         content,
         alignment,
         world_y: composed.tz,

@@ -55,6 +55,23 @@ describe('path-locks', () => {
     expect(reg.matches('entities/storey-1/wall', { userId: 'bob', role: 'editor' })).toBeNull();
   });
 
+  // `exemptRoles` had no coverage at all: a mutation turning the
+  // `lock.exemptRoles?.has(principal.role)` check into a no-op (so the
+  // exemption is silently ignored) survived the full suite unchanged
+  // (142/142 still green), because no existing test ever set
+  // `exemptRoles` on a lock. This pins the "the locking admin can still
+  // edit" behaviour documented in the module header.
+  it('registry matches respects exemptRoles', () => {
+    const reg = createPathLockRegistry();
+    const lock = reg.add({
+      prefix: 'entities/storey-1/',
+      label: 'mep-review',
+      exemptRoles: new Set(['admin']),
+    });
+    expect(reg.matches('entities/storey-1/wall', { userId: 'bob', role: 'editor' })).toBe(lock);
+    expect(reg.matches('entities/storey-1/wall', { userId: 'alice', role: 'admin' })).toBeNull();
+  });
+
   it('rejects writes to locked prefixes via verifyAgainstPathLocks', async () => {
     const reg = createPathLockRegistry();
     reg.add({ prefix: 'entities/locked', label: 'frozen' });

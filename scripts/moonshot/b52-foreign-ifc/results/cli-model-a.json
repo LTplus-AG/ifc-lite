@@ -1,0 +1,42 @@
+{
+  "bet": "B5.2",
+  "pass": "cli",
+  "alias": "model-a",
+  "modelSha256Prefix": "1eac13348753",
+  "bytes": 75511560,
+  "validate": {
+    "ok": true,
+    "exitCode": 0,
+    "errorCode": null,
+    "wallMs": 2100.2,
+    "schema": "IFC4",
+    "entityCount": 1083664,
+    "valid": true,
+    "errors": 0,
+    "warnings": 0,
+    "info": 1,
+    "issueCount": 1,
+    "ruleCounts": {
+      "quantity-completeness/info": 1
+    }
+  },
+  "clash": {
+    "ok": true,
+    "exitCode": 0,
+    "errorCode": null,
+    "wallMs": 29051.8,
+    "summary": {
+      "total": 0,
+      "bySeverity": {
+        "critical": 0,
+        "major": 0,
+        "minor": 0,
+        "info": 0
+      },
+      "distinctRules": 0,
+      "distinctTypePairs": 0
+    },
+    "recordsReturned": 0,
+    "truncated": null
+  }
+}

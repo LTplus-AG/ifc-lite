@@ -13,7 +13,7 @@
  * SI-prefix (a drift here means properties scale differently from meshes).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { extractLengthUnitScale } from '../src/unit-extractor.js';
 import type { EntityIndex, EntityRef } from '../src/types.js';
 
@@ -130,5 +130,99 @@ describe('extractLengthUnitScale', () => {
       '#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);',
     ]);
     expect(extractLengthUnitScale(source, entityIndex)).toBe(1.0);
+  });
+
+  // #2104: extractLengthUnitScale returns 1.0 both for "confirmed metres" and
+  // for "I could not determine the scale" — the two are indistinguishable to
+  // every caller unless the unknown case leaves a signal. These pin that a
+  // genuinely unknown unit now warns, that a genuinely confirmed metres
+  // result (no-prefix IFCSIUNIT) does NOT warn, and that the warning is
+  // latched per model (entityIndex) rather than flooding on repeat calls for
+  // the same store.
+  describe('unknown-unit warning (#2104)', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('warns when no length unit is declared at all (genuinely unknown, not confirmed metres)', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);',
+      ]);
+      const scale = extractLengthUnitScale(source, entityIndex);
+      expect(scale).toBe(1.0);
+      expect(warn).toHaveBeenCalled();
+      expect(warn.mock.calls.some(([msg]) => String(msg).includes('#2104'))).toBe(true);
+    });
+
+    it('warns on a missing IFCPROJECT', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([]);
+      expect(extractLengthUnitScale(source, entityIndex)).toBe(1.0);
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('warns on an unrecognized SI prefix', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.LENGTHUNIT.,.BOGUSPREFIX.,.METRE.);',
+      ]);
+      expect(extractLengthUnitScale(source, entityIndex)).toBe(1.0);
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a confirmed metres declaration (no-prefix IFCSIUNIT)', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);',
+      ]);
+      expect(extractLengthUnitScale(source, entityIndex)).toBe(1.0);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('does NOT warn for a resolvable millimetre unit', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);',
+      ]);
+      expect(extractLengthUnitScale(source, entityIndex)).toBeCloseTo(0.001, 10);
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('latches: warns once across many calls for the same model, but a fresh model warns again', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const { source, entityIndex } = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);',
+      ]);
+
+      // Same entityIndex object, called repeatedly (mirrors extract-walls.ts
+      // calling this once per storey on the same store) — only the first
+      // call should warn.
+      extractLengthUnitScale(source, entityIndex);
+      extractLengthUnitScale(source, entityIndex);
+      extractLengthUnitScale(source, entityIndex);
+      expect(warn).toHaveBeenCalledTimes(1);
+
+      // A different model (fresh entityIndex object) is a fresh context and
+      // must report again — this is a two-valued signal (warned/not-warned
+      // per model), not a permanently-tripped module-global latch.
+      const fresh = harness([
+        PROJECT,
+        '#2=IFCUNITASSIGNMENT((#3));',
+        '#3=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);',
+      ]);
+      extractLengthUnitScale(fresh.source, fresh.entityIndex);
+      expect(warn).toHaveBeenCalledTimes(2);
+    });
   });
 });

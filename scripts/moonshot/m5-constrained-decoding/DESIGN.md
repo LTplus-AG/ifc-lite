@@ -148,6 +148,18 @@ run logs under the session scratchpad (`m5/raw`, `m5/ifc`, `m5/*.log`).
   The kernel-feedback loop demonstrably works end to end; the exam tasks
   simply never needed it.
 
+<!-- Numeral provenance, added 2026-07-29 for the numeral gate
+     (scripts/moonshot/ci/check-report-numerals.mjs). No figure in this document
+     is changed; these comments record which numbers results.json /
+     results-tier2.json emit and which they do not. -->
+<!-- numeral-ok: +66.7 :: compile-rate margin in POINTS (percentage-point
+     difference between two rates the artifact stores as fractions), computed in
+     the sentence. -->
+<!-- numeral-ok: 45, 300s :: operational totals of the tier-1 session, not exam
+     results: 45 model calls including smoke tests, the T01 pilot and 3 calls
+     lost to a killed run, and the 300 s per-call timeout the raw-IFC arm needed.
+     The results JSON records per-task outcomes, not session bookkeeping. -->
+
 ## Honest reading vs the M5 midterm bar
 
 - "100 percent of emitted programs compile by construction": PASS, and by
@@ -293,6 +305,10 @@ coupling (T2-07/16), properties at scale (T2-08/17), capstones
 (T2-10/20). A selftest proves all 20 feasible briefs are satisfiable at
 quality 1.0 via hand-written golden programs before any model call.
 
+<!-- numeral-ok: 23 :: the tier-2 brief count (20 feasible + 3 infeasible), a
+     property of the task set defined in tasks-tier2.mjs. results-tier2.json
+     stores the per-task records, not their count. -->
+
 ## 5. Infeasible briefs and anti-laundering scoring
 
 The tier-1 repair probe "converged" by silently rewriting the stated sill
@@ -333,6 +349,27 @@ selection in (b)/(c) matched the rubric-oracle on every task (oracle mean
 = selected mean). 115 model calls total for tier-2 (107 exam including a
 killed-and-resumed chunk, 8 headroom probe), on top of tier-1's 45.
 
+<!-- numeral-src: 1.000 :: none - arm-level MEAN QUALITY, and unbackable rather
+     than merely unbacked: this is the 1.000 that arm (a) scores on the 20
+     feasible briefs, arm (c) scores on the same 20, and arm (a) scores on all
+     23, and no artifact in this tree holds it. Bound to `none` so a coincidental
+     1.000 elsewhere in the union index cannot stand in as provenance. -->
+<!-- numeral-ok: 0.992, 0.906, 0.913 :: the remaining arm-level mean qualities in
+     the two quality rows of the table above. No artifact backs them: this table
+     is RUN 1, and
+     results-tier2.json now holds the replication's records instead (see
+     "Tier-2 replication run" below, which states the overwrite). Run 1's
+     per-task scores survive only as this table. -->
+<!-- numeral-ok: 1.26 :: NOT a quality mean. It is arm (a)'s MEAN CALLS PER TASK
+     in run 1, the last row of the same table, i.e. how often the repair loop
+     fired on top of the one baseline call. Unbacked for the same reason: the
+     comparable field in results-tier2.json is
+     summary.constrained.meanCalls = 1.391, which is the REPLICATION's value and
+     must not be read as this one. -->
+<!-- numeral-ok: 115, 107 :: session bookkeeping again -- total model calls for
+     tier-2 including a killed-and-resumed chunk and the headroom probe. Not exam
+     results and not stored. -->
+
 ### Verdict, stated plainly
 
 Does kernel-feedback decoding beat budget-matched informed sampling at
@@ -357,6 +394,9 @@ Attribution within the infeasibility margin, honestly split:
   draw declared infeasibility; the three baseline draws all emitted
   programs. Same model, same prompt - 1 of 4 draws declared.
 - T2-F1 (grossly obvious): all arms declared. No margin.
+
+<!-- numeral-ok: +0.094, +0.087 :: the two paired margins over the full 23-brief
+     set, i.e. differences of the arm means above. Computed here, not stored. -->
 
 ### What tier-2 actually taught
 
@@ -393,6 +433,10 @@ Attribution within the infeasibility margin, honestly split:
    error message exactly - T2-18 initially EXHAUSTED because of it, the
    validator gained a 1e-9 epsilon, and T2-18 was rerun cleanly for all
    three arms (the pre-fix exhaustion is preserved in exam-run.log).
+
+<!-- numeral-ok: 1e-9 :: the epsilon added to the validator's boundary
+     comparison after the T2-18 floating-point rejection. A code constant, not a
+     measurement. -->
 
 ### Implication for M5
 

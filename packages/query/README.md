@@ -48,11 +48,26 @@ query.spaces().execute();
 query
   .ofType('IfcWall')
   .whereProperty('Qto_WallBaseQuantities', 'NetVolume', '>', 5.0)
-  .whereProperty('Pset_WallCommon', 'FireRating', '!=', null)
+  .whereProperty('Pset_WallCommon', 'FireRating', 'startsWith', 'REI')
   .execute();
 ```
 
-Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`.
+Supported: `=`, `!=`, `>`, `<`, `>=`, `<=`, `contains`, `startsWith`. The first
+argument names either a property set (`Pset_*`) or a quantity set (`Qto_*`).
+
+Comparisons are same-type only — `'60'` does not match `60` — and a `null` on
+either side never matches, including with `!=`. A filter matches when *any*
+property of that name, in *any* set of that name, satisfies it.
+
+On a STEP (`.ifc`) model the property sets are resolved lazily from the source
+buffer rather than from a pre-built index, so `whereProperty` does work per
+*candidate* entity. Narrow with `ofType(...)` / `onStorey(...)` before filtering:
+`query.all().whereProperty(...)` resolves every entity in the model and on a
+large one costs many times the type-scoped form. A cache-restored `.ifc` model
+behaves the same way: the cache stores the property table as it was built, and a
+STEP parse leaves it empty. What decides the path is the store rather than the
+file format — a query answers from the property index whenever the store carries
+table rows. Both paths return the same entities.
 
 ## Graph traversal
 

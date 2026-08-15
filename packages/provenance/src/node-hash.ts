@@ -184,7 +184,88 @@ export type ResolvedNode =
 /* geometry-mesh: FNV-1a64, verbatim determinism.rs encoding             */
 /* ------------------------------------------------------------------ */
 
+const U32_MAX = 0xffff_ffff;
+
+function outOfDomain(what: string, detail: string): never {
+  throw new Error(
+    `@ifc-lite/provenance: geometry-mesh payload is out of domain: ${what} ${detail}. ` +
+      'The encoding in spec §3.1 is a verbatim port of the Rust kernel wire format ' +
+      '(rust/processing/src/determinism.rs), whose fields are u32 / u8 / f32 / f64. Values ' +
+      'the Rust side cannot represent are REJECTED rather than coerced: silently truncating ' +
+      'them (`v >>> 0`, `& 0xff`, f32 narrowing to Infinity) would give distinct payloads the ' +
+      'same node hash, i.e. a second preimage a certificate would happily verify.',
+  );
+}
+
+/** Every `u32` slot: `expressId` and each index. `v >>> 0` would map `100.9`,
+ *  `100 + 2**32` and `-4294967196` all onto `100`. */
+function assertU32(v: number, what: string): void {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > U32_MAX) {
+    outOfDomain(what, `must be an integer in [0, ${U32_MAX}] (got ${String(v)})`);
+  }
+}
+
+/** Every `f32` slot: positions and normals. Rejects non-numbers (which is also
+ *  how an ArrayLike with holes — `{length: 3}` — is caught, instead of hashing
+ *  as `[NaN, NaN, NaN]`), NaN/±Infinity, and finite f64 values that *narrow* to
+ *  ±Infinity in f32 (`1e39` and `1e40` are distinct doubles but the same f32).
+ *  The f32 narrowing of in-range values is inherent to the frozen format and is
+ *  deliberately left alone; only values with no f32 at all are rejected. */
+function assertF32Array(vals: ArrayLike<number>, what: string): void {
+  if (typeof (vals as { length?: unknown })?.length !== 'number') {
+    outOfDomain(what, 'must be an array-like of numbers');
+  }
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i];
+    if (typeof v !== 'number' || !Number.isFinite(v) || !Number.isFinite(Math.fround(v))) {
+      outOfDomain(`${what}[${i}]`, `must be a finite number representable as f32 (got ${String(v)})`);
+    }
+  }
+}
+
+/**
+ * Domain check for a `geometry-mesh` payload, run before any byte is encoded.
+ *
+ * This is NOT part of the wire format and moves no hash: every in-domain
+ * payload encodes exactly as before. It closes the gap between the TypeScript
+ * port's permissive `number` type and the Rust kernel's actual field types —
+ * a gap no golden vector could ever pin, because it is about which payloads
+ * are refused, not about how an accepted payload encodes.
+ */
+function assertGeometryMeshDomain(payload: GeometryMeshPayload): void {
+  assertU32(payload.expressId, 'expressId');
+  if (
+    typeof payload.geometryClass !== 'number' ||
+    !Number.isInteger(payload.geometryClass) ||
+    payload.geometryClass < 0 ||
+    payload.geometryClass > 0xff
+  ) {
+    outOfDomain('geometryClass', `must be an integer in [0, 255] (got ${String(payload.geometryClass)})`);
+  }
+  assertF32Array(payload.positions, 'positions');
+  assertF32Array(payload.normals, 'normals');
+  const indices = payload.indices;
+  if (typeof (indices as { length?: unknown })?.length !== 'number') {
+    outOfDomain('indices', 'must be an array-like of numbers');
+  }
+  for (let i = 0; i < indices.length; i++) assertU32(indices[i], `indices[${i}]`);
+  if ((payload.origin as { length?: unknown })?.length !== 3) {
+    outOfDomain('origin', 'must be exactly 3 components');
+  }
+  for (let i = 0; i < 3; i++) {
+    const c = payload.origin[i];
+    // f64 holds NaN/±Infinity, but they are not a mesh origin, and every NaN
+    // bit pattern collapses to one canonical quiet NaN through `setFloat64` —
+    // so distinct payloads would share a hash.
+    if (typeof c !== 'number' || !Number.isFinite(c)) {
+      outOfDomain(`origin[${i}]`, `must be a finite number (got ${String(c)})`);
+    }
+  }
+}
+
 function computeGeometryMeshHash(payload: GeometryMeshPayload): string {
+  assertGeometryMeshDomain(payload);
+
   let hp = FNV_OFFSET_BASIS_64;
   hp = fnv1aF32Bits(hp, payload.positions);
 
@@ -195,7 +276,10 @@ function computeGeometryMeshHash(payload: GeometryMeshPayload): string {
   hio = fnv1aBytes64(hio, u32LEBytes(payload.expressId));
   hio = fnv1aBytes64(hio, Uint8Array.of(payload.geometryClass & 0xff));
   hio = fnv1aU32s(hio, payload.indices);
-  for (const c of payload.origin) hio = fnv1aBytes64(hio, f64BitsLEBytes(c));
+  // Indexed (not `for...of`) so a non-iterable 3-length ArrayLike encodes the
+  // same way `assertGeometryMeshDomain` validated it. Byte-identical for the
+  // arrays and typed arrays every real caller passes.
+  for (let i = 0; i < 3; i++) hio = fnv1aBytes64(hio, f64BitsLEBytes(payload.origin[i]));
 
   let top = FNV_OFFSET_BASIS_64;
   top = fnv1aBytes64(top, u64LEBytes(hp));
@@ -216,11 +300,27 @@ const KIND_TAG: Record<Exclude<NodeKind, 'geometry-mesh'>, number> = {
   element: 4,
 };
 
-/** Ordinal UTF-8 byte compare — NOT locale-aware, so sort order never
- *  depends on ICU/locale data across runtimes (spec §3.2). */
+/**
+ * Ordinal UTF-8 byte compare — NOT locale-aware, so sort order never depends
+ * on ICU/locale data across runtimes (spec §3.2).
+ *
+ * Compares the **NFC-normalized** bytes, exactly the bytes {@link ByteWriter.str}
+ * will later encode. Sorting the raw strings while encoding the normalized ones
+ * would let the *pre-normalization spelling* pick the set order: `{"é"(NFD),
+ * "z"}` and `{"é"(NFC), "z"}` are the same set after NFC, but raw-byte order
+ * puts `é`(NFD, `0x65 0xcc 0x81`) before `z` and `é`(NFC, `0xc3 0xa9`) after it,
+ * so one canonical input would produce two different hashes. That dual is worse
+ * for a verifier than a collision — it makes "recompute and compare" fail on
+ * honest data. Sort key and encoding must agree; they are the same bytes here.
+ *
+ * Ties — two entries of one set whose keys normalize to the SAME NFC form — are
+ * not resolved here and must not be: see {@link assertUniqueSetKeys}. Equal keys
+ * have no defined order, so a keyed set containing them has no canonical form,
+ * and such payloads are rejected before anything is encoded.
+ */
 function compareUtf8(a: string, b: string): number {
-  const ea = textEncoder.encode(a);
-  const eb = textEncoder.encode(b);
+  const ea = textEncoder.encode(a.normalize('NFC'));
+  const eb = textEncoder.encode(b.normalize('NFC'));
   const len = Math.min(ea.length, eb.length);
   for (let i = 0; i < len; i++) {
     if (ea[i] !== eb[i]) return ea[i] - eb[i];
@@ -229,6 +329,94 @@ function compareUtf8(a: string, b: string): number {
 }
 
 const textEncoder = new TextEncoder();
+
+/**
+ * Thrown when a keyed set (property-set properties, relationship roles, element
+ * components) carries two entries whose keys are EQUAL under the canonical
+ * comparison — either the same string twice, or two different spellings with
+ * the same NFC form (`"Ä"` vs `"Ä"`).
+ *
+ * Such a payload has no canonical form, which in a hash-based identity scheme
+ * is a second preimage. Both halves are real and both were observed on the
+ * pre-freeze encoder (see spec §3.2):
+ *
+ * - **Ambiguity.** Equal keys have no defined order, so which of the two the
+ *   sort emits first is unspecified — but each entry carries a VALUE beyond its
+ *   key, so the two orders write different value bytes and hash differently.
+ *   One logical set, two roots: "recompute and compare" fails on honest data.
+ * - **Second preimage.** Because the sort key and the encoded key are the same
+ *   NFC bytes, two genuinely different payloads — `{"Ä": A, "Ä": B}`
+ *   and `{"Ä": A, "Ä": B}`, which disagree about which spelling
+ *   holds which value — produce byte-identical encodings and therefore one
+ *   hash. A certificate would happily verify the wrong model.
+ *
+ * Rejecting is the right resolution rather than inventing a tiebreak (e.g.
+ * falling back to raw-byte order): a tiebreak makes the hash deterministic
+ * again, but it does so by blessing two distinct models as one — it keeps the
+ * second preimage and only hides the ambiguity. Refusing to hash keeps the
+ * hash total on the payloads it does accept.
+ *
+ * Like the geometry-mesh domain checks, this is a **conformance rule, not part
+ * of the wire format**: it changes no accepted payload's bytes, and no golden
+ * vector can pin it, because a vector fixes how an accepted payload encodes
+ * while this fixes which payloads are accepted at all.
+ */
+export class AmbiguousSetKeyError extends Error {
+  /** The set-valued field that carried the duplicate, e.g. `'property-set.properties'`. */
+  readonly field: string;
+  /** The shared NFC-normalized key the two entries collapse onto. */
+  readonly normalizedKey: string;
+  /** The two raw spellings, in producer order. */
+  readonly rawKeys: readonly [string, string];
+
+  constructor(field: string, rawA: string, rawB: string) {
+    const normalized = rawA.normalize('NFC');
+    const escape = (s: string) =>
+      [...s].map((c) => (c.codePointAt(0)! < 0x7f ? c : `\\u{${c.codePointAt(0)!.toString(16)}}`)).join('');
+    super(
+      `@ifc-lite/provenance: ${field} has two entries with the same key after NFC ` +
+        `normalization: "${escape(rawA)}" and "${escape(rawB)}" both normalize to ` +
+        `"${escape(normalized)}". A set with duplicate keys has no canonical form — the ` +
+        'entries carry different values, so the order the sort happens to pick decides the ' +
+        'bytes (one model, two hashes), and swapping which spelling holds which value ' +
+        'produces the SAME bytes (two models, one hash — a second preimage a certificate ' +
+        'would verify). node-hash-v0 REJECTS these payloads rather than picking a tiebreak, ' +
+        'which would only hide the ambiguity while keeping the collision (spec §3.2). ' +
+        'Deduplicate or re-spell the keys before hashing.',
+    );
+    this.name = 'AmbiguousSetKeyError';
+    this.field = field;
+    this.normalizedKey = normalized;
+    this.rawKeys = [rawA, rawB];
+  }
+}
+
+/**
+ * Reject a keyed set whose keys are not unique under the canonical comparison.
+ *
+ * Runs on the ALREADY-SORTED array: {@link compareUtf8} returns 0 exactly for
+ * keys that collapse to the same NFC bytes, so all such entries form one
+ * contiguous run after sorting and an adjacent-pair scan is complete in O(n).
+ *
+ * Deliberately NOT applied to the bare child-hash sets (`relationship` role
+ * refs, `layer.childHashes`). There an entry IS its key: it carries no payload
+ * beyond the string that was sorted, so equal entries encode to identical bytes
+ * and the byte stream genuinely does not depend on their relative order. No
+ * ambiguity exists there, so rejecting would refuse payloads that hash
+ * unambiguously today — an unforced narrowing of the frozen format's accepted
+ * input set.
+ */
+function assertUniqueSetKeys<T>(
+  sorted: readonly T[],
+  keyOf: (entry: T) => string,
+  field: string,
+): void {
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = keyOf(sorted[i - 1]);
+    const cur = keyOf(sorted[i]);
+    if (compareUtf8(prev, cur) === 0) throw new AmbiguousSetKeyError(field, prev, cur);
+  }
+}
 
 /** Growable little-endian byte writer implementing the common framing rules
  *  from spec §3.2 (magic header, length-prefixed strings, LE integers/floats). */
@@ -297,6 +485,7 @@ function encodePropertySet(payload: PropertySetPayload): Uint8Array {
   w.header('property-set');
   w.str(payload.name);
   const sorted = [...payload.properties].sort((a, b) => compareUtf8(a.name, b.name));
+  assertUniqueSetKeys(sorted, (p) => p.name, 'property-set.properties');
   w.u32(sorted.length);
   for (const p of sorted) {
     w.str(p.name);
@@ -310,6 +499,7 @@ function encodeRelationship(payload: RelationshipPayload): Uint8Array {
   w.header('relationship');
   w.str(payload.relType);
   const roles = [...payload.roles].sort((a, b) => compareUtf8(a.roleName, b.roleName));
+  assertUniqueSetKeys(roles, (r) => r.roleName, 'relationship.roles');
   w.u32(roles.length);
   for (const role of roles) {
     w.str(role.roleName);
@@ -336,6 +526,7 @@ function encodeElement(payload: ElementPayload): Uint8Array {
   w.str(payload.key);
   w.str(payload.ifcType);
   const comps = [...payload.components].sort((a, b) => compareUtf8(a.componentKey, b.componentKey));
+  assertUniqueSetKeys(comps, (c) => c.componentKey, 'element.components');
   w.u32(comps.length);
   for (const c of comps) {
     w.str(c.componentKey);

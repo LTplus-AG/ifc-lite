@@ -18,7 +18,7 @@ Sequence, using the existing paid IFCX panel engagement (Evandro) and the geomet
 
 | Partner | Integration | Why |
 |---|---|---|
-| **Motif** | Their native IFC import (current SOW) emits base layers; their edits emit layers; their UI embeds the review viewer via `@ifc-lite/embed-sdk` | Turns the SOW relationship into platform adoption; their ex-Autodesk enterprise buyers are exactly who pays for audit |
+| **AEC design platforms** | A native IFC import emits base layers; in-platform edits emit layers; the platform UI embeds the review viewer via `@ifc-lite/embed-sdk` | Turns an integration into platform adoption, and enterprise buyers in this segment are the ones who pay for audit |
 | **IfcOpenShell / Bonsai (Dion)** | A python writer emitting layer changesets; Bonsai as a desktop authoring client publishing to the registry | Instantly cross-ecosystem; fits the already-discussed IFClite-as-web-viewer collaboration |
 | **buildingSMART validation svc** | Their checks as registry check providers | Required-checks credibility |
 | **Lignum / DBL / GS1 (Hansueli, Thomas G.)** | Manufacturer DPP data as signed vendor layers | The Porto "last mile" talk, productized |

@@ -56,6 +56,15 @@ export class ViewerManager {
   private listeners = new Set<SelectionListener>();
   private sseAbort: AbortController | null = null;
   private resolveModel: (id: string | null) => LoadedModel | null;
+  /**
+   * Once-per-session latches for the two high-frequency degradation paths
+   * below (`handleSseFrame`, `handlePicked`). Both triggers are viewer/client
+   * controlled and can repeat once per frame or once per pick — logging every
+   * occurrence would let a misbehaving or hostile viewer client flood the
+   * host console. Reset in `open()` so a fresh session reports again.
+   */
+  private sseParseWarned = false;
+  private globalIdWarned = false;
 
   constructor(resolveModel: (id: string | null) => LoadedModel | null) {
     this.resolveModel = resolveModel;
@@ -111,6 +120,8 @@ export class ViewerManager {
     this.modelId = model.id;
     this.startedAt = Date.now();
     this.currentSelection = [];
+    this.sseParseWarned = false;
+    this.globalIdWarned = false;
     this.subscribeToEvents();
     return this.state() as ViewerState;
   }
@@ -200,7 +211,22 @@ export class ViewerManager {
     let parsed: { action?: string; expressId?: number; ifcType?: string };
     try {
       parsed = JSON.parse(payload) as typeof parsed;
-    } catch {
+    } catch (err) {
+      // Legitimately silent as a *control-flow* matter: the viewer's SSE
+      // stream carries frames this client does not model (and
+      // comment/keepalive lines). A frame we can't parse is one we don't act
+      // on — dropping it loses nothing, and the caller's contract (no throw)
+      // is unchanged. But it should not be silent as a *diagnostic* matter:
+      // warn once per session rather than once per frame, since this trigger
+      // is server-controlled and can repeat at frame frequency.
+      if (!this.sseParseWarned) {
+        this.sseParseWarned = true;
+        // eslint-disable-next-line no-console
+        console.warn(
+          '[viewer-manager] SSE frame failed to parse as JSON; dropping it (further occurrences this session are suppressed)',
+          err,
+        );
+      }
       return;
     }
     if (parsed.action === 'picked' && typeof parsed.expressId === 'number') {
@@ -214,7 +240,22 @@ export class ViewerManager {
     if (model && model.store.entityIndex.byId.has(expressId)) {
       try {
         globalId = new EntityNode(model.store, expressId).globalId || undefined;
-      } catch {
+      } catch (err) {
+        // Legitimately silent as a *control-flow* matter: GlobalId is an
+        // optional enrichment of the selection event. Its absence is already
+        // representable (`undefined`) and the selection is still reported
+        // with expressId + ifcType — the caller's contract does not change.
+        // But it should not be silent as a *diagnostic* matter: warn once
+        // per session rather than once per pick, since picks are
+        // viewer-client controlled and can repeat quickly.
+        if (!this.globalIdWarned) {
+          this.globalIdWarned = true;
+          // eslint-disable-next-line no-console
+          console.warn(
+            '[viewer-manager] globalId enrichment failed; reporting selection without globalId (further occurrences this session are suppressed)',
+            err,
+          );
+        }
         globalId = undefined;
       }
     }

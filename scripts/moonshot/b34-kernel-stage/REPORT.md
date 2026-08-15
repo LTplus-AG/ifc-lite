@@ -89,6 +89,24 @@ cargo run --release --manifest-path extractor/Cargo.toml -- \
 node harness-b34.mjs --dir=<scratch> --models=duplex,advanced,holter,c20,i129
 ```
 
+<!-- Numeral provenance, added 2026-07-29 for the numeral gate
+     (scripts/moonshot/ci/check-report-numerals.mjs). No figure in this report is
+     changed; these comments record which numbers report.b34.json emits and which
+     it does not. -->
+<!-- numeral-ok: 640, 96, 96B :: format constants of the path-C encoding, not
+     measurements: a 640-bit exact integer accumulator over 96-byte tuples. Fixed
+     by the kernel's design and stated in the WGSL, not emitted by any report. -->
+<!-- numeral-ok: 194 :: the number of jobs that PASSED the byte-identity fidelity
+     gate, summed over report.b34.json's five per-model `meta.fidelityChecked`
+     fields: models[0..4].meta.fidelityChecked = 10 (duplex) + 13 (advanced) + 2
+     (holter) + 68 (c20) + 101 (i129) = 194. It is NOT the sum of `meta.jobs`,
+     which is 208: i129 declares 115 jobs but only 101 were fidelity-checked,
+     the 14 batched i129 jobs being excluded. numeral-src cannot express this
+     because no single field holds the total; the five addends are individually
+     bindable and are named above so the sum is checkable by hand. -->
+<!-- numeral-ok: 82% :: the void-CSG share of load time, from the repo's separate
+     CSG performance investigation, not from this bet. -->
+
 ## 2. What the real workload actually looks like
 
 First honest finding: on typical models the mesh-kernel void stage is far
@@ -123,6 +141,24 @@ grazing contacts), nothing like random inputs; per-tuple those cost the CPU
 adaptive path ~6x more (~65 ns vs ~10 ns native), and up to 68% of the
 stage's CPU time (duplex).
 
+<!-- numeral-ok: 20.8%, 35.8%, 18.1%, 6.4% :: shares computed in the table row
+     from two counts PRINTED IN THAT SAME ROW, so the arithmetic is checkable on
+     the line. 20.8%, 18.1% and 6.4% are `meta.nearCoplanarPairs` over
+     `meta.totalPairs`; 35.8% is `meta.signCounts.zero` over `meta.tuples`. All
+     four operand fields are in report.b34.json, which stores the operands and
+     not the ratio. -->
+<!-- numeral-ok: 25.8%, 4.4%, 8.3% :: also `meta.signCounts.zero` over
+     `meta.tuples`, but written BARE in the "exact-Zero signs" column with no
+     count beside them, so unlike 35.8% their numerator is not on the line and
+     has to be read out of report.b34.json: advanced 1203/4656, holter 238/5448,
+     i129 22861/274254. -->
+<!-- numeral-src: 1.2% :: none - the fourth bare zero-sign share, c20's
+     162/14016 = 1.156%, rounded to 1.2%. Bound to `none` because a bare 1.2
+     resolves against unrelated fields in the union index, and this ratio is
+     stored by no artifact any more than the three above it. -->
+<!-- numeral-ok: 108k :: rounded tuple count of the single largest i129 element,
+     a per-element figure the model-level report does not break out. -->
+
 ## 3. Manifest parity (the exam's correctness bar): EXACT - PASS
 
 Every extracted tuple was evaluated three independent ways: (a) Rust
@@ -139,6 +175,14 @@ in-page BigInt exact oracle.
 - The x8-tiled i129 run (2,194,032 tuples) is also 0-mismatch.
 
 Sign-for-sign, the stage's GPU result is byte-identical to the CPU path.
+
+<!-- numeral-ok: 302,490 :: the exact sum of report.b34.json's five per-model
+     `meta.tuples` values (4,116 + 4,656 + 5,448 + 14,016 + 274,254). The artifact
+     stores the addends, not the total. -->
+<!-- numeral-ok: 2,194,032 :: tuple count of the x8-tiled i129 SYNTHETIC run,
+     which was produced by amplifying the corpus at run time
+     (report.b34.json's `amplify` is null for the committed run) and whose own
+     report was not committed. -->
 
 ## 4. Stage speedup vs the >=5x exam bar: split verdict
 
@@ -192,6 +236,11 @@ before any of the GPU's batching constraints. The B2.5 library beats every
 *exact-tier* CPU evaluation it is put against; it does not beat a
 well-engineered adaptive filter at this stage's realized arithmetic.
 
+<!-- numeral-ok: 0.6ms, 34.8ms, 175.8ms, 0.20x :: 0.1-0.6 ms is the observed
+     per-dispatch floor range, an envelope rather than a stored field; the
+     34.8/175.8 ms row is the x8-tiled i129 SYNTHETIC run described above, whose
+     report was not committed, and 0.20x is that row's ratio. -->
+
 ## 5. Integration plan for the real Rust/wasm path - and whether the win survives
 
 **Where the seam is.** `arrangement::arrange` (and `arrange_many`): step 1
@@ -230,6 +279,15 @@ lever for the arrangement's explicit-predicate stage is refuted by the
 measured workload, and honestly so: the predicates are not the bottleneck the
 moonshot framing assumed at this stage; the adaptive filter already deleted
 the cost the GPU was supposed to delete.
+
+<!-- numeral-ok: 5000x, 135x :: 5000x is the escalated interval/exact tier cost
+     per call from the kernel's own budget.rs profiling (the #1109 stall family).
+     The range "25-135x" quotes BOTH endpoints of B2.5's exact-CPU-tier result
+     table in scripts/moonshot/gpu-predicates/DESIGN.md: the low endpoint is the
+     1e6-tuple row's 24.6x, rounded UP to 25; the high endpoint is the 1e7-tuple
+     row's 135.1x, rounded DOWN to 135. That table is markdown, not JSON, so
+     neither endpoint can be bound with numeral-src to a field, and neither is
+     emitted by report.b34.json - it is a different bet's run. -->
 
 ## 6. Files
 

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const wasmMocks = vi.hoisted(() => {
   const buildPrePassOnce = vi.fn();
@@ -59,21 +59,25 @@ vi.mock('@ifc-lite/wasm', () => ({
 
 import { GeometryProcessor } from './index.js';
 
-describe('GeometryProcessor byte streaming fallback', () => {
-  const originalThreshold = (GeometryProcessor as any).largeFileByteStreamingThreshold;
-
+// `processStreaming()` always runs the byte-based prepass/batch path — it is
+// not gated by file size (there is no "small file" alternative streaming
+// path to fall back from). This suite mocks the WASM bridge and exercises
+// `processStreaming()` directly to pin that behaviour: the byte prepass and
+// batch-processing calls it makes, the event sequence it yields, and its
+// WASM-handle `.free()` / re-entrancy discipline. It does NOT depend on
+// `GeometryProcessor`'s private `largeFileByteStreamingThreshold` static
+// (`index.ts`) — that field is never read by production code (see
+// `processAdaptive`'s separate, locally-scoped `sizeThreshold`, which is the
+// actual small/large-file gate, and only applies to `processAdaptive`, not
+// `processStreaming`).
+describe('GeometryProcessor byte streaming (processStreaming, mocked WASM)', () => {
   beforeEach(() => {
     wasmMocks.init.mockClear();
     wasmMocks.buildPrePassOnce.mockReset();
     wasmMocks.processGeometryBatch.mockReset();
-    (GeometryProcessor as any).largeFileByteStreamingThreshold = 1;
   });
 
-  afterEach(() => {
-    (GeometryProcessor as any).largeFileByteStreamingThreshold = originalThreshold;
-  });
-
-  it('uses byte-based prepass and batch processing for large files', async () => {
+  it('uses byte-based prepass and batch processing', async () => {
     wasmMocks.buildPrePassOnce.mockReturnValue({
       jobs: new Uint32Array([11, 0, 42]),
       totalJobs: 1,

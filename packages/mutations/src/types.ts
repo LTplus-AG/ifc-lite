@@ -61,6 +61,11 @@ export type MutationType =
   | 'CREATE_QUANTITY'
   | 'UPDATE_QUANTITY'
   | 'DELETE_QUANTITY'
+  /** A whole quantity set removed, the twin of `DELETE_PROPERTY_SET`. Distinct
+   *  from `DELETE_QUANTITY`, which names one quantity inside a set: replaying a
+   *  set removal as a member removal drops the set's other members on the
+   *  floor, and both replay consumers key off `propName` being present. */
+  | 'DELETE_QUANTITY_SET'
   | 'UPDATE_ATTRIBUTE'
   | 'UPDATE_POSITIONAL_ATTRIBUTE'
   | 'UPDATE_ENTITY_TYPE'
@@ -200,6 +205,67 @@ export interface NewEntity {
   expressId: number;
   type: string;
   attributes: IfcAttributeValue[];
+}
+
+/**
+ * Kind of an {@link EffectiveChange} — mirrors the overlay sources
+ * `MutablePropertyView.getEffectiveChanges()` reads.
+ */
+export type EffectiveChangeKind =
+  | 'attribute'
+  | 'property'
+  | 'quantity'
+  | 'pset-added'
+  | 'pset-deleted'
+  | 'qset-added'
+  | 'qset-deleted'
+  | 'type'
+  | 'entity-added'
+  | 'entity-deleted';
+
+/**
+ * One change as the overlay CURRENTLY stands, for `getEffectiveChanges()`.
+ *
+ * Unlike a {@link Mutation} from `mutationHistory` (append-only — undo does
+ * not pop it, see `MutablePropertyView.getMutations()`), this is derived
+ * fresh from the live overlay maps every call, so it always agrees with
+ * `hasPendingChanges()` / `getModifiedEntityCount()` — including after an
+ * undo→redo cycle.
+ */
+export interface EffectiveChange {
+  /** Entity EXPRESS ID the change applies to. */
+  entityId: number;
+  /** What kind of overlay entry this is. */
+  kind: EffectiveChangeKind;
+  /** Pset/Qset name, for 'property' | 'quantity' | 'pset-added' | 'pset-deleted' | 'qset-added' | 'qset-deleted'. */
+  setName?: string;
+  /** Attribute / property / quantity name, where applicable. */
+  name?: string;
+  /**
+   * Previous value, stringified. Derived from the base data (property table /
+   * on-demand extractor / attribute extractor) — NEVER from `mutationHistory`
+   * — so it stays correct across undo→redo. Absent when the base value can't
+   * be resolved (e.g. no extractor registered, or the property/attribute did
+   * not exist before this session).
+   */
+  previousValue?: string;
+  /**
+   * New value, stringified. Absent both for a DELETE-operation
+   * property/quantity AND for a SET whose stored value is `null` (`null` is
+   * a legitimate, present-but-empty value — e.g. an unset Boolean added from
+   * bSDD, issue #1107 — not an absence). `deleted` below is the only
+   * reliable signal for telling those two apart; do not infer "deleted" from
+   * `newValue === undefined` alone.
+   */
+  newValue?: string;
+  /**
+   * `true` only for a `kind: 'property' | 'quantity'` row backed by a DELETE
+   * mutation (the property/quantity is actually removed on export).
+   * Undefined/`false` for every other row, including a SET whose value
+   * happens to stringify to `undefined` (a `null` value) — that row still
+   * carries a value, just an empty one, and must not render as deleted.
+   */
+  deleted?: boolean;
 }
 
 /**

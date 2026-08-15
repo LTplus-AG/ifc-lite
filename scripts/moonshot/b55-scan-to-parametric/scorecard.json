@@ -1,0 +1,1348 @@
+{
+  "bet": "B5.5 scan-to-parametric (M5 final)",
+  "generatedAt": "2026-08-02T06:42:52.386Z",
+  "bar": 0.05,
+  "elapsedSeconds": 4.896,
+  "elapsedSecondsAfterIngest": 1.29,
+  "primaryVariant": "axisAligned",
+  "scan": {
+    "sourceBytes": 3939103744,
+    "decodedPointCount": 69453196,
+    "keptPointCount": 6945320,
+    "stride": 10,
+    "hasColor": true,
+    "hasIntensity": false,
+    "nonFinite": 0,
+    "bboxExtentM": [
+      11.806451797485352,
+      11.625611305236816,
+      2.738025426864624
+    ],
+    "densityPerM3": 184807.48697576692,
+    "densityPerPlanM2": 506007.5984146027,
+    "ingestSeconds": 3.606,
+    "megaPointsPerSecond": 19.260453688297282,
+    "planes": {
+      "floor": {
+        "z": -1.368653498211528,
+        "peakZ": -1.37,
+        "peakBinPoints": 5812039,
+        "bandPoints": 15699994
+      },
+      "ceiling": {
+        "z": 1.162556697541462,
+        "peakZ": 1.1599999999999997,
+        "peakBinPoints": 2730281,
+        "bandPoints": 8160054
+      },
+      "clearHeightM": 2.53121019575299
+    }
+  },
+  "reference": {
+    "spaceCount": 4,
+    "typeCounts": {
+      "IfcWallStandardCase": 23,
+      "IfcSlab": 4,
+      "IfcSpace": 4,
+      "IfcWindow": 3,
+      "IfcDoor": 3,
+      "IfcBuildingElementProxy": 1,
+      "IfcOpeningElement": 6
+    },
+    "spaces": [
+      {
+        "label": "ref_space_A",
+        "floorAreaM2": 43.36136446244346,
+        "volumeM3": 104.77688911677338,
+        "clearHeightM": 2.4384000301361084,
+        "lateralAreaM2": 83.52852274613126
+      },
+      {
+        "label": "ref_space_B",
+        "floorAreaM2": 14.202596481499,
+        "volumeM3": 34.63060763636469,
+        "clearHeightM": 2.4384000301361084,
+        "lateralAreaM2": 36.93400811734594
+      },
+      {
+        "label": "ref_space_C",
+        "floorAreaM2": 4.583463275531415,
+        "volumeM3": 10.610683868856247,
+        "clearHeightM": 2.314992666244507,
+        "lateralAreaM2": 20.10201541618663
+      },
+      {
+        "label": "ref_space_D",
+        "floorAreaM2": 2.4196738568013245,
+        "volumeM3": 5.900133011061378,
+        "clearHeightM": 2.4384000301361084,
+        "lateralAreaM2": 18.45662822497431
+      }
+    ],
+    "heightAudit": {
+      "method": "full-cloud z histogram, 1 cm bins, +-1 cm around the tested elevation",
+      "scanFittedCeilingZ": 1.162556697541462,
+      "pointsAtScanFittedCeiling": 6586376,
+      "backgroundPer3Bins": 540204,
+      "spaces": [
+        {
+          "label": "ref_space_A",
+          "floorAreaM2": 43.36136446244346,
+          "heightM": 2.4384000301361084,
+          "topElevationM": 1.0723999738693237,
+          "scanPointsWithin1cmOfTop": 351062,
+          "unsupportedByScan": true
+        },
+        {
+          "label": "ref_space_B",
+          "floorAreaM2": 14.202596481499,
+          "heightM": 2.4384000301361084,
+          "topElevationM": 1.0723999738693237,
+          "scanPointsWithin1cmOfTop": 351062,
+          "unsupportedByScan": true
+        },
+        {
+          "label": "ref_space_C",
+          "floorAreaM2": 4.583463275531415,
+          "heightM": 2.314992666244507,
+          "topElevationM": 0.9489926099777222,
+          "scanPointsWithin1cmOfTop": 1645945,
+          "unsupportedByScan": false
+        },
+        {
+          "label": "ref_space_D",
+          "floorAreaM2": 2.4196738568013245,
+          "heightM": 2.4384000301361084,
+          "topElevationM": 1.0723999738693237,
+          "scanPointsWithin1cmOfTop": 351062,
+          "unsupportedByScan": true
+        }
+      ]
+    }
+  },
+  "variants": {
+    "axisAligned": {
+      "ceilingCut": {
+        "used": 2.131,
+        "sweepLoM": 1.4,
+        "sweepStepM": 0.05,
+        "sweepSamples": 23,
+        "plateau": {
+          "length": 5,
+          "lo": 2.031,
+          "hi": 2.231,
+          "roomCount": 3
+        },
+        "plateausByRoomCount": [
+          {
+            "length": 5,
+            "lo": 2.031,
+            "hi": 2.231,
+            "roomCount": 3
+          },
+          {
+            "length": 3,
+            "lo": 1.881,
+            "hi": 1.981,
+            "roomCount": 2
+          },
+          {
+            "length": 9,
+            "lo": 1.431,
+            "hi": 1.831,
+            "roomCount": 1
+          }
+        ],
+        "sweep": [
+          {
+            "cut": 2.531,
+            "roomCount": 2,
+            "totalArea": 37.22375000000001,
+            "areas": [
+              27.134,
+              10.089
+            ]
+          },
+          {
+            "cut": 2.481,
+            "roomCount": 2,
+            "totalArea": 44.34125000000001,
+            "areas": [
+              31.642,
+              12.699
+            ]
+          },
+          {
+            "cut": 2.431,
+            "roomCount": 3,
+            "totalArea": 45.61562500000001,
+            "areas": [
+              31.751,
+              12.767,
+              1.098
+            ]
+          },
+          {
+            "cut": 2.381,
+            "roomCount": 3,
+            "totalArea": 46.42875000000001,
+            "areas": [
+              31.83,
+              12.786,
+              1.813
+            ]
+          },
+          {
+            "cut": 2.331,
+            "roomCount": 3,
+            "totalArea": 48.13062500000001,
+            "areas": [
+              33.499,
+              12.802,
+              1.829
+            ]
+          },
+          {
+            "cut": 2.281,
+            "roomCount": 3,
+            "totalArea": 58.95500000000001,
+            "areas": [
+              42.602,
+              12.81,
+              3.543
+            ]
+          },
+          {
+            "cut": 2.231,
+            "roomCount": 3,
+            "totalArea": 60.516250000000014,
+            "areas": [
+              43.051,
+              12.817,
+              4.648
+            ]
+          },
+          {
+            "cut": 2.181,
+            "roomCount": 3,
+            "totalArea": 60.76750000000001,
+            "areas": [
+              43.281,
+              12.823,
+              4.663
+            ]
+          },
+          {
+            "cut": 2.131,
+            "roomCount": 3,
+            "totalArea": 60.86062500000001,
+            "areas": [
+              43.366,
+              12.825,
+              4.669
+            ]
+          },
+          {
+            "cut": 2.081,
+            "roomCount": 3,
+            "totalArea": 61.03562500000002,
+            "areas": [
+              43.521,
+              12.837,
+              4.678
+            ]
+          },
+          {
+            "cut": 2.031,
+            "roomCount": 3,
+            "totalArea": 61.17687500000001,
+            "areas": [
+              43.654,
+              12.841,
+              4.682
+            ]
+          },
+          {
+            "cut": 1.981,
+            "roomCount": 2,
+            "totalArea": 61.26750000000001,
+            "areas": [
+              48.423,
+              12.845
+            ]
+          },
+          {
+            "cut": 1.931,
+            "roomCount": 2,
+            "totalArea": 61.32562500000002,
+            "areas": [
+              48.474,
+              12.852
+            ]
+          },
+          {
+            "cut": 1.881,
+            "roomCount": 2,
+            "totalArea": 61.37750000000001,
+            "areas": [
+              48.519,
+              12.859
+            ]
+          },
+          {
+            "cut": 1.831,
+            "roomCount": 1,
+            "totalArea": 61.421250000000015,
+            "areas": [
+              61.421
+            ]
+          },
+          {
+            "cut": 1.781,
+            "roomCount": 1,
+            "totalArea": 61.45750000000001,
+            "areas": [
+              61.458
+            ]
+          },
+          {
+            "cut": 1.731,
+            "roomCount": 1,
+            "totalArea": 61.52500000000001,
+            "areas": [
+              61.525
+            ]
+          },
+          {
+            "cut": 1.681,
+            "roomCount": 1,
+            "totalArea": 61.578125000000014,
+            "areas": [
+              61.578
+            ]
+          },
+          {
+            "cut": 1.631,
+            "roomCount": 1,
+            "totalArea": 61.62937500000001,
+            "areas": [
+              61.629
+            ]
+          },
+          {
+            "cut": 1.581,
+            "roomCount": 1,
+            "totalArea": 61.66562500000001,
+            "areas": [
+              61.666
+            ]
+          },
+          {
+            "cut": 1.531,
+            "roomCount": 1,
+            "totalArea": 61.69687500000001,
+            "areas": [
+              61.697
+            ]
+          },
+          {
+            "cut": 1.481,
+            "roomCount": 1,
+            "totalArea": 61.73000000000001,
+            "areas": [
+              61.73
+            ]
+          },
+          {
+            "cut": 1.431,
+            "roomCount": 1,
+            "totalArea": 61.938125000000014,
+            "areas": [
+              61.938
+            ]
+          }
+        ]
+      },
+      "principalFrame": {
+        "enabled": false,
+        "thetaRad": 0,
+        "thetaDeg": 0
+      },
+      "rooms": [
+        {
+          "id": "scan_room_001",
+          "rasterAreaM2": 45.22562500000001,
+          "outlineAreaM2": 45.47624999999979,
+          "polygonAreaM2": 45.57593750000002,
+          "polygonPerimeterM": 47.572973470290705,
+          "polygonVertices": 76,
+          "heightM": 2.538653498211528,
+          "filledHoles": 920,
+          "filledHoleAreaM2": 1.8550000000000004,
+          "unfilledHoles": 1,
+          "largestHoleM2": 0.25062500000000004
+        },
+        {
+          "id": "scan_room_002",
+          "rasterAreaM2": 13.143750000000002,
+          "outlineAreaM2": 14.421249999999926,
+          "polygonAreaM2": 14.495625,
+          "polygonPerimeterM": 15.363510993794375,
+          "polygonVertices": 11,
+          "heightM": 2.5586534982115277,
+          "filledHoles": 268,
+          "filledHoleAreaM2": 0.3187500000000001,
+          "unfilledHoles": 1,
+          "largestHoleM2": 1.2775000000000003
+        },
+        {
+          "id": "scan_room_003",
+          "rasterAreaM2": 4.671875000000001,
+          "outlineAreaM2": 4.671874999999972,
+          "polygonAreaM2": 4.654374999999993,
+          "polygonPerimeterM": 8.709724485550348,
+          "polygonVertices": 7,
+          "heightM": 2.288653498211528,
+          "filledHoles": 4,
+          "filledHoleAreaM2": 0.0025000000000000005,
+          "unfilledHoles": 0,
+          "largestHoleM2": 0.0006250000000000001
+        }
+      ],
+      "wallChannels": [
+        {
+          "between": [
+            "scan_room_001",
+            "scan_room_002"
+          ],
+          "crossings": 326,
+          "thicknessM": 0.07500000000000001,
+          "medianCrossingM": 0.125
+        },
+        {
+          "between": [
+            "scan_room_003",
+            "scan_room_001"
+          ],
+          "crossings": 144,
+          "thicknessM": 0.07500000000000001,
+          "medianCrossingM": 0.1
+        },
+        {
+          "between": [
+            "scan_room_003",
+            "scan_room_002"
+          ],
+          "crossings": 90,
+          "thicknessM": 0.4,
+          "medianCrossingM": 0.42500000000000004
+        }
+      ],
+      "emitted": {
+        "ifcBytes": 30056,
+        "spaceCount": 3,
+        "wallCount": 29,
+        "slabCount": 1,
+        "modalWallThicknessM": 0.07500000000000001,
+        "slabThicknessNominalM": 0.2,
+        "worldBaseZByType": {
+          "IFCSPACE": -1.368653498211528,
+          "IFCWALL": -1.368653498211528,
+          "IFCSLAB": -1.5686534982115279
+        }
+      },
+      "frameCheck": {
+        "maxCornerOffsetM": 0.11760008335113525,
+        "cornerOffsetsM": [
+          {
+            "axis": "x",
+            "minDelta": 0.005172252655029297,
+            "maxDelta": 0.017572402954101562
+          },
+          {
+            "axis": "y",
+            "minDelta": -0.00265347957611084,
+            "maxDelta": 0.11760008335113525
+          },
+          {
+            "axis": "z",
+            "minDelta": -0.015830039978027344,
+            "maxDelta": -0.009874343872070312
+          }
+        ]
+      },
+      "correspondence": [
+        {
+          "reference": "ref_space_A",
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.4046862716401687,
+          "boundaryClearanceM": 1.469468209444831,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_B",
+          "assignedTo": "scan_room_002",
+          "centroidSeparationM": 0.004209933613335343,
+          "boundaryClearanceM": 1.7441757729165694,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_C",
+          "assignedTo": "scan_room_003",
+          "centroidSeparationM": 0.005862630140345153,
+          "boundaryClearanceM": 0.9061401536403308,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_D",
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.09131006752432061,
+          "boundaryClearanceM": 0.38961198788329227,
+          "centroidAgrees": true
+        }
+      ],
+      "perRoom": [
+        {
+          "room": "scan_room_001",
+          "mergedReferenceSpaces": 2,
+          "referenceLabels": [
+            "ref_space_A",
+            "ref_space_D"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 45.57593773216012,
+              "reference": 45.781038319244786,
+              "deviation": -0.004480033538218111,
+              "deviationPercent": -0.4480033538218111,
+              "absDeviationPercent": 0.4480033538218111,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.538653612136841,
+              "reference": 2.4384000301361084,
+              "deviation": 0.04111449342261384,
+              "deviationPercent": 4.111449342261384,
+              "absDeviationPercent": 4.111449342261384,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 115.70151895027215,
+              "reference": 110.67702212783476,
+              "deviation": 0.045397831689345275,
+              "deviationPercent": 4.539783168934528,
+              "absDeviationPercent": 4.539783168934528,
+              "withinBar": true,
+              "decomposition": {
+                "areaDeviation": -0.004480033538218111,
+                "heightDeviation": 0.04111449342261384,
+                "product": 0.036450265574955454
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 120.77130291571135,
+              "reference": 101.98515097110557,
+              "deviation": 0.18420477653583384,
+              "deviationPercent": 18.420477653583383,
+              "absDeviationPercent": 18.420477653583383,
+              "withinBar": false
+            }
+          }
+        },
+        {
+          "room": "scan_room_002",
+          "mergedReferenceSpaces": 1,
+          "referenceLabels": [
+            "ref_space_B"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 14.495624582171416,
+              "reference": 14.202596481499,
+              "deviation": 0.02063200915791198,
+              "deviationPercent": 2.0632009157911977,
+              "absDeviationPercent": 2.0632009157911977,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.5586535930633545,
+              "reference": 2.4384000301361084,
+              "deviation": 0.049316585236645394,
+              "deviationPercent": 4.93165852366454,
+              "absDeviationPercent": 4.93165852366454,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 37.08928192087038,
+              "reference": 34.63060763636469,
+              "deviation": 0.07099714536697593,
+              "deviationPercent": 7.099714536697594,
+              "absDeviationPercent": 7.099714536697594,
+              "withinBar": false,
+              "decomposition": {
+                "areaDeviation": 0.02063200915791198,
+                "heightDeviation": 0.049316585236645394,
+                "product": 0.0709660946327968
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 39.30990228769579,
+              "reference": 36.93400811734594,
+              "deviation": 0.06432808924504517,
+              "deviationPercent": 6.432808924504517,
+              "absDeviationPercent": 6.432808924504517,
+              "withinBar": false
+            }
+          }
+        },
+        {
+          "room": "scan_room_003",
+          "mergedReferenceSpaces": 1,
+          "referenceLabels": [
+            "ref_space_C"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 4.654374106526404,
+              "reference": 4.583463275531415,
+              "deviation": 0.015471015416125094,
+              "deviationPercent": 1.5471015416125093,
+              "absDeviationPercent": 1.5471015416125093,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.288653612136841,
+              "reference": 2.314992666244507,
+              "deviation": -0.011377597213037613,
+              "deviationPercent": -1.1377597213037614,
+              "absDeviationPercent": 1.1377597213037614,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 10.652250111137837,
+              "reference": 10.610683868856247,
+              "deviation": 0.003917395221206456,
+              "deviationPercent": 0.39173952212064556,
+              "absDeviationPercent": 0.39173952212064556,
+              "withinBar": true,
+              "decomposition": {
+                "areaDeviation": 0.015471015416125094,
+                "heightDeviation": -0.011377597213037613,
+                "product": 0.003917395221205933
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 19.933540673132725,
+              "reference": 20.10201541618663,
+              "deviation": -0.008380987655508723,
+              "deviationPercent": -0.8380987655508723,
+              "absDeviationPercent": 0.8380987655508723,
+              "withinBar": true
+            }
+          }
+        }
+      ],
+      "totals": {
+        "floorAreaM2": {
+          "generated": 64.72593642085795,
+          "reference": 64.5670980762752,
+          "deviation": 0.0024600508512107296,
+          "deviationPercent": 0.24600508512107297,
+          "absDeviationPercent": 0.24600508512107297,
+          "withinBar": true
+        },
+        "volumeM3": {
+          "generated": 163.44305098228037,
+          "reference": 155.91831363305567,
+          "deviation": 0.04826076664049682,
+          "deviationPercent": 4.8260766640496815,
+          "absDeviationPercent": 4.8260766640496815,
+          "withinBar": true
+        },
+        "lateralAreaM2": {
+          "generated": 180.01474587653985,
+          "reference": 159.02117450463814,
+          "deviation": 0.13201745891575836,
+          "deviationPercent": 13.201745891575836,
+          "absDeviationPercent": 13.201745891575836,
+          "withinBar": false
+        },
+        "areaWeightedClearHeightM": {
+          "generated": 2.5251554480347496,
+          "reference": 2.4296396376578975,
+          "deviation": 0.03931274782334658,
+          "deviationPercent": 3.931274782334658,
+          "absDeviationPercent": 3.931274782334658,
+          "withinBar": true
+        }
+      },
+      "verdict": {
+        "bar": 0.05,
+        "rowsTotal": 16,
+        "rowsScored": 16,
+        "rowsWithinBar": 12,
+        "rowsUnscored": [],
+        "rowsOutsideBar": [
+          {
+            "scope": "model",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 13.201745891575836
+          },
+          {
+            "scope": "scan_room_001",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 18.420477653583383
+          },
+          {
+            "scope": "scan_room_002",
+            "quantity": "volumeM3",
+            "deviationPercent": 7.099714536697594
+          },
+          {
+            "scope": "scan_room_002",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 6.432808924504517
+          }
+        ],
+        "maxAbsDeviationPercent": 18.420477653583383,
+        "referenceSpaceCount": 4,
+        "generatedSpaceCount": 3,
+        "unassignedReferenceSpaces": 0
+      }
+    },
+    "principalFrame": {
+      "ceilingCut": {
+        "used": 2.131,
+        "sweepLoM": 1.4,
+        "sweepStepM": 0.05,
+        "sweepSamples": 23,
+        "plateau": {
+          "length": 5,
+          "lo": 2.031,
+          "hi": 2.231,
+          "roomCount": 3
+        },
+        "plateausByRoomCount": [
+          {
+            "length": 5,
+            "lo": 2.031,
+            "hi": 2.231,
+            "roomCount": 3
+          },
+          {
+            "length": 3,
+            "lo": 1.881,
+            "hi": 1.981,
+            "roomCount": 2
+          },
+          {
+            "length": 9,
+            "lo": 1.431,
+            "hi": 1.831,
+            "roomCount": 1
+          }
+        ],
+        "sweep": [
+          {
+            "cut": 2.531,
+            "roomCount": 2,
+            "totalArea": 37.13937500000001,
+            "areas": [
+              27.044,
+              10.096
+            ]
+          },
+          {
+            "cut": 2.481,
+            "roomCount": 2,
+            "totalArea": 44.23625000000001,
+            "areas": [
+              31.641,
+              12.596
+            ]
+          },
+          {
+            "cut": 2.431,
+            "roomCount": 3,
+            "totalArea": 45.55812500000001,
+            "areas": [
+              31.753,
+              12.706,
+              1.1
+            ]
+          },
+          {
+            "cut": 2.381,
+            "roomCount": 3,
+            "totalArea": 46.12437500000001,
+            "areas": [
+              31.823,
+              12.734,
+              1.568
+            ]
+          },
+          {
+            "cut": 2.331,
+            "roomCount": 3,
+            "totalArea": 48.03687500000001,
+            "areas": [
+              33.47,
+              12.75,
+              1.817
+            ]
+          },
+          {
+            "cut": 2.281,
+            "roomCount": 3,
+            "totalArea": 58.853750000000005,
+            "areas": [
+              42.544,
+              12.759,
+              3.55
+            ]
+          },
+          {
+            "cut": 2.231,
+            "roomCount": 3,
+            "totalArea": 60.44625000000002,
+            "areas": [
+              43.034,
+              12.769,
+              4.643
+            ]
+          },
+          {
+            "cut": 2.181,
+            "roomCount": 3,
+            "totalArea": 60.69062500000001,
+            "areas": [
+              43.258,
+              12.774,
+              4.658
+            ]
+          },
+          {
+            "cut": 2.131,
+            "roomCount": 3,
+            "totalArea": 60.76687500000001,
+            "areas": [
+              43.325,
+              12.778,
+              4.664
+            ]
+          },
+          {
+            "cut": 2.081,
+            "roomCount": 3,
+            "totalArea": 60.93937500000001,
+            "areas": [
+              43.483,
+              12.787,
+              4.669
+            ]
+          },
+          {
+            "cut": 2.031,
+            "roomCount": 3,
+            "totalArea": 61.07375000000002,
+            "areas": [
+              43.606,
+              12.793,
+              4.675
+            ]
+          },
+          {
+            "cut": 1.981,
+            "roomCount": 2,
+            "totalArea": 61.15937500000001,
+            "areas": [
+              48.359,
+              12.801
+            ]
+          },
+          {
+            "cut": 1.931,
+            "roomCount": 2,
+            "totalArea": 61.22250000000001,
+            "areas": [
+              48.412,
+              12.811
+            ]
+          },
+          {
+            "cut": 1.881,
+            "roomCount": 2,
+            "totalArea": 61.28312500000001,
+            "areas": [
+              48.464,
+              12.819
+            ]
+          },
+          {
+            "cut": 1.831,
+            "roomCount": 1,
+            "totalArea": 61.33000000000001,
+            "areas": [
+              61.33
+            ]
+          },
+          {
+            "cut": 1.781,
+            "roomCount": 1,
+            "totalArea": 61.36937500000001,
+            "areas": [
+              61.369
+            ]
+          },
+          {
+            "cut": 1.731,
+            "roomCount": 1,
+            "totalArea": 61.43375000000001,
+            "areas": [
+              61.434
+            ]
+          },
+          {
+            "cut": 1.681,
+            "roomCount": 1,
+            "totalArea": 61.49437500000001,
+            "areas": [
+              61.494
+            ]
+          },
+          {
+            "cut": 1.631,
+            "roomCount": 1,
+            "totalArea": 61.577500000000015,
+            "areas": [
+              61.578
+            ]
+          },
+          {
+            "cut": 1.581,
+            "roomCount": 1,
+            "totalArea": 61.610000000000014,
+            "areas": [
+              61.61
+            ]
+          },
+          {
+            "cut": 1.531,
+            "roomCount": 1,
+            "totalArea": 61.640000000000015,
+            "areas": [
+              61.64
+            ]
+          },
+          {
+            "cut": 1.481,
+            "roomCount": 1,
+            "totalArea": 61.70125000000001,
+            "areas": [
+              61.701
+            ]
+          },
+          {
+            "cut": 1.431,
+            "roomCount": 1,
+            "totalArea": 61.859375000000014,
+            "areas": [
+              61.859
+            ]
+          }
+        ]
+      },
+      "principalFrame": {
+        "enabled": true,
+        "thetaRad": 0.8916435255485657,
+        "thetaDeg": 51.087410844098
+      },
+      "rooms": [
+        {
+          "id": "scan_room_001",
+          "rasterAreaM2": 45.15375000000001,
+          "outlineAreaM2": 45.44312499999998,
+          "polygonAreaM2": 45.47781250000001,
+          "polygonPerimeterM": 47.579049437097325,
+          "polygonVertices": 66,
+          "heightM": 2.538653498211528,
+          "filledHoles": 862,
+          "filledHoleAreaM2": 1.8262500000000004,
+          "unfilledHoles": 1,
+          "largestHoleM2": 0.28937500000000005
+        },
+        {
+          "id": "scan_room_002",
+          "rasterAreaM2": 13.090000000000003,
+          "outlineAreaM2": 14.376249999999983,
+          "polygonAreaM2": 14.496562500000001,
+          "polygonPerimeterM": 15.275241260259317,
+          "polygonVertices": 4,
+          "heightM": 2.5586534982115277,
+          "filledHoles": 268,
+          "filledHoleAreaM2": 0.31187500000000007,
+          "unfilledHoles": 1,
+          "largestHoleM2": 1.2862500000000003
+        },
+        {
+          "id": "scan_room_003",
+          "rasterAreaM2": 4.665000000000001,
+          "outlineAreaM2": 4.664999999999993,
+          "polygonAreaM2": 4.6393749999999985,
+          "polygonPerimeterM": 8.72546389539553,
+          "polygonVertices": 4,
+          "heightM": 2.288653498211528,
+          "filledHoles": 2,
+          "filledHoleAreaM2": 0.0012500000000000002,
+          "unfilledHoles": 0,
+          "largestHoleM2": 0.0006250000000000001
+        }
+      ],
+      "wallChannels": [
+        {
+          "between": [
+            "scan_room_002",
+            "scan_room_001"
+          ],
+          "crossings": 230,
+          "thicknessM": 0.05,
+          "medianCrossingM": 0.07500000000000001
+        },
+        {
+          "between": [
+            "scan_room_003",
+            "scan_room_001"
+          ],
+          "crossings": 103,
+          "thicknessM": 0.05,
+          "medianCrossingM": 0.07500000000000001
+        },
+        {
+          "between": [
+            "scan_room_002",
+            "scan_room_003"
+          ],
+          "crossings": 76,
+          "thicknessM": 0.325,
+          "medianCrossingM": 0.325
+        }
+      ],
+      "emitted": {
+        "ifcBytes": 29531,
+        "spaceCount": 3,
+        "wallCount": 30,
+        "slabCount": 1,
+        "modalWallThicknessM": 0.05,
+        "slabThicknessNominalM": 0.2,
+        "worldBaseZByType": {
+          "IFCSPACE": -1.368653498211528,
+          "IFCWALL": -1.368653498211528,
+          "IFCSLAB": -1.5686534982115279
+        }
+      },
+      "frameCheck": {
+        "maxCornerOffsetM": 0.11760008335113525,
+        "cornerOffsetsM": [
+          {
+            "axis": "x",
+            "minDelta": -0.006827354431152344,
+            "maxDelta": 0.021372318267822266
+          },
+          {
+            "axis": "y",
+            "minDelta": -0.00265347957611084,
+            "maxDelta": 0.11760008335113525
+          },
+          {
+            "axis": "z",
+            "minDelta": -0.007630348205566406,
+            "maxDelta": -0.00867462158203125
+          }
+        ]
+      },
+      "correspondence": [
+        {
+          "reference": "ref_space_A",
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.4046862716401687,
+          "boundaryClearanceM": 1.4577883744472546,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_B",
+          "assignedTo": "scan_room_002",
+          "centroidSeparationM": 0.004209933613335343,
+          "boundaryClearanceM": 1.7268372197581607,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_C",
+          "assignedTo": "scan_room_003",
+          "centroidSeparationM": 0.005862630140345153,
+          "boundaryClearanceM": 0.9063029267495071,
+          "centroidAgrees": true
+        },
+        {
+          "reference": "ref_space_D",
+          "assignedTo": "scan_room_001",
+          "centroidSeparationM": 0.09131006752432061,
+          "boundaryClearanceM": 0.41271053943796254,
+          "centroidAgrees": true
+        }
+      ],
+      "perRoom": [
+        {
+          "room": "scan_room_001",
+          "mergedReferenceSpaces": 2,
+          "referenceLabels": [
+            "ref_space_A",
+            "ref_space_D"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 45.477856344468655,
+              "reference": 45.781038319244786,
+              "deviation": -0.006622435530228747,
+              "deviationPercent": -0.6622435530228746,
+              "absDeviationPercent": 0.6622435530228746,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.538653612136841,
+              "reference": 2.4384000301361084,
+              "deviation": 0.04111449342261384,
+              "deviationPercent": 4.111449342261384,
+              "absDeviationPercent": 4.111449342261384,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 115.45252428112565,
+              "reference": 110.67702212783476,
+              "deviation": 0.04314809037575172,
+              "deviationPercent": 4.314809037575172,
+              "absDeviationPercent": 4.314809037575172,
+              "withinBar": true,
+              "decomposition": {
+                "areaDeviation": -0.006622435530228747,
+                "heightDeviation": 0.04111449342261384,
+                "product": 0.03421977981033564
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 120.7858895638785,
+              "reference": 101.98515097110557,
+              "deviation": 0.18434780371212625,
+              "deviationPercent": 18.434780371212625,
+              "absDeviationPercent": 18.434780371212625,
+              "withinBar": false
+            }
+          }
+        },
+        {
+          "room": "scan_room_002",
+          "mergedReferenceSpaces": 1,
+          "referenceLabels": [
+            "ref_space_B"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 14.496512025904394,
+              "reference": 14.202596481499,
+              "deviation": 0.020694493770083703,
+              "deviationPercent": 2.0694493770083704,
+              "absDeviationPercent": 2.0694493770083704,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.5586535930633545,
+              "reference": 2.4384000301361084,
+              "deviation": 0.049316585236645394,
+              "deviationPercent": 4.93165852366454,
+              "absDeviationPercent": 4.93165852366454,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 37.091552581966404,
+              "reference": 34.63060763636469,
+              "deviation": 0.07106271340782205,
+              "deviationPercent": 7.106271340782206,
+              "absDeviationPercent": 7.106271340782206,
+              "withinBar": false,
+              "decomposition": {
+                "areaDeviation": 0.020694493770083703,
+                "heightDeviation": 0.049316585236645394,
+                "product": 0.07103166077267087
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 39.08398189380322,
+              "reference": 36.93400811734594,
+              "deviation": 0.058211222828197504,
+              "deviationPercent": 5.821122282819751,
+              "absDeviationPercent": 5.821122282819751,
+              "withinBar": false
+            }
+          }
+        },
+        {
+          "room": "scan_room_003",
+          "mergedReferenceSpaces": 1,
+          "referenceLabels": [
+            "ref_space_C"
+          ],
+          "quantities": {
+            "floorAreaM2": {
+              "generated": 4.639460518739128,
+              "reference": 4.583463275531415,
+              "deviation": 0.01221723396512231,
+              "deviationPercent": 1.221723396512231,
+              "absDeviationPercent": 1.221723396512231,
+              "withinBar": true
+            },
+            "clearHeightM": {
+              "generated": 2.288653612136841,
+              "reference": 2.314992666244507,
+              "deviation": -0.011377597213037613,
+              "deviationPercent": -1.1377597213037614,
+              "absDeviationPercent": 1.1377597213037614,
+              "withinBar": true
+            },
+            "volumeM3": {
+              "generated": 10.618118074578566,
+              "reference": 10.610683868856247,
+              "deviation": 0.0007006339849724005,
+              "deviationPercent": 0.07006339849724005,
+              "absDeviationPercent": 0.07006339849724005,
+              "withinBar": true,
+              "decomposition": {
+                "areaDeviation": 0.01221723396512231,
+                "heightDeviation": -0.011377597213037613,
+                "product": 0.0007006339849719989
+              }
+            },
+            "lateralAreaM2": {
+              "generated": 19.969736756909224,
+              "reference": 20.10201541618663,
+              "deviation": -0.006580368014785882,
+              "deviationPercent": -0.6580368014785882,
+              "absDeviationPercent": 0.6580368014785882,
+              "withinBar": true
+            }
+          }
+        }
+      ],
+      "totals": {
+        "floorAreaM2": {
+          "generated": 64.61382888911217,
+          "reference": 64.5670980762752,
+          "deviation": 0.0007237558172703508,
+          "deviationPercent": 0.07237558172703508,
+          "absDeviationPercent": 0.07237558172703508,
+          "withinBar": true
+        },
+        "volumeM3": {
+          "generated": 163.16219493767062,
+          "reference": 155.91831363305567,
+          "deviation": 0.04645946416315778,
+          "deviationPercent": 4.645946416315778,
+          "absDeviationPercent": 4.645946416315778,
+          "withinBar": true
+        },
+        "lateralAreaM2": {
+          "generated": 179.83960821459092,
+          "reference": 159.02117450463814,
+          "deviation": 0.13091611085632862,
+          "deviationPercent": 13.091611085632863,
+          "absDeviationPercent": 13.091611085632863,
+          "withinBar": false
+        },
+        "areaWeightedClearHeightM": {
+          "generated": 2.525190005651631,
+          "reference": 2.4296396376578975,
+          "deviation": 0.03932697117414553,
+          "deviationPercent": 3.932697117414553,
+          "absDeviationPercent": 3.932697117414553,
+          "withinBar": true
+        }
+      },
+      "verdict": {
+        "bar": 0.05,
+        "rowsTotal": 16,
+        "rowsScored": 16,
+        "rowsWithinBar": 12,
+        "rowsUnscored": [],
+        "rowsOutsideBar": [
+          {
+            "scope": "model",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 13.091611085632863
+          },
+          {
+            "scope": "scan_room_001",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 18.434780371212625
+          },
+          {
+            "scope": "scan_room_002",
+            "quantity": "volumeM3",
+            "deviationPercent": 7.106271340782206
+          },
+          {
+            "scope": "scan_room_002",
+            "quantity": "lateralAreaM2",
+            "deviationPercent": 5.821122282819751
+          }
+        ],
+        "maxAbsDeviationPercent": 18.434780371212625,
+        "referenceSpaceCount": 4,
+        "generatedSpaceCount": 3,
+        "unassignedReferenceSpaces": 0
+      }
+    }
+  },
+  "derived": {
+    "referencePerimeterM": [
+      {
+        "label": "ref_space_A",
+        "perimeterM": 34.25546330126513
+      },
+      {
+        "label": "ref_space_B",
+        "perimeterM": 15.14682072706681
+      },
+      {
+        "label": "ref_space_C",
+        "perimeterM": 8.683403498118675
+      },
+      {
+        "label": "ref_space_D",
+        "perimeterM": 7.569155182443171
+      }
+    ],
+    "generatedPerimeterM": [
+      {
+        "id": "scan_room_001",
+        "perimeterM": 47.572973470290705
+      },
+      {
+        "id": "scan_room_002",
+        "perimeterM": 15.363510993794375
+      },
+      {
+        "id": "scan_room_003",
+        "perimeterM": 8.709724485550348
+      }
+    ],
+    "mergedReferencePerimeterM": 41.8246184837083,
+    "room001PerimeterExcessM": 5.748354986582406,
+    "room001PerimeterExcessPercent": 13.743950799746157,
+    "ceilingEvidenceRatio": 18.761290028541968,
+    "defaultedReferenceSpaceCount": 3,
+    "defaultedReferenceHeightM": 2.4384000301361084,
+    "eightFeetInMetres": 2.4384,
+    "scanMinusDefaultedHeightM": 0.0928101656168816,
+    "floorPlaneDepthBelowScanOriginM": 1.368653498211528,
+    "subsampleBytes": 83343840,
+    "derivedIntermediateBytes": 83396893
+  }
+}

@@ -107,6 +107,45 @@ describe('validateManifest — direct inputs', () => {
     }
   });
 
+  it('rejects a bare-prefix activation event with an empty target', () => {
+    // Regression: isActivationEvent must require v.length > prefix.length,
+    // not >=. A bare "onCommand:" (empty target after the colon) must not
+    // be accepted as valid.
+    const r = validateManifest({
+      manifestVersion: 1,
+      id: 'com.example.bare-activation',
+      name: 'Bare Activation',
+      description: '...',
+      version: '1.0.0',
+      engines: { ifcLiteSdk: '>=2.0.0' },
+      capabilities: ['model.read'],
+      activation: ['onCommand:'],
+      entry: {},
+    });
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.some((e) => e.code === 'invalid_activation')).toBe(true);
+    }
+  });
+
+  it('accepts a real onCommand activation event with a non-empty target', () => {
+    const r = validateManifest({
+      manifestVersion: 1,
+      id: 'com.example.real-activation',
+      name: 'Real Activation',
+      description: '...',
+      version: '1.0.0',
+      engines: { ifcLiteSdk: '>=2.0.0' },
+      capabilities: ['model.read'],
+      activation: ['onCommand:something'],
+      entry: {},
+    });
+    if (!r.ok) {
+      console.error('Unexpected errors:', r.errors);
+    }
+    expect(r.ok).toBe(true);
+  });
+
   it('error paths point at offending field', () => {
     const r = validateManifest({
       manifestVersion: 1,

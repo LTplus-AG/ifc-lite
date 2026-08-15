@@ -122,6 +122,21 @@ pub mod projection_outline;
 pub mod rect_fast;
 #[cfg(feature = "triangulation-alt")]
 pub use triangulation::alt_oracle::set_alt_triangulator;
+/// Scalar abstraction the extrusion mesher is generic over (`f64` in
+/// production, a forward-mode dual number in the B4.4 kernel-adjoint spike).
+pub(crate) mod scalar;
+/// The extrusion mesher, generic over the scalar. `extrusion`'s public
+/// functions are its `f64` instantiations.
+pub(crate) mod extrusion_generic;
+/// Profile triangulation / ring builders, generic over the scalar.
+pub(crate) mod profile_generic;
+
+/// B4.4 - the M3 kernel-adjoint spike (test-only). Runs the production
+/// extrusion mesher with a forward-mode dual scalar and grades its adjoints
+/// against central finite differences.
+#[cfg(test)]
+#[path = "b44_kernel_adjoint_tests.rs"]
+mod b44_kernel_adjoint;
 pub use rect_fast::RectFastStats;
 pub(crate) mod router;
 /// Per-element mesh simplification for the demesher (cavity removal, grid
@@ -132,6 +147,9 @@ pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
 pub(crate) mod void_index;
+/// Cut one element into one closed solid per location zone (#2508 item 2), on
+/// top of the exact kernel rather than beside it.
+pub mod zone_split;
 
 // Re-export nalgebra types for convenience
 pub use nalgebra::{Point2, Point3, Vector2, Vector3};
@@ -146,7 +164,10 @@ pub use contour_bool2d::{
 pub use csg::{calculate_normals, ClippingProcessor, Plane, Triangle};
 pub use diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
 pub use error::{Error, Result};
-pub use geom_hash::{hash_mesh_world, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE};
+pub use geom_hash::{
+    hash_mesh_world, GeometryClosure, GeometryHasher, DEFAULT_GEOM_HASH_TOLERANCE,
+    MIN_GEOM_HASH_TOLERANCE,
+};
 pub use extrusion::{extrude_profile, extrude_profile_lofted, extrude_profile_with_voids};
 pub use instancing::{
     bake_source_at_world, collate_and_encode, collate_instances, collate_refs,
@@ -159,7 +180,7 @@ pub use material_layer_index::{
     LayerAxis, LayerBuildup, LayerInfo, MaterialLayerFlat, MaterialLayerIndex,
 };
 pub use mesh::{InstanceMeta, Mesh, SubMesh, SubMeshCollection};
-pub use mesh_orient::orient_mesh_outward;
+pub use mesh_orient::{orient_mesh_outward, orient_mesh_outward_verdict, OrientVerdict};
 pub use processors::{
     AdvancedBrepProcessor, BooleanClippingProcessor, ExtrudedAreaSolidProcessor,
     ExtrudedAreaSolidTaperedProcessor, FaceBasedSurfaceModelProcessor, FacetedBrepProcessor,
@@ -175,7 +196,7 @@ pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{
     aggregate_diagnostics, local_frame_set_enabled_override, ClassificationStats,
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
     ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, WorstHost,

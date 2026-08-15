@@ -39,6 +39,16 @@ pub enum ExportError {
         /// The underlying error's `Display` output.
         detail: String,
     },
+    /// The from-meshes assembler was handed inconsistent inputs: the per-mesh
+    /// `vertex_counts` / `index_counts` sum past the end of the flattened
+    /// `positions` / `normals` / `indices` buffers. The infallible
+    /// [`crate::export_glb_from_meshes`] silently drops the un-backed tail (a valid
+    /// GLB missing part of the model, reported as success); the `try_` variant
+    /// surfaces this instead so a caller bug can't ship truncated geometry.
+    MalformedMeshInput {
+        /// Which buffer was too short, with the expected vs actual lengths.
+        detail: String,
+    },
 }
 
 impl ExportError {
@@ -49,6 +59,7 @@ impl ExportError {
             ExportError::NoRenderGeometry => "NO_RENDER_GEOMETRY",
             ExportError::TooLarge { .. } => "TOO_LARGE",
             ExportError::Serialization { .. } => "SERIALIZATION_FAILED",
+            ExportError::MalformedMeshInput { .. } => "MALFORMED_MESH_INPUT",
         }
     }
 }
@@ -69,6 +80,9 @@ impl fmt::Display for ExportError {
             ),
             ExportError::Serialization { stage, detail } => {
                 write!(f, "{}: failed to serialize {stage}: {detail}", self.code())
+            }
+            ExportError::MalformedMeshInput { detail } => {
+                write!(f, "{}: from-meshes inputs are inconsistent: {detail}", self.code())
             }
         }
     }

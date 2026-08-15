@@ -42,7 +42,13 @@ function recentlyReloaded(now: number): boolean {
     const raw = sessionStorage.getItem(RELOAD_TS_KEY);
     if (raw == null) return false;
     const ts = Number(raw);
-    return Number.isFinite(ts) && now - ts < RELOAD_DEBOUNCE_MS;
+    // A stored timestamp in the FUTURE (an NTP correction, a VM resume, a user
+    // changing the clock) makes the difference negative, which satisfies the
+    // `<` on its own and would pin this tab at "recently reloaded" until wall
+    // time caught up, disabling wasm skew recovery for hours. Treat a future
+    // stamp as stale. Same guard as ./chunk-version-skew.ts.
+    const elapsed = now - ts;
+    return Number.isFinite(ts) && elapsed >= 0 && elapsed < RELOAD_DEBOUNCE_MS;
   } catch {
     return false;
   }

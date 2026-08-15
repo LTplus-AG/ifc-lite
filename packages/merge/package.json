@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/merge",
-  "version": "0.3.1",
+  "version": "0.4.1",
   "description": "Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert.",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run",
     "bench": "node --max-old-space-size=8192 scripts/bench-three-way.mjs"

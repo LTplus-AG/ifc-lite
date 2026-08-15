@@ -11,237 +11,28 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use ifc_lite_core::{
-    AttributeValue, DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType,
-};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityIndex, EntityScanner, IfcType};
+use ifc_lite_geometry::GeometryRouter;
 use ifc_lite_processing::element::{plan_type_geometry, TypeGeometryMode};
+use ifc_lite_processing::prepass::{resolve_unit_scales, UnitScales};
 use rustc_hash::FxHashSet;
 
-/// A single property value (`IfcPropertySingleValue` and friends).
-#[derive(Debug, Clone, PartialEq)]
-pub struct PropValue {
-    pub name: String,
-    pub value: String,
-    /// IFC value type tag when known (e.g. `IFCLABEL`, `IFCREAL`, `IFCBOOLEAN`).
-    pub value_type: String,
-}
+#[path = "model_options.rs"]
+mod options;
+pub use options::{ModelOptions, Placement};
 
-/// A named property set (`IfcPropertySet`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct PropertySet {
-    pub name: String,
-    pub properties: Vec<PropValue>,
-}
+#[path = "model_props.rs"]
+mod props;
+pub use props::fmt_num;
+use props::{opt_string, ref_list, render_attributes, resolve_pset_defs};
 
-/// A single physical quantity (`IfcQuantityLength`/`Area`/`Volume`/…).
-#[derive(Debug, Clone, PartialEq)]
-pub struct QuantityValue {
-    pub name: String,
-    pub value: f64,
-    /// `Length` | `Area` | `Volume` | `Count` | `Weight` | `Time`.
-    pub kind: &'static str,
-}
+#[path = "model_inherit.rs"]
+mod inherit;
+use inherit::merge_inherited;
 
-/// A named quantity set (`IfcElementQuantity`).
-#[derive(Debug, Clone, PartialEq)]
-pub struct QuantitySet {
-    pub name: String,
-    pub quantities: Vec<QuantityValue>,
-}
-
-/// One exportable entity row (an `IfcProduct` occurrence).
-#[derive(Debug, Clone, PartialEq)]
-pub struct EntityRow {
-    pub express_id: u32,
-    pub ifc_type: String,
-    pub global_id: Option<String>,
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub object_type: Option<String>,
-    /// True when the product carries a geometric Representation (attr 6).
-    pub has_geometry: bool,
-    pub property_sets: Vec<PropertySet>,
-    pub quantity_sets: Vec<QuantitySet>,
-}
-
-impl EntityRow {
-    /// Look up a flattened `PsetName.PropName` value (case-sensitive), then quantities.
-    pub fn lookup(&self, pset: &str, prop: &str) -> Option<String> {
-        for ps in &self.property_sets {
-            if ps.name == pset {
-                for p in &ps.properties {
-                    if p.name == prop {
-                        return Some(p.value.clone());
-                    }
-                }
-            }
-        }
-        for qs in &self.quantity_sets {
-            if qs.name == pset {
-                for q in &qs.quantities {
-                    if q.name == prop {
-                        return Some(fmt_num(q.value));
-                    }
-                }
-            }
-        }
-        None
-    }
-}
-
-/// The full extracted model.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ExportModel {
-    pub entities: Vec<EntityRow>,
-}
-
-/// Format an f64 without noisy trailing zeros (`1.0` → `1`, `1.50` → `1.5`).
-pub fn fmt_num(v: f64) -> String {
-    if v.fract() == 0.0 && v.abs() < 1e15 {
-        format!("{}", v as i64)
-    } else {
-        let s = format!("{v:.6}");
-        let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-        trimmed.to_string()
-    }
-}
-
-/// Map an IFC boolean/logical enum token to a friendly string.
-fn map_enum(e: &str) -> String {
-    match e {
-        "T" => "true".to_string(),
-        "F" => "false".to_string(),
-        "U" => "unknown".to_string(),
-        other => other.to_string(),
-    }
-}
-
-/// Render an `AttributeValue` (single property value) to `(display, type_tag)`.
-/// Typed values like `IFCLABEL('x')` decode to `List([String("IFCLABEL"), inner])`.
-fn render_value(v: &AttributeValue) -> Option<(String, String)> {
-    match v {
-        AttributeValue::String(s) => Some((s.clone(), "IFCTEXT".to_string())),
-        AttributeValue::Integer(i) => Some((i.to_string(), "IFCINTEGER".to_string())),
-        AttributeValue::Float(f) => Some((fmt_num(*f), "IFCREAL".to_string())),
-        AttributeValue::Enum(e) => Some((map_enum(e), "IFCBOOLEAN".to_string())),
-        AttributeValue::List(items) => {
-            // Typed value wrapper: first element is the type name string.
-            if let Some(AttributeValue::String(tn)) = items.first() {
-                let inner = items.get(1)?;
-                let (val, _) = render_value(inner)?;
-                Some((val, tn.clone()))
-            } else {
-                None
-            }
-        }
-        // Entity-ref-valued properties (rare for NominalValue) aren't rendered inline.
-        AttributeValue::EntityRef(_) | AttributeValue::Null | AttributeValue::Derived => None,
-    }
-}
-
-/// Quantity kind + value-attribute index for an `IfcPhysicalSimpleQuantity`.
-/// Layout is uniform: `[Name, Description, Unit, <Value>]` ⇒ value at index 3.
-fn quantity_kind(ty: IfcType) -> Option<&'static str> {
-    match ty {
-        IfcType::IfcQuantityLength => Some("Length"),
-        IfcType::IfcQuantityArea => Some("Area"),
-        IfcType::IfcQuantityVolume => Some("Volume"),
-        IfcType::IfcQuantityCount => Some("Count"),
-        IfcType::IfcQuantityWeight => Some("Weight"),
-        IfcType::IfcQuantityTime => Some("Time"),
-        _ => None,
-    }
-}
-
-fn opt_string(av: Option<&AttributeValue>) -> Option<String> {
-    av.and_then(|a| a.as_string()).map(|s| s.to_string()).filter(|s| !s.is_empty())
-}
-
-/// Collect the entity references in a STEP list attribute (e.g. `(#44,#45)`),
-/// dropping nulls/non-refs. An absent or `$` attribute yields an empty `Vec`.
-fn ref_list(av: Option<&AttributeValue>) -> Vec<u32> {
-    av.and_then(|a| a.as_list())
-        .map(|items| items.iter().filter_map(|v| v.as_entity_ref()).collect())
-        .unwrap_or_default()
-}
-
-/// Decode one `IfcPropertySet` definition into our model.
-fn decode_property_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<PropertySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let has_props = def.get(4)?;
-    let props = decoder.resolve_ref_list(has_props).ok()?;
-    let mut properties = Vec::new();
-    for p in &props {
-        if p.ifc_type == IfcType::IfcPropertySingleValue {
-            let pname = match p.get(0).and_then(|a| a.as_string()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => continue,
-            };
-            if let Some((value, value_type)) = p.get(2).and_then(render_value) {
-                properties.push(PropValue { name: pname, value, value_type });
-            }
-        }
-        // Other property kinds (enumerated/list/bounded/complex) are P-next.
-    }
-    Some(PropertySet { name, properties })
-}
-
-/// Decode one `IfcElementQuantity` definition into our model.
-fn decode_quantity_set(decoder: &mut EntityDecoder, def: &DecodedEntity) -> Option<QuantitySet> {
-    let name = def.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
-    let quantities_attr = def.get(5)?;
-    let quants = decoder.resolve_ref_list(quantities_attr).ok()?;
-    let mut quantities = Vec::new();
-    for q in &quants {
-        if let Some(kind) = quantity_kind(q.ifc_type) {
-            let qname = match q.get(0).and_then(|a| a.as_string()) {
-                Some(n) if !n.is_empty() => n.to_string(),
-                _ => continue,
-            };
-            if let Some(value) = q.get(3).and_then(|a| a.as_float()) {
-                quantities.push(QuantityValue { name: qname, value, kind });
-            }
-        }
-    }
-    Some(QuantitySet { name, quantities })
-}
-
-/// Resolve a list of property/quantity set definition ids into non-empty
-/// `(property_sets, quantity_sets)`, dropping undecodable refs. Shared by the
-/// product path (ids from `IfcRelDefinesByProperties`) and the type-product path
-/// (ids from `IfcTypeObject.HasPropertySets`), so both classify a definition the
-/// same way.
-fn resolve_pset_defs(
-    decoder: &mut EntityDecoder,
-    def_ids: &[u32],
-) -> (Vec<PropertySet>, Vec<QuantitySet>) {
-    let mut property_sets = Vec::new();
-    let mut quantity_sets = Vec::new();
-    for &def_id in def_ids {
-        let def = match decoder.decode_by_id(def_id) {
-            Ok(d) => d,
-            Err(_) => continue,
-        };
-        match def.ifc_type {
-            IfcType::IfcPropertySet => {
-                if let Some(ps) = decode_property_set(decoder, &def) {
-                    if !ps.properties.is_empty() {
-                        property_sets.push(ps);
-                    }
-                }
-            }
-            IfcType::IfcElementQuantity => {
-                if let Some(qs) = decode_quantity_set(decoder, &def) {
-                    if !qs.quantities.is_empty() {
-                        quantity_sets.push(qs);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    (property_sets, quantity_sets)
-}
+#[path = "model_types.rs"]
+mod types;
+pub use types::{EntityRow, ExportModel, PropValue, PropertySet, QuantitySet, QuantityValue};
 
 /// Build the export model from raw IFC/STEP bytes.
 ///
@@ -252,8 +43,17 @@ fn resolve_pset_defs(
 /// thin `collect` over `stream_export_model`, so the two share one code path.
 pub fn build_export_model(content: &[u8]) -> ExportModel {
     let mut entities = Vec::new();
-    stream_export_model(content, |row| entities.push(row));
-    ExportModel { entities }
+    let units = stream_export_model(content, |row| entities.push(row));
+    ExportModel { entities, units }
+}
+
+/// [`build_export_model`] with options. Same memory caveat: this collects.
+pub fn build_export_model_with_options(content: &[u8], opts: &ModelOptions) -> ExportModel {
+    let entity_index = Arc::new(ifc_lite_processing::build_entity_index_parallel(content));
+    let mut entities = Vec::new();
+    let units =
+        stream_export_model_with_options(content, &entity_index, opts, |row, _| entities.push(row));
+    ExportModel { entities, units }
 }
 
 /// Stream one [`EntityRow`] per `IfcProduct` occurrence, in file order, invoking
@@ -265,10 +65,10 @@ pub fn build_export_model(content: &[u8]) -> ExportModel {
 /// plus the property side-map (both O(products)), so a model with tens of millions
 /// of entities extracts in a few GB instead of exhausting memory. Output is the
 /// caller's responsibility to stream onwards (e.g. to S3/Parquet) and drop.
-pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) {
+pub fn stream_export_model(content: &[u8], f: impl FnMut(EntityRow)) -> UnitScales {
     // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
     let entity_index = Arc::new(ifc_lite_processing::build_entity_index_parallel(content));
-    stream_export_model_with_index(content, &entity_index, f);
+    stream_export_model_with_index(content, &entity_index, f)
 }
 
 /// An `IfcTypeProduct` (e.g. `IfcBoilerType`) that carries its own
@@ -296,11 +96,40 @@ struct TypeProductCandidate {
 /// same bytes builds the index once with [`build_entity_index`] and shares it across
 /// both, skipping the duplicate scan. `entity_index` MUST be built from the same
 /// `content`; output is identical to `stream_export_model`.
+/// Returns the model's [`UnitScales`], so a caller consuming attribute values can
+/// interpret them without a second pass over the file: the scales are resolved
+/// from the decoder this function already builds.
 pub fn stream_export_model_with_index(
     content: &[u8],
     entity_index: &Arc<EntityIndex>,
     mut f: impl FnMut(EntityRow),
-) {
+) -> UnitScales {
+    stream_export_model_with_options(content, entity_index, &ModelOptions::default(), |row, _| {
+        f(row)
+    })
+}
+
+/// [`stream_export_model_with_index`], plus the decoded entity behind each row
+/// and whatever [`ModelOptions`] asked to resolve.
+///
+/// The second callback argument is the `DecodedEntity` the row was built from,
+/// **borrowed**: a caller that wants an attribute this crate does not surface
+/// reads it here, without this crate having to guess which attributes matter
+/// and without anything being retained. It is `None` for the type-product rows emitted in
+/// pass 3, which are assembled from the pass-1 scan and have no occurrence
+/// entity behind them.
+///
+/// Storing the attributes on [`EntityRow`] instead would be the obvious shape
+/// and is the wrong one twice over: `AttributeValue` is not `PartialEq`, so it
+/// would break the derive that `stream == build` equality rests on, and
+/// [`build_export_model`] collects, so every product's attribute vector would
+/// stay resident — which is the exact bound this function exists to keep.
+pub fn stream_export_model_with_options(
+    content: &[u8],
+    entity_index: &Arc<EntityIndex>,
+    opts: &ModelOptions,
+    mut f: impl FnMut(EntityRow, Option<&DecodedEntity>),
+) -> UnitScales {
     // Property resolution memoizes the shared `IfcPropertySet`/leaf entities for
     // speed. Cap that cache so it can't grow without bound across millions of
     // products; clearing only forces a re-decode of a shared set, never affects
@@ -309,6 +138,8 @@ pub fn stream_export_model_with_index(
 
     let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
 
+
+
     // Pass 1 — one scan that collects, uncached (each entity visited once here):
     //   • object → attached property/quantity definitions (IfcRelDefinesByProperties),
     //   • the #957/#1518 type-product orphan-geometry bookkeeping, mirroring the
@@ -316,6 +147,10 @@ pub fn stream_export_model_with_index(
     // IfcRelDefinesByProperties: [GlobalId, OwnerHistory, Name, Description,
     //                             RelatedObjects(4, list), RelatingPropertyDefinition(5, ref)]
     let mut defs_by_object: HashMap<u32, Vec<u32>> = HashMap::new();
+    // The file's single IFCPROJECT, for the unit resolution below. First wins:
+    // the schema allows exactly one, and a malformed file with two would
+    // otherwise make which units apply depend on scan order.
+    let mut project_id: Option<u32> = None;
     // #957 "Route B": an IfcTypeProduct that carries its own RepresentationMaps
     // renders directly under the type's expressId when NO occurrence draws it. The
     // geometry pass (processor::process_geometry) decides this with three sets —
@@ -324,6 +159,13 @@ pub fn stream_export_model_with_index(
     let mut referenced_representation_maps: FxHashSet<u32> = FxHashSet::default();
     let mut instantiated_type_ids: FxHashSet<u32> = FxHashSet::default();
     let mut type_product_candidates: Vec<TypeProductCandidate> = Vec::new();
+    // Occurrence → its `IfcTypeObject`, from `IfcRelDefinesByType.RelatedObjects`.
+    // Populated only when `opts.inherit_type_properties` asks for it.
+    let mut type_by_object: HashMap<u32, u32> = HashMap::new();
+    // Type id → its resolved sets, so one IfcWallType typing 5000 walls is
+    // decoded once. Bounded by the file's distinct types, which is orders of
+    // magnitude below its occurrences.
+    let mut type_pset_cache: HashMap<u32, (Vec<PropertySet>, Vec<QuantitySet>)> = HashMap::new();
     {
         let mut scanner = EntityScanner::new(content);
         while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -358,10 +200,33 @@ pub fn stream_export_model_with_index(
                 // IfcRelDefinesByType.RelatingType (attr 5) → a type WITH occurrences;
                 // its geometry is drawn by those occurrences, never as orphan type
                 // geometry (the AC20/ArchiCAD duplicate-boxes guard).
+                //
+                // RelatedObjects (attr 4) is read only when property inheritance
+                // is on: it is the occurrence → type edge that makes a type's
+                // HasPropertySets reachable from the occurrence, and building the
+                // map costs an allocation per typed occurrence that the geometry
+                // bookkeeping above has no use for.
                 "IFCRELDEFINESBYTYPE" => {
                     if let Ok(rel) = decoder.decode_at_uncached(start, end) {
                         if let Some(tid) = rel.get(5).and_then(|a| a.as_entity_ref()) {
                             instantiated_type_ids.insert(tid);
+                            if opts.inherit_type_properties {
+                                if let Some(objs) = rel.get(4).and_then(|a| a.as_list()) {
+                                    for o in objs {
+                                        if let Some(oid) = o.as_entity_ref() {
+                                            // FIRST relationship wins if a file
+                                            // types one object twice (a schema
+                                            // violation, but exports do it).
+                                            // `typeIds[0]` is what the TS
+                                            // extractor takes, and scan order
+                                            // here is file order, so the two
+                                            // pick the same type rather than
+                                            // disagreeing per engine.
+                                            type_by_object.entry(oid).or_insert(tid);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -389,10 +254,31 @@ pub fn stream_export_model_with_index(
                         pset_def_ids: ref_list(t.get(5)),
                     });
                 }
+                "IFCPROJECT" => project_id = project_id.or(Some(id)),
                 _ => {}
             }
         }
     }
+
+    // Units, resolved from the `IFCPROJECT` pass 1 just walked past. The
+    // resolver falls back to a SIMD substring search for that entity when it is
+    // not told which one it is; handing it the id makes this an O(1) decode
+    // against the index this function already holds, and pass 1 visits every
+    // entity anyway, so recording it costs nothing.
+    //
+    // Resolved here rather than left to the caller because a consumer of the
+    // rows needs it to interpret them — attribute values are in the file's own
+    // units, unlike the geometry exporters' output — and returning it means
+    // they cannot forget to ask.
+    let units = resolve_unit_scales(content, project_id, &mut decoder);
+
+    // Built with the file's scale, NOT `GeometryRouter::new()`: `new` defaults
+    // `unit_scale` to 1.0 and `scale_transform` only scales when it was given
+    // the real one, so the difference is silently-millimetre translations.
+    // Constructed only when asked — it registers its processor table.
+    let router = opts
+        .placements
+        .then(|| GeometryRouter::with_scale(units.length_unit_scale));
 
     // Pass 2 — emit a row per IfcProduct occurrence, resolving its property/quantity sets.
     let mut scanner = EntityScanner::new(content);
@@ -420,8 +306,43 @@ pub fn stream_export_model_with_index(
         let object_type = opt_string(entity.get(4));
         let has_geometry = entity.get(6).is_some_and(|a| !a.is_null());
 
+        // `None` is decided from attribute 5, not from the resolver's `Result`:
+        // the resolver answers `Ok(identity)` for an absent placement as well as
+        // for a broken one, so asking it would report every unplaced product as
+        // sitting at the origin.
+        let placement = router.as_ref().and_then(|r| {
+            entity.get(5).filter(|a| !a.is_null())?;
+            r.resolve_scaled_placement(&entity, &mut decoder)
+                .ok()
+                .map(|matrix| Placement { matrix })
+        });
+
         let def_ids = defs_by_object.get(&id).cloned().unwrap_or_default();
-        let (property_sets, quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+        let (mut property_sets, mut quantity_sets) = resolve_pset_defs(&mut decoder, &def_ids);
+
+        // Fold in whatever this occurrence inherits from its type. Resolution is
+        // memoized per type id, not per occurrence: a Revit export types
+        // thousands of walls off one IfcWallType, and re-decoding its sets for
+        // each would turn a constant cost into a linear one.
+        if opts.inherit_type_properties {
+            if let Some(&type_id) = type_by_object.get(&id) {
+                let inherited = type_pset_cache.entry(type_id).or_insert_with_key(|&tid| {
+                    // `HasPropertySets` is attr 5 on IfcTypeObject. Resolved
+                    // from the type entity itself rather than the pass-1
+                    // candidate list, because that list holds only types with
+                    // RepresentationMaps and the common inheriting type has
+                    // none.
+                    let def_ids = decoder
+                        .decode_by_id(tid)
+                        .ok()
+                        .map(|t| ref_list(t.get(5)))
+                        .unwrap_or_default();
+                    resolve_pset_defs(&mut decoder, &def_ids)
+                });
+                property_sets = merge_inherited(property_sets, inherited.0.clone());
+                quantity_sets = merge_inherited(quantity_sets, inherited.1.clone());
+            }
+        }
 
         f(EntityRow {
             express_id: id,
@@ -431,13 +352,25 @@ pub fn stream_export_model_with_index(
             description,
             object_type,
             has_geometry,
+            placement,
             property_sets,
             quantity_sets,
-        });
+            attributes: if opts.attributes {
+                render_attributes(&entity)
+            } else {
+                Vec::new()
+            },
+        }, Some(&entity));
 
         // Keep the property-resolution cache bounded across the whole file.
+        // `clear_entity_cache`, not `clear_cache`: the latter also drops the
+        // placement memo, and resolving placements is what makes this trigger
+        // fire in the first place. Dropping the memo here would re-resolve the
+        // site/building/storey chain that every product under it shares — the
+        // output stays correct and the run gets slower the larger the file,
+        // which is the opposite of what the cap is for.
         if decoder.cache_size() > PSET_CACHE_CAP {
-            decoder.clear_cache();
+            decoder.clear_entity_cache();
         }
     }
 
@@ -479,177 +412,34 @@ pub fn stream_export_model_with_index(
             object_type: None,
             // It is meshed by construction (RepresentationMaps present).
             has_geometry: true,
+            // A type object has no ObjectPlacement — it is not an occurrence.
+            placement: None,
             property_sets,
             quantity_sets,
-        });
+            // Pass 3 assembles this row from the pass-1 scan and does not hold
+            // the type entity, so this costs one decode. Worth it: the option
+            // promises attributes on every row, and a type carries the ones a
+            // consumer wants (`IfcDoorType.PredefinedType`). The count is
+            // bounded by orphan-geometry types, which is a handful per file.
+            attributes: if opts.attributes {
+                decoder
+                    .decode_by_id(cand.express_id)
+                    .ok()
+                    .map(|t| render_attributes(&t))
+                    .unwrap_or_default()
+            } else {
+                Vec::new()
+            },
+        }, None);
 
         if decoder.cache_size() > PSET_CACHE_CAP {
-            decoder.clear_cache();
+            decoder.clear_entity_cache();
         }
     }
+
+    units
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
-    /// Skip-if-absent loader (test models are staged, not git-tracked). Only a
-    /// genuinely-missing file is a skip; any other read error (permission, I/O)
-    /// fails the test rather than passing as a false green.
-    fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        match std::fs::read(&path) {
-            Ok(b) => Some(b),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-                None
-            }
-            Err(e) => panic!("read {path}: {e}"),
-        }
-    }
-
-    /// #1518: a buildingSMART annex-E showcase file declares its geometry ONLY on
-    /// an `IfcBoilerType` (an IfcTypeProduct, not an IfcProduct). #957 Route B
-    /// meshes it under the type's expressId; the attribute pass must now emit a
-    /// matching row so the GLB node is not orphaned (renders with attributes).
-    #[test]
-    fn type_only_geometry_emits_attribute_row() {
-        let rel =
-            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc";
-        let Some(bytes) = fixture_opt(rel) else {
-            return;
-        };
-        let mut rows = Vec::new();
-        stream_export_model(&bytes, |r| rows.push(r));
-
-        // The type-object is #43 IFCBOILERTYPE('2n5ASfQfT84eP9h$zLLJ4A','Boiler'…).
-        let boiler = rows
-            .iter()
-            .find(|r| r.ifc_type == "IfcBoilerType")
-            .expect("IfcBoilerType must get an attribute row (was orphaned pre-#1518)");
-        assert_eq!(boiler.express_id, 43, "row keyed by the type's expressId");
-        assert_eq!(boiler.global_id.as_deref(), Some("2n5ASfQfT84eP9h$zLLJ4A"));
-        assert_eq!(boiler.name.as_deref(), Some("Boiler"));
-        assert!(boiler.has_geometry, "the type carries RepresentationMaps");
-
-        // build == stream still holds with type rows present.
-        let collected = build_export_model(&bytes).entities;
-        assert_eq!(collected, rows, "build and stream must agree with type rows");
-    }
-
-    /// The adversarial join test: EVERY mesh the geometry pass tags as
-    /// type-product geometry (geometry_class != 0, keyed by the type's expressId)
-    /// must have a matching attribute row of the same type. This is exactly the
-    /// downstream geometry-to-attribute join the #1518 gap broke; it must hold for
-    /// the whole showcase set.
-    #[test]
-    fn type_product_meshes_all_have_rows() {
-        for rel in [
-            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-blob-texture.ifc",
-            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-image-texture.ifc",
-            "buildingsmart/annex_e/tessellated-shape-with-style/tessellation-with-pixel-texture.ifc",
-        ] {
-            let Some(bytes) = fixture_opt(rel) else {
-                continue;
-            };
-            let result = ifc_lite_processing::process_geometry(&bytes);
-            // (express_id, ifc_type) for every meshed type-product node.
-            let mut type_meshes: Vec<(u32, String)> = result
-                .meshes
-                .iter()
-                .filter(|m| m.geometry_class != 0)
-                .map(|m| (m.express_id, m.ifc_type.clone()))
-                .collect();
-            type_meshes.sort();
-            type_meshes.dedup();
-            if type_meshes.is_empty() {
-                continue; // no orphan type geometry in this fixture
-            }
-
-            let mut rows = Vec::new();
-            stream_export_model(&bytes, |r| rows.push(r));
-            for (id, ty) in &type_meshes {
-                let row = rows.iter().find(|r| r.express_id == *id).unwrap_or_else(|| {
-                    panic!("{rel}: meshed type-product #{id} ({ty}) has no attribute row")
-                });
-                assert_eq!(&row.ifc_type, ty, "{rel}: #{id} row type must match its mesh");
-            }
-        }
-    }
-
-    #[test]
-    fn duplex_model_has_products_and_psets() {
-        let model = build_export_model(&fixture("ara3d/duplex.ifc"));
-        assert!(model.entities.len() > 50, "expected many products, got {}", model.entities.len());
-
-        // Every row carries a GlobalId + type.
-        for e in &model.entities {
-            assert!(!e.ifc_type.is_empty());
-        }
-        assert!(model.entities.iter().any(|e| e.global_id.is_some()), "some GlobalIds");
-
-        // At least one element carries property sets with named single values.
-        let with_psets = model.entities.iter().filter(|e| !e.property_sets.is_empty()).count();
-        assert!(with_psets > 0, "expected elements with property sets");
-        let any_prop = model
-            .entities
-            .iter()
-            .flat_map(|e| &e.property_sets)
-            .flat_map(|ps| &ps.properties)
-            .next();
-        let p = any_prop.expect("at least one property");
-        assert!(!p.name.is_empty() && !p.value_type.is_empty());
-    }
-
-    #[test]
-    fn stream_matches_build_row_for_row() {
-        // `build_export_model` is a `collect` over `stream_export_model`, so the
-        // two must agree byte-for-byte, in the same order, on the same input.
-        // Guards against the streaming path ever drifting from the collected one.
-        let rel = "ara3d/duplex.ifc";
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        if !std::path::Path::new(&path).exists() {
-            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-            return;
-        }
-        let bytes = fixture(rel);
-        let collected = build_export_model(&bytes).entities;
-        let mut streamed = Vec::new();
-        stream_export_model(&bytes, |r| streamed.push(r));
-        assert!(!streamed.is_empty(), "expected products");
-        assert_eq!(collected, streamed, "stream and collect must agree row-for-row");
-    }
-
-    #[test]
-    fn stream_with_index_matches_plain() {
-        // The injected-index path shares one index across passes; it must yield
-        // identical rows to the self-indexing path. Guards the two from drifting.
-        let rel = "ara3d/duplex.ifc";
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        if !std::path::Path::new(&path).exists() {
-            eprintln!("skipping {rel}: fixture absent — run `pnpm fixtures`");
-            return;
-        }
-        let bytes = fixture(rel);
-        let mut plain = Vec::new();
-        stream_export_model(&bytes, |r| plain.push(r));
-        let idx = Arc::new(ifc_lite_core::build_entity_index(&bytes));
-        let mut shared = Vec::new();
-        stream_export_model_with_index(&bytes, &idx, |r| shared.push(r));
-        assert!(!plain.is_empty(), "expected products");
-        assert_eq!(plain, shared, "injected-index rows must match self-indexed rows");
-    }
-
-    #[test]
-    fn fmt_num_is_clean() {
-        assert_eq!(fmt_num(1.0), "1");
-        assert_eq!(fmt_num(1.5), "1.5");
-        assert_eq!(fmt_num(2.500000), "2.5");
-        assert_eq!(fmt_num(0.0), "0");
-    }
-}
+#[path = "model_tests.rs"]
+mod tests;

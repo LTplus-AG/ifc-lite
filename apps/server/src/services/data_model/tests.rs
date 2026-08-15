@@ -405,3 +405,274 @@ fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
         dm.relationships
     );
 }
+
+/// Full Project -> Site -> Building -> Storey -> Space spatial chain (via
+/// IFCRELAGGREGATES), with one element contained directly at EACH of the four
+/// levels (via IFCRELCONTAINEDINSPATIALSTRUCTURE): a furnishing element in the
+/// site, a door in the building, a wall in the storey, a chair in the space.
+/// This pins `build_spatial_hierarchy`'s parent/level/path bookkeeping and the
+/// four-way element_to_{site,building,storey,space} bucketing — none of which
+/// was previously exercised end-to-end (only storey elevation was tested).
+const SPATIAL_CHAIN_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'MySite',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#4=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#10=IFCFURNISHINGELEMENT('Furn0000000000000000001',$,'SiteFurniture',$,$,$,$,$);
+#11=IFCDOOR('Door0000000000000000001',$,'BuildingDoor',$,$,$,$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000001',$,'StoreyWall',$,$,$,$,$,$);
+#13=IFCFURNISHINGELEMENT('Chai0000000000000000001',$,'SpaceChair',$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#102=IFCRELAGGREGATES('Agg00000000000000000003',$,$,$,#3,(#4));
+#103=IFCRELAGGREGATES('Agg00000000000000000004',$,$,$,#4,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#10),#2);
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#11),#3);
+#112=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#12),#4);
+#113=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000004',$,$,$,(#13),#5);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn builds_spatial_hierarchy_with_correct_parent_level_and_path() {
+    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    assert_eq!(sh.project_id, 1, "project id must be #1");
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id).unwrap();
+
+    let project = node(1);
+    assert_eq!(project.parent_id, 0);
+    assert_eq!(project.level, 0);
+    assert_eq!(project.path, "MyProject");
+    assert_eq!(project.children_ids, vec![2]);
+
+    let site = node(2);
+    assert_eq!(site.parent_id, 1);
+    assert_eq!(site.level, 1);
+    assert_eq!(site.path, "MyProject/MySite");
+    assert_eq!(site.children_ids, vec![3]);
+
+    let building = node(3);
+    assert_eq!(building.parent_id, 2);
+    assert_eq!(building.level, 2);
+    assert_eq!(building.path, "MyProject/MySite/MyBuilding");
+
+    let storey = node(4);
+    assert_eq!(storey.parent_id, 3);
+    assert_eq!(storey.level, 3);
+    assert_eq!(storey.path, "MyProject/MySite/MyBuilding/MyStorey");
+
+    let space = node(5);
+    assert_eq!(space.parent_id, 4);
+    assert_eq!(space.level, 4);
+    assert_eq!(space.path, "MyProject/MySite/MyBuilding/MyStorey/MySpace");
+}
+
+/// Exercises the two DocumentAssociation paths never covered by
+/// `extracts_classification_material_and_document_associations` (which only
+/// hits a fully-populated `IfcDocumentReference` with no `ReferencedDocument`):
+/// (1) `IfcRelAssociatesDocument` pointing straight at an
+/// `IfcDocumentInformation` (attribute layout Identification/Name/Description/
+/// Location — description and location are NOT in attribute order, the exact
+/// index-swap trap), and (2) an `IfcDocumentReference` with some fields blank
+/// backfilled from its `ReferencedDocument`, where already-set reference
+/// fields (Identification, Location) must NOT be overwritten by the info's
+/// values, even though the info carries different values at those slots.
+const DOCUMENT_PATHS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#29=IFCCOLUMN('Col0000000000000000001',$,'C1',$,$,$,$,$,$);
+/* (1) Direct IfcDocumentInformation reference. */
+#50=IFCDOCUMENTINFORMATION('INFO-ID','InfoName','InfoDesc','http://info.example',$,$,$,$,$,$,$,$,$);
+#51=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000002',$,$,$,(#28),#50);
+/* (2) IfcDocumentReference with Name/Description blank, Identification and
+   Location already set — backfill must fill Name/Description ONLY, from the
+   correct info slots (1 and 2), and must leave Identification/Location alone
+   even though the info has different values at slots 0 and 3. */
+#60=IFCDOCUMENTREFERENCE('http://ref.example','REF-ID',$,$,#61);
+#61=IFCDOCUMENTINFORMATION('OTHER-ID','BackfilledName','BackfilledDesc','http://other.example',$,$,$,$,$,$,$,$,$);
+#62=IFCRELASSOCIATESDOCUMENT('Doc0000000000000000003',$,$,$,(#29),#60);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn resolves_document_information_directly_at_its_own_attribute_layout() {
+    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let d = dm
+        .documents
+        .iter()
+        .find(|d| d.element_id == 28)
+        .expect("wall document association");
+    assert_eq!(d.identification.as_deref(), Some("INFO-ID"));
+    assert_eq!(d.name.as_deref(), Some("InfoName"));
+    assert_eq!(d.description.as_deref(), Some("InfoDesc"));
+    assert_eq!(d.location.as_deref(), Some("http://info.example"));
+}
+
+#[test]
+fn backfills_only_missing_document_reference_fields_from_referenced_document() {
+    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let d = dm
+        .documents
+        .iter()
+        .find(|d| d.element_id == 29)
+        .expect("column document association");
+    // Already-set on the reference: must survive untouched, not be
+    // overwritten by the referenced info's (different) values.
+    assert_eq!(d.identification.as_deref(), Some("REF-ID"));
+    assert_eq!(d.location.as_deref(), Some("http://ref.example"));
+    // Blank on the reference: must be backfilled from the CORRECT info slots.
+    assert_eq!(d.name.as_deref(), Some("BackfilledName"));
+    assert_eq!(d.description.as_deref(), Some("BackfilledDesc"));
+}
+
+/// One quantity of EACH `IfcPhysicalQuantity` subtype the extractor supports,
+/// on a single Qto. Only `IFCQUANTITYLENGTH` was previously exercised (via
+/// `Qto_WallBaseQuantities.Width` in `TYPE_PARITY_IFC`) — the other five
+/// match arms in `extract_quantity_value`'s `quantity_type` mapping had no
+/// coverage, so e.g. "area" and "volume" could be silently swapped.
+const ALL_QUANTITY_KINDS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCELEMENTQUANTITY('Qset00000000000000001',$,'Qto_All',$,$,(#21,#22,#23,#24,#25,#26));
+#21=IFCQUANTITYLENGTH('QLen',$,$,111.);
+#22=IFCQUANTITYAREA('QArea',$,$,222.);
+#23=IFCQUANTITYVOLUME('QVol',$,$,333.);
+#24=IFCQUANTITYCOUNT('QCount',$,$,444.);
+#25=IFCQUANTITYWEIGHT('QWeight',$,$,555.);
+#26=IFCQUANTITYTIME('QTime',$,$,666.);
+#30=IFCRELDEFINESBYPROPERTIES('Rdbp0000000000000001',$,$,$,(#10),#20);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn maps_every_physical_quantity_subtype_to_its_own_quantity_type_string() {
+    let dm = extract_data_model(ALL_QUANTITY_KINDS_IFC);
+    let qset = dm
+        .quantity_sets
+        .iter()
+        .find(|q| q.qset_id == 20)
+        .expect("Qto_All extracted");
+    let q = |name: &str| {
+        qset.quantities
+            .iter()
+            .find(|q| q.quantity_name == name)
+            .unwrap_or_else(|| panic!("quantity {name} missing: {:?}", qset.quantities))
+    };
+    assert_eq!(q("QLen").quantity_type, "length");
+    assert_eq!(q("QLen").quantity_value, 111.0);
+    assert_eq!(q("QArea").quantity_type, "area");
+    assert_eq!(q("QArea").quantity_value, 222.0);
+    assert_eq!(q("QVol").quantity_type, "volume");
+    assert_eq!(q("QVol").quantity_value, 333.0);
+    assert_eq!(q("QCount").quantity_type, "count");
+    assert_eq!(q("QCount").quantity_value, 444.0);
+    assert_eq!(q("QWeight").quantity_type, "weight");
+    assert_eq!(q("QWeight").quantity_value, 555.0);
+    assert_eq!(q("QTime").quantity_type, "time");
+    assert_eq!(q("QTime").quantity_value, 666.0);
+}
+
+/// A wall associated DIRECTLY with an `IfcMaterial` (no layer set / usage
+/// indirection) — the `"IFCMATERIAL" =>` arm of `resolve_material`, whose
+/// `category` field (attribute 2) was previously not asserted anywhere: a
+/// mutation dropping it to `None` passed the full suite.
+const DIRECT_MATERIAL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#80=IFCMATERIAL('Brick',$,'Masonry');
+#81=IFCRELASSOCIATESMATERIAL('Mat0000000000000000004',$,$,$,(#28),#80);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn resolves_a_direct_material_association_including_its_category() {
+    let dm = extract_data_model(DIRECT_MATERIAL_IFC);
+    let m = dm
+        .materials
+        .iter()
+        .find(|m| m.element_id == 28)
+        .expect("direct material association");
+    assert_eq!(m.material_name, "Brick");
+    assert_eq!(m.category.as_deref(), Some("Masonry"));
+    assert_eq!(m.set_name, None);
+    assert_eq!(m.thickness, None);
+}
+
+/// A TWO-level `IfcClassificationReference` chain (leaf -> intermediate ref ->
+/// `IfcClassification`) — `resolve_classification`'s `ReferencedSource` walk
+/// loop was only ever exercised at depth 1 (leaf ref pointing straight at the
+/// classification); a mutation that stops walking after the first hop still
+/// passed the full suite, silently losing `system_name` on any multi-level
+/// classification tree (issue #900 covers only the flat case).
+const NESTED_CLASSIFICATION_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#40=IFCCLASSIFICATION('Uniclass 2015','2',$,'Uniclass 2015',$,$,$);
+#41=IFCCLASSIFICATIONREFERENCE('loc-parent','PARENT','Parent Group',#40,$,$);
+#42=IFCCLASSIFICATIONREFERENCE('loc-leaf','LEAF','Leaf Item',#41,$,$);
+#43=IFCRELASSOCIATESCLASSIFICATION('Cls0000000000000000002',$,$,$,(#28),#42);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn walks_referenced_source_through_multiple_classification_reference_levels() {
+    let dm = extract_data_model(NESTED_CLASSIFICATION_IFC);
+    let c = dm
+        .classifications
+        .iter()
+        .find(|c| c.element_id == 28)
+        .expect("nested classification association");
+    // The leaf reference's own fields.
+    assert_eq!(c.identification.as_deref(), Some("LEAF"));
+    assert_eq!(c.name.as_deref(), Some("Leaf Item"));
+    assert_eq!(c.location.as_deref(), Some("loc-leaf"));
+    // system_name resolved by walking THROUGH the intermediate reference (#41)
+    // to the owning IfcClassification (#40) two hops away.
+    assert_eq!(c.system_name.as_deref(), Some("Uniclass 2015"));
+}
+
+#[test]
+fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
+    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    // Each element must land in EXACTLY its own container's bucket, not any
+    // of the other three (the swapped/wrong-bucket mutation this pins).
+    assert_eq!(sh.element_to_site, vec![(10, 2)], "site bucket");
+    assert_eq!(sh.element_to_building, vec![(11, 3)], "building bucket");
+    assert_eq!(sh.element_to_storey, vec![(12, 4)], "storey bucket");
+    assert_eq!(sh.element_to_space, vec![(13, 5)], "space bucket");
+
+    assert_eq!(sh.element_to_site.len(), 1);
+    assert_eq!(sh.element_to_building.len(), 1);
+    assert_eq!(sh.element_to_storey.len(), 1);
+    assert_eq!(sh.element_to_space.len(), 1);
+}

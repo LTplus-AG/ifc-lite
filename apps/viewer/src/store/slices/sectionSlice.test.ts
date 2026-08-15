@@ -416,6 +416,66 @@ describe('SectionSlice', () => {
       assert.strictEqual(state.sectionPickPreview, null);
     });
 
+    /**
+     * #2495. The commit path (`setSectionPlaneFromFace`) has screened its
+     * normal since #243; the hover path screened nothing, so it was the one
+     * route by which a raw picked normal reached a basis derivation. The
+     * screen has to ask about finiteness, not just magnitude: `Infinity < 1e-6`
+     * is false and `NaN < 1e-6` is false, so a magnitude floor alone waves
+     * both through and the division that follows produces NaN.
+     */
+    for (const [label, normal, point] of [
+      ['an infinite normal component', [Infinity, 0, 0], [1, 2, 3]],
+      ['a negative-infinite normal component', [0, -Infinity, 0], [1, 2, 3]],
+      ['a NaN normal component', [NaN, 0, 0], [1, 2, 3]],
+      ['the zero normal', [0, 0, 0], [1, 2, 3]],
+      ['an infinite picked point', [0, 1, 0], [Infinity, 2, 3]],
+      ['a NaN picked point', [0, 1, 0], [1, NaN, 3]],
+    ] as Array<[string, [number, number, number], [number, number, number]]>) {
+      it(`setSectionPickPreview refuses ${label}`, () => {
+        state.setSectionPickMode(true);
+        state.setSectionPickPreview({ normal, point, faceKey: 'bad' });
+        assert.strictEqual(
+          state.sectionPickPreview, null,
+          `expected ${label} to be refused, got ${JSON.stringify(state.sectionPickPreview)}`,
+        );
+        assert.strictEqual(state.sectionPickMode, true, 'a bad hover must not disarm pick mode');
+      });
+    }
+
+    it('setSectionPickPreview drops an already-shown preview when a bad one arrives', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({ normal: [0, 1, 0], point: [1, 2, 3], faceKey: 'good' });
+      assert.ok(state.sectionPickPreview);
+      state.setSectionPickPreview({ normal: [Infinity, 0, 0], point: [1, 2, 3], faceKey: 'bad' });
+      assert.strictEqual(state.sectionPickPreview, null, 'the stale good preview must not linger');
+    });
+
+    // Anti-mutation: a magnitude-only reading of this guard would reject a
+    // legitimately short raycast normal, which is a perfectly good direction.
+    it('setSectionPickPreview still accepts a short but perfectly valid normal', () => {
+      state.setSectionPickMode(true);
+      const p: import('./sectionSlice.js').SectionPickPreview = {
+        normal:  [0, 0, 1e-5],
+        point:   [1, 2, 3],
+        faceKey: 'short',
+      };
+      state.setSectionPickPreview(p);
+      assert.deepStrictEqual(state.sectionPickPreview, p);
+    });
+
+    it('setSectionPlaneFromFace refuses a non-finite picked POINT, not just the normal', () => {
+      // `point` only ever reached `distance` and `pickedAt`, so the normal
+      // check never saw it and a NaN hit point produced a NaN plane offset.
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 1], [0, NaN, 5]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 1], [Infinity, 0, 5]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+    });
+
     it('setSectionPickMode(false) clears any active preview', () => {
       state.setSectionPickMode(true);
       state.setSectionPickPreview({

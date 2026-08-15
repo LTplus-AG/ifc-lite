@@ -242,6 +242,154 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   engine every week and turns red when this changes. See
   `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
 
+- **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
+  `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a
+  dedup key — a second full traversal mirroring the mesher's own. On a model that is one
+  large BREP with no repeats, that key can never pay off. Gated on
+  `FACETED_BREP_DEDUP_FACE_LIMIT` (20,000 faces), measured with a **deterministic counter**
+  (`EntityDecoder::point_cache_stats()`), not wall-clock: 5,880,000 accesses with dedup on
+  vs 2,940,000 with it off on a synthetic 980k-face BREP — exactly 2.00x — and 1.00x after.
+  Post-mesh `get_or_cache_by_hash` and `direct_rep_identity` still run, so genuinely repeated
+  large geometry still dedups and still instances (asserted by test).
+  **Lesson, and the reason this entry exists:** an end-to-end suite verdict **cannot be
+  produced for this lever on the current corpus.** The largest BREP across all 163 fixtures
+  is 8,848 faces, so nothing in the suite crosses a 20,000-face gate; a base-vs-branch A/B
+  swung -10%/+9%/-7% with the sign tracking run order, i.e. pure noise. Do not spend another
+  afternoon on `probe.sh --suite` for a threshold this corpus cannot reach — either add a
+  fixture above the gate, or measure with a deterministic counter as above. The 20,000 figure
+  is a judgement call (an order of magnitude clear of realistic repeated parts, which run to
+  low hundreds of faces), not a measured optimum.
+
+### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Geometry fingerprint pass: world AABB + volume + closure verdict**
+  (#1891/#1988, PR #1993, measured 2026-08-02, base = merge-base `8f139a8e`).
+  The pass gained a per-triangle tetra determinant and a six-way bounds update.
+  Verdict: **hashing OFF is unaffected, hashing ON costs a fraction of a
+  percent.** Output byte-identical throughout — mesh/vertex/triangle counts
+  unchanged on every fixture, and an FNV-1a over every `geometryHashValues`
+  entry is equal base-vs-branch on all three (so the new arrays did not perturb
+  the fingerprint they ride with).
+  - Native `probe.sh --iters 5`, interleaved rounds, hashing off (the only mode
+    the native pipeline has — see the harness gap below): AC20-FZK-Haus
+    10 -> 10 ms total; ISSUE_129 median-of-6-rounds +1.4% inside a ±10%
+    round-to-round band (per-round minima 683..984 ms on base alone);
+    Holter/ISSUE_053 977 -> 967 ms (-1.0%). No signal either way.
+  - WASM boundary (`buildPrePassOnce` + `processGeometryBatch` in node, 3
+    interleaved rounds), min ms base -> branch: AC20 off 49.0 -> 49.1 (+0.2%),
+    on 50.1 -> 50.5 (+0.8%); ISSUE_129 off 1983.9 -> 1987.9 (+0.2%), on
+    1989.0 -> 1999.4 (+0.5%); Holter off 3555.7 -> 3600.1 (+1.2%), on
+    3790.6 -> 3849.8 (+1.6%).
+  - Turning the SWITCH on is the real cost, and it is the same on both sides:
+    off -> on is +2.9%/+0.6%/+6.9% on branch versus +2.2%/+0.3%/+6.6% on base,
+    i.e. this PR adds ~0.3-0.7 pp to a surcharge that only the diff feature pays.
+  - Honest outlier: hashing-off on Holter reads +1.2% at the wasm boundary while
+    the native probe on the same fixture reads -1.0%. Nothing in the
+    hashing-off path changed — the hasher is `None`, so every new accumulator is
+    dead code — and the delta sits inside the base's own 3528..3584 ms spread,
+    so read it as the 3.7 KB binary-size / code-layout shift, not added work.
+  - **Harness gap, worth fixing before the next hashing change:** `perf_probe`
+    CANNOT reach the hashing path. `process_geometry` -> `processor/jobs.rs`
+    hardcodes `MeshProductionOptions::default()`, so `geometry_hash` is always
+    `None` natively and the fingerprint pass only exists behind
+    `IfcAPI::setComputeGeometryHashes`. The hashing-on numbers above therefore
+    come from driving the real wasm entry point, not from `probe.sh`.
+
+- **Second harness gap, same shape: `probe.sh` cannot reach the SYMBOLIC path
+  either** (found on #2358, 2026-08-11). `perf_probe` drives `process_geometry`,
+  which never populates `symbolic_data`; annotation/placement work hangs off a
+  separate entry point, `extract_symbolic_data`, called by the wasm binding and
+  the server. So a symbolic-only change produces a **flat, identical probe table
+  on both sides** — which reads exactly like "no regression" but is a control,
+  not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
+  and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  - **And pick the fixture by whether it exercises the branch, not by the default.**
+    #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
+    `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has
+    **zero** such reps (all 34 are SubContext) and C20-Institute zero of 316;
+    `dental_clinic.ifc` has **1080**. Scan the corpus for the shape your diff
+    touches before measuring, or the "canonical" fixture will confirm nothing.
+  - Related trap when reading byte-identity on this path: **every WCS in the
+    corpus is the identity**, which is precisely why the #2358 bug survived —
+    resolving it correctly and never resolving it agree on every shipped fixture.
+    Identical output there is evidence about the corpus, not about the change.
+
+### Reading the FIELD telemetry (PostHog) — verdicts and traps
+
+- **A per-model PostHog regression alert is device-mix noise until you control for
+  device — and at this traffic level it CANNOT be made to control for device**
+  (2026-08-08, alert "Per-model load regression — any model >2x baseline").
+  It fired at `x_change = 2.29` on one fingerprint (76.7 MB / 6668 meshes,
+  14406 -> 32994 ms median). It is **NOT a regression.**
+  - The decisive estimator is the **within-person same-model paired ratio**:
+    for every (person, model) cell with loads in both windows, `median(recent) /
+    median(baseline)`. Fleet-wide that is **0.927** (IQR 0.852-1.127) over 24
+    cells / 16 persons / 97 loads — i.e. slightly *faster*. This holds the device
+    constant by construction, which is the only property that matters here.
+  - The fingerprint that fired has **zero** paired persons: 11 loads in 90 days by
+    10 different people, no person in both windows. Its paired ratio is not
+    small, it is **undefined** — there was never a regression estimate, only a
+    comparison of one set of laptops against another.
+  - **A per-model alert is not salvageable at current volume.** Across the whole
+    17-day window, **no** model fingerprint has more than **one** paired person
+    (24 fingerprints have exactly 1, 1825 have 0). Any per-model gate strong
+    enough to be sound can never fire. Alert **fleet-wide** on the pooled paired
+    ratio and keep per-model as a drill-down insight.
+  - **Two tempting controls that are circular — do not lean on them.** (1)
+    Normalising each load by that person's own median ms/MB *over the full
+    window* looks great (it collapses 2.29x to 1.00x) but the divisor is computed
+    from inside the suspect window, so a real uniform 2x regression normalises to
+    ~1.4x and a person whose only loads are recent cancels out by construction.
+    If you normalise, build the divisor from the **baseline window only**.
+    (2) "The one person who loaded it on both recent builds got faster" compares
+    two *recent* builds to each other and never bridges the windows.
+  **Lesson:** the alert's anti-false-positive gates (>=5 loads, >=3 persons per
+  window, recent p25 >= baseline median) are all satisfiable by five loads from
+  five *different* laptops. Person count is not person *overlap*. This is the
+  second retracted field perf claim on this project (see the #2183 "compression
+  is worse" retraction) — both died to contaminated measurement, not to bad code.
+- **A `total_triangles` change for one file can split WITHIN a single build.**
+  On the fingerprint above, build `1aa498e26339` emitted **both** 4423296 (two
+  persons) and 4432196 (a third) — same file, same `mesh_count` (6668), same
+  `file_size_mb` to 2dp. Because the split is inside one build, every
+  commit-range / "which merge changed the mesher" argument is moot, and so is
+  fingerprint collision (it would need two files matching to +-5 KB and +-0
+  meshes while differing 0.2% in triangles). An identical mesh roster with more
+  triangles distributed *within* it means **environment-conditional
+  triangulation on a deterministic code path** — most plausibly a CSG void cut
+  that failed and fell back under memory pressure on one run. Note the CI
+  determinism manifests would **not** catch this (pinned fixtures, controlled
+  memory), so if CSG fallback is the mechanism it is known-by-design variance,
+  not a latent determinism defect. `total_csg_failures` now rides
+  `ifc_model_loaded` so this is answerable from telemetry. Do **not** spend a
+  probe on `?geomWorkers=N`: `useIfcLoader.ts` documents that worker count cannot
+  affect output (disjoint deterministic element slices), so that probe is
+  predicted clean by the codebase itself.
+- **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
+  stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
+  at stream-complete; rAF is never serviced while the document is hidden, so a
+  tabbed-away load parked there indefinitely. Field evidence: 30 days of loads
+  contain a 25-hour and a 3.4-hour `total_elapsed_ms`, and 20 loads over 60 s of
+  post-stream time on models under 5000 meshes — durations no amount of finalize
+  work can produce. 5.5% of all loads (420 / 7605) spent over 10 s after
+  `stream_complete_ms`. **When mining this event, treat `total_elapsed_ms` minus
+  `stream_complete_ms` above ~30 s as a visibility artifact, not compute, on any
+  data captured before this fix.** That duration cut is a stopgap and has a real
+  cost — it also hides a genuine slow-finalize regression. `ifc_model_loaded` now
+  carries **`was_hidden`**; once it has 17 days of history, filter on
+  `was_hidden != true` instead, which excludes the artifact without blinding the
+  metric.
+- **`BVH.build` is a synchronous main-thread block that grows as O(N log^2 N)**
+  (`packages/spatial/src/bvh.ts`, measured 2026-08-08, M-series, warmed, best of
+  3): 21 ms @ 6.7k meshes, 296 ms @ 60k, 826 ms @ 120k, **1715 ms @ 200k**
+  (3-5x that on a mid-range laptop). `buildSpatialIndexAsync` time-slices only
+  phase 1 (the linear bounds pass) and calls phase 2 "fast enough
+  synchronously"; phase 2 re-`sort()`s the index slice at *every* node, so the
+  comparator runs 68 -> 132 times per mesh as N goes 6.7k -> 200k. NOT SHIPPED and
+  not the cause of any open issue — recorded so the number does not get
+  re-measured. The fix, if wanted, is a presorted-per-axis build (O(N log N))
+  plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
+  a different tree shape is output-equivalent and can be asserted as such.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

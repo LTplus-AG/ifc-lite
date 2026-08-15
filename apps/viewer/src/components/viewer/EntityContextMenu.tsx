@@ -464,7 +464,11 @@ function ExtensionContextItems({
             label={titleFor(c.payload)}
             onClick={() => {
               closeContextMenu();
-              host?.runCommand(c.payload.command).catch((err) => {
+              // Pinned to `c.extensionId` — the same owner the React key
+              // above uses. Command ids are namespaced by convention only,
+              // so an unscoped run could pick a different installed
+              // extension that declares the same id.
+              host?.runCommand(c.payload.command, c.extensionId).catch((err) => {
                 toast.error(describeRunCommandError(c.payload.command, err));
               });
             }}

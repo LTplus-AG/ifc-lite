@@ -20,24 +20,17 @@ import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
+import { contentMatchCounts } from './contentMatches.js';
+import {
+  annotateReviewGroups,
+  contentMatchReportRows,
+  exportedGlobalId,
+  type CompareReportRow,
+} from './reportRows.js';
 import { summarizeGeometryChange, type Aabb } from './describeChange.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
-/** One row of the exported change report. */
-export interface CompareReportRow {
-  globalId: string;
-  name: string;
-  ifcType: string;
-  /** Raw diff state: added | deleted | modified. */
-  state: DiffState;
-  /** Human change label: "Added", "Deleted", "Moved", "Reshaped",
-   *  "Data changed", or a combination ("Moved, Data changed"). */
-  change: string;
-  /** AABB-centre displacement in metres (0 when not a move). */
-  movedDistance: number;
-  /** Which model this row's element lives in (head for add/modify, base for delete). */
-  model: string;
-}
+export type { CompareReportRow } from './reportRows.js';
 
 export interface CompareReport {
   baseModel: string;
@@ -47,7 +40,19 @@ export interface CompareReport {
   /** IFC classes excluded from the comparison (the blacklist, #1470). Empty when
    *  none were excluded. Recorded so a report reader knows what was ignored. */
   excludedTypes: string[];
-  counts: { added: number; deleted: number; modified: number };
+  /**
+   * `matched` counts elements the content pass retired out of `added`/`deleted`
+   * (#1891); `needsReview` counts entities left in an unresolved group. Both
+   * are 0 when the pass did not run. Without them a reader would take a lower
+   * added/deleted count at face value.
+   */
+  counts: {
+    added: number;
+    deleted: number;
+    modified: number;
+    matched: number;
+    needsReview: number;
+  };
   rows: CompareReportRow[];
 }
 
@@ -81,6 +86,28 @@ function boundsIndex(model: FederatedModel | undefined): Map<number, Aabb> {
 /** The side actually reported for an entry: base for deletions, head otherwise. */
 function reportRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
   return (entry.state === 'deleted' ? entry.base?.ref : entry.head?.ref) ?? entry.base?.ref;
+}
+
+/**
+ * The GlobalId reported for an entry — taken from the same side as
+ * {@link reportRef}, not from `entry.key`.
+ *
+ * Those are the same string until an identity map is in play. Under
+ * `DiffOptions.keyAliases` (#1891) an aliased pair's `entry.key` is the *base*
+ * key, deliberately: the alias renames the pair, and the head fingerprint keeps
+ * its own key on `entry.head.key`. Keying a head row off `entry.key` would
+ * therefore print the element's OLD GlobalId next to its current name and type
+ * — a row that resolves to nothing in the file it claims to describe, and one
+ * that would silently disagree with every other export.
+ *
+ * The viewer does not pass `keyAliases` today, so no shipped path can produce
+ * an aliased entry; this reads the side it always meant to read, so that adding
+ * the alias to Compare mode is a one-line change and not a data-integrity bug.
+ */
+function reportKey(entry: DiffEntry<CompareRef>): string {
+  return (
+    (entry.state === 'deleted' ? entry.base?.key : entry.head?.key) ?? entry.base?.key ?? entry.key
+  );
 }
 
 /** Classify a modified entry's change kinds into a human label + move distance. */
@@ -127,6 +154,9 @@ export function buildCompareReport(
   const headBounds = boundsIndex(headModel);
 
   const rows: CompareReportRow[] = [];
+  // Row → the federation global id it was built from, so the unresolved-group
+  // annotation can find its rows without re-deriving the ref.
+  const rowGlobalIds = new Map<CompareReportRow, number>();
   for (const entry of result.diff.entries) {
     if (entry.state === 'unchanged') continue;
     const ref = reportRef(entry);
@@ -136,7 +166,7 @@ export function buildCompareReport(
     const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
     // The fingerprint key is the GlobalId; synthetic "missing:" keys (entities
     // without a resolvable GlobalId) export blank rather than the placeholder.
-    const globalId = entry.key.startsWith('missing:') ? '' : entry.key;
+    const globalId = exportedGlobalId(reportKey(entry));
     const modelName = ref.modelId === result.headModelId ? result.headName : result.baseName;
 
     let change: string;
@@ -145,16 +175,34 @@ export function buildCompareReport(
     else if (entry.state === 'deleted') change = 'Deleted';
     else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds));
 
-    rows.push({ globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName });
+    const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
+    rows.push(row);
+    rowGlobalIds.set(row, ref.globalId);
   }
 
-  // Stable order: added, then changed, then deleted; by type then name within.
-  const stateRank: Record<DiffState, number> = { added: 0, modified: 1, deleted: 2, unchanged: 3 };
+  // Content matches (#1891), added on top of the entry-derived rows rather than
+  // replacing anything: retiring matches contribute their own rows, unresolved
+  // groups annotate the add/delete rows that are already here.
+  const matches = result.diff.contentMatches ?? [];
+  rows.push(...contentMatchReportRows(matches, models, result.headName));
+  annotateReviewGroups(rows, matches, rowGlobalIds);
+
+  // Stable order: added, then changed, then matched, then deleted; by type then
+  // name within.
+  const stateRank: Record<DiffState | 'matched', number> = {
+    added: 0,
+    modified: 1,
+    matched: 2,
+    deleted: 3,
+    unchanged: 4,
+  };
   rows.sort((a, b) =>
     stateRank[a.state] - stateRank[b.state] ||
     a.ifcType.localeCompare(b.ifcType) ||
     a.name.localeCompare(b.name),
   );
+
+  const matchTally = contentMatchCounts(result.diff.contentMatches);
 
   return {
     baseModel: result.baseName,
@@ -167,6 +215,8 @@ export function buildCompareReport(
       added: result.diff.counts.added,
       deleted: result.diff.counts.deleted,
       modified: result.diff.counts.modified,
+      matched: matchTally.matchedElements,
+      needsReview: matchTally.needsReviewElements,
     },
     rows,
   };
@@ -178,13 +228,29 @@ export function buildCompareReport(
  *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
   let s = String(value);
+  // Strip EVERY leading invisible before the trigger test, not just the BOM.
+  // Spreadsheet importers treat a BOM as file metadata, but a zero-width space
+  // (U+200B), an LTR mark (U+200E), a non-breaking space (U+00A0) or a line /
+  // paragraph separator (U+2028/U+2029) in front of `=` likewise does not stop
+  // a spreadsheet reading the cell as a formula -- while it DOES stop the
+  // anchored test below matching, so the apostrophe never gets prepended.
+  // Fixing only the BOM leaves the guard bypassable, which for a CSV-injection
+  // guard means it still fails in the way that matters.
+  //
+  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`
+  // (U+2028/U+2029). Same class as `lists/export/model.ts`.
+  s = s.replace(/^[\p{Cf}\p{Z}]+/u, '');
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
-  const header = ['GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model'];
+  // `Match` / `MatchedGlobalId` are appended, never inserted: an existing
+  // consumer reading the first six columns positionally keeps working (#1891).
+  const header = [
+    'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
+  ];
   const lines: string[] = [];
   // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
   // mislead a coordinator (the ignored elements are simply gone). Lead with a
@@ -203,6 +269,8 @@ export function reportToCsv(report: CompareReport): string {
       csvField(r.change),
       csvField(r.movedDistance ? r.movedDistance.toFixed(4) : ''),
       csvField(r.model),
+      csvField(r.match ?? ''),
+      csvField(r.matchedGlobalId ?? ''),
     ].join(','));
   }
   return lines.join('\r\n');

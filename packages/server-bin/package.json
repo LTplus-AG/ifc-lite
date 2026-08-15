@@ -17,7 +17,9 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
+    "test": "vitest run",
     "start": "node dist/cli.js",
     "postinstall": "node -e \"import('./dist/postinstall.js').catch(() => {})\" || true"
   },
@@ -29,8 +31,9 @@
     "tar": "^7.5.20"
   },
   "devDependencies": {
-    "@types/node": "^26.1.1",
-    "typescript": "^6.0.3"
+    "@types/node": "^26.1.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   },
   "engines": {
     "node": ">=18.0.0"

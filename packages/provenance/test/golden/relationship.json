@@ -1,0 +1,156 @@
+{
+  "description": "FROZEN wire-format golden vectors for node-hash-v0 (spec version node-hash-v0 / 1.0.0, frozen 2026-07-25, docs/vision/spec/node-hash-v0.md). Do NOT regenerate: a hash change here is a wire-format change and requires node-hash-v1 plus a major version bump of @ifc-lite/provenance. IFC identifiers follow the schema exactly (AGENTS.md \"IFC schema fidelity\"): relationship role names are the real EXPRESS attribute names of the named relationship, and element ifcType values are the exact EXPRESS PascalCase names the canonical load path produces (store.entities.getTypeName), never the uppercase STEP storage spelling. Special numbers are encoded as {\"$num\": \"NaN\" | \"Infinity\" | \"-Infinity\" | \"-0\"}.",
+  "vectors": [
+    {
+      "id": "rel-voids",
+      "description": "IfcRelVoidsElement with its two IFC EXPRESS roles, both SINGULAR per the schema: RelatingBuildingElement (IfcElement) and RelatedOpeningElement (IfcFeatureElementSubtraction), one ref each. Role names follow the IFC schema exactly - no aliases, no pluralized inventions. The two refs use different algorithm tags (sha256 and fnv1a64) because a parent never cares which algorithm produced a child hash (spec section 3.2).",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelVoidsElement",
+        "roles": [
+          {
+            "roleName": "RelatingBuildingElement",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedOpeningElement",
+            "refs": [
+              "fnv1a64:0x0123456789abcdef"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:73d4e541faec8dcc2cc73048d838db5de32c5536727effb0b3d7e511c8461495"
+    },
+    {
+      "id": "rel-voids-roles-permuted",
+      "description": "Same IfcRelVoidsElement with its roles listed in the opposite input order: roles are sorted by IFC role name (ordinal UTF-8) before encoding, so the hash MUST equal rel-voids.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelVoidsElement",
+        "roles": [
+          {
+            "roleName": "RelatedOpeningElement",
+            "refs": [
+              "fnv1a64:0x0123456789abcdef"
+            ]
+          },
+          {
+            "roleName": "RelatingBuildingElement",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:73d4e541faec8dcc2cc73048d838db5de32c5536727effb0b3d7e511c8461495",
+      "expectSameHashAs": "rel-voids"
+    },
+    {
+      "id": "rel-aggregates-set",
+      "description": "IfcRelAggregates with its exact IFC EXPRESS roles: RelatingObject (singular IfcObjectDefinition) and RelatedObjects (a genuine SET of IfcObjectDefinition) carrying three unsorted refs with mixed algorithm tags.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": [
+          {
+            "roleName": "RelatingObject",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedObjects",
+            "refs": [
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:1bd1d914cb40f2364f698d5c33ae1d0fbf022c8907884fb65ac6b16ccd63ff45"
+    },
+    {
+      "id": "rel-aggregates-refs-permuted",
+      "description": "Same IfcRelAggregates with RelatedObjects listed in a different order: because RelatedObjects IS a set in the IFC schema, refs are sorted by tagged hash string before encoding, so the hash MUST equal rel-aggregates-set.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": [
+          {
+            "roleName": "RelatingObject",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedObjects",
+            "refs": [
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:1bd1d914cb40f2364f698d5c33ae1d0fbf022c8907884fb65ac6b16ccd63ff45",
+      "expectSameHashAs": "rel-aggregates-set"
+    },
+    {
+      "id": "rel-empty-roles",
+      "description": "Empty payloads edge case: a relationship with zero roles (header + relType + count 0). Real relType (IfcRelAggregates), no roles carried.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": []
+      },
+      "expectedHash": "sha256:1a891e017fc67b49aa606f6fc794d367a7fd6c60bbbca3da5f79f343ebe1f87c"
+    },
+    {
+      "id": "rel-role-empty-refs",
+      "description": "The IFC EXPRESS role RelatedObjects present with an empty ref set - distinct from the role being absent entirely (rel-empty-roles).",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelAggregates",
+        "roles": [
+          {
+            "roleName": "RelatedObjects",
+            "refs": []
+          }
+        ]
+      },
+      "expectedHash": "sha256:fc4b2977c04acc3bef2bdadf840d3e9b55ee62b04d9642e3d3f1deb48aedef35",
+      "expectDifferentHashFrom": "rel-empty-roles"
+    },
+    {
+      "id": "rel-contained-many",
+      "description": "IfcRelContainedInSpatialStructure with its exact IFC EXPRESS roles RelatingStructure (singular IfcSpatialElement) and RelatedElements (a SET of IfcProduct), the latter carrying five unsorted refs including boundary-value sha256 strings; pins the ordinal byte-compare set sort.",
+      "kind": "relationship",
+      "payload": {
+        "relType": "IfcRelContainedInSpatialStructure",
+        "roles": [
+          {
+            "roleName": "RelatingStructure",
+            "refs": [
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          },
+          {
+            "roleName": "RelatedElements",
+            "refs": [
+              "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+              "fnv1a64:0x0123456789abcdef",
+              "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ]
+          }
+        ]
+      },
+      "expectedHash": "sha256:12435b4458a9e3a995e9b16b60ee1b47972e70e323f3bad390652afdbd690a53"
+    }
+  ]
+}

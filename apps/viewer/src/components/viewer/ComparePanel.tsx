@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useMemo } from 'react';
-import { GitCompareArrows, Loader2, Play, X, Trash2, Download, ChevronLeft } from 'lucide-react';
+import { GitCompareArrows, X, Trash2, Download, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
@@ -26,22 +26,14 @@ import { ChangeDetailView } from './compare/ChangeDetailView';
 import { BcfFromChange } from './compare/BcfFromChange';
 import { useBcfFromChange } from './compare/useBcfFromChange';
 import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } from './compare/CompareResultsList';
-import { CompareBlacklist } from './compare/CompareBlacklist';
-import { changedTypeCounts, type CompareRow } from './compare/changeRow';
-import type { DiffScope, DiffState, DiffEntry } from '@ifc-lite/diff';
+import { CompareRunControls } from './compare/CompareRunControls';
+import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
+import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import type { DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
   onClose?: () => void;
 }
-
-const SCOPES: { id: DiffScope; label: string }[] = [
-  { id: 'both', label: 'Both' },
-  { id: 'data', label: 'Data' },
-  { id: 'geometry', label: 'Geometry' },
-];
-
-/** Cap rows rendered per group so a huge diff can't stall the DOM. */
-const MAX_ROWS_PER_GROUP = 1000;
 
 /** The side actually drawn for an entry: base for deletions, head otherwise. */
 function renderRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
@@ -56,12 +48,14 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const headModelId = useViewerStore((s) => s.compareHeadModelId);
   const scope = useViewerStore((s) => s.compareScope);
   const showUnchanged = useViewerStore((s) => s.compareShowUnchanged);
+  const matchByContent = useViewerStore((s) => s.compareMatchByContent);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
   const selectedKey = useViewerStore((s) => s.compareSelectedKey);
   const setBaseModelId = useViewerStore((s) => s.setCompareBaseModelId);
   const setHeadModelId = useViewerStore((s) => s.setCompareHeadModelId);
   const setScope = useViewerStore((s) => s.setCompareScope);
   const setShowUnchanged = useViewerStore((s) => s.setCompareShowUnchanged);
+  const setMatchByContent = useViewerStore((s) => s.setCompareMatchByContent);
   const addExcludedType = useViewerStore((s) => s.addCompareExcludedType);
   const removeExcludedType = useViewerStore((s) => s.removeCompareExcludedType);
   const clearExcludedTypes = useViewerStore((s) => s.clearCompareExcludedTypes);
@@ -123,6 +117,18 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     return out;
   }, [result, models]);
 
+  // Content-match rows (#1891). They live on `diff.contentMatches`, NOT in
+  // `diff.entries` - a retiring match removed its entries outright - so this is
+  // separate plumbing rather than another bucket of `groups`.
+  const matchRows = useMemo<CompareMatchRow[]>(
+    () =>
+      contentMatchRows(result?.diff.contentMatches, (ref) =>
+        models.get(ref.modelId)?.ifcDataStore?.entities.getName(ref.localId) || '',
+      ),
+    [result, models],
+  );
+  const matchCounts = useMemo(() => contentMatchCounts(result?.diff.contentMatches), [result]);
+
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
 
@@ -177,6 +183,32 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
     requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
   };
 
+  /** Select the elements a content-match row stands for. Retiring matches
+   *  select their head copies (the base copies are hidden by the overlay);
+   *  review groups select every candidate on both sides. */
+  const focusMatch = (row: CompareMatchRow) => {
+    if (row.refs.length === 0) return;
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.setSelectedEntityIds(row.refs.map((r) => r.globalId));
+    state.addEntitiesToSelection(row.refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
+    // A content match is not a `DiffEntry`, so it has no "what changed" detail
+    // and no BCF pre-fill yet - the row key still drives the list highlight.
+    state.setCompareSelectedKey(row.key);
+    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  };
+
+  const focusMatchGroup = (rows: CompareMatchRow[]) => {
+    const refs = rows.flatMap((row) => row.refs);
+    if (refs.length === 0) return;
+    const state = useViewerStore.getState();
+    state.clearEntitySelection();
+    state.setSelectedEntityIds(refs.map((r) => r.globalId));
+    state.addEntitiesToSelection(refs.map((r) => ({ modelId: r.modelId, expressId: r.localId })));
+    state.setCompareSelectedKey(null);
+    requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
+  };
+
   const downloadReport = (format: 'csv' | 'json') => {
     if (!result) return;
     // Pass the blacklist in its original IFC casing so the report reads
@@ -228,98 +260,53 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
               pre-filled form, so re-running / exports / browsing only get in the way. */}
           {!bcfComposing && (
             <>
-              {/* Run controls */}
-              <div className="p-3 space-y-3 border-b border-border">
-                <div className="grid grid-cols-[1.25rem_1fr] items-center gap-x-2 gap-y-2 text-xs" {...tourAnchor(TOUR_ANCHORS.compareAb)}>
-                  <span className="text-muted-foreground">A</span>
-                  <select
-                    value={baseModelId ?? ''}
-                    onChange={(e) => setBaseModelId(e.target.value)}
-                    className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
-                  >
-                    {modelList.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                  <span className="text-muted-foreground">B</span>
-                  <select
-                    value={headModelId ?? ''}
-                    onChange={(e) => setHeadModelId(e.target.value)}
-                    className="w-full rounded border border-border bg-transparent px-2 py-1 text-foreground min-w-0"
-                  >
-                    {modelList.map((m) => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <CompareRunControls
+                models={modelList}
+                baseModelId={baseModelId}
+                headModelId={headModelId}
+                onBaseModelId={setBaseModelId}
+                onHeadModelId={setHeadModelId}
+                scope={scope}
+                onScope={setScope}
+                showUnchanged={showUnchanged}
+                onShowUnchanged={setShowUnchanged}
+                matchByContent={matchByContent}
+                onMatchByContent={setMatchByContent}
+                canRun={canRun}
+                running={running}
+                onRun={() => void runComparison()}
+                error={error}
+                geometryUnavailable={!!result?.geometryUnavailable}
+                excludedTypes={excludedTypes}
+                changedTypeCounts={typeCounts}
+                onAddExcludedType={addExcludedType}
+                onRemoveExcludedType={removeExcludedType}
+                onClearExcludedTypes={clearExcludedTypes}
+              />
 
-                {baseModelId === headModelId && (
-                  <p className="text-xs text-[#e0af68]">Pick two different models.</p>
-                )}
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="inline-flex rounded-md border border-border overflow-hidden text-xs shrink-0">
-                    {SCOPES.map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => setScope(s.id)}
-                        className={cn(
-                          'px-2.5 py-1 transition-colors',
-                          scope === s.id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
-                        )}
-                      >
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                  <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={showUnchanged}
-                      onChange={(e) => setShowUnchanged(e.target.checked)}
-                    />
-                    Show unchanged
-                  </label>
-                </div>
-
-                <Button size="sm" className="w-full gap-1.5" disabled={!canRun} onClick={() => void runComparison()} {...tourAnchor(TOUR_ANCHORS.compareRun)}>
-                  {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-                  {running ? 'Comparing…' : 'Run comparison'}
-                </Button>
-
-                {error && <p className="text-xs text-[#f7768e]">{error}</p>}
-
-                {result?.geometryUnavailable && scope !== 'data' && (
-                  <p className="text-xs text-[#e0af68]">
-                    One model has no geometry fingerprints (loaded outside the WASM
-                    mesh path), so geometry changes can’t be detected. Data changes
-                    are still accurate — switch to the Data scope for reliable results.
-                  </p>
-                )}
-
-                {/* Ignored classes - blacklist noisy types out of the diff (#1470).
-                    Compact, in-line with the run controls; self-hides when empty. */}
-                <CompareBlacklist
-                  excludedTypes={excludedTypes}
-                  changedTypeCounts={typeCounts}
-                  onAdd={addExcludedType}
-                  onRemove={removeExcludedType}
-                  onClear={clearExcludedTypes}
-                />
-              </div>
-
-              {/* Counts */}
+              {/* Counts. The Matched badge appears when the content pass RAN, not
+                  when it found something (#1891) — added/deleted are lower BECAUSE
+                  of it, so the number explaining the drop sits next to them. */}
               {counts && (
-                <div className="grid grid-cols-4 gap-1 p-3 border-b border-border text-center" {...tourAnchor(TOUR_ANCHORS.compareCounts)}>
+                <div
+                  className={cn(
+                    'grid gap-1 p-3 border-b border-border text-center',
+                    contentMatchingRan(result?.diff.contentMatches) ? 'grid-cols-5' : 'grid-cols-4',
+                  )}
+                  {...tourAnchor(TOUR_ANCHORS.compareCounts)}
+                >
                   <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
                   <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
                   <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />
+                  {contentMatchingRan(result?.diff.contentMatches) && (
+                    <CountBadge label="Matched" value={matchCounts.matchedElements} color={COMPARE_COLORS.matched} />
+                  )}
                   <CountBadge label="Unchanged" value={counts.unchanged} color={COMPARE_COLORS.unchanged} />
                 </div>
               )}
 
-              {/* Export the full change report (#1202) */}
-              {result && counts && counts.added + counts.modified + counts.deleted > 0 && (
+              {/* Export the full change report (#1202) — exact negation of the results list's empty state. */}
+              {result && counts && hasReportableChanges(counts, matchRows) && (
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-border text-xs">
                   <Download className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                   <span className="text-muted-foreground">Download report</span>
@@ -339,9 +326,12 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 result={result}
                 groups={groups}
                 counts={counts}
+                matchRows={matchRows}
                 selectedKey={selectedKey}
                 onFocus={focusEntry}
                 onFocusGroup={focusGroup}
+                onFocusMatch={focusMatch}
+                onFocusMatchGroup={focusMatchGroup}
               />
 
               {/* What-changed detail for the selected element */}

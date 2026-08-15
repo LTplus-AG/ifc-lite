@@ -7,6 +7,9 @@
 use crate::error::{Error, Result};
 use crate::mesh::Mesh;
 use crate::profile::{Profile2D, Profile2DWithVoids, Triangulation, VoidInfo};
+use crate::extrusion_generic::{
+    apply_transform_generic, create_cap_mesh, create_side_walls, extrude_rings_into,
+};
 use nalgebra::{Matrix4, Point2, Point3, Vector3};
 
 /// Extrude a 2D profile along the Z axis
@@ -16,57 +19,8 @@ pub fn extrude_profile(
     depth: f64,
     transform: Option<Matrix4<f64>>,
 ) -> Result<Mesh> {
-    if depth <= 0.0 {
-        return Err(Error::InvalidExtrusion(
-            "Depth must be positive".to_string(),
-        ));
-    }
-
-    // Check if profile has extreme aspect ratio (very elongated)
-    // This detects profiles like railings that span building perimeters
-    // and would create stretched triangles when triangulated
-    let should_skip_caps = profile_has_extreme_aspect_ratio(&profile.outer);
-
-    // Triangulate profile (only if we need caps)
-    let triangulation = if should_skip_caps {
-        None
-    } else {
-        Some(profile.triangulate()?)
-    };
-
-    // Create mesh
-    let cap_vertex_count = triangulation
-        .as_ref()
-        .map(|t| t.points.len() * 2)
-        .unwrap_or(0);
-    let side_vertex_count = profile.outer.len() * 2;
-    let total_vertices = cap_vertex_count + side_vertex_count;
-
-    let cap_index_count = triangulation
-        .as_ref()
-        .map(|t| t.indices.len() * 2)
-        .unwrap_or(0);
-    let mut mesh = Mesh::with_capacity(total_vertices, cap_index_count + profile.outer.len() * 6);
-
-    // Create top and bottom caps (skip for extreme aspect ratio profiles)
-    if let Some(ref tri) = triangulation {
-        create_cap_mesh(tri, 0.0, Vector3::new(0.0, 0.0, -1.0), &mut mesh);
-        create_cap_mesh(tri, depth, Vector3::new(0.0, 0.0, 1.0), &mut mesh);
-    }
-
-    // Create side walls
-    create_side_walls(&profile.outer, depth, &mut mesh);
-
-    // Create side walls for holes
-    for hole in &profile.holes {
-        create_side_walls(hole, depth, &mut mesh);
-    }
-
-    // Apply transformation if provided
-    if let Some(mat) = transform {
-        apply_transform(&mut mesh, &mat);
-    }
-
+    let mut mesh = Mesh::new();
+    extrude_rings_into(&profile.outer, &profile.holes, depth, transform, &mut mesh)?;
     Ok(mesh)
 }
 
@@ -144,60 +98,6 @@ pub fn extrude_profile_watertight(
         apply_transform(&mut mesh, &mat);
     }
     Ok(mesh)
-}
-
-/// Check if a profile has an extreme aspect ratio (very elongated shape)
-/// Returns true if the profile is so disproportionate the extrusion caps
-/// can't be emitted as a meaningful filled face.
-///
-/// Originally the threshold was 100:1 — that catches NORMAL residential
-/// walls (a 115 mm × 11.8 m wall profile has ratio 103) and drops their
-/// top/bottom caps, which then makes the wall a hollow tube and breaks
-/// downstream boolean cuts (the opening AABB clip can no longer find
-/// triangles to remove on the cap faces — see advanced_model #612315 /
-/// calibration class 3). Long thin building elements (curtain-wall
-/// mullions, railings, MEP runs) routinely have aspect ratios in the
-/// 100–1000 range.
-///
-/// Raised to 10000:1 so only genuinely pathological profiles (e.g. a
-/// 1 mm × 10 m strip that signals an authoring bug, not a real cross-
-/// section) trigger cap-skipping. The existing 1 mm absolute-dimension
-/// floor below still rejects degenerate input.
-#[inline]
-fn profile_has_extreme_aspect_ratio(outer: &[Point2<f64>]) -> bool {
-    if outer.len() < 3 {
-        return false;
-    }
-
-    // Calculate bounding box
-    let mut min_x = f64::MAX;
-    let mut max_x = f64::MIN;
-    let mut min_y = f64::MAX;
-    let mut max_y = f64::MIN;
-
-    for p in outer {
-        min_x = min_x.min(p.x);
-        max_x = max_x.max(p.x);
-        min_y = min_y.min(p.y);
-        max_y = max_y.max(p.y);
-    }
-
-    let width = max_x - min_x;
-    let height = max_y - min_y;
-
-    // Skip if dimensions are too small to measure
-    if width < 0.001 || height < 0.001 {
-        return false;
-    }
-
-    let aspect_ratio = (width / height).max(height / width);
-
-    // Skip caps only for truly pathological profiles. Real building
-    // elements (walls, slabs, mullions, railings) routinely sit in the
-    // 100–1000 range; only profiles 4 orders of magnitude apart in
-    // their two dimensions are likely authoring artefacts where the
-    // caps wouldn't survive numerical precision anyway.
-    aspect_ratio > 10000.0
 }
 
 /// Extrude a 2D profile with void awareness
@@ -366,158 +266,6 @@ fn create_void_side_walls(contour: &[Point2<f64>], z_start: f64, z_end: f64, mes
         // Add 2 triangles for the quad (reversed winding for inward-facing)
         mesh.add_triangle(idx, idx + 2, idx + 1);
         mesh.add_triangle(idx, idx + 3, idx + 2);
-
-        quad_count += 1;
-    }
-}
-
-/// Create a cap mesh (top or bottom) from triangulation
-#[inline]
-fn create_cap_mesh(triangulation: &Triangulation, z: f64, normal: Vector3<f64>, mesh: &mut Mesh) {
-    let base_index = mesh.vertex_count() as u32;
-
-    // Add vertices
-    for point in &triangulation.points {
-        mesh.add_vertex(Point3::new(point.x, point.y, z), normal);
-    }
-
-    // Add triangles
-    for i in (0..triangulation.indices.len()).step_by(3) {
-        if i + 2 >= triangulation.indices.len() {
-            break;
-        }
-        let i0 = base_index + triangulation.indices[i] as u32;
-        let i1 = base_index + triangulation.indices[i + 1] as u32;
-        let i2 = base_index + triangulation.indices[i + 2] as u32;
-
-        // Reverse winding for bottom cap
-        if z == 0.0 {
-            mesh.add_triangle(i0, i2, i1);
-        } else {
-            mesh.add_triangle(i0, i1, i2);
-        }
-    }
-}
-
-/// Create side walls for a profile boundary
-#[inline]
-fn create_side_walls(boundary: &[nalgebra::Point2<f64>], depth: f64, mesh: &mut Mesh) {
-    let n = boundary.len();
-    if n < 2 {
-        return;
-    }
-
-    // Compute centroid of profile for smooth radial normals
-    let mut cx = 0.0;
-    let mut cy = 0.0;
-    for p in boundary.iter() {
-        cx += p.x;
-        cy += p.y;
-    }
-    cx /= n as f64;
-    cy /= n as f64;
-
-    // Smooth radial normals are correct for circular-ish profiles, but produce
-    // incorrect shading on rectangular/polygonal extrusions.
-    let use_smooth_radial_normals = is_approximately_circular_profile(boundary, cx, cy);
-    let vertex_normals: Vec<Vector3<f64>> = if use_smooth_radial_normals {
-        boundary
-            .iter()
-            .map(|p| {
-                Vector3::new(p.x - cx, p.y - cy, 0.0)
-                    .try_normalize(1e-10)
-                    .unwrap_or(Vector3::new(0.0, 0.0, 1.0))
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    // Orient the flat side-wall normals outward regardless of the profile's
-    // authored winding. An edge's cross-section normal is one of its two
-    // in-plane perpendiculars; which one points *out* of the solid depends on
-    // the loop's winding, so key it off the signed area (CCW > 0). Without
-    // this, a CCW-authored outer profile (e.g. the AC20-FZK-Haus roof slab,
-    // issue #1006 follow-up) got inward-facing side-wall normals and shaded
-    // inside-out under the renderer's normal-based, double-sided lighting.
-    // Holes are passed with the opposite (CW) winding, which flips the sign so
-    // their walls keep facing into the void — byte-identical to the previous
-    // behaviour for negative-area loops.
-    let signed_area2: f64 = (0..n)
-        .map(|i| {
-            let a = &boundary[i];
-            let b = &boundary[(i + 1) % n];
-            a.x * b.y - b.x * a.y
-        })
-        .sum();
-    let winding_sign = if signed_area2 < 0.0 { -1.0 } else { 1.0 };
-
-    let base_index = mesh.vertex_count() as u32;
-    let mut quad_count = 0u32;
-
-    for i in 0..n {
-        let j = (i + 1) % n;
-
-        let p0 = &boundary[i];
-        let p1 = &boundary[j];
-
-        // Skip degenerate edges (duplicate consecutive points)
-        let edge = Vector3::new(p1.x - p0.x, p1.y - p0.y, 0.0);
-        if edge.magnitude_squared() < 1e-20 {
-            continue;
-        }
-
-        // Right-hand perpendicular (edge.y, -edge.x) is outward for a CCW loop;
-        // `winding_sign` corrects it for CW loops (and holes).
-        let flat_normal = Vector3::new(edge.y, -edge.x, 0.0)
-            .try_normalize(1e-10)
-            .map(|v| v * winding_sign)
-            .unwrap_or(Vector3::new(0.0, 0.0, 1.0));
-        let n0 = if use_smooth_radial_normals {
-            vertex_normals[i]
-        } else {
-            flat_normal
-        };
-        let n1 = if use_smooth_radial_normals {
-            vertex_normals[j]
-        } else {
-            flat_normal
-        };
-
-        // Bottom vertices
-        let v0_bottom = Point3::new(p0.x, p0.y, 0.0);
-        let v1_bottom = Point3::new(p1.x, p1.y, 0.0);
-
-        // Top vertices
-        let v0_top = Point3::new(p0.x, p0.y, depth);
-        let v1_top = Point3::new(p1.x, p1.y, depth);
-
-        // Add 4 vertices with smooth per-vertex normals
-        let idx = base_index + (quad_count * 4);
-        mesh.add_vertex(v0_bottom, n0);
-        mesh.add_vertex(v1_bottom, n1);
-        mesh.add_vertex(v1_top, n1);
-        mesh.add_vertex(v0_top, n0);
-
-        // Add 2 triangles for the quad, wound CONSISTENTLY with the caps.
-        //
-        // The caps are emitted assuming a CCW (positive-area) outer loop: the
-        // top cap keeps the triangulation winding (+Z outward), the bottom is
-        // reversed (−Z outward). The side-wall quad must close that surface with
-        // the SAME outward orientation, or the cap↔wall shared edges run the same
-        // direction instead of cancelling — a closed but winding-INCONSISTENT
-        // solid whose exact-kernel boolean leaves open rim edges (the #1007
-        // gable-wall residue: a CW-authored wall profile extruded along +Z).
-        // `winding_sign` (CCW>0) selects the matching face order; for a CW loop
-        // we mirror the quad so the closed solid is consistently outward,
-        // byte-identical to before for the common CCW case.
-        if winding_sign > 0.0 {
-            mesh.add_triangle(idx, idx + 1, idx + 2);
-            mesh.add_triangle(idx, idx + 2, idx + 3);
-        } else {
-            mesh.add_triangle(idx, idx + 2, idx + 1);
-            mesh.add_triangle(idx, idx + 3, idx + 2);
-        }
 
         quad_count += 1;
     }
@@ -722,67 +470,13 @@ fn create_lofted_side_walls(
     }
 }
 
-/// Heuristic for detecting circular-ish profiles from boundary points.
-///
-/// Circular profiles generated from IFC circles typically have many segments with
-/// low radial variance relative to the centroid. Rectangles/most polygons do not.
-#[inline]
-fn is_approximately_circular_profile(boundary: &[Point2<f64>], cx: f64, cy: f64) -> bool {
-    if boundary.len() < 20 {
-        return false;
-    }
-
-    let mut radii: Vec<f64> = Vec::with_capacity(boundary.len());
-    for p in boundary {
-        let r = ((p.x - cx).powi(2) + (p.y - cy).powi(2)).sqrt();
-        if !r.is_finite() || r < 1e-9 {
-            return false;
-        }
-        radii.push(r);
-    }
-
-    let mean = radii.iter().sum::<f64>() / radii.len() as f64;
-    if mean < 1e-9 {
-        return false;
-    }
-
-    let variance = radii
-        .iter()
-        .map(|r| {
-            let d = r - mean;
-            d * d
-        })
-        .sum::<f64>()
-        / radii.len() as f64;
-    let std_dev = variance.sqrt();
-    let coeff_var = std_dev / mean;
-
-    coeff_var < 0.15
-}
 
 /// Apply transformation matrix to mesh
 #[inline]
 pub fn apply_transform(mesh: &mut Mesh, transform: &Matrix4<f64>) {
-    // Transform positions using chunk-based iteration for cache locality
-    mesh.positions.chunks_exact_mut(3).for_each(|chunk| {
-        let point = Point3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-        let transformed = transform.transform_point(&point);
-        chunk[0] = transformed.x as f32;
-        chunk[1] = transformed.y as f32;
-        chunk[2] = transformed.z as f32;
-    });
-
-    // Transform normals (use inverse transpose for correct normal transformation)
-    let normal_matrix = transform.try_inverse().unwrap_or(*transform).transpose();
-
-    mesh.normals.chunks_exact_mut(3).for_each(|chunk| {
-        let normal = Vector3::new(chunk[0] as f64, chunk[1] as f64, chunk[2] as f64);
-        let transformed = (normal_matrix * normal.to_homogeneous()).xyz().normalize();
-        chunk[0] = transformed.x as f32;
-        chunk[1] = transformed.y as f32;
-        chunk[2] = transformed.z as f32;
-    });
+    apply_transform_generic(mesh, transform);
 }
+
 
 // `apply_transform_with_rtc` was deleted here: the C3.2 `pub(crate)` narrowing
 // orphaned it (zero callers, production or test), so per the anti-cruft rule it
@@ -794,8 +488,13 @@ pub fn apply_transform(mesh: &mut Mesh, transform: &Matrix4<f64>) {
 mod watertight_tests;
 
 #[cfg(test)]
+#[path = "extrusion_byte_identity_tests.rs"]
+mod byte_identity_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extrusion_generic::is_approximately_circular_profile;
     use crate::profile::create_rectangle;
 
     #[test]

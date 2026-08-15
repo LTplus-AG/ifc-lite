@@ -1,0 +1,32 @@
+# Test files that read a file and assert on its text (#2434).
+#
+# This list only ratchets DOWN. scripts/check-source-text-assertions.mjs fails
+# if a NEW file appears, and also fails if a file listed here no longer matches
+# — so a conversion cannot silently leave a stale entry behind.
+#
+# The baseline was 12 when the guard landed. Eight have since been converted:
+# SearchInline.wiring, SearchModal.text.wiring, measure-parity,
+# zone-apportionment-parity, using-declaration-build, the two codegen files, and
+# frameWait — whose absence sweep became scripts/check-unbounded-frame-wait.mjs,
+# because "nobody re-introduced a bare rAF" has nothing to drive.
+#
+# What made the rest convertible was not a new technique but a retired belief:
+# "this component cannot be mounted under `tsx --test`" was false for
+# MainToolbar, HomeTab, RibbonToolbar, AnalyzeTab, ZonesPanel, PropertiesPanel,
+# FileTab and even ViewportContainer — the last two needing only a
+# `fileCommands` prop and a stubbed `navigator.gpu`.
+#
+# Each line: path, then why it is still here.
+
+# ── Genuinely source-text, and genuinely blocked ──
+apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
+apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.
+packages/geometry/src/prepass-class-spans.test.ts                           # pins TS constants against `pub const` in rust/processing/src/shard_classes.rs. TS cannot import a Rust const; the root fix is emitting them, not rewriting the test.
+
+# ── Detector false positives: listed so the ratchet passes, not to be converted ──
+# The detector is deliberately lexical rather than data-flow (see the script
+# header), so it cannot tell "read a production module and assert on its text"
+# from "read the artifact this tool just GENERATED and assert on it", nor a text
+# predicate applied to source from one applied to a path.
+apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The hits are an ARRAY `.includes` and two PATH checks (`file.endsWith('.tsx')`) -- no assertion reads text.
+packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.

@@ -96,3 +96,199 @@ describe('decodeInstancedShard (Rust↔TS conformance)', () => {
     expect(() => decodeInstancedShard(bytes.slice(0, 40))).toThrow(/truncated/);
   });
 });
+
+// ── Synthetic shards ──
+//
+// The Rust fixture above is a valid, well-formed shard whose template origins
+// are all (0,0,0). A zero origin makes the three f64 reads indistinguishable
+// from one another (swap X and Y and the suite stays green), and a valid shard
+// never exercises the two bounds guards. These build shards from the LAYOUT
+// documented on the decoder, so both statements of the format are independent.
+
+const HEADER_WORDS = 8;
+const TEMPLATE_RECORD_BYTES = 48;
+const INSTANCE_RECORD_BYTES = 88;
+
+interface SynthTemplate {
+  posOff: number;
+  posLen: number;
+  nrmOff: number;
+  nrmLen: number;
+  idxOff: number;
+  idxLen: number;
+  origin: [number, number, number];
+}
+
+interface SynthInstance {
+  templateIndex: number;
+  entityId: number;
+  color: [number, number, number, number];
+  transform: number[];
+}
+
+function encodeInstancedShard(opts: {
+  templates: SynthTemplate[];
+  instances: SynthInstance[];
+  positions: number[];
+  normals: number[];
+  indices: number[];
+}): Uint8Array {
+  const { templates, instances, positions, normals, indices } = opts;
+  const templateTableOffset = HEADER_WORDS * 4;
+  const instanceTableOffset = templateTableOffset + templates.length * TEMPLATE_RECORD_BYTES;
+  const dataOffset = instanceTableOffset + instances.length * INSTANCE_RECORD_BYTES;
+  const total = dataOffset + (positions.length + normals.length + indices.length) * 4;
+  const buf = new ArrayBuffer(total);
+  const view = new DataView(buf);
+
+  [
+    INSTANCED_SHARD_MAGIC,
+    1,
+    templates.length,
+    instances.length,
+    positions.length,
+    normals.length,
+    indices.length,
+    0,
+  ].forEach((w, i) => view.setUint32(i * 4, w, true));
+
+  templates.forEach((t, i) => {
+    const base = templateTableOffset + i * TEMPLATE_RECORD_BYTES;
+    [t.posOff, t.posLen, t.nrmOff, t.nrmLen, t.idxOff, t.idxLen].forEach((w, k) =>
+      view.setUint32(base + k * 4, w, true)
+    );
+    t.origin.forEach((v, k) => view.setFloat64(base + 24 + k * 8, v, true));
+  });
+
+  instances.forEach((inst, i) => {
+    const base = instanceTableOffset + i * INSTANCE_RECORD_BYTES;
+    view.setUint32(base, inst.templateIndex, true);
+    view.setUint32(base + 4, inst.entityId, true);
+    inst.color.forEach((c, k) => view.setFloat32(base + 8 + k * 4, c, true));
+    inst.transform.forEach((m, k) => view.setFloat32(base + 24 + k * 4, m, true));
+  });
+
+  let cursor = dataOffset;
+  positions.forEach((v) => {
+    view.setFloat32(cursor, v, true);
+    cursor += 4;
+  });
+  normals.forEach((v) => {
+    view.setFloat32(cursor, v, true);
+    cursor += 4;
+  });
+  indices.forEach((v) => {
+    view.setUint32(cursor, v, true);
+    cursor += 4;
+  });
+
+  return new Uint8Array(buf);
+}
+
+const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+
+function synthShard(over: Partial<Parameters<typeof encodeInstancedShard>[0]> = {}) {
+  return encodeInstancedShard({
+    templates: [
+      { posOff: 0, posLen: 3, nrmOff: 0, nrmLen: 3, idxOff: 0, idxLen: 1, origin: [0, 0, 0] },
+    ],
+    instances: [
+      { templateIndex: 0, entityId: 1, color: [1, 1, 1, 1], transform: IDENTITY },
+    ],
+    positions: [0, 0, 0],
+    normals: [0, 0, 1],
+    indices: [0],
+    ...over,
+  });
+}
+
+describe('decodeInstancedShard (synthetic edge cases)', () => {
+  it('decodes a non-zero template origin axis-by-axis', () => {
+    const shard = decodeInstancedShard(
+      synthShard({
+        templates: [
+          {
+            posOff: 0,
+            posLen: 3,
+            nrmOff: 0,
+            nrmLen: 3,
+            idxOff: 0,
+            idxLen: 1,
+            // Three distinct values: swapping any pair of the f64 reads shows up.
+            origin: [12345.5, -6789.25, 42.125],
+          },
+        ],
+      })
+    );
+
+    expect(shard.templates[0].origin).toEqual([12345.5, -6789.25, 42.125]);
+  });
+
+  it('rejects a template whose pool range runs past the positions pool', () => {
+    expect(() =>
+      decodeInstancedShard(
+        synthShard({
+          templates: [
+            { posOff: 2, posLen: 3, nrmOff: 0, nrmLen: 3, idxOff: 0, idxLen: 1, origin: [0, 0, 0] },
+          ],
+        })
+      )
+    ).toThrow(/template 0 pool offset out of bounds/);
+  });
+
+  it('rejects a template whose normals range runs past the normals pool', () => {
+    expect(() =>
+      decodeInstancedShard(
+        synthShard({
+          templates: [
+            { posOff: 0, posLen: 3, nrmOff: 1, nrmLen: 3, idxOff: 0, idxLen: 1, origin: [0, 0, 0] },
+          ],
+        })
+      )
+    ).toThrow(/template 0 pool offset out of bounds/);
+  });
+
+  it('rejects a template whose index range runs past the indices pool', () => {
+    expect(() =>
+      decodeInstancedShard(
+        synthShard({
+          templates: [
+            { posOff: 0, posLen: 3, nrmOff: 0, nrmLen: 3, idxOff: 0, idxLen: 2, origin: [0, 0, 0] },
+          ],
+        })
+      )
+    ).toThrow(/template 0 pool offset out of bounds/);
+  });
+
+  it('rejects an instance that references a template the shard does not carry', () => {
+    expect(() =>
+      decodeInstancedShard(
+        synthShard({
+          instances: [
+            { templateIndex: 0, entityId: 1, color: [1, 1, 1, 1], transform: IDENTITY },
+            { templateIndex: 3, entityId: 2, color: [1, 1, 1, 1], transform: IDENTITY },
+          ],
+        })
+      )
+    ).toThrow(/instance 1 references missing template 3 \(have 1\)/);
+  });
+
+  it('accepts a template that exactly fills each pool', () => {
+    const shard = decodeInstancedShard(synthShard());
+
+    expect(shard.templates[0].positions).toHaveLength(3);
+    expect(shard.instances).toHaveLength(1);
+  });
+
+  it('reads the transform in the stored row order', () => {
+    // Asymmetric matrix: a transposed read yields a different array.
+    const m = Array.from({ length: 16 }, (_, i) => i + 1);
+    const shard = decodeInstancedShard(
+      synthShard({
+        instances: [{ templateIndex: 0, entityId: 1, color: [1, 1, 1, 1], transform: m }],
+      })
+    );
+
+    expect(Array.from(shard.instances[0].transform)).toEqual(m);
+  });
+});

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { IfcParser } from '../src/index.js';
@@ -13,6 +13,7 @@ import {
   transportByteSize,
 } from '../src/data-store-transport.js';
 import { extractPropertiesOnDemand } from '../src/columnar-parser.js';
+import { contiguousSourceBytes, type IfcSourceBytes } from '../src/source-bytes.js';
 
 /**
  * Resolve a fixture from the external ara3d worktree. Tests skip cleanly
@@ -204,7 +205,7 @@ describe('data-store-transport', () => {
     const received = await new Promise<typeof payload>((resolveMsg, rejectMsg) => {
       channel.port2.onmessage = (e) => resolveMsg(e.data);
       channel.port2.onmessageerror = () => rejectMsg(new Error('messageerror'));
-      channel.port1.postMessage(payload, transfers as unknown as readonly Transferable[]);
+      channel.port1.postMessage(payload, transfers);
     });
 
     expect(received.fileSize).toBe(expectedFileSize);
@@ -212,10 +213,109 @@ describe('data-store-transport', () => {
     expect(received.entities.expressId).toBeInstanceOf(Uint32Array);
     expect(received.entities.expressId.length).toBe(expectedEntityCount);
 
-    const rebuilt = fromTransport(received, new Uint8Array(store.source.buffer.slice(0)));
+    // The receiving side rebuilds from its own copy of the bytes, exactly as
+    // the worker boundary does. fromTransport accepts either shape.
+    const rebuilt = fromTransport(received, store.source.materialize().slice());
     expect(rebuilt.entityCount).toBe(store.entityCount);
 
     channel.port1.close();
     channel.port2.close();
   }, 120_000);
+});
+
+/**
+ * `WorkerParser` hydrates TWO stores from one parse: the early partial store
+ * (so the spatial tree paints before geometry) and the final one. Both alias
+ * the same SharedArrayBuffer.
+ *
+ * `contentKey` is a full-file FNV-1a walk, memoised PER ACCESSOR INSTANCE, and
+ * the viewer's per-source overlay hooks read it off whichever store is active.
+ * So if `fromTransport` wrapped its input rather than passing the accessor
+ * through, the two stores would hold two instances and a 342 MB model would be
+ * walked twice on the main thread mid-load -- on exactly the models #2183 is
+ * about, and invisibly, since the KEY would still be identical.
+ *
+ * These pin the pass-through that makes sharing one accessor in `WorkerParser`
+ * actually work.
+ */
+describe('fromTransport source identity (#2183)', () => {
+  const STEP = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n"
+    + "#1=IFCWALL('0YvCT2_$X3_xJG3rzD8L_8',$,'Wall-A',$,$,$,$,$,$);\n"
+    + "ENDSEC;\nEND-ISO-10303-21;\n";
+
+  /**
+   * Parsed ONCE for the whole block. `parseColumnar` is not free and it logs,
+   * and vitest runs test files concurrently: parsing per test put enough load
+   * on a 2-core CI runner to push the 44k-entity equivalence suite in this same
+   * package past its timeout. `toTransport` is re-run per use so no two
+   * hydrations share a payload -- which is the shape `WorkerParser` actually
+   * produces, one payload per message.
+   */
+  let parsed: Awaited<ReturnType<IfcParser['parseColumnar']>>;
+
+  beforeAll(async () => {
+    parsed = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(STEP).buffer as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+  });
+
+  function transportOf(): ReturnType<typeof toTransport>['payload'] {
+    return toTransport(parsed).payload;
+  }
+
+  it('hands the SAME accessor instance to the store', () => {
+    const source = contiguousSourceBytes(new TextEncoder().encode(STEP));
+    const store = fromTransport(transportOf(), source);
+    expect(store.source).toBe(source);
+  });
+
+  it('hashes ONCE across a partial + final pair sharing one accessor', () => {
+    const bytes = new TextEncoder().encode(STEP);
+    let walks = 0;
+    const inner = contiguousSourceBytes(bytes);
+    const counted: IfcSourceBytes = {
+      get byteLength() { return inner.byteLength; },
+      get length() { return inner.length; },
+      get isResident() { return inner.isResident; },
+      get contentKey() { walks++; return inner.contentKey; },
+      slice: (a, b) => inner.slice(a, b),
+      decodeUtf8: (a, b) => inner.decodeUtf8(a, b),
+      materialize: () => inner.materialize(),
+      withMaterialized: (f) => inner.withMaterialized(f),
+      withMaterializedAsync: (f) => inner.withMaterializedAsync(f),
+      toTransferable: () => inner.toTransferable(),
+    };
+
+    const partial = fromTransport(transportOf(), counted);
+    const final = fromTransport(transportOf(), counted);
+
+    // Neither hydration may touch the key on its own; only a consumer should.
+    // `isSourceBytes` deliberately skips `contentKey` for exactly this reason.
+    expect(walks).toBe(0);
+
+    // One read each, as the overlay hooks do. `walks` counts reads of the
+    // DOUBLE, not underlying FNV passes, so it is 2 here either way and is not
+    // the gate -- accessor identity is: sharing one instance is what makes the
+    // memo in ContiguousSourceBytes collapse these to a single walk.
+    const a = partial.source.contentKey;
+    const b = final.source.contentKey;
+    expect(walks).toBe(2);
+    expect(a).toBe(b);
+    expect(a).toEqual(expect.any(String));
+    expect(partial.source).toBe(final.source);
+  });
+
+  it('accepts raw bytes too, and agrees on the key', () => {
+    // Many callers still pass raw bytes; that must keep working and must agree
+    // with the accessor path. Deliberately NOT asserting that the two stores
+    // get distinct accessors: memoising `asSourceBytes` per buffer would be a
+    // legitimate improvement (it is what the viewer's old WeakMap effectively
+    // did), and pinning today's non-sharing would make that a test failure.
+    const bytes = new TextEncoder().encode(STEP);
+    const one = fromTransport(transportOf(), bytes);
+    const two = fromTransport(transportOf(), bytes);
+    expect(one.source.contentKey).toBe(two.source.contentKey);
+    expect(one.source.byteLength).toBe(bytes.byteLength);
+  });
 });

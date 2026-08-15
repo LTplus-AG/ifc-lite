@@ -30,6 +30,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Box,
+  Cloud,
   EyeOff,
   Eye,
   Equal,
@@ -98,7 +99,9 @@ import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
 import { exportGlbFromGeometry } from '@/lib/export/glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
-import { downloadFile } from '@/lib/export/download';
+import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
+import { GeometryProcessor } from '@ifc-lite/geometry';
+import { isUsdExportableModel, resolveUsdExportBytes } from './usd-export-source';
 import { getRecentFiles, formatFileSize, getCachedFile, getCachedFileNames } from '@/lib/recent-files';
 import type { RecentFileEntry } from '@/lib/recent-files';
 import { closeActiveAnalysisExtension } from '@/services/analysis-extensions';
@@ -217,33 +220,20 @@ function recordUsage(id: string) {
  *  owns the single-tenant + re-dock + detach semantics; a second activation
  *  closes the panel back to the Information fallback. Closing any active
  *  analysis extension first preserves the prior "panels win the slot" behavior.
- *  Kept as two thin helpers so every existing command action keeps its call
- *  site (the `'list'` legacy id maps to the registry's `'lists'`). */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab') {
+ *  Kept as two thin helpers so every command action keeps its call site. */
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
 
-/** Bottom panel (Script / List / Gantt) — mutually exclusive in the bottom
- *  strip, independent of the sidebar. Toggling the active one closes it. */
-function activateBottomPanel(panel: 'script' | 'list' | 'gantt') {
-  const s = useViewerStore.getState();
-  const isActive =
-    panel === 'script' ? s.scriptPanelVisible
-    : panel === 'list' ? s.listPanelVisible
-    : s.ganttPanelVisible;
-
+/** Bottom panel (Script / Lists / Gantt) — mutually exclusive in the bottom
+ *  strip, independent of the sidebar. The store owns the toggle, including the
+ *  re-dock of a floating or popped-out panel; the hand-rolled flag flips that
+ *  used to live here knew only the dock flags, so toggling a FLOATING Lists
+ *  panel left it on screen with nothing latched. */
+function activateBottomPanel(panel: 'script' | 'lists' | 'gantt') {
   closeActiveAnalysisExtension();
-  s.setScriptPanelVisible(false);
-  s.setListPanelVisible(false);
-  s.setGanttPanelVisible(false);
-
-  if (!isActive) {
-    s.setRightPanelCollapsed(false);
-    if (panel === 'script') s.setScriptPanelVisible(true);
-    else if (panel === 'list') s.setListPanelVisible(true);
-    else s.setGanttPanelVisible(true);
-  }
+  useViewerStore.getState().toggleBottomPanel(panel);
 }
 
 // ── Component ──────────────────────────────────────────────────────────
@@ -278,6 +268,13 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [open]);
+
+  // Collab role: in a shared session only editor/admin may author. Read
+  // reactively so the authoring commands appear the moment a role is upgraded.
+  const collabRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = collabRole === null || collabRole === 'editor' || collabRole === 'admin';
+  // Cesium only has something to show once a model carries georeferencing.
+  const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
 
   // ── Command definitions ──
   const commands = useMemo<Command[]>(() => {
@@ -348,6 +345,21 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('left'); } },
       { id: 'view:right', label: 'Right View', keywords: 'camera', category: 'View', icon: ArrowRight, shortcut: '6',
         action: () => { useViewerStore.getState().cameraCallbacks.setPresetView?.('right'); } },
+      // World context / lighting / SpaceMouse: on both toolbars but not here.
+      // World is listed only when a model carries georeferencing, the same
+      // condition the ribbon's View tab renders its button under — offering it
+      // otherwise would be a command that cannot do anything.
+      ...(cesiumAvailable ? [{
+        id: 'view:world', label: 'Toggle 3D World Context', keywords: 'cesium globe earth satellite terrain georeference basemap context site',
+        category: 'View' as const, icon: Building2,
+        action: () => { useViewerStore.getState().toggleCesium(); },
+      }] : []),
+      { id: 'view:lighting', label: 'Sun & Sky', keywords: 'sun sky lighting shadow solar daylight study environment preset hdri',
+        category: 'View', icon: Sun,
+        action: () => { useViewerStore.getState().toggleEnvPanel(); } },
+      { id: 'view:spacemouse', label: 'SpaceMouse', keywords: '3dconnexion space mouse navigator webhid 3d input device controller',
+        category: 'View', icon: Orbit,
+        action: () => { useViewerStore.getState().toggleSpaceMousePanel(); } },
     );
 
     // ── Tools ──
@@ -362,18 +374,28 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('section'); } },
       { id: 'tool:annotate', label: 'Annotate', keywords: 'pin note comment marker', category: 'Tools', icon: StickyNote, shortcut: 'P',
         action: () => { useViewerStore.getState().setActiveTool('annotate'); } },
-      { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools', icon: Box,
-        action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
-      { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools', icon: PenLine, shortcut: 'E',
-        action: () => { useViewerStore.getState().toggleEditEnabled(); } },
-      { id: 'tool:split', label: 'Split selected entity', keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools', icon: Slice, shortcut: 'K',
-        action: () => {
-          const s = useViewerStore.getState();
-          const sel = s.selectedEntity;
-          if (!sel) return;
-          s.setSplitTarget(sel.modelId, sel.expressId);
-          s.setActiveTool('split');
-        } },
+      // Authoring commands, listed only when the session actually permits
+      // authoring. The store rejects them for a viewer/commenter role
+      // (`uiSlice`'s AUTHORING_TOOLS gate and `setEditEnabled`), and the
+      // palette has no disabled state — so listing them regardless made three
+      // commands that did nothing at all when picked, with no feedback. The
+      // ribbon disables its Add Element button with a reason; hiding is this
+      // surface's version of the same answer, and matches how it already
+      // withholds the collab commands.
+      ...(canEditInSession ? [
+        { id: 'tool:add-element', label: 'Add Element', keywords: 'wall slab beam column place drop new add element generic', category: 'Tools' as const, icon: Box,
+          action: () => { useViewerStore.getState().setActiveTool('addElement'); } },
+        { id: 'tool:edit-mode', label: 'Toggle Edit Mode', keywords: 'edit mode pen unlock readonly properties geometry author modify', category: 'Tools' as const, icon: PenLine, shortcut: 'E',
+          action: () => { useViewerStore.getState().toggleEditEnabled(); } },
+        { id: 'tool:split', label: 'Split selected entity', keywords: 'split cut knife slice divide segment break wall beam column slab selected', category: 'Tools' as const, icon: Slice, shortcut: 'K',
+          action: () => {
+            const s = useViewerStore.getState();
+            const sel = s.selectedEntity;
+            if (!sel) return;
+            s.setSplitTarget(sel.modelId, sel.expressId);
+            s.setActiveTool('split');
+          } },
+      ] : []),
       // Add-element gestures live entirely in the AddElementPanel
       // (opened via `setActiveTool('addElement')` — see the
       // dedicated "Add Element" command below). Per-type shortcuts
@@ -382,7 +404,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Visibility ──
     c.push(
-      { id: 'vis:hide', label: 'Hide Selection', keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'Del',
+      { id: 'vis:hide', label: 'Hide Selection', keywords: 'hide selected invisible', category: 'Visibility', icon: EyeOff, shortcut: 'Del / Space',
         action: () => {
           const s = useViewerStore.getState();
           const ids = s.selectedEntityIds.size > 0 ? Array.from(s.selectedEntityIds) : s.selectedEntityId !== null ? [s.selectedEntityId] : [];
@@ -390,7 +412,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         } },
       { id: 'vis:show', label: 'Show All', keywords: 'unhide reset visible', category: 'Visibility', icon: Eye, shortcut: 'A',
         action: () => { resetVisibilityForHomeFromStore(); } },
-      { id: 'vis:set-iso', label: 'Isolate (Set Basket)', keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: 'I',
+      { id: 'vis:set-iso', label: 'Set Basket from Selection', keywords: 'basket isolate set selection hierarchy view equals', category: 'Visibility', icon: Equal, shortcut: '=',
         action: () => executeBasketSet() },
       { id: 'vis:add-iso', label: 'Add to Basket', keywords: 'basket plus selection hierarchy view', category: 'Visibility', icon: Plus, shortcut: '+',
         action: () => executeBasketAdd() },
@@ -426,9 +448,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
 
     // ── Panels ──
     c.push(
-      { id: 'panel:properties', label: 'Inspector', keywords: 'properties attributes material classification schedule task panel right information', category: 'Panels', icon: Layout,
+      { id: 'panel:properties', label: 'Information', keywords: 'properties attributes material classification schedule task panel right inspector information', category: 'Panels', icon: Layout,
         action: () => { useViewerStore.getState().showWorkspacePanel('properties'); } },
-      { id: 'panel:tree', label: 'Spatial Tree', keywords: 'hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
+      { id: 'panel:tree', label: 'Hierarchy', keywords: 'spatial tree hierarchy left panel', category: 'Panels', icon: TreeDeciduous,
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
       { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
         action: () => { activateBottomPanel('script'); } },
@@ -441,13 +463,20 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'panel:compare', label: 'Compare Models', keywords: 'diff revision version change added deleted modified geometry data', category: 'Panels', icon: GitCompareArrows,
         action: () => { activateRightPanel('compare'); } },
       { id: 'panel:lists', label: 'Entity Lists', keywords: 'table spreadsheet', category: 'Panels', icon: FileSpreadsheet,
-        action: () => { activateBottomPanel('list'); } },
+        action: () => { activateBottomPanel('lists'); } },
       { id: 'panel:gantt', label: 'Construction Schedule (Gantt)', keywords: '4d timeline tasks ifctask sequence playback animation', category: 'Panels', icon: CalendarClock,
         action: () => { activateBottomPanel('gantt'); } },
       { id: 'panel:lens', label: 'Lens Rules', keywords: 'color filter highlight', category: 'Panels', icon: Palette,
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
         action: () => { activateRightPanel('layers'); } },
+      // Cloud sources and Location zones reached the two toolbars but not this
+      // list. Same shape as the gap that left Cloud sources rail-only: a panel
+      // is only as reachable as the LAST surface that learned about it.
+      { id: 'panel:sources', label: 'Cloud Sources', keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
+        action: () => { activateRightPanel('sources'); } },
+      { id: 'panel:zones', label: 'Location Zones', keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
+        action: () => { activateRightPanel('zones'); } },
       ...(isCollabEnabled()
         ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
             action: () => { activateRightPanel('collab'); } }]
@@ -532,14 +561,32 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
+      { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,
+        action: async () => {
+          // Share the dialog's mutation-aware, format-safe source resolution
+          // (regenerates edited STEP bytes, unwraps .ifczip, excludes .ifcx).
+          // No picker here, so the first STEP-exportable model is used.
+          const st = useViewerStore.getState();
+          const model = [...st.models.values()].find(isUsdExportableModel);
+          if (!model) return;
+          const gp = new GeometryProcessor();
+          try {
+            const bytes = await resolveUsdExportBytes(model, st.getMutationView);
+            await gp.init();
+            const usd = gp.exportUsd(bytes);
+            if (usd == null) throw new Error('Geometry engine unavailable');
+            downloadFile(usd, buildExportFilename(stripExtension(model.name), 'usda'), 'text/plain');
+          } catch (e) { console.error('USD export failed:', e); }
+          finally { gp.dispose(); }
+        } },
       { id: 'export:csv-entities', label: 'Export CSV: Entities', keywords: 'spreadsheet properties download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'entities', { includeProperties: true }), 'entities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-properties', label: 'Export CSV: Properties', keywords: 'pset spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'properties'), 'properties.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-quantities', label: 'Export CSV: Quantities', keywords: 'qto spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'quantities'), 'quantities.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:csv-spatial', label: 'Export CSV: Spatial', keywords: 'hierarchy spreadsheet download', category: 'Export', icon: FileSpreadsheet,
-        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d?.source) return; try { downloadFile(await exportCsvFromBytes(d.source, 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
+        action: async () => { const d = useViewerStore.getState().ifcDataStore; if (!d || d.source.byteLength <= 0) return; try { downloadFile(await exportCsvFromBytes(d.source.materialize(), 'spatial'), 'spatial-hierarchy.csv', 'text/csv'); } catch (e) { console.error(e); } } },
       { id: 'export:json', label: 'Export JSON', keywords: 'data entities all download', category: 'Export', icon: FileJson,
         action: () => {
           const d = useViewerStore.getState().ifcDataStore; if (!d) return;
@@ -614,9 +661,16 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
           // Fire the activation event first so onCommand:<id>-subscribed
           // extensions wake up, then invoke the command handler. The
           // runtime dedupes activations.
+          //
+          // The run is pinned to `contribution.extensionId`, the owner of
+          // this palette entry. Command ids are namespaced by convention
+          // only, so two installed extensions can declare the same id; the
+          // loop above pushes one entry per contribution either way, and
+          // without the owner id both entries would run whichever extension
+          // storage happened to list first.
           void extensionHost.dispatcher
             .fire(`onCommand:${payload.id}` as `onCommand:${string}`)
-            .then(() => extensionHost.runCommand(payload.id))
+            .then(() => extensionHost.runCommand(payload.id, contribution.extensionId))
             .catch((err) => {
               paletteToast.error(describeRunCommandError(payload.id, err));
             });
@@ -625,7 +679,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
     }
 
     return c;
-  }, [execute, recentFiles, extensionCommands, extensionHost]);
+  }, [execute, recentFiles, extensionCommands, extensionHost, canEditInSession, cesiumAvailable]);
 
   // ── Search: score, filter, sort ──
   // When searching, results are FLAT sorted by relevance — no category grouping.

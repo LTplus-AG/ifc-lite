@@ -1,5 +1,46 @@
 # @ifc-lite/collab-server
 
+## 0.5.3
+
+### Patch Changes
+
+- [#2324](https://github.com/LTplus-AG/ifc-lite/pull/2324) [`831aae7`](https://github.com/LTplus-AG/ifc-lite/commit/831aae74e4343d95368a1cc5f4826e3e2abce810) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `planRetention`'s default classifier never matching a real `SnapshotWorker` output file, so `applyRetention` silently never reclaims any of it.
+
+  `SnapshotWorker.runOnce` (`snapshot-worker.ts`) writes one `<safeRoomId>.<isoStamp>.ifcx` file per active room on every tick and never overwrites or deletes a previous one. `retention.ts`'s `defaultClassify` only recognized `<roomId>.log` (active) and `<roomId>.log.<stamp>` / `<roomId>.snap.<stamp>` (rotated/snapshot) — shapes nothing in this package's `FilePersistence` or `SnapshotWorker` actually produces. Every real `.ifcx` snapshot was therefore classified `unknown` and skipped regardless of age or configured policy: `planRetention` returned an empty `drop` list and `applyRetention` freed 0 bytes even under an aggressive 1-day policy, while snapshot files accumulated on disk forever with no error surfaced. `defaultClassify` now also matches `*.ifcx` as `snapshot`, so it is governed by `snapshotsDays` like the (aspirational) `.snap.<stamp>` shape.
+
+- [#2309](https://github.com/LTplus-AG/ifc-lite/pull/2309) [`5c5378a`](https://github.com/LTplus-AG/ifc-lite/commit/5c5378a7833c794ccc71ce4b4d84074818759de1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `SnapshotWorker` overwriting one room's `.ifcx` snapshot with another's. The output filename was built with the lossy `[^a-zA-Z0-9._-] -> _` sanitizer, which maps distinct room ids (e.g. `proj/alpha` and `proj:alpha`) onto the same name; with the timestamp component at millisecond resolution, two such rooms snapshotted in the same tick wrote to one path and the second silently replaced the first — while `runOnce()` returned a successful `SnapshotResult` for both, each reporting its own `byteLength`. The path now uses `encodeURIComponent`, matching `FilePersistence.logPath` and `S3Persistence.safeRoom`, whose comments already document why the lossy map is unsafe for a durable key. Ids the old sanitizer left unchanged (UUIDs, room codes) encode identically, so existing snapshot filenames are unaffected.
+
+- Updated dependencies [[`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`29409e5`](https://github.com/LTplus-AG/ifc-lite/commit/29409e57227d3c458707dbc2cf0cb2e8ae8fcf7b), [`6635ddf`](https://github.com/LTplus-AG/ifc-lite/commit/6635ddfa91911b0fbc489452c02cf19e232201c3), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72), [`512406f`](https://github.com/LTplus-AG/ifc-lite/commit/512406f0d21c7e33b8c84a83865ffaff299e7cc1)]:
+  - @ifc-lite/collab@0.4.2
+  - @ifc-lite/merge@0.4.1
+  - @ifc-lite/ifcx@2.3.4
+
+## 0.5.2
+
+### Patch Changes
+
+- [#2083](https://github.com/LTplus-AG/ifc-lite/pull/2083) [`6cbf69a`](https://github.com/LTplus-AG/ifc-lite/commit/6cbf69acb2163ab671c41df36878f4d4e490e244) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `IfcServerClient.parseStream()` reporting a truncated stream as a successful parse, and log four failures that were previously invisible.
+
+  **Behaviour change (`@ifc-lite/server-client`):** `parseStream()` now throws `Stream ended without a complete event` when the SSE stream finishes without a `complete` or `error` event. Previously, a connection that dropped mid-parse — or a final frame truncated mid-JSON, whose `JSON.parse` failure was swallowed by a bare `catch {}` — ended the async generator normally, so `for await (const event of client.parseStream(file))` simply exited and the caller saw a successful parse that had produced only part of the model. The sibling `parseStreamToParquet()` already enforced this contract (`Stream ended without complete event`); the two paths now agree. Consumers that `break` out of the loop early are unaffected: an early return does not run the check.
+
+  Two further `parseStream()` fixes: a malformed SSE frame is now reported via `console.warn` instead of being dropped silently, and `yield` has been moved out of the `try` that wraps `JSON.parse`, so an error thrown into the generator by the consumer propagates instead of being swallowed as if it were a bad frame.
+
+  New warnings elsewhere, no behaviour change:
+
+  - `@ifc-lite/extensions` — an `AuditLog` subscriber that throws now warns once per listener (latched, so a persistently broken subscriber cannot log once per audited action). Delivery to the other listeners is unchanged.
+  - `@ifc-lite/collab-server` — the layer-registry auto-merge path warns when it skips because the pushed layer cannot be read, when a ref layer cannot be read during the idempotency probe, and when a merge attempt throws. Auto-merge failures are still contained and still never fail the push that triggered them; they are just no longer invisible to the operator.
+  - `@ifc-lite/sdk` — `bsdd` warns when the paginated `classProperties` fallback fails. The partial result is still returned, but it is also cached, so one transient failure otherwise answered every later call for that URI until the entry expired.
+
+- Updated dependencies []:
+  - @ifc-lite/ifcx@2.3.3
+
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies [[`ed63063`](https://github.com/LTplus-AG/ifc-lite/commit/ed63063c952bd1804ce83922da80635f03c77193)]:
+  - @ifc-lite/merge@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes

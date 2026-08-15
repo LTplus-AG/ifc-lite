@@ -83,6 +83,47 @@ describe('PinboardSlice', () => {
       assert.strictEqual(state.pinboardEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
     });
+
+    it('addToBasket computes the offset-corrected global id for a non-legacy model, not the raw expressId', () => {
+      // All other basket tests use a single 'legacy' model with idOffset 0,
+      // where a global id and a local expressId are numerically identical —
+      // a bug that used the raw expressId instead of the offset-corrected
+      // global id would be invisible under that fixture. Use a federated
+      // model with a non-zero offset so the two values visibly diverge.
+      setState({
+        models: new Map([
+          ['legacy', { idOffset: 0 }],
+          ['model-2', { idOffset: 1000 }],
+        ]),
+      });
+      state.setBasket([{ modelId: 'legacy', expressId: 5 }]);
+      state.addToBasket([{ modelId: 'model-2', expressId: 7 }]);
+
+      assert.strictEqual(state.isolatedEntities!.size, 2);
+      assert.ok(state.isolatedEntities!.has(5));
+      assert.ok(state.isolatedEntities!.has(1007), 'expected offset-corrected global id 1007');
+      assert.ok(!state.isolatedEntities!.has(7), 'must not use the raw (un-offset) expressId 7');
+    });
+
+    it('removeFromBasket removes the offset-corrected global id for a non-legacy model, not the raw expressId', () => {
+      setState({
+        models: new Map([
+          ['legacy', { idOffset: 0 }],
+          ['model-2', { idOffset: 1000 }],
+        ]),
+      });
+      state.setBasket([
+        { modelId: 'legacy', expressId: 5 },
+        { modelId: 'model-2', expressId: 7 },
+      ]);
+      state.removeFromBasket([{ modelId: 'model-2', expressId: 7 }]);
+
+      assert.strictEqual(state.pinboardEntities.size, 1);
+      assert.ok(state.isolatedEntities !== null);
+      assert.strictEqual(state.isolatedEntities!.size, 1);
+      assert.ok(state.isolatedEntities!.has(5));
+      assert.ok(!state.isolatedEntities!.has(1007), 'the removed entity global id must be gone');
+    });
   });
 
   describe('saveCurrentBasketView', () => {

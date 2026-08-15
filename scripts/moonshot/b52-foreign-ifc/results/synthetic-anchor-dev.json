@@ -1,0 +1,68 @@
+{
+  "bet": "B5.2",
+  "pass": "synthetic-anchor",
+  "split": "dev",
+  "sampledModels": 200,
+  "splitModels": 1000,
+  "cleanModels": 139,
+  "corruptedModels": 61,
+  "entityCount": {
+    "min": 245,
+    "median": 649,
+    "mean": 1287.63,
+    "max": 4749
+  },
+  "fileBytes": {
+    "min": 12522,
+    "median": 33134.5,
+    "mean": 65451.515,
+    "max": 245712
+  },
+  "oracleMsPerModel": {
+    "min": 1.096,
+    "median": 2.846,
+    "mean": 4.415,
+    "max": 19.136
+  },
+  "heuristicMsPerModel": {
+    "min": 0.099,
+    "median": 0.305,
+    "mean": 0.534,
+    "max": 2.208
+  },
+  "falsePositives": {
+    "note": "a false positive is a defect verdict of true where the plant-time ground truth for that seed says false",
+    "oracleByType": {
+      "clash-pair": 0,
+      "degenerate-geometry": 0,
+      "duplicate-globalid": 0,
+      "missing-site": 0,
+      "multiple-project": 0,
+      "dangling-ref": 0,
+      "missing-quantities": 0
+    },
+    "oracleTotal": 0,
+    "heuristicByType": {
+      "clash-pair": 0,
+      "degenerate-geometry": 0,
+      "duplicate-globalid": 0,
+      "missing-site": 0,
+      "multiple-project": 0,
+      "dangling-ref": 0,
+      "missing-quantities": 0
+    },
+    "heuristicTotal": 0,
+    "cleanModelsInSample": 139,
+    "oracleModelsFiringOnClean": 0,
+    "heuristicModelsFiringOnClean": 0,
+    "oracleCleanModelFirePct": 0,
+    "heuristicCleanModelFirePct": 0
+  },
+  "referenceIntegrityProbe": {
+    "note": "baselines.mjs hardcodes dangling-ref:false citing a missing reference-integrity rule; computeValidationIssues has one. This is whether it fires on the corpus's own planted dangling refs.",
+    "modelsWithPlantedDanglingRef": 17,
+    "modelsWhereValidateFlaggedReferenceIntegrity": 17,
+    "detectionPct": 100
+  },
+  "medianRule": "entityCount and fileBytes medians use the corrected even-length rule (mean of the two middle values) and were re-derived from the same 200 seeds. oracleMsPerModel and heuristicMsPerModel are wall clocks from a session that cannot be re-timed, so their medians remain the pre-fix upper-middle value of 200; the difference is bounded by the gap between two adjacent order statistics."
+}

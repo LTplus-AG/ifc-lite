@@ -150,3 +150,34 @@ export function mergeGeometryDiagnostics(
     worstHosts,
   };
 }
+
+/** Payload shape of the geometry worker's streaming `complete` message. */
+export interface GeometryWorkerCompleteMessage {
+  type: 'complete';
+  totalMeshes: number;
+  /** CSG / opening diagnostics merged over this worker's batches (the
+   *  GeometryDiagnostics contract). Omitted when none were recorded. */
+  diagnostics?: GeometryDiagnostics;
+}
+
+/**
+ * Build the streaming `complete` event payload (`geometry.worker.ts`'s
+ * `emitSessionEnd`, the only caller). Extracted so it can be exercised
+ * directly by tests without importing the worker module itself, which
+ * assigns `self.onmessage` at module load time and therefore cannot be
+ * imported outside a Worker/browser-like global (see diagnostics.test.ts).
+ *
+ * `diagnostics` is omitted from the returned object entirely (not sent as
+ * `undefined`) when `null` — callers gate on presence
+ * (`if (event.diagnostics)`), not just truthy counts.
+ */
+export function buildGeometryWorkerCompleteMessage(
+  totalMeshes: number,
+  diagnostics: GeometryDiagnostics | null,
+): GeometryWorkerCompleteMessage {
+  return {
+    type: 'complete',
+    totalMeshes,
+    ...(diagnostics ? { diagnostics } : {}),
+  };
+}

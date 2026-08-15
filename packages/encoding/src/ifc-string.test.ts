@@ -65,9 +65,12 @@ describe('decodeIfcString', () => {
   });
 
   it('passes malformed \\X2\\/\\X4\\ payloads through literally without throwing', () => {
-    // Empty payload: the hex regex requires at least one digit.
-    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\\\X0\\');
-    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\\\X0\\');
+    // Empty payload: the hex regex requires at least one digit, so the leading
+    // `\X4\` is not a directive. What is left IS a doubled reverse solidus
+    // (`\X4` + `\\` + `X0` + a dangling `\`), so the pair collapses to one
+    // backslash (#2323). Before that arm existed both backslashes survived.
+    expect(decodeIfcString('\\X4\\\\X0\\')).toBe('\\X4\\X0\\');
+    expect(decodeIfcString('\\X2\\\\X0\\')).toBe('\\X2\\X0\\');
     // Odd-length payloads (not a multiple of 8 / 4 hex digits).
     expect(decodeIfcString('\\X4\\0001D11\\X0\\')).toBe('\\X4\\0001D11\\X0\\');
     expect(decodeIfcString('\\X2\\00E\\X0\\')).toBe('\\X2\\00E\\X0\\');
@@ -78,12 +81,67 @@ describe('decodeIfcString', () => {
     expect(decodeIfcString('\\X4\\0001D11E')).toBe('\\X4\\0001D11E');
   });
 
+  it('collapses the doubled reverse solidus to one backslash', () => {
+    // ISO 10303-21 doubles `\` inside a string literal exactly as it doubles
+    // `'`, so `C:\\temp` in the file is the value `C:\temp` (#2323).
+    expect(decodeIfcString('C:\\\\temp')).toBe('C:\\temp');
+    expect(decodeIfcString('\\\\')).toBe('\\');
+    expect(decodeIfcString('\\\\\\\\')).toBe('\\\\');
+  });
+
+  it('gives a directive precedence over the doubled-backslash pair', () => {
+    // A directive immediately followed by an escaped backslash ends in THREE
+    // backslashes. The directive must consume its own `\X0\` terminator first;
+    // a pre-pass that collapsed pairs left-to-right would eat the terminator.
+    expect(decodeIfcString('\\X2\\00FC\\X0\\\\\\')).toBe('\u00fc\\');
+    // The mirror case: an ESCAPED backslash followed by the literal text
+    // `X2\00FC\X0\` is not a directive at all.
+    expect(decodeIfcString('\\\\X2\\00FC\\X0\\')).toBe('\\X2\\00FC\\X0\\');
+  });
+
   it('decodes \\X\\ ISO-8859-1 single byte', () => {
     expect(decodeIfcString('\\X\\F1')).toBe('ñ');
   });
 
+  it('passes a malformed \\X\\ payload through literally instead of decoding NaN as NUL', () => {
+    // Non-hex digits: parseInt('ZZ', 16) is NaN, and String.fromCharCode(NaN)
+    // silently produces U+0000 if the hex-format guard is ever removed.
+    expect(decodeIfcString('\\X\\ZZ')).toBe('\\X\\ZZ');
+    // Truncated payload (only one hex digit before the string ends).
+    expect(decodeIfcString('\\X\\F')).toBe('\\X\\F');
+    expect(decodeIfcString('\\X\\')).toBe('\\X\\');
+  });
+
   it('decodes \\S\\ latin extended', () => {
     expect(decodeIfcString('\\S\\D')).toBe('Ä');
+  });
+
+  it('passes a truncated \\S\\ (no character following) through literally without throwing', () => {
+    // If the "is there a char after \S\" boundary check is ever loosened by
+    // one, str.codePointAt() reads past the end of the string (undefined),
+    // undefined + 128 is NaN, and String.fromCodePoint(NaN) throws a
+    // RangeError instead of leaving the unterminated escape as literal text.
+    expect(() => decodeIfcString('\\S\\')).not.toThrow();
+    expect(decodeIfcString('\\S\\')).toBe('\\S\\');
+  });
+
+  it('advances exactly one code unit past \\S\\ for a BMP codepoint at the 0xFFFF boundary', () => {
+    // \S\X reads X as a whole code point so it can skip a surrogate pair when
+    // X is astral, but U+FFFF itself is a single UTF-16 code unit (not a
+    // surrogate) and must NOT be treated as a 2-unit pair. Trailing 'Y'
+    // proves the offset: if the decoder over-advances by one unit here, 'Y'
+    // is silently swallowed instead of appended.
+    const input = `\\S\\${'￿'}Y`;
+    const expected = `${String.fromCodePoint(0xFFFF + 128)}Y`;
+    expect(decodeIfcString(input)).toBe(expected);
+  });
+
+  it('advances two code units past \\S\\ for an astral (non-BMP) codepoint', () => {
+    // X = U+1D11E (𝄞, a surrogate pair): the decoder must skip both UTF-16
+    // units of X, then continue with the trailing 'Y' marker.
+    const input = `\\S\\${'\u{1D11E}'}Y`;
+    const expected = `${String.fromCodePoint(0x1D11E + 128)}Y`;
+    expect(decodeIfcString(input)).toBe(expected);
   });
 
   it('supports explicit \\PA\\ code page directive before \\S\\', () => {

@@ -44,6 +44,9 @@ export interface CompareResult {
 /** localStorage key for the cross-file compare blacklist (issue #1470). */
 const EXCLUDED_TYPES_STORAGE_KEY = 'ifc-lite:compare-excluded-types-v1';
 
+/** localStorage key for the content-matching toggle (issue #1891). */
+const MATCH_BY_CONTENT_STORAGE_KEY = 'ifc-lite:compare-match-by-content-v1';
+
 /** Case-insensitive de-dup while preserving the first-seen display casing (IFC
  *  PascalCase from the store, e.g. `IfcOpeningElement`). Trims and drops blanks. */
 function dedupeTypes(names: Iterable<string>): string[] {
@@ -84,6 +87,33 @@ function persistExcludedTypes(types: string[]): void {
   }
 }
 
+/** Read the persisted content-matching preference. Defaults to ON (#1891): a
+ *  from-scratch re-export re-GUIDs every element, and without this pass the
+ *  panel reports the whole model as deleted-and-added, which is the single
+ *  most common way Compare mode is wrong. `null` (never set) is the default,
+ *  so only an explicit opt-out is remembered. */
+function loadPersistedMatchByContent(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const raw = window.localStorage.getItem(MATCH_BY_CONTENT_STORAGE_KEY);
+    if (raw === null) return true;
+    return raw !== 'false';
+  } catch (error) {
+    console.warn('[compare] ignoring unreadable content-matching preference:', error);
+    return true;
+  }
+}
+
+function persistMatchByContent(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(MATCH_BY_CONTENT_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch (error) {
+    // Quota / private mode - the preference just won't persist this session.
+    console.warn('[compare] failed to persist content-matching preference:', error);
+  }
+}
+
 export interface CompareSlice {
   comparePanelVisible: boolean;
   /** Selected base (A) / head (B) federation model ids. */
@@ -97,6 +127,13 @@ export interface CompareSlice {
    * Display casing is preserved; matching against entities is case-insensitive.
    */
   compareExcludedTypes: string[];
+  /**
+   * Whether the diff runs the content-matching pass (issue #1891) - the second
+   * pass that re-pairs entities the GlobalId diff left as `added`/`deleted`
+   * because the file was re-exported from scratch. Default ON; persisted the
+   * same way as {@link compareExcludedTypes} so an opt-out survives a reload.
+   */
+  compareMatchByContent: boolean;
   /** Whether unchanged elements are drawn (ghosted) or hidden. */
   compareShowUnchanged: boolean;
   /** Last comparison result (null when idle / not yet run). */
@@ -128,6 +165,8 @@ export interface CompareSlice {
   removeCompareExcludedType: (type: string) => void;
   /** Empty the blacklist. */
   clearCompareExcludedTypes: () => void;
+  /** Turn the content-matching pass on/off (persisted). */
+  setCompareMatchByContent: (enabled: boolean) => void;
   setCompareShowUnchanged: (show: boolean) => void;
   setCompareResult: (result: CompareResult | null) => void;
   bumpCompareRunSeq: () => void;
@@ -144,6 +183,7 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   compareHeadModelId: null,
   compareScope: 'both',
   compareExcludedTypes: loadPersistedExcludedTypes(),
+  compareMatchByContent: loadPersistedMatchByContent(),
   compareShowUnchanged: false,
   compareResult: null,
   compareRunSeq: 0,
@@ -184,6 +224,11 @@ export const createCompareSlice: StateCreator<CompareSlice, [], [], CompareSlice
   clearCompareExcludedTypes: () => {
     persistExcludedTypes([]);
     set({ compareExcludedTypes: [] });
+  },
+
+  setCompareMatchByContent: (compareMatchByContent) => {
+    persistMatchByContent(compareMatchByContent);
+    set({ compareMatchByContent });
   },
 
   setCompareShowUnchanged: (compareShowUnchanged) => set({ compareShowUnchanged }),

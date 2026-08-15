@@ -46,6 +46,11 @@ describe('computeIfcOriginViewerPosition', () => {
       coordinateInfo: {
         ...emptyCoordinateInfo(),
         originShift: { x: 50, y: 3, z: -20 },
+        // shiftedBounds = originalBounds - originShift (createCoordinateInfo's
+        // invariant); computeIfcOriginViewerPosition never reads either
+        // bounds field, but a fixture no producer could emit is still worth
+        // avoiding.
+        shiftedBounds: { min: { x: -50, y: -3, z: 20 }, max: { x: -50, y: -3, z: 20 } },
         wasmRtcOffset: { x: 10, y: 7, z: -4 },
       },
     };
@@ -61,7 +66,13 @@ describe('computeIfcOriginViewerPosition', () => {
   it('treats the anchor model as its own frame even with georef present', async () => {
     const conversion = makeConversion(155000, 463000);
     const model: ModelGeorefInput = {
-      coordinateInfo: { ...emptyCoordinateInfo(), originShift: { x: 1, y: 2, z: 3 } },
+      coordinateInfo: {
+        ...emptyCoordinateInfo(),
+        originShift: { x: 1, y: 2, z: 3 },
+        // shiftedBounds = originalBounds - originShift; unused by this path
+        // but kept consistent with the producer's invariant.
+        shiftedBounds: { min: { x: -1, y: -2, z: -3 }, max: { x: -1, y: -2, z: -3 } },
+      },
       mapConversion: conversion,
       projectedCRS: rdCrs(),
       lengthUnitScale: 1,
@@ -101,6 +112,52 @@ describe('computeIfcOriginViewerPosition', () => {
     assert.ok(Math.abs(out!.viewer.x - 100) < 1e-9, `viewer.x = ${out!.viewer.x}`);
     assert.ok(Math.abs(out!.viewer.y - 0) < 1e-9, `viewer.y = ${out!.viewer.y}`);
     assert.ok(Math.abs(out!.viewer.z - -50) < 1e-9, `viewer.z = ${out!.viewer.z}`);
+  });
+
+  it('inverts a non-identity anchor rotation+scale correctly (mutation-testing round 6)', async () => {
+    // Every other same-CRS test in this file uses makeConversion's fixed
+    // xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1 for BOTH models — an
+    // identity rotation with no scaling. Mutation testing found that lets a
+    // sign flip on either rotation cross-term, a dropped ordinate term in
+    // anchorDenom, or the anchor's effective-scale computation being
+    // hardcoded to 1 all survive undetected, because the (1, 0)/scale=1
+    // fixture makes each of those terms either zero or a no-op. This test
+    // gives the ANCHOR a genuine rotation (36.87 deg: abscissa 0.6,
+    // ordinate 0.8) and a non-unit scale, and pins the exact expected
+    // viewer position via an independent hand-derivation (see comments).
+    const anchorConv: MapConversion = {
+      id: 100, sourceCRS: 10, targetCRS: 1,
+      eastings: 124000, northings: 477000, orthogonalHeight: 0,
+      xAxisAbscissa: 0.6, xAxisOrdinate: 0.8, scale: 2,
+    };
+    assert.notStrictEqual(anchorConv.xAxisOrdinate, 0, 'fixture must use a non-zero rotation ordinate');
+    assert.notStrictEqual(anchorConv.scale, 1, 'fixture must use a non-unit scale');
+    const anchor: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: anchorConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const otherConv = makeConversion(124100, 477050);
+    const other: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: otherConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const out = await computeIfcOriginViewerPosition(other, anchor);
+    assert.ok(out);
+    assert.strictEqual(out!.source, 'anchor');
+    // dE = 100, dN = 50. anchorScale = 2 (Scale=2, mapUnitScale=lengthUnitScale=1,
+    // so the IFC-schema unit-bridge heuristic doesn't override it).
+    // anchorDenom = anchorScale * (absc^2 + ord^2) = 2 * (0.36 + 0.64) = 2.
+    // invDenom = 0.5.
+    // ifcX = invDenom * (absc*dE + ord*dN) = 0.5 * (0.6*100 + 0.8*50) = 50.
+    // ifcY = invDenom * (-ord*dE + absc*dN) = 0.5 * (-0.8*100 + 0.6*50) = -25.
+    // viewer = { x: ifcX, y: ifcZ(=0), z: -ifcY } (anchor's own shift/RTC are 0).
+    assert.ok(Math.abs(out!.viewer.x - 50) < 1e-9, `viewer.x = ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.y - 0) < 1e-9, `viewer.y = ${out!.viewer.y}`);
+    assert.ok(Math.abs(out!.viewer.z - 25) < 1e-9, `viewer.z = ${out!.viewer.z}`);
   });
 
   it('accounts for orthogonalHeight differences (vertical offset)', async () => {
@@ -157,9 +214,72 @@ describe('computeIfcOriginViewerPosition', () => {
     assert.ok(Math.abs(out!.viewer.z) < 5, `viewer.z residual = ${out!.viewer.z}`);
   });
 
+  it('#2534 review: neutralises a map-absolute ANCHOR before inverting, matching federationAlign (BasepointOverlay no longer contradicts the aligned geometry)', async () => {
+    // Deep review of #2534 (2026-08-10, louistrue), blocking issue on
+    // ifc-origin.ts:93-140: `federationAlign.ts` aligns geometry through the
+    // NEUTRALISED anchor conversion (`effectiveConv`), but this function
+    // used to invert the AUTHORED one — for a map-absolute anchor the two
+    // disagreed by the full anchor magnitude (hundreds of km), and
+    // BasepointOverlay drew that model's origin dot nowhere near its
+    // geometry. Fixture is the #2526 Vectorworks anchor: RTC re-based
+    // geometry sitting ~37m from the declared (repeated) anchor, with a
+    // 90-degree XAxis rotation — the map-absolute detection signature.
+    const anchorConv: MapConversion = {
+      id: 1, sourceCRS: 1, targetCRS: 2,
+      eastings: 311_988.181, northings: 5_996_148.565, orthogonalHeight: 0,
+      xAxisAbscissa: 0, xAxisOrdinate: 1, scale: 1,
+    };
+    const anchor: ModelGeorefInput = {
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        // wasmRtcOffset re-bases the anchor's geometry right next to the
+        // declared anchor (~37m away — inside the 10km detection window),
+        // which is exactly the #2526 double-georeferencing signature.
+        wasmRtcOffset: { x: 312_018.898, y: 5_996_169.654, z: 14 },
+        originalBounds: { min: { x: 0, y: 7, z: 0 }, max: { x: 0, y: 7, z: 0 } },
+        shiftedBounds: { min: { x: 0, y: 7, z: 0 }, max: { x: 0, y: 7, z: 0 } },
+        hasLargeCoordinates: true,
+      },
+      mapConversion: anchorConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    // A COMPLIANT second model federated onto the map-absolute anchor: its
+    // own declared anchor is far from ITS local (near-zero) geometry — the
+    // guard must NOT fire for this model.
+    const compliantConv = makeConversion(312_050, 5_996_100);
+    const compliant: ModelGeorefInput = {
+      coordinateInfo: emptyCoordinateInfo(),
+      mapConversion: compliantConv,
+      projectedCRS: rdCrs(),
+      lengthUnitScale: 1,
+    };
+    const out = await computeIfcOriginViewerPosition(compliant, anchor);
+    assert.ok(out);
+    assert.strictEqual(out!.source, 'anchor');
+    // Pre-fix (inverting the AUTHORED anchor conversion) landed this dot at
+    // viewer ≈ (-312067, ?, 5996231) — hundreds of km from the geometry
+    // federationAlign.ts actually aligns onto (tx/tz of a few tens of
+    // metres, per the review's own hand-derivation). The fix must land in
+    // that same small neighbourhood, not the pre-fix magnitude.
+    assert.ok(Math.abs(out!.viewer.x) < 1000, `viewer.x should be tens of metres, not ~312067km-scale: ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.z) < 1000, `viewer.z should be tens of metres, not ~5996231km-scale: ${out!.viewer.z}`);
+    // Exact value, hand-derived: with the anchor neutralised (eastings=0,
+    // northings=0, axis=(1,0), scale=1), ifcX = eA = 312050, ifcY = nA =
+    // 5996100; anchorOff = rtcYup = (312018.898, 14, -5996169.654).
+    assert.ok(Math.abs(out!.viewer.x - 31.102) < 1e-2, `viewer.x = ${out!.viewer.x}`);
+    assert.ok(Math.abs(out!.viewer.z - 69.654) < 1e-2, `viewer.z = ${out!.viewer.z}`);
+  });
+
   it('falls back to the model own frame when the anchor lacks georef', async () => {
     const model: ModelGeorefInput = {
-      coordinateInfo: { ...emptyCoordinateInfo(), originShift: { x: 99, y: 1, z: 2 } },
+      coordinateInfo: {
+        ...emptyCoordinateInfo(),
+        originShift: { x: 99, y: 1, z: 2 },
+        // shiftedBounds = originalBounds - originShift; unused by this path
+        // but kept consistent with the producer's invariant.
+        shiftedBounds: { min: { x: -99, y: -1, z: -2 }, max: { x: -99, y: -1, z: -2 } },
+      },
       mapConversion: makeConversion(1, 2),
       projectedCRS: rdCrs(),
       lengthUnitScale: 1,

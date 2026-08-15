@@ -1,0 +1,56 @@
+{
+  "bet": "B5.2",
+  "pass": "text",
+  "alias": "model-a",
+  "modelSha256Prefix": "1eac13348753",
+  "authoringToolFamily": "ifcopenshell",
+  "schema": "IFC4",
+  "bytes": 75511560,
+  "megabytes": 75.51,
+  "entityCount": 1083664,
+  "distinctEntityTypes": 97,
+  "elementHistogram": {
+    "IFCBEAM": 8145,
+    "IFCSLAB": 3509,
+    "IFCCOLUMN": 2597,
+    "IFCCOLUMNTYPE": 2445,
+    "IFCWALLSTANDARDCASE": 1128,
+    "IFCOPENINGELEMENT": 659,
+    "IFCBEAMTYPE": 326,
+    "IFCSLABTYPE": 153,
+    "IFCPLATE": 148,
+    "IFCBUILDINGELEMENTPROXY": 100,
+    "IFCWALL": 59,
+    "IFCWALLTYPE": 28,
+    "IFCBUILDINGELEMENTPROXYTYPE": 11,
+    "IFCBUILDINGSTOREY": 6,
+    "IFCROOF": 5,
+    "IFCBUILDING": 1,
+    "IFCSITE": 1
+  },
+  "readMs": 68.1,
+  "heuristicMs": 565.6,
+  "heuristicPrediction": {
+    "defects": {
+      "clash-pair": false,
+      "degenerate-geometry": false,
+      "duplicate-globalid": false,
+      "missing-site": false,
+      "multiple-project": false,
+      "dangling-ref": false,
+      "missing-quantities": true
+    },
+    "defectsFired": [
+      "missing-quantities"
+    ],
+    "defectsFiredCount": 1,
+    "triage": 1,
+    "quantities": {
+      "wallGrossVolume": 0,
+      "slabGrossVolume": 0,
+      "columnGrossVolume": 0,
+      "beamGrossVolume": 0,
+      "roomNetFloorArea": 0
+    }
+  }
+}

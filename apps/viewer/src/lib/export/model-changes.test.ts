@@ -5,7 +5,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import type { IfcDataStore, ScheduleExtraction } from '@ifc-lite/parser';
-import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView as RealMutablePropertyView, type MutablePropertyView } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
 import type { FederatedModel, SchemaVersion } from '@/store/types';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import {
@@ -294,6 +295,69 @@ describe('collectChangedModels', () => {
     assert.strictEqual(result.models.length, 1);
     assert.strictEqual(result.models[0].ifcDataStore, null);
     assert.strictEqual(result.models[0].changeCount, 1);
+  });
+});
+
+// ── badge-vs-dialog agreement (maintainer finding on #1967) ────────────────────
+//
+// `collectChangedModels`'s per-model `changeCount` (the toolbar badge number,
+// via `totalChangeCount`) and `ExportChangesReviewDialog`'s itemized rows (via
+// `getEffectiveChanges()`) both ultimately read `MutablePropertyView`. Before
+// this fix, a create -> edit -> delete entity left `getModifiedEntityCount()`
+// (which `changeCount` uses) reporting 1 while `getEffectiveChanges()`
+// (which the dialog itemizes) already reported zero rows for it — a reachable
+// trap state: the toolbar badge stays permanently amber with a change that
+// will never actually export anything, and the review dialog it opens says
+// "No pending changes to export" with Export disabled. These tests use the
+// REAL `MutablePropertyView` (not the `mkView` count stub above) because the
+// bug is specifically in how the two readers can diverge on the same live
+// overlay.
+describe('badge-vs-dialog agreement (maintainer finding on #1967)', () => {
+  it('a create->edit->delete entity does not leave a phantom entry in the changed-model set', () => {
+    const view = new RealMutablePropertyView(null, 'model-1');
+    view.setExpressIdWatermark(0);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setAttribute(created.expressId, 'Name', 'Edited Space');
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    view.deleteEntity(created.expressId);
+
+    const models = new Map<string, FederatedModel>([['model-1', mkModel('model-1', 'model-1.ifc')]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['model-1', view]]);
+    const state = mkState({ models, mutationViews });
+
+    const result = collectChangedModels(state);
+
+    // The model must not appear at all — a `changeCount > 0` entry here is
+    // exactly what kept the toolbar badge amber for a change with nothing
+    // behind it.
+    assert.strictEqual(result.models.length, 0);
+    assert.strictEqual(totalChangeCount(result), 0);
+  });
+
+  it('a real edit alongside a create->edit->delete phantom is counted once, not twice', () => {
+    const view = new RealMutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+      name: 'Pset_Base',
+      globalId: 'g',
+      properties: [{ name: 'Status', type: PropertyValueType.Label, value: 'Original' }],
+    }] : []);
+    view.setExpressIdWatermark(0);
+    view.setProperty(7, 'Pset_Base', 'Status', 'Edited', PropertyValueType.Label);
+    const created = view.createEntity('IfcSpace', ['guid', null, 'New Space']);
+    view.setProperty(created.expressId, 'Pset_X', 'A', 'v', PropertyValueType.Label);
+    view.deleteEntity(created.expressId);
+
+    const models = new Map<string, FederatedModel>([['model-1', mkModel('model-1', 'model-1.ifc')]]);
+    const mutationViews = new Map<string, MutablePropertyView>([['model-1', view]]);
+    const state = mkState({ models, mutationViews });
+
+    const result = collectChangedModels(state);
+    assert.strictEqual(result.models.length, 1);
+    // Badge count agrees with the one real, itemizable change — not inflated
+    // by the phantom entity.
+    assert.strictEqual(result.models[0].changeCount, 1);
+    assert.strictEqual(totalChangeCount(result), 1);
+    assert.strictEqual(view.getEffectiveChanges().length, 1);
   });
 });
 

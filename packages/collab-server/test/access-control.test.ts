@@ -385,11 +385,14 @@ describe('revocation retention', () => {
       ),
     ).toBeNull();
     // Re-persisting upgrades to the jti -> exp shape with a fallback horizon.
-    await ac.serverOptions.revokeEndpoint!.recordRevocation('new-jti', 'm/old', adminClaims('m/old').exp);
+    // Capture claims once: two independent adminClaims() calls each recompute
+    // Date.now() and can straddle a wall-clock second boundary (#2094).
+    const claims = adminClaims('m/old');
+    await ac.serverOptions.revokeEndpoint!.recordRevocation('new-jti', 'm/old', claims.exp);
     await ac.flush();
     const state = readState(dir);
     expect(typeof state.revoked!['legacy-jti']).toBe('number');
-    expect(state.revoked!['new-jti']).toBe(adminClaims('m/old').exp);
+    expect(state.revoked!['new-jti']).toBe(claims.exp);
   });
 
   it('prunes revocations once their tokens have expired on their own', async () => {

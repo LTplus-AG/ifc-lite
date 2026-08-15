@@ -211,9 +211,33 @@ export interface ConflictResult {
   spatial: boolean;
 }
 
+/**
+ * Whether {@link conflictPredicate} evaluates its SPATIAL half at all.
+ *
+ * `'enabled'` is the predicate the system defines and the only configuration
+ * under which a commutation certificate means anything. `'disabled'` — the
+ * predicate reduced to structural overlap, spatial region intersection
+ * ignored — exists for exactly one purpose: the **B4.2 ablation** (G4 red-team
+ * review item 6, docs/vision/reviews/g4-red-team-2026-07-29.md §7).
+ *
+ * The soundness argument for the coupled op model (merge-model.ts module
+ * docstring) *depends* on the spatial rule: a host and its openings overlap
+ * spatially by construction, so every host-op/opening-op cross pair is refused
+ * a certificate. An argument of that shape is only worth stating if turning
+ * the rule off breaks it — so the battery runs the same 1,000 schedules with
+ * this set to `'disabled'` and counts the cross pairs the reduced predicate
+ * then CLEARS that do not actually commute (`runSpatialAblation` in
+ * merge-battery.ts). This is a measuring instrument, never a production
+ * configuration.
+ */
+export type SpatialRuleMode = 'enabled' | 'disabled';
+
 export interface ConflictOptions {
   /** Default {@link DEFAULT_EPSILON_MM}. */
   epsilonMm?: number;
+  /** Default `'enabled'`. `'disabled'` is the B4.2 ablation knob and makes
+   *  the predicate structural-only — see {@link SpatialRuleMode}. */
+  spatialRule?: SpatialRuleMode;
 }
 
 /**
@@ -229,6 +253,11 @@ export interface ConflictOptions {
  * elements) — over-reporting is exactly what the tightness benchmark
  * measures, per the task brief ("may over-report, that is what tightness
  * measures").
+ *
+ * `options.spatialRule: 'disabled'` drops (b) entirely. That is an ABLATION,
+ * not a tuning knob: under the coupled op model (merge-model.ts) it is
+ * unsound by design, and measuring exactly how unsound is the point — see
+ * {@link SpatialRuleMode}.
  */
 export function conflictPredicate(
   fpA: Footprint,
@@ -236,6 +265,7 @@ export function conflictPredicate(
   options: ConflictOptions = {},
 ): ConflictResult {
   const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
+  const spatialRule = options.spatialRule ?? 'enabled';
 
   let structural = false;
   // Iterate the smaller set for a cheap constant-factor win; correctness
@@ -250,7 +280,7 @@ export function conflictPredicate(
   }
 
   let spatial = false;
-  if (fpA.region && fpB.region) {
+  if (spatialRule === 'enabled' && fpA.region && fpB.region) {
     spatial = aabbsIntersect(inflateAabb(fpA.region, epsilonMm), inflateAabb(fpB.region, epsilonMm));
   }
 

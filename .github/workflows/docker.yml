@@ -18,6 +18,27 @@ on:
       - 'Cargo.toml'
       - 'apps/server/**'
       - 'rust/**'
+  # Build the image BEFORE merge when the Dockerfile itself changes. The push
+  # lane above only reports once a change has already landed on main, which is
+  # how #2008 reached review fully green — a python 3.12 -> 3.14 base bump
+  # whose requirements.lock could not resolve on the new interpreter (numpy /
+  # shapely ship cp-tagged wheels), invisible because no PR ever built a
+  # Dockerfile.
+  #
+  # Deliberately much narrower than the push paths. Over the last 6 months the
+  # push paths matched 447 commits and the Dockerfile alone matched ~6, so
+  # scoping to the Dockerfile is the difference between a Depot build on most
+  # PRs and roughly one a month. Source changes are already covered by
+  # test.yml's "Validate Server Binary" jobs plus the post-merge build here;
+  # the only unique signal this lane adds is "does the image still build".
+  #
+  # This workflow's own path is NOT listed: it would fire a full ~9 min image
+  # build on every dependabot actions-SHA bump (10 of the 31 commits that
+  # touched either file) for no build-relevant change. Use workflow_dispatch
+  # to exercise an edit to this file.
+  pull_request:
+    paths:
+      - 'apps/server/Dockerfile'
   workflow_dispatch:
 
 concurrency:
@@ -50,7 +71,7 @@ jobs:
       packages: write
     steps:
       - name: Checkout Repo
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
@@ -67,7 +88,7 @@ jobs:
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -86,6 +107,10 @@ jobs:
             type=raw,value=latest,event=tag
             # sha for push-to-main builds
             type=sha,prefix=,event=branch
+            # pr-123 for the build-only PR lane. Never pushed (see `push:`
+            # below); it just keeps the tag list non-empty so buildx has
+            # something to name the image.
+            type=ref,event=pr
 
       # The registry cache exporter requires a fully lowercase repository name
       # (OCI spec), but ${{ github.repository_owner }} preserves case
@@ -120,7 +145,18 @@ jobs:
           # *raise* compute minutes. image-manifest+oci-mediatypes make the
           # cache blob a GHCR-compatible OCI manifest (required for the registry
           # backend to push to ghcr.io).
-          cache-to: type=registry,ref=${{ env.CACHE_IMAGE }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
+          #
+          # Empty on pull_request: a PR from a fork — and every Dependabot PR —
+          # runs with a read-only GITHUB_TOKEN, so exporting the cache would
+          # fail and take the build down with it, on exactly the PRs this lane
+          # exists to catch. PRs read the cache and never write it; main keeps
+          # it warm.
+          #
+          # The condition is written "not pull_request && <value> || ''" and
+          # not the other way round on purpose: Actions has no ternary, and in
+          # `a && b || c` an empty-string b is FALSY, so putting '' in the b
+          # slot silently falls through to c and the cache export runs anyway.
+          cache-to: ${{ github.event_name != 'pull_request' && format('type=registry,ref={0}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true', env.CACHE_IMAGE) || '' }}
           # Build arm64 only for actual releases (distribution images). On the
           # frequent push-to-main builds (~1/3 of commits touch rust/** and
           # trigger this workflow) we build amd64 only — the arm64 leg runs

@@ -7,6 +7,7 @@
  */
 
 import type { QuantityTable, QuantitySet, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -104,7 +105,43 @@ export function readQuantities(reader: BufferReader, strings: StringTable): Quan
       return null;
     },
 
-    sumByType: (quantName) => {
+    // Mirrors the columnar implementation in `@ifc-lite/data`'s
+    // `quantityTableFromColumns`. A restored table that omitted this would
+    // still answer `whereProperty` correctly, but only by resolving every
+    // candidate through `getForEntity` — see the note on `findByQuantity` in
+    // `quantity-table.ts`.
+    findByQuantity: (quantName, operator, filterValue, qset) => {
+      const quantIdx = strings.indexOf(quantName);
+      if (quantIdx < 0) return [];
+
+      const qsetIdx = qset === undefined ? -1 : strings.indexOf(qset);
+      if (qset !== undefined && qsetIdx < 0) return [];
+
+      const rowIndices = quantityIndex.get(quantIdx) || [];
+      const results: number[] = [];
+
+      for (const idx of rowIndices) {
+        if (qsetIdx >= 0 && qsetName[idx] !== qsetIdx) continue;
+        if (comparePropertyValues(value[idx], operator, filterValue)) {
+          results.push(entityId[idx]);
+        }
+      }
+
+      return results;
+    },
+
+    // See `QuantityTable.sumByType`'s doc in `@ifc-lite/data`'s
+    // `quantity-table.ts`: a cache-restored table has no per-row entity-type
+    // data either, so `elementType` throws rather than being silently
+    // dropped (it used to return the unfiltered total).
+    sumByType: (quantName, elementType) => {
+      if (elementType !== undefined) {
+        throw new Error(
+          'QuantityTable.sumByType: elementType filtering is not supported by a ' +
+            'cache-restored table — it has no per-row entity-type data. Resolve entity ids ' +
+            'via entities.getByType(elementType) and sum the matching rows yourself.',
+        );
+      }
       const quantIdx = strings.indexOf(quantName);
       if (quantIdx < 0) return 0;
 

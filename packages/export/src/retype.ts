@@ -27,7 +27,8 @@
  */
 
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
-import { escapeStepString, splitTopLevelArgs } from './step-serialization.js';
+import { escapeStepString } from './step-serialization.js';
+import { splitTopLevelArgs } from './step-argument-parser.js';
 import type { IfcSchemaVersion } from './schema-converter.js';
 
 interface RetypeEntityInfo {

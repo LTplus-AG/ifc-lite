@@ -1,0 +1,9 @@
+{
+  "//": "Type-checks the TEST files, which the emit tsconfig deliberately leaves out. The root tsconfig excludes `**/*.test.ts`, and `exclude` filters `include`, so an `include` alone is not enough — `exclude` must be reset here or `types.test.ts` silently stays out of the project and every `expectTypeOf` assertion in it becomes a no-op.",
+  "extends": "../../tsconfig.packages.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

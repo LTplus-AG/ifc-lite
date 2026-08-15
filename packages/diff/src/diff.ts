@@ -2,31 +2,19 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { applyContentMatching } from './content-match.js';
+import { geometryEqual, resolveTolerances, resolveUseGeometry } from './geometry-compare.js';
+import { resolveKeyAliases } from './key-aliases.js';
+import { detectSplitMerge } from './split-merge.js';
 import type {
   DiffChangeKind,
+  DiffCounts,
   DiffEntry,
   DiffScope,
   EntityFingerprint,
-  GeometryHash,
   ModelDiff,
   DiffOptions,
 } from './types.js';
-
-/**
- * Compare two geometry fingerprints.
- *
- * - both `undefined`  → equal (neither side has geometry)
- * - one `undefined`   → changed (geometry added or removed)
- * - both present      → equal iff the normalized hashes match
- *
- * `bigint` and `string` hashes are normalized to strings so a `bigint` from
- * the WASM `BigUint64Array` compares equal to its string form.
- */
-function geometryEqual(a: GeometryHash | undefined, b: GeometryHash | undefined): boolean {
-  if (a === undefined && b === undefined) return true;
-  if (a === undefined || b === undefined) return false;
-  return String(a) === String(b);
-}
 
 /** Canonical form for exclude-set membership: trimmed + upper-cased so a
  *  hand-typed `ifcopeningelement ` still matches the store's `IfcOpeningElement`. */
@@ -65,6 +53,34 @@ function changedComponentKeys(
   return changed.sort();
 }
 
+/**
+ * Does `side` carry *any* geometry hash among the entities that actually
+ * participate in the comparison? Feeds {@link resolveUseGeometry}.
+ *
+ * `excludeTypes` drops an entity from the diff entirely — in either revision —
+ * so an excluded entity's hash is no evidence that its side "has geometry":
+ * excluding the only class that happened to carry hashes leaves that side with
+ * none, and the abstention must see that. The participation rule is exactly the
+ * one the classification walk below applies.
+ *
+ * Early-exits on the first hit and allocates nothing; a side that really does
+ * carry hashes usually stops on its first entity.
+ */
+function sideHasGeometryHash<TRef>(
+  side: Map<string, EntityFingerprint<TRef>>,
+  otherSide: Map<string, EntityFingerprint<TRef>>,
+  isExcluded: (entity: EntityFingerprint<TRef>) => boolean,
+): boolean {
+  for (const [key, entity] of side) {
+    if (entity.geometryHash === undefined) continue;
+    if (isExcluded(entity)) continue;
+    const counterpart = otherSide.get(key);
+    if (counterpart !== undefined && isExcluded(counterpart)) continue;
+    return true;
+  }
+  return false;
+}
+
 function indexByKey<TRef>(
   entities: Iterable<EntityFingerprint<TRef>>,
 ): Map<string, EntityFingerprint<TRef>> {
@@ -86,7 +102,9 @@ function indexByKey<TRef>(
  * Pure and store-agnostic: the caller supplies fingerprints (data hash from
  * `buildDataFingerprint`, geometry hash from the WASM mesh pass). The `scope`
  * option selects whether data differences, geometry differences, or both count
- * as a modification — the "compare data, geometry, or both" toggle.
+ * as a modification — the "compare data, geometry, or both" toggle. Geometry is
+ * additionally skipped when the two revisions disagree on whether they carry
+ * geometry hashes at all (see {@link resolveUseGeometry}).
  */
 export function diffModels<TRef = unknown>(
   base: Iterable<EntityFingerprint<TRef>>,
@@ -107,11 +125,29 @@ export function diffModels<TRef = unknown>(
     excluded !== null && excluded.has(normalizeType(entity.ifcType));
 
   const baseByKey = indexByKey(base);
-  const headByKey = indexByKey(head);
+  // Accepted identity claims are applied as key normalization BEFORE anything
+  // is classified, so an aliased pair meets on the key path and never becomes
+  // an add/delete candidate for the content pass (issue #1891).
+  const { headByKey, applied: appliedKeyAliases } = resolveKeyAliases(
+    indexByKey(head),
+    baseByKey,
+    options.keyAliases,
+  );
+
+  // Resolve the geometry abstention BEFORE classifying anything: a revision
+  // fingerprinted with geometry hashing on, compared against one fingerprinted
+  // with it off, would otherwise report every key-matched entity as
+  // `modified` / `['geometry']` — the whole model "changed" on a difference
+  // between two fingerprinting runs. See `resolveUseGeometry`.
+  const useGeometry = resolveUseGeometry(
+    considerGeometry,
+    sideHasGeometryHash(baseByKey, headByKey, isExcluded),
+    sideHasGeometryHash(headByKey, baseByKey, isExcluded),
+  );
 
   const entries: DiffEntry<TRef>[] = [];
   const byKey = new Map<string, DiffEntry<TRef>>();
-  const counts = { added: 0, modified: 0, deleted: 0, unchanged: 0 };
+  const counts: DiffCounts = { added: 0, modified: 0, deleted: 0, unchanged: 0 };
 
   const push = (entry: DiffEntry<TRef>): void => {
     entries.push(entry);
@@ -138,7 +174,7 @@ export function diffModels<TRef = unknown>(
     ) {
       changeKinds.push('data');
     }
-    if (considerGeometry && !geometryEqual(baseEntity.geometryHash, headEntity.geometryHash)) {
+    if (useGeometry && !geometryEqual(baseEntity.geometryHash, headEntity.geometryHash)) {
       changeKinds.push('geometry');
     }
 
@@ -163,5 +199,43 @@ export function diffModels<TRef = unknown>(
     push({ key, state: 'added', changeKinds: [], head: headEntity });
   }
 
-  return { scope, excludedTypes: excluded ? [...excluded].sort() : [], entries, byKey, counts };
+  const excludedTypes = excluded ? [...excluded].sort() : [];
+
+  if (!options.matchUnpairedByContent) {
+    const result: ModelDiff<TRef> = { scope, excludedTypes, entries, byKey, counts };
+    if (options.keyAliases) result.appliedKeyAliases = appliedKeyAliases;
+    return result;
+  }
+
+  // The content pass inherits the same resolved answer rather than re-deriving
+  // one, so a mixed-capability comparison cannot abstain in one pass and not
+  // the other.
+  const matched = applyContentMatching(entries, counts, useGeometry, resolveTolerances(options));
+  const matchedByKey = new Map<string, DiffEntry<TRef>>();
+  for (const entry of matched.entries) matchedByKey.set(entry.key, entry);
+
+  const result: ModelDiff<TRef> = {
+    scope,
+    excludedTypes,
+    entries: matched.entries,
+    byKey: matchedByKey,
+    counts: matched.counts,
+    contentMatches: matched.contentMatches,
+  };
+  if (options.keyAliases) result.appliedKeyAliases = appliedKeyAliases;
+  // The fourth stage, on the residue the three above left behind, and ADDITIVE:
+  // it reads `matched.entries` and returns claims, so `entries`, `byKey` and
+  // `counts` above are already final and stay byte-identical to a run with the
+  // option off. It inherits the same resolved `useGeometry`, and unlike the
+  // content pass has no non-geometric channel to fall back to — under either
+  // abstention it reports nothing rather than guessing from data alone.
+  if (options.detectSplitMerge) {
+    // Assigned only when the stage actually ran: `undefined` back means the
+    // geometry abstention fired, and the field's ABSENCE is what says so. An
+    // unconditional assignment would publish `[]` there and tell a caller the
+    // detector executed and found nothing.
+    const claims = detectSplitMerge(matched.entries, useGeometry, options);
+    if (claims) result.splitMerges = claims;
+  }
+  return result;
 }

@@ -55,6 +55,19 @@ describe('dayPath', () => {
     expect(all.some((s) => s.aboveHorizon)).toBe(true);
   });
 
+  // The sampling loop is `m <= 1440`, i.e. inclusive of the closing midnight, so
+  // a day yields 1440/step + 1 samples and the polyline closes on the next day's
+  // start. No test pinned the count, so `m < 1440` (dropping the closing sample)
+  // went unnoticed — a renderer drawing a closed dome arc would show a gap.
+  it('samples the whole UTC day inclusive of the closing midnight', () => {
+    const day = new Date('2024-06-20T12:00:00Z');
+    const all = dayPath(day, LAT, LON, { stepMinutes: 60, aboveHorizonOnly: false });
+
+    expect(all).toHaveLength(1440 / 60 + 1);
+    expect(all[0].time.toISOString()).toBe('2024-06-20T00:00:00.000Z');
+    expect(all[all.length - 1].time.toISOString()).toBe('2024-06-21T00:00:00.000Z');
+  });
+
   it('traces a longer summer arc than a winter arc', () => {
     const summer = dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
     const winter = dayPath(new Date('2024-12-21T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
@@ -71,6 +84,19 @@ describe('analemmaPaths', () => {
       expect(p.hour).toBeGreaterThanOrEqual(0);
       expect(p.hour).toBeLessThan(24);
     }
+  });
+
+  // The year length comes from a Gregorian leap-year test. Nothing asserted the
+  // sample count, so hard-coding 365 stayed green while silently truncating a
+  // leap year's analemma before 31 December.
+  it('walks every calendar day, honouring Gregorian leap years', () => {
+    const lengthFor = (year: number): number =>
+      analemmaPaths(year, LAT, LON, { dayStep: 1 })[0].samples.length;
+
+    expect(lengthFor(2024)).toBe(366); // divisible by 4
+    expect(lengthFor(2023)).toBe(365); // common year
+    expect(lengthFor(2100)).toBe(365); // century, not divisible by 400
+    expect(lengthFor(2000)).toBe(366); // divisible by 400
   });
 
   it('includes a midday analemma but not a deep-night one in the UK', () => {
@@ -95,5 +121,42 @@ describe('domeGraticule', () => {
     expect(g.altitudeRings.map((r) => r.altitude)).toEqual([0, 30, 60]);
     // 0,90,180,270 → 4 spokes.
     expect(g.azimuthSpokes).toHaveLength(4);
+  });
+
+  it('accepts a fine-grained graticule without degrading it', () => {
+    const g = domeGraticule({ altitudeStep: 0.5, resolution: 0.1 });
+    // 0.5..89.5 step 0.5 => 179 rings, plus the horizon ring => 180.
+    expect(g.altitudeRings.length).toBe(180);
+    // 0..360 step 0.1 lands 3600 points (fp drift keeps the last step short of 360).
+    expect(g.altitudeRings[0].ring.length).toBe(3600);
+  });
+
+  it('rejects a denormal altitudeStep instead of hanging', () => {
+    // Number.MIN_VALUE passes `step > 0` but 90 + Number.MIN_VALUE === 90,
+    // so the altitude-rings loop would never advance without this guard.
+    expect(90 + Number.MIN_VALUE).toBe(90);
+    expect(() => domeGraticule({ altitudeStep: Number.MIN_VALUE })).toThrow(/altitudeStep/);
+  });
+
+  it('rejects a denormal resolution instead of hanging', () => {
+    // Same shape, against the largest bound resolution drives (360).
+    expect(360 + Number.MIN_VALUE).toBe(360);
+    expect(() => domeGraticule({ resolution: Number.MIN_VALUE })).toThrow(/resolution/);
+  });
+
+  it('rejects a denormal azimuthStep instead of hanging', () => {
+    // azStep drives `for (let az = 0; az < 360; az += azStep)`, bounded at
+    // 360: Number.MIN_VALUE passes `step > 0` but 360 + Number.MIN_VALUE
+    // === 360, so the azimuth-spokes loop would never advance.
+    expect(360 + Number.MIN_VALUE).toBe(360);
+    expect(() => domeGraticule({ azimuthStep: Number.MIN_VALUE })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: 0 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: -1 })).toThrow(/azimuthStep/);
+    expect(() => domeGraticule({ azimuthStep: NaN })).toThrow(/azimuthStep/);
+  });
+
+  it('rejects NaN immediately for altitudeStep and resolution (not a hang)', () => {
+    expect(() => domeGraticule({ altitudeStep: NaN })).toThrow(/altitudeStep/);
+    expect(() => domeGraticule({ resolution: NaN })).toThrow(/resolution/);
   });
 });

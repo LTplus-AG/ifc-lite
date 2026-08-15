@@ -17,7 +17,7 @@
           "entityCount": 548,
           "fileSize": 28004,
           "storeyCount": 1,
-          "sha256": "80b58870ce12bc4f40bbd4da5ba7b5ce63dfdf7aa944bcc5774ce238898ab912",
+          "sha256": "b18f6558f1a829385e300f4455fe7fe06eee5665e5755acbca6ca3806f08da33",
           "groundTruthTotals": {
             "slabCount": 1,
             "slabGrossArea": 214.212816,
@@ -83,7 +83,7 @@
           "spotlight": {
             "seed": 20260725,
             "family": "office",
-            "sha256": "5d3a433fa4ade71ae882d19a3d9185a33c29e098b0601ed6e059497a4da0d2b4",
+            "sha256": "32f5e361f234c94bf9c97c1ec9ced3f3aec195fd7e488c3b2101aaa2859fbaee",
             "plantedDefects": [
               {
                 "type": "duplicate-globalid",
@@ -226,17 +226,47 @@
             "schedules": 1000,
             "seed": 20260724,
             "epsilonMm": 50,
-            "autoMerged": 849,
+            "autoMerged": 873,
             "unsoundAutoMerges": 0,
             "unsoundScheduleIndices": [],
-            "flaggedConflicts": 151,
-            "trueConflicts": 50,
-            "falseConflicts": 101,
-            "groundTruthConvergent": 950,
-            "conflictRate": 0.151,
-            "falseConflictRate": 0.10631578947368421,
-            "certificatesIssued": 849,
-            "certificatesVerified": 33,
+            "flaggedConflicts": 127,
+            "trueConflicts": 43,
+            "falseConflicts": 84,
+            "groundTruthConvergent": 957,
+            "conflictRate": 0.127,
+            "falseConflictRate": 0.0877742946708464,
+            "byRule": {
+              "structuralOnly": {
+                "flagged": 78,
+                "trueConflicts": 14,
+                "falseConflicts": 64,
+                "trueApplyFailed": 14,
+                "trueDiverged": 0
+              },
+              "spatialOnly": {
+                "flagged": 28,
+                "trueConflicts": 9,
+                "falseConflicts": 19,
+                "trueApplyFailed": 3,
+                "trueDiverged": 6
+              },
+              "both": {
+                "flagged": 21,
+                "trueConflicts": 20,
+                "falseConflicts": 1,
+                "trueApplyFailed": 10,
+                "trueDiverged": 10
+              }
+            },
+            "spatialFiredFlagged": 49,
+            "spatialFiredTrueConflicts": 29,
+            "spatialFiredFalseConflicts": 20,
+            "spatialFiredFalseConflictRate": 0.40816326530612246,
+            "spatialOnlyTrueConflicts": 9,
+            "spatialKillCriterionPass": false,
+            "spatialRuleContributes": true,
+            "certificatesIssued": 873,
+            "certificatesVerified": 34,
             "certificateFailures": 0,
             "examPass": true,
             "killCriterionPass": true
@@ -341,7 +371,7 @@
           "optimumIfc": {
             "bytes": 111197,
             "mappedElements": 74,
-            "sha256": "48fc69e72d33c45002832dec38d53fc6d0c563bab997e8fafcdc537181078c4e"
+            "sha256": "b4bc4bd689d28769f54593f9adf0b4c078a2c9e3ff18a233f82711cdc2e3dce7"
           },
           "kernelValidation": {
             "worstElementRelDev": 0.000001675,
@@ -361,23 +391,23 @@
   },
   "volatile": {
     "note": "ONLY this block differs between runs: wall clocks and the timestamp. Everything under `deterministic` is a pure function of the master seed.",
-    "generatedAt": "2026-07-24T22:30:09.456Z",
+    "generatedAt": "2026-08-02T11:45:51.178Z",
     "nodeVersion": "v22.14.0",
-    "totalWallClockMs": 7515,
+    "totalWallClockMs": 6698,
     "actWallClockMs": {
-      "act1": 37,
-      "act2": 70,
-      "act3": 282,
-      "act4": 1868,
-      "act5": 5257
+      "act1": 30,
+      "act2": 57,
+      "act3": 267,
+      "act4": 2488,
+      "act5": 3855
     },
     "actVolatile": {
       "act2": {
-        "verifyMs": 3.808,
-        "tamperVerifyMs": 2.875
+        "verifyMs": 2.755,
+        "tamperVerifyMs": 2.1
       },
       "act4": {
-        "batteryElapsedMs": 1856.5385420000002
+        "batteryElapsedMs": 2476.0827499999996
       }
     },
     "artifactDir": "/var/folders/n2/jkb39p_x4md9jdv5hhzny6jc0000gn/T/ifc-lite-b35-demo"

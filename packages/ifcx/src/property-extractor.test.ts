@@ -4,9 +4,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { StringTable } from '@ifc-lite/data';
+import { StringTable, QuantityType } from '@ifc-lite/data';
 import { parseIfcx } from './index.js';
 import { extractProperties } from './property-extractor.js';
+import { parseV5aKey } from './types.js';
 import type { ComposedNode, IfcxFile } from './types.js';
 
 function createNode(path: string): ComposedNode {
@@ -140,6 +141,11 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     const co2 = co2Set.quantities.find((q) => q.name === 'EmbodiedCO2');
     assert.ok(co2, 'raw custom quantity reaches the quantity table');
     assert.strictEqual(co2.value, 412.5);
+    assert.strictEqual(
+      co2.type,
+      QuantityType.Count,
+      'unrecognized numeric in a non-Qto custom set must not fabricate a Length unit'
+    );
     assert.ok(
       !qsets.some((qset) => qset.quantities.some((q) => q.name === 'Length')),
       'typed Length not double-claimed as quantity'
@@ -178,5 +184,44 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     const netArea = all.find((q) => q.name === 'NetArea');
     assert.ok(netArea, `NetArea present in quantity table (got ${JSON.stringify(qsets)})`);
     assert.strictEqual(netArea.value, 12.5);
+  });
+});
+
+describe('parseV5aKey — malformed keys from third-party ifcx files', () => {
+  /**
+   * `parseV5aKey` splits `bsi::ifc::v5a::<Set>::<Prop>`. Its `sep <= 0` guard
+   * rejects an EMPTY set name (`bsi::ifc::v5a::::Name`, where the separator
+   * sits at index 0). Relaxing that to `sep < 0` survived the whole 109-test
+   * suite -- nothing pinned the empty-set-name case.
+   *
+   * It matters because this parses attribute keys out of an .ifcx document,
+   * which may come from another tool: `property-extractor.ts:110`/`:232` and
+   * `index.ts:376` all feed it third-party content. No writer in THIS repo
+   * emits a doubled separator, but the guard exists for input we did not
+   * write -- without it a malformed key yields a property set named '' that
+   * then flows on into the property and quantity tables.
+   */
+  it('rejects a v5a key whose set name is empty', () => {
+    assert.strictEqual(parseV5aKey('bsi::ifc::v5a::::NetArea'), null);
+  });
+
+  /**
+   * Control: a well-formed key must still parse, so the guard above cannot be
+   * satisfied by rejecting everything.
+   */
+  it('still parses a well-formed v5a key', () => {
+    assert.deepStrictEqual(parseV5aKey('bsi::ifc::v5a::Qto_WallBaseQuantities::NetArea'), {
+      setName: 'Qto_WallBaseQuantities',
+      name: 'NetArea',
+    });
+  });
+
+  /**
+   * The trailing-separator form has an empty MEMBER name and is rejected by
+   * the same condition's upper bound. Pinned alongside so the two halves of
+   * that guard are not left leaning on each other.
+   */
+  it('rejects a v5a key whose member name is empty', () => {
+    assert.strictEqual(parseV5aKey('bsi::ifc::v5a::Qto_WallBaseQuantities::'), null);
   });
 });

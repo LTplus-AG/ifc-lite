@@ -288,8 +288,13 @@ export class BsddNamespace {
         if (propsList && propsList.length > 0) {
           info = { ...info, classProperties: propsList.map((p) => mapProperty(p, true)) };
         }
-      } catch {
-        // ignore — primary call already succeeded
+      } catch (err) {
+        // Non-fatal — the primary call already succeeded. Logged because
+        // the partial result (no classProperties) is what gets cached, so
+        // one transient failure silently answers every later call for this
+        // URI until the entry expires.
+        // eslint-disable-next-line no-console
+        console.warn(`[bsdd] classProperties fallback failed for ${uri}; caching partial result:`, err);
       }
     }
 

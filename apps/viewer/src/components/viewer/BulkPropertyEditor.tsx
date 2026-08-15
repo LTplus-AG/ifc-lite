@@ -404,7 +404,12 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       try {
         matchedIds = queryEngine.select(currentCriteria);
         count = matchedIds.length;
-      } catch {
+      } catch (err) {
+        // A count of 0 reads as "nothing matches these criteria", which is the
+        // answer the user acts on — so a query that FAILED must not be
+        // indistinguishable from one that matched nothing. Debounced per
+        // criteria edit, so this is not a hot path.
+        console.warn('[bulk-edit] criteria query failed; showing 0 matches', err);
         // leave at 0
       }
 

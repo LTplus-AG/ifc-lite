@@ -29,6 +29,17 @@
  *     second model across CRSs — see that function's comments for the
  *     step-by-step frame diagram this mirrors.
  *
+ * GUARD PHILOSOPHY (PR #1965 review): `../dxfExportGeoref.ts` (issue #1929)
+ * implements the SAME inverse map conversion for DXF underlays -- a third
+ * copy alongside this file and `rust/core/src/georef.rs` -- but chooses
+ * differently on malformed input. `invertMapConversion` /
+ * `computePointCloudAlignment` below return `null` on a degenerate axis or
+ * ~zero Scale and the caller hides the alignment toggle entirely; DXF
+ * export instead falls back to safe defaults (Scale=0→1, degenerate
+ * axis→(1,0)) and keeps its toggle available. Both are deliberate for
+ * where they sit -- see `dxfExportGeoref.ts`'s "GUARD PHILOSOPHY" comment
+ * for the reasoning -- not an inconsistency to fix.
+ *
  * Precision (f32 vs f64): map coordinates run ~1e6-1e7 m. Subtracting
  * `Eastings`/`Northings`/`OrthogonalHeight` must happen in f64 BEFORE any
  * f32 narrowing, or the subtraction itself inherits the f32 quantisation
@@ -60,6 +71,7 @@
 
 import type { ModelGeoref } from './federationAlign.js';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from '../../lib/geo/geo-scale.js';
+import { effectiveMapConversionForGeometry } from '../../lib/geo/map-absolute.js';
 import { totalYupOffset } from '../../lib/geo/ifc-origin.js';
 
 export interface MapConversionParams {
@@ -185,10 +197,19 @@ export interface PointCloudAlignmentTransform {
  * the caller can hide/disable the alignment toggle.
  */
 export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlignmentTransform | null {
-  const conv = georef.mapConversion;
   const lengthUnitScale = georef.lengthUnitScale ?? 1;
   const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
   if (!(mapUnitScale > 0)) return null;
+  // Map-absolute geometry (#2526): a reference model whose geometry already
+  // sits at the declared anchor lives in the SAME absolute frame as the scan,
+  // so the alignment reduces to the viewer shift alone — inverting the
+  // authored conversion would subtract the anchor twice and rotate the cloud
+  // off the model it was scanned against.
+  const conv = effectiveMapConversionForGeometry(
+    georef.mapConversion,
+    mapUnitScale,
+    georef.coordinateInfo,
+  );
   const scale = getEffectiveHorizontalScale(conv.scale, mapUnitScale, lengthUnitScale);
   if (Math.abs(scale) < 1e-12) return null;
 

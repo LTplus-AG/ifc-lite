@@ -63,7 +63,7 @@ Feature flag: `layers.enabled`. Every phase lands on `main` only with green exit
 - ☐ Team tier pricing alongside Tauri track; public reference registry for teaching
 - ☐ Nightly model-gardener agent on auto-merge policy (first fully autonomous loop) — the policy side is now in place
 
-**Exit:** one external design partner (Motif candidate) running a protected ref with an agent principal in production.
+**Exit:** one external design partner running a protected ref with an agent principal in production.
 
 ## Cross-cutting
 

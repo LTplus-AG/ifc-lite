@@ -265,16 +265,45 @@ fn extract_mapped_item_profiles(
         None => return,
     };
 
-    // Attr 1: MappingTarget → IfcCartesianTransformationOperator3D
-    let target_tf = mapped_item
-        .get(1)
-        .and_then(|a| if a.is_null() { None } else { Some(a) })
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_cartesian_transformation_operator(&e, decoder).ok())
-        .unwrap_or_else(Matrix4::identity);
+    // Attr 1: MappingTarget → IfcCartesianTransformationOperator3D.
+    // A PRESENT but unparseable target/origin abandons this mapped item instead of
+    // falling back to the identity: the mesh path propagates that failure and skips
+    // the item, so silently drawing the profile in an un-transformed frame would put
+    // the drawing somewhere the model isn't. Absent/null stays the identity.
+    let target_tf = match resolve_present_ref(mapped_item.get(1), decoder) {
+        Err(()) => return,
+        Ok(resolved) => match resolved {
+            Some(e) => match parse_cartesian_transformation_operator(&e, decoder) {
+                Ok(m) => m,
+                Err(_) => return,
+            },
+            None => Matrix4::identity(),
+        },
+    };
 
-    // Scale the target transform translation from file units to metres
-    let scaled_target = scale_translation(target_tf, unit_scale);
+    // Attr 0 of the RepresentationMap: MappingOrigin, the placement of the mapped
+    // items INSIDE the map. It composes innermost (`MappingTarget · MappingOrigin`),
+    // exactly as the mesh path now does — dropping it put every 2D profile of a
+    // non-identity-origin map at the wrong spot. #1985
+    // A map carrying a 2D representation writes an IfcAxis2Placement2D here, which
+    // the mesh path also honours — handling only the 3D form would leave exactly
+    // the plan/footprint maps this extractor exists for unfixed.
+    let origin_tf = match resolve_present_ref(source.get(0), decoder) {
+        Err(()) => return,
+        Ok(Some(e)) => {
+            let parsed = match e.ifc_type {
+                IfcType::IfcAxis2Placement3D => parse_axis2_placement_3d(&e, decoder).ok(),
+                IfcType::IfcAxis2Placement2D => parse_axis2_placement_2d(&e, decoder).ok(),
+                _ => None,
+            };
+            let Some(m) = parsed else { return };
+            m
+        }
+        Ok(None) => Matrix4::identity(),
+    };
+
+    // Scale the composed transform's translation from file units to metres
+    let scaled_target = scale_translation(target_tf * origin_tf, unit_scale);
     let composed = elem_transform * scaled_target;
 
     // MappedRepresentation (attr 1 of RepresentationMap) → items
@@ -336,54 +365,17 @@ fn extract_mapped_item_profiles(
     }
 }
 
-/// Parse IfcCartesianTransformationOperator3D into a Matrix4<f64>.
+/// Parse an `IfcCartesianTransformationOperator` (2D or 3D, uniform or not).
 ///
-/// Attributes:
-///   0: Axis1 (X direction, optional)
-///   1: Axis2 (Y direction, optional)
-///   2: LocalOrigin (IfcCartesianPoint)
-///   3: Scale (f64, default 1.0)
-///   4: Axis3 (Z direction, optional, 3D only)
+/// Delegates to the router's parser so the 2D drawing profiles and the 3D mesh
+/// can never disagree about the same `MappingTarget`. This file used to carry a
+/// private copy, which had drifted: it ignored the non-uniform per-axis scales,
+/// the 2D attribute layout, and `Axis2`. #1985
 fn parse_cartesian_transformation_operator(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
-    // LocalOrigin (attr 2)
-    let origin = parse_cartesian_point(entity, decoder, 2).unwrap_or(Point3::new(0.0, 0.0, 0.0));
-
-    // Scale (attr 3)
-    let scale = entity.get(3).and_then(|v| v.as_float()).unwrap_or(1.0);
-
-    // Axis1 / X direction (attr 0)
-    let x_axis = entity
-        .get(0)
-        .filter(|a| !a.is_null())
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_direction_entity(&e).ok())
-        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0))
-        .normalize();
-
-    // Axis3 / Z direction (attr 4, 3D only)
-    let z_axis = entity
-        .get(4)
-        .filter(|a| !a.is_null())
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_direction_entity(&e).ok())
-        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0))
-        .normalize();
-
-    // Derive orthogonal axes (right-hand system)
-    let y_axis = z_axis.cross(&x_axis).normalize();
-    let x_axis = y_axis.cross(&z_axis).normalize();
-
-    #[rustfmt::skip]
-    let m = Matrix4::new(
-        x_axis.x * scale, y_axis.x * scale, z_axis.x * scale, origin.x,
-        x_axis.y * scale, y_axis.y * scale, z_axis.y * scale, origin.y,
-        x_axis.z * scale, y_axis.z * scale, z_axis.z * scale, origin.z,
-        0.0,              0.0,              0.0,              1.0,
-    );
-    Ok(m)
+    crate::router::transforms::operator::parse_transformation_operator(entity, decoder)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -577,6 +569,36 @@ fn get_placement_recursive(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Parse IfcAxis2Placement3D → Matrix4<f64> in IFC Z-up space (native units).
+/// Resolve an OPTIONAL entity reference, distinguishing the three cases a mapped
+/// item's `MappingTarget` / `MappingOrigin` can be in: absent or explicitly null
+/// (`Ok(None)` — the identity is correct), resolvable (`Ok(Some)`), or PRESENT
+/// but dangling / unreadable (`Err` — the caller must abandon the item, because
+/// the mesh path errors out on it too and silently substituting the identity
+/// would draw the profile in an un-transformed frame). #1985
+fn resolve_present_ref(
+    attr: Option<&AttributeValue>,
+    decoder: &mut EntityDecoder,
+) -> std::result::Result<Option<DecodedEntity>, ()> {
+    match attr {
+        None => Ok(None),
+        Some(a) if a.is_null() => Ok(None),
+        Some(a) => match decoder.resolve_ref(a) {
+            Ok(Some(e)) => Ok(Some(e)),
+            _ => Err(()),
+        },
+    }
+}
+
+/// Parse `IfcAxis2Placement2D` into a 4x4 acting in the XY plane. Delegates to
+/// the router's definition so the 2D drawing path and the mesh path cannot
+/// drift on a 2D `MappingOrigin`. #1985
+fn parse_axis2_placement_2d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<Matrix4<f64>> {
+    crate::router::transforms::mapped::axis2_placement_2d_matrix(placement, decoder)
+}
+
 fn parse_axis2_placement_3d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,

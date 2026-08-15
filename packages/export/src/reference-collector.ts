@@ -327,6 +327,7 @@ export function collectReferencedEntityIds(
     get(id: number): { byteOffset: number; byteLength: number; type?: string } | undefined;
     has(id: number): boolean;
     refsOf?(id: number): readonly number[] | undefined;
+    refGroupsOf?(id: number): ReadonlyArray<number | readonly number[]> | undefined;
   },
   excludeIds?: Set<number>,
 ): Set<number> {
@@ -345,6 +346,20 @@ export function collectReferencedEntityIds(
   // Reusable buffer for extracted refs (avoids per-entity allocation)
   const refs: number[] = [];
 
+  // A referenced id NOT IN the index counts as excluded too — a TOMBSTONED
+  // one: `getVisibleEntityIds` never adds a deleted entity to
+  // `hiddenProductIds` (it never sees it — the effective index's iteration
+  // skips tombstones entirely), so a relationship whose sole subject was
+  // DELETED, not merely hidden, would otherwise still read as "survives
+  // filtering" and bridge into its pset. Same union `isExcludedFromRelationshipRefs`
+  // in `step-exporter.ts` computes for the relationship's own OUTPUT line —
+  // `hiddenProductIds.has(id) || effective.isDeleted(id)` — restated here as
+  // `excludeIds.has(id) || !entityIndex.has(id)` because this function only
+  // has the index, not the effective wrapper itself.
+  const isBridgeTargetExcluded = excludeIds
+    ? (id: number): boolean => excludeIds.has(id) || !entityIndex.has(id)
+    : null;
+
   while (queue.length > 0) {
     const entityId = queue.pop()!;
     const ref = entityIndex.get(entityId);
@@ -354,46 +369,52 @@ export function collectReferencedEntityIds(
     // the authored attribute list instead.
     const authored = entityIndex.refsOf?.(entityId);
     refs.length = 0;
+
+    // ONE decision, shared by both ref sources: an `IFCREL*` entity only
+    // bridges into what it names when its own line would survive
+    // `relationshipRefsSurviveExclusion` (the same list-vs-bare predicate
+    // `filterHiddenRefsFromRelationshipLine` applies to a relationship's
+    // OUTPUT line). If every id in a SET/LIST attribute is excluded, or any
+    // single-valued attribute's id is excluded, that function would withhold
+    // the line entirely — so the walk must not follow any of its refs either,
+    // or a target unreachable by anything else in the file (a pset, material,
+    // type, classification) still ends up in the closure (#2548).
+    //
+    // This runs identically for a source-backed record (groups parsed from
+    // the decoded STEP line) and an overlay-created one (groups read off the
+    // authored attribute list via `refGroupsOf`) — a single call site, not one
+    // check per ref source, so the two paths cannot silently diverge again
+    // the way the authored path originally missed this check entirely.
+    // Gated on `excludeIds !== undefined` — its PRESENCE, not its size —
+    // because a visibleOnly export with nothing explicitly hidden but a
+    // deletion in effect passes an EMPTY `hiddenProductIds` Set; `size > 0`
+    // would skip this and miss the deletion case. Callers with no filtering at
+    // all (`demesh-prune.ts`) pass `excludeIds` as `undefined`, not an empty
+    // Set, so they still take the fast path.
+    if (
+      isBridgeTargetExcluded !== null
+      && ref.type !== undefined && ref.type.toUpperCase().startsWith('IFCREL')
+    ) {
+      const groups = authored
+        ? (entityIndex.refGroupsOf?.(entityId)
+            // No structured answer available (a test double or caller that
+            // only implements `refsOf`) — fall back to treating every
+            // authored ref as its own bare group. Strictly MORE conservative
+            // than the real grouping (a list with a surviving member would
+            // wrongly block bridging too), never less: it can only refuse to
+            // bridge, never leak, when the finer answer is unavailable.
+            ?? authored)
+        : extractRelationshipRefGroups(
+            decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
+          );
+      if (!relationshipRefsSurviveExclusion(groups, isBridgeTargetExcluded)) {
+        continue;
+      }
+    }
+
     if (authored) {
       refs.push(...authored);
     } else {
-      // A source-backed `IFCREL*` entity only bridges into what it names when
-      // its own line would survive `filterHiddenRefsFromRelationshipLine`
-      // (same predicate the emission passes apply to its OUTPUT line). If
-      // every id it names is excluded, that function withholds the line
-      // entirely — so the walk must not follow any of its refs either, or a
-      // target unreachable by anything else in the file (a pset, material,
-      // type, classification) still ends up in the closure (#2548).
-      // Gated on `excludeIds !== undefined` — its PRESENCE, not its size —
-      // because a visibleOnly export with nothing explicitly hidden but a
-      // deletion in effect passes an EMPTY `hiddenProductIds` Set; `size > 0`
-      // would skip the decode and miss the deletion case below. Callers with
-      // no filtering at all (`demesh-prune.ts`) pass `excludeIds` as
-      // `undefined`, not an empty Set, so they still take the fast path.
-      //
-      // The predicate also treats a referenced id NOT IN the index as
-      // excluded — an id `excludeIds` alone would miss is a TOMBSTONED one:
-      // `getVisibleEntityIds` never adds a deleted entity to `hiddenProductIds`
-      // (it never sees it — the effective index's iteration skips tombstones
-      // entirely, same as it skips them here), so a relationship whose sole
-      // subject was DELETED, not merely hidden, would otherwise still read as
-      // "survives filtering" and bridge into its pset. This is the same
-      // union `isExcludedFromRelationshipRefs` in `step-exporter.ts` computes
-      // for the relationship's own OUTPUT line — `hiddenProductIds.has(id) ||
-      // effective.isDeleted(id)` — restated as `excludeIds.has(id) ||
-      // !entityIndex.has(id)` because this function only has the index, not
-      // the effective wrapper itself.
-      if (
-        excludeIds !== undefined
-        && ref.type !== undefined && ref.type.toUpperCase().startsWith('IFCREL')
-      ) {
-        const text = decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength);
-        const isBridgeTargetExcluded = (id: number): boolean =>
-          excludeIds.has(id) || !entityIndex.has(id);
-        if (filterHiddenRefsFromRelationshipLine(text, isBridgeTargetExcluded) === null) {
-          continue;
-        }
-      }
       // Hand the byte scanner an already-narrowed record. `slice` is a
       // `subarray` on a contiguous source, so this is the same zero-copy read.
       const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
@@ -500,6 +521,75 @@ export function filterHiddenRefsFromRelationshipLine(
 
   if (!changed) return line;
   return `${prefix}${nextAttrs.join(',')}${suffix}`;
+}
+
+/**
+ * The "does this relationship's own line survive at all" half of
+ * {@link filterHiddenRefsFromRelationshipLine}, extracted as a standalone
+ * predicate over an already-grouped ref list rather than raw STEP text — so
+ * `collectReferencedEntityIds` can apply the exact same bridging decision to
+ * an overlay-created `IFCREL*` entity (whose references never had STEP text
+ * to begin with) as it does to a source-backed one. One function, called from
+ * both branches of the closure walk, is what makes the two paths
+ * structurally unable to diverge again — see the #2548 authored-path gap this
+ * closes.
+ *
+ * Each element of `refGroups` is one authored attribute's contribution:
+ *
+ *  - an ARRAY is a SET/LIST attribute (`RelatedObjects`, …) — it blocks
+ *    bridging only when it names at least one id and EVERY one is excluded
+ *    (an empty list, or one with a survivor, does not).
+ *  - a bare NUMBER is a single-valued attribute (`RelatingType`, …) — it
+ *    blocks bridging the instant that one id is excluded, regardless of any
+ *    other group, mirroring "a single-valued STEP attribute has no spelling
+ *    for omitted" from `filterHiddenRefsFromRelationshipLine`'s own doc.
+ */
+export function relationshipRefsSurviveExclusion(
+  refGroups: ReadonlyArray<number | readonly number[]>,
+  isExcluded: (id: number) => boolean,
+): boolean {
+  for (const group of refGroups) {
+    if (Array.isArray(group)) {
+      if (group.length > 0 && group.every(isExcluded)) return false;
+    } else if (isExcluded(group as number)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Parse a source-backed relationship's decoded STEP line into the same
+ * grouped shape {@link relationshipRefsSurviveExclusion} takes — built from
+ * the exact same primitives (`splitTopLevelArgs`, the `#(\d+)` ref pattern)
+ * `filterHiddenRefsFromRelationshipLine` uses, so the two extraction routes
+ * (this one from text, `refGroupsOf` from an authored attribute list) feed
+ * the SAME decision function identically. A line that does not parse as a
+ * single `#N=TYPE(...);` record yields no groups — nothing to exclude on,
+ * so the relationship survives, matching that function's own "return line
+ * unchanged" behavior for the same input shape.
+ */
+function extractRelationshipRefGroups(line: string): Array<number | number[]> {
+  const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  if (!match) return [];
+  const attrs = splitTopLevelArgs(match[2]);
+  const groups: Array<number | number[]> = [];
+  for (const attr of attrs) {
+    if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
+      const inner = attr.slice(1, -1);
+      const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
+      const ids: number[] = [];
+      for (const item of items) {
+        const refMatch = item.match(/^#(\d+)$/);
+        if (refMatch) ids.push(Number(refMatch[1]));
+      }
+      groups.push(ids);
+      continue;
+    }
+    const refMatch = attr.match(/^#(\d+)$/);
+    if (refMatch) groups.push(Number(refMatch[1]));
+  }
+  return groups;
 }
 
 // ---------------------------------------------------------------------------

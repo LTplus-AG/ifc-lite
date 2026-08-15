@@ -81,6 +81,22 @@ export interface EffectiveEntityIndex extends CompleteEntityIndex {
    *  the id has source bytes to scan instead. */
   refsOf(id: number): readonly number[] | undefined;
   /**
+   * The same references as {@link refsOf}, GROUPED by authored attribute
+   * instead of flattened — a SET/LIST-valued attribute (`RelatedObjects`, …)
+   * as a nested array of ids, a single-valued attribute (`RelatingType`, …)
+   * as a bare id. `refsOf`'s flat list cannot tell those apart, and the
+   * closure walk needs to: it decides whether an overlay-created `IFCREL*`
+   * may bridge into what it references using the exact same list-vs-bare
+   * distinction `filterHiddenRefsFromRelationshipLine` makes for a
+   * source-backed relationship's OUTPUT line (see
+   * `relationshipRefsSurviveExclusion` in `reference-collector.ts`) — without
+   * this, the authored path could only ask "is EVERY id excluded", which
+   * wrongly permits bridging when a relationship's sole SUBJECT is hidden but
+   * its unrelated TARGET (a pset id, never itself excludable) survives (#2548).
+   * Optional: undefined for the id, or when the caller has no overlay.
+   */
+  refGroupsOf?(id: number): ReadonlyArray<number | readonly number[]> | undefined;
+  /**
    * The effective `#id` value of ONE NAMED attribute of an OVERLAY-created
    * record, or undefined when the id was not created by this overlay, the
    * attribute carries no reference, or the record has since been tombstoned.
@@ -257,6 +273,34 @@ class OverlayIndex implements EffectiveEntityIndex {
     }
     this.cachedRefs.set(id, out);
     return out;
+  }
+
+  /**
+   * See the interface doc: same union as {@link refsOf} (creation payload
+   * plus every queued override), but each authored attribute value becomes
+   * ONE group — an array if the value itself is an array (a SET/LIST
+   * attribute), a bare id otherwise — instead of being flattened into `refsOf`'s
+   * single list. Not cached: only called for `IFCREL*` entities, and only when
+   * a `visibleOnly`/deletion filter is active, so the extra pass is rare.
+   */
+  refGroupsOf(id: number): ReadonlyArray<number | readonly number[]> | undefined {
+    const entity = this.created.get(id);
+    if (!entity || this.tombstones.has(id)) return undefined;
+    const groups: Array<number | number[]> = [];
+    const pushGroup = (value: IfcAttributeValue | string | undefined): void => {
+      const ids = authoredEntityRefs(value);
+      if (ids.length === 0) return;
+      groups.push(Array.isArray(value) || ids.length > 1 ? ids : ids[0]);
+    };
+    for (const value of entity.attributes) pushGroup(value);
+    if (typeof this.view.getPositionalMutationsForEntity === 'function') {
+      const positional = this.view.getPositionalMutationsForEntity(id);
+      if (positional) for (const value of positional.values()) pushGroup(value);
+    }
+    if (typeof this.view.getAttributeMutationsForEntity === 'function') {
+      for (const { value } of this.view.getAttributeMutationsForEntity(id)) pushGroup(value);
+    }
+    return groups;
   }
 
   effectiveAttributeRef(id: number, attrName: string): number | undefined {

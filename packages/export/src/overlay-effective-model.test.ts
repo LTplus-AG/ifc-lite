@@ -401,6 +401,71 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(psetNames).not.toContain('Pset_Fresh');
     expect(out.danglingRefs()).toEqual([]);
   });
+
+  it('drops an overlay-created relationship’s pset when its sole subject is hidden (#2548 authored-path gap)', async () => {
+    // `getNewEntities()` (raw `editor.addEntity`, not `addPropertySet`'s
+    // `newPsets` path) is the branch `collectReferencedEntityIds` reads via
+    // `refsOf`/`refGroupsOf` rather than by scanning source bytes. The
+    // exclusion check added for #2548 originally landed only in the
+    // byte-scanned branch — an overlay-created `IfcRelDefinesByProperties`
+    // naming solely a hidden product still bridged into its pset, which is
+    // never itself excludable (not a product), and shipped as an orphan line.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const door = editor.addEntity('IfcWall', [
+      guid('door'), null, 'Hidden Door', null, null, null, null, null, null,
+    ]);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('secretpset'), null, 'Pset_Confidential', null, [],
+    ]);
+    const rel = editor.addEntity('IfcRelDefinesByProperties', [
+      guid('secretrel'), null, null, null, [`#${door.expressId}`], `#${pset.expressId}`,
+    ]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([door.expressId]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(door.expressId)).toBeNull();
+    // The relationship's own line: sole subject hidden, so the list would be
+    // emptied and the whole line withheld.
+    expect(out.typeOf(rel.expressId)).toBeNull();
+    // The leak: the pset is reachable ONLY through the withheld relationship,
+    // so it must not survive as an orphan the file no longer names.
+    expect(out.typeOf(pset.expressId)).toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('control: keeps an overlay-created relationship’s pset when its subject is visible', async () => {
+    // Proves the assertion above is driven by the hidden subject, not by
+    // overlay-created psets being unconditionally dropped.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const door = editor.addEntity('IfcWall', [
+      guid('door'), null, 'Visible Door', null, null, null, null, null, null,
+    ]);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('opensetx'), null, 'Pset_Open', null, [],
+    ]);
+    const rel = editor.addEntity('IfcRelDefinesByProperties', [
+      guid('openrelx'), null, null, null, [`#${door.expressId}`], `#${pset.expressId}`,
+    ]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(door.expressId)).not.toBeNull();
+    expect(out.typeOf(rel.expressId)).not.toBeNull();
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

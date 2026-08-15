@@ -242,6 +242,17 @@ describe('MergedExporter', () => {
     expect(content).not.toContain('IFCDOOR');
     expect(content).not.toContain('CONFIDENTIAL');
     expect(content).not.toContain('IFCPROPERTYSET');
+    // The pset being gone is necessary but not sufficient: `MergedExporter`
+    // must also narrow the RELATIONSHIP's own output line (`#22`'s
+    // RelatedObjects list named only the hidden door), or #22 survives
+    // verbatim, naming a `#3` that no longer has a defining line — the
+    // relationship's own `#N=` narrows away, but its `#N` OUTPUT still names
+    // the pset via `#10` if that half is left unfiltered. Measured before
+    // this assertion existed: dropping the pset from the closure alone (the
+    // #2548 fix, with no #2398-shaped filtering applied to `MergedExporter`'s
+    // own relationship line) trades a privacy leak for a dangling reference
+    // with no error — structurally invalid IFC, silently emitted.
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 
   it('should unify single site and remap spatial chain', () => {

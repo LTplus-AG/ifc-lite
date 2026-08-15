@@ -57,6 +57,8 @@ export interface FixtureProviderOptions {
   readonly containerListing?: 'direct-children' | 'flat-subtree';
   /** Default `false`. */
   readonly listFilesIsRecursive?: boolean;
+  /** Default `false`. */
+  readonly eagerFileSweep?: boolean;
   /** Server-side page size cap, matching a real provider's own clamp. Default `25`. */
   readonly pageSize?: number;
   /** Default `'preferences'`. */
@@ -97,6 +99,7 @@ export function createFixtureSourceProvider(options: FixtureProviderOptions): Fi
     ...(options.capabilities?.projectsAreDiscoverableOnly !== undefined
       ? { projectsAreDiscoverableOnly: options.capabilities.projectsAreDiscoverableOnly }
       : {}),
+    ...(options.eagerFileSweep !== undefined ? { eagerFileSweep: options.eagerFileSweep } : {}),
   };
 
   const manifest = buildFixtureManifest({

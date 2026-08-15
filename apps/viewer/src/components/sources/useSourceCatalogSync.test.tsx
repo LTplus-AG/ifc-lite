@@ -273,3 +273,140 @@ describe('useSourceCatalogSync -- cached-catalog path (#1976)', () => {
     assert.deepEqual(harness.get().folders.map((f) => f.id), ['folder-1']);
   });
 });
+
+/**
+ * Coverage for #2613: gating the eager file sweep on `capabilities.eagerFileSweep`.
+ *
+ * `eagerFileSweep` defaults to off, so a provider that doesn't set it gets
+ * ordinary incremental file paging (one page eagerly, `loadMoreFiles` for the
+ * rest) -- the same shape folders already have via `loadMoreFolders`. Only a
+ * provider that opts in (Dalux, in production) keeps the full up-front drain.
+ *
+ * `PagedFileProvider` serves `pages` of files in order, one page per call,
+ * threading the cursor exactly like `sourceCatalogPaging.test.ts`'s
+ * `providerOf` helper -- so a bug that stops paginating after the first call
+ * (undetected by a single-page fixture) or that fetches every page
+ * regardless of the capability (undetected by a fixture with only one page)
+ * would both be caught.
+ */
+function pagedManifest(eagerFileSweep: boolean | undefined): PluginManifest {
+  return manifest({
+    containerListing: 'direct-children',
+    listFilesIsRecursive: false,
+    ...(eagerFileSweep !== undefined ? { eagerFileSweep } : {}),
+  });
+}
+
+class PagedFileProvider implements FileSourceProvider {
+  readonly manifest: PluginManifest;
+  listFilesCalls: Array<string | undefined> = [];
+  readonly containers: readonly SourceContainer[] = [];
+
+  constructor(
+    private readonly pages: readonly SourceFile[][],
+    eagerFileSweep: boolean | undefined,
+  ) {
+    this.manifest = pagedManifest(eagerFileSweep);
+  }
+
+  async listProjects(): Promise<Page<SourceProject>> {
+    return { items: [] };
+  }
+
+  async listContainers(): Promise<Page<SourceContainer>> {
+    return { items: this.containers };
+  }
+
+  async listFiles(
+    _ctx: PluginContext,
+    _projectId: string,
+    _containerId: string,
+    _filter: unknown,
+    options?: ListOptions,
+  ): Promise<Page<SourceFile>> {
+    const cursor = options?.cursor;
+    this.listFilesCalls.push(cursor);
+    const idx = cursor === undefined ? 0 : Number(cursor);
+    const isLast = idx >= this.pages.length - 1;
+    return { items: this.pages[idx] ?? [], cursor: isLast ? undefined : String(idx + 1) };
+  }
+
+  download(): Promise<ArrayBuffer> {
+    return Promise.reject(new Error('not exercised'));
+  }
+}
+
+function fileOf(id: string): SourceFile {
+  return { id, name: `${id}.ifc`, containerId: 'area-1', currentRevisionId: `${id}-rev`, sizeBytes: 1 };
+}
+
+describe('useSourceCatalogSync -- eagerFileSweep gate (#2613)', () => {
+  beforeEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => { root.unmount(); });
+      container.remove();
+    }
+    localStorageMock.clear();
+  });
+
+  it('Dalux-shaped provider (eagerFileSweep: true) still drains every page up front, unchanged', async () => {
+    const pages = [[fileOf('a')], [fileOf('b')], [fileOf('c')]];
+    const provider = new PagedFileProvider(pages, true);
+    const harness = renderCatalogSync(provider);
+
+    await act(async () => {
+      harness.get().openFileArea('project-1', 'area-1');
+    });
+
+    // The sweep must have followed every cursor in one go, with nothing left
+    // to page manually -- this is the "must not change at all" contract.
+    assert.deepEqual(provider.listFilesCalls, [undefined, '1', '2'], 'every page must be fetched eagerly');
+    assert.deepEqual(harness.get().allFiles.map((f) => f.id), ['a', 'b', 'c']);
+    assert.equal(harness.get().hasMoreFiles(null), false, 'a fully-swept catalog has nothing left to load more of');
+  });
+
+  it('a provider without eagerFileSweep gets only the first page, and loadMoreFiles fetches the next', async () => {
+    const pages = [[fileOf('a')], [fileOf('b')], [fileOf('c')]];
+    const provider = new PagedFileProvider(pages, undefined);
+    const harness = renderCatalogSync(provider);
+
+    await act(async () => {
+      harness.get().openFileArea('project-1', 'area-1');
+    });
+
+    assert.deepEqual(provider.listFilesCalls, [undefined], 'only the first page should be fetched up front');
+    assert.deepEqual(harness.get().allFiles.map((f) => f.id), ['a']);
+    assert.equal(harness.get().hasMoreFiles(null), true, 'a cursor is outstanding after the first page');
+
+    await act(async () => {
+      harness.get().loadMoreFiles(null);
+    });
+    await act(async () => {}); // flush the async loadMoreFiles body
+
+    assert.deepEqual(provider.listFilesCalls, [undefined, '1'], 'loadMoreFiles must thread the prior cursor');
+    assert.deepEqual(harness.get().allFiles.map((f) => f.id), ['a', 'b']);
+    assert.equal(harness.get().hasMoreFiles(null), true, 'one more page remains');
+
+    await act(async () => {
+      harness.get().loadMoreFiles(null);
+    });
+    await act(async () => {});
+
+    assert.deepEqual(provider.listFilesCalls, [undefined, '1', '2']);
+    assert.deepEqual(harness.get().allFiles.map((f) => f.id), ['a', 'b', 'c']);
+    assert.equal(harness.get().hasMoreFiles(null), false, 'the last page has no cursor');
+  });
+
+  it('explicitly setting eagerFileSweep: false behaves the same as omitting it', async () => {
+    const pages = [[fileOf('a')], [fileOf('b')]];
+    const provider = new PagedFileProvider(pages, false);
+    const harness = renderCatalogSync(provider);
+
+    await act(async () => {
+      harness.get().openFileArea('project-1', 'area-1');
+    });
+
+    assert.deepEqual(provider.listFilesCalls, [undefined]);
+    assert.equal(harness.get().hasMoreFiles(null), true);
+  });
+});

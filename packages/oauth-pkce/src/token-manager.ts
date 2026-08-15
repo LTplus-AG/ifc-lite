@@ -22,8 +22,8 @@ import type { TokenSet, TokenStorage } from './types.js';
 // one of them wins, persists a new refresh token, and the other's request
 // either fails outright or silently clobbers the winner's token with a
 // response the server has already invalidated. Serializing on a single
-// `pendingRefresh` promise turns "N racing refreshes" into "one refresh, N
-// callers awaiting its result" — see `getValidAccessToken` below.
+// dedup promise turns "N racing refreshes" into "one refresh, N callers
+// awaiting its result" — see `getValidAccessToken` below.
 // ============================================================================
 
 export interface TokenManagerConfig {
@@ -44,14 +44,40 @@ export interface TokenManagerConfig {
 
 const DEFAULT_REFRESH_SKEW_MS = 60_000;
 
+/**
+ * Everything tied to one signed-in session's lifetime, as a single object
+ * `clear()` replaces wholesale rather than resetting piecemeal.
+ *
+ * Earlier versions of this file tracked the same underlying question — "is
+ * this operation still working on behalf of the session that's current
+ * right now?" — with two independent fields: `pendingRefresh` (the in-flight
+ * refresh-dedup promise) and a `generation` counter bumped by `clear()`.
+ * Splitting the question across two fields is what caused the last two
+ * defects: `clear()` bumped `generation` but forgot to also clear
+ * `pendingRefresh`, so a stale in-flight refresh could still be handed to a
+ * brand-new caller by the dedup check, which never consulted `generation` at
+ * all. Adding a third field alongside the first two — which is what the
+ * obvious next patch would have done — would only have produced a third
+ * place for a future fix to forget.
+ *
+ * Folding both into one `Session` object removes the field to forget: the
+ * dedup promise now *lives inside* the session it was started under, so
+ * "does this dedup promise belong to the current session" and "is this the
+ * current session" collapse into the same reference comparison
+ * (`session === this.session`). A refresh's closure captures the `Session`
+ * it was launched under; once `clear()` swaps `this.session` for a new
+ * instance, that closure is left holding a reference nothing else can
+ * reach — new callers read `this.session.pendingRefresh`, which is `null`
+ * on the fresh object, so they can never be handed the stale promise, and
+ * the closure's own identity check (`session !== this.session`) fails
+ * wherever it still checks. There is no second field left to go stale.
+ */
+class Session {
+  pendingRefresh: Promise<TokenSet> | null = null;
+}
+
 export class TokenManager {
-  private pendingRefresh: Promise<TokenSet> | null = null;
-  /** Bumped by `clear()`. A refresh started before sign-out captures the
-   *  generation it was launched under; if that no longer matches by the
-   *  time the token endpoint responds, `clear()` ran in the meantime and
-   *  the refreshed token set must not be persisted — writing it would
-   *  resurrect a session the user just signed out of. */
-  private generation = 0;
+  private session = new Session();
 
   constructor(private readonly config: TokenManagerConfig) {}
 
@@ -82,7 +108,11 @@ export class TokenManager {
    *  out of this package's scope; callers should revoke first if they want
    *  server-side revocation, then call this. */
   async clear(): Promise<void> {
-    this.generation += 1;
+    // Replacing the session object (rather than mutating a counter on the
+    // existing one) is what disarms any refresh already in flight: it holds
+    // a closure over the *old* `Session`, which nothing reachable from
+    // `this` points to any more.
+    this.session = new Session();
     await this.config.storage.delete(this.config.storageKey);
   }
 
@@ -92,11 +122,12 @@ export class TokenManager {
    *
    * Concurrent calls collapse onto one refresh request: the first caller to
    * observe an expired token starts the refresh and records the in-flight
-   * promise on `this.pendingRefresh`; every other caller that reaches the
-   * refresh step before it settles returns that same promise instead of
-   * issuing its own request. The refresh's async work only actually begins
-   * once this synchronous bookkeeping (checking/setting `pendingRefresh`) has
-   * run, so two calls issued back-to-back from the same tick — e.g. via
+   * promise on the current session's `pendingRefresh`; every other caller
+   * that reaches the refresh step before it settles, *and is still on that
+   * same session*, returns that same promise instead of issuing its own
+   * request. The refresh's async work only actually begins once this
+   * synchronous bookkeeping (checking/setting `pendingRefresh`) has run, so
+   * two calls issued back-to-back from the same tick — e.g. via
    * `Promise.all` — cannot both pass the check before either sets the field.
    *
    * Throws `NotSignedInError` if there is no stored session, or if the
@@ -117,7 +148,14 @@ export class TokenManager {
   }
 
   private refresh(current: TokenSet): Promise<TokenSet> {
-    if (this.pendingRefresh) return this.pendingRefresh;
+    // `this.session` is read once, synchronously, and everything below —
+    // the dedup check, the closure's captured reference, the staleness
+    // checks — operates on this same object. A `clear()` that runs at any
+    // point from here on replaces `this.session` with a different instance,
+    // never mutates this one, so `session` always continues to mean
+    // "the session this particular call started under."
+    const session = this.session;
+    if (session.pendingRefresh) return session.pendingRefresh;
 
     if (!current.refreshToken) {
       return Promise.reject(
@@ -125,7 +163,6 @@ export class TokenManager {
       );
     }
     const refreshToken = current.refreshToken;
-    const generation = this.generation;
 
     const run = async (): Promise<TokenSet> => {
       const refreshed = await refreshAccessToken({
@@ -140,19 +177,49 @@ export class TokenManager {
       // field at all, and the existing one remains valid and must keep being
       // used; dropping it here would strand the session on the next expiry.
       const merged: TokenSet = { ...refreshed, refreshToken: refreshed.refreshToken ?? refreshToken };
-      if (generation !== this.generation) {
-        // clear() ran while this refresh was in flight. Persisting `merged`
-        // now would write a live token set back under the storage key the
-        // user just signed out of, resurrecting the session.
+      const mergedJson = JSON.stringify(merged);
+
+      if (session !== this.session) {
+        // clear() ran while the token-endpoint request was in flight.
+        // Persisting `merged` now would write a live token set back under
+        // the storage key the user just signed out of, resurrecting the
+        // session — skip the write entirely.
         throw new NotSignedInError('signed out while the token refresh was in flight');
       }
-      await this.setTokens(merged);
+
+      await this.config.storage.set(this.config.storageKey, mergedJson);
+
+      // The write above is itself an awaited step, separate from the check
+      // just before it — for a `TokenStorage` whose `set`/`delete` can
+      // complete out of invocation order (IndexedDB, extension storage, a
+      // network-backed store), a `clear()` that starts *after* the check
+      // above already passed can still have its `delete()` reach the
+      // backend before this `set()` does, resurrecting the session at the
+      // storage layer even though `this.session` had already moved on.
+      // A check-then-write pair can't be made atomic against such a backend
+      // by ordering alone — so re-validate after the write instead, and if
+      // a `clear()` did land in the interim, undo it. The undo reads the
+      // current value back and only deletes if it still holds exactly what
+      // this call just wrote, rather than deleting unconditionally: between
+      // this write settling and the check below running, a *legitimate*
+      // new sign-in may already have written its own tokens over ours (see
+      // the "new sign-in after clear()" case this module's tests cover) —
+      // deleting unconditionally would destroy that instead of the stale
+      // write it's meant to undo.
+      if (session !== this.session) {
+        const stillOurs = await this.config.storage.get(this.config.storageKey);
+        if (stillOurs === mergedJson) {
+          await this.config.storage.delete(this.config.storageKey);
+        }
+        throw new NotSignedInError('signed out while the token refresh was in flight');
+      }
+
       return merged;
     };
 
-    this.pendingRefresh = run().finally(() => {
-      this.pendingRefresh = null;
+    session.pendingRefresh = run().finally(() => {
+      session.pendingRefresh = null;
     });
-    return this.pendingRefresh;
+    return session.pendingRefresh;
   }
 }

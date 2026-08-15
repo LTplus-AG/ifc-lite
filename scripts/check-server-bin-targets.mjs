@@ -51,22 +51,41 @@
  * available locally is an ERROR, never a vacuous pass. In particular an
  * absent tag ref tells the operator to fetch it instead of silently
  * falling back to the checked-out tree's target set.
+ *
+ * Source-text matching is comment-aware (rationale in
+ * scripts/lib/server-bin-targets-parse.mjs); the upload check binds the asset
+ * literal to the actual `gh release upload` argument. Executable proof:
+ * scripts/check-server-bin-targets.test.mjs, which drives this script via
+ * `--root <dir>` against hostile mutations of the real inputs.
  */
 
 import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import {
+  fail,
+  jobBlock,
+  parseMatrix,
+  parseSupportedTargets,
+  stripYamlComments,
+  unquoteScalar,
+} from './lib/server-bin-targets-parse.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+// --root <dir>: read the input files from an alternate tree (in --release
+// mode, git also runs there). Exists for the regression harness, which points
+// the UNMODIFIED checker at mutated copies of the real inputs; CI never
+// passes it.
+const rootFlagIdx = process.argv.indexOf('--root');
+if (rootFlagIdx !== -1 && !process.argv[rootFlagIdx + 1]) {
+  fail('--root requires a directory argument');
+}
+const repoRoot = rootFlagIdx === -1
+  ? join(dirname(fileURLToPath(import.meta.url)), '..')
+  : resolve(process.argv[rootFlagIdx + 1]);
 const PLATFORM_TS = 'packages/server-bin/src/platform.ts';
 const PKG_JSON = 'packages/server-bin/package.json';
 const WORKFLOW = '.github/workflows/server-binaries.yml';
-
-function fail(message) {
-  console.error(`check-server-bin-targets: ERROR: ${message}`);
-  process.exit(1);
-}
 
 /** Archive extension the install-time resolver derives for a triple. */
 function archiveExtFor(platform) {
@@ -121,22 +140,6 @@ function assertSetEquals(label, actual, expected) {
   }
 }
 
-/** Parse the SUPPORTED_TARGETS set literal out of platform.ts source text. */
-function parseSupportedTargets(source, origin = PLATFORM_TS) {
-  const m = source.match(/const SUPPORTED_TARGETS = new Set\(\[([^\]]*)\]\)/);
-  if (!m) {
-    fail(
-      `cannot find the "const SUPPORTED_TARGETS = new Set([...])" list in ${origin}; ` +
-      `if the const moved or was renamed, update this check - it must not pass without the list`,
-    );
-  }
-  const targets = [...m[1].matchAll(/'([^']+)'/g)].map((q) => q[1]);
-  if (targets.length < 2) {
-    fail(`parsed only ${targets.length} target(s) from SUPPORTED_TARGETS in ${origin}; refusing a vacuous pass`);
-  }
-  return targets;
-}
-
 /**
  * SUPPORTED_TARGETS as of the release tag's own source. A release is
  * verified against what ITS resolver downloads: the install-time resolver
@@ -170,48 +173,6 @@ function parseTagSupportedTargets(tag) {
   return parseSupportedTargets(source, `${PLATFORM_TS} at tag ${tag}`);
 }
 
-/** Extract one job's block from the workflow (2-space-indented job keys). */
-function jobBlock(source, jobName) {
-  const start = new RegExp(`^  ${jobName}:[ \\t]*$`, 'm').exec(source);
-  if (!start) {
-    fail(`cannot find job "${jobName}" in ${WORKFLOW}; if it was renamed, update this check`);
-  }
-  const bodyStart = start.index + start[0].length;
-  const next = /^  [A-Za-z0-9_-]+:/m.exec(source.slice(bodyStart));
-  return next ? source.slice(bodyStart, bodyStart + next.index) : source.slice(bodyStart);
-}
-
-/** Parse `- target:` / `rust-target:` / `archive:` tuples from a job's matrix include list. */
-function parseMatrix(source, jobName, { requireArchive }) {
-  const block = jobBlock(source, jobName);
-  const includeIdx = block.indexOf('include:');
-  const steps = /^    steps:/m.exec(block);
-  if (includeIdx === -1 || !steps || steps.index < includeIdx) {
-    fail(`cannot find the matrix include list in job "${jobName}" of ${WORKFLOW}`);
-  }
-  const section = block.slice(includeIdx, steps.index);
-  const anchors = [...section.matchAll(/- target:[ \t]*([^\s]+)/g)];
-  if (anchors.length === 0) {
-    fail(`matrix include list in job "${jobName}" of ${WORKFLOW} yielded zero targets; refusing a vacuous pass`);
-  }
-  return anchors.map((anchor, i) => {
-    const end = i + 1 < anchors.length ? anchors[i + 1].index : section.length;
-    const chunk = section.slice(anchor.index, end);
-    const archive = chunk.match(/archive:[ \t]*([^\s]+)/);
-    if (requireArchive && !archive) {
-      fail(`matrix entry "${anchor[1]}" in job "${jobName}" of ${WORKFLOW} has no archive: key`);
-    }
-    const rustTarget = chunk.match(/rust-target:[ \t]*([^\s]+)/);
-    if (!rustTarget) {
-      fail(
-        `matrix entry "${anchor[1]}" in job "${jobName}" of ${WORKFLOW} has no rust-target: key; ` +
-        `refusing a vacuous pass - without it nothing pins which triple that leg builds`,
-      );
-    }
-    return { target: anchor[1], archive: archive ? archive[1] : null, rustTarget: rustTarget[1] };
-  });
-}
-
 /**
  * The exact expression the upload step must use for the asset filename.
  * The resolver downloads `ifc-lite-server-<target>.<ext>`; pinning the
@@ -222,9 +183,15 @@ function parseMatrix(source, jobName, { requireArchive }) {
 // eslint-disable-next-line no-template-curly-in-string
 const UPLOAD_ASSET_EXPR = 'ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}';
 
-/** The release upload step must name its asset via UPLOAD_ASSET_EXPR. */
+/**
+ * The release upload step must BIND the asset name to UPLOAD_ASSET_EXPR and
+ * every `gh release upload` invocation in it must pass exactly that binding.
+ * Mere presence of the literal in the step is not enough: a comment can carry
+ * the old name while the assignment or the upload argument drifts, and then
+ * every release 404s on every platform while the gate blesses it.
+ */
 function checkUploadAssetName(workflow) {
-  const block = jobBlock(workflow, 'release-server-binaries');
+  const block = jobBlock(workflow, 'release-server-binaries', WORKFLOW);
   const stepStart = block.indexOf('- name: Upload to GitHub Release');
   if (stepStart === -1) {
     fail(
@@ -235,18 +202,60 @@ function checkUploadAssetName(workflow) {
   const rest = block.slice(stepStart + 1);
   const nextStep = /\n {6}- name:/.exec(rest);
   const step = block.slice(stepStart, nextStep ? stepStart + 1 + nextStep.index : block.length);
-  if (!step.includes(UPLOAD_ASSET_EXPR)) {
+
+  // 1. The `asset=` binding must be exactly the expected expression and the
+  // ONLY line writing the variable - a later `asset=` or `asset+=` would
+  // rebind the name and reopen the hole the presence check had.
+  const assigns = [...step.matchAll(/^[ \t]*asset(\+?=)(.*)$/gm)];
+  if (assigns.length === 0) {
     fail(
-      `the "Upload to GitHub Release" step in ${WORKFLOW} does not use the literal asset expression ` +
-      `"${UPLOAD_ASSET_EXPR}"; the resolver in ${PLATFORM_TS} downloads exactly that name, so the ` +
-      `upload must provably produce it`,
+      `the "Upload to GitHub Release" step in ${WORKFLOW} no longer assigns asset=...; the step must ` +
+      `bind asset to "${UPLOAD_ASSET_EXPR}" (the exact name the resolver in ${PLATFORM_TS} downloads) - ` +
+      `if the script was restructured, update this check`,
     );
+  }
+  if (assigns.length > 1) {
+    fail(
+      `the "Upload to GitHub Release" step in ${WORKFLOW} writes the asset variable ${assigns.length} ` +
+      `times; a rebinding after the pinned assignment could upload a name the resolver in ` +
+      `${PLATFORM_TS} never downloads, so exactly one asset= line is allowed`,
+    );
+  }
+  const [, op, rawValue] = assigns[0];
+  const assigned = unquoteScalar(rawValue.trim());
+  if (op !== '=' || assigned !== UPLOAD_ASSET_EXPR) {
+    fail(
+      `the "Upload to GitHub Release" step in ${WORKFLOW} assigns asset${op}${rawValue.trim()} but the ` +
+      `resolver in ${PLATFORM_TS} downloads exactly "${UPLOAD_ASSET_EXPR}"; the two must be identical`,
+    );
+  }
+
+  // 2. Both paths (fresh release and backfill) must pass the $asset binding
+  // as the `gh release upload` asset argument. Only double quotes are
+  // stripped: a single-quoted '$asset' never expands in bash, so it must stay red.
+  const uploads = [...step.matchAll(/gh release upload[ \t]+(\S+)[ \t]+(\S+)/g)];
+  if (uploads.length < 2) {
+    fail(
+      `expected the release and backfill paths of the "Upload to GitHub Release" step in ${WORKFLOW} ` +
+      `to each invoke "gh release upload <tag> <asset>"; found ${uploads.length} invocation(s) - ` +
+      `if the step was restructured, update this check`,
+    );
+  }
+  for (const [, , assetArg] of uploads) {
+    const arg = assetArg.replace(/^"(.*)"$/s, '$1').replace(/^\$\{asset\}$/, '$asset');
+    if (arg !== '$asset') {
+      fail(
+        `a "gh release upload" invocation in the "Upload to GitHub Release" step of ${WORKFLOW} passes ` +
+        `${assetArg} as its asset argument instead of "$asset"; only the pinned $asset binding provably ` +
+        `uploads the name the resolver in ${PLATFORM_TS} downloads`,
+      );
+    }
   }
 }
 
 /** Default mode: the three functional lists must agree. */
 function checkSourceParity() {
-  const targets = parseSupportedTargets(readFileSync(join(repoRoot, PLATFORM_TS), 'utf8'));
+  const targets = parseSupportedTargets(readFileSync(join(repoRoot, PLATFORM_TS), 'utf8'), PLATFORM_TS);
   const targetSet = new Set(targets);
 
   // package.json os/cpu: prefix/arch projection of the triples.
@@ -259,12 +268,13 @@ function checkSourceParity() {
   assertSetEquals(`${PKG_JSON} "os"`, new Set(pkg.os), expectedOs);
   assertSetEquals(`${PKG_JSON} "cpu"`, new Set(pkg.cpu), expectedCpu);
 
-  const workflow = readFileSync(join(repoRoot, WORKFLOW), 'utf8');
+  // Comments stripped up front: a commented-out matrix entry or upload line counts as absent.
+  const workflow = stripYamlComments(readFileSync(join(repoRoot, WORKFLOW), 'utf8'));
 
   // Release matrix: exact target equality, the resolver's archive rule, and
   // the target-to-rust-triple mapping (a wrong triple ships an incompatible
   // binary under a perfectly valid archive name).
-  const release = parseMatrix(workflow, 'release-server-binaries', { requireArchive: true });
+  const release = parseMatrix(workflow, 'release-server-binaries', WORKFLOW, { requireArchive: true });
   assertSetEquals(`${WORKFLOW} release-server-binaries matrix`, new Set(release.map((e) => e.target)), targetSet);
   for (const entry of release) {
     const expectedExt = archiveExtFor(splitTriple(entry.target).platform);
@@ -290,7 +300,7 @@ function checkSourceParity() {
 
   // Validate matrix: a deliberate cost-saving subset, never an unknown
   // target, and its legs must build the triple their target names.
-  const validate = parseMatrix(workflow, 'validate-server-binaries', { requireArchive: false });
+  const validate = parseMatrix(workflow, 'validate-server-binaries', WORKFLOW, { requireArchive: false });
   for (const entry of validate) {
     if (!targetSet.has(entry.target)) {
       fail(`validate-server-binaries matrix names "${entry.target}", which is not in SUPPORTED_TARGETS`);
@@ -375,6 +385,8 @@ async function checkReleaseAssets(tag) {
 }
 
 const args = process.argv.slice(2);
+const rootIdx = args.indexOf('--root');
+if (rootIdx !== -1) args.splice(rootIdx, 2);
 const releaseIdx = args.indexOf('--release');
 if (releaseIdx !== -1) {
   const tag = args[releaseIdx + 1];

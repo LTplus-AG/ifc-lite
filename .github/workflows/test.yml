@@ -423,6 +423,14 @@ jobs:
       # without the win32-x64 zip and nothing noticed (issue #2619).
       - name: Check server-bin platform parity
         run: node scripts/check-server-bin-targets.mjs
+      # Executable proof that the parity gate itself cannot pass vacuously:
+      # an adversarial review of PR #2642 produced four false greens
+      # (commented-out matrix entries and targets still counted; a stale
+      # literal in a comment satisfied the upload check) that hand-testing
+      # had missed. Each hostile mutation now runs against the real inputs
+      # in a temp tree and must turn the gate red with an accurate message.
+      - name: Check server-bin parity gate regressions
+        run: node --test scripts/check-server-bin-targets.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

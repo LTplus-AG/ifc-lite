@@ -89,9 +89,9 @@ function seed() {
   } as never);
 }
 
-function runExport(zoneIndex: number) {
+async function runExport(zoneIndex: number) {
   const emitted: Array<{ bytes: Uint8Array; filename: string }> = [];
-  const result = exportZoneGeometry(ZONE_SET, zoneIndex, {
+  const result = await exportZoneGeometry(ZONE_SET, zoneIndex, {
     split,
     // The straddler sits in zone A; the whole element is placed INSIDE zone B,
     // which is where its assignment says it is. A fixture whose geometry is not
@@ -105,28 +105,28 @@ function runExport(zoneIndex: number) {
 describe('exporting one zone as its own model', () => {
   beforeEach(seed);
 
-  it('writes whole elements and cut pieces, and counts what it refused', () => {
-    const { result } = runExport(1);
+  it('writes whole elements and cut pieces, and counts what it refused', async () => {
+    const { result } = await runExport(1);
     assert.ok(result.ok);
     assert.equal(result.summary.whole, 1, 'the element wholly in Takt B');
     assert.equal(result.summary.cut, 1, 'the straddler cut at the boundary');
     assert.equal(result.summary.volumeM3, 6, 'whole 5 m3 plus a 1 m3 piece');
   });
 
-  it('refuses a straddler whose mesh the kernel never proved', () => {
+  it('refuses a straddler whose mesh the kernel never proved', async () => {
     // Zone A holds the straddler and the unproved element.
-    const { result } = runExport(0);
+    const { result } = await runExport(0);
     assert.ok(result.ok);
     assert.equal(result.summary.cut, 1);
     assert.equal(result.summary.refused, 1);
   });
 
-  it('takes the piece belonging to the zone asked for, not the first one', () => {
+  it('takes the piece belonging to the zone asked for, not the first one', async () => {
     // The fake split gives zone i a piece at x = i. If the routing ignored
     // zoneIndex and took pieces[0], the file for Takt B would carry Takt A's
     // geometry: same triangle count, same volume, wrong section.
-    const a = runExport(0);
-    const b = runExport(1);
+    const a = await runExport(0);
+    const b = await runExport(1);
     assert.ok(a.result.ok && b.result.ok);
     assert.notEqual(a.emitted[0].bytes.byteLength, 0);
     assert.notDeepEqual(
@@ -136,7 +136,7 @@ describe('exporting one zone as its own model', () => {
     );
   });
 
-  it('cuts an element that does not straddle but reaches outside the zone set', () => {
+  it('cuts an element that does not straddle but reaches outside the zone set', async () => {
     // v1's straddle flag asks whether the element penetrates ANOTHER zone, so
     // an element hanging off the end of the last takt area carries no flag.
     // Copied whole, it would put geometry from outside the section into the
@@ -154,7 +154,7 @@ describe('exporting one zone as its own model', () => {
       // Zone A spans x = -5..5; this reaches x = 900.
       positions: new Float32Array([0, 0, 0, 900, 0, 0, 0, 1, 0]),
     } as MeshData;
-    const result = exportZoneGeometry(ZONE_SET, 0, {
+    const result = await exportZoneGeometry(ZONE_SET, 0, {
       split,
       meshPieces: () => [far],
       emit: () => {},
@@ -165,21 +165,21 @@ describe('exporting one zone as its own model', () => {
     assert.equal(result.summary.cut, 1);
   });
 
-  it('still copies an element that IS wholly inside, without cutting it', () => {
-    const { result } = runExport(1);
+  it('still copies an element that IS wholly inside, without cutting it', async () => {
+    const { result } = await runExport(1);
     assert.ok(result.ok);
     assert.equal(result.summary.whole, 1);
   });
 
-  it('names the file after the set and the zone', () => {
-    const { emitted } = runExport(0);
+  it('names the file after the set and the zone', async () => {
+    const { emitted } = await runExport(0);
     assert.equal(emitted[0].filename, 'Takt areas-Takt A.glb');
   });
 
-  it('reports rather than emits when no geometry reaches the zone', () => {
+  it('reports rather than emits when no geometry reaches the zone', async () => {
     useViewerStore.setState({ zoneAssignments: new Map() } as never);
     const emitted: Uint8Array[] = [];
-    const result = exportZoneGeometry(ZONE_SET, 0, {
+    const result = await exportZoneGeometry(ZONE_SET, 0, {
       split,
       meshPieces: () => null,
       emit: (bytes) => emitted.push(bytes),
@@ -188,8 +188,8 @@ describe('exporting one zone as its own model', () => {
     assert.equal(emitted.length, 0, 'an empty zone must not download an empty file');
   });
 
-  it('degrades to a message when the wasm build has no splitter', () => {
-    const result = exportZoneGeometry(ZONE_SET, 0, {
+  it('degrades to a message when the wasm build has no splitter', async () => {
+    const result = await exportZoneGeometry(ZONE_SET, 0, {
       split: undefined,
       meshPieces: (globalId) => [mesh(globalId)],
       emit: () => {},

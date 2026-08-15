@@ -68,14 +68,14 @@ export const UNIT_ALTERNATIVES: Record<string, UnitOption[]> = {
   ],
   VOLUMETRICFLOWRATEUNIT: [
     { id: 'm3s', symbol: 'm³/s', scale: 1 },
-    { id: 'm3h', symbol: 'm³/h', scale: 2.7777777777777776e-4 },
+    { id: 'm3h', symbol: 'm³/h', scale: 2.777777777777778e-4 },
     { id: 'ls', symbol: 'L/s', scale: 1e-3 },
     { id: 'lmin', symbol: 'L/min', scale: 1.6666666666666667e-5 },
     { id: 'cfm', symbol: 'cfm', scale: 4.719474432e-4 },
   ],
   MASSFLOWRATEUNIT: [
     { id: 'kgs', symbol: 'kg/s', scale: 1 },
-    { id: 'kgh', symbol: 'kg/h', scale: 2.7777777777777776e-4 },
+    { id: 'kgh', symbol: 'kg/h', scale: 2.777777777777778e-4 },
     { id: 'gs', symbol: 'g/s', scale: 1e-3 },
   ],
   PRESSUREUNIT: [

@@ -31,6 +31,7 @@ import type {
   ParserWorkerInputMessage,
   ParserWorkerOutputMessage,
 } from './parser.worker.js';
+import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 
 export interface WorkerParserOptions extends ParseOptions {
   /** Override the worker URL. Default: bundler-resolved `parser.worker.ts`. */
@@ -171,6 +172,12 @@ export class WorkerParser {
           }
 
           case 'error':
+            // #2527 follow-up: re-plant the worker realm's panic-location
+            // stash (if this error was a wasm trap) on THIS realm's global,
+            // before the rejection below propagates, so
+            // `attachWasmPanicLocation` in analytics-scrub.ts sees it
+            // exactly as it would a main-thread trap.
+            restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
             settle(() => {
               worker.terminate();
               this.worker = null;

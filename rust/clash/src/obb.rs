@@ -243,19 +243,61 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
     }
 }
 
-/// `axes[i]` matched to `v` (parallel within `OBB_EPS`, sign-independent), or
-/// `None` if none of the three is.
-fn match_axis(v: Vec3, axes: &[Vec3; 3]) -> Option<usize> {
-    for (i, axis) in axes.iter().enumerate() {
-        if dot(*axis, v).abs() > 1.0 - OBB_EPS {
-            return Some(i);
+/// Projected radius of `o` onto unit axis `u`: half the length of `o`'s
+/// shadow on `u`. The same per-axis projection `obb_penetration_depth`'s
+/// `test_axis` computes for the 15-candidate SAT — factored out here so the
+/// through-penetration containment test below can reuse it for ANY axis,
+/// not only one drawn from a frame shared by both boxes.
+fn proj_radius(o: &Obb, u: Vec3) -> f64 {
+    o.half[0] * dot(o.axes[0], u).abs()
+        + o.half[1] * dot(o.axes[1], u).abs()
+        + o.half[2] * dot(o.axes[2], u).abs()
+}
+
+/// Whether `p`'s own axes reveal a through-penetration of `p` piercing `q` —
+/// `p`'s footprint, in the plane perpendicular to one of `p`'s OWN axes,
+/// sits strictly inside `q`'s cross-section there, while along that axis
+/// `p` extends beyond `q` and out the far side. `q`'s extent along any of
+/// `p`'s axes is `proj_radius(q, axis)` — the general SAT projection, valid
+/// whether or not `q`'s own axes align with `p`'s — so this needs no shared
+/// frame.
+fn pierces_along(p: &Obb, q: &Obb, center_delta: Vec3) -> bool {
+    let margin = |h: f64| OBB_EPS * 1.0f64.max(h);
+    for k in 0..3 {
+        let i = (k + 1) % 3;
+        let j = (k + 2) % 3;
+        let axis_k = p.axes[k];
+        let axis_i = p.axes[i];
+        let axis_j = p.axes[j];
+        let off_k = dot(center_delta, axis_k);
+        let off_i = dot(center_delta, axis_i);
+        let off_j = dot(center_delta, axis_j);
+        let r_q_k = proj_radius(q, axis_k);
+        let r_q_i = proj_radius(q, axis_i);
+        let r_q_j = proj_radius(q, axis_j);
+        // P's footprint on the other two axes is STRICTLY inside Q's (a real
+        // margin, not merely touching edges — two slabs with the identical
+        // footprint and different thickness are NOT a piercing member, they
+        // are a genuine partial overlap and must keep the measured label).
+        let p_inside_q = off_i.abs() + p.half[i] <= r_q_i - margin(r_q_i)
+            && off_j.abs() + p.half[j] <= r_q_j - margin(r_q_j);
+        // "Exits the far side" along k means P's interval extends past Q's
+        // on BOTH ends, not merely that P's half-extent is the bigger
+        // number — a footing embedded 75 mm into a slab from ABOVE is
+        // longer than the slab along Z (it does not fit inside it) but only
+        // pokes out the TOP, not the bottom, so it is a partial overlap,
+        // not a through-penetration. Requiring `p.half[k] > r_q_k +
+        // |off_k|` is exactly "P's interval strictly contains Q's interval
+        // on axis k", i.e. P pokes out past Q on both sides.
+        if p_inside_q && p.half[k] > r_q_k + off_k.abs() + margin(r_q_k) {
+            return true;
         }
     }
-    None
+    false
 }
 
 /// Whether `a` and `b` are in a THROUGH-PENETRATION configuration: one box's
-/// cross-section, in the plane perpendicular to some shared axis, is
+/// cross-section, in the plane perpendicular to one of ITS OWN axes, is
 /// strictly inside the other's footprint there, while along that axis it
 /// extends beyond the other and out the far side — a thin member piercing
 /// clean through a wall/slab, not a partial overlap.
@@ -263,57 +305,21 @@ fn match_axis(v: Vec3, axes: &[Vec3; 3]) -> Option<usize> {
 /// Faithful port of the TS `isThroughPenetration` (review: #2536) — see its
 /// doc comment for the full rationale: `obb_penetration_depth` reports the
 /// minimum translation distance to separate the pair, which for this shape
-/// is dominated by the piercing member's own extent along the shared axis,
-/// not by how much material it actually crossed. Only attempted when `a`
-/// and `b` share a common frame; at a generic relative rotation this
-/// returns `false` and `obb_penetration_depth`'s result stands as-is.
+/// is dominated by the piercing member's own extent along the piercing
+/// axis, not by how much material it actually crossed.
+///
+/// Tests containment against EACH box's own axes independently (via
+/// `pierces_along`'s general per-axis projection, the same projection
+/// `obb_penetration_depth` already computes for its 15 SAT candidates) —
+/// unlike an earlier version restricted to a frame shared by both boxes'
+/// axes up to sign, this also catches a member piercing through at a
+/// generic relative rotation (review: #2536 follow-up).
 pub fn is_through_penetration(a: &Obb, b: &Obb) -> bool {
-    let mut perm = [0usize; 3];
-    let mut used = [false, false, false];
-    #[allow(clippy::needless_range_loop)]
-    for i in 0..3 {
-        match match_axis(a.axes[i], &b.axes) {
-            Some(j) if !used[j] => {
-                used[j] = true;
-                perm[i] = j;
-            }
-            _ => return false,
-        }
-    }
-
     let d: Vec3 = [
         b.center[0] - a.center[0],
         b.center[1] - a.center[1],
         b.center[2] - a.center[2],
     ];
-    let offset = [dot(d, a.axes[0]), dot(d, a.axes[1]), dot(d, a.axes[2])];
-    let mut b_half_on_a = [0.0f64; 3];
-    for i in 0..3 {
-        b_half_on_a[i] = b.half[perm[i]];
-    }
-
-    let margin = |h: f64| OBB_EPS * 1.0f64.max(h);
-
-    for k in 0..3 {
-        let i = (k + 1) % 3;
-        let j = (k + 2) % 3;
-        // A pierces B along axis k: A's footprint on the other two axes is
-        // STRICTLY inside B's, and A's interval extends past B's on BOTH
-        // ends along k (not merely a bigger half-extent — a footing
-        // embedded partway into a slab from one side is longer than the
-        // slab but only pokes out ONE face, which is a partial overlap,
-        // not a through-penetration).
-        let a_inside_b = offset[i].abs() + a.half[i] <= b_half_on_a[i] - margin(b_half_on_a[i])
-            && offset[j].abs() + a.half[j] <= b_half_on_a[j] - margin(b_half_on_a[j]);
-        if a_inside_b && a.half[k] > b_half_on_a[k] + offset[k].abs() + margin(b_half_on_a[k]) {
-            return true;
-        }
-        // B pierces A along axis k: same test with the roles swapped.
-        let b_inside_a = offset[i].abs() + b_half_on_a[i] <= a.half[i] - margin(a.half[i])
-            && offset[j].abs() + b_half_on_a[j] <= a.half[j] - margin(a.half[j]);
-        if b_inside_a && b_half_on_a[k] > a.half[k] + offset[k].abs() + margin(a.half[k]) {
-            return true;
-        }
-    }
-    false
+    let neg_d: Vec3 = [-d[0], -d[1], -d[2]];
+    pierces_along(a, b, d) || pierces_along(b, a, neg_d)
 }

@@ -82,6 +82,46 @@ function prismEl(key: string, tag: string, p0: [number, number], p1: [number, nu
   };
 }
 
+/**
+ * A rectangular box (half-extents `hx,hy,hz`, centred at `center`), rotated
+ * `angle` radians about Z, baked directly into world-space triangle
+ * positions — `detectObb` reasons about world-space triangle normals, so
+ * this must be a genuinely rotated mesh, not an axis-aligned one carrying a
+ * deferred transform.
+ */
+function rotatedBoxAboutZ(
+  key: string,
+  tag: string,
+  center: Vec3,
+  hx: number,
+  hy: number,
+  hz: number,
+  angle: number,
+): ClashElement {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const local: Vec3[] = [
+    [-hx, -hy, -hz], [hx, -hy, -hz], [hx, hy, -hz], [-hx, hy, -hz],
+    [-hx, -hy, hz], [hx, -hy, hz], [hx, hy, hz], [-hx, hy, hz],
+  ];
+  const positions: number[] = [];
+  let min: Vec3 = [Infinity, Infinity, Infinity];
+  let max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const [x, y, z] of local) {
+    const wx = c * x - s * y + center[0];
+    const wy = s * x + c * y + center[1];
+    const wz = z + center[2];
+    positions.push(wx, wy, wz);
+    const p: Vec3 = [wx, wy, wz];
+    for (let a = 0; a < 3; a += 1) { if (p[a] < min[a]) min[a] = p[a]; if (p[a] > max[a]) max[a] = p[a]; }
+  }
+  const indices = new Uint32Array([
+    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+    1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+  ]);
+  return { key, ref: nextRef++, model: 'm', tag, positions: new Float32Array(positions), indices, bounds: { min, max } };
+}
+
 const RULE: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
 
 function pair(a: ClashElement, b: ClashElement) {
@@ -134,6 +174,55 @@ describe('hard-clash distance provenance', () => {
     expect(res.status).toBe('hard');
     expect(res.distanceKind).toBe('estimate');
     expect(res.distance).toBe(-0.2);
+  });
+
+  it('declines the mesh label for the same through-penetration with the duct rotated 15 degrees about Z', () => {
+    // Same wall/duct shape and true ~0.2 m overlap as the aligned case above,
+    // but the DUCT ALONE is rotated 15 degrees about Z relative to the
+    // (still axis-aligned) wall, so `isThroughPenetration`'s `matchAxis`
+    // (which requires the two boxes' axes to align up to sign) can no longer
+    // find a shared frame between wall and duct axes. Before the per-
+    // candidate-axis fix, this fell through to the raw 15-axis MTD unchecked
+    // and re-certified the same order-of-magnitude-inflated number as
+    // `'mesh'` (measured -1.1177 on our own harness against a true ~0.207 m —
+    // the wall's 0.2 m thickness grows slightly once the duct's face is no
+    // longer axis-aligned with the measurement axes).
+    const angle = (15 * Math.PI) / 180;
+    const wall = boxEl('W', 'IfcWall', [-2.5, -0.1, -1.5], [2.5, 0.1, 1.5]);
+    const duct = rotatedBoxAboutZ('D', 'IfcDuct', [0, 0, 0], 0.2, 1.0, 0.2, angle);
+    const res = pair(wall, duct);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+  });
+
+  it('reports touch, not a mesh/estimate hard clash, when a through-penetration is also below the f32 precision floor', () => {
+    // Precedence pin (#2536 rebase over #2594): a pair can simultaneously be
+    // a through-penetration (declines the box-exact `'mesh'` label, falls
+    // back to the AABB estimate) AND have that estimate at or below the f32
+    // precision floor for its coordinate magnitude — the two guards in
+    // `testPair` fire on the same result. The floor wins: it is checked
+    // BEFORE the through-penetration guard decides `'mesh'` vs `'estimate'`,
+    // so this reports `'touch'`, not a `'hard'` clash labelled either way —
+    // the number is not measurable at this magnitude regardless of which
+    // quantity would have produced it. Same wall/duct through-penetration
+    // shape as the aligned case above (true overlap 0.2 m), translated far
+    // enough from the origin (1,000,000 units) that `precisionFloor` grows
+    // past 0.2 m: floor = extent * 2^-22 ~ 1e6 * 2.384e-7 ~ 0.238 m > 0.2 m.
+    const off = 1_000_000;
+    const wall = boxEl('W', 'IfcWall', [off - 2.5, -0.1, -1.5], [off + 2.5, 0.1, 1.5]);
+    const duct = boxEl('D', 'IfcDuct', [off - 0.2, -1.0, -0.2], [off + 0.2, 1.0, 0.2]);
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const res = testPair(
+      wall,
+      new TriMesh(wall.positions!, wall.indices!),
+      duct,
+      new TriMesh(duct.positions!, duct.indices!),
+      touchRule,
+      0.001,
+    );
+    if (!res) throw new Error('expected a clash');
+    expect(res.status).toBe('touch');
+    expect(res.distance).toBe(0);
   });
 
   it('labels a non-box member piercing clean through as an AABB estimate', () => {

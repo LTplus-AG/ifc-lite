@@ -150,6 +150,59 @@ fn box_hxyz(cx: f32, cy: f32, cz: f32, hx: f32, hy: f32, hz: f32) -> (Vec<f32>, 
     (positions, indices, aabb)
 }
 
+/// A rectangular box (independent per-axis half-extents `hx,hy,hz`, centred
+/// at `(cx, cy, cz)`), rotated `angle` radians about Z, baked directly into
+/// world-space triangle positions (not carried as a transform) — `detect_obb`
+/// reasons about world-space triangle normals, so this must be a genuinely
+/// rotated mesh. Same packing/winding as `box_hxyz`.
+#[allow(clippy::too_many_arguments)]
+fn rotated_box_hxyz(
+    cx: f32,
+    cy: f32,
+    cz: f32,
+    hx: f32,
+    hy: f32,
+    hz: f32,
+    angle: f32,
+) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let c = angle.cos();
+    let s = angle.sin();
+    let local = [
+        [-hx, -hy, -hz],
+        [hx, -hy, -hz],
+        [hx, hy, -hz],
+        [-hx, hy, -hz],
+        [-hx, -hy, hz],
+        [hx, -hy, hz],
+        [hx, hy, hz],
+        [-hx, hy, hz],
+    ];
+    let mut positions = Vec::with_capacity(24);
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for [x, y, z] in local {
+        let wx = c * x - s * y + cx;
+        let wy = s * x + c * y + cy;
+        let wz = z + cz;
+        positions.extend_from_slice(&[wx, wy, wz]);
+        let p = [wx, wy, wz];
+        for axis in 0..3 {
+            if p[axis] < min[axis] {
+                min[axis] = p[axis];
+            }
+            if p[axis] > max[axis] {
+                max[axis] = p[axis];
+            }
+        }
+    }
+    let indices: Vec<u32> = vec![
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7, 0, 3, 7, 0, 7, 4,
+        1, 5, 6, 1, 6, 2,
+    ];
+    let aabb = vec![min[0], min[1], min[2], max[0], max[1], max[2]];
+    (positions, indices, aabb)
+}
+
 /// A closed triangular prism: the `footprint` triangle (XY) extruded between
 /// `z0` and `z1`. Exact-coordinate fixtures (no trig) so the slanted contact face
 /// is bit-identically coplanar in `f32` and `f64`, exercising the coplanar-touch
@@ -291,6 +344,52 @@ fn a_box_member_piercing_clean_through_another_box_is_labelled_an_estimate() {
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn a_box_member_piercing_clean_through_rotated_15_degrees_is_labelled_an_estimate() {
+    // Same wall/duct shape and true ~0.2 m overlap as the aligned case above,
+    // but the DUCT ALONE is rotated 15 degrees about Z relative to the
+    // (still axis-aligned) wall, so `is_through_penetration`'s old shared-
+    // frame requirement could no longer find a common axis set between wall
+    // and duct. Before the per-candidate-axis fix, this fell through to the
+    // raw 15-axis MTD unchecked and re-certified an order-of-magnitude-
+    // inflated number as `Mesh` (measured -1.1177 on the TS harness against
+    // a true ~0.207 m — mirrors `engine-ts/depth-provenance.test.ts`).
+    let angle = 15.0_f32.to_radians();
+    let session = session_of_parts(&[
+        box_hxyz(0.0, 0.0, 0.0, 2.5, 0.1, 1.5),
+        rotated_box_hxyz(0.0, 0.0, 0.0, 0.2, 1.0, 0.2, angle),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
+    // Precedence pin (#2536 rebase over #2594): a pair can simultaneously be
+    // a through-penetration (declines the box-exact `Mesh` label, falls back
+    // to the AABB estimate) AND have that estimate at or below the f32
+    // precision floor for its coordinate magnitude — the two guards in
+    // `test_pair` fire on the same result. The floor wins: it is checked
+    // BEFORE the through-penetration guard decides `Mesh` vs `Estimate`, so
+    // this reports `Touch`, not a `Hard` clash labelled either way. Same
+    // wall/duct through-penetration shape as the aligned case above (true
+    // overlap 0.2 m), translated far enough from the origin (1,000,000
+    // units) that `precision_floor` grows past 0.2 m: floor = extent *
+    // 2^-22 ~ 1e6 * 2.384e-7 ~ 0.238 m > 0.2 m. Mirrors the TS fixture in
+    // `engine-ts/depth-provenance.test.ts`.
+    let off = 1_000_000.0_f32;
+    let session = session_of_parts(&[
+        box_hxyz(off, 0.0, 0.0, 2.5, 0.1, 1.5),
+        box_hxyz(off, 0.0, 0.0, 0.2, 1.0, 0.2),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Touch);
+    assert_eq!(result.records[0].distance, 0.0);
 }
 
 #[test]

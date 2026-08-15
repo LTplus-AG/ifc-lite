@@ -34,15 +34,36 @@ import { computeClashIntersectionSolid } from './intersection-solid.js';
 // `packages/wasm/test/*.test.mjs` draws. Checked and skipped inside each
 // `it`, not a top-level `before()`, so a missing binary skips every case
 // individually instead of throwing before the suite's first test even starts.
+//
+// This skips rather than throws, unlike `packages/clash/src/engine-ts/obb.test.ts`
+// (a vitest suite reconciled against this one after CodeRabbit raised the
+// same "handle a missing WASM artifact" finding on both PRs). That is not a
+// contradiction — it's a difference in what "skip" costs per runner. `node:test`
+// (this file) prints `# SKIP <reason>` per test in its default TAP reporter, so
+// the reason stays visible with no extra flags (verified against
+// `packages/wasm/test/*.test.mjs`, which uses this exact pattern). vitest's
+// default reporter prints only a bare "N skipped" count with the reason
+// invisible unless you pass `--reporter=verbose`, which is why the vitest
+// suite fails loudly instead. Either way the missing-artifact branch is dead
+// in CI: `.github/workflows/test.yml`'s `build` job uploads the wasm runtime
+// with `if-no-files-found: error`, and `node-tests` (which runs this suite)
+// needs `build` to succeed first.
 const wasmPath = join(
   dirname(fileURLToPath(import.meta.url)),
   '..', '..', '..', '..', '..', 'packages', 'wasm', 'pkg', 'ifc-lite_bg.wasm',
 );
+
+/** Pure so the skip path is directly testable without touching the real filesystem. */
+function wasmSkipReason(path: string): string | null {
+  return existsSync(path) ? null : 'wasm bundle not built — run `bash scripts/build-wasm.sh` first';
+}
+
 let wasmReady = false;
 function ensureWasm(t: { skip: (msg: string) => void }): boolean {
   if (wasmReady) return true;
-  if (!existsSync(wasmPath)) {
-    t.skip('wasm bundle not built — run `bash scripts/build-wasm.sh` first');
+  const reason = wasmSkipReason(wasmPath);
+  if (reason) {
+    t.skip(reason);
     return false;
   }
   initSync({ module: readFileSync(wasmPath) });
@@ -72,6 +93,17 @@ function boxMesh(min: [number, number, number], max: [number, number, number]): 
   const indices = new Uint32Array(faces.flat());
   return { positions, indices };
 }
+
+describe('wasm-missing skip reason (deterministic, no real filesystem dependency)', () => {
+  it('returns an actionable message pointing at build-wasm.sh when the binary is absent', () => {
+    const missingPath = join(dirname(fileURLToPath(import.meta.url)), '__no-such-wasm-runtime__.wasm');
+    assert.equal(wasmSkipReason(missingPath), 'wasm bundle not built — run `bash scripts/build-wasm.sh` first');
+  });
+
+  it('returns null when the binary is present', () => {
+    assert.equal(wasmSkipReason(fileURLToPath(import.meta.url)), null);
+  });
+});
 
 describe('computeClashIntersectionSolid (real wasm)', () => {
   it('resolves a solid for a deep 1x1x1 m overlap between two 2x2x2 m boxes', async (t) => {

@@ -1,5 +1,11 @@
 # @ifc-lite/renderer
 
+## 1.47.0
+
+### Minor Changes
+
+- [#2643](https://github.com/LTplus-AG/ifc-lite/pull/2643) [`2a03d0f`](https://github.com/LTplus-AG/ifc-lite/commit/2a03d0fd0897f0c382c7e9b51947daad1ebb3c28) Thanks [@louistrue](https://github.com/louistrue)! - Add `Renderer.getAdapterInfo()` / `WebGPUDevice.getAdapterInfo()` and the exported `AdapterInfoSnapshot` type: a vendor/architecture identity snapshot copied out of `GPUAdapterInfo` during `init()`. The read is fully defensive (a runtime without `adapter.info`, or one whose getter throws, still initialises and reports `null` - a throwing getter is additionally logged as a console warning rather than swallowed), the strings are copies rather than the live `GPUAdapterInfo`, and the snapshot survives `destroy()` - so it is safe to read at device-loss time, which is what it exists for: enriching GPU device-loss telemetry ([#2624](https://github.com/LTplus-AG/ifc-lite/issues/2624)).
+
 ## 1.46.0
 
 ### Minor Changes

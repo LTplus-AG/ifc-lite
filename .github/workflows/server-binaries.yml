@@ -164,6 +164,18 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The build ref and the workflow ref deliberately differ on a
+          # manual backfill. A dispatch runs the workflow DEFINITION from the
+          # dispatch ref (normally the default branch, which is the only ref
+          # that has the `upload-to-tag` input), but the SOURCE being built
+          # must be the tag under repair: the install-time resolver in
+          # packages/server-bin picks its release by the installed package
+          # version, so an archive built from any other revision would ship
+          # different code under that old version number. Do not "simplify"
+          # this to the default checkout. On a `release` event
+          # `inputs.upload-to-tag` is empty, so this falls back to
+          # `github.ref` (the release tag), identical to the default.
+          ref: ${{ inputs.upload-to-tag || github.ref }}
           lfs: false
           persist-credentials: false
 
@@ -246,15 +258,33 @@ jobs:
         # Also runs on a manual dispatch that names an existing tag, so a
         # release with a missing archive can be backfilled (issue #2619).
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
-        # Force bash so the backslash line-continuation parses on Windows
-        # runners too (default shell there is PowerShell, which reads the
-        # bare `--clobber` continuation as the unary decrement operator →
-        # win32-x64 release upload failed with a ParserError).
+        # Force bash so multi-line scripts parse on Windows runners too
+        # (default shell there is PowerShell, which once read a bare
+        # `--clobber` line-continuation as the unary decrement operator and
+        # failed the win32-x64 release upload with a ParserError).
         shell: bash
         run: |
-          gh release upload "${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}" \
-            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }} \
-            --clobber
+          tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}"
+          asset="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Fresh release: assets are being created for the first time, so
+            # --clobber is the correct idempotent choice for job re-runs.
+            gh release upload "$tag" "$asset" --clobber
+          else
+            # Manual backfill of an existing release: every matrix leg runs,
+            # including platforms whose assets are already healthy, and
+            # `gh release upload --clobber` DELETES the existing asset before
+            # uploading ("If the upload fails, the original assets will be
+            # lost"). A transient failure would then destroy a working
+            # archive for a platform that was never broken. So only upload
+            # what is actually missing, and never clobber.
+            existing="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+            if printf '%s\n' "$existing" | grep -qxF "$asset"; then
+              echo "$asset already exists on $tag; leaving the healthy asset untouched"
+            else
+              gh release upload "$tag" "$asset"
+            fi
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

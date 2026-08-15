@@ -21,11 +21,15 @@
  *      `-musl` suffix stripped.
  *   3. The `release-server-binaries` matrix in
  *      .github/workflows/server-binaries.yml - what actually gets built and
- *      uploaded. Its target set must equal SUPPORTED_TARGETS, and each
- *      entry's `archive` must match the resolver's naming rule (win32 =>
- *      zip, else tar.gz), which is what makes the workflow's
- *      `ifc-lite-server-<target>.<archive>` provably the same string the
- *      resolver downloads.
+ *      uploaded. Its target set must equal SUPPORTED_TARGETS, each entry's
+ *      `archive` must match the resolver's naming rule (win32 => zip, else
+ *      tar.gz), and each entry's `rust-target` must be the triple the
+ *      install target actually needs - a wrong triple ships an incompatible
+ *      binary under a perfectly valid archive name (arm64 bits as x64).
+ *      The upload step must also use the literal
+ *      `ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}`
+ *      expression, which is what makes the uploaded name provably the same
+ *      string the resolver downloads rather than agreeing by luck.
  *
  * The `validate-server-binaries` matrix is a deliberate cost-saving SUBSET
  * (linux only), so it is checked as a subset, not for equality.
@@ -64,7 +68,35 @@ function splitTriple(triple) {
   if (!m) {
     fail(`unrecognised target triple "${triple}" (expected <platform>-<arch>[-musl])`);
   }
-  return { platform: m[1], arch: m[2] };
+  return { platform: m[1], arch: m[2], musl: Boolean(m[3]) };
+}
+
+/**
+ * The rust triple a matrix entry must build for an install target. Derived,
+ * not hardcoded: platform and arch map 1:1 onto the rust triple's components
+ * and `-musl` selects the musl libc. An underivable platform or arch is an
+ * ERROR, never a skip, so a brand-new target cannot enter the matrix without
+ * this mapping learning about it first.
+ */
+function rustTripleFor(target) {
+  const { platform, arch, musl } = splitTriple(target);
+  const rustArch = { x64: 'x86_64', arm64: 'aarch64' }[arch];
+  if (!rustArch) {
+    fail(`no rust-triple mapping for arch "${arch}" (target "${target}"); teach this check the new arch before adding the target`);
+  }
+  if (musl && platform !== 'linux') {
+    fail(`target "${target}" uses -musl on non-linux platform "${platform}"; no rust triple exists for that`);
+  }
+  switch (platform) {
+    case 'linux':
+      return `${rustArch}-unknown-linux-${musl ? 'musl' : 'gnu'}`;
+    case 'darwin':
+      return `${rustArch}-apple-darwin`;
+    case 'win32':
+      return `${rustArch}-pc-windows-msvc`;
+    default:
+      fail(`no rust-triple mapping for platform "${platform}" (target "${target}"); teach this check the new platform before adding the target`);
+  }
 }
 
 function assertSetEquals(label, actual, expected) {
@@ -106,7 +138,7 @@ function jobBlock(source, jobName) {
   return next ? source.slice(bodyStart, bodyStart + next.index) : source.slice(bodyStart);
 }
 
-/** Parse `- target:` / `archive:` pairs from a job's matrix include list. */
+/** Parse `- target:` / `rust-target:` / `archive:` tuples from a job's matrix include list. */
 function parseMatrix(source, jobName, { requireArchive }) {
   const block = jobBlock(source, jobName);
   const includeIdx = block.indexOf('include:');
@@ -126,8 +158,47 @@ function parseMatrix(source, jobName, { requireArchive }) {
     if (requireArchive && !archive) {
       fail(`matrix entry "${anchor[1]}" in job "${jobName}" of ${WORKFLOW} has no archive: key`);
     }
-    return { target: anchor[1], archive: archive ? archive[1] : null };
+    const rustTarget = chunk.match(/rust-target:[ \t]*([^\s]+)/);
+    if (!rustTarget) {
+      fail(
+        `matrix entry "${anchor[1]}" in job "${jobName}" of ${WORKFLOW} has no rust-target: key; ` +
+        `refusing a vacuous pass - without it nothing pins which triple that leg builds`,
+      );
+    }
+    return { target: anchor[1], archive: archive ? archive[1] : null, rustTarget: rustTarget[1] };
   });
+}
+
+/**
+ * The exact expression the upload step must use for the asset filename.
+ * The resolver downloads `ifc-lite-server-<target>.<ext>`; pinning the
+ * workflow to this literal makes the two names provably identical instead
+ * of two hand-maintained strings that agree by luck.
+ */
+// The ${{ }} is a GitHub Actions expression pinned as a literal, not a JS template.
+// eslint-disable-next-line no-template-curly-in-string
+const UPLOAD_ASSET_EXPR = 'ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}';
+
+/** The release upload step must name its asset via UPLOAD_ASSET_EXPR. */
+function checkUploadAssetName(workflow) {
+  const block = jobBlock(workflow, 'release-server-binaries');
+  const stepStart = block.indexOf('- name: Upload to GitHub Release');
+  if (stepStart === -1) {
+    fail(
+      `cannot find the "Upload to GitHub Release" step in job "release-server-binaries" of ${WORKFLOW}; ` +
+      `if the step was renamed, update this check - it must not pass without pinning the upload filename`,
+    );
+  }
+  const rest = block.slice(stepStart + 1);
+  const nextStep = /\n {6}- name:/.exec(rest);
+  const step = block.slice(stepStart, nextStep ? stepStart + 1 + nextStep.index : block.length);
+  if (!step.includes(UPLOAD_ASSET_EXPR)) {
+    fail(
+      `the "Upload to GitHub Release" step in ${WORKFLOW} does not use the literal asset expression ` +
+      `"${UPLOAD_ASSET_EXPR}"; the resolver in ${PLATFORM_TS} downloads exactly that name, so the ` +
+      `upload must provably produce it`,
+    );
+  }
 }
 
 /** Default mode: the three functional lists must agree. */
@@ -147,7 +218,9 @@ function checkSourceParity() {
 
   const workflow = readFileSync(join(repoRoot, WORKFLOW), 'utf8');
 
-  // Release matrix: exact target equality plus the resolver's archive rule.
+  // Release matrix: exact target equality, the resolver's archive rule, and
+  // the target-to-rust-triple mapping (a wrong triple ships an incompatible
+  // binary under a perfectly valid archive name).
   const release = parseMatrix(workflow, 'release-server-binaries', { requireArchive: true });
   assertSetEquals(`${WORKFLOW} release-server-binaries matrix`, new Set(release.map((e) => e.target)), targetSet);
   for (const entry of release) {
@@ -158,13 +231,33 @@ function checkSourceParity() {
         `in ${PLATFORM_TS} downloads "ifc-lite-server-${entry.target}.${expectedExt}"`,
       );
     }
+    const expectedTriple = rustTripleFor(entry.target);
+    if (entry.rustTarget !== expectedTriple) {
+      fail(
+        `release matrix entry "${entry.target}" builds rust-target "${entry.rustTarget}" but the ` +
+        `install target requires "${expectedTriple}"; the archive name would be valid while the ` +
+        `binary inside it targets the wrong platform`,
+      );
+    }
   }
 
-  // Validate matrix: a deliberate cost-saving subset, never an unknown target.
+  // The upload step must name assets with the exact expression the resolver
+  // expects, or the six correct archives upload under the wrong names.
+  checkUploadAssetName(workflow);
+
+  // Validate matrix: a deliberate cost-saving subset, never an unknown
+  // target, and its legs must build the triple their target names.
   const validate = parseMatrix(workflow, 'validate-server-binaries', { requireArchive: false });
   for (const entry of validate) {
     if (!targetSet.has(entry.target)) {
       fail(`validate-server-binaries matrix names "${entry.target}", which is not in SUPPORTED_TARGETS`);
+    }
+    const expectedTriple = rustTripleFor(entry.target);
+    if (entry.rustTarget !== expectedTriple) {
+      fail(
+        `validate matrix entry "${entry.target}" builds rust-target "${entry.rustTarget}" but the ` +
+        `target maps to "${expectedTriple}"; that leg would validate the wrong platform's build`,
+      );
     }
   }
 

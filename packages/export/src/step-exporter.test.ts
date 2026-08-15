@@ -873,6 +873,92 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // CodeRabbit finding on #2637: `collectReferencedEntityIds`'s bridge check
+  // for a SOURCE-backed `IFCREL*` (one with no `NewEntity` creation payload)
+  // parsed the relationship's raw bytes only — never consulting a queued
+  // positional/named-attribute mutation the way `refGroupsOf` already did for
+  // an OVERLAY-CREATED one. Retargeting `RelatedObjects` from a hidden wall
+  // to a visible one via `setPositionalAttribute` on a SOURCE line therefore
+  // still judged the bridge by the STALE, pre-mutation reference: emission
+  // (which does apply the mutation) writes the visible wall into the output
+  // line, but the closure — still seeing the hidden one in its own read —
+  // wrongly refused to bridge into the pset, dropping it from the file the
+  // emitted relationship line still names.
+  it('does not drop a visible element’s pset when a SOURCE-backed relationship is retargeted away from a hidden one', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [9, 'IFCWALL', "#9=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA9',$,'HiddenWall',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhAA',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('VISIBLE_COST'),$);"],
+      // SOURCE-backed — not created via `view.createEntity` — with
+      // RelatedObjects (attribute index 4) still naming the hidden wall in
+      // the source bytes.
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('1ys5Xwuxz8gPJk6N$NGh22',$,$,$,(#9),#10);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    // Retarget RelatedObjects from the hidden wall to the visible one — a
+    // positional mutation applied to a SOURCE line, not a creation payload.
+    view.setPositionalAttribute(22, 4, ['#8']);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set([9]),
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#9=IFCWALL');
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain('VISIBLE_COST');
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
+  // CodeRabbit finding on #2637: `refGroupsOf`'s named-attribute resolver
+  // used `getAllAttributesForEntity` — the IFC4-pinned registry, empty for an
+  // IFC4X3-only relationship class such as `IfcRelAdheresToElement` — so a
+  // named override (`setAttribute`) on one resolved no slot and was silently
+  // ignored by the CLOSURE, while emission's own resolver
+  // (`getAttributeNamesAcrossSchemas`, already cross-schema per
+  // `applyOverlayEntityOverrides`'s own comment) applied it. The closure kept
+  // judging the relationship by the STALE creation-payload value.
+  it('does not drop a target reachable only through an IFC4X3-only relationship class, retargeted by a named attribute edit', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+      [8, 'IFCWALL', "#8=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA8',$,'VisibleWall',$,$,$,$,$);"],
+      [9, 'IFCWALL', "#9=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA9',$,'HiddenWall',$,$,$,$,$);"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('1ys5Xwuxz8gPJk6N$NGhAA',$,'Pset_Custom',$,(#11));"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('ADHERES_TARGET'),$);"],
+    ]);
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(11);
+    // IfcRelAdheresToElement: [GlobalId, OwnerHistory, Name, Description,
+    // RelatingElement, RelatedSurfaceFeatures] — IFC4X3-only, no IFC4-pinned
+    // metadata. RelatingElement starts at the hidden wall.
+    const rel = view.createEntity('IFCRELADHERESTOELEMENT', [
+      '1ys5Xwuxz8gPJk6N$NGh22', null, null, null, '#9', ['#10'],
+    ]);
+    // Named-attribute override, not positional — exercises the resolver
+    // `refGroupsOf` uses to map the name to a slot.
+    view.setAttribute(rel.expressId, 'RelatingElement', '#8');
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+      visibleOnly: true,
+      hiddenEntityIds: new Set([9]),
+    });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#9=IFCWALL');
+    expect(content).toContain('#8=IFCWALL');
+    expect(content).toContain('ADHERES_TARGET');
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('applies positional attribute mutations to non-IfcRoot entities', () => {
     const dataStore = buildMockDataStore([
       [35, 'IFCRECTANGLEPROFILEDEF', '#35=IFCRECTANGLEPROFILEDEF(.AREA.,$,#34,0.3,0.4);'],

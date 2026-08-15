@@ -325,4 +325,38 @@ describe('visibleOnly does not ship a hidden element’s associated data (#2548)
     expect(content).toContain('SHARED');
     expect(findDanglingRefs(content)).toEqual([]);
   });
+
+  // CodeRabbit finding on #2637: the closure's own `extractRelationshipRefGroups`
+  // parser (`reference-collector.ts`) only pushed MATCHED `#N` items into a
+  // list group, so a list holding one hidden ref alongside a non-reference
+  // item collapsed to "every remaining id excluded" and blocked bridging.
+  // `filterHiddenRefsFromRelationshipLine` — the function that actually
+  // decides whether the relationship's OWN line survives — treats that same
+  // non-reference item as an unconditional survivor (it only ever drops an
+  // `#N` item), so the line was never going to be withheld. The two
+  // predicates disagreeing dropped a visible pset from the closure the
+  // emitted line still names. Purely SYNTACTIC (this file's own header notes
+  // the fix applies to every `IFCREL*` shape, not just schema-realistic
+  // ones), so the inline `IFCLABEL('X')` list member below does not need to
+  // be a real IFC attribute value — only a non-`#N` list item.
+  it('bridges into the pset when a hidden ref sits in a list alongside a non-reference survivor', () => {
+    const store = buildParsedStore([
+      [1, 'IFCPROJECT', PROJECT],
+      [4, 'IFCWALL', "#4=IFCWALL('0walB0000000000000000',$,'HiddenWall',$,$,$,$,$);\n"],
+      [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('0pset0000000000000000',$,'Pset_Custom',$,(#11));\n"],
+      [11, 'IFCPROPERTYSINGLEVALUE', "#11=IFCPROPERTYSINGLEVALUE('Cost',$,IFCTEXT('SURVIVOR_COST'),$);\n"],
+      [22, 'IFCRELDEFINESBYPROPERTIES', "#22=IFCRELDEFINESBYPROPERTIES('0rdbp0000000000000000',$,$,$,(#4,IFCLABEL('X')),#10);\n"],
+    ]);
+
+    const content = decode(new StepExporter(store).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set([4]),
+    }).content);
+
+    expect(content).not.toContain('#4=IFCWALL');
+    expect(content).toContain('SURVIVOR_COST');
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
 });

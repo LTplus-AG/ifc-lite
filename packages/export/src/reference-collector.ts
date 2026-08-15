@@ -344,7 +344,10 @@ export function collectReferencedEntityIds(
     get(id: number): { byteOffset: number; byteLength: number; type?: string } | undefined;
     has(id: number): boolean;
     refsOf?(id: number): readonly number[] | undefined;
-    refGroupsOf?(id: number): ReadonlyArray<number | readonly number[]> | undefined;
+    refGroupsOf?(
+      id: number,
+      sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
+    ): ReadonlyArray<number | readonly number[]> | undefined;
     effectiveType?(id: number, recordType: string): string;
   },
   excludeIds?: Set<number>,
@@ -440,7 +443,19 @@ export function collectReferencedEntityIds(
             // wrongly block bridging too), never less: it can only refuse to
             // bridge, never leak, when the finer answer is unavailable.
             ?? authored)
-        : extractRelationshipRefGroups(
+        // Source-backed: parse the RAW line into groups first (the only
+        // thing there is to parse for an id with no authored payload), then
+        // give the entity index a chance to splice in a queued positional or
+        // named-attribute override — a mutation retargeting THIS relationship's
+        // own reference (e.g. `RelatedObjects` moved off a hidden product onto
+        // a visible one) changes what the file will actually say, and the raw
+        // text alone cannot know that (#2637 follow-up: CodeRabbit found the
+        // emitted line and this bridge check could disagree on exactly that
+        // case). `refGroupsOf` returns undefined when nothing overrides
+        // anything for this id, so the parsed-from-text answer stands.
+        : relationshipRefGroupsFromSourceLine(
+            entityIndex,
+            entityId,
             decodeRange(src, ref.byteOffset, ref.byteOffset + ref.byteLength),
           );
       if (!relationshipRefsSurviveExclusion(groups, isBridgeTargetExcluded)) {
@@ -596,35 +611,81 @@ export function relationshipRefsSurviveExclusion(
 
 /**
  * Parse a source-backed relationship's decoded STEP line into the same
- * grouped shape {@link relationshipRefsSurviveExclusion} takes — built from
- * the exact same primitives (`splitTopLevelArgs`, the `#(\d+)` ref pattern)
- * `filterHiddenRefsFromRelationshipLine` uses, so the two extraction routes
- * (this one from text, `refGroupsOf` from an authored attribute list) feed
- * the SAME decision function identically. A line that does not parse as a
- * single `#N=TYPE(...);` record yields no groups — nothing to exclude on,
- * so the relationship survives, matching that function's own "return line
- * unchanged" behavior for the same input shape.
+ * grouped shape {@link relationshipRefsSurviveExclusion} takes, POSITION-
+ * ALIGNED with the line's top-level STEP arguments (one array entry per
+ * argument, `undefined` where that argument names no reference) — the form
+ * {@link relationshipRefGroupsFromSourceLine} needs to splice a positional or
+ * named-attribute override into the right slot.
+ *
+ * Built from the exact same primitives (`splitTopLevelArgs`, the `#(\d+)`
+ * ref pattern) `filterHiddenRefsFromRelationshipLine` uses, so the two
+ * extraction routes (this one from text, `refGroupsOf` from an authored
+ * attribute list) feed the SAME decision function identically. A line that
+ * does not parse as a single `#N=TYPE(...);` record yields no groups —
+ * nothing to exclude on, so the relationship survives, matching that
+ * function's own "return line unchanged" behavior for the same input shape.
+ *
+ * A parenthesised list holding a NON-reference item (an inline typed value
+ * alongside, or instead of, `#N` members) yields `undefined` for that slot
+ * rather than a groups-worth of only the ref members: such an item always
+ * survives `filterHiddenRefsFromRelationshipLine`'s own per-item filter (it
+ * only ever drops an `#N` item), so a list containing one can never be the
+ * reason that function withholds the whole line — treating the ref-only
+ * subset as a blocking group here would let this predicate refuse a bridge
+ * `filterHiddenRefsFromRelationshipLine` does not (CodeRabbit finding on
+ * #2637: this used to collapse a mixed list to "every remaining id
+ * excluded" and block on it).
  */
-function extractRelationshipRefGroups(line: string): Array<number | number[]> {
+function extractRelationshipRefGroupsIndexed(line: string): Array<number | number[] | undefined> {
   const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
   if (!match) return [];
   const attrs = splitTopLevelArgs(match[2]);
-  const groups: Array<number | number[]> = [];
+  const groups: Array<number | number[] | undefined> = [];
   for (const attr of attrs) {
     if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
       const inner = attr.slice(1, -1);
       const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
       const ids: number[] = [];
+      let hasNonRefItem = false;
       for (const item of items) {
         const refMatch = item.match(/^#(\d+)$/);
         if (refMatch) ids.push(Number(refMatch[1]));
+        else hasNonRefItem = true;
       }
-      groups.push(ids);
+      groups.push(hasNonRefItem ? undefined : ids);
       continue;
     }
     const refMatch = attr.match(/^#(\d+)$/);
-    if (refMatch) groups.push(Number(refMatch[1]));
+    groups.push(refMatch ? Number(refMatch[1]) : undefined);
   }
+  return groups;
+}
+
+/**
+ * The source-backed half of the groups {@link relationshipRefsSurviveExclusion}
+ * checks: parse `line` into the position-aligned shape, then — when
+ * `entityIndex` can answer for `entityId` — let it splice in a queued
+ * positional or named-attribute override before flattening. Falls back to
+ * the plain parsed-from-text groups when the index has no `refGroupsOf`, or
+ * answers undefined for this id (the common case: most `IFCREL*` entities
+ * carry no mutation at all, so this stays a cheap parse plus a couple of map
+ * lookups, not extra allocation).
+ */
+function relationshipRefGroupsFromSourceLine(
+  entityIndex: {
+    refGroupsOf?(
+      id: number,
+      sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
+    ): ReadonlyArray<number | readonly number[]> | undefined;
+  },
+  entityId: number,
+  line: string,
+): ReadonlyArray<number | readonly number[]> {
+  const indexed = extractRelationshipRefGroupsIndexed(line);
+  const effective = entityIndex.refGroupsOf?.(entityId, indexed);
+  if (effective) return effective;
+  const groups: Array<number | number[]> = [];
+  for (const group of indexed) if (group !== undefined) groups.push(group);
   return groups;
 }
 

@@ -100,13 +100,17 @@ fn main() {
     println!("  build_entity_index_parallel     {parallel:8.1} ms");
     println!("  bare type-name scan             {scan:8.1} ms");
     println!("  ---");
-    println!("  relationships()                 {rel:8.1} ms   index is {:4.1}% of it", 100.0 * parallel / rel);
-    println!("  extract_georeferencing()        {geo:8.1} ms   index is {:4.1}% of it", 100.0 * parallel / geo);
+    // No index share for `relationships()`: it builds none, so a ratio here would
+    // dress a cost it does not pay as an observed component. Compare it to the
+    // bare scan above instead.
+    println!("  relationships()                 {rel:8.1} ms");
+    println!(
+        "  extract_georeferencing()        {geo:8.1} ms   index is {:4.1}% of it",
+        100.0 * parallel / geo
+    );
     println!("  ---");
     println!(
-        "  index a caller can still save   {:8.1} ms  ({:.1}% of the two helpers' {:.1} ms)",
-        parallel,
-        100.0 * parallel / (rel + geo),
-        rel + geo
+        "  index a caller can still save   {parallel:8.1} ms  ({:.1}% of extract_georeferencing)",
+        100.0 * parallel / geo
     );
 }

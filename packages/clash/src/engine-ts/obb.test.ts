@@ -359,22 +359,49 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
   });
 });
 
+// Fail loudly, not silently. This is a vitest suite: vitest's DEFAULT
+// reporter prints only a bare "N skipped" COUNT for a `describe.skipIf`/
+// `it.skip` — the reason string is invisible unless you already know to
+// pass `--reporter=verbose` (verified empirically: `console.warn` inside
+// a skip branch does not appear in `vitest run`'s default output). A skip
+// here would read as green noise with zero indication that the TS/WASM
+// parity oracle never ran.
+//
+// `apps/viewer/src/lib/clash/intersection-solid.test.ts` (PR #2574) skips
+// instead — that is not a contradiction: it's a `node:test` suite, and
+// `node:test`'s default TAP reporter prints `# SKIP <reason>` per test by
+// default (verified: `node --test` on `packages/wasm/test/*.test.mjs`
+// prints the skip reason inline, no extra flags needed). The two suites
+// reached different answers because their runners differ in what "skip"
+// costs, not because the repo disagrees with itself.
+//
+// Either way this branch is unreachable in CI: `.github/workflows/test.yml`
+// builds/fetches the WASM runtime in the `build` job and uploads it with
+// `if-no-files-found: error`, and `node-tests` (which runs this suite)
+// `needs: [changes, build]` — a missing runtime fails `build` outright,
+// before this suite is ever collected, skipped or not.
+function assertWasmRuntimeAvailable(wasmPath: string): void {
+  if (!existsSync(wasmPath)) {
+    throw new Error(
+      `WASM runtime missing at ${wasmPath} — run \`bash scripts/build-wasm.sh\` before this suite can cross-check the Rust kernel.`,
+    );
+  }
+}
+
 describe('analytic oracle: TS/WASM kernel parity on the held fixture', () => {
   const ts = createClashEngine({ backend: 'ts' });
   const wasm = new WasmClashEngine();
 
+  it('throws an actionable error (not a bare ENOENT, not a silent skip) when the WASM runtime is missing', () => {
+    const missingPath = fileURLToPath(new URL('./__no-such-wasm-runtime__.wasm', import.meta.url));
+    expect(() => assertWasmRuntimeAvailable(missingPath)).toThrow(
+      /WASM runtime missing at .*run `bash scripts\/build-wasm\.sh`/,
+    );
+  });
+
   beforeAll(async () => {
-    // Fail loudly, not silently: a `describe.skipIf` here would let this
-    // suite read as green when the WASM/Rust kernel it exists to cross-check
-    // was never built, which is exactly the parity gap this suite is for.
-    // Point at the fix instead of a bare ENOENT (matches `differential.test.ts`,
-    // the sibling parity suite, and `pnpm test:wasm-contract`'s own message).
     const wasmPath = fileURLToPath(new URL('../../../wasm/pkg/ifc-lite_bg.wasm', import.meta.url));
-    if (!existsSync(wasmPath)) {
-      throw new Error(
-        `WASM runtime missing at ${wasmPath} — run \`bash scripts/build-wasm.sh\` before this suite can cross-check the Rust kernel.`,
-      );
-    }
+    assertWasmRuntimeAvailable(wasmPath);
     await initClashWasm(readFileSync(wasmPath));
   });
 

@@ -35,16 +35,19 @@
  * (linux only), so it is checked as a subset, not for equality.
  *
  * With `--release <tag>` the script instead asserts the published release
- * carries every expected archive by name, so a failed matrix leg cannot
+ * carries every expected asset by name, so a failed matrix leg cannot
  * leave a silent hole. The expected set is read from the TAG'S OWN
  * platform.ts (`git show refs/tags/<tag>:...`), not from the checked-out
  * tree: a manual backfill dispatch checks out the workflow ref (main), and
  * as the platform set drifts, main's SUPPORTED_TARGETS would demand
  * archives an old release never claimed to ship (a false red on exactly
  * the repair path this check exists for) or miss ones it still needs (a
- * false green). The checked-out tree still gets the full source-parity
- * check first, and the checker code itself always runs from the workflow
- * ref.
+ * false green). The .sha256 sidecar expectation is keyed off the tag the
+ * same way: expected exactly when the tag's own workflow publishes
+ * sidecars, so pre-sidecar releases stay verifiable while a newer release
+ * cannot silently drop one (checksum.ts fails closed for those versions).
+ * The checked-out tree still gets the full source-parity check first, and
+ * the checker code itself always runs from the workflow ref.
  *
  * Fail-closed: an unfindable list, a parse yielding no entries, an
  * unreadable/empty release asset list, or a release tag whose ref is not
@@ -53,8 +56,9 @@
  * falling back to the checked-out tree's target set.
  *
  * Source-text matching is comment-aware (rationale in
- * scripts/lib/server-bin-targets-parse.mjs); the upload check binds the asset
- * literal to the actual `gh release upload` argument. Executable proof:
+ * scripts/lib/server-bin-targets-parse.mjs); the upload check (in
+ * scripts/lib/server-bin-upload-check.mjs) binds the asset and sidecar
+ * literals to the actual `gh release upload` arguments. Executable proof:
  * scripts/check-server-bin-targets.test.mjs, which drives this script via
  * `--root <dir>` against hostile mutations of the real inputs.
  */
@@ -65,12 +69,14 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import {
   fail,
-  jobBlock,
   parseMatrix,
   parseSupportedTargets,
   stripYamlComments,
-  unquoteScalar,
 } from './lib/server-bin-targets-parse.mjs';
+import {
+  checkUploadStep,
+  uploadStepPublishesSidecars,
+} from './lib/server-bin-upload-check.mjs';
 
 // --root <dir>: read the input files from an alternate tree (in --release
 // mode, git also runs there). Exists for the regression harness, which points
@@ -141,6 +147,34 @@ function assertSetEquals(label, actual, expected) {
 }
 
 /**
+ * Read one file at the release tag's own revision via git show.
+ *
+ * Fail-closed: an absent tag ref is an ERROR telling the operator to fetch
+ * it, never a silent fallback to the checked-out tree - that fallback would
+ * recreate the vacuous pass this script exists to prevent. A path that does
+ * not exist at an EXISTING tag is a different, answerable case: the caller
+ * may treat it as a definite absence, so it is surfaced as null when
+ * `optional` is set.
+ */
+function readFileAtTag(tag, path, { optional = false } = {}) {
+  try {
+    return execFileSync('git', ['show', `refs/tags/${tag}:${path}`], {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    const detail = String(err?.stderr || err?.message || err).trim().split('\n')[0];
+    if (optional && /does not exist/.test(detail)) return null;
+    fail(
+      `cannot read ${path} at tag "${tag}" via git show (${detail}); ` +
+      `fetch the tag first (git fetch --depth=1 origin tag ${tag}) - refusing to fall back ` +
+      `to the checked-out tree, which may not be the tag's`,
+    );
+  }
+}
+
+/**
  * SUPPORTED_TARGETS as of the release tag's own source. A release is
  * verified against what ITS resolver downloads: the install-time resolver
  * ships inside the published package at that version, so the tag's
@@ -149,108 +183,29 @@ function assertSetEquals(label, actual, expected) {
  * tag's package.json os/cpu is deliberately not consulted here - it only
  * gates npm installs, cannot change which archives the tag's resolver
  * downloads, and is unfixable post-publish anyway.
- *
- * Fail-closed: an absent tag ref is an ERROR telling the operator to fetch
- * it, never a silent fallback to the checked-out tree's set - that
- * fallback would recreate the vacuous pass this script exists to prevent.
  */
 function parseTagSupportedTargets(tag) {
-  let source;
-  try {
-    source = execFileSync('git', ['show', `refs/tags/${tag}:${PLATFORM_TS}`], {
-      cwd: repoRoot,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-  } catch (err) {
-    const detail = String(err?.stderr || err?.message || err).trim().split('\n')[0];
-    fail(
-      `cannot read ${PLATFORM_TS} at tag "${tag}" via git show (${detail}); ` +
-      `fetch the tag first (git fetch --depth=1 origin tag ${tag}) - refusing to fall back ` +
-      `to the checked-out tree's target set, which may not be the tag's`,
-    );
-  }
+  const source = readFileAtTag(tag, PLATFORM_TS);
   return parseSupportedTargets(source, `${PLATFORM_TS} at tag ${tag}`);
 }
 
 /**
- * The exact expression the upload step must use for the asset filename.
- * The resolver downloads `ifc-lite-server-<target>.<ext>`; pinning the
- * workflow to this literal makes the two names provably identical instead
- * of two hand-maintained strings that agree by luck.
+ * Whether the TAG's own pipeline publishes checksum sidecars, read from the
+ * tag's server-binaries.yml the same way the target set is read from the
+ * tag's platform.ts. Keying the sidecar expectation off the tag is what lets
+ * pre-sidecar releases (e.g. v1.16.6) stay verifiable without demanding
+ * assets they never claimed to ship, while a release cut from sidecar-
+ * publishing source cannot silently drop one. An absent workflow, job, step
+ * or binding at the tag is a definite "no sidecars", not an error; the
+ * strict counterpart (checkUploadStep, which fails closed on all of those)
+ * has already run against the checked-out tree by the time this is called,
+ * so a drifted binding on the workflow ref turns the gate red instead of
+ * silently disarming this detection for future releases.
  */
-// The ${{ }} is a GitHub Actions expression pinned as a literal, not a JS template.
-// eslint-disable-next-line no-template-curly-in-string
-const UPLOAD_ASSET_EXPR = 'ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}';
-
-/**
- * The release upload step must BIND the asset name to UPLOAD_ASSET_EXPR and
- * every `gh release upload` invocation in it must pass exactly that binding.
- * Mere presence of the literal in the step is not enough: a comment can carry
- * the old name while the assignment or the upload argument drifts, and then
- * every release 404s on every platform while the gate blesses it.
- */
-function checkUploadAssetName(workflow) {
-  const block = jobBlock(workflow, 'release-server-binaries', WORKFLOW);
-  const stepStart = block.indexOf('- name: Upload to GitHub Release');
-  if (stepStart === -1) {
-    fail(
-      `cannot find the "Upload to GitHub Release" step in job "release-server-binaries" of ${WORKFLOW}; ` +
-      `if the step was renamed, update this check - it must not pass without pinning the upload filename`,
-    );
-  }
-  const rest = block.slice(stepStart + 1);
-  const nextStep = /\n {6}- name:/.exec(rest);
-  const step = block.slice(stepStart, nextStep ? stepStart + 1 + nextStep.index : block.length);
-
-  // 1. The `asset=` binding must be exactly the expected expression and the
-  // ONLY line writing the variable - a later `asset=` or `asset+=` would
-  // rebind the name and reopen the hole the presence check had.
-  const assigns = [...step.matchAll(/^[ \t]*asset(\+?=)(.*)$/gm)];
-  if (assigns.length === 0) {
-    fail(
-      `the "Upload to GitHub Release" step in ${WORKFLOW} no longer assigns asset=...; the step must ` +
-      `bind asset to "${UPLOAD_ASSET_EXPR}" (the exact name the resolver in ${PLATFORM_TS} downloads) - ` +
-      `if the script was restructured, update this check`,
-    );
-  }
-  if (assigns.length > 1) {
-    fail(
-      `the "Upload to GitHub Release" step in ${WORKFLOW} writes the asset variable ${assigns.length} ` +
-      `times; a rebinding after the pinned assignment could upload a name the resolver in ` +
-      `${PLATFORM_TS} never downloads, so exactly one asset= line is allowed`,
-    );
-  }
-  const [, op, rawValue] = assigns[0];
-  const assigned = unquoteScalar(rawValue.trim());
-  if (op !== '=' || assigned !== UPLOAD_ASSET_EXPR) {
-    fail(
-      `the "Upload to GitHub Release" step in ${WORKFLOW} assigns asset${op}${rawValue.trim()} but the ` +
-      `resolver in ${PLATFORM_TS} downloads exactly "${UPLOAD_ASSET_EXPR}"; the two must be identical`,
-    );
-  }
-
-  // 2. Both paths (fresh release and backfill) must pass the $asset binding
-  // as the `gh release upload` asset argument. Only double quotes are
-  // stripped: a single-quoted '$asset' never expands in bash, so it must stay red.
-  const uploads = [...step.matchAll(/gh release upload[ \t]+(\S+)[ \t]+(\S+)/g)];
-  if (uploads.length < 2) {
-    fail(
-      `expected the release and backfill paths of the "Upload to GitHub Release" step in ${WORKFLOW} ` +
-      `to each invoke "gh release upload <tag> <asset>"; found ${uploads.length} invocation(s) - ` +
-      `if the step was restructured, update this check`,
-    );
-  }
-  for (const [, , assetArg] of uploads) {
-    const arg = assetArg.replace(/^"(.*)"$/s, '$1').replace(/^\$\{asset\}$/, '$asset');
-    if (arg !== '$asset') {
-      fail(
-        `a "gh release upload" invocation in the "Upload to GitHub Release" step of ${WORKFLOW} passes ` +
-        `${assetArg} as its asset argument instead of "$asset"; only the pinned $asset binding provably ` +
-        `uploads the name the resolver in ${PLATFORM_TS} downloads`,
-      );
-    }
-  }
+function tagWorkflowPublishesSidecars(tag) {
+  const source = readFileAtTag(tag, WORKFLOW, { optional: true });
+  if (source === null) return false;
+  return uploadStepPublishesSidecars(stripYamlComments(source));
 }
 
 /** Default mode: the three functional lists must agree. */
@@ -295,8 +250,10 @@ function checkSourceParity() {
   }
 
   // The upload step must name assets with the exact expression the resolver
-  // expects, or the six correct archives upload under the wrong names.
-  checkUploadAssetName(workflow);
+  // expects (or the six correct archives upload under the wrong names) and
+  // must ship a .sha256 sidecar with every archive (or the fail-closed
+  // install-time verification in checksum.ts breaks every install).
+  checkUploadStep(workflow, WORKFLOW, PLATFORM_TS);
 
   // Validate matrix: a deliberate cost-saving subset, never an unknown
   // target, and its legs must build the triple their target names.
@@ -355,32 +312,40 @@ async function fetchReleaseAssetNames(tag) {
 }
 
 /**
- * --release mode: every expected archive must exist on the release, by the
+ * --release mode: every expected asset must exist on the release, by the
  * exact name the resolver downloads. The expected set is the TAG's own
  * SUPPORTED_TARGETS (see parseTagSupportedTargets); the checked-out tree is
  * still source-parity-checked first, since on a `release` event it IS the
- * tag and on a backfill it is the gated workflow ref. Deliberately does NOT
- * expect .sha256 / SHA256SUMS sidecars: no workflow publishes them today,
- * so expecting them would turn every release red.
+ * tag and on a backfill it is the gated workflow ref. One .sha256 sidecar
+ * per archive is expected exactly when the tag's own workflow publishes
+ * sidecars (see tagWorkflowPublishesSidecars): the install-time check in
+ * checksum.ts fails closed for such versions, so a missing sidecar breaks
+ * every install of that platform just as surely as a missing archive -
+ * while pre-sidecar releases never claimed to ship one.
  */
 async function checkReleaseAssets(tag) {
   checkSourceParity();
   const targets = parseTagSupportedTargets(tag);
+  const sidecars = tagWorkflowPublishesSidecars(tag);
   const names = await fetchReleaseAssetNames(tag);
   if (names.length === 0) {
     fail(`release ${tag} has no assets at all; an empty list is a failure, not a pass`);
   }
-  const expected = targets.map((t) => `ifc-lite-server-${t}.${archiveExtFor(splitTriple(t).platform)}`);
+  const archives = targets.map((t) => `ifc-lite-server-${t}.${archiveExtFor(splitTriple(t).platform)}`);
+  const expected = sidecars ? archives.flatMap((a) => [a, `${a}.sha256`]) : archives;
   const missing = expected.filter((name) => !names.includes(name));
   if (missing.length) {
+    const kind = sidecars ? 'assets (one archive plus one .sha256 sidecar per target)' : 'archives';
     fail(
-      `release ${tag} is missing ${missing.length} of ${expected.length} archives its own SUPPORTED_TARGETS names:\n` +
+      `release ${tag} is missing ${missing.length} of ${expected.length} ${kind} its own SUPPORTED_TARGETS names:\n` +
       missing.map((name) => `  ${name}`).join('\n'),
     );
   }
   console.log(
-    `check-server-bin-targets: OK - release ${tag} carries all ${expected.length} archives ` +
-    `its own SUPPORTED_TARGETS names (${targets.join(', ')})`,
+    `check-server-bin-targets: OK - release ${tag} carries all ${archives.length} archives ` +
+    (sidecars
+      ? `and ${archives.length} checksum sidecars its own SUPPORTED_TARGETS names (${targets.join(', ')})`
+      : `its own SUPPORTED_TARGETS names (${targets.join(', ')}; tag predates checksum sidecars, none required)`),
   );
 }
 

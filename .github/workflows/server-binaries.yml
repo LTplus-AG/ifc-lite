@@ -243,14 +243,50 @@ jobs:
         run: |
           Compress-Archive -Path "dist/ifc-lite-server.exe" -DestinationPath "ifc-lite-server-${{ matrix.target }}.zip"
 
+      - name: Create Checksum Sidecar
+        # The sidecar must hash the SAME bytes that get uploaded, so it is
+        # computed here, right after the archive is written, on the leg's own
+        # runner - never from a later rebuild. Forced to bash on all three
+        # OSes for the same reason as the build step above. sha256sum does
+        # not exist on the macOS runners (shasum is the macOS spelling), so
+        # probe for either and fail hard when neither exists: an archive
+        # published without its sidecar would defeat the fail-closed
+        # install-time verification in packages/server-bin/src/checksum.ts.
+        shell: bash
+        run: |
+          # Deliberately NOT named `asset`: that binding lives in the upload
+          # step below, where the parity gate pins it, and a second variable
+          # of the same name in another step invites edits to the wrong one.
+          # A drift between this name and the upload step's fails loudly at
+          # upload time (file not found), never silently.
+          built="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256_tool="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then
+            sha256_tool="shasum -a 256"
+          else
+            echo "ERROR: neither sha256sum nor shasum exists on this runner; refusing to build an unverifiable archive" >&2
+            exit 1
+          fi
+          # The backfill branch of the upload step below hashes published
+          # bytes with the same tool; export the probed spelling once.
+          echo "SHA256_TOOL=$sha256_tool" >> "$GITHUB_ENV"
+          $sha256_tool "$built" > "$built.sha256"
+          # Self-check before anything can reach a release: exactly the
+          # "<64-hex>  <archive>" line the install-time parser accepts.
+          grep -Eq "^[0-9a-f]{64} [ *]?$built\$" "$built.sha256"
+          cat "$built.sha256"
+
       - name: Upload Build Artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ifc-lite-server-${{ matrix.target }}
-          path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
+          path: |
+            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
+            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}.sha256
           if-no-files-found: error
-          # Ad-hoc rebuild artifacts only — keep them briefly so they
+          # Ad-hoc rebuild artifacts only - keep them briefly so they
           # don't accumulate against Actions storage.
           retention-days: 1
 
@@ -265,10 +301,13 @@ jobs:
         shell: bash
         run: |
           asset="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
+          sidecar="$asset.sha256"
           if [ "$GITHUB_EVENT_NAME" = "release" ]; then
             # Fresh release: assets are being created for the first time, so
-            # --clobber is the correct idempotent choice for job re-runs.
-            gh release upload "$RELEASE_TAG" "$asset" --clobber
+            # --clobber is the correct idempotent choice for job re-runs. The
+            # sidecar is listed first so no upload ordering exists where the
+            # archive is downloadable while its checksum is not.
+            gh release upload "$RELEASE_TAG" "$sidecar" "$asset" --clobber
           else
             # Manual backfill of an existing release: every matrix leg runs,
             # including platforms whose assets are already healthy, and
@@ -276,12 +315,32 @@ jobs:
             # uploading ("If the upload fails, the original assets will be
             # lost"). A transient failure would then destroy a working
             # archive for a platform that was never broken. So only upload
-            # what is actually missing, and never clobber.
+            # what is actually missing, and never clobber a healthy archive.
             existing="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
-            if printf '%s\n' "$existing" | grep -qxF "$asset"; then
+            have() { printf '%s\n' "$existing" | grep -qxF "$1"; }
+            if have "$asset"; then
               echo "$asset already exists on $RELEASE_TAG; leaving the healthy asset untouched"
+              if have "$sidecar"; then
+                echo "$sidecar already exists on $RELEASE_TAG; leaving it untouched"
+              else
+                # The sidecar must hash the bytes installs actually download,
+                # which are the PUBLISHED archive's: a fresh rebuild is byte-
+                # different (archive timestamps at minimum), so hashing this
+                # job's rebuild would make every install of the platform fail
+                # closed. Hashing the published bytes pins them against future
+                # tampering or corruption; it cannot retroactively prove where
+                # they came from, which is the honest limit of a backfilled
+                # checksum.
+                mkdir -p published
+                gh release download "$RELEASE_TAG" --pattern "$asset" --dir published
+                (cd published && $SHA256_TOOL "$asset" > "../$sidecar")
+                gh release upload "$RELEASE_TAG" "$sidecar"
+              fi
             else
-              gh release upload "$RELEASE_TAG" "$asset"
+              # The archive is missing, so any sidecar left on the release
+              # hashes bytes that no longer exist; --clobber replaces that
+              # stale sidecar (and is a no-op for the missing archive itself).
+              gh release upload "$RELEASE_TAG" "$sidecar" "$asset" --clobber
             fi
           fi
         env:
@@ -325,6 +384,10 @@ jobs:
           persist-credentials: false
 
       - name: Verify release carries every supported platform archive
+        # Also verifies one .sha256 sidecar per archive when the tag's own
+        # workflow publishes them (the checker inspects the tag's
+        # server-binaries.yml, so pre-sidecar releases stay verifiable
+        # without demanding assets they never claimed to ship).
         # The script reads the expected archive set from the TAG'S OWN
         # platform.ts (git show), not from this checkout: on a manual
         # backfill the checkout is the workflow ref (main), whose

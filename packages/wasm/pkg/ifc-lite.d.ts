@@ -10,6 +10,12 @@ export class ClashIntersectionSolidJs {
     [Symbol.dispose](): void;
     /**
      * `""` when `isSolid`, otherwise one of:
+     * - `"malformed-operand"` — `positionsA`/`positionsB` is not a flat
+     *   `[x, y, z, …]` triple (length not a multiple of 3), or
+     *   `indicesA`/`indicesB` references a vertex past the end of its own
+     *   operand's positions. Computing on either would silently drop the
+     *   offending triangle rather than report the true operand, so this is
+     *   caught before the boolean runs at all.
      * - `"empty-operand"` — an operand had no triangles.
      * - `"no-overlap"` — the exact intersection is empty. Covers a disjoint
      *   pair AND a *touching* pair, including any graze below the kernel's

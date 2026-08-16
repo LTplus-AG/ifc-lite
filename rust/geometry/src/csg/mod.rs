@@ -184,7 +184,32 @@ fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
 
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
-    /// Epsilon for floating point comparisons
+    /// Floor for the classification epsilon in [`Self::clip_mesh`]
+    /// (`(extent * 2^-22).max(epsilon)`, see its doc comment). This is a raw
+    /// `f64` constant in whatever unit the mesh happens to be in when
+    /// `clip_mesh` runs — `clip_mesh` runs before `scale_mesh`
+    /// (`router/processing.rs:818` vs `:846`), so that's the file's native
+    /// unit, not metres, and this field is never rescaled by `unit_scale`.
+    ///
+    /// KNOWN LIMITATION (pre-existing, not introduced by the
+    /// magnitude-scaling fix above): because the floor is a fixed file-unit
+    /// constant, identical physical geometry can classify differently
+    /// depending on whether the file's units are metres or millimetres.
+    /// The scaled term (`extent * 2^-22`) overtakes this floor at a physical
+    /// extent of about 4.19 file units (`1e-6 / 2^-22 ≈ 4.194304`) — above
+    /// that, both unit choices converge on the same scaled epsilon. Below
+    /// it, a metre-authored file stays floored at a constant `1e-6 m` (1
+    /// micrometre) regardless of how small the operand gets, while a
+    /// millimetre-authored file's scaled term keeps shrinking with the
+    /// operand (the floor in mm-file-units, `1e-6 mm`, is a nanometre and is
+    /// essentially never reached) — so the two units can pick different
+    /// epsilons, by up to ~40x, for the same real-world extent below the
+    /// crossover. Both sides remain sub-micrometre, and no building-scale
+    /// corpus fixture has exercised it. Left undone deliberately: rescaling
+    /// this floor by `unit_scale` is exactly the kind of tolerance change
+    /// that needs its own PR with its own corpus evidence, not a
+    /// fold-in-on-review-comment fix (see the 122x-looser-floor mistake this
+    /// PR itself avoided by not reusing `near_band_from_extent`).
     pub epsilon: f64,
     /// Boolean / CSG failures recorded since the last `take_failures()`.
     /// Interior-mutable so the existing `&self` API stays unchanged.

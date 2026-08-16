@@ -7,10 +7,13 @@
 //! fixed `1e-6`.
 //!
 //! `ClippingProcessor` (`csg/mod.rs`) classifies each triangle vertex against
-//! a clip plane with `d >= -epsilon`. That plane arrives in WORLD coordinates
-//! (`IfcAxis2Placement3D`, decoded in f64 — see `parse_half_space_solid` in
-//! `processors/boolean/mod.rs`), while mesh vertex positions are f32-native.
-//! Once a world coordinate exceeds 16 m, the f32 ULP is larger than a fixed
+//! a clip plane with `d >= -epsilon`. That plane arrives in the representation
+//! item's LOCAL, pre-scale, file-unit coordinates (`IfcAxis2Placement3D`,
+//! decoded in f64 — see `parse_half_space_solid` in `processors/boolean/mod.rs`)
+//! — `clip_mesh` runs at `router/processing.rs:818`, before `scale_mesh` (:846)
+//! and before `apply_placement` (which folds in the element's world placement
+//! at the element level, after this returns) — while mesh vertex positions are
+//! f32-native in that same local frame. Once a coordinate exceeds 16 m, the f32 ULP is larger than a fixed
 //! `1e-6`, so a vertex meant to sit exactly on the plane (signed distance 0,
 //! e.g. a cut flush with a box face) can be quantized to the wrong side of the
 //! epsilon band purely from float noise — dropping or flipping triangles that

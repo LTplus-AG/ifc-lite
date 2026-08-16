@@ -5,10 +5,12 @@
 Fix half-space plane clipping (`IfcHalfSpaceSolid`/`IfcPolygonalBoundedHalfSpace`
 subtracts, layered-material band splitting) dropping or misclassifying geometry far
 from the model origin. `ClippingProcessor` classified each triangle vertex against
-the clip plane with a fixed `epsilon = 1e-6`, but the plane arrives in world
-coordinates (f64, from `IfcAxis2Placement3D`) while mesh vertices are f32-native.
-Once a world coordinate passes 16 m from the origin, the f32 rounding step
-exceeds that fixed epsilon, so a vertex meant to sit exactly on the plane (e.g. a cut
+the clip plane with a fixed `epsilon = 1e-6`, but the plane arrives in the
+representation item's local, pre-scale, file-unit coordinates (f64, from
+`IfcAxis2Placement3D`, decoded before `apply_placement` or unit scaling run)
+while mesh vertices are f32-native in that same frame. Once a coordinate passes
+16 m from the origin, the f32 rounding step exceeds that fixed epsilon, so a
+vertex meant to sit exactly on the plane (e.g. a cut
 flush with a box face) could land on the wrong side of it — non-monotonically, since
 it depends on which way the rounding lands rather than on distance alone. A unit-box
 flush cut at 1e-6 lost its entire cross-section at a 100.7 m offset and again at a

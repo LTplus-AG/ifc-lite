@@ -192,6 +192,60 @@ describe('generateViewPdf (#2042)', () => {
     assert.ok(Math.abs(extent.maxY - 40) < 1e-3, `bottom edge at ${extent.maxY}, expected 40`);
   });
 
+  it('drops the dashed hidden edges when the user turns them off', async () => {
+    // The dialog exposes this as "Show hidden edges as dashed lines". A closed
+    // box always has occluded far-side edges, so the default run must produce
+    // dashed strokes for this test to mean anything - asserting "zero dashed
+    // when off" alone would pass just as well against a pipeline that never
+    // classified anything hidden in the first place.
+    // A convex box on its own has NO occluded edges - its silhouette is its
+    // outline and all of it is visible - so the fixture needs a real occluder:
+    // a small box parked behind the big one (smaller z is further from the
+    // camera) and inside its X/Y footprint, so the big box hides it entirely.
+    const HIDDEN_BOX = { min: { x: 1, y: 1, z: -3 }, max: { x: 2, y: 2, z: -2 } };
+    const occluded = () => view([boxMesh(), boxMesh(HIDDEN_BOX, 43)]);
+
+    const withHidden = recorder();
+    await generateViewPdf(
+      { view: occluded(), camera: CAMERA, section: null, scaleFactor: 100, includeHiddenLines: true },
+      { createDocument: withHidden.createDocument, download: withHidden.download },
+    );
+    const dashedCount = withHidden.record.strokes.filter((s) => s.dashed).length;
+    assert.ok(dashedCount > 0, 'a closed box must have occluded edges to hide');
+
+    const withoutHidden = recorder();
+    await generateViewPdf(
+      { view: occluded(), camera: CAMERA, section: null, scaleFactor: 100, includeHiddenLines: false },
+      { createDocument: withoutHidden.createDocument, download: withoutHidden.download },
+    );
+    assert.equal(
+      withoutHidden.record.strokes.filter((s) => s.dashed).length,
+      0,
+      'turning hidden edges off must leave no dashed strokes',
+    );
+
+    // The defect this pins: "off" must mean the occluded edges are OMITTED,
+    // not merely left unclassified and printed as solid lines. The hidden box
+    // spans world x 1..2, y 1..2, which is page x 20..30, y 20..30 - strictly
+    // inside the outer box's outline, so any stroke landing in that window is
+    // the phantom. Counting strokes alone cannot see this: both runs emit 8.
+    const phantom = withoutHidden.record.strokes.filter(
+      (s) =>
+        Math.min(s.x1, s.x2) > 12 && Math.max(s.x1, s.x2) < 48 &&
+        Math.min(s.y1, s.y2) > 12 && Math.max(s.y1, s.y2) < 38,
+    );
+    assert.equal(
+      phantom.length,
+      0,
+      'an edge hidden behind the box must not print at all when hidden edges are off',
+    );
+    assert.equal(
+      withoutHidden.record.strokes.length,
+      withHidden.record.strokes.length - dashedCount,
+      'exactly the hidden strokes must be dropped, and nothing else',
+    );
+  });
+
   it('puts a feature at world +X/+Y in the TOP-RIGHT of the page, not its mirror', async () => {
     // The page-size assertions above cannot see a mirror: a box's drawing
     // bounds are symmetric about the basis origin, so negating X moves nothing.

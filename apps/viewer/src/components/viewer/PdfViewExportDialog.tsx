@@ -30,6 +30,7 @@ import { AlertCircle, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -110,6 +111,7 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
   const [open, setOpen] = useState(false);
   const [scaleChoice, setScaleChoice] = useState<string>('displayed');
   const [customScale, setCustomScale] = useState('100');
+  const [showHiddenEdges, setShowHiddenEdges] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [phase, setPhase] = useState<string | null>(null);
 
@@ -199,6 +201,7 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
         section: source.section,
         scaleFactor,
         marginMm: VIEW_PDF_MARGIN_MM,
+        includeHiddenLines: showHiddenEdges,
         onProgress: (stage) => setPhase(PHASE_LABEL[stage] ?? 'Working'),
       });
       const message =
@@ -210,6 +213,7 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
         scale_factor: scaleFactor,
         projection_mode: camera.projectionMode,
         section_enabled: source.section !== null,
+        hidden_edges: showHiddenEdges,
       });
       setOpen(false);
     } catch (err) {
@@ -345,6 +349,22 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
               Orthographic camera. The PDF matches your viewport exactly.
             </p>
           )}
+
+          <div className="flex items-center justify-between gap-4">
+            <Label className="text-sm font-normal" htmlFor="pdf-view-hidden-edges">
+              Show hidden edges as dashed lines
+            </Label>
+            <Switch
+              id="pdf-view-hidden-edges"
+              checked={showHiddenEdges}
+              onCheckedChange={setShowHiddenEdges}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {showHiddenEdges
+              ? 'Edges behind other geometry print as dashed lines.'
+              : 'Only edges you can actually see are printed.'}
+          </p>
 
           {source?.sectionEnabled && (
             <p className="text-xs text-muted-foreground">

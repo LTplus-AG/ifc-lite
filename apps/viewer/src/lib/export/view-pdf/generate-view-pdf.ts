@@ -168,7 +168,9 @@ export async function generateViewPdf(
     projectionDepth: viewDepth,
     projectionBelowDepth: viewDepth,
     projectionAboveDepth: ABOVE_PLANE_DEPTH_M,
-    includeHiddenLines: input.includeHiddenLines ?? true,
+    // ALWAYS classify, whatever the user asked for. See the note at the
+    // `writeDrawing` call: "off" must mean omitted, not undetected.
+    includeHiddenLines: true,
     scale: input.scaleFactor,
   });
   config.plane = plane;
@@ -183,7 +185,7 @@ export async function generateViewPdf(
     await generator.initialize();
     drawing = await generator.generate(drawnMeshes, config, {
       useGPU: false,
-      includeHiddenLines: input.includeHiddenLines ?? true,
+      includeHiddenLines: true,
       includeProjection: true,
       includeEdges: true,
       mergeLines: true,
@@ -199,6 +201,12 @@ export async function generateViewPdf(
   // `worldPointToPdfMm` supplies the one paper Y flip. See the module docblock.
   const layout = computePdfScaleLayout(drawing.bounds, input.scaleFactor, marginMm);
   const doc = await (deps.createDocument ?? createJsPdfDocument)(layout.page);
+  // The ONLY place the "show hidden edges" choice is honoured. Classification
+  // above always runs, because skipping it does not remove occluded edges - it
+  // leaves them unclassified, so they print as SOLID lines indistinguishable
+  // from geometry the viewer can actually see. That is strictly worse than the
+  // dashes the user turned off: an engineer measuring the sheet cannot tell
+  // the phantom edge from a real one. Classify always, draw selectively.
   const strokeCount = writeDrawing(doc, drawing.lines, layout.transform, {
     includeHiddenLines: input.includeHiddenLines ?? true,
   });

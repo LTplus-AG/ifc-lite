@@ -24,20 +24,24 @@
 const LIMIT: usize = 400;
 const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 
-/// Sum of every recorded budget in the allowlist, pinned HERE rather than in the
-/// allowlist itself: a total derived from the file it guards is circular and
-/// always passes.
+/// Digest of every `(path, budget)` pair in the allowlist, pinned HERE rather
+/// than in the allowlist itself: a figure derived from the file it guards is
+/// circular and always passes.
 ///
 /// Rule 2 above ("an allowlisted file that GROWS past its recorded budget
-/// fails") has an escape hatch that is invisible in its own output: raising the
-/// budget in the SAME commit that grows the file satisfies it. That is how a
-/// raise reached main and had to be undone afterwards (#2658).
+/// fails") has an escape hatch invisible in its own output: raising the budget
+/// in the SAME commit that grows the file satisfies it. That is how a raise
+/// reached main and had to be undone afterwards (#2658).
 ///
-/// Any raise moves this total, so loosening the ratchet becomes one reviewable
-/// line in the diff instead of a number buried among 64 rows. Shrinking must
-/// lower it too, so the total keeps stating the real figure rather than
-/// accumulating slack - slack in a ratchet is how it stops ratcheting.
-const ALLOWLIST_BUDGET_TOTAL: usize = 58058;
+/// A plain SUM was the first attempt and is not enough: raising one budget by
+/// 100 while lowering another by 100 leaves the total unchanged, so a
+/// compensating edit still slips through. The digest moves for ANY change to
+/// ANY row, so loosening the ratchet always costs one reviewable line here.
+///
+/// FNV-1a over the sorted rows rather than `DefaultHasher`, whose output is
+/// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
+/// would rewrite the digest and fail CI for no reason.
+const ALLOWLIST_DIGEST: u64 = 14502876922314898564;
 
 /// Repo root = first ancestor holding both `rust/` and `apps/`. `None` in a
 /// packaged/standalone context (the test then skips, like `styling_parity`).
@@ -247,15 +251,36 @@ fn allowlist_is_well_formed_and_over_limit() {
     );
 }
 
-/// The allowlist's total budget must equal the pinned figure, in BOTH
-/// directions. Growth means a budget was raised; shrinkage means one was
-/// lowered or a row deleted. Either way the pinned total moves with it, in the
-/// same commit, where a reviewer sees it.
+/// The allowlist's content digest must equal the pinned figure. Any raise, any
+/// lowering, any added or removed row moves it, including a compensating pair
+/// that leaves the total untouched. Growth and shrinkage both fail, so the
+/// pinned value keeps stating the real allowlist in the same commit that
+/// changes it, where a reviewer sees it.
 #[test]
-fn allowlist_budget_total_is_pinned() {
-    let actual: usize = parse_allowlist().values().sum();
+fn allowlist_digest_is_pinned() {
+    let actual = allowlist_digest();
+    let total: usize = parse_allowlist().values().sum();
     assert_eq!(
-        actual, ALLOWLIST_BUDGET_TOTAL,
-        "module_size_allowlist.txt budgets now total {actual}, but          ALLOWLIST_BUDGET_TOTAL in module_size_ratchet.rs reads          {ALLOWLIST_BUDGET_TOTAL}.\n\n         Raising a budget loosens the ratchet, so it must be visible: update          the total in the SAME commit and say in the PR why the module cannot          be split. Lowering one is welcome, and the total must follow so it          keeps stating the real figure."
+        actual, ALLOWLIST_DIGEST,
+        "module_size_allowlist.txt digest is {actual} (budgets total {total}), but \
+         ALLOWLIST_DIGEST in module_size_ratchet.rs reads {ALLOWLIST_DIGEST}.\n\n\
+         Raising a budget loosens the ratchet, so it must be visible: set \
+         ALLOWLIST_DIGEST to {actual} in the SAME commit and say in the PR why \
+         the module cannot be split. Lowering one, or deleting a row, is welcome \
+         and must update the digest too so it keeps stating the real allowlist."
     );
+}
+
+/// FNV-1a over `path budget` rows, sorted by path so the digest is a function
+/// of the allowlist's CONTENT and not of its line order.
+fn allowlist_digest() -> u64 {
+    let map = parse_allowlist();
+    let mut rows: Vec<String> = map.iter().map(|(p, b)| format!("{p} {b}")).collect();
+    rows.sort();
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in rows.join("\n").bytes() {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    hash
 }

@@ -166,6 +166,49 @@ fn tri_volume(tris: &[Tri]) -> f64 {
 /// gate's comment in [`intersection_solid`] for why pooling them together
 /// was wrong.
 ///
+/// # Known limitation: shared-VERTEX, not shared-EDGE, is a coarser notion
+/// of connectedness than "one overlap region" (PR #2573 review)
+///
+/// Two triangles that touch at a single bit-identical vertex — no shared
+/// edge — are unioned into one component here, even when they are otherwise
+/// two disjoint overlap regions that merely snap to a common point (e.g. a
+/// 0.1 mm sliver and a 10 m-scale triangle pinned together at one corner,
+/// `clash_solid_tests::two_triangles_sharing_only_one_vertex_are_still_
+/// pooled_into_one_component_a_known_limitation`). Merged that way, the
+/// gate's per-component extent loop pools their bounding boxes into a span
+/// as large as the operands themselves — structurally the same
+/// pooled-bounding-box overshoot that
+/// `two_disjoint_below_band_slivers_are_withheld_not_pooled_into_one_
+/// bounding_box` (`clash_intersection_oracle.rs`) was written to close for
+/// full disjointness, reached here instead via a shared touching vertex.
+///
+/// This is left unfixed rather than reflex-fixed to shared-EDGE adjacency
+/// (the standard notion of surface connectedness), for two reasons:
+///
+/// 1. **Not shown reachable through the public API.** The 25-case
+///    `clash_intersection_oracle` suite, and direct attempts to construct two
+///    disjoint overlap wedges that snap to a shared vertex through
+///    `intersection_solid`, did not produce this arrangement — only a
+///    hand-built call to this private function did. It is a demonstrated
+///    algorithmic gap, not a proven wrong answer from real geometry.
+/// 2. **Switching to shared-EDGE adjacency was tried and regressed a real,
+///    previously-passing case.** Requiring triangles to share a full edge
+///    (both endpoints bit-identical, undirected) broke
+///    `rotated_near_band_overlap_is_withheld_exactly_as_the_axis_aligned_
+///    one_is` (`clash_intersection_oracle.rs`): at 1 snap cell, tessellation
+///    1, it reported `thickness_m == 0` instead of the true ~15.26 µm depth
+///    — a genuinely connected wedge the kernel's arrangement produced got
+///    split into components that no longer shared a full edge with their
+///    neighbours. This is consistent with (not confirmed as) a non-conforming
+///    triangulation on that wedge — a T-junction where two facets share a
+///    vertex along a boundary without matching it on both sides — which
+///    shared-vertex adjacency tolerates and shared-edge adjacency does not.
+///    Whatever the exact mechanism, the observation stands: the kernel's own
+///    arrangement output does not reliably satisfy "adjacent facets share a
+///    full edge," so requiring it here is not a safe tightening, and shipping
+///    it would trade an unreached vertex-sharing gap for a demonstrated,
+///    reproducible regression on real kernel output.
+///
 /// Union-find over triangle indices, unioned via a vertex-key → first-seen
 /// triangle map: O(tris) with a small constant, same asymptotic cost as the
 /// welding pass right below it.
@@ -345,3 +388,7 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         volume_m3: tri_volume(&tris),
     }
 }
+
+#[cfg(test)]
+#[path = "clash_solid_tests.rs"]
+mod clash_solid_tests;

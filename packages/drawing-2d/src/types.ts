@@ -159,8 +159,20 @@ export interface DrawingLine {
   ifcType: string;
   /** Model index for multi-model federation */
   modelIndex: number;
-  /** Distance from section plane (for depth sorting) */
+  /**
+   * VIEW DEPTH at the line's start point (issue #2639, see the convention
+   * comment in projection-bands.ts): the negated flip-adjusted signed depth,
+   * so 0 at the cut plane, increasing into the kept half, smaller means
+   * nearer the viewer. Hidden-line removal compares this against the
+   * occluder depth buffer, which stores the same quantity.
+   */
   depth: number;
+  /**
+   * View depth at the line's END point, when it differs from `depth` (e.g.
+   * a sloped edge). The hidden-line classifier lerps `depth`..`depthEnd`
+   * along the 2D line per sample; omitted means constant depth.
+   */
+  depthEnd?: number;
 }
 
 /**

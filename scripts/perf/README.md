@@ -105,6 +105,7 @@ WASM-specific structural cost (not in the native probe, by design):
 |------|--------------------|
 | `rust/processing/examples/csg_scaling_bench.rs` (`--features csg-capture`) | Does native CSG scale with cores? (captures + replays the void-cut corpus under 1/2/4/8 threads) |
 | `rust/export/examples/glb_export_profile.rs` | GLB export phase split (index / mesh / assemble+serialize) + per-type triangle mass |
+| `rust/export/examples/index_vs_scan.rs` | For a whole-file helper: how much is the entity index and how much is the scan? |
 | `rust/csg-thread-bench/` (detached crate, `build.sh` + `web/serve.mjs`) | Threaded-WASM CSG: atomics tax + SharedArrayBuffer scaling in the browser |
 
 ## Lever ledger (read before spiking)
@@ -112,6 +113,25 @@ WASM-specific structural cost (not in the native probe, by design):
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Shipped wins
+- **Entity indexes built and never read** (`index_vs_scan.rs`): `relationships()`
+  built a full parallel index and handed it to the decoder, but every decode in it
+  is `decode_at_with_id` over the scanner's own spans and only `decode_by_id`
+  consults an index. Dead work, deleted. `extract_georeferencing` does need one, so
+  it gained a `_with_index` variant and `process_geometry` now passes the index it
+  already holds instead of paying a second scan.
+  Measured best-of-3 on the release fixtures, ms: O-S1-BWK 327 MB, parallel index
+  58.3, bare type scan 180.8, `relationships()` 234.6, `extract_georeferencing()`
+  337.6; schependomlaan 47 MB, 8.5 / 27.3 / 38.1 / 48.5. **Honest size: about 1% of
+  a large conversion.** It is worth having because it is free and hits every model,
+  not because it is big.
+  **Lesson, and the reason this entry exists:** check which decode family a helper
+  uses before handing it an index. The scan is the larger half of both of these, so
+  "share the index" was never going to be the lever it looked like from a sampled
+  profile that folded index build, scan and decode into one bucket.
+  **Harness gap, third of its kind:** `probe.sh` cannot see this change at all.
+  `ProcessingStats` closes its timers before the metadata block that calls
+  georeferencing runs, so the probe table is flat on this diff by construction.
+  A flat table here is a control, not a measurement.
 - **CDT: kill the three O(T)-per-item scans**: ISSUE_129 geometry 1568 -> 646 ms
   (main, pre-seam-conform, is 979), **byte-identical output** on 8 fixtures incl.
   advanced_model (FNV over every mesh). The quality CDT — not the seam conform —
@@ -188,6 +208,15 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".
+- **GLB export computes georeferencing nobody on that path reads** (CANDIDATE — the cost is
+  measured, the fix is not designed): `process_geometry`'s metadata block always runs the
+  georeferencing extraction, and `rust/export` has no reference to
+  `metadata.georeferencing` anywhere. The streaming GLB paths run the pipeline twice, so a
+  large export pays it twice. After the index sharing above, what remains is the scan and
+  decode: roughly 280 ms per pass on a 327 MB fixture, so about 560 ms on a streaming
+  export. The field cannot simply go — the server serves it — so this needs an opt-out on
+  the options struct, defaulting to on, plus a per-exporter audit. That is its own review
+  unit and its own measurement, which is why it is not in the PR that shipped the sharing.
 - **Brotli -q11 on the served bundle** (CANDIDATE — unvalidated): a single local estimate
   suggested Vercel serves ~1266 KB where brotli -q11 reaches ~947 KB (~25% smaller cold
   download). NOT confirmed against the real served response — Vercel controls its own

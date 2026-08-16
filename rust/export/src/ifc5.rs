@@ -7,7 +7,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{build_entity_index, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
@@ -86,14 +86,28 @@ pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Optio
     (r.spatial_children, r.project)
 }
 
+/// Decode exactly one entity, found by scanning for its id.
+///
+/// The alternative is `build_entity_index` plus `decode_by_id`, which builds a
+/// map of every entity in the file to answer one question: a full serial scan
+/// and a multi-million-entry allocation on a large model. This walks until it
+/// finds the id and stops, so a project node near the top of `DATA` costs almost
+/// nothing. Worth it only for a handful of lookups, which is what the callers do.
+pub(crate) fn decode_one(content: &[u8], id: u32) -> Option<DecodedEntity> {
+    let mut decoder = EntityDecoder::new(content);
+    let mut scanner = EntityScanner::new(content);
+    while let Some((entity_id, _type_name, start, end)) = scanner.next_entity() {
+        if entity_id == id {
+            return decoder.decode_at(start, end).ok();
+        }
+    }
+    None
+}
+
 /// Decode the IfcProject node (id, name) — it is not an IfcProduct so the export
 /// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
 pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
-    let index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
-    decoder
-        .decode_by_id(project_id)
-        .ok()
+    decode_one(content, project_id)
         .and_then(|e| e.get(2).and_then(|a| a.as_string()).map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Project".to_string())

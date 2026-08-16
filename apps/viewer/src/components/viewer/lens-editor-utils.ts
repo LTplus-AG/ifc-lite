@@ -2,10 +2,23 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { Lens, LensRule, AutoColorSpec } from '@/store/slices/lensSlice';
+import type { Lens, LensRule, LensCriteria, AutoColorSpec } from '@/store/slices/lensSlice';
 // Import the value directly from the source package (not via the slice) to avoid
 // a circular value import: lensSlice imports the helpers from this module.
-import { AUTO_COLOR_SOURCES } from '@ifc-lite/lens';
+import { AUTO_COLOR_SOURCES, MAX_COMPOUND_DEPTH } from '@ifc-lite/lens';
+
+/**
+ * Runtime shape guard for one compound member: must be a non-null object so
+ * `.type` can be read safely. Mirrors the engine's own `isCriteriaRecord`
+ * (packages/lens/src/matching.ts) - a hand-edited lens file can put anything
+ * into a compound's `conditions` array (`null`, a string, a number), and the
+ * engine already fails such a member closed rather than throwing. The
+ * editor's own recursions below (clone, name, validity) must do the same
+ * instead of crashing inside a React event handler on Edit/Duplicate.
+ */
+function isCriteriaLike(value: unknown): value is LensCriteria {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 /**
  * Build the {@link Lens} to persist from an auto-color editor session.
@@ -30,27 +43,218 @@ export function buildAutoColorLensToSave(
 }
 
 /**
+ * Deep-clone a lens rule's criteria, recursively.
+ *
+ * A compound criteria (`type: 'and' | 'or'`) nests further criteria in its
+ * `conditions` array - which may itself contain further compounds. A
+ * shallow `{ ...criteria }` copy still aliases that array (and any nested
+ * compound's own array) with the source object. Any later mutation reached
+ * through the copy - e.g. editing a duplicated lens, or a future
+ * compound-authoring UI - would then silently corrupt the original through
+ * the shared reference. Leaf criteria have no nested structure, so a
+ * shallow copy is sufficient for them.
+ *
+ * `depth` caps the recursion at {@link MAX_COMPOUND_DEPTH}, matching the
+ * engine's own compound-depth cap: a pathological hand-edited lens file
+ * (thousands of nested `and`/`or` levels) parses and imports fine, and the
+ * engine correctly treats it as inert past the cap - but without this guard,
+ * clicking Edit or Duplicate on that lens would recurse unboundedly and throw
+ * `RangeError: Maximum call stack size exceeded` inside a React event
+ * handler. Beyond the cap the conditions array is copied one level shallow
+ * (not recursed into) rather than cloned further - acceptable because the
+ * engine already treats everything past the cap as unreachable/inert. A
+ * non-object member (`null`, a string, a number - possible via hand-edited
+ * JSON, since the import validator does not recurse into `conditions`) is
+ * left as-is rather than recursed into, matching the engine's own
+ * malformed-member guard (`isCriteriaRecord` in matching.ts) instead of
+ * throwing `TypeError: Cannot read properties of null`.
+ */
+export function cloneCriteria(criteria: LensCriteria, depth = 0): LensCriteria {
+  if (
+    (criteria.type === 'and' || criteria.type === 'or')
+    && Array.isArray(criteria.conditions)
+    && depth < MAX_COMPOUND_DEPTH
+  ) {
+    return {
+      ...criteria,
+      conditions: criteria.conditions.map((c) => (isCriteriaLike(c) ? cloneCriteria(c, depth + 1) : c)),
+    };
+  }
+  return { ...criteria };
+}
+
+/**
+ * Deep-clone every rule's criteria in a rule list via {@link cloneCriteria},
+ * preserving every other rule field. This is the one place that pattern is
+ * written - `rules.map(r => ({ ...r, criteria: cloneCriteria(r.criteria) }))`
+ * was duplicated at four call sites (the `LensEditor` state initializer,
+ * `handleEditLens`, `handleDuplicateLens`, and here in
+ * {@link duplicateLensConfig}) before being lifted out; a future fifth call
+ * site that hand-rolls the same shallow spread instead of calling this would
+ * silently reopen the aliasing bug this whole file exists to close.
+ */
+export function cloneLensRules(rules: readonly LensRule[]): LensRule[] {
+  return rules.map((r) => ({ ...r, criteria: cloneCriteria(r.criteria) }));
+}
+
+/**
  * Build an editable copy of a lens.
  *
  * The copy gets a fresh id, a "(copy)" suffix, and (crucially) drops the
- * `builtin` flag so it can be edited and deleted — duplicating a built-in
+ * `builtin` flag so it can be edited and deleted - duplicating a built-in
  * preset is how the user gets an editable starting point (e.g. add CLADDING
  * to a copy of "Building Envelope"). Rule ids are regenerated and the
- * criteria object is cloned so editing the copy never mutates the source. (#1403)
+ * criteria object is deep-cloned (see {@link cloneCriteria}) so editing the
+ * copy - including a compound criteria's nested conditions - never mutates
+ * the source. (#1403)
  */
 export function duplicateLensConfig(lens: Lens, generateId: () => string): Lens {
   const newId = generateId();
   const copy: Lens = {
     id: newId,
     name: `${lens.name} (copy)`,
-    rules: lens.rules.map((r, i) => ({
-      ...r,
-      id: `${newId}-rule-${i}`,
-      criteria: { ...r.criteria },
-    })),
+    rules: cloneLensRules(lens.rules).map((r, i) => ({ ...r, id: `${newId}-rule-${i}` })),
   };
   if (lens.autoColor) copy.autoColor = { ...lens.autoColor };
   return copy;
+}
+
+/** True when a criteria is a compound (`and` / `or`) rather than a leaf. */
+export function isCompoundCriteria(criteria: LensCriteria): boolean {
+  return criteria.type === 'and' || criteria.type === 'or';
+}
+
+/**
+ * Human-readable label for a single criterion. Leaf types each derive a
+ * short name from their most identifying field (mirrors the panel's prior
+ * inline `deriveRuleName`). A compound recurses into its member conditions
+ * and joins their names - e.g. `AND (IfcWall, FireRating)` - so an imported
+ * compound rule gets an honest name instead of falling through to a generic
+ * default. Used both as a rule's display name and inside a compound's
+ * read-only summary tooltip (see {@link compoundCriteriaSummary}).
+ *
+ * `depth` caps the recursion at {@link MAX_COMPOUND_DEPTH} and a non-object
+ * member is named 'Invalid' rather than recursed into - same rationale as
+ * {@link cloneCriteria}: a hand-edited lens file's `conditions` array is not
+ * validated on import, so this must fail closed instead of throwing.
+ */
+export function deriveRuleName(
+  criteria: LensCriteria,
+  resolveModelName?: (modelId: string) => string | undefined,
+  depth = 0,
+): string {
+  switch (criteria.type) {
+    case 'ifcType': return criteria.ifcType ? criteria.ifcType.replace('Ifc', '') : 'New Rule';
+    case 'attribute': return criteria.attributeValue || criteria.attributeName || 'Attribute';
+    case 'property': return criteria.propertyName || 'Property';
+    case 'quantity': return criteria.quantityName || 'Quantity';
+    case 'classification': return criteria.classificationCode || criteria.classificationSystem || 'Classification';
+    case 'material': return criteria.materialName || 'Material';
+    case 'model': {
+      const name = criteria.modelId ? resolveModelName?.(criteria.modelId) : undefined;
+      return name || 'Model';
+    }
+    case 'group': return criteria.groupName || 'Zone';
+    case 'and':
+    case 'or': {
+      if (depth >= MAX_COMPOUND_DEPTH) return `${criteria.type.toUpperCase()} (too deeply nested)`;
+      const parts = (criteria.conditions ?? [])
+        .map((c) => (isCriteriaLike(c) ? deriveRuleName(c, resolveModelName, depth + 1) : 'Invalid'));
+      return parts.length > 0
+        ? `${criteria.type.toUpperCase()} (${parts.join(', ')})`
+        : `${criteria.type.toUpperCase()} (empty)`;
+    }
+    default: return 'Rule';
+  }
+}
+
+/**
+ * Read-only summary for a compound criterion: a short `label` ("AND - 2
+ * conditions") for the row itself, and an expanded `detail` string listing
+ * each member's name, for use as a tooltip.
+ *
+ * The panel deliberately does not offer authoring compound criteria yet -
+ * the rule editor's per-type controls only produce leaves. But the import
+ * path accepts a compound `criteria.type` (validated only structurally), so
+ * an imported compound rule must still be displayed honestly rather than
+ * degenerately falling through the leaf editor's type-specific branches
+ * (which all guard on `criteriaType === '<leaf>'` and so render nothing for
+ * `'and'` / `'or'`).
+ *
+ * `count` reflects the raw `conditions` array length (including any
+ * malformed member) so the label is honest about the imported shape; only
+ * `detail`'s per-member naming guards against a non-object member (see
+ * {@link deriveRuleName}), starting one level deep since these ARE the
+ * compound's immediate members.
+ */
+export function compoundCriteriaSummary(
+  criteria: LensCriteria,
+  resolveModelName?: (modelId: string) => string | undefined,
+): { label: string; detail: string } {
+  const conditions = criteria.conditions ?? [];
+  const count = conditions.length;
+  const kind = criteria.type.toUpperCase();
+  const detail = count > 0
+    ? conditions
+        .map((c) => (isCriteriaLike(c) ? deriveRuleName(c, resolveModelName, 1) : 'Invalid'))
+        .join(', ')
+    : 'No conditions';
+  return {
+    label: `${kind} - ${count} condition${count === 1 ? '' : 's'}`,
+    detail,
+  };
+}
+
+/**
+ * Check if a rule has sufficient criteria to be valid / saveable.
+ *
+ * A compound (`and` / `or`) with at least one member is valid even though
+ * the panel cannot author its members - the prior `default: return false`
+ * branch silently dropped every compound rule from `rules` on Save (the
+ * `LensEditor`'s `handleSave` filters through this predicate), destroying an
+ * imported compound rule the moment its lens was opened and re-saved. An
+ * empty/missing `conditions` array is treated as invalid, matching the
+ * engine's own fail-closed semantics for an empty group.
+ *
+ * A compound's members are validated recursively rather than just checked
+ * for a non-empty array: an `and` wrapping an incomplete leaf (e.g.
+ * `{ type: 'ifcType' }`, missing `ifcType`) can never match - `and` requires
+ * EVERY member to match - so it must be dropped exactly like the bare
+ * incomplete leaf would be, or Save silently persists a permanently-inert
+ * rule. An `or` only needs ONE valid member, mirroring the engine's own
+ * `matchesCompound`, where the other members of an `or` can still match even
+ * if one is absent/malformed. A non-object member (see {@link cloneCriteria}
+ * for why this is reachable via hand-edited import JSON) is invalid.
+ */
+export function isRuleValid(rule: LensRule): boolean {
+  return isCriteriaValid(rule.criteria, 0);
+}
+
+function isCriteriaValid(c: LensCriteria, depth: number): boolean {
+  switch (c.type) {
+    case 'ifcType': return !!c.ifcType;
+    case 'attribute': return !!c.attributeName;
+    case 'property': return !!c.propertySet && !!c.propertyName;
+    case 'quantity': return !!c.quantitySet && !!c.quantityName;
+    case 'classification': return !!c.classificationSystem || !!c.classificationCode;
+    case 'material': return !!c.materialName;
+    case 'model': return !!c.modelId;
+    // A blank group name is valid - it matches any entity assigned to a zone.
+    case 'group': return true;
+    case 'and': {
+      if (depth >= MAX_COMPOUND_DEPTH) return false;
+      const conditions = c.conditions;
+      if (!Array.isArray(conditions) || conditions.length === 0) return false;
+      return conditions.every((m) => isCriteriaLike(m) && isCriteriaValid(m, depth + 1));
+    }
+    case 'or': {
+      if (depth >= MAX_COMPOUND_DEPTH) return false;
+      const conditions = c.conditions;
+      if (!Array.isArray(conditions) || conditions.length === 0) return false;
+      return conditions.some((m) => isCriteriaLike(m) && isCriteriaValid(m, depth + 1));
+    }
+    default: return false;
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

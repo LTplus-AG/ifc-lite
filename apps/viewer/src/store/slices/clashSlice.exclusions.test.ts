@@ -15,9 +15,10 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import type { Clash, ClashElementRef, ClashResult } from '@ifc-lite/clash';
+import type { Clash, ClashElementRef, ClashGroup, ClashResult } from '@ifc-lite/clash';
 import { createClashSlice, type ClashSlice } from './clashSlice.js';
 import { elementPairExclusion, typeAnyExclusion, typePairExclusion } from '@/lib/clash/exclusions';
+import { DEFAULT_CLASH_SETTINGS } from '@/lib/clash/persistence';
 
 const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
 
@@ -172,6 +173,107 @@ describe('user-defined clash exclusions (store)', () => {
     );
     // The filtered result itself must be untouched by a pure view-setting change.
     assert.strictEqual(s.get().clashResult?.clashes.length, 2);
+  });
+
+  it('resetClashSettings re-derives clashGroups with the default radius (#2535)', () => {
+    // Same mechanism as the setClashClusterEpsilon test above, other direction:
+    // reset changes the radius back to 1.5m, and the derived grouping must
+    // follow immediately; before the fix the reset wrote the setting but the
+    // Issues view kept the clusters computed at the old radius until the next
+    // run.
+    const s = slice();
+    const clashes = [
+      clashAt(rail1, ballast, [0, 0, 0]),
+      clashAt(rail2, ballast, [5, 0, 0]),
+    ];
+    const result: ClashResult = {
+      clashes,
+      summary: {
+        total: 2,
+        byRule: { 'all-clashes': 2 },
+        byTypePair: { 'IfcCourse vs IfcRail': 2 },
+        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    s.get().setClashResult(result);
+    s.get().setClashClusterEpsilon(10);
+    assert.strictEqual(s.get().clashGroups?.length, 1, 'precondition: 10m radius merges the 5m-apart pair');
+
+    s.get().resetClashSettings();
+
+    assert.strictEqual(s.get().clashClusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon);
+    assert.strictEqual(
+      s.get().clashGroups?.length,
+      2,
+      'the derived grouping must follow the reset radius immediately, without a re-run',
+    );
+  });
+
+  it('applyClashFlavorConfig re-derives clashGroups with the flavor radius (#2535)', () => {
+    const s = slice();
+    const clashes = [
+      clashAt(rail1, ballast, [0, 0, 0]),
+      clashAt(rail2, ballast, [5, 0, 0]),
+    ];
+    const result: ClashResult = {
+      clashes,
+      summary: {
+        total: 2,
+        byRule: { 'all-clashes': 2 },
+        byTypePair: { 'IfcCourse vs IfcRail': 2 },
+        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
+      },
+      rulesRun: [],
+      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+    };
+    s.get().setClashResult(result);
+    assert.strictEqual(s.get().clashGroups?.length, 2, 'precondition: default 1.5m radius keeps the pair apart');
+
+    s.get().applyClashFlavorConfig({
+      presets: s.get().clashPresets,
+      settings: { ...DEFAULT_CLASH_SETTINGS, clusterEpsilon: 10 },
+    });
+
+    assert.strictEqual(s.get().clashClusterEpsilon, 10);
+    assert.strictEqual(
+      s.get().clashGroups?.length,
+      1,
+      'activating a flavor must regroup at its radius immediately, without a re-run',
+    );
+  });
+
+  it('a settings change leaves a manual duplicate-scan grouping alone (#2535)', () => {
+    // The duplicate scan overrides the derived clusters with coincident SETS
+    // (clashGroupsKind 'manual'). Re-deriving on a settings change must not
+    // clobber that: deriveGroups only replaces a manual grouping for a
+    // genuinely new run (newRun: true).
+    const s = slice();
+    s.get().setClashResult(sampleResult());
+    const manual: ClashGroup[] = [
+      {
+        id: 'set-1',
+        title: '3 coincident objects',
+        members: s.get().clashResult?.clashes ?? [],
+        bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+        representativePoint: [0, 0, 0],
+        severity: 'major',
+      },
+    ];
+    s.get().setClashGroups(manual);
+    assert.strictEqual(s.get().clashGroupsKind, 'manual');
+
+    s.get().resetClashSettings();
+    assert.strictEqual(s.get().clashGroups, manual, 'reset must not clobber a manual grouping');
+    assert.strictEqual(s.get().clashGroupsKind, 'manual');
+
+    s.get().applyClashFlavorConfig({
+      presets: s.get().clashPresets,
+      settings: { ...DEFAULT_CLASH_SETTINGS, clusterEpsilon: 10 },
+    });
+    assert.strictEqual(s.get().clashGroups, manual, 'a flavor activation must not clobber a manual grouping');
+    assert.strictEqual(s.get().clashGroupsKind, 'manual');
   });
 
   it('removing a rule restores the clashes it was hiding', () => {
@@ -371,6 +473,82 @@ describe('user-defined clash exclusions (store)', () => {
     state.setClashResult(sampleResult());
     assert.strictEqual(state.clashResult?.clashes.length, 1);
     assert.strictEqual(state.clashSuppressedCount, 2);
+  });
+
+  it('a stored exclusion with a missing or non-boolean `enabled` must not suppress clashes (#2535)', () => {
+    // Fail-open hazard: an exclusion rule's whole job is to HIDE clashes, so a
+    // corrupted or partially-written localStorage entry that loads as enabled
+    // silently hides real clashes from a coordinator, with no signal. The safe
+    // default for a rule we cannot fully trust is that it suppresses nothing:
+    // only a literal `enabled: true` may.
+    const storage = new MemoryStorage();
+    g.localStorage = storage;
+    storage.setItem(
+      EXCLUSIONS_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        exclusions: [
+          // `enabled` absent, i.e. a partially-written entry.
+          { id: 'x1', kind: 'typePair', a: 'IfcRail', b: 'IfcCourse', label: 'r x c', createdAt: 1 },
+          // Truthy non-boolean garbage.
+          { id: 'x2', kind: 'typeAny', a: 'IfcBeam', b: 'IfcBeam', label: 'beams', enabled: 'yes', createdAt: 2 },
+        ],
+      }),
+    );
+    let state: ClashSlice;
+    const set = (partial: unknown) => {
+      const patch = typeof partial === 'function'
+        ? (partial as (s: ClashSlice) => Partial<ClashSlice>)(state)
+        : (partial as Partial<ClashSlice>);
+      state = { ...state, ...patch };
+    };
+    state = createClashSlice(set as never, (() => state) as never, {} as never);
+    assert.strictEqual(state.clashExclusions.length, 2, 'the rules themselves are kept, visible in the panel');
+    assert.ok(
+      state.clashExclusions.every((r) => r.enabled === false),
+      'a malformed or absent enabled flag must load as DISABLED',
+    );
+    state.setClashResult(sampleResult());
+    assert.strictEqual(
+      state.clashSuppressedCount,
+      0,
+      'no clash may be hidden by a rule whose enabled flag was malformed or absent',
+    );
+    assert.strictEqual(state.clashResult?.clashes.length, 3);
+    // The reach counts still show what enabling each rule would hide.
+    assert.strictEqual(state.clashExclusionCounts.get('x1'), 2);
+  });
+
+  it('stored boolean `enabled` values keep their meaning across a reload (#2535)', () => {
+    // The fail-closed default above must not defuse VALID persisted rules:
+    // exactly what saveExclusions writes (a literal boolean) round-trips.
+    const storage = new MemoryStorage();
+    g.localStorage = storage;
+    storage.setItem(
+      EXCLUSIONS_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        exclusions: [
+          { id: 'on', kind: 'typePair', a: 'IfcRail', b: 'IfcCourse', label: 'r x c', enabled: true, createdAt: 1 },
+          { id: 'off', kind: 'typePair', a: 'IfcBeam', b: 'IfcBeam', label: 'beams', enabled: false, createdAt: 2 },
+        ],
+      }),
+    );
+    let state: ClashSlice;
+    const set = (partial: unknown) => {
+      const patch = typeof partial === 'function'
+        ? (partial as (s: ClashSlice) => Partial<ClashSlice>)(state)
+        : (partial as Partial<ClashSlice>);
+      state = { ...state, ...patch };
+    };
+    state = createClashSlice(set as never, (() => state) as never, {} as never);
+    assert.deepStrictEqual(
+      state.clashExclusions.map((r) => [r.id, r.enabled]),
+      [['on', true], ['off', false]],
+    );
+    state.setClashResult(sampleResult());
+    assert.strictEqual(state.clashSuppressedCount, 2, 'a valid enabled rule must still suppress its pair');
+    assert.strictEqual(state.clashResult?.clashes.length, 1);
   });
 
   it('clearClash drops the raw result too, so a stale run cannot resurface', () => {

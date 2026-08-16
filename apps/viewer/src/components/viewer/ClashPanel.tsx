@@ -385,6 +385,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     [result, groups, visibleClashes],
   );
   const isDuplicateSetView = setSections !== null;
+  // A duplicate scan's grouping is coincident SETS, not spatial proximity, so
+  // the Pairs/Issues toggle and its epsilon wording do not apply there, and a
+  // stale 'issues' choice from an earlier clash scan must not leak in either
+  // (`resultView` is component state that survives a result change). (#2535)
+  const effectiveResultView = isDuplicateSetView ? 'pairs' : resultView;
 
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.
@@ -457,7 +462,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       .filter((s) => s.items.length > 0);
   }, [groups, visibleClashes, sortBy]);
 
-  const activeSections = resultView === 'issues' ? issueSections : sections;
+  const activeSections = effectiveResultView === 'issues' ? issueSections : sections;
 
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
@@ -875,8 +880,9 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               spatial clustering (`groupClashes({ by: 'cluster' })`), so many
               element pairs on one clash of geometry read as one coordination
               issue instead of N rows. Only shown once there's something to
-              cluster. */}
-          {total > 0 && groups && (
+              cluster, and never for a duplicate scan, whose grouping is
+              coincident sets, not proximity clusters (#2535). */}
+          {total > 0 && groups && !isDuplicateSetView && (
             <div
               className="mb-1.5 inline-flex rounded-md border border-border overflow-hidden text-[11px]"
               title={`Issues group nearby pairs within ${clusterEpsilon}m (adjustable in Clash settings)`}
@@ -898,12 +904,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             </div>
           )}
           <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-2xl font-semibold tabular-nums">{resultView === 'issues' ? issueCount : total}</span>
+            <span className="text-2xl font-semibold tabular-nums">{effectiveResultView === 'issues' ? issueCount : total}</span>
             <span className="text-xs text-muted-foreground">
-              {resultView === 'issues'
+              {effectiveResultView === 'issues'
                 ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
                 : `${total === 1 ? 'clash' : 'clashes'}${hideTouching && touchingCount > 0 ? ` · ${shown} shown` : ''}${
-                    groups ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
+                    groups && !isDuplicateSetView ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
                   }`}
             </span>
           </div>
@@ -937,7 +943,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <div className="px-3 py-2 border-b border-border text-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            {resultView === 'issues' ? (
+            {effectiveResultView === 'issues' ? (
               <span className="text-muted-foreground" title={`Spatial cluster radius: ${clusterEpsilon}m (Clash settings)`}>
                 Grouped by proximity
               </span>

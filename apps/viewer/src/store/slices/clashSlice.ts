@@ -507,6 +507,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashHideTouching: (clashHideTouching) => set({ clashHideTouching }),
     setClashFocusMode: (clashFocusMode) => set({ clashFocusMode }),
     resetClashSettings: () => {
+      const state = get();
       set({
         clashMode: DEFAULT_CLASH_SETTINGS.mode,
         clashTolerance: DEFAULT_CLASH_SETTINGS.tolerance,
@@ -516,6 +517,18 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashReportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
         clashGroupBy: DEFAULT_CLASH_SETTINGS.groupBy,
         showClashRegionBox: true,
+        // The cluster radius may have just changed, so the derived grouping
+        // must follow in the same commit, like setClashClusterEpsilon, and
+        // for the same reason: without this, existing derived results keep
+        // the old radius until the next run. `newRun: false` leaves a manual
+        // (duplicate-scan) grouping alone. (#2535)
+        ...deriveGroups(
+          state,
+          state.clashRawResult,
+          state.clashExclusions,
+          DEFAULT_CLASH_SETTINGS.clusterEpsilon,
+          false,
+        ),
       });
       persistSettings();
     },
@@ -682,6 +695,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       }),
 
     applyClashFlavorConfig: ({ presets, settings }) => {
+      const state = get();
       set({
         clashPresets: presets,
         clashMode: settings.mode,
@@ -691,6 +705,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: settings.clusterEpsilon,
         clashReportTouch: settings.reportTouch,
         clashGroupBy: settings.groupBy,
+        // Regroup existing derived results at the flavor's cluster radius in
+        // the same commit (see resetClashSettings; `newRun: false` preserves
+        // a manual duplicate-scan grouping). (#2535)
+        ...deriveGroups(
+          state,
+          state.clashRawResult,
+          state.clashExclusions,
+          settings.clusterEpsilon,
+          false,
+        ),
       });
       // Persist so the activated flavor's config becomes the working set on reload.
       savePresets(presets);

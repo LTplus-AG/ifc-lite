@@ -429,7 +429,12 @@ export function loadExclusions(): ClashExclusionRule[] {
           : r.kind === 'typeAny'
             ? `${r.a} × anything`
             : `${r.a} × ${r.b}`,
-      enabled: r.enabled !== false,
+      // Fail CLOSED on the enabled flag: an exclusion's whole job is to hide
+      // clashes, so a corrupted or partially-written entry that loaded as
+      // enabled would silently hide real clashes with no signal. Only the
+      // literal `true` that `saveExclusions` writes may suppress; anything
+      // else keeps the rule visible in the panel but disabled. (#2535)
+      enabled: r.enabled === true,
       createdAt: typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : 0,
     }));
   } catch (err) {

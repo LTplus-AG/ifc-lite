@@ -34,7 +34,8 @@ import { useViewerStore } from '@/store/index.js';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '@/hooks/useBCF.js';
 import { render, click, cleanup } from '@/test/render.js';
-import { PdfViewExportDialog } from './PdfViewExportDialog.js';
+import { PdfViewExportDialog, type ViewPdfExporter } from './PdfViewExportDialog.js';
+import type { ViewPdfExportInput } from '@/lib/export/view-pdf/generate-view-pdf.js';
 
 // ── Fixture geometry: an axis-aligned box, 4 m x 3 m x 2 m at the origin ────
 const BOX_MAX = { x: 4, y: 3, z: 2 };
@@ -122,8 +123,10 @@ function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
 
-function openDialog(): void {
-  const container = render(<PdfViewExportDialog trigger={<button type="button">Open</button>} />);
+function openDialog(exportViewPdf?: ViewPdfExporter): void {
+  const container = render(
+    <PdfViewExportDialog trigger={<button type="button">Open</button>} exportViewPdf={exportViewPdf} />,
+  );
   const trigger = container.querySelector('button');
   assert.ok(trigger, 'the dialog trigger must render');
   click(trigger);
@@ -131,9 +134,9 @@ function openDialog(): void {
 }
 
 /** Radix Select opens on ArrowDown and portals its listbox to `document.body`. */
-function chooseScale(optionLabel: string): void {
-  const selectTrigger = document.body.querySelector('#pdf-view-scale');
-  assert.ok(selectTrigger, 'the scale select must render');
+function chooseFrom(selectId: string, optionLabel: string): void {
+  const selectTrigger = document.body.querySelector(selectId);
+  assert.ok(selectTrigger, `the ${selectId} select must render`);
   act(() => {
     selectTrigger.dispatchEvent(
       new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }),
@@ -148,6 +151,20 @@ function chooseScale(optionLabel: string): void {
       new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
     );
   });
+}
+
+function chooseScale(optionLabel: string): void {
+  chooseFrom('#pdf-view-scale', optionLabel);
+}
+
+function chooseAppearance(optionLabel: string): void {
+  chooseFrom('#pdf-view-render-mode', optionLabel);
+}
+
+function hiddenEdgesSwitch(): HTMLButtonElement {
+  const el = document.body.querySelector('#pdf-view-hidden-edges');
+  assert.ok(el, 'the hidden edges switch must render');
+  return el as HTMLButtonElement;
 }
 
 function readout(): string {
@@ -281,5 +298,138 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
     assert.equal(readout(), atWholeScale, '1:33.7 must draw exactly the 1:34 sheet');
     typeCustomScale('33.4');
     assert.notEqual(readout(), atWholeScale, '1:33.4 must round to 33, not to 34');
+  });
+});
+
+/**
+ * What the dialog actually SENDS.
+ *
+ * DEFECT CLASS — a control the user moves that the exported sheet ignores. It
+ * has already happened once in this file's component: the hidden-edges switch
+ * shipped frozen at its mount-time default because a `useCallback` dependency
+ * array missed it, so the switch animated, the option was honoured perfectly
+ * one layer down, and every exported PDF came out byte-identical. Nothing below
+ * the dialog can see that, and there is no exhaustive-deps lint here to catch
+ * it, so the only test that can is one that drives the real controls and reads
+ * back the input the exporter was handed.
+ */
+describe('PdfViewExportDialog export input (#2042)', () => {
+  const EXPORT_RESULT = {
+    page: { widthMm: 60, heightMm: 50 },
+    filename: '3d-view-1-100.pdf',
+    strokeCount: 12,
+    shading: { widthPx: 237, heightPx: 178, dpi: 150 },
+  };
+
+  function recordingExporter(): { calls: ViewPdfExportInput[]; exporter: ViewPdfExporter } {
+    const calls: ViewPdfExportInput[] = [];
+    return {
+      calls,
+      exporter: async (input) => {
+        calls.push(input);
+        return EXPORT_RESULT;
+      },
+    };
+  }
+
+  /** Click Export and let the async handler settle. */
+  async function runExport(): Promise<void> {
+    const button = exportButton();
+    await act(async () => {
+      button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  }
+
+  beforeEach(() => {
+    seedViewer();
+  });
+
+  afterEach(() => {
+    cleanup();
+    clearGlobalRefs();
+    document.body.innerHTML = '';
+  });
+
+  it('exports shaded surfaces unless the user asks otherwise', async () => {
+    const { calls, exporter } = recordingExporter();
+    openDialog(exporter);
+    chooseScale('1:100');
+    await runExport();
+
+    assert.equal(calls.length, 1, 'Export must reach the exporter exactly once');
+    // The whole point of the feature: the sheet looks like the viewport, which
+    // is solid and coloured, unless the user opts out.
+    assert.equal(calls[0].renderMode, 'shaded');
+    assert.equal(calls[0].scaleFactor, 100);
+  });
+
+  it('sends the appearance the user picked, not the one the dialog mounted with', async () => {
+    const { calls, exporter } = recordingExporter();
+    openDialog(exporter);
+    chooseScale('1:100');
+    chooseAppearance('Line work only');
+    await runExport();
+
+    assert.equal(calls.length, 1);
+    assert.equal(
+      calls[0].renderMode,
+      'lines',
+      'a frozen callback would still report the mount-time "shaded" here',
+    );
+  });
+
+  it('sends the hidden-edges choice too, and disables it while shading', async () => {
+    const { calls, exporter } = recordingExporter();
+    openDialog(exporter);
+    chooseScale('1:100');
+
+    // Shaded mode: the raster resolves occlusion, so the switch is dead by
+    // design rather than merely ignored downstream.
+    assert.equal(hiddenEdgesSwitch().disabled, true, 'the switch must be disabled while shading');
+
+    chooseAppearance('Line work only');
+    const toggle = hiddenEdgesSwitch();
+    assert.equal(toggle.disabled, false, 'line work mode must re-enable the switch');
+    assert.equal(toggle.getAttribute('aria-checked'), 'true', 'hidden edges default to on');
+    click(toggle);
+    assert.equal(hiddenEdgesSwitch().getAttribute('aria-checked'), 'false');
+
+    await runExport();
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].renderMode, 'lines');
+    assert.equal(
+      calls[0].includeHiddenLines,
+      false,
+      'turning the switch off must reach the exporter',
+    );
+  });
+
+  it('names the shading stages while it works, instead of a bare "Working"', async () => {
+    // An unmapped stage id falls through to "Working", so this fails the moment
+    // the shading stages are emitted without a label for them.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const exporter: ViewPdfExporter = async (input) => {
+      input.onProgress?.('shading', 0);
+      await gate;
+      return EXPORT_RESULT;
+    };
+
+    openDialog(exporter);
+    chooseScale('1:100');
+    const button = exportButton();
+    act(() => {
+      button.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    assert.match(
+      button.textContent ?? '',
+      /Shading surfaces/,
+      `the shading stage must be named, got "${button.textContent}"`,
+    );
+
+    await act(async () => {
+      release();
+      await gate;
+    });
   });
 });

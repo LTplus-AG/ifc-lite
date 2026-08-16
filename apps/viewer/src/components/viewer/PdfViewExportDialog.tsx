@@ -23,14 +23,17 @@
  *     export is always a parallel projection along the current view direction;
  *     the dialog says so in plain words and offers the one-click camera switch
  *     instead of silently changing the user's view.
+ *
+ * The appearance controls live in `PdfViewAppearanceSection`; the default is
+ * SHADED, because a sheet that measures correctly and looks nothing like the
+ * view it claims to be is its own defect.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, FileText, Loader2 } from 'lucide-react';
+import { FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -47,7 +50,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
@@ -59,13 +61,32 @@ import {
   VIEW_PDF_MARGIN_MM,
 } from '@/lib/export/view-pdf/view-pdf-page-estimate';
 import {
-  MAX_PDF_PAGE_DIMENSION_MM,
   deriveDisplayedScaleFactor,
   describePage,
 } from '@/lib/export/view-pdf/view-pdf-scale';
+import { PdfViewAppearanceSection } from './PdfViewAppearanceSection';
+import { PdfViewPageNotices } from './PdfViewPageNotices';
+import type {
+  ViewPdfExportInput,
+  ViewPdfExportResult,
+  ViewPdfRenderMode,
+} from '@/lib/export/view-pdf/generate-view-pdf';
+
+/**
+ * The one call this dialog makes into the export pipeline. Production leaves it
+ * undefined and gets the code-split `generateViewPdf`; the test passes a
+ * recorder, which is the only way to prove that a control the user moved
+ * actually reaches the exporter. That is not hypothetical here: the hidden-edges
+ * switch once shipped frozen at its mount-time default because a `useCallback`
+ * dependency array missed it, and the PDF came out byte-identical whatever the
+ * user did. There is no exhaustive-deps lint in this repo to catch the next one.
+ */
+export type ViewPdfExporter = (input: ViewPdfExportInput) => Promise<ViewPdfExportResult>;
 
 interface PdfViewExportDialogProps {
   trigger?: React.ReactNode;
+  /** Test seam for the exporter. See {@link ViewPdfExporter}. */
+  exportViewPdf?: ViewPdfExporter;
 }
 
 /** The drafting scales offered as presets, coarsest detail last. */
@@ -82,6 +103,8 @@ const PHASE_LABEL: Record<string, string> = {
   hidden: 'Removing hidden lines',
   merging: 'Merging lines',
   complete: 'Writing PDF',
+  shading: 'Shading surfaces',
+  encoding: 'Encoding image',
 };
 
 /** Round a millimetre figure for display without inventing precision. */
@@ -90,7 +113,7 @@ function formatMm(value: number): string {
   return Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
 }
 
-export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
+export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDialogProps) {
   // Subscribed purely so the readout recomputes when the view changes; the
   // values themselves are read back off `getState()` inside the memo, which
   // keeps this component from restating the shape of half the store.
@@ -109,6 +132,9 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
   const [scaleChoice, setScaleChoice] = useState<string>('displayed');
   const [customScale, setCustomScale] = useState('100');
   const [showHiddenEdges, setShowHiddenEdges] = useState(true);
+  // Shaded by default: the export exists to reproduce the viewport, and the
+  // viewport is solid and coloured.
+  const [renderMode, setRenderMode] = useState<ViewPdfRenderMode>('shaded');
   const [isExporting, setIsExporting] = useState(false);
   const [phase, setPhase] = useState<string | null>(null);
 
@@ -196,14 +222,18 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
       // it, none of which belongs in the toolbar's eager chunk. A failed chunk
       // load lands in the catch below, not on the console as an unhandled
       // rejection.
-      const { generateViewPdf } = await import('@/lib/export/view-pdf/generate-view-pdf');
-      const result = await generateViewPdf({
+      const runExport = exportViewPdf ?? (async (pdfInput: ViewPdfExportInput) => {
+        const { generateViewPdf } = await import('@/lib/export/view-pdf/generate-view-pdf');
+        return generateViewPdf(pdfInput);
+      });
+      const result = await runExport({
         view: source.view,
         camera,
         section: source.section,
         scaleFactor,
         marginMm: VIEW_PDF_MARGIN_MM,
         includeHiddenLines: showHiddenEdges,
+        renderMode,
         onProgress: (stage) => setPhase(PHASE_LABEL[stage] ?? 'Working'),
       });
       const message =
@@ -215,7 +245,11 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
         scale_factor: scaleFactor,
         projection_mode: camera.projectionMode,
         section_enabled: source.section !== null,
-        hidden_edges: showHiddenEdges,
+        // What the SHEET got, not what was asked for: shaded mode forces hidden
+        // edges off, and a capped raster prints below the requested dpi.
+        hidden_edges: renderMode === 'shaded' ? false : showHiddenEdges,
+        render_mode: renderMode,
+        shading_dpi: result.shading?.dpi ?? null,
       });
       setOpen(false);
     } catch (err) {
@@ -227,12 +261,14 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
       setIsExporting(false);
       setPhase(null);
     }
-    // `showHiddenEdges` belongs here. Omitting it does not merely stale the
-    // value, it FREEZES it at the mount-time default, so the toggle moves in
-    // the UI and the exported sheet never changes. There is no exhaustive-deps
-    // lint in this repo to catch that, and no orchestrator test can see it -
-    // the option is honoured correctly one layer down.
-  }, [source, camera, scaleFactor, showHiddenEdges]);
+    // EVERY control the body reads belongs here - `showHiddenEdges` and
+    // `renderMode` both. Omitting one does not merely stale the value, it
+    // FREEZES it at the mount-time default, so the control moves in the UI and
+    // the exported sheet never changes. There is no exhaustive-deps lint in
+    // this repo to catch that, and no orchestrator test can see it: the option
+    // is honoured correctly one layer down. `PdfViewExportDialog.test.tsx`
+    // drives the real dialog through the `exportViewPdf` seam for exactly this.
+  }, [source, camera, scaleFactor, showHiddenEdges, renderMode, exportViewPdf]);
 
   const displayedLabel = displayedScale
     ? `As displayed (about 1:${formatScaleFactorLabel(displayedScale)})`
@@ -255,9 +291,9 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
             Export PDF (to-scale 3D view)
           </DialogTitle>
           <DialogDescription>
-            Saves what you see in the 3D viewport as a vector PDF at an exact scale, so
-            measurements taken off the print are correct. Line work only in this version: no
-            fills, materials, textures or point clouds.
+            Saves what you see in the 3D viewport at an exact scale. Shaded surfaces are
+            embedded as an image placed at exact size; all line work stays vector, so
+            measurements taken off the print are correct.
           </DialogDescription>
         </DialogHeader>
 
@@ -312,78 +348,22 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
             </div>
           )}
 
-          {/* The sheet size changes as the scale changes, with focus staying in
-              the Select. Without a live region a screen-reader user picks a
-              scale and is told nothing about the page it produces, which is
-              the single number this dialog exists to report. */}
-          <p
-            className="text-xs text-muted-foreground"
-            data-testid="pdf-view-page-readout"
-            aria-live="polite"
-          >
-            {preview
-              ? `Estimated page: ${formatMm(preview.page.widthMm)} x ${formatMm(preview.page.heightMm)} mm` +
-                (preview.paper ? ` (fits ${preview.paper.name})` : ' (larger than any ISO sheet)') +
-                '. The exported page is sized to the drawing itself and will never be larger.'
-              : 'Page size is not available yet. Load a model and choose a valid scale.'}
-          </p>
+          <PdfViewPageNotices
+            preview={preview}
+            oversize={oversize}
+            projectionMode={camera?.projectionMode ?? null}
+            onSwitchToOrthographic={() => setProjectionMode('orthographic')}
+            formatMm={formatMm}
+          />
 
-          {oversize && preview && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Page too large to print</AlertTitle>
-              <AlertDescription>
-                {`This scale needs a page of ${formatMm(preview.page.widthMm)} x ` +
-                  `${formatMm(preview.page.heightMm)} mm. A PDF page cannot exceed ` +
-                  `${MAX_PDF_PAGE_DIMENSION_MM} mm on a side. Choose a smaller scale.`}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {camera?.projectionMode === 'perspective' ? (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>Perspective camera</AlertTitle>
-              <AlertDescription>
-                <span>
-                  The PDF is an orthographic (parallel) projection along your current view
-                  direction, so near and far objects print at the same scale. That is the only
-                  way a printed drawing can carry a single scale. Switch to orthographic to
-                  see the same parallel projection on screen.
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-2"
-                  onClick={() => setProjectionMode('orthographic')}
-                >
-                  Switch camera to orthographic
-                </Button>
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Orthographic camera, so the printed scale is exact. The sheet covers
-              everything currently visible, not only the part framed on screen:
-              panning and zooming change what you look at, not what is printed.
-            </p>
-          )}
-
-          <div className="flex items-center justify-between gap-4">
-            <Label className="text-sm font-normal" htmlFor="pdf-view-hidden-edges">
-              Show hidden edges as dashed lines
-            </Label>
-            <Switch
-              id="pdf-view-hidden-edges"
-              checked={showHiddenEdges}
-              onCheckedChange={setShowHiddenEdges}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {showHiddenEdges
-              ? 'Edges behind other geometry print as dashed lines.'
-              : 'Only edges you can actually see are printed.'}
-          </p>
+          <PdfViewAppearanceSection
+            renderMode={renderMode}
+            onRenderModeChange={setRenderMode}
+            showHiddenEdges={showHiddenEdges}
+            onShowHiddenEdgesChange={setShowHiddenEdges}
+            drawingWidthMm={preview ? preview.page.widthMm - VIEW_PDF_MARGIN_MM * 2 : null}
+            drawingHeightMm={preview ? preview.page.heightMm - VIEW_PDF_MARGIN_MM * 2 : null}
+          />
 
           {source?.sectionEnabled && (
             <p className="text-xs text-muted-foreground">

@@ -21,10 +21,17 @@
  * forgets. Callers must await it or attach a rejection handler, or a failed
  * chunk load becomes an unhandled rejection with nothing on screen.
  *
+ * DEFECT CLASS 3 — a sheet that does not look like the view it claims to be.
+ * The default mode is `'shaded'`: the surfaces print as a to-scale raster
+ * underlay (`view-pdf-shading.ts`) with this file's vector strokes on top of
+ * it. The image is placed through the SAME `PdfScaleTransform` as the strokes,
+ * so it carries no scale of its own and the sheet stays measurable.
+ *
  * Everything the export reads from the outside world is an injectable seam —
- * the camera snapshot, the instanced-mesh supplier, the document factory and
- * the download sink — so the whole pipeline runs under `node:test` with no
- * WebGPU device, no renderer and no jsPDF.
+ * the camera snapshot, the instanced-mesh supplier, the document factory, the
+ * rasteriser, the PNG encoder and the download sink — so the whole pipeline
+ * runs under `node:test` with no WebGPU device, no renderer, no canvas and no
+ * jsPDF.
  */
 
 import {
@@ -52,6 +59,12 @@ import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import { collectViewMeshes, type ViewMeshInput } from './collect-view-meshes';
 import { VIEW_PDF_MARGIN_MM } from './view-pdf-page-estimate';
+import {
+  placeShadedUnderlay,
+  type ViewPdfImageTarget,
+  type ViewPdfPngEncoder,
+  type ViewPdfRasterBuilder,
+} from './view-pdf-shading';
 import { resolveKeptHalfSpace, type ViewSectionResolveInput } from './view-section-plane';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -76,10 +89,23 @@ export interface ViewPdfExportInput {
   scaleFactor: number;
   /** Blank paper around the drawing, mm per side. */
   marginMm?: number;
-  /** Draw occluded line work dashed (`true`) or drop it (`false`). */
+  /**
+   * Draw occluded line work dashed (`true`) or drop it (`false`).
+   *
+   * Ignored in `'shaded'` mode, where it is forced off — see the note at the
+   * `writeDrawing` call.
+   */
   includeHiddenLines?: boolean;
+  /**
+   * `'shaded'` (the default) prints the surfaces as a to-scale image with the
+   * vector line work on top, which is what the viewport shows. `'lines'` is the
+   * monochrome line-work-only sheet and nothing else changes with it.
+   */
+  renderMode?: ViewPdfRenderMode;
   onProgress?: (stage: string, progress: number) => void;
 }
+
+export type ViewPdfRenderMode = 'shaded' | 'lines';
 
 /** What actually got written, for the success toast and analytics. */
 export interface ViewPdfExportResult {
@@ -87,10 +113,16 @@ export interface ViewPdfExportResult {
   filename: string;
   /** Strokes emitted. Zero means an empty sheet, which the caller should report. */
   strokeCount: number;
+  /**
+   * The shading image that was placed, or `null` in line-work mode and when
+   * the geometry produced no usable raster (in which case the strokes still
+   * printed — a shaded export never fails where a lines export would not).
+   */
+  shading: { widthPx: number; heightPx: number; dpi: number } | null;
 }
 
 /** The slice of jsPDF this writer uses, so a test can stand in for it. */
-export interface ViewPdfDocument {
+export interface ViewPdfDocument extends ViewPdfImageTarget {
   setDrawColor(r: number, g: number, b: number): void;
   setLineCap(style: string): void;
   setLineWidth(width: number): void;
@@ -104,6 +136,10 @@ export interface ViewPdfDeps {
   createDocument?: (page: PdfPage) => Promise<ViewPdfDocument>;
   /** Save the finished bytes. Defaults to the canonical `downloadFile`. */
   download?: (blob: Blob, filename: string) => void;
+  /** Shade the surfaces. Defaults to the real rasteriser in `@ifc-lite/drawing-2d`. */
+  buildRaster?: ViewPdfRasterBuilder;
+  /** Turn a raster into PNG bytes. Defaults to the `OffscreenCanvas` encoder. */
+  encodePng?: ViewPdfPngEncoder;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -201,14 +237,39 @@ export async function generateViewPdf(
   // `worldPointToPdfMm` supplies the one paper Y flip. See the module docblock.
   const layout = computePdfScaleLayout(drawing.bounds, input.scaleFactor, marginMm);
   const doc = await (deps.createDocument ?? createJsPdfDocument)(layout.page);
+
+  // ── 5. Shaded underlay ──────────────────────────────────────────────────
+  // FIRST, before a single stroke: a PDF paints in call order, so anything
+  // written after this image would be covered by it.
+  const renderMode: ViewPdfRenderMode = input.renderMode ?? 'shaded';
+  const shaded = renderMode === 'shaded'
+    ? await placeShadedUnderlay(doc, {
+      meshes: drawnMeshes,
+      plane,
+      viewDepth,
+      // The drawing area, not the page: the margins carry no ink.
+      drawingWidthMm: layout.page.widthMm - marginMm * 2,
+      drawingHeightMm: layout.page.heightMm - marginMm * 2,
+      transform: layout.transform,
+      buildRaster: deps.buildRaster,
+      encodePng: deps.encodePng,
+      onProgress: input.onProgress,
+    })
+    : null;
+
   // The ONLY place the "show hidden edges" choice is honoured. Classification
   // above always runs, because skipping it does not remove occluded edges - it
   // leaves them unclassified, so they print as SOLID lines indistinguishable
   // from geometry the viewer can actually see. That is strictly worse than the
   // dashes the user turned off: an engineer measuring the sheet cannot tell
   // the phantom edge from a real one. Classify always, draw selectively.
+  //
+  // Shaded mode forces them OFF whatever the caller asked. The raster already
+  // resolves occlusion the way the viewport does, so a dashed phantom edge laid
+  // over a solidly shaded surface reads as a real edge ON that surface, which
+  // is the one thing dashes exist to rule out.
   const strokeCount = writeDrawing(doc, drawing.lines, layout.transform, {
-    includeHiddenLines: input.includeHiddenLines ?? true,
+    includeHiddenLines: renderMode === 'shaded' ? false : (input.includeHiddenLines ?? true),
   });
 
   // The filename is the sole record of the sheet's scale (v1 has no title
@@ -220,7 +281,14 @@ export async function generateViewPdf(
   )}.pdf`;
   (deps.download ?? defaultDownload)(doc.output('blob'), filename);
 
-  return { page: layout.page, filename, strokeCount };
+  return {
+    page: layout.page,
+    filename,
+    strokeCount,
+    shading: shaded
+      ? { widthPx: shaded.widthPx, heightPx: shaded.heightPx, dpi: shaded.dpi }
+      : null,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -284,6 +352,13 @@ async function createJsPdfDocument(page: PdfPage): Promise<ViewPdfDocument> {
     setLineWidth: (width) => { doc.setLineWidth(width); },
     setLineDashPattern: (pattern, phase) => { doc.setLineDashPattern(pattern, phase); },
     line: (x1, y1, x2, y2) => { doc.line(x1, y1, x2, y2); },
+    // The format is pinned here rather than passed in: the encoder seam always
+    // produces PNG, and 'FAST' keeps jsPDF from re-compressing bytes that are
+    // already deflated. Sizes are millimetres, so the image lands at exactly
+    // the rectangle the scale transform computed.
+    addImage: (pngBytes, xMm, yMm, widthMm, heightMm) => {
+      doc.addImage(pngBytes, 'PNG', xMm, yMm, widthMm, heightMm, undefined, 'FAST');
+    },
     output: (type) => doc.output(type),
   };
 }

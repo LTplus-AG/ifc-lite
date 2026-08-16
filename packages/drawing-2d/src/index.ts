@@ -206,6 +206,18 @@ export type {
 export { projectWorldLineSeeds } from './world-line-seeds.js';
 export type { WorldLineSeed } from './world-line-seeds.js';
 
+// Flat-shaded RGBA underlay for the to-scale PDF: the surfaces the viewport
+// shows, placed under the vector line work. `raster-core.ts` (the primitives
+// this shares with the hidden-line depth raster) stays package-private.
+export {
+  buildColorRaster,
+  fitRasterPixels,
+  DEFAULT_SHADING_DPI,
+  MAX_SHADING_PIXELS,
+  MAX_SHADING_DIMENSION_PX,
+} from './color-raster.js';
+export type { ColorRaster, ColorRasterOptions, RasterFit } from './color-raster.js';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DXF EXPORT (issue #1861)
 // ═══════════════════════════════════════════════════════════════════════════

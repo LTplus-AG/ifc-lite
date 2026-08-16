@@ -130,26 +130,67 @@ describe('TriMesh point probes', () => {
  * superset of what a linear scan would count" was asserted only in a doc
  * comment, so nothing in the suite would have noticed the traversal starting
  * to prune a triangle the ray really hits.
+ *
+ * Built once per mesh rather than evaluated per probe. `e1`, `e2`, `pv`, `det`
+ * and `1 / det` depend only on the triangle, so hoisting them out of the probe
+ * loop leaves exactly the same arithmetic on exactly the same operands — the
+ * per-probe expressions below are character-for-character the originals, in the
+ * same association order as `math/vec3.ts` (`dot` sums left to right), so every
+ * verdict is bit-identical. What it removes is the work: the sphere fixture is
+ * ~32 000 probes x 2048 triangles, and re-deriving those terms — each through a
+ * tuple-allocating `sub`/`cross` — made the sweep GC-bound. It ran in ~7.6s on
+ * a dev machine but 108.8s on a contended CI runner, blowing the 60s budget
+ * (CI run 31946652782). Flat typed arrays and no per-probe allocation put the
+ * margin back.
  */
-function containsPointByScan(mesh: TriMesh, p: Vec3): boolean {
-  let crossings = 0;
-  for (let t = 0; t < mesh.count; t += 1) {
+function makeContainsPointScan(mesh: TriMesh): (p: Vec3) => boolean {
+  const n = mesh.count;
+  const v0s = new Float64Array(n * 3);
+  const e1s = new Float64Array(n * 3);
+  const e2s = new Float64Array(n * 3);
+  const pvs = new Float64Array(n * 3);
+  const invs = new Float64Array(n);
+  // NaN marks "ray parallel to this triangle" — the original's `continue`.
+  invs.fill(Number.NaN);
+  for (let t = 0; t < n; t += 1) {
     const [v0, v1, v2] = mesh.tri(t);
     const e1 = sub(v1, v0);
     const e2 = sub(v2, v0);
     const pv = cross(RAY_DIR, e2);
     const det = dot(e1, pv);
     if (det > -RAY_EPS && det < RAY_EPS) continue;
-    const inv = 1 / det;
-    const tv = sub(p, v0);
-    const u = dot(tv, pv) * inv;
-    if (u < 0 || u > 1) continue;
-    const qv = cross(tv, e1);
-    const v = dot(RAY_DIR, qv) * inv;
-    if (v < 0 || u + v > 1) continue;
-    if (dot(e2, qv) * inv > RAY_EPS) crossings += 1;
+    const o = t * 3;
+    v0s[o] = v0[0]; v0s[o + 1] = v0[1]; v0s[o + 2] = v0[2];
+    e1s[o] = e1[0]; e1s[o + 1] = e1[1]; e1s[o + 2] = e1[2];
+    e2s[o] = e2[0]; e2s[o + 1] = e2[1]; e2s[o + 2] = e2[2];
+    pvs[o] = pv[0]; pvs[o + 1] = pv[1]; pvs[o + 2] = pv[2];
+    invs[t] = 1 / det;
   }
-  return (crossings & 1) === 1;
+  const [rx, ry, rz] = RAY_DIR;
+  return (p: Vec3): boolean => {
+    const [px, py, pz] = p;
+    let crossings = 0;
+    for (let t = 0; t < n; t += 1) {
+      const inv = invs[t];
+      if (Number.isNaN(inv)) continue;
+      const o = t * 3;
+      const tvx = px - v0s[o];
+      const tvy = py - v0s[o + 1];
+      const tvz = pz - v0s[o + 2];
+      const u = (tvx * pvs[o] + tvy * pvs[o + 1] + tvz * pvs[o + 2]) * inv;
+      if (u < 0 || u > 1) continue;
+      const e1x = e1s[o];
+      const e1y = e1s[o + 1];
+      const e1z = e1s[o + 2];
+      const qvx = tvy * e1z - tvz * e1y;
+      const qvy = tvz * e1x - tvx * e1z;
+      const qvz = tvx * e1y - tvy * e1x;
+      const v = (rx * qvx + ry * qvy + rz * qvz) * inv;
+      if (v < 0 || u + v > 1) continue;
+      if ((e2s[o] * qvx + e2s[o + 1] * qvy + e2s[o + 2] * qvz) * inv > RAY_EPS) crossings += 1;
+    }
+    return (crossings & 1) === 1;
+  };
 }
 
 /** Closed UV sphere, radius `r`, `lon` segments x `lat` rings: `lon*(2*lat-2)`
@@ -211,6 +252,7 @@ describe('containsPoint against a brute-force oracle', () => {
     'agrees with an exhaustive scan on %s, over 20k random points and every vertex',
     (_name, build, origin, span) => {
       const mesh = build();
+      const containsPointByScan = makeContainsPointScan(mesh);
       let probes = 0;
       let mismatches = 0;
       let inside = 0;
@@ -218,7 +260,7 @@ describe('containsPoint against a brute-force oracle', () => {
       // assert once — a single mismatch still fails the test.
       const check = (p: Vec3) => {
         const got = mesh.containsPoint(p);
-        if (got !== containsPointByScan(mesh, p)) mismatches += 1;
+        if (got !== containsPointByScan(p)) mismatches += 1;
         if (got) inside += 1;
         probes += 1;
       };
@@ -240,7 +282,9 @@ describe('containsPoint against a brute-force oracle', () => {
       expect(inside).toBeGreaterThan(1000);
       expect(inside).toBeLessThan(probes - 1000);
     },
-    // ~46 000 probes x an all-triangle scan each: seconds, not milliseconds.
+    // 32 288 probes x an all-triangle scan each. ~0.2s on a dev machine with
+    // the hoisted oracle above; the budget is sized for a contended CI runner,
+    // which was measured ~14x slower on this sweep.
     60_000,
   );
 });

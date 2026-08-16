@@ -105,7 +105,16 @@ export function useSourceFavouriteJump({
 
     const file = allFiles.find((candidate) => candidate.id === pending.fileId);
     if (!file) {
-      if (loadingFiles) return;
+      // Both flags, not just `loadingFiles`. On a `direct-children` provider
+      // (Dropbox, msgraph) `openContainer` fetches the child folders FIRST and
+      // only sets `loadingFiles` once `fetchContainers` resolves, so there is a
+      // render where `loadingFolders` is true, `loadingFiles` is false and the
+      // file is simply not listed yet. Guarding on `loadingFiles` alone falls
+      // through there and reports a file that is still in flight as missing.
+      // Unreachable on Dalux (flat-subtree + recursive makes `openContainer` a
+      // no-op and `syncFileArea` sets both flags together), which is why the
+      // direct-children fixture exists in `SourceBrowserFavouriteJump.test.tsx`.
+      if (loadingFiles || loadingFolders) return;
       pendingRef.current = null;
       toast.info('That file is no longer in this folder');
       return;

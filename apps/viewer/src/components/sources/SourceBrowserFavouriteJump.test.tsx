@@ -19,7 +19,10 @@
  * renders inside `<StrictMode>` — under a plain mount they pass either way.
  *
  * The provider fixture mirrors Dalux (`flat-subtree` + recursive files), which
- * is the shipped capability pair this ran into.
+ * is the shipped capability pair this ran into. A second fixture mirrors
+ * Dropbox/msgraph (`direct-children` + per-folder files), whose two-step
+ * `openContainer` is the only way to reach the folders-before-files window the
+ * last test pins down.
  */
 
 import '@/test/setup-dom.js';
@@ -37,6 +40,7 @@ import type {
   SourceProject,
 } from '@ifc-lite/plugin-api';
 import { SourceHostProvider } from '@/services/sources/SourceHostProvider';
+import { toast } from '@/components/ui/toast';
 import type { SourceFavourite } from '@/lib/sources/favourites';
 import { SourceBrowser } from './SourceBrowser.js';
 
@@ -160,6 +164,62 @@ class DeferringProvider extends FakeProvider {
   release(): void {
     this.releaseFolders?.();
     this.releaseFiles?.();
+  }
+}
+
+const directChildrenManifest: PluginManifest = {
+  ...manifest,
+  capabilities: {
+    ...manifest.capabilities,
+    containerListing: 'direct-children',
+    listFilesIsRecursive: false,
+  },
+};
+
+/**
+ * Dropbox/msgraph-shaped: one children listing per browsed folder, one file
+ * listing per folder. On this capability pair `openContainer` fetches the
+ * child folders FIRST and flips `loadingFiles` only after they resolve, so
+ * there is a window where `loadingFolders` is true, `loadingFiles` is false
+ * and the favourited file is simply not listed yet. `DeferringProvider` cannot
+ * park the jump there — it holds back every folder listing including the area
+ * root's, which the jump needs to get going — so this one holds back exactly
+ * the favourited folder's children listing.
+ */
+class DirectChildrenProvider extends FakeProvider {
+  override readonly manifest = directChildrenManifest;
+  private releaseChildren: (() => void) | null = null;
+
+  override listContainers(
+    _ctx: PluginContext,
+    _projectId: string,
+    parentId?: string,
+  ): Promise<Page<SourceContainer>> {
+    if (!parentId) return Promise.resolve({ items: [{ id: 'area-1', name: 'Documents' }] });
+    this.folderListings += 1;
+    const page = Promise.resolve({
+      items: [FOLDER, OTHER_FOLDER].filter((folder) => folder.parentId === parentId),
+    });
+    if (parentId !== FOLDER.id) return page;
+    return new Promise((resolve) => {
+      this.releaseChildren = () => resolve(page);
+    });
+  }
+
+  override listFiles(
+    _ctx?: PluginContext,
+    _projectId?: string,
+    containerId?: string,
+  ): Promise<Page<SourceFile>> {
+    this.fileListings += 1;
+    return Promise.resolve({
+      items: [IN_FOLDER, ELSEWHERE].filter((file) => file.containerId === containerId),
+    });
+  }
+
+  release(): void {
+    this.releaseChildren?.();
+    this.releaseChildren = null;
   }
 }
 
@@ -317,5 +377,44 @@ describe('jumping while the listing is still in flight', () => {
       'Models',
       'the real folder must be the one that resolves the favourite, not a synthesised stand-in',
     );
+  });
+
+  it('survives the folders-before-files window of a direct-children provider', async () => {
+    // The real ordering on Dropbox/msgraph: entering the favourited folder
+    // fetches its child folders first, so the effect runs with
+    // `loadingFolders === true`, `loadingFiles === false` and the file absent
+    // from the catalog. Guarding on `loadingFiles` alone gives up right there.
+    const provider = new DirectChildrenProvider();
+    const infoToasts: string[] = [];
+    const originalInfo = toast.info;
+    toast.info = (message: string) => {
+      infoToasts.push(message);
+      originalInfo(message);
+    };
+    try {
+      await jumpTo(favourite({ kind: 'file', fileId: 'file-1', fileName: 'Tower.ifc' }), provider);
+
+      assert.equal(
+        infoToasts.some((message) => message.includes('no longer in this folder')),
+        false,
+        'a file whose folder listing is still in flight must not be reported as gone',
+      );
+      assert.equal(
+        text().includes('Load 1 file as federated model'),
+        false,
+        'nothing can be selected before the listing arrives',
+      );
+
+      provider.release();
+      await pump();
+
+      assert.equal(infoToasts.length, 0, 'no give-up toast may have fired along the way');
+      assert.ok(
+        text().includes('Load 1 file as federated model'),
+        'the pending jump must survive the window and preselect the file once listed',
+      );
+    } finally {
+      toast.info = originalInfo;
+    }
   });
 });

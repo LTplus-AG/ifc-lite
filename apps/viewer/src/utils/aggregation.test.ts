@@ -14,7 +14,8 @@ import {
   type AggregationModelAccess,
   type AggregationRelationships,
 } from './aggregation';
-import { stripComments } from '@/test/strip-comments.js';
+import { fileURLToPath } from 'node:url';
+import { stripSource } from '@/test/strip-comments.js';
 
 /** Minimal forward-only IfcRelAggregates graph from an adjacency map. */
 function makeRelationships(adjacency: Record<number, number[]>): AggregationRelationships {
@@ -190,14 +191,16 @@ describe('expandToGeometryBearingIds', () => {
   // this additionally requires BOTH callbacks route through the SAME shared
   // helper, which is what actually closes the highlight/frame mismatch.
   it('frameSelection and resolveHighlightIds share the same aggregation resolution', () => {
-    // Comment-stripped through the shared helper (`@/test/strip-comments.ts`),
-    // not a local pair of regexes: this file and
-    // `hooks/modelLoadedGeometryProps.test.ts` had two different strippers and
-    // the weaker one let a TRAILING comment through, which is exactly the
-    // decoy a source-text assertion has to withstand (#2393 review).
-    const source = stripComments(
-      readFileSync(new URL('../components/viewer/Viewport.tsx', import.meta.url), 'utf8'),
+    // Prepared by the shared helper (`@/test/strip-comments.ts`), a TypeScript
+    // parse rather than a lexical scan: a regex stripper desyncs on a regex
+    // literal carrying an unbalanced quote, after which a following `//` is no
+    // longer seen as a comment (#2393). `masked`, not `code`: every anchor
+    // below is real code, so blanking string/template/JSX-text bodies costs
+    // nothing and closes the string-literal decoy at the same time.
+    const viewportPath = fileURLToPath(
+      new URL('../components/viewer/Viewport.tsx', import.meta.url),
     );
+    const { masked: source } = stripSource(readFileSync(viewportPath, 'utf8'), viewportPath);
 
     const helperStart = source.indexOf('const resolveRenderableIds = ');
     assert.ok(helperStart >= 0, 'resolveRenderableIds helper defined');
@@ -232,12 +235,16 @@ describe('expandToGeometryBearingIds', () => {
   // of them read as geometry-less and get dropped or wrongly expanded.
   // Behaviour of the lookup itself is pinned in unionEntityBounds.test.ts.
   it('the shared bounds lookup is indexed and keeps the instanced fallback', () => {
-    const source = readFileSync(
+    // Prepared by the shared helper (`@/test/strip-comments.ts`), a TypeScript
+    // parse rather than a lexical scan: a regex stripper desyncs on a regex
+    // literal carrying an unbalanced quote, after which a following `//` is no
+    // longer seen as a comment (#2393). `masked`, not `code`: every anchor
+    // below is real code, so blanking string/template/JSX-text bodies costs
+    // nothing and closes the string-literal decoy at the same time.
+    const viewportPath = fileURLToPath(
       new URL('../components/viewer/Viewport.tsx', import.meta.url),
-      'utf8',
-    )
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '');
+    );
+    const { masked: source } = stripSource(readFileSync(viewportPath, 'utf8'), viewportPath);
 
     const start = source.indexOf('const createRenderableBoundsLookup = ');
     assert.ok(start >= 0, 'the shared bounds lookup helper is defined');

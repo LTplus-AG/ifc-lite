@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { GeometryDiagnostics } from '@ifc-lite/geometry';
 import { buildModelLoadedGeometryProps } from './modelLoadedGeometryProps.js';
-import { stripComments } from '@/test/strip-comments.js';
+import { stripSource } from '@/test/strip-comments.js';
 
 function diag(over: Partial<GeometryDiagnostics> = {}): GeometryDiagnostics {
   return {
@@ -159,6 +159,15 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
 });
 
 /**
+ * Read and stripped once. `code` has comments removed; `masked` is the same
+ * text at the same offsets with string/template/regex bodies blanked. See
+ * `@/test/strip-comments.ts` for why both views exist and why it is a
+ * TypeScript parse rather than a lexical scan.
+ */
+const loaderPath = fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url));
+const loader = stripSource(readFileSync(loaderPath, 'utf8'), loaderPath);
+
+/**
  * The argument list of ONE `captureModelLoaded(…)` call in `useIfcLoader.ts` —
  * a balanced-paren extraction, located by an `anchor` that must appear exactly
  * once inside it. The uniqueness assertion is part of the guard: an anchor that
@@ -181,30 +190,34 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
  * exactly that reason. What the scoping buys is the *other* half — that a
  * match somewhere else in the module can't stand in for this call.
  *
+ * The ANCHOR is looked up in `code` (comments gone, literals intact) because
+ * one anchor IS a literal — `load_path: 'server'`. Everything after that runs
+ * on `masked`, the same text with literal bodies blanked: the paren scan, so a
+ * `(` inside a string cannot unbalance it, and the returned span, so prose in
+ * a string literal cannot stand in for the call the assertions pin.
+ *
  * Anchored on `captureModelLoaded(`, not `posthog.capture(`: `posthog.capture`
  * for this event is private to `loadTelemetry.ts` (#2624) — every call site
  * in this file, including the wasm path, goes through `captureModelLoaded`.
  */
 function captureArgsAround(anchor: string): string {
-  const src = stripComments(
-    readFileSync(fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)), 'utf8'),
-  );
-  const payloadSpreadIdx = src.indexOf(anchor);
+  const { code, masked } = loader;
+  const payloadSpreadIdx = code.indexOf(anchor);
   assert.notEqual(payloadSpreadIdx, -1, `${anchor} must appear somewhere in useIfcLoader.ts`);
   assert.equal(
-    src.indexOf(anchor, payloadSpreadIdx + 1),
+    code.indexOf(anchor, payloadSpreadIdx + 1),
     -1,
     `${anchor} must be UNIQUE in useIfcLoader.ts, or this extraction is anchored on the wrong call`,
   );
-  const callStart = src.lastIndexOf('captureModelLoaded(', payloadSpreadIdx);
+  const callStart = code.lastIndexOf('captureModelLoaded(', payloadSpreadIdx);
   assert.notEqual(callStart, -1, `${anchor} must sit inside a captureModelLoaded(...) call`);
   const argsOpen = callStart + 'captureModelLoaded('.length - 1; // index of the call's own `(`
-  assert.equal(src[argsOpen], '(');
+  assert.equal(masked[argsOpen], '(');
   let depth = 0;
   let argsClose = -1;
-  for (let i = argsOpen; i < src.length; i++) {
-    if (src[i] === '(') depth++;
-    else if (src[i] === ')') {
+  for (let i = argsOpen; i < masked.length; i++) {
+    if (masked[i] === '(') depth++;
+    else if (masked[i] === ')') {
       depth--;
       if (depth === 0) {
         argsClose = i;
@@ -213,7 +226,7 @@ function captureArgsAround(anchor: string): string {
     }
   }
   assert.notEqual(argsClose, -1, 'the posthog.capture(...) call must have a matching close paren');
-  return src.slice(argsOpen + 1, argsClose);
+  return masked.slice(argsOpen + 1, argsClose);
 }
 
 describe('ifc_model_loaded wiring (#2388)', () => {
@@ -227,31 +240,30 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   // its fields showed up in a comment, an unrelated call, or a different one
   // of the six `ifc_model_loaded` capture sites in this file.
   //
-  // Comment-stripped, exactly like `wasmCaptureArgs()` above, and by the SAME
-  // helper — `@/test/strip-comments.ts`. Neither check is comment-proof by
-  // construction; both depend entirely on that stripper, which is why it is
-  // one function with its own unit tests rather than two spellings:
+  // Read through the SAME helper as `captureArgsAround` above
+  // (`@/test/strip-comments.ts`), and asserted against `masked`, not `code`.
+  // Neither check is prose-proof by construction; both depend entirely on that
+  // helper, which is why it is one module with its own unit tests rather than
+  // per-test spellings. Every decoy below was demonstrated green against a
+  // weaker version of it, with the real wiring deleted (#2393 review):
   //
-  //  - with the RAW text, deleting the real `loadDiagnostics =
-  //    event.diagnostics` hoist while any comment in the module happens to
-  //    mention it kept the whole-file `assert.match` below green — with
-  //    `loadDiagnostics` permanently null, which nulls every `csg_*` field
-  //    this PR exists to make attributable;
-  //  - and an earlier line-only stripper (`trimStart().startsWith('//')`) let
-  //    a TRAILING comment through, so deleting the real
-  //    `...buildModelLoadedGeometryProps({…})` spread and appending one
-  //    trailing comment quoting it kept all four argument-span assertions
-  //    green while the emitted event carried none of the fields.
+  //  - RAW text: deleting the `loadDiagnostics = event.diagnostics` hoist while
+  //    any comment in the module happens to mention it kept the whole-file
+  //    `assert.match` green — with `loadDiagnostics` permanently null, which
+  //    nulls every `csg_*` field this PR exists to make attributable;
+  //  - a line-only stripper (`trimStart().startsWith('//')`): a TRAILING
+  //    comment quoting the deleted `...buildModelLoadedGeometryProps({…})`
+  //    spread kept all four argument-span assertions green;
+  //  - a lexical scanner: a STRING literal quoting the deleted spread satisfied
+  //    every assertion, because a string is not a comment;
+  //  - the same scanner: a regex literal with an unbalanced quote (`/['"]/g`)
+  //    desynchronised its string tracker, so the `//` comment after it was not
+  //    stripped and a plainly commented-out call passed — in this check and in
+  //    the argument-span one.
   //
-  // Both demonstrated, then fixed (#2393 review, rounds 1 and 2). The stripper
-  // now also handles block comments — this module has 13 of them, one nine
-  // lines below the protected declaration.
-  const src = stripComments(
-    readFileSync(
-      fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)),
-      'utf8',
-    ),
-  );
+  // The last two are why the helper is now a TypeScript parse. This module has
+  // 13 block comments, one nine lines below the protected declaration.
+  const src = loader.masked;
 
   it('spreads the builder, wired to the load diagnostics and fidelity inputs, into the wasm-path ifc_model_loaded capture', () => {
     const args = captureArgsAround('...buildModelLoadedPayload(');

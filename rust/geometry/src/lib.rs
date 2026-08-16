@@ -152,6 +152,11 @@ pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;
 pub(crate) mod void_index;
+/// World-frame test fixture corpus: far-from-origin placements whose offset
+/// axis differs from the axis under test, plus the normal-projected f32
+/// noise bound they demand (the #2598/#2600/#2529 defect class).
+#[cfg(test)]
+pub(crate) mod world_frame_fixture;
 /// Cut one element into one closed solid per location zone (#2508 item 2), on
 /// top of the exact kernel rather than beside it.
 pub mod zone_split;

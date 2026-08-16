@@ -13,6 +13,8 @@
 
 import type { KeyValueStore, Logger, PluginContext } from '@ifc-lite/plugin-api';
 
+import { resetTokenManagerCache } from '../src/auth.js';
+
 export const GRAPH_MOCK_BASE_URL = 'https://graph.microsoft.com/v1.0';
 export const GRAPH_MOCK_DOWNLOAD_HOST = 'https://mock.files.1drv.com';
 export const MOCK_ACCESS_TOKEN = 'mock-access-token';
@@ -92,8 +94,18 @@ function itemJson(item: GraphMockItem): Record<string, unknown> {
   };
 }
 
+/**
+ * A real `@microsoft.graph.downloadUrl` carries its authorization *in the
+ * query string* (`tempauth=...` on SharePoint/OneDrive-for-Business hosts) —
+ * that is what makes the URL pre-authenticated and what makes it a credential.
+ * The mock reproduces that shape so a test can assert the secret half never
+ * escapes into a log line; {@link GRAPH_MOCK_DOWNLOAD_SECRET} is the part
+ * that must never be logged.
+ */
+export const GRAPH_MOCK_DOWNLOAD_SECRET = 'tempauth-secret-value';
+
 export function downloadUrlFor(fileId: string): string {
-  return `${GRAPH_MOCK_DOWNLOAD_HOST}/${encodeURIComponent(fileId)}`;
+  return `${GRAPH_MOCK_DOWNLOAD_HOST}/${encodeURIComponent(fileId)}?tempauth=${GRAPH_MOCK_DOWNLOAD_SECRET}`;
 }
 
 /** Slices a `$top`-paginated page, honoring the caller's own `$top` — unlike
@@ -265,8 +277,19 @@ const silentLogger: Logger = {
  * pre-seeded with a still-valid stored token so `createClient()` never needs
  * an interactive sign-in or a real token refresh to run a listing/download
  * call.
+ *
+ * Also drops the provider's process-wide `TokenManager` cache (see the
+ * `managerCache` doc in `src/auth.ts`). That cache is keyed on
+ * `(clientId, tenant)` — deliberately, so that concurrent refreshes across
+ * separate host contexts collapse onto one — and every context this factory
+ * builds reports the same `mock-client-id`/`common` pair. Resetting here makes
+ * "a fresh mock context gets a fresh manager" structural: a test cannot obtain
+ * a context without it, so no test can silently inherit the previous one's
+ * storage or `fetch` by forgetting a `beforeEach`.
  */
 export function createGraphMockContext(world: GraphMockWorld, options: GraphMockOptions = {}): PluginContext {
+  resetTokenManagerCache();
+
   const tokens = {
     accessToken: MOCK_ACCESS_TOKEN,
     refreshToken: 'mock-refresh-token',

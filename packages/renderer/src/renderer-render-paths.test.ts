@@ -29,6 +29,10 @@ import type { RenderOptions, BatchedMesh } from './types.js';
 (globalThis as Record<string, unknown>).GPUTextureUsage = {
     COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4, STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16,
 };
+// Used by the SkyPass bind-group layout (GPUShaderStage.FRAGMENT).
+(globalThis as Record<string, unknown>).GPUShaderStage = {
+    VERTEX: 1, FRAGMENT: 2, COMPUTE: 4,
+};
 
 /**
  * Verbatim Chromium/Dawn wording when a pending (or newly issued) buffer map
@@ -59,6 +63,12 @@ interface Harness {
         mapAsync: number;
         /** every `queue.writeBuffer` payload, copied at call time */
         writes: { buffer: unknown; floats: Float32Array }[];
+        /**
+         * Ordered log of `setPipeline` / `setBindGroup` / `drawIndexed` calls on
+         * the render pass, so a test can assert command ORDER (e.g. that the
+         * lighting environment is rebound at group(1) after the sky pass).
+         */
+        commands: { op: string; index?: number }[];
     };
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
@@ -91,7 +101,7 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -129,8 +139,17 @@ function makeHarness(): Harness {
             if (prop === 'setVertexBuffer') {
                 return (slot: number, buf: unknown) => { if (slot === 0) boundVertexBuffer = buf; };
             }
+            if (prop === 'setPipeline') {
+                return () => { stats.commands.push({ op: 'setPipeline' }); };
+            }
+            if (prop === 'setBindGroup') {
+                return (index: number) => { stats.commands.push({ op: 'setBindGroup', index }); };
+            }
             if (prop === 'drawIndexed') {
-                return () => { stats.draws.push(boundVertexBuffer); };
+                return () => {
+                    stats.commands.push({ op: 'drawIndexed' });
+                    stats.draws.push(boundVertexBuffer);
+                };
             }
             return () => undefined;
         },
@@ -381,6 +400,49 @@ describe('destroy() lifecycle', () => {
         h.renderer.destroy();
         assert.strictEqual((grey.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
         assert.strictEqual((red.vertexBuffer as unknown as FakeBuffer).destroyed, 1);
+    });
+});
+
+describe('lighting environment bind ordering', () => {
+    // Regression: switching the WebGPU "Environment" preset away from Default
+    // enables the procedural sky, whose pipeline has an incompatible layout
+    // (its own group(0), no group(1)). Drawing the sky invalidates the
+    // per-frame lighting group(1) binding on conformant WebGPU
+    // implementations; the flat batch loop re-sets only group(0) per batch, so
+    // when the env was bound BEFORE the sky pass every non-Default preset drew
+    // no geometry ("the model disappears when I change the environment") on
+    // strict drivers. The env must be (re)bound at group(1) AFTER the sky pass
+    // and BEFORE the first geometry draw.
+    it('rebinds the environment at group(1) after the sky pass, before geometry', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.stats.commands.length = 0;
+        h.render({ environment: { skyEnabled: true, sunDirection: [0.45, 0.83, 0.33] } });
+
+        const cmds = h.stats.commands;
+        const firstPipeline = cmds.findIndex((c) => c.op === 'setPipeline');
+        const firstDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
+        assert.ok(firstPipeline >= 0, 'the sky pass must set a pipeline');
+        assert.ok(firstDraw > firstPipeline, 'geometry must draw after a pipeline is set');
+        const envBind = cmds.findIndex(
+            (c, i) => c.op === 'setBindGroup' && c.index === 1 && i > firstPipeline && i < firstDraw,
+        );
+        assert.ok(envBind >= 0, 'group(1) must be re-bound after the sky pass and before geometry');
+    });
+
+    it('binds the environment at group(1) before geometry with the sky off (Default preset)', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.stats.commands.length = 0;
+        h.render();
+
+        const cmds = h.stats.commands;
+        const firstDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
+        assert.ok(firstDraw >= 0, 'geometry must draw');
+        const envBind = cmds.findIndex(
+            (c, i) => c.op === 'setBindGroup' && c.index === 1 && i < firstDraw,
+        );
+        assert.ok(envBind >= 0, 'group(1) must be bound before the first geometry draw');
     });
 });
 

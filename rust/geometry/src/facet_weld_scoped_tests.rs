@@ -501,7 +501,12 @@ mod offset_anchor_tests {
     /// two orderings of the same mesh must weld to the same result, full stop.
     #[test]
     fn anchor_is_stable_under_vertex_reordering() {
-        let j = 4.9e-5; // just under MAX_OFFSET_JITTER (5e-5): any perturbation can flip the bucket
+        // Just under MAX_OFFSET_JITTER (5e-5), so the pair is near the bucket
+        // boundary. Note this jitter is NOT sized to an f32 ULP at this
+        // magnitude, so it does not by itself prove a perturbation flips the
+        // bucket; the assertion this test actually makes is order-invariance,
+        // which holds regardless (see the doc comment above).
+        let j = 4.9e-5;
         let t = [5000.123_f64, 3000.456, 7000.789];
         let add = |p: [f64; 3]| [p[0] + t[0], p[1] + t[1], p[2] + t[2]];
         let facet1 = [add([0.0, 0.0, 0.0]), add([10.0, 0.0, 0.0]), add([0.0, 10.0, 0.0])];

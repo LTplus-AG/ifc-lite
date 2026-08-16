@@ -143,9 +143,12 @@ describe('resolveKeptHalfSpace (#2042)', () => {
   });
 
   it('honours the UI slider range only while the normal is still that unit axis', () => {
-    // Inside the scene range and untilted: honoured, so 50% of [2, 6] is 4.
-    const honoured = resolveKeptHalfSpace(input({ axis: 'down', position: 50, uiRange: { min: 2, max: 6 } }));
-    assert.equal(honoured.offset, 4);
+    // 25%, NOT 50%. At 50% the UI range [2, 6] and the scene range [0, 8] both
+    // resolve to 4, so the assertion would hold whether the range was honoured
+    // or silently ignored - it would measure something adjacent to the claim.
+    // At 25% they separate: 2 + 0.25 * 4 = 3 against 0 + 0.25 * 8 = 2.
+    const honoured = resolveKeptHalfSpace(input({ axis: 'down', position: 25, uiRange: { min: 2, max: 6 } }));
+    assert.equal(honoured.offset, 3, '25% of the UI range [2, 6], not of the scene range [0, 8]');
     // A range wider than the scene bounds cannot be a storey scope; ignored.
     const ignored = resolveKeptHalfSpace(input({ axis: 'down', position: 50, uiRange: { min: -100, max: 100 } }));
     assert.equal(ignored.offset, 4, 'falls back to 50% of the scene Y extent, which is also 4');

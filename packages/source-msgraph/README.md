@@ -62,7 +62,38 @@ is "[o]nly provided if offline_access scope was requested").
 
 Sign-in is a popup, not a full-page redirect: `signIn()` opens
 `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize` in a
-popup and polls it for a same-origin redirect back to this app.
+popup and waits for the callback page at `REDIRECT_PATH` to broadcast the
+result back.
+
+**The popup is never inspected, and the host must serve `REDIRECT_PATH`
+itself.** Both follow from `Cross-Origin-Opener-Policy: same-origin`, which
+any host that wants `SharedArrayBuffer` (the ifc-lite viewer does) has to
+send. Under that header, opening a *cross-origin* popup severs the opener
+relationship: the `WindowProxy` `window.open` returns reports `closed === true`
+while the window is visibly open, and reading `location` throws
+`SecurityError`. The classic poll loop therefore rejects every sign-in as
+"cancelled" on its first tick, with the popup still on the consent screen and
+the authorization code stranded. So:
+
+- The redirect lands back on this app's own origin, and that page hands the
+  result to the opener over a `BroadcastChannel`. The waiting side is
+  `waitForOAuthCallback` in `@ifc-lite/oauth-pkce`
+  (`packages/oauth-pkce/src/callback-channel.ts` carries the name, the message
+  shape and the live probe) — it is shared with every other provider built on
+  that package, because the failure is a property of the popup being
+  cross-origin rather than of any one identity provider. The host serves the
+  page: see `apps/viewer/public/oauth/msgraph/callback.html` plus the
+  dev-server route in `apps/viewer/vite-plugins/oauth-callback.ts` and the
+  `vercel.json` rewrite. Without such a route the SPA fallback answers the
+  redirect with the whole application, which boots a second copy of the app
+  inside the popup.
+- Messages are routed by `state`, so two providers (or two tabs) signing in at
+  once cannot complete each other's flow. `state` is then re-validated by
+  `parseAuthorizationCallback` before the code is used.
+- **Cancellation is not detectable.** `popup.closed` is the only signal a
+  browser offers for "the user closed the window", and it is exactly what COOP
+  made unusable. Closing the popup falls through to the five-minute timeout
+  instead of reporting a cancellation.
 
 **Note on session length**: per Microsoft's docs, a refresh token issued to a
 `spa`-type redirect URI is capped at a 24-hour lifetime regardless of

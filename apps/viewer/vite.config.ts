@@ -8,6 +8,7 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
+import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
 
 // --- Build-time changelog parser ---
 
@@ -241,6 +242,7 @@ export default defineConfig({
     wasm(),
     topLevelAwait(),
     cesiumStaticAssets(),
+    oauthCallbackRoutes(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),

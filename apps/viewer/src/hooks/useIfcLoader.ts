@@ -1186,7 +1186,22 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+          // Geometry attribution (#2388), server row: `is_resource_retry` and
+          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
+          // fell through to WASM because the server was momentarily down, then
+          // OOMed, then retried into a recovered server, lands HERE — and
+          // without the flag that row is indistinguishable from a normal load.
+          //
+          // The two fidelity fields are deliberately NOT reported here. They
+          // describe LOCAL-WASM tessellation; the server produces canonical
+          // full-fidelity geometry under its own cache key and applies neither
+          // (see the comment on the branch condition above). Spreading
+          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
+          // and `skip_small_cuts` values this load never applied — a
+          // fabricated attribution of exactly the kind #2388 exists to
+          // prevent. Absent stays absent; `is_resource_retry` is the one fact
+          // that is true on this path.
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
           setLoading(false);
           return;
         }

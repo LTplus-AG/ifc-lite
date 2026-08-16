@@ -14,6 +14,7 @@ import {
   type AggregationModelAccess,
   type AggregationRelationships,
 } from './aggregation';
+import { stripComments } from '@/test/strip-comments.js';
 
 /** Minimal forward-only IfcRelAggregates graph from an adjacency map. */
 function makeRelationships(adjacency: Record<number, number[]>): AggregationRelationships {
@@ -189,12 +190,14 @@ describe('expandToGeometryBearingIds', () => {
   // this additionally requires BOTH callbacks route through the SAME shared
   // helper, which is what actually closes the highlight/frame mismatch.
   it('frameSelection and resolveHighlightIds share the same aggregation resolution', () => {
-    const source = readFileSync(
-      new URL('../components/viewer/Viewport.tsx', import.meta.url),
-      'utf8',
-    )
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '');
+    // Comment-stripped through the shared helper (`@/test/strip-comments.ts`),
+    // not a local pair of regexes: this file and
+    // `hooks/modelLoadedGeometryProps.test.ts` had two different strippers and
+    // the weaker one let a TRAILING comment through, which is exactly the
+    // decoy a source-text assertion has to withstand (#2393 review).
+    const source = stripComments(
+      readFileSync(new URL('../components/viewer/Viewport.tsx', import.meta.url), 'utf8'),
+    );
 
     const helperStart = source.indexOf('const resolveRenderableIds = ');
     assert.ok(helperStart >= 0, 'resolveRenderableIds helper defined');

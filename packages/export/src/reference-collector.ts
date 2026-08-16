@@ -519,6 +519,20 @@ export function collectReferencedEntityIds(
         if (Array.isArray(group)) refs.push(...group);
         else refs.push(group as number);
       }
+      // Union with a raw byte scan. `extractRelationshipRefGroupsIndexed`
+      // walks only ONE level of parenthesised nesting, so a DOUBLY-nested
+      // list attribute — a real IFC shape, e.g.
+      // `IfcBSplineSurfaceWithKnots.ControlPointsList: LIST OF LIST OF
+      // IfcCartesianPoint` — has each inner `(#N,#N)` group fail the bare
+      // `#(\d+)` match and gets discarded as "contains a non-ref item",
+      // silently dropping every ref inside it from the enqueue step (and
+      // therefore from the closure entirely) whenever this entity also has
+      // an unrelated queued mutation (CodeRabbit finding on #2637). The
+      // union can only ADD ids already missed by the positional parse — the
+      // walk de-dupes via `visited`, so re-adding an id the parse already
+      // found costs nothing beyond the duplicate push.
+      const mutatedSpan = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+      extractRefsFromBytes(mutatedSpan, 0, mutatedSpan.length, refs);
     } else {
       // Hand the byte scanner an already-narrowed record. `slice` is a
       // `subarray` on a contiguous source, so this is the same zero-copy read.

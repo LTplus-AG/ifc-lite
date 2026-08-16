@@ -49,8 +49,9 @@ const FIXTURE = join(__dirname, '../../../tests/models/buildingsmart/Infra-Bridg
 // Fixture is fetched via `pnpm fixtures` (tests/models/manifest.json); skip
 // cleanly rather than fail when it has not been pulled down.
 const canRun = existsSync(FIXTURE);
+const SUITE_TITLE = 'regression: Infra-Bridge.ifc (buildingSMART sample) CLI-default clash count';
 
-describe.skipIf(!canRun)('regression: Infra-Bridge.ifc (buildingSMART sample) CLI-default clash count', () => {
+describe.skipIf(!canRun)(canRun ? SUITE_TITLE : `${SUITE_TITLE} (fixture missing; run pnpm fixtures)`, () => {
   it(
     'reports 50 hard clashes at CLI defaults, 8 of them IfcBeam x IfcBeam, grouping to 2 clusters at epsilon=3m',
     async () => {

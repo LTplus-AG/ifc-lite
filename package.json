@@ -36,6 +36,7 @@
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
     "check:git-lfs": "node scripts/check-git-lfs.mjs",
+    "check:server-bin-targets": "node scripts/check-server-bin-targets.mjs",
     "check:tla-chunk-await": "node scripts/check-tla-chunk-await.mjs",
     "generate:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs",
     "check:server-attr-indices": "pnpm turbo build --filter=@ifc-lite/parser && node scripts/generate-server-attr-indices.mjs --check",
@@ -71,7 +72,8 @@
     "check:bim-globals": "pnpm turbo build --filter=@ifc-lite/sandbox && node scripts/generate-bim-globals.mjs --check",
     "verify:epsg": "pnpm --filter @ifc-lite/data verify:epsg",
     "generate:epsg-index": "tsx scripts/generate-epsg-index.ts",
-    "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates"
+    "check:templates": "pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates",
+    "check:generated": "node scripts/check-generated.mjs"
   },
   "devDependencies": {
     "@changesets/changelog-github": "^0.7.0",

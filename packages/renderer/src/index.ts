@@ -7,6 +7,7 @@
  */
 
 export { WebGPUDevice } from './device.js';
+export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-state.js';
@@ -105,7 +106,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
-import { WebGPUDevice } from './device.js';
+import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
@@ -1601,6 +1602,16 @@ export class Renderer {
      */
     getFrameStats(): FrameStats | null {
         return this._lastFrameStats;
+    }
+
+    /**
+     * Vendor/architecture identity of the GPU adapter, snapshotted during
+     * `init()` (issue #2624 device-loss telemetry), or null when the runtime
+     * does not expose `GPUAdapter.info`. Safe to call after a device loss:
+     * the snapshot is plain strings copied at init, not a live GPU object.
+     */
+    getAdapterInfo(): AdapterInfoSnapshot | null {
+        return this.device.getAdapterInfo();
     }
 
     /**
@@ -3434,6 +3445,21 @@ export class Renderer {
         lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
+    }
+
+    /**
+     * Draw the focused clash's TRUE INTERSECTION VOLUME — the actual overlap
+     * mesh from `clashIntersectionSolid` — as an opaque solid, so the clash
+     * reads as a shape rather than a wireframe box or contact line (the
+     * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
+     * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
+     * which one is current for a given clash (solid when the kernel resolved
+     * one, box/lines as the fallback when it didn't).
+     */
+    setClashIntersectionSolid(
+        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+    ): void {
+        this.overlays.setClashIntersectionSolid(solid);
     }
 
     /**

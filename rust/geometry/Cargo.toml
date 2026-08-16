@@ -99,6 +99,13 @@ bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"
+# The real clash engine, used ONLY by tests/clash_intersection_real_model.rs to
+# produce the same candidate pairs the product reports, so the intersection-solid
+# measurements are taken on genuine clash pairs rather than a test-local
+# broad-phase approximation. `ifc-lite-clash` has zero dependencies and does not
+# depend on this crate, so this is not circular and adds nothing to a shipping
+# build.
+ifc-lite-clash.workspace = true
 # JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
 # the serde rename_all keys match the @ifc-lite/geometry TS interface).
 serde_json = "1.0"

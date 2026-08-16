@@ -6,6 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { buildCompareReport, reportToCsv, reportToJson, type CompareReport } from './exportReport.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
+import type { FederatedModel } from '../../store/types.js';
 
 const report: CompareReport = {
   baseModel: 'Project01',
@@ -13,7 +14,15 @@ const report: CompareReport = {
   scope: 'both',
   generatedAt: '2026-06-18T00:00:00.000Z',
   excludedTypes: [],
-  counts: { added: 1, deleted: 1, modified: 1, matched: 0, needsReview: 0 },
+  counts: {
+    added: 1,
+    deleted: 1,
+    modified: 1,
+    matched: 0,
+    needsReview: 0,
+    products: { added: 1, deleted: 1, modified: 1 },
+    typeObjects: { added: 0, deleted: 0, modified: 0 },
+  },
   rows: [
     { globalId: '12SOM77Nv5ruUGky1rkC3a', name: 'Wall', ifcType: 'IfcWall', state: 'added', change: 'Added', movedDistance: 0, model: 'Project01 v2' },
     { globalId: '0v6FMURlDDD866oJ1s6pyr', name: 'Muro, "base"', ifcType: 'IfcWall', state: 'modified', change: 'Data changed', movedDistance: 0, model: 'Project01 v2' },
@@ -414,5 +423,234 @@ describe('buildCompareReport content matches (#1891)', () => {
       lines[1],
       'NEW_GUID_BBBBBBBBBBBB,,IfcWall,Renamed,,B,renamed,OLD_GUID_AAAAAAAAAAAA',
     );
+  });
+});
+
+describe('buildCompareReport - a geometry-less product that moved', () => {
+  /** A site under a two-link placement chain, Representation `$`; same fixture
+   *  family as describeChange.test.ts. */
+  function sited(parentY: number, childY: number): string {
+    return [
+      "#1=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'environment - site',$,$,#23,$,$,.ELEMENT.,$,$,$,$,$);",
+      `#10=IFCCARTESIANPOINT((0.,${parentY.toFixed(1)},0.));`,
+      `#11=IFCCARTESIANPOINT((0.,${childY.toFixed(1)},0.));`,
+      '#20=IFCAXIS2PLACEMENT3D(#10,$,$);',
+      '#21=IFCAXIS2PLACEMENT3D(#11,$,$);',
+      '#22=IFCLOCALPLACEMENT($,#20);',
+      '#23=IFCLOCALPLACEMENT(#22,#21);',
+    ].join('\n');
+  }
+
+  function ifc4(body: string): string {
+    return [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('','',(''),(''),'','','');",
+      "FILE_SCHEMA(('IFC4'));",
+      'ENDSEC;',
+      'DATA;',
+      body,
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+      '',
+    ].join('\n');
+  }
+
+  async function store(body: string) {
+    const { IfcParser } = await import('@ifc-lite/parser');
+    const bytes = new TextEncoder().encode(ifc4(body));
+    return new IfcParser().parseColumnar(bytes.buffer as ArrayBuffer, { disableWorkerScan: true });
+  }
+
+  it('writes Moved with the composed distance, not a phantom Reshaped', async () => {
+    // The report-side twin of the describeChange fix: with no mesh on either
+    // side, `classifyModified` fell through to `summarizeGeometryChange(null,
+    // null)` and printed "Reshaped" for a site that was re-georeferenced — the
+    // exact string the field report flagged as false, next to a MovedDistance_m
+    // column sitting empty on the one row it was made for.
+    const aStore = await store(sited(40, 0));
+    const bStore = await store(sited(0, 0));
+    const ref = (modelId: string) => ({ modelId, localId: 1, globalId: 1, meshed: false });
+    const fingerprint = (modelId: string) => ({
+      key: '23sFQGRy90RxVbRHD9iSE2',
+      ifcType: 'IfcSite',
+      dataHash: 'd',
+      ref: ref(modelId),
+    });
+    const result = {
+      baseModelId: 'a',
+      headModelId: 'b',
+      baseName: 'A',
+      headName: 'B',
+      scope: 'both',
+      geometryUnavailable: false,
+      excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both',
+        excludedTypes: [],
+        entries: [
+          {
+            key: '23sFQGRy90RxVbRHD9iSE2',
+            state: 'modified',
+            changeKinds: ['geometry'],
+            base: fingerprint('a'),
+            head: fingerprint('b'),
+          },
+        ],
+        byKey: new Map(),
+        counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+      },
+    } as unknown as CompareResult;
+    const models = new Map([
+      ['a', { ifcDataStore: aStore, geometryResult: null } as unknown as FederatedModel],
+      ['b', { ifcDataStore: bStore, geometryResult: null } as unknown as FederatedModel],
+    ]);
+    const report = buildCompareReport(result, models);
+    assert.strictEqual(report.rows.length, 1);
+    assert.strictEqual(report.rows[0].change, 'Moved');
+    assert.ok(
+      Math.abs(report.rows[0].movedDistance - 40) < 1e-6,
+      `expected 40 m in MovedDistance_m, got ${report.rows[0].movedDistance}`,
+    );
+  });
+
+  it('writes Geometry changed, not a phantom Reshaped, when the placement itself cannot be composed', async () => {
+    // Both sides geometry-less (meshed: false) but placed by an
+    // IfcGridPlacement, which composeWorldPlacement whitelists out and
+    // abstains on. placementMoveSummary therefore also abstains (null), and
+    // falling through to summarizeGeometryChange(null, null) would print the
+    // same phantom "Reshaped" the fix above removed — reached via abstention
+    // instead of a meshed mismatch.
+    const grid = [
+      "#1=IFCSITE('23sFQGRy90RxVbRHD9iSE2',$,'environment - site',$,$,#30,$,$,.ELEMENT.,$,$,$,$,$);",
+      '#30=IFCGRIDPLACEMENT($,$);',
+    ].join('\n');
+    const aStore = await store(grid);
+    const bStore = await store(grid);
+    const ref = (modelId: string) => ({ modelId, localId: 1, globalId: 1, meshed: false });
+    const fingerprint = (modelId: string) => ({
+      key: '23sFQGRy90RxVbRHD9iSE2',
+      ifcType: 'IfcSite',
+      dataHash: 'd',
+      ref: ref(modelId),
+    });
+    const result = {
+      baseModelId: 'a',
+      headModelId: 'b',
+      baseName: 'A',
+      headName: 'B',
+      scope: 'both',
+      geometryUnavailable: false,
+      excludedHiddenIds: new Set<number>(),
+      diff: {
+        scope: 'both',
+        excludedTypes: [],
+        entries: [
+          {
+            key: '23sFQGRy90RxVbRHD9iSE2',
+            state: 'modified',
+            changeKinds: ['geometry'],
+            base: fingerprint('a'),
+            head: fingerprint('b'),
+          },
+        ],
+        byKey: new Map(),
+        counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+      },
+    } as unknown as CompareResult;
+    const models = new Map([
+      ['a', { ifcDataStore: aStore, geometryResult: null } as unknown as FederatedModel],
+      ['b', { ifcDataStore: bStore, geometryResult: null } as unknown as FederatedModel],
+    ]);
+    const report = buildCompareReport(result, models);
+    assert.strictEqual(report.rows.length, 1);
+    assert.strictEqual(report.rows[0].change, 'Geometry changed');
+    assert.strictEqual(report.rows[0].movedDistance, 0);
+  });
+});
+
+describe('buildCompareReport products vs type objects (headline split)', () => {
+  const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
+  const fingerprint = (modelId: string, key: string, id: number, ifcType: string) => ({
+    key,
+    ifcType,
+    dataHash: 'd',
+    ref: ref(modelId, id),
+  });
+
+  // Mixed result mirroring the reported confusion's shape: product changes
+  // AND type-object changes in the same comparison.
+  const mixedResult = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'both',
+    geometryUnavailable: false,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'both',
+      excludedTypes: [],
+      entries: [
+        { key: 'k1', state: 'added', changeKinds: [], head: fingerprint('b', 'k1', 1, 'IfcWall') },
+        { key: 'k2', state: 'modified', changeKinds: ['data'], base: fingerprint('a', 'k2', 2, 'IfcDoor'), head: fingerprint('b', 'k2', 2, 'IfcDoor') },
+        { key: 'k3', state: 'deleted', changeKinds: [], base: fingerprint('a', 'k3', 3, 'IfcWindow') },
+        {
+          key: 'k4',
+          state: 'modified',
+          changeKinds: ['data'],
+          base: fingerprint('a', 'k4', 4, 'IfcBuildingElementProxyType'),
+          head: fingerprint('b', 'k4', 4, 'IfcBuildingElementProxyType'),
+        },
+      ],
+      byKey: new Map(),
+      counts: { added: 1, modified: 2, deleted: 1, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('splits counts.products from counts.typeObjects in the JSON report', () => {
+    const report = buildCompareReport(mixedResult, new Map());
+    assert.deepStrictEqual(report.counts.products, { added: 1, modified: 1, deleted: 1 });
+    assert.deepStrictEqual(report.counts.typeObjects, { added: 0, modified: 1, deleted: 0 });
+    // The combined engine-wide totals stay intact for readers of the old fields.
+    assert.strictEqual(report.counts.added, 1);
+    assert.strictEqual(report.counts.modified, 2);
+    assert.strictEqual(report.counts.deleted, 1);
+  });
+
+  it('leads the CSV with a products/type-objects summary comment when both exist', () => {
+    const report = buildCompareReport(mixedResult, new Map());
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(
+      lines[0],
+      '"# Products: 1 added, 1 modified, 1 deleted | Type objects: 0 added, 1 modified, 0 deleted"',
+    );
+    assert.strictEqual(lines[1], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
+  });
+
+  it('the empty case: omits the summary comment line when there are no type-object changes', () => {
+    // Bounding case: a comparison with only product changes must render
+    // exactly as it did before this split existed - no "+0 type objects" or
+    // "0 added, 0 modified, 0 deleted" noise anywhere in the CSV.
+    const productOnly = {
+      ...mixedResult,
+      diff: {
+        ...mixedResult.diff,
+        entries: mixedResult.diff.entries.filter((e: { key: string }) => e.key !== 'k4'),
+        // k4 was the only type-object entry AND the only modified entry
+        // besides k2, so removing it must also move the aggregate off the
+        // mixed fixture's `modified: 2` - otherwise this "product-only"
+        // fixture keeps a type-object-shaped total after its type object
+        // is gone, and would not catch a regression that started reading
+        // the combined total instead of re-tallying the filtered entries.
+        counts: { ...mixedResult.diff.counts, modified: 1 },
+      },
+    } as unknown as CompareResult;
+    const report = buildCompareReport(productOnly, new Map());
+    assert.deepStrictEqual(report.counts.typeObjects, { added: 0, modified: 0, deleted: 0 });
+    assert.strictEqual(report.counts.modified, 1, 'aggregate must match the filtered entries');
+    const lines = reportToCsv(report).split('\r\n');
+    assert.strictEqual(lines[0], 'GlobalId,Name,IfcType,Change,MovedDistance_m,Model,Match,MatchedGlobalId');
   });
 });

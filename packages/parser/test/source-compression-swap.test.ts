@@ -165,15 +165,64 @@ describe('in-place compression swap (#2183)', () => {
 /**
  * Liveness. Requires `--expose-gc`, and HARD-FAILS without it rather than
  * skipping: a lane that loses the flag must turn red, not quietly green.
+ *
+ * The property pinned here is "no live reference path reaches the original
+ * bytes after the swap". A structural check (`isResident === false`, the
+ * private view nulled) can only prove OUR field dropped its reference; the
+ * WeakRef probe proves nobody else kept one either -- a captured extractor, an
+ * internal alias, a cache -- which is the retention class #2183 exists to
+ * kill. That is why the probe stays despite costing a gc loop.
+ *
+ * Flake-hardening (#2651): this block used to run a FIXED 20 gc+yield cycles
+ * per wait under vitest's default 5000ms budget, and a contended CI runner
+ * (124s wall for a 64-file suite) turned both tests into bare timeouts.
+ * Reproduced locally at background QoS under full CPU load: 7.1s / 8.5s
+ * against the 5s budget, every other test in the file green. Now the wait
+ * exits as soon as the probe clears (1-3 cycles when healthy), the cycle
+ * bound -- not the wall clock -- is what detects failure, the failure message
+ * says what actually happened, and the two gc tests carry their own generous
+ * timeout so a starved runner cannot convert a pass into a timeout.
  */
 describe('the original buffer becomes collectable', () => {
   const gc = (globalThis as { gc?: () => void }).gc;
 
-  async function collect(): Promise<void> {
-    for (let i = 0; i < 20; i++) {
+  /**
+   * Forced-gc cycles before declaring the buffer retained. Node core's own
+   * gcUntil gives up after 10; 40 is generous for conservative-stack-scanning
+   * stragglers while keeping the failure path bounded. The healthy path exits
+   * after 1-3 cycles and never feels this number.
+   */
+  const MAX_GC_CYCLES = 40;
+
+  /**
+   * Wall-clock ceiling for the two gc tests ONLY (the rest of the file keeps
+   * the default). This is not the failure detector -- MAX_GC_CYCLES is -- it
+   * only stops a starved runner from turning a slow pass into a timeout. The
+   * reproduced worst case (background QoS, saturated CPU) ran the old fixed
+   * loop in ~8.5s; 30s clears that with margin even for the full 40-cycle
+   * failure path.
+   */
+  const LIVENESS_TIMEOUT_MS = 30_000;
+
+  /** One fresh macrotask turn, so each gc starts with the previous turn's
+   *  [[KeptAlive]] set (populated by `deref`) already cleared. */
+  const nextTurn = (): Promise<void> => new Promise((r) => setImmediate(r));
+
+  /**
+   * Force gc until the probe clears. Returns the number of cycles it took, or
+   * null when the probe survived all MAX_GC_CYCLES -- i.e. something still
+   * references the buffer. gc runs at the START of a fresh turn, BEFORE the
+   * `deref` in that turn: a `deref` pins its target until its turn ends, so
+   * gc-after-deref in one turn can never collect and the loop would spin its
+   * whole budget for nothing.
+   */
+  async function gcUntilCollected(probe: WeakRef<Uint8Array>): Promise<number | null> {
+    for (let cycle = 1; cycle <= MAX_GC_CYCLES; cycle++) {
+      await nextTurn();
       gc!();
-      await new Promise((r) => setImmediate(r));
+      if (probe.deref() === undefined) return cycle;
     }
+    return null;
   }
 
   it('exposes gc, or this whole file is decorative', () => {
@@ -202,24 +251,34 @@ describe('the original buffer becomes collectable', () => {
     return { store, probe: new WeakRef(view), payload: compressSource(view, 1024) };
   }
 
-  it('drops the resident buffer after the swap, while the store stays alive', async () => {
+  it('drops the resident buffer after the swap, while the store stays alive', {
+    timeout: LIVENESS_TIMEOUT_MS,
+  }, async () => {
     const { store, probe, payload } = await arrange();
 
     // CONTROL FIRST. If the probe cannot observe retention at all, the
-    // assertion below would pass for the wrong reason. Proving the detector
-    // works is what stops this being a test that cannot fail.
-    await collect();
-    expect(probe.deref(), 'control: the source still holds the buffer before the swap')
-      .not.toBe(undefined);
+    // assertion below would pass for the wrong reason. A few gc opportunities
+    // suffice: a strongly-held buffer can never be collected, the cycles only
+    // give gc a real chance to prove that. Checked as a boolean so the
+    // dereffed buffer never lands inside assertion internals that might
+    // retain it past this turn.
+    for (let i = 0; i < 5; i++) { gc!(); await nextTurn(); }
+    expect(
+      probe.deref() !== undefined,
+      'control: the source must still hold the buffer before the swap',
+    ).toBe(true);
 
     compressSourceInPlace(store.source, payload);
-    await collect();
+    const clearedAfter = await gcUntilCollected(probe);
 
     // THE assertion this whole feature rests on: nothing still reaches the
     // original bytes, so the 275 MB is genuinely returned rather than merely
     // duplicated into blocks.
-    expect(probe.deref(), 'the original source buffer is still reachable after the swap')
-      .toBe(undefined);
+    expect(
+      clearedAfter,
+      `the original source buffer was still reachable after ${MAX_GC_CYCLES} forced gc `
+      + 'cycles -- something still references the pre-swap bytes',
+    ).not.toBe(null);
 
     // ...and the store, still strongly held, keeps working from blocks.
     expect(store.source.isResident).toBe(false);
@@ -228,21 +287,35 @@ describe('the original buffer becomes collectable', () => {
     expect(store.getProperties?.(1)).toBeDefined();
   });
 
-  it('a deliberately leaked reference SURVIVES gc (proves the probe detects retention)', async () => {
+  it('a deliberately leaked reference SURVIVES gc (proves the probe detects retention)', {
+    timeout: LIVENESS_TIMEOUT_MS,
+  }, async () => {
     const bytes = new TextEncoder().encode(STEP.repeat(200));
     const store = await parsedStore(bytes);
     const leaked = store.source.materialize();
     const probe = new WeakRef(leaked);
 
     compressSourceInPlace(store.source, compressSource(leaked, 1024));
-    await collect();
     // `leaked` is deliberately still in scope here -- that is the point.
+    // Drive the EXACT loop the sibling test uses to declare victory, so this
+    // proves that loop reports retention -- i.e. that the sibling CAN fail.
+    const clearedAfter = await gcUntilCollected(probe);
 
-    // Held by `leaked`, so it must NOT be collected. If this ever fails, the
-    // harness's gc semantics changed and the sibling test above has stopped
-    // meaning anything -- this fails loudly instead of that passing quietly.
-    expect(probe.deref(), 'a strongly-held buffer was collected; the probe is broken')
-      .not.toBe(undefined);
-    expect(leaked.byteLength).toBeGreaterThan(0);
+    // Read `leaked` HERE, before the assertion below, so the strong reference
+    // is provably live across the whole polling loop. Reading it only after
+    // the assertion would leave the keep-alive resting on the optimiser's
+    // liveness analysis reaching past an expect() that can throw; if that
+    // analysis ever let `leaked` die early, this control would report "the
+    // probe cannot detect retention" for the wrong reason and the sibling
+    // test would stop meaning anything without saying so.
+    const heldBytes = leaked.byteLength;
+    expect(heldBytes, 'the leaked reference must still address its bytes').toBeGreaterThan(0);
+
+    // Held by `leaked`, so it must survive every cycle. If this ever fails,
+    // the harness's gc semantics changed and the sibling test above has
+    // stopped meaning anything -- this fails loudly instead of that passing
+    // quietly.
+    expect(clearedAfter, 'a strongly-held buffer was collected; the probe is broken')
+      .toBe(null);
   });
 });

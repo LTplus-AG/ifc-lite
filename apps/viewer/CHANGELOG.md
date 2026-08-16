@@ -1,5 +1,20 @@
 # @ifc-lite/viewer
 
+## 1.33.10
+
+### Patch Changes
+
+- [#2640](https://github.com/LTplus-AG/ifc-lite/pull/2640) [`6d45c9d`](https://github.com/LTplus-AG/ifc-lite/commit/6d45c9d214069ff05e843028c081562960b5eead) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Honour the LENGTHUNIT display override in the 2D section/drawing canvas's on-canvas distance and perimeter labels ([#2199](https://github.com/LTplus-AG/ifc-lite/issues/2199) slice).
+
+  `0de10a0fd` ([#2538](https://github.com/LTplus-AG/ifc-lite/issues/2538)) wired `unitDisplayOverrides` through every measure-tool distance readout — `MeasurePanel.tsx`, `MeasurementVisuals.tsx`, `MeasurePointReadout.tsx` — but `Drawing2DCanvas.tsx`'s own measure-line and polygon-area-perimeter labels still called `formatDistance()` with no `overrides` argument, so a user who set feet as their display unit still saw metres there. `Drawing2DCanvas` now accepts a `unitDisplayOverrides` prop (defaulting to `{}`, so the no-override behaviour is unchanged) and threads it into both `formatDistance()` call sites; `Section2DPanel.tsx` reads the override map from the store and passes it down.
+
+- Updated dependencies [[`9cccc00`](https://github.com/LTplus-AG/ifc-lite/commit/9cccc002f5f03ad96c710b6d2a1e12b1bf61172c), [`118188b`](https://github.com/LTplus-AG/ifc-lite/commit/118188b22c0685f07c3537f0500b0bcb2aa4b33f), [`9d6daac`](https://github.com/LTplus-AG/ifc-lite/commit/9d6daac8133a6f41e3d400aa597f73029fde4376), [`2a03d0f`](https://github.com/LTplus-AG/ifc-lite/commit/2a03d0fd0897f0c382c7e9b51947daad1ebb3c28)]:
+  - @ifc-lite/clash@1.6.8
+  - @ifc-lite/drawing-2d@1.21.2
+  - @ifc-lite/plugin-api@0.3.0
+  - @ifc-lite/source-dalux@0.2.3
+  - @ifc-lite/renderer@1.47.0
+
 ## 1.33.9
 
 ### Patch Changes

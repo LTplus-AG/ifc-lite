@@ -208,12 +208,34 @@ export interface ClashSummary {
   byStorey?: Record<string, number>;
 }
 
+/**
+ * How many elements a rule's selectors actually matched in THIS model, before
+ * any geometry test ran. `matchedB` is `null` for a self-clash rule (no `b`
+ * selector). A rule with `matchedA === 0` or `matchedB === 0` never compared a
+ * single pair — its selector simply doesn't describe anything in this model
+ * (e.g. an MEP selector run against an infrastructure model).
+ */
+export interface ClashRuleCoverage {
+  rule: string;
+  matchedA: number;
+  matchedB: number | null;
+}
+
 export interface ClashResult {
   clashes: Clash[];
   summary: ClashSummary;
   /** Present only when a cap dropped work — never silent. */
   truncated?: { reason: string; droppedPairs: number };
   rulesRun: ClashRule[];
+  /**
+   * Selector match coverage for every rule in `rulesRun`, in the same order.
+   * This is the raw signal for distinguishing "ran and found nothing" from
+   * "no rule matched anything in this model" — see
+   * {@link classifyRuleCoverage} for the presentation-facing classification.
+   * Populated by every engine-produced result (`runClash`, `findDuplicates`);
+   * optional only so hand-built `ClashResult` fixtures in tests don't need it.
+   */
+  ruleCoverage?: ClashRuleCoverage[];
   settings: { tolerance: number; excludeVoidsAndHosts: boolean };
 }
 

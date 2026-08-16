@@ -13,7 +13,9 @@
 //! serializable, server-friendly shape carried inline on every geometry
 //! endpoint's `ModelMetadata` (issue #900 parity follow-up).
 
-use ifc_lite_core::{EntityDecoder, EntityScanner, GeoRefExtractor, IfcType};
+use std::sync::Arc;
+
+use ifc_lite_core::{EntityDecoder, EntityIndex, EntityScanner, GeoRefExtractor, IfcType};
 use serde::{Deserialize, Serialize};
 
 /// Georeferencing metadata (`IfcMapConversion` + `IfcProjectedCRS`).
@@ -108,8 +110,25 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     let content = content.as_ref();
-    let entity_index = crate::build_entity_index_parallel(content);
-    let mut decoder = EntityDecoder::with_index(content, entity_index);
+    // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
+    let entity_index = Arc::new(crate::build_entity_index_parallel(content));
+    extract_georeferencing_with_index(content, &entity_index)
+}
+
+/// [`extract_georeferencing`], reusing an index the caller already holds.
+///
+/// The extractor resolves its references by id, so this pass genuinely needs an
+/// index; what it does not need is a second one. A caller that has already
+/// scanned the file (the geometry pipeline holds one for its whole run) was
+/// paying a full extra scan to build a map it had in hand.
+///
+/// `entity_index` must have been built from this same `content`. Given that, the
+/// result is identical to the wrapper's.
+pub fn extract_georeferencing_with_index(
+    content: &[u8],
+    entity_index: &Arc<EntityIndex>,
+) -> Option<Georeferencing> {
+    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
 
     let mut entity_types: Vec<(u32, IfcType)> = Vec::new();
     let mut scanner = EntityScanner::new(content);
@@ -139,330 +158,5 @@ where
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const GEOREF_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('georef fixture'),'2;1');
-FILE_NAME('georef.ifc','2026-06-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#3=IFCUNITASSIGNMENT((#6));
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#10=IFCPROJECTEDCRS('EPSG:32632','WGS84 / UTM zone 32N','WGS84',$,'UTM','32N',$);
-#11=IFCMAPCONVERSION(#2,#10,1000.5,2000.25,42.0,0.866025,0.5,1.0);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn extracts_map_conversion_and_crs() {
-        let geo = extract_georeferencing(GEOREF_IFC).expect("expected georeferencing");
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:32632"));
-        assert_eq!(geo.geodetic_datum.as_deref(), Some("WGS84"));
-        assert_eq!(geo.map_projection.as_deref(), Some("UTM"));
-        assert!((geo.eastings - 1000.5).abs() < 1e-6);
-        assert!((geo.northings - 2000.25).abs() < 1e-6);
-        assert!((geo.orthogonal_height - 42.0).abs() < 1e-6);
-        // XAxisAbscissa/Ordinate = cos/sin(30°) → rotation_degrees ≈ 30.
-        assert!(
-            (geo.rotation_degrees - 30.0).abs() < 1e-3,
-            "rotation should be ~30°, got {}",
-            geo.rotation_degrees
-        );
-        // Translation column of the local→map matrix carries the offsets.
-        assert!((geo.transform_matrix[12] - 1000.5).abs() < 1e-6);
-        assert!((geo.transform_matrix[13] - 2000.25).abs() < 1e-6);
-        // New parity fields (alignment audit): description/zone + provenance.
-        assert_eq!(geo.crs_description.as_deref(), Some("WGS84 / UTM zone 32N"));
-        assert_eq!(geo.map_zone.as_deref(), Some("32N"));
-        // No MapUnit authored → project length unit applies (both None).
-        assert_eq!(geo.map_unit, None);
-        assert_eq!(geo.map_unit_scale, None);
-        assert_eq!(geo.source.as_deref(), Some("mapConversion"));
-    }
-
-    /// IFC2x3 models carry georeferencing via an `ePSet_MapConversion` property
-    /// set rather than `IfcMapConversion`. Regression for the core extractor bug
-    /// that read `IfcPropertySet.Name` from attribute 0 (GlobalId) instead of 2.
-    const IFC2X3_PSET_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ifc2x3 georef pset fixture'),'2;1');
-FILE_NAME('georef2x3.ifc','2026-06-01T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
-#2=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
-#3=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(42.),$);
-#4=IFCPROPERTYSET('0PSet00000000000000001',$,'ePSet_MapConversion',$,(#1,#2,#3));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn extracts_ifc2x3_epset_map_conversion_fallback() {
-        let geo = extract_georeferencing(IFC2X3_PSET_IFC)
-            .expect("expected georeferencing from ePSet_MapConversion");
-        assert!((geo.eastings - 1000.5).abs() < 1e-6);
-        assert!((geo.northings - 2000.25).abs() < 1e-6);
-        assert!((geo.orthogonal_height - 42.0).abs() < 1e-6);
-    }
-
-    /// Real-world fixture mirroring the `ifc-georeferencer` post-processor:
-    /// lowercase `ePset_…` property-set names and a separate `ePset_ProjectedCRS`
-    /// carrying the EPSG `Name`. The exact-match + missing-CRS bug dropped these
-    /// to the legacy IfcSite EPSG:4326 and showed the wrong CRS.
-    const IFC2X3_EPSET_LOWERCASE_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ifc-georeferencer pset fixture'),'2;1');
-FILE_NAME('georef-lc.ifc','2026-06-26T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:7415'),$);
-#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(160073528.13858587),$);
-#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(384153306.2191765),$);
-#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
-#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
-#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:7415'),$);
-#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn extracts_ifc2x3_lowercase_epset_with_projected_crs_name() {
-        let geo = extract_georeferencing(IFC2X3_EPSET_LOWERCASE_IFC)
-            .expect("expected georeferencing from lowercase ePset_ sets");
-        assert_eq!(geo.source.as_deref(), Some("ePSetMapConversion"));
-        // CRS name surfaced from ePset_ProjectedCRS.Name (was previously lost).
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:7415"));
-        assert!((geo.eastings - 160073528.13858587).abs() < 1e-3);
-    }
-
-    /// Without an ePset_ProjectedCRS set, the CRS name falls back to the
-    /// MapConversion's own `TargetCRS` label.
-    const IFC2X3_EPSET_TARGETCRS_ONLY_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ifc-georeferencer targetcrs-only fixture'),'2;1');
-FILE_NAME('georef-tc.ifc','2026-06-26T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
-#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
-#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
-#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
-#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn falls_back_to_target_crs_when_no_projected_crs_pset() {
-        let geo = extract_georeferencing(IFC2X3_EPSET_TARGETCRS_ONLY_IFC)
-            .expect("expected georeferencing from ePset_MapConversion");
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:28992"));
-    }
-
-    /// Millimetre MapUnit: the conversion offsets are authored in mm and the
-    /// served `map_unit_scale` must say 0.001 — the TS parser already did
-    /// this; the server previously ignored MapUnit entirely (alignment
-    /// audit). Values mirror packages/parser/test/georef-extractor.test.ts.
-    const MM_MAPUNIT_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('georef mm fixture'),'2;1');
-FILE_NAME('georef-mm.ifc','2026-06-12T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#7=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
-#10=IFCPROJECTEDCRS('EPSG:25832',$,'ETRS89',$,'UTM','32N',#7);
-#11=IFCMAPCONVERSION(#2,#10,512000000.,5400000000.,0.,1.,0.,1.0);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn resolves_millimetre_map_unit_scale() {
-        let geo = extract_georeferencing(MM_MAPUNIT_IFC).expect("georef");
-        assert_eq!(geo.map_unit.as_deref(), Some("MILLIMETRE"));
-        assert_eq!(geo.map_unit_scale, Some(0.001));
-        assert_eq!(geo.map_zone.as_deref(), Some("32N"));
-    }
-
-    /// An empty `ePset_ProjectedCRS.Name` must not block the `TargetCRS`
-    /// fallback — otherwise `crs_name` stays "" and the viewer gate (which
-    /// requires a truthy name) silently drops the model to EPSG:4326.
-    const IFC2X3_EPSET_EMPTY_CRS_NAME_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ifc-georeferencer empty-crs-name fixture'),'2;1');
-FILE_NAME('georef-empty.ifc','2026-06-26T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCPROPERTYSINGLEVALUE('TargetCRS',$,IFCLABEL('EPSG:28992'),$);
-#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
-#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
-#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
-#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#1,#2,#3,#4));
-#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL(''),$);
-#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn empty_projected_crs_name_falls_back_to_target_crs() {
-        let geo = extract_georeferencing(IFC2X3_EPSET_EMPTY_CRS_NAME_IFC)
-            .expect("expected georeferencing from ePset_MapConversion");
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:28992"));
-    }
-
-    /// An explicit ePSet `MapUnit` label resolves to the matching metre scale,
-    /// parity with the native IfcProjectedCRS path (which reads it from the
-    /// unit entity). Direct consumers must not default these offsets to metres.
-    const IFC2X3_EPSET_FOOT_MAPUNIT_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('ifc-georeferencer foot-mapunit fixture'),'2;1');
-FILE_NAME('georef-foot.ifc','2026-06-26T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(1000.5),$);
-#3=IFCPROPERTYSINGLEVALUE('Northings',$,IFCLENGTHMEASURE(2000.25),$);
-#4=IFCPROPERTYSINGLEVALUE('OrthogonalHeight',$,IFCLENGTHMEASURE(0.),$);
-#5=IFCPROPERTYSET('2If4Y3Lpv6dgTDkC5x_dnr',$,'ePset_MapConversion',$,(#2,#3,#4));
-#6=IFCPROPERTYSINGLEVALUE('Name',$,IFCLABEL('EPSG:2225'),$);
-#8=IFCPROPERTYSINGLEVALUE('MapUnit',$,IFCLABEL('FOOT'),$);
-#7=IFCPROPERTYSET('27AKTMp8j58fBEhvkJkcNJ',$,'ePset_ProjectedCRS',$,(#6,#8));
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn epset_map_unit_label_resolves_scale() {
-        let geo = extract_georeferencing(IFC2X3_EPSET_FOOT_MAPUNIT_IFC).expect("georef");
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:2225"));
-        assert_eq!(geo.map_unit.as_deref(), Some("FOOT"));
-        assert_eq!(geo.map_unit_scale, Some(0.3048));
-    }
-
-    /// Two authored IfcMapConversions: the FIRST one wins, matching the TS
-    /// parser's `mapConversionIds[0]` pick (the server used to serve the
-    /// LAST one — alignment audit).
-    const TWO_CONVERSIONS_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('georef two-conversions fixture'),'2;1');
-FILE_NAME('georef-two.ifc','2026-06-12T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#10=IFCPROJECTEDCRS('EPSG:32632',$,'WGS84',$,'UTM','32N',$);
-#11=IFCMAPCONVERSION(#2,#10,111.0,222.0,0.,1.,0.,1.0);
-#12=IFCMAPCONVERSION(#2,#10,999.0,888.0,0.,1.,0.,1.0);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn first_map_conversion_wins() {
-        let geo = extract_georeferencing(TWO_CONVERSIONS_IFC).expect("georef");
-        assert!((geo.eastings - 111.0).abs() < 1e-9);
-        assert!((geo.northings - 222.0).abs() < 1e-9);
-    }
-
-    /// Non-unit XAxisAbscissa/Ordinate (a DIRECTION, not cos/sin): the
-    /// rotation and the transform matrix must agree with each other and
-    /// with the TS parser's atan2-normalised matrix. Pre-fix, the matrix
-    /// used the raw components as cos/sin and disagreed with
-    /// `rotation_degrees` inside the same payload (alignment audit).
-    const NON_UNIT_AXIS_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('georef non-unit-axis fixture'),'2;1');
-FILE_NAME('georef-axis.ifc','2026-06-12T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#10=IFCPROJECTEDCRS('EPSG:32632',$,'WGS84',$,'UTM','32N',$);
-#11=IFCMAPCONVERSION(#2,#10,1000.,2000.,0.,3.0,4.0,1.0);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn non_unit_axis_is_normalised() {
-        let geo = extract_georeferencing(NON_UNIT_AXIS_IFC).expect("georef");
-        // (3,4) direction → unit (0.6, 0.8); rotation ≈ 53.130°.
-        assert!((geo.x_axis_abscissa - 0.6).abs() < 1e-9);
-        assert!((geo.x_axis_ordinate - 0.8).abs() < 1e-9);
-        assert!((geo.rotation_degrees - 53.13010235415598).abs() < 1e-9);
-        // Matrix rotation cell == cos(rotation) — self-consistent payload.
-        assert!((geo.transform_matrix[0] - 0.6).abs() < 1e-9);
-        assert!((geo.transform_matrix[1] - 0.8).abs() < 1e-9);
-    }
-
-    /// Site-only model: `IfcSite.RefLatitude/RefLongitude` must produce a
-    /// georeference exactly like the TS parser's legacy-site fallback —
-    /// previously the server reported NO georeferencing for these models
-    /// while the browser said `hasGeoreference: true` (alignment audit).
-    /// Mirrors the values in packages/parser/test/georef-extractor.test.ts.
-    const SITE_ONLY_IFC: &str = r#"ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION(('georef site-only fixture'),'2;1');
-FILE_NAME('georef-site.ifc','2026-06-12T00:00:00',(''),(''),'','','');
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#4=IFCCARTESIANPOINT((0.,0.,0.));
-#5=IFCAXIS2PLACEMENT3D(#4,$,$);
-#11=IFCLOCALPLACEMENT($,#5);
-#10=IFCSITE('0Site0000000000000001',$,'Site',$,$,#11,$,$,.ELEMENT.,(47,22,30,0),(8,32,15,0),420.5,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-
-    #[test]
-    fn site_lat_long_fallback_matches_ts_parser() {
-        let geo = extract_georeferencing(SITE_ONLY_IFC).expect("site georef");
-        assert_eq!(geo.source.as_deref(), Some("siteLocation"));
-        assert_eq!(geo.crs_name.as_deref(), Some("EPSG:4326"));
-        assert_eq!(geo.geodetic_datum.as_deref(), Some("WGS84"));
-        assert_eq!(geo.map_unit.as_deref(), Some("DEGREE"));
-        // 47°22'30" → 47.375; 8°32'15" → 8.5375 (longitude in eastings,
-        // latitude in northings — same packing as the TS fallback).
-        assert!((geo.northings - 47.375).abs() < 1e-9, "lat {}", geo.northings);
-        assert!((geo.eastings - 8.5375).abs() < 1e-9, "long {}", geo.eastings);
-        assert!((geo.orthogonal_height - 420.5).abs() < 1e-9);
-    }
-
-    #[test]
-    fn returns_none_without_georeferencing() {
-        let plain = r#"ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
-ENDSEC;
-END-ISO-10303-21;
-"#;
-        assert!(extract_georeferencing(plain).is_none());
-    }
-}
+#[path = "georeferencing_tests.rs"]
+mod tests;

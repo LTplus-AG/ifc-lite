@@ -137,8 +137,29 @@ export class SectionCutter {
       const d1 = signedDistanceToPlane(v1, this.planeNormal, this.planeDistance);
       const d2 = signedDistanceToPlane(v2, this.planeNormal, this.planeDistance);
 
+      // Plane-side classification epsilon. `dot(v, n)` sums three
+      // float32-quantized components, so even a vertex whose TRUE distance
+      // is 0 carries rounding noise proportional to its own coordinate
+      // magnitude (~coord · 2⁻²²), not just the fixed EPSILON. Without this
+      // floor, a face lying exactly on a non-axis-aligned cut plane gets its
+      // near-zero d0/d1 misclassified as a genuine crossing, and the
+      // resulting lerp — dividing one noise term by another — produces a
+      // wild extrapolated point instead of being skipped as coplanar.
+      //
+      // Crucially, this must be measured on the LOCAL (pre-origin) vertex
+      // coordinates, not `v0`/`v1`/`v2` (world = origin + local). The
+      // quantization noise is a property of the `Float32Array` values as
+      // authored, not of where the element's per-mesh RTC origin happens to
+      // place it in the model. Using the world-lifted magnitude here scales
+      // the tolerance to the element's DISTANCE FROM THE MODEL ORIGIN
+      // instead of its own extent — a small element far from the model
+      // origin would get a tolerance orders of magnitude too loose, which
+      // misclassifies genuine close crossings as coplanar (#2622).
+      const localMaxCoord = this.localMaxCoord(positions, i0, i1, i2);
+      const planeEps = Math.max(EPSILON, localMaxCoord * 2 ** -22);
+
       // Intersect triangle with plane
-      const intersection = this.intersectTrianglePlane(v0, v1, v2, d0, d1, d2);
+      const intersection = this.intersectTrianglePlane(v0, v1, v2, d0, d1, d2, planeEps);
 
       if (intersection) {
         intersectedCount++;
@@ -171,6 +192,11 @@ export class SectionCutter {
           // Per-sub-mesh colour so material-layer walls/slabs split per layer
           // in the polygon builder. One MeshData == one layer == one colour.
           color,
+          // LOCAL (pre-origin) magnitude — lets the polygon builder size its
+          // scale-aware weld tolerance off the element's own extent instead
+          // of `p0_2d`/`p1_2d`'s world-frame magnitude. See the field's
+          // doc comment in types.ts and `localMaxCoord` above.
+          localMaxCoord,
         });
       }
     }
@@ -201,6 +227,27 @@ export class SectionCutter {
   }
 
   /**
+   * Max |coordinate| of a triangle's LOCAL (pre-origin) vertex positions —
+   * the `Float32Array` values exactly as stored, before the per-mesh RTC
+   * `origin` translation. This is the quantity float32 rounding noise
+   * actually scales with; deliberately does NOT take `origin` as a
+   * parameter so a future edit can't accidentally fold it back in.
+   */
+  private localMaxCoord(positions: Float32Array, i0: number, i1: number, i2: number): number {
+    let m = 0;
+    for (const i of [i0, i1, i2]) {
+      const base = i * 3;
+      const ax = Math.abs(positions[base]);
+      const ay = Math.abs(positions[base + 1]);
+      const az = Math.abs(positions[base + 2]);
+      if (ax > m) m = ax;
+      if (ay > m) m = ay;
+      if (az > m) m = az;
+    }
+    return m;
+  }
+
+  /**
    * Intersect a triangle with the section plane
    * Returns the two intersection points, or null if no intersection
    */
@@ -210,13 +257,14 @@ export class SectionCutter {
     v2: Vec3,
     d0: number,
     d1: number,
-    d2: number
+    d2: number,
+    eps: number = EPSILON
   ): { p0: Vec3; p1: Vec3 } | null {
     // Count vertices on each side of the plane
     const pos =
-      (d0 > EPSILON ? 1 : 0) + (d1 > EPSILON ? 1 : 0) + (d2 > EPSILON ? 1 : 0);
+      (d0 > eps ? 1 : 0) + (d1 > eps ? 1 : 0) + (d2 > eps ? 1 : 0);
     const neg =
-      (d0 < -EPSILON ? 1 : 0) + (d1 < -EPSILON ? 1 : 0) + (d2 < -EPSILON ? 1 : 0);
+      (d0 < -eps ? 1 : 0) + (d1 < -eps ? 1 : 0) + (d2 < -eps ? 1 : 0);
 
     // No intersection if all vertices on same side
     if (pos === 3 || neg === 3) return null;
@@ -228,16 +276,16 @@ export class SectionCutter {
     const points: Vec3[] = [];
 
     // Check edge v0-v1
-    const p01 = this.edgePlaneIntersection(v0, v1, d0, d1);
+    const p01 = this.edgePlaneIntersection(v0, v1, d0, d1, eps);
     if (p01) points.push(p01);
 
     // Check edge v1-v2
-    const p12 = this.edgePlaneIntersection(v1, v2, d1, d2);
+    const p12 = this.edgePlaneIntersection(v1, v2, d1, d2, eps);
     if (p12) points.push(p12);
 
     // Check edge v2-v0
     if (points.length < 2) {
-      const p20 = this.edgePlaneIntersection(v2, v0, d2, d0);
+      const p20 = this.edgePlaneIntersection(v2, v0, d2, d0, eps);
       if (p20) points.push(p20);
     }
 
@@ -256,16 +304,17 @@ export class SectionCutter {
     v0: Vec3,
     v1: Vec3,
     d0: number,
-    d1: number
+    d1: number,
+    eps: number = EPSILON
   ): Vec3 | null {
     // Both vertices on the plane - edge lies on plane
-    if (Math.abs(d0) < EPSILON && Math.abs(d1) < EPSILON) {
+    if (Math.abs(d0) < eps && Math.abs(d1) < eps) {
       return null; // Handled separately as face-on-plane
     }
 
     // One vertex on plane - return that vertex
-    if (Math.abs(d0) < EPSILON) return v0;
-    if (Math.abs(d1) < EPSILON) return v1;
+    if (Math.abs(d0) < eps) return v0;
+    if (Math.abs(d1) < eps) return v1;
 
     // Both vertices on same side - no intersection
     if ((d0 > 0) === (d1 > 0)) return null;

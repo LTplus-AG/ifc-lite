@@ -150,7 +150,17 @@ export function parsePlyHeader(buffer: Uint8Array): PlyHeader {
   return { format, version, elements, bodyOffset };
 }
 
-export function decodePly(buffer: Uint8Array): DecodedPointChunk {
+export function decodePly(
+  buffer: Uint8Array,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from each decoded vertex in
+   * f64, BEFORE narrowing to the `Float32Array` (extends #1804's LAS/LAZ
+   * pattern — see `decodeLasPoints`'s `originOffset` doc). `undefined`
+   * (the default) subtracts nothing, preserving prior behaviour
+   * byte-for-byte.
+   */
+  originOffset?: readonly [number, number, number],
+): DecodedPointChunk {
   const header = parsePlyHeader(buffer);
   const vertex = header.elements.find((e) => e.name === 'vertex');
   if (!vertex) throw new Error('PLY: no vertex element');
@@ -219,7 +229,7 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
   const intensities = intensityProp ? new Uint16Array(count) : undefined;
 
   if (header.format === 'ascii') {
-    decodeAsciiBody(buffer, header, vertex, positions, colors, intensities);
+    decodeAsciiBody(buffer, header, vertex, positions, colors, intensities, originOffset);
   } else {
     decodeBinaryBody(
       buffer,
@@ -229,6 +239,7 @@ export function decodePly(buffer: Uint8Array): DecodedPointChunk {
       colors,
       intensities,
       header.format === 'binary_little_endian',
+      originOffset,
     );
   }
 
@@ -250,11 +261,15 @@ function decodeAsciiBody(
   positions: Float32Array,
   colors: Float32Array | undefined,
   intensities: Uint16Array | undefined,
+  originOffset?: readonly [number, number, number],
 ): void {
   // Decode just the vertex part of the body (other elements come after).
   // For ascii, each line = one vertex (in the order properties were
   // declared).
   const text = TEXT_DECODER.decode(buffer.subarray(header.bodyOffset));
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
   const xCol = vertex.properties.findIndex((p) => p.name === 'x');
   const yCol = vertex.properties.findIndex((p) => p.name === 'y');
   const zCol = vertex.properties.findIndex((p) => p.name === 'z');
@@ -274,9 +289,9 @@ function decodeAsciiBody(
     lineStart = lineEnd + 1;
     if (!line) continue;
     const parts = line.split(/\s+/);
-    positions[written * 3] = Number(parts[xCol]);
-    positions[written * 3 + 1] = Number(parts[yCol]);
-    positions[written * 3 + 2] = Number(parts[zCol]);
+    positions[written * 3] = Number(parts[xCol]) - offX;
+    positions[written * 3 + 1] = Number(parts[yCol]) - offY;
+    positions[written * 3 + 2] = Number(parts[zCol]) - offZ;
     if (colors && rCol >= 0 && gCol >= 0 && bCol >= 0) {
       colors[written * 3] = clamp01(Number(parts[rCol]) / 255);
       colors[written * 3 + 1] = clamp01(Number(parts[gCol]) / 255);
@@ -302,6 +317,7 @@ function decodeBinaryBody(
   colors: Float32Array | undefined,
   intensities: Uint16Array | undefined,
   littleEndian: boolean,
+  originOffset?: readonly [number, number, number],
 ): void {
   const stride = vertex.recordSize;
   const need = vertex.count * stride;
@@ -309,6 +325,9 @@ function decodeBinaryBody(
     throw new Error(`PLY binary: expected ${need} body bytes, got ${buffer.length - header.bodyOffset}`);
   }
   const view = new DataView(buffer.buffer, buffer.byteOffset + header.bodyOffset, need);
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
   const xProp = vertex.properties.find((p) => p.name === 'x')!;
   const yProp = vertex.properties.find((p) => p.name === 'y')!;
   const zProp = vertex.properties.find((p) => p.name === 'z')!;
@@ -321,9 +340,9 @@ function decodeBinaryBody(
 
   for (let i = 0; i < vertex.count; i++) {
     const base = i * stride;
-    positions[i * 3] = readScalar(view, base + xProp.offset, xProp, littleEndian);
-    positions[i * 3 + 1] = readScalar(view, base + yProp.offset, yProp, littleEndian);
-    positions[i * 3 + 2] = readScalar(view, base + zProp.offset, zProp, littleEndian);
+    positions[i * 3] = readScalar(view, base + xProp.offset, xProp, littleEndian) - offX;
+    positions[i * 3 + 1] = readScalar(view, base + yProp.offset, yProp, littleEndian) - offY;
+    positions[i * 3 + 2] = readScalar(view, base + zProp.offset, zProp, littleEndian) - offZ;
     if (colors && rProp && gProp && bProp) {
       colors[i * 3] = clamp01(readScalar(view, base + rProp.offset, rProp, littleEndian) / 255);
       colors[i * 3 + 1] = clamp01(readScalar(view, base + gProp.offset, gProp, littleEndian) / 255);

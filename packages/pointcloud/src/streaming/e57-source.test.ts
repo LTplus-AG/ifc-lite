@@ -86,7 +86,13 @@ function inflateToPhysical(logical: Uint8Array, pageSize: number): Uint8Array<Ar
 /** Build a complete, CRC-paged single-scan E57 file as a Blob. */
 function buildE57(
   points: TestPoint[],
-  opts: { pageSize?: number; pointsPerPacket?: number; emptyData3D?: boolean } = {},
+  opts: {
+    pageSize?: number;
+    pointsPerPacket?: number;
+    emptyData3D?: boolean;
+    /** Per-scan pose (rotation + translation), E57 §7.2.2. */
+    pose?: { rotation: [number, number, number, number]; translation: [number, number, number] };
+  } = {},
 ): {
   blob: Blob;
   physical: Uint8Array;
@@ -105,6 +111,15 @@ function buildE57(
       + `<colorGreen type="Integer" minimum="0" maximum="255"/>`
       + `<colorBlue type="Integer" minimum="0" maximum="255"/>`
     : '';
+  const poseXml = opts.pose
+    ? `<pose type="Structure">`
+      + `<rotation type="Structure"><w type="Float">${opts.pose.rotation[0]}</w>`
+      + `<x type="Float">${opts.pose.rotation[1]}</x><y type="Float">${opts.pose.rotation[2]}</y>`
+      + `<z type="Float">${opts.pose.rotation[3]}</z></rotation>`
+      + `<translation type="Structure"><x type="Float">${opts.pose.translation[0]}</x>`
+      + `<y type="Float">${opts.pose.translation[1]}</y><z type="Float">${opts.pose.translation[2]}</z></translation>`
+      + `</pose>`
+    : '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>`
     + `<e57Root type="Structure">`
     + `<data3D type="Vector">`
@@ -118,6 +133,7 @@ function buildE57(
       + colorProto
       + `</prototype>`
       + `</points>`
+      + poseXml
       + `</vectorChild>`)
     + `</data3D>`
     + `</e57Root>`;
@@ -385,5 +401,73 @@ describe('E57StreamingSource', () => {
     const { blob } = buildE57([], { pageSize: 256, emptyData3D: true });
     const src = new E57StreamingSource(blob);
     await expect(src.open()).rejects.toThrow(/no Data3D scans/);
+  });
+});
+
+describe('E57StreamingSource originOffset (extends #1804 to E57)', () => {
+  // Survey/GNSS-scale coordinates — the exact case an E57 without a scan
+  // pose (a single unregistered absolute-coordinate export) carries.
+  const surveyPoints: TestPoint[] = [
+    { x: 500_012.345, y: 5_000_006.789, z: 104.321 },
+    { x: 500_013.5, y: 5_000_007.25, z: 105.0 },
+  ];
+
+  it('matches the whole-file decoder with the same originOffset, no pose', async () => {
+    const { blob, physical } = buildE57(surveyPoints, { pageSize: 256, pointsPerPacket: 8 });
+    const originOffset: readonly [number, number, number] = [500_000, 5_000_000, 100];
+    const reference = decodeE57(physical, originOffset)!;
+    expect(reference).not.toBeNull();
+
+    const src = new E57StreamingSource(blob, { originOffset });
+    const chunks = await drain(src, 200_000);
+    expect(mergePositions(chunks)).toEqual(Array.from(reference.positions));
+    // And it's actually small (offset applied), not raw ~5e5/5e6 magnitude.
+    expect(Math.abs(mergePositions(chunks)[0])).toBeLessThan(100);
+  });
+
+  it('composes originOffset with a per-scan pose the same as the whole-file decoder', async () => {
+    // Local (scan-frame) cartesian small; pose translation carries the scan
+    // to survey-scale — the case that exercises the pose/offset interaction.
+    const localPoints: TestPoint[] = [{ x: 1, y: 2, z: 3 }, { x: -1, y: 0, z: 5 }];
+    const { blob, physical } = buildE57(localPoints, {
+      pageSize: 256,
+      pointsPerPacket: 8,
+      pose: {
+        rotation: [Math.SQRT1_2, 0, 0, Math.SQRT1_2], // 90° about Z
+        translation: [500_012.345, 5_000_006.789, 104.321],
+      },
+    });
+    const originOffset: readonly [number, number, number] = [500_000, 5_000_000, 100];
+
+    const reference = decodeE57(physical, originOffset)!;
+    expect(reference).not.toBeNull();
+    // Small residual, not survey-scale — proves the offset landed on the
+    // translation (post-rotation), not naively on the pre-rotation local
+    // cartesian.
+    expect(Math.abs(reference.positions[0])).toBeLessThan(100);
+
+    const src = new E57StreamingSource(blob, { originOffset });
+    const chunks = await drain(src, 200_000);
+    expect(mergePositions(chunks)).toEqual(Array.from(reference.positions));
+
+    // And matches decodeE57's un-offset positions minus the offset exactly
+    // in shape: streamed-with-offset + offset ≈ streamed-without-offset.
+    const srcNoOffset = new E57StreamingSource(blob);
+    const chunksNoOffset = await drain(srcNoOffset, 200_000);
+    const withOff = mergePositions(chunks);
+    const withoutOff = mergePositions(chunksNoOffset);
+    for (let i = 0; i < withOff.length; i += 3) {
+      expect(withOff[i] + originOffset[0]).toBeCloseTo(withoutOff[i], 0);
+      expect(withOff[i + 1] + originOffset[1]).toBeCloseTo(withoutOff[i + 1], 0);
+      expect(withOff[i + 2] + originOffset[2]).toBeCloseTo(withoutOff[i + 2], 0);
+    }
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', async () => {
+    const { blob: blobA } = buildE57(surveyPoints, { pageSize: 256, pointsPerPacket: 8 });
+    const { blob: blobB } = buildE57(surveyPoints, { pageSize: 256, pointsPerPacket: 8 });
+    const a = await drain(new E57StreamingSource(blobA), 200_000);
+    const b = await drain(new E57StreamingSource(blobB, { originOffset: undefined }), 200_000);
+    expect(mergePositions(a)).toEqual(mergePositions(b));
   });
 });

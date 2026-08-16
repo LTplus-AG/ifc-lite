@@ -11,8 +11,9 @@
  *   editable items with `enabled`/`builtin`); the user may toggle/edit them
  *   (stored as overrides) and add custom presets. Only customs + modified
  *   built-ins are persisted, so shipping a new built-in just works.
- * - Settings: one flat JSON blob (mode/tolerance/clearance/clusterEpsilon/
- *   reportTouch/groupBy), every numeric clamped to a sane range on load.
+ * - Settings: one flat JSON blob (mode/tolerance/clearance/duplicateTolerance/
+ *   clusterEpsilon/reportTouch/groupBy), every numeric clamped to a sane range
+ *   on load.
  */
 
 import {
@@ -39,6 +40,10 @@ export interface ClashGlobalSettings {
   mode: ClashMode;
   tolerance: number;
   clearance: number;
+  /** Duplicate-scan position tolerance (m): how far apart two elements may be
+   *  and still count as the same object (`findDuplicates.positionTolerance`).
+   *  Distinct from `tolerance`, which is the clash engine's touching band. */
+  duplicateTolerance: number;
   clusterEpsilon: number;
   reportTouch: boolean;
   groupBy: ClashSettingsGroupBy;
@@ -65,6 +70,7 @@ const MAX_COMMENT = 2_000;
 export const CLASH_BOUNDS = {
   tolerance: [0, 1] as const,
   clearance: [0, 5] as const,
+  duplicateTolerance: [0, 1] as const,
   clusterEpsilon: [0.01, 50] as const,
 };
 
@@ -72,6 +78,7 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
   mode: 'hard',
   tolerance: 0.002,
   clearance: 0.05,
+  duplicateTolerance: 0.01,
   clusterEpsilon: 1.5,
   reportTouch: false,
   groupBy: 'severity',
@@ -255,6 +262,7 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
     mode: s.mode === 'clearance' ? 'clearance' : 'hard',
     tolerance: clampToBounds(s.tolerance, CLASH_BOUNDS.tolerance, DEFAULT_CLASH_SETTINGS.tolerance),
     clearance: clampToBounds(s.clearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance),
+    duplicateTolerance: clampToBounds(s.duplicateTolerance, CLASH_BOUNDS.duplicateTolerance, DEFAULT_CLASH_SETTINGS.duplicateTolerance),
     clusterEpsilon: clampToBounds(s.clusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon),
     reportTouch: s.reportTouch === true,
     groupBy: GROUP_BYS.includes(s.groupBy as ClashSettingsGroupBy) ? (s.groupBy as ClashSettingsGroupBy) : 'severity',

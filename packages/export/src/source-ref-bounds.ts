@@ -34,10 +34,35 @@
  * nothing that names it is written, and it does not appear in the file — the
  * same outcome as the source-less store the server path builds.
  *
+ * ## Why the incidental readers are exempt
+ *
  * This predicate is deliberately NOT applied to the incidental readers
- * (`getRelatedEntities`, `getPropertySetName`, …). Those decode a range and
- * match a pattern in it; a clamped, empty decode already yields "no match",
- * which is the same answer and needs no gate of its own.
+ * (`getRelatedEntities`, `getPropertySetName`, `getElementQuantityName`, …).
+ * Those decode a range and match a pattern in it.
+ *
+ * The exemption is NOT justified by the clamp being harmless. `clampRange`
+ * (`source-bytes.ts`) floors the start at 0, so a decode is empty only when the
+ * range ENDS at or before byte 0. A negative offset carrying a real length
+ * clamps up to the beginning of the file and decodes the WRONG record: measured,
+ * `decodeUtf8(-2, -2 + offsetOfSecondPset)` returns the first pset's line, and
+ * `getPropertySetName` then reports the FIRST pset's name for the second one — a
+ * confidently wrong answer, not a null. An overrunning END, by contrast, is
+ * genuinely benign: it decodes the intended record plus trailing bytes, and the
+ * anchored patterns those readers use still match the right thing.
+ *
+ * What actually makes the exemption safe is that no such ref reaches them, for
+ * two independent reasons. `OVERLAY_BYTE_OFFSET` (`-1`) is the only negative
+ * offset produced anywhere in the repo, and (a) all three sites that write it —
+ * `store-editor.ts`'s `addEntity` and `effective-index.ts`'s `get` /
+ * `[Symbol.iterator]` — pair it with `byteLength: 0`, the one shape whose clamp
+ * really does decode to the empty string; and (b) it is synthesised on read by
+ * the EFFECTIVE index and never written back into `dataStore.entityIndex.byId`,
+ * which is the index these readers consult.
+ *
+ * Either reason falling away makes the wrong answer reachable — a producer that
+ * paired a negative offset with a real length, or one that wrote overlay refs
+ * into the parsed index, would need this predicate applied at those readers too.
+ * Both are pinned by `source-ref-bounds.test.ts` so the change is not silent.
  */
 
 import type { ExportEntityRef } from './entity-iteration.js';

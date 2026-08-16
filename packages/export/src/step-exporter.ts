@@ -389,11 +389,12 @@ export class StepExporter {
     // excludes a hidden PRODUCT's own line from the closure, but `IFCREL*` is
     // an unconditional root a few lines down and its bytes are copied verbatim
     // by the source-iteration pass — nothing there filters a `#N` the closure
-    // just excluded out of the relationship's own attribute list. Kept so the
-    // source-iteration and overlay new-entity passes can run
-    // `filterHiddenRefsFromRelationshipLine` against the SAME exclusion set
-    // `collectReferencedEntityIds` used, rather than a second, possibly
-    // divergent notion of "hidden" (#2398).
+    // just excluded out of the relationship's own attribute list. Kept because
+    // the closure walk's `isRefExcludedDuringClosureWalk` needs a notion of
+    // "hidden" that does not read `allowedEntityIds` — the set that walk is
+    // producing (#2398). The two OUTPUT passes no longer read this directly:
+    // they filter on `isOmittedFromOutput`, which subsumes it via
+    // `allowedEntityIds`.
     let hiddenProductIds: ReadonlySet<number> | null = null;
     // A relationship can name an excluded entity two ways that have nothing
     // to do with each other: a `visibleOnly` hidden PRODUCT (`hiddenProductIds`,
@@ -407,18 +408,32 @@ export class StepExporter {
     // so this predicate covers both sources without a second exclusion set.
     //
     // Declared here, ahead of the closure walk below, and passed into
-    // `collectReferencedEntityIds` as its `isRefExcluded` — the walk's bridge
-    // decision (whether an `IFCREL*` root may reach what it names) and the
-    // OUTPUT-line filtering further down now read the SAME predicate, rather
-    // than the walk inventing its own `!entityIndex.has` proxy for "deleted"
-    // that could disagree with this one on an id that never existed in the
-    // file at all (maintainer-found regression on #2637: such an id blocked
-    // the bridge but did not stop the relationship's own line from shipping,
-    // dropping a VISIBLE sibling's pset while adding a fresh dangling ref).
-    // A closure over the `let hiddenProductIds` above, not a value snapshot —
-    // correct because nothing reads it before `hiddenProductIds` is assigned
-    // just below.
-    const isExcludedFromRelationshipRefs = (id: number): boolean =>
+    // `collectReferencedEntityIds` as its `isRefExcluded` — rather than the
+    // walk inventing its own `!entityIndex.has` proxy for "deleted" that could
+    // disagree on an id that never existed in the file at all
+    // (maintainer-found regression on #2637: such an id blocked the bridge but
+    // did not stop the relationship's own line from shipping, dropping a
+    // VISIBLE sibling's pset while adding a fresh dangling ref). A closure over
+    // the `let hiddenProductIds` above, not a value snapshot — correct because
+    // nothing reads it before `hiddenProductIds` is assigned just below.
+    //
+    // ## Why this is NOT the predicate the OUTPUT-line filter uses
+    //
+    // The name says walk, and only walk. The two passes that write a
+    // relationship's line ask `isOmittedFromOutput` (further below, derived
+    // from `willBeEmitted`), which is strictly stronger — it also answers for
+    // the closure, for an unreadable source ref and for a geometry exclusion.
+    //
+    // This one CANNOT be `willBeEmitted`, and the difference is structural
+    // rather than stylistic: `willBeEmitted`'s first act is to consult
+    // `allowedEntityIds`, and `allowedEntityIds` is precisely what the call
+    // below is computing. Wiring it in here is circular — measured, it does not
+    // even evaluate: `willBeEmitted` is a `const` initialised ~650 lines later,
+    // so the walk throws `ReferenceError: Cannot access 'willBeEmitted' before
+    // initialization`. Hoisting it would only trade the throw for the real
+    // defect, a predicate that answers "not in the closure" as `false` while
+    // the closure is still being built and `true` for the same id afterwards.
+    const isRefExcludedDuringClosureWalk = (id: number): boolean =>
       (hiddenProductIds !== null && hiddenProductIds.has(id)) || effective.isDeleted(id);
     if (options.visibleOnly && this.dataStore.source) {
       const visible = getVisibleEntityIds(
@@ -433,7 +448,7 @@ export class StepExporter {
         this.dataStore.source,
         effective,
         visible.hiddenProductIds,
-        isExcludedFromRelationshipRefs,
+        isRefExcludedDuringClosureWalk,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
       // geometry. Styled items reference geometry items but nothing references
@@ -444,12 +459,6 @@ export class StepExporter {
         { byId: effective, byType: effective.byType },
       );
     }
-    // `overlayActive` proper (used everywhere else) is declared further below,
-    // ahead of the mutation-processing block it gates; duplicated here as the
-    // same expression rather than reordering that declaration.
-    const mayNameExcludedRefs = (hiddenProductIds !== null && hiddenProductIds.size > 0)
-      || (!!this.mutationView && options.applyMutations !== false);
-
     // Will THIS entity's own line ever land in the file? The same byte-range
     // test `willBeEmitted` uses (defined further below) and the source-
     // iteration pass's own skip at `entityRef.byteLength === 0` — a source
@@ -1105,6 +1114,63 @@ export class StepExporter {
       return !isGeometryExcluded(entityId, ref.type);
     };
 
+    /**
+     * "May a line this export writes name `#id`?" — the single predicate both
+     * relationship-line filter sites consume, and the exact negation of
+     * `willBeEmitted`. Filter and emission therefore answer ONE question, by
+     * construction rather than by two lists kept in step by hand.
+     *
+     * That hand-kept pair is the bug this replaces. `willBeEmitted` recognises
+     * seven reasons a line never lands — outside the closure, hidden product,
+     * tombstoned, never existed, unreadable source ref (#2491), geometry
+     * excluded by options, and the `deltaOnly` carve-out — while the filter
+     * used to consume a predicate that answered for three of them. The gap was
+     * live: on a PLAIN full export, with no `visibleOnly`, no deletions and no
+     * overlay, an unreadable ref made the source-iteration pass skip an
+     * entity's line while an `IFCREL*` naming it shipped verbatim, dangling.
+     *
+     * Deriving the filter from `willBeEmitted` is also what retires the
+     * `mayNameExcludedRefs` gate that used to stand in front of both call
+     * sites. That gate was a SECOND, shorter enumeration of the same reasons
+     * (hidden products exist, or an overlay is active) and answered `false` for
+     * exactly the unreadable-ref export above, so the filter never ran at all.
+     * Any cheap gate here would have to be re-derived every time an eighth
+     * reason is added; running the filter unconditionally cannot go stale.
+     * It is also close to free when nothing is excluded:
+     * `filterHiddenRefsFromRelationshipLine` returns the input string
+     * unchanged unless some ref actually failed the predicate.
+     *
+     * ## The one qualifier on top of `willBeEmitted`
+     *
+     * `willBeEmitted` answers NO for an id neither the file nor the session
+     * ever had, which is right for its own job — nothing GENERATED may name an
+     * id that does not exist. It is the wrong answer for rewriting a SOURCE
+     * line, and the difference is whose bug it is. A `#999` already sitting in
+     * a relationship's `OwnerHistory` slot in the input file is a dangling ref
+     * this export did not create and cannot repair; `filterHiddenRefsFromRelationshipLine`
+     * withholds a whole relationship when an excluded id is in a bare scalar,
+     * so treating it as an exclusion would DELETE a visible element's pset over
+     * somebody else's corrupt file. That is the harm #2637 was about, and
+     * `step-exporter.test.ts` states the position out loud: a pre-existing
+     * dangling ref is out of scope and ships as it arrived.
+     *
+     * So the filter asks the narrower question: is `#id` an entity this model
+     * HAS, that this export is nonetheless not writing? `effective.has` is
+     * false for a tombstone, hence the explicit `isDeleted` arm — deleting an
+     * entity IS this session's doing and must be filtered.
+     *
+     * This is a scope qualifier, not a second enumeration of omission reasons:
+     * an eighth reason added to `willBeEmitted` still reaches the filter with
+     * no edit here.
+     *
+     * See `unreadable-ref-dangling.test.ts` for the reproduction and for the
+     * drift guard that fails if these two ever disagree again (#2637 is the
+     * prior instance of this class, which took seven rounds because the same
+     * decision was recomputed per call site).
+     */
+    const isOmittedFromOutput = (id: number): boolean =>
+      (effective.has(id) || effective.isDeleted(id)) && !willBeEmitted(id);
+
     // A modified pset is replaced wholesale, which skips ALL of its member atoms.
     // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
     // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
@@ -1191,8 +1257,8 @@ export class StepExporter {
         // has to agree with what actually got written, the same way
         // `getVisibleEntityIds` already does for the visibility walk itself.
         const effectiveRelType = effective.effectiveType(expressId, entityRef.type).toUpperCase();
-        if (mayNameExcludedRefs && effectiveRelType.startsWith('IFCREL')) {
-          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isExcludedFromRelationshipRefs);
+        if (effectiveRelType.startsWith('IFCREL')) {
+          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
           if (filtered === null) continue;
           nextEntityText = filtered;
         }
@@ -1496,8 +1562,8 @@ export class StepExporter {
         let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
         // Same gap as the source-iteration pass, for an overlay-authored
         // relationship instead of a parsed one (#2398).
-        if (mayNameExcludedRefs && upperType.startsWith('IFCREL')) {
-          line = filterHiddenRefsFromRelationshipLine(line, isExcludedFromRelationshipRefs);
+        if (upperType.startsWith('IFCREL')) {
+          line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
           if (line === null) continue;
         }
         if (converting) {

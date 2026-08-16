@@ -8,8 +8,7 @@
  */
 
 import React from 'react';
-import { Cloud } from 'lucide-react';
-import { AddFile, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
+import { AddFile, CloudSources, Loading, OpenFile, Refresh, Share, CollabsRoom } from '@/icons';
 import { useViewerStore } from '@/store';
 import { useIfc } from '@/hooks/useIfc';
 import { isCollabEnabled } from '@/lib/collab/config';
@@ -57,7 +56,7 @@ export function FileTab({ fileCommands }: { fileCommands: FileCommands }) {
           onClick={() => { void handleOpenClick(); }}
         />
         <RibbonLargeButton
-          icon={Cloud}
+          icon={CloudSources}
           label="Cloud sources"
           tooltip="Cloud sources (connected CDEs)"
           active={activeWorkspacePanels.has('sources')}

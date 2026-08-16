@@ -4,8 +4,11 @@
 
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
+import { RelationshipType } from '@ifc-lite/data';
+import type { AggregationRelationships } from '../../utils/aggregation.js';
 import {
   collectFilterResultGlobalIds,
+  expandFilterRowsThroughAggregation,
   scanFilterResultRows,
   type FilterResultLike,
 } from './isolate-filter-result.js';
@@ -130,5 +133,65 @@ describe('scanFilterResultRows', () => {
   test('returns empty when there is no express_id column', () => {
     const result: FilterResultLike = { columns: ['name'], rows: [['Wall A']] };
     assert.deepEqual(scanFilterResultRows(result, 'modelA'), []);
+  });
+});
+
+describe('expandFilterRowsThroughAggregation', () => {
+  /** Minimal IfcRelAggregates graph: parent express id -> child express ids. */
+  function fakeRelationships(aggregates: Record<number, number[]>): AggregationRelationships {
+    return {
+      getRelated: (id, relType, direction) =>
+        relType === RelationshipType.Aggregates && direction === 'forward'
+          ? [...(aggregates[id] ?? [])]
+          : [],
+    };
+  }
+
+  test('collects every aggregated descendant with its type, in row order, deduplicated', () => {
+    const result: FilterResultLike = {
+      columns: ['express_id', 'type'],
+      rows: [
+        [1, 'IfcElementAssembly'],
+        [2, 'IfcElementAssembly'],
+      ],
+    };
+    // Nested: 1 -> 10 -> 11; assemblies 1 and 2 share part 10.
+    const relationships = fakeRelationships({ 1: [10], 10: [11], 2: [10] });
+    const types: Record<number, string> = { 10: 'IfcSpace', 11: 'IfcOpeningElement' };
+    const expansion = expandFilterRowsThroughAggregation(result, 'modelA', {
+      relationshipsFor: () => relationships,
+      typeNameFor: (_modelId, expressId) => types[expressId] ?? null,
+      toGlobalId: (_modelId, expressId) => expressId + 1000,
+    });
+    assert.deepEqual(expansion.partGlobalIds, [1010, 1011], 'shared part 10 must appear once');
+    assert.deepEqual(expansion.partTypes, new Set(['IfcSpace', 'IfcOpeningElement']));
+  });
+
+  test('skips rows whose model has no relationship graph, and descendants whose global id resolves to null', () => {
+    const result: FilterResultLike = {
+      columns: ['express_id', 'type', 'model_id'],
+      rows: [
+        [1, 'IfcElementAssembly', 'modelA'],
+        [1, 'IfcElementAssembly', 'modelUnloaded'],
+      ],
+    };
+    const relationships = fakeRelationships({ 1: [10, 11] });
+    const expansion = expandFilterRowsThroughAggregation(result, 'modelA', {
+      relationshipsFor: (modelId) => (modelId === 'modelA' ? relationships : undefined),
+      typeNameFor: () => 'IfcSpace',
+      toGlobalId: (_modelId, expressId) => (expressId === 11 ? null : expressId),
+    });
+    assert.deepEqual(expansion.partGlobalIds, [10], 'the unloaded model and the null id must both be skipped');
+  });
+
+  test('returns empty for rows with no aggregated parts', () => {
+    const result: FilterResultLike = { columns: ['express_id', 'type'], rows: [[1, 'IfcWall']] };
+    const expansion = expandFilterRowsThroughAggregation(result, 'modelA', {
+      relationshipsFor: () => fakeRelationships({}),
+      typeNameFor: () => 'IfcWall',
+      toGlobalId: (_modelId, expressId) => expressId,
+    });
+    assert.deepEqual(expansion.partGlobalIds, []);
+    assert.deepEqual(expansion.partTypes, new Set());
   });
 });

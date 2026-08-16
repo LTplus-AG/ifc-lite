@@ -67,7 +67,13 @@
 # region — with a single padding the pre-scan could wrongly early-out on a triangle the
 # canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
 # (the test file itself is ratchet-exempt).
-          952 rust/geometry/src/facet_weld.rs
+# -45: local-frame anchor for the plane-offset math (n.v amplified a per-facet normal
+# error by the world-frame position magnitude at site coordinates; the anchor is the
+# bbox-min corner, a function of the vertex SET, so triangulation order cannot change the
+# weld; engagement gated to coordinates that need it). The derivation lives inline at the
+# anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
+# (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
+          907 rust/geometry/src/facet_weld.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
@@ -183,7 +189,7 @@
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
 # +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
 # depth-guard call sites; no code change.
-     713 rust/geometry/src/router/voids/coaxial_union.rs
+     704 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

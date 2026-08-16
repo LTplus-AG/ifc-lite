@@ -272,3 +272,7 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         volume_m3: tri_volume(&tris),
     }
 }
+
+#[cfg(test)]
+#[path = "clash_solid_world_frame_tests.rs"]
+mod world_frame_tests;

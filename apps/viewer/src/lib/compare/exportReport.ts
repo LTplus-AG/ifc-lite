@@ -28,7 +28,13 @@ import {
   exportedGlobalId,
   type CompareReportRow,
 } from './reportRows.js';
-import { placementMoveSummary, summarizeGeometryChange, type Aabb } from './geometrySummary.js';
+import {
+  meshBoundsIndex,
+  placementMoveSummary,
+  renderToWorldShift,
+  summarizeGeometryChange,
+  type WorldAabb,
+} from './geometrySummary.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
@@ -66,31 +72,20 @@ export interface CompareReport {
   rows: CompareReportRow[];
 }
 
-/** Mutable AABB accumulator. */
-interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
-
-/** One pass over a model's meshes → federation-globalId → AABB. */
-function boundsIndex(model: FederatedModel | undefined): Map<number, Aabb> {
-  const out = new Map<number, Aabb>();
-  if (!model?.geometryResult) return out;
-  const acc = new Map<number, Box>();
-  for (const mesh of model.geometryResult.meshes) {
-    let box = acc.get(mesh.expressId);
-    if (!box) {
-      box = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
-      acc.set(mesh.expressId, box);
-    }
-    const p = mesh.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
-      if (x < box.minX) box.minX = x; if (y < box.minY) box.minY = y; if (z < box.minZ) box.minZ = z;
-      if (x > box.maxX) box.maxX = x; if (y > box.maxY) box.maxY = y; if (z > box.maxZ) box.maxZ = z;
-    }
-  }
-  for (const [id, b] of acc) {
-    out.set(id, { min: [b.minX, b.minY, b.minZ], max: [b.maxX, b.maxY, b.maxZ] });
-  }
-  return out;
+/** One pass over a model's meshes -> federation-globalId -> absolute world
+ *  AABB. Delegates to `meshBoundsIndex` so this path and the detail panel's
+ *  `meshBounds` share one world-bounds computation - a private copy of that
+ *  loop here is how the report summed raw `positions` without the per-element
+ *  `origin` fold and wrote `MovedDistance_m = 0` for a genuinely moved element
+ *  (#2529). Folds THIS model's render-to-world shift so a box measured from
+ *  positions lands in the same absolute frame as a wasm `geometryAabb` on the
+ *  other side (#2659). */
+function boundsIndex(model: FederatedModel | undefined): Map<number, WorldAabb> {
+  if (!model?.geometryResult) return new Map();
+  return meshBoundsIndex(
+    model.geometryResult.meshes,
+    renderToWorldShift(model.geometryResult.coordinateInfo),
+  );
 }
 
 /** The side actually reported for an entry: base for deletions, head otherwise. */
@@ -123,8 +118,8 @@ function reportKey(entry: DiffEntry<CompareRef>): string {
 /** Classify a modified entry's change kinds into a human label + move distance. */
 function classifyModified(
   entry: DiffEntry<CompareRef>,
-  baseBounds: Map<number, Aabb>,
-  headBounds: Map<number, Aabb>,
+  baseBounds: Map<number, WorldAabb>,
+  headBounds: Map<number, WorldAabb>,
   baseModel: FederatedModel | undefined,
   headModel: FederatedModel | undefined,
 ): { change: string; movedDistance: number } {

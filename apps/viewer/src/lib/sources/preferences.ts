@@ -51,6 +51,18 @@ export function loadResolvedSourcePrefs(manifest: PluginManifest): Record<string
   return { ...manifestPreferenceDefaults(manifest), ...loadSavedSourcePrefs(manifest.name) };
 }
 
+/**
+ * Whether every preference the manifest marks `required` has a non-blank
+ * value. Gates both "Browse" on the provider row and a favourite's jump, which
+ * have to agree — a favourite that opens a browser the row itself refuses to
+ * open would dead-end on the provider's own "missing API key" error.
+ */
+export function isPrefsConfigured(manifest: PluginManifest, prefs: Record<string, string>): boolean {
+  return manifest.preferences
+    .filter((pref) => pref.required)
+    .every((pref) => Boolean(prefs[pref.name]?.trim()));
+}
+
 export function saveSourcePrefs(providerId: string, values: Record<string, string>): void {
   try {
     localStorage.setItem(PREFS_KEY_PREFIX + providerId, JSON.stringify(values));

@@ -484,6 +484,14 @@ jobs:
         run: pnpm test:integration
       - name: WASM contract tests (real processGeometryBatch boundary)
         run: pnpm test:wasm-contract
+      # The snap cache reconstructs model edges from the mesher's per-triangle
+      # segments, so its correctness depends on geometry the unit fixtures can
+      # only imitate. This drives the real wasm pipeline over the committed
+      # samples and asserts the invariants (one edge per straight run, the
+      # reported length is the whole run, the cache does not move when triangle
+      # emission order does -- the #2388 failure class). Issue #2199.
+      - name: Snap edge reconstruction (real wasm pipeline)
+        run: pnpm test:snap-edges
 
   # Functional smoke of the real viewer: real WASM pipeline + WebGPU
   # renderer (swiftshader) + pick pass + section plane, asserted through

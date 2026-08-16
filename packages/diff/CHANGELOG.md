@@ -1,5 +1,17 @@
 # @ifc-lite/diff
 
+## 0.7.0
+
+### Minor Changes
+
+- [#2529](https://github.com/LTplus-AG/ifc-lite/pull/2529) [`5086c57`](https://github.com/LTplus-AG/ifc-lite/commit/5086c5729b6ae8ad967aafa91d96dfdb37327599) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fingerprint an entity's resolved material names, so a re-specified element reads as modified
+
+  `DataFingerprintInput` gains an optional `materials?: string[]`, hashed into `buildDataFingerprint` and surfaced as a `material` key by `buildComponentFingerprints`. Material was absent from the projection entirely, so an element whose material changed was reported as unchanged in every channel.
+
+  Callers supply **resolved names**, never entity references: an `IfcMaterial`'s express id is reassigned on every save, so a reference comparison reports a change for every material-bearing element of every re-exported model. Names must be resolved through the full indirection (`IfcMaterialLayerSetUsage`, `IfcMaterialProfileSetUsage`, the layer/profile/constituent sets and their wrappers, `IfcMaterialList`), not just a directly attached `IfcMaterial`.
+
+  The field is optional and an empty array hashes identically to omitting it, so an adapter that does not supply materials is unaffected: the `Materials` key is written only for an entity that names one, and no existing fingerprint moves.
+
 ## 0.6.0
 
 ### Minor Changes

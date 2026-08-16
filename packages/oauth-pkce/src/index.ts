@@ -2,13 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-export {
-  base64UrlEncode,
-  createPkcePair,
-  deriveCodeChallengeS256,
-  generateCodeVerifier,
-  generateState,
-} from './pkce.js';
+// `base64UrlEncode` is deliberately *not* exported: it is an internal helper
+// backing the PKCE primitives below, not part of any OAuth contract this
+// package offers, and anything on this file becomes a compatibility promise
+// the package has to keep. Callers who want base64url for its own sake have
+// `Buffer.toString('base64url')` in Node and a two-line encoder in a browser.
+export { createPkcePair, deriveCodeChallengeS256, generateCodeVerifier, generateState } from './pkce.js';
 
 export { createAuthorizationRequest, parseAuthorizationCallback } from './authorization.js';
 export type { ParseAuthorizationCallbackOptions } from './authorization.js';

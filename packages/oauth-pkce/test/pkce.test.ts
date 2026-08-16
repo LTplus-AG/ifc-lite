@@ -57,6 +57,19 @@ describe('generateCodeVerifier', () => {
     expect(() => generateCodeVerifier(97)).toThrow(RangeError);
   });
 
+  it('rejects a byte length that is not an integer', () => {
+    // `NaN` is the dangerous one: `NaN < 32` and `NaN > 96` are both false,
+    // so the range guard passed it through, and `new Uint8Array(NaN)` has
+    // length 0 — an *empty* `code_verifier`, which defeats PKCE silently
+    // (the challenge is then the SHA-256 of the empty string, a constant any
+    // attacker can precompute, and the verifier is not a secret at all).
+    // A fractional length is truncated by `Uint8Array` rather than honoured,
+    // so it is rejected too rather than quietly meaning something else.
+    expect(() => generateCodeVerifier(Number.NaN)).toThrow(RangeError);
+    expect(() => generateCodeVerifier(32.5)).toThrow(RangeError);
+    expect(() => generateCodeVerifier(Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+
   it('never repeats across calls (CSPRNG, not a fixed value)', () => {
     const seen = new Set(Array.from({ length: 20 }, () => generateCodeVerifier()));
     expect(seen.size).toBe(20);

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { TokenExchangeError } from './errors.js';
+import { sanitizeErrorCode, sanitizeErrorDescription, TokenExchangeError } from './errors.js';
 import type { TokenSet } from './types.js';
 
 // ============================================================================
@@ -65,16 +65,26 @@ export async function refreshAccessToken(params: RefreshAccessTokenParams): Prom
   return requestToken(params.tokenEndpoint, body, params.fetch, params.now);
 }
 
+/**
+ * What RFC 6749 §5.1/§5.2 say a token-endpoint body contains — declared as
+ * `unknown` per field rather than as the string/number types the RFC gives
+ * them, because this shape is produced by `JSON.parse` over a network
+ * response. Writing `readonly refresh_token?: string` here would be a
+ * compile-time assertion about a value the compiler never sees, and would
+ * make `requestToken`'s runtime checks below look redundant to a future
+ * reader (or get narrowed away by the type checker) when they are the only
+ * thing actually establishing those types.
+ */
 interface TokenEndpointResponseBody {
-  readonly access_token?: string;
-  readonly refresh_token?: string;
+  readonly access_token?: unknown;
+  readonly refresh_token?: unknown;
   // RFC 6749 §5.1 says number, but some providers send it as a numeric
   // string; `requestToken` below coerces either shape with `Number(...)`.
-  readonly expires_in?: number | string;
-  readonly scope?: string;
-  readonly token_type?: string;
-  readonly error?: string;
-  readonly error_description?: string;
+  readonly expires_in?: unknown;
+  readonly scope?: unknown;
+  readonly token_type?: unknown;
+  readonly error?: unknown;
+  readonly error_description?: unknown;
 }
 
 async function requestToken(
@@ -103,14 +113,49 @@ async function requestToken(
   }
 
   if (!response.ok) {
-    const detail = parsed?.error
-      ? `: ${parsed.error}${parsed.error_description ? ` (${parsed.error_description})` : ''}`
-      : '';
+    // `error`/`error_description` are provider-controlled text from a
+    // response body — unbounded in length and unrestricted in character set
+    // before this point. Same treatment as the authorization-callback path
+    // (see `sanitizeErrorCode` in `errors.ts` for why a message that reaches
+    // logs and bug reports has to be bounded and inert). Also guarded on
+    // being strings at all: a body is only known to be JSON here, not to
+    // have the shape RFC 6749 §5.2 describes.
+    const rawError = typeof parsed?.error === 'string' ? parsed.error : undefined;
+    const rawDescription = typeof parsed?.error_description === 'string' ? parsed.error_description : undefined;
+    const description = rawDescription ? ` (${sanitizeErrorDescription(rawDescription)})` : '';
+    const detail = rawError ? `: ${sanitizeErrorCode(rawError)}${description}` : '';
     throw new TokenExchangeError(`token endpoint returned ${response.status}${detail}`, response.status);
   }
 
   if (!parsed || typeof parsed.access_token !== 'string' || parsed.access_token.length === 0) {
     throw new TokenExchangeError('token endpoint response is missing "access_token"');
+  }
+
+  // `access_token` was for a long time the only field checked; the rest were
+  // copied through with only a compile-time assertion standing behind them,
+  // which says nothing about a JSON body that came off the network. RFC 6749
+  // §5.1 defines all four as strings, but a provider that sends
+  // `"refresh_token": 12345` produced a `TokenSet` that violated its own
+  // declared type — and `TokenManager.getTokens()` runs `isTokenSet` over
+  // what it reads back, which fails closed to "no session". A *successful*
+  // sign-in then presented as "never signed in", and signing in again
+  // reproduced it: an unbreakable loop with nothing anywhere naming the
+  // cause.
+  //
+  // The two cases are not treated the same way, because what they cost
+  // differs:
+  //
+  //  - `refresh_token` is load-bearing. Dropping it would silently downgrade
+  //    the session to a non-refreshable one — indistinguishable from a
+  //    provider that legitimately issues no refresh token, and only visible
+  //    an access-token lifetime later, far from the response that caused it.
+  //    Reject the exchange and name the field.
+  //  - `scope` and `token_type` are informational; nothing in this package
+  //    reads them. Refusing an otherwise-valid sign-in over a non-conforming
+  //    value there would be a worse outcome than the value itself, so they
+  //    are dropped, which keeps the `TokenSet` honest about its own type.
+  if (parsed.refresh_token !== undefined && typeof parsed.refresh_token !== 'string') {
+    throw new TokenExchangeError('token endpoint response has a non-string "refresh_token"');
   }
 
   // RFC 6749 §5.1 specifies `expires_in` as a JSON number, but some
@@ -125,7 +170,7 @@ async function requestToken(
     accessToken: parsed.access_token,
     refreshToken: parsed.refresh_token,
     expiresAt: now() + expiresInSeconds * 1000,
-    scope: parsed.scope,
-    tokenType: parsed.token_type,
+    scope: typeof parsed.scope === 'string' ? parsed.scope : undefined,
+    tokenType: typeof parsed.token_type === 'string' ? parsed.token_type : undefined,
   };
 }

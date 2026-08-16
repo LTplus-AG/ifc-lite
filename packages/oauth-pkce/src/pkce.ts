@@ -50,8 +50,18 @@ export function base64UrlEncode(bytes: Uint8Array): string {
  * bytes reaches the 128-character ceiling.
  */
 export function generateCodeVerifier(byteLength = 32): string {
-  if (byteLength < 32 || byteLength > 96) {
-    throw new RangeError('generateCodeVerifier: byteLength must be between 32 (43 chars) and 96 (128 chars)');
+  // `Number.isInteger` is what makes the range check actually cover its
+  // range. Comparisons against `NaN` are *both* false, so `NaN` passed a
+  // bare `< 32 || > 96` guard — and `new Uint8Array(NaN)` has length 0, so
+  // the function returned an empty `code_verifier` and PKCE was defeated
+  // without anything failing: the challenge becomes the SHA-256 of the empty
+  // string, a constant, and the verifier protects nothing. A fractional
+  // length is rejected for the milder reason that `Uint8Array` truncates it,
+  // so it would silently mean a different length than the caller asked for.
+  if (!Number.isInteger(byteLength) || byteLength < 32 || byteLength > 96) {
+    throw new RangeError(
+      'generateCodeVerifier: byteLength must be an integer between 32 (43 chars) and 96 (128 chars)',
+    );
   }
   const bytes = new Uint8Array(byteLength);
   crypto.getRandomValues(bytes);

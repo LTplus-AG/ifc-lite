@@ -2420,7 +2420,6 @@
     "TokenManagerConfig: interface",
     "TokenSet: interface",
     "TokenStorage: interface",
-    "base64UrlEncode: function",
     "createAuthorizationRequest: function",
     "createPkcePair: function",
     "deriveCodeChallengeS256: function",

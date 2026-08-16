@@ -4,7 +4,8 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { TokenManager } from '../src/token-manager.js';
-import { NotSignedInError } from '../src/errors.js';
+import { exchangeAuthorizationCode } from '../src/token-exchange.js';
+import { NotSignedInError, TokenExchangeError } from '../src/errors.js';
 import type { TokenStorage } from '../src/types.js';
 
 function createMemoryStorage(): TokenStorage {
@@ -713,6 +714,82 @@ describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (review
   });
 });
 
+describe('TokenManager: clear()/setTokens() landing while getValidAccessToken() is still reading storage', () => {
+  // The tests above all `await flush()` between starting
+  // `getValidAccessToken()` and calling `clear()`/`setTokens()`. That flush
+  // lets the call get past its `await this.getTokens()` and into `refresh()`,
+  // which is where the session used to be captured — so the refresh always
+  // captured the *pre*-clear session and the disarm worked. Without the
+  // flush, `clear()` lands while the token read is still in flight, and a
+  // session captured after that read is the *post*-clear one: every identity
+  // check downstream then compares the new session against itself and passes.
+  // These two tests remove the flush; the ones above keep it, since they pin
+  // that the disarm still works once the refresh is past that point.
+
+  it('does not resurrect the session when clear() lands while the token read is still in flight', async () => {
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // No flush: `clear()` runs while `getValidAccessToken()` is still awaiting
+    // its storage read, i.e. before it has reached the refresh step at all.
+    const pending = manager.getValidAccessToken();
+    await manager.clear();
+
+    // The user signed out. The caller must be told so, not handed a live
+    // access token minted after the sign-out.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // And nothing may have been written back under the key they signed out of.
+    expect(await manager.getTokens()).toBeUndefined();
+  });
+
+  it('does not let a refresh started before a new sign-in overwrite it, when setTokens() lands during the token read', async () => {
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // No flush: the brand-new sign-in lands while the previous session's
+    // `getValidAccessToken()` is still awaiting its storage read.
+    const pending = manager.getValidAccessToken();
+    const newTokens = { accessToken: 'BRAND_NEW', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    await manager.setTokens(newTokens);
+
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // The new sign-in's tokens must survive the previous session's refresh.
+    expect(await manager.getTokens()).toEqual(newTokens);
+  });
+});
+
 describe('TokenManager: a stored entry that parses but is not a TokenSet', () => {
   /** Seeds storage directly, the way a corrupted/truncated `localStorage`
    *  entry, a key collision with some other writer, or a `TokenSet` written
@@ -767,6 +844,39 @@ describe('TokenManager: a stored entry that parses but is not a TokenSet', () =>
       await expect(managerOverRawEntry(raw).getValidAccessToken()).rejects.toThrow(NotSignedInError);
     });
   }
+
+  it('does not accept an accessToken that is only whitespace', async () => {
+    // `.length === 0` passes a whitespace-only string, which produces the
+    // header `Authorization: Bearer    ` — the same unattributable 401 as
+    // `Bearer undefined`, which is exactly what this guard exists to stop.
+    const manager = managerOverRawEntry(JSON.stringify({ accessToken: '   \t\n ', expiresAt: 9_000_000 }));
+
+    expect(await manager.getTokens()).toBeUndefined();
+    await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
+  });
+
+  it('does not turn a successful sign-in into an unbreakable re-auth loop when the provider sends a non-string refresh_token', async () => {
+    // End-to-end statement of the invariant `isTokenSet` claims: nothing
+    // this package writes can fail it. `requestToken` validated only
+    // `access_token`, so `"refresh_token": 12345` was copied through into
+    // the persisted entry — and `getTokens()` then read that entry back as
+    // "no session". Sign-in succeeded, the app saw a signed-out user, and
+    // signing in again reproduced it forever. The exchange must reject
+    // instead, so the failure is reported once, at its cause.
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'a1', refresh_token: 12345, expires_in: 3600 }));
+
+    await expect(
+      exchangeAuthorizationCode({
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        redirectUri: 'https://app.example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier-value',
+        fetch: fetchMock as unknown as typeof fetch,
+        now: () => 1_000_000,
+      }),
+    ).rejects.toThrow(TokenExchangeError);
+  });
 
   it('still accepts a well-formed entry that omits only the optional fields', async () => {
     // The guard must fail closed on malformed input without also rejecting

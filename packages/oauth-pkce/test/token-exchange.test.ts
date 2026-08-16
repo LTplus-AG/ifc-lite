@@ -128,6 +128,88 @@ describe('exchangeAuthorizationCode', () => {
   });
 });
 
+describe('provider error text in a token-endpoint failure is bounded and stripped', () => {
+  // Same shape as the authorization-callback case: `error`/`error_description`
+  // come from the response body and go verbatim into a message that ends up
+  // in logs and bug reports.
+  const exchangeFailure = (body: unknown) =>
+    exchangeAuthorizationCode({
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      redirectUri: 'https://app.example.com/callback',
+      code: 'auth-code',
+      codeVerifier: 'verifier-value',
+      fetch: (async () => jsonResponse(body, 400)) as unknown as typeof fetch,
+    });
+
+  it('strips control characters and caps the length of both fields', async () => {
+    let message = '';
+    try {
+      await exchangeFailure({
+        error: 'invalid_grant',
+        error_description: `bad\ncode\r\x1b[31m ${'B'.repeat(50_000)}`,
+      });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain('400');
+    expect(message).toContain('invalid_grant');
+    expect(message.length).toBeLessThan(400);
+    expect(message).toMatch(/^[\x20-\x21\x23-\x5B\x5D-\x7E]*$/);
+  });
+});
+
+describe('a token response whose optional fields are not strings', () => {
+  // `access_token` was the only field validated; `refresh_token`, `scope` and
+  // `token_type` were copied through untyped straight into the persisted
+  // `TokenSet`. That made a *successful* sign-in read back as "never signed
+  // in" — `TokenManager.getTokens()` runs `isTokenSet` over the entry it just
+  // wrote, and a non-string `refreshToken` fails that guard, which fails
+  // closed to "no session". The end-to-end effect is in the TokenManager
+  // suite; these pin the exchange itself.
+
+  const exchange = (body: unknown) =>
+    exchangeAuthorizationCode({
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      redirectUri: 'https://app.example.com/callback',
+      code: 'auth-code',
+      codeVerifier: 'verifier-value',
+      fetch: (async () => jsonResponse(body)) as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+
+  it('rejects a non-string refresh_token rather than persisting it', async () => {
+    // `refresh_token` is load-bearing: silently dropping it would downgrade
+    // the session to a non-refreshable one, which the caller only discovers
+    // an access-token lifetime later and far from the cause. Reject at the
+    // exchange, naming the field.
+    await expect(exchange({ access_token: 'a1', refresh_token: 12345, expires_in: 3600 })).rejects.toThrow(
+      TokenExchangeError,
+    );
+    await expect(exchange({ access_token: 'a1', refresh_token: 12345, expires_in: 3600 })).rejects.toThrow(
+      /refresh_token/,
+    );
+  });
+
+  it('drops a non-string scope or token_type instead of failing the sign-in over them', async () => {
+    // Neither field affects anything this package does — dropping keeps a
+    // usable session rather than refusing to sign in over informational
+    // metadata, and keeps the `TokenSet` conforming to its declared type.
+    const tokens = await exchange({
+      access_token: 'a1',
+      scope: ['files.read', 'files.write'],
+      token_type: 7,
+      expires_in: 3600,
+    });
+
+    expect(tokens.accessToken).toBe('a1');
+    expect(tokens.scope).toBeUndefined();
+    expect(tokens.tokenType).toBeUndefined();
+  });
+});
+
 describe('refreshAccessToken', () => {
   it('POSTs the refresh_token grant', async () => {
     const fetchMock = vi.fn(async (_url: string | URL, init?: RequestInit) => {

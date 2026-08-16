@@ -98,6 +98,35 @@ describe('createAuthorizationRequest', () => {
     expect(url.searchParams.getAll('prompt')).toEqual(['consent']);
   });
 
+  // `scope` was the one protocol parameter whose `set()` is conditional
+  // (`if (config.scope)`), so the test above — which sets `config.scope` —
+  // could not see the branch where the condition is false. With `config.scope`
+  // unset or empty, nothing overwrote the extra and an `extraParams.scope`
+  // was honoured, contradicting the documented guarantee on
+  // `AuthorizationRequestConfig.extraParams`. These pin the branch.
+  for (const [label, scope] of [
+    ['unset', undefined],
+    ['an empty string', ''],
+  ] as ReadonlyArray<readonly [string, string | undefined]>) {
+    it(`ignores an extraParams "scope" when config.scope is ${label}`, async () => {
+      const request = await createAuthorizationRequest({
+        authorizationEndpoint: 'https://auth.example.com/authorize',
+        clientId: 'client-123',
+        redirectUri: REDIRECT_URI,
+        scope,
+        extraParams: { scope: 'files.readwrite', prompt: 'consent' },
+      });
+
+      const url = new URL(request.url);
+      // No scope was requested, so none may be sent — least privilege: an
+      // authorization request with no `scope` gets the provider's default,
+      // whereas a caller-injected one silently widens what is granted.
+      expect(url.searchParams.getAll('scope')).toEqual([]);
+      // Control: a non-colliding extra still passes through.
+      expect(url.searchParams.getAll('prompt')).toEqual(['consent']);
+    });
+  }
+
   it('generates a different state and verifier on every call', async () => {
     const a = await createAuthorizationRequest({
       authorizationEndpoint: 'https://auth.example.com/authorize',
@@ -157,5 +186,79 @@ describe('parseAuthorizationCallback', () => {
     expect(() => parseAuthorizationCallback(`${REDIRECT_URI}?state=${expectedState}`, options)).toThrow(
       OAuthAuthorizationError,
     );
+  });
+
+  // The `error`/`error_description` branch runs *before* the `state`
+  // comparison (deliberately — a real provider error should be reported as
+  // itself, not as a CSRF mismatch), so both fields reach the thrown message
+  // without any valid `state` having been presented. Anyone who can cause a
+  // navigation to the redirect URI controls them, unbounded in length and
+  // in character set. The message ends up in logs, bug reports and error
+  // overlays, so what is interpolated has to be bounded and inert.
+  describe('provider error text is bounded and stripped before it reaches the message', () => {
+    it('drops control characters and quotes from error_description', () => {
+      const description = 'line one\nline two\r [31mred[0m "quoted" \\escaped';
+      const url = new URL(`${REDIRECT_URI}`);
+      url.searchParams.set('error', 'access_denied');
+      url.searchParams.set('error_description', description);
+
+      let message = '';
+      try {
+        parseAuthorizationCallback(url.toString(), options);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain('access_denied');
+      // No control character survives: no newline forging what looks like a
+      // second, independent log line, no ESC rewriting a terminal's output.
+      expect(message).not.toMatch(/[\x00-\x1F\x7F]/);
+      // The only `"` in the message are the two the message template itself
+      // puts around the error code, and no `\` at all — so the description
+      // cannot break out of, or forge, the quoted-code part of the message.
+      // (Both are outside RFC 6749 §4.1.2.1's NQCHAR, so no legitimate value
+      // loses anything.)
+      expect(message.match(/"/g)).toHaveLength(2);
+      expect(message).not.toContain('\\');
+    });
+
+    it('caps a very long error_description', () => {
+      const url = new URL(`${REDIRECT_URI}`);
+      url.searchParams.set('error', 'access_denied');
+      url.searchParams.set('error_description', 'A'.repeat(50_000));
+
+      let message = '';
+      try {
+        parseAuthorizationCallback(url.toString(), options);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+
+      expect(message.length).toBeLessThan(400);
+    });
+
+    it('does not interpolate an error code that is not a valid RFC 6749 error code', () => {
+      const url = new URL(`${REDIRECT_URI}`);
+      url.searchParams.set('error', 'access_denied"\n]8;;https://evil.example.comclick here');
+
+      let thrown: OAuthAuthorizationError | undefined;
+      try {
+        parseAuthorizationCallback(url.toString(), options);
+      } catch (error) {
+        thrown = error as OAuthAuthorizationError;
+      }
+
+      // An `error` code is a single token from a fixed grammar, so a value
+      // outside it is not a code that needs cleaning up — it is not a code,
+      // and none of it is presented as one. Pinned by exact equality rather
+      // than by absence of the payload, so a future sanitizer that merely
+      // strips the bad characters (and would still present the rest as the
+      // server's own error code) fails this too.
+      expect(thrown?.message).toBe('authorization server returned "(malformed error code)"');
+      // The public `errorCode` field carries the sanitized value as well —
+      // callers branch and display on it, so leaving the raw string there
+      // would move the same problem one call frame out.
+      expect(thrown?.errorCode).toBe('(malformed error code)');
+    });
   });
 });

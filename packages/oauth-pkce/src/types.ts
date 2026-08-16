@@ -63,12 +63,17 @@ export interface AuthorizationRequestConfig {
   /** Provider-specific extras (e.g. `prompt`, `access_type`). Written into
    *  the authorization URL **first**, then each protocol parameter is set
    *  over the top — so the protocol wins every collision, and an entry here
-   *  named `response_type`, `client_id`, `redirect_uri`, `scope`,
+   *  named `response_type`, `client_id`, `redirect_uri`,
    *  `code_challenge`, `code_challenge_method` or `state` is silently
    *  replaced rather than honoured. Those are set from the fields above and
    *  from freshly generated PKCE/CSRF material, never from caller-supplied
-   *  strings. Use `scope` above to set the scope; putting it here has no
-   *  effect. Entries that don't collide are passed through unchanged. */
+   *  strings.
+   *
+   *  A `scope` entry here is *dropped* rather than overwritten, because the
+   *  overwrite it would otherwise rely on is conditional: the request only
+   *  carries a `scope` parameter when `scope` above is a non-empty string.
+   *  Use `scope` above to set the scope; putting it here has no effect
+   *  either way. Entries that don't collide are passed through unchanged. */
   readonly extraParams?: Readonly<Record<string, string>>;
 }
 

@@ -61,14 +61,28 @@ const DEFAULT_REFRESH_SKEW_MS = 60_000;
  * request the provider answers with a 401 the caller cannot attribute to
  * anything, at a point far away from the storage entry that caused it.
  *
- * The check mirrors exactly what `requestToken` in `token-exchange.ts`
- * guarantees about every `TokenSet` this package ever writes — a non-empty
- * string `accessToken` and a finite numeric `expiresAt` — so no entry this
- * package produced can fail it, and the optional fields are only checked
- * when present. `expiresAt` matters as much as `accessToken`: it is the
- * input to the freshness comparison, and a `NaN` there makes
- * `expiresAt - skew > now` false, which reads as "expired" and quietly
- * routes a possibly-fine token into a refresh instead of being caught.
+ * The check mirrors what `requestToken` in `token-exchange.ts` establishes
+ * about a `TokenSet` this package obtained from a provider — a non-empty
+ * string `accessToken`, a finite numeric `expiresAt`, and string-or-absent
+ * optional fields — so a refresh's own write cannot fail it. That alignment
+ * is a property to keep, not a given: it was false until `requestToken`
+ * began validating the optional fields, and while it was false a provider
+ * sending `"refresh_token": 12345` made a *successful* sign-in read back
+ * here as "never signed in", with each retry reproducing it. Anything
+ * loosened on either side has to be loosened on both.
+ *
+ * The one writer this cannot speak for is `setTokens`, whose argument is
+ * caller-supplied and checked only by the type system: a caller reaching it
+ * from untyped JavaScript can still store an entry this guard rejects, and
+ * it will read back as "no session".
+ *
+ * `expiresAt` matters as much as `accessToken`: it is the input to the
+ * freshness comparison, and a `NaN` there makes `expiresAt - skew > now`
+ * false, which reads as "expired" and quietly routes a possibly-fine token
+ * into a refresh instead of being caught. `accessToken` is checked for
+ * non-whitespace rather than merely non-empty, because `"   "` is just as
+ * unusable as `""` — it produces the header `Authorization: Bearer    ` and
+ * the same 401 the caller cannot attribute to anything.
  *
  * Fails closed: a value that doesn't pass is reported as *no* stored token,
  * so the caller re-authenticates rather than sending a broken header.
@@ -76,7 +90,7 @@ const DEFAULT_REFRESH_SKEW_MS = 60_000;
 function isTokenSet(value: unknown): value is TokenSet {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  if (typeof candidate.accessToken !== 'string' || candidate.accessToken.length === 0) return false;
+  if (typeof candidate.accessToken !== 'string' || candidate.accessToken.trim().length === 0) return false;
   if (typeof candidate.expiresAt !== 'number' || !Number.isFinite(candidate.expiresAt)) return false;
   for (const key of ['refreshToken', 'scope', 'tokenType'] as const) {
     if (candidate[key] !== undefined && typeof candidate[key] !== 'string') return false;
@@ -184,7 +198,15 @@ export class TokenManager {
    *  and overwrites the tokens this call is about to persist with the
    *  stale refreshed ones. The swap is synchronous, before the write is
    *  even enqueued, so the disarm is in place no matter how the two writes
-   *  end up ordered in the queue. */
+   *  end up ordered in the queue.
+   *
+   *  What makes the swap sufficient is that the operation being disarmed
+   *  captured its session *before* its first `await`, in
+   *  `getValidAccessToken`. It did not always: while the session was read
+   *  inside `refresh()` — i.e. after the caller's storage read — a
+   *  `setTokens()` landing during that read was captured *as* the stale
+   *  refresh's own session, so every check below compared the new session
+   *  against itself and the stale write went through anyway. */
   async setTokens(tokens: TokenSet): Promise<void> {
     this.session = new Session();
     const json = JSON.stringify(tokens);
@@ -234,6 +256,11 @@ export class TokenManager {
     // it does not wait for the queue — so a refresh's check
     // (`session !== this.session`) sees it the moment `clear()` is called,
     // regardless of where `clear()`'s own `delete()` lands in the queue.
+    // That holds for a refresh whose caller had not yet reached the refresh
+    // step as much as for one already in flight, because the session is
+    // captured at the top of `getValidAccessToken`, before its storage read
+    // — not inside `refresh()` after it, which is what let a `clear()`
+    // landing mid-read be captured as the refresh's own session.
     this.session = new Session();
     // The delete itself still goes through the queue, so it is strictly
     // ordered against any write already ahead of it: if a refresh's write
@@ -259,9 +286,24 @@ export class TokenManager {
    * Throws `NotSignedInError` if there is no stored session — including a
    * stored entry that isn't a usable `TokenSet`, which counts as "no
    * session" rather than being served as a token (see `getTokens`) — or if
-   * the stored session is expired with no refresh token to recover with.
+   * the stored session is expired with no refresh token to recover with,
+   * or if `clear()`/`setTokens()` replaced the session at any point after
+   * this call started (see the session capture below).
    */
   async getValidAccessToken(): Promise<string> {
+    // Captured *before* the storage read, not after it. `getTokens()` below
+    // is a genuine `await` — it goes through the queue — and `clear()` /
+    // `setTokens()` replace `this.session` synchronously, outside the queue,
+    // the instant they are called. A sign-out landing during that read used
+    // to be invisible to this call: reading `this.session` afterwards (which
+    // is what `refresh()` did) returned the *post*-clear session, so every
+    // identity check downstream compared the new session against itself,
+    // passed, and a refresh started on behalf of a signed-out session wrote
+    // a fresh token set back under the key the user had just signed out of
+    // — while its caller received a live access token. Capturing here means
+    // `session` is the session this call was issued under, whatever happens
+    // to `this.session` afterwards.
+    const session = this.session;
     const tokens = await this.getTokens();
     if (!tokens) throw new NotSignedInError();
 
@@ -271,18 +313,27 @@ export class TokenManager {
       return tokens.accessToken;
     }
 
-    const refreshed = await this.refresh(tokens);
+    const refreshed = await this.refresh(session, tokens);
     return refreshed.accessToken;
   }
 
-  private refresh(current: TokenSet): Promise<TokenSet> {
-    // `this.session` is read once, synchronously, and everything below —
-    // the dedup check, the closure's captured reference, the staleness
-    // checks — operates on this same object. A `clear()` that runs at any
-    // point from here on replaces `this.session` with a different instance,
-    // never mutates this one, so `session` always continues to mean
-    // "the session this particular call started under."
-    const session = this.session;
+  /** `session` is the session its caller was issued under, captured before
+   *  any `await` (see `getValidAccessToken`). Everything below — the dedup
+   *  check, the closure's captured reference, the staleness checks —
+   *  operates on that same object. A `clear()`/`setTokens()` that runs at
+   *  any point replaces `this.session` with a different instance, never
+   *  mutates this one, so `session` always continues to mean "the session
+   *  this particular call started under." */
+  private refresh(session: Session, current: TokenSet): Promise<TokenSet> {
+    if (session !== this.session) {
+      // `clear()` or `setTokens()` already landed — during the caller's
+      // storage read, before this refresh even began. Refusing here rather
+      // than at the write is not just an optimisation: it also keeps a
+      // refresh token belonging to a session the user has left from being
+      // sent to the token endpoint at all, which matters with providers
+      // that rotate (and thereby invalidate) it on use.
+      return Promise.reject(new NotSignedInError('signed out while the token refresh was in flight'));
+    }
     if (session.pendingRefresh) return session.pendingRefresh;
 
     if (!current.refreshToken) {

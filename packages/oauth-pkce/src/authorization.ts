@@ -33,7 +33,18 @@ export async function createAuthorizationRequest(
   // Caller-supplied `extraParams` is applied first and the protocol
   // parameters last, so a provider-specific extra can never shadow
   // `response_type`, `client_id`, `redirect_uri`, the PKCE pair, or `state`.
+  //
+  // `scope` is the one protocol parameter that cannot rely on that ordering,
+  // because its `set()` below is conditional on `config.scope` being present:
+  // with `config.scope` unset (or `''`) nothing was written over the top, so
+  // an `extraParams.scope` survived and was sent — the single case where an
+  // extra *did* decide a protocol parameter, contrary to what
+  // `AuthorizationRequestConfig.extraParams` documents. Skipping the key here
+  // makes the ordering rule unconditional again: `scope` comes from
+  // `config.scope` or is absent, and "absent" means the provider applies its
+  // own default rather than a caller-injected — potentially wider — set.
   for (const [key, value] of Object.entries(config.extraParams ?? {})) {
+    if (key === 'scope') continue;
     url.searchParams.set(key, value);
   }
   url.searchParams.set('response_type', 'code');

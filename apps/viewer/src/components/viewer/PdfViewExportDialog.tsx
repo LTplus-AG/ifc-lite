@@ -142,7 +142,13 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
     });
   }, [camera, zoom, source]);
 
-  const customScaleValue = Number.parseFloat(customScale);
+  // Drafting scales are whole numbers (1:50, not 1:49.7), so a custom entry is
+  // rounded to an integer and the rounded value is what actually gets drawn.
+  // Rounding here is safe precisely because it happens BEFORE the factor reaches
+  // the layout and the filename: the sheet is drawn at the rounded scale, so the
+  // filename still names the scale the sheet was really drawn at. (Rounding at
+  // the filename instead is the #2119 defect - a 1:99.5 sheet filed as "1-100".)
+  const customScaleValue = Math.round(Number.parseFloat(customScale));
   const customScaleValid = Number.isFinite(customScaleValue) && customScaleValue > 0;
 
   const scaleFactor: number | null = useMemo(() => {
@@ -274,14 +280,19 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
                 <Input
                   id="pdf-view-custom-scale"
                   type="number"
-                  min="0"
-                  step="any"
+                  min="1"
+                  step="1"
                   value={customScale}
                   onChange={(e) => setCustomScale(e.target.value)}
+                  onBlur={() => {
+                    // Show the value that will actually be drawn, so the sheet
+                    // never differs from what the field says.
+                    if (customScaleValid) setCustomScale(String(customScaleValue));
+                  }}
                 />
                 {!customScaleValid && (
                   <p className="text-xs text-destructive">
-                    Enter a number greater than zero, for example 75.
+                    Enter a whole number greater than zero, for example 75.
                   </p>
                 )}
               </div>

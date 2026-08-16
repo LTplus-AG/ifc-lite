@@ -39,11 +39,19 @@ import { PdfViewExportDialog } from './PdfViewExportDialog.js';
 // ── Fixture geometry: an axis-aligned box, 4 m x 3 m x 2 m at the origin ────
 const BOX_MAX = { x: 4, y: 3, z: 2 };
 
-function boxMesh(): MeshData {
+/**
+ * A box big enough that an INTEGER custom scale can still overflow the PDF page
+ * limit. The 4 m fixture cannot: the largest enlargement a whole-number scale
+ * allows is 1:1 (1000 mm per metre), so 4 m tops out at 4020 mm, inside the
+ * 5080 mm limit. 60 m at 1:10 is 6020 mm, which is outside it.
+ */
+const BIG_BOX_MAX = { x: 60, y: 40, z: 2 };
+
+function boxMesh(max: { x: number; y: number; z: number } = BOX_MAX): MeshData {
   const positions: number[] = [];
-  for (const x of [0, BOX_MAX.x]) {
-    for (const y of [0, BOX_MAX.y]) {
-      for (const z of [0, BOX_MAX.z]) positions.push(x, y, z);
+  for (const x of [0, max.x]) {
+    for (const y of [0, max.y]) {
+      for (const z of [0, max.z]) positions.push(x, y, z);
     }
   }
   // Two triangles are enough for the bounds; the drawing itself is not asserted.
@@ -58,10 +66,10 @@ function boxMesh(): MeshData {
   };
 }
 
-function boxGeometry(): GeometryResult {
-  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { ...BOX_MAX } };
+function boxGeometry(max: { x: number; y: number; z: number } = BOX_MAX): GeometryResult {
+  const bounds = { min: { x: 0, y: 0, z: 0 }, max: { ...max } };
   return {
-    meshes: [boxMesh()],
+    meshes: [boxMesh(max)],
     totalTriangles: 2,
     totalVertices: 8,
     coordinateInfo: {
@@ -78,7 +86,7 @@ function boxGeometry(): GeometryResult {
  * Orthographic, 500 CSS px tall, `orthoSize` 5 m: the displayed scale is then
  * 10000 mm of world over (500 * 25.4 / 96) mm of screen = 1:75.59.
  */
-function fakeRenderer(): Renderer {
+function fakeRenderer(max: { x: number; y: number; z: number } = BOX_MAX): Renderer {
   const camera = {
     getPosition: () => ({ x: 2, y: 1.5, z: 10 }),
     getTarget: () => ({ x: 2, y: 1.5, z: 1 }),
@@ -87,7 +95,7 @@ function fakeRenderer(): Renderer {
     getOrthoSize: () => 5,
     getDistance: () => 9,
     getFOV: () => Math.PI / 4,
-    getSceneBounds: () => ({ min: { x: 0, y: 0, z: 0 }, max: { ...BOX_MAX } }),
+    getSceneBounds: () => ({ min: { x: 0, y: 0, z: 0 }, max: { ...max } }),
   };
   return {
     getCamera: () => camera,
@@ -95,10 +103,10 @@ function fakeRenderer(): Renderer {
   } as unknown as Renderer;
 }
 
-function seedViewer(): void {
+function seedViewer(max: { x: number; y: number; z: number } = BOX_MAX): void {
   const model = fixtureModel('m1', { idOffset: 0 });
   useViewerStore.setState({
-    ...fixtureModels({ ...model, geometryResult: boxGeometry() }),
+    ...fixtureModels({ ...model, geometryResult: boxGeometry(max) }),
     hiddenEntities: new Set<number>(),
     isolatedEntities: null,
     classFilter: null,
@@ -109,7 +117,7 @@ function seedViewer(): void {
   const canvas = document.createElement('canvas');
   Object.defineProperty(canvas, 'clientHeight', { value: 500, configurable: true });
   setGlobalCanvasRef({ current: canvas });
-  setGlobalRendererRef({ current: fakeRenderer() });
+  setGlobalRendererRef({ current: fakeRenderer(max) });
 }
 
 // ── Dialog driving ──────────────────────────────────────────────────────────
@@ -219,15 +227,32 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
   });
 
   it('blocks a scale whose page exceeds the PDF page limit', () => {
+    // The 4 m fixture cannot reach the limit at a whole-number scale, so this
+    // uses the 60 m box: at 1:10 it draws 6000 mm, past the 5080 mm limit.
+    seedViewer(BIG_BOX_MAX);
     openDialog();
-    // 1:0.5 is a 2x enlargement: 4 m becomes 8000 mm, past the 5080 mm limit.
-    typeCustomScale('0.5');
-    assert.match(readout(), /Estimated page: 8020 x 6020 mm/);
+    chooseScale('1:10');
+    assert.match(readout(), /Estimated page: 6020 x 4020 mm/);
     assert.match(
       document.body.textContent ?? '',
       /A PDF page cannot exceed 5080 mm on a side/,
       'the oversize warning must name the limit',
     );
     assert.equal(exportButton().disabled, true, 'an unprintable page must block Export');
+  });
+
+  it('rounds a custom scale to a whole number, and draws at the rounded scale', () => {
+    // Drafting scales are whole numbers. A fractional entry must not silently
+    // draw a sheet at 1:33.7 while the user reads "1:34" anywhere else, so the
+    // rounding happens BEFORE the factor reaches the layout: 33.7 and 34 must
+    // produce the identical page, and 33.4 must produce a DIFFERENT one (which
+    // is what fails if the rounding is dropped and the raw value is used).
+    openDialog();
+    typeCustomScale('34');
+    const atWholeScale = readout();
+    typeCustomScale('33.7');
+    assert.equal(readout(), atWholeScale, '1:33.7 must draw exactly the 1:34 sheet');
+    typeCustomScale('33.4');
+    assert.notEqual(readout(), atWholeScale, '1:33.4 must round to 33, not to 34');
   });
 });

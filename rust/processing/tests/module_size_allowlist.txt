@@ -26,7 +26,10 @@
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
-    635 rust/export/src/collada.rs
+# -205: #2628 review follow-up split the inline #[cfg(test)] mod out to collada_tests.rs
+# (ratchet-exempt) to make room for the composed KMZ heading+up-axis orientation
+# invariant test without growing this file; budget refreshed downward.
+    430 rust/export/src/collada.rs
      468 rust/export/src/model.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making

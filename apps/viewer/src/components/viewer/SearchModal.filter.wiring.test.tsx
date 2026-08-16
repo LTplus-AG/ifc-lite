@@ -227,6 +227,9 @@ function seedIsolateStore(options: {
   rows: unknown[][];
   typeVisibility?: Partial<ReturnType<typeof useViewerStore.getState>['typeVisibility']>;
   models?: ReturnType<typeof fixtureModels>;
+  /** Viewport's aggregation resolver (#2531). Absent by default, same as a
+   *  renderer that has not registered its camera callbacks yet. */
+  resolveHighlightIds?: (ids: number[]) => number[];
 } = { columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] }) {
   const seeded = options.models ?? fixtureModels(
     fixtureModel(MODEL_ID, {
@@ -251,6 +254,7 @@ function seedIsolateStore(options: {
     cameraCallbacks: {
       frameSelection: () => { framed += 1; },
       frameEntities: (ids: number[]) => { framedIds.push(ids); },
+      ...(options.resolveHighlightIds ? { resolveHighlightIds: options.resolveHighlightIds } : {}),
     } as never,
   });
 }
@@ -351,6 +355,181 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
       framedIds.length,
       framedAfterFirstClick,
       'the un-isolate press must not also frame the (now meaningless) id set',
+    );
+  });
+
+  // ── Assembly resolution (#2531 in the path #2532 added) ─────────────────
+  //
+  // An IfcElementAssembly carries no mesh of its own; its geometry hangs off
+  // the IfcRelAggregates parts. The renderer resolves `isolatedEntities`
+  // against mesh ids directly, so isolating the bare assembly id blanks the
+  // view. Viewport exposes the aggregation resolver as
+  // `cameraCallbacks.resolveHighlightIds` (backed by
+  // expandToGeometryBearingIds, #2531); these stubs mirror its contract the
+  // same way SearchModal.text.wiring.test.tsx does: a geometry-bearing id
+  // passes through untouched, a geometry-less one resolves to its parts and
+  // never to itself.
+
+  it('isolates a geometry-less assembly as its geometry-bearing parts, not its bare id', async () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    const PART_B = ROW0_GLOBAL_ID + 501;
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A, PART_B] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(
+      s.isolatedEntities,
+      new Set([PART_A, PART_B]),
+      'the isolation set must hold the renderable parts; the bare assembly id renders nothing',
+    );
+    // The selection additionally keeps the MATCHED assembly id (last, so it is
+    // the primary selection) -- same #1133 convention as the text tab's commit.
+    assert.deepEqual(s.selectedEntityIds, new Set([PART_A, PART_B, ROW0_GLOBAL_ID]));
+    await advance(60);
+    assert.deepEqual(framedIds, [[PART_A, PART_B]], 'framing must target the resolved parts too');
+  });
+
+  it('keeps the matched assembly as the primary selection; an expanded part must not steal selectedEntityId', () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    const PART_B = ROW0_GLOBAL_ID + 501;
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A, PART_B] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    // setSelectedEntityIds derives selectedEntityId from the LAST element
+    // (selectionSlice.ts:160-163) and useModelSelection then syncs
+    // selectedEntity -- so if the expanded parts came last, the Properties
+    // panel would open on an arbitrary constituent instead of the assembly
+    // the filter matched (#2660 review).
+    assert.equal(
+      useViewerStore.getState().selectedEntityId,
+      ROW0_GLOBAL_ID,
+      'the primary selection must be the matched assembly, not the last expanded part',
+    );
+  });
+
+  it('passes geometry-bearing rows through the resolver untouched, so the fix does not broaden a plain result', () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    const WALL_GLOBAL_ID = toGlobalIdFromModels(
+      fixtureModels(fixtureModel(MODEL_ID, { idOffset: ID_OFFSET })).models,
+      MODEL_ID,
+      43,
+    );
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [
+        [42, 'IfcElementAssembly'],
+        [43, 'IfcWall'],
+      ],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    assert.deepEqual(
+      useViewerStore.getState().isolatedEntities,
+      new Set([PART_A, WALL_GLOBAL_ID]),
+      'the wall keeps its own id; only the assembly is substituted',
+    );
+  });
+
+  it('pressing Isolate again on the identical assembly result still toggles isolation off', async () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+    await advance(60);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A]));
+
+    click(isolateButton(container));
+    await advance(60);
+
+    assert.equal(
+      useViewerStore.getState().isolatedEntities,
+      null,
+      'the same-set toggle must compare RESOLVED ids on both presses, or the second press re-isolates',
+    );
+  });
+
+  it('keeps the raw ids when nothing resolves to geometry, identical to a renderer with no resolver', () => {
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      // An assembly with neither geometry nor geometry-bearing parts resolves
+      // to nothing at all (expandToGeometryBearingIds drops it).
+      resolveHighlightIds: () => [],
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    // Pre-#2531 behaviour preserved for this corner: isolating an empty set
+    // would hide the ENTIRE model, which is strictly worse than the raw id.
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ROW0_GLOBAL_ID]));
+  });
+
+  it('expands an assembly over HIDDEN-type parts through the aggregation graph and flips their toggles when the geometry resolver sees nothing', () => {
+    // The renderer-backed resolver reads the type-visibility-FILTERED mesh
+    // list (ViewportContainer's filteredGeometry), so an assembly whose only
+    // parts are hidden IfcSpaces resolves to NOTHING -- and the bare-id
+    // fallback alone would isolate a geometry-less id with the spaces toggle
+    // still off: a blank view on a valid result (#2660 review). The fallback
+    // must instead walk IfcRelAggregates in the data store, isolate the
+    // parts, and flip their type gate.
+    const models = fixtureModels(
+      fixtureModel(MODEL_ID, {
+        idOffset: ID_OFFSET,
+        entities: [
+          { expressId: 42, type: 'IfcElementAssembly', name: 'Zone assembly' },
+          { expressId: 100, type: 'IfcSpace', name: 'Space A' },
+          { expressId: 101, type: 'IfcSpace', name: 'Space B' },
+        ],
+        aggregates: { 42: [100, 101] },
+      }),
+    );
+    const SPACE_A = toGlobalIdFromModels(models.models, MODEL_ID, 100);
+    const SPACE_B = toGlobalIdFromModels(models.models, MODEL_ID, 101);
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      models,
+      typeVisibility: { spaces: false },
+      // Hidden parts own no mesh in the filtered geometry, so the real
+      // resolver drops the assembly entirely (expandToGeometryBearingIds).
+      resolveHighlightIds: () => [],
+    });
+    assert.equal(useViewerStore.getState().typeVisibility.spaces, false, 'precondition: spaces start hidden');
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    const s = useViewerStore.getState();
+    assert.equal(s.typeVisibility.spaces, true, 'the parts\' type gate must flip, or nothing renders');
+    assert.deepEqual(
+      s.isolatedEntities,
+      new Set([ROW0_GLOBAL_ID, SPACE_A, SPACE_B]),
+      'the isolation set must include the aggregated parts, not just the bare assembly id',
     );
   });
 

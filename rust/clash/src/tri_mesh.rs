@@ -339,6 +339,17 @@ impl TriMesh {
         }
         crossings & 1 == 1
     }
+
+    /// Number of vertices in this mesh (positions are packed `x, y, z`).
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.positions.len() / 3
+    }
+
+    /// The three vertex indices of triangle `t` (local, 0-based).
+    pub(crate) fn tri_indices(&self, t: usize) -> [u32; 3] {
+        let o = t * 3;
+        [self.indices[o], self.indices[o + 1], self.indices[o + 2]]
+    }
 }
 
 impl MeshLike for TriMesh {

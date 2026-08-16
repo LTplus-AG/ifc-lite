@@ -244,6 +244,69 @@ fn tri_prism(footprint: [[f32; 2]; 3], z0: f32, z1: f32) -> (Vec<f32>, Vec<u32>,
     (positions, indices, aabb)
 }
 
+/// Non-box "tub": a 10 x 10 x 1 block with an open-top recess [1,9]x[1,9]
+/// from z = 0.875 up. The recess floor (z = 0.875) is a solid surface INSIDE
+/// the element's own AABB, so another element can cross it while staying
+/// AABB-contained — the shape class behind the eight Infra-Bridge pairs.
+/// `detect_obb` declines it: the z-normal family has three offset planes
+/// (0, 0.875, 1). Mirrors the TS `tubEl`.
+fn tub() -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    #[rustfmt::skip]
+    let positions: Vec<f32> = vec![
+        // 0-3: outer bottom (z=0)
+        0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 10.0, 10.0, 0.0, 0.0, 10.0, 0.0,
+        // 4-7: outer top (z=1)
+        0.0, 0.0, 1.0, 10.0, 0.0, 1.0, 10.0, 10.0, 1.0, 0.0, 10.0, 1.0,
+        // 8-11: recess rim (z=1)
+        1.0, 1.0, 1.0, 9.0, 1.0, 1.0, 9.0, 9.0, 1.0, 1.0, 9.0, 1.0,
+        // 12-15: recess floor (z=0.875)
+        1.0, 1.0, 0.875, 9.0, 1.0, 0.875, 9.0, 9.0, 0.875, 1.0, 9.0, 0.875,
+    ];
+    #[rustfmt::skip]
+    let indices: Vec<u32> = vec![
+        // bottom
+        0, 2, 1, 0, 3, 2,
+        // outer walls
+        0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+        // rim annulus (z=1, outer 4-7 to inner 8-11)
+        4, 5, 9, 4, 9, 8, 5, 6, 10, 5, 10, 9, 6, 7, 11, 6, 11, 10, 7, 4, 8, 7, 8, 11,
+        // recess walls (rim 8-11 down to floor 12-15)
+        8, 9, 13, 8, 13, 12, 9, 10, 14, 9, 14, 13, 10, 11, 15, 10, 15, 14, 11, 8, 12, 11, 12, 15,
+        // recess floor
+        12, 14, 13, 12, 15, 14,
+    ];
+    let aabb = vec![0.0, 0.0, 0.0, 10.0, 10.0, 1.0];
+    (positions, indices, aabb)
+}
+
+/// Plate [2,8]x[2,8] from z = 0.4 up through the tub's recess-floor plane
+/// (z = 0.875), side faces split into two bands at `z_mid` so the CROSSING
+/// triangles' vertices sit at `z_mid` / `z_top`. Mirrors the TS
+/// `bandedPlateEl`.
+fn banded_plate(z_mid: f32, z_top: f32) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let ring = |z: f32| -> [f32; 12] { [2.0, 2.0, z, 8.0, 2.0, z, 8.0, 8.0, z, 2.0, 8.0, z] };
+    let mut positions: Vec<f32> = Vec::with_capacity(36);
+    positions.extend_from_slice(&ring(0.4));
+    positions.extend_from_slice(&ring(z_mid));
+    positions.extend_from_slice(&ring(z_top));
+    #[rustfmt::skip]
+    let mut indices: Vec<u32> = vec![
+        0, 2, 1, 0, 3, 2, // bottom
+        8, 9, 10, 8, 10, 11, // top
+    ];
+    for band in 0..2u32 {
+        let lo = band * 4;
+        let hi = lo + 4;
+        for k in 0..4u32 {
+            let a = lo + k;
+            let b = lo + ((k + 1) % 4);
+            indices.extend_from_slice(&[a, b, hi + ((k + 1) % 4), a, hi + ((k + 1) % 4), hi + k]);
+        }
+    }
+    let aabb = vec![2.0, 2.0, 0.4, 8.0, 8.0, z_top];
+    (positions, indices, aabb)
+}
+
 /// Build a session from already-built `(positions, indices, aabb)` parts.
 fn session_of_parts(parts: &[(Vec<f32>, Vec<u32>, Vec<f32>)]) -> ClashSession {
     let mut positions: Vec<f32> = Vec::new();
@@ -390,6 +453,43 @@ fn a_through_penetration_below_the_precision_floor_reports_touch_not_a_labelled_
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Touch);
     assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn a_contained_non_box_pair_flush_at_f32_noise_scale_reports_touch_not_hard() {
+    // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
+    // an element authored FLUSH against a surface inside another element's
+    // AABB. The crossing exists (f32 rounding pushes the surfaces through
+    // each other by ~1 ULP), but every crossing vertex sits within f32 noise
+    // of the other surface — while the AABB estimate, the number the depth
+    // rework would report for this non-box contained pair, is the contained
+    // element's own extent (~0.475 m here, 4.084 m on the bridge), far above
+    // the floor. Floor-testing only the reported estimate promotes the pair
+    // to `Hard` at a number that measures nothing; the crossing-vertex
+    // evidence (`crossing_vertex_penetration`) must gate it back to `Touch`.
+    // Plate side-band vertices at 0.875 - 6e-8 / 0.875 + 1.2e-7 straddle the
+    // tub's recess floor (z = 0.875) by ~1-2 f32 ULP; the floor here is
+    // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence. Mirrors
+    // the TS fixture in `engine-ts/depth-provenance.test.ts`.
+    let session = session_of_parts(&[tub(), banded_plate(0.875 - 6e-8, 0.875 + 1.2e-7)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Touch);
+    assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn a_contained_non_box_pair_with_a_real_above_floor_crossing_stays_hard() {
+    // Discriminating companion to the flush pin above: the same tub/plate
+    // shape with the plate genuinely 10 mm through the recess floor. The
+    // crossing-vertex evidence (~0.01 m) clears the floor, so the gate must
+    // NOT suppress it — the pair stays `Hard`, reported at the AABB estimate
+    // with the honest `Estimate` label (non-box pair, no certified depth).
+    let session = session_of_parts(&[tub(), banded_plate(0.865, 0.885)]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
 }
 
 #[test]

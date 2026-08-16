@@ -122,6 +122,76 @@ function rotatedBoxAboutZ(
   return { key, ref: nextRef++, model: 'm', tag, positions: new Float32Array(positions), indices, bounds: { min, max } };
 }
 
+/**
+ * Non-box "tub": a 10 x 10 x 1 block with an open-top recess [1,9]x[1,9]
+ * from z = 0.875 up. The recess floor (z = 0.875) is a solid surface that
+ * sits INSIDE the element's own AABB, so another element can cross it while
+ * staying AABB-contained — the shape class behind the eight Infra-Bridge
+ * pairs (an arch segment flush inside a spandrel wall's AABB). `detectObb`
+ * declines it: the z-normal family has three offset planes (0, 0.875, 1).
+ */
+function tubEl(key: string, tag: string): ClashElement {
+  const positions = new Float32Array([
+    // 0-3: outer bottom (z=0)
+    0, 0, 0, 10, 0, 0, 10, 10, 0, 0, 10, 0,
+    // 4-7: outer top (z=1)
+    0, 0, 1, 10, 0, 1, 10, 10, 1, 0, 10, 1,
+    // 8-11: recess rim (z=1)
+    1, 1, 1, 9, 1, 1, 9, 9, 1, 1, 9, 1,
+    // 12-15: recess floor (z=0.875)
+    1, 1, 0.875, 9, 1, 0.875, 9, 9, 0.875, 1, 9, 0.875,
+  ]);
+  const indices = new Uint32Array([
+    // bottom
+    0, 2, 1, 0, 3, 2,
+    // outer walls
+    0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+    // rim annulus (z=1, between outer 4-7 and inner 8-11)
+    4, 5, 9, 4, 9, 8, 5, 6, 10, 5, 10, 9, 6, 7, 11, 6, 11, 10, 7, 4, 8, 7, 8, 11,
+    // recess walls (rim 8-11 down to floor 12-15)
+    8, 9, 13, 8, 13, 12, 9, 10, 14, 9, 14, 13, 10, 11, 15, 10, 15, 14, 11, 8, 12, 11, 12, 15,
+    // recess floor
+    12, 14, 13, 12, 15, 14,
+  ]);
+  return { key, ref: nextRef++, model: 'm', tag, positions, indices, bounds: { min: [0, 0, 0], max: [10, 10, 1] } };
+}
+
+/**
+ * Plate [2,8]x[2,8] from z = 0.4 up through the tub's recess-floor plane
+ * (z = 0.875), with its side faces split into two bands at `zMid` so the
+ * CROSSING triangles' vertices sit at `zMid` / `zTop` — the fine-tessellation
+ * shape that makes the crossing-vertex evidence track the actual flushness
+ * of the contact instead of the plate's own extent.
+ */
+function bandedPlateEl(key: string, tag: string, zMid: number, zTop: number): ClashElement {
+  const ring = (z: number) => [2, 2, z, 8, 2, z, 8, 8, z, 2, 8, z];
+  const positions = new Float32Array([...ring(0.4), ...ring(zMid), ...ring(zTop)]);
+  const quads: number[] = [];
+  for (let band = 0; band < 2; band += 1) {
+    const lo = band * 4;
+    const hi = lo + 4;
+    for (let k = 0; k < 4; k += 1) {
+      const a = lo + k;
+      const b = lo + ((k + 1) % 4);
+      quads.push(a, b, hi + ((k + 1) % 4), a, hi + ((k + 1) % 4), hi + k);
+    }
+  }
+  const indices = new Uint32Array([
+    0, 2, 1, 0, 3, 2, // bottom
+    8, 9, 10, 8, 10, 11, // top
+    ...quads,
+  ]);
+  return {
+    key,
+    ref: nextRef++,
+    model: 'm',
+    tag,
+    positions,
+    indices,
+    bounds: { min: [2, 2, 0.4], max: [8, 8, zTop] },
+  };
+}
+
 const RULE: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
 
 function pair(a: ClashElement, b: ClashElement) {
@@ -303,6 +373,42 @@ describe('hard-clash distance provenance', () => {
     expect(res.status).toBe('touch');
     expect(res.distanceKind).toBe('mesh');
     expect(res.distance).toBe(0);
+  });
+
+  it('reports touch for a CONTAINED non-box pair whose crossing is flush at f32 noise scale, even though its AABB estimate is above the floor', () => {
+    // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
+    // an element authored FLUSH against a surface inside another element's
+    // AABB. The crossing exists (f32 rounding pushes the surfaces through
+    // each other by ~1 ULP), but every crossing vertex sits within f32 noise
+    // of the other surface — while the AABB estimate, the number the depth
+    // rework would report for this non-box contained pair, is the contained
+    // element's own extent (~0.475 m here, 4.084 m on the bridge), far above
+    // the floor. Floor-testing only the reported estimate promotes the pair
+    // to `hard` at a number that measures nothing; the crossing-vertex
+    // evidence (`crossingVertexPenetration`) must gate it back to `touch`.
+    // Plate side-band vertices at 0.875 - 6e-8 / 0.875 + 1.2e-7 straddle the
+    // tub's recess floor (z = 0.875) by ~1-2 f32 ULP; floor here is
+    // 10 * 2^-22 ~ 2.4e-6, three orders above the ~6e-8 evidence.
+    const tub = tubEl('T', 'IfcWall');
+    const plate = bandedPlateEl('P', 'IfcMember', 0.875 - 6e-8, 0.875 + 1.2e-7);
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const res = testPair(tub, new TriMesh(tub.positions!, tub.indices!), plate, new TriMesh(plate.positions!, plate.indices!), touchRule, 0.001);
+    if (!res) throw new Error('expected a clash');
+    expect(res.status).toBe('touch');
+    expect(res.distance).toBe(0);
+  });
+
+  it('keeps a CONTAINED non-box pair hard when its crossing vertices measure a real, above-floor depth', () => {
+    // Discriminating companion to the flush pin above: the same tub/plate
+    // shape with the plate genuinely 10 mm through the recess floor. The
+    // crossing-vertex evidence (~0.01 m) clears the floor, so the gate must
+    // NOT suppress it — the pair stays `hard`, reported at the AABB estimate
+    // with the honest `estimate` label (non-box pair, no certified depth).
+    const tub = tubEl('T', 'IfcWall');
+    const plate = bandedPlateEl('P', 'IfcMember', 0.865, 0.885);
+    const res = pair(tub, plate);
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
   });
 
   it('carries the label onto the public Clash', async () => {

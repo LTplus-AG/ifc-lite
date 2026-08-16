@@ -8,31 +8,7 @@ import { centroid, mid } from '../math/vec3.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { TriMesh } from './tri-mesh.js';
-import { isThroughPenetration, obbPenetrationDepth } from './obb.js';
-
-/**
- * Exact box-box penetration depth when BOTH meshes are (within tolerance)
- * rectangular boxes, else `null`. This is the only source of a `'mesh'`
- * label for a distance that used to come from `TriMesh.maxPenetrationInto` —
- * a nearest-crossing-vertex sampling probe that converges to 0 under
- * retessellation instead of to the true depth (see `obb.ts`, `obb.test.ts`).
- *
- * Declines (returns `null`, same as "not both boxes") for a THROUGH-
- * PENETRATION pair — a thin member piercing clean through the other, e.g. a
- * duct through a wall. There, the minimum-translation-distance `obb.ts`
- * computes is dominated by the piercing member's own extent along the
- * shared axis, not by the material actually crossed (review: #2536,
- * reproduced a 5.5x inflation on exactly this shape). Falling back to the
- * caller's AABB estimate for that shape matches what `main` did before the
- * box-exact metric existed, and is honest about not being a measurement.
- */
-function boxMeasuredDepth(small: TriMesh, large: TriMesh): number | null {
-  const oa = small.getObb();
-  const ob = large.getObb();
-  if (!oa || !ob) return null;
-  if (isThroughPenetration(oa, ob)) return null;
-  return obbPenetrationDepth(oa, ob);
-}
+import { boxPenetration, crossingVertexPenetration, depthClashResult } from './depth.js';
 
 export interface NarrowResult {
   status: ClashStatus;
@@ -45,97 +21,6 @@ export interface NarrowResult {
   distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
-}
-
-/**
- * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
- * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
- * larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
- * `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` — see
- * that function's doc for the derivation; kept here rather than shared
- * because the two live in different language runtimes.
- */
-const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
-
-/**
- * Penetration-depth floor below which a computed overlap cannot be
- * distinguished from float32 rounding noise, scaled to the pair's own
- * coordinate magnitude (not a fixed constant — infra models sit far from the
- * origin, where a fixed epsilon would be far too tight, and small models sit
- * near it, where a fixed epsilon would be far too loose).
- *
- * `rust/clash/src/tri_mesh.rs` ingests geometry from f32 buffers and stores/
- * queries it in f64, so f64 arithmetic cannot recover precision the source
- * data never had: two surfaces authored to be flush round to adjacent f32
- * values, and the resulting "penetration" is bit-noise at the ULP of
- * whichever operand coordinate is largest, not a measured overlap. Extent is
- * the max abs coordinate over both elements' AABBs (world space, matching
- * `near_band_from_extent`'s use of the actual compared coordinates) with a
- * floor of 1.0 so a model near the origin still gets the single-unit ULP,
- * not zero.
- *
- * The floor grows linearly with the pair's distance from the origin — that
- * is the point, since f32 precision itself degrades the same way. The
- * consequence: on a georeferenced model whose elements sit at real map
- * coordinates (hundreds of kilometres out, which real IFC files do), the
- * floor reaches decimetre scale, and a genuine clash below that threshold
- * reclassifies as `touch`. That is not a bug in this function — at those
- * magnitudes f32 genuinely cannot represent a finer distinction, so the
- * "penetration" is not reliably measurable either way — but it means the
- * floor tracks a limitation of the source data, not of clash detection.
- * The fix for a model in that position is ingesting geometry closer to the
- * origin (or in f64), not lowering this floor.
- */
-function precisionFloor(elA: ClashElement, elB: ClashElement): number {
-  let extent = 1.0;
-  for (const b of [elA.bounds, elB.bounds]) {
-    for (const v of [b.min, b.max]) {
-      for (const c of v) {
-        const a = Math.abs(c);
-        if (a > extent) extent = a;
-      }
-    }
-  }
-  return extent * F32_ULP_SCALE;
-}
-
-/**
- * Turns a candidate penetration depth into the final `(status, distanceKind,
- * distance)` triple. This is the ONLY place in this file allowed to build a
- * `'mesh'`- or `'estimate'`-labelled `hard` result off a depth number — every
- * branch below that can label a result `'mesh'` off `boxMeasuredDepth` (or
- * its AABB-estimate fallback) MUST route through here rather than building
- * the `NarrowResult` literal itself. That is what makes the f32 floor apply
- * to all of them: the floor is checked here, before `measured` ever gets to
- * pick `mesh` vs `estimate`, so a depth below the floor always reports
- * `touch` regardless of which branch or which quantity produced it (see
- * `precisionFloor`). A fourth `mesh`-labelling branch added later inherits
- * this precedence automatically as long as it calls this function instead of
- * writing its own literal.
- */
-function depthClashResult(
-  depth: number,
-  measured: boolean,
-  elA: ClashElement,
-  elB: ClashElement,
-  rule: ClashRule,
-  point: Vec3,
-  bounds: AABB,
-): NarrowResult | null {
-  if (depth <= precisionFloor(elA, elB)) {
-    if (!rule.reportTouch) return null;
-    // distance is exactly 0 here (the classification, not a measurement, is
-    // what changed), so `mesh` — consistent with the other exact-distance
-    // `touch` result.
-    return { status: 'touch', distance: 0, distanceKind: 'mesh', point, bounds };
-  }
-  return {
-    status: 'hard',
-    distance: -depth,
-    distanceKind: measured ? 'mesh' : 'estimate',
-    point,
-    bounds,
-  };
 }
 
 /**
@@ -165,6 +50,19 @@ export function testPair(
   const aSmaller = triA.count <= triB.count;
   const small = aSmaller ? triA : triB;
   const large = aSmaller ? triB : triA;
+
+  // A CONTAINED pair (one element's AABB wholly inside the other's) is the
+  // one class whose AABB estimate is fabricated — the signed gap reads the
+  // small element's own extent, not anything about the overlap (#1866) — so
+  // for such pairs collect the crossing triangles: their vertices are the
+  // mesh-level evidence `depthClashResult`'s f32 noise-floor gate needs (see
+  // `crossingVertexPenetration` — evidence for the floor test only, never a
+  // reported depth). Allocated only for contained pairs; every other pair
+  // has a genuine AABB overlap bound to floor-test instead.
+  const contained =
+    aabbContains(elB.bounds, elA.bounds) || aabbContains(elA.bounds, elB.bounds);
+  const crossSmall = contained ? new Uint8Array(small.count) : null;
+  const crossLarge = contained ? new Uint8Array(large.count) : null;
 
   let intersects = false;
   let contactSumX = 0;
@@ -196,6 +94,10 @@ export function testPair(
       const [l0, l1, l2] = large.tri(tl);
       if (triTriIntersect(s0, s1, s2, l0, l1, l2)) {
         intersects = true;
+        if (crossSmall !== null && crossLarge !== null) {
+          crossSmall[ts] = 1;
+          crossLarge[tl] = 1;
+        }
         const c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
         contactSumX += c[0];
         contactSumY += c[1];
@@ -261,21 +163,36 @@ export function testPair(
       ? [contactSumX / contactN, contactSumY / contactN, contactSumZ / contactN]
       : center(overlap);
     // Exact box-box penetration depth when both elements are rectangular
-    // boxes (see `boxMeasuredDepth`); otherwise fall back to the AABB overlap,
+    // boxes (see `boxPenetration`); otherwise fall back to the AABB overlap,
     // i.e. the smallest overlapping box dimension. That fallback is an
     // estimate, not a measured depth — for a non-box shape it can report a
     // dimension of one of the elements rather than how far they interpenetrate.
-    const boxDepth = boxMeasuredDepth(small, large);
-    const measured = boxDepth != null;
-    const penetration = measured
-      ? boxDepth
-      : Math.max(0, -signedGap(elA.bounds, elB.bounds));
-    // The through-penetration guard above only decides `measured`, i.e.
-    // `estimate` vs `mesh` — `depthClashResult` applies the f32 floor first,
-    // so a pair that is both a through-penetration and below the floor for
-    // this pair's coordinate scale reports `touch` regardless (see
+    // `depthClashResult` applies the f32 floor to EVERY candidate depth
+    // before any estimate-vs-mesh selection, so a pair below the floor
+    // reports `touch` regardless of which quantity would have been reported.
+    // For a contained pair the crossing-vertex penetration is that third
+    // candidate: the estimate is fabricated there (the small element's own
+    // extent), so without it a flush contained pair — whose only measurable
+    // penetration is f32 noise — would be promoted to `hard` at a number
+    // that measures nothing (the eight Infra-Bridge pairs, see
     // `depthClashResult`).
-    return depthClashResult(penetration, measured, elA, elB, rule, point, contactBounds);
+    let meshEvidence: number | null = null;
+    if (crossSmall !== null && crossLarge !== null) {
+      const d = Math.max(
+        crossingVertexPenetration(small, large, crossSmall),
+        crossingVertexPenetration(large, small, crossLarge),
+      );
+      // 0 means "no crossing vertex inside at all" (e.g. a thin member
+      // piercing straight through) — no evidence either way, not evidence
+      // of a sub-floor contact.
+      if (d > 0) meshEvidence = d;
+    }
+    return depthClashResult(
+      boxPenetration(small, large),
+      Math.max(0, -signedGap(elA.bounds, elB.bounds)),
+      meshEvidence,
+      elA, elB, rule, point, contactBounds,
+    );
   }
 
   // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
@@ -287,19 +204,22 @@ export function testPair(
   // Test B-contains-A first, then A-contains-B, so the inner pick is
   // deterministic (and identical to the Rust kernel) on equal AABBs.
   // Either way there is no surface crossing. When both elements are boxes the
-  // exact box-box depth is available (see `boxMeasuredDepth`) and is reported
+  // exact box-box depth is available (see `boxPenetration`) and is reported
   // as measured; otherwise the AABB gap is an estimate, not a measured depth.
   const enclosed = aabbContains(elB.bounds, elA.bounds)
     ? triA.count > 0 && triB.containsPoint(triA.tri(0)[0])
     : aabbContains(elA.bounds, elB.bounds) && triB.count > 0 && triA.containsPoint(triB.tri(0)[0]);
   if (enclosed) {
-    const boxDepth = boxMeasuredDepth(small, large);
-    const depth = boxDepth ?? -signedGap(elA.bounds, elB.bounds);
-    // `depthClashResult` may return `null` here (depth below the f32 floor
-    // and `!rule.reportTouch`) — that is a suppressed touch, not "no clash",
+    // `depthClashResult` may return `null` here (below the f32 floor and
+    // `!rule.reportTouch`) — that is a suppressed touch, not "no clash",
     // so return it as-is rather than falling through to the coincide check
     // below.
-    return depthClashResult(depth, boxDepth != null, elA, elB, rule, center(overlap), overlap);
+    return depthClashResult(
+      boxPenetration(small, large),
+      -signedGap(elA.bounds, elB.bounds),
+      null,
+      elA, elB, rule, center(overlap), overlap,
+    );
   }
 
   if (minDist === Infinity) {
@@ -332,14 +252,17 @@ export function testPair(
         // element AABB intersection, which for angled members spans nearly the
         // full member length and sits away from the real contact (#1362/#1402).
         // When both elements are boxes the exact box-box depth is available
-        // (see `boxMeasuredDepth`) and is reported as measured, not estimated.
+        // (see `boxPenetration`) and is reported as measured, not estimated.
         // `depthClashResult` may return `null` (below the f32 floor and
         // `!rule.reportTouch`) — a suppressed touch, not "no shared volume",
         // so return it as-is rather than falling through to the face-touch
         // handling meant for the "probes failed" case below.
-        const boxDepth = boxMeasuredDepth(small, large);
-        const depth = boxDepth ?? -gap;
-        return depthClashResult(depth, boxDepth != null, elA, elB, rule, mid(closestA, closestB), contactBounds);
+        return depthClashResult(
+          boxPenetration(small, large),
+          -gap,
+          null,
+          elA, elB, rule, mid(closestA, closestB), contactBounds,
+        );
       }
       // Only a face touch (no shared volume): fall through to the touch handling
       // below, which suppresses it unless reportTouch is set.

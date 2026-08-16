@@ -30,6 +30,20 @@
  * this model's "true" count of ~0 findings because there is nothing to
  * exclude toward: reaching it needs #2536 fixed first, then an opt-in
  * bearing rule (never a default — the file carries no connection metadata).
+ *
+ * WHY THIS STAYS 50 after #2536's depth-provenance work: the floor takes
+ * precedence over depth derivation. #2536's through-penetration guard makes
+ * a box pair in a through-penetration configuration report the AABB
+ * estimate instead of the box MTD, and on this model eight pairs have a
+ * sub-floor MTD (their crossing is f32 bit-noise) but an above-floor AABB
+ * estimate (their world AABBs overlap broadly). Testing the floor against
+ * the REPORTED depth would let the depth-source swap promote those eight
+ * back to `hard` (58). The maintainer's decision: a pair below the noise
+ * floor is `touch` regardless of how its depth was derived — at that
+ * magnitude the number is not measurable either way — so `depthClashResult`
+ * (`depth_clash_result` in Rust) floor-tests every candidate depth the pair
+ * has, and the estimate-vs-mesh selection only applies to pairs already
+ * above the floor. This count is where that decision is recorded.
  */
 
 import { existsSync } from 'node:fs';

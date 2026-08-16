@@ -291,4 +291,15 @@ export class TriMesh {
     }
     return (crossings & 1) === 1;
   }
+
+  /** Number of vertices in this mesh (positions are packed `x, y, z`). */
+  vertexCount(): number {
+    return Math.floor(this.positions.length / 3);
+  }
+
+  /** The three vertex indices of triangle `t` (local, 0-based). */
+  triIndices(t: number): [number, number, number] {
+    const o = t * 3;
+    return [this.indices[o], this.indices[o + 1], this.indices[o + 2]];
+  }
 }

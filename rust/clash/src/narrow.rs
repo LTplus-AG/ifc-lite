@@ -7,7 +7,7 @@
 //! and result construction match bit-for-bit so the two engines agree.
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
-use crate::depth::{box_measured_depth, depth_clash_result};
+use crate::depth::{box_penetration, crossing_vertex_penetration, depth_clash_result};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
@@ -69,6 +69,26 @@ pub fn test_pair(
         (tri_b, tri_a)
     };
 
+    // A CONTAINED pair (one element's AABB wholly inside the other's) is the
+    // one class whose AABB estimate is fabricated — the signed gap reads the
+    // small element's own extent, not anything about the overlap (#1866) —
+    // so for such pairs collect the crossing triangles: their vertices are
+    // the mesh-level evidence `depth_clash_result`'s f32 noise-floor gate
+    // needs (see `crossing_vertex_penetration` — evidence for the floor test
+    // only, never a reported depth). Allocated only for contained pairs;
+    // every other pair has a genuine AABB overlap bound to floor-test.
+    let contained = aabb_contains(aabb_b, aabb_a) || aabb_contains(aabb_a, aabb_b);
+    let mut cross_small = if contained {
+        Some(vec![false; small.count])
+    } else {
+        None
+    };
+    let mut cross_large = if contained {
+        Some(vec![false; large.count])
+    } else {
+        None
+    };
+
     let mut intersects = false;
     let mut contact_sum: [f64; 3] = [0.0, 0.0, 0.0];
     let mut contact_n: u32 = 0;
@@ -100,6 +120,10 @@ pub fn test_pair(
             let [l0, l1, l2] = large.tri(tl as usize);
             if tri_tri_intersect(s0, s1, s2, l0, l1, l2) {
                 intersects = true;
+                if let (Some(cs), Some(cl)) = (cross_small.as_mut(), cross_large.as_mut()) {
+                    cs[ts] = true;
+                    cl[tl as usize] = true;
+                }
                 let c = mid(centroid(s0, s1, s2), centroid(l0, l1, l2));
                 contact_sum[0] += c[0];
                 contact_sum[1] += c[1];
@@ -193,22 +217,36 @@ pub fn test_pair(
             overlap.center()
         };
         // Exact box-box depth when both elements are boxes (see
-        // `box_measured_depth`); otherwise the AABB overlap — an estimate,
+        // `box_penetration`); otherwise the AABB overlap — an estimate,
         // not a measured depth, since it can be a dimension of one element.
-        let box_depth = box_measured_depth(small, large);
-        let measured = box_depth.is_some();
-        let penetration = if let Some(d) = box_depth {
-            d
-        } else {
-            (-signed_gap(aabb_a, aabb_b)).max(0.0)
+        // `depth_clash_result` applies the f32 floor to EVERY candidate
+        // depth before any estimate-vs-mesh selection, so a pair below the
+        // floor reports `Touch` regardless of which quantity would have been
+        // reported. For a contained pair the crossing-vertex penetration is
+        // that third candidate: the estimate is fabricated there (the small
+        // element's own extent), so without it a flush contained pair —
+        // whose only measurable penetration is f32 noise — would be
+        // promoted to `Hard` at a number that measures nothing (the eight
+        // Infra-Bridge pairs, see `depth_clash_result`).
+        let mesh_evidence = match (cross_small.as_ref(), cross_large.as_ref()) {
+            (Some(cs), Some(cl)) => {
+                let d = crossing_vertex_penetration(small, large, cs)
+                    .max(crossing_vertex_penetration(large, small, cl));
+                // 0 means "no crossing vertex inside at all" (e.g. a thin
+                // member piercing straight through) — no evidence either
+                // way, not evidence of a sub-floor contact.
+                if d > 0.0 {
+                    Some(d)
+                } else {
+                    None
+                }
+            }
+            _ => None,
         };
-        // The through-penetration guard above only decides `measured`, i.e.
-        // `Estimate` vs `Mesh` — `depth_clash_result` applies the f32 floor
-        // first, so a pair that is both a through-penetration and below the
-        // floor for this pair's scale reports `Touch` regardless.
         return depth_clash_result(
-            penetration,
-            measured,
+            box_penetration(small, large),
+            (-signed_gap(aabb_a, aabb_b)).max(0.0),
+            mesh_evidence,
             aabb_a,
             aabb_b,
             report_touch,
@@ -232,14 +270,13 @@ pub fn test_pair(
         false
     };
     if enclosed {
-        let box_depth = box_measured_depth(small, large);
-        let depth = box_depth.unwrap_or_else(|| -signed_gap(aabb_a, aabb_b));
-        // May legitimately return `None` (depth below the f32 floor and
+        // May legitimately return `None` (below the f32 floor and
         // `!report_touch`) — a suppressed touch, not "no clash" — so return
         // it as-is rather than falling through further.
         return depth_clash_result(
-            depth,
-            box_depth.is_some(),
+            box_penetration(small, large),
+            -signed_gap(aabb_a, aabb_b),
+            None,
             aabb_a,
             aabb_b,
             report_touch,
@@ -276,11 +313,10 @@ pub fn test_pair(
                 // touch, not "no shared volume" — so return it as-is rather
                 // than falling through to the face-touch handling meant for
                 // the "probes failed" case below.
-                let box_depth = box_measured_depth(small, large);
-                let depth = box_depth.unwrap_or(-gap);
                 return depth_clash_result(
-                    depth,
-                    box_depth.is_some(),
+                    box_penetration(small, large),
+                    -gap,
+                    None,
                     aabb_a,
                     aabb_b,
                     report_touch,

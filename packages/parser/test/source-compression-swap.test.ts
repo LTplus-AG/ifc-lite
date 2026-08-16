@@ -301,12 +301,21 @@ describe('the original buffer becomes collectable', () => {
     // proves that loop reports retention -- i.e. that the sibling CAN fail.
     const clearedAfter = await gcUntilCollected(probe);
 
+    // Read `leaked` HERE, before the assertion below, so the strong reference
+    // is provably live across the whole polling loop. Reading it only after
+    // the assertion would leave the keep-alive resting on the optimiser's
+    // liveness analysis reaching past an expect() that can throw; if that
+    // analysis ever let `leaked` die early, this control would report "the
+    // probe cannot detect retention" for the wrong reason and the sibling
+    // test would stop meaning anything without saying so.
+    const heldBytes = leaked.byteLength;
+    expect(heldBytes, 'the leaked reference must still address its bytes').toBeGreaterThan(0);
+
     // Held by `leaked`, so it must survive every cycle. If this ever fails,
     // the harness's gc semantics changed and the sibling test above has
     // stopped meaning anything -- this fails loudly instead of that passing
     // quietly.
     expect(clearedAfter, 'a strongly-held buffer was collected; the probe is broken')
       .toBe(null);
-    expect(leaked.byteLength).toBeGreaterThan(0);
   });
 });

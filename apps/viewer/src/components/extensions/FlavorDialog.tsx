@@ -39,6 +39,7 @@ function captureClashConfig(): unknown {
     mode: s.clashMode,
     tolerance: s.clashTolerance,
     clearance: s.clashClearance,
+    duplicateTolerance: s.clashDuplicateTolerance,
     clusterEpsilon: s.clashClusterEpsilon,
     reportTouch: s.clashReportTouch,
     groupBy: s.clashGroupBy,

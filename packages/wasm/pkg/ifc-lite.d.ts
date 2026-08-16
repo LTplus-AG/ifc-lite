@@ -2,6 +2,67 @@
 /* eslint-disable */
 
 /**
+ * The overlap solid of one clashing pair, or the reason there is none.
+ */
+export class ClashIntersectionSolidJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * `""` when `isSolid`, otherwise one of:
+     * - `"empty-operand"` — an operand had no triangles.
+     * - `"no-overlap"` — the exact intersection is empty. Covers a disjoint
+     *   pair AND a *touching* pair, including any graze below the kernel's
+     *   `2^-16 m ≈ 15.26 µm` snap grid (both faces snap flush).
+     * - `"below-kernel-resolution"` — the pair overlaps, but too shallowly for
+     *   the kernel to resolve as a solid rather than a coplanar contact. See
+     *   `thicknessM` / `requiredM`.
+     * - `"budget-exhausted"` — the escalation budget tripped; the arrangement
+     *   is partial and nothing about it is trustworthy.
+     */
+    readonly degenerateReason: string;
+    /**
+     * Triangle indices into `positions / 3`.
+     */
+    readonly indices: Uint32Array;
+    /**
+     * True when a trustworthy overlap solid was produced. When false, every
+     * geometry getter is empty and `degenerateReason` says why.
+     */
+    readonly isSolid: boolean;
+    /**
+     * World-space vertex positions, flat `[x, y, z, …]`, f64.
+     *
+     * f64 rather than the f32 the rest of the mesh pipeline uses because the
+     * caller reports this solid's volume: the f32 round-trip costs ~1e-7
+     * relative, a thousand times the exactness the kernel actually delivers.
+     * Downcast to f32 at the GPU upload if the renderer wants it.
+     */
+    readonly positions: Float64Array;
+    /**
+     * For `"below-kernel-resolution"`: the depth this pair would have needed
+     * for the kernel to resolve a solid, in metres. `0` otherwise. Grows with
+     * distance from the world origin, as the kernel's own tolerance does.
+     */
+    readonly requiredM: number;
+    /**
+     * For `"below-kernel-resolution"`: the overlap's measured thinnest extent,
+     * in metres. `0` otherwise. Useful to tell the user how shallow the clash
+     * is even though no solid can be drawn.
+     */
+    readonly thicknessM: number;
+    /**
+     * Triangle count of the solid; `0` when degenerate.
+     */
+    readonly triangleCount: number;
+    /**
+     * Enclosed volume in m³. `0` when not a solid — check `isSolid` first;
+     * "no measurable overlap" and "an overlap of zero" are different claims.
+     */
+    readonly volumeM3: number;
+}
+
+/**
  * Packed result of one rule run. Parallel arrays, one entry per clash record;
  * `points` has 3 per record and `bounds` has 6 per record.
  */
@@ -1601,6 +1662,24 @@ export class ZoneSplitJs {
 }
 
 /**
+ * Compute the intersection solid of one clashing pair.
+ *
+ * `positionsA` / `positionsB` are flat world-space XYZ; `indicesA` /
+ * `indicesB` are flat triangle indices into their own operand.
+ *
+ * ```javascript
+ * const solid = clashIntersectionSolid(posA, idxA, posB, idxB);
+ * if (solid.isSolid) {
+ *   draw(solid.positions, solid.indices, solid.volumeM3);
+ * } else {
+ *   keepContactMarker(solid.degenerateReason); // e.g. "no-overlap"
+ * }
+ * solid.free();
+ * ```
+ */
+export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uint32Array, positions_b: Float32Array, indices_b: Uint32Array): ClashIntersectionSolidJs;
+
+/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -1724,6 +1803,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
@@ -1745,6 +1825,15 @@ export interface InitOutput {
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
     readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
     readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
+    readonly clashIntersectionSolid: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+    readonly clashintersectionsolidjs_degenerateReason: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_indices: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_isSolid: (a: number) => number;
+    readonly clashintersectionsolidjs_positions: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_requiredM: (a: number) => number;
+    readonly clashintersectionsolidjs_thicknessM: (a: number) => number;
+    readonly clashintersectionsolidjs_triangleCount: (a: number) => number;
+    readonly clashintersectionsolidjs_volumeM3: (a: number) => number;
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
@@ -1974,12 +2063,10 @@ export interface InitOutput {
     readonly version: (a: number) => void;
     readonly zonepiecejs_indices: (a: number) => number;
     readonly zonepiecejs_positions: (a: number) => number;
-    readonly zonepiecejs_volume: (a: number) => number;
     readonly zonepiecejs_zoneIndex: (a: number) => number;
     readonly zonesplitjs_piece: (a: number, b: number) => number;
     readonly zonesplitjs_pieceCount: (a: number) => number;
     readonly zonesplitjs_remainderFailed: (a: number) => number;
-    readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly init: () => void;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
@@ -1996,6 +2083,8 @@ export interface InitOutput {
     readonly symbolictext_worldY: (a: number) => number;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly zonepiecejs_volume: (a: number) => number;
+    readonly zonesplitjs_sumErrorRel: (a: number) => number;
     readonly zonesplitjs_wholeVolume: (a: number) => number;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;

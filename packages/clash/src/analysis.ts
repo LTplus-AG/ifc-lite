@@ -13,7 +13,28 @@
  * the geometric dimension (depth) so the two can be combined when prioritising.
  */
 
-import type { Clash, ClashSeverity } from './types.js';
+import type { Clash, ClashResult, ClashRuleCoverage, ClashSeverity, ClashSummary } from './types.js';
+
+/**
+ * Tally a clash list into a {@link ClashSummary}: totals per rule, per sorted
+ * element-type pair, and per severity.
+ *
+ * Single home for the tally, so a result built by the engine, by the duplicate
+ * scan, or by a consumer that filtered a result down (e.g. user exclusions)
+ * cannot report buckets that disagree with `clashes`.
+ */
+export function summarizeClashes(clashes: readonly Clash[]): ClashSummary {
+  const byRule: Record<string, number> = {};
+  const byTypePair: Record<string, number> = {};
+  const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
+  for (const c of clashes) {
+    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
+    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
+    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
+    bySeverity[c.severity] += 1;
+  }
+  return { total: clashes.length, byRule, byTypePair, bySeverity };
+}
 
 /** Severity ordering, most-severe first (lower rank = more severe). */
 export const SEVERITY_RANK: Record<ClashSeverity, number> = {
@@ -97,6 +118,45 @@ function touchingEpsilonFor(c: Clash): number {
  */
 export function isTouching(c: Clash, eps: number = touchingEpsilonFor(c)): boolean {
   return c.status === 'touch' || (c.status === 'hard' && penetrationDepth(c) <= eps);
+}
+
+/**
+ * Whether a rule's selectors matched anything to compare in this model. A rule
+ * with an empty `a` side, or (for a two-sided rule) an empty `b` side, never
+ * ran a single geometric comparison — it isn't "clean", it never ran.
+ */
+export function ruleHadNoMatch(coverage: ClashRuleCoverage): boolean {
+  return coverage.matchedA === 0 || coverage.matchedB === 0;
+}
+
+/**
+ * The three outcomes a clash run can report, distinguished by rule coverage
+ * rather than by clash count — zero clashes is a legitimate result (`clean`)
+ * and must be told apart from zero because the matrix never had anything to
+ * test (`no-match`):
+ *
+ * - `clean`:      every rule matched elements on both sides; zero clashes (if
+ *                 any) is a real "checked and found nothing".
+ * - `partial`:    at least one rule matched, but at least one other rule in
+ *                 the set matched nothing on one of its sides.
+ * - `no-match`:   every single rule matched nothing on at least one side — the
+ *                 matrix ran zero real comparisons, and any "0 clashes" is
+ *                 meaningless. Distinct from `unknown` (no coverage data) so a
+ *                 caller can render "the matrix didn't apply to this model" as
+ *                 a loud, first-class state.
+ * - `unknown`:    no coverage data was supplied (e.g. an older result, or a
+ *                 hand-built fixture) — callers should fall back to
+ *                 presenting the summary count alone.
+ */
+export type RuleCoverageOutcome = 'clean' | 'partial' | 'no-match' | 'unknown';
+
+export function classifyRuleCoverage(result: Pick<ClashResult, 'ruleCoverage'>): RuleCoverageOutcome {
+  const coverage = result.ruleCoverage;
+  if (!coverage || coverage.length === 0) return 'unknown';
+  const emptyCount = coverage.filter(ruleHadNoMatch).length;
+  if (emptyCount === 0) return 'clean';
+  if (emptyCount === coverage.length) return 'no-match';
+  return 'partial';
 }
 
 export type ClashSortBy = 'severity' | 'depth' | 'distance';

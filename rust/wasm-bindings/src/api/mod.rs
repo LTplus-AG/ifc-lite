@@ -9,6 +9,7 @@
 mod alignment_lines;
 mod bool2d;
 mod clash;
+mod clash_solid;
 mod csg_diagnostics;
 mod diagnose;
 mod export_data;

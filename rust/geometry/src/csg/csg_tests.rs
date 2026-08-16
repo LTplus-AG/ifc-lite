@@ -264,3 +264,10 @@ fn clip_mesh_never_emits_non_finite_normals() {
         );
     }
 }
+
+// World-frame corpus tests: a sibling test file, attached here rather than
+// from `mod.rs` because that allowlisted production module is at its
+// module-size-ratchet budget and test files are exempt. The file itself
+// imports via `crate::csg::`, so the attachment depth does not matter.
+#[path = "world_frame_tests.rs"]
+mod world_frame_tests;

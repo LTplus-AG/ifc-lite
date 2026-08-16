@@ -11,8 +11,9 @@
  *   editable items with `enabled`/`builtin`); the user may toggle/edit them
  *   (stored as overrides) and add custom presets. Only customs + modified
  *   built-ins are persisted, so shipping a new built-in just works.
- * - Settings: one flat JSON blob (mode/tolerance/clearance/clusterEpsilon/
- *   reportTouch/groupBy), every numeric clamped to a sane range on load.
+ * - Settings: one flat JSON blob (mode/tolerance/clearance/duplicateTolerance/
+ *   clusterEpsilon/reportTouch/groupBy), every numeric clamped to a sane range
+ *   on load.
  */
 
 import {
@@ -25,6 +26,11 @@ import {
   type ClashReviewStatus,
   type ClashSeverity,
 } from '@ifc-lite/clash';
+import {
+  MAX_EXCLUSION_LABEL,
+  type ClashExclusionKind,
+  type ClashExclusionRule,
+} from './exclusions.js';
 import { downloadFile } from '../export/download.js';
 import { optionalLocalStorage, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
@@ -39,6 +45,10 @@ export interface ClashGlobalSettings {
   mode: ClashMode;
   tolerance: number;
   clearance: number;
+  /** Duplicate-scan position tolerance (m): how far apart two elements may be
+   *  and still count as the same object (`findDuplicates.positionTolerance`).
+   *  Distinct from `tolerance`, which is the clash engine's touching band. */
+  duplicateTolerance: number;
   clusterEpsilon: number;
   reportTouch: boolean;
   groupBy: ClashSettingsGroupBy;
@@ -52,6 +62,8 @@ const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
 /** Per-clash review status + comments, keyed by the durable `clashReviewKey`. (#1468) */
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
+/** The user's own "these two may overlap" rules (type pairs + element pairs). */
+const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
 const SCHEMA_VERSION = 1;
 
 const MAX_PRESETS = 200;
@@ -60,11 +72,14 @@ const MAX_NAME = 100;
 const MAX_REVIEWS = 10_000;
 /** Cap on a single review comment; longer notes belong in a real issue tracker. */
 const MAX_COMMENT = 2_000;
+/** Cap on stored exclusion rules. Type-pair rules keep the realistic count low. */
+const MAX_EXCLUSIONS = 2_000;
 
 /** [min, max] clamps applied to settings numerics on load and on commit. */
 export const CLASH_BOUNDS = {
   tolerance: [0, 1] as const,
   clearance: [0, 5] as const,
+  duplicateTolerance: [0, 1] as const,
   clusterEpsilon: [0.01, 50] as const,
 };
 
@@ -72,6 +87,7 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
   mode: 'hard',
   tolerance: 0.002,
   clearance: 0.05,
+  duplicateTolerance: 0.01,
   clusterEpsilon: 1.5,
   reportTouch: false,
   groupBy: 'severity',
@@ -255,6 +271,7 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
     mode: s.mode === 'clearance' ? 'clearance' : 'hard',
     tolerance: clampToBounds(s.tolerance, CLASH_BOUNDS.tolerance, DEFAULT_CLASH_SETTINGS.tolerance),
     clearance: clampToBounds(s.clearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance),
+    duplicateTolerance: clampToBounds(s.duplicateTolerance, CLASH_BOUNDS.duplicateTolerance, DEFAULT_CLASH_SETTINGS.duplicateTolerance),
     clusterEpsilon: clampToBounds(s.clusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon),
     reportTouch: s.reportTouch === true,
     groupBy: GROUP_BYS.includes(s.groupBy as ClashSettingsGroupBy) ? (s.groupBy as ClashSettingsGroupBy) : 'severity',
@@ -361,6 +378,88 @@ export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
     return { ok: true };
   } catch {
     return { ok: false, reason: 'quota', message: 'Browser storage is full; clash reviews were not saved.' };
+  }
+}
+
+// User-defined clash exclusions.
+// A coordinator's decision that a given overlap is by design (ballast around a
+// rail, a girder cast into a deck). Persisted as workspace state alongside
+// presets and reviews — never wiped by a re-run or by `clearClash`, because the
+// decision outlives any one detection run. Rule semantics live in
+// `./exclusions.ts`; this section only reads and writes them.
+
+// A rule whose `kind` this build does not know is dropped rather than guessed
+// at: the safe failure for a suppression rule is to show the clashes, never to
+// hide something on a semantics we cannot read.
+const EXCLUSION_KINDS: ClashExclusionKind[] = ['typeAny', 'typePair', 'elementPair'];
+
+function isValidStoredExclusion(v: unknown): v is ClashExclusionRule {
+  if (!v || typeof v !== 'object') return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' && r.id.length > 0 &&
+    typeof r.kind === 'string' && EXCLUSION_KINDS.includes(r.kind as ClashExclusionKind) &&
+    typeof r.a === 'string' && r.a.length > 0 &&
+    typeof r.b === 'string' && r.b.length > 0
+  );
+}
+
+/** Read stored exclusion rules; an unreadable entry blocks writes, never a silent reset. */
+export function loadExclusions(): ClashExclusionRule[] {
+  try {
+    unwritableKeys.delete(EXCLUSIONS_KEY);
+    const raw = localStorage.getItem(EXCLUSIONS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    const list =
+      parsed && typeof parsed === 'object' && Array.isArray((parsed as { exclusions?: unknown }).exclusions)
+        ? (parsed as { exclusions: unknown[] }).exclusions
+        : [];
+    return list.filter(isValidStoredExclusion).map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      a: r.a,
+      b: r.b,
+      // Fallback label for an entry stored without one. A `typeAny` rule
+      // repeats its class in `b`, so the pair form would read "X × X" — which
+      // is a DIFFERENT rule the panel also offers; spell out the wide one.
+      label:
+        typeof r.label === 'string' && r.label
+          ? r.label.slice(0, MAX_EXCLUSION_LABEL)
+          : r.kind === 'typeAny'
+            ? `${r.a} × anything`
+            : `${r.a} × ${r.b}`,
+      // Fail CLOSED on the enabled flag: an exclusion's whole job is to hide
+      // clashes, so a corrupted or partially-written entry that loaded as
+      // enabled would silently hide real clashes with no signal. Only the
+      // literal `true` that `saveExclusions` writes may suppress; anything
+      // else keeps the rule visible in the panel but disabled. (#2535)
+      enabled: r.enabled === true,
+      createdAt: typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : 0,
+    }));
+  } catch (err) {
+    onReadFailure(EXCLUSIONS_KEY, err);
+    return [];
+  }
+}
+
+/** Persist the exclusion rule list (capped, quota-safe). */
+export function saveExclusions(rules: readonly ClashExclusionRule[]): SaveResult {
+  if (unwritableKeys.has(EXCLUSIONS_KEY)) return refuseOverwrite('clash exclusions');
+  if (rules.length > MAX_EXCLUSIONS) {
+    return { ok: false, reason: 'too_many', message: `Too many clash exclusions (max ${MAX_EXCLUSIONS}).` };
+  }
+  let payload: string;
+  try {
+    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, exclusions: rules });
+  } catch {
+    return { ok: false, reason: 'serialize', message: 'Could not serialize clash exclusions.' };
+  }
+  try {
+    localStorage.setItem(EXCLUSIONS_KEY, payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'quota', message: 'Browser storage is full — clash exclusions were not saved.' };
   }
 }
 

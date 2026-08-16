@@ -90,7 +90,11 @@ independent.
   target-feature=+simd128,+atomics,+bulk-memory,+mutable-globals
   link-arg=--shared-memory --import-memory
   link-arg=--export=__wasm_init_tls,__tls_size,__tls_align,__tls_base
-  + build-std=["std","panic_abort"] (already in .cargo/config.toml)
+  + build-std=std,panic_abort (via `-Z build-std=...` on the wasm-pack
+    invocation, or the `CARGO_UNSTABLE_BUILD_STD` env var — NOT
+    `.cargo/config.toml`'s `[unstable]` table, which would also apply to
+    plain host builds like `cargo test --release` and collide with
+    `[profile.release] panic = "abort"` there)
   + wasm-bindgen-rayon 1.3.0
   ```
   Select at runtime via `wasm-feature-detect` (threads support) **and**

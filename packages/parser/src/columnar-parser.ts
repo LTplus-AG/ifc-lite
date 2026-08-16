@@ -13,7 +13,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { getAttributeNames, getInheritanceChain } from './ifc-schema.js';
+import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValue } from './on-demand-extractors.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
@@ -984,7 +984,23 @@ export function extractAllEntityAttributes(
     // resolution still works for those types.
     const tableName = store.entities.getTypeName(entityId);
     const typeName = tableName && tableName !== 'Unknown' ? tableName : ref.type;
-    const attrNames = getAttributeNames(typeName);
+    // Named across the bundled schema union (2X3 + 4 + 4X3), not through the
+    // IFC4 codegen pin alone. The pin answers an EMPTY list — not a wrong one —
+    // for every class it does not carry, and 251 real classes are outside it:
+    // the IFC2X3 ones IFC4 dropped and the whole IFC4X3 infrastructure
+    // vocabulary (`IfcCourse`, `IfcPavement`, `IfcKerb`, `IfcSignal`, `IfcRoad`,
+    // …). An empty list means this function returns NO attributes for such an
+    // entity, so every caller that looks one up by name silently finds nothing
+    // and cannot tell that apart from an unset slot. The model-diff adapters
+    // read `PredefinedType` this way, which made a cleared `PredefinedType` —
+    // the single most common edit in a real infrastructure revision — compare
+    // equal to itself on exactly the classes IFC4X3 exists for. Same pinned-
+    // registry family as #2001/#2003/#2021.
+    //
+    // Provably additive: `getAttributeNamesAcrossSchemas` returns the pinned
+    // result unchanged whenever the pin has one, so no IFC2X3 or IFC4 entity's
+    // attribute list — or the hash anyone derives from it — moves.
+    const attrNames = getAttributeNamesAcrossSchemas(typeName);
 
     const result: Array<{ name: string; value: string | number | boolean }> = [];
     const len = Math.min(attrs.length, attrNames.length);

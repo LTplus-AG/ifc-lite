@@ -42,12 +42,24 @@ jobs:
           python-version: "3.9"
       - name: Build wheel
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
+        env:
+          # `build-std` used to live in the repo-root `.cargo/config.toml`'s
+          # `[unstable]` table, which applied to every cargo invocation in the
+          # workspace — including plain host builds with no `--target`, where
+          # it collided with `[profile.release] panic = "abort"` in the root
+          # workspace (duplicate `core` lang item; see
+          # scripts/build-wasm.sh for the wasm side of this fix). It's now
+          # scoped per-invocation via this env var instead, which
+          # maturin-action forwards into the manylinux container (it allowlists
+          # the `CARGO_` prefix — see its `ALLOWED_ENV_PREFIXES`).
+          CARGO_UNSTABLE_BUILD_STD: std,panic_abort
         with:
           working-directory: rust/python
           target: ${{ matrix.target }}
           manylinux: auto
-          # rust-toolchain.toml pins nightly + a global [unstable] build-std, so
-          # the manylinux container's toolchain needs rust-src to rebuild std.
+          # rust-toolchain.toml pins nightly; the manylinux container's
+          # toolchain needs rust-src installed to rebuild std for build-std
+          # (see the CARGO_UNSTABLE_BUILD_STD env var on this step).
           before-script-linux: rustup component add rust-src
           args: --release --out dist
       # Exercise the wheel that was just built, on the one leg whose artifact is

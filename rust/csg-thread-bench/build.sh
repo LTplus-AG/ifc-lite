@@ -20,6 +20,16 @@ cd "$(dirname "$0")"
 OUT_PLAIN=web/pkg-plain
 OUT_THREADED=web/pkg-threaded
 
+# This bundle used to get `build-std` for free from the repo-root
+# `.cargo/config.toml`'s `[unstable]` table. That table applied to every
+# cargo invocation in the workspace, not just wasm ones, and collided with
+# `[profile.release] panic = "abort"` on plain host builds (see
+# scripts/build-wasm.sh), so it's now scoped per-invocation via this env var
+# instead. Set it here too so the plain bundle keeps rebuilding std from
+# source exactly as before, instead of silently falling back to the
+# prebuilt std for wasm32-unknown-unknown.
+export CARGO_UNSTABLE_BUILD_STD="std,panic_abort"
+
 echo "==> building plain bundle -> $OUT_PLAIN"
 wasm-pack build --release --target web --out-dir "$OUT_PLAIN" --out-name csgbench
 

@@ -33,16 +33,24 @@ export class AsciiPointsStreamingSource implements StreamingPointSource {
   private label?: string;
   private chunk: DecodedPointChunk | null = null;
   private served = false;
+  /** See `decodeAsciiPoints`'s `originOffset` param (extends #1804's
+   *  LAS/LAZ pattern). */
+  private originOffset?: readonly [number, number, number];
 
   constructor(
     blob: Blob,
     format: AsciiPointsFormat,
-    options: { label?: string; downsample?: DownsampleHint } = {},
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      originOffset?: readonly [number, number, number];
+    } = {},
   ) {
     this.blob = blob;
     this.format = format;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -50,7 +58,7 @@ export class AsciiPointsStreamingSource implements StreamingPointSource {
     const buf = await this.blob.arrayBuffer();
     abortIfAborted(signal);
     const bytes = new Uint8Array(buf);
-    const fullChunk = decodeAsciiPoints(bytes, this.format);
+    const fullChunk = decodeAsciiPoints(bytes, this.format, this.originOffset);
     this.chunk = applyStride(fullChunk, this.downsample.stride);
     return {
       totalPointCount: this.chunk.pointCount,

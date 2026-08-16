@@ -256,7 +256,7 @@ fn proj_radius(o: &Obb, u: Vec3) -> f64 {
 
 /// Whether `p`'s own axes reveal a through-penetration of `p` piercing `q` —
 /// `p`'s footprint, in the plane perpendicular to one of `p`'s OWN axes,
-/// sits strictly inside `q`'s cross-section there, while along that axis
+/// fits inside `q`'s cross-section there (edges included), while along that axis
 /// `p` extends beyond `q` and out the far side. `q`'s extent along any of
 /// `p`'s axes is `proj_radius(q, axis)` — the general SAT projection, valid
 /// whether or not `q`'s own axes align with `p`'s — so this needs no shared
@@ -275,12 +275,22 @@ fn pierces_along(p: &Obb, q: &Obb, center_delta: Vec3) -> bool {
         let r_q_k = proj_radius(q, axis_k);
         let r_q_i = proj_radius(q, axis_i);
         let r_q_j = proj_radius(q, axis_j);
-        // P's footprint on the other two axes is STRICTLY inside Q's (a real
-        // margin, not merely touching edges — two slabs with the identical
-        // footprint and different thickness are NOT a piercing member, they
-        // are a genuine partial overlap and must keep the measured label).
-        let p_inside_q = off_i.abs() + p.half[i] <= r_q_i - margin(r_q_i)
-            && off_j.abs() + p.half[j] <= r_q_j - margin(r_q_j);
+        // P's footprint on the other two axes fits inside Q's, edges
+        // INCLUDED — the tolerance opens the test up rather than tightening
+        // it. An earlier version demanded a real margin (`r_q_i -
+        // margin(r_q_i)`) so that two slabs sharing a footprint would not
+        // read as a piercing member; but what actually disqualifies that
+        // pair is the `k`-axis test below, and the strict form instead
+        // rejected the commonest configuration in any building — two walls
+        // crossing at an X-junction, where each pierces the other clean
+        // through in thickness but the shared height TIES. That pair
+        // reported the full 3 m wall height as a certified `Mesh`
+        // penetration (review: #2536 — `main` reported the honest 0.200 m).
+        // The strict form was also discontinuous: tilting one wall by 1e-6
+        // rad flipped it back to `true`, so a hair of rotation moved the
+        // reported depth from 3.000 m to 0.200 m.
+        let p_inside_q = off_i.abs() + p.half[i] <= r_q_i + margin(r_q_i)
+            && off_j.abs() + p.half[j] <= r_q_j + margin(r_q_j);
         // "Exits the far side" along k means P's interval extends past Q's
         // on BOTH ends, not merely that P's half-extent is the bigger
         // number — a footing embedded 75 mm into a slab from ABOVE is
@@ -297,10 +307,12 @@ fn pierces_along(p: &Obb, q: &Obb, center_delta: Vec3) -> bool {
 }
 
 /// Whether `a` and `b` are in a THROUGH-PENETRATION configuration: one box's
-/// cross-section, in the plane perpendicular to one of ITS OWN axes, is
-/// strictly inside the other's footprint there, while along that axis it
+/// cross-section, in the plane perpendicular to one of ITS OWN axes, fits
+/// inside the other's footprint there, while along that axis it
 /// extends beyond the other and out the far side — a thin member piercing
-/// clean through a wall/slab, not a partial overlap.
+/// clean through a wall/slab, not a partial overlap. The relation is checked
+/// BOTH ways, so it also holds for the MUTUAL case: two walls crossing at an
+/// X-junction, each piercing the other clean through in thickness.
 ///
 /// Faithful port of the TS `isThroughPenetration` (review: #2536) — see its
 /// doc comment for the full rationale: `obb_penetration_depth` reports the

@@ -15,9 +15,9 @@ import { detectObb, type Obb } from './obb.js';
  * IEEE-754 literals (not computed via `normalize()`) so the Rust kernel uses
  * byte-identical components — `|RAY_DIR| === 1` exactly.
  */
-const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+export const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
 /** Parallel-reject + forward-crossing threshold. Same literal in the Rust kernel. */
-const RAY_EPS = 1e-9;
+export const RAY_EPS = 1e-9;
 
 /** The axis-aligned cube of half-size `h` centred on `p`. */
 function cubeAround(p: Vec3, h: number): AABB {

@@ -203,6 +203,63 @@ fn rotated_box_hxyz(
     (positions, indices, aabb)
 }
 
+/// A rectangular box (half-extents `h`, centred at `c`) under a FULL
+/// three-axis rotation (`rz`,`ry`,`rx`, applied as Rz*Ry*Rx), baked into
+/// world-space triangle positions. [`rotated_box_hxyz`] only yaws, so two
+/// boxes built with it always share the world Z axis; this one lets a fixture
+/// put a pair at a GENUINE MUTUAL rotation, with no axis shared between them.
+/// Mirrors `rotatedBoxXyz` in `engine-ts/depth-provenance.test.ts`.
+fn rotated_box_xyz(
+    c: [f32; 3],
+    h: [f32; 3],
+    rz: f32,
+    ry: f32,
+    rx: f32,
+) -> (Vec<f32>, Vec<u32>, Vec<f32>) {
+    let (cz, sz) = (rz.cos(), rz.sin());
+    let (cy, sy) = (ry.cos(), ry.sin());
+    let (cx, sx) = (rx.cos(), rx.sin());
+    let m = [
+        [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+        [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+        [-sy, cy * sx, cy * cx],
+    ];
+    let local = [
+        [-h[0], -h[1], -h[2]],
+        [h[0], -h[1], -h[2]],
+        [h[0], h[1], -h[2]],
+        [-h[0], h[1], -h[2]],
+        [-h[0], -h[1], h[2]],
+        [h[0], -h[1], h[2]],
+        [h[0], h[1], h[2]],
+        [-h[0], h[1], h[2]],
+    ];
+    let mut positions = Vec::with_capacity(24);
+    let mut min = [f32::INFINITY; 3];
+    let mut max = [f32::NEG_INFINITY; 3];
+    for v in local {
+        let mut w = [0.0f32; 3];
+        for (axis, row) in m.iter().enumerate() {
+            w[axis] = row[0] * v[0] + row[1] * v[1] + row[2] * v[2] + c[axis];
+        }
+        positions.extend_from_slice(&w);
+        for axis in 0..3 {
+            if w[axis] < min[axis] {
+                min[axis] = w[axis];
+            }
+            if w[axis] > max[axis] {
+                max[axis] = w[axis];
+            }
+        }
+    }
+    let indices: Vec<u32> = vec![
+        0, 1, 2, 0, 2, 3, 4, 6, 5, 4, 7, 6, 0, 5, 1, 0, 4, 5, 3, 2, 6, 3, 6, 7, 0, 3, 7, 0, 7, 4,
+        1, 5, 6, 1, 6, 2,
+    ];
+    let aabb = vec![min[0], min[1], min[2], max[0], max[1], max[2]];
+    (positions, indices, aabb)
+}
+
 /// A closed triangular prism: the `footprint` triangle (XY) extruded between
 /// `z0` and `z1`. Exact-coordinate fixtures (no trig) so the slanted contact face
 /// is bit-identically coplanar in `f32` and `f64`, exercising the coplanar-touch
@@ -428,6 +485,83 @@ fn a_box_member_piercing_clean_through_rotated_15_degrees_is_labelled_an_estimat
     assert_eq!(result.records.len(), 1);
     assert_eq!(result.records[0].status, ClashStatus::Hard);
     assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn two_walls_crossing_at_an_x_junction_are_labelled_an_estimate_not_the_full_wall_height() {
+    // Reviewer regression on #2536: the two most ordinary elements in any
+    // building model, crossing. Two 200 mm walls, both 3 m tall, meeting at
+    // an X — each pierces the other clean through in thickness. The shared
+    // volume is a 0.2 x 0.2 x 3 m column, so 0.2 m is the honest depth, and
+    // that is what `main` reported. The box-box MTD is 3.0 (the shared
+    // height axis is the cheapest separating translation), and the
+    // through-penetration guard used to MISS this pair because it required
+    // the piercing cross-section to be STRICTLY inside the other's: the
+    // height axis TIES, so `r_q - margin` rejected it and the raw 3.0 was
+    // certified `Mesh`. Mirrors the TS fixture in
+    // `engine-ts/depth-provenance.test.ts`.
+    let session = session_of_parts(&[
+        box_hxyz(0.0, 0.0, 1.5, 5.0, 0.1, 1.5),
+        box_hxyz(0.0, 0.0, 1.5, 0.1, 5.0, 1.5),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert_eq!(result.records[0].distance, -0.200_000_002_980_232_24);
+}
+
+#[test]
+fn an_x_junction_of_walls_of_different_heights_is_labelled_an_estimate_too() {
+    // The tie is not what makes the pair a through-penetration, so breaking
+    // it must not bring the inflated number back: a 3 m wall crossing a
+    // 2.5 m one reported -2.5 `Mesh` (the shorter wall's full height) under
+    // the strict form. The shared volume is still 0.2 x 0.2 x 2.5 m, so
+    // 0.2 m is still the honest depth.
+    let session = session_of_parts(&[
+        box_hxyz(0.0, 0.0, 1.5, 5.0, 0.1, 1.5),
+        box_hxyz(0.0, 0.0, 1.25, 0.1, 5.0, 1.25),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+    assert_eq!(result.records[0].distance, -0.200_000_002_980_232_24);
+}
+
+#[test]
+fn an_x_junction_at_a_generic_mutual_rotation_is_labelled_an_estimate() {
+    // Reviewer's stated gap on the fix: every other rotated fixture here
+    // turns ONE box (`rotated_box_hxyz` only yaws), so the pair always still
+    // shares the world Z axis and the relaxation was unproven where the two
+    // boxes share no axis at all. Here each wall carries its own three-axis
+    // rotation, so no axis of one is parallel to any axis of the other.
+    let session = session_of_parts(&[
+        rotated_box_xyz([0.0, 0.0, 0.0], [5.0, 0.1, 1.5], 0.7, 0.4, 1.1),
+        rotated_box_xyz([0.0, 0.0, 0.0], [0.1, 5.0, 1.5], 0.76, 0.48, 1.2),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Estimate);
+}
+
+#[test]
+fn a_plain_corner_overlap_at_a_generic_mutual_rotation_keeps_the_mesh_label() {
+    // The other half of the same gap: relaxing the containment test to admit
+    // touching edges must not start DEMOTING genuinely measurable pairs to
+    // estimates. Two unit blocks overlapping at a corner, each under its own
+    // three-axis rotation (again no shared axis), are a plain partial
+    // overlap — neither cross-section is anywhere near inside the other's —
+    // so the box-exact MTD stays certified.
+    let session = session_of_parts(&[
+        rotated_box_xyz([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], 0.3, 0.2, 0.9),
+        rotated_box_xyz([1.2, 1.2, 1.2], [1.0, 1.0, 1.0], 1.7, 0.8, 2.3),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Hard);
+    assert_eq!(result.records[0].distance_kind, DistanceKind::Mesh);
 }
 
 #[test]

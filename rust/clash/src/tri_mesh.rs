@@ -19,9 +19,9 @@ use std::cell::RefCell;
 /// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
 /// (which would double-count). Exact IEEE-754 literals, byte-identical to the
 /// TS kernel's `RAY_DIR` — `|RAY_DIR| == 1` exactly.
-const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+pub(crate) const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
 /// Parallel-reject + forward-crossing threshold. Same literal in the TS kernel.
-const RAY_EPS: f64 = 1e-9;
+pub(crate) const RAY_EPS: f64 = 1e-9;
 
 /// A triangle mesh with a per-triangle BVH over its triangle AABBs.
 pub struct TriMesh {

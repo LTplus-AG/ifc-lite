@@ -108,6 +108,53 @@ function sheetEl(key: string, tag: string, x0: number, x1: number, y0: number, z
 }
 
 /**
+ * A rectangular box (half-extents `h`, centred at `center`) under a FULL
+ * three-axis rotation (`rz`,`ry`,`rx`, applied as Rz*Ry*Rx), baked into
+ * world-space triangle positions. {@link rotatedBoxAboutZ} only yaws, so two
+ * boxes built with it always share the world Z axis; this one lets a fixture
+ * put a pair at a GENUINE MUTUAL rotation, with no axis shared between them.
+ */
+function rotatedBoxXyz(
+  key: string,
+  tag: string,
+  center: Vec3,
+  h: Vec3,
+  rz: number,
+  ry: number,
+  rx: number,
+): ClashElement {
+  const cz = Math.cos(rz), sz = Math.sin(rz);
+  const cy = Math.cos(ry), sy = Math.sin(ry);
+  const cx = Math.cos(rx), sx = Math.sin(rx);
+  const m = [
+    [cz * cy, cz * sy * sx - sz * cx, cz * sy * cx + sz * sx],
+    [sz * cy, sz * sy * sx + cz * cx, sz * sy * cx - cz * sx],
+    [-sy, cy * sx, cy * cx],
+  ];
+  const local: Vec3[] = [
+    [-h[0], -h[1], -h[2]], [h[0], -h[1], -h[2]], [h[0], h[1], -h[2]], [-h[0], h[1], -h[2]],
+    [-h[0], -h[1], h[2]], [h[0], -h[1], h[2]], [h[0], h[1], h[2]], [-h[0], h[1], h[2]],
+  ];
+  const positions: number[] = [];
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (const v of local) {
+    const w: Vec3 = [
+      m[0][0] * v[0] + m[0][1] * v[1] + m[0][2] * v[2] + center[0],
+      m[1][0] * v[0] + m[1][1] * v[1] + m[1][2] * v[2] + center[1],
+      m[2][0] * v[0] + m[2][1] * v[1] + m[2][2] * v[2] + center[2],
+    ];
+    positions.push(w[0], w[1], w[2]);
+    for (let a = 0; a < 3; a += 1) { if (w[a] < min[a]) min[a] = w[a]; if (w[a] > max[a]) max[a] = w[a]; }
+  }
+  const indices = new Uint32Array([
+    0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+    1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7,
+  ]);
+  return { key, ref: nextRef++, model: 'm', tag, positions: new Float32Array(positions), indices, bounds: { min, max } };
+}
+
+/**
  * A rectangular box (half-extents `hx,hy,hz`, centred at `center`), rotated
  * `angle` radians about Z, baked directly into world-space triangle
  * positions — `detectObb` reasons about world-space triangle normals, so
@@ -288,6 +335,94 @@ describe('hard-clash distance provenance', () => {
     const res = pair(wall, duct);
     expect(res.status).toBe('hard');
     expect(res.distanceKind).toBe('estimate');
+  });
+
+  it('labels two walls crossing at an X-junction as an estimate, not the full wall height', () => {
+    // Reviewer regression on #2536: the two most ordinary elements in any
+    // building model, crossing. Two 200 mm walls, both 3 m tall, meeting at
+    // an X — each pierces the other clean through in thickness. The shared
+    // volume is a 0.2 x 0.2 x 3 m column, so 0.2 m is the honest depth, and
+    // that is what `main` reported. The box-box MTD is 3.0 (the shared
+    // height axis is the cheapest separating translation), and the through-
+    // penetration guard used to MISS this pair because it required the
+    // piercing cross-section to be STRICTLY inside the other's: the height
+    // axis TIES, so `rQ - margin` rejected it and the raw 3.0 was certified
+    // `'mesh'` — reaching the user through `triage.ts` as "penetration
+    // 3.000 m", no `~`, no "(AABB estimate)" qualifier.
+    const res = pair(
+      boxEl('A', 'IfcWall', [-5, -0.1, 0], [5, 0.1, 3]),
+      boxEl('B', 'IfcWall', [-0.1, -5, 0], [0.1, 5, 3]),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+    expect(res.distance).toBe(-0.2);
+  });
+
+  it('labels an X-junction of walls of DIFFERENT heights as an estimate too', () => {
+    // The tie is not what makes the pair a through-penetration, so breaking
+    // it must not bring the inflated number back: a 3 m wall crossing a
+    // 2.5 m one reported -2.5 `'mesh'` (the shorter wall's full height)
+    // under the strict form. The shared volume is still 0.2 x 0.2 x 2.5 m,
+    // so 0.2 m is still the honest depth.
+    const res = pair(
+      boxEl('A', 'IfcWall', [-5, -0.1, 0], [5, 0.1, 3]),
+      boxEl('B', 'IfcWall', [-0.1, -5, 0], [0.1, 5, 2.5]),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+    expect(res.distance).toBe(-0.2);
+  });
+
+  it('labels the same X-junction as an estimate under a generic world rotation', () => {
+    // The X-junction above is axis-aligned, so on its own it cannot tell a
+    // genuine fix from one that happens to hold in the world frame (#2573
+    // landed exactly that class of bug on the neighbouring gate). The same
+    // pair rigidly rotated as a WHOLE by a generic three-axis rotation is
+    // the identical geometry in a different frame and must reach the same
+    // verdict. This one is a GUARD, not a reproduction: it also passed under
+    // the strict form, because rotating the mesh puts the vertices off the
+    // f32 grid and the resulting jitter in the recovered axes already breaks
+    // the height tie. That is the measured shape of the defect — it bites
+    // exactly on the exactly-representable axis-aligned geometry that real
+    // wall exports are made of, which is why it survived every rotated
+    // fixture in this file. The reported NUMBER here is the world-axis AABB
+    // estimate, which a generic rotation inflates; the label, not the
+    // magnitude, is what this pins.
+    const res = pair(
+      rotatedBoxXyz('A', 'IfcWall', [0, 0, 0], [5, 0.1, 1.5], 0.7, 0.4, 1.1),
+      rotatedBoxXyz('B', 'IfcWall', [0, 0, 0], [0.1, 5, 1.5], 0.7, 0.4, 1.1),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+  });
+
+  it('labels an X-junction whose walls are at a generic MUTUAL rotation as an estimate', () => {
+    // Reviewer's stated gap on the fix: every other rotated fixture here
+    // turns ONE box (`rotatedBoxAboutZ`), so the pair always still shares
+    // the world Z axis and the relaxation is unproven where the two boxes
+    // share no axis at all. Here each wall carries its own three-axis
+    // rotation, so no axis of one is parallel to any axis of the other.
+    const res = pair(
+      rotatedBoxXyz('A', 'IfcWall', [0, 0, 0], [5, 0.1, 1.5], 0.7, 0.4, 1.1),
+      rotatedBoxXyz('B', 'IfcWall', [0, 0, 0], [0.1, 5, 1.5], 0.76, 0.48, 1.2),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+  });
+
+  it('keeps the mesh label for a plain corner overlap at a generic MUTUAL rotation', () => {
+    // The other half of the same gap: relaxing the containment test to admit
+    // touching edges must not start DEMOTING genuinely measurable pairs to
+    // estimates. Two unit blocks overlapping at a corner, each under its own
+    // three-axis rotation (again no shared axis), are a plain partial
+    // overlap — neither cross-section is anywhere near inside the other's —
+    // so the box-exact MTD stays certified.
+    const res = pair(
+      rotatedBoxXyz('A', 'IfcSlab', [0, 0, 0], [1, 1, 1], 0.3, 0.2, 0.9),
+      rotatedBoxXyz('B', 'IfcSlab', [1.2, 1.2, 1.2], [1, 1, 1], 1.7, 0.8, 2.3),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('mesh');
   });
 
   it('reports touch, not a mesh/estimate hard clash, when a through-penetration is also below the f32 precision floor', () => {

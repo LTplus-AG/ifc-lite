@@ -316,6 +316,25 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(a.clashes[0].distanceKind).toBe('mesh');
   });
 
+  it('agrees on the estimate label for two walls crossing at an X-junction', async () => {
+    // The through-penetration guard's cross-section containment test is where
+    // the two kernels are easiest to drift apart: it is one `-`-vs-`+` sign in
+    // each of `obb.ts` and `obb.rs`, with no shared source. This pair is the
+    // one that discriminates — at an X-junction of two equal-height walls the
+    // height axis TIES, so the sign decides between the honest 0.2 m AABB
+    // estimate and the wall's full 3 m height certified as `'mesh'`. Patching
+    // only one kernel makes THIS test fail (verified: TS-only fix, before the
+    // Rust side and the WASM rebuild).
+    const wallA = boxHxyz('WA', 'IfcWall', [0, 0, 1.5], [5, 0.1, 1.5]);
+    const wallB = boxHxyz('WB', 'IfcWall', [0, 0, 1.5], [0.1, 5, 1.5]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcWall', mode: 'hard' }];
+    const a = await ts.run([wallA, wallB], rules);
+    const b = await wasm.run([wallA, wallB], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('estimate');
+  });
+
   it('agrees on the AABB-estimate fallback for a non-box contained pair (#1866)', async () => {
     // Concave L prism (notch [1,2]x[1,2] inside the AABB but outside the solid)
     // and a small box in the notch, AABB-contained, dipping ~0.05 into the notch

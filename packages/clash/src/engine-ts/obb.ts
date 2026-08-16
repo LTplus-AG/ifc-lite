@@ -219,8 +219,8 @@ function projRadius(o: Obb, u: Vec3): number {
 
 /**
  * Whether `p`'s own axes reveal a through-penetration of `p` piercing `q` —
- * `p`'s footprint, in the plane perpendicular to one of `p`'s OWN axes, sits
- * strictly inside `q`'s cross-section there, while along that axis `p`
+ * `p`'s footprint, in the plane perpendicular to one of `p`'s OWN axes, fits
+ * inside `q`'s cross-section there (edges included), while along that axis `p`
  * extends beyond `q` and out the far side. `q`'s extent along any of `p`'s
  * axes is `projRadius(q, axis)` — the general SAT projection, valid whether
  * or not `q`'s own axes align with `p`'s — so this needs no shared frame.
@@ -239,12 +239,21 @@ function piercesAlong(p: Obb, q: Obb, centerDelta: Vec3): boolean {
     const rQk = projRadius(q, axisK);
     const rQi = projRadius(q, axisI);
     const rQj = projRadius(q, axisJ);
-    // P's footprint on the other two axes is STRICTLY inside Q's (a real
-    // margin, not merely touching edges — two slabs with the identical
-    // footprint and different thickness are NOT a piercing member, they are
-    // a genuine partial overlap and must keep the measured label).
+    // P's footprint on the other two axes fits inside Q's, edges INCLUDED —
+    // the tolerance opens the test up rather than tightening it. An earlier
+    // version demanded a real margin (`rQi - margin(rQi)`) so that two slabs
+    // sharing a footprint would not read as a piercing member; but what
+    // actually disqualifies that pair is the `k`-axis test below, and the
+    // strict form instead rejected the commonest configuration in any
+    // building — two walls crossing at an X-junction, where each pierces the
+    // other clean through in thickness but the shared height TIES. That pair
+    // reported the full 3 m wall height as a certified `'mesh'` penetration
+    // (review: #2536 — `main` reported the honest 0.200 m). The strict form
+    // was also discontinuous: tilting one wall by 1e-6 rad flipped it back to
+    // `true`, so a hair of rotation moved the reported depth from 3.000 m to
+    // 0.200 m.
     const pInsideQ =
-      Math.abs(offI) + p.half[i] <= rQi - margin(rQi) && Math.abs(offJ) + p.half[j] <= rQj - margin(rQj);
+      Math.abs(offI) + p.half[i] <= rQi + margin(rQi) && Math.abs(offJ) + p.half[j] <= rQj + margin(rQj);
     // "Exits the far side" along k means P's interval extends past Q's on
     // BOTH ends, not merely that P's half-extent is the bigger number — a
     // footing embedded 75 mm into a slab from ABOVE is longer than the slab
@@ -262,7 +271,9 @@ function piercesAlong(p: Obb, q: Obb, centerDelta: Vec3): boolean {
  * cross-section, in the plane perpendicular to one of ITS OWN axes, is fully
  * inside the other's footprint there, while along that axis it extends
  * beyond the other and out the far side — a thin member piercing clean
- * through a wall/slab, not a partial overlap.
+ * through a wall/slab, not a partial overlap. The relation is checked BOTH
+ * ways, so it also holds for the MUTUAL case: two walls crossing at an
+ * X-junction, each piercing the other clean through in thickness.
  *
  * This matters because {@link obbPenetrationDepth} reports the minimum
  * TRANSLATION distance to separate the pair, which for this shape is

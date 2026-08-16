@@ -15,7 +15,8 @@ use crate::aabb::Aabb;
 use crate::bvh::Bvh;
 use crate::narrow::test_pair;
 use crate::triangle::{closest_pt_point_triangle, closest_pt_seg_seg, tri_tri_distance};
-use crate::tri_mesh::TriMesh;
+use crate::tri_mesh::{TriMesh, RAY_DIR, RAY_EPS};
+use crate::vec3::{cross, dot, Vec3};
 use crate::{ClashSession, ClashStatus};
 
 const HARD: u8 = 0;
@@ -529,5 +530,178 @@ fn distance_to_surface_finds_a_near_triangle_behind_a_wide_aabb_decoy() {
         [9.0, 9.0, 9.0],
     ] {
         assert_eq!(mesh.distance_to_surface(p), scan(p), "probe {p:?}");
+    }
+}
+
+/// Brute-force `contains_point`: the SAME Möller–Trumbore crossing count, over
+/// EVERY triangle instead of the BVH's candidate set. This is the oracle the
+/// BVH acceleration never had — `distance_to_surface` has one (`scan` above),
+/// but `contains_point`'s "the candidate set is a superset of what a linear
+/// scan would count" was asserted only in a doc comment, so nothing in the
+/// suite would have noticed the traversal starting to prune a triangle the ray
+/// really hits. Mirrors `containsPointByScan` in `engine-ts/tri-mesh.test.ts`.
+#[allow(clippy::manual_range_contains)]
+fn contains_point_by_scan(mesh: &TriMesh, p: Vec3) -> bool {
+    let mut crossings: u32 = 0;
+    for t in 0..mesh.count {
+        let [v0, v1, v2] = mesh.tri(t);
+        let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+        let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+        let pv = cross(RAY_DIR, e2);
+        let det = dot(e1, pv);
+        if det > -RAY_EPS && det < RAY_EPS {
+            continue;
+        }
+        let inv = 1.0 / det;
+        let tv = [p[0] - v0[0], p[1] - v0[1], p[2] - v0[2]];
+        let u = dot(tv, pv) * inv;
+        if u < 0.0 || u > 1.0 {
+            continue;
+        }
+        let qv = cross(tv, e1);
+        let v = dot(RAY_DIR, qv) * inv;
+        if v < 0.0 || u + v > 1.0 {
+            continue;
+        }
+        if dot(e2, qv) * inv > RAY_EPS {
+            crossings += 1;
+        }
+    }
+    crossings & 1 == 1
+}
+
+/// Closed UV sphere, radius `r`, `lon` segments x `lat` rings: `lon*(lat-1)*2`
+/// triangles — a mesh whose triangles are small relative to the whole, so the
+/// BVH actually has something to prune (a 12-triangle box does not). The pole
+/// rings' outer triangle is zero-area, which Möller–Trumbore's parallel-reject
+/// drops in the BVH path and the scan alike.
+fn uv_sphere(r: f64, lon: usize, lat: usize) -> TriMesh {
+    let mut pos: Vec<f64> = Vec::new();
+    for j in 0..lat {
+        let phi = std::f64::consts::PI * j as f64 / (lat - 1) as f64;
+        for i in 0..lon {
+            let th = 2.0 * std::f64::consts::PI * i as f64 / lon as f64;
+            pos.extend_from_slice(&[
+                r * phi.sin() * th.cos(),
+                r * phi.sin() * th.sin(),
+                r * phi.cos(),
+            ]);
+        }
+    }
+    let mut idx: Vec<u32> = Vec::new();
+    for j in 0..(lat - 1) {
+        for i in 0..lon {
+            let a = (j * lon + i) as u32;
+            let b = (j * lon + (i + 1) % lon) as u32;
+            let c = a + lon as u32;
+            let d = b + lon as u32;
+            idx.extend_from_slice(&[a, b, d, a, d, c]);
+        }
+    }
+    TriMesh::new(pos, idx)
+}
+
+/// Closed CONCAVE L-prism: the L footprint extruded z = 0..1. Concavity means
+/// the ray can re-enter, so the crossing count is genuinely > 1 and a dropped
+/// candidate flips the parity rather than being masked.
+fn l_prism_mesh() -> TriMesh {
+    let fp: [[f64; 2]; 6] = [
+        [0.0, 0.0],
+        [2.0, 0.0],
+        [2.0, 1.0],
+        [1.0, 1.0],
+        [1.0, 2.0],
+        [0.0, 2.0],
+    ];
+    let mut pos: Vec<f64> = Vec::new();
+    for v in fp {
+        pos.extend_from_slice(&[v[0], v[1], 0.0]);
+    }
+    for v in fp {
+        pos.extend_from_slice(&[v[0], v[1], 1.0]);
+    }
+    let mut idx: Vec<u32> = Vec::new();
+    for k in 1..5u32 {
+        idx.extend_from_slice(&[0, k + 1, k, 6, 6 + k, 6 + k + 1]);
+    }
+    for k in 0..6u32 {
+        let b = (k + 1) % 6;
+        idx.extend_from_slice(&[k, b, 6 + b, k, 6 + b, 6 + k]);
+    }
+    TriMesh::new(pos, idx)
+}
+
+/// The BVH-accelerated `contains_point` must agree with the exhaustive scan on
+/// every probe: 20 000 pseudo-random points straddling each surface, plus every
+/// triangle vertex nudged +/- 1e-9 in z (the grazing cases, where a pruned
+/// candidate is likeliest to flip the parity).
+///
+/// Kills: dropping either recursion in the BVH's internal-node branch, and
+/// tightening the leaf-level AABB test. Mirrors the TS twin in
+/// `engine-ts/tri-mesh.test.ts` — verified non-vacuous there by pruning one
+/// `raycastNode` recursion, which produced 10 430 and 6 188 mismatches.
+#[test]
+fn contains_point_agrees_with_a_brute_force_scan_over_every_triangle() {
+    let sphere = uv_sphere(1.0, 32, 33);
+    assert_eq!(sphere.count, 2048, "fixture must stay a 2048-triangle sphere");
+    let l = l_prism_mesh();
+    for (mesh, origin, span) in [
+        (&sphere, [-1.3, -1.3, -1.3], [2.6, 2.6, 2.6]),
+        (&l, [-0.3, -0.3, -0.3], [2.6, 2.6, 1.6]),
+    ] {
+        // Deterministic LCG: the same probes on every run, in both kernels.
+        let mut seed: i64 = 987_654_321;
+        let mut rnd = || {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12345) & 0x7fff_ffff;
+            seed as f64 / 0x7fff_ffff as f64
+        };
+        let mut probes = 0usize;
+        let mut mismatches = 0usize;
+        let mut inside = 0usize;
+        let probe = |p: Vec3, probes: &mut usize, mismatches: &mut usize, inside: &mut usize| {
+            let got = mesh.contains_point(p);
+            if got != contains_point_by_scan(mesh, p) {
+                *mismatches += 1;
+            }
+            if got {
+                *inside += 1;
+            }
+            *probes += 1;
+        };
+        for _ in 0..20_000 {
+            let p = [
+                origin[0] + rnd() * span[0],
+                origin[1] + rnd() * span[1],
+                origin[2] + rnd() * span[2],
+            ];
+            probe(p, &mut probes, &mut mismatches, &mut inside);
+        }
+        for t in 0..mesh.count {
+            for v in mesh.tri(t) {
+                probe(
+                    [v[0], v[1], v[2] + 1e-9],
+                    &mut probes,
+                    &mut mismatches,
+                    &mut inside,
+                );
+                probe(
+                    [v[0], v[1], v[2] - 1e-9],
+                    &mut probes,
+                    &mut mismatches,
+                    &mut inside,
+                );
+            }
+        }
+        assert_eq!(
+            mismatches, 0,
+            "BVH disagreed with the scan on {mismatches} of {probes} probes"
+        );
+        assert!(probes > 20_000);
+        // Guard against a vacuous sweep: the probe cloud must straddle the
+        // surface, or "0 mismatches" would only prove both sides say `false`.
+        assert!(
+            inside > 1000 && inside < probes - 1000,
+            "degenerate probe cloud: {inside} inside of {probes}"
+        );
     }
 }

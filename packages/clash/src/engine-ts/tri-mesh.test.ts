@@ -20,9 +20,10 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { TriMesh } from './tri-mesh.js';
+import { RAY_DIR, RAY_EPS, TriMesh } from './tri-mesh.js';
 import type { Vec3 } from '../types.js';
 import { closestPtPointTriangle } from '../math/triangle-distance.js';
+import { cross, dot, sub } from '../math/vec3.js';
 import { distSq } from '../math/vec3.js';
 
 /** Triangular prism: footprint (0,0)-(2,0)-(0,2), extruded z 0 → 1. */
@@ -119,4 +120,127 @@ describe('TriMesh point probes', () => {
     expect(empty.distanceToSurface([0, 0, 0])).toBe(Infinity);
     expect(empty.containsPoint([0, 0, 0])).toBe(false);
   });
+});
+
+/**
+ * Brute-force `containsPoint`: the SAME Möller–Trumbore crossing count, over
+ * EVERY triangle instead of the BVH's candidate set. This is the oracle the
+ * BVH acceleration never had — `distanceToSurface` has one (the `scan` above,
+ * and `kernel_tests.rs:465`), but `containsPoint`'s "the candidate set is a
+ * superset of what a linear scan would count" was asserted only in a doc
+ * comment, so nothing in the suite would have noticed the traversal starting
+ * to prune a triangle the ray really hits.
+ */
+function containsPointByScan(mesh: TriMesh, p: Vec3): boolean {
+  let crossings = 0;
+  for (let t = 0; t < mesh.count; t += 1) {
+    const [v0, v1, v2] = mesh.tri(t);
+    const e1 = sub(v1, v0);
+    const e2 = sub(v2, v0);
+    const pv = cross(RAY_DIR, e2);
+    const det = dot(e1, pv);
+    if (det > -RAY_EPS && det < RAY_EPS) continue;
+    const inv = 1 / det;
+    const tv = sub(p, v0);
+    const u = dot(tv, pv) * inv;
+    if (u < 0 || u > 1) continue;
+    const qv = cross(tv, e1);
+    const v = dot(RAY_DIR, qv) * inv;
+    if (v < 0 || u + v > 1) continue;
+    if (dot(e2, qv) * inv > RAY_EPS) crossings += 1;
+  }
+  return (crossings & 1) === 1;
+}
+
+/** Closed UV sphere, radius `r`, `lon` segments x `lat` rings: `lon*(2*lat-2)`
+ * triangles — a mesh whose triangles are small relative to the whole, so the
+ * BVH actually has something to prune (a 12-triangle box does not). */
+function uvSphere(r: number, lon: number, lat: number): TriMesh {
+  const pos: number[] = [];
+  for (let j = 0; j < lat; j += 1) {
+    const phi = (Math.PI * j) / (lat - 1);
+    for (let i = 0; i < lon; i += 1) {
+      const th = (2 * Math.PI * i) / lon;
+      pos.push(r * Math.sin(phi) * Math.cos(th), r * Math.sin(phi) * Math.sin(th), r * Math.cos(phi));
+    }
+  }
+  const idx: number[] = [];
+  for (let j = 0; j < lat - 1; j += 1) {
+    for (let i = 0; i < lon; i += 1) {
+      const a = j * lon + i;
+      const b = j * lon + ((i + 1) % lon);
+      const c = a + lon;
+      const d = b + lon;
+      // Both quad halves on every ring, poles included: the pole rings' outer
+      // triangle is zero-area, which Möller–Trumbore's parallel-reject drops
+      // in the BVH path and the scan alike, so the count stays exactly
+      // `lon * (lat - 1) * 2`.
+      idx.push(a, b, d, a, d, c);
+    }
+  }
+  return new TriMesh(new Float32Array(pos), new Uint32Array(idx));
+}
+
+/** Closed CONCAVE L-prism: the L footprint extruded z = 0..1. Concavity means
+ * the ray can re-enter, so the crossing count is genuinely > 1 and a dropped
+ * candidate flips the parity rather than being masked. */
+function lPrism(): TriMesh {
+  const fp: [number, number][] = [[0, 0], [2, 0], [2, 1], [1, 1], [1, 2], [0, 2]];
+  const pos: number[] = [];
+  for (const [x, y] of fp) pos.push(x, y, 0);
+  for (const [x, y] of fp) pos.push(x, y, 1);
+  const idx: number[] = [];
+  for (let k = 1; k < 5; k += 1) idx.push(0, k + 1, k, 6, 6 + k, 6 + k + 1); // caps (fans)
+  for (let k = 0; k < 6; k += 1) {
+    const a = k;
+    const b = (k + 1) % 6;
+    idx.push(a, b, 6 + b, a, 6 + b, 6 + a);
+  }
+  return new TriMesh(new Float32Array(pos), new Uint32Array(idx));
+}
+
+describe('containsPoint against a brute-force oracle', () => {
+  // Deterministic LCG: the sweep must be the same 40 000 probes on every run.
+  let seed = 987654321;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+
+  it.each([
+    ['2048-triangle sphere', () => { const m = uvSphere(1, 32, 33); expect(m.count).toBe(2048); return m; }, [-1.3, -1.3, -1.3], [2.6, 2.6, 2.6]],
+    ['concave L-prism', () => lPrism(), [-0.3, -0.3, -0.3], [2.6, 2.6, 1.6]],
+  ] as [string, () => TriMesh, Vec3, Vec3][])(
+    'agrees with an exhaustive scan on %s, over 20k random points and every vertex',
+    (_name, build, origin, span) => {
+      const mesh = build();
+      let probes = 0;
+      let mismatches = 0;
+      let inside = 0;
+      // One `expect` per probe costs more than the scan itself, so tally and
+      // assert once — a single mismatch still fails the test.
+      const check = (p: Vec3) => {
+        const got = mesh.containsPoint(p);
+        if (got !== containsPointByScan(mesh, p)) mismatches += 1;
+        if (got) inside += 1;
+        probes += 1;
+      };
+      for (let n = 0; n < 20000; n += 1) {
+        check([origin[0] + rnd() * span[0], origin[1] + rnd() * span[1], origin[2] + rnd() * span[2]]);
+      }
+      // Every triangle vertex nudged just off the surface in z: the grazing
+      // cases, where a pruned candidate is likeliest to change the parity.
+      for (let t = 0; t < mesh.count; t += 1) {
+        for (const vert of mesh.tri(t)) {
+          check([vert[0], vert[1], vert[2] + 1e-9]);
+          check([vert[0], vert[1], vert[2] - 1e-9]);
+        }
+      }
+      expect(mismatches).toBe(0);
+      expect(probes).toBeGreaterThan(20000);
+      // Guard against a vacuous sweep: the probe cloud must straddle the
+      // surface, or "0 mismatches" would only prove both sides say `false`.
+      expect(inside).toBeGreaterThan(1000);
+      expect(inside).toBeLessThan(probes - 1000);
+    },
+    // ~46 000 probes x an all-triangle scan each: seconds, not milliseconds.
+    60_000,
+  );
 });

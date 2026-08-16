@@ -85,6 +85,9 @@
  *   - `scripts/lib/unused-locals-classify.test.mjs` (node-tests, added by the
  *     sibling #2634 follow-up branch): a unit test of gate 5's own parsing
  *     logic, not a gate over generated content.
+ *   - `scripts/typecheck-tests.test.mjs` (node-tests): likewise a unit test —
+ *     it pins the `extends` path typecheck-tests.mjs writes, which gate 5
+ *     depends on, but it compares nothing committed.
  *   - `pnpm typecheck` (typecheck job) = `turbo typecheck` plus
  *     `typecheck-tests.mjs --audit`. The audit GENERATES the tsconfig program
  *     it checks, on the fly, from the test files it finds on disk — nothing is

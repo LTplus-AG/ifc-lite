@@ -389,6 +389,14 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # typecheck-tests.mjs writes the `extends` of every generated test
+      # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
+      # MODULE, so the base config is not found and the `noEmit` it carries
+      # silently stops applying -- a repo-root run then scattered 9,609
+      # untracked .js/.d.ts/.map files through the source tree (#2664 review).
+      # Nothing about that is visible in normal use, so it is pinned here.
+      - name: Check typecheck-tests extends resolution
+        run: node --test scripts/typecheck-tests.test.mjs
       # A test that reads its subject's SOURCE and asserts on the text passes
       # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
       # with the row handler unwired (#2396 verbatim). The harness that made

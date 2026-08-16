@@ -183,12 +183,26 @@ pub(crate) fn depth_clash_result(
     point: Vec3,
     bounds: Aabb,
 ) -> Option<NarrowResult> {
+    // Comparisons, not `f64::min`, to match the TS kernel bit for bit. The two
+    // disagree on exactly one input: `f64::min(NaN, x)` returns the FINITE `x`,
+    // whereas TS's `if (x < floorDepth)` is false against a NaN `floorDepth`
+    // and leaves it NaN. So a NaN `estimate` would be silently replaced by a
+    // finite candidate here and preserved there, and the two kernels would
+    // then classify the same pair differently — the one thing the differential
+    // suite exists to prevent. Currently unreachable (#2665 abstains on
+    // non-finite bounds upstream), which is precisely why it is worth pinning
+    // rather than leaving to chance: an unreachable divergence stays invisible
+    // until the gate above it moves.
     let mut floor_depth = estimate;
     if let Some(b) = box_pen {
-        floor_depth = floor_depth.min(b.mtd);
+        if b.mtd < floor_depth {
+            floor_depth = b.mtd;
+        }
     }
     if let Some(m) = mesh_evidence {
-        floor_depth = floor_depth.min(m);
+        if m < floor_depth {
+            floor_depth = m;
+        }
     }
     if floor_depth <= precision_floor(aabb_a, aabb_b) {
         if !report_touch {

@@ -201,14 +201,22 @@ describe('createEntityBoundsLookup', () => {
   });
 
   it('still aggregates every submesh for an id first asked AFTER it indexes', () => {
-    // Entity 6 is the SIXTH distinct id, so it is only ever answered from the
-    // index — the multi-submesh grouping regression (#2532) has to stay caught
-    // on the self-indexing path too, not just the count-driven one.
+    // What decides the path is the number of LOOKUPS already made, not where
+    // the id sits in the mesh array. Entity 6 being the sixth entity buys
+    // nothing: asked first, it is answered by the unindexed scan like any
+    // other first lookup. So drain past INDEX_AFTER_LOOKUPS with ids 1..5
+    // FIRST, and only then ask for 6, which is the only way this reaches the
+    // indexed path at all. Without the drain this test passes identically
+    // against a lookup that never indexes — it would be named for a path it
+    // never takes, and the multi-submesh grouping regression (#2532) would
+    // stay caught only on the count-driven path.
     const geom = [
       mesh(1, 0), mesh(2, 10), mesh(3, 20), mesh(4, 30), mesh(5, 40),
       mesh(6, 50), mesh(6, 150),
     ];
-    const b = createEntityBoundsLookup(geom)(6);
+    const lookup = createEntityBoundsLookup(geom);
+    for (const id of [1, 2, 3, 4, 5]) assert.ok(lookup(id), `warm-up id ${id}`);
+    const b = lookup(6);
     assert.ok(b);
     assert.equal(b.min.x, 50);
     assert.equal(b.max.x, 151, 'entity 6\'s second submesh must contribute');

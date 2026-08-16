@@ -238,7 +238,15 @@ describe('expandToGeometryBearingIds', () => {
 
     const start = source.indexOf('const createRenderableBoundsLookup = ');
     assert.ok(start >= 0, 'the shared bounds lookup helper is defined');
-    const body = source.slice(start, source.indexOf('const resolveRenderableIds = ', start));
+    // Assert the END marker too. `indexOf` returns -1 when it is gone, and
+    // `slice(start, -1)` silently runs to the end of the FILE instead of
+    // failing — the assertions below would then be inspecting most of
+    // Viewport.tsx rather than this helper, and would pass or fail on
+    // unrelated code. A source-text guard that can address the wrong region
+    // is worse than none, because it still reports green.
+    const end = source.indexOf('const resolveRenderableIds = ', start);
+    assert.ok(end >= 0, 'resolveRenderableIds follows the lookup helper');
+    const body = source.slice(start, end);
 
     assert.ok(
       body.includes('createEntityBoundsLookup('),
@@ -250,10 +258,10 @@ describe('expandToGeometryBearingIds', () => {
     );
 
     const helperStart2 = source.indexOf('const resolveRenderableIds = ');
-    const helperBody2 = source.slice(
-      helperStart2,
-      source.indexOf('setCameraCallbacks({', helperStart2),
-    );
+    assert.ok(helperStart2 >= 0, 'resolveRenderableIds is defined');
+    const helperEnd2 = source.indexOf('setCameraCallbacks({', helperStart2);
+    assert.ok(helperEnd2 >= 0, 'setCameraCallbacks bounds the helper');
+    const helperBody2 = source.slice(helperStart2, helperEnd2);
     assert.ok(
       !helperBody2.includes('getEntityBounds('),
       'resolveRenderableIds must not scan the mesh array per id',

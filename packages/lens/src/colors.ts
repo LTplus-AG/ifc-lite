@@ -7,18 +7,58 @@ import type { RGBAColor } from './types.js';
 /** Ghost color for unmatched entities: faint gray at low opacity */
 export const GHOST_COLOR: RGBAColor = [0.6, 0.6, 0.6, 0.15];
 
+const HEX3 = /^[0-9a-f]{3}$/i;
+const HEX6 = /^[0-9a-f]{6}$/i;
+const HEX8 = /^[0-9a-f]{8}$/i;
+
 /**
  * Parse hex color string to RGBA tuple (0–1 range).
  *
- * @param hex - Hex color (e.g. "#E53935" or "E53935")
+ * `hex` is not always a native `<input type="color">` value: it also arrives
+ * from imported lens JSON (type-checked as a string, not format-validated)
+ * and from the SDK's `bim.viewer.colorize()`, a published entry point any
+ * external caller can pass an arbitrary string to. Both accept the 3-digit
+ * CSS shorthand and the
+ * 8-digit `#RRGGBBAA` form, and neither is guaranteed well-formed. Rather
+ * than let `parseInt` salvage whatever hex-looking prefix it can find in a
+ * malformed string — which turns a typo like `'red'` into a plausible-but-
+ * wrong color instead of flagging it — the whole (post-shorthand-expansion,
+ * post-alpha-trim) string is validated as exactly six hex digits before
+ * parsing, and any input that fails that check, including the wrong length,
+ * falls back to `[0, 0, 0, alpha]`. It does not throw: this is a published
+ * SDK entry point and an unvalidated JSON import path, and a throw here
+ * would crash the caller for one bad value instead of degrading a single
+ * color.
+ *
+ * @param hex - Hex color (e.g. "#E53935", "E53935", the 3-digit "#E33", or
+ *   the 8-digit CSS `#RRGGBBAA` form — the trailing alpha pair is ignored
+ *   since `alpha` is supplied separately)
  * @param alpha - Alpha value in 0–1 range
  */
 export function hexToRgba(hex: string, alpha: number): RGBAColor {
-  const h = hex.replace('#', '');
-  const r = parseInt(h.substring(0, 2), 16) / 255;
-  const g = parseInt(h.substring(2, 4), 16) / 255;
-  const b = parseInt(h.substring(4, 6), 16) / 255;
-  return [r, g, b, alpha];
+  let h = hex.trim().replace('#', '');
+  if (HEX3.test(h)) {
+    h = h.split('').map((c) => c + c).join('');
+  } else if (HEX8.test(h)) {
+    // `#RRGGBBAA` is valid CSS. `alpha` already comes from the second
+    // argument, so only the leading six (RGB) digits are kept — matching
+    // main's pre-fix behaviour of reading R/G/B and ignoring the trailing
+    // alpha pair, instead of rejecting a form that worked before this guard.
+    h = h.substring(0, 6);
+  }
+  // `parseInt` salvages whatever hex prefix it can find in a substring, so a
+  // naive `parseInt(h.substring(0, 2), 16)` turns garbage like 'red' (which
+  // is not a color at all) into a plausible-looking non-zero channel, and a
+  // too-long string like '#1234567' silently loses its last digit instead of
+  // being rejected. Validating the whole (post-shorthand-expansion) string as
+  // exactly six hex digits before parsing closes both holes in one guard.
+  if (!HEX6.test(h)) {
+    return [0, 0, 0, alpha];
+  }
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return [r / 255, g / 255, b / 255, alpha];
 }
 
 /**

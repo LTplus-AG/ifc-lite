@@ -1629,7 +1629,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 is_geo_referenced: has_rtc_offset,
             },
             length_unit_scale: Some(unit_scale),
-            georeferencing: crate::extract_georeferencing(content),
+            georeferencing: crate::extract_georeferencing_with_index(content, &entity_index_arc),
         },
         stats: ProcessingStats {
             total_meshes,

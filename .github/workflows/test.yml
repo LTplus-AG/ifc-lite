@@ -107,6 +107,10 @@ jobs:
               # Lint job that reads it. Absent CI reads as green here, and a
               # guard cannot fire in a job that never runs.
               - '.oxlintrc.json'
+              # The server-bin platform-parity check reads this workflow's
+              # release matrix, so a PR that only edits the matrix cannot
+              # skip the job that checks it (issue #2619).
+              - '.github/workflows/server-binaries.yml'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
@@ -412,6 +416,23 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # A server-bin release must ship one archive per platform the package
+      # claims to support. Three lists encode that set (SUPPORTED_TARGETS in
+      # platform.ts, package.json os/cpu, the release matrix in
+      # server-binaries.yml) and agreed only by hand until v1.16.6 shipped
+      # without the win32-x64 zip and nothing noticed (issue #2619).
+      - name: Check server-bin platform parity
+        run: node scripts/check-server-bin-targets.mjs
+      # Executable proof that the parity gate itself cannot pass vacuously:
+      # an adversarial review of PR #2642 produced four false greens
+      # (commented-out matrix entries and targets still counted; a stale
+      # literal in a comment satisfied the upload check) that hand-testing
+      # had missed. Each hostile mutation now runs against the real inputs
+      # in a temp tree and must turn the gate red with an accurate message.
+      # The second file unit-tests stripYamlComments, the primitive the gate's
+      # comment-awareness rests on (a lone apostrophe once blinded it).
+      - name: Check server-bin parity gate regressions
+        run: node --test scripts/check-server-bin-targets.test.mjs scripts/lib/server-bin-targets-parse.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

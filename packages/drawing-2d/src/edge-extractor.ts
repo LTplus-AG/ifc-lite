@@ -255,6 +255,11 @@ export class EdgeExtractor {
         continue;
       }
 
+      // Flip-adjusted depths at the clipped endpoints: signedDepth is affine
+      // along the segment, so lerp d0/d1 by the clip parameters.
+      const dA = d0 + (d1 - d0) * clip[0];
+      const dB = d0 + (d1 - d0) * clip[1];
+
       lines.push({
         line: { start, end },
         category: 'projection',
@@ -262,7 +267,11 @@ export class EdgeExtractor {
         entityId: edge.entityId,
         ifcType: edge.ifcType,
         modelIndex: edge.modelIndex,
-        depth: 0,
+        // Per-endpoint VIEW depth (issue #2639, see projection-bands.ts):
+        // negated flip-adjusted depth, clamped at the cut plane. The
+        // classifier lerps depth..depthEnd along the line.
+        depth: Math.max(0, -dA),
+        depthEnd: Math.max(0, -dB),
       });
     }
 

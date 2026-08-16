@@ -7,12 +7,16 @@ import assert from 'node:assert';
 
 import {
   buildAutoColorLensToSave,
+  cloneCriteria,
+  compoundCriteriaSummary,
+  deriveRuleName,
   duplicateLensConfig,
+  isRuleValid,
   mergeImportedLenses,
   moveItem,
   reserveUniqueId,
 } from './lens-editor-utils.js';
-import type { Lens } from '@/store/slices/lensSlice';
+import type { Lens, LensCriteria, LensRule } from '@/store/slices/lensSlice';
 
 const ruleLens: Lens = {
   id: 'lens-envelope',
@@ -21,6 +25,27 @@ const ruleLens: Lens = {
   rules: [
     { id: 'wall', name: 'Walls', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#111111' },
     { id: 'roof', name: 'Roofs', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcRoof' }, action: 'colorize', color: '#222222' },
+  ],
+};
+
+/** A compound AND criteria - imported (the panel does not yet author these)
+ *  but must round-trip through every clone/copy/save path intact. */
+const compoundCriteria: LensCriteria = {
+  type: 'and',
+  conditions: [
+    { type: 'ifcType', ifcType: 'IfcWall' },
+    {
+      type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating',
+      operator: 'gte', propertyValue: '60',
+    },
+  ],
+};
+
+const compoundLens: Lens = {
+  id: 'lens-compound',
+  name: 'Fire-rated walls',
+  rules: [
+    { id: 'rule-and', name: 'AND rule', enabled: true, criteria: compoundCriteria, action: 'colorize', color: '#333333' },
   ],
 };
 
@@ -75,6 +100,256 @@ describe('duplicateLensConfig (#1403)', () => {
     const copy = duplicateLensConfig(auto, () => 'lens-NEW');
     assert.deepEqual(copy.autoColor, { source: 'ifcType' });
     assert.equal(copy.builtin, undefined);
+  });
+
+  it('deep-clones a compound criteria: mutating the copy\'s conditions array must not affect the source', () => {
+    const copy = duplicateLensConfig(compoundLens, () => 'lens-NEW');
+    const copyConditions = copy.rules[0].criteria.conditions;
+    assert.ok(copyConditions, 'copy must carry the compound conditions array');
+    assert.equal(copyConditions!.length, 2, 'copy starts with the same two conditions as the source');
+
+    // RED-proving mutation: push into the COPY's conditions array. A shallow
+    // `{ ...criteria }` clone still aliases this array with the source, so
+    // this push would leak into `compoundLens` too.
+    copyConditions!.push({ type: 'ifcType', ifcType: 'IfcSlab' });
+
+    assert.equal(
+      compoundLens.rules[0].criteria.conditions!.length, 2,
+      'mutating the copy\'s compound conditions array must not grow the source\'s array',
+    );
+    assert.notEqual(
+      copyConditions, compoundLens.rules[0].criteria.conditions,
+      'copy and source must hold genuinely distinct conditions array references',
+    );
+  });
+
+  it('deep-clones a NESTED compound (and-of-or) so the inner conditions array is independent too', () => {
+    const nested: Lens = {
+      id: 'lens-nested',
+      name: 'Nested',
+      rules: [{
+        id: 'rule-nested',
+        name: 'Nested rule',
+        enabled: true,
+        criteria: {
+          type: 'and',
+          conditions: [
+            { type: 'ifcType', ifcType: 'IfcWall' },
+            { type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcSlab' }] },
+          ],
+        },
+        action: 'colorize',
+        color: '#444444',
+      }],
+    };
+    const copy = duplicateLensConfig(nested, () => 'lens-NEW');
+    const copyInner = copy.rules[0].criteria.conditions![1].conditions;
+    copyInner!.push({ type: 'ifcType', ifcType: 'IfcBeam' });
+    const sourceInner = nested.rules[0].criteria.conditions![1].conditions;
+    assert.equal(sourceInner!.length, 1, 'a push into a nested inner conditions array must not reach the source');
+  });
+});
+
+describe('cloneCriteria', () => {
+  it('shallow-clones a leaf criteria (no conditions array to worry about)', () => {
+    const leaf: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    const cloned = cloneCriteria(leaf);
+    assert.deepEqual(cloned, leaf);
+    assert.notEqual(cloned, leaf, 'must return a fresh object, not the same reference');
+  });
+
+  it('deep-clones a compound so the conditions array is a distinct reference', () => {
+    const cloned = cloneCriteria(compoundCriteria);
+    assert.deepEqual(cloned, compoundCriteria);
+    assert.notEqual(cloned.conditions, compoundCriteria.conditions);
+    assert.notEqual(cloned.conditions![0], compoundCriteria.conditions![0]);
+  });
+
+  it('treats a compound with an empty conditions array as its own fresh empty array', () => {
+    const empty: LensCriteria = { type: 'or', conditions: [] };
+    const cloned = cloneCriteria(empty);
+    assert.deepEqual(cloned.conditions, []);
+    assert.notEqual(cloned.conditions, empty.conditions);
+  });
+
+  it('does not throw on a null/primitive compound member - leaves it as-is instead of recursing into it', () => {
+    const withBadMember: LensCriteria = {
+      type: 'and',
+      conditions: [null as unknown as LensCriteria, 42 as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    };
+    const cloned = cloneCriteria(withBadMember);
+    assert.equal(cloned.conditions![0], null);
+    assert.equal(cloned.conditions![1], 42);
+    assert.deepEqual(cloned.conditions![2], { type: 'ifcType', ifcType: 'IfcWall' });
+    assert.notEqual(cloned.conditions![2], withBadMember.conditions![2], 'the well-formed member must still be a fresh clone');
+  });
+
+  it('leaves an array compound member as-is instead of silently rewriting it into an object (review find)', () => {
+    // Hand-edited lens JSON can put an array where a member criteria is
+    // expected. `isCriteriaLike` used to accept arrays (`typeof [] ===
+    // 'object'`), so this recursed into the array and `{ ...arrayMember }`
+    // turned `[{"type":"ifcType", ...}]` into `{"0": {"type":"ifcType", ...}}`
+    // on the next Edit/Duplicate round-trip - a silent shape mutation of
+    // user data. An array must be treated the same as any other
+    // not-criteria-like value: left untouched.
+    const withArrayMember: LensCriteria = {
+      type: 'and',
+      conditions: [[{ type: 'ifcType', ifcType: 'IfcWall' }] as unknown as LensCriteria],
+    };
+    const cloned = cloneCriteria(withArrayMember);
+    assert.ok(Array.isArray(cloned.conditions![0]), 'array member must stay an array, not become {"0": ...}');
+    assert.equal(cloned.conditions![0], withArrayMember.conditions![0]);
+  });
+
+  it('does not stack-overflow on a pathologically deep compound (RED against the PR before the depth cap)', () => {
+    // Build a chain far deeper than MAX_COMPOUND_DEPTH (16) - a hand-edited
+    // lens JSON is not depth-limited on import, so Edit/Duplicate must survive it.
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    assert.doesNotThrow(() => cloneCriteria(deep));
+  });
+});
+
+describe('deriveRuleName — compound naming (fka #lens-compound-conditions)', () => {
+  it('names a leaf criteria the same way as before (bounding: no behavior change for leaves)', () => {
+    assert.equal(deriveRuleName({ type: 'ifcType', ifcType: 'IfcWall' }), 'Wall');
+    assert.equal(deriveRuleName({ type: 'attribute', attributeName: 'Name', attributeValue: 'Foo' }), 'Foo');
+    assert.equal(deriveRuleName({ type: 'group', groupName: 'Zone A' }), 'Zone A');
+  });
+
+  it('resolves a model leaf\'s name via the injected resolver, falling back to "Model"', () => {
+    const resolve = (id: string) => (id === 'm1' ? 'Model One' : undefined);
+    assert.equal(deriveRuleName({ type: 'model', modelId: 'm1' }, resolve), 'Model One');
+    assert.equal(deriveRuleName({ type: 'model', modelId: 'unknown' }, resolve), 'Model');
+    assert.equal(deriveRuleName({ type: 'model' }), 'Model');
+  });
+
+  it('names a compound honestly instead of falling through to a generic "Rule" default', () => {
+    assert.equal(deriveRuleName(compoundCriteria), 'AND (Wall, FireRating)');
+  });
+
+  it('recurses into a nested compound', () => {
+    const nested: LensCriteria = {
+      type: 'or',
+      conditions: [
+        { type: 'ifcType', ifcType: 'IfcSlab' },
+        { type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcBeam' }] },
+      ],
+    };
+    assert.equal(deriveRuleName(nested), 'OR (Slab, AND (Beam))');
+  });
+
+  it('names an empty compound distinctly from an incomplete leaf', () => {
+    assert.equal(deriveRuleName({ type: 'and', conditions: [] }), 'AND (empty)');
+    assert.equal(deriveRuleName({ type: 'and' }), 'AND (empty)');
+  });
+
+  it('does not throw on a null/primitive member - names it "Invalid" instead', () => {
+    const withBadMember: LensCriteria = {
+      type: 'or',
+      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    };
+    assert.equal(deriveRuleName(withBadMember), 'OR (Invalid, Wall)');
+  });
+
+  it('does not stack-overflow on a pathologically deep compound and names the cut-off distinctly', () => {
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    assert.doesNotThrow(() => deriveRuleName(deep));
+    assert.ok(deriveRuleName(deep).includes('too deeply nested'));
+  });
+});
+
+describe('compoundCriteriaSummary', () => {
+  it('summarizes a compound with a short count label and an expanded tooltip detail', () => {
+    const summary = compoundCriteriaSummary(compoundCriteria);
+    assert.equal(summary.label, 'AND - 2 conditions');
+    assert.equal(summary.detail, 'Wall, FireRating');
+  });
+
+  it('singularizes the count for exactly one condition', () => {
+    const summary = compoundCriteriaSummary({ type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }] });
+    assert.equal(summary.label, 'OR - 1 condition');
+  });
+
+  it('reports zero conditions distinctly (an incomplete imported compound)', () => {
+    const summary = compoundCriteriaSummary({ type: 'and', conditions: [] });
+    assert.equal(summary.label, 'AND - 0 conditions');
+    assert.equal(summary.detail, 'No conditions');
+  });
+
+  it('does not throw and names a malformed (null) member "Invalid" instead', () => {
+    const summary = compoundCriteriaSummary({
+      type: 'and',
+      conditions: [null as unknown as LensCriteria, { type: 'ifcType', ifcType: 'IfcWall' }],
+    });
+    assert.equal(summary.label, 'AND - 2 conditions', 'count reflects the raw array length, including the malformed member');
+    assert.equal(summary.detail, 'Invalid, Wall');
+  });
+});
+
+describe('isRuleValid — compound rules must survive Save (#lens-compound-conditions)', () => {
+  it('treats a non-empty compound rule as valid', () => {
+    const rule: LensRule = { id: 'r', name: 'AND', enabled: true, criteria: compoundCriteria, action: 'colorize', color: '#000' };
+    assert.ok(isRuleValid(rule), 'a non-empty imported compound rule must not be dropped by the LensEditor Save filter');
+  });
+
+  it('treats an empty compound (no conditions) as invalid, like an incomplete leaf', () => {
+    const rule: LensRule = { id: 'r', name: 'AND', enabled: true, criteria: { type: 'and', conditions: [] }, action: 'colorize', color: '#000' };
+    assert.equal(isRuleValid(rule), false);
+  });
+
+  it('still validates leaf rules exactly as before (bounding)', () => {
+    assert.ok(isRuleValid({ id: 'r1', name: 'x', enabled: true, criteria: { type: 'ifcType', ifcType: 'IfcWall' }, action: 'colorize', color: '#000' }));
+    assert.equal(isRuleValid({ id: 'r2', name: 'x', enabled: true, criteria: { type: 'ifcType' }, action: 'colorize', color: '#000' }), false);
+    assert.ok(isRuleValid({ id: 'r3', name: 'x', enabled: true, criteria: { type: 'group' }, action: 'colorize', color: '#000' }));
+  });
+
+  it('rejects an AND wrapping only incomplete leaves - it can never match, same as the bare leaf', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [{ type: 'ifcType' }] },
+    };
+    assert.equal(isRuleValid(rule), false, 'a compound wrapping only an incomplete leaf must be dropped, like the leaf itself would be');
+  });
+
+  it('rejects an AND with one incomplete member even if another member is complete', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
+    };
+    assert.equal(isRuleValid(rule), false, 'AND requires every member to match, so one incomplete member invalidates the whole compound');
+  });
+
+  it('accepts an OR as long as at least one member is complete, unlike AND', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'or', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'ifcType' }] },
+    };
+    assert.ok(isRuleValid(rule), 'OR only needs one member able to match, mirroring the engine\'s matchesCompound semantics');
+  });
+
+  it('rejects a compound whose only member is null/primitive, and does not throw', () => {
+    const rule: LensRule = {
+      id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000',
+      criteria: { type: 'and', conditions: [null as unknown as LensCriteria] },
+    };
+    assert.doesNotThrow(() => isRuleValid(rule));
+    assert.equal(isRuleValid(rule), false);
+  });
+
+  it('does not stack-overflow on a pathologically deep compound - the depth cap fails it closed', () => {
+    let deep: LensCriteria = { type: 'ifcType', ifcType: 'IfcWall' };
+    for (let i = 0; i < 3000; i++) {
+      deep = { type: 'and', conditions: [deep] };
+    }
+    const rule: LensRule = { id: 'r', name: 'x', enabled: true, action: 'colorize', color: '#000', criteria: deep };
+    assert.doesNotThrow(() => isRuleValid(rule));
+    assert.equal(isRuleValid(rule), false, 'nesting past MAX_COMPOUND_DEPTH fails closed, consistent with the engine');
   });
 });
 

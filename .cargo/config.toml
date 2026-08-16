@@ -5,5 +5,18 @@ rustflags = [
   "-C", "target-feature=+simd128",
 ]
 
-[unstable]
-build-std = ["std", "panic_abort"]
+# `[unstable] build-std` intentionally lives OUTSIDE this file, not here.
+# `[unstable]` is a whole-invocation table, not scoped to `[target.*]` — if it
+# were set here it would apply to every `cargo` invocation in this workspace,
+# including plain host builds (`cargo test --release`, `cargo build`, etc.),
+# which have no `--target` and therefore no reason to rebuild `std` from
+# source. That collided with `[profile.release] panic = "abort"` in the
+# workspace `Cargo.toml` and made `cargo test --release` fail everywhere with
+# "duplicate lang item in crate `core`" — nothing to do with the code under
+# test.
+#
+# The wasm build needs `build-std` (it links a custom `panic_abort`-only
+# `std` for the single-thread bundle, and an atomics-enabled `std` for the
+# threaded bundle — see `scripts/build-wasm.sh`). It gets it by setting the
+# `CARGO_UNSTABLE_BUILD_STD` env var for that invocation only, so only the
+# wasm build pays for it. See `scripts/build-wasm.sh`.

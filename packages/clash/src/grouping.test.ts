@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { groupClashes, isClusterGroupingIneffective } from './grouping.js';
+import { groupDuplicateSets } from './duplicate-sets.js';
 import type {
   AABB,
   Clash,
@@ -284,6 +285,27 @@ describe('groupClashes — determinism', () => {
     const clashes = [clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 0, 0] })];
     const [group] = groupClashes(makeResult(clashes), { by: 'cluster' });
     expect(group.id).toMatch(/^grp-[0-9a-f]{8}$/);
+  });
+});
+
+describe('groupDuplicateSets — rule-aware titles', () => {
+  // The connected components of a NON-duplicates rule bucket prove only that
+  // the members clash transitively; titling them "coincident" would be a false
+  // statement about intersecting-but-distinct elements (#2530 review).
+  it('does not call a discipline-rule component "coincident"', () => {
+    const groups = groupDuplicateSets(
+      makeResult([clash({ id: 'x1', a: PIPE, b: PIPE2, rule: 'hard-STR-MEP', point: [0, 0, 0] })]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('2 IfcPipeSegment objects in connected hard-STR-MEP clashes');
+  });
+
+  it('keeps the coincident wording for the duplicates rule', () => {
+    const groups = groupDuplicateSets(
+      makeResult([clash({ id: 'x1', a: PIPE, b: PIPE2, rule: 'duplicates', point: [0, 0, 0] })]),
+    );
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('2 coincident IfcPipeSegment objects');
   });
 });
 

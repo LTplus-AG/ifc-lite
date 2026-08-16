@@ -249,6 +249,44 @@ describe('collectReferencedEntityIds', () => {
     expect(closure.has(11)).toBe(true);  // point (reached via placement)
     expect(closure.has(2)).toBe(false);  // hidden wall (excluded)
   });
+
+  // CodeRabbit finding on #2637: `relationshipRefGroupsFromSourceLine` (via
+  // `extractRelationshipRefGroupsIndexed`) only walks ONE level of
+  // parenthesised nesting. A DOUBLY-nested list of entity refs — a real IFC
+  // shape, e.g. `IfcBSplineSurfaceWithKnots.ControlPointsList: LIST OF LIST
+  // OF IfcCartesianPoint` — has each inner `(#N,#N)` group fail the bare
+  // `#(\d+)` match, so the whole attribute is discarded as "contains a
+  // non-ref item" and every ref inside it is lost. This only bites a
+  // source-backed entity with a queued mutation elsewhere on the SAME record
+  // (`hasSourceMutation` gates the parse-instead-of-byte-scan path) — an
+  // unmutated entity still takes the plain `extractRefsFromBytes` scan below,
+  // which has no such blind spot.
+  it('does not drop refs inside a doubly-nested list attribute on a mutated entity', () => {
+    const { source, entityIndex: base } = buildTestData([
+      [1, 'IFCBSPLINESURFACEWITHKNOTS', '#1=IFCBSPLINESURFACEWITHKNOTS(3,3,((#10,#11),(#12,#13)),.UNSPECIFIED.,$,$,$);'],
+      [10, 'IFCCARTESIANPOINT', '#10=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [11, 'IFCCARTESIANPOINT', '#11=IFCCARTESIANPOINT((1.,0.,0.));'],
+      [12, 'IFCCARTESIANPOINT', '#12=IFCCARTESIANPOINT((0.,1.,0.));'],
+      [13, 'IFCCARTESIANPOINT', '#13=IFCCARTESIANPOINT((1.,1.,0.));'],
+    ]);
+    // Mark #1 as carrying a queued mutation on SOME other attribute (the
+    // gate cares only that a mutation is queued for the id, not which
+    // attribute) so the closure takes the parse-based path instead of the
+    // plain byte scan.
+    const entityIndex = {
+      get: (id: number) => base.get(id),
+      has: (id: number) => base.has(id),
+      hasSourceMutation: (id: number) => id === 1,
+    };
+
+    const closure = collectReferencedEntityIds(new Set([1]), source, entityIndex);
+
+    expect(closure.has(1)).toBe(true);
+    expect(closure.has(10)).toBe(true);
+    expect(closure.has(11)).toBe(true);
+    expect(closure.has(12)).toBe(true);
+    expect(closure.has(13)).toBe(true);
+  });
 });
 
 describe('getVisibleEntityIds', () => {

@@ -16,6 +16,7 @@ import { center } from './math/aabb.js';
 import { distSq } from './math/vec3.js';
 import { CLASH_RULE_PRESETS, DISCIPLINES } from './disciplines.js';
 import { qualifiedKey } from './exclude.js';
+import { createUnionFind } from './union-find.js';
 import type {
   Clash,
   ClashElementRef,
@@ -153,7 +154,8 @@ function ruleTitle(rule: string): string {
   return label ? `${label} (${rule})` : `Rule ${rule}`;
 }
 
-function makeGroup(
+/** Shared with `duplicate-sets.ts`; not part of the package surface. */
+export function makeGroup(
   members: Clash[],
   title: string,
   discipline: string | undefined,
@@ -196,36 +198,7 @@ function clusterGroups(clashes: Clash[], epsilon: number): ClashGroup[] {
 
   for (const bucket of partitions.values()) {
     const n = bucket.length;
-    const parent = new Array<number>(n);
-    for (let i = 0; i < n; i += 1) {
-      parent[i] = i;
-    }
-    const find = (i: number): number => {
-      let root = i;
-      while (parent[root] !== root) {
-        root = parent[root];
-      }
-      // Path compression keeps repeated lookups flat; deterministic.
-      let cur = i;
-      while (parent[cur] !== root) {
-        const next = parent[cur];
-        parent[cur] = root;
-        cur = next;
-      }
-      return root;
-    };
-    const union = (i: number, j: number): void => {
-      const ri = find(i);
-      const rj = find(j);
-      if (ri !== rj) {
-        // Attach the higher-index root under the lower to keep ids stable.
-        if (ri < rj) {
-          parent[rj] = ri;
-        } else {
-          parent[ri] = rj;
-        }
-      }
-    };
+    const { find, union } = createUnionFind(n);
 
     for (let i = 0; i < n; i += 1) {
       for (let j = i + 1; j < n; j += 1) {
@@ -315,6 +288,18 @@ function elementGroups(clashes: Clash[]): ClashGroup[] {
   return groups;
 }
 
+/** Severity (critical first), then member count desc, tie-break by id asc. */
+export function sortGroups(groups: ClashGroup[]): ClashGroup[] {
+  groups.sort((a, b) => {
+    const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
+    if (sev !== 0) return sev;
+    const count = b.members.length - a.members.length;
+    if (count !== 0) return count;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+  return groups;
+}
+
 /**
  * Group a clash result. `Clash` carries no storey, so `by: 'storey'` falls back
  * to rule grouping (see module notes / report) rather than inventing a field.
@@ -346,16 +331,7 @@ export function groupClashes(result: ClashResult, opts: GroupOptions): ClashGrou
     }
   }
 
-  // Severity (critical first), then member count desc, tie-break by id asc.
-  groups.sort((a, b) => {
-    const sev = SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity];
-    if (sev !== 0) return sev;
-    const count = b.members.length - a.members.length;
-    if (count !== 0) return count;
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-  });
-
-  return groups;
+  return sortGroups(groups);
 }
 
 /**

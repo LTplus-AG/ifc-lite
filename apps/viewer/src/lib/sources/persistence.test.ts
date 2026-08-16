@@ -19,6 +19,7 @@ import {
   syncSourceCatalogCacheOwner,
 } from './persistence.js';
 import { saveSourcePrefs, loadSavedSourcePrefs } from './preferences.js';
+import { loadFavourites, saveFavourites } from './favourites.js';
 
 class MemoryStorage implements Storage {
   private readonly map = new Map<string, string>();
@@ -168,6 +169,21 @@ describe('source persistence', () => {
     saveRevisionWatchCursor('dalux-build', 'project-1', 'cursor-1');
     // Provider ctx.storage namespace (mirrors host-storage's prefix).
     localStorage.setItem('ifc-lite-source:dalux-build:rev:p:a:f', 'rev-3');
+    // Favourites carry folder and file NAMES, so the sweep has to take them.
+    saveFavourites('dalux-build', [
+      {
+        providerId: 'dalux-build',
+        kind: 'folder',
+        projectId: 'project-1',
+        projectName: 'Project 1',
+        fileAreaId: 'file-area-1',
+        fileAreaName: 'Documents',
+        containerId: 'folder-1',
+        containerName: 'Models',
+        identityId: null,
+        addedAt: 1,
+      },
+    ]);
     // Another provider's data must survive the sweep.
     saveSourcePrefs('other-provider', { apiKey: 'keep' });
     recordDownloadedSourceFile(
@@ -181,6 +197,7 @@ describe('source persistence', () => {
     assert.strictEqual(loadSourceCatalogCache('dalux-build', 'project-1', 'file-area-1'), null);
     assert.strictEqual(loadRevisionWatchCursor('dalux-build', 'project-1'), undefined);
     assert.strictEqual(localStorage.getItem('ifc-lite-source:dalux-build:rev:p:a:f'), null);
+    assert.deepStrictEqual(loadFavourites('dalux-build'), []);
     const records = loadDownloadedSourceFileRecords();
     assert.strictEqual(
       getDownloadedSourceFileRecord(records, 'dalux-build', 'project-1', 'file-1'),

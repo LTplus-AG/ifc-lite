@@ -189,7 +189,7 @@
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
 # +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
 # depth-guard call sites; no code change.
-     713 rust/geometry/src/router/voids/coaxial_union.rs
+     704 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

@@ -14,7 +14,12 @@ import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
 import { generateHeader, deterministicGlobalId, IfcParser, asSourceBytes } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
+import {
+  collectReferencedEntityIds,
+  getVisibleEntityIds,
+  collectStyleEntities,
+  filterHiddenRefsFromRelationshipLine,
+} from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
@@ -516,7 +521,7 @@ export class MergedExporter {
       // Complete view over byId + any deferred property atoms, so the closure
       // walk and the emit loop both reach every entity the source defines.
       const completeIndex = getCompleteEntityIndex(model.dataStore);
-      const includedEntityIds = this.computeIncludedEntityIds(model, options, completeIndex, source);
+      const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
@@ -525,9 +530,12 @@ export class MergedExporter {
 
       const sourceSchema = (model.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
       for (const [expressId, entityRef] of completeIndex) {
-        if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
+        if (visibility !== null && !visibility.included.has(expressId)) continue;
         if (plan.skipEntityIds.has(expressId)) continue;
-        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode);
+        const line = this.renderEntity(
+          expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
+          visibility?.hiddenProductIds ?? null, completeIndex,
+        );
         if (line !== null) allEntityLines.push(line);
       }
 
@@ -646,7 +654,7 @@ export class MergedExporter {
       }
 
       const completeIndex = getCompleteEntityIndex(model.dataStore);
-      const includedEntityIds = this.computeIncludedEntityIds(model, options, completeIndex, source);
+      const visibility = this.computeIncludedEntityIds(model, options, completeIndex, source);
 
       const mode = this.resolveModelMode(model, isFirstModel, setup);
       if (!isFirstModel && !mode.compatible) federatedModelCount++;
@@ -656,10 +664,13 @@ export class MergedExporter {
 
       let entityCount = 0;
       for (const [expressId, entityRef] of completeIndex) {
-        if (includedEntityIds !== null && !includedEntityIds.has(expressId)) continue;
+        if (visibility !== null && !visibility.included.has(expressId)) continue;
         if (plan.skipEntityIds.has(expressId)) continue;
 
-        const line = this.renderEntity(expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode);
+        const line = this.renderEntity(
+          expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
+          visibility?.hiddenProductIds ?? null, completeIndex,
+        );
         if (line !== null) allEntityLines.push(line);
 
         entityCount++;
@@ -969,13 +980,22 @@ export class MergedExporter {
   /**
    * Resolve the set of express ids to include for a model under visibility
    * filtering, or `null` when no filtering is requested (include everything).
+   *
+   * Also returns `hiddenProductIds` (`null` alongside a `null` `included`):
+   * `renderEntity` needs it to withhold-or-narrow a relationship's own OUTPUT
+   * line the same way `StepExporter` does (`isExcludedFromRelationshipRefs` /
+   * `step-exporter.ts:1181`,`:1486`) — `collectReferencedEntityIds` already
+   * refuses to WALK INTO a relationship whose sole subject is hidden (#2548),
+   * but that only keeps the closure from growing past it; a root's own bytes
+   * are still copied to the output verbatim unless something narrows them
+   * too, which is the #2398 dangling-`#N` shape.
    */
   private computeIncludedEntityIds(
     model: MergeModelInput,
     options: MergeExportOptions,
     completeIndex: CompleteEntityIndex,
     source: IfcSourceBytes,
-  ): Set<number> | null {
+  ): { included: Set<number>; hiddenProductIds: ReadonlySet<number> } | null {
     if (!options.visibleOnly) return null;
     const hiddenIds = options.hiddenEntityIdsByModel?.get(model.id) ?? new Set<number>();
     const isolatedIds = options.isolatedEntityIdsByModel?.get(model.id) ?? null;
@@ -986,7 +1006,7 @@ export class MergedExporter {
       byId: completeIndex,
       byType: model.dataStore.entityIndex.byType,
     });
-    return included;
+    return { included, hiddenProductIds };
   }
 
   /**
@@ -1090,7 +1110,9 @@ export class MergedExporter {
    * Render one source entity into its final STEP line: apply id offset + shared
    * remaps, re-stamp a federated GlobalId if needed, apply schema conversion,
    * and register the emitted GlobalId so later models can reconcile against it.
-   * Returns `null` when schema conversion drops the entity.
+   * Returns `null` when schema conversion drops the entity, OR when
+   * `hiddenProductIds` withholds a relationship whose every named subject was
+   * hidden (below).
    */
   private renderEntity(
     localId: number,
@@ -1102,8 +1124,28 @@ export class MergedExporter {
     targetSchema: IfcSchemaVersion,
     guidToFinalId: Map<string, GuidRecord>,
     mode: ModelMode,
+    hiddenProductIds: ReadonlySet<number> | null,
+    completeIndex: CompleteEntityIndex,
   ): string | null {
-    const entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+    let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
+
+    // A `visibleOnly` export must narrow — or entirely withhold — a
+    // relationship's own OUTPUT line the same way `StepExporter` does
+    // (`isExcludedFromRelationshipRefs`, `step-exporter.ts:1181`/`:1486`).
+    // `collectReferencedEntityIds` already refuses to WALK INTO a relationship
+    // whose sole subject is hidden (#2548), but a root's own bytes are still
+    // copied to the output verbatim unless narrowed here too — without this,
+    // a hidden id survived as a dangling `#N` with no `#N=` line (the #2398
+    // shape), which is exactly what closing the #2548 closure leak would
+    // otherwise have traded it for. Runs in LOCAL id space, before the remap
+    // below, because `hiddenProductIds` and `completeIndex` are both local to
+    // this model.
+    if (hiddenProductIds !== null && isRelationshipType(entityRef.type.toUpperCase())) {
+      const isExcluded = (id: number): boolean => hiddenProductIds.has(id) || !completeIndex.has(id);
+      const filtered = filterHiddenRefsFromRelationshipLine(entityText, isExcluded);
+      if (filtered === null) return null;
+      entityText = filtered;
+    }
 
     // Remap ids. Fast path: the first model (offset 0, no remaps) is byte-identical.
     let finalText: string;

@@ -29,6 +29,87 @@ describe('hexToRgba', () => {
     expect(b).toBeCloseTo(0.208, 2);
     expect(a).toBe(0.3);
   });
+
+  // `hexToRgba` is a published function: the SDK's `bim.viewer.colorize()`
+  // passes a caller-supplied `color: string` straight through, and the
+  // viewer's lens-import path (JSON, no schema validation) can carry any
+  // string in `rule.color`. Neither source is guaranteed to be the 6-digit
+  // form a native `<input type="color">` always emits.
+  it('expands 3-digit CSS shorthand hex instead of leaving the blue channel NaN', () => {
+    const [r, g, b, a] = hexToRgba('#fff', 1);
+    expect(r).toBeCloseTo(1);
+    expect(g).toBeCloseTo(1);
+    expect(b).toBeCloseTo(1);
+    expect(a).toBe(1);
+  });
+
+  it('expands a non-uniform 3-digit shorthand to the doubled-digit 6-digit equivalent', () => {
+    // #e53 -> #ee5533, not the truncated/garbled value produced by naively
+    // slicing a too-short string.
+    const [r, g, b] = hexToRgba('#e53', 1);
+    expect(r).toBeCloseTo(0xee / 255, 3);
+    expect(g).toBeCloseTo(0x55 / 255, 3);
+    expect(b).toBeCloseTo(0x33 / 255, 3);
+  });
+
+  it('falls back to black instead of NaN for malformed hex (empty, non-hex, wrong length)', () => {
+    for (const bad of ['', 'red', '#12', '#1234567']) {
+      const [r, g, b] = hexToRgba(bad, 1);
+      expect(Number.isNaN(r)).toBe(false);
+      expect(Number.isNaN(g)).toBe(false);
+      expect(Number.isNaN(b)).toBe(false);
+    }
+  });
+
+  // `parseInt('d', 16)` is 13 — a naive per-channel parseInt with no length
+  // check turns 'red' (not a color) into a non-zero green/blue channel
+  // instead of the fully-black fallback every other malformed input gets.
+  it('does not let parseInt salvage a non-hex string into a plausible color', () => {
+    const [r, g, b, a] = hexToRgba('red', 1);
+    expect(r).toBe(0);
+    expect(g).toBe(0);
+    expect(b).toBe(0);
+    expect(a).toBe(1);
+  });
+
+  // '#1234567' is 7 digits — one channel's worth of parseable hex beyond the
+  // 6-digit form. A naive per-channel parseInt silently reads the first six
+  // digits and drops the seventh, instead of recognizing the whole string is
+  // the wrong length and falling back like other malformed input does.
+  it('rejects an over-long hex string instead of silently truncating it', () => {
+    const [r, g, b, a] = hexToRgba('#1234567', 1);
+    expect(r).toBe(0);
+    expect(g).toBe(0);
+    expect(b).toBe(0);
+    expect(a).toBe(1);
+  });
+
+  // `#RRGGBBAA` is a valid CSS hex form and worked on `main` (the old
+  // per-channel `substring` read R/G/B and simply ignored the trailing
+  // alpha digits, since `alpha` is supplied separately). The strict
+  // exactly-six-digit check would otherwise regress it to black.
+  it('reads R/G/B from an 8-digit #RRGGBBAA string and ignores the trailing alpha digits', () => {
+    const [r, g, b, a] = hexToRgba('#11223344', 0.7);
+    expect(r).toBeCloseTo(0x11 / 255, 3);
+    expect(g).toBeCloseTo(0x22 / 255, 3);
+    expect(b).toBeCloseTo(0x33 / 255, 3);
+    expect(a).toBe(0.7); // alpha argument wins, not the AA digits
+  });
+
+  // Hand-edited or imported lens JSON realistically carries stray leading/
+  // trailing whitespace around a hex value. On `main`, `parseInt` over the
+  // fixed-offset substrings silently ignored it and still parsed correctly;
+  // the strict post-shorthand length check would otherwise regress that to
+  // an opaque-black fallback.
+  it('tolerates surrounding whitespace instead of falling back to black', () => {
+    for (const padded of ['#E53935 ', ' #E53935', '#E53935\n', '\t#E53935\t']) {
+      const [r, g, b, a] = hexToRgba(padded, 1);
+      expect(r).toBeCloseTo(0xe5 / 255, 2);
+      expect(g).toBeCloseTo(0x39 / 255, 2);
+      expect(b).toBeCloseTo(0x35 / 255, 2);
+      expect(a).toBe(1);
+    }
+  });
 });
 
 describe('rgbaToHex', () => {

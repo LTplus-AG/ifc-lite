@@ -22,6 +22,17 @@ on:
     types:
       - published
   workflow_dispatch:
+    inputs:
+      upload-to-tag:
+        # Backfill lever: a plain dispatch only produces 1-day artifacts, so
+        # before this input existed a release missing an archive (issue
+        # #2619, v1.16.6 shipped without the win32-x64 zip) could not be
+        # repaired self-service. Supplying an existing v* tag uploads the
+        # rebuilt archives to that release and re-verifies its assets.
+        description: 'Existing release tag (e.g. v1.16.6) to upload the built archives to; leave empty for artifacts only'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -64,7 +75,22 @@ jobs:
 
       - name: Setup Rust
         # Pin to a master-branch SHA + explicit `toolchain: stable`;
-        # see docs.yml note for rationale.
+        # see docs.yml note for rationale on the pinning strategy.
+        #
+        # `toolchain: stable` here names what gets INSTALLED (and what
+        # `targets:` below adds the target std for) — it is NOT what actually
+        # compiles this crate. The repo's `rust-toolchain.toml` pins nightly,
+        # and rustup's per-directory toolchain file always wins over
+        # `rustup default` (which is all this action sets); every `cargo`
+        # invocation below runs on the pinned nightly regardless of this
+        # `stable` input. Confirmed locally: `rustup default stable` followed
+        # by `rustc --version` inside a checkout of this repo still reports
+        # the nightly pinned in rust-toolchain.toml, with rustup noting the
+        # override. See the CARGO_UNSTABLE_BUILD_STD env var on the "Build
+        # Server Binary" step below for the consequence: the aarch64/cross-arch
+        # target std was only ever installed for `stable`, never for the
+        # nightly that actually runs, so those targets need std rebuilt from
+        # source instead of relying on a prebuilt one that was never fetched.
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
         with:
           toolchain: stable
@@ -95,7 +121,25 @@ jobs:
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
-            cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            # See the "Setup Rust" step above: this actually runs on the
+            # nightly pinned by rust-toolchain.toml, not the `stable` named
+            # there, so cross-arch legs (linux-arm64, darwin-x64 on the
+            # arm64 macos-14 runner) need their target's std rebuilt from
+            # source — it was never installed for nightly. Was previously
+            # papered over by a global `[unstable] build-std` in
+            # .cargo/config.toml (removed — see scripts/build-wasm.sh);
+            # scoped here instead. It rebuilds std from source on every
+            # non-`cross` leg, including the host-matching ones
+            # (linux-x64, darwin-arm64, win32-x64) — build-std doesn't
+            # check for a prebuilt std first, so it's redundant there, not
+            # a no-op. That matches what `main`'s global build-std already
+            # did for all of them; narrowing it to just the cross-arch legs
+            # is deliberate follow-up work, not done here. Deliberately NOT
+            # set for the `cross build` branch above: that runs inside
+            # `cross`'s own Docker image with its own toolchain setup,
+            # wasn't reported broken, and forwarding host env vars into
+            # that container isn't verified here.
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -153,12 +197,39 @@ jobs:
       - name: Checkout Repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The build ref and the workflow ref deliberately differ on a
+          # manual backfill. A dispatch runs the workflow DEFINITION from the
+          # dispatch ref (normally the default branch, which is the only ref
+          # that has the `upload-to-tag` input), but the SOURCE being built
+          # must be the tag under repair: the install-time resolver in
+          # packages/server-bin picks its release by the installed package
+          # version, so an archive built from any other revision would ship
+          # different code under that old version number. Do not "simplify"
+          # this to the default checkout. On a `release` event
+          # `inputs.upload-to-tag` is empty, so this falls back to
+          # `github.ref` (the release tag), identical to the default.
+          ref: ${{ inputs.upload-to-tag || github.ref }}
           lfs: false
           persist-credentials: false
 
       - name: Setup Rust
         # Pin to a master-branch SHA + explicit `toolchain: stable`;
-        # see docs.yml note for rationale.
+        # see docs.yml note for rationale on the pinning strategy.
+        #
+        # `toolchain: stable` here names what gets INSTALLED (and what
+        # `targets:` below adds the target std for) — it is NOT what actually
+        # compiles this crate. The repo's `rust-toolchain.toml` pins nightly,
+        # and rustup's per-directory toolchain file always wins over
+        # `rustup default` (which is all this action sets); every `cargo`
+        # invocation below runs on the pinned nightly regardless of this
+        # `stable` input. Confirmed locally: `rustup default stable` followed
+        # by `rustc --version` inside a checkout of this repo still reports
+        # the nightly pinned in rust-toolchain.toml, with rustup noting the
+        # override. See the CARGO_UNSTABLE_BUILD_STD env var on the "Build
+        # Server Binary" step below for the consequence: the aarch64/cross-arch
+        # target std was only ever installed for `stable`, never for the
+        # nightly that actually runs, so those targets need std rebuilt from
+        # source instead of relying on a prebuilt one that was never fetched.
         uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
         with:
           toolchain: stable
@@ -189,7 +260,25 @@ jobs:
           if [ "${{ matrix.target }}" = "linux-x64-musl" ]; then
             cross build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           else
-            cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
+            # See the "Setup Rust" step above: this actually runs on the
+            # nightly pinned by rust-toolchain.toml, not the `stable` named
+            # there, so cross-arch legs (linux-arm64, darwin-x64 on the
+            # arm64 macos-14 runner) need their target's std rebuilt from
+            # source — it was never installed for nightly. Was previously
+            # papered over by a global `[unstable] build-std` in
+            # .cargo/config.toml (removed — see scripts/build-wasm.sh);
+            # scoped here instead. It rebuilds std from source on every
+            # non-`cross` leg, including the host-matching ones
+            # (linux-x64, darwin-arm64, win32-x64) — build-std doesn't
+            # check for a prebuilt std first, so it's redundant there, not
+            # a no-op. That matches what `main`'s global build-std already
+            # did for all of them; narrowing it to just the cross-arch legs
+            # is deliberate follow-up work, not done here. Deliberately NOT
+            # set for the `cross build` branch above: that runs inside
+            # `cross`'s own Docker image with its own toolchain setup,
+            # wasn't reported broken, and forwarding host env vars into
+            # that container isn't verified here.
+            CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build --release --package ifc-lite-server --target ${{ matrix.rust-target }}
           fi
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -220,27 +309,207 @@ jobs:
         run: |
           Compress-Archive -Path "dist/ifc-lite-server.exe" -DestinationPath "ifc-lite-server-${{ matrix.target }}.zip"
 
+      - name: Create Checksum Sidecar
+        # The sidecar must hash the SAME bytes that get uploaded, so it is
+        # computed here, right after the archive is written, on the leg's own
+        # runner - never from a later rebuild. Forced to bash on all three
+        # OSes for the same reason as the build step above. sha256sum does
+        # not exist on the macOS runners (shasum is the macOS spelling), so
+        # probe for either and fail hard when neither exists: an archive
+        # published without its sidecar would defeat the fail-closed
+        # install-time verification in packages/server-bin/src/checksum.ts.
+        shell: bash
+        run: |
+          # Deliberately NOT named `asset`: that binding lives in the upload
+          # step below, where the parity gate pins it, and a second variable
+          # of the same name in another step invites edits to the wrong one.
+          # A drift between this name and the upload step's fails loudly at
+          # upload time (file not found), never silently.
+          built="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256_tool="sha256sum"
+          elif command -v shasum >/dev/null 2>&1; then
+            sha256_tool="shasum -a 256"
+          else
+            echo "ERROR: neither sha256sum nor shasum exists on this runner; refusing to build an unverifiable archive" >&2
+            exit 1
+          fi
+          # The backfill branch of the upload step below hashes published
+          # bytes with the same tool; export the probed spelling once.
+          echo "SHA256_TOOL=$sha256_tool" >> "$GITHUB_ENV"
+          $sha256_tool "$built" > "$built.sha256"
+          # Self-check before anything can reach a release: exactly the
+          # "<64-hex>  <archive>" line the install-time parser accepts.
+          grep -Eq "^[0-9a-f]{64} [ *]?$built\$" "$built.sha256"
+          cat "$built.sha256"
+
       - name: Upload Build Artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ifc-lite-server-${{ matrix.target }}
-          path: ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
+          path: |
+            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}
+            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}.sha256
           if-no-files-found: error
-          # Ad-hoc rebuild artifacts only — keep them briefly so they
+          # Ad-hoc rebuild artifacts only - keep them briefly so they
           # don't accumulate against Actions storage.
           retention-days: 1
 
       - name: Upload to GitHub Release
-        if: github.event_name == 'release'
-        # Force bash so the backslash line-continuation parses on Windows
-        # runners too (default shell there is PowerShell, which reads the
-        # bare `--clobber` continuation as the unary decrement operator →
-        # win32-x64 release upload failed with a ParserError).
+        # Also runs on a manual dispatch that names an existing tag, so a
+        # release with a missing archive can be backfilled (issue #2619).
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
+        # Force bash so multi-line scripts parse on Windows runners too
+        # (default shell there is PowerShell, which once read a bare
+        # `--clobber` line-continuation as the unary decrement operator and
+        # failed the win32-x64 release upload with a ParserError).
         shell: bash
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }} \
-            --clobber
+          asset="ifc-lite-server-${{ matrix.target }}.${{ matrix.archive }}"
+          sidecar="$asset.sha256"
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            # Fresh release: assets are being created for the first time, so
+            # --clobber is the correct idempotent choice for job re-runs. The
+            # sidecar is listed first so no upload ordering exists where the
+            # archive is downloadable while its checksum is not.
+            gh release upload "$RELEASE_TAG" "$sidecar" "$asset" --clobber
+          else
+            # Manual backfill of an existing release: every matrix leg runs,
+            # including platforms whose assets are already healthy, and
+            # `gh release upload --clobber` DELETES the existing asset before
+            # uploading ("If the upload fails, the original assets will be
+            # lost"). A transient failure would then destroy a working
+            # archive for a platform that was never broken. So only upload
+            # what is actually missing, and never clobber a healthy archive.
+            existing="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+            have() { printf '%s\n' "$existing" | grep -qxF "$1"; }
+            if have "$asset"; then
+              echo "$asset already exists on $RELEASE_TAG; leaving the healthy asset untouched"
+              if have "$sidecar"; then
+                echo "$sidecar already exists on $RELEASE_TAG; leaving it untouched"
+              else
+                # The sidecar must hash the bytes installs actually download,
+                # which are the PUBLISHED archive's: a fresh rebuild is byte-
+                # different (archive timestamps at minimum), so hashing this
+                # job's rebuild would make every install of the platform fail
+                # closed. Hashing the published bytes pins them against future
+                # tampering or corruption; it cannot retroactively prove where
+                # they came from, which is the honest limit of a backfilled
+                # checksum.
+                mkdir -p published
+                gh release download "$RELEASE_TAG" --pattern "$asset" --dir published
+                # Probe the published archive before certifying it: a corrupt
+                # or truncated upload must not receive a valid sidecar, or the
+                # fail-closed install check would bless exactly the bytes it
+                # exists to reject. A listing probe catches corruption only,
+                # NOT tampering - a deliberately altered but well-formed
+                # archive still gets certified (see the limit above). Each
+                # matrix leg backfills its own archive type on its own runner:
+                # tar ships with ubuntu and macos; the win32 leg runs bash on
+                # windows-latest, where unzip may be absent but 7z is on PATH.
+                # No probe tool at all is a hard error, never a skip.
+                case "$asset" in
+                  *.zip)
+                    if command -v unzip >/dev/null 2>&1; then
+                      unzip -t "published/$asset" >/dev/null
+                    elif command -v 7z >/dev/null 2>&1; then
+                      7z t "published/$asset" >/dev/null
+                    else
+                      echo "ERROR: neither unzip nor 7z exists on this runner; refusing to certify an unprobed zip" >&2
+                      exit 1
+                    fi
+                    ;;
+                  *.tar.gz)
+                    tar -tzf "published/$asset" >/dev/null
+                    ;;
+                  *)
+                    echo "ERROR: no integrity probe for $asset; refusing to certify unprobed bytes" >&2
+                    exit 1
+                    ;;
+                esac
+                if [ -z "${SHA256_TOOL:-}" ]; then
+                  echo "ERROR: SHA256_TOOL is unset; refusing to backfill a sidecar without a checksum tool" >&2
+                  exit 1
+                fi
+                (cd published && $SHA256_TOOL "$asset" > "../$sidecar")
+                # Same self-check the build path applies before anything can
+                # reach a release: exactly the "<64-hex>  <archive>" line the
+                # install-time parser accepts. A backfilled sidecar is what
+                # fail-closed installs will trust, so it must be validated on
+                # this path too, not only on the build path.
+                grep -Eq "^[0-9a-f]{64} [ *]?$asset\$" "$sidecar"
+                cat "$sidecar"
+                gh release upload "$RELEASE_TAG" "$sidecar"
+              fi
+            else
+              # The archive is missing, so any sidecar left on the release
+              # hashes bytes that no longer exist; --clobber replaces that
+              # stale sidecar (and is a no-op for the missing archive itself).
+              gh release upload "$RELEASE_TAG" "$sidecar" "$asset" --clobber
+            fi
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The tag must reach bash as DATA, never as source: `${{ }}` expands
+          # before bash parses the script, so inlining it would let a tag name
+          # or `upload-to-tag` input containing shell metacharacters (git
+          # refnames allow $, (, ), ; and friends) execute in a job holding a
+          # contents:write token. The matrix.* values inlined above are
+          # literals defined in this file, so they are not injectable.
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}
+
+  # Verify the release actually carries one archive per supported platform.
+  # The upload matrix above can partially fail, and a missing archive makes
+  # every install on that platform 404 at postinstall (issue #2619).
+  verify-release-assets:
+    name: Verify release assets
+    needs: release-server-binaries
+    # `always()` is the load-bearing part. A failed `needs:` skips the
+    # dependent whatever the condition says, so without it the job that
+    # exists to name a missing archive could not run on the case it exists
+    # for: a matrix leg that failed or was cancelled. That is exactly how
+    # v1.16.6 shipped without the win32-x64 zip and nothing said so.
+    #
+    # Runs on version-tagged releases, and on a manual dispatch that names
+    # a tag to backfill - the same two paths that upload assets.
+    if: |
+      always()
+      && (
+        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+        || (github.event_name == 'workflow_dispatch' && inputs.upload-to-tag != '')
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Verify release carries every supported platform archive
+        # Also verifies one .sha256 sidecar per archive when the tag's own
+        # workflow publishes them (the checker inspects the tag's
+        # server-binaries.yml, so pre-sidecar releases stay verifiable
+        # without demanding assets they never claimed to ship).
+        # The script reads the expected archive set from the TAG'S OWN
+        # platform.ts (git show), not from this checkout: on a manual
+        # backfill the checkout is the workflow ref (main), whose
+        # SUPPORTED_TARGETS may have drifted since the tag - main's set
+        # would demand archives the old release never claimed to ship, a
+        # false red on exactly the repair path this job exists for. The
+        # checker code itself still runs from the workflow ref. A `release`
+        # event checkout already carries the tag ref, a backfill checkout
+        # does not, so fetch it explicitly (anonymous fetch works: the repo
+        # is public and persist-credentials is off); if the ref is absent
+        # the script fails closed rather than falling back to today's set.
+        run: |
+          git fetch --depth=1 origin "+refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          node scripts/check-server-bin-targets.mjs --release "$RELEASE_TAG"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Same hardening as the upload step: the tag reaches bash as data
+          # through env, never spliced into the script source via ${{ }}.
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.upload-to-tag }}

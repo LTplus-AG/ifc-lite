@@ -395,6 +395,31 @@ export class StepExporter {
     // `collectReferencedEntityIds` used, rather than a second, possibly
     // divergent notion of "hidden" (#2398).
     let hiddenProductIds: ReadonlySet<number> | null = null;
+    // A relationship can name an excluded entity two ways that have nothing
+    // to do with each other: a `visibleOnly` hidden PRODUCT (`hiddenProductIds`,
+    // below), and a TOMBSTONED one — `editor.removeEntity` on a related object
+    // named by a relationship the deletion sweep below does not reach (that
+    // sweep only withholds an `IfcRelDefinesByProperties` when EVERY related
+    // object is gone, and only for that one relationship class). Left alone, a
+    // relationship still naming a deleted entity ships the identical `#N` with
+    // no `#N=` line, on a path with no `visibleOnly` involved at all (#2398).
+    // `effective.isDeleted` answers for every id, not just a precomputed set,
+    // so this predicate covers both sources without a second exclusion set.
+    //
+    // Declared here, ahead of the closure walk below, and passed into
+    // `collectReferencedEntityIds` as its `isRefExcluded` — the walk's bridge
+    // decision (whether an `IFCREL*` root may reach what it names) and the
+    // OUTPUT-line filtering further down now read the SAME predicate, rather
+    // than the walk inventing its own `!entityIndex.has` proxy for "deleted"
+    // that could disagree with this one on an id that never existed in the
+    // file at all (maintainer-found regression on #2637: such an id blocked
+    // the bridge but did not stop the relationship's own line from shipping,
+    // dropping a VISIBLE sibling's pset while adding a fresh dangling ref).
+    // A closure over the `let hiddenProductIds` above, not a value snapshot —
+    // correct because nothing reads it before `hiddenProductIds` is assigned
+    // just below.
+    const isExcludedFromRelationshipRefs = (id: number): boolean =>
+      (hiddenProductIds !== null && hiddenProductIds.has(id)) || effective.isDeleted(id);
     if (options.visibleOnly && this.dataStore.source) {
       const visible = getVisibleEntityIds(
         this.dataStore,
@@ -408,6 +433,7 @@ export class StepExporter {
         this.dataStore.source,
         effective,
         visible.hiddenProductIds,
+        isExcludedFromRelationshipRefs,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
       // geometry. Styled items reference geometry items but nothing references
@@ -418,23 +444,11 @@ export class StepExporter {
         { byId: effective, byType: effective.byType },
       );
     }
-    // A relationship can name an excluded entity two ways that have nothing
-    // to do with each other: a `visibleOnly` hidden PRODUCT (`hiddenProductIds`,
-    // above), and a TOMBSTONED one — `editor.removeEntity` on a related object
-    // named by a relationship the deletion sweep below does not reach (that
-    // sweep only withholds an `IfcRelDefinesByProperties` when EVERY related
-    // object is gone, and only for that one relationship class). Left alone, a
-    // relationship still naming a deleted entity ships the identical `#N` with
-    // no `#N=` line, on a path with no `visibleOnly` involved at all (#2398).
-    // `effective.isDeleted` answers for every id, not just a precomputed set,
-    // so this predicate covers both sources without a second exclusion set.
     // `overlayActive` proper (used everywhere else) is declared further below,
     // ahead of the mutation-processing block it gates; duplicated here as the
     // same expression rather than reordering that declaration.
     const mayNameExcludedRefs = (hiddenProductIds !== null && hiddenProductIds.size > 0)
       || (!!this.mutationView && options.applyMutations !== false);
-    const isExcludedFromRelationshipRefs = (id: number): boolean =>
-      (hiddenProductIds !== null && hiddenProductIds.has(id)) || effective.isDeleted(id);
 
     // Will THIS entity's own line ever land in the file? The same byte-range
     // test `willBeEmitted` uses (defined further below) and the source-

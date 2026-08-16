@@ -108,18 +108,31 @@ describe('verifyArchiveChecksum - mismatching digest fails closed', () => {
   });
 });
 
-describe('verifyArchiveChecksum - missing checksum fails open', () => {
-  it('warns and proceeds when neither the sidecar nor SHA256SUMS exists', async () => {
+describe('verifyArchiveChecksum - missing checksum fails closed (PR #2650)', () => {
+  // The fail-open branch this replaces was the ONLY branch that ever ran in
+  // production: no workflow published a sidecar, so every install executed an
+  // unverified binary while the code read as though a check existed. Failing
+  // closed is safe because a package version only downloads the release of
+  // its own version, and every release cut at or after the version shipping
+  // this code publishes one sidecar per archive.
+  it('throws when neither the sidecar nor SHA256SUMS exists', async () => {
     serve({});
-    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).resolves.toBeUndefined();
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no SHA-256 checksum published'));
-    expect(existsSync(archivePath)).toBe(true);
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
   });
 
-  it('names the archive in the fail-open warning', async () => {
+  it('deletes the archive so the unverified download can never be extracted or executed', async () => {
     serve({});
-    await verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(ARCHIVE_NAME));
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow();
+    expect(existsSync(archivePath)).toBe(false);
+  });
+
+  it('names the archive and the sidecar it expected in the error', async () => {
+    serve({});
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      new RegExp(`${ARCHIVE_NAME.replace(/\./g, '\\.')}\\.sha256`)
+    );
   });
 });
 
@@ -164,9 +177,10 @@ describe('verifyArchiveChecksum - checksum source resolution', () => {
     const other = 'c'.repeat(64);
     serve({ [SUMS_URL]: `${other}  ifc-lite-server-darwin-arm64.tar.gz` });
     // The first line parses cleanly but names a different asset, so no checksum
-    // applies to ours: fail open, never silently adopt another asset's digest.
-    await verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no SHA-256 checksum published'));
+    // applies to ours: fail closed, never silently adopt another asset's digest.
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
   });
 
   it('accepts a path-qualified name ending in the archive name', async () => {
@@ -176,14 +190,16 @@ describe('verifyArchiveChecksum - checksum source resolution', () => {
 
   it('rejects a name that merely ends with the archive name without a path separator', async () => {
     serve({ [SUMS_URL]: `${DIGEST}  evil-${ARCHIVE_NAME}` });
-    await verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no SHA-256 checksum published'));
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
   });
 
-  it('ignores lines whose digest is not exactly 64 hex chars', async () => {
+  it('ignores lines whose digest is not exactly 64 hex chars and fails closed', async () => {
     serve({ [SUMS_URL]: `${DIGEST.slice(0, 63)}  ${ARCHIVE_NAME}\n${DIGEST}xy  ${ARCHIVE_NAME}` });
-    await verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME);
-    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('no SHA-256 checksum published'));
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
   });
 
   it('ignores blank lines and comment noise before the real entry', async () => {
@@ -193,7 +209,12 @@ describe('verifyArchiveChecksum - checksum source resolution', () => {
 
   it('does not fetch a third url after SHA256SUMS misses', async () => {
     serve({});
-    await verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME);
+    // Assert the missing-checksum reason, not merely that something threw:
+    // a bare rejects.toThrow() would also pass if a fetch bug threw a
+    // TypeError, hiding the fact that the fail-closed path never ran.
+    await expect(verifyArchiveChecksum(archivePath, ASSET_URL, ARCHIVE_NAME)).rejects.toThrow(
+      /No SHA-256 checksum is available/
+    );
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

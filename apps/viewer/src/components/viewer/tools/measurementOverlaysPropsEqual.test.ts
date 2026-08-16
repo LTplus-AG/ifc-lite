@@ -163,4 +163,63 @@ describe('measurementOverlaysPropsEqual', () => {
 
     assert.equal(measurementOverlaysPropsEqual(a, b), true);
   });
+
+  // FINISHED polylines (#2199). These vertices are NOT immutable: the slice's
+  // `updateMeasurementScreenCoords` reprojects them on every camera move, the
+  // same as drag measurements. The comparator used to compare them by id only,
+  // which made the memo report "equal" after a reprojection and left a finished
+  // polyline pinned to its click-time pixels while the model orbited under it.
+  //
+  // The state that reaches the bug is polyline-ONLY: no `measurements`, no
+  // `activeMeasurement`, no `activePolyline`. With any of those present the
+  // earlier clauses invalidate the memo first and mask the defect, so every
+  // case here deliberately leaves them empty.
+  function polyline(id: string, points: ReturnType<typeof pt>[]) {
+    return props({
+      polylineMeasurements: [{ id, points, totalLength: 1 }] as unknown as Props['polylineMeasurements'],
+    });
+  }
+
+  it('re-renders when a FINISHED polyline is reprojected (screen coords move, world does not)', () => {
+    // Exactly what an orbit does: same world points, new projected pixels.
+    const a = polyline('p1', [pt(0, 0, 0, 10, 10), pt(1, 0, 0, 20, 20)]);
+    const b = polyline('p1', [pt(0, 0, 0, 55, 77), pt(1, 0, 0, 88, 99)]);
+
+    assert.equal(
+      measurementOverlaysPropsEqual(a, b),
+      false,
+      'an id-only compare freezes finished polylines at their click-time screen position',
+    );
+  });
+
+  // Per-axis for the same reason as the measurement clauses above: one combined
+  // case would let a mutation that neuters a single axis survive.
+  for (const [axis, moved] of [
+    ['x', pt(9, 0, 0)],
+    ['y', pt(0, 9, 0)],
+    ['z', pt(0, 0, 9)],
+  ] as const) {
+    it(`re-renders when a finished polyline's point moves in world ${axis} at the same screen position`, () => {
+      const a = polyline('p1', [pt(0, 0, 0), pt(1, 1, 1)]);
+      const b = polyline('p1', [pt(0, 0, 0), moved]);
+
+      assert.equal(measurementOverlaysPropsEqual(a, b), false);
+    });
+  }
+
+  it('re-renders when a finished polyline gains a vertex', () => {
+    const a = polyline('p1', [pt(0, 0, 0), pt(1, 1, 1)]);
+    const b = polyline('p1', [pt(0, 0, 0), pt(1, 1, 1), pt(2, 2, 2)]);
+
+    assert.equal(measurementOverlaysPropsEqual(a, b), false);
+  });
+
+  it('still skips the re-render when finished polylines are identical', () => {
+    // Negative control. Without it the assertions above would also pass if the
+    // comparator had simply stopped discriminating and always re-rendered.
+    const a = polyline('p1', [pt(0, 0, 0, 10, 10), pt(1, 1, 1, 20, 20)]);
+    const b = polyline('p1', [pt(0, 0, 0, 10, 10), pt(1, 1, 1, 20, 20)]);
+
+    assert.equal(measurementOverlaysPropsEqual(a, b), true);
+  });
 });

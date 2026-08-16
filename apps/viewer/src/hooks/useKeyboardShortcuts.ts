@@ -58,6 +58,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   const cancelMeasurement = useViewerStore((s) => s.cancelMeasurement);
   const clearMeasurements = useViewerStore((s) => s.clearMeasurements);
   const toggleSnap = useViewerStore((s) => s.toggleSnap);
+  // Polyline (multi-click) mode (#2199).
+  const activePolyline = useViewerStore((s) => s.activePolyline);
+  const cancelPolyline = useViewerStore((s) => s.cancelPolyline);
+  const finishPolyline = useViewerStore((s) => s.finishPolyline);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Ignore if typing in an input or textarea
@@ -275,10 +279,44 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
     // Measure tool shortcuts
     if (activeTool === 'measure') {
-      // Cancel active measurement with ESC
+      // Cancel active drag measurement with ESC
       if (key === 'escape' && activeMeasurement) {
         e.preventDefault();
         cancelMeasurement();
+        return;
+      }
+      // Cancel an in-progress polyline sequence with ESC (#2199) — discards
+      // it entirely, same as Escape already does for a drag in progress.
+      // Checked as its own branch (not merged with the one above) because
+      // the two are mutually exclusive: exactly one of activeMeasurement /
+      // activePolyline can be non-null at a time.
+      if (key === 'escape' && activePolyline) {
+        e.preventDefault();
+        cancelPolyline();
+        return;
+      }
+      // Finish an in-progress polyline as OPEN with Enter (#2199) — reports
+      // the sum-of-segments length, not a perimeter. Closing the loop is a
+      // click gesture, not a keyboard one (see handlePolylineClick).
+      //
+      // finishPolyline is a no-op below its point minimum (2 open / 3
+      // closed) — most reachable right after a single click, since Enter
+      // can't fire before startPolyline runs. Its return value says whether
+      // it actually recorded anything; when it didn't, surface a toast
+      // instead of leaving Enter a silent, indistinguishable-from-working
+      // dead keypress. The sequence itself is left in progress (not
+      // cancelled) — same "reject and let the user keep going" choice
+      // `commitAddElementSlabPolygon` above makes for the analogous
+      // too-few-points case.
+      if (key === 'enter' && activePolyline) {
+        e.preventDefault();
+        if (!finishPolyline(false)) {
+          // Lazy import keeps toast out of the keyboard hook's synchronous
+          // bundle, same as the addElement branch above.
+          import('@/components/ui/toast').then(({ toast }) => {
+            toast.error('Polyline needs at least 2 points');
+          });
+        }
         return;
       }
       // Clear all measurements with Ctrl+C or Cmd+C
@@ -357,6 +395,9 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     clearMeasurements,
     toggleSnap,
     toggleEditEnabled,
+    activePolyline,
+    cancelPolyline,
+    finishPolyline,
   ]);
 
   useEffect(() => {
@@ -383,6 +424,7 @@ export const KEYBOARD_SHORTCUTS = [
   { key: 'R / Shift+R', description: 'Rotate selected entity ±15° about Z (requires edit mode)', category: 'Tools' },
   { key: 'S', description: 'Toggle snapping (Measure tool)', category: 'Tools' },
   { key: 'Esc', description: 'Cancel measurement (Measure tool)', category: 'Tools' },
+  { key: 'Enter', description: 'Finish polyline as open length (Measure tool, polyline mode)', category: 'Tools' },
   { key: 'Ctrl+C', description: 'Clear measurements (Measure tool)', category: 'Tools' },
   { key: 'I', description: 'Isolate (set basket from current context)', category: 'Visibility' },
   { key: '=', description: 'Set basket from current context', category: 'Visibility' },

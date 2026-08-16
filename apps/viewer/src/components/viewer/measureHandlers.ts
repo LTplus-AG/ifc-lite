@@ -9,7 +9,7 @@
 
 import type { SnapTarget } from '@ifc-lite/renderer';
 import type { MeasurePoint, SnapVisualization } from '@/store';
-import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3 } from '@/store/types.js';
+import type { MeasurementConstraintEdge, OrthogonalAxis, Vec3, MeasureMode } from '@/store/types.js';
 import type { MouseHandlerContext, Camera } from './mouseHandlerTypes.js';
 import { getEntityCenter } from '../../utils/viewportUtils.js';
 import { projectToCssScreen } from '../../utils/projectScreen.js';
@@ -142,6 +142,22 @@ export function getApproximateWorldPosition(
   _canvasHeight: number,
 ): { x: number; y: number; z: number } {
   return getEntityCenter(geom, entityId) || { x: 0, y: 0, z: 0 };
+}
+
+/**
+ * Whether a mousedown on the Measure tool should start the drag-to-measure
+ * gesture (`handleMeasureDown`/`activeMeasurement`). `false` in two cases:
+ * shift is held (the existing orbit-while-measuring escape hatch), or the
+ * tool is in polyline mode (#2199) — where a click, not a drag, is the only
+ * gesture that places a point (see `handlePolylineClick` in
+ * selectionHandlers.ts). This is the single gate that keeps the two modes'
+ * state machines from ever running at the same time: as long as
+ * `useMouseControls.ts`'s mousedown handler consults this before calling
+ * `handleMeasureDown`, `activeMeasurement` can never become non-null while
+ * `measureMode === 'polyline'`.
+ */
+export function shouldStartDragMeasurement(mode: MeasureMode, shiftKey: boolean): boolean {
+  return mode !== 'polyline' && !shiftKey;
 }
 
 /**
@@ -534,6 +550,138 @@ export function handleMeasureUp(ctx: MouseHandlerContext, e: PointerEvent): bool
   mouseState.didDrag = false;
   canvas.style.cursor = 'crosshair';
   return true;
+}
+
+/**
+ * Result of a raycast taken for the multi-click polyline mode: the resolved
+ * measure point (already projected to screen) plus whatever snap target was
+ * hit, so the caller can drive the snap-indicator visualization the same way
+ * drag mode does.
+ */
+export interface PolylinePickResult {
+  point: MeasurePoint;
+  snapTarget: SnapTarget | null;
+}
+
+/**
+ * Raycast under (x, y) for the polyline mode's click handler. Mirrors
+ * {@link handleMeasureDown}'s magnetic-snap raycast exactly (same snap radius,
+ * same vertex/edge/face options) so a point placed by a click snaps
+ * identically to one placed by a drag — this function only differs in that
+ * it does not touch `mouseState`/edge-lock/store, since a click has no drag
+ * gesture to track. Returns `null` on a miss (background click).
+ *
+ * Deliberately store-free, matching this module's existing contract ("pure
+ * functions that operate on a MouseHandlerContext — no React dependency");
+ * the caller (selectionHandlers.ts, which already reads the store directly
+ * for the analogous addElement click flow) turns this into `startPolyline` /
+ * `addPolylinePoint` / `finishPolyline` calls.
+ */
+export function raycastForPolylinePoint(ctx: MouseHandlerContext, x: number, y: number): PolylinePickResult | null {
+  const { canvas, renderer, camera } = ctx;
+  const currentLock = ctx.edgeLockStateRef.current;
+
+  const result = renderer.raycastSceneMagnetic(x, y, {
+    edge: currentLock.edge,
+    meshExpressId: currentLock.meshExpressId,
+    lockStrength: currentLock.lockStrength,
+  }, {
+    hiddenIds: ctx.hiddenEntitiesRef.current,
+    isolatedIds: ctx.isolatedEntitiesRef.current,
+    snapOptions: ctx.snapEnabledRef.current ? {
+      snapToVertices: true,
+      snapToEdges: true,
+      snapToFaces: true,
+      screenSnapRadius: 60,
+    } : {
+      snapToVertices: false,
+      snapToEdges: false,
+      snapToFaces: false,
+      screenSnapRadius: 0,
+    },
+  });
+
+  if (!result.intersection && !result.snapTarget) return null;
+  const snapPoint = result.snapTarget || result.intersection;
+  const pos = snapPoint ? ('position' in snapPoint ? snapPoint.position : snapPoint.point) : null;
+  if (!pos) return null;
+
+  const screenPos = projectToCssScreen(camera, canvas, pos);
+  return {
+    point: {
+      x: pos.x,
+      y: pos.y,
+      z: pos.z,
+      screenX: screenPos?.x ?? x,
+      screenY: screenPos?.y ?? y,
+    },
+    snapTarget: result.snapTarget || null,
+  };
+}
+
+/** Screen-space distance (CSS px) between two points. Used by both the
+ *  close-loop check and the double-click duplicate-point check below —
+ *  screen space, not world space, so either tolerance feels the same at any
+ *  zoom level, the same reasoning `screenSnapRadius` uses for vertex
+ *  snapping above. */
+function screenDistance(
+  a: { screenX: number; screenY: number },
+  b: { screenX: number; screenY: number },
+): number {
+  return Math.hypot(a.screenX - b.screenX, a.screenY - b.screenY);
+}
+
+/** Screen-space radius (CSS px) within which a click on the polyline's first
+ *  point closes the loop instead of appending a new (near-duplicate) point. */
+export const CLOSE_LOOP_SCREEN_RADIUS_PX = 14;
+
+/**
+ * Whether `candidate` landed close enough to `first` (in screen space) that
+ * the click should close the polyline loop rather than add a new point.
+ */
+export function isNearPolylineStart(
+  candidate: { screenX: number; screenY: number },
+  first: { screenX: number; screenY: number },
+  radiusPx: number = CLOSE_LOOP_SCREEN_RADIUS_PX,
+): boolean {
+  return screenDistance(candidate, first) <= radiusPx;
+}
+
+/**
+ * Screen-space radius (CSS px) below which two consecutive polyline points
+ * are treated as the same physical click, not two deliberate placements.
+ *
+ * Browsers dispatch `click`, `click`, `dblclick` for one physical
+ * double-click gesture — never just `dblclick` (MDN). `handlePolylineClick`
+ * runs on both leading `click`s, so a double-click meant to "place the last
+ * point and finish" appends it twice, a couple px apart (often the exact
+ * same reported coordinate), before the `dblclick` handler's
+ * `finishPolyline` call ever runs.
+ *
+ * Deliberately much smaller than {@link CLOSE_LOOP_SCREEN_RADIUS_PX}: that
+ * radius means "click intentionally near the loop's start", this one means
+ * "these two clicks were actually one gesture" — conflating them would make
+ * a legitimate short segment swallow a real vertex (a 3-4-5 triangle's
+ * shortest edges are 3px/4px in `selectionHandlers.polyline.test.ts`'s
+ * screen-equals-world fixture, so this must stay well under that).
+ */
+export const DUPLICATE_POINT_SCREEN_RADIUS_PX = 2;
+
+/**
+ * Whether `a` and `b` are close enough (screen space) to be the two leading
+ * `click` events of one physical double-click, per
+ * {@link DUPLICATE_POINT_SCREEN_RADIUS_PX}.
+ *
+ * Only meaningful on the double-click finish path. Placed points are
+ * reprojected on every camera move (`updateMeasurementScreenCoords`), so two
+ * genuinely distinct vertices can satisfy this after an orbit — see
+ * `finishPolyline`'s `fromDoubleClick` option in measurementSlice.ts.
+ */
+export function isDuplicateClickPoint(
+  a: { screenX: number; screenY: number },
+  b: { screenX: number; screenY: number },
+): boolean {
+  return screenDistance(a, b) <= DUPLICATE_POINT_SCREEN_RADIUS_PX;
 }
 
 /**

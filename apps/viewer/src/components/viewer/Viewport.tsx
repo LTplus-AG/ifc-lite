@@ -40,6 +40,7 @@ import {
   unionEntityBounds,
   getThemeClearColor,
   accumulateBoundsExcludingTypes,
+  hasPendingMeasurementState,
   type BoundingBox3D,
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
@@ -785,10 +786,7 @@ export function Viewport({
   };
 
   // Helper: check if there are pending measurements
-  const hasPendingMeasurements = () => {
-    const state = useViewerStore.getState();
-    return state.measurements.length > 0 || state.activeMeasurement !== null;
-  };
+  const hasPendingMeasurements = () => hasPendingMeasurementState(useViewerStore.getState());
 
   // ===== Renderer initialization =====
   useEffect(() => {

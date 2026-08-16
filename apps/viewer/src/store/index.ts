@@ -275,6 +275,11 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   resetViewerState: () => {
     invalidateVisibleBasketCache();
     const [set, get] = args;
+    // Measurements (#2641 review): the slice owns the full list of its own
+    // fields to clear on a model switch — see resetAllMeasurementState's doc
+    // comment (measurementSlice.ts) for why this must not be a field list
+    // duplicated here.
+    get().resetAllMeasurementState();
     set({
       // Selection (legacy)
       selectedEntityId: null,
@@ -351,27 +356,6 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
       contextMenu: { isOpen: false, entityId: null, screenX: 0, screenY: 0 },
-
-      // Measurements
-      measurements: [],
-      pendingMeasurePoint: null,
-      activeMeasurement: null,
-      snapTarget: null,
-      // #2199 §5: the relative-coordinate datum is stored in RENDERER space,
-      // so it belongs to the scene it was picked in. `clearMeasurements`
-      // deliberately keeps it (tidying a distance list must not move the
-      // user's setting-out origin), but a new primary file is a new scene —
-      // carried over, it would subtract a point from the outgoing model and
-      // print a plausible, meaningless offset.
-      measureReferencePoint: null,
-      edgeLockState: {
-        edge: null,
-        meshExpressId: null,
-        edgeT: 0,
-        lockStrength: 0,
-        isCorner: false,
-        cornerValence: 0,
-      },
 
       // Section plane: reset axis/position/enabled/flipped (those are
       // model-relative and meaningless when switching files), but PRESERVE

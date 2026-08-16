@@ -35,6 +35,12 @@ export const DALUX_MANIFEST: PluginManifest = {
     // A file-area-level `listFiles` call returns every descendant file,
     // not just the ones directly in the area's root.
     listFilesIsRecursive: true,
+    // Dalux's own UI has no per-folder "load more files" concept — it always
+    // shows a folder's files as one complete set — so incremental paging in
+    // the host would invent UX Dalux itself doesn't have. Keep the eager
+    // sweep for this provider only; see `eagerFileSweep`'s doc comment in
+    // `@ifc-lite/plugin-api` for why new providers should default off.
+    eagerFileSweep: true,
     // No endpoint returns revision history for a file — only "fetch this
     // exact revision's content" if you already have its id.
     revisionHistory: false,

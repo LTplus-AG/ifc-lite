@@ -11,7 +11,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import type { Clash, ClashElementRef, ClashResult } from '@ifc-lite/clash';
+import { summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
 import {
   applyClashExclusions,
   elementPairExclusion,
@@ -43,18 +43,12 @@ function clash(a: ClashElementRef, b: ClashElementRef, rule = 'all-clashes'): Cl
 }
 
 function result(clashes: Clash[]): ClashResult {
-  const byRule: Record<string, number> = {};
-  const byTypePair: Record<string, number> = {};
-  const bySeverity = { critical: 0, major: 0, minor: 0, info: 0 };
-  for (const c of clashes) {
-    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
-    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
-    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
-    bySeverity[c.severity] += 1;
-  }
+  // Production's own tally, not a test-local re-implementation of it: a copy
+  // here would keep this suite green if `summarizeClashes` changed its bucket
+  // key format while the copy did not.
   return {
     clashes,
-    summary: { total: clashes.length, byRule, byTypePair, bySeverity },
+    summary: summarizeClashes(clashes),
     rulesRun: [],
     settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
   };

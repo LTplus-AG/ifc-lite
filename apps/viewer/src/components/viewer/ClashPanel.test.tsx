@@ -25,7 +25,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
-import { groupClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
+import { groupClashes, summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
 import { ClashPanel } from './ClashPanel.js';
 
 function ref(key: string, ref: number): ClashElementRef {
@@ -62,14 +62,19 @@ function bridgeAbutmentResult(): ClashResult {
     beamClash('c7', [100, 0.3, 0]),
     beamClash('c8', [100.1, 0.1, 0.1]),
   ];
+  // Summarize through the REAL tally, not a hand-built object: an earlier
+  // revision pinned `byTypePair: { 'IfcBeam|IfcBeam': 8 }`, a key shape
+  // production never emits (`summarizeClashes` joins with ' vs '), so the
+  // fixture proved nothing about the real key format.
+  const summary = summarizeClashes(clashes);
+  assert.equal(
+    summary.byTypePair['IfcBeam vs IfcBeam'],
+    clashes.length,
+    'fixture sanity: the type-pair bucket must sit under the sorted "<a> vs <b>" key, the format ClashPanel looks buckets up by',
+  );
   return {
     clashes,
-    summary: {
-      total: clashes.length,
-      byRule: { 'all-clashes': clashes.length },
-      byTypePair: { 'IfcBeam|IfcBeam': clashes.length },
-      bySeverity: { critical: 0, major: clashes.length, minor: 0, info: 0 },
-    },
+    summary,
     rulesRun: [{ id: 'all-clashes', name: 'All elements', a: '*', mode: 'hard' }],
     settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
   };

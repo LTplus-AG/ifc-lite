@@ -24,7 +24,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { useViewerStore } from '@/store';
-import type { Clash, ClashElementRef, ClashResult } from '@ifc-lite/clash';
+import { summarizeClashes, type Clash, type ClashElementRef, type ClashResult } from '@ifc-lite/clash';
 import { ClashPanel } from './ClashPanel.js';
 
 Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 600 });
@@ -66,12 +66,9 @@ function roadModelResult(): ClashResult {
   ];
   return {
     clashes,
-    summary: {
-      total: 3,
-      byRule: { 'all-clashes': 3 },
-      byTypePair: { 'IfcCourse vs IfcRail': 2, 'IfcBeam vs IfcBeam': 1 },
-      bySeverity: { critical: 0, major: 3, minor: 0, info: 0 },
-    },
+    // The real tally, so the fixture's bucket keys can never drift from the
+    // format `summarizeClashes` actually emits ('IfcCourse vs IfcRail', ...).
+    summary: summarizeClashes(clashes),
     rulesRun: [{ id: 'all-clashes', name: 'All elements', a: '*', mode: 'hard' }],
     settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
   };
@@ -161,6 +158,12 @@ describe('ClashPanel: user-defined exclusions', () => {
     await expandRow(container, 'Rail 1');
     const excludeType = findButton(container, /Exclude all IfcRail × IfcCourse|Exclude all IfcCourse × IfcRail/);
     assert.ok(excludeType, 'expected an "exclude all <TypeA> × <TypeB>" action on the expanded clash');
+    // The action advertises its reach with a count read out of
+    // `summary.byTypePair` under the sorted `"<a> vs <b>"` key (the panel's
+    // `typePairCount`). This binds that lookup to the key format
+    // `summarizeClashes` emits: if either side changed its join, the count
+    // would silently read 0 and this line goes red.
+    assert.match(excludeType.textContent ?? '', /\(2\)/, 'the type-pair action must show how many clashes it would remove');
     await click(excludeType);
 
     // Both rail-in-ballast overlaps are gone; the real beam clash remains.

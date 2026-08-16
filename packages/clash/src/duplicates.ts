@@ -299,8 +299,17 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
       // asserting a pair. NaN fails every comparison, so bounds carrying NaN
       // pass `boxesTouch` (its own comparisons are false too) and would fall
       // through a `>` rejection and be reported as coincident with elements
-      // hundreds of metres away. The legacy branch below is an acceptance
-      // (`sim < iouThreshold`) and has always abstained here; this matches it.
+      // hundreds of metres away.
+      //
+      // The deprecated `iouThreshold` branch above is NOT a model for this: it
+      // is a rejection (`sim < iouThreshold`), and it happens to abstain on two
+      // NaN boxes only because `similarity` clamps them to 0 rather than
+      // returning NaN. It does not abstain in general — against a degenerate
+      // (zero-volume) element it takes the `aabbApproxEqual` fallback, whose
+      // per-axis comparisons are all false against NaN, so it returns 1 and
+      // reports the pair even at the default 0.9; and at `iouThreshold` 0 the
+      // rejection is false for every pair. That branch is deprecated and
+      // unchanged here; the two gates do not agree on non-finite bounds.
       if (!(dist <= positionTolerance)) return;
       exact = dist <= exactTolerance;
     }
@@ -382,9 +391,28 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     }
   }
 
-  const order = elements.map((_, i) => i).sort(
-    (x, y) => elements[x].bounds.min[axis] - elements[y].bounds.min[axis],
-  );
+  // The sweep key must be a TOTAL order, so it is compared, never subtracted.
+  // `a - b` returns NaN for any pair involving a non-finite minimum — NaN bounds
+  // from a direct SDK caller, and `+Infinity` from `fromPositions` when no vertex
+  // on an axis was finite (it returns the box inverted). A comparator that
+  // answers NaN violates the contract `Array.prototype.sort` requires, and V8's
+  // TimSort then merges runs against that answer and emits an arbitrary
+  // permutation of the WHOLE array: the sweep's eviction sees minima going
+  // backwards, drops boxes that are still live, and real duplicates elsewhere in
+  // the model silently disappear. One unjudgeable element must cost only itself.
+  // Non-finite minima sort last, after every finite one, which is what the gate
+  // already does with them — `consider` abstains on a distance it cannot
+  // compare, so they contribute nothing wherever they sit, and putting them at
+  // the end keeps them out of the active set for the whole finite sweep.
+  const sweepKey = (i: number): number => {
+    const v = elements[i].bounds.min[axis];
+    return Number.isFinite(v) ? v : Number.POSITIVE_INFINITY;
+  };
+  const order = elements.map((_, i) => i).sort((x, y) => {
+    const kx = sweepKey(x);
+    const ky = sweepKey(y);
+    return kx < ky ? -1 : kx > ky ? 1 : 0;
+  });
   // `active` holds indices whose box still extends past the current box's start
   // on `axis`; only those can overlap, so we compare against just them.
   const active: number[] = [];

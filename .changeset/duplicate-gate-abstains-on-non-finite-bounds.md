@@ -6,14 +6,28 @@ Duplicate detection abstains on bounds it cannot compare, and the position
 tolerance is documented as the bound it actually is.
 
 **Non-finite bounds no longer report a pair.** The distance gate was written as
-two rejections (`if (!boxesTouch(...)) return; if (dist > tolerance) return;`)
-where the gate it replaced was an acceptance. Every comparison against `NaN` is
-false, so an element whose `bounds` carry `NaN` fell through both rejections and
-was reported as coincident with elements 100 m and 500 m away — and, not being
-evicted from the sweep either, with every element visited after it. The gate is
-now `if (!(dist <= tolerance)) return;`: an acceptance, so a distance that cannot
-be compared abstains instead of asserting a match. The deprecated `iouThreshold`
-branch on the same call site already abstained here; both now agree.
+two rejections (`if (!boxesTouch(...)) return; if (dist > tolerance) return;`).
+Every comparison against `NaN` is false, so an element whose `bounds` carry `NaN`
+fell through both rejections and was reported as coincident with elements 100 m
+and 500 m away — and, not being evicted from the sweep either, with every element
+visited after it. The gate is now `if (!(dist <= tolerance)) return;`: an
+acceptance, so a distance that cannot be compared abstains instead of asserting a
+match. The deprecated `iouThreshold` branch is left as it is and does **not**
+match: on two solid `NaN` boxes it also reports nothing, but only because
+`similarity` clamps them to 0, and against a degenerate (zero-volume) element it
+takes the `aabbApproxEqual` fallback — whose per-axis comparisons are all false
+against `NaN` — and asserts the pair even at the default 0.9. Both behaviours are
+now pinned by tests so the difference is on record.
+
+**And one non-finite element no longer loses duplicates elsewhere.** The broad
+phase sorted element indices by `bounds.min[axis]` with a subtracting comparator,
+which answers `NaN` for every comparison involving a non-finite minimum. That is
+not a total order, so V8's TimSort returned an arbitrary permutation of the whole
+array; the sweep then saw minima going backwards, evicted boxes that were still
+live, and unrelated true duplicates were silently dropped — measured, 12
+coincident pairs in a 25-element model became 11. The comparator now compares a
+key instead of subtracting, with non-finite minima ordered last. Nothing changes
+for a model whose bounds are all finite.
 
 **And non-finite coordinates no longer become bounds.** `fromPositions`
 (`math/aabb.ts`) excluded `NaN` only as a side effect of `<` and `>` both failing

@@ -7,6 +7,7 @@ import { findDuplicates } from './duplicates.js';
 import { groupClashes } from './grouping.js';
 import { groupDuplicateSets } from './duplicate-sets.js';
 import { makeExclusionSet, qualifiedKey } from './exclude.js';
+import { fromPositions } from './math/aabb.js';
 import type { ClashElement, Vec3 } from './types.js';
 
 let nextRef = 1;
@@ -498,8 +499,15 @@ describe('findDuplicates', () => {
     // `boxesTouch` and must NOT then fall through the distance test: it would be
     // reported as coincident with elements 100 m and 500 m away. A bound that
     // cannot be compared is a bound the pass cannot judge — abstain, never
-    // assert. The legacy IoU branch (`similarity` returns 0 here) has always
-    // abstained; both gates must agree.
+    // assert.
+    //
+    // The deprecated IoU branch is NOT the standard being matched here. On this
+    // fixture it also reports nothing, but only because `similarity` clamps two
+    // solid NaN boxes to 0 — against a DEGENERATE element it takes the
+    // `aabbApproxEqual` fallback, whose per-axis comparisons are all false
+    // against NaN, and asserts the pair at the default 0.9. Pinned below so the
+    // divergence is on record rather than described as agreement; that branch is
+    // deprecated and deliberately left as it is.
     const bad: ClashElement = {
       key: 'BAD', ref: nextRef++, model: 'm', tag: 'IfcWall',
       bounds: { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] },
@@ -513,10 +521,79 @@ describe('findDuplicates', () => {
     const elements = [bad, far('FAR1', 100), far('FAR2', 500)];
     expect(findDuplicates(elements).clashes).toHaveLength(0);
     expect(findDuplicates(elements, { iouThreshold: 0.9 }).clashes).toHaveLength(0);
-    // A NaN bound must not poison its neighbours either: two real coincident
-    // elements in the same run are still reported.
-    const dup = [bad, far('FAR1', 100), far('FAR2', 500), far('FAR2b', 500)];
-    expect(findDuplicates(dup).clashes).toHaveLength(1);
+
+    // The divergence: a zero-volume element (a sheet, a surface-modelled plate)
+    // takes `similarity`'s degenerate fallback, which calls a NaN box "the same
+    // place". The default gate abstains; the deprecated one asserts.
+    const flat: ClashElement = {
+      key: 'FLAT', ref: nextRef++, model: 'm', tag: 'IfcPlate',
+      bounds: { min: [100, 0, 0], max: [101, 0, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    };
+    expect(findDuplicates([bad, flat]).clashes).toHaveLength(0);
+    expect(findDuplicates([bad, flat], { iouThreshold: 0.9 }).clashes).toHaveLength(1);
+  });
+
+  it('does not let one non-finite element lose duplicates elsewhere in the model', () => {
+    // Abstaining on the bad element is only half of it. The broad phase sorts
+    // element indices by `bounds.min[axis]` and the comparator used to subtract
+    // them, so EVERY comparison involving the bad element answered NaN. That
+    // breaks the total order `Array.prototype.sort` requires: V8's TimSort
+    // merges runs against those answers and returns an arbitrary permutation of
+    // the whole array, the sweep then sees minima going backwards, evicts boxes
+    // that are still live, and true duplicates with nothing wrong with them are
+    // never compared. The damage is global, not local to the bad element.
+    //
+    // Two things this fixture must do to be able to observe that, both learned
+    // the hard way from a version of it that could not fail:
+    //   - MORE THAN 22 ELEMENTS. Below 22, V8's TimSort is a plain binary
+    //     insertion sort over a single run, and the broken comparator cannot
+    //     express itself at all — a 4-element fixture passes against it. Past
+    //     22 is necessary, not sufficient; measured against the broken
+    //     comparator this fixture still passes at 23 elements (11 pairs) and
+    //     fails at 25 (12 pairs), which is why `pairs` is 12 and not 11.
+    //   - UNSORTED INPUT. Run detection preserves an already-ascending (or
+    //     already-descending) input almost exactly, bad element included, so a
+    //     tidy fixture also hides it. Elements arrive in file order, which is
+    //     arbitrary; the coprime stride below stands in for that.
+    const pairs = 12;
+    const twin = (key: string, x: number): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [x, 0, 0], max: [x + 1, 1, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    // 12 coincident pairs, each pair 10 m from the next so no pair can touch
+    // another — with a correct sweep exactly 12 duplicates are reported.
+    const laidOut: ClashElement[] = [];
+    for (let i = 0; i < pairs; i += 1) {
+      laidOut.push(twin(`A${i}`, i * 10), twin(`B${i}`, i * 10 + 0.002));
+    }
+    const scatter = (els: ClashElement[]): ClashElement[] =>
+      els.map((_, k) => els[(k * 7) % els.length]);
+    expect(findDuplicates(scatter(laidOut)).clashes).toHaveLength(pairs);
+
+    const withNaN = scatter(laidOut);
+    withNaN.splice(12, 0, {
+      key: 'BAD2', ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    expect(findDuplicates(withNaN).clashes).toHaveLength(pairs);
+
+    // The `fromPositions` guard does not make this unreachable. When no vertex
+    // is finite on an axis it returns the box INVERTED (min `+Infinity`, max
+    // `-Infinity`) so `boxesTouch` rejects it — a sound bound, but still a
+    // non-finite minimum, and `Infinity - Infinity` is NaN too. Two such
+    // elements are enough, and they come through the adapters, not the SDK.
+    const inverted = (key: string): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: fromPositions(new Float32Array([NaN, NaN, NaN, NaN, NaN, NaN])),
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    expect(Number.isFinite(inverted('probe').bounds.min[0])).toBe(false);
+    const withInfinite = scatter(laidOut);
+    withInfinite.splice(12, 0, inverted('INF1'), inverted('INF2'));
+    expect(findDuplicates(withInfinite).clashes).toHaveLength(pairs);
   });
 
   it('marks a nudged same-triangle-count pair minor, and a coincident one major', () => {

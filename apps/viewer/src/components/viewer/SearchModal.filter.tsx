@@ -361,7 +361,10 @@ export function SearchModalFilter() {
    *  `collectFilterResultGlobalIds`), so a multi-model result isolates
    *  correctly across every source model, not just the active one — and a
    *  row whose model was unloaded after the run is skipped rather than
-   *  colliding with another model's id space (#2532 review). */
+   *  colliding with another model's id space (#2532 review). Geometry-less
+   *  assemblies are resolved to their geometry-bearing parts via
+   *  `cameraCallbacks.resolveHighlightIds` (#2531) before isolating, or a
+   *  result made of assemblies would blank the view. */
   const handleIsolateResult = useCallback(() => {
     const result = searchFilterResult;
     if (!result || result.rows.length === 0) return;
@@ -383,17 +386,32 @@ export function SearchModalFilter() {
       return;
     }
 
+    // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+    // container, …) owns no mesh: the renderer resolves `isolatedEntities`
+    // against mesh ids directly, so isolating its bare id blanks the view.
+    // Resolve through the same Viewport channel the Search tab's commit and
+    // frameSelection use (`resolveHighlightIds`, backed by
+    // expandToGeometryBearingIds — #2531): a geometry-bearing id passes
+    // through untouched and deduplicated, a geometry-less one is replaced by
+    // its geometry-bearing aggregated parts. When nothing resolves (renderer
+    // not initialised yet, or no matched row has geometry at all), keep the
+    // raw ids: isolating an empty set would hide the ENTIRE model, which is
+    // strictly worse than the pre-resolution behaviour for that corner.
+    const resolved = cameraCallbacks.resolveHighlightIds?.(globalIds) ?? [];
+    const isolationIds = resolved.length > 0 ? resolved : globalIds;
+
     // isolateEntities is a same-set TOGGLE (visibilitySlice.ts:176-194):
     // pressing "Isolate in 3D" again on the identical result un-isolates
     // rather than re-isolating. Detect that up front so the un-isolate press
     // only clears — it must not also select/frame the id set and close the
-    // modal as if a fresh isolation had just landed (#2532 review).
+    // modal as if a fresh isolation had just landed (#2532 review). Compared
+    // against the RESOLVED ids, which are what the first press stored.
     const alreadyIsolated = isolatedEntities !== null &&
-      isolatedEntities.size === globalIds.length &&
-      globalIds.every((id) => isolatedEntities.has(id));
+      isolatedEntities.size === isolationIds.length &&
+      isolationIds.every((id) => isolatedEntities.has(id));
 
     if (alreadyIsolated) {
-      isolateEntities(globalIds);
+      isolateEntities(isolationIds);
       setSelectedEntityIds([]);
       toast.info('Isolation cleared — showing the full model.');
       setSearchModalOpen(false);
@@ -416,12 +434,12 @@ export function SearchModalFilter() {
     if (matchedTypes.has('IfcOpeningElement') && !typeVisibility.openings) toggleTypeVisibility('openings');
     if (matchedTypes.has('IfcVirtualElement') && !typeVisibility.virtualElements) toggleTypeVisibility('virtualElements');
 
-    isolateEntities(globalIds);
+    isolateEntities(isolationIds);
     // Select the full isolated set (not just one row) so the frame below
     // encloses every isolated element. A single `setSelectedEntityIds` call
     // replaces both `selectedEntityIds` and `selectedEntityId` wholesale
     // (selectionSlice.ts:160-163), so no leading clear is needed here.
-    setSelectedEntityIds(globalIds);
+    setSelectedEntityIds(isolationIds);
 
     if (limitHit !== null) {
       toast.info(`Isolating the first ${limitHit.toLocaleString()} matches — the filter hit its row limit.`);
@@ -432,7 +450,7 @@ export function SearchModalFilter() {
     // a degenerate/NaN bound (Viewport.tsx:1029-1033), so a non-geometric id
     // in the mix can't fling the camera off-model.
     if (cameraCallbacks.frameEntities) {
-      window.setTimeout(() => cameraCallbacks.frameEntities?.(globalIds), 50);
+      window.setTimeout(() => cameraCallbacks.frameEntities?.(isolationIds), 50);
     }
     // Close the modal so the framing is actually visible — same reasoning
     // as handleRowClick above (dialog overlay is `fixed inset-0 bg-black/80`,

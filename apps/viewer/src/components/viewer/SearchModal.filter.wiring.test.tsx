@@ -227,6 +227,9 @@ function seedIsolateStore(options: {
   rows: unknown[][];
   typeVisibility?: Partial<ReturnType<typeof useViewerStore.getState>['typeVisibility']>;
   models?: ReturnType<typeof fixtureModels>;
+  /** Viewport's aggregation resolver (#2531). Absent by default, same as a
+   *  renderer that has not registered its camera callbacks yet. */
+  resolveHighlightIds?: (ids: number[]) => number[];
 } = { columns: ['express_id', 'type'], rows: [[42, 'IfcWall']] }) {
   const seeded = options.models ?? fixtureModels(
     fixtureModel(MODEL_ID, {
@@ -251,6 +254,7 @@ function seedIsolateStore(options: {
     cameraCallbacks: {
       frameSelection: () => { framed += 1; },
       frameEntities: (ids: number[]) => { framedIds.push(ids); },
+      ...(options.resolveHighlightIds ? { resolveHighlightIds: options.resolveHighlightIds } : {}),
     } as never,
   });
 }
@@ -352,6 +356,110 @@ describe('advanced Filter tab — "Isolate in 3D" button', () => {
       framedAfterFirstClick,
       'the un-isolate press must not also frame the (now meaningless) id set',
     );
+  });
+
+  // ── Assembly resolution (#2531 in the path #2532 added) ─────────────────
+  //
+  // An IfcElementAssembly carries no mesh of its own; its geometry hangs off
+  // the IfcRelAggregates parts. The renderer resolves `isolatedEntities`
+  // against mesh ids directly, so isolating the bare assembly id blanks the
+  // view. Viewport exposes the aggregation resolver as
+  // `cameraCallbacks.resolveHighlightIds` (backed by
+  // expandToGeometryBearingIds, #2531); these stubs mirror its contract the
+  // same way SearchModal.text.wiring.test.tsx does: a geometry-bearing id
+  // passes through untouched, a geometry-less one resolves to its parts and
+  // never to itself.
+
+  it('isolates a geometry-less assembly as its geometry-bearing parts, not its bare id', async () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    const PART_B = ROW0_GLOBAL_ID + 501;
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A, PART_B] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(
+      s.isolatedEntities,
+      new Set([PART_A, PART_B]),
+      'the isolation set must hold the renderable parts; the bare assembly id renders nothing',
+    );
+    assert.deepEqual(s.selectedEntityIds, new Set([PART_A, PART_B]));
+    await advance(60);
+    assert.deepEqual(framedIds, [[PART_A, PART_B]], 'framing must target the resolved parts too');
+  });
+
+  it('passes geometry-bearing rows through the resolver untouched, so the fix does not broaden a plain result', () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    const WALL_GLOBAL_ID = toGlobalIdFromModels(
+      fixtureModels(fixtureModel(MODEL_ID, { idOffset: ID_OFFSET })).models,
+      MODEL_ID,
+      43,
+    );
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [
+        [42, 'IfcElementAssembly'],
+        [43, 'IfcWall'],
+      ],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    assert.deepEqual(
+      useViewerStore.getState().isolatedEntities,
+      new Set([PART_A, WALL_GLOBAL_ID]),
+      'the wall keeps its own id; only the assembly is substituted',
+    );
+  });
+
+  it('pressing Isolate again on the identical assembly result still toggles isolation off', async () => {
+    const PART_A = ROW0_GLOBAL_ID + 500;
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      resolveHighlightIds: (ids) =>
+        ids.flatMap((id) => (id === ROW0_GLOBAL_ID ? [PART_A] : [id])),
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+    await advance(60);
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A]));
+
+    click(isolateButton(container));
+    await advance(60);
+
+    assert.equal(
+      useViewerStore.getState().isolatedEntities,
+      null,
+      'the same-set toggle must compare RESOLVED ids on both presses, or the second press re-isolates',
+    );
+  });
+
+  it('keeps the raw ids when nothing resolves to geometry, identical to a renderer with no resolver', () => {
+    seedIsolateStore({
+      columns: ['express_id', 'type'],
+      rows: [[42, 'IfcElementAssembly']],
+      // An assembly with neither geometry nor geometry-bearing parts resolves
+      // to nothing at all (expandToGeometryBearingIds drops it).
+      resolveHighlightIds: () => [],
+    });
+    const container = render(<SearchModalFilter />);
+
+    click(isolateButton(container));
+
+    // Pre-#2531 behaviour preserved for this corner: isolating an empty set
+    // would hide the ENTIRE model, which is strictly worse than the raw id.
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([ROW0_GLOBAL_ID]));
   });
 
   it('skips a row whose model was unloaded after the run instead of colliding with a loaded model\'s id space', () => {

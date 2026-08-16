@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, it, expect } from 'vitest';
-import { contactClusters, type Mesh } from './index.js';
+import { contactClusters, narrowPhase, type Mesh } from './index.js';
 
 // The "scale-relative planeEps", "scale-relative planeDistSnap", and
 // "planeDistSnap floor" describe blocks below are regression coverage for
@@ -235,6 +235,88 @@ describe('contactClusters (contact interface geometry)', () => {
         const withFixed = contactClusters(a, b, { planeDistSnap: 1e-3 });
         expect(withDefault).toEqual(withFixed);
       }
+    });
+  });
+
+  // Regression for the other direction of the scaled-planeEps trade-off in
+  // narrow-phase.ts (#2600): `scaledPlaneEps` originally took the max abs
+  // coordinate over ALL THREE axes of both world AABBs, but the epsilon it
+  // produces is compared against a signed distance measured along ONE plane
+  // normal. An axis orthogonal to that normal contributes no rounding noise
+  // to the distance, yet under max-over-axes it still inflates the
+  // tolerance: two horizontal faces (normal Z) with a genuine 2.0 mm
+  // Z-clearance read correctly as clear at the origin, but authored 10 km
+  // along X the tolerance becomes 10001 * 2^-22 = 2.385 mm > 2 mm and every
+  // candidate triangle pair is FABRICATED as a coplanar contact. The offset
+  // axis here is deliberately DIFFERENT from the tested normal axis:
+  // max-over-axes and the normal projection coincide when they share an
+  // axis, so only a cross-axis fixture can tell the two formulations apart.
+  describe('planeEps normal projection (large offset on an orthogonal axis must not fabricate contact)', () => {
+    /**
+     * Two horizontal unit quads (normal Z, 2 triangles each) with identical
+     * local geometry: both span x in [xOffset, xOffset + 1], y in [0, 1].
+     * A sits at z = 0, B at z = 0.002 - a genuine 2.0 mm clearance, well
+     * above any legitimate Z rounding noise (the quads' own z coordinates
+     * have magnitude <= 0.002, so their true f32 ULP is < 1e-9) and inside
+     * the default 2 mm AABB inflation, so the broad phase still emits all
+     * 2 x 2 candidate pairs and the verdict rests on planeEps alone.
+     */
+    function clearanceQuadsAt(xOffset: number): { a: Mesh; b: Mesh } {
+      const quad = (id: string, z: number): Mesh => ({
+        id,
+        positions: new Float64Array([
+          xOffset, 0, z,
+          xOffset + 1, 0, z,
+          xOffset + 1, 1, z,
+          xOffset, 1, z,
+        ]),
+        indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      });
+      return { a: quad('A', 0), b: quad('B', 0.002) };
+    }
+
+    it('no contact at the origin: a 2.0 mm Z-clearance reads as clear', () => {
+      const { a, b } = clearanceQuadsAt(0);
+      expect(narrowPhase(a, b).length).toBe(0);
+      expect(contactClusters(a, b)).toEqual([]);
+    });
+
+    it('no contact 10 km along X: the same 2.0 mm Z-clearance must still read as clear', () => {
+      const { a, b } = clearanceQuadsAt(10_000);
+      const pairs = narrowPhase(a, b);
+      expect(pairs.filter((p) => p.kind === 'coplanar').length).toBe(0);
+      expect(pairs.length).toBe(0);
+      expect(contactClusters(a, b)).toEqual([]);
+    });
+
+    it('RED: the max-over-axes epsilon fabricates the coplanar contact when passed explicitly', () => {
+      // The pre-fix default: max abs coordinate over both AABBs and all
+      // three axes (10001, from the irrelevant X axis) times 2^-22.
+      const { a, b } = clearanceQuadsAt(10_000);
+      const maxOverAxesEps = 10_001 * (1 / 4_194_304); // 2.385 mm > the real 2 mm gap
+      const pairs = narrowPhase(a, b, { planeEps: maxOverAxesEps });
+      expect(pairs.filter((p) => p.kind === 'coplanar').length).toBe(4);
+      expect(contactClusters(a, b, { planeEps: maxOverAxesEps }).some((c) => c.kind === 'surface')).toBe(true);
+    });
+
+    it('still recovers a genuinely flush pair when the offset IS along the tested normal', () => {
+      // Counter-counter-case: projection must not narrow the tolerance for
+      // the case #2600 exists to fix. Same flush-boxes mechanism as the
+      // scale-relative planeEps block above (shared face normal X, offset
+      // along X): the offset axis and the normal axis coincide, so the
+      // projected epsilon equals the old max-over-axes one and the shared
+      // face is still recovered.
+      const nextF32 = (x: number): number => {
+        const buf = new Float32Array([x]);
+        new Uint32Array(buf.buffer)[0] += 1;
+        return buf[0] as number;
+      };
+      const offset = 10_000;
+      const xA = Math.fround(offset + 0.5);
+      const xB = nextF32(xA);
+      const a = box('A', [offset, 0, 0], [xA, 1, 1]);
+      const b = box('B', [xB, 0, 0], [offset + 1, 1, 1]);
+      expect(contactClusters(a, b).some((c) => c.kind === 'surface')).toBe(true);
     });
   });
 

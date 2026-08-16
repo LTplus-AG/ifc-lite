@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { SourceFolderTree } from './SourceFolderTree';
 import { SourceFileRow } from './SourceFileRow';
 import { LoadMoreRow } from './SourceEntityList';
-import { Download, FolderOpen, Loader2, Search, X } from 'lucide-react';
+import { Download, FolderOpen, Loader2, Search, Star, X } from 'lucide-react';
 
 interface SourceFolderStepProps {
   providerName: string;
@@ -48,6 +48,11 @@ interface SourceFolderStepProps {
   onSearchQueryChange: (query: string) => void;
   onSearchSubmit: () => void;
   onSearchClear: () => void;
+  /** Favourites — `isFolderFavourite` covers the file area itself as well as the tree. */
+  isFolderFavourite: (containerId: string) => boolean;
+  onToggleFolderFavourite: (container: SourceContainer) => void;
+  isFileFavourite: (file: SourceFile) => boolean;
+  onToggleFileFavourite: (file: SourceFile) => void;
 }
 
 export function SourceFolderStep({
@@ -81,6 +86,10 @@ export function SourceFolderStep({
   onSearchQueryChange,
   onSearchSubmit,
   onSearchClear,
+  isFolderFavourite,
+  onToggleFolderFavourite,
+  isFileFavourite,
+  onToggleFileFavourite,
 }: SourceFolderStepProps) {
   const containerById = useMemo(() => {
     const entries = sortedFolders.map((folder) => [folder.id, folder] as const);
@@ -137,16 +146,36 @@ export function SourceFolderStep({
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="grid min-h-0 flex-1 grid-cols-2 overflow-hidden">
         <div className="flex min-h-0 flex-col overflow-hidden border-r">
-          <button
-            type="button"
-            className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm hover:bg-accent ${
+          {/* The star is a sibling of the button, not inside it: a button
+              cannot nest inside a button. This is how the file area ITSELF
+              gets favourited — the tree below only covers its subfolders. */}
+          <div
+            className={`flex w-full items-center gap-1 pr-1 text-sm hover:bg-accent ${
               selectedContainer?.id === selectedFileArea.id ? 'bg-accent font-medium' : ''
             }`}
-            onClick={() => onSelectContainer(selectedFileArea)}
           >
-            <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="truncate">{selectedFileArea.name}</span>
-          </button>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
+              onClick={() => onSelectContainer(selectedFileArea)}
+            >
+              <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">{selectedFileArea.name}</span>
+            </button>
+            <button
+              type="button"
+              className={`shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground ${
+                isFolderFavourite(selectedFileArea.id) ? 'text-amber-500' : 'text-muted-foreground'
+              }`}
+              aria-label={`${isFolderFavourite(selectedFileArea.id) ? 'Remove' : 'Add'} favourite: ${selectedFileArea.name}`}
+              aria-pressed={isFolderFavourite(selectedFileArea.id)}
+              onClick={() => onToggleFolderFavourite(selectedFileArea)}
+            >
+              <Star
+                className={`h-3.5 w-3.5 ${isFolderFavourite(selectedFileArea.id) ? 'fill-current' : ''}`}
+              />
+            </button>
+          </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {loadingFolders && sortedFolders.length === 0 ? (
@@ -167,6 +196,8 @@ export function SourceFolderStep({
                   selectedId={selectedContainer?.id}
                   activeIds={activeFolderIds}
                   onSelect={onSelectContainer}
+                  isFavourite={isFolderFavourite}
+                  onToggleFavourite={onToggleFolderFavourite}
                 />
                 <LoadMoreRow
                   hasMore={foldersHaveMore}
@@ -282,6 +313,8 @@ export function SourceFolderStep({
                         syncingFile={syncingFileIds.has(f.id)}
                         onSyncLoadedFile={() => onSyncLoadedFile(f)}
                         downloadedStatus={getDownloadedSourceFileStatus(f, downloadedRecord)}
+                        favourited={isFileFavourite(f)}
+                        onToggleFavourite={() => onToggleFileFavourite(f)}
                       />
                     );
                   })}

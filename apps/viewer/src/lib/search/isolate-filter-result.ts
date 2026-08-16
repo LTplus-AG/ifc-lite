@@ -13,6 +13,8 @@
  * ordering contract this feeds into).
  */
 
+import { collectAggregatedDescendants, type AggregationRelationships } from '../../utils/aggregation.js';
+
 export interface FilterResultLike {
   columns: string[];
   rows: unknown[][];
@@ -70,6 +72,64 @@ export function scanFilterResultRows(
  * falling back to the raw expressId would collide with another model's id
  * space (#2532 review) rather than isolating nothing.
  */
+/** Per-model accessors `expandFilterRowsThroughAggregation` walks with. */
+export interface FilterAggregationAccess {
+  /** The model's `IfcRelAggregates` graph, when that model is loaded. */
+  relationshipsFor(modelId: string): AggregationRelationships | undefined;
+  /** Canonical type name (e.g. `IfcSpace`) of a model-local entity, if known. */
+  typeNameFor(modelId: string, expressId: number): string | null;
+  /** Model-local express id to renderer global id; `null` skips the id. */
+  toGlobalId(modelId: string, expressId: number): number | null;
+}
+
+export interface FilterAggregationExpansion {
+  /** Global ids of every aggregated descendant of the matched rows,
+   *  deduplicated, in row order. */
+  partGlobalIds: number[];
+  /** Type names seen among those descendants (e.g. `IfcSpace`). */
+  partTypes: Set<string>;
+}
+
+/**
+ * Expand every matched row to its `IfcRelAggregates` descendants, straight
+ * from the data store and blind to type visibility.
+ *
+ * `handleIsolateResult`'s primary expansion is the renderer-backed
+ * `resolveHighlightIds`, but that resolver checks bounds against the
+ * type-visibility-FILTERED mesh list (`ViewportContainer`'s
+ * `filteredGeometry`), so an assembly whose only parts are currently hidden
+ * types (IfcSpace, IfcOpeningElement, ...) resolves to nothing even though
+ * it renders fine once those toggles flip. This is the fallback for exactly
+ * that case: the descendants' global ids join the isolation set and their
+ * type names feed the handler's type-visibility gate so the toggles do flip
+ * (#2660 review). Descendants are NOT geometry-checked (that would need the
+ * renderer this path exists to work without), so geometry-less intermediate
+ * nodes ride along; the renderer ignores ids with no mesh, and
+ * `frameEntities` guards degenerate bounds.
+ */
+export function expandFilterRowsThroughAggregation(
+  result: FilterResultLike,
+  defaultModelId: string,
+  access: FilterAggregationAccess,
+): FilterAggregationExpansion {
+  const partGlobalIds: number[] = [];
+  const partTypes = new Set<string>();
+  const seen = new Set<number>();
+  for (const row of scanFilterResultRows(result, defaultModelId)) {
+    const relationships = access.relationshipsFor(row.modelId);
+    if (!relationships) continue;
+    for (const descendant of collectAggregatedDescendants(relationships, row.expressId)) {
+      const globalId = access.toGlobalId(row.modelId, descendant);
+      if (globalId === null || seen.has(globalId)) continue;
+      seen.add(globalId);
+      partGlobalIds.push(globalId);
+      const typeName = access.typeNameFor(row.modelId, descendant);
+      if (typeName) partTypes.add(typeName);
+    }
+  }
+  return { partGlobalIds, partTypes };
+}
+
 export function collectFilterResultGlobalIds(
   result: FilterResultLike,
   defaultModelId: string,

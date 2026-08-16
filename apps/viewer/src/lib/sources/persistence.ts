@@ -4,6 +4,7 @@
 
 import type { SourceContainer, SourceFile, SourceTag } from '@ifc-lite/plugin-api';
 import { clearSourcePrefs } from './preferences';
+import { FAVOURITES_KEY_PREFIX } from './favourites';
 
 const CATALOG_KEY_PREFIX = 'ifc-lite-source-catalog:';
 /** Identity that populated the catalog cache for a provider. Persisted because
@@ -308,6 +309,22 @@ export function clearSourceCatalogCache(providerId: string): void {
 }
 
 /**
+ * The identity that currently owns a provider's persisted state, or `null` for
+ * signed out and for preference-auth providers (which never write the key).
+ * Read-only companion to `syncSourceCatalogCacheOwner`, so other host state
+ * scoped to the signed-in identity — favourites — can be filtered by the same
+ * stamp instead of inventing a second notion of "who is signed in".
+ */
+export function readSourceCatalogCacheOwner(providerId: string): string | null {
+  try {
+    return localStorage.getItem(`${CATALOG_OWNER_KEY_PREFIX}${providerId}`);
+  } catch (err) {
+    console.warn(`[sources] Failed to read catalog cache owner for "${providerId}"`, err);
+    return null;
+  }
+}
+
+/**
  * Drops the cached catalog whenever the identity it belongs to is not the one
  * now signed in, and records the new owner.
  *
@@ -369,7 +386,11 @@ export function clearAllSourceData(providerId: string): void {
         key.startsWith(`${CATALOG_KEY_PREFIX}${providerId}:`) ||
         key === `${CATALOG_OWNER_KEY_PREFIX}${providerId}` ||
         key.startsWith(`${WATCH_CURSOR_KEY_PREFIX}${providerId}:`) ||
-        key.startsWith(`${PROVIDER_STORAGE_KEY_PREFIX}${providerId}:`)
+        key.startsWith(`${PROVIDER_STORAGE_KEY_PREFIX}${providerId}:`) ||
+        // Favourites hold folder and file NAMES — the same identity-sensitive
+        // data as the catalog cache above — so "forget saved values" has to
+        // take them too. One key per provider, no trailing separator.
+        key === `${FAVOURITES_KEY_PREFIX}${providerId}`
       ) {
         doomed.push(key);
       }

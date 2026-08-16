@@ -1013,6 +1013,13 @@ export function useIfcLoader() {
       // serving the failed attempt's cached bytes.
       const loadTessellationTier = options?.tierOverride ??
         resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // Geometry attribution (#2388): read ONCE here, next to the tier it must
+      // be reported alongside, so every `ifc_model_loaded` capture site below
+      // states the same fact. The tier cannot stand in for it — a retry always
+      // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
+      // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
+      // `?geomTier=lowest`, so the two are indistinguishable without the flag.
+      const isResourceRetryLoad = options?.isResourceRetry === true;
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -1118,7 +1125,7 @@ export function useIfcLoader() {
               // reporting `loadDiagnostics` here would attribute a PRIOR load's
               // counters (or a fabricated 0) to this one. The builder already
               // turns an undefined/null diagnostics into absent CSG fields.
-              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -2068,6 +2075,7 @@ export function useIfcLoader() {
             diagnostics: loadDiagnostics,
             tessellationTier: loadTessellationTier,
             skipSmallCuts: skipSmallCutsAtLoad,
+            isResourceRetry: isResourceRetryLoad,
           }),
         },
         { fileSizeMB, totalTriangles, meshCount: allMeshes.length },

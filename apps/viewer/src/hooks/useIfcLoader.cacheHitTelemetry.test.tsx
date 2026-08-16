@@ -37,6 +37,12 @@
  * `complete` event, so there are no CSG counters for it. They must be ABSENT
  * from the payload, not a fabricated `0` (which reads as "CSG ruled out") and
  * not a prior load's values carried over.
+ *
+ * The last case covers `is_resource_retry`, and it needs the same
+ * two-contrasting-loads treatment for a sharper reason: the auto-retry always
+ * runs at `'lowest'`, and a first attempt reaches `'lowest'` on its own, so a
+ * single retry assertion would also pass for a flag inferred from the tier. It
+ * is paired with a NON-retry load at the identical tier.
  */
 
 import 'fake-indexeddb/auto';
@@ -134,11 +140,15 @@ async function storePayloadAsArrayBuffer(key: string, payload: ArrayBuffer): Pro
 
 /** The SAME cache key `loadFile` derives, from the same helpers and the same
  *  store fields it reads — not a guess at their output. */
-function cacheKeyFor(buffer: ArrayBuffer): string {
+function cacheKeyFor(buffer: ArrayBuffer, tierOverride?: TessellationQuality): string {
   const { hex } = computeSourceFingerprint(buffer);
   const state = useViewerStore.getState();
   const skipSmallCuts = state.geometryMode === 'fast';
-  const tessellationTier = resolveLoadTessellationTier(buffer.byteLength / (1024 * 1024), state.geometryMode);
+  // `loadFile` prefers an explicit `tierOverride` (the resource-retry's forced
+  // tier) over the resolved one, and builds the cache key from the winner — so
+  // the key derived here must resolve it the same way or the hit becomes a miss.
+  const tessellationTier = tierOverride
+    ?? resolveLoadTessellationTier(buffer.byteLength / (1024 * 1024), state.geometryMode);
   return buildGeometryCacheKey(buffer.byteLength, hex, state.mergeLayers, undefined, skipSmallCuts, tessellationTier);
 }
 
@@ -192,7 +202,10 @@ afterEach(async () => {
 async function captureCacheHitPayload(
   fileName: string,
   mode: GeometryMode,
-  tierOverride: TessellationQuality,
+  tierPin: TessellationQuality | null,
+  /** Passed through to `loadFile` verbatim — the same options object the
+   *  resource-retry re-entry builds (`tryResourceRetry` in `useIfcLoader.ts`). */
+  loadOptions?: { tierOverride?: TessellationQuality; isResourceRetry?: boolean },
 ): Promise<Record<string, unknown>> {
   // Set the fidelity inputs BEFORE deriving the key: `loadFile` reads
   // `geometryMode` from the store and the tier override from localStorage, and
@@ -201,7 +214,8 @@ async function captureCacheHitPayload(
   await act(async () => {
     useViewerStore.setState({ geometryMode: mode });
   });
-  localStorage.setItem(GEOM_TIER_STORAGE_KEY, tierOverride);
+  if (tierPin === null) localStorage.removeItem(GEOM_TIER_STORAGE_KEY);
+  else localStorage.setItem(GEOM_TIER_STORAGE_KEY, tierPin);
 
   // Big enough for the source-persisting cache tier (>= CACHE_SIZE_THRESHOLD).
   const file = buildStepFile(fileName, CACHE_SIZE_THRESHOLD + 4096);
@@ -214,7 +228,7 @@ async function captureCacheHitPayload(
   );
   // A `sourceBuffer` is supplied so the entry is not source-decoupled: the
   // mtime/hash gate is skipped and the hit is served unconditionally.
-  const cacheKey = cacheKeyFor(buffer);
+  const cacheKey = cacheKeyFor(buffer, loadOptions?.tierOverride);
   await setCached(cacheKey, entryBuffer as ArrayBuffer, file.name, buffer.byteLength, buffer);
   await storePayloadAsArrayBuffer(cacheKey, entryBuffer as ArrayBuffer);
 
@@ -222,7 +236,7 @@ async function captureCacheHitPayload(
   // "exactly one cache hit" must be a statement about THIS one.
   captured.length = 0;
   await act(async () => {
-    await hookApi!.loadFile(file);
+    await hookApi!.loadFile(file, { kind: 'primary' }, loadOptions);
   });
 
   const hits = captured.filter((p) => p.load_path === 'cache');
@@ -271,5 +285,56 @@ describe('useIfcLoader — a cache HIT reports the geometry fidelity it served (
     // achieved by dropping the whole geometry-props spread.
     assert.equal(payload.tessellation_tier, 'low');
     assert.equal(payload.skip_small_cuts, true);
+  });
+
+  it('distinguishes a resource-limit retry from a first attempt that resolved to the SAME tier', async () => {
+    // The retry re-enters `loadFile` with exactly these options
+    // (`tryResourceRetry`: `{ ...options, tierOverride: retryTier,
+    // isResourceRetry: true }`), and `resolveResourceRetryTier` only ever
+    // returns `'lowest'`.
+    const retry = await captureCacheHitPayload(
+      'cache-hit-retry.ifc',
+      'fast',
+      null,
+      { tierOverride: 'lowest', isResourceRetry: true },
+    );
+
+    // The contrast that makes the flag mean something: a NORMAL first attempt
+    // that lands on `'lowest'` all by itself — here via a pinned
+    // `?geomTier=lowest`, the same value `AUTO_LOWEST_TIER_MB` (150) hands any
+    // fast-mode file at or above that size. Its tier is byte-identical to the
+    // retry's, so `tessellation_tier` alone cannot separate the two; only a
+    // flag threaded from the load's own options can.
+    const firstAttempt = await captureCacheHitPayload(
+      'cache-hit-first-lowest.ifc',
+      'fast',
+      'lowest',
+    );
+
+    assert.equal(retry.tessellation_tier, 'lowest');
+    assert.equal(firstAttempt.tessellation_tier, 'lowest');
+    assert.equal(
+      retry.tessellation_tier,
+      firstAttempt.tessellation_tier,
+      'the two loads must be indistinguishable by tier — that is the ambiguity '
+      + 'this field exists to resolve; if they differ, the fixture no longer '
+      + 'tests it',
+    );
+
+    assert.equal(
+      retry.is_resource_retry,
+      true,
+      'a load re-entered with isResourceRetry must say so on ifc_model_loaded, '
+      + 'not only on the failure capture that started it',
+    );
+    // Not `undefined`: a dropped `false` is indistinguishable from a client
+    // that never reported the field, which is what makes the retry rows
+    // unfilterable in the first place.
+    assert.equal(
+      firstAttempt.is_resource_retry,
+      false,
+      'a normal first attempt at `lowest` must report false — a constant `true` '
+      + 'at the capture site, or a value inferred from the tier, dies here',
+    );
   });
 });

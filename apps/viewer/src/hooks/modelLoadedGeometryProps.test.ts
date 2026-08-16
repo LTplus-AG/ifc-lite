@@ -38,6 +38,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       diagnostics: diag({ totalCsgFailures: 7, productsWithFailures: 3, silentNoOps: 2 }),
       tessellationTier: 'low',
       skipSmallCuts: true,
+      isResourceRetry: false,
     });
     assert.equal(props.total_csg_failures, 7);
     assert.equal(props.csg_products_with_failures, 3);
@@ -52,6 +53,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
         diagnostics: d,
         tessellationTier: undefined,
         skipSmallCuts: true,
+        isResourceRetry: false,
       });
       assert.equal(props.total_csg_failures, undefined);
       assert.equal(props.csg_products_with_failures, undefined);
@@ -64,6 +66,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       diagnostics: diag(),
       tessellationTier: 'lowest',
       skipSmallCuts: false,
+      isResourceRetry: false,
     });
     assert.equal(props.total_csg_failures, 0);
   });
@@ -77,6 +80,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       diagnostics: diag(),
       tessellationTier: 'low',
       skipSmallCuts: true,
+      isResourceRetry: false,
     });
     assert.equal(fast.tessellation_tier, 'low');
     assert.equal(fast.skip_small_cuts, true);
@@ -85,12 +89,38 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       diagnostics: diag(),
       tessellationTier: undefined,
       skipSmallCuts: false,
+      isResourceRetry: false,
     });
     // `undefined` from resolveLoadTessellationTier IS the engine default, and it
     // must be reported as such — not as an absent field indistinguishable from
     // an older build that never sent one.
     assert.equal(exact.tessellation_tier, 'medium');
     assert.equal(exact.skip_small_cuts, false);
+  });
+
+  it('reports the resource-limit retry separately from the tier it retries at', () => {
+    // `resolveResourceRetryTier` always retries at `lowest`, and a FIRST
+    // attempt reaches `lowest` on its own (>= AUTO_LOWEST_TIER_MB in fast mode,
+    // or a pinned `?geomTier=lowest`). Two loads at the SAME tier must still be
+    // told apart, so the flag has to move independently of `tessellation_tier`.
+    const retry = buildModelLoadedGeometryProps({
+      diagnostics: diag(),
+      tessellationTier: 'lowest',
+      skipSmallCuts: true,
+      isResourceRetry: true,
+    });
+    const firstAttempt = buildModelLoadedGeometryProps({
+      diagnostics: diag(),
+      tessellationTier: 'lowest',
+      skipSmallCuts: true,
+      isResourceRetry: false,
+    });
+    assert.equal(retry.tessellation_tier, firstAttempt.tessellation_tier);
+    assert.equal(retry.is_resource_retry, true);
+    // `false`, not absent: "this was a normal first attempt" is the statement
+    // that makes the retry rows filterable at all.
+    assert.equal(firstAttempt.is_resource_retry, false);
+    assert.ok('is_resource_retry' in firstAttempt);
   });
 
   it('reports the dominant failure reason so a nonzero count is actionable', () => {
@@ -104,6 +134,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       }),
       tessellationTier: undefined,
       skipSmallCuts: true,
+      isResourceRetry: false,
     });
     assert.equal(props.csg_top_failure_reason, 'OperandTooLarge');
   });
@@ -113,6 +144,7 @@ describe('buildModelLoadedGeometryProps (#2388 attribution)', () => {
       diagnostics: diag(),
       tessellationTier: undefined,
       skipSmallCuts: true,
+      isResourceRetry: false,
     });
     assert.equal(props.csg_top_failure_reason, undefined);
   });
@@ -225,6 +257,7 @@ describe('ifc_model_loaded cache-hit geometry props (#2388)', () => {
       diagnostics: undefined,
       tessellationTier: 'low',
       skipSmallCuts: true,
+      isResourceRetry: false,
     });
     assert.equal(props.tessellation_tier, 'low');
     assert.equal(props.skip_small_cuts, true);

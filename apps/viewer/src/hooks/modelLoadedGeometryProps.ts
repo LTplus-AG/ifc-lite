@@ -37,6 +37,20 @@ export interface ModelLoadedGeometryPropsInputs {
   tessellationTier: TessellationQuality | null | undefined;
   /** The small-cut skip the load actually ran with (viewer `geometryMode === 'fast'`). */
   skipSmallCuts: boolean;
+  /**
+   * True when this load is the automatic retry that a resource-limit failure
+   * started (`resolveResourceRetryTier` -> `loadFile({ isResourceRetry: true })`).
+   *
+   * The tier ALONE cannot say this. `resolveResourceRetryTier` always returns
+   * `'lowest'` when it retries (`lib/resource-retry.ts`), and a FIRST attempt
+   * independently resolves to `'lowest'` for any `fast`-mode file at or above
+   * `AUTO_LOWEST_TIER_MB = 150` or under a pinned `?geomTier=lowest`
+   * (`store/geometryFidelity.ts:187-196`) — so `tessellation_tier: 'lowest'`
+   * describes a degraded reload and a normal large-file load identically. The
+   * flag is threaded from the load's own options rather than inferred from the
+   * tier, because inferring it would re-create exactly that ambiguity.
+   */
+  isResourceRetry: boolean;
 }
 
 /** PostHog property bag; `undefined` values are dropped by posthog-js. */
@@ -55,5 +69,9 @@ export function buildModelLoadedGeometryProps(
     // report it by name so it is distinguishable from a build that sent nothing.
     tessellation_tier: inputs.tessellationTier ?? 'medium',
     skip_small_cuts: inputs.skipSmallCuts,
+    // `false` MUST survive to the wire: it is the statement "this load was a
+    // normal first attempt", which is what separates a degraded reload from a
+    // large-file load that resolved to the same tier on its own.
+    is_resource_retry: inputs.isResourceRetry,
   };
 }

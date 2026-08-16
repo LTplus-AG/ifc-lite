@@ -6,7 +6,12 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { MsGraphProvider } from '../src/provider.js';
-import { downloadUrlFor, createGraphMockContext } from './msgraph-api-mock.js';
+import {
+  GRAPH_MOCK_DOWNLOAD_HOST,
+  GRAPH_MOCK_DOWNLOAD_SECRET,
+  downloadUrlFor,
+  createGraphMockContext,
+} from './msgraph-api-mock.js';
 import type { GraphMockWorld } from './msgraph-api-mock.js';
 
 const WORLD: GraphMockWorld = {
@@ -116,6 +121,29 @@ describe('MsGraphProvider', () => {
         name: 'AbortError',
       });
     });
+
+    /**
+     * A `@microsoft.graph.downloadUrl` is *pre-authenticated*: whoever holds
+     * the URL downloads the bytes with no credential at all, which is the
+     * whole reason `download()` fetches it through `ctx.fetchPublic` (which
+     * strips every header). `SourceFile.meta` is the wrong place for a value
+     * like that — the host treats `meta` as opaque provider data and
+     * serialises whole `SourceFile[]` into `localStorage` for its catalog
+     * cache (`saveSourceCatalogCache` in the viewer). This provider's
+     * capabilities happen to keep it off that path today, which makes the
+     * guarantee a coincidence rather than a design; nothing reads the value
+     * either way, so it must not be produced.
+     */
+    it('never puts the pre-signed download URL in SourceFile.meta, where the host persists it', async () => {
+      const ctx = createGraphMockContext(WORLD);
+      const page = await provider.listFiles(ctx, 'me', 'f-alpha');
+      expect(page.items.length).toBeGreaterThan(0);
+      for (const file of page.items) {
+        const serialised = JSON.stringify(file.meta ?? {});
+        expect(serialised).not.toContain(GRAPH_MOCK_DOWNLOAD_HOST);
+        expect(serialised).not.toContain('downloadUrl');
+      }
+    });
   });
 
   describe('searchFiles', () => {
@@ -163,23 +191,78 @@ describe('MsGraphProvider', () => {
       ).rejects.toThrow('does not expose a download URL');
     });
 
-    it('never sends an Authorization header to the download URL host', async () => {
+    /**
+     * The credential-carrying path, asserted where it can actually break.
+     *
+     * `PublicFetchInit` has no `headers` field, so inspecting the init object
+     * for one can never fail and proves nothing. What *can* regress is the
+     * routing: `getPublicBinary` switching from `ctx.fetchPublic` (which
+     * builds its own header set from scratch) to `ctx.fetch` (which attaches
+     * this client's `Authorization`) would send a bearer token to a CDN host
+     * outside `permissions.network` — and would also break the download, since
+     * Graph invalidates a pre-signed URL presented with an `Authorization`
+     * header. So: the download host must be reached through `fetchPublic` and
+     * must never be reached through `fetch`.
+     */
+    it('reaches the download host only through fetchPublic, never through the authenticated fetch', async () => {
       const ctx = createGraphMockContext(WORLD);
-      let sawAuthHeader = false;
+      const authenticatedUrls: string[] = [];
+      const publicUrls: string[] = [];
+      const originalFetch = ctx.fetch;
       const originalFetchPublic = ctx.fetchPublic;
       const wrappedCtx = {
         ...ctx,
+        fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+          authenticatedUrls.push(typeof input === 'string' ? input : input.toString());
+          return originalFetch(input, init);
+        }) as typeof fetch,
         fetchPublic: (url: string, init?: Parameters<typeof originalFetchPublic>[1]) => {
-          // `PublicFetchInit` only carries `signal`/`range` — there is no
-          // header field to smuggle an Authorization value through even if
-          // this test tried to. Confirms the shape rather than a live check.
-          if (init && 'headers' in (init as Record<string, unknown>)) sawAuthHeader = true;
+          publicUrls.push(url);
           return originalFetchPublic(url, init);
         },
       };
-      await provider.download(wrappedCtx, { projectId: 'me', containerId: 'f-alpha', fileId: 'file-1' });
-      expect(sawAuthHeader).toBe(false);
-      expect(downloadUrlFor('file-1')).toContain('file-1');
+
+      const buf = await provider.download(wrappedCtx, { projectId: 'me', containerId: 'f-alpha', fileId: 'file-1' });
+
+      expect(new TextDecoder().decode(buf)).toBe('MODEL-BYTES-1');
+      expect(publicUrls).toEqual([downloadUrlFor('file-1')]);
+      expect(authenticatedUrls.some((url) => url.startsWith(GRAPH_MOCK_DOWNLOAD_HOST))).toBe(false);
+      // The metadata lookup that yields the URL does go through the
+      // authenticated client — so this isn't passing because nothing ran.
+      expect(authenticatedUrls.some((url) => url.includes('/me/drive/items/file-1'))).toBe(true);
+    });
+
+    /**
+     * A pre-signed URL is a bearer credential in a query string. `debug` is
+     * gated behind a flag, but `error` always reaches `console.error` — which
+     * is what users copy into bug reports. The URL is usually expired by then;
+     * a 5xx from the CDN is exactly the case where it is not.
+     */
+    it('logs the download URL without its credential-bearing query string, at every level', async () => {
+      const ctx = createGraphMockContext(WORLD);
+      const logged: unknown[] = [];
+      const record = (message: string, details?: Record<string, unknown>) => {
+        logged.push(message, details);
+      };
+      const failingCtx = {
+        ...ctx,
+        // A live pre-signed URL that the CDN answers 5xx for: the error path
+        // fires while the credential in the URL is still usable.
+        fetchPublic: () =>
+          Promise.resolve(new Response('upstream exploded', { status: 503, statusText: 'Service Unavailable' })),
+        log: { debug: record, info: record, warn: record, error: record },
+      };
+
+      await expect(
+        provider.download(failingCtx, { projectId: 'me', containerId: 'f-alpha', fileId: 'file-1' }),
+      ).rejects.toThrow('Microsoft Graph download 503');
+
+      const transcript = JSON.stringify(logged);
+      expect(transcript).not.toContain(GRAPH_MOCK_DOWNLOAD_SECRET);
+      // Redaction must not degenerate into logging nothing useful: the host
+      // and path still have to be there to diagnose a failed download.
+      expect(transcript).toContain(GRAPH_MOCK_DOWNLOAD_HOST);
+      expect(transcript).toContain('file-1');
     });
   });
 

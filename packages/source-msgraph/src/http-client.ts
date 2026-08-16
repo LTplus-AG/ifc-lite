@@ -20,6 +20,33 @@ function truncate(text: string, max = MAX_ERROR_BODY_CHARS): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/**
+ * Strips the query string off a URL before it is logged.
+ *
+ * Only ever applied to pre-signed `@microsoft.graph.downloadUrl` values, where
+ * the query string *is* the credential: OneDrive/SharePoint put a `tempauth`
+ * token there, and anyone holding the complete URL downloads the bytes with no
+ * further authentication. `createPrefixedLogger` gates `debug` behind a flag,
+ * but `error` always reaches `console.error` — the output users copy into bug
+ * reports. Such a URL is usually expired by the time anyone reads the report;
+ * a 5xx from the CDN is precisely the case where it is not.
+ *
+ * The origin and path are kept, since those are what a failed download
+ * actually needs diagnosing (which host served it, which item).
+ *
+ * Deliberately *not* applied to `get()`'s Graph API URLs: those authenticate
+ * with an `Authorization` header, so their query strings hold only `$select`/
+ * `$top`/`$skiptoken` — no credential, and genuinely useful when reading a log.
+ */
+function forLog(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return '(unparseable url)';
+  }
+}
+
 /** Thrown for a non-2xx Graph API response. Carries the actual HTTP status so
  * callers can branch on it (auth-failure detection in `testConnection`)
  * rather than on substrings of the (possibly truncated) upstream error body. */
@@ -83,13 +110,16 @@ export class BrowserGraphApiClient {
    * outside `permissions.network`.
    */
   async getPublicBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-    this.debug('public binary GET request', { url });
+    // Logged without its query string — see `forLog`. The full URL is still
+    // what gets fetched; only what is written to the log is trimmed.
+    const loggableUrl = forLog(url);
+    this.debug('public binary GET request', { url: loggableUrl });
     const response = await this.ctx.fetchPublic(url, { signal });
-    this.debug('public binary GET response', { url, status: response.status, ok: response.ok });
+    this.debug('public binary GET response', { url: loggableUrl, status: response.status, ok: response.ok });
 
     if (!response.ok) {
       const body = await response.text().catch(() => '');
-      this.ctx.log.error('Graph download failed', { url, status: response.status, body });
+      this.ctx.log.error('Graph download failed', { url: loggableUrl, status: response.status, body });
       throw new GraphHttpError(`Microsoft Graph download ${response.status}: ${response.statusText} — ${truncate(body)}`, response.status);
     }
 

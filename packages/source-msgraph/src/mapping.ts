@@ -64,6 +64,19 @@ export function toSourceContainer(item: GraphDriveItem, parentId: string | undef
   };
 }
 
+/**
+ * Note what is deliberately *not* carried over: the item's
+ * `@microsoft.graph.downloadUrl`. That URL is pre-authenticated — holding it
+ * is enough to download the bytes, with no credential and no header, which is
+ * exactly why `download()` fetches it through `ctx.fetchPublic`. `SourceFile`
+ * is a value the host treats as opaque and persists whole: the viewer
+ * serialises entire `SourceFile[]` arrays into `localStorage` for its catalog
+ * cache. Putting a credential-equivalent value in a field designed to be
+ * persisted is the wrong shape regardless of whether a given provider's
+ * capabilities currently reach that code path, and `download()` re-fetches the
+ * URL fresh anyway (these URLs are short-lived, so a cached one would be
+ * useless as well as unsafe).
+ */
 export function toSourceFile(item: GraphDriveItem, containerId: string): SourceFile {
   return {
     id: item.id,
@@ -74,10 +87,33 @@ export function toSourceFile(item: GraphDriveItem, containerId: string): SourceF
     currentRevisionId: currentRevisionId(item),
     modifiedAt: item.lastModifiedDateTime,
     modifiedBy: item.lastModifiedBy?.user?.displayName ?? item.lastModifiedBy?.application?.displayName,
-    meta: { downloadUrl: item['@microsoft.graph.downloadUrl'] },
   };
 }
 
+/**
+ * Two id spaces, deliberately not reconciled.
+ *
+ * `SourceFile.currentRevisionId` is the item's `cTag` (see
+ * {@link currentRevisionId}) — the only Graph field that satisfies the plugin
+ * contract's "changes when the bytes change, not when metadata changes". A
+ * `driveItemVersion.id`, in contrast, is a SharePoint version *label* (`"1.0"`,
+ * `"2.0"`), which is what `SourceRevision.id` is documented to be ("SharePoint
+ * version labels are `"1.0"` and `"2.0"`, not integers"). Graph offers no field
+ * that is both, and no way to map one to the other without an extra request
+ * per version.
+ *
+ * The visible consequence: a `SourceFileRef.revisionId` naming the newest
+ * *listed* revision (`"2.0"`) will not equal the item's `currentRevisionId`
+ * (`cTag`), so `download()` rejects it as historical even though it names the
+ * current bytes. That is a documented no-op rather than a bug, because
+ * `capabilities.downloadHistoricalRevisions` is `false`, and the contract on
+ * that flag says "Hosts must not offer 'load this older revision' when this is
+ * false" — the only `revisionId` a host may hand back is the one this provider
+ * gave it on the `SourceFile`, which is the cTag and matches. Reconciling the
+ * spaces would mean paying a request per listed version to buy nothing that
+ * any caller is allowed to use; if `downloadHistoricalRevisions` ever becomes
+ * `true`, this is the thing to fix first.
+ */
 export function toSourceRevision(version: GraphDriveItemVersion): SourceRevision {
   return {
     id: version.id,

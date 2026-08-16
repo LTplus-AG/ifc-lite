@@ -68,13 +68,14 @@ const LENS: Lens = {
       color: '#00ff00',
     },
     {
-      // Raw matches DIFFERENT from rule-assembly's, but the same set once
-      // resolved: the assembly resolves to its parts, the parts resolve to
-      // themselves. Exactly the collision the expansion widened into reach.
-      id: 'rule-parts',
-      name: 'Assembly parts',
+      // DIFFERENT criteria from rule-assembly, same matched entities: an
+      // ordinary coincidence in a real model (every assembly here is precast).
+      // Two rules landing on one id set is the only way the isolate toggle can
+      // be reached by a rule switch; it does not depend on the resolution.
+      id: 'rule-precast',
+      name: 'Precast',
       enabled: true,
-      criteria: { type: 'ifcType', ifcType: 'IfcBuildingElementPart' },
+      criteria: { type: 'property', propertySet: 'Pset_ConcreteElementGeneral', propertyName: 'Precast', operator: 'equals', propertyValue: 'TRUE' },
       action: 'colorize',
       color: '#ffff00',
     },
@@ -104,12 +105,14 @@ function seedLens(options: {
     savedLenses: [LENS],
     activeLensId: LENS.id,
     lensRuleCounts: new Map([
-      ['rule-assembly', 1], ['rule-wall', 1], ['rule-parts', 3], ['rule-mixed', 3],
+      ['rule-assembly', 1], ['rule-wall', 1], ['rule-precast', 1], ['rule-mixed', 3],
     ]),
     lensRuleEntityIds: new Map([
       ['rule-assembly', [ASSEMBLY]],
       ['rule-wall', [WALL]],
-      ['rule-parts', [ASSEMBLY, PART_A, PART_B]],
+      // The same matches as rule-assembly, reached by other criteria.
+      // Deliberately a fresh array, not a shared reference.
+      ['rule-precast', [ASSEMBLY]],
       ['rule-mixed', [WALL, ASSEMBLY, HIDDEN_SPACE]],
     ]),
     lensRuleIsolation: null,
@@ -258,23 +261,29 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     assert.deepEqual(useViewerStore.getState().lensRuleIsolation?.entityIds, [WALL]);
   });
 
-  it('switches to another rule that resolves to the SAME set without the toggle clearing it', () => {
+  it('switches to a DIFFERENT rule matching the same entities without the toggle clearing the channel', () => {
     // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): fed
-    // the ids the channel already holds it CLEARS. So switching from the
-    // assembly rule to a rule whose DIFFERENT raw matches resolve to the same
-    // set un-isolated the model while the panel recorded the new rule as the
-    // owner of an isolation that no longer existed. Pre-existing for two rules
-    // with identical raw matches; the resolution widened it to an assembly
-    // rule versus a parts rule, which is an ordinary pair of lens rules.
+    // the ids the channel already holds it CLEARS. So switching from one rule
+    // to another whose criteria differ but whose matches coincide un-isolated
+    // the model, while the panel went on to record the new rule as the owner
+    // of an isolation that no longer existed, leaving the next release with an
+    // empty channel to disown.
+    //
+    // Scope, stated honestly: this is PRE-EXISTING and the resolution added in
+    // this PR does not widen it. Appending the raw matches unconditionally
+    // keeps an assembly rule ({assembly, ...parts}) and a parts rule
+    // ({...parts}) distinguishable, so only genuinely coincident matches
+    // collide -- which is why this fixture uses two rules that match the same
+    // entity by different criteria rather than an assembly/parts pair.
     seedLens({ resolveHighlightIds: assemblyResolver });
     const container = render(<LensPanel onClose={() => {}} />);
     const expected = new Set([PART_A, PART_B, ASSEMBLY]);
 
     click(ruleRow(container, 'Assemblies'));
-    assert.deepEqual(useViewerStore.getState().isolatedEntities, expected, 'precondition: rule A isolates the set');
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, expected, 'precondition: the first rule isolates the set');
     assert.equal(useViewerStore.getState().lensRuleIsolation?.ruleId, 'rule-assembly');
 
-    click(ruleRow(container, 'Assembly parts'));
+    click(ruleRow(container, 'Precast'));
 
     const s = useViewerStore.getState();
     assert.deepEqual(
@@ -282,7 +291,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
       expected,
       'switching rules must leave the model isolated over the set, not blank the channel via the toggle',
     );
-    assert.equal(s.lensRuleIsolation?.ruleId, 'rule-parts', 'the new rule must be recorded as the owner');
+    assert.equal(s.lensRuleIsolation?.ruleId, 'rule-precast', 'the new rule must be recorded as the owner');
     assert.deepEqual(
       [...(s.lensRuleIsolation?.entityIds ?? [])].sort((a, b) => a - b),
       [ASSEMBLY, PART_A, PART_B],
@@ -291,7 +300,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     // And the handover must leave the release path working: the new owner
     // still owns the channel, so its own re-click clears.
-    click(ruleRow(container, 'Assembly parts'));
+    click(ruleRow(container, 'Precast'));
     assert.equal(useViewerStore.getState().isolatedEntities, null, 'releasing the new owner must clear the channel');
     assert.equal(useViewerStore.getState().lensRuleIsolation, null);
   });

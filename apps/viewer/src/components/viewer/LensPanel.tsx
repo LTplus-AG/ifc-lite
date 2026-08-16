@@ -1376,11 +1376,17 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // owns an isolation that no longer exists -- and the next release, finding
     // an empty channel, would disown it silently.
     //
-    // Pre-existing (two rules matching identical raw ids always collided this
-    // way), but the resolution above WIDENS it: a rule matching an assembly
-    // and a rule matching that assembly's parts now land on the same resolved
-    // set where their raw matches differed. Release the channel first so the
-    // isolate call below always takes its isolate branch -- same
+    // This is PRE-EXISTING and the resolution above does not widen it: two
+    // rules whose criteria differ but whose matches coincide ("walls with a
+    // fire rating of 60" and "walls on level 2" over a model where those are
+    // the same walls) always collided this way, and appending the raw matches
+    // unconditionally keeps every other pair distinguishable -- an
+    // assembly-matching rule yields {assembly, ...parts} while a
+    // parts-matching rule yields {...parts}, sets that differ by the
+    // assembly's own id and cannot collapse onto each other.
+    //
+    // Release the channel first so the isolate call below always takes its
+    // isolate branch -- same
     // `ruleIsolationOwnsChannel` set-equality predicate the teardown path uses,
     // so both ends agree on when the channel holds a given set, and the
     // re-isolate re-runs the un-hide the toggle branch would have skipped.

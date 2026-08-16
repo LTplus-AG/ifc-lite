@@ -774,8 +774,13 @@ export interface GenericElementParams extends ElementAttributes {
   Depth: number;
 
   /**
-   * Extrusion direction in local coordinates. Default: [0, 0, 1] (upward / along local Z).
-   * Use [1, 0, 0] for along X, [0, 1, 0] for along Y, etc.
+   * Extrusion direction in the PROFILE's coordinate system, where the profile
+   * lies in the XY plane. Default: [0, 0, 1] (perpendicular to the profile).
+   * It must have a non-zero Z component (IFC4 IfcExtrudedAreaSolid.WR31): a
+   * direction like [1, 0, 0] lies IN the profile plane and sweeps the profile
+   * into a zero-volume sheet. To orient the element in the model (e.g. a
+   * horizontal pipe), keep the default and set `Placement.Axis` to the world
+   * direction the element should run along instead.
    */
   ExtrusionDirection?: Point3D;
 

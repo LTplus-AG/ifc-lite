@@ -83,6 +83,31 @@ function prismEl(key: string, tag: string, p0: [number, number], p1: [number, nu
 }
 
 /**
+ * Zero-volume flat sheet at `y = y0`: a rectangle spanning `x0..x1` x `z0..z1`
+ * meshed as two triangles, with a zero-thickness AABB. This is the shape a
+ * degenerate IfcExtrudedAreaSolid meshes to when its extrusion direction lies
+ * IN the profile plane (invalid per IFC4 WR31, but nothing upstream rejects
+ * it) - the exact fixture bug behind the `ifc-lite clash --matrix` "real
+ * clash reported" CLI test, whose "pipe" was such a ribbon buried at its
+ * beam's mid-plane.
+ */
+function sheetEl(key: string, tag: string, x0: number, x1: number, y0: number, z0: number, z1: number): ClashElement {
+  const positions = new Float32Array([
+    x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1,
+  ]);
+  const indices = new Uint32Array([0, 1, 2, 0, 2, 3]);
+  return {
+    key,
+    ref: nextRef++,
+    model: 'm',
+    tag,
+    positions,
+    indices,
+    bounds: { min: [x0, y0, z0], max: [x1, y0, z1] },
+  };
+}
+
+/**
  * A rectangular box (half-extents `hx,hy,hz`, centred at `center`), rotated
  * `angle` radians about Z, baked directly into world-space triangle
  * positions — `detectObb` reasons about world-space triangle normals, so
@@ -335,6 +360,48 @@ describe('hard-clash distance provenance', () => {
     expect(res.status).toBe('hard');
     expect(res.distanceKind).toBe('mesh');
     expect(res.distance).toBe(-0.03999999910593033);
+  });
+
+  it('reports a fully-enclosed non-box solid as hard at the AABB estimate', () => {
+    // A real solid buried wholly inside another with NO surface contact at
+    // all (a pipe run inside a beam, equipment inside a slab): the enclosed-
+    // solid branch, with an inner shape `detectObb` declines, so the depth
+    // falls back to the smallest overlapping AABB dimension - an estimate.
+    // The estimate (0.25 m) is ~5 orders of magnitude above the f32 noise
+    // floor here, so the floor gate must NOT touch it: this is the CLI
+    // matrix regression fixture's shape at unit level, pinning that the
+    // floor only suppresses depths that measure nothing, never a genuinely
+    // buried solid. All coordinates are exactly representable in f32, so the
+    // distance pin is exact.
+    const res = pair(
+      prismEl('A', 'IfcPipeSegment', [1.875, 0.375], [2.125, 0.375], [2, 0.625], 0.25, 0.75),
+      boxEl('B', 'IfcBeam', [0, 0, 0], [4, 1, 1]),
+    );
+    expect(res.status).toBe('hard');
+    expect(res.distanceKind).toBe('estimate');
+    expect(res.distance).toBe(-0.25);
+  });
+
+  it('reports touch, not hard, for a zero-volume sheet buried inside a solid', () => {
+    // The degenerate twin of the enclosed-solid pin above: the buried element
+    // is a zero-volume sheet, so its AABB overlap is exactly zero in the
+    // sheet-normal axis and there is nothing to measure - 0 is at the f32
+    // floor by definition. `main` reported every enclosed element as `hard`
+    // (distance = the AABB signed gap, here exactly 0) no matter the depth;
+    // the CLI matrix "real clash reported" test rode on that, its "pipe"
+    // being exactly such a ribbon (see `sheetEl`). The floor now classifies
+    // it as `touch` - a zero-volume solid displaces nothing - which a rule
+    // without `reportTouch` then drops entirely.
+    const sheet = sheetEl('A', 'IfcPipeSegment', 1, 3, 0.5, 0.25, 0.75);
+    const box = boxEl('B', 'IfcBeam', [0, 0, 0], [4, 1, 1]);
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const res = testPair(sheet, new TriMesh(sheet.positions!, sheet.indices!), box, new TriMesh(box.positions!, box.indices!), touchRule, 0.001);
+    if (!res) throw new Error('expected a touch result');
+    expect(res.status).toBe('touch');
+    expect(res.distance).toBe(0);
+    // Without reportTouch the pair is suppressed outright, not downgraded.
+    const hardOnly: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
+    expect(testPair(sheet, new TriMesh(sheet.positions!, sheet.indices!), box, new TriMesh(box.positions!, box.indices!), hardOnly, 0.001)).toBeNull();
   });
 
   it('reports touch, not a mesh-labelled hard clash, for a coincident-footprint pair below the f32 precision floor', () => {

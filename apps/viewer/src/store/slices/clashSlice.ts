@@ -254,9 +254,12 @@ export interface ClashSlice {
    * lens slice's `lensRuleIsolation` / `lensAppliedHiddenIds`, which record
    * lens ownership of these same channels in the store for the same reason.
    *
-   * Deliberately NOT part of `CLASH_FOCUS_RESET`: `clearClashFocus()` also runs
-   * at RUN START, where the release must stay ownership-aware (#2662 P2), and
-   * the release itself is what drops the record.
+   * PART of `CLASH_FOCUS_RESET` (#2654 fourth review): ending a focus ends the
+   * claim, so the by-hand "clear both channels" teardowns drop it without each
+   * having to remember to. That is only safe because every caller releases
+   * BEFORE it clears the focus — see the ordering note on `CLASH_FOCUS_RESET`.
+   * The visibility CHANNELS stay out of that constant: `clearClashFocus()` also
+   * runs at RUN START, where the release must stay ownership-aware (#2662 P2).
    */
   clashVisibilityOwned: ClashVisibilityOwnership;
 
@@ -388,6 +391,27 @@ const CLASH_SOLID_RESET = {
  * source of truth behind `clearClashFocus` — and spread by `clearClash` too, so
  * the two can never drift into clearing different subsets.
  *
+ * `clashVisibilityOwned` is here too — the CLAIM on the shared isolation/ghost
+ * channels, not the channels themselves. Ending a focus ends the claim, whether
+ * or not the caller also cleared the channel. Every by-hand "clear both channels"
+ * path (`useClash.clearHighlight` / `clearAll`, `ClashPanel`'s unmount, the clash
+ * tour cleanup, `homeView`) already routes through `clearClashFocus` /
+ * `clearClash`, so all of them drop the claim by construction rather than by each
+ * remembering to. Left standing, a stale record goes matching → cleared →
+ * MATCHING AGAIN the moment another owner installs an equal set, and the next
+ * model-lifecycle teardown destroys that owner's ghost (#2654 fourth review).
+ *
+ * This is safe ONLY because every caller releases before it clears:
+ * `useClash.discardSolidPresentation` calls `releaseClashVisibility()` first,
+ * and `endClashScenePresentation` (`lib/clash/visibility-ownership.ts`) releases
+ * in its step 1 and clears in its step 2 — see the ordering note there. Clearing
+ * first would null the record under the release, which would then find nothing
+ * to release and silently leave clash's own ghost/isolation on screen.
+ *
+ * The visibility CHANNELS themselves stay out: `clearClashFocus()` also runs at
+ * RUN START, where the release must stay ownership-aware so a user's X-ray
+ * survives `run()` (#2662 P2, `useClash.run-preserves-isolation.test.tsx`).
+ *
  * `clashSolidRequestSeq` is deliberately NOT here: it is a monotonic counter,
  * not a resettable field, and each action bumps it off its own current value.
  */
@@ -397,6 +421,7 @@ const CLASH_FOCUS_RESET = {
   clashHighlightColors: null,
   clashOverlapBox: null,
   clashContactLines: null,
+  clashVisibilityOwned: null,
 } as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */

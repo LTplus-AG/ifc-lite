@@ -99,11 +99,23 @@ export interface ClashVisibilityChannels {
  * content-match the ownership record, so it survives untouched.
  *
  * The record is dropped either way: once this has run, clash makes no further
- * claim on the channel. A record that no longer matches is inert anyway — the
- * channel it names has since been overwritten or cleared by someone else —
- * which is what makes the paths that clear both channels by hand
- * (`ClashPanel`'s unmount, `useClash.clearHighlight` / `clearAll`, the clash
- * tour cleanup) safe without each having to remember to reset it.
+ * claim on the channel.
+ *
+ * A record that no longer matches is NOT inert — the earlier revision of this
+ * doc claimed it was, and that claim was false (#2654 fourth review). Ownership
+ * is tested by VALUE, so a stale record goes matching → cleared → MATCHING
+ * AGAIN as soon as any other owner installs a set with equal content: focus a
+ * clash in ghost mode, `clearHighlight()`, let the spaces X-ray install a ghost
+ * over the same two ids, remove an unrelated model, and that owner's ghost was
+ * destroyed. On the `syncSourceModel` path that is "Sync from source wipes the
+ * user's X-ray" again — the very bug this file exists to close.
+ *
+ * What actually makes the by-hand "clear both channels" paths safe is that
+ * `clashVisibilityOwned` is a member of `CLASH_FOCUS_RESET` (clashSlice), and
+ * every one of them — `ClashPanel`'s unmount, `useClash.clearHighlight` /
+ * `clearAll`, the clash tour cleanup, `homeView` — routes through
+ * `clearClashFocus()` / `clearClash()`. The claim ends with the focus, by
+ * construction. See the ordering note on `endClashScenePresentation`.
  *
  * @returns whether a channel was actually released — i.e. whether clash was
  *   still, verifiably, the owner. Callers use this as the ownership answer for
@@ -193,44 +205,85 @@ export interface ClashSceneTeardown extends ClashVisibilityChannels {
  *    by the outgoing models' global ids, so replaying them would paint the next
  *    scene with the previous one's colours.
  *
- * This is also why the visibility fields stay OUT of the clash slice's shared
+ * This is also why the visibility CHANNELS stay OUT of the clash slice's shared
  * `CLASH_FOCUS_RESET`: `clearClashFocus()` is ALSO called at RUN START
  * (`useClash.discardSolidPresentation`), where the release must be ownership-
  * aware for the same reason — #2662 P2. Adding them to that constant fails
  * `useClash.run-preserves-isolation.test.tsx` ("a user-established X-ray ghost
- * SURVIVES run()"), verified.
+ * SURVIVES run()"), verified. The ownership RECORD is a different thing and IS
+ * in that constant, which is what closes the stale-claim hole above.
  *
- * @param read re-reads the store. Taken as a thunk, not a snapshot: the
- *   callers run other cross-slice clears (`clearMutations`, `clearMutationView`,
- *   `removeSourceTag`, and `resetViewerState`'s whole `set()`) before reaching
- *   here, each of which commits a new state object. A snapshot captured before
- *   those would read ownership off a pre-mutation object — benign today, a live
- *   trap the moment one of them touches a field read here.
+ * ## ORDER: release, THEN clear (load-bearing)
+ *
+ * Because `clashVisibilityOwned` is a member of `CLASH_FOCUS_RESET`, the clash
+ * clear NULLS the record. So the release must run FIRST. Clearing first would
+ * leave `releaseOwnedClashVisibility` reading `null`, finding nothing to
+ * release, and leaving clash's own ghost or isolation standing over a scene
+ * whose models just changed — the originally reported #2654 bug, reopened, with
+ * every existing test still green. The same holds for `clashHighlightColors`,
+ * which is why `clashPainted` is sampled first as well.
+ *
+ * `useClash.discardSolidPresentation` observes the same order for the same
+ * reason: `releaseClashVisibility()` before `clearClashFocus()`.
+ *
+ * And the order is self-enforcing rather than merely documented: every step
+ * calls `read()` afresh, so a reordering cannot hide behind a stale snapshot —
+ * it fails 8 tests across three files instead (verified by mutation).
+ *
+ * @param read re-reads the store. A thunk, not a snapshot, and called at EVERY
+ *   step: each step commits a new state object, and the callers also run other
+ *   cross-slice clears (`clearMutations`, `clearMutationView`, `removeSourceTag`,
+ *   and `resetViewerState`'s whole `set()`) before reaching here, so even the
+ *   first read cannot be hoisted to the caller.
  */
 export function endClashScenePresentation(
   read: () => ClashSceneTeardown,
   mode: 'model-removed' | 'federation-cleared',
 ): void {
-  const cross = read();
   const wipeAll = mode === 'federation-cleared';
-  // Sampled BEFORE the clash clear nulls it.
-  const clashPainted = cross.clashHighlightColors != null;
 
-  if (wipeAll) cross.clearClash?.();
-  else cross.clearClashFocus?.();
+  // Every step below calls `read()` afresh rather than sharing one snapshot.
+  // That is deliberate, and it is what makes the ORDER self-enforcing: under a
+  // shared snapshot, moving the clash clear ahead of the release would still
+  // "work", because the snapshot would keep handing the release a
+  // `clashVisibilityOwned` the clear had already nulled. The bug would then be
+  // one stale-read cleanup away from going live with every test green. Reading
+  // fresh means a reordering breaks LOUDLY instead (8 tests across three files,
+  // verified by mutation).
 
+  // ── Step 1: sample the paint fact, BEFORE anything here mutates ──────────
+  // `clashHighlightColors` is a member of `CLASH_FOCUS_RESET`; after step 2 it
+  // reads `null` and the amber/cyan pair tint stays painted on the survivors.
+  const clashPainted = read().clashHighlightColors != null;
+
+  // ── Step 2: release the SHARED visibility channels ───────────────────────
+  // Must precede step 3: `clashVisibilityOwned` is a member of
+  // `CLASH_FOCUS_RESET` too, so the clash clear ends clash's claim. Released
+  // afterwards, the predicate reads `null`, finds nothing to release, and
+  // leaves clash's own ghost or isolation standing over a scene whose models
+  // just changed — the originally reported #2654 bug.
   let released: boolean;
   if (wipeAll) {
-    cross.clearIsolation?.();
-    cross.clearGhost?.();
-    cross.setClashVisibilityOwned?.(null);
+    // Every model is gone: nothing survives for either channel to refer to, so
+    // both go outright, ownership or not.
+    const s = read();
+    s.clearIsolation?.();
+    s.clearGhost?.();
+    s.setClashVisibilityOwned?.(null);
     released = true;
   } else {
-    released = releaseOwnedClashVisibility(cross);
+    released = releaseOwnedClashVisibility(read());
   }
 
-  if (wipeAll) cross.setPendingColorUpdates?.(new Map());
+  // ── Step 3: end the clash slice's own focus ──────────────────────────────
+  const s = read();
+  if (wipeAll) s.clearClash?.();
+  else s.clearClashFocus?.();
+
+  // ── Step 4: hand the paint channel back to whoever owns it next ──────────
+  const after = read();
+  if (wipeAll) after.setPendingColorUpdates?.(new Map());
   else if (clashPainted || released) {
-    cross.setPendingColorUpdates?.(new Map(cross.lensAppliedColors ?? []));
+    after.setPendingColorUpdates?.(new Map(after.lensAppliedColors ?? []));
   }
 }

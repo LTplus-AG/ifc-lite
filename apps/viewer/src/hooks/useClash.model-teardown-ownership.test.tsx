@@ -37,7 +37,7 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { Clash } from '@ifc-lite/clash';
+import type { Clash, ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
@@ -129,6 +129,8 @@ const CLASH: Clash = {
   bounds: { min: [0.5, 0, 0], max: [1, 1, 1] },
   severity: 'major',
 };
+
+const ALL_RULE: ClashRule = { id: 'all-clashes', name: 'All elements', a: '*', mode: 'hard' };
 
 // ─── Harness ────────────────────────────────────────────────────────────────
 
@@ -258,5 +260,112 @@ describe('removeModel releases the visibility channel clash OWNS (#2654 third re
     const s = useViewerStore.getState();
     assert.ok(s.isolatedEntities, 'the user isolation must still be standing');
     assert.deepEqual([...s.isolatedEntities], [1], 'and untouched');
+  });
+
+  // The OVER-CLEAR test above seeds `clashVisibilityOwned: null` and focuses
+  // highlight straight away, so `applyFocusMode`'s `setClashVisibilityOwned(null)`
+  // is a no-op there and deleting that line leaves it green. This drives a REAL
+  // prior owner into the record first — a ghost focus — so the highlight branch's
+  // disown is the only thing that can empty it.
+  it('OVER-CLEAR: switching an existing GHOST focus to highlight DISOWNS the record, not just the channel', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [1, 2],
+      'setup sanity: the ghost focus installed the pair ghost and recorded it');
+
+    // The user switches the panel's focus mode to Highlight on the same clash.
+    await act(async () => { api!.focusClash(CLASH, 'highlight'); });
+    assert.equal(useViewerStore.getState().ghostExceptEntities, null,
+      'setup sanity: highlight cleared the ghost channel');
+
+    // Another owner (spaces X-ray / LayerDiffView / Space Sketch) installs a
+    // ghost that happens to hold EXACTLY the ids clash last installed — the two
+    // clash parents are a perfectly ordinary thing for a user to X-ray.
+    useViewerStore.getState().setGhostExceptEntities(new Set([1, 2]));
+
+    useViewerStore.getState().removeModel('B');
+
+    const s = useViewerStore.getState();
+    assert.ok(s.ghostExceptEntities,
+      'the highlight branch must DROP the ownership record, not merely clear the channel: a stale record matches again the moment another owner installs an equal set, and the removal then destroys that owner\'s ghost');
+    assert.deepEqual([...s.ghostExceptEntities].sort(), [1, 2], 'and leave it untouched');
+  });
+
+  // Finding A: every by-hand "clear both channels" path (`clearHighlight`,
+  // `clearAll`, `ClashPanel`'s unmount, the clash tour cleanup, `homeView`) used
+  // to leave the ownership record standing. Because ownership is tested by
+  // VALUE, that record goes matching → cleared → matching AGAIN as soon as any
+  // other owner installs an equal set.
+  it('a by-hand clearHighlight() disowns the channel, so a LATER equal ghost from another owner survives', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [1, 2],
+      'setup sanity: the clash ghost is installed and owned');
+
+    await act(async () => { api!.clearHighlight(); });
+    assert.equal(useViewerStore.getState().ghostExceptEntities, null,
+      'setup sanity: clearHighlight cleared the channel by hand');
+
+    // Another owner installs a ghost with exactly the same content.
+    useViewerStore.getState().setGhostExceptEntities(new Set([1, 2]));
+
+    useViewerStore.getState().removeModel('B');
+
+    const s = useViewerStore.getState();
+    assert.ok(s.ghostExceptEntities,
+      'the clash focus ENDED at clearHighlight — a removal afterwards must not reach back through a stale ownership record and destroy the next owner\'s ghost. On the syncSourceModel path that is "Sync from source wipes the user\'s X-ray" all over again.');
+    assert.deepEqual([...s.ghostExceptEntities].sort(), [1, 2], 'and leave it untouched');
+  });
+
+  // Control for the test above: with DIFFERING content the value predicate never
+  // matches, so it passes for a reason that has nothing to do with the record
+  // being dropped. Pinned so the pair together prove the record — not the
+  // content mismatch — is what does the work.
+  it('control: a differing later ghost survives on content alone', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    await act(async () => { api!.clearHighlight(); });
+    useViewerStore.getState().setGhostExceptEntities(new Set([1]));
+
+    useViewerStore.getState().removeModel('B');
+
+    const s = useViewerStore.getState();
+    assert.ok(s.ghostExceptEntities, 'a ghost that never content-matched must survive');
+    assert.deepEqual([...s.ghostExceptEntities], [1]);
+  });
+
+  // BOTH channels populated at once. `isolateEntities` (the "Isolate in 3D"
+  // action, #2532) does NOT clear the ghost — unlike `setIsolatedEntities` — so
+  // a clash ghost and a user isolation can stand together. The release must take
+  // the one it OWNS and leave the other alone, on both release paths.
+  it('BOTH channels: a clash ghost plus a user isolation — only the ghost is released (removeModel)', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    // "Isolate in 3D" on one element, on top of the clash ghost.
+    useViewerStore.getState().isolateEntities([1]);
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [1, 2],
+      'setup sanity: isolateEntities leaves the ghost channel standing');
+    assert.deepEqual([...(useViewerStore.getState().isolatedEntities ?? [])], [1],
+      'setup sanity: and installs the user isolation alongside it');
+
+    useViewerStore.getState().removeModel('B');
+
+    const s = useViewerStore.getState();
+    assert.equal(s.ghostExceptEntities, null, 'the clash-owned ghost goes with the presentation');
+    assert.ok(s.isolatedEntities, 'the user isolation is another feature\'s and must survive');
+    assert.deepEqual([...s.isolatedEntities], [1], 'untouched');
+  });
+
+  it('BOTH channels: same pair, released at RUN START through the other path (run())', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    useViewerStore.getState().isolateEntities([1]);
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.ghostExceptEntities, null, 'the run-start discard releases the clash ghost it owns');
+    assert.ok(s.isolatedEntities, 'and leaves the user isolation standing');
+    assert.deepEqual([...s.isolatedEntities], [1], 'untouched');
   });
 });

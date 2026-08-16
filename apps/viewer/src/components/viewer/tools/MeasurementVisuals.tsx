@@ -720,13 +720,28 @@ export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProp
     }
   }
 
-  // Compare polylineMeasurements — id list is enough (points are immutable
-  // once a measurement is finished; only additions/deletions change it).
+  // Compare polylineMeasurements — ids AND point coordinates. An id list is
+  // NOT enough: a finished polyline's points are not immutable, because
+  // `updateMeasurementScreenCoords` reprojects them on every camera move.
+  // Comparing ids only would report "equal" after a reprojection, React.memo
+  // would skip the render, and the finished polyline's vertices, segments and
+  // labels would stay frozen at their click-time screen position while the
+  // model orbits underneath them. Screen coords catch the camera move; world
+  // coords are compared for the same reason as `measurements` above, since a
+  // point can move in world space while projecting to the same pixel.
   const prevPls = prevProps.polylineMeasurements ?? [];
   const nextPls = nextProps.polylineMeasurements ?? [];
   if (prevPls.length !== nextPls.length) return false;
   for (let i = 0; i < prevPls.length; i++) {
-    if (prevPls[i].id !== nextPls[i].id) return false;
+    const prevPl = prevPls[i];
+    const nextPl = nextPls[i];
+    if (prevPl.id !== nextPl.id) return false;
+    if (prevPl.points.length !== nextPl.points.length) return false;
+    for (let j = 0; j < prevPl.points.length; j++) {
+      const a = prevPl.points[j];
+      const b = nextPl.points[j];
+      if (a.screenX !== b.screenX || a.screenY !== b.screenY || a.x !== b.x || a.y !== b.y || a.z !== b.z) return false;
+    }
   }
 
   // Compare unitDisplayOverrides — every distance label routes through it

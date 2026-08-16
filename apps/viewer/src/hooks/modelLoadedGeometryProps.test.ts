@@ -215,9 +215,19 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   // module"): a whole-file `indexOf`/`match` would also pass if the spread and
   // its fields showed up in a comment, an unrelated call, or a different one
   // of the six `ifc_model_loaded` capture sites in this file.
-  const src = readFileSync(
-    fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)),
-    'utf8',
+  // Comment-stripped, exactly like `wasmCaptureArgs()` above. The
+  // argument-span checks there are comment-proof by construction (a comment
+  // cannot be the balanced-paren argument list of a real call), but the
+  // whole-file `assert.match` below is not: with the RAW text, deleting the
+  // real `loadDiagnostics = event.diagnostics` hoist while any comment in the
+  // module happens to mention it kept this green — with `loadDiagnostics`
+  // permanently null, which nulls every `csg_*` field this PR exists to make
+  // attributable. Demonstrated, then fixed (#2393 review).
+  const src = stripLineComments(
+    readFileSync(
+      fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)),
+      'utf8',
+    ),
   );
 
   it('spreads the builder, wired to the load diagnostics and fidelity inputs, into the wasm-path ifc_model_loaded capture', () => {
@@ -240,30 +250,32 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   });
 });
 
-describe('ifc_model_loaded cache-hit geometry props (#2388)', () => {
-  // The cache-hit WIRING is tested behaviourally, not by source text:
-  // `useIfcLoader.cacheHitTelemetry.test.tsx` seeds a real cache entry, drives
-  // the real `loadFile` to a real hit, and reads the `ifc_model_loaded` event
-  // that actually leaves `posthog.capture`. That path is reachable under
-  // `tsx --test` (the hit is decided at `loadStage = 'cache-lookup'`, long
-  // before the wasm engine is touched), so no source-text stand-in is needed
-  // here — unlike the wasm-path wiring above. What remains below is the
-  // builder-level half of the same contract.
-
-  it('reports absent CSG counters alongside real fidelity values for a cache hit (builder-level proof)', () => {
-    // Mirrors the exact call shape the cache-hit site should use: no
-    // diagnostics available (hence `undefined`), but real tier/skip values.
-    const props = buildModelLoadedGeometryProps({
-      diagnostics: undefined,
-      tessellationTier: 'low',
-      skipSmallCuts: true,
-      isResourceRetry: false,
-    });
-    assert.equal(props.tessellation_tier, 'low');
-    assert.equal(props.skip_small_cuts, true);
-    assert.equal(props.total_csg_failures, undefined);
-    assert.equal(props.csg_products_with_failures, undefined);
-    assert.equal(props.csg_silent_no_ops, undefined);
-    assert.equal(props.csg_top_failure_reason, undefined);
-  });
-});
+/*
+ * The cache-hit half of #2388 is tested where it can be OBSERVED, not here:
+ * `useIfcLoader.cacheHitTelemetry.test.tsx` seeds a real cache entry, drives
+ * the real `loadFile` to a real hit, and reads the `ifc_model_loaded` payload
+ * that actually leaves `posthog.capture`. That path is reachable under
+ * `tsx --test` — the hit is decided at `loadStage = 'cache-lookup'`, hundreds
+ * of lines before the wasm engine is touched — so it needs no source-text
+ * stand-in and no builder-level stand-in either, unlike the wasm-path wiring
+ * above.
+ *
+ * A builder-level "mirrors the call shape the cache-hit site should use" test
+ * lived here until #2393 review. Every assertion it made is covered twice
+ * over now, so it was removed rather than kept as a second spelling of the
+ * same claim:
+ *
+ *  - absent CSG counters (`total_csg_failures`, `csg_products_with_failures`,
+ *    `csg_silent_no_ops`) for absent diagnostics — the builder unit test
+ *    "leaves the CSG counts UNSET when no producer emitted diagnostics"
+ *    above, and behaviourally `cacheHitTelemetry.test.tsx`'s "leaves the CSG
+ *    counters ABSENT on a cache hit" (mutation-verified: flattening any of
+ *    them to `?? 0` fails it);
+ *  - absent `csg_top_failure_reason` — the same behavioural case
+ *    (mutation-verified with `?? 'None'`), which is stronger than the builder
+ *    assertion was: it reads the real payload rather than a mirrored call;
+ *  - `tessellation_tier` / `skip_small_cuts` carrying real values — the
+ *    builder unit test "records the two fidelity inputs …" above, and
+ *    behaviourally the cache-hit test's two OPPOSITE-fidelity loads, which
+ *    also rule out the hardcoded constant a single-value mirror cannot.
+ */

@@ -98,8 +98,33 @@ failed. `signIn()` in `auth.ts` sets it via `createAuthorizationRequest`'s
 inspects the built authorization URL for exactly this parameter.
 
 Sign-in is a popup, not a full-page redirect: `signIn()` opens
-`https://www.dropbox.com/oauth2/authorize` in a popup and polls it for a
-same-origin redirect back to this app.
+`https://www.dropbox.com/oauth2/authorize` in a popup and waits for the
+callback page at `REDIRECT_PATH` to broadcast the result back.
+
+**The popup is never inspected, and the host must serve `REDIRECT_PATH`
+itself.** Both follow from `Cross-Origin-Opener-Policy: same-origin`, which
+any host that wants `SharedArrayBuffer` (the ifc-lite viewer does) has to
+send. Under that header, opening a *cross-origin* popup severs the opener
+relationship: the `WindowProxy` `window.open` returns reports `closed === true`
+while the window is visibly open, and reading `location` throws
+`SecurityError`. The classic poll loop therefore rejects every sign-in as
+"cancelled" on its first tick, with the popup still on the consent screen and
+the authorization code stranded. So:
+
+- The redirect lands back on this app's own origin, and that page hands the
+  result to the opener over a `BroadcastChannel` (name and message shape:
+  `src/callback-channel.ts`). The host serves that page: see
+  `apps/viewer/public/oauth/dropbox/callback.html` plus the dev-server route
+  in `apps/viewer/vite-plugins/oauth-callback.ts` and the `vercel.json`
+  rewrite. Without such a route the SPA fallback answers the redirect with the
+  whole application, which boots a second copy of the app inside the popup.
+- Messages are routed by `state`, so two providers (or two tabs) signing in at
+  once cannot complete each other's flow. `state` is then re-validated by
+  `parseAuthorizationCallback` before the code is used.
+- **Cancellation is not detectable.** `popup.closed` is the only signal a
+  browser offers for "the user closed the window", and it is exactly what COOP
+  made unusable. Closing the popup falls through to the five-minute timeout
+  instead of reporting a cancellation.
 
 **The two OAuth endpoints are on different hosts.** The authorization page is
 `https://www.dropbox.com/oauth2/authorize`; the token endpoint is

@@ -13,6 +13,7 @@ import type { PluginContext, SourceAuth, SourceIdentity } from '@ifc-lite/plugin
 
 import { BrowserDropboxApiClient } from './http-client.js';
 import { decodeCurrentAccount } from './dropbox-types.js';
+import { waitForOAuthCallback } from './callback-channel.js';
 
 // Endpoints per Dropbox's own OAuth guide (`developers.dropbox.com/oauth-guide`,
 // "Implementing OAuth" / "PKCE", checked 2026-08-16). The two live on
@@ -56,7 +57,6 @@ const STORAGE_KEY = 'dropbox:tokens';
  * registration needs. */
 export const REDIRECT_PATH = '/oauth/dropbox/callback';
 
-const POPUP_POLL_MS = 250;
 const POPUP_TIMEOUT_MS = 5 * 60 * 1000;
 
 export async function requireClientId(ctx: PluginContext): Promise<string> {
@@ -123,44 +123,6 @@ async function currentIdentity(ctx: PluginContext): Promise<SourceIdentity | nul
   }
 }
 
-/**
- * Polls a popup for a same-origin redirect. Cross-origin `popup.location`
- * access throws a `SecurityError` for as long as the popup is still on
- * `dropbox.com`; that's expected and simply means "keep polling" rather than
- * a real failure — only once the popup navigates back to this app's own
- * origin does reading its URL succeed. Mirrors `source-msgraph`'s
- * `waitForPopupRedirect`.
- */
-function waitForPopupRedirect(popup: Window, redirectOrigin: string, timeoutMs: number): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const startedAt = Date.now();
-    const interval = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(interval);
-        reject(new Error('Dropbox sign-in was cancelled (the popup was closed)'));
-        return;
-      }
-      if (Date.now() - startedAt > timeoutMs) {
-        clearInterval(interval);
-        popup.close();
-        reject(new Error('Dropbox sign-in timed out'));
-        return;
-      }
-      let href: string | undefined;
-      try {
-        href = popup.location.href;
-      } catch {
-        return; // Still cross-origin on dropbox.com — keep polling.
-      }
-      if (href.startsWith(redirectOrigin)) {
-        clearInterval(interval);
-        popup.close();
-        resolve(href);
-      }
-    }, POPUP_POLL_MS);
-  });
-}
-
 export const dropboxAuth: SourceAuth = {
   async restore(ctx: PluginContext): Promise<SourceIdentity | null> {
     return currentIdentity(ctx);
@@ -203,11 +165,27 @@ export const dropboxAuth: SourceAuth = {
       throw new Error('Dropbox sign-in popup was blocked by the browser');
     }
 
+    // Subscribed here, synchronously after the popup opens and before any
+    // `await`, because `BroadcastChannel` does not buffer: a message posted
+    // before this listener exists would be lost.
+    //
+    // The popup itself is deliberately never inspected. Under this app's
+    // `Cross-Origin-Opener-Policy: same-origin`, `popup.closed` is `true` and
+    // `popup.location` throws for a cross-origin popup even while it is open
+    // and working, so the usual poll loop rejects every sign-in as
+    // "cancelled" on its first tick. `callback-channel.ts` documents the
+    // probe. Cancellation therefore falls back to the timeout.
     let callbackUrl: string;
     try {
-      callbackUrl = await waitForPopupRedirect(popup, window.location.origin, POPUP_TIMEOUT_MS);
+      callbackUrl = await waitForOAuthCallback({
+        expectedState: authRequest.state,
+        timeoutMs: POPUP_TIMEOUT_MS,
+        timeoutMessage: 'Dropbox sign-in timed out',
+      });
     } catch (err) {
-      if (!popup.closed) popup.close();
+      // Best effort: also inert on a severed popup, but harmless, and it does
+      // close the window in a browser that has not cut the opener link.
+      popup.close();
       throw err;
     }
 

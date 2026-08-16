@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { dropboxAuth } from '../src/auth.js';
+import { OAUTH_CALLBACK_CHANNEL } from '../src/callback-channel.js';
 import { DROPBOX_MOCK_ACCESS_TOKEN, createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
@@ -118,6 +119,107 @@ describe('dropboxAuth', () => {
       expect(url.searchParams.get('scope')).toBe('account_info.read files.metadata.read files.content.read');
       expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     });
+
+    /**
+     * The COOP regression, end to end.
+     *
+     * The viewer serves `Cross-Origin-Opener-Policy: same-origin` (it needs
+     * cross-origin isolation for `SharedArrayBuffer`). Under that header,
+     * opening a CROSS-ORIGIN popup severs the opener link and the returned
+     * `WindowProxy` becomes a stub: `closed` reads `true` while the window is
+     * visibly open, and `location` throws `SecurityError`. Probed live in the
+     * running viewer, both against `www.dropbox.com` (severed) and against a
+     * same-origin control (normal).
+     *
+     * The `popup.closed` stub below is that behaviour verbatim. Against the
+     * old poll loop this test fails on the first 250 ms tick with "Dropbox
+     * sign-in was cancelled (the popup was closed)" while the popup is still
+     * on the consent screen, which is exactly what users hit; the flow only
+     * completes if sign-in gets its result from the callback page's
+     * broadcast and never touches the popup at all.
+     */
+    it('completes sign-in from the callback page broadcast, with a popup severed by COOP', async () => {
+      const base = createDropboxMockContext(WORLD);
+      await base.storage.delete('dropbox:tokens');
+
+      const tokenRequestBodies: string[] = [];
+      const ctx = {
+        ...base,
+        fetch: ((input: RequestInfo | URL, init?: RequestInit) => {
+          const href = typeof input === 'string' ? input : input.toString();
+          if (href.includes('/oauth2/token')) {
+            tokenRequestBodies.push(String(init?.body ?? ''));
+            return Promise.resolve(
+              new Response(
+                JSON.stringify({
+                  access_token: DROPBOX_MOCK_ACCESS_TOKEN,
+                  refresh_token: 'mock-refresh-token',
+                  expires_in: 3600,
+                  token_type: 'bearer',
+                }),
+                { status: 200, headers: { 'Content-Type': 'application/json' } },
+              ),
+            );
+          }
+          return base.fetch(input, init);
+        }) as typeof fetch,
+      };
+
+      let locationReads = 0;
+      const severedPopup = {
+        // What COOP actually reports for a live cross-origin popup.
+        closed: true,
+        close: () => {},
+        get location(): never {
+          locationReads += 1;
+          throw new Error('SecurityError: Blocked a frame with origin from accessing a cross-origin frame.');
+        },
+      };
+
+      const fakeWindow = {
+        location: { origin: 'https://app.example.com' },
+        open: (authorizeUrl: string) => {
+          const state = new URL(authorizeUrl).searchParams.get('state');
+          // Stands in for the user consenting and Dropbox redirecting the
+          // popup to REDIRECT_PATH, where the static callback page posts.
+          setTimeout(() => {
+            const channel = new BroadcastChannel(OAUTH_CALLBACK_CHANNEL);
+            channel.postMessage({
+              type: OAUTH_CALLBACK_CHANNEL,
+              state,
+              url: `https://app.example.com/oauth/dropbox/callback?code=auth-code-1&state=${state}`,
+            });
+            channel.close();
+          }, 0);
+          return severedPopup;
+        },
+      };
+
+      (globalThis as { window?: unknown }).window = fakeWindow;
+      let identity;
+      try {
+        identity = await dropboxAuth.signIn(ctx);
+      } finally {
+        delete (globalThis as { window?: unknown }).window;
+      }
+
+      expect(identity).toEqual({ id: 'account-1', displayName: 'Mock User', email: 'mock@example.com' });
+      expect(tokenRequestBodies).toHaveLength(1);
+      const exchange = new URLSearchParams(tokenRequestBodies[0]);
+      expect(exchange.get('grant_type')).toBe('authorization_code');
+      expect(exchange.get('code')).toBe('auth-code-1');
+      expect(exchange.get('code_verifier')).toBeTruthy();
+      // The session really was persisted. This is the entry that stayed
+      // missing while the poll loop rejected every sign-in.
+      expect(await ctx.storage.get('dropbox:tokens')).toBeDefined();
+      // Nothing read the inoperable API on the way through.
+      expect(locationReads).toBe(0);
+    });
+
+    // Cross-attempt routing (a broadcast carrying someone else's `state` must
+    // be ignored, not consumed) is covered in `callback-channel.test.ts`.
+    // Asserting it through `signIn` would mean leaving its real 5-minute
+    // timeout pending in the test worker.
   });
 
   describe('token endpoint', () => {

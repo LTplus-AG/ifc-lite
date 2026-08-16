@@ -142,6 +142,12 @@ for (const sample of ['hello-wall.ifc', 'building-architecture.ifc', 'infra-brid
     edges += cache.edges.length;
     splits += residualSplits(cache.edges);
   }
+  // A present-but-empty sample would sail through: `splits` stays 0, the
+  // assertion passes, and the check is counted. Same vacuous shape as a run
+  // with no samples at all, one level in - so require the sample to have
+  // actually produced geometry before its zero means anything.
+  assert.ok(meshes.length > 0, `${sample}: loaded 0 meshes, so its 0 split runs prove nothing`);
+  assert.ok(edges > 0, `${sample}: produced 0 reconstructed edges, so its 0 split runs prove nothing`);
   assert.equal(splits, 0, `${sample}: ${splits} model edges are still served in fragments within a single piece`);
   console.log(`  ok ${sample}: ${meshes.length} meshes, ${edges} reconstructed edges, 0 split runs within any single MeshData piece`);
   checks++;

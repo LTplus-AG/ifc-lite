@@ -67,14 +67,29 @@ export function detectCorner(
     }
   }
 
+  // Select the nearest candidate that MEETS the valence gate, falling back to
+  // the nearest of any valence only when none qualifies. Picking the nearest
+  // first and gating afterwards loses a real corner whenever a sub-valence
+  // vertex happens to sit marginally closer than a qualifying one: the gate
+  // rejects the winner and the qualifying candidate is never considered.
   let best: { vertex: Vec3; valence: number; atEndpoint: boolean } | null = null;
   let bestDistance = Infinity;
+  let fallback: { vertex: Vec3; valence: number; atEndpoint: boolean } | null = null;
+  let fallbackDistance = Infinity;
   for (const candidate of candidates) {
     const dist = distance(point, candidate.vertex);
-    if (dist < bestDistance) {
+    if (dist < fallbackDistance) {
+      fallback = candidate;
+      fallbackDistance = dist;
+    }
+    if (candidate.valence >= MIN_CORNER_VALENCE && dist < bestDistance) {
       best = candidate;
       bestDistance = dist;
     }
+  }
+  if (!best) {
+    best = fallback;
+    bestDistance = fallbackDistance;
   }
 
   if (!best) return { isCorner: false, valence: 0, vertex: null, atEndpoint: false };

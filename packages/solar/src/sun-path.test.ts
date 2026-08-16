@@ -73,6 +73,27 @@ describe('dayPath', () => {
     const winter = dayPath(new Date('2024-12-21T12:00:00Z'), LAT, LON, { stepMinutes: 10 });
     expect(summer.length).toBeGreaterThan(winter.length);
   });
+
+  // `for (let m = 0; m <= 1440; m += step)` never advances when step <= 0,
+  // hanging the process instead of returning or throwing. Confirmed live via
+  // direct probe: `dayPath(date, 51.5, -0.1, { stepMinutes: 0 })` ran past a
+  // 5-second external `timeout` wrapper without returning (exit code 124)
+  // before this guard existed.
+  it('rejects a non-positive stepMinutes instead of hanging', () => {
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: 0 })).toThrow(/stepMinutes/);
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: -5 })).toThrow(/stepMinutes/);
+    expect(() => dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: NaN })).toThrow(/stepMinutes/);
+  });
+
+  // `step > 0` is true for Number.MIN_VALUE, but `1440 + Number.MIN_VALUE === 1440`
+  // (the double ULP near 1440 is ~2.3e-13, far larger than MIN_VALUE) — the loop
+  // never advances and hangs exactly like stepMinutes: 0 did. A `> 0` guard alone
+  // cannot catch this; the check must confirm the step actually moves the bound.
+  it('rejects a positive stepMinutes too small to advance the loop', () => {
+    expect(() =>
+      dayPath(new Date('2024-06-20T12:00:00Z'), LAT, LON, { stepMinutes: Number.MIN_VALUE }),
+    ).toThrow(/stepMinutes/);
+  });
 });
 
 describe('analemmaPaths', () => {
@@ -103,6 +124,19 @@ describe('analemmaPaths', () => {
     const hours = analemmaPaths(2024, LAT, LON, { dayStep: 10 }).map((p) => p.hour);
     expect(hours).toContain(12);
     expect(hours).not.toContain(1);
+  });
+
+  // Same shape as dayPath's stepMinutes bug: `for (day=0; day<daysInYear;
+  // day+=dayStep)` never advances when dayStep <= 0.
+  it('rejects a non-positive dayStep instead of hanging', () => {
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: 0 })).toThrow(/dayStep/);
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: -3 })).toThrow(/dayStep/);
+  });
+
+  // Same reasoning as dayPath's stepMinutes: `daysInYear + Number.MIN_VALUE ===
+  // daysInYear`, so `day += dayStep` never advances and the loop hangs.
+  it('rejects a positive dayStep too small to advance the loop', () => {
+    expect(() => analemmaPaths(2024, LAT, LON, { dayStep: Number.MIN_VALUE })).toThrow(/dayStep/);
   });
 });
 

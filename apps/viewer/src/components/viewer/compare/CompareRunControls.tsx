@@ -45,6 +45,10 @@ interface CompareRunControlsProps {
   error: string | null;
   /** Show the "no geometry fingerprints" warning (result-dependent). */
   geometryUnavailable: boolean;
+  /** Placement fingerprints are still comparing moves (symmetric mesh-less
+   *  pair) — the warning must not claim geometry changes are undetectable
+   *  while the panel's own rows report placement-driven ones. */
+  placementOnlyGeometry: boolean;
   excludedTypes: string[];
   changedTypeCounts: ChangedTypeCount[];
   onAddExcludedType: (type: string) => void;
@@ -69,6 +73,7 @@ export function CompareRunControls({
   onRun,
   error,
   geometryUnavailable,
+  placementOnlyGeometry,
   excludedTypes,
   changedTypeCounts,
   onAddExcludedType,
@@ -166,9 +171,14 @@ export function CompareRunControls({
 
       {geometryUnavailable && scope !== 'data' && (
         <p className="text-xs text-[#e0af68]">
-          One model has no geometry fingerprints (loaded outside the WASM
-          mesh path), so geometry changes can’t be detected. Data changes
-          are still accurate — switch to the Data scope for reliable results.
+          {placementOnlyGeometry
+            ? 'Neither model has mesh geometry fingerprints (loaded outside ' +
+              'the WASM mesh path), so SHAPE changes can’t be detected. ' +
+              'Placement-driven moves and data changes are still compared.'
+            : 'One model has no geometry fingerprints (loaded outside the ' +
+              'WASM mesh path), so geometry changes can’t be detected. Data ' +
+              'changes are still accurate — switch to the Data scope for ' +
+              'reliable results.'}
         </p>
       )}
 

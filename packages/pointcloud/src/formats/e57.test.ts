@@ -9,10 +9,51 @@ import {
   resolveCompressedVectorDataOffset,
   stripPageCrc,
   decodeE57Scan,
+  applyPoseInPlace,
   type Data3DEntry,
+  type E57Pose,
 } from './e57.js';
 
 const enc = new TextEncoder();
+
+/** Build a single-packet, cartesianX/Y/Z-only (Float64) Data3DEntry. */
+function buildF64Entry(
+  points: Array<{ x: number; y: number; z: number }>,
+  pose?: E57Pose,
+): { entry: Data3DEntry; logical: Uint8Array } {
+  const numPoints = points.length;
+  const lenF64 = numPoints * 8;
+  const lengths = [lenF64, lenF64, lenF64];
+  const totalPayload = lengths.reduce((a, b) => a + b, 0);
+  const headerBytes = 4 + 2 + 3 * 2;
+  const packetSize = headerBytes + totalPayload;
+  const buf = new ArrayBuffer(packetSize);
+  const view = new DataView(buf);
+  view.setUint8(0, 1);
+  view.setUint8(1, 0);
+  view.setUint16(2, packetSize - 1, true);
+  view.setUint16(4, 3, true);
+  for (let i = 0; i < 3; i++) view.setUint16(6 + i * 2, lengths[i], true);
+  let cursor = headerBytes;
+  for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].x, true);
+  cursor += lenF64;
+  for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].y, true);
+  cursor += lenF64;
+  for (let i = 0; i < numPoints; i++) view.setFloat64(cursor + i * 8, points[i].z, true);
+
+  const entry: Data3DEntry = {
+    guid: 'test',
+    recordCount: numPoints,
+    binaryFileOffset: 0,
+    prototype: [
+      { name: 'cartesianX', kind: 'Float', precision: 'double' },
+      { name: 'cartesianY', kind: 'Float', precision: 'double' },
+      { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+    ],
+    pose,
+  };
+  return { entry, logical: new Uint8Array(buf) };
+}
 
 function buildHeader(opts: {
   fileLogicalSize?: number;
@@ -707,6 +748,92 @@ describe('applyPoseInPlace', () => {
     expect(positions[1]).toBeCloseTo(2.5, 5);
     expect(positions[2]).toBeCloseTo(3.5, 5);
   });
+
+  it('applies originOffset to the translation (post-rotation), in f64, before narrowing', () => {
+    // 90° rotation around +Z keeps (1,0,0) -> (0,1,0) unshifted; translation
+    // is at survey magnitude, so subtracting it BEFORE the offset-aware
+    // narrowing is what proves this happens on the full-precision f64 sum,
+    // not on an already-narrowed f32 local + a huge f32 translation.
+    const positions = new Float32Array([1, 0, 0]);
+    applyPoseInPlace(positions, 1, {
+      rotation: { w: Math.SQRT1_2, x: 0, y: 0, z: Math.SQRT1_2 },
+      translation: { x: 500_012.345, y: 5_000_006.789, z: 104.321 },
+    }, [500_000, 5_000_000, 100]);
+    // (1,0,0) rotated 90° about Z -> (0,1,0); + (T - offset) = (12.345, 7.789, 4.321).
+    expect(positions[0]).toBeCloseTo(12.345, 5);
+    expect(positions[1]).toBeCloseTo(7.789, 5);
+    expect(positions[2]).toBeCloseTo(4.321, 5);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const a = new Float32Array([1, 2, 3]);
+    const b = new Float32Array([1, 2, 3]);
+    const pose: E57Pose = {
+      rotation: { w: Math.SQRT1_2, x: 0, y: 0, z: Math.SQRT1_2 },
+      translation: { x: 10, y: -5, z: 2 },
+    };
+    applyPoseInPlace(a, 1, pose);
+    applyPoseInPlace(b, 1, pose, undefined);
+    expect(Array.from(a)).toEqual(Array.from(b));
+  });
+});
+
+describe('originOffset (extends #1804 to E57)', () => {
+  it('decodeE57Scan subtracts originOffset in f64 before narrowing to f32 (no pose)', () => {
+    const { entry, logical } = buildF64Entry([
+      { x: 500_012.345, y: 5_000_006.789, z: 104.321 },
+    ]);
+    const withoutOffset = decodeE57Scan(logical, entry);
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodeE57Scan(logical, entry, [500_000, 5_000_000, 100]);
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const { entry, logical } = buildF64Entry([{ x: 1.5, y: 2.5, z: -3.5 }, { x: 7, y: 8, z: 9 }]);
+    const a = decodeE57Scan(logical, entry);
+    const b = decodeE57Scan(logical, entry, undefined);
+    expect(Array.from(a.positions)).toEqual(Array.from(b.positions));
+    expect(a.bbox).toEqual(b.bbox);
+  });
+
+  it('composes with a scan pose without double-shifting or rotating the offset', async () => {
+    const { applyPoseInPlace } = await import('./e57.js');
+    // Local (scan-frame) cartesian is small — as it is for a real posed
+    // scan. Pose translation is survey-scale (~5e5/5e6), which is where
+    // the huge-number precision problem actually lives once a pose exists.
+    const pose: E57Pose = {
+      rotation: { w: Math.SQRT1_2, x: 0, y: 0, z: Math.SQRT1_2 }, // 90° about Z
+      translation: { x: 500_012.345, y: 5_000_006.789, z: 104.321 },
+    };
+    const { entry, logical } = buildF64Entry([{ x: 1, y: 0, z: 0 }], pose);
+    const originOffset: readonly [number, number, number] = [500_000, 5_000_000, 100];
+
+    // decodeE57Scan must NOT touch the local cartesian when a pose is
+    // present — the offset belongs on the translation instead.
+    const decoded = decodeE57Scan(logical, entry, originOffset);
+    expect(decoded.positions[0]).toBeCloseTo(1, 5); // unshifted local x, not 1 - 500_000
+
+    // Applying the pose with the SAME offset composes to the correct
+    // global-minus-offset position: R*(1,0,0) + (T - offset)
+    // = (0,1,0) + (12.345, 6.789, 4.321) = (12.345, 7.789, 4.321).
+    applyPoseInPlace(decoded.positions, decoded.pointCount, pose, originOffset);
+    expect(decoded.positions[0]).toBeCloseTo(12.345, 5);
+    expect(decoded.positions[1]).toBeCloseTo(7.789, 5);
+    expect(decoded.positions[2]).toBeCloseTo(4.321, 5);
+
+    // Sanity: this must differ from (and be far more precise than) naively
+    // subtracting the offset from cartesian BEFORE rotation, which would
+    // incorrectly rotate the offset vector along with the point.
+    const naive = new Float32Array([1 - originOffset[0], 0 - originOffset[1], 0 - originOffset[2]]);
+    applyPoseInPlace(naive, 1, pose); // no offset here — it's already "baked in", wrongly, pre-rotation
+    expect(naive[0]).not.toBeCloseTo(decoded.positions[0], 0);
+  });
+
 });
 
 describe('resolveCompressedVectorDataOffset (E57 §6.4.2)', () => {

@@ -9,6 +9,7 @@ import {
   pickElementQuantities,
   rollupQuantities,
   rollupGeometryVolumes,
+  rollupMeshArea,
   MEASURABLE_QUANTITY_TYPES,
   type QuantitySetLike,
 } from './quantities.js';
@@ -336,5 +337,41 @@ describe('rollupGeometryVolumes', () => {
 
   it('is all zeroes for an empty selection', () => {
     assert.deepStrictEqual(rollupGeometryVolumes([]), { total: 0, proved: 0, unproved: 0 });
+  });
+});
+
+describe('rollupMeshArea', () => {
+  it('sums the measured areas and counts the unmeasured separately', () => {
+    const r = rollupMeshArea([2.5, undefined, 1.5, undefined]);
+    assert.strictEqual(r.total, 4);
+    assert.strictEqual(r.withMesh, 2);
+    assert.strictEqual(r.withoutMesh, 2);
+  });
+
+  it('treats an absent area as no-mesh, never as zero', () => {
+    // Unlike geometryVolume, an absent mesh area is not gated on solid
+    // closedness — it means no triangulated geometry was found at all
+    // (e.g. an instanced-only template), and must not silently read as 0.
+    const r = rollupMeshArea([undefined, undefined]);
+    assert.strictEqual(r.withMesh, 0);
+    assert.strictEqual(r.withoutMesh, 2);
+    assert.strictEqual(r.total, 0);
+  });
+
+  it('treats a non-finite area as no-mesh rather than trusting it', () => {
+    const r = rollupMeshArea([NaN, Infinity, 3]);
+    assert.strictEqual(r.total, 3);
+    assert.strictEqual(r.withMesh, 1);
+    assert.strictEqual(r.withoutMesh, 2);
+  });
+
+  it('keeps a real zero area as measured', () => {
+    const r = rollupMeshArea([0]);
+    assert.strictEqual(r.withMesh, 1);
+    assert.strictEqual(r.withoutMesh, 0);
+  });
+
+  it('is all zeroes for an empty selection', () => {
+    assert.deepStrictEqual(rollupMeshArea([]), { total: 0, withMesh: 0, withoutMesh: 0 });
   });
 });

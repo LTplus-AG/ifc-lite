@@ -79,8 +79,10 @@ pub(crate) fn spatial_index(content: &[u8]) -> SpatialIndex {
     let mut out = SpatialIndex::default();
     // Decode the storey/building rows in one scan, recording file order for
     // buildings so the emitted `unique_stories` ordering is stable.
-    let index = ifc_lite_processing::build_entity_index_parallel(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
+    //
+    // No entity index: the only decode below is `decode_at_with_id` over the
+    // scanner's own spans, and an index is read by `decode_by_id` alone.
+    let mut decoder = EntityDecoder::new(content);
     let mut storey_rows: HashMap<u32, (String, Option<f64>)> = HashMap::new();
     let mut buildings: Vec<u32> = Vec::new();
     let mut scanner = EntityScanner::new(content);

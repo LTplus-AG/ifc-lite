@@ -480,7 +480,9 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
-pub use georeferencing::{extract_georeferencing, Georeferencing};
+pub use georeferencing::{
+    extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
+};
 pub use ifc_lite_geometry::TessellationQuality;
 pub use style::{default_color_for_type, Rgba};
 pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};

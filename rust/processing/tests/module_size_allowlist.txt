@@ -26,7 +26,10 @@
 # +81: emissive-material knob for KMZ/Google Earth (#1427) - make_material lit/unlit/emissive branch + emissive param threaded through build_gltf/export_glb_from_meshes and their tests.
     4028 rust/export/src/gltf.rs
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
-    635 rust/export/src/collada.rs
+# -205: #2628 review follow-up split the inline #[cfg(test)] mod out to collada_tests.rs
+# (ratchet-exempt) to make room for the composed KMZ heading+up-axis orientation
+# invariant test without growing this file; budget refreshed downward.
+    430 rust/export/src/collada.rs
      468 rust/export/src/model.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
@@ -64,7 +67,13 @@
 # region — with a single padding the pre-scan could wrongly early-out on a triangle the
 # canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
 # (the test file itself is ratchet-exempt).
-          952 rust/geometry/src/facet_weld.rs
+# -45: local-frame anchor for the plane-offset math (n.v amplified a per-facet normal
+# error by the world-frame position magnitude at site coordinates; the anchor is the
+# bbox-min corner, a function of the vertex SET, so triangulation order cannot change the
+# weld; engagement gated to coordinates that need it). The derivation lives inline at the
+# anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
+# (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
+          907 rust/geometry/src/facet_weld.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
@@ -72,7 +81,10 @@
 # +39: begin()/tripped() budget-guard added to the union & intersection kernel entries (#1109 parity with subtract).
 # +7: union_many threads/documents union_all's new (union, conforming) signal (B8 arrange-many parity).
 # +12: near_band_from_extent (the snap-scatter band formula) single-homed here, next to canonical SNAP_GRID; tritri/classify import it instead of mirroring the expression.
-     904 rust/geometry/src/kernel/mesh_bridge.rs
+# -420: inline `mod tests` split out to the ratchet-exempt sibling mesh_bridge_tests.rs
+#       when `intersection_tris` was added for the clash intersection solid; the module
+#       itself shrank, so the budget ratchets DOWN to match rather than absorbing the growth.
+     484 rust/geometry/src/kernel/mesh_bridge.rs
      700 rust/geometry/src/kernel/predicates.rs
 # -31: extracted the final conformity audit + traversal recovery into kernel/retriangulate_audit.rs and phase-D recovery into retriangulate_recover.rs (issue #098 dense faceted-reveal walls); net down.
               935 rust/geometry/src/kernel/retriangulate.rs
@@ -175,6 +187,8 @@
 # per-cutter prism reconciliation (area·depth ≈ |vol|) defers non-prisms; and a
 # removed-volume upper bound (Σ extended-cutter volume) rejects an over-cut before it
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
+# +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
+# depth-guard call sites; no code change.
      704 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
@@ -203,7 +217,6 @@
 # +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
 # -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
      910 rust/processing/src/element.rs
-     468 rust/processing/src/georeferencing.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.
@@ -241,7 +254,10 @@
 # panic-location stash (#2539), and the geometry-hash tolerance clamp doc
 # (#2528). Splitting this file is the real fix and is tracked separately; it
 # would conflict with all three of those PRs at once.
-     1091 rust/wasm-bindings/src/api/mod.rs
+# +1: #2573 landing on main: `mod clash_solid;` was anticipated in the note
+# above but had not actually merged yet — main's 1091 only carried #2539 and
+# #2528. This is that fourth, previously-uncounted line.
+     1092 rust/wasm-bindings/src/api/mod.rs
 # +61: #1781 external image textures — textureId/textureUrl fields + getters, set_texture_ref, and the get/takeMesh/Clone field threading.
 # +17: #1891 follow-on — geometry_aabb_values field + geometryAabbValues getter (the doc carries the Y-up frame contract and the world-box rationale so a future reader does not re-derive them), the four constructor/Clone initializers, and the #[cfg(test)] include for mesh_tests.rs (the test file itself is ratchet-exempt). Net +17 and not +56, because the two Z-up→Y-up conversion helpers moved out to a new sibling frame_swap.rs (107 lines, under the house limit, no row): the box swap is now shared by the f32 local bounds and the f64 world AABB, so the min/max reversal lives in exactly one place.
 # -46: #1891 closedness added geometry_volume_values + geometry_closure_flags, and the whole per-entity fingerprint surface (the five index-parallel arrays' getters — including the Y-up swap on the way out — plus GeometryFingerprint and push_geometry_hash) moved OUT to the child module zero_copy/mesh_fingerprint.rs (new, 161 lines, under the house limit, no row) — net down despite two new arrays; budget refreshed downward.

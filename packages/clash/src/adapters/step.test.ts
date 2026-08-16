@@ -60,6 +60,31 @@ ENDSEC;
 END-ISO-10303-21;
 `;
 
+const WALLTYPE_GUID = '2zZ9yY8xX7wW6vV5uU4tT3';
+const SPACETYPE_GUID = '0qQ1rR2sS3tT4uU5vV6wW7';
+const DOORSTYLE_GUID = '9pP8oO7nN6mM5lL4kK3jJ2';
+
+// A wall (an occurrence) plus the type objects that define it. Type objects
+// carry a `RepresentationMaps` template that the mesher happily turns into
+// geometry sitting on top of the occurrences that use it — but a type is not a
+// physical object, so it must never become a clash candidate. Two of them are
+// spelled `...Style` rather than `...Type` (IfcDoorStyle / IfcWindowStyle — the
+// IFC2X3 spelling, still present but deprecated in IFC4).
+const WALL_AND_TYPES_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('types.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('${WALL_GUID}',$,'Test Wall',$,$,$,$,$,$);
+#2=IFCWALLTYPE('${WALLTYPE_GUID}',$,'Wall Type',$,$,$,$,$,$,.STANDARD.);
+#3=IFCSPACETYPE('${SPACETYPE_GUID}',$,'Space Type',$,$,$,$,$,$,.SPACE.,$);
+#4=IFCDOORSTYLE('${DOORSTYLE_GUID}',$,'Door Style',$,$,$,$,$,.NOTDEFINED.,.NOTDEFINED.,.F.,.F.);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
 function unitBoxMesh(expressId: number): MeshData {
   const positions = new Float32Array([
     0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0,
@@ -229,6 +254,30 @@ describe('elementsFromStep', () => {
     const { elements } = elementsFromStep({
       store,
       meshes: ids.map((id) => solidBoxMesh(id, 0)),
+      modelId: 'm',
+    });
+
+    expect(elements.map((e) => e.tag)).toEqual(['IfcWall']);
+  });
+
+  it('drops IFC type objects, whose template geometry sits on the occurrences using it', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(WALL_AND_TYPES_IFC).buffer as ArrayBuffer,
+    );
+    const id = (type: string): number => {
+      const ids = store.entityIndex.byType.get(type) ?? [];
+      expect(ids.length).toBe(1);
+      return ids[0];
+    };
+
+    const { elements } = elementsFromStep({
+      store,
+      meshes: [
+        unitBoxMesh(id('IFCWALL')),
+        unitBoxMesh(id('IFCWALLTYPE')),
+        unitBoxMesh(id('IFCSPACETYPE')),
+        unitBoxMesh(id('IFCDOORSTYLE')),
+      ],
       modelId: 'm',
     });
 

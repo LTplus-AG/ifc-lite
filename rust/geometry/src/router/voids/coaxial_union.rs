@@ -332,7 +332,7 @@ impl GeometryRouter {
         if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON {
             return None;
         }
-        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of the span + 1 mm
+        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of span + 1 mm; the >=1mm floor is what makes the later slab-depth check defensive
 
         // Depth breakpoints = every cutter's z_lo / z_hi, sorted and coalesced
         // within z_tol. The intervals between consecutive breakpoints are the slabs.
@@ -365,7 +365,7 @@ impl GeometryRouter {
         let mut contributed = vec![false; fps.len()];
         for w in coalesced.windows(2) {
             let (slab_lo, slab_hi) = (w[0], w[1]);
-            let slab_depth = slab_hi - slab_lo;
+            let slab_depth = slab_hi - slab_lo; // coalesced breakpoints already differ by > `z_tol`
             if slab_depth <= NORMALIZE_EPSILON {
                 continue;
             }
@@ -630,7 +630,7 @@ fn cutter_footprint(
         z_lo = z_lo.min(s);
         z_hi = z_hi.max(s);
     }
-    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON {
+    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON { // no `z_tol` here; the caller applies it when coalescing breakpoints
         return None;
     }
     for t in mesh.indices.chunks_exact(3) {
@@ -677,7 +677,7 @@ fn cutter_footprint(
         .sum();
     let area = 0.5 * cap_area_sum;
     let depth = z_hi - z_lo;
-    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON {
+    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON { // `z_tol` bounds depth only; area guard stays separate
         return None;
     }
     // PRISM RECONCILIATION: a true prism along `d` satisfies `area × depth ==

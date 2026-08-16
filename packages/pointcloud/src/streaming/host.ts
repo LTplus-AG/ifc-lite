@@ -43,12 +43,12 @@ export interface StreamPointCloudOptions {
   /** Points per chunk during streaming decode. Default: 200_000. */
   chunkSize?: number;
   /**
-   * Native (X, Y, Z)-axis offset subtracted from each decoded LAS/LAZ
-   * coordinate in f64, before it's narrowed to f32 (issue #1804). Used to
-   * align a georeferenced scan with an IFC model's `IfcMapConversion` —
-   * see `apps/viewer/src/hooks/ingest/pointCloudAlignment.ts`
-   * `computePointCloudAlignment().decodeOriginOffset`. Ignored by
-   * formats other than LAS/LAZ.
+   * Native (X, Y, Z)-axis offset subtracted from each decoded coordinate
+   * in f64, before it's narrowed to f32 (issue #1804, extended to every
+   * point-cloud format). Used to align a georeferenced scan with an IFC
+   * model's `IfcMapConversion` — see
+   * `apps/viewer/src/hooks/ingest/pointCloudAlignment.ts`
+   * `computePointCloudAlignment().decodeOriginOffset`.
    */
   originOffset?: readonly [number, number, number];
 

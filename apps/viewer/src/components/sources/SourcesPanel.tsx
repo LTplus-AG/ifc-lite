@@ -9,6 +9,8 @@ import { dispatchSourceDownload } from '@/services/sources/source-host';
 import { SourceSettingsDialog } from './SourceSettingsDialog';
 import { SourceBrowser } from './SourceBrowser';
 import { SourceProviderRow } from './SourceProviderRow';
+import { SourceFavouritesList } from './SourceFavouritesList';
+import type { SourceFavourite } from '@/lib/sources/favourites';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { AlertCircle, Cloud, X } from 'lucide-react';
@@ -39,6 +41,25 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   const [downloading, setDownloading] = useState(false);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
   const [prefsVersion, setPrefsVersion] = useState(0);
+  // Same pattern for the favourites list: one counter for stored favourites,
+  // one for the signed-in identity a favourite is filtered by.
+  const [favouritesVersion, setFavouritesVersion] = useState(0);
+  const [identityVersion, setIdentityVersion] = useState(0);
+  // The favourite a click asked to jump to; consumed once by the browser.
+  const [browseTarget, setBrowseTarget] = useState<SourceFavourite | null>(null);
+
+  const bumpFavourites = useCallback(() => setFavouritesVersion((v) => v + 1), []);
+  const bumpIdentity = useCallback(() => setIdentityVersion((v) => v + 1), []);
+
+  const openFavourite = useCallback((favourite: SourceFavourite) => {
+    setBrowseTarget(favourite);
+    setBrowsing(favourite.providerId);
+  }, []);
+
+  const closeBrowser = useCallback(() => {
+    setBrowsing(null);
+    setBrowseTarget(null);
+  }, []);
 
   // Cancels in-flight downloads when the panel unmounts (close / navigate away).
   const downloadAbortRef = useRef<AbortController | null>(null);
@@ -89,8 +110,11 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
       // mean all of it.
       clearAllSourceData(settingsFor);
       setPrefsVersion((v) => v + 1);
+      // The sweep takes this provider's favourites with it (they hold folder
+      // and file names), so the list has to re-read storage.
+      bumpFavourites();
     }
-  }, [settingsFor]);
+  }, [bumpFavourites, settingsFor]);
 
   const handleTestConnection = useCallback(
     async (values: Record<string, string>): Promise<ConnectionTestResult> => {
@@ -159,12 +183,12 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
             );
           }
         }
-        if (queued > 0) setBrowsing(null);
+        if (queued > 0) closeBrowser();
       } finally {
         setDownloading(false);
       }
     },
-    [activeProvider, browsing, sourceHost],
+    [activeProvider, browsing, closeBrowser, sourceHost],
   );
 
   const browsingCtx = useMemo(() => {
@@ -191,8 +215,10 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         provider={activeProvider}
         ctx={browsingCtx}
         onDownload={(selection) => void handleDownload(selection)}
-        onBack={() => setBrowsing(null)}
+        onBack={closeBrowser}
         busy={downloading}
+        openTarget={browseTarget}
+        onFavouritesChanged={bumpFavourites}
       />
     );
   }
@@ -220,6 +246,14 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
           </div>
         )}
 
+        <SourceFavouritesList
+          sourceHost={sourceHost}
+          favouritesVersion={favouritesVersion}
+          identityVersion={identityVersion}
+          onOpen={openFavourite}
+          onChanged={bumpFavourites}
+        />
+
         <ul className="divide-y">
           {providers.map((p) => (
             <SourceProviderRow
@@ -229,6 +263,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
               prefsVersion={prefsVersion}
               onOpenSettings={() => setSettingsFor(p.manifest.name)}
               onBrowse={() => setBrowsing(p.manifest.name)}
+              onIdentityChange={bumpIdentity}
             />
           ))}
         </ul>

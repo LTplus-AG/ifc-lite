@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useEffect } from 'react';
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
-import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
+import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,12 @@ interface SourceProviderRowProps {
   prefsVersion: number;
   onOpenSettings: () => void;
   onBrowse: () => void;
+  /**
+   * Fires whenever this provider's signed-in identity changes. Auth lives in
+   * this row, but the favourites list above it is filtered by identity, so it
+   * has to learn about a sign-in that happens while the panel is open.
+   */
+  onIdentityChange?: (identityId: string | null) => void;
 }
 
 /**
@@ -70,19 +77,23 @@ export function SourceProviderRow({
   prefsVersion,
   onOpenSettings,
   onBrowse,
+  onIdentityChange,
 }: SourceProviderRowProps) {
   const { manifest } = provider;
   const iconUrl = safeIconUrl(manifest.iconUrl, manifest.permissions.network);
   const auth = useSourceAuth(provider, sourceHost);
   const interactive = auth.status !== 'not-interactive';
 
+  const identityId = auth.identity?.id ?? null;
+  useEffect(() => {
+    onIdentityChange?.(identityId);
+  }, [identityId, onIdentityChange]);
+
   // prefsVersion is not read directly — it exists to re-run this derivation
   // after the settings dialog saves or forgets values.
   void prefsVersion;
   const prefs = loadResolvedSourcePrefs(manifest);
-  const prefsConfigured = manifest.preferences
-    .filter((pref) => pref.required)
-    .every((pref) => Boolean(prefs[pref.name]?.trim()));
+  const prefsConfigured = isPrefsConfigured(manifest, prefs);
 
   const canBrowse = interactive ? auth.status === 'signed-in' : prefsConfigured;
   // Interactive providers can still require preferences (e.g. a client id for

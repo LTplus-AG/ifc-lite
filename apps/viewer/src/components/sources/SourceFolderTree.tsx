@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SourceContainer } from '@ifc-lite/plugin-api';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
-import { ChevronRight, Folder } from 'lucide-react';
+import { ChevronRight, Folder, Star } from 'lucide-react';
 
 export interface ContainerTreeNode extends SourceContainer {
   children: ContainerTreeNode[];
@@ -72,9 +72,20 @@ interface SourceFolderTreeProps {
   selectedId?: string;
   activeIds?: ReadonlySet<string>;
   onSelect: (container: SourceContainer) => void;
+  /** Omitted together with `onToggleFavourite` when the tree renders outside a favouritable context. */
+  isFavourite?: (containerId: string) => boolean;
+  onToggleFavourite?: (container: SourceContainer) => void;
 }
 
-export function SourceFolderTree({ containers, rootId, selectedId, activeIds, onSelect }: SourceFolderTreeProps) {
+export function SourceFolderTree({
+  containers,
+  rootId,
+  selectedId,
+  activeIds,
+  onSelect,
+  isFavourite,
+  onToggleFavourite,
+}: SourceFolderTreeProps) {
   const tree = useMemo(() => buildContainerTree(containers, rootId), [containers, rootId]);
   const parentById = useMemo(
     () => buildContainerParentIndex(containers, rootId),
@@ -113,6 +124,8 @@ export function SourceFolderTree({ containers, rootId, selectedId, activeIds, on
           selectedId={selectedId}
           activeIds={activeIds}
           onSelect={onSelect}
+          isFavourite={isFavourite}
+          onToggleFavourite={onToggleFavourite}
           onToggle={(id) =>
             setOpenIds((previous) => {
               const next = new Set(previous);
@@ -134,6 +147,8 @@ function TreeRow({
   selectedId,
   activeIds,
   onSelect,
+  isFavourite,
+  onToggleFavourite,
   onToggle,
 }: {
   node: ContainerTreeNode;
@@ -142,12 +157,15 @@ function TreeRow({
   selectedId?: string;
   activeIds?: ReadonlySet<string>;
   onSelect: (container: SourceContainer) => void;
+  isFavourite?: (containerId: string) => boolean;
+  onToggleFavourite?: (container: SourceContainer) => void;
   onToggle: (id: string) => void;
 }) {
   const hasChildren = node.children.length > 0;
   const open = openIds.has(node.id);
   const isSelected = selectedId === node.id;
   const isActive = activeIds?.has(node.id) ?? true;
+  const favourited = isFavourite?.(node.id) ?? false;
 
   return (
     <Collapsible open={open}>
@@ -183,6 +201,20 @@ function TreeRow({
           <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
           <span className="truncate">{node.name}</span>
         </button>
+        {onToggleFavourite && (
+          <button
+            type="button"
+            className={cn(
+              'shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground',
+              favourited ? 'text-amber-500' : 'text-muted-foreground',
+            )}
+            aria-label={`${favourited ? 'Remove' : 'Add'} favourite: ${node.name}`}
+            aria-pressed={favourited}
+            onClick={() => onToggleFavourite(node)}
+          >
+            <Star className={cn('h-3.5 w-3.5', favourited && 'fill-current')} />
+          </button>
+        )}
       </div>
       {hasChildren && (
         <CollapsibleContent>

@@ -95,16 +95,25 @@ export function createFineZoomModifierTracker(
     held = false;
   };
 
-  target.addEventListener('keydown', onKey);
-  target.addEventListener('keyup', onKey);
-  target.addEventListener('blur', onBlur);
+  // CAPTURE phase, deliberately. Focused editors in this app stop key events
+  // from bubbling -- `TextAnnotationEditor.tsx:63` calls `e.stopPropagation()`
+  // on every keydown so the canvas does not act on typing. A bubble-phase
+  // listener on `window` therefore never sees the physical Ctrl press while
+  // such an editor holds focus, and the next wheel gesture over the canvas
+  // would silently use the normal step. Capture runs window-first, before any
+  // child can stop propagation, so the tracker observes the key regardless of
+  // what is focused. The removals must pass the SAME option or they do not
+  // match the registration and the listeners leak.
+  target.addEventListener('keydown', onKey, true);
+  target.addEventListener('keyup', onKey, true);
+  target.addEventListener('blur', onBlur, true);
 
   return {
     isHeld: () => held,
     dispose() {
-      target.removeEventListener('keydown', onKey);
-      target.removeEventListener('keyup', onKey);
-      target.removeEventListener('blur', onBlur);
+      target.removeEventListener('keydown', onKey, true);
+      target.removeEventListener('keyup', onKey, true);
+      target.removeEventListener('blur', onBlur, true);
     },
   };
 }

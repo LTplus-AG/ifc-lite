@@ -247,6 +247,39 @@ describe('fine-zoom modifier tracker - real key presses only (#2683)', () => {
     }
   });
 
+  it('still sees the key when a focused editor stops it from bubbling', () => {
+    // `TextAnnotationEditor.tsx:63` calls `e.stopPropagation()` on every
+    // keydown so the canvas does not act on typing. A bubble-phase listener on
+    // `window` would never observe the Ctrl press while that editor has focus,
+    // and the next wheel gesture over the canvas would silently take the
+    // normal step. Capture runs window-first, before any child can stop it.
+    const editor = document.createElement('textarea');
+    document.body.appendChild(editor);
+    const swallow = (e: Event) => e.stopPropagation();
+    editor.addEventListener('keydown', swallow);
+    editor.addEventListener('keyup', swallow);
+
+    const tracker = createFineZoomModifierTracker(window);
+    try {
+      editor.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Control', ctrlKey: true, bubbles: true }),
+      );
+      assert.strictEqual(
+        tracker.isHeld(),
+        true,
+        'a focused editor swallowing keydown must not disable the fine-zoom modifier',
+      );
+
+      editor.dispatchEvent(
+        new KeyboardEvent('keyup', { key: 'Control', ctrlKey: false, bubbles: true }),
+      );
+      assert.strictEqual(tracker.isHeld(), false, 'and the release must still be seen');
+    } finally {
+      tracker.dispose();
+      editor.remove();
+    }
+  });
+
   it('accepts Cmd on macOS keyboards', () => {
     const tracker = createFineZoomModifierTracker(window);
     try {

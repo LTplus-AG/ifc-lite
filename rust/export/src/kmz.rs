@@ -63,14 +63,11 @@ pub struct KmzOptions {
 }
 
 /// Convert the IFC angle-to-grid-north (counter-clockwise from map east, via the
-/// `IfcMapConversion` X-axis abscissa/ordinate) into a KML `<Model><Orientation><heading>`
-/// (clockwise **rotation** applied to a model whose local X-axis starts pointing east).
-/// Returns `0` when either component is absent.
-///
-/// KML heading is not a compass bearing: with `heading = 0` the model's X-axis already
-/// points east (KML's baseline), and rotating clockwise by `heading` moves it to true
-/// bearing `90 + heading`. So for the X-axis to reach the IFC grid-north-derived bearing
-/// `B`, the required heading is `B - 90` (mod 360), not `B` itself.
+/// `IfcMapConversion` X-axis abscissa/ordinate) into a KML `<Model><Orientation><heading>`,
+/// a clockwise **rotation** of a model whose local X-axis starts pointing east. Returns `0`
+/// when either component is absent. KML heading is not a compass bearing: at `heading = 0`
+/// the X-axis already points east (KML's baseline), and rotating clockwise by `heading` moves
+/// it to true bearing `90 + heading`, so reaching bearing `B` takes `B - 90` (mod 360).
 pub fn ifc_angle_to_kml_heading(x_abscissa: Option<f64>, x_ordinate: Option<f64>) -> f64 {
     match (x_abscissa, x_ordinate) {
         // A zero-length axis is degenerate (atan2(0,0) = 0 would otherwise map to a

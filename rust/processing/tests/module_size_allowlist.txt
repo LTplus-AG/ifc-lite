@@ -27,9 +27,6 @@
     4028 rust/export/src/gltf.rs
 # COLLADA (.dae) exporter that embeds geometry in the KMZ (#1427); cohesive single-purpose module.
     635 rust/export/src/collada.rs
-# +8: KMZ heading was a compass bearing, not a KML rotation (#2554); doc comment now
-# derives heading = bearing - 90 so the next reader doesn't reintroduce the bug.
-    403 rust/export/src/kmz.rs
      468 rust/export/src/model.rs
 # -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
 # split_top_level_args/apply_attr_mutations) split out to step_text.rs, making

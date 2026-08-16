@@ -77,9 +77,26 @@ export interface WeldedVertices {
  * `vertex_dedup.rs` uses in the kernel, and the reason this cannot silently drop
  * a pair straddling a cell boundary the way a plain `Math.floor` bucket does.
  *
- * Welding is a transitive-chaining merge (a-b and b-c within tol pulls a and c
- * together even if they are not), which is inherent to any tolerance weld; at
- * 15 um over one element it is not reachable by real geometry.
+ * ORDER-INDEPENDENT by construction: the result is a pure function of the
+ * position multiset, never of array order. Vertices are processed in canonical
+ * VALUE order (lexicographic on world position) and each one joins the NEAREST
+ * already-accepted representative within `tol` (ties to the lexicographically
+ * earlier representative) or becomes a representative itself. Processed in
+ * array order with a first-hit match - the previous scheme - a tolerance chain
+ * (|a-b| <= tol, |b-c| <= tol, |a-c| > tol) welded into one cluster or two
+ * depending on which point arrived first, so reordering triangles changed
+ * adjacency and edge classification: the emission-order dependence (#2388
+ * class) the snap cache exists to remove, reintroduced one level down.
+ *
+ * This is leader clustering, NOT a transitive union: c never joins a through b
+ * unless c is itself within `tol` of the representative, so every cluster's
+ * diameter is bounded by `2 * tol`. A union-find over all in-tolerance pairs
+ * would be order-independent too, but it collapses a chain of genuinely
+ * distinct near-tolerance vertices into one point of unbounded diameter - and
+ * welding feeds edge classification, so an over-weld silently moves geometry.
+ * A plain grid quantisation would also be order-independent but splits pairs
+ * straddling a cell boundary, the failure the probe pattern above exists to
+ * avoid.
  */
 export function weldVertices(
   positions: ArrayLike<number>,
@@ -91,14 +108,32 @@ export function weldVertices(
   const count = Math.floor(positions.length / 3);
   const ids = new Int32Array(count).fill(-1);
   const points: Vec3[] = [];
-  const cell = 2 * tol;
-  const buckets = new Map<string, number[]>();
 
+  // World coordinates once, then the canonical processing order. `sort` is a
+  // total order on VALUE (exact duplicates are interchangeable), so every
+  // later step is a function of the position multiset alone.
+  const xs = new Float64Array(count);
+  const ys = new Float64Array(count);
+  const zs = new Float64Array(count);
+  const order: number[] = [];
   for (let i = 0; i < count; i++) {
     const x = positions[i * 3] + ox;
     const y = positions[i * 3 + 1] + oy;
     const z = positions[i * 3 + 2] + oz;
     if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
+    xs[i] = x;
+    ys[i] = y;
+    zs[i] = z;
+    order.push(i);
+  }
+  order.sort((i, j) => (xs[i] - xs[j]) || (ys[i] - ys[j]) || (zs[i] - zs[j]));
+
+  const cell = 2 * tol;
+  const tolSq = tol * tol;
+  const buckets = new Map<string, number[]>();
+
+  for (const i of order) {
+    const x = xs[i], y = ys[i], z = zs[i];
 
     const xLo = Math.floor((x - tol) / cell);
     const xHi = Math.floor((x + tol) / cell);
@@ -107,26 +142,32 @@ export function weldVertices(
     const zLo = Math.floor((z - tol) / cell);
     const zHi = Math.floor((z + tol) / cell);
 
-    let hit = -1;
-    for (let cx = xLo; cx <= xHi && hit < 0; cx++) {
-      for (let cy = yLo; cy <= yHi && hit < 0; cy++) {
-        for (let cz = zLo; cz <= zHi && hit < 0; cz++) {
+    // Nearest representative within tol; ties break to the SMALLER id, which
+    // (ids are assigned in value order) is the lexicographically earlier
+    // representative - a value tiebreak, not a positional one.
+    let best = -1;
+    let bestSq = Infinity;
+    for (let cx = xLo; cx <= xHi; cx++) {
+      for (let cy = yLo; cy <= yHi; cy++) {
+        for (let cz = zLo; cz <= zHi; cz++) {
           const bucket = buckets.get(`${cx}_${cy}_${cz}`);
           if (!bucket) continue;
           for (const id of bucket) {
             const p = points[id];
             const dx = p.x - x, dy = p.y - y, dz = p.z - z;
-            if (dx * dx + dy * dy + dz * dz <= tol * tol) {
-              hit = id;
-              break;
+            const dSq = dx * dx + dy * dy + dz * dz;
+            if (dSq > tolSq) continue;
+            if (dSq < bestSq || (dSq === bestSq && id < best)) {
+              best = id;
+              bestSq = dSq;
             }
           }
         }
       }
     }
 
-    if (hit >= 0) {
-      ids[i] = hit;
+    if (best >= 0) {
+      ids[i] = best;
       continue;
     }
 

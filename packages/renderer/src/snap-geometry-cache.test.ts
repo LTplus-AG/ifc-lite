@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Intersection, Vec3 } from './raycaster.js';
-import { buildGeometryCache } from './snap-geometry-cache.js';
+import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
 import { bestEdgeCandidate, type EdgeCandidate } from './snap-corner.js';
 import type { SnapEdge } from './snap-edge-runs.js';
 import { SnapDetector, SnapType } from './snap-detector.js';
@@ -228,6 +228,21 @@ function shape(edges: SnapEdge[]): string[] {
   );
 }
 
+/**
+ * The whole cache, not just the edges: the welded VERTEX list is a snap channel
+ * of its own (`findVertices` serves it), and a weld that moves with input order
+ * can in principle move it without moving any edge. Sorted, so the comparison
+ * is over content rather than construction order.
+ */
+function cacheSignature(cache: MeshGeometryCache): string[] {
+  return [
+    ...cache.vertices
+      .map((v) => `p:${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)}`)
+      .sort(),
+    ...shape(cache.edges).sort(),
+  ];
+}
+
 test('#2199 valences do not depend on triangle emission order either', () => {
   // Two coplanar unwelded triangles meeting at (1, 0, 0). B contributes a
   // 0.01 m stub whose far point sits 10 um off the x axis - inside the weld
@@ -239,10 +254,14 @@ test('#2199 valences do not depend on triangle emission order either', () => {
   // corner confidence, i.e. a user-visible vertex-vs-edge outcome.
   const A: Tri = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
   const B: Tri = [[1, 0, 0], [1.01, 1e-5, 0], [1, -1, 0]];
-  const ab = buildGeometryCache(meshFrom([A, B])).edges;
-  const ba = buildGeometryCache(meshFrom([B, A])).edges;
+  const abCache = buildGeometryCache(meshFrom([A, B]));
+  const baCache = buildGeometryCache(meshFrom([B, A]));
+  const ab = abCache.edges;
 
-  assert.deepEqual(shape(ab), shape(ba), 'valence/junction data moved with triangle emission order');
+  assert.deepEqual(
+    cacheSignature(abCache), cacheSignature(baCache),
+    'valence/junction data moved with triangle emission order'
+  );
 
   // Pin the value too: x-axis line (the stub folds into it within tolerance),
   // the diagonal to (0, 1, 0), and the vertical to (1, -1, 0) - three lines.
@@ -252,6 +271,35 @@ test('#2199 valences do not depend on triangle emission order either', () => {
       .map(([, val]) => val));
   assert.ok(atShared.length > 0, 'no cache edge ends at the shared vertex');
   for (const val of atShared) assert.equal(val, 3, `valence at (1,0,0) is ${val}, expected 3`);
+});
+
+test('#2199 the weld itself does not depend on triangle emission order (tolerance chain)', () => {
+  // Three triangles carry three private copies of "the same" corner, spread
+  // into a tolerance CHAIN: |c0-c1| and |c1-c2| are within the weld tolerance
+  // but |c0-c2| is not. Under a first-hit representative scheme the number of
+  // welded ids at the corner depended on which copy the mesher emitted first
+  // (2 ids when c0 led, 1 when c1 did), so reordering triangles changed
+  // adjacency, edge classification and the reconstructed runs - the exact
+  // emission-order dependence this change exists to remove, one level down.
+  // The weld must be a pure function of the position multiset.
+  const tol = 1 / 65536;
+  const c0: P = [1, 0, 0];
+  const c1: P = [1 + 0.9 * tol, 0, 0];
+  const c2: P = [1 + 1.8 * tol, 0, 0];
+  const T0: Tri = [c0, [1, 1, 0], [0, 0, 0]];
+  const T1: Tri = [c1, [2, 0, 0], [1.5, 1, 0]];
+  const T2: Tri = [c2, [1, -1, 0], [2, -1, 0]];
+
+  const orders: Tri[][] = [
+    [T0, T1, T2], [T1, T0, T2], [T2, T1, T0], [T1, T2, T0], [T0, T2, T1], [T2, T0, T1],
+  ];
+  const signatures = new Set(
+    orders.map((tris) => cacheSignature(buildGeometryCache(meshFrom(tris))).join('#'))
+  );
+  assert.equal(
+    signatures.size, 1,
+    `the welded cache moved with triangle emission order (${signatures.size} distinct shapes)`
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -335,6 +383,49 @@ test('#2199 a real junction inside a merged run still snaps as a vertex', () => 
   assert.equal(plain.snapTarget?.type, SnapType.EDGE);
 });
 
+test('#2199 a reversed edge lock finds an interior junction at the mirrored parameter', () => {
+  // The cached run is stored lexicographically: v0 = (5.6, 0, -5),
+  // v1 = (5.6, 0, -3), junction at z = -4.8, i.e. cached t = 0.1. A caller can
+  // hold the lock in the REVERSE orientation (locks are acquired from its own
+  // state, not re-read from the cache each frame). maintainEdgeLock swaps the
+  // endpoints and endpoint valences into the lock's orientation - and must
+  // mirror every junction parameter with it (t -> 1 - t), because `edgeT` is
+  // computed along the LOCK. Unmirrored, the junction "lived" at the cursor
+  // position that mirrors the real one, so the real junction lost its vertex
+  // snap under a reversed lock.
+  const meshes = [slabOpeningEdge(true)];
+  const reversedLock = {
+    edge: { v0: { x: 5.6, y: 0, z: -3 }, v1: { x: 5.6, y: 0, z: -5 } },
+    meshExpressId: 1,
+    lockStrength: 0.5,
+  };
+
+  // Cursor on the real junction: lock-space t = 0.9, cached t = 0.1.
+  const detector = new SnapDetector();
+  const atJunction = detector.detectMagneticSnap(
+    RAY, meshes, hitAt(-4.8), CAMERA, SCREEN_H, reversedLock
+  );
+  assert.equal(
+    atJunction.snapTarget?.type, SnapType.VERTEX,
+    'the junction must keep its vertex snap under a reversed lock'
+  );
+  assert.ok(Math.abs((atJunction.snapTarget?.position.z ?? 0) + 4.8) < 1e-4);
+  // The endpoint-only ring contract holds in this orientation too.
+  assert.equal(atJunction.edgeLock.isCorner, false);
+  assert.equal(atJunction.edgeLock.cornerValence, 0);
+
+  // The MIRRORED cursor position (lock-space t = 0.1, where the unflipped
+  // parameter used to sit) is plain edge sliding - this guards against
+  // "fixing" the flip on edgeT instead of on the junction parameters.
+  const atMirror = new SnapDetector().detectMagneticSnap(
+    RAY, meshes, hitAt(-3.2), CAMERA, SCREEN_H, reversedLock
+  );
+  assert.equal(
+    atMirror.snapTarget?.type, SnapType.EDGE,
+    'the mirror of the junction parameter must not read as a corner'
+  );
+});
+
 test('#2199 an endpoint corner still carries the ring contract, consistently with edgeT', () => {
   // Cursor near the z = -5.000 end of the 2.000 m run: the corner IS a run
   // endpoint, so `edgeLock.isCorner` fires, and `edgeT < 0.5` names exactly
@@ -386,9 +477,11 @@ test('#2199 the answer does not depend on triangle emission order', () => {
   }
   const reversed = meshFrom(reversedTris);
 
-  const a = buildGeometryCache(forward).edges;
-  const b = buildGeometryCache(reversed).edges;
-  assert.deepEqual(shape(a), shape(b), 'the cache must be a function of the geometry, not of the order');
+  assert.deepEqual(
+    cacheSignature(buildGeometryCache(forward)),
+    cacheSignature(buildGeometryCache(reversed)),
+    'the cache must be a function of the geometry, not of the order'
+  );
 
   for (const z of [-4.5, -4.0, -3.5]) {
     const lengthA = reportedEdgeLength(

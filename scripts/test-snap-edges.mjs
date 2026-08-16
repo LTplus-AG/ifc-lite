@@ -96,23 +96,28 @@ function residualSplits(edges) {
 }
 
 /**
- * A stable, order-independent signature of a whole cache - endpoints, length,
- * AND the valence/junction channel. v0/v1/length alone cannot see valences,
- * and an emission-order dependence hid in exactly that blind spot once:
- * valences feed `isCorner` and the corner confidence, so they are as
- * user-visible as the endpoints.
+ * A stable, order-independent signature of a whole cache - the welded VERTEX
+ * list, endpoints, length, AND the valence/junction channel. v0/v1/length
+ * alone cannot see valences, and an emission-order dependence hid in exactly
+ * that blind spot once: valences feed `isCorner` and the corner confidence, so
+ * they are as user-visible as the endpoints. The vertices are included because
+ * the WELD itself once moved with input order (a first-hit representative
+ * scheme on a tolerance chain), which shifts representative points and
+ * adjacency before any edge is even classified.
  */
-function signature(edges) {
-  return edges
-    .map((e) => [
-      ...[e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)),
-      `val:${e.v0Valence}/${e.v1Valence}`,
-      `j:[${e.junctions
-        .map((j) => `${j.point.x.toFixed(6)},${j.point.y.toFixed(6)},${j.point.z.toFixed(6)},v${j.valence},t${j.t.toFixed(6)}`)
-        .join(';')}]`,
-    ].join(','))
-    .sort()
-    .join('|');
+function signature(cache) {
+  return [
+    ...cache.vertices.map((v) => `p:${v.x.toFixed(6)},${v.y.toFixed(6)},${v.z.toFixed(6)}`).sort(),
+    ...cache.edges
+      .map((e) => [
+        ...[e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)),
+        `val:${e.v0Valence}/${e.v1Valence}`,
+        `j:[${e.junctions
+          .map((j) => `${j.point.x.toFixed(6)},${j.point.y.toFixed(6)},${j.point.z.toFixed(6)},v${j.valence},t${j.t.toFixed(6)}`)
+          .join(';')}]`,
+      ].join(','))
+      .sort(),
+  ].join('|');
 }
 
 let checks = 0;
@@ -183,8 +188,8 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
     })(),
   };
   assert.equal(
-    signature(buildGeometryCache(reversed).edges),
-    signature(cache.edges),
+    signature(buildGeometryCache(reversed)),
+    signature(cache),
     'the cache moved when triangle emission order did'
   );
   console.log('  ok slab #52: the cache is invariant under triangle emission order');

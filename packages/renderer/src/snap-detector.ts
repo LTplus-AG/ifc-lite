@@ -470,11 +470,23 @@ export class SnapDetector {
     );
 
     // `edgeT` runs along the LOCK's orientation, so a cache edge stored the
-    // other way round has to be flipped before its endpoints are read.
+    // other way round has to be flipped before it is read - endpoints and
+    // endpoint valences, AND every junction parameter: junction `t` was
+    // computed along the cached run, so under a reversed lock a junction at
+    // cached t = 0.2 sits at lock-space t = 0.8. Left unflipped, the real
+    // junction lost its vertex snap and its mirror position claimed it.
     const flipped = matchingEdge !== undefined && !vecEquals(matchingEdge.v0, v0);
     const edgeForCorner: SnapEdge = matchingEdge
       ? (flipped
-        ? { ...matchingEdge, v0: matchingEdge.v1, v1: matchingEdge.v0, v0Valence: matchingEdge.v1Valence, v1Valence: matchingEdge.v0Valence }
+        ? {
+          ...matchingEdge,
+          v0: matchingEdge.v1,
+          v1: matchingEdge.v0,
+          v0Valence: matchingEdge.v1Valence,
+          v1Valence: matchingEdge.v0Valence,
+          // map + reverse keeps the list sorted ascending by `t`.
+          junctions: matchingEdge.junctions.map((j) => ({ ...j, t: 1 - j.t })).reverse(),
+        }
         : matchingEdge)
       : {
         v0, v1, index: -1, length: distance(v0, v1),

@@ -2349,7 +2349,7 @@ export class StepExporter {
    * The byte check is on the RANGE, not on `dataStore.source`. `source` is a
    * MANDATORY accessor — `EMPTY_SOURCE_BYTES` is how "this model kept no bytes"
    * is spelled (server-parsed, synthetic, GLB and point-cloud stores all have
-   * one) — so the `!this.dataStore.source` guard the six readers below used to
+   * one) — so the `!this.dataStore.source` guard the five readers below used to
    * carry never fired. It was also redundant: a zero-length range decodes to
    * `''`, which fails every regex those readers run, so they already answered
    * "nothing" for a sourceless store. Scoping the check to the range is what
@@ -2363,6 +2363,28 @@ export class StepExporter {
    * lookup and is served by the callers' documented "not a source record"
    * path. That is why an early return is safe HERE and is NOT safe at the
    * visible-only closure in `export` — see the comment there.
+   *
+   * ## Why `byteLength === 0` and not `isReadableSourceRef`
+   *
+   * `source-ref-bounds.ts` (#2491) has the stronger predicate and states it is
+   * deliberately not applied to these incidental readers, on the grounds that
+   * "a clamped, empty decode already yields no match, which is the same
+   * answer". Measured, that rationale holds for every out-of-range shape
+   * EXCEPT a negative offset. `clampRange` floors a negative start at 0, so a
+   * ref at `(byteOffset: -2, byteLength: n)` decodes from the START OF THE
+   * FILE: driving `getPropertySetName` with such a ref for `#2` returns the
+   * name of `#1`. That is not "no match", it is a confidently wrong answer.
+   *
+   * It stays a `byteLength === 0` check anyway, because that shape is not
+   * representable: the only negative offset in the repo is
+   * `OVERLAY_BYTE_OFFSET = -1` (`mutations/src/store-editor.ts:30`), which is
+   * written at exactly two sites (`effective-index.ts:282,304`) and one
+   * constructor (`store-editor.ts:166`), each pairing it with `byteLength: 0`
+   * — already `null` here — and none of them writes into
+   * `dataStore.entityIndex.byId`, which is the only map this reads. Tightening
+   * to `isReadableSourceRef` would therefore change no reachable answer while
+   * breaking this change's no-op premise, so it belongs in whatever change
+   * makes a negative offset representable, not here.
    */
   private entityLineText(entityId: number): string | null {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);

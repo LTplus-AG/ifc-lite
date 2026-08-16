@@ -22,7 +22,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyTscOutput } from './unused-locals-classify.mjs';
+import { classifyTscOutput, untrustworthyExitReason } from './unused-locals-classify.mjs';
 
 test('a single recognised unused-locals diagnostic counts as a violation', () => {
   const output = "src/a.ts(1,1): error TS6133: 'x' is declared but its value is never read.\n";
@@ -86,4 +86,45 @@ test('multiple recognised violations alone all count', () => {
   const output = "src/a.ts(1,1): error TS6133: 'x' is declared but its value is never read.\n"
     + "src/a.ts(2,1): error TS6192: All imports in import declaration are unused.\n";
   assert.deepEqual(classifyTscOutput(output), { kind: 'violations', count: 2 });
+});
+
+// ---- The truncated / killed-run gap (PR #2663 review).
+//
+// classifyTscOutput only ever sees TEXT. If the spawn itself was cut short —
+// maxBuffer overflow (ENOBUFS) or the child killed (OOM, SIGKILL) — the text
+// it receives is a *prefix* of what tsc actually printed, and a prefix of
+// well-formed diagnostics parses perfectly. Reproduced in review: a child
+// emitting 5000 diagnostics against a small maxBuffer yielded a confident
+// { kind: 'violations', count: 97 }. Under `--update` that undercount is
+// written into the baseline, permanently lowering the bar for every future
+// run. So the exit itself has to be vetted before its output is trusted.
+
+test('a normal tsc diagnostic exit is trusted', () => {
+  assert.equal(untrustworthyExitReason({ status: 1, signal: null }), null);
+});
+
+test('tsc exit code 2 is also a normal diagnostic exit', () => {
+  assert.equal(untrustworthyExitReason({ status: 2, signal: null }), null);
+});
+
+test('an ENOBUFS-truncated run is not trusted', () => {
+  // The exact shape Node produces: code ENOBUFS, no exit status, SIGTERM.
+  const reason = untrustworthyExitReason({ code: 'ENOBUFS', status: null, signal: 'SIGTERM' });
+  assert.match(reason ?? '', /ENOBUFS/);
+});
+
+test('a SIGKILLed (OOM) run is not trusted even though it carries no error code', () => {
+  const reason = untrustworthyExitReason({ status: null, signal: 'SIGKILL' });
+  assert.match(reason ?? '', /SIGKILL/);
+});
+
+test('a spawn failure (missing binary) is not trusted', () => {
+  const reason = untrustworthyExitReason({ code: 'ENOENT', status: null, signal: null });
+  assert.match(reason ?? '', /ENOENT/);
+});
+
+test('an exit with no status and no signal at all is not trusted', () => {
+  // Nothing here says tsc ran to completion, so its output cannot be assumed
+  // to be a complete diagnostic list.
+  assert.notEqual(untrustworthyExitReason({ status: null, signal: null }), null);
 });

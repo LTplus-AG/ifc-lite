@@ -27,7 +27,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { writeTestProgram, GENERATED_CONFIG } from './typecheck-tests.mjs';
-import { classifyTscOutput } from './lib/unused-locals-classify.mjs';
+import { classifyTscOutput, untrustworthyExitReason } from './lib/unused-locals-classify.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = join(repoRoot, 'scripts', 'unused-locals-baseline.json');
@@ -107,6 +107,22 @@ function countViolations(dir) {
     // upstream of tsc in this spawn chain that ignores both of the above)
     // before matching, rather than trusting the two defenses above blindly.
     const output = stripAnsi(`${err.stdout ?? ''}${err.stderr ?? ''}`);
+    // Before the text is classified at all: was this even a tsc run that
+    // finished? A truncated capture (ENOBUFS) or a killed child (OOM/SIGKILL)
+    // hands back a PREFIX of tsc's diagnostics, and a prefix of well-formed
+    // diagnostics parses perfectly — 5000 diagnostics came back as a confident
+    // `{ kind: 'violations', count: 97 }` in the #2663 review, with err.code
+    // unread. `--update` would then bake that undercount into the baseline and
+    // lower the bar permanently. Only a plain numeric exit status is trusted.
+    const badExit = untrustworthyExitReason(err);
+    if (badExit) {
+      console.error(`❌ check-unused-locals could not run tsc to completion for ${dir}: ${badExit}.`);
+      console.error('   Any diagnostics captured are a truncated prefix, not a complete count,');
+      console.error('   so this run cannot be measured — and must never be written to the baseline.');
+      console.error('\n   Raw (ANSI-stripped) partial output:\n');
+      console.error(output.split('\n').map((l) => `   ${l}`).join('\n'));
+      process.exit(1);
+    }
     // The actual accounting lives in scripts/lib/unused-locals-classify.mjs,
     // unit-tested on its own (scripts/lib/unused-locals-classify.test.mjs) —
     // including the mixed-output case where one diagnostic parses fine and a
@@ -138,9 +154,10 @@ function countViolations(dir) {
     }
     if (result.kind === 'no-diagnostics') {
       // Non-zero exit, and nothing here explains it: no unused diagnostics, no
-      // other `error TS####`, no TS diagnostic of any kind. tsc never ran, or
-      // died without reporting — a missing binary, a killed process, a failure
-      // printed in a shape this does not parse. The one thing that must not
+      // other `error TS####`, no TS diagnostic of any kind. The exit itself
+      // was clean (a killed child, a truncated capture and a failed spawn all
+      // exited above), so tsc ran and returned non-zero while printing a
+      // failure in a shape this does not parse. The one thing that must not
       // happen is calling it zero, which would read as a clean package and
       // could be written into the baseline as one (review, #2603).
       return { count: 0, unmeasurable: true };

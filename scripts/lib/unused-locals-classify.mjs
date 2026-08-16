@@ -47,7 +47,9 @@ export const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/g;
  *    from the #2634 review — the original check only looked for this when
  *    the recognised count was zero).
  *  - { kind: 'no-diagnostics' } — non-zero exit, but no `TS####`-shaped text
- *    at all. tsc never ran, or died without reporting.
+ *    at all: tsc returned non-zero without reporting a diagnostic. (A run
+ *    that was killed or truncated never reaches here — see
+ *    untrustworthyExitReason below, which the caller applies first.)
  *  - { kind: 'violations', count } — every `TS####` in the output is either
  *    an unused-locals diagnostic or (impossible here, see does-not-compile
  *    above) another error; count is the number of unused-locals diagnostics.
@@ -73,4 +75,41 @@ export function classifyTscOutput(output) {
     return { kind: 'no-diagnostics' };
   }
   return { kind: 'violations', count: unusedCount };
+}
+
+/**
+ * Vet the child process's *exit* before its output is classified.
+ *
+ * classifyTscOutput above only ever sees text, and a TRUNCATED run's text is a
+ * prefix of well-formed diagnostics — which parses perfectly and returns a
+ * confident, wrong, low count. Reproduced for the #2663 review: a child
+ * emitting 5000 unused-locals diagnostics against a small maxBuffer came back
+ * as `{ kind: 'violations', count: 97 }`, with `err.code === 'ENOBUFS'` sitting
+ * unread on the error object. Under `--update` that undercount is written into
+ * the baseline, permanently lowering the bar for every future run — the exact
+ * failure mode the ratchet exists to prevent, reached from the other side.
+ *
+ * The only exit this check can stand behind is tsc running to completion and
+ * reporting: a numeric exit status with no signal and no spawn-level error
+ * code. Node populates the alternatives distinctly (verified against Node 22):
+ *   - normal diagnostics: `{ status: 1, signal: null }`, no `code`
+ *   - maxBuffer overflow: `{ code: 'ENOBUFS', status: null, signal: 'SIGTERM' }`
+ *   - OOM / external kill: `{ status: null, signal: 'SIGKILL' }`
+ *   - binary not found:   `{ code: 'ENOENT', status: null, signal: null }`
+ *
+ * @param {{ code?: string, status?: number|null, signal?: string|null }} err
+ * @returns {string|null} null when the exit is trustworthy, else a short
+ *   human-readable reason naming the code/signal for the failure message.
+ */
+export function untrustworthyExitReason(err) {
+  if (err?.code != null) {
+    return `the spawn failed with ${err.code}${err.signal ? ` (signal ${err.signal})` : ''}`;
+  }
+  if (err?.signal != null) {
+    return `the process was killed by ${err.signal}`;
+  }
+  if (typeof err?.status !== 'number') {
+    return 'the process exited without a status code';
+  }
+  return null;
 }

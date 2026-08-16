@@ -3448,6 +3448,21 @@ export class Renderer {
     }
 
     /**
+     * Draw the focused clash's TRUE INTERSECTION VOLUME — the actual overlap
+     * mesh from `clashIntersectionSolid` — as an opaque solid, so the clash
+     * reads as a shape rather than a wireframe box or contact line (the
+     * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
+     * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
+     * which one is current for a given clash (solid when the kernel resolved
+     * one, box/lines as the fallback when it didn't).
+     */
+    setClashIntersectionSolid(
+        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+    ): void {
+        this.overlays.setClashIntersectionSolid(solid);
+    }
+
+    /**
      * Upload filled IfcAnnotation regions for the symbolic overlay
      * (issue #653). Pass an empty array to clear.
      */

@@ -46,7 +46,10 @@ export {
   penetrationDepth,
   isTouching,
   sortClashes,
+  ruleHadNoMatch,
+  classifyRuleCoverage,
   type ClashSortBy,
+  type RuleCoverageOutcome,
 } from './analysis.js';
 export {
   findDuplicates,

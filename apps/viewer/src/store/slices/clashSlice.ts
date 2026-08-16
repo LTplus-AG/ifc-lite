@@ -22,6 +22,16 @@ import type {
   ClashSortBy,
 } from '@ifc-lite/clash';
 import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS } from '@ifc-lite/clash';
+import type { ClashSolidDegenerateReason } from '@/lib/clash/intersection-solid';
+
+/**
+ * Why the focused clash has no intersection solid to show. Extends the wasm
+ * kernel's own `ClashSolidDegenerateReason` with one JS-only case: the
+ * on-demand compute itself threw (an unexpected error, not a kernel verdict)
+ * — kept distinct from the kernel's reasons so a UI string never claims the
+ * kernel ruled on a pair it never actually got a verdict from.
+ */
+export type ClashSolidUnavailableReason = ClashSolidDegenerateReason | 'compute-error';
 
 /** How the rest of the model is shown when a clash is focused (#1275). Lives
  *  here (not in `useClash`) so the panel's view choice persists across panel
@@ -136,6 +146,32 @@ export interface ClashSlice {
    */
   showClashRegionBox: boolean;
 
+  /**
+   * Whether the focused clash's TRUE intersection volume (BIMcollab Zoom /
+   * Solibri style opaque solid) is available for the 3D view:
+   * - `none`: no clash focused.
+   * - `computing`: `focusClash` kicked off the on-demand wasm compute; the
+   *   existing contact marker (box/lines) is shown meanwhile so the user
+   *   never sees "nothing" while it resolves.
+   * - `solid`: the kernel resolved a solid — `clashSolidMesh` is populated
+   *   and both parents should be ghosted so it reads against them.
+   * - `unavailable`: the kernel could not resolve a solid (see
+   *   `clashSolidReason` / `clashSolidThicknessM` / `clashSolidRequiredM`) —
+   *   the existing contact marker stays the presentation, with a UI label
+   *   explaining why so "no solid" doesn't read as "no clash".
+   */
+  clashSolidStatus: 'none' | 'computing' | 'solid' | 'unavailable';
+  /** World-space intersection mesh, f64 positions. `null` unless `clashSolidStatus === 'solid'`. */
+  clashSolidMesh: { positions: Float64Array; indices: Uint32Array } | null;
+  /** Enclosed volume of the solid, m³. `0` unless `clashSolidStatus === 'solid'`. */
+  clashSolidVolumeM3: number;
+  /** Why no solid, when `clashSolidStatus === 'unavailable'`. `null` otherwise. */
+  clashSolidReason: ClashSolidUnavailableReason | null;
+  /** For `below-kernel-resolution`: measured thinnest extent, metres. `0` otherwise. */
+  clashSolidThicknessM: number;
+  /** For `below-kernel-resolution`: depth the kernel would have needed, metres. `0` otherwise. */
+  clashSolidRequiredM: number;
+
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
@@ -160,6 +196,14 @@ export interface ClashSlice {
   setClashOverlapBox: (box: { min: [number, number, number]; max: [number, number, number] } | null) => void;
   setClashContactLines: (lines: { vertices: number[]; color: [number, number, number, number] } | null) => void;
   setShowClashRegionBox: (show: boolean) => void;
+  /** `focusClash` kicked off the on-demand solid compute for the pair now focused. */
+  setClashSolidComputing: () => void;
+  /** The compute resolved a solid. */
+  setClashSolid: (mesh: { positions: Float64Array; indices: Uint32Array }, volumeM3: number) => void;
+  /** The compute resolved a degenerate result — no solid to show. */
+  setClashSolidUnavailable: (reason: ClashSolidUnavailableReason, thicknessM: number, requiredM: number) => void;
+  /** Back to `'none'` — no clash focused. */
+  clearClashSolid: () => void;
   // Preset CRUD (persisted). Every one of these returns a SaveResult and only
   // commits to the store when the write actually landed, so the panel can never
   // show a rule change as applied that a refused write (quota, or storage
@@ -257,6 +301,12 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashOverlapBox: null,
     clashContactLines: null,
     showClashRegionBox: true,
+    clashSolidStatus: 'none',
+    clashSolidMesh: null,
+    clashSolidVolumeM3: 0,
+    clashSolidReason: null,
+    clashSolidThicknessM: 0,
+    clashSolidRequiredM: 0,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -310,6 +360,43 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
     setClashContactLines: (clashContactLines) => set({ clashContactLines }),
     setShowClashRegionBox: (showClashRegionBox) => set({ showClashRegionBox }),
+
+    setClashSolidComputing: () =>
+      set({
+        clashSolidStatus: 'computing',
+        clashSolidMesh: null,
+        clashSolidVolumeM3: 0,
+        clashSolidReason: null,
+        clashSolidThicknessM: 0,
+        clashSolidRequiredM: 0,
+      }),
+    setClashSolid: (mesh, volumeM3) =>
+      set({
+        clashSolidStatus: 'solid',
+        clashSolidMesh: mesh,
+        clashSolidVolumeM3: volumeM3,
+        clashSolidReason: null,
+        clashSolidThicknessM: 0,
+        clashSolidRequiredM: 0,
+      }),
+    setClashSolidUnavailable: (reason, thicknessM, requiredM) =>
+      set({
+        clashSolidStatus: 'unavailable',
+        clashSolidMesh: null,
+        clashSolidVolumeM3: 0,
+        clashSolidReason: reason,
+        clashSolidThicknessM: thicknessM,
+        clashSolidRequiredM: requiredM,
+      }),
+    clearClashSolid: () =>
+      set({
+        clashSolidStatus: 'none',
+        clashSolidMesh: null,
+        clashSolidVolumeM3: 0,
+        clashSolidReason: null,
+        clashSolidThicknessM: 0,
+        clashSolidRequiredM: 0,
+      }),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);
@@ -431,6 +518,12 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashHighlightColors: null,
         clashOverlapBox: null,
     clashContactLines: null,
+        clashSolidStatus: 'none',
+        clashSolidMesh: null,
+        clashSolidVolumeM3: 0,
+        clashSolidReason: null,
+        clashSolidThicknessM: 0,
+        clashSolidRequiredM: 0,
       }),
   };
 };

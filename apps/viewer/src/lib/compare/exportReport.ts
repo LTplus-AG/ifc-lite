@@ -21,13 +21,14 @@ import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { contentMatchCounts } from './contentMatches.js';
+import { productTypeSplit, type ProductTypeTally } from './productTypeCounts.js';
 import {
   annotateReviewGroups,
   contentMatchReportRows,
   exportedGlobalId,
   type CompareReportRow,
 } from './reportRows.js';
-import { summarizeGeometryChange, type Aabb } from './describeChange.js';
+import { placementMoveSummary, summarizeGeometryChange, type Aabb } from './geometrySummary.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
 export type { CompareReportRow } from './reportRows.js';
@@ -45,6 +46,13 @@ export interface CompareReport {
    * (#1891); `needsReview` counts entities left in an unresolved group. Both
    * are 0 when the pass did not run. Without them a reader would take a lower
    * added/deleted count at face value.
+   *
+   * `added`/`deleted`/`modified` total BOTH products and type objects, the way
+   * the engine's own `DiffCounts` does. `products`/`typeObjects` break that
+   * total down (issue: a certification exercise's expected answer counts
+   * products only, and a reader taking the combined number gets a mismatch —
+   * see `productTypeCounts.ts`). The combined fields stay for readers already
+   * consuming them; the split is additive.
    */
   counts: {
     added: number;
@@ -52,6 +60,8 @@ export interface CompareReport {
     modified: number;
     matched: number;
     needsReview: number;
+    products: ProductTypeTally;
+    typeObjects: ProductTypeTally;
   };
   rows: CompareReportRow[];
 }
@@ -115,6 +125,8 @@ function classifyModified(
   entry: DiffEntry<CompareRef>,
   baseBounds: Map<number, Aabb>,
   headBounds: Map<number, Aabb>,
+  baseModel: FederatedModel | undefined,
+  headModel: FederatedModel | undefined,
 ): { change: string; movedDistance: number } {
   const parts: string[] = [];
   let movedDistance = 0;
@@ -122,7 +134,20 @@ function classifyModified(
   if (entry.changeKinds.includes('geometry')) {
     const ba = entry.base ? baseBounds.get(entry.base.ref.globalId) ?? null : null;
     const bb = entry.head ? headBounds.get(entry.head.ref.globalId) ?? null : null;
-    const geom = summarizeGeometryChange(ba, bb);
+    // A pair that is geometry-less on BOTH sides (the summary checks
+    // `ref.meshed`; missing boxes alone also describe a GPU-instanced entity)
+    // is described by its composed world placement (buildFingerprints.ts) —
+    // `summarizeGeometryChange(null, null)` answers "Reshaped", which is false
+    // for a product with no shape, and it leaves `MovedDistance_m` empty on
+    // the one row that column was made for. Same helper as the detail panel
+    // (`describeChange.ts`), so the CSV and the panel cannot disagree.
+    const bothMeshless =
+      !ba && !bb && entry.base?.ref.meshed === false && entry.head?.ref.meshed === false;
+    const geom = bothMeshless
+      ? (entry.base && entry.head
+          ? placementMoveSummary(baseModel, entry.base.ref, headModel, entry.head.ref)
+          : null)
+      : summarizeGeometryChange(ba, bb);
     if (geom) {
       movedDistance = geom.movedDistance;
       if (geom.movedDistance > 0) parts.push('Moved');
@@ -173,7 +198,7 @@ export function buildCompareReport(
     let movedDistance = 0;
     if (entry.state === 'added') change = 'Added';
     else if (entry.state === 'deleted') change = 'Deleted';
-    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds));
+    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds, baseModel, headModel));
 
     const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
     rows.push(row);
@@ -203,6 +228,7 @@ export function buildCompareReport(
   );
 
   const matchTally = contentMatchCounts(result.diff.contentMatches);
+  const split = productTypeSplit(result.diff.entries);
 
   return {
     baseModel: result.baseName,
@@ -217,6 +243,8 @@ export function buildCompareReport(
       modified: result.diff.counts.modified,
       matched: matchTally.matchedElements,
       needsReview: matchTally.needsReviewElements,
+      products: split.products,
+      typeObjects: split.typeObjects,
     },
     rows,
   };
@@ -252,6 +280,22 @@ export function reportToCsv(report: CompareReport): string {
     'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
   ];
   const lines: string[] = [];
+  // The row count below totals products AND type objects together (`Change`
+  // in `Added`/`Deleted`/`Modified` counts both), the same conflation the
+  // panel's counts grid has - a certification exercise's expected answer
+  // counts products only. Lead with the split so a reader taking the row
+  // count at face value is not misled the way the combined headline was
+  // (see `productTypeCounts.ts`). Omitted entirely when there are no
+  // type-object changes, so a report with none reads exactly as before.
+  const { products, typeObjects } = report.counts;
+  if (typeObjects.added + typeObjects.modified + typeObjects.deleted > 0) {
+    lines.push(
+      csvField(
+        `# Products: ${products.added} added, ${products.modified} modified, ${products.deleted} deleted` +
+          ` | Type objects: ${typeObjects.added} added, ${typeObjects.modified} modified, ${typeObjects.deleted} deleted`,
+      ),
+    );
+  }
   // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
   // mislead a coordinator (the ignored elements are simply gone). Lead with a
   // comment naming the excluded classes so the omission is never silent (#1470).

@@ -20,12 +20,16 @@
  * reclassifies a sub-floor crossing as `touch` (the surfaces genuinely are
  * in contact — that's real information) instead of `hard`; CLI-default
  * rules don't opt into `reportTouch`, so these pairs now report zero
- * clashes instead of a spurious hard one. 50 hard clashes remain: masonry
- * arch bridge elements interpenetrating by design (arch segments, spandrel
- * walls, fillers, piers), plus the 8 real `IfcBeam` x `IfcBeam` pairs
- * (2 real abutment-support-beam coordination issues, grouping to 2 clusters
- * at epsilon >= 2.0 m; the CLI default 1.5 m epsilon splits one abutment
- * into two clusters, a known, unchanged default).
+ * clashes instead of a spurious hard one. 50 hard clashes remain, none of
+ * them a real coordination defect: 27 carry fabricated depths from an AABB
+ * fallback on contained non-box pairs (a known, unfixed defect, tracked on
+ * #2536) and the other 23 (15 bearing/embedment + 8 `IfcBeam` x `IfcBeam`,
+ * grouping to 2 clusters at epsilon >= 2.0 m — the CLI default 1.5 m epsilon
+ * splits one abutment into two clusters, a known, unchanged default) are
+ * authored bearing details rather than defects. No exclusion rule reaches
+ * this model's "true" count of ~0 findings because there is nothing to
+ * exclude toward: reaching it needs #2536 fixed first, then an opt-in
+ * bearing rule (never a default — the file carries no connection metadata).
  */
 
 import { existsSync } from 'node:fs';
@@ -80,8 +84,8 @@ describe.skipIf(!canRun)('regression: Infra-Bridge.ifc (buildingSMART sample) CL
 
       // Default epsilon (1.5m) splits one abutment's beam pairs into extra
       // clusters — a known, deliberately-unchanged default. At epsilon=3m
-      // (within the documented safe range [2.0, 6.5]) the 8 real pairs group
-      // to the 2 real coordination issues.
+      // (within the documented safe range [2.0, 6.5]) the 8 IfcBeam x IfcBeam
+      // pairs (authored bearing details, not defects) group to 2 clusters.
       const groups = groupClashes(clashResult, { by: 'cluster', epsilon: 3 });
       const beamBeamGroups = groups.filter((g) =>
         g.members.every((c) => c.a.tag === 'IfcBeam' && c.b.tag === 'IfcBeam'),

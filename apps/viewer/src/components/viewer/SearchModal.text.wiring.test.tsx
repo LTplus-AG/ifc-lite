@@ -8,10 +8,18 @@
  *
  * `frameSelection` (Viewport.tsx) PREFERS the numeric multi-selection set over
  * the single selection, so a stale box/basket selection made `commit` frame the
- * OLD elements instead of the row just clicked. The fix is
- * `setSelectedEntityIds([])` BEFORE selecting, and the order is load-bearing:
- * clearing also nulls `selectedEntityId` (selectionSlice.ts:160-163), so the
- * reverse order discards the selection and frames nothing.
+ * OLD elements instead of the row just clicked. The original fix cleared with
+ * `setSelectedEntityIds([])` before selecting; #1133 (geometry-less assembly
+ * selection) subsumed that into a single wholesale
+ * `setSelectedEntityIds([...renderableParts, globalId])` call — a replacement
+ * discards any stale set by construction, same as an explicit clear, and
+ * `setSelectedEntityIds` itself derives `selectedEntityId` from the LAST id in
+ * the array (selectionSlice.ts:160-163), so putting `globalId` last keeps it
+ * the primary selection without a separate `setSelectedEntityId` call.
+ * `cameraCallbacks.resolveHighlightIds` isn't stubbed in this file's harness,
+ * so `renderableParts` resolves to `[]` here and the set below is a single id
+ * — the multi-part-assembly case is covered separately, in this same describe
+ * block, with a stubbed `resolveHighlightIds`.
  *
  * This replaces a source-text version that read `SearchModal.text.tsx` and
  * asserted on the text of `commit`. It claimed the component "cannot be mounted
@@ -155,7 +163,7 @@ describe('Search tab — committing a result row', () => {
     assert.equal(rows(container).length, RESULTS.length);
   });
 
-  it('selects the clicked row and clears the stale multi-selection', () => {
+  it('selects the clicked row and replaces the stale multi-selection', () => {
     seedStore();
     const container = mount();
 
@@ -163,20 +171,69 @@ describe('Search tab — committing a result row', () => {
 
     const s = useViewerStore.getState();
     assert.equal(s.selectedEntityId, WALL_A_GLOBAL_ID);
-    assert.equal(s.selectedEntityIds.size, 0, 'the stale box-selection must be cleared');
+    // `resolveHighlightIds` isn't stubbed in this harness, so `renderableParts`
+    // resolves to `[]` and the wholesale replacement is a single id — but it
+    // is still a REPLACEMENT: the stale {7, 8} must be gone, not merged into.
+    assert.deepEqual(
+      [...s.selectedEntityIds],
+      [WALL_A_GLOBAL_ID],
+      'the stale box-selection must be replaced wholesale, not merged into',
+    );
     assert.deepEqual(s.selectedEntity, { modelId: MODEL_ID, expressId: 42 });
   });
 
-  it('clears BEFORE selecting, so the selection survives', () => {
+  it('clears a prior model-header selection, so PropertiesPanel switches off ModelMetadataPanel', () => {
+    // Mirrors clicking a model header row in HierarchyPanel (setSelectedModelId)
+    // before opening search. `setSelectedEntityIds` alone does not touch
+    // `selectedModelId` (selectionSlice.ts), so PropertiesPanel would keep
+    // rendering ModelMetadataPanel — the camera moves and the entity
+    // highlights, but the panel stays stuck on model metadata.
     seedStore();
+    useViewerStore.setState({ selectedModelId: MODEL_ID });
     const container = mount();
 
     click(row(container, 'Wall A'));
 
-    // `setSelectedEntityIds([])` also nulls `selectedEntityId`, so clearing
-    // after selecting throws the selection away. This asserts the VALUE and
-    // not statement order: a swap leaves `selectedEntityId` null.
-    assert.equal(useViewerStore.getState().selectedEntityId, WALL_A_GLOBAL_ID);
+    assert.equal(
+      useViewerStore.getState().selectedModelId,
+      null,
+      'committing a search result must clear selectedModelId',
+    );
+  });
+
+  it('resolves through resolveHighlightIds and puts the clicked id LAST, so it stays primary', () => {
+    seedStore();
+    // A geometry-less assembly (#1133): resolveHighlightIds expands it to its
+    // renderable parts. The commit handler must append the clicked id AFTER
+    // those parts — `setSelectedEntityIds` derives `selectedEntityId` from the
+    // LAST array entry, so a wrong order would make a PART the primary
+    // selection instead of the row the user actually clicked.
+    useViewerStore.setState({
+      cameraCallbacks: {
+        frameSelection: () => { framed += 1; },
+        // Mirrors `expandToGeometryBearingIds`: a geometry-less id resolves to
+        // its renderable PARTS, never the id itself — so this stub deliberately
+        // does not include `ids` in its return, the same as the real assembly
+        // case. A production regression that put `globalId` first (ahead of
+        // the resolved parts) would make a PART the last/primary entry here.
+        resolveHighlightIds: (ids: number[]) => ids.map((id) => id + 500),
+      } as never,
+    });
+    const container = mount();
+
+    click(row(container, 'Wall A'));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(
+      [...s.selectedEntityIds].sort((a, b) => a - b),
+      [WALL_A_GLOBAL_ID, WALL_A_GLOBAL_ID + 500].sort((a, b) => a - b),
+      'both the resolved part and the clicked id must be selected',
+    );
+    assert.equal(
+      s.selectedEntityId,
+      WALL_A_GLOBAL_ID,
+      'the clicked id must be LAST (and so primary), not one of the resolved parts',
+    );
   });
 
   it('frames the selection, once, on the trailing timer', async () => {
@@ -222,7 +279,9 @@ describe('Search tab — committing a result row', () => {
 
     const s = useViewerStore.getState();
     assert.equal(s.selectedEntity?.expressId, 43, 'Enter must commit the HIGHLIGHTED row');
-    assert.equal(s.selectedEntityIds.size, 0);
+    // Wholesale replacement (see the click tests above): the stale {7, 8}
+    // is gone, replaced with the single resolved id for the committed row.
+    assert.equal(s.selectedEntityIds.size, 1);
     assert.equal(closed, 1);
   });
 });

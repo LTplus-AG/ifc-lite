@@ -69,7 +69,7 @@ import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
 import { capturePreAlignment } from './ingest/federationRealign.js';
 import type { PreAlignmentSnapshot } from '../store/index.js';
-import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
+import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
@@ -776,20 +776,20 @@ export function useIfcLoader() {
         // model is the federation anchor, not necessarily the one just
         // dropped. `null` (no loaded model has a usable IfcMapConversion)
         // leaves the scan at its raw native coordinates, unchanged from
-        // before this feature existed. LAS/LAZ only: other decoders can't
-        // consume the decode-time offset (ingestPointCloud gates too);
-        // tell the user instead of silently skipping.
-        const alignmentSupported = format === 'las' || format === 'laz';
+        // before this feature existed. Every format's decoder now consumes
+        // the decode-time offset (originally LAS/LAZ-only; extended to
+        // E57/PLY/PCD/PTS/XYZ), so alignment applies uniformly — no
+        // per-format gate or "unsupported format" toast needed.
+        //
+        // PR #2623 review: the offset and the aligned matrix's linear
+        // factor must agree on a UNIT, and that unit is per-format, not
+        // universal (see `pointCloudAlignment.ts`'s module doc). LAS/LAZ
+        // coordinates are natively `IfcProjectedCRS.MapUnit`; E57 is
+        // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
+        // convention so metres is the documented assumption here too.
+        const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
         const reference = findReferenceGeorefModel();
-        const alignment = reference && alignmentSupported
-          ? computePointCloudAlignment(reference.georef)
-          : null;
-        if (reference && !alignmentSupported && computePointCloudAlignment(reference.georef)) {
-          toast.info(
-            `Georeference alignment currently supports LAS/LAZ only — this ${format.toUpperCase()} `
-            + 'scan loads at its raw coordinates.',
-          );
-        }
+        const alignment = reference ? computePointCloudAlignment(reference.georef, sourceUnit) : null;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({

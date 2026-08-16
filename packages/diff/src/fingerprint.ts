@@ -87,6 +87,28 @@ export interface DataFingerprintInput {
   propertySets?: PropertySetInput[];
   quantitySets?: QuantitySetInput[];
   typeAssignments?: TypeAssignmentInput[];
+  /**
+   * The entity's **resolved material NAMES**. Missing from this projection
+   * entirely before, so a re-specified element (measured: `Soil1` ->
+   * `topsoil` on an infrastructure pair) read as unchanged in every channel.
+   *
+   * **Names, never entity references** — an `IfcMaterial`'s express id is
+   * reassigned on every save, so comparing references flags every re-exported
+   * element. Same argument that keeps {@link TypeAssignmentInput.globalId}
+   * out of the hash, and a material is not even an `IfcRoot`, so its id is
+   * the only thing a reference comparison could see.
+   *
+   * **Resolve through every indirection before supplying this**: the usage /
+   * set / list wrappers (`IfcMaterialLayerSetUsage`, `IfcMaterialLayerSet`,
+   * `IfcMaterialProfileSet`, `IfcMaterialConstituentSet`, `IfcMaterialList`,
+   * and their layer/profile/constituent members), down to `IfcMaterial.Name`
+   * at the leaf. The shipped viewer adapter does this via
+   * `extractAllMaterialsOnDemand` + `lensMaterialNames`; reading only a
+   * directly attached `IfcMaterial` silently under-reports on any layered
+   * element. Order is irrelevant (sorted here), and an empty array is
+   * identical to omitting the field: both say "no material named".
+   */
+  materials?: string[];
 }
 
 /** FNV-1a-64 offset basis. Same constant as `rust/processing/src/determinism.rs`;
@@ -242,14 +264,47 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
   const quantitySets = sortedQuantitySets(input);
   const typeAssignments = sortedTypeAssignments(input);
 
+  const materials = sortedMaterials(input);
+
   return stableHash(
     JSON.stringify({
       ...coreAttributes(input),
       TypeAssignments: typeAssignments,
       PropertySets: propertySets,
       QuantitySets: quantitySets,
+      // Present only when the entity names a material, unlike the three
+      // collections above. That is deliberate: an unconditional key would move
+      // the fingerprint of every material-LESS entity in every model the moment
+      // this field shipped, for a slice they do not carry. Absent and empty
+      // therefore hash alike, which is the documented contract of
+      // {@link DataFingerprintInput.materials}.
+      ...(materials.length > 0 ? { Materials: materials } : {}),
     }),
   );
+}
+
+/**
+ * Canonical projection of the resolved material names: sorted by code unit,
+ * duplicates kept.
+ *
+ * Sorting is what makes the fingerprint independent of the order an adapter
+ * happened to walk an element's `IfcRelAssociatesMaterial` rows in — the same
+ * requirement, and the same reason, as the property-set sort. Duplicates
+ * survive for the reason `sortedTypeAssignments` keeps its own: cardinality is
+ * content when an adapter supplies it — two separate material associations
+ * naming one material are not the same statement as one. (The shipped viewer
+ * adapter reaches this through `lensMaterialNames`, which de-duplicates
+ * *within* one association's resolved set, so only cross-association repeats
+ * arrive here from that path; the engine keeps whatever cardinality it is
+ * given rather than second-guessing the adapter.) Blank and whitespace-only
+ * names are dropped, because a nameless material is not a material a
+ * comparison can speak about and different exporters spell "no name"
+ * differently (`''`, `' '`).
+ */
+function sortedMaterials(input: DataFingerprintInput): string[] {
+  return (input.materials ?? [])
+    .filter((name) => typeof name === 'string' && name.trim().length > 0)
+    .sort(compareCodeUnits);
 }
 
 /**
@@ -324,6 +379,8 @@ function sortedTypeAssignments(input: DataFingerprintInput) {
  * - `pset:<PsetName>`  — one hash per property set
  * - `qset:<QsetName>`  — one hash per quantity set
  * - `type-assignment`  — assigned type entities, by name + IFC class
+ * - `material`         — resolved material names (see
+ *                        {@link DataFingerprintInput.materials})
  */
 export type ComponentKey = string;
 
@@ -372,6 +429,11 @@ export function buildComponentFingerprints(
   const typeAssignments = sortedTypeAssignments(input);
   if (typeAssignments.length > 0) {
     components['type-assignment'] = stableHash(JSON.stringify(typeAssignments));
+  }
+
+  const materials = sortedMaterials(input);
+  if (materials.length > 0) {
+    components['material'] = stableHash(JSON.stringify(materials));
   }
 
   return components;

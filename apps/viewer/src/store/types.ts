@@ -255,6 +255,17 @@ export interface CameraCallbacks {
   rotateRight?: () => void;
   frameSelection?: () => void;
   /**
+   * Resolve ids to what the 3D renderer can actually highlight, expanding a
+   * geometry-less `IfcRelAggregates` assembly (own id has no mesh) to its
+   * geometry-bearing parts — the same resolution `frameSelection` applies to
+   * decide what to frame. For a selection entry point that assigns
+   * `selectedEntityId`/`selectedEntityIds` directly (search modal, programmatic
+   * select) rather than a 3D pick, calling this before setting the selection
+   * keeps "camera moved here" and "this is highlighted" in agreement. Returns
+   * `[]` for an id with neither geometry nor renderable parts.
+   */
+  resolveHighlightIds?: (ids: number[]) => number[];
+  /**
    * Frame the camera on the bounds of an explicit id set, keeping the current
    * view direction. Ids are federated GLOBAL ids — the id space the scene
    * meshes carry (single model: global === express). Used by the Space Sketch

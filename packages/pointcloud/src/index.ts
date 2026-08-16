@@ -55,7 +55,7 @@ export {
   type AsciiPointsFormat,
   type AsciiPointsLayout,
 } from './formats/ascii-points.js';
-export { parsePlyHeader } from './formats/ply.js';
+export { parsePlyHeader, decodePly } from './formats/ply.js';
 export {
   parseE57FileHeader,
   parseE57Xml,

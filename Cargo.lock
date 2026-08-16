@@ -1534,6 +1534,7 @@ dependencies = [
  "earcutr",
  "geometry-predicates",
  "i_overlay",
+ "ifc-lite-clash",
  "ifc-lite-core",
  "insta",
  "jpeg-decoder",

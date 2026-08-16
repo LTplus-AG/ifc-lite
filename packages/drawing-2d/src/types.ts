@@ -233,6 +233,19 @@ export interface CutSegment {
    *  Carried so the polygon builder can split one entity's cut into per-material
    *  loops (material-layer walls/slabs). Absent when the cutter has no colour. */
   color?: [number, number, number, number];
+  /** Max |coordinate| of the source triangle's LOCAL vertex positions —
+   *  i.e. the `Float32Array` values BEFORE the per-mesh RTC `origin` was
+   *  added. This is the quantity that actually bounds float32 rounding
+   *  noise (quantization happens when the mesh is authored in its local
+   *  frame, not when a double-precision `origin` is added afterward), so
+   *  it must be used instead of `p0_2d`/`p1_2d`'s world-frame magnitude
+   *  when sizing a scale-aware weld tolerance — otherwise a small element
+   *  sitting at a large RTC origin gets a tolerance scaled to its
+   *  distance from the model origin instead of its own extent (#2622).
+   *  Absent when the segment wasn't produced by `SectionCutter` (e.g.
+   *  hand-built test fixtures), in which case callers fall back to the
+   *  segment's own 2D coordinate magnitude. */
+  localMaxCoord?: number;
 }
 
 /**

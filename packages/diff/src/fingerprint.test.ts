@@ -4,6 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  buildComponentFingerprints,
   buildDataFingerprint,
   normalizeValue,
   stableHash,
@@ -389,5 +390,81 @@ describe('buildDataFingerprint — duplicate names cannot make the hash order-de
       propertySets: [{ name: 'P', properties: vals.map((v) => ({ name: 'dup', value: v })) }],
     });
     expect(buildDataFingerprint(qs([1, 2]))).toBe(buildDataFingerprint(qs([2, 1])));
+  });
+});
+
+describe('buildDataFingerprint — resolved material names', () => {
+  // Materials were not in the fingerprint at all, so a re-specified element —
+  // measured case: two proxies whose material went `Soil1` -> `topsoil` — read
+  // as unchanged in every channel.
+  const proxy = (materials?: string[]): DataFingerprintInput => ({
+    ifcType: 'IfcBuildingElementProxy',
+    name: 'road - roadside verge - soil',
+    ...(materials ? { materials } : {}),
+  });
+
+  it('moves the hash when the resolved material name changes', () => {
+    expect(buildDataFingerprint(proxy(['Soil1']))).not.toBe(
+      buildDataFingerprint(proxy(['topsoil'])),
+    );
+  });
+
+  it('separates gaining a material from having none', () => {
+    expect(buildDataFingerprint(proxy())).not.toBe(buildDataFingerprint(proxy(['Soil1'])));
+  });
+
+  it('leaves an element with no materials hashing exactly as an empty list', () => {
+    // Absent and empty are the same statement — "this element names no
+    // material" — and an adapter that supplies `[]` rather than omitting the
+    // field must not fork the hash of every material-less element in the model.
+    expect(buildDataFingerprint(proxy())).toBe(buildDataFingerprint(proxy([])));
+  });
+
+  it('is order-independent, so a re-export that walks associations differently still matches', () => {
+    expect(buildDataFingerprint(proxy(['insulation', 'gypsumboard']))).toBe(
+      buildDataFingerprint(proxy(['gypsumboard', 'insulation'])),
+    );
+  });
+
+  it('reads a nameless material as no material at all', () => {
+    // Exporters spell "no name" differently (`''`, `' '`), and a nameless
+    // material is not a material a comparison can speak about — the documented
+    // blank-name rule of `sortedMaterials`, previously unpinned.
+    expect(buildDataFingerprint(proxy(['', ' ']))).toBe(buildDataFingerprint(proxy()));
+    expect(buildDataFingerprint(proxy(['Soil1', ' ']))).toBe(
+      buildDataFingerprint(proxy(['Soil1'])),
+    );
+  });
+
+  it('does not confuse a material name with an equally-named property or type', () => {
+    // The projection is keyed, not concatenated: moving a string between slots
+    // must move the hash.
+    const asMaterial = buildDataFingerprint(proxy(['Soil1']));
+    const asName = buildDataFingerprint({ ...proxy(), objectType: 'Soil1' });
+    expect(asMaterial).not.toBe(asName);
+  });
+});
+
+describe('buildComponentFingerprints — the material component', () => {
+  const proxy = (materials?: string[]): DataFingerprintInput => ({
+    ifcType: 'IfcBuildingElementProxy',
+    name: 'road - roadside verge - soil',
+    propertySets: [{ name: 'Pset_Common', properties: [{ name: 'Status', value: 'New' }] }],
+    ...(materials ? { materials } : {}),
+  });
+
+  it('emits a `material` key only for an element that names one', () => {
+    expect(buildComponentFingerprints(proxy(['Soil1']))).toHaveProperty('material');
+    expect(buildComponentFingerprints(proxy())).not.toHaveProperty('material');
+  });
+
+  it('moves `material` and nothing else when the material changes', () => {
+    // The sub-hashes are the content pass's collision guard, so each must track
+    // exactly the slice it names — a material edit must not disturb attr:core.
+    const a = buildComponentFingerprints(proxy(['Soil1']));
+    const b = buildComponentFingerprints(proxy(['topsoil']));
+    expect(a['material']).not.toBe(b['material']);
+    expect(a['attr:core']).toBe(b['attr:core']);
+    expect(a['pset:Pset_Common']).toBe(b['pset:Pset_Common']);
   });
 });

@@ -24,20 +24,38 @@
  * / `node-tests` jobs — but that scope was itself the bug: it named three
  * jobs instead of the whole workflow, so `rust-tests`' own `cargo metadata
  * --locked` gate (same shape, same "fails before any test signal" cost) sat
- * unaudited and uncovered until a #2631 review caught it (issue #2631). The
- * list below is re-derived from EVERY job in .github/workflows/test.yml, not
- * a chosen subset:
+ * unaudited and uncovered until a #2631 review caught it (issue #2631).
+ *
+ * That correction was still not complete. It missed `pnpm install
+ * --frozen-lockfile` — the JS twin of the cargo gate, comparing
+ * pnpm-lock.yaml against every workspace package.json — which is the FIRST
+ * real step of seven of the eleven jobs (test.yml lines 206, 312, 342, 375,
+ * 512, 687, 730) and fails in under a second with zero test signal from any
+ * of them. It was neither run nor listed as a deliberate exclusion (#2664
+ * review). It is gate 1 below, and it runs first here because it runs first
+ * there.
+ *
+ * The list below is re-derived from every STEP of all ELEVEN jobs in
+ * .github/workflows/test.yml (`changes`, `build`, `typecheck`, `lint`,
+ * `node-tests`, `viewer-e2e`, `rust-tests`, `geometry-census`, `plato-check`,
+ * `docs-checks`, `test`) — not a chosen subset of jobs, which is how each of
+ * the previous two versions of this list went wrong. `changes` contributes
+ * nothing: its three steps are a checkout, a paths-filter and a shell probe
+ * that writes a job output, none of which compare a committed artifact
+ * against its source.
  * (numbered in the order this script runs them, which is how the inline
  * comments below refer to them)
- *   1. check:bim-globals         (node-tests, before `pnpm test`)
- *   2. check:server-attr-indices (node-tests, before `pnpm test`)
- *   3. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
+ *   1. pnpm install --frozen-lockfile (build/typecheck/lint/node-tests/
+ *      viewer-e2e/plato-check/docs-checks — first real step of each)
+ *   2. check:bim-globals         (node-tests, before `pnpm test`)
+ *   3. check:server-attr-indices (node-tests, before `pnpm test`)
+ *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
  *      also docs-checks — the docs-only-PR twin of the same command)
- *   4. check-unused-locals.mjs   (lint job, via `pnpm lint`)
- *   5. check:api-surface         (node-tests, before `pnpm test`)
- *   6. cargo metadata --locked   (rust-tests job, before Clippy/`cargo test`)
- *   7. plato clash-math freshness (plato-check job)          -- INFO only, see below
- *   8. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
+ *   5. check-unused-locals.mjs   (lint job, via `pnpm lint`)
+ *   6. check:api-surface         (node-tests, before `pnpm test`)
+ *   7. cargo metadata --locked   (rust-tests job, before Clippy/`cargo test`)
+ *   8. plato clash-math freshness (plato-check job)          -- INFO only, see below
+ *   9. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -56,8 +74,8 @@
  *   - `check-unbounded-frame-wait.mjs` (node-tests): scans for an absent
  *     pattern, no baseline file at all.
  *   - `pnpm --filter=@ifc-lite/viewer check:templates` (node-tests):
- *     typechecks against bim-globals.d.ts (gate 1's output) but doesn't
- *     itself compare a generated artifact — covered transitively by gate 1.
+ *     typechecks against bim-globals.d.ts (gate 2's output) but doesn't
+ *     itself compare a generated artifact — covered transitively by gate 2.
  *   - `check-server-bin-targets.mjs` and its regression harness
  *     (`check-server-bin-targets.test.mjs`, `lib/server-bin-targets-parse.test.mjs`,
  *     node-tests): cross-checks three hand-maintained lists (platform.ts,
@@ -65,7 +83,7 @@
  *     nothing is regenerated from source into a committed artifact, so
  *     there is nothing to diff.
  *   - `scripts/lib/unused-locals-classify.test.mjs` (node-tests, added by the
- *     sibling #2634 follow-up branch): a unit test of gate 4's own parsing
+ *     sibling #2634 follow-up branch): a unit test of gate 5's own parsing
  *     logic, not a gate over generated content.
  *   - `pnpm typecheck` (typecheck job) = `turbo typecheck` plus
  *     `typecheck-tests.mjs --audit`. The audit GENERATES the tsconfig program
@@ -80,23 +98,39 @@
  *     ifc-lite-geometry --features triangulation-alt --test
  *     triangulation_invariance`): checks a live sweep against a checked-in
  *     golden (tests/manifests/watertightness_census.tsv), which is the same
- *     shape as (7)/(8) below in spirit, but its own job comment documents
+ *     shape as (8)/(9) below in spirit, but its own job comment documents
  *     re-blessing as a manual "run, download the uploaded artifact, replace
  *     the golden" workflow — no `--check`-style command this script could
  *     invoke — and the sweep itself costs ~20 minutes over the ~1.4GB
- *     fixture corpus, the same cost class that keeps (7) and (8) opt-in.
+ *     fixture corpus, the same cost class that keeps (8) and (9) opt-in.
  *     Left out rather than added half-wired.
+ *   - The `changes` job's paths-filter and prebuilt-WASM-eligibility probe:
+ *     they route the workflow, they don't compare a committed artifact
+ *     against the source it came from.
+ *   - The `test` aggregator job's single "Gate on dependencies" step: it
+ *     reads the other jobs' results, runs nothing of its own.
+ *   - The other jobs' setup/plumbing steps (checkout, pnpm/Node/Rust/.NET
+ *     setup, cargo + fixture caches, `rustup show`, artifact upload/download):
+ *     no artifact comparison in any of them.
  *
- * (1)-(6) each need only a single-package `turbo build` (bim-globals ->
- * @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser), an
- * already-built `dist/` across all published packages (api-surface,
- * unused-locals), or nothing at all (docs-sections, cargo metadata), and run
- * in well under two minutes total, so they run unconditionally here — (6) is
- * SKIPPED rather than run when `cargo` isn't on PATH, since a frontend-only
- * contributor's machine may not have the Rust toolchain installed at all,
- * and an absent binary is not evidence of a stale lockfile.
+ * (1)-(7) each need only a lockfile resolve (frozen-lockfile), a
+ * single-package `turbo build` (bim-globals -> @ifc-lite/sandbox,
+ * server-attr-indices -> @ifc-lite/parser), an already-built `dist/` across
+ * all published packages (api-surface, unused-locals), or nothing at all
+ * (docs-sections, cargo metadata), and run in well under two minutes total,
+ * so they run unconditionally here — (7) is SKIPPED rather than run when
+ * `cargo` isn't on PATH, since a frontend-only contributor's machine may not
+ * have the Rust toolchain installed at all, and an absent binary is not
+ * evidence of a stale lockfile. (2)-(4) are likewise SKIPPED on a tree with
+ * no node_modules: they shell out through `pnpm run`, and without an install
+ * they fail with `Command "turbo" not found`, which this script used to
+ * report under the headline "Stale generated file(s) — regenerate and
+ * commit". That named the wrong cause and offered a fix that could not
+ * possibly work (#2664 review). (1) deliberately has no such precondition —
+ * it is exactly the gate that still works, and still matters, on an
+ * uninstalled tree.
  *
- * (7) and (8) are deliberately NOT run by default:
+ * (8) and (9) are deliberately NOT run by default:
  *   - Plato clones `plato` + `ara3d-sdk` at pinned SHAs and does a `dotnet
  *     build` of Plato.CLI (needs the .NET 9 SDK) on first run. Minutes, plus
  *     a toolchain most contributors don't have installed.
@@ -184,6 +218,23 @@ function allDistBuilt() {
   });
 }
 
+/**
+ * True when the workspace has been installed at all.
+ *
+ * The gates that shell out through `pnpm run` reach `turbo` (and every other
+ * dev dependency) via the root node_modules. On a fresh clone that has never
+ * been installed they fail with `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command
+ * "turbo" not found` — which this script reported under the headline "Stale
+ * generated file(s) — regenerate and commit before pushing", naming a cause
+ * that isn't the cause and offering a `pnpm generate:*` fix that fails the
+ * same way (#2664 review). An uninstalled tree isn't stale, it's uninstalled;
+ * gates 5 and 6 already had exactly this kind of precondition and this gives
+ * the earlier ones theirs.
+ */
+function nodeModulesInstalled() {
+  return existsSync(join(ROOT, 'node_modules'));
+}
+
 function record(name, status, detail, fix) {
   results.push({ name, status, detail, fix });
   const icon = { pass: '✅', fail: '❌', skip: '⏭️ ', info: 'ℹ️ ' }[status];
@@ -219,35 +270,71 @@ if (BUILD_FIRST) {
   }
 }
 
-// 1. Sandbox ambient types (bim-globals.d.ts) — single-package build, fast.
+// 1. pnpm-lock.yaml is in sync with every workspace package.json. This is
+// the JS twin of gate 7's `cargo metadata --locked`, and the one with the
+// widest blast radius in CI: `pnpm install --frozen-lockfile` is the FIRST
+// real step of seven of the eleven jobs in test.yml (build, typecheck, lint,
+// node-tests, viewer-e2e, plato-check, docs-checks), so a package.json edited
+// without regenerating the lockfile turns all seven red before a single test
+// runs. It costs ~0.2s to catch here.
+//
+// `--lockfile-only` makes this a pure verification: pnpm resolves and
+// compares, and never touches node_modules. Combined with `--frozen-lockfile`
+// it also cannot rewrite pnpm-lock.yaml — frozen-lockfile errors out before
+// any write on drift, and on a clean tree there is nothing to write. Verified
+// both ways against a `git status` that stayed empty.
+//
+// Unlike gates 2-4 below this needs NO node_modules, so it is the one gate
+// that still gives a real answer on a fresh clone.
 runGate(
-  'check:bim-globals',
+  'pnpm-lock.yaml freshness',
   'pnpm',
-  ['run', 'check:bim-globals'],
-  'pnpm generate:bim-globals   (then commit apps/viewer/src/lib/scripts/templates/bim-globals.d.ts)',
+  ['install', '--frozen-lockfile', '--lockfile-only'],
+  'pnpm install   (then commit pnpm-lock.yaml; `pnpm install --lockfile-only` if you want the lockfile without touching node_modules)',
 );
 
-// 2. Server attr-indices — single-package build, fast.
-runGate(
-  'check:server-attr-indices',
-  'pnpm',
-  ['run', 'check:server-attr-indices'],
-  'pnpm generate:server-attr-indices   (then `cargo fmt -p ifc-lite-server` and commit attr_indices.rs)',
-);
+// 2-4 shell out through `pnpm run`, so they need the workspace installed —
+// without it they report a missing `turbo` as a stale generated file.
+if (!nodeModulesInstalled()) {
+  record(
+    'check:bim-globals / check:server-attr-indices / docs:check-generated',
+    'skip',
+    'No root node_modules — these gates run through `pnpm run`, which cannot resolve\n' +
+      '`turbo` or the generators on an uninstalled tree. This is a SKIP, not a pass:\n' +
+      'nothing was compared, so nothing is known about whether these files are stale.',
+    'pnpm install   (then re-run this script)',
+  );
+} else {
+  // 2. Sandbox ambient types (bim-globals.d.ts) — single-package build, fast.
+  runGate(
+    'check:bim-globals',
+    'pnpm',
+    ['run', 'check:bim-globals'],
+    'pnpm generate:bim-globals   (then commit apps/viewer/src/lib/scripts/templates/bim-globals.d.ts)',
+  );
 
-// 3. Generated doc sections (docs/api/typescript.md package index,
-// docs/guide/cli.md, docs/guide/performance.md, apps/landing/app.jsx) — no
-// build needed, reads package.json/source directly. Fast (well under a
-// second). This is the gate PR #2632 actually hit: a new package's row was
-// missing from the package-index region.
-runGate(
-  'docs:check-generated',
-  'pnpm',
-  ['run', 'docs:check-generated'],
-  'pnpm docs:generate   (then commit the regenerated doc file(s))',
-);
+  // 3. Server attr-indices — single-package build, fast.
+  runGate(
+    'check:server-attr-indices',
+    'pnpm',
+    ['run', 'check:server-attr-indices'],
+    'pnpm generate:server-attr-indices   (then `cargo fmt -p ifc-lite-server` and commit attr_indices.rs)',
+  );
 
-// 4. Unused-locals baseline (scripts/unused-locals-baseline.json) — a
+  // 4. Generated doc sections (docs/api/typescript.md package index,
+  // docs/guide/cli.md, docs/guide/performance.md, apps/landing/app.jsx) — no
+  // build needed, reads package.json/source directly. Fast (well under a
+  // second). This is the gate PR #2632 actually hit: a new package's row was
+  // missing from the package-index region.
+  runGate(
+    'docs:check-generated',
+    'pnpm',
+    ['run', 'docs:check-generated'],
+    'pnpm docs:generate   (then commit the regenerated doc file(s))',
+  );
+}
+
+// 5. Unused-locals baseline (scripts/unused-locals-baseline.json) — a
 // package added but never `pnpm lint:baseline`-d silently has no ratchet at
 // all (this is the OTHER gate PR #2632 hit). Like api-surface, this
 // type-checks every package against its siblings' BUILT dist/ types, so it
@@ -275,7 +362,7 @@ if (!BUILD_FIRST && !allDistBuilt()) {
   }
 }
 
-// 5. API surface — needs the FULL workspace dist/, which this script does
+// 6. API surface — needs the FULL workspace dist/, which this script does
 // not build by default (see header comment).
 if (!BUILD_FIRST && !allDistBuilt()) {
   record(
@@ -301,7 +388,7 @@ if (!BUILD_FIRST && !allDistBuilt()) {
   }
 }
 
-// 6. Cargo.lock is in sync with the manifests (rust-tests job). Cheap
+// 7. Cargo.lock is in sync with the manifests (rust-tests job). Cheap
 // (resolve only, no compile), and it fails BEFORE Clippy or `cargo test` run
 // — the same "zero test signal" shape as gates 1-5, just missed at first
 // because the original version of this script only audited the build/lint/
@@ -335,7 +422,7 @@ if (which('cargo')) {
   );
 }
 
-// 7. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
+// 8. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
 if (FULL) {
   if (which('dotnet')) {
     runGate(
@@ -363,7 +450,7 @@ if (FULL) {
   );
 }
 
-// 8. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
+// 9. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
 if (FULL) {
   if (which('wasm-pack') && which('cargo')) {
     hr();

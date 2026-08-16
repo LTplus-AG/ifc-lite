@@ -48,6 +48,7 @@ import {
 import { MutablePropertyView, StoreEditor, OVERLAY_BYTE_OFFSET } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
+import { getEffectiveEntityIndex } from './effective-index.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -254,12 +255,43 @@ describe('the incidental readers are exempt by construction, not by clamping', (
     // sites that write it — `store-editor.ts` `addEntity`, and
     // `effective-index.ts` `get` / `[Symbol.iterator]` — pair it with
     // `byteLength: 0`, which is the case the clamp really does answer as empty.
+    // All three are asserted here: the safety argument for the incidental
+    // readers rests on the whole set, so pinning one and leaving the other two
+    // to prose is how a future edit at an unpinned site goes unnoticed.
     expect(OVERLAY_BYTE_OFFSET).toBeLessThan(0);
     const store = await parseBase();
-    const created = new StoreEditor(store, new MutablePropertyView(null, 'test-model'))
+    const view = new MutablePropertyView(null, 'test-model');
+    const created = new StoreEditor(store, view)
       .addEntity('IFCWALL', [null, null, null, null, null, null, null, null]);
+
+    // 1. `store-editor.ts` `addEntity`, the ref it hands back to its caller.
     expect(created.byteOffset).toBe(OVERLAY_BYTE_OFFSET);
     expect(created.byteLength).toBe(0);
+
+    // The overlay is non-empty, so this is the `OverlayIndex` branch — the only
+    // one of the two `getEffectiveEntityIndex` returns that synthesises a ref
+    // for an overlay-created id at all.
+    const effective = getEffectiveEntityIndex(store, view, true);
+
+    // 2. `effective-index.ts` `get`.
+    const fromGet = effective.get(created.expressId);
+    expect(fromGet).toBeDefined();
+    expect(fromGet!.byteOffset).toBe(OVERLAY_BYTE_OFFSET);
+    expect(fromGet!.byteLength).toBe(0);
+
+    // 3. `effective-index.ts` `[Symbol.iterator]`, which builds its own ref
+    // object rather than delegating to `get` — so `get` passing says nothing
+    // about it.
+    const iterated = [...effective].find(([id]) => id === created.expressId);
+    expect(iterated).toBeDefined();
+    expect(iterated![1].byteOffset).toBe(OVERLAY_BYTE_OFFSET);
+    expect(iterated![1].byteLength).toBe(0);
+
+    // And nothing else the iterator yields breaks the pairing either, which is
+    // the invariant in the form the incidental readers actually depend on.
+    for (const [, ref] of effective) {
+      if (ref.byteOffset < 0) expect(ref.byteLength).toBe(0);
+    }
   });
 
   it('an overlay-created ref never enters the index those readers consult', async () => {

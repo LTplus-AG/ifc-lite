@@ -1171,10 +1171,14 @@ export class StepExporter {
      * seven reasons a line never lands — outside the closure, hidden product,
      * tombstoned, never existed, unreadable source ref (#2491), geometry
      * excluded by options, and the `deltaOnly` carve-out — while the filter
-     * used to consume a predicate that answered for three of them. The gap was
-     * live: on a PLAIN full export, with no `visibleOnly`, no deletions and no
-     * overlay, an unreadable ref made the source-iteration pass skip an
-     * entity's line while an `IFCREL*` naming it shipped verbatim, dangling.
+     * used to consume `(hiddenProductIds !== null && hiddenProductIds.has(id))
+     * || effective.isDeleted(id)`, which answered for two: hidden product, and
+     * tombstoned. Notably NOT "never existed" — that one is deliberately out of
+     * scope for the filter even now, for the reason under the qualifier heading
+     * below. The gap was live: on a PLAIN full export, with no `visibleOnly`,
+     * no deletions and no overlay, an unreadable ref made the source-iteration
+     * pass skip an entity's line while an `IFCREL*` naming it shipped verbatim,
+     * dangling.
      *
      * Deriving the filter from `willBeEmitted` is also what retires the
      * `mayNameExcludedRefs` gate that used to stand in front of both call

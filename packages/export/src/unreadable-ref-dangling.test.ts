@@ -9,14 +9,17 @@
  *
  * `willBeEmitted` in `step-exporter.ts` recognises seven reasons an entity's
  * line never lands in the file. The relationship-reference filter used to
- * consume a separate predicate that answered for only three of them (hidden
- * product, tombstoned, never existed). A record whose byte range this source
+ * consume a separate predicate that answered for only two of them (hidden
+ * product, tombstoned). A record whose byte range this source
  * cannot address is skipped by the source-iteration pass — so no `#N=` line —
  * while an `IFCREL*` naming it was copied verbatim, on a PLAIN full export
  * with no `visibleOnly` and no deletions anywhere in the call.
  *
- * The fix makes both output-line filter sites consume the negation of
- * `willBeEmitted`. What pins that wiring here is BEHAVIOURAL and nothing else:
+ * The fix makes both output-line filter sites consume `isOmittedFromOutput` —
+ * the negation of `willBeEmitted`, narrowed to ids the model has or has
+ * tombstoned, so that a ref already dangling in the INPUT file is not treated
+ * as this export's omission (see that predicate's doc, and #2637).
+ * What pins that wiring here is BEHAVIOURAL and nothing else:
  * every test below feeds an input on which the output predicate and the walk
  * predicate give different answers, and checks the bytes. Substituting the
  * walk predicate at either call site, or gutting `willBeEmitted` to

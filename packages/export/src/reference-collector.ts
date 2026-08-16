@@ -334,7 +334,8 @@ export function collectRefsInByteRange(
  *   NOT NECESSARILY THE CALLER'S OUTPUT PREDICATE. #2637's remedy was worded
  *   as "the same function call, not two expressions that happened to agree",
  *   and `StepExporter` did pass its single output predicate here. It no longer
- *   can: its output filter is now the negation of `willBeEmitted`, whose first
+ *   can: its output filter is now `isOmittedFromOutput`, built on
+ *   `willBeEmitted`, whose first
  *   act is to consult the very `allowedEntityIds` set THIS call produces, so
  *   wiring it in is circular (measured: `ReferenceError: Cannot access
  *   'willBeEmitted' before initialization`; hoisting past the TDZ only trades

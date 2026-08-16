@@ -28,11 +28,11 @@
  * axis of the corpus; the per-element `MeshData.origin` axis lives in the
  * viewer compare tests (#2529 path).
  *
- * The `it.fails` case asserts the CORRECT behaviour and is expected to fail
- * on the live defect. When the #2661 projection fix lands, that test starts
- * passing, vitest reports the `.fails` wrapper itself as a failure, and the
- * wrapper must be removed — the corpus cannot silently rot in either
- * direction.
+ * The far-offset case asserted the CORRECT behaviour while the #2600 defect
+ * was live, so it was written as `it.fails`. #2661 landed the projection fix,
+ * that test started passing, vitest reported the `.fails` wrapper itself as a
+ * failure, and the wrapper was removed. The corpus cannot silently rot in
+ * either direction, which is exactly what this round-trip demonstrated.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -120,14 +120,13 @@ describe('contact world-frame corpus (#2600)', () => {
     expect(contactClusters(a, b)).toEqual([]);
   });
 
-  // KNOWN-FAILING on the live #2600 defect: asserts the CORRECT behaviour.
-  // scaledPlaneEps derives ~2.4 mm from the 10 km X magnitude and swallows
-  // the genuine clearance as coplanar contact — measured on this code: 4
+  // Was KNOWN-FAILING on the #2600 defect, which derived ~2.4 mm of epsilon
+  // from the 10 km X magnitude and swallowed the genuine clearance: 4
   // fabricated coplanar triangle pairs (2 tris x 2 tris) and 1 fabricated
-  // surface cluster (area 1 m2, plane normal Z). When the #2661 projection
-  // fix lands this starts passing and vitest flags the `.fails` wrapper:
-  // remove the wrapper in that PR.
-  it.fails(
+  // surface cluster (area 1 m2, plane normal Z). #2661 projects the epsilon
+  // onto the tested normal instead, so this now passes and the `.fails`
+  // wrapper is gone. It stays as a live regression guard.
+  it(
     `the Z-clearance ${WORLD_FRAME_OFFSET_M / 1000} km out in X produces no pairs and no contact (#2600)`,
     () => {
       const { a, b } = horizontalFacePair('far-baked', CLEARANCE_M);

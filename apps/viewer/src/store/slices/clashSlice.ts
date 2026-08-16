@@ -81,6 +81,23 @@ export interface ClashSlice {
    */
   clashRawResult: ClashResult | null;
   clashGroups: ClashGroup[] | null;
+  /**
+   * Provenance of `clashGroups` — which of the two writers produced it.
+   * `'derived'`: computed from `clashRawResult` by `deriveGroups` (spatial
+   * clusters, via `setClashResult`, `setClashClusterEpsilon`, or an exclusion
+   * edit). `'manual'`: an explicit override (`setClashGroups`, the duplicate
+   * scan's coincident-SET grouping). `null` iff `clashGroups` is `null`.
+   *
+   * This is the gate that keeps the two writers from fighting over the same
+   * field: `deriveGroups` refuses to replace a `'manual'` grouping unless it
+   * is also given a genuinely new raw result (a fresh run always wins — see
+   * `deriveGroups`'s `newRun` parameter). Without this, a later
+   * `setClashClusterEpsilon` or exclusion edit — neither of which runs a new
+   * scan — would silently re-derive spatial clusters over the SAME duplicate
+   * pairs a manual grouping already covers, mislabeling instead of leaving it
+   * alone (found in review of #2535, PR comment 5305847983).
+   */
+  clashGroupsKind: 'derived' | 'manual' | null;
   clashRunning: boolean;
   clashError: string | null;
   /**
@@ -170,14 +187,22 @@ export interface ClashSlice {
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
   /**
-   * Overrides the derived spatial-cluster grouping with an explicit one.
-   * Used only by the duplicate scan (#2530): `setClashResult` just derived
-   * `clashGroups` as spatial clusters over the AABB-overlap pairs, which isn't
-   * the grouping duplicate results should show — the scan replaces it with
-   * coincident SETS right after. A later `setClashClusterEpsilon` or exclusion
-   * change still re-derives spatial clusters from `clashRawResult`, so this
-   * override does not survive those (acceptable: neither applies to a
-   * duplicate-scan result).
+   * Overrides the derived spatial-cluster grouping with an explicit one, and
+   * marks it `'manual'` in `clashGroupsKind`. Used only by the duplicate scan
+   * (#2530): `setClashResult` just derived `clashGroups` as spatial clusters
+   * over the AABB-overlap pairs, which isn't the grouping duplicate results
+   * should show — the scan replaces it with coincident SETS right after.
+   *
+   * CORRECTION (review of #2535, PR comment 5305847983): a previous version of
+   * this doc claimed a later `setClashClusterEpsilon` or exclusion change
+   * "still re-derives spatial clusters from `clashRawResult`... (acceptable:
+   * neither applies to a duplicate-scan result)". That was false — the
+   * duplicate scan's `setClashResult(res)` call (before this one) makes
+   * `clashRawResult` the duplicate scan's OWN pairwise result, so both DO
+   * apply to it. The override now survives them because `deriveGroups`
+   * refuses to replace a `'manual'` grouping without a genuinely new raw
+   * result: it lasts exactly until the next `setClashResult` (a real run),
+   * not merely until the next re-derivation from the same raw result.
    */
   setClashGroups: (groups: ClashGroup[] | null) => void;
   bumpClashRunSeq: () => void;
@@ -248,19 +273,53 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
 
 /**
  * Everything derived from (raw result × exclusion rules): the filtered result,
- * its clusters, each rule's reach and the suppressed total. One function so the
- * four can never disagree — a stale `clashGroups` would still hold the very
- * clashes the user just excluded.
+ * its clusters, each rule's reach and the suppressed total — PLUS the single
+ * gate that keeps this derivation from clobbering a `'manual'` grouping it did
+ * not produce (`setClashGroups`, the duplicate scan's coincident-SET view).
+ *
+ * `clashResult` / `clashExclusionCounts` / `clashSuppressedCount` are always
+ * recomputed from `raw` — exclusions must keep filtering a duplicate scan's
+ * result too. Only the `clashGroups` field is gated: this is `@ifc-lite/clash`
+ * grouping module (spatial clusters, no per-run identity), not a duplicate-
+ * scan detector, and it must never overwrite a grouping some OTHER writer
+ * produced unless it also owns a genuinely new raw result to derive from.
+ *
+ * `newRun` distinguishes the two situations that call this:
+ * - `true` (only from `setClashResult`): `raw` just changed — a real
+ *   detection/scan completed. Any prior manual override was for the
+ *   PREVIOUS run's clashes, which no longer exist, so it is superseded
+ *   unconditionally.
+ * - `false` (`setClashClusterEpsilon`, `commitExclusions`): `raw` is
+ *   UNCHANGED — nothing was re-run, only a setting changed. This derivation
+ *   did not produce the current `'manual'` grouping (if any) and has no basis
+ *   to replace it, so it leaves `clashGroups`/`clashGroupsKind` alone.
+ *
+ * This is the ONLY place `clashGroups` is computed from `clashRawResult` — a
+ * future re-derivation site should route through here (not call
+ * `groupClashes` directly) to inherit the guard for free.
  */
-function deriveFromExclusions(
+function deriveGroups(
+  state: Pick<ClashSlice, 'clashGroups' | 'clashGroupsKind'>,
   raw: ClashResult | null,
   rules: readonly ClashExclusionRule[],
   clusterEpsilon: number,
-): Pick<ClashSlice, 'clashResult' | 'clashGroups' | 'clashExclusionCounts' | 'clashSuppressedCount'> {
+  newRun: boolean,
+): Pick<ClashSlice, 'clashResult' | 'clashGroups' | 'clashGroupsKind' | 'clashExclusionCounts' | 'clashSuppressedCount'> {
   const { result, counts, suppressed } = applyClashExclusions(raw, rules);
+  if (!newRun && state.clashGroupsKind === 'manual') {
+    return {
+      clashResult: result,
+      clashGroups: state.clashGroups,
+      clashGroupsKind: 'manual',
+      clashExclusionCounts: counts,
+      clashSuppressedCount: suppressed,
+    };
+  }
+  const clashGroups = result ? groupClashes(result, { by: 'cluster', epsilon: clusterEpsilon }) : null;
   return {
     clashResult: result,
-    clashGroups: result ? groupClashes(result, { by: 'cluster', epsilon: clusterEpsilon }) : null,
+    clashGroups,
+    clashGroupsKind: clashGroups ? 'derived' : null,
     clashExclusionCounts: counts,
     clashSuppressedCount: suppressed,
   };
@@ -303,7 +362,10 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     const result = saveExclusions(next);
     if (!result.ok) return result;
     const state = get();
-    set({ clashExclusions: next, ...deriveFromExclusions(state.clashRawResult, next, state.clashClusterEpsilon) });
+    set({
+      clashExclusions: next,
+      ...deriveGroups(state, state.clashRawResult, next, state.clashClusterEpsilon, false),
+    });
     return result;
   };
 
@@ -312,6 +374,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashResult: null,
     clashRawResult: null,
     clashGroups: null,
+    clashGroupsKind: null,
     clashRunning: false,
     clashError: null,
     clashRunSeq: 0,
@@ -349,9 +412,12 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     // still contains clashes the user excluded.
     setClashResult: (raw) => {
       const state = get();
-      set({ clashRawResult: raw, ...deriveFromExclusions(raw, state.clashExclusions, state.clashClusterEpsilon) });
+      set({
+        clashRawResult: raw,
+        ...deriveGroups(state, raw, state.clashExclusions, state.clashClusterEpsilon, true),
+      });
     },
-    setClashGroups: (clashGroups) => set({ clashGroups }),
+    setClashGroups: (clashGroups) => set({ clashGroups, clashGroupsKind: clashGroups ? 'manual' : null }),
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),
@@ -374,9 +440,13 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       const clamped = clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon);
       const state = get();
       // clashGroups is otherwise derived only from setClashResult / commitExclusions
-      // (deriveFromExclusions), so without this the Issues view's radius control —
-      // which now reads live from this same setting — silently did nothing.
-      set({ clashClusterEpsilon: clamped, ...deriveFromExclusions(state.clashRawResult, state.clashExclusions, clamped) });
+      // (deriveGroups), so without this the Issues view's radius control — which
+      // now reads live from this same setting — silently did nothing. `newRun:
+      // false` — deriveGroups leaves a 'manual' grouping (duplicate scan) alone.
+      set({
+        clashClusterEpsilon: clamped,
+        ...deriveGroups(state, state.clashRawResult, state.clashExclusions, clamped, false),
+      });
       persistSettings();
     },
     setClashReportTouch: (clashReportTouch) => { set({ clashReportTouch }); persistSettings(); },
@@ -549,6 +619,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashExclusionCounts: new Map<string, number>(),
         clashSuppressedCount: 0,
         clashGroups: null,
+        clashGroupsKind: null,
         clashRunning: false,
         clashError: null,
         clashProgress: null,

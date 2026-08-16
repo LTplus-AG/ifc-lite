@@ -809,3 +809,45 @@ fn oblique_non_box_sweep_never_returns_a_grossly_wrong_volume() {
         }
     }
 }
+
+#[test]
+fn two_disjoint_below_band_slivers_are_withheld_not_pooled_into_one_bounding_box() {
+    // CodeRabbit review finding on #2573: the thickness gate accumulated
+    // `lo`/`hi` over every triangle the kernel returned, with no regard for
+    // whether they formed one connected overlap or several disjoint ones. A
+    // single operand pair CAN produce more than one disjoint overlap
+    // component — e.g. one operand shaped like a dumbbell (two separate
+    // boxes, as one triangle soup) straddling both ends of the other. Here,
+    // `b` is exactly that: two boxes that each graze opposite faces of `a`
+    // by 16 snap cells (~244 µm — individually below the 488 µm trust
+    // threshold this operand pair's extent requires; confirmed against a
+    // single such sliver alone, which the kernel resolves as a genuine
+    // overlap and correctly reports `BelowKernelResolution` with
+    // `thickness_m ≈ 244 µm`). Each component's OWN thickness is ~244 µm and
+    // must be withheld. Pooling them into a single bounding box instead
+    // reports a ~10 m extent along every world axis (component 1 sits near
+    // x=0, component 2 near x=10, so the union spans the operand's full
+    // 10 m size) — comfortably above the trust threshold — and the API
+    // would return a `Solid` whose volume sums two below-resolution slivers
+    // the module's own docs say must never be reported.
+    let depth = 16.0 / 65536.0; // 16 snap cells, ~244 µm
+    for &n in &TESSELLATIONS {
+        let a = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], n);
+        let mut b = box_mesh([-1.0, -1.0, -1.0], [depth, 11.0, 11.0], n);
+        b.merge(&box_mesh([10.0 - depth, -1.0, -1.0], [11.0, 11.0, 11.0], n));
+
+        match intersection_solid(&a, &b) {
+            IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution { thickness_m, .. }) => {
+                assert!(
+                    thickness_m < 1.0e-3,
+                    "n={n}: per-component thickness should read ~{depth} m, got {thickness_m} m \
+                     (looks pooled across both disjoint components instead of measured per-component)"
+                );
+            }
+            other => panic!(
+                "n={n}: two below-band disjoint slivers must be withheld, got {other:?} \
+                 (a pooled bounding box across both components would wrongly pass the gate)"
+            ),
+        }
+    }
+}

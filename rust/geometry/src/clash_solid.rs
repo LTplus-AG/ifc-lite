@@ -152,6 +152,61 @@ fn tri_volume(tris: &[Tri]) -> f64 {
         / 6.0
 }
 
+/// Partitions `tris` into disjoint connected components by shared-vertex
+/// adjacency, returning each component as a list of indices into `tris`.
+///
+/// Two triangles are in the same component iff they share a vertex at the
+/// exact same f64 bit pattern — the same equality the welding step in
+/// [`intersection_solid`] already keys on, since the kernel's arrangement
+/// output shares vertex coordinates exactly between adjacent triangles
+/// rather than rounding them independently. A single clashing pair's exact
+/// boolean can legitimately produce more than one such component (e.g. a
+/// non-convex operand overlapping the other in two separate places), and
+/// each is its own solid with its own thinnest extent — see the thickness
+/// gate's comment in [`intersection_solid`] for why pooling them together
+/// was wrong.
+///
+/// Union-find over triangle indices, unioned via a vertex-key → first-seen
+/// triangle map: O(tris) with a small constant, same asymptotic cost as the
+/// welding pass right below it.
+fn component_groups(tris: &[Tri]) -> Vec<Vec<usize>> {
+    let mut parent: Vec<usize> = (0..tris.len()).collect();
+
+    fn find(parent: &mut [usize], mut x: usize) -> usize {
+        while parent[x] != x {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        x
+    }
+    fn union(parent: &mut [usize], a: usize, b: usize) {
+        let (ra, rb) = (find(parent, a), find(parent, b));
+        if ra != rb {
+            parent[ra] = rb;
+        }
+    }
+
+    let mut first_tri_for_vertex: std::collections::HashMap<[u64; 3], usize> = std::collections::HashMap::new();
+    for (i, t) in tris.iter().enumerate() {
+        for v in t {
+            let key = [v[0].to_bits(), v[1].to_bits(), v[2].to_bits()];
+            match first_tri_for_vertex.entry(key) {
+                std::collections::hash_map::Entry::Occupied(e) => union(&mut parent, i, *e.get()),
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(i);
+                }
+            }
+        }
+    }
+
+    let mut groups: std::collections::HashMap<usize, Vec<usize>> = std::collections::HashMap::new();
+    for i in 0..tris.len() {
+        let root = find(&mut parent, i);
+        groups.entry(root).or_default().push(i);
+    }
+    groups.into_values().collect()
+}
+
 /// Largest coordinate magnitude across both operands — the `extent` the kernel's
 /// own near-coplanar band is sized from, so the gate widens with world distance
 /// exactly as the kernel's own tolerance does.
@@ -226,17 +281,35 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     // so its largest face is not reliably the cap — measured thickness came out
     // over 30x too large on the very cases the oracle pins. Working from the
     // operands' face planes sidesteps the wedge entirely.
+    //
+    // One more thing the extent must be measured PER, on top of axis: the
+    // arrangement can return more than one disjoint overlap component for a
+    // single operand pair (e.g. a non-convex operand overlapping the other in
+    // two separate places). Pooling `lo`/`hi` across every triangle the
+    // kernel returned, regardless of which component it belongs to, was
+    // itself a #2573 review finding: two below-band slivers at opposite
+    // ends of an operand can each be a genuine coplanar-contact wedge, yet
+    // their UNION bounding box spans the operand's full size along every
+    // axis and sails past the gate. `component_groups` below partitions
+    // `tris` by shared-vertex connectivity (the same bitwise key the welding
+    // step already uses) so each disjoint piece is measured against its OWN
+    // extent; the reported `thickness` is the worst (thinnest) extent found
+    // in ANY single component along ANY candidate axis, so one bad component
+    // still withholds the whole pair rather than being averaged away.
+    let axes = gate_axes(a, b);
     let mut thickness = f64::INFINITY;
-    for axis in &gate_axes(a, b) {
-        let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-        for t in &tris {
-            for v in t {
-                let p = dot3(*v, *axis);
-                lo = lo.min(p);
-                hi = hi.max(p);
+    for group in component_groups(&tris) {
+        for axis in &axes {
+            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for &i in &group {
+                for v in &tris[i] {
+                    let p = dot3(*v, *axis);
+                    lo = lo.min(p);
+                    hi = hi.max(p);
+                }
             }
+            thickness = thickness.min(hi - lo);
         }
-        thickness = thickness.min(hi - lo);
     }
     let required = TRUST_BAND_MULTIPLE * near_band_from_extent(operand_extent(a, b));
     if thickness < required {

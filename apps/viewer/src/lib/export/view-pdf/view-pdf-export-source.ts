@@ -107,7 +107,13 @@ function gatherDrawnMeshes(state: ViewerState): MeshData[] {
 
   const meshes: MeshData[] = [];
   for (const { geometry, isPrimary } of results) {
-    meshes.push(...selectModelMeshes(withInstancedMeshes(geometry, isPrimary).meshes));
+    // Appended one at a time, NOT `push(...meshes)`: the argument count would
+    // be one model's whole mesh list, which on a large federated model can
+    // exceed the engine's maximum argument count and throw a RangeError. Same
+    // failure mode as `clipMeshesToHalfSpace` in packages/drawing-2d.
+    for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, isPrimary).meshes)) {
+      meshes.push(mesh);
+    }
   }
   return meshes;
 }
@@ -156,7 +162,7 @@ function resolveSectionInput(state: ViewerState): ViewSectionResolveInput | null
   const sceneBounds = getGlobalRenderer()?.getCamera()?.getSceneBounds() ?? null;
   if (!sceneBounds) return null;
 
-  const coordinateInfo = primaryCoordinateInfo(state);
+  const coordinateInfo = visibleCoordinateInfo(state);
   const axisKey = sectionPlane.axis === 'side' ? 'x' : sectionPlane.axis === 'down' ? 'y' : 'z';
   const shifted = coordinateInfo?.shiftedBounds;
   const uiRange = shifted
@@ -178,9 +184,56 @@ function resolveSectionInput(state: ViewerState): ViewSectionResolveInput | null
   };
 }
 
-function primaryCoordinateInfo(state: ViewerState): GeometryResult['coordinateInfo'] | null {
+/**
+ * Coordinate info for the section percentage, with `shiftedBounds` UNIONED
+ * across every visible model.
+ *
+ * The first visible model's own bounds are not enough. `ViewportContainer`
+ * hands the renderer the union of all visible models' `shiftedBounds`, so the
+ * on-screen cut resolves its percentage against that union. Reading only the
+ * first model here makes the same 50% land somewhere else entirely on a
+ * federated view: with a small model loaded first, 50% could resolve to x=5 in
+ * the PDF while the screen resolves it to x=55. The cut has to be derived from
+ * the same range the viewport used, or the sheet is not the view.
+ *
+ * Non-bounds fields (notably `buildingRotation`) stay with the first visible
+ * model, matching `ViewportContainer`'s own base-plus-unioned-bounds shape.
+ */
+function visibleCoordinateInfo(state: ViewerState): GeometryResult['coordinateInfo'] | null {
+  let base: GeometryResult['coordinateInfo'] | null = null;
+  let unioned: Bounds3D | null = null;
+
   for (const model of state.models.values()) {
-    if (model.visible && model.geometryResult) return model.geometryResult.coordinateInfo;
+    if (!model.visible || !model.geometryResult) continue;
+    const info = model.geometryResult.coordinateInfo;
+    base ??= info;
+    unioned = unionBounds3D(unioned, info?.shiftedBounds);
   }
-  return state.geometryResult?.coordinateInfo ?? null;
+  if (!base) return state.geometryResult?.coordinateInfo ?? null;
+  return unioned ? { ...base, shiftedBounds: unioned } : base;
+}
+
+interface Bounds3D {
+  min: { x: number; y: number; z: number };
+  max: { x: number; y: number; z: number };
+}
+
+/** Axis-aligned union, skipping absent or non-finite boxes. */
+function unionBounds3D(acc: Bounds3D | null, b: Bounds3D | undefined): Bounds3D | null {
+  if (!b) return acc;
+  const finite = [b.min.x, b.min.y, b.min.z, b.max.x, b.max.y, b.max.z].every(Number.isFinite);
+  if (!finite) return acc;
+  if (!acc) return { min: { ...b.min }, max: { ...b.max } };
+  return {
+    min: {
+      x: Math.min(acc.min.x, b.min.x),
+      y: Math.min(acc.min.y, b.min.y),
+      z: Math.min(acc.min.z, b.min.z),
+    },
+    max: {
+      x: Math.max(acc.max.x, b.max.x),
+      y: Math.max(acc.max.y, b.max.y),
+      z: Math.max(acc.max.z, b.max.z),
+    },
+  };
 }

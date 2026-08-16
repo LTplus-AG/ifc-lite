@@ -300,9 +300,11 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
                     // never differs from what the field says.
                     if (customScaleValid) setCustomScale(String(customScaleValue));
                   }}
+                  aria-invalid={!customScaleValid}
+                  aria-describedby={customScaleValid ? undefined : 'pdf-view-custom-scale-error'}
                 />
                 {!customScaleValid && (
-                  <p className="text-xs text-destructive">
+                  <p id="pdf-view-custom-scale-error" className="text-xs text-destructive">
                     Enter a whole number greater than zero, for example 75.
                   </p>
                 )}
@@ -310,7 +312,15 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
             </div>
           )}
 
-          <p className="text-xs text-muted-foreground" data-testid="pdf-view-page-readout">
+          {/* The sheet size changes as the scale changes, with focus staying in
+              the Select. Without a live region a screen-reader user picks a
+              scale and is told nothing about the page it produces, which is
+              the single number this dialog exists to report. */}
+          <p
+            className="text-xs text-muted-foreground"
+            data-testid="pdf-view-page-readout"
+            aria-live="polite"
+          >
             {preview
               ? `Estimated page: ${formatMm(preview.page.widthMm)} x ${formatMm(preview.page.heightMm)} mm` +
                 (preview.paper ? ` (fits ${preview.paper.name})` : ' (larger than any ISO sheet)') +
@@ -339,7 +349,7 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
                   The PDF is an orthographic (parallel) projection along your current view
                   direction, so near and far objects print at the same scale. That is the only
                   way a printed drawing can carry a single scale. Switch to orthographic to
-                  preview exactly what will print.
+                  see the same parallel projection on screen.
                 </span>
                 <Button
                   variant="outline"
@@ -353,7 +363,9 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
             </Alert>
           ) : (
             <p className="text-xs text-muted-foreground">
-              Orthographic camera. The PDF matches your viewport exactly.
+              Orthographic camera, so the printed scale is exact. The sheet covers
+              everything currently visible, not only the part framed on screen:
+              panning and zooming change what you look at, not what is printed.
             </p>
           )}
 

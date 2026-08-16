@@ -56,3 +56,15 @@ export {
   DUPLICATES_RULE,
   type DuplicateOptions,
 } from './duplicates.js';
+/**
+ * Per-triangle mesh analysis, re-exported for consumers outside this package
+ * (issue #2199: "mesh analysis reachable from TypeScript"). Previously
+ * package-internal — `triangleArea` existed for the clash contact solver but
+ * nothing outside `@ifc-lite/clash` could reach it, so the viewer's Measure
+ * tool had no path to a triangulated-mesh area even though every `MeshData`
+ * already carries the `positions`/`indices` a caller needs to use it.
+ */
+export {
+  triangleArea,
+  type Triangle,
+} from './contact/triangle.js';

@@ -267,6 +267,51 @@ export interface GeometryVolumeRollup {
   unproved: number;
 }
 
+/**
+ * Total triangulated mesh surface area across a selection — issue #2199 §1
+ * ("mesh analysis reachable from TypeScript") and the "Building now" §1 row
+ * for element surface area, extended to the mesh-derived case a declared
+ * `IfcElementQuantity` cannot answer.
+ *
+ * Unlike {@link rollupGeometryVolumes}, this is NOT gated on the kernel having
+ * proved a single closed orientable solid: summing triangle areas needs no
+ * such proof, so it is available for open shells, multi-item assemblies and
+ * layered walls too — cases where `MeshData.geometryVolume` is absent. An
+ * element is only "no mesh" when it has no triangulated geometry to sum at
+ * all (e.g. it survives only as a GPU-instanced template with no flat mesh
+ * materialised, or the selection includes a non-geometric entity).
+ *
+ * It is also the TOTAL triangulated surface (every face of what was meshed),
+ * not one side — a different claim from `NetSideArea`/`GrossSideArea` and not
+ * comparable to either. Callers must label it "mesh", matching the "mesh"
+ * volume convention (`net` / `gross` / `unqualified` / `mesh`, #2199).
+ */
+export interface MeshAreaRollup {
+  /** Sum over the elements that had mesh geometry to measure. */
+  total: number;
+  /** Elements a triangulated area was computed for. */
+  withMesh: number;
+  /** Elements with no triangulated geometry to sum (no mesh loaded). */
+  withoutMesh: number;
+}
+
+export function rollupMeshArea(
+  perElement: ReadonlyArray<number | undefined>,
+): MeshAreaRollup {
+  let total = 0;
+  let withMesh = 0;
+  let withoutMesh = 0;
+  for (const v of perElement) {
+    if (v === undefined || !Number.isFinite(v)) {
+      withoutMesh += 1;
+      continue;
+    }
+    total += v;
+    withMesh += 1;
+  }
+  return { total, withMesh, withoutMesh };
+}
+
 export function rollupGeometryVolumes(
   perElement: ReadonlyArray<number | undefined>,
 ): GeometryVolumeRollup {

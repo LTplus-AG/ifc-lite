@@ -34,10 +34,41 @@
  * nothing that names it is written, and it does not appear in the file — the
  * same outcome as the source-less store the server path builds.
  *
- * This predicate is deliberately NOT applied to the incidental readers
- * (`getRelatedEntities`, `getPropertySetName`, …). Those decode a range and
- * match a pattern in it; a clamped, empty decode already yields "no match",
- * which is the same answer and needs no gate of its own.
+ * ## Why an out-of-range ref is never "no match"
+ *
+ * This predicate was once exempted from the incidental readers
+ * (`getRelatedEntities`, `getPropertySetName`, `getPropertyIdsInSet`, …) on
+ * the grounds that "a clamped, empty decode already yields no match, which is
+ * the same answer". That is false, and it is false in BOTH directions the
+ * range can leave the source. A clamp does not empty a range; it moves an
+ * endpoint onto a real file byte, and the window that survives still holds
+ * somebody else's record. Measured on a two-record source
+ * (`#1=IFCPROPERTYSET(...,(#101,#102));#2=IFCPROPERTYSET(...,(#201,#202));`):
+ *
+ * - **Negative offset.** `(-2, n)` floors to 0 and decodes from the START OF
+ *   THE FILE: `getPropertySetName(#2)` answers `'SetA'` — `#1`'s name.
+ * - **Overrunning end.** `(0, 9999)` for `#1` clamps to EOF, so the window
+ *   ends at the file's LAST record. `getPropertySetName(#1)` answers `'SetA'`
+ *   — right, by luck, because that pattern is unanchored — while
+ *   `getPropertyIdsInSet(#1)` answers `[201, 202]`, which are `#2`'s members.
+ *   The readers whose patterns are `$`-anchored match at the end of the
+ *   CLAMPED window, i.e. against whatever record the file happens to end on.
+ *
+ * A confidently wrong answer, not "no match". The overrun is also the shape
+ * that is REACHABLE — it is the #2491 corrupt-store shape above, a ref
+ * claiming bytes the source cannot serve. The negative offset is not, twice
+ * over: `OVERLAY_BYTE_OFFSET = -1` (`mutations/src/store-editor.ts`) is the
+ * only negative offset in the repo and every site that writes it pairs it
+ * with `byteLength: 0`; and `CompactEntityIndex` — the index those readers
+ * consult — keeps offsets in a `Uint32Array`, so a negative value cannot
+ * round-trip through it at all. The two-record measurements above were taken
+ * over a plain-`Map` index, which can hold one.
+ *
+ * The readers are therefore gated on this predicate too (`entityLineText` in
+ * `step-exporter.ts`), which also makes them agree with the source-iteration
+ * pass: that pass already skips a record whose ref fails this test, so an
+ * exempt reader was answering questions about a record the same export had
+ * decided not to write.
  */
 
 import type { ExportEntityRef } from './entity-iteration.js';

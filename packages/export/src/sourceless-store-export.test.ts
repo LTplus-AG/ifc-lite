@@ -177,10 +177,11 @@ describe('StepExporter over a store with no source bytes', () => {
   });
 
   /**
-   * Bounding control for the six byte readers (`getRelatedEntities`,
+   * Bounding control for the five byte readers (`getRelatedEntities`,
    * `getRelatedPropertySet`, `getPropertySetName`, `getElementQuantityName`,
-   * `getPropertyIdsInSet`, `replaceEntityAttribute`), which now share
-   * `entityLineText` and its byte-range check.
+   * `getPropertyIdsInSet`), which share `entityLineText` and its byte-range
+   * check. (#2398's description named a sixth, `replaceEntityAttribute`; that
+   * method was deleted by #2469 and never shared this reader.)
    *
    * Editing `Pset_WallCommon` must replace the original: exactly one
    * `IFCPROPERTYSET` line named `Pset_WallCommon` in the output, and neither
@@ -271,7 +272,7 @@ describe('StepExporter over a store with no source bytes', () => {
     // ConnectionGeometry, RelatingElement, RelatedElement): RelatedElement is
     // a single mandatory reference, so once it is excluded the relationship
     // itself carries no valid meaning and must be withheld — see
-    // `filterHiddenRefsFromRelationshipLine` (#2398).
+    // `filterHiddenRefsFromRelationshipLine` (#2580, extended by #2637).
     const connection = view.createEntity('IFCRELCONNECTSELEMENTS', [
       "'guidC'",
       null,

@@ -74,7 +74,7 @@ import { serializeNominalValue } from './declared-property-type.js';
  * or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
  * `safeUtf8Decode(source, …)` calls this file used to make: `decodeUtf8` is
  * SAB-safe in exactly the same way, and routing through the accessor is what
- * lets `IfcDataStore.source` change shape without touching these eight reads.
+ * lets `IfcDataStore.source` change shape without touching these four reads.
  */
 function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
   return asSourceBytes(src).decodeUtf8(start, end);
@@ -255,9 +255,17 @@ export class StepExporter {
   private ownerHistoryFallbackRef: string | undefined;
   /** Per-host cache of an element's own OwnerHistory ref (`#id` or null). */
   private ownerHistoryByEntity = new Map<number, string | null>();
+  /**
+   * "Can this record's line actually be read out of this store's source?"
+   * (`source-ref-bounds.ts`, #2491). Built once — `dataStore` is assigned in
+   * the constructor and never reassigned — so the gates outside `export`'s
+   * closure share one predicate instead of rebuilding it per call.
+   */
+  private isReadableSourceRef: ReturnType<typeof createSourceRefReader>;
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
+    this.isReadableSourceRef = createSourceRefReader(dataStore.source);
     this.mutationView = mutationView || null;
     const maxExisting = this.findMaxExpressId();
     const overlayWatermark = typeof mutationView?.peekNextExpressId === 'function'
@@ -1662,7 +1670,7 @@ export class StepExporter {
     // Readability rather than presence, as everywhere else (#2491). A clamped
     // decode would match nothing here, so this is tidiness rather than a bug —
     // but the gates in this file agree on one predicate now.
-    if (entityRef && createSourceRefReader(this.dataStore.source)(entityRef)) {
+    if (entityRef && this.isReadableSourceRef(entityRef)) {
       const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,
@@ -2364,31 +2372,35 @@ export class StepExporter {
    * path. That is why an early return is safe HERE and is NOT safe at the
    * visible-only closure in `export` — see the comment there.
    *
-   * ## Why `byteLength === 0` and not `isReadableSourceRef`
+   * ## Why `isReadableSourceRef` and not `byteLength === 0`
    *
-   * `source-ref-bounds.ts` (#2491) has the stronger predicate and states it is
-   * deliberately not applied to these incidental readers, on the grounds that
-   * "a clamped, empty decode already yields no match, which is the same
-   * answer". Measured, that rationale holds for every out-of-range shape
-   * EXCEPT a negative offset. `clampRange` floors a negative start at 0, so a
-   * ref at `(byteOffset: -2, byteLength: n)` decodes from the START OF THE
-   * FILE: driving `getPropertySetName` with such a ref for `#2` returns the
-   * name of `#1`. That is not "no match", it is a confidently wrong answer.
+   * An out-of-range ref does NOT degrade to "no match" here. `decodeUtf8`
+   * clamps the range it cannot address, and the clamped window is still a
+   * window over real file bytes — so these readers answer from somebody
+   * ELSE's record. `source-ref-bounds.ts` (#2491) carries the measured
+   * account of both shapes and of why "a clamped, empty decode already yields
+   * no match" is false; it is not restated here, because an argument kept in
+   * two files is an argument that has to stay true in two files.
    *
-   * It stays a `byteLength === 0` check anyway, because that shape is not
-   * representable: the only negative offset in the repo is
-   * `OVERLAY_BYTE_OFFSET = -1` (`mutations/src/store-editor.ts:30`), which is
-   * written at exactly two sites (`effective-index.ts:282,304`) and one
-   * constructor (`store-editor.ts:166`), each pairing it with `byteLength: 0`
-   * — already `null` here — and none of them writes into
-   * `dataStore.entityIndex.byId`, which is the only map this reads. Tightening
-   * to `isReadableSourceRef` would therefore change no reachable answer while
-   * breaking this change's no-op premise, so it belongs in whatever change
-   * makes a negative offset representable, not here.
+   * The consequence specific to THIS site is that the wrong answer is acted
+   * on. `retainSharedAtoms` un-skips every id `getPropertyIdsInSet` returns,
+   * so a member list read out of the wrong record un-skips the wrong atoms;
+   * and the source-iteration pass already refuses to emit a record whose ref
+   * fails `isReadableSourceRef` (see the `continue` in `export`), so before
+   * this gate these readers were making decisions on behalf of a container
+   * that the same export had decided not to write. Gating them on the same
+   * predicate is what makes the two passes agree.
+   *
+   * The degradation is the one the exporter already handles: a record with no
+   * emittable bytes, generating nothing and named by nothing. It costs one
+   * answer that used to be right by luck — an overrunning ref on the file's
+   * LAST record clamps back to exactly that record's text — but that record
+   * is one the emission pass drops anyway, so keeping the answer only kept
+   * the disagreement.
    */
   private entityLineText(entityId: number): string | null {
     const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || entityRef.byteLength === 0) return null;
+    if (!entityRef || !this.isReadableSourceRef(entityRef)) return null;
     return decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,

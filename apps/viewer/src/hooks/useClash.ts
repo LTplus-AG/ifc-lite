@@ -141,6 +141,16 @@ function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeveri
   return { ...result, clashes, summary: { ...result.summary, total: clashes.length } };
 }
 
+/** Content equality for the visibility provenance records below. The shared
+ *  channels are only ever REPLACED wholesale (every slice setter stores a
+ *  fresh `Set`), never mutated in place, so equal members mean the channel
+ *  still shows exactly the presentation clash installed. */
+function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
 export function useClash() {
   const result = useViewerStore((s) => s.clashResult);
   const groups = useViewerStore((s) => s.clashGroups);
@@ -187,17 +197,28 @@ export function useClash() {
   const solidRequestGuard = useRef(createLatestWinsGuard());
 
   /**
-   * The EXACT Set references this hook last installed into the SHARED
-   * isolation / ghost visibility channels (`isolatedEntities` /
-   * `ghostExceptEntities`). Those channels are shared with features clash does
-   * not own - "Isolate in 3D" from the advanced filter (#2532), assembly
-   * isolation (#2531), the spaces X-ray - so clash teardown may only release a
-   * presentation clash itself installed. Reference identity is the provenance
-   * test: the visibility slice stores a fresh `Set` per write, so once another
-   * feature writes the channel the recorded reference no longer matches and
-   * the release below leaves that state standing. (#2574 regression: the
-   * run-start discard cleared these channels unconditionally, so a user's
-   * isolation was destroyed before any clash result existed.)
+   * The CONTENT this hook last installed into the SHARED isolation / ghost
+   * visibility channels (`isolatedEntities` / `ghostExceptEntities`). Those
+   * channels are shared with features clash does not own - "Isolate in 3D"
+   * from the advanced filter (#2532), assembly isolation (#2531), the spaces
+   * X-ray - so clash teardown may only release a presentation clash itself
+   * installed. (#2574 regression: the run-start discard cleared these
+   * channels unconditionally, so a user's isolation was destroyed before any
+   * clash result existed.)
+   *
+   * Ownership is tested by VALUE (`sameMembers`), not by `Set` reference:
+   * reference identity would be exact, but it is destroyed by every flow that
+   * snapshots and later restores the channel with equal content in a fresh
+   * `Set` - Space Sketch's open/close view capture (`useSpaceSceneFraming`
+   * clones the prior sets and replays them through the cloning slice setters)
+   * and a source-model resync (`syncSourceModel` rebuilds the kept sets even
+   * when nothing was filtered). Under reference identity those flows silently
+   * converted a clash-owned focus into "user" state, so the next run replaced
+   * the result set but left the old pair isolated/ghosted (#2662 P2). Value
+   * identity survives any content-preserving rewrite, and its one false
+   * positive is harmless by construction: it only fires when the channel
+   * shows EXACTLY the presentation clash installed, in which case releasing
+   * it renders precisely what discarding the clash focus should render.
    */
   const appliedIsolation = useRef<ReadonlySet<number> | null>(null);
   const appliedGhost = useRef<ReadonlySet<number> | null>(null);
@@ -221,15 +242,25 @@ export function useClash() {
   /**
    * Release the isolation/ghost presentation clash itself installed - and ONLY
    * that. Isolation or ghosting established by another feature (#2532 / #2531
-   * / spaces X-ray) no longer reference-matches the install record, so it
-   * survives a clash run untouched.
+   * / spaces X-ray) no longer content-matches the install record, so it
+   * survives a clash run untouched - while a clash focus that round-tripped
+   * through a snapshot/restore flow (Space Sketch open/close) still matches
+   * and is discarded (#2662 P2).
    */
   const releaseClashVisibility = useCallback((): void => {
     const state = useViewerStore.getState();
-    if (appliedIsolation.current !== null && state.isolatedEntities === appliedIsolation.current) {
+    if (
+      appliedIsolation.current !== null &&
+      state.isolatedEntities !== null &&
+      sameMembers(state.isolatedEntities, appliedIsolation.current)
+    ) {
       state.clearIsolation();
     }
-    if (appliedGhost.current !== null && state.ghostExceptEntities === appliedGhost.current) {
+    if (
+      appliedGhost.current !== null &&
+      state.ghostExceptEntities !== null &&
+      sameMembers(state.ghostExceptEntities, appliedGhost.current)
+    ) {
       state.clearGhost();
     }
     appliedIsolation.current = null;

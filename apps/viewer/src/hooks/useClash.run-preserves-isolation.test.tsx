@@ -31,6 +31,7 @@ import type { Clash, ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
+import { useSpaceSceneFraming } from '@/components/viewer/tools/space-sketch/useSpaceSceneFraming.js';
 
 // ─── Fixture: two walls, meshed as overlapping unit boxes ───────────────────
 
@@ -242,5 +243,91 @@ describe('clash runs release only clash-owned view state (#2574 regression)', ()
 
     assert.equal(useViewerStore.getState().ghostExceptEntities, null,
       'the clash focus ghost must be released when a new scan replaces the result set');
+  });
+});
+
+// ─── Snapshot/restore flows must not launder clash-owned state (#2662 P2) ───
+//
+// Space Sketch captures the prior 3D view on open and replays it on close
+// (`useSpaceSceneFraming`): it CLONES `isolatedEntities`/`ghostExceptEntities`
+// and restores them through the slice setters, which store a fresh `Set` per
+// write. The restored state is still the old clash presentation, but its
+// reference no longer matches anything clash recorded - under reference-based
+// provenance the next run() replaced the clash result while leaving the old
+// focused pair isolated/ghosted. Ownership must survive an equivalent restore.
+
+/** Mounts the REAL Space Sketch scene-framing hook - the same code the tool
+ *  runs on open (capture prior view) and on close/unmount (restore it). */
+function FramingProbe(): null {
+  useSpaceSceneFraming({ enabled: true, existingSpaceIds: [] });
+  return null;
+}
+
+/** Open Space Sketch, then close it: the unmount cleanup replays the captured
+ *  prior view through the cloning visibility setters. */
+async function openAndCloseSpaceSketch(): Promise<void> {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const sketchRoot = createRoot(container);
+  await act(async () => { sketchRoot.render(<FramingProbe />); });
+  await act(async () => sketchRoot.unmount());
+  container.remove();
+}
+
+describe('clash focus ownership survives Space Sketch snapshot/restore (#2662 P2)', () => {
+  it('clash ISOLATE focus restored by a Space Sketch open/close is still discarded by the next run()', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'isolate'); });
+    assert.deepEqual([...(useViewerStore.getState().isolatedEntities ?? [])].sort(), [1, 2],
+      'setup sanity: focusClash installed the pair isolation');
+    const installed = useViewerStore.getState().isolatedEntities;
+
+    await openAndCloseSpaceSketch();
+    const restored = useViewerStore.getState().isolatedEntities;
+    assert.deepEqual([...(restored ?? [])].sort(), [1, 2],
+      'setup sanity: closing Space Sketch restored the clash isolation');
+    assert.notEqual(restored, installed,
+      'setup sanity: the restore replaced the Set identity (the flow under test)');
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+
+    assert.equal(useViewerStore.getState().isolatedEntities, null,
+      'the restored presentation is still the clash focus and must be released by a new run');
+  });
+
+  it('clash GHOST focus restored by a Space Sketch open/close is still discarded by the next runDuplicates()', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'ghost'); });
+    assert.deepEqual([...(useViewerStore.getState().ghostExceptEntities ?? [])].sort(), [1, 2],
+      'setup sanity: focusClash installed the pair ghost');
+    const installed = useViewerStore.getState().ghostExceptEntities;
+
+    await openAndCloseSpaceSketch();
+    const restored = useViewerStore.getState().ghostExceptEntities;
+    assert.deepEqual([...(restored ?? [])].sort(), [1, 2],
+      'setup sanity: closing Space Sketch restored the clash ghost');
+    assert.notEqual(restored, installed,
+      'setup sanity: the restore replaced the Set identity (the flow under test)');
+
+    await act(async () => { await api!.runDuplicates(); });
+
+    assert.equal(useViewerStore.getState().ghostExceptEntities, null,
+      'the restored presentation is still the clash focus and must be released by a new scan');
+  });
+
+  it('a user isolation that REPLACED a clash focus still survives run() (ownership is content, not "clash installed something")', async () => {
+    await seed();
+    await act(async () => { api!.focusClash(CLASH, 'isolate'); });
+    // The user takes the shared channel over with DIFFERENT content - clash
+    // no longer owns the presentation, whatever its install record says.
+    useViewerStore.getState().isolateEntities([1]);
+    assert.deepEqual([...useViewerStore.getState().isolatedEntities!], [1],
+      'setup sanity: the user isolation replaced the clash focus');
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+
+    const s = useViewerStore.getState();
+    assert.ok(s.isolatedEntities, 'the user isolation must still be standing after Run');
+    assert.deepEqual([...s.isolatedEntities], [1], 'the isolated set must be untouched');
   });
 });

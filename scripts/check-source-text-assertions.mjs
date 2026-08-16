@@ -68,6 +68,14 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  * must edit this number, which makes "this PR loosened a gate" a reviewable line
  * in the diff, and a conversion must lower it in the same PR so the ceiling
  * stays an exact statement rather than drifting into slack.
+ *
+ * 6 -> 7 (#2393, #2388): the wasm-path `ifc_model_loaded` capture cannot be
+ * driven behaviourally — `GeometryProcessor.init()` throws on the `file://`
+ * wasm fetch under node/happy-dom before `loadStage` leaves `engine-init`, so
+ * the flow being instrumented never fires in-harness. Raised deliberately and
+ * in the same commit as the row, which is what this constant exists to force.
+ * The cache-hit half of #2388 is NOT covered by that exception and is tested
+ * behaviourally against real `posthog.capture` payloads.
  */
 const ALLOWLIST_CEILING = 7;
 

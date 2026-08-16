@@ -161,28 +161,39 @@ test('#2199 a tessellated curve is NOT fused into one straight edge', () => {
   assert.equal(edges.length, 3 * n, `expected ${3 * n} edges in total, got ${edges.length}`);
 });
 
-test('#2199 the coplanar cutoff keeps a 45 degree crease and drops a 2.5 degree bend', () => {
-  // Two quads hinged on the line y = 0, z = 0. At 45 degrees the adjacent
-  // normals dot to 0.7071 (a real crease); at 2.5 degrees they dot to 0.99905
-  // (a tessellation seam of a curved surface, not a model edge).
-  const hinged = (deg: number): MeshData => {
-    const a = (deg * Math.PI) / 180;
-    return meshFrom([
-      ...quad([0, 0, -1], [1, 0, -1], [1, 0, 0], [0, 0, 0]),
-      ...quad([0, 0, 0], [1, 0, 0], [1, Math.sin(a), Math.cos(a)], [0, Math.sin(a), Math.cos(a)]),
-    ]);
-  };
-  const onHinge = (edges: SnapEdge[]) =>
-    edges.filter((e) =>
-      Math.abs(e.v0.y) < 1e-6 && Math.abs(e.v0.z) < 1e-6 &&
-      Math.abs(e.v1.y) < 1e-6 && Math.abs(e.v1.z) < 1e-6);
+/** Two quads hinged on the line y = 0, z = 0, meeting at `deg` degrees. */
+function hinged(deg: number): MeshData {
+  const a = (deg * Math.PI) / 180;
+  return meshFrom([
+    ...quad([0, 0, -1], [1, 0, -1], [1, 0, 0], [0, 0, 0]),
+    ...quad([0, 0, 0], [1, 0, 0], [1, Math.sin(a), Math.cos(a)], [0, Math.sin(a), Math.cos(a)]),
+  ]);
+}
 
-  const crease = onHinge(buildGeometryCache(hinged(45)).edges);
-  assert.equal(crease.length, 1, 'a 45 degree crease is a model edge and must be kept');
-  assert.ok(Math.abs(crease[0].length - 1) < 1e-5);
+function onHinge(edges: SnapEdge[]): SnapEdge[] {
+  return edges.filter((e) =>
+    Math.abs(e.v0.y) < 1e-6 && Math.abs(e.v0.z) < 1e-6 &&
+    Math.abs(e.v1.y) < 1e-6 && Math.abs(e.v1.z) < 1e-6);
+}
 
-  const seam = onHinge(buildGeometryCache(hinged(2.5)).edges);
-  assert.equal(seam.length, 0, 'a 2.5 degree bend is a coplanar seam and must be dropped');
+test('#2199 the coplanar cutoff keeps shallow real creases and drops only coplanar seams', () => {
+  // Real BIM geometry lives at shallow angles: a 2% drainage fall is 1.15
+  // degrees, a 2.5% bridge crossfall 1.43 degrees, and infra-bridge.ifc's
+  // measured deck edge (IfcBuildingElementProxy #723, a 3.500 m model edge)
+  // meets at 3.617 degrees. Every one of those is an edge a user must be able
+  // to snap and measure. What is NOT a model edge is a triangulation seam of a
+  // genuinely flat face, whose normal pair dots to 1 within f32 noise
+  // (measured >= 1 - 8.1e-8 across the committed samples). An earlier 0.98
+  // cutoff (~11.5 degrees) deleted the whole shallow band; this pins its
+  // members as KEPT so that regression cannot come back.
+  for (const deg of [45, 3.617, 2.5, 0.49]) {
+    const crease = onHinge(buildGeometryCache(hinged(deg)).edges);
+    assert.equal(crease.length, 1, `a ${deg} degree crease is a model edge and must be kept`);
+    assert.ok(Math.abs(crease[0].length - 1) < 1e-5);
+  }
+
+  const seam = onHinge(buildGeometryCache(hinged(0)).edges);
+  assert.equal(seam.length, 0, 'an exactly coplanar seam is a triangulation diagonal and must be dropped');
 });
 
 test('#2199 an interior split of a straight run is not a corner, but a real junction is', () => {
@@ -197,6 +208,50 @@ test('#2199 an interior split of a straight run is not a corner, but a real junc
   const junction = ribbedRun.junctions[0];
   assert.ok(Math.abs(junction.point.z + 4.8) < 1e-4, `junction at z=${junction.point.z.toFixed(4)}`);
   assert.ok(junction.valence >= 2, `junction valence ${junction.valence}`);
+});
+
+/**
+ * Full geometric signature of a cache edge: endpoints and length, but ALSO the
+ * valences and junction list. Endpoints/length alone cannot see the valence
+ * channel, which feeds `isCorner` and the corner confidence - an
+ * order-dependence there slipped past a v0/v1/length-only signature once.
+ */
+function shape(edges: SnapEdge[]): string[] {
+  return edges.map((e) =>
+    [
+      ...[e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)),
+      `val:${e.v0Valence}/${e.v1Valence}`,
+      `j:[${e.junctions
+        .map((j) => `${j.point.x.toFixed(6)},${j.point.y.toFixed(6)},${j.point.z.toFixed(6)},v${j.valence},t${j.t.toFixed(6)}`)
+        .join(';')}]`,
+    ].join(',')
+  );
+}
+
+test('#2199 valences do not depend on triangle emission order either', () => {
+  // Two coplanar unwelded triangles meeting at (1, 0, 0). B contributes a
+  // 0.01 m stub whose far point sits 10 um off the x axis - inside the weld
+  // tolerance, so it is the SAME line as A's x-axis edge. Valence used to be
+  // computed on the raw segment array with an asymmetric first-match test
+  // (candidate point against representative line), so whichever direction the
+  // mesher emitted first became "the line": order A,B read valence 3 at the
+  // shared vertex and order B,A read 4 - and valence feeds `isCorner` and the
+  // corner confidence, i.e. a user-visible vertex-vs-edge outcome.
+  const A: Tri = [[0, 0, 0], [1, 0, 0], [0, 1, 0]];
+  const B: Tri = [[1, 0, 0], [1.01, 1e-5, 0], [1, -1, 0]];
+  const ab = buildGeometryCache(meshFrom([A, B])).edges;
+  const ba = buildGeometryCache(meshFrom([B, A])).edges;
+
+  assert.deepEqual(shape(ab), shape(ba), 'valence/junction data moved with triangle emission order');
+
+  // Pin the value too: x-axis line (the stub folds into it within tolerance),
+  // the diagonal to (0, 1, 0), and the vertical to (1, -1, 0) - three lines.
+  const atShared = ab.flatMap((e) =>
+    [[e.v0, e.v0Valence] as const, [e.v1, e.v1Valence] as const]
+      .filter(([v]) => Math.abs(v.x - 1) < 1e-6 && Math.abs(v.y) < 1e-6)
+      .map(([, val]) => val));
+  assert.ok(atShared.length > 0, 'no cache edge ends at the shared vertex');
+  for (const val of atShared) assert.equal(val, 3, `valence at (1,0,0) is ${val}, expected 3`);
 });
 
 // ---------------------------------------------------------------------------
@@ -260,7 +315,14 @@ test('#2199 a real junction inside a merged run still snaps as a vertex', () => 
   );
   assert.equal(result.snapTarget?.type, SnapType.VERTEX, 'the junction must keep its vertex snap');
   assert.ok(Math.abs((result.snapTarget?.position.z ?? 0) + 4.8) < 1e-4);
-  assert.ok(result.edgeLock.cornerValence >= 2);
+  // The vertex SNAP is exact through snapTarget.position, but the corner RING
+  // contract is endpoint-only: `edgeLock.isCorner`'s sole consumer draws the
+  // ring at `edgeT < 0.5 ? v0 : v1` - a start/end boolean that would place a
+  // mid-run junction up to half the run away (0.200 m here, at z = -5.000
+  // instead of -4.800). Junction rings are deferred until that consumer
+  // (PR #2641) can carry a corner position, so a junction must NOT set it.
+  assert.equal(result.edgeLock.isCorner, false, 'a mid-run junction must not claim the endpoint-ring contract');
+  assert.equal(result.edgeLock.cornerValence, 0);
   // ...and the run it sits on is still the whole 2.000 m edge.
   const length = reportedEdgeLength(result.snapTarget?.metadata?.vertices);
   assert.ok(Math.abs(length - 2) < 1e-4, `highlighted ${length.toFixed(4)} m, not 2.0000`);
@@ -271,6 +333,41 @@ test('#2199 a real junction inside a merged run still snaps as a vertex', () => 
     RAY, [slabOpeningEdge(false)], hitAt(-4.75), CAMERA, SCREEN_H, NO_LOCK
   );
   assert.equal(plain.snapTarget?.type, SnapType.EDGE);
+});
+
+test('#2199 an endpoint corner still carries the ring contract, consistently with edgeT', () => {
+  // Cursor near the z = -5.000 end of the 2.000 m run: the corner IS a run
+  // endpoint, so `edgeLock.isCorner` fires, and `edgeT < 0.5` names exactly
+  // the endpoint that was snapped - the contract the ring consumer assumes.
+  const result = new SnapDetector().detectMagneticSnap(
+    RAY, [slabOpeningEdge(false)], hitAt(-4.95), CAMERA, SCREEN_H, NO_LOCK
+  );
+  assert.equal(result.snapTarget?.type, SnapType.VERTEX);
+  assert.ok(Math.abs((result.snapTarget?.position.z ?? 0) + 5) < 1e-4);
+  assert.equal(result.edgeLock.isCorner, true);
+  assert.ok(result.edgeLock.cornerValence >= 2);
+  assert.ok(result.edgeLock.edgeT < 0.5, 'edgeT must name the snapped end');
+});
+
+test('#2199 a shallow real crease stays snappable through the detector', () => {
+  // The measured regression case, reduced: infra-bridge.ifc #723 carries a
+  // 3.500 m deck edge whose faces meet at 3.617 degrees. Under a 0.98 coplanar
+  // cutoff it vanished from the cache and a cursor 21 mm away (camera 5 m,
+  // 800 px, 20 px radius) fell through to FACE - the crease was unsnappable
+  // and unmeasurable. Same configuration on the hinged fixture.
+  const cursor = { x: 0.5, y: 0, z: -0.021 };
+  const camera = { position: { x: 0.5, y: 5, z: -0.021 }, fov: Math.PI / 4 };
+  const result = new SnapDetector().detectMagneticSnap(
+    { origin: camera.position, direction: { x: 0, y: -1, z: 0 } },
+    [hinged(3.617)],
+    {
+      point: cursor, normal: { x: 0, y: 1, z: 0 }, distance: 5, meshIndex: 0,
+      triangleIndex: 0, expressId: 1, barycentricCoord: { u: 1, v: 0, w: 0 },
+    },
+    camera, SCREEN_H, NO_LOCK
+  );
+  assert.equal(result.snapTarget?.type, SnapType.EDGE, 'a 3.617 degree crease must be an edge snap target');
+  assert.ok(Math.abs(result.snapTarget?.position.z ?? 1) < 1e-5, 'the snap point must land on the hinge line');
 });
 
 test('#2199 the answer does not depend on triangle emission order', () => {
@@ -291,8 +388,6 @@ test('#2199 the answer does not depend on triangle emission order', () => {
 
   const a = buildGeometryCache(forward).edges;
   const b = buildGeometryCache(reversed).edges;
-  const shape = (edges: SnapEdge[]) =>
-    edges.map((e) => [e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)).join(','));
   assert.deepEqual(shape(a), shape(b), 'the cache must be a function of the geometry, not of the order');
 
   for (const z of [-4.5, -4.0, -3.5]) {

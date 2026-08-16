@@ -34,15 +34,37 @@ export interface MeshGeometryCache {
 /**
  * Dot-product threshold above which two triangles sharing an edge count as
  * coplanar, so their shared edge is an internal triangulation diagonal rather
- * than a model edge. 0.98 is a ~11.5 degree crease cutoff.
+ * than a model edge.
  *
- * This constant was dead code until position welding landed: with index-keyed
- * edges no shared edge ever reached it on real geometry, which is why widening
- * it, inverting it, or deleting the `Math.abs` all left the suite green. It is
- * a live behavioural knob now and is pinned from both sides by
+ * NEAR-EXACT on purpose. Measured over every two-manifold welded edge of the
+ * three committed samples (the `pnpm test:snap-edges` pipeline), the two
+ * populations this constant separates do not overlap for five decades:
+ *
+ * - triangulation diagonals of flat faces sit at dot >= 1 - 8.1e-8, pure f32
+ *   position noise (10k+ edges on building-architecture.ifc and
+ *   infra-bridge.ifc);
+ * - real creases sit at dot <= 1 - 3.66e-5 (0.49 degrees and steeper).
+ *
+ * 1 - 1e-6 sits between them: 12x above the diagonal noise floor, 36x below
+ * the flattest measured crease (both in 1-dot terms). As an angle it is a
+ * 0.081 degree cutoff, flatter than any slope BIM geometry encodes on purpose
+ * (a 2% drainage fall is 1.15 degrees, a 0.5% minimum interior fall 0.29
+ * degrees), so shallow real creases stay snappable. An earlier 0.98 cutoff
+ * (~11.5 degrees) deleted them wholesale: 1093 real creases on
+ * infra-bridge.ifc alone, among them a 3.500 m bridge-deck edge whose faces
+ * meet at 3.617 degrees (IfcBuildingElementProxy #723) - and it cleared the
+ * coarsest shipped circle facet (32 segments = 11.25 degrees, dot 0.98079) by
+ * only 0.0008, so tessellated arcs kept their edges by luck.
+ *
+ * The trade is asymmetric and this errs on the KEEP side deliberately: a
+ * sliver triangle noisier than the measured floor slips its diagonal under
+ * the cutoff and adds a benign extra snap edge on a flat face, while a cutoff
+ * low enough to chase such noise deletes real edges a user has to be able to
+ * measure. Keeping more edges on curved geometry is the conservative
+ * direction for snapping. Pinned from both sides by
  * `snap-geometry-cache.test.ts`.
  */
-const COPLANAR_THRESHOLD = 0.98;
+const COPLANAR_THRESHOLD = 1 - 1e-6;
 
 const EMPTY_CACHE: MeshGeometryCache = { vertices: [], edges: [] };
 

@@ -61,8 +61,16 @@ export interface MagneticSnapResult {
     edgeT: number; // Position on edge 0-1
     shouldLock: boolean; // Whether to lock to this edge
     shouldRelease: boolean; // Whether to release current lock
-    isCorner: boolean; // Is at a corner (vertex where edges meet)
-    cornerValence: number; // Number of edges at corner
+    /**
+     * At a corner (vertex where edges meet) - and that corner is one of the
+     * locked run's two ENDPOINTS. An interior junction of a merged run never
+     * sets this, even though it does produce a VERTEX snap target: the viewer's
+     * ring rendering encodes the corner position as `edgeT < 0.5`, which can
+     * only name a run end. Junction rings are deferred until that consumer
+     * (owned by PR #2641) can carry a corner position.
+     */
+    isCorner: boolean;
+    cornerValence: number; // Number of edge lines at that corner (0 when !isCorner)
   };
 }
 
@@ -374,6 +382,11 @@ export class SnapDetector {
       };
     }
 
+    // `edgeLock.isCorner` is restricted to ENDPOINT corners on purpose: its
+    // only consumer encodes the ring position as `edgeT < 0.5`, a start/end
+    // boolean that cannot place a mid-run junction (see `CornerInfo.atEndpoint`).
+    // The junction keeps its exact vertex snap through `snapTarget` above.
+    const cornerAtEnd = cornerInfo.isCorner && cornerInfo.atEndpoint;
     return {
       snapTarget,
       edgeLock: {
@@ -382,8 +395,8 @@ export class SnapDetector {
         edgeT: bestEdge.t,
         shouldLock: true,
         shouldRelease: false,
-        isCorner: cornerInfo.isCorner,
-        cornerValence: cornerInfo.valence,
+        isCorner: cornerAtEnd,
+        cornerValence: cornerAtEnd ? cornerInfo.valence : 0,
       },
     };
   }
@@ -495,6 +508,9 @@ export class SnapDetector {
       confidence = Math.max(0, Math.min(1, rawConfidence));
     }
 
+    // Endpoint-only, for the same reason as in detectMagneticSnap: the ring
+    // consumer cannot place a mid-run junction (see `CornerInfo.atEndpoint`).
+    const cornerAtEnd = cornerInfo.isCorner && cornerInfo.atEndpoint;
     return {
       snapTarget: {
         type: snapType,
@@ -509,8 +525,8 @@ export class SnapDetector {
         edgeT,
         shouldLock: true,
         shouldRelease: false,
-        isCorner: cornerInfo.isCorner,
-        cornerValence: cornerInfo.valence,
+        isCorner: cornerAtEnd,
+        cornerValence: cornerAtEnd ? cornerInfo.valence : 0,
       },
     };
   }

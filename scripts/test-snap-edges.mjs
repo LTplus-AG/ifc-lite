@@ -62,7 +62,11 @@ function perp(p, o, d) {
 /**
  * Cache edges that still share a supporting line with another cache edge AND
  * abut or overlap it: every one of those is a model edge the cache is still
- * serving in fragments. Must be zero.
+ * serving in fragments. Must be zero PER MESHDATA PIECE - that is the scope the
+ * cache merges at, and the scope this gate asserts. At MODEL scope the samples
+ * still carry cross-piece splits (mesh fragmentation routinely emits one
+ * element as many pieces, e.g. infra-bridge #156 as 14, with one 9.909 m edge
+ * split across pieces), a known residual this gate deliberately does not gate.
  */
 function residualSplits(edges) {
   const EPS = 1e-5;
@@ -91,10 +95,22 @@ function residualSplits(edges) {
   return splits;
 }
 
-/** A stable, order-independent signature of a whole cache. */
+/**
+ * A stable, order-independent signature of a whole cache - endpoints, length,
+ * AND the valence/junction channel. v0/v1/length alone cannot see valences,
+ * and an emission-order dependence hid in exactly that blind spot once:
+ * valences feed `isCorner` and the corner confidence, so they are as
+ * user-visible as the endpoints.
+ */
 function signature(edges) {
   return edges
-    .map((e) => [e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)).join(','))
+    .map((e) => [
+      ...[e.v0.x, e.v0.y, e.v0.z, e.v1.x, e.v1.y, e.v1.z, e.length].map((n) => n.toFixed(6)),
+      `val:${e.v0Valence}/${e.v1Valence}`,
+      `j:[${e.junctions
+        .map((j) => `${j.point.x.toFixed(6)},${j.point.y.toFixed(6)},${j.point.z.toFixed(6)},v${j.valence},t${j.t.toFixed(6)}`)
+        .join(';')}]`,
+    ].join(','))
     .sort()
     .join('|');
 }
@@ -113,8 +129,8 @@ for (const sample of ['hello-wall.ifc', 'building-architecture.ifc', 'infra-brid
     edges += cache.edges.length;
     splits += residualSplits(cache.edges);
   }
-  assert.equal(splits, 0, `${sample}: ${splits} model edges are still served in fragments`);
-  console.log(`  ok ${sample}: ${meshes.length} meshes, ${edges} reconstructed edges, 0 split runs`);
+  assert.equal(splits, 0, `${sample}: ${splits} model edges are still served in fragments within a single piece`);
+  console.log(`  ok ${sample}: ${meshes.length} meshes, ${edges} reconstructed edges, 0 split runs within any single MeshData piece`);
   checks++;
 }
 
@@ -172,6 +188,28 @@ if (existsSync(join(SAMPLES, 'building-architecture.ifc'))) {
     'the cache moved when triangle emission order did'
   );
   console.log('  ok slab #52: the cache is invariant under triangle emission order');
+  checks++;
+}
+
+// The shallow-crease band: infra-bridge #723 carries a 3.500 m deck edge whose
+// adjacent faces meet at 3.617 degrees (dot 0.998). A 0.98 coplanar cutoff
+// deleted it and the whole sub-11.5-degree band (1093 real creases on this
+// file, 44 of them 0.5 m or longer) - geometry where real BIM slopes live
+// (a 2% drainage fall is 1.15 degrees). It must be a cache edge.
+if (existsSync(join(SAMPLES, 'infra-bridge.ifc'))) {
+  const meshes = loadMeshes('infra-bridge.ifc');
+  const P = { x: 7.785, y: 7.375, z: -53.484 };
+  const Q = { x: 9.535, y: 7.375, z: -56.516 };
+  const near = (a, b) => Math.abs(a.x - b.x) < 2e-3 && Math.abs(a.y - b.y) < 2e-3 && Math.abs(a.z - b.z) < 2e-3;
+  let found = null;
+  for (const mesh of meshes) {
+    if (mesh.expressId !== 723) continue;
+    for (const e of buildGeometryCache(mesh).edges) {
+      if ((near(e.v0, P) && near(e.v1, Q)) || (near(e.v0, Q) && near(e.v1, P))) found = e;
+    }
+  }
+  assert.ok(found, 'the 3.617 degree deck crease of #723 is missing from the snap cache');
+  console.log(`  ok infra-bridge #723: the 3.617 degree deck crease is a ${found.length.toFixed(3)} m snap edge`);
   checks++;
 }
 

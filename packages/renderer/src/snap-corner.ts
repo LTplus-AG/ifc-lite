@@ -17,6 +17,19 @@ export interface CornerInfo {
   isCorner: boolean;
   valence: number;
   vertex: Vec3 | null;
+  /**
+   * True when the detected corner is one of the run's two ENDPOINTS, false when
+   * it is an interior junction. The `edgeLock.isCorner` shipped to the viewer
+   * must only ever be set for endpoint corners: its sole consumer
+   * (`measureHandlers.updateSnapViz`, owned by PR #2641) encodes the corner
+   * ring's position as `atStart: edgeT < 0.5` - a start/end boolean that cannot
+   * express a mid-run position, so a junction reported through it draws the
+   * ring at a run end up to half the run away from the snapped point.
+   * Widening that contract is deliberately DEFERRED until the consumer can
+   * carry a corner POSITION; the junction still gets its vertex SNAP (type and
+   * position are exact through `SnapTarget`), only the ring is withheld.
+   */
+  atEndpoint: boolean;
 }
 
 /**
@@ -41,16 +54,20 @@ export function detectCorner(
   // and then within `radius` of it in space. Without the along-run gate a run
   // merged through a junction would read as a corner over its whole length,
   // because `radius` is several times the screen snap radius.
-  const candidates: Array<{ vertex: Vec3; valence: number }> = [];
-  if (t < CORNER_THRESHOLD) candidates.push({ vertex: edge.v0, valence: edge.v0Valence });
-  if (t > 1 - CORNER_THRESHOLD) candidates.push({ vertex: edge.v1, valence: edge.v1Valence });
+  const candidates: Array<{ vertex: Vec3; valence: number; atEndpoint: boolean }> = [];
+  if (t < CORNER_THRESHOLD) {
+    candidates.push({ vertex: edge.v0, valence: edge.v0Valence, atEndpoint: true });
+  }
+  if (t > 1 - CORNER_THRESHOLD) {
+    candidates.push({ vertex: edge.v1, valence: edge.v1Valence, atEndpoint: true });
+  }
   for (const junction of edge.junctions) {
     if (Math.abs(t - junction.t) < CORNER_THRESHOLD) {
-      candidates.push({ vertex: junction.point, valence: junction.valence });
+      candidates.push({ vertex: junction.point, valence: junction.valence, atEndpoint: false });
     }
   }
 
-  let best: { vertex: Vec3; valence: number } | null = null;
+  let best: { vertex: Vec3; valence: number; atEndpoint: boolean } | null = null;
   let bestDistance = Infinity;
   for (const candidate of candidates) {
     const dist = distance(point, candidate.vertex);
@@ -60,11 +77,12 @@ export function detectCorner(
     }
   }
 
-  if (!best) return { isCorner: false, valence: 0, vertex: null };
+  if (!best) return { isCorner: false, valence: 0, vertex: null, atEndpoint: false };
   return {
     isCorner: bestDistance < radius && best.valence >= MIN_CORNER_VALENCE,
     valence: best.valence,
     vertex: best.vertex,
+    atEndpoint: best.atEndpoint,
   };
 }
 

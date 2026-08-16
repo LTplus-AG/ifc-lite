@@ -95,6 +95,26 @@ function perpDistance(p: Vec3, origin: Vec3, dir: Vec3): number {
  * split of a straight run as valence 2 and declares it a corner, which froze the
  * snap point there for centimetres of cursor travel and painted corner rings on
  * nothing. Counting distinct LINES scores that same vertex 1.
+ *
+ * MUST be fed the canonically ordered segment list (see `mergeCollinearRuns`),
+ * never the raw input: the grouping below is greedy, so the representative set
+ * - and with it the valence, the `isCorner` gate and the corner confidence - is
+ * a function of segment order. Fed the raw array, that order is wasm triangle
+ * emission order, and the valence at a junction moved when the mesher's output
+ * order did (the #2388 failure class, measured as valence 3 vs 4 at one vertex
+ * for the same geometry).
+ *
+ * The same-line test is symmetric in the pair. Comparing one segment's far
+ * POINT against the other's line (the previous test) scales with whichever
+ * segment happens to be the candidate, so which of two near-parallel segments
+ * was seen first decided whether they merged. Instead the angle between the
+ * two lines is scaled by the SHORTER length: a segment of length L built from
+ * welded points only pins its direction to within ~tol/L, so two directions
+ * are indistinguishable when their angle is inside the shorter segment's own
+ * uncertainty - an order-free statement about the pair. (Scaling by the longer
+ * length would be symmetric too, but it splits a genuinely straight run at its
+ * interior weld vertex whenever the two half-segments are lopsided, because
+ * the vertex's f32 noise is amplified by the length ratio.)
  */
 function computeValences(
   segments: WeldedSegment[],
@@ -115,7 +135,7 @@ function computeValences(
   const valence = new Map<number, number>();
   for (const [v, others] of incident) {
     const origin = points[v];
-    const reps: Vec3[] = [];
+    const reps: Array<{ dir: Vec3; len: number }> = [];
     for (const o of others) {
       const p = points[o];
       const dx = p.x - origin.x, dy = p.y - origin.y, dz = p.z - origin.z;
@@ -124,12 +144,19 @@ function computeValences(
       const dir = { x: dx / len, y: dy / len, z: dz / len };
       let matched = false;
       for (const rep of reps) {
-        if (perpDistance(p, origin, rep) <= tol) {
+        // Sine of the angle between the two LINES: the cross product magnitude
+        // of the unit directions, which is identical for opposite orientations,
+        // so a straight run passing through the vertex still counts as one line.
+        const cx = dir.y * rep.dir.z - dir.z * rep.dir.y;
+        const cy = dir.z * rep.dir.x - dir.x * rep.dir.z;
+        const cz = dir.x * rep.dir.y - dir.y * rep.dir.x;
+        const sin = Math.sqrt(cx * cx + cy * cy + cz * cz);
+        if (sin * Math.min(len, rep.len) <= tol) {
           matched = true;
           break;
         }
       }
-      if (!matched) reps.push(dir);
+      if (!matched) reps.push({ dir, len });
     }
     valence.set(v, reps.length);
   }
@@ -155,8 +182,6 @@ export function mergeCollinearRuns(
   points: Vec3[],
   tol: number
 ): SnapEdge[] {
-  const valence = computeValences(segments, points, tol);
-
   // Orient each segment lexicographically, then sort the whole set the same way.
   const oriented = segments
     .filter((s) => s.a !== s.b && points[s.a] !== undefined && points[s.b] !== undefined)
@@ -165,6 +190,11 @@ export function mergeCollinearRuns(
     const byA = compareVec3(points[s1.a], points[s2.a]);
     return byA !== 0 ? byA : compareVec3(points[s1.b], points[s2.b]);
   });
+
+  // Valences are computed on the CANONICAL order, after the sort: they are the
+  // one channel that survives into user-visible behaviour (corner detection and
+  // confidence), so they must be as order-free as the runs themselves.
+  const valence = computeValences(oriented, points, tol);
 
   const adjacency = new Map<number, number[]>();
   oriented.forEach((s, i) => {

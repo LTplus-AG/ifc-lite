@@ -27,12 +27,14 @@
  * unaudited and uncovered until a #2631 review caught it (issue #2631). The
  * list below is re-derived from EVERY job in .github/workflows/test.yml, not
  * a chosen subset:
+ * (numbered in the order this script runs them, which is how the inline
+ * comments below refer to them)
  *   1. check:bim-globals         (node-tests, before `pnpm test`)
- *   2. check:api-surface         (node-tests, before `pnpm test`)
- *   3. check:server-attr-indices (node-tests, before `pnpm test`)
- *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
+ *   2. check:server-attr-indices (node-tests, before `pnpm test`)
+ *   3. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
  *      also docs-checks — the docs-only-PR twin of the same command)
- *   5. check-unused-locals.mjs   (lint job)
+ *   4. check-unused-locals.mjs   (lint job, via `pnpm lint`)
+ *   5. check:api-surface         (node-tests, before `pnpm test`)
  *   6. cargo metadata --locked   (rust-tests job, before Clippy/`cargo test`)
  *   7. plato clash-math freshness (plato-check job)          -- INFO only, see below
  *   8. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
@@ -62,8 +64,18 @@
  *     package.json, server-binaries.yml) against each other for parity —
  *     nothing is regenerated from source into a committed artifact, so
  *     there is nothing to diff.
- *   - `scripts/lib/unused-locals-classify.test.mjs` (node-tests): a unit
- *     test of gate 5's own parsing logic, not a gate over generated content.
+ *   - `scripts/lib/unused-locals-classify.test.mjs` (node-tests, added by the
+ *     sibling #2634 follow-up branch): a unit test of gate 4's own parsing
+ *     logic, not a gate over generated content.
+ *   - `pnpm typecheck` (typecheck job) = `turbo typecheck` plus
+ *     `typecheck-tests.mjs --audit`. The audit GENERATES the tsconfig program
+ *     it checks, on the fly, from the test files it finds on disk — nothing is
+ *     committed for it to go stale against. It's a coverage gate ("every test
+ *     file is a root file of some program"), not a freshness gate.
+ *   - The `build` job's `pnpm build` / `pnpm fixtures` / prebuilt-WASM fetch,
+ *     the `viewer-e2e` job in full, node-tests' `pnpm test`,
+ *     `pnpm test:integration` and `pnpm test:wasm-contract`, and the final
+ *     `test` aggregator job: no generated-artifact comparison in any of them.
  *   - The geometry-census job's `Census` step (`cargo test -p
  *     ifc-lite-geometry --features triangulation-alt --test
  *     triangulation_invariance`): checks a live sweep against a checked-in
@@ -305,9 +317,10 @@ if (which('cargo')) {
     ['metadata', '--locked', '--format-version', '1'],
     'cargo update -p <the crate whose Cargo.toml you edited> --workspace   (or, if a release bumped every manifest, re-run scripts/sync-versions.js) — then commit Cargo.lock',
     // `cargo metadata` prints the FULL resolved dependency graph as JSON on
-    // stdout — tens of MB in this workspace — and execFileSync's default
-    // 1MB maxBuffer throws ENOBUFS on that before cargo even gets to
-    // report a real lock-file mismatch. The CI step avoids this by piping
+    // stdout — ~1.9 MB in this workspace as of writing, and only growing —
+    // and execFileSync's default 1MB maxBuffer throws ENOBUFS on that
+    // before cargo even gets to report a real lock-file mismatch. The
+    // 64MB below is headroom, not a measurement. The CI step avoids this by piping
     // to /dev/null; this script needs the buffer instead, since it wants
     // the text back on failure.
     { maxBuffer: 64 * 1024 * 1024 },

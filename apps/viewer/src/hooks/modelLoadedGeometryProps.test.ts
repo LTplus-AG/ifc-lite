@@ -208,70 +208,15 @@ describe('ifc_model_loaded wiring (#2388)', () => {
   });
 });
 
-/**
- * The argument list of the cache-hit `captureModelLoaded(…)` call — anchored
- * on `load_path: 'cache'`, which is unique to this capture site among the six
- * `ifc_model_loaded` call sites in this file. A cache HIT is only reachable
- * when `skipSmallCutsAtLoad`/`loadTessellationTier` (computed earlier in the
- * same `loadFile` call) match what built the cached bytes — see
- * `buildGeometryCacheKey`'s inputs — so those two fields are provably
- * accurate for this capture, unlike `diagnostics`, which the cache path never
- * receives (no streaming `complete` event runs on a hit) and must stay absent
- * rather than be defaulted to a fabricated `null`/`0`.
- */
-function cacheHitCaptureArgs(): string {
-  const src = stripLineComments(
-    readFileSync(fileURLToPath(new URL('./useIfcLoader.ts', import.meta.url)), 'utf8'),
-  );
-  const anchorIdx = src.indexOf(`load_path: 'cache'`);
-  assert.notEqual(anchorIdx, -1, `load_path: 'cache' must appear somewhere in useIfcLoader.ts`);
-  const callStart = src.lastIndexOf('captureModelLoaded(', anchorIdx);
-  assert.notEqual(callStart, -1, "load_path: 'cache' must sit inside a captureModelLoaded(...) call");
-  const argsOpen = callStart + 'captureModelLoaded('.length - 1;
-  assert.equal(src[argsOpen], '(');
-  let depth = 0;
-  let argsClose = -1;
-  for (let i = argsOpen; i < src.length; i++) {
-    if (src[i] === '(') depth++;
-    else if (src[i] === ')') {
-      depth--;
-      if (depth === 0) {
-        argsClose = i;
-        break;
-      }
-    }
-  }
-  assert.notEqual(argsClose, -1, 'the cache-hit captureModelLoaded(...) call must have a matching close paren');
-  return src.slice(argsOpen + 1, argsClose);
-}
-
-describe('ifc_model_loaded cache-hit wiring (#2388)', () => {
-  // The cache-hit capture is a common path on a repeat/warm load of the same
-  // file — exactly the comparison #2388 is about. Without this wiring, the
-  // two fidelity fields are present on the wasm-path capture and silently
-  // missing on the cache-hit one, so an investigator sees them on one side of
-  // the comparison and not the other.
-  it('spreads the builder, wired to the resolved fidelity inputs, into the cache-hit ifc_model_loaded capture', () => {
-    const args = cacheHitCaptureArgs();
-    assert.match(args, /\.\.\.buildModelLoadedGeometryProps\(/);
-    for (const field of ['tessellationTier: loadTessellationTier', 'skipSmallCuts: skipSmallCutsAtLoad']) {
-      assert.ok(
-        args.includes(field),
-        `cache-hit ifc_model_loaded capture must pass ${field} to buildModelLoadedGeometryProps`,
-      );
-    }
-  });
-
-  it('does not fabricate CSG diagnostics on the cache-hit path (no streaming complete event runs on a hit)', () => {
-    const args = cacheHitCaptureArgs();
-    // The cache path must NOT pass `diagnostics: loadDiagnostics` (a stale
-    // value from a PRIOR load in the same session) or any other diagnostics
-    // source — the CSG counters must stay absent, not a fabricated 0/null.
-    assert.ok(
-      !/diagnostics:\s*loadDiagnostics/.test(args),
-      'cache-hit capture must not attribute a prior load\'s CSG diagnostics to this cache hit',
-    );
-  });
+describe('ifc_model_loaded cache-hit geometry props (#2388)', () => {
+  // The cache-hit WIRING is tested behaviourally, not by source text:
+  // `useIfcLoader.cacheHitTelemetry.test.tsx` seeds a real cache entry, drives
+  // the real `loadFile` to a real hit, and reads the `ifc_model_loaded` event
+  // that actually leaves `posthog.capture`. That path is reachable under
+  // `tsx --test` (the hit is decided at `loadStage = 'cache-lookup'`, long
+  // before the wasm engine is touched), so no source-text stand-in is needed
+  // here — unlike the wasm-path wiring above. What remains below is the
+  // builder-level half of the same contract.
 
   it('reports absent CSG counters alongside real fidelity values for a cache hit (builder-level proof)', () => {
     // Mirrors the exact call shape the cache-hit site should use: no

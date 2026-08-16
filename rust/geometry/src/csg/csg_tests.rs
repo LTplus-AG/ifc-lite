@@ -265,6 +265,87 @@ fn clip_mesh_never_emits_non_finite_normals() {
     }
 }
 
+/// `PlaneEps::for_normal` must be invariant under negating the normal.
+///
+/// `eps(n)` is a bound on the f32 rounding noise in `|dot(v - p, n)|` — an
+/// ABSOLUTE magnitude. Flipping `n` flips the sign of every signed distance
+/// but changes no vertex's rounding error, so the tolerance band must be the
+/// same width for `+n` and `-n`. The `.abs()` on each component in
+/// `for_normal` is what enforces that; without it the weighted sum goes
+/// negative for any normal with a negative component and `.max(self.floor)`
+/// collapses the whole thing back to the bare `1e-6` floor — the exact defect
+/// this module exists to fix, silently reintroduced for roughly half of all
+/// clip directions.
+///
+/// This is not a hypothetical direction set. Both production `clip_mesh`
+/// callers feed in negated normals:
+///
+/// - `router/layers.rs` clips the SAME remainder with `+n` (remainder above
+///   the material interface) and `-n` (the band below it) and welds the two
+///   results edge-for-edge. That only works while `eps(+n) == eps(-n)`; a
+///   difference leaves every material interface with an overlap or a gap.
+/// - `processors/boolean/mod.rs` negates the half-space normal whenever the
+///   `IfcHalfSpaceSolid`'s `AgreementFlag` is `.F.`.
+///
+/// Asserted here against the private `PlaneEps` directly — the integration
+/// test `negated_plane_normal_must_get_the_same_tolerance` in
+/// `tests/csg_clip_epsilon_scale_regression.rs` pins the same property at the
+/// `clip_mesh` level, where it is actually observable by a caller.
+#[test]
+fn plane_eps_is_invariant_under_negating_the_normal() {
+    use super::plane_eps::PlaneEps;
+
+    // Deliberately anisotropic: a mesh whose three axis extents differ, so a
+    // sign error on any one component moves the sum by a different amount and
+    // cannot be masked by symmetry.
+    let mesh = Mesh {
+        positions: vec![
+            5.0e4, 0.0, 0.0, //
+            0.0, 3.0e3, 0.0, //
+            0.0, 0.0, 7.0e2, //
+        ],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    let eps = PlaneEps::new(&mesh, 1e-6);
+
+    // Every sign pattern, plus a couple of oblique normals, so no single
+    // component's `.abs()` can be dropped without a failure here.
+    let normals = [
+        Vector3::new(0.0, 0.0, 1.0),
+        Vector3::new(1.0, 0.0, 0.0),
+        Vector3::new(0.0, 1.0, 0.0),
+        Vector3::new(1.0, 1.0, 1.0).normalize(),
+        Vector3::new(0.6, 0.0, 0.8),
+        Vector3::new(1.0, 2.0, 3.0).normalize(),
+    ];
+
+    for n in normals {
+        let pos = eps.for_normal(&n);
+        let neg = eps.for_normal(&(-n));
+        assert_eq!(
+            pos, neg,
+            "eps({n:?}) = {pos:e} but eps({:?}) = {neg:e}: the classification \
+             tolerance must depend on the plane's ORIENTATION, not on which \
+             way its normal happens to point. `router/layers.rs` clips one \
+             remainder with both `+n` and `-n` and welds the halves, so a \
+             direction-dependent epsilon opens a gap or an overlap at every \
+             material interface",
+            -n
+        );
+
+        // And it must not have collapsed to the floor: a test that only
+        // compared two floored values would pass with the `.abs()` removed
+        // from BOTH branches.
+        assert!(
+            pos > 1e-6,
+            "fixture is vacuous: at this magnitude eps({n:?}) = {pos:e} must \
+             be set by the projected term, not by the 1e-6 floor, or the \
+             equality above is trivially true"
+        );
+    }
+}
+
 // World-frame corpus tests: a sibling test file, attached here rather than
 // from `mod.rs` because that allowlisted production module is at its
 // module-size-ratchet budget and test files are exempt. The file itself

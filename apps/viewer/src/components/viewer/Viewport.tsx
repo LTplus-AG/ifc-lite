@@ -604,14 +604,18 @@ export function Viewport({
     if (!renderer) return;
     // Defence in depth, not the primary fix (#2574 review): `clashSelectedId`
     // and `clashSolidStatus`/`clashSolidMesh` are reset together by every
-    // current teardown path via `setClashSelectedId` / `clearClashSolid`
-    // (clashSlice.ts, both bump `clashSolidRequestSeq`), so `clashSolidStatus`
-    // should never read `'solid'` while nothing is selected. Gating the actual
+    // current teardown path via `setClashSelectedId` / `clearClashSolid` /
+    // `clearClash` (clashSlice.ts, all three bump `clashSolidRequestSeq`), so
+    // `clashSolidStatus` should never read `'solid'` while nothing is
+    // selected. The `!== null` is the real predicate, not truthiness: a clash
+    // id is `${ruleId} ${lo} ${hi}` and is never `''`, so the two agree today,
+    // but `null` is the value teardown writes and the one worth naming.
+    // Gating the actual
     // draw on `clashSelectedId` too means that even a future path that resets
     // one without the other — or a resolved compute that lands after some
     // teardown nobody's added the invalidation to yet — still can't leave an
     // orphaned opaque solid on screen with no clash focused.
-    if (clashSelectedId && clashSolidStatus === 'solid' && clashSolidMesh) {
+    if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
       renderer.setClashIntersectionSolid({
         positions: clashSolidMesh.positions,
         indices: clashSolidMesh.indices,

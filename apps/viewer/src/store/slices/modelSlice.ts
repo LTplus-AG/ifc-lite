@@ -161,6 +161,8 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
+      setClashSelectedId?: (id: string | null) => void;
+      clearClashSolid?: () => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
@@ -168,6 +170,26 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // sources UI stops offering "Sync from source" for a model that no
     // longer exists and the tag map cannot grow without bound.
     cross.removeSourceTag?.(modelId);
+
+    // Drop the focused-clash PRESENTATION — the highlight plus the on-demand
+    // intersection solid, a mesh drawn into the live scene against a model set
+    // that is changing under it (#2654 review). Unconditional, not "only if the
+    // focused clash names this model": a clash id is `${ruleId} ${lo} ${hi}`
+    // with `lo`/`hi` themselves `model:expressId`, and parsing it here would be
+    // a third, subtly different reading of a key format — the exact hazard the
+    // selection purge below calls out and routes through `stringToEntityRef`
+    // to avoid. Losing a highlight on an unrelated model's removal is cheap;
+    // an orphaned opaque solid over the survivors is not.
+    //
+    // The clash RESULT is deliberately kept: it is a list the user is reading,
+    // not something rendered into the scene, and a federated sibling leaving
+    // does not invalidate the pairs that do not involve it. Full teardown
+    // (`clearAllModels`, `resetViewerState`) drops the result as well.
+    //
+    // Both setters bump `clashSolidRequestSeq`, so an in-flight compute cannot
+    // land after this and repaint the solid.
+    cross.setClashSelectedId?.(null);
+    cross.clearClashSolid?.();
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -278,9 +300,18 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
+      clearClash?: () => void;
     };
     crossClear.clearIdsValidationReport?.();
     crossClear.clearSourceTags?.();
+    // A clash run describes pairs of elements in models that are all about to
+    // be gone, and the on-demand intersection SOLID is a mesh drawn into the
+    // live scene — `Viewport`'s draw gate reads `clashSelectedId` +
+    // `clashSolidStatus`, neither of which any model-lifecycle path used to
+    // touch (#2654 review). `clearClash` drops both and bumps
+    // `clashSolidRequestSeq`, so an in-flight compute cannot land afterwards.
+    // Presets + settings are workspace prefs and survive, as everywhere else.
+    crossClear.clearClash?.();
     // Clear the federation registry
     federationRegistry.clear();
     return set({

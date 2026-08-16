@@ -574,6 +574,24 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       ...POINT_CLOUD_DEFAULTS,
       pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
     });
+
+    // Clash (#2654 review) — same stale-model-reference class as
+    // `compareResult` and `zoneAssignments` above: a clash result is keyed by
+    // `model:expressId` pairs from the OUTGOING model, and an IFCX
+    // recomposition reassigns expressIds outright, so a surviving result can
+    // silently describe different entities. Worse, the on-demand intersection
+    // SOLID is a mesh drawn into the live scene: `clashSelectedId` and
+    // `clashSolidStatus: 'solid'` surviving here means `Viewport`'s draw gate
+    // passes and the previous model's solid gets re-pushed when the renderer
+    // re-initialises for the new scene.
+    //
+    // Delegated to the slice action rather than inlined into the `set` above,
+    // deliberately: `clearClash` is where the solid fields and the
+    // `clashSolidRequestSeq` bump that invalidates an in-flight compute live
+    // together. Inlining the field list here would create the second copy that
+    // #2574's fix exists to avoid. Presets + settings survive (workspace
+    // prefs), exactly as they do everywhere else `clearClash` is called.
+    get().clearClash();
   },
 
   openWorkspacePanel: (panel) => {

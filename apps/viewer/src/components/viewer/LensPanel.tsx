@@ -1340,10 +1340,23 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // as SearchModal.text.tsx's commit and SearchModal.filter.tsx's "Isolate
     // in 3D" (#2660) do: a geometry-bearing id passes through untouched and
     // deduplicated, a geometry-less one is replaced by its geometry-bearing
-    // parts. When nothing resolves (renderer not registered yet, or the whole
-    // match has no geometry at all) the raw ids are kept: isolating an empty
-    // set hides the ENTIRE model, strictly worse than the pre-resolution
-    // behaviour.
+    // parts.
+    //
+    // The resolved ids are APPENDED to the raw matches, never substituted for
+    // them (#2680). The resolver bounds-checks against the type-visibility
+    // FILTERED mesh list, and TYPE_VISIBILITY_SEMANTIC_DEFAULTS starts
+    // `spaces`, `spatialZones`, `openings` and `virtualElements` all OFF
+    // (store/constants.ts) -- so a rule matching walls AND spaces (colouring
+    // spaces by area is an ordinary lens) resolves the walls, returns
+    // non-empty, and the spaces would silently drop out of the isolation set
+    // under replace semantics. Nothing looks wrong at first, because those
+    // types are hidden anyway; it goes wrong when the user turns spaces back
+    // on with the isolation still active and they stay hidden with no way to
+    // tell why. Carrying an id that owns no mesh is free: it simply never
+    // matches the renderer's whitelist. That also subsumes the
+    // nothing-resolved case (renderer not registered yet, or the whole match
+    // geometry-less), where the raw ids are all that is left -- and isolating
+    // an empty set would hide the ENTIRE model.
     //
     // #2660's second fallback -- walking IfcRelAggregates in the data store
     // when the resolver comes back empty because the parts are HIDDEN types
@@ -1354,12 +1367,12 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // panel has no such gate, so isolating hidden-type parts would still
     // render nothing. Adding one is a feature, not this fix.
     const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? [];
-    const isolationIds = resolved.length > 0 ? resolved : matchingIds;
+    const isolationIds = [...new Set([...resolved, ...matchingIds])];
 
     isolateEntities(isolationIds);
     // Record ownership: rule id + the exact ids pushed into the channel, so a
     // later release can verify the channel still holds what the lens applied.
-    // These MUST be the resolved ids, not the raw matches: releaseRuleIsolation
+    // These MUST be the ids just isolated, not the raw matches: releaseRuleIsolation
     // compares this record set-wise against the channel
     // (ruleIsolationOwnsChannel), so recording the raw matches while pushing
     // the expanded ones makes the lens disown its own isolation and the

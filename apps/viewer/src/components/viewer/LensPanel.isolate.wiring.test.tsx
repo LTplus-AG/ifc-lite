@@ -42,6 +42,10 @@ const ASSEMBLY = 4_000_042;
 const PART_A = 4_000_101;
 const PART_B = 4_000_102;
 const WALL = 4_000_500;
+/** An IfcSpace: real geometry, but a type hidden by default
+ *  (TYPE_VISIBILITY_SEMANTIC_DEFAULTS), so it is absent from the filtered mesh
+ *  list the resolver bounds-checks against and resolves to nothing. */
+const HIDDEN_SPACE = 4_000_700;
 
 const LENS: Lens = {
   id: 'lens-under-test',
@@ -63,6 +67,16 @@ const LENS: Lens = {
       action: 'colorize',
       color: '#00ff00',
     },
+    {
+      // The mixed match: an ordinary lens over an attribute matches a wall, an
+      // assembly and a space at once.
+      id: 'rule-mixed',
+      name: 'Level 1',
+      enabled: true,
+      criteria: { type: 'attribute', attributeName: 'Name', operator: 'contains', attributeValue: 'L1' },
+      action: 'colorize',
+      color: '#0000ff',
+    },
   ],
 };
 
@@ -78,8 +92,12 @@ function seedLens(options: {
   useViewerStore.setState({
     savedLenses: [LENS],
     activeLensId: LENS.id,
-    lensRuleCounts: new Map([['rule-assembly', 1], ['rule-wall', 1]]),
-    lensRuleEntityIds: new Map([['rule-assembly', [ASSEMBLY]], ['rule-wall', [WALL]]]),
+    lensRuleCounts: new Map([['rule-assembly', 1], ['rule-wall', 1], ['rule-mixed', 3]]),
+    lensRuleEntityIds: new Map([
+      ['rule-assembly', [ASSEMBLY]],
+      ['rule-wall', [WALL]],
+      ['rule-mixed', [WALL, ASSEMBLY, HIDDEN_SPACE]],
+    ]),
     lensRuleIsolation: null,
     lensHiddenIds: new Set<number>(),
     lensAppliedHiddenIds: [],
@@ -107,10 +125,19 @@ function ruleRow(container: HTMLElement, ruleName: string): HTMLElement {
   return rows[0];
 }
 
-/** A resolver with the real one's contract: geometry-bearing ids pass through,
- *  the geometry-less assembly is replaced by its parts and never by itself. */
+/**
+ * A resolver with the real one's contract (`expandToGeometryBearingIds`):
+ * geometry-bearing ids pass through untouched, the geometry-less assembly is
+ * replaced by its parts and never by itself, and an id that is invisible to
+ * the FILTERED mesh list the resolver bounds-checks against (a hidden-type
+ * IfcSpace) comes back as nothing at all.
+ */
 const assemblyResolver = (ids: number[]) =>
-  ids.flatMap((id) => (id === ASSEMBLY ? [PART_A, PART_B] : [id]));
+  ids.flatMap((id) => {
+    if (id === ASSEMBLY) return [PART_A, PART_B];
+    if (id === HIDDEN_SPACE) return [];
+    return [id];
+  });
 
 describe('LensPanel: isolating a rule resolves geometry-less assemblies to their parts', () => {
   before(() => {
@@ -132,7 +159,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     // A count of 0 renders the row un-clickable (RuleRow's `isEmpty`), which
     // would make every assertion below vacuously unreachable instead of red.
-    assert.equal(container.querySelectorAll('div[role="button"]').length, 2);
+    assert.equal(container.querySelectorAll('div[role="button"]').length, 3);
   });
 
   it('isolates the assembly\'s geometry-bearing parts, not its bare id', () => {
@@ -141,10 +168,13 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     click(ruleRow(container, 'Assemblies'));
 
+    // Append, not replace: the parts MUST be there (the bare assembly renders
+    // nothing), and the matched id rides along free because an id with no mesh
+    // never matches the renderer's whitelist anyway (#2680).
     assert.deepEqual(
       useViewerStore.getState().isolatedEntities,
-      new Set([PART_A, PART_B]),
-      'the isolation set must hold the renderable parts; the bare assembly id renders nothing',
+      new Set([PART_A, PART_B, ASSEMBLY]),
+      'the isolation set must hold the renderable parts; the bare assembly id alone renders nothing',
     );
   });
 
@@ -159,7 +189,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     assert.equal(isolation.ruleId, 'rule-assembly');
     assert.deepEqual(
       [...isolation.entityIds].sort((a, b) => a - b),
-      [PART_A, PART_B],
+      [ASSEMBLY, PART_A, PART_B],
       'the ownership record is compared set-wise against the channel by ruleIsolationOwnsChannel; recording the raw matches while pushing the expanded ones disowns the isolation',
     );
   });
@@ -170,7 +200,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     const container = render(<LensPanel onClose={() => {}} />);
 
     click(ruleRow(container, 'Assemblies'));
-    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A, PART_B]), 'precondition: the first click isolates');
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A, PART_B, ASSEMBLY]), 'precondition: the first click isolates');
 
     click(ruleRow(container, 'Assemblies'));
 
@@ -189,7 +219,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
     const container = render(<LensPanel onClose={() => {}} />);
 
     click(ruleRow(container, 'Assemblies'));
-    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A, PART_B]), 'precondition: the click isolates');
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, new Set([PART_A, PART_B, ASSEMBLY]), 'precondition: the click isolates');
 
     // Turning the lens off runs the same releaseRuleIsolation ownership check.
     const card = container.querySelector<HTMLElement>(`div[data-tour="lens-card-${LENS.id}"]`);
@@ -212,6 +242,34 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
       'a rule whose matches already own meshes must isolate exactly those ids',
     );
     assert.deepEqual(useViewerStore.getState().lensRuleIsolation?.entityIds, [WALL]);
+  });
+
+  it('keeps every matched id on a MIXED rule, where some resolve and some resolve to nothing', () => {
+    // The hole replace semantics leaves (#2680): the resolver bounds-checks
+    // against the type-visibility FILTERED mesh list, and
+    // TYPE_VISIBILITY_SEMANTIC_DEFAULTS starts spaces/spatialZones/openings/
+    // virtualElements OFF, so a rule matching a wall, an assembly AND a space
+    // resolves the first two, comes back non-empty, and the space silently
+    // vanishes from the isolation set. Nothing looks wrong at first (the space
+    // is hidden anyway); it goes wrong when the user turns spaces back on with
+    // the isolation still active and they stay hidden with no way to tell why.
+    // Carrying a mesh-less id is free: it never matches the renderer whitelist.
+    seedLens({ resolveHighlightIds: assemblyResolver });
+    const container = render(<LensPanel onClose={() => {}} />);
+
+    click(ruleRow(container, 'Level 1'));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(
+      s.isolatedEntities,
+      new Set([WALL, PART_A, PART_B, ASSEMBLY, HIDDEN_SPACE]),
+      'a matched id that resolves to nothing must survive alongside the ones that resolved',
+    );
+    assert.deepEqual(
+      [...(s.lensRuleIsolation?.entityIds ?? [])].sort((a, b) => a - b),
+      [ASSEMBLY, PART_A, PART_B, WALL, HIDDEN_SPACE].sort((a, b) => a - b),
+      'the ownership record must hold the same set that was pushed, or the release check disowns it',
+    );
   });
 
   it('keeps the raw ids when the resolver returns nothing, rather than isolating an empty set', () => {

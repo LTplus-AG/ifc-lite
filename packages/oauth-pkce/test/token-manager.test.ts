@@ -583,6 +583,53 @@ describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (review
     // holds whatever the failed delete() left behind (the pre-sign-out
     // tokens), not the stale refreshed ones.
     const stored = await manager.getTokens();
-    expect(stored?.accessToken).not.toBe('resurrected');
+    expect(stored?.accessToken).toBe('expired');
+  });
+
+  it('does not let a stale refresh write clobber a brand-new sign-in that arrives via setTokens() with no clear() in between', async () => {
+    // clear() disarms an in-flight refresh by replacing `this.session`
+    // synchronously. setTokens() — the path an interactive sign-in that
+    // starts *without* an intervening sign-out takes (e.g. re-authenticating
+    // as a different account while a background refresh of the old one is
+    // still in flight) — must disarm it the same way. If it doesn't, the
+    // refresh's queued write still sees `session === this.session` once its
+    // turn comes up, passes the check, and overwrites the new sign-in's
+    // tokens with the stale refreshed ones.
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is in flight (its network request hasn't resolved yet) when
+    // a brand-new interactive sign-in completes — no clear() involved.
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    await manager.setTokens(newTokens);
+
+    // The refresh's network request answers only now, after the new
+    // sign-in's write has already landed.
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+    await pending.catch(() => {});
+    await flush();
+
+    // The new sign-in's tokens must survive — the stale refresh must not
+    // have been allowed to overwrite them.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
   });
 });

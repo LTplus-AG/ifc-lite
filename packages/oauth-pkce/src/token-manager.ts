@@ -133,8 +133,20 @@ export class TokenManager {
   }
 
   /** Persists a freshly obtained token set (from `exchangeAuthorizationCode`,
-   *  typically). Overwrites whatever was stored under this key. */
+   *  typically). Overwrites whatever was stored under this key.
+   *
+   *  Replaces `this.session`, exactly as `clear()` does and for the same
+   *  reason: this call may be a brand-new interactive sign-in landing while
+   *  a refresh of the *previous* session is still in flight (no `clear()`
+   *  in between — e.g. re-authenticating as a different account). Without
+   *  the swap, that stale refresh's queued write still sees
+   *  `session === this.session` once its turn comes up, passes the check,
+   *  and overwrites the tokens this call is about to persist with the
+   *  stale refreshed ones. The swap is synchronous, before the write is
+   *  even enqueued, so the disarm is in place no matter how the two writes
+   *  end up ordered in the queue. */
   async setTokens(tokens: TokenSet): Promise<void> {
+    this.session = new Session();
     const json = JSON.stringify(tokens);
     await this.enqueue(() => this.config.storage.set(this.config.storageKey, json));
   }

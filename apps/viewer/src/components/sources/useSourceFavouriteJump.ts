@@ -19,6 +19,8 @@ interface UseSourceFavouriteJumpOptions {
   loadingFiles: boolean;
   /** True while the current selection's file listing still has pages outstanding. */
   filesHaveMore: boolean;
+  /** True while the current container's FOLDER listing still has pages outstanding. */
+  foldersHaveMore: boolean;
   /** Browser state the jump rebuilds, in the order the wizard would have reached it. */
   enterFileArea: (project: SourceProject, fileArea: SourceContainer) => void;
   selectContainer: (container: SourceContainer) => void;
@@ -49,6 +51,7 @@ export function useSourceFavouriteJump({
   loadingFolders,
   loadingFiles,
   filesHaveMore,
+  foldersHaveMore,
   enterFileArea,
   selectContainer,
   toggleFile,
@@ -89,12 +92,24 @@ export function useSourceFavouriteJump({
     // Descend into the favourited folder when it is deeper than the area root.
     if (pending.containerId !== pending.fileAreaId && selectedContainer?.id !== pending.containerId) {
       const match = sortedFolders.find((folder) => folder.id === pending.containerId);
-      if (!match && loadingFolders) return;
+      // Both flags and the paging flag, for the same reasons the file branch
+      // below documents. On a `direct-children` provider there is a render
+      // where `loadingFiles` is true and `loadingFolders` is false, and the
+      // folder listing is paged exactly like the file listing, so a favourited
+      // folder further down is absent for a reason that has nothing to do with
+      // it being gone. Falling through here does not merely mis-report: it
+      // reaches the synthesised container below and fabricates a `parentId`.
+      if (!match && (loadingFolders || loadingFiles || foldersHaveMore)) return;
       // Renamed upstream: the id still opens it and only the label went stale,
       // so refresh the label rather than leave the favourites list lying.
       if (match && match.name !== pending.containerName) {
         renameFavourite(favouriteKey(pending), match.name);
       }
+      // Last resort only, once the listing is provably complete: the id still
+      // opens the folder, so this stays useful, but `parentId` is a GUESS and
+      // is wrong for any folder not directly under the area root. Reaching it
+      // now means the folder is genuinely absent from a fully-paged listing
+      // (deleted upstream, or permissions changed), not merely unpaged.
       selectContainer(
         match ?? { id: pending.containerId, name: pending.containerName, parentId: pending.fileAreaId },
       );

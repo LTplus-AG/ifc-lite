@@ -5,13 +5,16 @@
 /**
  * World-frame corpus coverage for the contact pipeline (#2600, fix PR #2661).
  *
- * `scaledPlaneEps` (narrow-phase.ts) sizes the coplanarity tolerance from the
- * max |coordinate| over ALL THREE axes of both AABBs, then compares it
- * against a signed distance along ONE plane normal. A model 10 km out in X
- * therefore hands a Z-normal test a ~2.4 mm epsilon derived entirely from
- * the irrelevant X magnitude — and a genuine ~2 mm Z-clearance reads as
- * coplanar contact. The corpus places the SAME pair at the origin and far
- * out on an ORTHOGONAL axis; a frame-correct tolerance answers identically.
+ * Before #2661, `scaledPlaneEps` (narrow-phase.ts) sized the coplanarity
+ * tolerance from the max |coordinate| over ALL THREE axes of both AABBs,
+ * then compared it against a signed distance along ONE plane normal. A model
+ * 10 km out in X therefore handed a Z-normal test a ~2.4 mm epsilon derived
+ * entirely from the irrelevant X magnitude — and a genuine ~2 mm
+ * Z-clearance read as coplanar contact. #2661 replaced that scalar with
+ * per-axis f32-ULP noise projected onto each tested plane's own normal. The
+ * corpus places the SAME pair at the origin and far out on an ORTHOGONAL
+ * axis; a frame-correct tolerance answers identically, and this file exists
+ * to keep it that way.
  *
  * Shape conforms to PR #2661's measured reproduction (`clearanceQuadsAt`):
  * horizontal quads with the lower plane at z = 0, offset applied to X only,
@@ -21,18 +24,18 @@
  * through f32 (ingestion realism), and f32(0.002) lands a hair ABOVE the
  * default 2 mm inflation — which would silently drop the candidates — so
  * the clearance here is 1.9 mm, robustly inside the inflation and still
- * comfortably swallowed by the defective ~2.4 mm far-placement epsilon.
+ * comfortably swallowed by the pre-#2661 ~2.4 mm far-placement epsilon, so
+ * the case remains a genuine discriminator against a regression.
  *
  * The clash contact `Mesh` has NO RTC-origin field (positions are world-
  * frame by contract), so this file carries only the large-world-coordinate
  * axis of the corpus; the per-element `MeshData.origin` axis lives in the
  * viewer compare tests (#2529 path).
  *
- * The `it.fails` case asserts the CORRECT behaviour and is expected to fail
- * on the live defect. When the #2661 projection fix lands, that test starts
- * passing, vitest reports the `.fails` wrapper itself as a failure, and the
- * wrapper must be removed — the corpus cannot silently rot in either
- * direction.
+ * The far-placement clearance case was authored as `it.fails` against the
+ * live defect and was un-wrapped once #2661 landed; it is now an ordinary
+ * passing test. The flush counter-cases guard the other direction, so the
+ * corpus cannot silently rot either way.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -120,19 +123,16 @@ describe('contact world-frame corpus (#2600)', () => {
     expect(contactClusters(a, b)).toEqual([]);
   });
 
-  // KNOWN-FAILING on the live #2600 defect: asserts the CORRECT behaviour.
-  // scaledPlaneEps derives ~2.4 mm from the 10 km X magnitude and swallows
-  // the genuine clearance as coplanar contact — measured on this code: 4
+  // The case the corpus was built for. On the pre-#2661 code this failed:
+  // scaledPlaneEps derived ~2.4 mm from the 10 km X magnitude and swallowed
+  // the genuine clearance as coplanar contact — measured on that code, 4
   // fabricated coplanar triangle pairs (2 tris x 2 tris) and 1 fabricated
-  // surface cluster (area 1 m2, plane normal Z). When the #2661 projection
-  // fix lands this starts passing and vitest flags the `.fails` wrapper:
-  // remove the wrapper in that PR.
-  it.fails(
-    `the Z-clearance ${WORLD_FRAME_OFFSET_M / 1000} km out in X produces no pairs and no contact (#2600)`,
-    () => {
-      const { a, b } = horizontalFacePair('far-baked', CLEARANCE_M);
-      expect(narrowPhase(a, b)).toEqual([]);
-      expect(contactClusters(a, b)).toEqual([]);
-    },
-  );
+  // surface cluster (area 1 m2, plane normal Z). The projected tolerance
+  // takes only the Z-axis noise for a Z normal, so the clearance reads as
+  // clear at 10 km exactly as it does at the origin.
+  it(`the Z-clearance ${WORLD_FRAME_OFFSET_M / 1000} km out in X produces no pairs and no contact (#2600)`, () => {
+    const { a, b } = horizontalFacePair('far-baked', CLEARANCE_M);
+    expect(narrowPhase(a, b)).toEqual([]);
+    expect(contactClusters(a, b)).toEqual([]);
+  });
 });

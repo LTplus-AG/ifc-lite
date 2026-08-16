@@ -109,9 +109,15 @@ export function buildGeometryCache(mesh: MeshData): MeshGeometryCache {
     const b = ids[indices[i + 1]];
     const c = ids[indices[i + 2]];
     if (a < 0 || b < 0 || c < 0) continue;
+    // Welding can collapse a triangle even when its PRE-weld positions gave a
+    // valid normal. Skipping only the collapsed edge is not enough: if a === b
+    // then (b,c) and (c,a) are the SAME pair, so the survivor is registered
+    // twice and receives two normals from one degenerate triangle. It then
+    // reads as a two-manifold edge whose crease angle is computed against a
+    // duplicate of itself, which can turn a boundary edge into a false crease.
+    if (a === b || b === c || c === a) continue;
 
     for (const [idx0, idx1] of [[a, b], [b, c], [c, a]]) {
-      if (idx0 === idx1) continue;
       const key = idx0 < idx1 ? `${idx0}_${idx1}` : `${idx1}_${idx0}`;
       const existing = edgeData.get(key);
       if (existing) existing.normals.push(normal);

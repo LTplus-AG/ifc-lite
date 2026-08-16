@@ -88,8 +88,16 @@ function residualSplits(edges) {
   let splits = 0;
   for (const group of groups) {
     group.spans.sort((x, y) => x[0] - y[0]);
+    // Compare against the running MAXIMUM end, not just the previous span's.
+    // Sorting by start does not order by end, so a long span that ENCLOSES the
+    // next one leaves `spans[i - 1][1]` smaller than the true reach: the
+    // enclosed span is caught, then the one after it is compared against the
+    // short enclosed end and read as disjoint. That under-reports splits, i.e.
+    // it weakens the very assertion this function exists to make.
+    let maxEnd = group.spans[0][1];
     for (let i = 1; i < group.spans.length; i++) {
-      if (group.spans[i][0] <= group.spans[i - 1][1] + EPS) splits++;
+      if (group.spans[i][0] <= maxEnd + EPS) splits++;
+      if (group.spans[i][1] > maxEnd) maxEnd = group.spans[i][1];
     }
   }
   return splits;

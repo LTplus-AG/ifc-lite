@@ -24,6 +24,21 @@
 const LIMIT: usize = 400;
 const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 
+/// Sum of every recorded budget in the allowlist, pinned HERE rather than in the
+/// allowlist itself: a total derived from the file it guards is circular and
+/// always passes.
+///
+/// Rule 2 above ("an allowlisted file that GROWS past its recorded budget
+/// fails") has an escape hatch that is invisible in its own output: raising the
+/// budget in the SAME commit that grows the file satisfies it. That is how a
+/// raise reached main and had to be undone afterwards (#2658).
+///
+/// Any raise moves this total, so loosening the ratchet becomes one reviewable
+/// line in the diff instead of a number buried among 64 rows. Shrinking must
+/// lower it too, so the total keeps stating the real figure rather than
+/// accumulating slack - slack in a ratchet is how it stops ratcheting.
+const ALLOWLIST_BUDGET_TOTAL: usize = 58058;
+
 /// Repo root = first ancestor holding both `rust/` and `apps/`. `None` in a
 /// packaged/standalone context (the test then skips, like `styling_parity`).
 fn repo_root() -> Option<std::path::PathBuf> {
@@ -229,5 +244,18 @@ fn allowlist_is_well_formed_and_over_limit() {
         stale.is_empty(),
         "allowlist rows at or under the {LIMIT}-line limit (delete them):\n{}",
         stale.join("\n")
+    );
+}
+
+/// The allowlist's total budget must equal the pinned figure, in BOTH
+/// directions. Growth means a budget was raised; shrinkage means one was
+/// lowered or a row deleted. Either way the pinned total moves with it, in the
+/// same commit, where a reviewer sees it.
+#[test]
+fn allowlist_budget_total_is_pinned() {
+    let actual: usize = parse_allowlist().values().sum();
+    assert_eq!(
+        actual, ALLOWLIST_BUDGET_TOTAL,
+        "module_size_allowlist.txt budgets now total {actual}, but          ALLOWLIST_BUDGET_TOTAL in module_size_ratchet.rs reads          {ALLOWLIST_BUDGET_TOTAL}.\n\n         Raising a budget loosens the ratchet, so it must be visible: update          the total in the SAME commit and say in the PR why the module cannot          be split. Lowering one is welcome, and the total must follow so it          keeps stating the real figure."
     );
 }

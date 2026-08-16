@@ -197,7 +197,7 @@ describe('parseAuthorizationCallback', () => {
   // overlays, so what is interpolated has to be bounded and inert.
   describe('provider error text is bounded and stripped before it reaches the message', () => {
     it('drops control characters and quotes from error_description', () => {
-      const description = 'line one\nline two\r [31mred[0m "quoted" \\escaped';
+      const description = 'line one\nline two\r\u0000\u001B[31mred\u001B[0m "quoted" \\escaped';
       const url = new URL(`${REDIRECT_URI}`);
       url.searchParams.set('error', 'access_denied');
       url.searchParams.set('error_description', description);
@@ -212,7 +212,14 @@ describe('parseAuthorizationCallback', () => {
       expect(message).toContain('access_denied');
       // No control character survives: no newline forging what looks like a
       // second, independent log line, no ESC rewriting a terminal's output.
-      expect(message).not.toMatch(/[\x00-\x1F\x7F]/);
+      // Scanned by code point rather than matched with a regex character
+      // class over the control range: such a class is what `no-control-regex`
+      // flags, and the scan names the offending code point when it fails
+      // instead of only reporting that a match occurred.
+      const controlCodePoints = [...message]
+        .map((char) => char.codePointAt(0) ?? 0)
+        .filter((code) => code < 0x20 || code === 0x7f);
+      expect(controlCodePoints).toEqual([]);
       // The only `"` in the message are the two the message template itself
       // puts around the error code, and no `\` at all — so the description
       // cannot break out of, or forge, the quoted-code part of the message.
@@ -239,7 +246,7 @@ describe('parseAuthorizationCallback', () => {
 
     it('does not interpolate an error code that is not a valid RFC 6749 error code', () => {
       const url = new URL(`${REDIRECT_URI}`);
-      url.searchParams.set('error', 'access_denied"\n]8;;https://evil.example.comclick here');
+      url.searchParams.set('error', 'access_denied"\n\u001B]8;;https://evil.example.com\u0007click here');
 
       let thrown: OAuthAuthorizationError | undefined;
       try {

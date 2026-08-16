@@ -51,7 +51,7 @@
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
 # -117: the vertex-vs-plane classification epsilon (per-axis f32 rounding noise
 # projected onto the clip plane's own normal, floored at 1e-6) and the
-# clip_triangle body that consumes it moved out to csg/plane_eps.rs (337 lines,
+# clip_triangle body that consumes it moved out to csg/plane_eps.rs (365 lines,
 # under the house limit, no row), taking their derivations with them; net down
 # despite the new scaling logic; budget refreshed downward.
      671 rust/geometry/src/csg/mod.rs

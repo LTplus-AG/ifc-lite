@@ -392,3 +392,7 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
 #[cfg(test)]
 #[path = "clash_solid_tests.rs"]
 mod clash_solid_tests;
+
+#[cfg(test)]
+#[path = "clash_solid_world_frame_tests.rs"]
+mod world_frame_tests;

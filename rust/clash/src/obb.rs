@@ -22,6 +22,10 @@
 
 use crate::vec3::{cross, dot, Vec3};
 
+#[cfg(test)]
+#[path = "obb_tests.rs"]
+mod obb_tests;
+
 /// Tolerance for normal-direction dedup and offset-plane clustering. Same
 /// literal in the TS kernel's `OBB_EPS`.
 pub const OBB_EPS: f64 = 1e-6;
@@ -185,21 +189,52 @@ pub fn detect_obb<M: MeshLike>(mesh: &M) -> Option<Obb> {
     })
 }
 
+/// Bound, in f64 ulps, on the absolute error of one component of the cross
+/// product of two UNIT vectors, with headroom for the normalisation and the
+/// per-projection dot rounding it feeds. Same literal in the TS kernel's
+/// `AXIS_NOISE_ULPS`.
+pub const AXIS_NOISE_ULPS: f64 = 8.0;
+
 /// Exact penetration depth between two oriented boxes: the minimum overlap
 /// over the 15 canonical OBB-OBB separating-axis candidates. See the TS
-/// `obbPenetrationDepth` doc comment for the full rationale.
+/// `obbPenetrationDepth` doc comment for the full rationale, including the
+/// scale-relative conditioning guard on cross-product candidates (review:
+/// #2536): a candidate whose overlap verdict falls inside its own noise band
+/// — `extent_sum * AXIS_NOISE_ULPS * EPS / len`, the projection error the
+/// `1/len` normalisation can amplify at the operands' scale — is SKIPPED
+/// (never a separation: dropping a SAT candidate can only fail to find a
+/// separation, each remaining axis being a valid upper bound on the true
+/// depth, so the result stays conservative; do not "harden" the skip into a
+/// failure).
 pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
     let t: Vec3 = [
         b.center[0] - a.center[0],
         b.center[1] - a.center[1],
         b.center[2] - a.center[2],
     ];
+    // Operand scale for the per-axis noise bound: the SUMMED half-extents of
+    // both boxes plus the center offset — not the projected radii of the
+    // axis under test, because an extent nearly perpendicular to the axis
+    // projects to ~0 yet contributes its full magnitude of direction-error
+    // noise. See the TS `extentSum` comment for the derivation.
+    let extent_sum = a.half[0]
+        + a.half[1]
+        + a.half[2]
+        + b.half[0]
+        + b.half[1]
+        + b.half[2]
+        + t[0].abs()
+        + t[1].abs()
+        + t[2].abs();
     let mut depth = f64::INFINITY;
 
     let mut test_axis = |l: Vec3| -> bool {
         let len = dot(l, l).sqrt();
-        if !(len > OBB_EPS) {
-            return true; // degenerate axis: not a candidate, not a failure
+        // Exactly parallel axes: the candidate is spanned by the remaining
+        // axes (classical SAT redundancy), so skipping is exact — and it
+        // avoids 0/0 below.
+        if !(len > 0.0) {
+            return true;
         }
         let u: Vec3 = [l[0] / len, l[1] / len, l[2] / len];
         let r_a = a.half[0] * dot(a.axes[0], u).abs()
@@ -210,6 +245,12 @@ pub fn obb_penetration_depth(a: &Obb, b: &Obb) -> Option<f64> {
             + b.half[2] * dot(b.axes[2], u).abs();
         let dist = dot(t, u).abs();
         let overlap = r_a + r_b - dist;
+        // Scale-relative conditioning guard — bit-identical to the TS
+        // `testAxis` (review: #2536); rationale in the TS doc comment.
+        let noise = extent_sum * ((AXIS_NOISE_ULPS * f64::EPSILON) / len);
+        if overlap.abs() <= noise {
+            return true;
+        }
         if overlap <= 0.0 {
             return false;
         }

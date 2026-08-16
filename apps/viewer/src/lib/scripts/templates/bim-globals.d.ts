@@ -286,8 +286,14 @@ declare namespace BimClash {
    * How a clash's `distance` was obtained — the two are NOT interchangeable and
    * were indistinguishable in the output before this field existed.
    *
-   * - `'mesh'` — measured on the triangle meshes. For `clearance`/`touch` it is
-   *   the exact triangle-to-triangle gap. For a hard clash it is the exact
+   * - `'mesh'` — measured on the triangle meshes. For `clearance` it is the
+   *   exact triangle-to-triangle gap. For `touch` it is usually that same exact
+   *   gap, with one exception: a pair whose every candidate depth falls below
+   *   the pair's f32 precision floor also reports `touch`, with `distance: 0`
+   *   and `distanceKind: 'mesh'` — there the 0 is a CLASSIFICATION (the
+   *   surfaces are flush to within what the f32 source coordinates can
+   *   represent; nothing is measurably penetrating), not a measured gap.
+   *   For a hard clash it is the exact
    *   box-box penetration depth (minimum translation distance along a
    *   separating axis, Gottschalk), certified only when BOTH elements are —
    *   within tolerance — rectangular boxes (`obb.ts`); this replaced an

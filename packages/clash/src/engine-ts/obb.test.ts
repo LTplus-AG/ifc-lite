@@ -32,7 +32,8 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { TriMesh } from './tri-mesh.js';
-import { detectObb, obbPenetrationDepth } from './obb.js';
+import { detectObb, obbPenetrationDepth, type Obb } from './obb.js';
+import { cross, dot } from '../math/vec3.js';
 import { createClashEngine } from '../engine.js';
 import { WasmClashEngine, initClashWasm } from '../engine-wasm/index.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
@@ -346,6 +347,17 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     expect(detectObb(mesh)).toBeNull();
   });
 
+  it('skips an exactly-parallel cross axis (length exactly 0) without dividing by zero', () => {
+    // Axis-aligned boxes constructed directly, so all nine cross-product
+    // candidates are exactly [0, 0, 0] (not merely tiny). The depth must be
+    // the exact face-axis overlap 0.5 - finite, not NaN from a 0/0
+    // normalisation - which also pins that a zero-length candidate is
+    // SKIPPED rather than treated as a separation.
+    const a: Obb = { center: [0, 0, 0], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], half: [1, 2, 3] };
+    const b: Obb = { center: [1.5, 0, 0], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], half: [1, 2, 3] };
+    expect(obbPenetrationDepth(a, b)).toBe(0.5);
+  });
+
   it('obbPenetrationDepth returns null (not a wrong number) for boxes that do not actually overlap', () => {
     const a = subdividedBox('A', 'X', [0, 0, 0], [1, 1, 1], 1);
     const b = subdividedBox('B', 'Y', [5, 5, 5], [6, 6, 6], 1);
@@ -356,6 +368,97 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     expect(obbA).not.toBeNull();
     expect(obbB).not.toBeNull();
     expect(obbPenetrationDepth(obbA!, obbB!)).toBeNull();
+  });
+});
+
+/** Rodrigues rotation of `v` by `angle` radians about the unit axis `w`. */
+function rotated(w: Vec3, angle: number, v: Vec3): Vec3 {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const wxv = cross(w, v);
+  const wdv = dot(w, v);
+  return [
+    v[0] * c + wxv[0] * s + w[0] * wdv * (1 - c),
+    v[1] * c + wxv[1] * s + w[1] * wdv * (1 - c),
+    v[2] * c + wxv[2] * s + w[2] * wdv * (1 - c),
+  ];
+}
+
+function unitized(v: Vec3): Vec3 {
+  const len = Math.sqrt(dot(v, v));
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+/**
+ * Two 2000 km long, 1 m thick beams, nearly parallel (relative tilt
+ * `BEAM_TILT` radians about an axis perpendicular to the beam direction and
+ * generic in the cross-section plane), meeting edge-to-edge along their
+ * common normal: `separation < 0` embeds them by that depth, `> 0` leaves a
+ * gap. The whole scene is then rotated by a generic world rotation so the
+ * float cross products involve real cancellation, as they would for a
+ * detected mesh.
+ *
+ * Why this shape: the common normal of the two beam axes IS the
+ * cross-product candidate `cross(a.axes[0], b.axes[0])`, and its length is
+ * `sin(BEAM_TILT)` - a NEAR-DEGENERATE axis. For skew thin beams that axis
+ * carries the true minimum translation distance, while every face axis
+ * reports the cross-section-scale overlap (the other beam's shadow grows by
+ * ~`length * tilt` there). Independently derived per-axis values (exact
+ * rational arithmetic on these very float inputs, at `separation = -0.02`):
+ * face/well-conditioned axes 0.445..2e6, the common normal 0.02. So a SAT
+ * that drops the common-normal candidate does not degrade gracefully - it
+ * reports 0.445 m, 22x the true depth, as a certified measurement.
+ */
+const BEAM_TILT = 8e-7; // sin(tilt) ~ 8e-7: within f64 resolution, far below any absolute 1e-6 guard
+function skewBeams(separation: number): { a: Obb; b: Obb } {
+  const L = 1e6;
+  const w = 0.5;
+  const beta = 0.7; // tilt-axis direction in the cross-section plane: generic
+  const e: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const wRel = unitized([0, Math.cos(beta), Math.sin(beta)]);
+  const bAxes = e.map((v) => unitized(rotated(wRel, BEAM_TILT, v))) as [Vec3, Vec3, Vec3];
+  const u0 = unitized(cross(e[0], bAxes[0])); // common normal of the two beam directions
+  const half: [number, number, number] = [L, w, w];
+  let rA = 0;
+  let rB = 0;
+  for (let i = 0; i < 3; i += 1) {
+    rA += half[i] * Math.abs(dot(e[i], u0));
+    rB += half[i] * Math.abs(dot(bAxes[i], u0));
+  }
+  const off = rA + rB + separation;
+  const t: Vec3 = [off * u0[0], off * u0[1], off * u0[2]];
+  // Generic world rotation, so no coordinate stays exactly zero.
+  const wWorld = unitized([1, 2, 3]);
+  const wAngle = 0.6;
+  const place = (center: Vec3, axes: [Vec3, Vec3, Vec3]): Obb => ({
+    center: rotated(wWorld, wAngle, center),
+    axes: axes.map((v) => unitized(rotated(wWorld, wAngle, v))) as [Vec3, Vec3, Vec3],
+    half: [...half],
+  });
+  return { a: place([0, 0, 0], e), b: place(t, bAxes) };
+}
+
+describe('axis conditioning: near-parallel cross axes at large operand scale', () => {
+  it('measures the true depth of skew near-parallel beams on their common normal', () => {
+    const { a, b } = skewBeams(-0.02);
+    const d = obbPenetrationDepth(a, b);
+    expect(d).not.toBeNull();
+    // True MTD = 0.02 (the constructed embedding along the common normal;
+    // confirmed by exact rational arithmetic over all 15 candidates - the
+    // runner-up axis is at 0.445). The tolerance is the documented projection
+    // noise bound for this axis, ~4.5e-3 here: extentSum * 8 * EPS / len
+    // with extentSum ~ 2e6 and len ~ 8e-7.
+    expect(Math.abs(d! - 0.02)).toBeLessThan(5e-3);
+  });
+
+  it('still separates the same beams when they are genuinely apart', () => {
+    // 0.5 m gap along the common normal - the ONLY separating axis of the 15
+    // (every face axis still overlaps by 0.05..2e6). A guard that rejects
+    // the near-degenerate candidate outright turns this disjoint pair into a
+    // reported penetration; a scale-relative guard keeps the axis because
+    // its 0.5 m verdict is far above the ~4.5e-3 noise bound.
+    const { a, b } = skewBeams(0.5);
+    expect(obbPenetrationDepth(a, b)).toBeNull();
   });
 });
 

@@ -156,26 +156,71 @@ export function detectObb(mesh: MeshLike): Obb | null {
 }
 
 /**
+ * Bound, in f64 ulps, on the absolute error of one component of the cross
+ * product of two UNIT vectors (each component is a product-difference of
+ * magnitude-<=1 terms: ~2 ulps), with headroom for the normalisation and the
+ * per-projection dot rounding it feeds. Shared by the axis noise bound in
+ * {@link obbPenetrationDepth}; same literal in the Rust kernel.
+ */
+export const AXIS_NOISE_ULPS = 8;
+
+/**
  * Exact penetration depth between two oriented boxes: the minimum overlap
  * over the 15 canonical OBB-OBB separating-axis candidates (each box's 3 face
  * normals, plus the 9 pairwise cross products of one box's axes with the
  * other's) — the standard result (Gottschalk, "Collision Queries using
  * Oriented Bounding Boxes") that the minimum-translation-distance axis for two
- * boxes is always among these 15. A degenerate cross-product axis (parallel
- * edges) is skipped, not treated as a failure.
+ * boxes is always among these 15.
  *
- * Returns `null` if any candidate axis reports zero or negative overlap — the
- * boxes would be separated along it, contradicting the caller's own crossing
- * test — so a numerical edge case degrades to `null` (caller falls back to
- * the AABB estimate) rather than reporting a wrong depth.
+ * Cross-product candidates are conditioned by their length: both operands are
+ * unit axes, so `|L| = sin(angle between them)`, and normalising amplifies
+ * the ~ulp-level absolute error of the cross product into a direction error
+ * of up to `AXIS_NOISE_ULPS * EPS / |L|` radians. Each candidate's verdict
+ * therefore carries a SCALE-RELATIVE noise bound (see `testAxis`), and a
+ * verdict inside its own noise band is skipped — not trusted to separate,
+ * not trusted as a depth (review: #2536; the same
+ * tolerance-from-the-wrong-quantity class as #2598/#2600/#2529 — an earlier
+ * ABSOLUTE `len > 1e-6` guard here both divided by lengths whose noise
+ * dwarfs a thin overlap at large operand scale, and hard-dropped axes that
+ * were fine: for kilometre-scale near-parallel beams the dropped common
+ * normal IS the
+ * minimum-translation axis, and the min over the remaining axes over-reported
+ * a 0.02 m edge contact as a certified 0.45 m depth — see `obb.test.ts`).
+ *
+ * Returns `null` if any candidate axis reports, beyond its noise band, zero
+ * or negative overlap — the boxes would be separated along it, contradicting
+ * the caller's own crossing test — so a numerical edge case degrades to
+ * `null` (caller falls back to the AABB estimate) rather than reporting a
+ * wrong depth.
  */
 export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
   const T: Vec3 = [b.center[0] - a.center[0], b.center[1] - a.center[1], b.center[2] - a.center[2]];
+  // Operand scale for the per-axis noise bound: the sum of BOTH boxes' three
+  // half-extents plus the center offset's components. A direction error of
+  // `e` radians in a candidate axis perturbs each projection term by up to
+  // (that term's extent) * e, so the summed extents bound the total overlap
+  // error at `extentSum * e`. Deliberately NOT the projected radii rA/rB of
+  // the axis under test: an extent nearly PERPENDICULAR to the axis projects
+  // to ~0 yet contributes its full magnitude of noise (a 1 km beam projects
+  // nothing onto its cross-section normal but sways that normal's projection
+  // by up to 1 km * e), the same the-world-magnitude-is-the-wrong-quantity
+  // trap as the local-extent tolerance in
+  // `packages/drawing-2d/src/section-cutter.ts` (#2622), with the roles
+  // reversed: here the SUMMED extents are the right quantity and the
+  // projected ones are the trap.
+  const extentSum =
+    a.half[0] + a.half[1] + a.half[2] +
+    b.half[0] + b.half[1] + b.half[2] +
+    Math.abs(T[0]) + Math.abs(T[1]) + Math.abs(T[2]);
   let depth = Infinity;
 
   function testAxis(L: Vec3): boolean {
     const len = Math.sqrt(dot(L, L));
-    if (!(len > OBB_EPS)) return true; // degenerate axis: not a candidate, not a failure
+    // Exactly parallel axes: the cross product is zero and the candidate
+    // direction is spanned by the remaining axes (for boxes with a parallel
+    // axis pair the face axes alone realise the minimum — the classical SAT
+    // redundancy result), so skipping is exact, and it avoids 0/0 below.
+    if (!(len > 0)) return true;
     const u: Vec3 = [L[0] / len, L[1] / len, L[2] / len];
     const rA =
       a.half[0] * Math.abs(dot(a.axes[0], u)) +
@@ -187,6 +232,22 @@ export function obbPenetrationDepth(a: Obb, b: Obb): number | null {
       b.half[2] * Math.abs(dot(b.axes[2], u));
     const dist = Math.abs(dot(T, u));
     const overlap = rA + rB - dist;
+    // Scale-relative conditioning guard, replacing an absolute `len > 1e-6`
+    // (review: #2536). `u`'s direction is uncertain by up to
+    // `AXIS_NOISE_ULPS * EPS / len` radians (cancellation shrinks `|L|` to
+    // sin(angle) but leaves the cross product's ~ulp absolute error intact),
+    // so `overlap` is uncertain by up to `extentSum` times that. A verdict
+    // inside the band is SKIPPED: in a separating-axis test, dropping a
+    // candidate can only fail to find a separation — it reports the minimum
+    // over the remaining axes, every one of which is a valid upper bound on
+    // the true depth — never invent one, so the result stays conservative
+    // (it may keep a clash a perfect test would separate, but never
+    // separates a genuine overlap). Do not "harden" this into returning
+    // false: that would turn unresolvable noise into a fabricated
+    // separation. Verdicts OUTSIDE the band are kept whatever `len` is —
+    // their own magnitude proves the noise did not decide them.
+    const noise = extentSum * ((AXIS_NOISE_ULPS * Number.EPSILON) / len);
+    if (Math.abs(overlap) <= noise) return true;
     if (overlap <= 0) return false;
     if (overlap < depth) depth = overlap;
     return true;

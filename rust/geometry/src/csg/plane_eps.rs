@@ -9,7 +9,15 @@
 //! place. Ported from the TypeScript `ProjectedPlaneEps` / `epsForPlane` pair
 //! in `packages/clash/src/contact/{narrow-phase,tri-tri}.ts` (#2661), itself
 //! following the LOCAL-vs-world tolerance sizing in `section-cutter.ts`
-//! (#2622). Deliberately the same formulation, not a third one.
+//! (#2622). Deliberately the same formulation as the clash narrow phase, not
+//! a new one.
+//!
+//! This does NOT mean the crate now has a single plane-epsilon formulation.
+//! `router/voids/aabb_clip.rs` still carries its own — max over axes, scaled
+//! by `1e-6` rather than `2^-22` — against a hand-rolled copy of
+//! `clip_triangle`'s body that does not route through
+//! [`clip_triangle_with_epsilon`]. That divergence is pre-existing and
+//! untouched here; converging it needs its own change with its own evidence.
 //!
 //! # The floor, and its known unit-divergence limitation
 //!
@@ -91,15 +99,43 @@ pub(super) struct PlaneEps {
 }
 
 impl PlaneEps {
-    /// Per-axis f32 rounding-noise amplitudes for `mesh`'s vertices and
-    /// `plane`'s point, floored (after projection) at `floor`.
+    /// Per-axis f32 rounding-noise amplitudes for `mesh`'s vertices, floored
+    /// (after projection) at `floor`.
+    ///
+    /// # Only the MESH contributes noise — never [`Plane::point`]
+    ///
+    /// The bounded quantity is `signed_distance = (v - p).dot(n)`
+    /// ([`Plane::signed_distance`]). `v` comes from `Mesh::positions`, a
+    /// `Vec<f32>`, so its quantization error is real and bounded per axis by
+    /// about `|v_i| * 2^-24` (half an f32 ULP; [`F32_ULP_SCALE`] uses `2^-22`,
+    /// a deliberate 4x margin). The projection in [`Self::for_normal`] turns
+    /// those per-axis bounds into a bound on the distance itself. `p`, by
+    /// contrast, is f64 END TO END — parsed straight out of
+    /// `IfcAxis2Placement3D` and never round-tripped through f32 — so it
+    /// injects no rounding noise of its own and belongs in no noise term.
+    ///
+    /// Folding `max|p_i|` in would also be geometrically meaningless:
+    /// [`Plane::point`] is an arbitrary REPRESENTATIVE of the plane, not a
+    /// property of it. Two `Plane`s describing the identical half-space would
+    /// then classify differently — for `n = (0.6, 0, 0.8)` through the origin
+    /// against a 3-unit triangle, a representative at the origin gives
+    /// `eps = 1.0e-6` (floored) while `(8000, 0, -6000)` — exactly on the same
+    /// plane — gives `2.29e-3`, 2288x looser. That is the very failure this
+    /// module exists to fix (an irrelevant magnitude inflating the tolerance)
+    /// reintroduced by a different route, and it is reachable: the plane point
+    /// at `processors/boolean/mod.rs` comes from the half-space placement's
+    /// Location, which is not constrained to sit anywhere near the mesh.
+    /// `scaledPlaneEps` in `packages/clash/src/contact/narrow-phase.ts`
+    /// likewise iterates only the mesh AABBs.
+    ///
+    /// # The floor
     ///
     /// Scaling must only ever *widen* the tolerance relative to the fixed
     /// `1e-6` it replaces, never narrow it — a bare `extent * F32_ULP_SCALE`
     /// is far tighter than `1e-6` for any extent under ~4.19 units, which
     /// would reintroduce at small extents the misclassification this exists
     /// to fix at large ones.
-    pub(super) fn new(mesh: &Mesh, plane: &Plane, floor: f64) -> Self {
+    pub(super) fn new(mesh: &Mesh, floor: f64) -> Self {
         let mut axis_noise = [0.0f64; 3];
         for (i, &c) in mesh.positions.iter().enumerate() {
             let a = (c as f64).abs();
@@ -108,11 +144,7 @@ impl PlaneEps {
                 axis_noise[axis] = a;
             }
         }
-        let p = [plane.point.x, plane.point.y, plane.point.z];
-        for (axis, noise) in axis_noise.iter_mut().enumerate() {
-            if p[axis].abs() > *noise {
-                *noise = p[axis].abs();
-            }
+        for noise in axis_noise.iter_mut() {
             *noise *= F32_ULP_SCALE;
         }
         Self { axis_noise, floor }
@@ -124,10 +156,31 @@ impl PlaneEps {
     /// eps(n) = max(floor, |n_x|*noise_x + |n_y|*noise_y + |n_z|*noise_z)
     /// ```
     ///
-    /// `n` is the unit normal [`Plane::new`] stores (it normalizes on
-    /// construction, and [`Plane::signed_distance`] likewise assumes unit
-    /// length), so no division by `|n|` is needed — unlike the TypeScript
-    /// port, which is handed raw un-normalised triangle normals.
+    /// # Why there is no division by `|n|` (unlike the TypeScript)
+    ///
+    /// `epsForPlane` in `packages/clash/src/contact/tri-tri.ts` divides the
+    /// projected sum by `ln = |N|`. The reason is NOT merely that
+    /// [`Plane::new`] normalizes and the TS is handed raw triangle normals —
+    /// that is the weaker half. The load-bearing reason is that the TS
+    /// divides its DISTANCES by `ln` too (`tri-tri.ts:82-84`:
+    /// `(dot3(N2, a.v0) + d2) / ln2`), so eps and distance are compared in the
+    /// same normalized units. Rust's [`Plane::signed_distance`] does not
+    /// normalize anything at compare time — it dots against the stored normal
+    /// as-is — so eps must carry the same `|n|` factor the distance does.
+    /// Dividing here would make a `|n| = k` plane `k^2` too tight, not `k`.
+    ///
+    /// # Relation to a max-over-axes scalar: up to sqrt(3) LOOSER
+    ///
+    /// The L1 sum is not uniformly tighter than the max-over-axes form it
+    /// replaces. For a unit normal, `sum_i |n_i| * M_i <= sqrt(3) * max_i M_i`,
+    /// with equality for a body-diagonal normal on an axis-symmetric mesh — so
+    /// a diagonal normal measures exactly `sqrt(3)` looser at every magnitude
+    /// above the floor crossover. That is correct, not a defect: it is the
+    /// right worst-case bound when all three axes' rounding errors can align,
+    /// and the projection is still a pure restriction of WHICH axes may widen
+    /// the tolerance (an axis orthogonal to `n` contributes exactly nothing).
+    /// Any prose claiming this form is "never looser" than max-over-axes is
+    /// wrong.
     pub(super) fn for_normal(&self, n: &Vector3<f64>) -> f64 {
         let projected = n.x.abs() * self.axis_noise[0]
             + n.y.abs() * self.axis_noise[1]

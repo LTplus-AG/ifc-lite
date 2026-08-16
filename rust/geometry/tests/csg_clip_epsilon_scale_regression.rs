@@ -164,10 +164,12 @@ fn clip_flush_top_face(offset_f64: f64) -> Mesh {
 /// production formula.
 ///
 /// Mirrors the production shape exactly: per-axis f32 rounding-noise
-/// amplitudes over the mesh vertices AND the plane point, projected onto the
-/// plane's own unit normal, floored at the default `self.epsilon` of `1e-6`.
-/// Note the per-axis tracking — collapsing this to a single max over all
-/// three axes is precisely the defect
+/// amplitudes over the MESH VERTICES ONLY — the plane point is f64 end to end
+/// and contributes no rounding noise, see
+/// [`plane_representative_point_must_not_change_the_clip`] — projected onto
+/// the plane's own unit normal, floored at the default `self.epsilon` of
+/// `1e-6`. Note the per-axis tracking — collapsing this to a single max over
+/// all three axes is precisely the defect
 /// [`perpendicular_offset_must_not_inflate_the_normal_axis_tolerance`] exists
 /// to catch.
 fn eps_for(mesh: &Mesh, plane: &Plane) -> f64 {
@@ -178,11 +180,7 @@ fn eps_for(mesh: &Mesh, plane: &Plane) -> f64 {
             axis_noise[i % 3] = a;
         }
     }
-    let p = [plane.point.x, plane.point.y, plane.point.z];
-    for (axis, noise) in axis_noise.iter_mut().enumerate() {
-        if p[axis].abs() > *noise {
-            *noise = p[axis].abs();
-        }
+    for noise in axis_noise.iter_mut() {
         *noise *= 1.0 / 4_194_304.0;
     }
     let n = plane.normal;
@@ -378,7 +376,9 @@ fn clip_mesh_epsilon_at_building_extent_is_unscaled() {
     };
     let plane = Plane::new(Point3::new(0.0, 0.0, offset), Vector3::new(0.0, 0.0, 1.0));
 
-    let extent = offset; // matches ClippingProcessor::mesh_plane_extent (plane point z)
+    // The z extent the mesh contributes (the plane point is f64 and never
+    // sizes the epsilon), projected onto the +z normal.
+    let extent = f64::from(behind_z);
     let scaled = extent * (1.0 / 4_194_304.0);
     assert!(
         scaled < 5e-5 && scaled >= 1e-6,
@@ -503,14 +503,19 @@ fn offset_axis_tolerance_still_scales_when_the_normal_points_along_it() {
     //
     //   eps = |n_x| * 1e6 * 2^-22 ~= 2.384e-1 mm
     //
-    // A slab a mere 0.05 mm behind an +x plane is therefore INSIDE the band and
-    // must be kept — the opposite verdict to the perpendicular case, from the
-    // same offset and the same separation. Tightening the tolerance uniformly
-    // (a bare per-axis min, or dropping the scaling altogether) fails here even
-    // though it passes the test above.
+    // A slab a fraction of a millimetre behind an +x plane is therefore INSIDE
+    // the band and must be kept — the opposite verdict to the perpendicular
+    // case, from the same offset. Tightening the tolerance uniformly (a bare
+    // per-axis min, or dropping the scaling altogether) fails here even though
+    // it passes the test above.
+    //
+    // NOTE the separation is measured, not nominal: `(1.0e6 - 0.05) as f32`
+    // quantizes to 999999.9375 (the f32 ULP at 1e6 is 0.125), so the geometry
+    // actually under test is 0.0625 mm behind the plane, not 0.05. Still an
+    // order of magnitude under the 0.238 mm epsilon, so the verdict stands.
     let plane_x = 1.0e6_f64;
-    let separation = 0.05_f64;
-    let behind_x = (plane_x - separation) as f32;
+    let behind_x = (plane_x - 0.05) as f32;
+    let separation = plane_x - f64::from(behind_x);
     let mesh = Mesh {
         positions: vec![
             behind_x, 0.0, 0.0, behind_x, 1000.0, 0.0, behind_x, 0.0, 3000.0,
@@ -537,5 +542,246 @@ fn offset_axis_tolerance_still_scales_when_the_normal_points_along_it() {
          ({eps:e}) must widen to that axis's f32 noise and keep a triangle \
          only {separation} mm behind the plane; an empty result means the \
          projection collapsed the tolerance on the axis that actually matters"
+    );
+}
+
+/// The bare projected term, WITHOUT the `1e-6` floor — the thing
+/// [`floor_keeps_a_vertex_the_bare_projected_term_would_drop`] proves is
+/// load-bearing.
+fn unfloored_projected_eps(mesh: &Mesh, plane: &Plane) -> f64 {
+    let mut axis_noise = [0.0f64; 3];
+    for (i, &c) in mesh.positions.iter().enumerate() {
+        let a = (c as f64).abs();
+        if a > axis_noise[i % 3] {
+            axis_noise[i % 3] = a;
+        }
+    }
+    let n = plane.normal;
+    (n.x.abs() * axis_noise[0] + n.y.abs() * axis_noise[1] + n.z.abs() * axis_noise[2])
+        * (1.0 / 4_194_304.0)
+}
+
+#[test]
+fn plane_representative_point_must_not_change_the_clip() {
+    // `Plane::point` is an ARBITRARY representative of the plane, not a
+    // property of it — and it is f64 end to end (`IfcAxis2Placement3D`, never
+    // round-tripped through f32), so it carries no rounding noise the
+    // classification epsilon needs to absorb. Only `Mesh::positions` is
+    // f32-native, and only its magnitude may size the tolerance.
+    //
+    // Both planes below have the same unit normal (0.6, 0, 0.8) and both
+    // representative points lie EXACTLY on the plane through the origin:
+    // 0.6*8000 + 0.8*(-6000) = 0. They are therefore the same half-space and
+    // must produce the same verdict on the same mesh.
+    //
+    // Folding max|p_i| into the per-axis noise breaks that:
+    //   near point (0, 0, 0)        -> eps = 1.0e-6 (the floor)
+    //   far  point (8000, 0, -6000) -> eps = (0.6*8000 + 0.8*6000) * 2^-22
+    //                                     = 9600 * 2^-22 = 2.289e-3, 2288x
+    // which is the exact failure mode this file exists to catch — an
+    // irrelevant magnitude inflating the tolerance — reintroduced through the
+    // plane point instead of through an orthogonal mesh axis. Reachable in
+    // production: `subtract_half_space` (`processors/boolean/mod.rs`) builds
+    // the plane from the half-space placement's Location, which is under no
+    // obligation to sit anywhere near the mesh it cuts.
+    //
+    // The triangle sits a genuine 1e-4 BEHIND the plane: outside the correct
+    // 1e-6 band (so a correct clip discards it for either representative) and
+    // inside the inflated 2.289e-3 one (so the plane-point variant keeps it
+    // for the far representative only).
+    let n = Vector3::new(0.6_f64, 0.0, 0.8);
+    let separation = 1.0e-4_f64;
+    // Two in-plane directions for n: u = (0,1,0) and w = (0.8,0,-0.6).
+    let v = |a: f64, b: f64| -> [f32; 3] {
+        [
+            (0.8 * b - separation * n.x) as f32,
+            (a - separation * n.y) as f32,
+            (-0.6 * b - separation * n.z) as f32,
+        ]
+    };
+    let (p0, p1, p2) = (v(0.0, 0.0), v(3.0, 0.0), v(0.0, 3.0));
+    let mesh = Mesh {
+        positions: vec![
+            p0[0], p0[1], p0[2], p1[0], p1[1], p1[2], p2[0], p2[1], p2[2],
+        ],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+
+    let near = Plane::new(Point3::new(0.0, 0.0, 0.0), n);
+    let far = Plane::new(Point3::new(8000.0, 0.0, -6000.0), n);
+
+    // Both representatives really do describe the same plane.
+    for (name, plane) in [("near", &near), ("far", &far)] {
+        let d = plane.signed_distance(&Point3::new(0.0, 0.0, 0.0));
+        assert!(
+            d.abs() < 1e-9,
+            "fixture error: the {name} representative is not on the plane \
+             through the origin (signed distance {d:e})"
+        );
+    }
+
+    // Guard the fixture: it only discriminates while the correct epsilon is
+    // tighter than the separation and the plane-point-inflated one is looser.
+    let correct_eps = eps_for(&mesh, &near);
+    assert!(
+        correct_eps < separation,
+        "fixture is vacuous: the correct epsilon {correct_eps:e} must be \
+         tighter than the {separation:e} separation"
+    );
+    let inflated_eps = 9600.0 * (1.0 / 4_194_304.0);
+    assert!(
+        inflated_eps > separation,
+        "fixture is vacuous: the plane-point-inflated epsilon {inflated_eps:e} \
+         must be looser than the {separation:e} separation, or this test \
+         cannot detect the regression"
+    );
+
+    let clipper = ClippingProcessor::new();
+    let out_near = clipper.clip_mesh(&mesh, &near).expect("clip must not error");
+    let out_far = clipper.clip_mesh(&mesh, &far).expect("clip must not error");
+
+    assert_eq!(
+        out_near.indices.len(),
+        0,
+        "sanity: a triangle a genuine {separation:e} behind the plane must be \
+         discarded (eps {correct_eps:e})"
+    );
+    assert_eq!(
+        out_far.indices.len(),
+        out_near.indices.len(),
+        "the SAME plane, described by a representative point further out along \
+         an axis, produced a different clip — the classification epsilon is \
+         being sized by `Plane::point`, an arbitrary f64 representative that \
+         carries no f32 rounding noise. Only `Mesh::positions` may size it"
+    );
+}
+
+#[test]
+fn floor_keeps_a_vertex_the_bare_projected_term_would_drop() {
+    // The `1e-6` floor is the anti-regression guard for the ORIGINAL
+    // behaviour: scaling may only ever widen the tolerance, never narrow it.
+    // Below the crossover (a projected noise amplitude of ~4.19 file units)
+    // the projected term really is TIGHTER than the constant it replaces, so
+    // dropping the floor would misclassify near-origin vertices that classify
+    // correctly today — a fresh regression traded for the far-field fix.
+    //
+    // Near-origin fixture, +z plane at z = f32(1.7):
+    //   projected (no floor) = 1.7 * 2^-22       ~= 4.053e-7
+    //   floored              = max(1e-6, 4.05e-7) = 1.000e-6
+    // A triangle a genuine 7.153e-7 behind the plane sits BETWEEN them: kept
+    // under the floored epsilon, dropped under the bare projected term.
+    let plane_z = f64::from(1.7_f32);
+    let behind_z = 1.7_f32 - 7.0e-7_f32;
+    let separation = plane_z - f64::from(behind_z);
+    let mesh = Mesh {
+        positions: vec![0.0, 0.0, behind_z, 1.0, 0.0, behind_z, 0.0, 1.0, behind_z],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    let plane = Plane::new(Point3::new(0.0, 0.0, plane_z), Vector3::new(0.0, 0.0, 1.0));
+
+    // Guard the fixture: the separation must straddle the two candidates, or
+    // the test proves nothing about the floor.
+    let projected = unfloored_projected_eps(&mesh, &plane);
+    let floored = eps_for(&mesh, &plane);
+    assert!(
+        projected < separation && separation < floored,
+        "fixture is vacuous: the {separation:e} separation must sit strictly \
+         between the unfloored projected epsilon {projected:e} and the floored \
+         one {floored:e}"
+    );
+    assert!(
+        (floored - 1e-6).abs() < 1e-18,
+        "fixture is vacuous: at this magnitude the floor must be what wins; \
+         got {floored:e}"
+    );
+
+    let out = ClippingProcessor::new()
+        .clip_mesh(&mesh, &plane)
+        .expect("clip must not error");
+    assert_eq!(
+        out.indices.len(),
+        3,
+        "a triangle only {separation:e} behind the plane must be kept: below \
+         the crossover the projected term ({projected:e}) is TIGHTER than the \
+         `1e-6` it replaces, and the floor is what stops magnitude scaling from \
+         narrowing the tolerance. An empty result means the floor was removed \
+         and near-origin classification regressed"
+    );
+}
+
+#[test]
+fn body_diagonal_normal_widens_to_the_l1_sum_not_the_per_axis_max() {
+    // The projection is an L1 sum, `sum_i |n_i| * noise_i`, not a max over the
+    // axes `n` touches. For a unit normal that sum is bounded by
+    // `sqrt(3) * max_i noise_i`, with equality for a body-diagonal normal on
+    // an axis-symmetric mesh — so this form is up to sqrt(3) LOOSER than the
+    // max-over-axes scalar it replaced, not uniformly tighter. That is
+    // correct, not a defect: it is the right worst-case bound when all three
+    // axes' f32 rounding errors align, which a body-diagonal normal is exactly
+    // the case for. Any prose claiming the projection is "never looser" than
+    // max-over-axes is wrong, and no other test in this file exercises a
+    // non-axis-aligned normal.
+    //
+    // Three exactly-f32-representable vertices with x + y + z = 1e5, hence
+    // exactly coplanar with respect to n = (1,1,1)/sqrt(3):
+    //   per-axis max = 1e5 * 2^-22           ~= 2.384e-2
+    //   L1 projected = sqrt(3) * 1e5 * 2^-22 ~= 4.130e-2
+    // The plane is placed so all three vertices sit a genuine 3.0e-2 behind
+    // it — between the two — so the L1 form keeps the triangle while any
+    // per-axis-max form discards it.
+    let m = 1.0e5_f32;
+    let mesh = Mesh {
+        positions: vec![m, 0.0, 0.0, 0.0, m, 0.0, 0.0, 0.0, m],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    let n = Vector3::new(1.0_f64, 1.0, 1.0).normalize();
+    let separation = 3.0e-2_f64;
+    // `n` is unit, so `origin + n * t` has plane-coordinate exactly `t`.
+    let vertex_coord = f64::from(m) * n.x;
+    let plane_point = Point3::from(n * (vertex_coord + separation));
+    let plane = Plane::new(plane_point, n);
+
+    for i in 0..3 {
+        let v = Point3::new(
+            f64::from(mesh.positions[i * 3]),
+            f64::from(mesh.positions[i * 3 + 1]),
+            f64::from(mesh.positions[i * 3 + 2]),
+        );
+        let d = plane.signed_distance(&v);
+        assert!(
+            (d + separation).abs() < 1e-9,
+            "fixture error: vertex {i} is at signed distance {d:e}, expected \
+             -{separation:e}"
+        );
+    }
+
+    let l1 = unfloored_projected_eps(&mesh, &plane);
+    let per_axis_max = f64::from(m) * (1.0 / 4_194_304.0);
+    assert!(
+        (l1 / per_axis_max - 3.0_f64.sqrt()).abs() < 1e-9,
+        "fixture error: a body-diagonal normal on an axis-symmetric mesh must \
+         make the L1 projection exactly sqrt(3) times the per-axis max; got \
+         {l1:e} vs {per_axis_max:e}"
+    );
+    assert!(
+        per_axis_max < separation && separation < l1,
+        "fixture is vacuous: the {separation:e} separation must sit strictly \
+         between the per-axis max {per_axis_max:e} and the L1 sum {l1:e}"
+    );
+
+    let out = ClippingProcessor::new()
+        .clip_mesh(&mesh, &plane)
+        .expect("clip must not error");
+    assert_eq!(
+        out.indices.len(),
+        3,
+        "with a body-diagonal normal all three axes' f32 rounding errors can \
+         align, so the tolerance must be the L1 sum {l1:e} — sqrt(3) times the \
+         per-axis max {per_axis_max:e} — and a triangle {separation:e} behind \
+         the plane stays inside the band. An empty result means the projection \
+         degenerated into a max over axes"
     );
 }

@@ -586,7 +586,7 @@ impl ClippingProcessor {
         record_csg_op(3, mesh.triangle_count(), 0);
         let mut result = Mesh::new();
 
-        let eps = plane_eps::PlaneEps::new(mesh, plane, self.epsilon).for_normal(&plane.normal);
+        let eps = plane_eps::PlaneEps::new(mesh, self.epsilon).for_normal(&plane.normal);
 
         // Process each triangle
         let vert_count = mesh.positions.len() / 3;

@@ -16,10 +16,13 @@ it depends on which way the rounding lands rather than on distance alone. A unit
 flush cut at 1e-6 lost its entire cross-section at a 100.7 m offset and again at a
 50000.7 m offset, while surviving at 1000.7 m and 5000.7 m in between.
 
-`clip_mesh` now scales the classification epsilon to the clip operand's coordinate
-magnitude (`2⁻²²`, the f32 ULP fraction), floored at the original `1e-6` constant.
-The magnitude is tracked **per axis** and projected onto the clip plane's own unit
-normal — `eps(n) = max(1e-6, |nₓ|·noiseₓ + |n_y|·noise_y + |n_z|·noise_z)` — rather
+`clip_mesh` now scales the classification epsilon to the coordinate magnitude of the
+**mesh being clipped** (`2⁻²²`, the f32 ULP fraction), floored at the original `1e-6`
+constant. Only the mesh contributes: the plane is f64 end to end and carries no
+rounding noise, and its stored point is an arbitrary representative of the plane, so
+letting it size the tolerance would make two descriptions of the same half-space clip
+differently. The magnitude is tracked **per axis** and projected onto the clip plane's
+own unit normal — `eps(n) = max(1e-6, |nₓ|·noiseₓ + |n_y|·noise_y + |n_z|·noise_z)` — rather
 than collapsed to a single max over all three axes. The tolerance is compared against
 a signed distance measured along one normal, so each coordinate's rounding noise
 enters it weighted by that axis's normal component, and an axis orthogonal to the
@@ -31,6 +34,13 @@ x = 1e6 mm clipped by a horizontal plane through a wall spanning z = 0..3000 mm 
 loose on the only axis that matters, letting genuinely separated geometry classify
 as on-plane. Same formulation as `ProjectedPlaneEps`/`epsForPlane` in
 `@ifc-lite/clash`'s contact narrow phase.
+
+Note the projected form is not uniformly tighter than a max over axes: for a unit
+normal the weighted sum is bounded by `√3 · max` and reaches it for a body-diagonal
+normal, so such a plane gets a `√3`-looser tolerance. That is the correct worst case
+when all three axes' rounding errors align. Evidence for all of the above is
+synthetic (constructed box/slab/triangle fixtures at the stated offsets); no corpus
+model has been shown to change output as a result.
 
 This does not reuse the exact CSG kernel's `near_band_from_extent` helper
 (`kernel::mesh_bridge`): that helper's floor is `8·SNAP_GRID` ≈ 1.22e-4, sized for

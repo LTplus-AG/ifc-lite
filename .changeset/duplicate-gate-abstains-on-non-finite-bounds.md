@@ -13,10 +13,19 @@ was reported as coincident with elements 100 m and 500 m away — and, not being
 evicted from the sweep either, with every element visited after it. The gate is
 now `if (!(dist <= tolerance)) return;`: an acceptance, so a distance that cannot
 be compared abstains instead of asserting a match. The deprecated `iouThreshold`
-branch on the same call site already abstained here; both now agree. Only direct
-SDK callers of `findDuplicates` that build `ClashElement.bounds` themselves could
-reach this — `elementsFromStep` drops non-finite vertices before they become
-bounds — so no viewer or CLI result changes.
+branch on the same call site already abstained here; both now agree.
+
+**And non-finite coordinates no longer become bounds.** `fromPositions`
+(`math/aabb.ts`) excluded `NaN` only as a side effect of `<` and `>` both failing
+against it; `±Infinity` propagated straight through into the bounds, and two
+elements each carrying `-Infinity` on the same axis give a NaN `boxDistance` that
+`boxesTouch` passes — a NaN distance without a NaN vertex. Whether the geometry
+pipeline can emit an infinite vertex is not established, so treat that as a
+mechanism rather than an observed path; the guard closes it at the source either
+way. `fromPositions` now requires each coordinate to be finite *after* the
+transform is applied, per coordinate — the same rule `NaN` already got, so the
+finite coordinates of a partly poisoned vertex still count. Coordinates a real
+file can produce are finite, so no viewer or CLI result changes for them.
 
 **`positionTolerance` is an upper bound, not a per-axis guarantee.** The 1.7.0
 entry said the effective tolerance was "10 mm for every shape on every axis and

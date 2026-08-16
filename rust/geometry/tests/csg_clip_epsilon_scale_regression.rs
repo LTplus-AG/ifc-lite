@@ -4,7 +4,24 @@
 
 //! Regression: `ClippingProcessor::clip_mesh`'s vertex-vs-plane classification
 //! epsilon must scale with the operand's coordinate magnitude, not stay a
-//! fixed `1e-6`.
+//! fixed `1e-6` — and must derive that magnitude PER AXIS, projected onto the
+//! plane's own normal, not as a single max over all three axes.
+//!
+//! Two distinct properties, two distinct groups of tests:
+//!
+//! 1. MAGNITUDE SCALING — `flush_plane_clip_*`. These offset the box
+//!    uniformly along all three axes, so a max-over-axes extent and a
+//!    projection onto the normal produce the same number. That makes them
+//!    blind to property 2 by construction; they are kept because they pin the
+//!    original defect (a fixed `1e-6` at large coordinates) which is a real
+//!    and separate regression.
+//! 2. AXIS SELECTION — `perpendicular_offset_must_not_inflate_the_normal_axis_tolerance`
+//!    and `offset_axis_tolerance_still_scales_when_the_normal_points_along_it`.
+//!    These deliberately make the offset axis DIFFER from the tested normal,
+//!    which is the only way to distinguish the two formulas. The pair asserts
+//!    the tolerance in BOTH directions — that an orthogonal axis must not
+//!    widen it, and that the normal's own axis still must — so neither a
+//!    uniformly-looser nor a uniformly-tighter epsilon passes.
 //!
 //! `ClippingProcessor` (`csg/mod.rs`) classifies each triangle vertex against
 //! a clip plane with `d >= -epsilon`. That plane arrives in the representation
@@ -141,22 +158,43 @@ fn clip_flush_top_face(offset_f64: f64) -> Mesh {
     clipper.clip_mesh(&mesh, &plane).expect("clip must not error")
 }
 
-/// Reproduce `ClippingProcessor::clip_mesh`'s internal epsilon computation
-/// (`(extent * 2^-22).max(self.epsilon)`, `self.epsilon` == the default
-/// `1e-6`) for the same fixture `clip_flush_top_face` clips, so assertions
-/// can be stated against the real per-call epsilon instead of a duplicated
-/// constant that could drift from the production formula.
+/// Reproduce `csg::plane_eps::PlaneEps`'s computation for an arbitrary
+/// mesh/plane pair, so assertions can be stated against the real per-call
+/// epsilon instead of a duplicated constant that could drift from the
+/// production formula.
+///
+/// Mirrors the production shape exactly: per-axis f32 rounding-noise
+/// amplitudes over the mesh vertices AND the plane point, projected onto the
+/// plane's own unit normal, floored at the default `self.epsilon` of `1e-6`.
+/// Note the per-axis tracking — collapsing this to a single max over all
+/// three axes is precisely the defect
+/// [`perpendicular_offset_must_not_inflate_the_normal_axis_tolerance`] exists
+/// to catch.
+fn eps_for(mesh: &Mesh, plane: &Plane) -> f64 {
+    let mut axis_noise = [0.0f64; 3];
+    for (i, &c) in mesh.positions.iter().enumerate() {
+        let a = (c as f64).abs();
+        if a > axis_noise[i % 3] {
+            axis_noise[i % 3] = a;
+        }
+    }
+    let p = [plane.point.x, plane.point.y, plane.point.z];
+    for (axis, noise) in axis_noise.iter_mut().enumerate() {
+        if p[axis].abs() > *noise {
+            *noise = p[axis].abs();
+        }
+        *noise *= 1.0 / 4_194_304.0;
+    }
+    let n = plane.normal;
+    let projected =
+        n.x.abs() * axis_noise[0] + n.y.abs() * axis_noise[1] + n.z.abs() * axis_noise[2];
+    projected.max(1e-6)
+}
+
+/// [`eps_for`] applied to the fixture `clip_flush_top_face` clips.
 fn expected_eps(offset_f64: f64) -> f64 {
     let (mesh, plane) = build_flush_case(offset_f64);
-    let mut extent = 1.0f64;
-    for &c in &mesh.positions {
-        extent = extent.max((c as f64).abs());
-    }
-    extent = extent
-        .max(plane.point.x.abs())
-        .max(plane.point.y.abs())
-        .max(plane.point.z.abs());
-    (extent * (1.0 / 4_194_304.0)).max(1e-6)
+    eps_for(&mesh, &plane)
 }
 
 /// Signed area of triangle `tri_idx` in `mesh` (0 for a degenerate triangle).
@@ -356,5 +394,148 @@ fn clip_mesh_epsilon_at_building_extent_is_unscaled() {
         "a triangle genuinely 5e-5 behind the plane at 28.76 m extent must be \
          discarded under the 1e-6-floored epsilon; a non-zero result means the \
          epsilon regressed to the ~1.22e-4 near_band_from_extent floor"
+    );
+}
+
+/// A rectangular slab spanning `x0..x1` at a constant `z`, as f32 vertices.
+/// Two triangles, so a "kept" verdict is 6 indices and a "discarded" one is 0.
+fn slab_at_z(x0: f32, x1: f32, z: f32) -> Mesh {
+    Mesh {
+        positions: vec![
+            x0, 0.0, z, x1, 0.0, z, x1, 1000.0, z, //
+            x0, 0.0, z, x1, 1000.0, z, x0, 1000.0, z,
+        ],
+        indices: vec![0, 1, 2, 3, 4, 5],
+        ..Default::default()
+    }
+}
+
+/// The max-over-all-axes epsilon this file's fix replaced, reproduced so the
+/// discriminating tests can assert their fixtures actually separate the two
+/// formulas instead of assuming it.
+fn pre_fix_max_over_axes_eps(mesh: &Mesh, plane: &Plane) -> f64 {
+    let mut extent = 1.0f64;
+    for &c in &mesh.positions {
+        extent = extent.max((c as f64).abs());
+    }
+    extent = extent
+        .max(plane.point.x.abs())
+        .max(plane.point.y.abs())
+        .max(plane.point.z.abs());
+    (extent * (1.0 / 4_194_304.0)).max(1e-6)
+}
+
+#[test]
+fn perpendicular_offset_must_not_inflate_the_normal_axis_tolerance() {
+    // THE axis-selection regression. The flush-cap fixtures above offset the
+    // box uniformly along all three axes, so a max-over-all-axes extent and a
+    // projection onto the plane normal produce the SAME number and those tests
+    // cannot tell a correct implementation from the broken one. Here the
+    // offset axis (x) is deliberately DIFFERENT from the tested normal (z).
+    //
+    // Millimetre-unit model (the common IFC case): a site-offset building at
+    // x ~= 1e6 mm (1 km from the local origin) with a wall spanning
+    // z = 0..3000 mm, clipped by a HORIZONTAL plane (normal +z) at z = 3000.
+    //
+    //   pre-fix  eps = max|coord over ALL axes| * 2^-22
+    //                = 1.005e6 * 2^-22  ~= 2.396e-1 mm
+    //   post-fix eps = |n_z| * max|z| * 2^-22
+    //                = 3000 * 2^-22     ~= 7.153e-4 mm
+    //
+    // a ~335x difference, driven entirely by an x offset that contributes
+    // NOTHING to `dot(v - p, n)` for a +z normal. The real f32 rounding step
+    // at z = 3000 is 2^-12 ~= 2.44e-4 mm, so the post-fix value is a ~3x safe
+    // over-estimate of the actual noise while the pre-fix value is ~1000x it.
+    //
+    // The slab sits a GENUINE 0.05 mm below the plane — comfortably above the
+    // post-fix tolerance (so it must be classified behind and discarded) and
+    // comfortably below the pre-fix one (so the pre-fix code keeps it). 0.05 mm
+    // also survives f32 quantization at z = 3000 with ~200x margin, so the
+    // separation under test is real geometry, not float noise.
+    let x0 = 1.0e6_f32;
+    let x1 = 1.0e6_f32 + 5000.0;
+    let plane_z = 3000.0_f64;
+    let separation = 0.05_f64;
+    let mesh = slab_at_z(x0, x1, (plane_z - separation) as f32);
+    let plane = Plane::new(Point3::new(1.0e6, 0.0, plane_z), Vector3::new(0.0, 0.0, 1.0));
+
+    // Guard the fixture itself: it only discriminates while the post-fix
+    // epsilon is below the separation and the pre-fix one is above it. If a
+    // future tolerance change moves either side past 0.05 mm this assertion
+    // fires instead of the test silently going vacuous again.
+    let post_fix_eps = eps_for(&mesh, &plane);
+    let pre_fix_eps = pre_fix_max_over_axes_eps(&mesh, &plane);
+    assert!(
+        post_fix_eps < separation,
+        "fixture is vacuous: the projected epsilon {post_fix_eps:e} must be \
+         tighter than the {separation} mm separation, or a correct \
+         implementation would also keep the slab"
+    );
+    assert!(
+        pre_fix_eps > separation,
+        "fixture is vacuous: the max-over-axes epsilon {pre_fix_eps:e} must be \
+         looser than the {separation} mm separation, or the pre-fix \
+         implementation would also discard the slab and this test could not \
+         detect the regression"
+    );
+
+    let out = ClippingProcessor::new()
+        .clip_mesh(&mesh, &plane)
+        .expect("clip must not error");
+    assert_eq!(
+        out.indices.len(),
+        0,
+        "a slab sitting a genuine {separation} mm behind a horizontal plane \
+         must be discarded: the classification tolerance for a +z normal is \
+         set by the z extent ({post_fix_eps:e}), not by the model's 1 km x \
+         offset. A non-empty result means the epsilon regressed to a \
+         max-over-all-axes extent ({pre_fix_eps:e}), letting an axis \
+         orthogonal to the plane normal inflate the tolerance ~335x"
+    );
+}
+
+#[test]
+fn offset_axis_tolerance_still_scales_when_the_normal_points_along_it() {
+    // Direction check, the counterpart to the test above: projection must not
+    // be mistaken for "always take the smallest axis". Same 1 km x offset, but
+    // now the plane's normal points along +x — so the x extent IS the relevant
+    // one and the tolerance must widen to it, exactly as the pre-fix code did.
+    //
+    //   eps = |n_x| * 1e6 * 2^-22 ~= 2.384e-1 mm
+    //
+    // A slab a mere 0.05 mm behind an +x plane is therefore INSIDE the band and
+    // must be kept — the opposite verdict to the perpendicular case, from the
+    // same offset and the same separation. Tightening the tolerance uniformly
+    // (a bare per-axis min, or dropping the scaling altogether) fails here even
+    // though it passes the test above.
+    let plane_x = 1.0e6_f64;
+    let separation = 0.05_f64;
+    let behind_x = (plane_x - separation) as f32;
+    let mesh = Mesh {
+        positions: vec![
+            behind_x, 0.0, 0.0, behind_x, 1000.0, 0.0, behind_x, 0.0, 3000.0,
+        ],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+    let plane = Plane::new(Point3::new(plane_x, 0.0, 0.0), Vector3::new(1.0, 0.0, 0.0));
+
+    let eps = eps_for(&mesh, &plane);
+    assert!(
+        eps > separation,
+        "fixture is vacuous: with the normal along the offset axis the \
+         projected epsilon {eps:e} must exceed the {separation} mm separation, \
+         or this test asserts nothing about direction"
+    );
+
+    let out = ClippingProcessor::new()
+        .clip_mesh(&mesh, &plane)
+        .expect("clip must not error");
+    assert!(
+        !out.indices.is_empty(),
+        "with the plane normal along the 1 km-offset x axis the tolerance \
+         ({eps:e}) must widen to that axis's f32 noise and keep a triangle \
+         only {separation} mm behind the plane; an empty result means the \
+         projection collapsed the tolerance on the axis that actually matters"
     );
 }

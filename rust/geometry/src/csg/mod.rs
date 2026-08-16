@@ -15,6 +15,7 @@ use std::cell::RefCell;
 
 mod consolidate;
 mod normals;
+mod plane_eps;
 
 pub use normals::calculate_normals;
 pub(crate) use consolidate::tri_is_needle;
@@ -184,32 +185,11 @@ fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
 
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
-    /// Floor for the classification epsilon in [`Self::clip_mesh`]
-    /// (`(extent * 2^-22).max(epsilon)`, see its doc comment). This is a raw
-    /// `f64` constant in whatever unit the mesh happens to be in when
-    /// `clip_mesh` runs — `clip_mesh` runs before `scale_mesh`
-    /// (`router/processing.rs:818` vs `:846`), so that's the file's native
-    /// unit, not metres, and this field is never rescaled by `unit_scale`.
-    ///
-    /// KNOWN LIMITATION (pre-existing, not introduced by the
-    /// magnitude-scaling fix above): because the floor is a fixed file-unit
-    /// constant, identical physical geometry can classify differently
-    /// depending on whether the file's units are metres or millimetres.
-    /// The scaled term (`extent * 2^-22`) overtakes this floor at a physical
-    /// extent of about 4.19 file units (`1e-6 / 2^-22 ≈ 4.194304`) — above
-    /// that, both unit choices converge on the same scaled epsilon. Below
-    /// it, a metre-authored file stays floored at a constant `1e-6 m` (1
-    /// micrometre) regardless of how small the operand gets, while a
-    /// millimetre-authored file's scaled term keeps shrinking with the
-    /// operand (the floor in mm-file-units, `1e-6 mm`, is a nanometre and is
-    /// essentially never reached) — so the two units can pick different
-    /// epsilons, by up to ~40x, for the same real-world extent below the
-    /// crossover. Both sides remain sub-micrometre, and no building-scale
-    /// corpus fixture has exercised it. Left undone deliberately: rescaling
-    /// this floor by `unit_scale` is exactly the kind of tolerance change
-    /// that needs its own PR with its own corpus evidence, not a
-    /// fold-in-on-review-comment fix (see the 122x-looser-floor mistake this
-    /// PR itself avoided by not reusing `near_band_from_extent`).
+    /// Floor for [`Self::clip_mesh`]'s projected classification epsilon. A raw
+    /// `f64` in the mesh's native file unit (not metres — `clip_mesh` runs
+    /// before `scale_mesh`), never rescaled by `unit_scale`. See [`plane_eps`]
+    /// for the sizing rationale and the KNOWN unit-divergence LIMITATION this
+    /// fixed floor carries below the ~4.19-file-unit crossover.
     pub epsilon: f64,
     /// Boolean / CSG failures recorded since the last `take_failures()`.
     /// Interior-mutable so the existing `&self` API stays unchanged.
@@ -262,145 +242,7 @@ impl ClippingProcessor {
     /// Clip a triangle against a plane
     /// Returns triangles that are in front of the plane
     pub fn clip_triangle(&self, triangle: &Triangle, plane: &Plane) -> ClipResult {
-        self.clip_triangle_with_epsilon(triangle, plane, self.epsilon)
-    }
-
-    /// Same as [`Self::clip_triangle`], but with an explicit classification
-    /// epsilon instead of `self.epsilon`. [`Self::clip_mesh`] uses this to pass
-    /// a per-call epsilon scaled to the operand's coordinate magnitude (see
-    /// its doc comment) without mutating `self` through a `&self` API.
-    fn clip_triangle_with_epsilon(&self, triangle: &Triangle, plane: &Plane, eps: f64) -> ClipResult {
-        // Calculate signed distances for all vertices
-        let d0 = plane.signed_distance(&triangle.v0);
-        let d1 = plane.signed_distance(&triangle.v1);
-        let d2 = plane.signed_distance(&triangle.v2);
-
-        // Edge intersection parameter, clamped to the segment. Vertices are
-        // classified front/back with an epsilon band (`d >= -epsilon`), so a
-        // "front" vertex can sit slightly behind the plane (d in [-epsilon, 0)).
-        // Feeding that raw distance into `d_front / (d_front - d_back)` yields a
-        // t outside [0, 1] — and when the plane is nearly coincident with a host
-        // face the denominator collapses, extrapolating the cut vertex far off
-        // the edge (issue #1155: a clipped column flew ~97 m). Clamping keeps the
-        // intersection on the edge; the near-zero guard avoids a NaN from a
-        // degenerate (in-plane) edge.
-        let edge_t = |d_front: f64, d_back: f64| -> f64 {
-            let denom = d_front - d_back;
-            if denom.abs() < 1.0e-12 {
-                0.0
-            } else {
-                (d_front / denom).clamp(0.0, 1.0)
-            }
-        };
-
-        // Count vertices in front of plane
-        let mut front_count = 0;
-        if d0 >= -eps {
-            front_count += 1;
-        }
-        if d1 >= -eps {
-            front_count += 1;
-        }
-        if d2 >= -eps {
-            front_count += 1;
-        }
-
-        match front_count {
-            // All vertices behind - discard triangle
-            0 => ClipResult::AllBehind,
-
-            // All vertices in front - keep triangle
-            3 => ClipResult::AllFront(triangle.clone()),
-
-            // One vertex in front - create 1 smaller triangle
-            1 => {
-                let (front, back1, back2) = if d0 >= -eps {
-                    (triangle.v0, triangle.v1, triangle.v2)
-                } else if d1 >= -eps {
-                    (triangle.v1, triangle.v2, triangle.v0)
-                } else {
-                    (triangle.v2, triangle.v0, triangle.v1)
-                };
-
-                // Interpolate to find intersection points
-                let d_front = if d0 >= -eps {
-                    d0
-                } else if d1 >= -eps {
-                    d1
-                } else {
-                    d2
-                };
-                let d_back1 = if d0 >= -eps {
-                    d1
-                } else if d1 >= -eps {
-                    d2
-                } else {
-                    d0
-                };
-                let d_back2 = if d0 >= -eps {
-                    d2
-                } else if d1 >= -eps {
-                    d0
-                } else {
-                    d1
-                };
-
-                let t1 = edge_t(d_front, d_back1);
-                let t2 = edge_t(d_front, d_back2);
-
-                let p1 = front + (back1 - front) * t1;
-                let p2 = front + (back2 - front) * t2;
-
-                ClipResult::Split(smallvec::smallvec![Triangle::new(front, p1, p2)])
-            }
-
-            // Two vertices in front - create 2 triangles
-            2 => {
-                let (front1, front2, back) = if d0 < -eps {
-                    (triangle.v1, triangle.v2, triangle.v0)
-                } else if d1 < -eps {
-                    (triangle.v2, triangle.v0, triangle.v1)
-                } else {
-                    (triangle.v0, triangle.v1, triangle.v2)
-                };
-
-                // Interpolate to find intersection points
-                let d_back = if d0 < -eps {
-                    d0
-                } else if d1 < -eps {
-                    d1
-                } else {
-                    d2
-                };
-                let d_front1 = if d0 < -eps {
-                    d1
-                } else if d1 < -eps {
-                    d2
-                } else {
-                    d0
-                };
-                let d_front2 = if d0 < -eps {
-                    d2
-                } else if d1 < -eps {
-                    d0
-                } else {
-                    d1
-                };
-
-                let t1 = edge_t(d_front1, d_back);
-                let t2 = edge_t(d_front2, d_back);
-
-                let p1 = front1 + (back - front1) * t1;
-                let p2 = front2 + (back - front2) * t2;
-
-                ClipResult::Split(smallvec::smallvec![
-                    Triangle::new(front1, front2, p1),
-                    Triangle::new(front2, p2, p1),
-                ])
-            }
-
-            _ => unreachable!(),
-        }
+        plane_eps::clip_triangle_with_epsilon(triangle, plane, self.epsilon)
     }
 
     /// Check if two meshes' bounding boxes overlap
@@ -429,22 +271,6 @@ impl ClippingProcessor {
         let overlap_z = open_min.z - eps <= host_max.z && open_max.z + eps >= host_min.z;
 
         overlap_x && overlap_y && overlap_z
-    }
-
-    /// Coordinate magnitude of `mesh`'s vertices and `plane`'s point, floored
-    /// at 1.0 — the same convention `kernel::mesh_bridge`/`tritri`/`classify`
-    /// use for their `near_band_from_extent` inputs. Feeds [`Self::clip_mesh`]'s
-    /// scaled classification epsilon.
-    fn mesh_plane_extent(mesh: &Mesh, plane: &Plane) -> f64 {
-        let mut extent = 1.0f64;
-        for &c in &mesh.positions {
-            extent = extent.max((c as f64).abs());
-        }
-        extent = extent
-            .max(plane.point.x.abs())
-            .max(plane.point.y.abs())
-            .max(plane.point.z.abs());
-        extent
     }
 
     /// Subtract opening mesh from host mesh using CSG boolean operations
@@ -751,20 +577,16 @@ impl ClippingProcessor {
 
     /// Clip an entire mesh against a plane.
     ///
-    /// The classification epsilon scales with the operand's coordinate
-    /// magnitude: the plane is f64, vertices are f32-native, and the f32 ULP
-    /// exceeds a fixed 1e-6 above 16 m, misclassifying on-plane vertices.
-    /// Deliberately does NOT call `near_band_from_extent`
-    /// (`kernel::mesh_bridge`): its floor (`8·SNAP_GRID` ≈ 1.22e-4) is sized
-    /// for the exact kernel's snap grid and only gets overtaken past ~512 m,
-    /// so at building extents it would flatten the epsilon 122x looser.
-    /// Instead `2⁻²²` (the f32 ULP fraction) is floored at `self.epsilon`.
+    /// The classification epsilon is per-axis f32 rounding noise projected
+    /// onto `plane`'s own normal and floored at [`Self::epsilon`]; see
+    /// [`plane_eps`] for why it must scale with coordinate magnitude, why the
+    /// magnitude is tracked per axis rather than maxed over all three, and why
+    /// `near_band_from_extent` is deliberately not reused.
     pub fn clip_mesh(&self, mesh: &Mesh, plane: &Plane) -> Result<Mesh> {
         record_csg_op(3, mesh.triangle_count(), 0);
         let mut result = Mesh::new();
 
-        let extent = Self::mesh_plane_extent(mesh, plane);
-        let eps = (extent * (1.0 / 4_194_304.0)).max(self.epsilon);
+        let eps = plane_eps::PlaneEps::new(mesh, plane, self.epsilon).for_normal(&plane.normal);
 
         // Process each triangle
         let vert_count = mesh.positions.len() / 3;
@@ -801,7 +623,7 @@ impl ClippingProcessor {
             let triangle = Triangle::new(v0, v1, v2);
 
             // Clip triangle
-            match self.clip_triangle_with_epsilon(&triangle, plane, eps) {
+            match plane_eps::clip_triangle_with_epsilon(&triangle, plane, eps) {
                 ClipResult::AllFront(tri) => {
                     // Keep original triangle
                     add_triangle_to_mesh(&mut result, &tri);

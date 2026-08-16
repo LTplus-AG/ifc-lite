@@ -54,7 +54,7 @@
 # 1e-6) instead of a fixed 1e-6, which misclassified flush-plane vertices
 # once f32 ULP exceeded it. Deliberately not near_band_from_extent — its
 # floor is sized for the exact kernel's snap grid, not this clip test.
-     824 rust/geometry/src/csg/mod.rs
+     788 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls

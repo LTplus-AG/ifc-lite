@@ -218,4 +218,16 @@ if (existsSync(join(SAMPLES, 'infra-bridge.ifc'))) {
   checks++;
 }
 
+// A gate that skips every sample and still exits 0 verifies nothing while
+// reporting success - the exact vacuous-pass shape this suite exists to catch
+// elsewhere. Individual samples may legitimately be absent (a shallow checkout,
+// a fixtures-less environment), so a missing file is a skip, but a run where
+// NOTHING was checked is a failure, not a pass.
+assert.ok(
+  checks > 0,
+  'test-snap-edges verified NOTHING: every sample was missing, so the gate would ' +
+    'have reported success without exercising a single edge. Fetch the sample ' +
+    `IFCs into ${SAMPLES} before trusting this gate.`,
+);
+
 console.log(`\n${checks} checks passed.`);

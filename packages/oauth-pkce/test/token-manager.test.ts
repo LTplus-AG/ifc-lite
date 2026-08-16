@@ -712,3 +712,70 @@ describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (review
     expect(stored).toEqual(newTokens);
   });
 });
+
+describe('TokenManager: a stored entry that parses but is not a TokenSet', () => {
+  /** Seeds storage directly, the way a corrupted/truncated `localStorage`
+   *  entry, a key collision with some other writer, or a `TokenSet` written
+   *  by a future version with a different shape would appear on restore —
+   *  i.e. bypassing `setTokens()`, which is the only writer whose output is
+   *  known-good. */
+  function managerOverRawEntry(raw: string): TokenManager {
+    const storage = createMemoryStorage();
+    void storage.set('acct-1', raw);
+    return new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      // Any network call at all is a failure here: a malformed entry must be
+      // treated as "no session", never as something worth refreshing — the
+      // refresh token in a malformed blob is no more trustworthy than the
+      // access token next to it.
+      fetch: (async () => {
+        throw new Error('no request should be issued for a malformed stored entry');
+      }) as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+  }
+
+  // Each entry is valid JSON, so the existing `JSON.parse` try/catch does not
+  // fire; what makes it unusable is its *shape*. Before the shape check, the
+  // first three produced `Bearer undefined`, `Bearer 12345` and `Bearer `
+  // respectively on the wire — a header the provider rejects with a 401 the
+  // caller has no way to attribute, instead of a `NotSignedInError` that
+  // routes it straight to interactive sign-in.
+  const malformed: ReadonlyArray<readonly [string, string]> = [
+    ['no accessToken field at all', JSON.stringify({ refreshToken: 'r1', expiresAt: 9_000_000 })],
+    ['accessToken of the wrong type', JSON.stringify({ accessToken: 12345, expiresAt: 9_000_000 })],
+    ['an empty accessToken', JSON.stringify({ accessToken: '', expiresAt: 9_000_000 })],
+    ['no expiresAt, so freshness is unknowable', JSON.stringify({ accessToken: 'a1' })],
+    ['a non-numeric expiresAt', JSON.stringify({ accessToken: 'a1', expiresAt: 'soon' })],
+    ['a NaN expiresAt (JSON-encoded as null)', JSON.stringify({ accessToken: 'a1', expiresAt: Number.NaN })],
+    ['a refreshToken of the wrong type', JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000, refreshToken: 7 })],
+    ['a JSON scalar rather than an object', '42'],
+    ['a JSON array rather than an object', '[]'],
+    ['JSON null', 'null'],
+  ];
+
+  for (const [label, raw] of malformed) {
+    it(`reports no stored session for ${label}`, async () => {
+      const stored = await managerOverRawEntry(raw).getTokens();
+      expect(stored).toBeUndefined();
+    });
+
+    it(`throws NotSignedInError rather than serving a broken token for ${label}`, async () => {
+      await expect(managerOverRawEntry(raw).getValidAccessToken()).rejects.toThrow(NotSignedInError);
+    });
+  }
+
+  it('still accepts a well-formed entry that omits only the optional fields', async () => {
+    // The guard must fail closed on malformed input without also rejecting
+    // the legitimately minimal shape: `refreshToken`, `scope` and `tokenType`
+    // are all optional on `TokenSet`, and a provider that issues a
+    // non-refreshable token writes exactly this.
+    const manager = managerOverRawEntry(JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000 }));
+
+    expect(await manager.getTokens()).toEqual({ accessToken: 'a1', expiresAt: 9_000_000 });
+    expect(await manager.getValidAccessToken()).toBe('a1');
+  });
+});

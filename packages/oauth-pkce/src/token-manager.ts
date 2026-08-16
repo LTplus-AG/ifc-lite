@@ -45,6 +45,46 @@ export interface TokenManagerConfig {
 const DEFAULT_REFRESH_SKEW_MS = 60_000;
 
 /**
+ * Whether a value round-tripped through `JSON.parse` is actually a usable
+ * `TokenSet`, rather than merely valid JSON.
+ *
+ * `JSON.parse(raw) as TokenSet` is a compile-time assertion about a value
+ * that came from outside the program — a `localStorage` entry another script
+ * wrote, a key collision with a different writer, an entry truncated by a
+ * quota error mid-write, or a `TokenSet` written by a future version of this
+ * package with a different shape. TypeScript checks none of that at runtime,
+ * so without this guard a well-formed-JSON-but-wrong-shape entry flowed
+ * straight through `getValidAccessToken()` to the caller's request layer:
+ * `{"refreshToken":"…","expiresAt":<future>}` produced the literal header
+ * `Authorization: Bearer undefined`, a numeric `accessToken` produced
+ * `Bearer 12345`, and an empty one produced `Bearer `. Each of those is a
+ * request the provider answers with a 401 the caller cannot attribute to
+ * anything, at a point far away from the storage entry that caused it.
+ *
+ * The check mirrors exactly what `requestToken` in `token-exchange.ts`
+ * guarantees about every `TokenSet` this package ever writes — a non-empty
+ * string `accessToken` and a finite numeric `expiresAt` — so no entry this
+ * package produced can fail it, and the optional fields are only checked
+ * when present. `expiresAt` matters as much as `accessToken`: it is the
+ * input to the freshness comparison, and a `NaN` there makes
+ * `expiresAt - skew > now` false, which reads as "expired" and quietly
+ * routes a possibly-fine token into a refresh instead of being caught.
+ *
+ * Fails closed: a value that doesn't pass is reported as *no* stored token,
+ * so the caller re-authenticates rather than sending a broken header.
+ */
+function isTokenSet(value: unknown): value is TokenSet {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.accessToken !== 'string' || candidate.accessToken.length === 0) return false;
+  if (typeof candidate.expiresAt !== 'number' || !Number.isFinite(candidate.expiresAt)) return false;
+  for (const key of ['refreshToken', 'scope', 'tokenType'] as const) {
+    if (candidate[key] !== undefined && typeof candidate[key] !== 'string') return false;
+  }
+  return true;
+}
+
+/**
  * Everything tied to one signed-in session's lifetime, as a single object
  * `clear()` replaces wholesale rather than resetting piecemeal.
  *
@@ -152,19 +192,34 @@ export class TokenManager {
   }
 
   /** Reads the stored token set as-is, with no expiry check and no refresh.
-   *  Returns `undefined` if nothing is stored, or if what's stored isn't
-   *  valid JSON (a foreign value under this key, or storage corruption) —
-   *  treated as "signed out" rather than thrown, since the caller's own
-   *  `restore()` is expected to handle "no session" silently per the plugin
-   *  contract's `SourceAuth.restore` doc (no popups, no navigation). */
+   *  Returns `undefined` if nothing is stored, if what's stored isn't valid
+   *  JSON, or if it parses but isn't a usable `TokenSet` (see `isTokenSet`)
+   *  — a foreign value under this key, storage corruption, or a truncated
+   *  write. All of those are treated as "signed out" rather than thrown,
+   *  since the caller's own `restore()` is expected to handle "no session"
+   *  silently per the plugin contract's `SourceAuth.restore` doc (no popups,
+   *  no navigation).
+   *
+   *  A malformed entry is *not* separately reported anywhere: this package
+   *  has no logger, warning callback or telemetry channel — every signal it
+   *  emits is a return value or a thrown `OAuthError` — and inventing one
+   *  for this single case would be a new public API surface. The condition
+   *  is still visible to the caller, just not distinguishable from "never
+   *  signed in": `getValidAccessToken()` throws `NotSignedInError` either
+   *  way, which routes to the same remedy (interactive sign-in). If a
+   *  provider later needs to tell the two apart, that wants a deliberate
+   *  diagnostics hook on `TokenManagerConfig`, not an ad-hoc `console.warn`
+   *  from a library. */
   async getTokens(): Promise<TokenSet | undefined> {
     const raw = await this.enqueue(() => this.config.storage.get(this.config.storageKey));
     if (!raw) return undefined;
+    let parsed: unknown;
     try {
-      return JSON.parse(raw) as TokenSet;
+      parsed = JSON.parse(raw);
     } catch {
       return undefined;
     }
+    return isTokenSet(parsed) ? parsed : undefined;
   }
 
   /** Forgets the stored session (sign-out). Does not call the provider's
@@ -201,8 +256,10 @@ export class TokenManager {
    * two calls issued back-to-back from the same tick — e.g. via
    * `Promise.all` — cannot both pass the check before either sets the field.
    *
-   * Throws `NotSignedInError` if there is no stored session, or if the
-   * stored session is expired with no refresh token to recover with.
+   * Throws `NotSignedInError` if there is no stored session — including a
+   * stored entry that isn't a usable `TokenSet`, which counts as "no
+   * session" rather than being served as a token (see `getTokens`) — or if
+   * the stored session is expired with no refresh token to recover with.
    */
   async getValidAccessToken(): Promise<string> {
     const tokens = await this.getTokens();

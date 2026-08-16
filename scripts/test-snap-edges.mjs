@@ -25,22 +25,29 @@ import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WASM_BIN = join(ROOT_DIR, 'packages/wasm/pkg/ifc-lite_bg.wasm');
 const RENDERER_DIST = join(ROOT_DIR, 'packages/renderer/dist/snap-geometry-cache.js');
+const DETECTOR_DIST = join(ROOT_DIR, 'packages/renderer/dist/snap-detector.js');
 const SAMPLES = join(ROOT_DIR, 'apps/viewer/public/samples');
 
 console.log('Snap edge reconstruction (real wasm pipeline)\n');
 
 // Per AGENTS.md: skip cleanly when the build outputs are absent, naming the fix.
-if (!existsSync(WASM_BIN)) {
-  console.log('wasm runtime missing - run `bash scripts/build-wasm.sh`. Skipping.');
-  process.exit(0);
-}
-if (!existsSync(RENDERER_DIST)) {
-  console.log('renderer dist missing - run `pnpm build`. Skipping.');
+// CI restores them before this step, so a skip here means a LOCAL run without a
+// build, never a verified one. Every message says so explicitly: a reader who
+// greps for "Skipping" must not be able to mistake it for a passing gate.
+function skipUnbuilt(what, fix) {
+  console.log(`VERIFIED NOTHING: ${what} missing - run \`${fix}\`. Skipping.`);
   process.exit(0);
 }
 
+if (!existsSync(WASM_BIN)) skipUnbuilt('wasm runtime', 'bash scripts/build-wasm.sh');
+if (!existsSync(RENDERER_DIST)) skipUnbuilt('renderer dist (snap-geometry-cache)', 'pnpm build');
+// Checked alongside the others rather than left to the dynamic import: an
+// unchecked import fails with a module-resolution stack rather than the
+// actionable build message the other two give.
+if (!existsSync(DETECTOR_DIST)) skipUnbuilt('renderer dist (snap-detector)', 'pnpm build');
+
 const { buildGeometryCache } = await import(RENDERER_DIST);
-const { SnapDetector } = await import(join(ROOT_DIR, 'packages/renderer/dist/snap-detector.js'));
+const { SnapDetector } = await import(DETECTOR_DIST);
 
 initSync(readFileSync(WASM_BIN));
 const api = new IfcAPI();

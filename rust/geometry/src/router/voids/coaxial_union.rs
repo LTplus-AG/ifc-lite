@@ -332,7 +332,7 @@ impl GeometryRouter {
         if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON {
             return None;
         }
-        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of span + 1 mm; >=1mm makes the depth test above redundant for finite spans
+        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of span + 1 mm; the >=1mm floor is what makes the later slab-depth check defensive
 
         // Depth breakpoints = every cutter's z_lo / z_hi, sorted and coalesced
         // within z_tol. The intervals between consecutive breakpoints are the slabs.

@@ -151,6 +151,7 @@
     "RuleCoverageOutcome: type",
     "SEVERITY_RANK: const",
     "TOUCHING_EPSILON: const",
+    "Triangle: interface",
     "Vec3: type",
     "aggregateReviewStatus: function",
     "buildTriageSystemPrompt: function",
@@ -172,10 +173,13 @@
     "pairKey: function",
     "parseTriageResponse: function",
     "penetrationDepth: function",
+    "qualifiedKey: function",
     "reviewStatusToBcfTopicStatus: function",
     "ruleHadNoMatch: function",
     "rulesFromPresets: function",
-    "sortClashes: function"
+    "sortClashes: function",
+    "summarizeClashes: function",
+    "triangleArea: function"
   ],
   "@ifc-lite/clash/bcf": [
     "ClashBcfOptions: interface",

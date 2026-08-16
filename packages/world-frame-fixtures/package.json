@@ -1,0 +1,46 @@
+{
+  "name": "@ifc-lite/world-frame-fixtures",
+  "version": "0.1.0",
+  "private": true,
+  "description": "World-frame test fixture corpus: per-element RTC origins, far-from-origin coordinates, and the normal-projected f32 noise bound they demand",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ifc-lite/geometry": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "license": "MPL-2.0",
+  "author": "Louis True",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LTplus-AG/ifc-lite.git",
+    "directory": "packages/world-frame-fixtures"
+  },
+  "homepage": "https://ifclite.dev/docs/",
+  "bugs": "https://github.com/LTplus-AG/ifc-lite/issues",
+  "keywords": [
+    "ifc",
+    "bim",
+    "test-fixture",
+    "rtc-origin",
+    "georeferenced",
+    "float32"
+  ]
+}

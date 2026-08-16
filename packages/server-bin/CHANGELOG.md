@@ -1,5 +1,11 @@
 # @ifc-lite/server-bin
 
+## 1.16.7
+
+### Patch Changes
+
+- [#2650](https://github.com/LTplus-AG/ifc-lite/pull/2650) [`d02fea3`](https://github.com/LTplus-AG/ifc-lite/commit/d02fea3deff6d98b8863adb36bd2aea5f9c9e25f) Thanks [@louistrue](https://github.com/louistrue)! - Fail closed when no SHA-256 checksum is available for a downloaded server binary. The release pipeline now publishes an `<archive>.sha256` sidecar next to every archive, so a missing or unfetchable checksum means the download cannot be verified and is refused instead of executed behind a warning (previously the fail-open branch was the only one that ever ran, because no sidecar was ever published). Releases without sidecars are only ever downloaded by older package versions, which keep their shipped behaviour.
+
 ## 1.16.6
 
 ### Patch Changes

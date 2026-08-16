@@ -31,6 +31,7 @@ import { isGeometricDataName } from './geometricData.js';
 import {
   meshBounds,
   placementMoveSummary,
+  renderToWorldShift,
   summarizeGeometryChange,
   type GeometrySummary,
 } from './geometrySummary.js';
@@ -261,8 +262,16 @@ function geometrySummary(
   b: FederatedModel | undefined,
   bRef: CompareRef,
 ): GeometrySummary | null {
-  const ba = a?.geometryResult ? meshBounds(a.geometryResult.meshes, aRef.globalId) : null;
-  const bb = b?.geometryResult ? meshBounds(b.geometryResult.meshes, bRef.globalId) : null;
+  // Each side folds its OWN model's render-to-world shift: the two revisions
+  // may have chosen different RTC offsets, and a side that lost its wasm box
+  // to the NaN drop must land in the same absolute frame as a side that kept
+  // it (#2659).
+  const ba = a?.geometryResult
+    ? meshBounds(a.geometryResult.meshes, aRef.globalId, renderToWorldShift(a.geometryResult.coordinateInfo))
+    : null;
+  const bb = b?.geometryResult
+    ? meshBounds(b.geometryResult.meshes, bRef.globalId, renderToWorldShift(b.geometryResult.coordinateInfo))
+    : null;
   // No boxes to compare. For a pair that is geometry-less on BOTH sides (the
   // summary checks `ref.meshed` — missing boxes alone also describe a
   // GPU-instanced entity, which must stay on the box path), the geometry

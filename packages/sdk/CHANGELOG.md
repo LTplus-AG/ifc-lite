@@ -1,5 +1,17 @@
 # @ifc-lite/sdk
 
+## 2.1.2
+
+### Patch Changes
+
+- Updated dependencies [[`7f2d9cf`](https://github.com/LTplus-AG/ifc-lite/commit/7f2d9cf1fdcf8facd9bf3f1445ddf3c665206b76), [`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6), [`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6), [`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6), [`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6), [`8324512`](https://github.com/LTplus-AG/ifc-lite/commit/8324512daee39a018056aa88a148f72791db89c4), [`5cf117d`](https://github.com/LTplus-AG/ifc-lite/commit/5cf117d1eb16dba7f3e7be67114e26ce3ec44a8f), [`a351839`](https://github.com/LTplus-AG/ifc-lite/commit/a35183910da35bd44dd38c5ed50d49d5f73b9f4a), [`5086c57`](https://github.com/LTplus-AG/ifc-lite/commit/5086c5729b6ae8ad967aafa91d96dfdb37327599), [`7cb7394`](https://github.com/LTplus-AG/ifc-lite/commit/7cb73940e0c23cd6b93c4483bfddb7b45cbb363a), [`004b2ff`](https://github.com/LTplus-AG/ifc-lite/commit/004b2ff636fc0299ff669d14e6fbe1ed97881e21), [`004b2ff`](https://github.com/LTplus-AG/ifc-lite/commit/004b2ff636fc0299ff669d14e6fbe1ed97881e21), [`fffc0ee`](https://github.com/LTplus-AG/ifc-lite/commit/fffc0ee91c0c7c63955993faf470fa0581303005), [`2d87b39`](https://github.com/LTplus-AG/ifc-lite/commit/2d87b3919c0ca5afff03e205c5f598142bbc980d), [`7cd8193`](https://github.com/LTplus-AG/ifc-lite/commit/7cd81939ed4acf9e93686d1d96dddcf7606fb59a)]:
+  - @ifc-lite/clash@1.7.0
+  - @ifc-lite/parser@4.1.0
+  - @ifc-lite/drawing-2d@2.0.0
+  - @ifc-lite/lens@1.18.0
+  - @ifc-lite/export@2.9.2
+  - @ifc-lite/ids@1.15.47
+
 ## 2.1.1
 
 ### Patch Changes

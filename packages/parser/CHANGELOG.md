@@ -1,5 +1,41 @@
 # @ifc-lite/parser
 
+## 4.1.0
+
+### Minor Changes
+
+- [#2530](https://github.com/LTplus-AG/ifc-lite/pull/2530) [`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - clash: drop IFC type objects from the clash and duplicate candidate set
+
+  An `IfcWallType`/`IfcSpaceType`/`IfcDoorStyle` carries the `RepresentationMaps`
+  template that its occurrences instantiate. The mesher turns that template into
+  geometry, which lands on top of the very occurrences that use it — so the type
+  read as a duplicate of its own occurrence, and clashed against elements it never
+  physically touches. On one public sample model this accounted for 114 of 282
+  reported clashes and for the model's only reported duplicate.
+
+  Type objects are now filtered out alongside the other non-physical types, which
+  also closes the gap the earlier `IfcSpace` exclusion left open: the space was
+  excluded by name while `IfcSpaceType` sailed straight through.
+
+  `isIfcTypeLikeEntity` is now exported from `@ifc-lite/parser` so the clash
+  adapter uses the same predicate the parser classifies entities with.
+
+- [#2529](https://github.com/LTplus-AG/ifc-lite/pull/2529) [`5086c57`](https://github.com/LTplus-AG/ifc-lite/commit/5086c5729b6ae8ad967aafa91d96dfdb37327599) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `extractAllEntityAttributes` now names attributes across the bundled schema union (IFC2X3 + IFC4 + IFC4X3) instead of through the IFC4 codegen pin alone, so an entity of an IFC4.3 infrastructure class stops reporting no attributes at all.
+
+  The pin answers an **empty** attribute list — not a wrong one — for every class it does not carry, and 251 real classes are outside it: the IFC2X3 ones IFC4 dropped, and the whole IFC4.3 infrastructure vocabulary (`IfcCourse`, `IfcPavement`, `IfcKerb`, `IfcSignal`, `IfcRail`, `IfcRoad`, `IfcBearing`, …). Empty is the damaging shape: a caller looking an attribute up by name finds nothing, and nothing is indistinguishable from an unset slot, so every consumer answered "absent" with no error and no diagnostic. The same pinned-registry family as the membership defects [#2001](https://github.com/LTplus-AG/ifc-lite/issues/2001), [#2003](https://github.com/LTplus-AG/ifc-lite/issues/2003) and the `Tag` defect [#2021](https://github.com/LTplus-AG/ifc-lite/issues/2021), which fixed one lookup this way and left the general one.
+
+  The consumer where it was measurable is the model diff. Both fingerprint adapters (`@ifc-lite/cli`'s and the viewer's) read `PredefinedType` through this function, so on an IFC4.3 element the attribute was absent from the fingerprint on **both** revisions and a cleared or changed `PredefinedType` compared equal to itself. On an infrastructure revision pair whose products were compared against an independent parse of the raw STEP text, a cleared `PredefinedType` was the _only_ edit on 19 of 23 modified products — a comparison blind to it under-reports by roughly a factor of four while looking healthy. `@ifc-lite/ids`' `PredefinedType` facet and the viewer's PredefinedType display read the same function and had the same hole.
+
+  Additive at the parser surface, but a **minor**, not a patch, because downstream behaviour on IFC4X3 models legitimately changes: `getAttributeNamesAcrossSchemas` returns the pinned result unchanged whenever the pin has one, so no IFC2X3 or IFC4 entity's attribute list moves (measured on a real IFC4 revision pair: the added / deleted / modified GlobalId sets are byte-identical before and after) — while on the 251 previously-empty classes every consumer of this function now sees attributes it never saw. That includes `@ifc-lite/ids` (attribute and `PredefinedType` facets can flip a verdict on an infrastructure model), `@ifc-lite/mcp`'s attribute queries, the CLI headless backend, and both diff fingerprint adapters.
+
+  Two sibling lookups in the same file still go through the pin and are deliberately left alone: `getRawNamedAttributes` (the query layer's coercion path) and `getRootAttrIndices`, whose `known` flag gates columnar `EntityTable` membership and so has a materially larger blast radius than an attribute read.
+
+### Patch Changes
+
+- Updated dependencies [[`5cf117d`](https://github.com/LTplus-AG/ifc-lite/commit/5cf117d1eb16dba7f3e7be67114e26ce3ec44a8f)]:
+  - @ifc-lite/wasm@4.6.0
+  - @ifc-lite/ifcx@2.3.6
+
 ## 4.0.3
 
 ### Patch Changes

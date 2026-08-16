@@ -27,6 +27,7 @@ import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult
 import {
   clampPageSize,
   clampRevisionsPageSize,
+  clampSearchPageSize,
   decodeFileRevisions,
   decodeMetadataEntries,
   pathArgFor,
@@ -120,13 +121,17 @@ export class DropboxProvider implements FileSourceProvider {
             options: {
               path: '',
               filename_only: false,
-              max_results: clampPageSize(options?.limit),
+              // `search_v2`'s own ceiling is 1000, not `list_folder`'s 2000
+              // — see `clampSearchPageSize` in `mapping.ts`.
+              max_results: clampSearchPageSize(options?.limit),
             },
           },
           options?.signal,
         );
 
-    const result = decodeSearchResult(raw);
+    const result = decodeSearchResult(raw, (message) =>
+      ctx.log.warn('Dropbox: dropping invalid search match', { error: message }),
+    );
 
     let files = result.matches
       .filter((match) => match.metadata['.tag'] === 'file')

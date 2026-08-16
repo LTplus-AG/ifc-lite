@@ -311,9 +311,22 @@ export function createDropboxApiMock(world: DropboxMockWorld, options: DropboxMo
       // server-side session to hold it in between calls.
       const allFiles = world.items.filter((i) => !i.deleted && i.kind === 'file');
       const matched = query ? allFiles.filter((i) => i.name.toLowerCase().includes(query)) : allFiles;
-      const rows = matched.map((item) => ({ metadata: itemJson(world, item) }));
+      // `SearchMatchV2.metadata` is the `MetadataV2` *union*, not a bare
+      // `Metadata` — real responses nest the entry one level down under a
+      // `".tag": "metadata"` wrapper. Emitting the wrapper (rather than the
+      // bare entry an earlier version of this mock produced) is what makes
+      // this fixture match a real `files/search_v2` response body.
+      const rows = matched.map((item) => ({ metadata: { '.tag': 'metadata', metadata: itemJson(world, item) } }));
       const optionsRaw = body?.options as Record<string, unknown> | undefined;
       const limit = typeof optionsRaw?.max_results === 'number' ? optionsRaw.max_results : defaultPageSize;
+      // Real Dropbox validates `SearchOptions.max_results` against its
+      // declared `UInt64(min_value=1, max_value=1000)` range and answers 400
+      // for an out-of-range value — see `MAX_SEARCH_PAGE_SIZE` in
+      // `mapping.ts`. Enforced here so a provider that fails to clamp fails
+      // loudly in tests instead of only against the real API.
+      if (limit > 1000) {
+        return Promise.resolve(mockResponse({ status: 400, body: `Error in call to API function "files/search_v2": request body: options.max_results: expected integer <= 1000, got ${limit}` }));
+      }
       const page = paginate(rows, limit, offset);
       const cursor = encodeCursor(page.nextOffset, { query });
       return Promise.resolve(mockResponse({ json: { matches: page.value, cursor, has_more: page.hasMore } }));

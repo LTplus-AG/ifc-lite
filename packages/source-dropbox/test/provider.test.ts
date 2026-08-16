@@ -6,6 +6,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { DropboxProvider } from '../src/provider.js';
+import { decodeSearchResult } from '../src/dropbox-types.js';
+import { clampPageSize, clampSearchPageSize } from '../src/mapping.js';
 import { createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
@@ -146,6 +148,54 @@ describe('DropboxProvider', () => {
       const page = await provider.searchFiles!(ctx, 'me', 'MODEL');
       expect(page.items.map((f) => f.id)).toEqual(['id:file-1']);
       expect(page.items[0].containerId).toBe('/alpha');
+    });
+
+    // `SearchMatchV2.metadata` is the `MetadataV2` union — `{".tag":
+    // "metadata", "metadata": {…}}` — so the entry to decode sits one level
+    // below `match.metadata`. Decoding the wrapper itself throws on the
+    // missing `name`, and `searchFiles` is the one list path that does not
+    // run through `convertListLenient`, so nothing catches it: the whole
+    // promise rejects on every real search response.
+    it('decodes matches through the MetadataV2 union wrapper real search_v2 responses carry', async () => {
+      const ctx = createDropboxMockContext(WORLD);
+      const page = await provider.searchFiles!(ctx, 'me', 'model');
+      expect(page.items.map((f) => f.id)).toEqual(['id:file-1']);
+    });
+
+    // The other `MetadataV2` variants must be skipped rather than decoded or
+    // thrown on — the union is open, and a `search_v2` response carrying one
+    // must not cost the caller every other match in the page.
+    it('skips non-"metadata" MetadataV2 variants instead of throwing', () => {
+      const result = decodeSearchResult({
+        matches: [
+          { metadata: { '.tag': 'other' } },
+          { metadata: { '.tag': 'metadata', metadata: { '.tag': 'file', id: 'id:ok', name: 'ok.ifc', path_lower: '/alpha/ok.ifc', rev: 'r1' } } },
+        ],
+        has_more: false,
+      });
+      expect(result.matches.map((m) => m.metadata.id)).toEqual(['id:ok']);
+    });
+
+    // Dropbox declares `SearchOptions.max_results` as
+    // `UInt64(min_value=1, max_value=1000)` — a *different*, lower ceiling
+    // than `list_folder`'s 2000. The shared conformance suite's bulk pass
+    // sends `limit: 10_000`, which `clampPageSize` would forward as 10000
+    // and the real API answers 400.
+    it('clamps a search limit above Dropbox\'s 1000 max_results ceiling', async () => {
+      const ctx = createDropboxMockContext(WORLD);
+      const page = await provider.searchFiles!(ctx, 'me', 'model', undefined, { limit: 10_000 });
+      expect(page.items.map((f) => f.id)).toEqual(['id:file-1']);
+    });
+  });
+
+  describe('page-size clamps', () => {
+    it('clamps search to 1000 and list_folder to 2000, and defaults each', () => {
+      expect(clampSearchPageSize(10_000)).toBe(1000);
+      expect(clampSearchPageSize(500)).toBe(500);
+      expect(clampSearchPageSize(undefined)).toBe(100);
+      // list_folder keeps its own, higher ceiling — the two must not be
+      // collapsed onto one constant.
+      expect(clampPageSize(10_000)).toBe(2000);
     });
   });
 

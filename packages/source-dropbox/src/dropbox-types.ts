@@ -160,13 +160,47 @@ export function decodeListRevisionsResult(raw: unknown): DropboxListRevisionsRes
   return { is_deleted: raw.is_deleted === true, entries, has_more: raw.has_more === true };
 }
 
-export function decodeSearchResult(raw: unknown): DropboxSearchResult {
+/**
+ * Unwraps a `SearchMatchV2.metadata` value, which is Dropbox's `MetadataV2`
+ * *union* rather than a bare `Metadata`: the real response nests the entry
+ * one level down, as `{".tag": "metadata", "metadata": {…}}`. Decoding the
+ * wrapper itself as an entry throws on the missing `name`, so the unwrap is
+ * not optional — it is the only shape the live API ever sends.
+ *
+ * `MetadataV2` is an open union (its catch-all `"other"` variant, plus
+ * whatever Dropbox adds later), so any `.tag` that isn't `"metadata"`
+ * yields `undefined` — a row to skip — rather than an assumed payload or a
+ * throw that would cost the caller every other match in the page.
+ */
+function unwrapMetadataV2(raw: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (raw['.tag'] !== 'metadata') return undefined;
+  return isRecord(raw.metadata) ? raw.metadata : undefined;
+}
+
+/**
+ * Decodes a `files/search_v2` / `files/search/continue_v2` response.
+ *
+ * Rows are decoded leniently, mirroring `convertListLenient` in `mapping.ts`:
+ * one malformed match must not reject the whole `searchFiles` promise and
+ * cost the user every other result. `onDrop` (wired to `ctx.log.warn` by the
+ * caller) keeps the same observability the lenient list paths have.
+ */
+export function decodeSearchResult(raw: unknown, onDrop?: (message: string) => void): DropboxSearchResult {
   if (!isRecord(raw)) throw new Error('Dropbox search_v2 result: not an object');
   const rawMatches = Array.isArray(raw.matches) ? raw.matches : [];
   const matches: DropboxSearchMatch[] = [];
   for (const rawMatch of rawMatches) {
-    if (!isRecord(rawMatch) || !isRecord(rawMatch.metadata)) continue;
-    const decoded = decodeMetadataEntry(rawMatch.metadata);
+    if (!isRecord(rawMatch)) continue;
+    const entry = unwrapMetadataV2(rawMatch.metadata);
+    if (!entry) continue; // non-"metadata" MetadataV2 variant — skip, don't throw
+    let decoded: DropboxMetadataEntry;
+    try {
+      decoded = decodeMetadataEntry(entry);
+    } catch (err) {
+      onDrop?.(err instanceof Error ? err.message : String(err));
+      continue;
+    }
     if (decoded['.tag'] === 'deleted') continue; // search never returns deleted entries; skip defensively
     matches.push({ metadata: decoded });
   }

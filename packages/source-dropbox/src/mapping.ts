@@ -136,9 +136,10 @@ export function searchResultContainerId(pathLower: string | undefined): string {
 }
 
 const DEFAULT_PAGE_SIZE = 200;
-/** Dropbox's own ceiling for `limit` on `files/list_folder` and
- *  `files/search_v2` (`ListFolderArg.limit` / `SearchOptions.max_results`
- *  in Dropbox's `files.stone` API spec). */
+/** Dropbox's own ceiling for `limit` on `files/list_folder` —
+ *  `ListFolderArg.limit` in Dropbox's `files.stone` API spec declares
+ *  `UInt32(min_value=1, max_value=2000)`. This is *not* the ceiling for
+ *  `files/search_v2`, which is lower — see {@link MAX_SEARCH_PAGE_SIZE}. */
 const MAX_PAGE_SIZE = 2000;
 
 /** Clamps `ListOptions.limit` ("Hint only; providers clamp to whatever their
@@ -147,6 +148,22 @@ const MAX_PAGE_SIZE = 2000;
 export function clampPageSize(limit: number | undefined): number {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_PAGE_SIZE;
   return Math.min(requested, MAX_PAGE_SIZE);
+}
+
+const DEFAULT_SEARCH_PAGE_SIZE = 100;
+/** Dropbox's own ceiling for `max_results` on `files/search_v2` —
+ *  `SearchOptions.max_results` in Dropbox's `files.stone` API spec declares
+ *  `UInt64(min_value=1, max_value=1000) = 100`. This is a *different*, lower
+ *  ceiling than `list_folder`'s 2000 (`MAX_PAGE_SIZE` above); sending a
+ *  `max_results` above 1000 is out of range for this endpoint and the API
+ *  answers 400. */
+const MAX_SEARCH_PAGE_SIZE = 1000;
+
+/** Clamps `ListOptions.limit` to a value `files/search_v2`'s `max_results`
+ *  option will accept — see {@link MAX_SEARCH_PAGE_SIZE}. */
+export function clampSearchPageSize(limit: number | undefined): number {
+  const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_SEARCH_PAGE_SIZE;
+  return Math.min(requested, MAX_SEARCH_PAGE_SIZE);
 }
 
 const DEFAULT_REVISIONS_PAGE_SIZE = 10;

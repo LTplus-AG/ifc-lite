@@ -55,6 +55,10 @@ export function SunSkyPanel() {
   const setPreset = useViewerStore((s) => s.setEnvPreset);
   const exposure = useViewerStore((s) => s.envExposure);
   const setExposure = useViewerStore((s) => s.setEnvExposure);
+  const hardness = useViewerStore((s) => s.envHardness);
+  const setHardness = useViewerStore((s) => s.setEnvHardness);
+  const softness = useViewerStore((s) => s.envSoftness);
+  const setSoftness = useViewerStore((s) => s.setEnvSoftness);
 
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -204,6 +208,60 @@ export function SunSkyPanel() {
                 className="w-full accent-teal-600"
               />
             </label>
+          )}
+
+          {/* Lighting hardness + shadow feel — WebGPU shading only. These are
+              user trims composed onto the active preset (the preset supplies
+              the base look; switching preset changes the base, the trims
+              persist), mirroring how Exposure works. */}
+          {!cesiumEnabled && (
+            <>
+              <label className="flex flex-col gap-0.5">
+                <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+                  <span>Light hardness</span>
+                  <button
+                    type="button"
+                    onClick={() => setHardness(1)}
+                    title="Reset light hardness — higher deepens shadows by cutting ambient fill"
+                    className={cn('tabular-nums transition-colors', hardness !== 1 && 'text-foreground hover:text-teal-600')}
+                  >
+                    {hardness.toFixed(2)}×
+                  </button>
+                </span>
+                <input
+                  type="range"
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  value={hardness}
+                  onChange={(e) => setHardness(Number(e.target.value))}
+                  className="w-full accent-teal-600"
+                />
+              </label>
+
+              <label className="flex flex-col gap-0.5">
+                <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
+                  <span>Terminator softness</span>
+                  <button
+                    type="button"
+                    onClick={() => setSoftness(1)}
+                    title="Reset shadow softness — lower crisps the light/shadow edge, higher softens it"
+                    className={cn('tabular-nums transition-colors', softness !== 1 && 'text-foreground hover:text-teal-600')}
+                  >
+                    {softness.toFixed(2)}×
+                  </button>
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={softness}
+                  onChange={(e) => setSoftness(Number(e.target.value))}
+                  className="w-full accent-teal-600"
+                />
+              </label>
+            </>
           )}
 
           {/* Sun study — needs a georeferenced model for the real sun */}

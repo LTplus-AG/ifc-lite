@@ -30,6 +30,7 @@ describe('resolveEnvironment', () => {
     assert.strictEqual(env.ambientIntensity, 0.25);
     assert.strictEqual(env.fillIntensity, 0.15);
     assert.strictEqual(env.rimIntensity, 0.15);
+    assert.strictEqual(env.sunSoftness, 0.3);
     assert.strictEqual(env.exposure, 0.85);
     assert.strictEqual(env.skyEnabled, false);
   });
@@ -129,6 +130,7 @@ describe('packEnvironmentUniforms', () => {
       ambientIntensity: 0.3,
       fillIntensity: 0.11,
       rimIntensity: 0.12,
+      sunSoftness: 0.42,
       exposure: 1.0,
     });
     const buf = packEnvironmentUniforms(env);
@@ -141,12 +143,32 @@ describe('packEnvironmentUniforms', () => {
     assertClose(buf[12], 0.4);
     assertClose(buf[15], 0.11);
     assertClose(buf[16], 0.12);
+    assertClose(buf[17], 0.42);
   });
 
   it('reuses the caller-provided output buffer', () => {
     const out = new Float32Array(ENVIRONMENT_UNIFORM_SIZE / 4);
     const env = resolveEnvironment();
     assert.strictEqual(packEnvironmentUniforms(env, out), out);
+  });
+});
+
+describe('sunSoftness (terminator wrap)', () => {
+  it('defaults to the historic hardcoded wrap of 0.3 and lands in float 17', () => {
+    const buf = packEnvironmentUniforms(resolveEnvironment());
+    assertClose(buf[17], 0.3);
+  });
+
+  it('clamps to [0, 1]', () => {
+    assert.strictEqual(resolveEnvironment({ sunSoftness: -0.5 }).sunSoftness, 0);
+    assert.strictEqual(resolveEnvironment({ sunSoftness: 2.5 }).sunSoftness, 1);
+    assert.strictEqual(resolveEnvironment({ sunSoftness: 0.6 }).sunSoftness, 0.6);
+  });
+
+  it('maps a non-finite softness to 0 (crisp terminator), never NaN in the uniform', () => {
+    assert.strictEqual(resolveEnvironment({ sunSoftness: NaN }).sunSoftness, 0);
+    const buf = packEnvironmentUniforms(resolveEnvironment({ sunSoftness: Infinity }));
+    assert.ok(Number.isFinite(buf[17]));
   });
 });
 

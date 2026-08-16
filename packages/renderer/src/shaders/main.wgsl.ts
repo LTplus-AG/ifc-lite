@@ -38,7 +38,7 @@ export const mainShaderSource = `
           groundColor: vec3<f32>,       // hemisphere-ambient ground tint
           fillIntensity: f32,
           rimIntensity: f32,
-          _pad0: f32,
+          sunSoftness: f32,
           _pad1: f32,
           _pad2: f32,
         }
@@ -364,9 +364,11 @@ export const mainShaderSource = `
           let hemisphereFactor = N.y * 0.5 + 0.5;
           let ambient = mix(env.groundColor, env.skyColor, hemisphereFactor) * env.ambientIntensity;
 
-          // Two-sided sun light so inner faces (I-beam channels) stay visible
+          // Two-sided sun light so inner faces (I-beam channels) stay visible.
+          // sunSoftness is the diffuse wrap (env uniform): 0 = crisp
+          // terminator (hard shadows), larger = softer wrap-around (overcast).
           let NdotL = abs(dot(N, sunLight));
-          let wrap = 0.3;
+          let wrap = env.sunSoftness;
           let diffuseSun = max((NdotL + wrap) / (1.0 + wrap), 0.0) * env.sunIntensity;
 
           // Fill light - two-sided

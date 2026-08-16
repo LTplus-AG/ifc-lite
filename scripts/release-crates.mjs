@@ -33,8 +33,24 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 // processing; wasm depends on core+geometry+clash+processing.
 const CRATES = [
   'ifc-lite-core',
-  'ifc-lite-geometry',
+  // ifc-lite-clash must precede ifc-lite-geometry. geometry carries a
+  // dev-dependency on clash (`ifc-lite-clash.workspace = true`, added with the
+  // intersection-solid oracle in #2574) and a workspace dep resolves to
+  // `{ version = "x.y.z", path = ... }` — so it carries a VERSION, and
+  // `cargo publish` resolves versioned dev-dependencies against crates.io even
+  // though they add nothing to a shipping build. Publishing geometry first
+  // therefore fails with "failed to select a version for the requirement
+  // `ifc-lite-clash = ^x.y.z`" until clash is already up.
+  //
+  // Contrast rust/core, whose geometry dev-dep is written `{ path = "../geometry" }`
+  // with no version: cargo strips that one at publish time, which is why core
+  // publishes cleanly despite the same shape of cycle. Either form works; what
+  // must not happen is a versioned dev-dep on a crate published later.
+  //
+  // clash has zero dependencies and zero dev-dependencies, so it is safe at the
+  // front.
   'ifc-lite-clash',
+  'ifc-lite-geometry',
   'ifc-lite-processing',
   // ifc-lite-export must precede ffi/wasm: wasm-bindings pins it by version
   // (HBJSON/KMZ exporters, #1235) and cargo resolves that against crates.io

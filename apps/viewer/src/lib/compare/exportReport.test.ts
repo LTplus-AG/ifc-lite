@@ -570,6 +570,96 @@ describe('buildCompareReport - a geometry-less product that moved', () => {
   });
 });
 
+describe('buildCompareReport moved distance under the wasm local frame (#2529)', () => {
+  // The wasm pipeline defaults local-frame ON: `MeshData.positions` are
+  // relative to a per-element `origin` that FOLLOWS the element (it is the
+  // element's AABB centre). A pure translation therefore leaves `positions`
+  // unchanged and moves only `origin` - and the report's bounds index summed
+  // raw positions, so a genuinely moved element exported
+  // `Change = "Geometry changed", MovedDistance_m = 0`. All of this path's
+  // original fixtures built meshes without `origin`, which is why the number
+  // was wrong in the one artifact people archive and believe.
+  const cube = (origin: [number, number, number]) => ({
+    expressId: 1,
+    positions: new Float32Array([
+      -0.5, -0.5, -0.5,
+      0.5, -0.5, -0.5,
+      0.5, 0.5, 0.5,
+    ]),
+    origin,
+  });
+  const fingerprint = (modelId: string) => ({
+    key: '2movedmovedmovedmoved0',
+    ifcType: 'IfcWall',
+    dataHash: 'd',
+    ref: { modelId, localId: 1, globalId: 1 },
+  });
+  const result = {
+    baseModelId: 'a',
+    headModelId: 'b',
+    baseName: 'A',
+    headName: 'B',
+    scope: 'both',
+    geometryUnavailable: false,
+    excludedHiddenIds: new Set<number>(),
+    diff: {
+      scope: 'both',
+      excludedTypes: [],
+      entries: [
+        {
+          key: '2movedmovedmovedmoved0',
+          state: 'modified',
+          changeKinds: ['geometry'],
+          base: fingerprint('a'),
+          head: fingerprint('b'),
+        },
+      ],
+      byKey: new Map(),
+      counts: { added: 0, modified: 1, deleted: 0, unchanged: 0 },
+    },
+  } as unknown as CompareResult;
+
+  it('writes Moved with the true distance when only the per-element origin moved', () => {
+    const models = new Map([
+      ['a', { geometryResult: { meshes: [cube([10, 2, 3])] } } as unknown as FederatedModel],
+      ['b', { geometryResult: { meshes: [cube([50, 2, 3])] } } as unknown as FederatedModel],
+    ]);
+    const report = buildCompareReport(result, models);
+    assert.strictEqual(report.rows.length, 1);
+    assert.strictEqual(report.rows[0].change, 'Moved');
+    assert.ok(
+      Math.abs(report.rows[0].movedDistance - 40) < 1e-6,
+      `element moved 40 m via origin only; got MovedDistance_m = ${report.rows[0].movedDistance}`,
+    );
+    // The CSV is where the wrong number was most likely believed.
+    const lines = reportToCsv(report).split('\r\n');
+    assert.ok(
+      lines[1].includes(',Moved,40.0000,'),
+      `CSV must carry the 40 m distance, got ${JSON.stringify(lines[1])}`,
+    );
+  });
+
+  it('still reports a reshape when the mesh changed under a non-zero origin', () => {
+    const grown = {
+      ...cube([10, 2, 3]),
+      positions: new Float32Array([
+        -1.5, -0.5, -0.5,
+        0.5, -0.5, -0.5,
+        0.5, 0.5, 0.5,
+      ]),
+    };
+    const models = new Map([
+      ['a', { geometryResult: { meshes: [cube([10, 2, 3])] } } as unknown as FederatedModel],
+      ['b', { geometryResult: { meshes: [grown] } } as unknown as FederatedModel],
+    ]);
+    const report = buildCompareReport(result, models);
+    assert.ok(
+      report.rows[0].change.includes('Reshaped'),
+      `a 1 m growth must stay a reshape, got ${JSON.stringify(report.rows[0].change)}`,
+    );
+  });
+});
+
 describe('buildCompareReport products vs type objects (headline split)', () => {
   const ref = (modelId: string, id: number) => ({ modelId, localId: id, globalId: id });
   const fingerprint = (modelId: string, key: string, id: number, ifcType: string) => ({

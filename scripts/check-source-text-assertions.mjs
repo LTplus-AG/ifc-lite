@@ -53,6 +53,24 @@ const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts)$/;
 
 const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.txt');
 
+/**
+ * Exact size the allowlist is expected to have, recorded HERE rather than in the
+ * allowlist itself: a ceiling derived from the file it guards is circular and
+ * always passes.
+ *
+ * The allowlist's own header says it "only ratchets DOWN", but nothing enforced
+ * that. Adding a violating file AND its allowlist row in one commit satisfied
+ * every check, because the new file was allowlisted by the time the "new file"
+ * scan ran - so the escape hatch was invisible in the gate's own output. The
+ * list grew 5 -> 6 that way (#2531).
+ *
+ * Both directions now fail, matching scripts/check-unused-locals.mjs: growth
+ * must edit this number, which makes "this PR loosened a gate" a reviewable line
+ * in the diff, and a conversion must lower it in the same PR so the ceiling
+ * stays an exact statement rather than drifting into slack.
+ */
+const ALLOWLIST_CEILING = 6;
+
 /** Reads a file from disk at all. */
 const READS_A_FILE = /\b(readFileSync|readFile)\s*\(/;
 
@@ -168,6 +186,26 @@ if (staleAllowlistEntries.size > 0) {
   console.error(`
 Converted, or deleted. Either way remove the line from
 scripts/source-text-assertion-allowlist.txt — the allowlist only ratchets down.
+`);
+}
+
+if (allowlist.size > ALLOWLIST_CEILING) {
+  failed = true;
+  console.error(`
+The allowlist has ${allowlist.size} entries but the recorded ceiling is ${ALLOWLIST_CEILING}.
+
+Adding a row is a deliberate loosening of this gate, so it must be visible in
+review: raise ALLOWLIST_CEILING in scripts/check-source-text-assertions.mjs in
+the SAME commit, and say in the PR why the behavioural test is out of reach.
+`);
+} else if (allowlist.size < ALLOWLIST_CEILING) {
+  failed = true;
+  console.error(`
+The allowlist is down to ${allowlist.size} entries but the ceiling still reads ${ALLOWLIST_CEILING}.
+
+Lower ALLOWLIST_CEILING to ${allowlist.size} in scripts/check-source-text-assertions.mjs
+so the ceiling keeps stating the real number. Slack in a ratchet is how it stops
+ratcheting.
 `);
 }
 

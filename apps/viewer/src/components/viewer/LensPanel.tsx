@@ -1217,6 +1217,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const showEntities = useViewerStore((s) => s.showEntities);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
+  // Viewport's aggregation resolver (#2531): rule isolation runs a rule's
+  // matches through it so a geometry-less assembly isolates as its parts.
+  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   // Ownership bookkeeping lives in the STORE (not component state/refs) so a
   // panel unmount/remount neither loses which hidden ids the lens owns nor
   // strands a rule isolation it can no longer release.
@@ -1327,11 +1330,42 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const matchingIds = useViewerStore.getState().lensRuleEntityIds.get(ruleId);
     if (!matchingIds || matchingIds.length === 0) return;
 
-    isolateEntities(matchingIds);
+    // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+    // container, ...) owns no mesh: its geometry hangs off the
+    // IfcRelAggregates parts, and the renderer resolves `isolatedEntities`
+    // against mesh ids directly (viewportUtils' buildRenderOptions ->
+    // `isolatedIds`). Isolating the bare matched id therefore blanks the view.
+    // Resolve through the Viewport channel #2531 added
+    // (`resolveHighlightIds`, backed by expandToGeometryBearingIds), exactly
+    // as SearchModal.text.tsx's commit and SearchModal.filter.tsx's "Isolate
+    // in 3D" (#2660) do: a geometry-bearing id passes through untouched and
+    // deduplicated, a geometry-less one is replaced by its geometry-bearing
+    // parts. When nothing resolves (renderer not registered yet, or the whole
+    // match has no geometry at all) the raw ids are kept: isolating an empty
+    // set hides the ENTIRE model, strictly worse than the pre-resolution
+    // behaviour.
+    //
+    // #2660's second fallback -- walking IfcRelAggregates in the data store
+    // when the resolver comes back empty because the parts are HIDDEN types
+    // -- is deliberately not replicated here, and `expandFilterRowsThroughAggregation`
+    // does not fit anyway (it consumes filter-result rows, while a lens rule
+    // hands over globalIds). That fallback only pays off next to a
+    // type-visibility gate that flips the parts' toggles back on; the lens
+    // panel has no such gate, so isolating hidden-type parts would still
+    // render nothing. Adding one is a feature, not this fix.
+    const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? [];
+    const isolationIds = resolved.length > 0 ? resolved : matchingIds;
+
+    isolateEntities(isolationIds);
     // Record ownership: rule id + the exact ids pushed into the channel, so a
     // later release can verify the channel still holds what the lens applied.
-    setLensRuleIsolation({ ruleId, entityIds: [...matchingIds] });
-  }, [isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
+    // These MUST be the resolved ids, not the raw matches: releaseRuleIsolation
+    // compares this record set-wise against the channel
+    // (ruleIsolationOwnsChannel), so recording the raw matches while pushing
+    // the expanded ones makes the lens disown its own isolation and the
+    // un-isolate click leaves the model stuck isolated.
+    setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
+  }, [cameraCallbacks, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
 
   // Safety net: if the lens got deactivated while the panel was unmounted
   // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation

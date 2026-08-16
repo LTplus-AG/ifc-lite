@@ -11,6 +11,9 @@ import type {
   SourceFile,
 } from '@ifc-lite/plugin-api';
 import { loadDownloadedSourceFileRecords } from '@/lib/sources/persistence';
+import type { SourceFavourite } from '@/lib/sources/favourites';
+import { useSourceFavourites } from './useSourceFavourites';
+import { useSourceFavouriteJump } from './useSourceFavouriteJump';
 import { useSourceCatalogSync } from './useSourceCatalogSync';
 import { useSourceFileSearch } from './useSourceFileSearch';
 import { useLoadedSourceModels } from './useLoadedSourceModels';
@@ -28,11 +31,23 @@ interface SourceBrowserProps {
   onBack: () => void;
   /** True while a previously submitted selection is downloading — disables the load button. */
   busy?: boolean;
+  /** A favourite to jump straight to, consumed once on mount. */
+  openTarget?: SourceFavourite | null;
+  /** Fires when a star is pressed here, so the panel's favourites list re-reads storage. */
+  onFavouritesChanged?: () => void;
 }
 
 type Step = 'projects' | 'file-areas' | 'folders';
 
-export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false }: SourceBrowserProps) {
+export function SourceBrowser({
+  provider,
+  ctx,
+  onDownload,
+  onBack,
+  busy = false,
+  openTarget = null,
+  onFavouritesChanged,
+}: SourceBrowserProps) {
   const capabilities = provider.manifest.capabilities;
   const [step, setStep] = useState<Step>('projects');
   const [selectedProject, setSelectedProject] = useState<SourceProject | null>(null);
@@ -149,6 +164,14 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     [catalog, clearSearch, selectedProject],
   );
 
+  const favourites = useSourceFavourites({
+    providerId: provider.manifest.name,
+    selectedProject,
+    selectedFileArea,
+    folders: sortedFolders,
+    onChanged: onFavouritesChanged,
+  });
+
   const toggleFile = useCallback((file: SourceFile) => {
     setSelectedFiles((prev) => {
       const next = new Map(prev);
@@ -225,7 +248,47 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
     });
   }, [allFiles, search.items]);
 
+  // Opening a favourite is one entry point plus the hook that drives the
+  // two-phase jump. It cannot reuse `openFileArea` above: that one reads the
+  // already-chosen `selectedProject`, and a jump has not chosen one yet — it
+  // sets both from stored ids in the same pass. Nothing needs clearing here
+  // that `openFileArea` clears, because the jump only ever runs on a freshly
+  // mounted browser. Keep the callback referentially stable (see the hook).
+  const openFileAreaFromCatalog = catalog.openFileArea;
+  const startFileAreas = fileAreasPaged.start;
+  const enterFileAreaDirect = useCallback(
+    (project: SourceProject, fileArea: SourceContainer) => {
+      projectIdRef.current = project.id;
+      setSelectedProject(project);
+      // Required even though this skips the file-areas step: Back lands there,
+      // and an unstarted list renders "No file areas found".
+      startFileAreas();
+      setSelectedFileArea(fileArea);
+      setSelectedContainer(fileArea);
+      setStep('folders');
+      openFileAreaFromCatalog(project.id, fileArea.id);
+    },
+    [openFileAreaFromCatalog, startFileAreas],
+  );
+
   const selectedContainerId = selectedContainer?.id ?? null;
+
+  useSourceFavouriteJump({
+    target: openTarget,
+    selectedProject,
+    selectedFileArea,
+    selectedContainer,
+    sortedFolders,
+    allFiles,
+    loadingFolders: catalog.loadingFolders,
+    loadingFiles: catalog.loadingFiles,
+    filesHaveMore: catalog.hasMoreFiles(selectedContainerId),
+    foldersHaveMore: catalog.hasMoreFolders(selectedContainerId),
+    enterFileArea: enterFileAreaDirect,
+    selectContainer,
+    toggleFile,
+    renameFavourite: favourites.rename,
+  });
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
@@ -314,6 +377,10 @@ export function SourceBrowser({ provider, ctx, onDownload, onBack, busy = false 
           onSearchQueryChange={search.setQuery}
           onSearchSubmit={search.submit}
           onSearchClear={search.clear}
+          isFolderFavourite={favourites.isFolderFavourite}
+          onToggleFolderFavourite={favourites.toggleFolderFavourite}
+          isFileFavourite={favourites.isFileFavourite}
+          onToggleFileFavourite={favourites.toggleFileFavourite}
         />
       )}
     </div>

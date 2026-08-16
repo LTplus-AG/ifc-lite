@@ -28,6 +28,7 @@ import {
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
 import type { ClashSolidDegenerateReason } from '@/lib/clash/intersection-solid';
+import type { ClashVisibilityOwnership } from '@/lib/clash/visibility-ownership';
 
 /**
  * Why the focused clash has no intersection solid to show. Extends the wasm
@@ -218,6 +219,49 @@ export interface ClashSlice {
   clashSolidThicknessM: number;
   /** For `below-kernel-resolution`: depth the kernel would have needed, metres. `0` otherwise. */
   clashSolidRequiredM: number;
+  /**
+   * Monotonic counter bumped by every store action that can invalidate an
+   * in-flight `focusClash` solid compute: `setClashSelectedId` (the focused
+   * clash changed or was cleared) and `clearClashSolid` / `clearClash` (the
+   * presentation was torn down without a selection change, e.g. `selectElement`).
+   * The async compute in `useClash.focusClash` captures this value right after
+   * kicking off, and only writes its result if it is still current when the
+   * promise settles — this makes the guard store state instead of a private
+   * `useRef`, so ANY teardown path that resets the focused-clash presentation
+   * invalidates the compute by construction, not just the ones that remembered
+   * to call a specific cancel function (#2574 review: `tours/clash.ts` and
+   * `store/homeView.ts` reset these same fields directly and neither could
+   * reach a hook-private ref guard).
+   */
+  clashSolidRequestSeq: number;
+  /**
+   * Which SHARED visibility channel (`isolatedEntities` / `ghostExceptEntities`,
+   * visibilitySlice) the clash presentation currently owns, and the exact
+   * content it installed there. `null` when clash owns neither — including
+   * after a `highlight`-mode focus, which clears both channels and takes
+   * ownership of neither.
+   *
+   * Written by `useClash`'s two install helpers, read by
+   * `releaseOwnedClashVisibility` (`lib/clash/visibility-ownership.ts`), which
+   * is the single release both the hook's run-start discard and every
+   * model-lifecycle teardown go through.
+   *
+   * It lives HERE, not in a `useRef` inside `useClash`, because the store-level
+   * teardowns (`removeModel`, `clearAllModels`, `resetViewerState`) cannot read
+   * a hook-private ref and were left inferring ownership from
+   * `clashSelectedId` — a SELECTION fact, wrong in both directions (#2654 third
+   * review; see the module doc on `visibility-ownership.ts`). Same shape as the
+   * lens slice's `lensRuleIsolation` / `lensAppliedHiddenIds`, which record
+   * lens ownership of these same channels in the store for the same reason.
+   *
+   * PART of `CLASH_FOCUS_RESET` (#2654 fourth review): ending a focus ends the
+   * claim, so the by-hand "clear both channels" teardowns drop it without each
+   * having to remember to. That is only safe because every caller releases
+   * BEFORE it clears the focus — see the ordering note on `CLASH_FOCUS_RESET`.
+   * The visibility CHANNELS stay out of that constant: `clearClashFocus()` also
+   * runs at RUN START, where the release must stay ownership-aware (#2662 P2).
+   */
+  clashVisibilityOwned: ClashVisibilityOwnership;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
@@ -269,6 +313,31 @@ export interface ClashSlice {
   setClashSolidUnavailable: (reason: ClashSolidUnavailableReason, thicknessM: number, requiredM: number) => void;
   /** Back to `'none'` — no clash focused. */
   clearClashSolid: () => void;
+  /** Record (or drop) clash's claim on a shared visibility channel. Called by
+   *  `useClash`'s install helpers and by `releaseOwnedClashVisibility`; nothing
+   *  else should write it. */
+  setClashVisibilityOwned: (owned: ClashVisibilityOwnership) => void;
+  /**
+   * End the focused-clash PRESENTATION entirely: the A/B pair tint, the contact
+   * marker (lines + AABB box) and the intersection solid, plus the selected id
+   * and the `clashSolidRequestSeq` bump that invalidates an in-flight compute.
+   *
+   * This is the ONLY complete spelling of "stop drawing the focused clash", and
+   * every teardown path must call it rather than listing fields by hand. The
+   * field list lived inline in seven callers and each one had drifted to a
+   * different subset — `removeModel` cleared the solid but not the contact
+   * marker, `ClashPanel`'s unmount cleared the box but not the lines — because
+   * `Viewport.tsx` draws the marker from an effect keyed ONLY on
+   * `clashContactLines`/`clashOverlapBox`, which reads neither `clashSelectedId`
+   * nor `clashSolidStatus`. Dropping the solid therefore does NOT retract the
+   * wireframe, and it hung in world space over models that were already gone
+   * (#2654 review).
+   *
+   * Does NOT touch the clash RESULT (that is `clearClash`), nor the
+   * ghost/isolation/colour-override channels, which are owned by other slices
+   * and restored per-caller (an active lens must come back, not be blanked).
+   */
+  clearClashFocus: () => void;
   // Preset CRUD (persisted). Every one of these returns a SaveResult and only
   // commits to the store when the write actually landed, so the panel can never
   // show a rule change as applied that a refused write (quota, or storage
@@ -301,6 +370,59 @@ export interface ClashSlice {
   applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
   clearClash: () => void;
 }
+
+/**
+ * The intersection-solid state machine at rest. One definition, spread by every
+ * action that returns it to `'none'`, so a field added to the machine cannot be
+ * forgotten by one of them.
+ */
+const CLASH_SOLID_RESET = {
+  clashSolidStatus: 'none',
+  clashSolidMesh: null,
+  clashSolidVolumeM3: 0,
+  clashSolidReason: null,
+  clashSolidThicknessM: 0,
+  clashSolidRequiredM: 0,
+} as const satisfies Partial<ClashSlice>;
+
+/**
+ * Everything `focusClash` paints into the scene for ONE clash, at rest: the
+ * solid plus the pair tint, the contact marker and the selected id. The single
+ * source of truth behind `clearClashFocus` — and spread by `clearClash` too, so
+ * the two can never drift into clearing different subsets.
+ *
+ * `clashVisibilityOwned` is here too — the CLAIM on the shared isolation/ghost
+ * channels, not the channels themselves. Ending a focus ends the claim, whether
+ * or not the caller also cleared the channel. Every by-hand "clear both channels"
+ * path (`useClash.clearHighlight` / `clearAll`, `ClashPanel`'s unmount, the clash
+ * tour cleanup, `homeView`) already routes through `clearClashFocus` /
+ * `clearClash`, so all of them drop the claim by construction rather than by each
+ * remembering to. Left standing, a stale record goes matching → cleared →
+ * MATCHING AGAIN the moment another owner installs an equal set, and the next
+ * model-lifecycle teardown destroys that owner's ghost (#2654 fourth review).
+ *
+ * This is safe ONLY because every caller releases before it clears:
+ * `useClash.discardSolidPresentation` calls `releaseClashVisibility()` first,
+ * and `endClashScenePresentation` (`lib/clash/visibility-ownership.ts`) releases
+ * in its step 1 and clears in its step 2 — see the ordering note there. Clearing
+ * first would null the record under the release, which would then find nothing
+ * to release and silently leave clash's own ghost/isolation on screen.
+ *
+ * The visibility CHANNELS themselves stay out: `clearClashFocus()` also runs at
+ * RUN START, where the release must stay ownership-aware so a user's X-ray
+ * survives `run()` (#2662 P2, `useClash.run-preserves-isolation.test.tsx`).
+ *
+ * `clashSolidRequestSeq` is deliberately NOT here: it is a monotonic counter,
+ * not a resettable field, and each action bumps it off its own current value.
+ */
+const CLASH_FOCUS_RESET = {
+  ...CLASH_SOLID_RESET,
+  clashSelectedId: null,
+  clashHighlightColors: null,
+  clashOverlapBox: null,
+  clashContactLines: null,
+  clashVisibilityOwned: null,
+} as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */
 function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
@@ -454,6 +576,8 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSolidReason: null,
     clashSolidThicknessM: 0,
     clashSolidRequiredM: 0,
+    clashSolidRequestSeq: 0,
+    clashVisibilityOwned: null,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -533,7 +657,18 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       persistSettings();
     },
 
-    setClashSelectedId: (clashSelectedId) => set({ clashSelectedId }),
+    // Changing (or clearing) which clash is focused always drops any
+    // intersection-solid presentation for the PREVIOUS focus and bumps
+    // `clashSolidRequestSeq`, invalidating any in-flight compute for it — see
+    // the field doc above. `focusClash` re-applies `setClashSolidComputing()`
+    // right after this for the newly selected clash, so the momentary `'none'`
+    // here is never painted.
+    setClashSelectedId: (clashSelectedId) =>
+      set((s) => ({
+        ...CLASH_SOLID_RESET,
+        clashSelectedId,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
     setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
     setClashContactLines: (clashContactLines) => set({ clashContactLines }),
@@ -567,14 +702,21 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashSolidRequiredM: requiredM,
       }),
     clearClashSolid: () =>
-      set({
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
-      }),
+      set((s) => ({
+        ...CLASH_SOLID_RESET,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
+
+    setClashVisibilityOwned: (clashVisibilityOwned) => set({ clashVisibilityOwned }),
+
+    // The one complete "stop drawing the focused clash" — see the field doc on
+    // the action type. Every teardown path routes through this instead of
+    // listing fields, which is what stops the next one from clearing a subset.
+    clearClashFocus: () =>
+      set((s) => ({
+        ...CLASH_FOCUS_RESET,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);
@@ -723,8 +865,13 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     clearClash: () =>
       // Keep presets + settings (workspace prefs, like saved lenses): only the
-      // run result/panel state is cleared.
-      set({
+      // run result plus the focused-clash presentation is cleared. The
+      // presentation half is the shared `CLASH_FOCUS_RESET`, not a second hand-
+      // written field list, so `clearClash` and `clearClashFocus` cannot drift
+      // into clearing different subsets. The `clashSolidRequestSeq` bump comes
+      // with it: an in-flight solid compute must be invalidated here too.
+      set((s) => ({
+        ...CLASH_FOCUS_RESET,
         clashResult: null,
         clashRawResult: null,
         clashExclusionCounts: new Map<string, number>(),
@@ -734,16 +881,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashRunning: false,
         clashError: null,
         clashProgress: null,
-        clashSelectedId: null,
-        clashHighlightColors: null,
-        clashOverlapBox: null,
-    clashContactLines: null,
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
-      }),
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
   };
 };

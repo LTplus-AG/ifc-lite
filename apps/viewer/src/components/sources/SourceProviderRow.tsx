@@ -2,9 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { useEffect } from 'react';
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
-import { loadResolvedSourcePrefs } from '@/lib/sources/preferences';
+import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/preferences';
 import { isAllowedHost, isHttpsUrl } from '@/services/sources/host-fetch';
 import { useSourceAuth } from './useSourceAuth';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,13 @@ interface SourceProviderRowProps {
   prefsVersion: number;
   onOpenSettings: () => void;
   onBrowse: () => void;
+  /**
+   * Reports this provider's signed-in identity once its auth has SETTLED. Auth
+   * lives in this row, but the favourites list above it is filtered by
+   * identity, so it has to learn about a sign-in that happens while the panel
+   * is open — and, just as much, about a silent restore that resolves nothing.
+   */
+  onIdentityChange?: (providerId: string, identityId: string | null) => void;
 }
 
 /**
@@ -70,19 +78,32 @@ export function SourceProviderRow({
   prefsVersion,
   onOpenSettings,
   onBrowse,
+  onIdentityChange,
 }: SourceProviderRowProps) {
   const { manifest } = provider;
   const iconUrl = safeIconUrl(manifest.iconUrl, manifest.permissions.network);
   const auth = useSourceAuth(provider, sourceHost);
   const interactive = auth.status !== 'not-interactive';
 
+  const identityId = auth.identity?.id ?? null;
+  // Gated on the auth being settled, and that gate is the whole point rather
+  // than tidiness. A silent `restore()` that resolves no session leaves
+  // `identityId` at the `null` it already held while restoring, so an effect
+  // keyed on the id alone never re-runs — the listener above would keep
+  // whatever it last heard, which on a fresh mount is nothing at all. The
+  // status transition is the only edge that "signed out after all" produces.
+  const settled = auth.status !== 'restoring' && auth.status !== 'busy';
+  const providerId = manifest.name;
+  useEffect(() => {
+    if (!settled) return;
+    onIdentityChange?.(providerId, identityId);
+  }, [identityId, onIdentityChange, providerId, settled]);
+
   // prefsVersion is not read directly — it exists to re-run this derivation
   // after the settings dialog saves or forgets values.
   void prefsVersion;
   const prefs = loadResolvedSourcePrefs(manifest);
-  const prefsConfigured = manifest.preferences
-    .filter((pref) => pref.required)
-    .every((pref) => Boolean(prefs[pref.name]?.trim()));
+  const prefsConfigured = isPrefsConfigured(manifest, prefs);
 
   const canBrowse = interactive ? auth.status === 'signed-in' : prefsConfigured;
   // Interactive providers can still require preferences (e.g. a client id for

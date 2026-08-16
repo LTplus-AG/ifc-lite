@@ -13,7 +13,28 @@
  * the geometric dimension (depth) so the two can be combined when prioritising.
  */
 
-import type { Clash, ClashResult, ClashRuleCoverage, ClashSeverity } from './types.js';
+import type { Clash, ClashResult, ClashRuleCoverage, ClashSeverity, ClashSummary } from './types.js';
+
+/**
+ * Tally a clash list into a {@link ClashSummary}: totals per rule, per sorted
+ * element-type pair, and per severity.
+ *
+ * Single home for the tally, so a result built by the engine, by the duplicate
+ * scan, or by a consumer that filtered a result down (e.g. user exclusions)
+ * cannot report buckets that disagree with `clashes`.
+ */
+export function summarizeClashes(clashes: readonly Clash[]): ClashSummary {
+  const byRule: Record<string, number> = {};
+  const byTypePair: Record<string, number> = {};
+  const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
+  for (const c of clashes) {
+    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
+    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
+    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
+    bySeverity[c.severity] += 1;
+  }
+  return { total: clashes.length, byRule, byTypePair, bySeverity };
+}
 
 /** Severity ordering, most-severe first (lower rank = more severe). */
 export const SEVERITY_RANK: Record<ClashSeverity, number> = {

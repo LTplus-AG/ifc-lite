@@ -3,6 +3,8 @@ import type { Ray, Vec3, Intersection } from './raycaster.js';
 import { Raycaster } from './raycaster.js';
 import { distance, vecEquals, closestPointOnEdgeWithT, screenToWorldRadius } from './snap-geometry-utils.js';
 import { buildGeometryCache, type MeshGeometryCache } from './snap-geometry-cache.js';
+import type { SnapEdge } from './snap-edge-runs.js';
+import { bestEdgeCandidate, detectCorner, type EdgeCandidate } from './snap-corner.js';
 
 export enum SnapType {
   VERTEX = 'vertex',
@@ -59,8 +61,16 @@ export interface MagneticSnapResult {
     edgeT: number; // Position on edge 0-1
     shouldLock: boolean; // Whether to lock to this edge
     shouldRelease: boolean; // Whether to release current lock
-    isCorner: boolean; // Is at a corner (vertex where edges meet)
-    cornerValence: number; // Number of edges at corner
+    /**
+     * At a corner (vertex where edges meet) - and that corner is one of the
+     * locked run's two ENDPOINTS. An interior junction of a merged run never
+     * sets this, even though it does produce a VERTEX snap target: the viewer's
+     * ring rendering encodes the corner position as `edgeT < 0.5`, which can
+     * only name a run end. Junction rings are deferred until that consumer
+     * (owned by PR #2641) can carry a corner position.
+     */
+    isCorner: boolean;
+    cornerValence: number; // Number of edge lines at that corner (0 when !isCorner)
   };
 }
 
@@ -80,10 +90,6 @@ const MAGNETIC_CONFIG = {
   LOCK_STRENGTH_GROWTH: 0.05,
   // Maximum lock strength
   MAX_LOCK_STRENGTH: 1.5,
-  // Minimum edges at vertex for corner detection
-  MIN_CORNER_VALENCE: 2,
-  // Distance threshold for corner detection (percentage of edge length)
-  CORNER_THRESHOLD: 0.08,
 };
 
 export class SnapDetector {
@@ -164,7 +170,7 @@ export class SnapDetector {
     }
 
     // Return best target
-    return this.getBestSnapTarget(targets, intersection.point);
+    return this.getBestSnapTarget(targets);
   }
 
   /**
@@ -235,7 +241,7 @@ export class SnapDetector {
         targets.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius));
       }
       return {
-        snapTarget: this.getBestSnapTarget(targets, intersection.point),
+        snapTarget: this.getBestSnapTarget(targets),
         edgeLock: {
           edge: null,
           meshExpressId: null,
@@ -287,12 +293,7 @@ export class SnapDetector {
     }
 
     // Find all nearby edges (filtered for visibility)
-    const nearbyEdges: Array<{
-      edge: { v0: Vec3; v1: Vec3; index: number };
-      closestPoint: Vec3;
-      distance: number;
-      t: number; // Position on edge 0-1
-    }> = [];
+    const nearbyEdges: EdgeCandidate[] = [];
 
     for (const edge of cache.edges) {
       const result = closestPointOnEdgeWithT(intersection.point, edge.v0, edge.v1);
@@ -331,7 +332,7 @@ export class SnapDetector {
         candidates.push(...this.findVertices(intersectedMesh, intersection.point, worldSnapRadius));
       }
       return {
-        snapTarget: this.getBestSnapTarget(candidates, intersection.point),
+        snapTarget: this.getBestSnapTarget(candidates),
         edgeLock: {
           edge: null,
           meshExpressId: null,
@@ -344,15 +345,15 @@ export class SnapDetector {
       };
     }
 
-    // Sort by distance - prefer closest edge
-    nearbyEdges.sort((a, b) => a.distance - b.distance);
-    const bestEdge = nearbyEdges[0];
+    // Pick the closest edge, with a geometric tiebreak: a plain distance sort
+    // left equidistant candidates to array order, i.e. to wasm triangle
+    // emission order (#2388's failure class).
+    const bestEdge = bestEdgeCandidate(nearbyEdges) as EdgeCandidate;
 
-    // Check if we're at a corner (near edge endpoint with high valence)
-    const cornerInfo = this.detectCorner(
+    // Check if we're at a corner (near a run endpoint or an interior junction)
+    const cornerInfo = detectCorner(
       bestEdge.edge,
       bestEdge.t,
-      cache,
       cornerRadius,
       intersection.point
     );
@@ -360,9 +361,9 @@ export class SnapDetector {
     // Determine snap target
     let snapTarget: SnapTarget;
 
-    if (cornerInfo.isCorner && cornerInfo.valence >= MAGNETIC_CONFIG.MIN_CORNER_VALENCE) {
+    if (cornerInfo.isCorner && cornerInfo.vertex) {
       // Corner snap - snap to vertex
-      const cornerVertex = bestEdge.t < 0.5 ? bestEdge.edge.v0 : bestEdge.edge.v1;
+      const cornerVertex = cornerInfo.vertex;
       snapTarget = {
         type: SnapType.VERTEX,
         position: cornerVertex,
@@ -381,6 +382,11 @@ export class SnapDetector {
       };
     }
 
+    // `edgeLock.isCorner` is restricted to ENDPOINT corners on purpose: its
+    // only consumer encodes the ring position as `edgeT < 0.5`, a start/end
+    // boolean that cannot place a mid-run junction (see `CornerInfo.atEndpoint`).
+    // The junction keeps its exact vertex snap through `snapTarget` above.
+    const cornerAtEnd = cornerInfo.isCorner && cornerInfo.atEndpoint;
     return {
       snapTarget,
       edgeLock: {
@@ -389,8 +395,8 @@ export class SnapDetector {
         edgeT: bestEdge.t,
         shouldLock: true,
         shouldRelease: false,
-        isCorner: cornerInfo.isCorner,
-        cornerValence: cornerInfo.valence,
+        isCorner: cornerAtEnd,
+        cornerValence: cornerAtEnd ? cornerInfo.valence : 0,
       },
     };
   }
@@ -454,20 +460,39 @@ export class SnapDetector {
     // Check for corner at current position
     const cornerRadius = worldSnapRadius * MAGNETIC_CONFIG.EDGE_ATTRACTION_MULTIPLIER * MAGNETIC_CONFIG.CORNER_ATTRACTION_MULTIPLIER;
 
-    // Find the matching edge in cache to get proper index
-    let matchingEdge = cache.edges.find(e =>
+    // Find the matching edge in cache to recover its valences and junctions.
+    // A locked edge always came from this cache, so the fallback below only
+    // fires when the mesh changed under the lock: it carries no valence, which
+    // means no corner snap until the lock re-acquires.
+    const matchingEdge = cache.edges.find(e =>
       (vecEquals(e.v0, v0) && vecEquals(e.v1, v1)) ||
       (vecEquals(e.v0, v1) && vecEquals(e.v1, v0))
     );
 
-    const edgeForCorner = matchingEdge || { v0, v1, index: -1 };
-    const cornerInfo = this.detectCorner(
-      edgeForCorner,
-      edgeT,
-      cache,
-      cornerRadius,
-      point
-    );
+    // `edgeT` runs along the LOCK's orientation, so a cache edge stored the
+    // other way round has to be flipped before it is read - endpoints and
+    // endpoint valences, AND every junction parameter: junction `t` was
+    // computed along the cached run, so under a reversed lock a junction at
+    // cached t = 0.2 sits at lock-space t = 0.8. Left unflipped, the real
+    // junction lost its vertex snap and its mirror position claimed it.
+    const flipped = matchingEdge !== undefined && !vecEquals(matchingEdge.v0, v0);
+    const edgeForCorner: SnapEdge = matchingEdge
+      ? (flipped
+        ? {
+          ...matchingEdge,
+          v0: matchingEdge.v1,
+          v1: matchingEdge.v0,
+          v0Valence: matchingEdge.v1Valence,
+          v1Valence: matchingEdge.v0Valence,
+          // map + reverse keeps the list sorted ascending by `t`.
+          junctions: matchingEdge.junctions.map((j) => ({ ...j, t: 1 - j.t })).reverse(),
+        }
+        : matchingEdge)
+      : {
+        v0, v1, index: -1, length: distance(v0, v1),
+        v0Valence: 0, v1Valence: 0, junctions: [],
+      };
+    const cornerInfo = detectCorner(edgeForCorner, edgeT, cornerRadius, point);
 
     // Calculate snap position (on the edge)
     const snapPosition: Vec3 = {
@@ -480,19 +505,14 @@ export class SnapDetector {
     let snapType: SnapType;
     let confidence: number;
 
-    if (cornerInfo.isCorner && cornerInfo.valence >= MAGNETIC_CONFIG.MIN_CORNER_VALENCE) {
+    if (cornerInfo.isCorner && cornerInfo.vertex) {
       snapType = SnapType.VERTEX;
       confidence = Math.min(1, 0.99 + cornerInfo.valence * MAGNETIC_CONFIG.CORNER_CONFIDENCE_BOOST);
-      // Snap to exact corner vertex
-      if (edgeT < MAGNETIC_CONFIG.CORNER_THRESHOLD) {
-        snapPosition.x = v0.x;
-        snapPosition.y = v0.y;
-        snapPosition.z = v0.z;
-      } else if (edgeT > 1 - MAGNETIC_CONFIG.CORNER_THRESHOLD) {
-        snapPosition.x = v1.x;
-        snapPosition.y = v1.y;
-        snapPosition.z = v1.z;
-      }
+      // Snap to the exact corner vertex — an endpoint of the run, or an
+      // interior junction the run was merged through.
+      snapPosition.x = cornerInfo.vertex.x;
+      snapPosition.y = cornerInfo.vertex.y;
+      snapPosition.z = cornerInfo.vertex.z;
     } else {
       snapType = SnapType.EDGE;
       // Clamp confidence to 0-1 range (can go negative if perpDistance exceeds attraction radius)
@@ -500,6 +520,9 @@ export class SnapDetector {
       confidence = Math.max(0, Math.min(1, rawConfidence));
     }
 
+    // Endpoint-only, for the same reason as in detectMagneticSnap: the ring
+    // consumer cannot place a mid-run junction (see `CornerInfo.atEndpoint`).
+    const cornerAtEnd = cornerInfo.isCorner && cornerInfo.atEndpoint;
     return {
       snapTarget: {
         type: snapType,
@@ -514,44 +537,9 @@ export class SnapDetector {
         edgeT,
         shouldLock: true,
         shouldRelease: false,
-        isCorner: cornerInfo.isCorner,
-        cornerValence: cornerInfo.valence,
+        isCorner: cornerAtEnd,
+        cornerValence: cornerAtEnd ? cornerInfo.valence : 0,
       },
-    };
-  }
-
-  /**
-   * Detect if position is at a corner (vertex with multiple edges)
-   */
-  private detectCorner(
-    edge: { v0: Vec3; v1: Vec3; index: number },
-    t: number,
-    cache: MeshGeometryCache,
-    radius: number,
-    point: Vec3
-  ): { isCorner: boolean; valence: number; vertex: Vec3 | null } {
-    // Check if we're near either endpoint
-    const nearV0 = t < MAGNETIC_CONFIG.CORNER_THRESHOLD;
-    const nearV1 = t > 1 - MAGNETIC_CONFIG.CORNER_THRESHOLD;
-
-    if (!nearV0 && !nearV1) {
-      return { isCorner: false, valence: 0, vertex: null };
-    }
-
-    const vertex = nearV0 ? edge.v0 : edge.v1;
-    const vertexKey = `${vertex.x.toFixed(4)}_${vertex.y.toFixed(4)}_${vertex.z.toFixed(4)}`;
-
-    // Get valence from cache
-    const valence = cache.vertexValence.get(vertexKey) || 0;
-
-    // Also check distance to vertex
-    const distToVertex = distance(point, vertex);
-    const isCloseEnough = distToVertex < radius;
-
-    return {
-      isCorner: isCloseEnough && valence >= MAGNETIC_CONFIG.MIN_CORNER_VALENCE,
-      valence,
-      vertex,
     };
   }
 
@@ -737,7 +725,7 @@ export class SnapDetector {
   /**
    * Select best snap target based on confidence and priority
    */
-  private getBestSnapTarget(targets: SnapTarget[], cursorPoint: Vec3): SnapTarget | null {
+  private getBestSnapTarget(targets: SnapTarget[]): SnapTarget | null {
     if (targets.length === 0) return null;
 
     // Priority order: vertex > edge > face_center > face. POINT_CLOUD

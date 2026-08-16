@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { scrubEvent } from './analytics-scrub.js';
 import { beforeSend, ensureCapturableStack } from './analytics.js';
@@ -835,6 +835,129 @@ describe('scrubEvent — nested + message redaction', () => {
   it('leaves a null-valued property alone', () => {
     const out = scrubEvent({ event: 'custom', properties: { thing: null } } as CaptureEvent);
     assert.equal(out?.properties?.thing, null);
+  });
+});
+
+// Issues #1196 and #2527: a Rust panic in the wasm engine reaches error
+// tracking as a content-free `unreachable` — the panic hook printed the real
+// message + location to the console, but the console is not captured, so the
+// auto-filed GitHub issue carries nothing to triage. The engine's panic hook
+// now stashes the panic's SOURCE LOCATION (never the payload message, which
+// can embed model data) on `globalThis.__ifclite_wasm_panic`; scrubEvent
+// attaches it to the trap exception as `wasm_panic_location`. These pin that
+// contract.
+describe('scrubEvent — wasm trap panic-location attribution (#2527)', () => {
+  type PanicGlobal = { __ifclite_wasm_panic?: unknown };
+  const g = globalThis as PanicGlobal;
+  const stashPanic = (
+    location: unknown = 'geometry/src/mesh_weld.rs:412:9',
+    at: unknown = Date.now(),
+  ): void => {
+    g.__ifclite_wasm_panic = { location, at };
+  };
+  afterEach(() => {
+    delete g.__ifclite_wasm_panic;
+  });
+
+  it('attaches the stashed location to a bare `unreachable` trap and consumes the stash', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'stash must be consumed');
+    // A later identical trap without a fresh stash carries nothing.
+    const later = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(later?.properties?.wasm_panic_location, undefined);
+  });
+
+  it('recognises the trap by its stable `.type` when the message is unfamiliar', () => {
+    stashPanic();
+    // The value deliberately matches NONE of the known trap phrasings, so this
+    // test discriminates the `.type === 'RuntimeError'` arm from the message
+    // fallback (a fixture that matched both would let either arm rot).
+    const out = scrubEvent({
+      event: '$exception',
+      properties: {
+        $exception_list: [{ type: 'RuntimeError', value: 'Aborted(native code crashed)' }],
+      },
+    } as CaptureEvent);
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('recognises a known trap phrasing when the type is a plain Error', () => {
+    // The other arm, isolated: string-only path where the wrap lost the type.
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('memory access out of bounds'));
+    assert.equal(out?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('leaves the stash alone for a non-trap exception (no mislabelling)', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent("Cannot read properties of undefined (reading 'x')"));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    // Still there for the trap that IS about to be captured.
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+  });
+
+  it('ignores a stale stash (a suppressed trap from long ago must not mislabel)', () => {
+    stashPanic('geometry/src/old.rs:1:1', Date.now() - 10 * 60_000);
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'stale stash is still consumed');
+  });
+
+  it('never clobbers a location set explicitly at the capture site', () => {
+    stashPanic('geometry/src/other.rs:2:2');
+    const out = scrubEvent(exceptionEvent('unreachable', { wasm_panic_location: 'chosen/at/site.rs:1:1' }));
+    assert.equal(out?.properties?.wasm_panic_location, 'chosen/at/site.rs:1:1');
+  });
+
+  it('still passes the attached value through the privacy net', () => {
+    // The Rust side sanitises build-machine prefixes, but the scrub is the
+    // net: a location that still looks like a local absolute path is redacted.
+    stashPanic('/Users/dev/secret-project/lib.rs:3:3');
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, '[redacted]');
+  });
+
+  it('does not attach to non-exception events even with a fresh stash', () => {
+    stashPanic();
+    const out = scrubEvent({ event: 'ifc_model_loaded', properties: {} } as CaptureEvent);
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+  });
+
+  it('survives a malformed stash without attaching or crashing, and consumes it on the trap', () => {
+    g.__ifclite_wasm_panic = 'not-an-object';
+    const a = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(a?.properties?.wasm_panic_location, undefined);
+    // The malformed stash must be consumed by the trap that saw it, not left
+    // to linger on the global and mislabel a later one.
+    assert.equal(g.__ifclite_wasm_panic, undefined, 'malformed stash must be consumed');
+    g.__ifclite_wasm_panic = { location: 42, at: Date.now() };
+    const b = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(b?.properties?.wasm_panic_location, undefined);
+  });
+
+  // A bare "unreachable" also appears in ordinary network-failure phrasing
+  // ("network is unreachable", "host unreachable") — none of them are wasm
+  // traps. Matching them would consume the panic stash and stamp a genuine
+  // Rust panic location onto an unrelated network error, leaving the real
+  // trap that arrives a moment later with nothing.
+  it('does not treat a network-unreachable failure as a wasm trap', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('Failed to fetch: network is unreachable'));
+    assert.equal(out?.properties?.wasm_panic_location, undefined);
+    // The stash survives for the real trap that follows.
+    assert.notEqual(g.__ifclite_wasm_panic, undefined);
+    const trap = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(trap?.properties?.wasm_panic_location, 'geometry/src/mesh_weld.rs:412:9');
+  });
+
+  it('keeps the #1196 doctrine: attribution adds a property, never a kind or fingerprint', () => {
+    stashPanic();
+    const out = scrubEvent(exceptionEvent('unreachable'));
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
   });
 });
 

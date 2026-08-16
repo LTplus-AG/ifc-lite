@@ -7,13 +7,22 @@
 
 use std::collections::{HashMap, HashSet};
 
-use ifc_lite_core::{build_entity_index, EntityDecoder};
+use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner};
 use serde_json::{json, Map, Value};
 
 use crate::json::typed_value;
 use crate::model::{build_export_model, EntityRow};
 
 /// IFC5 schema-package import URIs (ifcx.dev v5a).
+/// The value every IFCX writer in this repo puts in `header.ifcxVersion`.
+///
+/// The TypeScript side owns the same constant (`IFCX_VERSION`, exported from
+/// `@ifc-lite/data` and re-exported by `@ifc-lite/ifcx`). The two are pinned
+/// together by the exportIfcx assertion in `scripts/test-wasm-contract.mjs`,
+/// which reads the header back out of a file this exporter produced — readers
+/// only match the substring `ifcx`, so nothing else would notice a drift.
+const IFCX_VERSION: &str = "ifcx_alpha";
+
 const IMPORT_CORE: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/ifc@v5a.ifcx";
 const IMPORT_PROP: &str = "https://ifcx.dev/@standards.buildingsmart.org/ifc/core/prop@v5a.ifcx";
 
@@ -77,14 +86,28 @@ pub(crate) fn spatial_children(content: &[u8]) -> (HashMap<u32, Vec<u32>>, Optio
     (r.spatial_children, r.project)
 }
 
+/// Decode exactly one entity, found by scanning for its id.
+///
+/// The alternative is `build_entity_index` plus `decode_by_id`, which builds a
+/// map of every entity in the file to answer one question: a full serial scan
+/// and a multi-million-entry allocation on a large model. This walks until it
+/// finds the id and stops, so a project node near the top of `DATA` costs almost
+/// nothing. Worth it only for a handful of lookups, which is what the callers do.
+pub(crate) fn decode_one(content: &[u8], id: u32) -> Option<DecodedEntity> {
+    let mut decoder = EntityDecoder::new(content);
+    let mut scanner = EntityScanner::new(content);
+    while let Some((entity_id, _type_name, start, end)) = scanner.next_entity() {
+        if entity_id == id {
+            return decoder.decode_at(start, end).ok();
+        }
+    }
+    None
+}
+
 /// Decode the IfcProject node (id, name) — it is not an IfcProduct so the export
 /// model doesn't carry it. Shared with the USD exporter (`crate::usd`).
 pub(crate) fn project_name(content: &[u8], project_id: u32) -> String {
-    let index = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
-    decoder
-        .decode_by_id(project_id)
-        .ok()
+    decode_one(content, project_id)
         .and_then(|e| e.get(2).and_then(|a| a.as_string()).map(|s| s.to_string()))
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "Project".to_string())
@@ -186,7 +209,12 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 
     let doc = json!({
         "header": {
-            "version": "ifcx_alpha",
+            // `ifcxVersion`, not `version`. That is the key buildingSMART's own
+            // reference files carry, and the one `@ifc-lite/ifcx` requires to
+            // recognise a file at all — so under the old name every file this
+            // exporter produced was rejected by our own parser with
+            // "Invalid IFCX file: missing or invalid header.ifcxVersion".
+            "ifcxVersion": IFCX_VERSION,
             "author": opts.author,
             "dataVersion": opts.data_version,
         },
@@ -206,16 +234,11 @@ pub fn export_ifc5(content: &[u8], opts: &Ifc5Options) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_ifcx() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
-        assert_eq!(v["header"]["version"], "ifcx_alpha");
+        assert_eq!(v["header"]["ifcxVersion"], IFCX_VERSION);
         assert_eq!(v["imports"][0]["uri"], IMPORT_CORE);
 
         let data = v["data"].as_array().expect("data array");
@@ -252,9 +275,40 @@ mod tests {
         assert!(has_prop, "expected a typed IFC5 property somewhere");
     }
 
+    /// The header key a READER looks for, which is not the same thing as the
+    /// key this exporter happens to write.
+    ///
+    /// The assertion above was previously `header.version`, mirroring the
+    /// implementation — so it passed while every exported file was rejected by
+    /// `@ifc-lite/ifcx` ("missing or invalid header.ifcxVersion") and did not
+    /// match buildingSMART's own reference files either. Pinning the absence of
+    /// the old key is what makes that regression fail here instead of at the
+    /// other end of a round-trip.
+    #[test]
+    fn header_uses_the_key_readers_look_for() {
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let v: Value = serde_json::from_str(&s).expect("valid JSON");
+
+        let header = v["header"].as_object().expect("header object");
+        assert!(
+            header.contains_key("ifcxVersion"),
+            "header must carry ifcxVersion; got keys {:?}",
+            header.keys().collect::<Vec<_>>(),
+        );
+        assert!(
+            !header.contains_key("version"),
+            "the old `version` key is what readers ignore — it must not come back",
+        );
+        // Readers match case-insensitively on the substring "ifcx".
+        assert!(
+            header["ifcxVersion"].as_str().unwrap().to_lowercase().contains("ifcx"),
+            "ifcxVersion must contain 'ifcx'",
+        );
+    }
+
     #[test]
     fn unknown_props_filtered_by_default() {
-        let s = export_ifc5(&fixture("ara3d/duplex.ifc"), &Ifc5Options::default());
+        let s = export_ifc5(&fixture_or_skip!("ara3d/duplex.ifc"), &Ifc5Options::default());
         // 'LoadBearing' / 'Reference' are IFC4 props NOT in the IFC5 known set.
         assert!(!s.contains("bsi::ifc::prop::LoadBearing"));
         assert!(!s.contains("bsi::ifc::prop::Reference\""));

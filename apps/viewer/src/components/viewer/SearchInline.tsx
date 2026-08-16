@@ -85,6 +85,7 @@ export function SearchInline() {
     models,
     setSelectedEntity,
     setSelectedEntityId,
+    setSelectedEntityIds,
     toggleEntitySelection,
     cameraCallbacks,
   } = useViewerStore(
@@ -108,6 +109,7 @@ export function SearchInline() {
       models: s.models,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
       toggleEntitySelection: s.toggleEntitySelection,
       cameraCallbacks: s.cameraCallbacks,
     })),
@@ -232,6 +234,8 @@ export function SearchInline() {
         return;
       }
 
+      // Clear multi-selection first (setSelectedEntityIds([]) resets selectedEntityId)
+      setSelectedEntityIds([]);
       setSelectedEntityId(globalId);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
@@ -247,6 +251,7 @@ export function SearchInline() {
       models,
       setSelectedEntity,
       setSelectedEntityId,
+      setSelectedEntityIds,
       toggleEntitySelection,
     ],
   );

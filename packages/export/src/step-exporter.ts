@@ -25,7 +25,12 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
+import {
+  collectReferencedEntityIds,
+  getVisibleEntityIds,
+  collectStyleEntities,
+  filterHiddenRefsFromRelationshipLine,
+} from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
@@ -380,18 +385,55 @@ export class StepExporter {
     // either, so counting it as "modified" would make the header claim a
     // change the DATA section does not contain (CodeRabbit finding on #2414).
     let allowedEntityIds: Set<number> | null = null;
+    // Populated alongside `allowedEntityIds` below. `getVisibleEntityIds`
+    // excludes a hidden PRODUCT's own line from the closure, but `IFCREL*` is
+    // an unconditional root a few lines down and its bytes are copied verbatim
+    // by the source-iteration pass — nothing there filters a `#N` the closure
+    // just excluded out of the relationship's own attribute list. Kept so the
+    // source-iteration and overlay new-entity passes can run
+    // `filterHiddenRefsFromRelationshipLine` against the SAME exclusion set
+    // `collectReferencedEntityIds` used, rather than a second, possibly
+    // divergent notion of "hidden" (#2398).
+    let hiddenProductIds: ReadonlySet<number> | null = null;
+    // A relationship can name an excluded entity two ways that have nothing
+    // to do with each other: a `visibleOnly` hidden PRODUCT (`hiddenProductIds`,
+    // below), and a TOMBSTONED one — `editor.removeEntity` on a related object
+    // named by a relationship the deletion sweep below does not reach (that
+    // sweep only withholds an `IfcRelDefinesByProperties` when EVERY related
+    // object is gone, and only for that one relationship class). Left alone, a
+    // relationship still naming a deleted entity ships the identical `#N` with
+    // no `#N=` line, on a path with no `visibleOnly` involved at all (#2398).
+    // `effective.isDeleted` answers for every id, not just a precomputed set,
+    // so this predicate covers both sources without a second exclusion set.
+    //
+    // Declared here, ahead of the closure walk below, and passed into
+    // `collectReferencedEntityIds` as its `isRefExcluded` — the walk's bridge
+    // decision (whether an `IFCREL*` root may reach what it names) and the
+    // OUTPUT-line filtering further down now read the SAME predicate, rather
+    // than the walk inventing its own `!entityIndex.has` proxy for "deleted"
+    // that could disagree with this one on an id that never existed in the
+    // file at all (maintainer-found regression on #2637: such an id blocked
+    // the bridge but did not stop the relationship's own line from shipping,
+    // dropping a VISIBLE sibling's pset while adding a fresh dangling ref).
+    // A closure over the `let hiddenProductIds` above, not a value snapshot —
+    // correct because nothing reads it before `hiddenProductIds` is assigned
+    // just below.
+    const isExcludedFromRelationshipRefs = (id: number): boolean =>
+      (hiddenProductIds !== null && hiddenProductIds.has(id)) || effective.isDeleted(id);
     if (options.visibleOnly && this.dataStore.source) {
-      const { roots, hiddenProductIds } = getVisibleEntityIds(
+      const visible = getVisibleEntityIds(
         this.dataStore,
         options.hiddenEntityIds ?? new Set(),
         options.isolatedEntityIds ?? null,
         effective,
       );
+      hiddenProductIds = visible.hiddenProductIds;
       allowedEntityIds = collectReferencedEntityIds(
-        roots,
+        visible.roots,
         this.dataStore.source,
         effective,
-        hiddenProductIds,
+        visible.hiddenProductIds,
+        isExcludedFromRelationshipRefs,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
       // geometry. Styled items reference geometry items but nothing references
@@ -402,6 +444,11 @@ export class StepExporter {
         { byId: effective, byType: effective.byType },
       );
     }
+    // `overlayActive` proper (used everywhere else) is declared further below,
+    // ahead of the mutation-processing block it gates; duplicated here as the
+    // same expression rather than reordering that declaration.
+    const mayNameExcludedRefs = (hiddenProductIds !== null && hiddenProductIds.size > 0)
+      || (!!this.mutationView && options.applyMutations !== false);
 
     // Will THIS entity's own line ever land in the file? The same byte-range
     // test `willBeEmitted` uses (defined further below) and the source-
@@ -509,7 +556,8 @@ export class StepExporter {
 
         if (!mutation.psetName) continue;
 
-        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY' || mutation.type === 'DELETE_QUANTITY';
+        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY'
+          || mutation.type === 'DELETE_QUANTITY' || mutation.type === 'DELETE_QUANTITY_SET';
         const targetMap = isQuantity ? entityQuantMutations : entityPropMutations;
 
         if (!targetMap.has(mutation.entityId)) {
@@ -731,10 +779,14 @@ export class StepExporter {
         // affected-name set is not the same thing: it comes from the session's
         // append-only mutation history, which keeps naming a quantity set after
         // an undo has taken it back out of the overlay, so a Ctrl+Z used to
-        // withhold a source `IfcElementQuantity` that nothing regenerated. There
-        // is no quantity-set REMOVAL to preserve here — `deletedQsets` has no
-        // public populator, so withholding without a replacement is always the
-        // bug and never the intent (#2487).
+        // withhold a source `IfcElementQuantity` that nothing regenerated.
+        //
+        // A quantity-set REMOVAL is the one case where withholding WITHOUT a
+        // replacement is the intent rather than the bug. It had no public
+        // populator when #2487 wrote that rule, so the rule read "always the
+        // bug"; `MutablePropertyView.deleteQuantitySet` (#2508) gives it one,
+        // and the deleted set is now asked for by name below. Without that, the
+        // panel hid a base quantity set the exported file still carried.
         const regeneratedQsetNames = new Set(relevantQsets.map((qset: QuantitySet) => qset.name));
 
         // Skip original quantity set entities (IfcElementQuantity).
@@ -743,7 +795,9 @@ export class StepExporter {
         if (rels) {
           for (const { relId, psetId: relatedPsetId } of rels) {
             const qsetName = this.getElementQuantityName(relatedPsetId);
-            if (qsetName && regeneratedQsetNames.has(qsetName)) {
+            const deleted = qsetName !== null
+              && this.mutationView.isQuantitySetDeleted?.(entityId, qsetName) === true;
+            if (qsetName && (regeneratedQsetNames.has(qsetName) || deleted)) {
               skipRelationshipIds.add(relId);
               skipPropertySetIds.add(relatedPsetId);
               const quantIds = this.getPropertyIdsInSet(relatedPsetId);
@@ -1118,7 +1172,30 @@ export class StepExporter {
           sourceSchema,
           overlayActive,
         );
-        const nextEntityText = mutated.text;
+        let nextEntityText = mutated.text;
+
+        // A hidden PRODUCT's own line is already out of the export via
+        // `allowedEntityIds`, and a TOMBSTONED entity's via `effective` — this
+        // is the relationship that NAMED either one. `IFCREL*` is an
+        // unconditional root (see `getVisibleEntityIds`), so its bytes reach
+        // here unfiltered even when one of the ids they name was just
+        // excluded; left alone that ships a `#N` with no `#N=` line, whether
+        // the exclusion came from `visibleOnly` or from a plain deletion
+        // (#2398). Checked before the nomination below: a relationship this
+        // withholds must not also be counted as a delivered modification.
+        //
+        // Classified by the EFFECTIVE type (`effective.effectiveType`), not
+        // the authored `entityType` above: a retype can move a record across
+        // the `IFCREL*` boundary in either direction (`applySourceLineMutations`
+        // already rewrote `nextEntityText` to the new class), and this check
+        // has to agree with what actually got written, the same way
+        // `getVisibleEntityIds` already does for the visibility walk itself.
+        const effectiveRelType = effective.effectiveType(expressId, entityRef.type).toUpperCase();
+        if (mayNameExcludedRefs && effectiveRelType.startsWith('IFCREL')) {
+          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isExcludedFromRelationshipRefs);
+          if (filtered === null) continue;
+          nextEntityText = filtered;
+        }
 
         // A retype or a positional edit that CHANGED the line is what makes
         // this entity count; a named attribute edit was already nominated by
@@ -1416,7 +1493,13 @@ export class StepExporter {
             sourceSchema,
           );
         }
-        const line = `#${entity.expressId}=${upperType}(${argsText});`;
+        let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
+        // Same gap as the source-iteration pass, for an overlay-authored
+        // relationship instead of a parsed one (#2398).
+        if (mayNameExcludedRefs && upperType.startsWith('IFCREL')) {
+          line = filterHiddenRefsFromRelationshipLine(line, isExcludedFromRelationshipRefs);
+          if (line === null) continue;
+        }
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {

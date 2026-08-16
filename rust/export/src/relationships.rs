@@ -46,9 +46,12 @@ pub struct Relationships {
 /// one dangling reference still has a usable tree, and the alternative is
 /// returning nothing for a defect the caller cannot act on.
 pub fn relationships(content: &[u8]) -> Relationships {
-    // Parallel on native (byte-identical to `build_entity_index`), serial on wasm.
-    let index = ifc_lite_processing::build_entity_index_parallel(content);
-    let mut decoder = EntityDecoder::with_index(content, index);
+    // No entity index, deliberately. Every decode below is `decode_at_with_id`
+    // over the scanner's own spans; only `decode_by_id` consults an index, and
+    // nothing here calls it. Building one costs a full extra scan whose result
+    // is never read: ~57 ms of a 235 ms call on a 327 MB model. Do not add one
+    // back without a `decode_by_id` to justify it.
+    let mut decoder = EntityDecoder::new(content);
     let mut out = Relationships::default();
 
     let mut scanner = EntityScanner::new(content);

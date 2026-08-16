@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /**
  * WASM API Contract Tests
  *
@@ -19,6 +22,7 @@ import {
   intersection2d,
   resolve2d,
   meshOutline2d,
+  splitMeshByZones,
 } from '../packages/wasm/pkg/ifc-lite.js';
 import { parseMeshesViaPrePass } from './lib/mesh-via-prepass.mjs';
 import { runPrepassClassBoundaryTests } from './lib/prepass-class-boundary.mjs';
@@ -797,7 +801,7 @@ test('exportKmz packs a stored-zip KMZ (PK header, doc.kml + model.glb, axis-der
   const text = Buffer.from(kmz).toString('latin1');
   assert.ok(text.includes('doc.kml'), 'archive names doc.kml');
   assert.ok(text.includes('model.glb'), 'archive names model.glb');
-  assert.ok(text.includes('<heading>90</heading>'), 'heading derived from grid axis (1,0) → 90');
+  assert.ok(text.includes('<heading>0</heading>'), 'heading derived from grid axis (1,0) → 0');
   assert.ok(text.includes('Contract Bldg'), 'placemark name present');
 });
 
@@ -838,6 +842,27 @@ if (existsSync(HELLO_WALL)) {
     const again = api.exportUsd(wallBytes);
     assert.ok(again instanceof Uint8Array);
     assert.equal(new TextDecoder().decode(again), usda, 'USD export must be deterministic');
+  });
+
+  // ===== IFCX header, across the language boundary =====
+  // The Rust exporter and the TypeScript writers each hold their own copy of
+  // the version value (`IFCX_VERSION` in rust/export/src/ifc5.rs, and in
+  // @ifc-lite/data re-exported by @ifc-lite/ifcx). Nothing else would notice
+  // them drifting: `parseIfcx` accepts any value containing the substring
+  // `ifcx`, case-insensitively, which is exactly why six call sites said
+  // `ifcx_alpha` and a seventh said `IFCX-1.0` for months without a symptom.
+  //
+  // Pinned to the literal rather than imported: this script runs on plain node
+  // against the built wasm, and asserting "Rust used its own constant" would
+  // pass even if that constant changed. Update BOTH sides and this line.
+  test('exportIfcx stamps the agreed header.ifcxVersion (pins Rust to the TS constant)', () => {
+    const ifcxBytes = api.exportIfcx(wallBytes);
+    assert.ok(ifcxBytes instanceof Uint8Array, 'IFCX should be a Uint8Array');
+    const header = JSON.parse(new TextDecoder().decode(ifcxBytes)).header;
+    assert.equal(header.ifcxVersion, 'ifcx_alpha', 'Rust exporter and @ifc-lite/data must agree');
+    // The key itself, not just its value: writing it under `version` is what
+    // made every exported file unreadable by our own parser until #2556.
+    assert.ok(!('version' in header), 'the pre-#2556 `version` key must not come back');
   });
 } else {
   console.log('  ⚠️  apps/landing/samples/hello-wall.ifc missing — skipping exportUsd contract test');
@@ -1416,6 +1441,101 @@ test('operations return new handles and leave their operands usable', () => {
     second.free();
     b.free();
     a.free();
+  }
+});
+
+// ===== splitMeshByZones across the real WASM boundary (#2508) =====
+
+/** A 6 x 1 x 1 m box from the origin, as flat f64 positions + indices. */
+function boxMesh(x0, y0, z0, x1, y1, z1) {
+  const positions = Float64Array.from([
+    x0, y0, z0, x1, y0, z0, x1, y1, z0, x0, y1, z0,
+    x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1,
+  ]);
+  const indices = Uint32Array.from([
+    0, 3, 2, 0, 2, 1, 4, 5, 6, 4, 6, 7,
+    0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5,
+    0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2,
+  ]);
+  return { positions, indices };
+}
+
+test('splitMeshByZones cuts a wall at a known fraction and the pieces add up', () => {
+  // The wall spans x = 0..6, so a boundary at x = 2 leaves exactly 2 m3 below
+  // it. Crossing the real boundary matters here beyond the Rust unit test:
+  // the zones arrive as a FLAT Float64Array whose stride and field order this
+  // side has to agree on, and a transposed size/centre would still produce a
+  // plausible-looking split.
+  const { positions, indices } = boxMesh(0, 0, 0, 6, 1, 1);
+  const zones = Float64Array.from([
+    0.5, 0.5, 0.5, 3, 4, 4, 0,   // covers x = -1..2
+    4.5, 0.5, 0.5, 5, 4, 4, 0,   // covers x = 2..7
+  ]);
+  const split = splitMeshByZones(positions, indices, zones);
+  try {
+    assert.ok(Math.abs(split.wholeVolume - 6) < 1e-9, `whole volume ${split.wholeVolume}`);
+    assert.ok(split.sumErrorRel < 1e-9, `pieces do not sum to the whole: ${split.sumErrorRel}`);
+    const byZone = new Map();
+    for (let i = 0; i < split.pieceCount; i++) {
+      const piece = split.piece(i);
+      try {
+        byZone.set(piece.zoneIndex, piece.volume);
+        assert.ok(piece.positions.length > 0 && piece.indices.length > 0, 'piece has geometry');
+      } finally {
+        piece.free();
+      }
+    }
+    assert.ok(Math.abs(byZone.get(0) - 2) < 1e-9, `zone 0 got ${byZone.get(0)}`);
+    assert.ok(Math.abs(byZone.get(1) - 4) < 1e-9, `zone 1 got ${byZone.get(1)}`);
+  } finally {
+    split.free();
+  }
+});
+
+test('splitMeshByZones keeps an element no zone reaches, as the remainder', () => {
+  const { positions, indices } = boxMesh(0, 0, 0, 6, 1, 1);
+  const zones = Float64Array.from([100, 0, 0, 2, 2, 2, 0]);
+  const split = splitMeshByZones(positions, indices, zones);
+  try {
+    assert.equal(split.pieceCount, 1);
+    const piece = split.piece(0);
+    try {
+      // -1, not 0: an element in no zone must not be reported as being in the
+      // first one.
+      assert.equal(piece.zoneIndex, -1);
+      assert.ok(Math.abs(piece.volume - 6) < 1e-9);
+    } finally {
+      piece.free();
+    }
+  } finally {
+    split.free();
+  }
+});
+
+test('splitMeshByZones cuts by a prism footprint, not by its bounding box', () => {
+  // The triangle (0,0) - (6,0) - (0,1) halves the wall's 6 x 1 m plan along the
+  // diagonal, so it takes exactly half the volume. Its BOUNDING BOX is the
+  // whole wall, so a binding that dropped the footprint would answer 6.
+  const { positions, indices } = boxMesh(0, 0, 0, 6, 1, 1);
+  const zones = Float64Array.from([3, 0.5, 0.5, 6, 4, 1, 0]);
+  const split = splitMeshByZones(
+    positions,
+    indices,
+    zones,
+    Float64Array.from([0, 0, 6, 0, 0, 1]),
+    Uint32Array.from([3]),
+  );
+  try {
+    const piece = split.piece(0);
+    try {
+      assert.equal(piece.zoneIndex, 0);
+      assert.ok(Math.abs(piece.volume - 3) < 1e-6, `prism piece is ${piece.volume} m3, expected 3`);
+    } finally {
+      piece.free();
+    }
+    assert.ok(split.sumErrorRel < 1e-9, `sum error ${split.sumErrorRel}`);
+  } finally {
+    split.free();
   }
 });
 

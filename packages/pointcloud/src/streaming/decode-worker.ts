@@ -152,8 +152,10 @@ async function createSource(
   opts: {
     label?: string;
     downsample: { stride: number };
-    /** See `decodeLasPoints`'s `originOffset` param (issue #1804);
-     *  only the LAS/LAZ sources consume it. */
+    /** See `decodeLasPoints`'s `originOffset` param (issue #1804) — every
+     *  format source consumes it, subtracting in f64 before narrowing to
+     *  f32 (extended to E57/PLY/PCD/PTS/XYZ alongside the original
+     *  LAS/LAZ support). */
     originOffset?: readonly [number, number, number];
   },
 ): Promise<StreamingPointSource> {

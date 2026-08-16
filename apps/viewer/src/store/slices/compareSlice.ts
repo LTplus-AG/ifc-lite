@@ -30,6 +30,12 @@ export interface CompareResult {
   /** True when a compared model carries no geometry hashes (loaded outside the
    *  WASM mesh path), so geometry-scope changes can't be detected. */
   geometryUnavailable: boolean;
+  /** `geometryUnavailable` with placement fingerprints still in play (both
+   *  sides mesh-less, placements kept): the geometry channel still reports
+   *  placement-driven moves, only reshapes are invisible — the warning must
+   *  say so or it contradicts the panel's own rows. See
+   *  `geometryCapability.resolveGeometryChannel`. */
+  placementOnlyGeometry?: boolean;
   /**
    * Federation global ids of meshed entities whose class is on the blacklist
    * ({@link CompareSlice.compareExcludedTypes}) - dropped from the diff, so the

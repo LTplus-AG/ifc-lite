@@ -76,6 +76,55 @@ describe('parsePlyHeader', () => {
   });
 });
 
+describe('decodePly originOffset (extends #1804 to PLY)', () => {
+  it('subtracts originOffset in f64 before narrowing to f32 — ascii', () => {
+    const buf = buildAsciiPly([[500012.345, 5000006.789, 104.321]]);
+    const withoutOffset = decodePly(buf);
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodePly(buf, [500_000, 5_000_000, 100]);
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+  });
+
+  it('subtracts originOffset in f64 before narrowing to f32 — binary double', () => {
+    const header =
+      'ply\n' +
+      'format binary_little_endian 1.0\n' +
+      'element vertex 1\n' +
+      'property double x\nproperty double y\nproperty double z\n' +
+      'end_header\n';
+    const headerBytes = enc.encode(header);
+    const body = new ArrayBuffer(24);
+    const view = new DataView(body);
+    view.setFloat64(0, 500012.345, true);
+    view.setFloat64(8, 5000006.789, true);
+    view.setFloat64(16, 104.321, true);
+    const buf = new Uint8Array(headerBytes.length + body.byteLength);
+    buf.set(headerBytes, 0);
+    buf.set(new Uint8Array(body), headerBytes.length);
+
+    const withoutOffset = decodePly(buf);
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodePly(buf, [500_000, 5_000_000, 100]);
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const buf = buildAsciiPly([[1, 2, 3], [-4, -5, -6]]);
+    const a = decodePly(buf);
+    const b = decodePly(buf, undefined);
+    expect(Array.from(a.positions)).toEqual(Array.from(b.positions));
+    expect(a.bbox).toEqual(b.bbox);
+  });
+});
+
 describe('decodePly', () => {
   it('decodes ascii xyz', () => {
     const buf = buildAsciiPly([

@@ -25,6 +25,7 @@ import {
   nextAdaptiveBatchJobs,
   type BatchSizingConfig,
 } from './batch-sizing.js';
+import { takeWasmPanicStash } from './wasm-panic-forward.js';
 
 export interface GeometryWorkerInitMessage {
   type: 'init';
@@ -405,6 +406,13 @@ export interface GeometryWorkerProgressMessage {
 export interface GeometryWorkerErrorMessage {
   type: 'error';
   message: string;
+  /** This worker realm's wasm panic-location stash (#2527 follow-up), forwarded
+   *  so the main thread can re-plant it on ITS global for the existing
+   *  `attachWasmPanicLocation` gate. Location only, never the panic message.
+   *  Absent when there was no stash (e.g. a non-panic error) or it was
+   *  malformed. See `wasm-panic-forward.ts`. */
+  wasmPanicLocation?: string;
+  wasmPanicAt?: number;
 }
 
 /**
@@ -1319,8 +1327,17 @@ let messageTail: Promise<void> = Promise.resolve();
 
 self.onmessage = (rawEvent: MessageEvent<GeometryWorkerRequest>) => {
   messageTail = messageTail.then(() => handleMessage(rawEvent)).catch((err) => {
+    // #2527 follow-up: forward this realm's panic-location stash (if the
+    // failure was a wasm trap) so the main thread can re-plant it on ITS
+    // global for `attachWasmPanicLocation`. Read AFTER the throw, so a panic
+    // synchronous with this catch has already had its hook run.
+    const panic = takeWasmPanicStash(self);
     (self as unknown as Worker).postMessage(
-      { type: 'error', message: err instanceof Error ? err.message : String(err) } as GeometryWorkerErrorMessage,
+      {
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        ...(panic ? { wasmPanicLocation: panic.location, wasmPanicAt: panic.at } : {}),
+      } as GeometryWorkerErrorMessage,
     );
   });
 };
@@ -1724,8 +1741,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       return;
     }
   } catch (err) {
+    // Same #2527 follow-up forward as the top-level catch above.
+    const panic = takeWasmPanicStash(self);
     (self as unknown as Worker).postMessage(
-      { type: 'error', message: err instanceof Error ? err.message : String(err) } as GeometryWorkerErrorMessage,
+      {
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        ...(panic ? { wasmPanicLocation: panic.location, wasmPanicAt: panic.at } : {}),
+      } as GeometryWorkerErrorMessage,
     );
   }
 }

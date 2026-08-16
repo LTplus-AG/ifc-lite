@@ -32,10 +32,27 @@
  * is therefore withheld for a re-baked model rather than re-derived — see
  * `geometryVolumesSurviveAlignment`.
  *
- * Scope: only entities that produced at least one mesh are fingerprinted —
- * the engine needs a geometry hash to detect geometry changes, and the
- * compare UI colours meshed elements in 3D. Data-only edits on those meshed
- * entities are still detected via the data hash.
+ * Scope: every entity that produced at least one mesh, PLUS every `IfcProduct`
+ * with a GlobalId — see `compareScope.ts` for why that second half exists and
+ * where its line is drawn. The mesh-only enumeration this widens made "did it
+ * change?" quietly mean "did a renderable thing change?", so a geometry-less
+ * `IfcElementAssembly` could have its attributes rewritten, and a geometry-less
+ * `IfcSite` could be deleted outright, with the panel reporting neither.
+ * Data-only edits on meshed entities were, and remain, detected via the data
+ * hash.
+ *
+ * A product with no mesh carries, in place of a WASM geometry hash, a
+ * fingerprint of its COMPOSED WORLD PLACEMENT (`worldPlacement.ts`). Leaving it
+ * with no geometry hash at all made the whole geometry channel silent for that
+ * population, and an entire re-georeferenced `IfcSite` — moved 40 m, turned 60
+ * degrees, subtree and all — was reported as unchanged. It must be the composed
+ * transform rather than the local placement: re-georeferencing rewrites the
+ * placement *expression* of objects that did not move, and flagging those cries
+ * wolf on every corrected model.
+ *
+ * The data fingerprint also carries the entity's RESOLVED MATERIAL NAMES,
+ * through every `IfcMaterial*` indirection. Material was in no channel at all,
+ * so re-specifying an element moved nothing.
  */
 
 import {
@@ -47,14 +64,17 @@ import {
 import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
+  extractAllMaterialsOnDemand,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
+import { lensMaterialNames } from '../lens-material-names.js';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
+import { comparableProductIds } from './compareScope.js';
 import { isGeometricDataName } from './geometricData.js';
 import { isTypeObjectClass, typeObjectTag } from './typeObjectTag.js';
-import type { FederatedModel } from '@/store/types';
+import { worldPlacementFingerprint, type PlacementComposeCache } from './worldPlacement.js';
 
 /**
  * Adapter handle threaded through the diff onto each {@link CompareDiffEntry}.
@@ -69,6 +89,24 @@ export interface CompareRef {
   localId: number;
   /** Federation global id (`localId + idOffset`) — the renderer mesh id. */
   globalId: number;
+  /**
+   * Did the geometry pass produce anything drawable under {@link globalId}?
+   *
+   * `false` for a product that reached the comparison through
+   * `comparableProductIds` alone — there is no mesh and no instanced entry, so
+   * `setColorOverrides` on this id is a no-op and hiding it suppresses nothing.
+   * The overlay needs that distinction: its rule for a modified element is
+   * "colour the head copy, hide the base copy so the two do not z-fight", and
+   * that rests on the head copy being drawable. See `overlay.ts`.
+   *
+   * Distinct from `geometryHash === undefined`, which is also what a meshed
+   * entity carries when hashing is off — that entity is still drawn.
+   *
+   * OPTIONAL and read as "drawable unless explicitly `false`": a hand-built
+   * ref (tests, older call sites) keeps the pre-existing behaviour rather than
+   * being demoted to invisible by omission.
+   */
+  meshed?: boolean;
 }
 
 export interface BuildFingerprintsModel {
@@ -130,7 +168,8 @@ export interface BuildFingerprintsModel {
 }
 
 /**
- * Build one {@link EntityFingerprint} per meshed entity in a model.
+ * Build one {@link EntityFingerprint} per compared entity in a model — every
+ * meshed entity, plus every geometry-less `IfcProduct` (`comparableProductIds`).
  *
  * Entities are de-duplicated by express id (an entity emits several
  * submeshes); the first mesh carrying a `geometryHash` wins (all submeshes of
@@ -158,7 +197,11 @@ export async function buildEntityFingerprints(
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
-  const geometryByLocalId = new Map<number, bigint | undefined>();
+  // `bigint` is a WASM mesh hash; `string` is a `p:`-prefixed composed-world-
+  // placement fingerprint for a geometry-less product (`worldPlacement.ts`).
+  // The engine's `GeometryHash` admits both, and the prefix keeps the two
+  // value spaces disjoint.
+  const geometryByLocalId = new Map<number, bigint | string | undefined>();
   // local express id → the entity's absolute world box (#1891). No
   // first-wins arbitration like the hash needs: the box is per ENTITY, so every
   // submesh of one entity carries the identical object off a single wasm pass
@@ -211,6 +254,48 @@ export async function buildEntityFingerprints(
     }
   }
 
+  // Finally, the products the geometry pass never saw: an IfcElementAssembly
+  // whose meshes all hang off its IfcRelAggregates parts, an IfcSite, a
+  // placeholder proxy marking a survey origin. They are compared on their data
+  // alone, so they enter with an explicitly UNDEFINED geometry hash — the same
+  // value a meshed entity gets when hashing is off, and the value
+  // `geometryEqual` reads as "no geometry change" when both sides have it.
+  // Added last and gap-filling only, so every id the meshes produced keeps both
+  // its hash and its position in the built array.
+  // Recorded rather than re-derived: `geometryHash === undefined` also
+  // describes a MESHED entity on a build with hashing off, and that one is
+  // still drawn. Only the ids collected here are absent from the scene.
+  const geometryless = new Set<number>();
+  // One compose memo for the whole scan (`PlacementComposeCache`): products
+  // share their spatial ancestry, so without it one storey's chain is
+  // recomposed once per descendant — and on the port-dominated MEP models
+  // `compareScope.ts` names, that is most of this pass. Build-scoped, so it
+  // cannot go stale across runs.
+  const placementCache: PlacementComposeCache = new Map();
+  let scanned = 0;
+  for (const localId of comparableProductIds(store)) {
+    if (geometryByLocalId.has(localId)) continue;
+    // Not `undefined` — their COMPOSED WORLD PLACEMENT, when they have one.
+    // These entities have no mesh, so nothing else can speak for where they
+    // are, and an entire re-georeferenced IfcSite went unreported for exactly
+    // that reason. A meshed entity is deliberately excluded: its placement is
+    // already inside the WASM hash it carries, which is strictly better
+    // evidence, and displacing that hash would also break the content-matching
+    // tier that sub-buckets on it. `worldPlacementFingerprint` abstains
+    // (`undefined`, the prior behaviour) for a product with no placement, an
+    // uncomposable chain or a malformed one — see `worldPlacement.ts` for why
+    // it must be the composed transform and never the local one.
+    geometryByLocalId.set(localId, worldPlacementFingerprint(store, localId, placementCache));
+    geometryless.add(localId);
+    // Placement composition re-reads STEP records, so this scan carries the
+    // same responsiveness duty as the extraction loop below (#924): yield
+    // periodically or the whole placement pass blocks the main thread before
+    // the first fingerprint yield is ever reached.
+    if (++scanned % 1500 === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
   const fingerprints: EntityFingerprint<CompareRef>[] = [];
   let processed = 0;
   for (const [localId, geometryHash] of geometryByLocalId) {
@@ -245,7 +330,7 @@ export async function buildEntityFingerprints(
       geometryHash,
       ...(aabb ? { aabb } : {}),
       ...(volume !== undefined ? { volume } : {}),
-      ref: { modelId, localId, globalId: localId + idOffset },
+      ref: { modelId, localId, globalId: localId + idOffset, meshed: !geometryless.has(localId) },
     });
 
     // Per-entity property extraction reparses from the source buffer, so on a
@@ -258,34 +343,6 @@ export async function buildEntityFingerprints(
   }
 
   return fingerprints;
-}
-
-/**
- * Do a model's proved volumes (#1993) still describe its geometry after
- * federation alignment put it where it now is?
- *
- * `'same-crs'` and `'reprojected'` re-bake every vertex through a map that
- * carries a SCALE, so a volume measured before it is a volume of geometry at a
- * size that is no longer on screen — and unlike the world box, it cannot be
- * re-measured on this side (see {@link BuildFingerprintsModel.geometryVolumesTrusted}).
- * Every other status left the vertices alone: `'anchor'` and `'none'` never
- * transformed anything, `'identity'` computed a transform and found nothing to
- * apply, and `'failed'` gave up before applying one.
- *
- * An unset status is a model that predates federation entirely — trusted.
- */
-export function geometryVolumesSurviveAlignment(
-  status: FederatedModel['federationAlignmentStatus'],
-): boolean {
-  return status !== 'same-crs' && status !== 'reprojected';
-}
-
-/** Does this side carry at least one usable geometry hash? Compares run on
- *  models loaded outside the WASM mesh path (e.g. huge native desktop loads)
- *  produce no hashes, which would make geometry diffs silently read every
- *  element as unchanged — callers warn when this is false. */
-export function hasGeometryHashes(side: readonly EntityFingerprint<CompareRef>[]): boolean {
-  return side.some((fingerprint) => fingerprint.geometryHash !== undefined);
 }
 
 /**
@@ -355,6 +412,17 @@ function buildDataInput(
       type: store.entities.getTypeName(typeId) || undefined,
     }));
 
+  // Resolved material NAMES (never entity references — express ids are
+  // reassigned on every save). `extractAllMaterialsOnDemand` is the parser's
+  // canonical resolver: it follows `IfcMaterialLayerSetUsage` /
+  // `IfcMaterialProfileSetUsage` to their sets, and occurrence associations
+  // take precedence over the type's; `lensMaterialNames` then takes the
+  // individual layer / constituent / profile / list-member names, falling back
+  // to the top-level name only when the element has no sub-structure. Two
+  // proxies re-specified from `Soil1` to `topsoil` went unreported before this
+  // — materials were in no comparison channel at all.
+  const materials = extractAllMaterialsOnDemand(store, localId).flatMap(lensMaterialNames);
+
   return {
     ifcType,
     name: store.entities.getName(localId) || undefined,
@@ -365,6 +433,7 @@ function buildDataInput(
     propertySets,
     quantitySets,
     typeAssignments,
+    materials,
   };
 }
 

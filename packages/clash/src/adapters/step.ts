@@ -12,7 +12,11 @@
  * `@ifc-lite/clash/step` subpath so the core stays version-neutral.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import {
+  getInheritanceChainAcrossSchemas,
+  isIfcTypeLikeEntity,
+  type IfcDataStore,
+} from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { MeshData } from '@ifc-lite/geometry';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
@@ -25,16 +29,17 @@ export interface FederationLike {
 }
 
 /**
- * Types that are never physical clash candidates: spatial volumes, voids,
- * virtual/reference geometry, and non-product material associations. Including
- * them produced phantom clashes (IfcSpace, IfcVirtualElement, IfcOpeningElement,
- * even IfcMaterialConstituent) that no clash rule referenced - they are dropped
- * from the candidate set entirely, so "detect all" and per-rule runs only ever
+ * Types that are never physical clash candidates: voids, virtual/reference
+ * geometry, and non-product material associations. Including them produced
+ * phantom clashes (IfcVirtualElement, IfcOpeningElement, even
+ * IfcMaterialConstituent) that no clash rule referenced - they are dropped from
+ * the candidate set entirely, so "detect all" and per-rule runs only ever
  * consider real building elements. (#1464)
+ *
+ * Spatial containers are handled separately by {@link isSpatialContainerTag},
+ * which derives them from the schema rather than from a list.
  */
 const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
-  'IfcSpace',
-  'IfcSpatialZone',
   'IfcOpeningElement',
   'IfcOpeningStandardCase',
   'IfcVirtualElement',
@@ -45,6 +50,36 @@ const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
   'IfcMaterialConstituent',
   'IfcMaterialLayer',
 ]);
+
+/** Memoizes the schema walk below; IFC type names are a bounded vocabulary. */
+const spatialContainerByTag = new Map<string, boolean>();
+
+/**
+ * True for spatial *containers* - the entities whose geometry describes an
+ * extent that, by construction, encloses the elements assigned to it. A storey
+ * against the slab it contains is not a coordination problem, and IFC4.3
+ * infrastructure exports routinely give IfcBuildingStorey / IfcRoad / IfcBridge
+ * tessellated bodies, so every contained element clashed with its own
+ * container. (follow-up to #1464)
+ *
+ * Derived from the schema, not enumerated: `getInheritanceChainAcrossSchemas`
+ * walks the bundled IFC2X3 + IFC4 + IFC4X3 union, so the IFC4.3 facility leaves
+ * (IfcRoad, IfcBridge, IfcFacilityPart, ...) resolve even though the parser's
+ * own codegen pin is IFC4_ADD2_TC1 and would return an empty chain for them.
+ * Both supertypes are checked because IFC2X3 has no `IfcSpatialElement` -
+ * `IfcSpatialStructureElement` descends straight from `IfcProduct` there.
+ * This subsumes the IfcSpace / IfcSpatialZone entries that #1464 listed by hand.
+ */
+function isSpatialContainerTag(tag: string): boolean {
+  const cached = spatialContainerByTag.get(tag);
+  if (cached !== undefined) return cached;
+  const chain = getInheritanceChainAcrossSchemas(tag);
+  const spatial = chain.some(
+    (a) => a === 'IfcSpatialElement' || a === 'IfcSpatialStructureElement',
+  );
+  spatialContainerByTag.set(tag, spatial);
+  return spatial;
+}
 
 export interface StepAdapterOptions {
   store: IfcDataStore;
@@ -93,7 +128,27 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // Drop non-physical / non-product geometry up front so it never becomes a
     // clash candidate (no rule should have to exclude IfcSpace by hand). (#1464)
     const tag = node.type || mesh.ifcType || 'IfcProduct';
-    if (NON_CLASHABLE_TAGS.has(tag)) continue;
+    // Type objects (`IfcWallType`, `IfcSpaceType`, and the `IfcDoorStyle` /
+    // `IfcWindowStyle` spelling IFC2X3 uses and IFC4 deprecates)
+    // are templates, not occurrences: the mesher turns their `RepresentationMaps`
+    // geometry into a mesh that lands on the occurrences instantiating it. That
+    // made a type read as a duplicate of its own occurrence, and clash against
+    // elements it never physically touches. Dropping them here also closes the
+    // gap #1464 left: `IfcSpace` was excluded by name while `IfcSpaceType`
+    // sailed straight through. No `IfcProduct` subclass in any supported schema
+    // ends in `Type`/`Style`, so this never drops an occurrence. It DOES drop
+    // ORPHAN type geometry too (`MeshData.geometryClass === 1`, a type with no
+    // occurrence): the viewer's Model view renders that only when the scene has
+    // no occurrence geometry at all — a type-library file — and its Types view
+    // (which always shows classes 1 and 2) is a catalogue, not a place clash
+    // runs from. Clashing origin-stacked templates against each other would be
+    // pure noise, so excluding class 1 is the intended reading, not collateral.
+    if (
+      NON_CLASHABLE_TAGS.has(tag) ||
+      isSpatialContainerTag(tag) ||
+      isIfcTypeLikeEntity(tag.toUpperCase())
+    )
+      continue;
 
     // The wasm geometry path stores positions in the element's LOCAL frame
     // (world = origin + position; see `MeshData.origin`). Clash works in world

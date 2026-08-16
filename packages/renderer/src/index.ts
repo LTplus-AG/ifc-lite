@@ -7,6 +7,7 @@
  */
 
 export { WebGPUDevice } from './device.js';
+export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-state.js';
@@ -73,6 +74,15 @@ export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, L
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
 export { sumResidentGpuBytes } from './render-stats.js';
+
+// The hide/isolate rule and its change detection, shared with consumers that
+// render the model outside this package's pipeline (the Cesium world view,
+// #2578) and so must reach the same verdict the viewport does.
+export { isEntityVisible } from './entity-visibility.js';
+// Alpha constants the Cesium world view must match, since it renders the model
+// through its own glTF pipeline rather than this one (#2591).
+export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 export { RaycastEngine } from './raycast-engine.js';
 export type { RenderDegradationInfo } from './render-degradation.js';
@@ -96,7 +106,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
-import { WebGPUDevice } from './device.js';
+import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
@@ -130,6 +140,7 @@ import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-d
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { isEntityVisible } from './entity-visibility.js';
 import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
@@ -137,7 +148,7 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
@@ -1594,6 +1605,16 @@ export class Renderer {
     }
 
     /**
+     * Vendor/architecture identity of the GPU adapter, snapshotted during
+     * `init()` (issue #2624 device-loss telemetry), or null when the runtime
+     * does not expose `GPUAdapter.info`. Safe to call after a device loss:
+     * the snapshot is plain strings copied at init, not a live GPU object.
+     */
+    getAdapterInfo(): AdapterInfoSnapshot | null {
+        return this.device.getAdapterInfo();
+    }
+
+    /**
      * Probe the quantized pipeline variants and, when all exist, enable
      * 12-byte quantized batch vertices (issue #1682 phase 6). Returns
      * whether quantization is active — on failure (e.g. a fragile backend
@@ -1847,7 +1868,12 @@ export class Renderer {
         // through the transparent pipeline with no extra call sites — and avoids
         // building a Map over every element just to fade "the rest".
         const ghostExceptIds = options.ghostExceptIds ?? null;
-        const ghostAlpha = options.ghostAlpha ?? 0.12;
+        const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
+        // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
+        // stopped at the flat geometry: on a model whose facade is instanced,
+        // the user asked to fade the building and got a solid facade standing
+        // in front of a ghosted interior.
+        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
         const hasGhost = ghostExceptIds != null;
         const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {
@@ -1924,12 +1950,11 @@ export class Renderer {
             }
         }
 
-        // Visibility filtering
-        if (options.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter(mesh => !options.hiddenIds!.has(mesh.expressId));
-        }
-        if (options.isolatedIds !== null && options.isolatedIds !== undefined) {
-            meshes = meshes.filter(mesh => options.isolatedIds!.has(mesh.expressId));
+        // Visibility filtering. Shares `isEntityVisible` with the instanced pass
+        // and with the Cesium world view, which renders through its own glTF
+        // pipeline and so cannot inherit this filter for free (#2578).
+        if ((options.hiddenIds && options.hiddenIds.size > 0) || options.isolatedIds != null) {
+            meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options.hiddenIds, options.isolatedIds));
         }
 
         // Resize depth texture if needed
@@ -3420,6 +3445,21 @@ export class Renderer {
         lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
     ): void {
         this.overlays.setClashContactLines(lines);
+    }
+
+    /**
+     * Draw the focused clash's TRUE INTERSECTION VOLUME — the actual overlap
+     * mesh from `clashIntersectionSolid` — as an opaque solid, so the clash
+     * reads as a shape rather than a wireframe box or contact line (the
+     * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
+     * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
+     * which one is current for a given clash (solid when the kernel resolved
+     * one, box/lines as the fallback when it didn't).
+     */
+    setClashIntersectionSolid(
+        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+    ): void {
+        this.overlays.setClashIntersectionSolid(solid);
     }
 
     /**

@@ -123,14 +123,9 @@ pub fn export_jsonld(content: &[u8], opts: &JsonLdOptions) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn duplex_exports_valid_jsonld() {
-        let s = export_jsonld(&fixture("ara3d/duplex.ifc"), &JsonLdOptions::default());
+        let s = export_jsonld(&fixture_or_skip!("ara3d/duplex.ifc"), &JsonLdOptions::default());
         let v: Value = serde_json::from_str(&s).expect("valid JSON");
         assert!(v["@context"]["ifc"].as_str().unwrap().ends_with("OWL#"));
         let graph = v["@graph"].as_array().expect("graph array");
@@ -146,7 +141,7 @@ mod tests {
 
     #[test]
     fn included_filter_restricts_the_graph() {
-        let bytes = fixture("ara3d/duplex.ifc");
+        let bytes = fixture_or_skip!("ara3d/duplex.ifc");
         // Full model graph → pick two express ids → re-export isolated to them.
         let full: Value =
             serde_json::from_str(&export_jsonld(&bytes, &JsonLdOptions::default())).unwrap();

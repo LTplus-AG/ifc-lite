@@ -73,9 +73,7 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     // The project node isn't an IfcProduct, so decode its GlobalId + Name directly.
     let (mut proj_gid, mut proj_name) = (String::new(), String::new());
     if let Some(pid) = project {
-        let index = ifc_lite_core::build_entity_index(content);
-        let mut dec = ifc_lite_core::EntityDecoder::with_index(content, index);
-        if let Ok(e) = dec.decode_by_id(pid) {
+        if let Some(e) = crate::ifc5::decode_one(content, pid) {
             proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
             proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
         }
@@ -233,14 +231,9 @@ fn quantities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
 mod tests {
     use super::*;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     #[test]
     fn entities_csv_has_header_and_rows() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
+        let csv = export_csv(&fixture_or_skip!("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
         let mut lines = csv.lines();
         assert_eq!(lines.next().unwrap(), "expressId,globalId,name,type,description,objectType,hasGeometry");
         assert!(csv.lines().count() > 50, "expected many product rows");
@@ -254,9 +247,9 @@ mod tests {
 
     #[test]
     fn flatten_adds_property_columns() {
-        let plain = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
+        let plain = export_csv(&fixture_or_skip!("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
         let flat = export_csv(
-            &fixture("ara3d/duplex.ifc"),
+            &fixture_or_skip!("ara3d/duplex.ifc"),
             CsvMode::Entities,
             &CsvOptions { include_properties: true, ..CsvOptions::default() },
         );
@@ -267,7 +260,7 @@ mod tests {
 
     #[test]
     fn properties_csv_one_row_per_value() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Properties, &CsvOptions::default());
+        let csv = export_csv(&fixture_or_skip!("ara3d/duplex.ifc"), CsvMode::Properties, &CsvOptions::default());
         assert_eq!(
             csv.lines().next().unwrap(),
             "entityId,globalId,entityName,entityType,psetName,propName,value,type"
@@ -278,7 +271,7 @@ mod tests {
     #[test]
     fn spatial_hierarchy_csv() {
         let csv = export_csv(
-            &fixture("ara3d/duplex.ifc"),
+            &fixture_or_skip!("ara3d/duplex.ifc"),
             CsvMode::SpatialHierarchy,
             &CsvOptions::default(),
         );

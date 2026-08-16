@@ -21,13 +21,13 @@ import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
+import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
 import {
-  buildEntityFingerprints,
   geometryVolumesSurviveAlignment,
-  hasGeometryHashes,
-  type CompareRef,
-} from '@/lib/compare/buildFingerprints';
+  resolveGeometryChannel,
+} from '@/lib/compare/geometryCapability';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import { productTypeSplit } from '@/lib/compare/productTypeCounts';
 import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
 
 /** Read the live mesh-content version. A FUNCTION, not a captured number: the
@@ -153,7 +153,21 @@ function publishCompareResult(built: BuiltPair): {
   const excludedTypes = store.compareExcludedTypes;
   const matchByContent = store.compareMatchByContent;
 
-  const diff = diffModels(built.base, built.head, {
+  // The strip decision, the warning flag and its placement-only nuance are ONE
+  // resolution (`resolveGeometryChannel`), so the panel's warning can never
+  // disagree with what the engine was actually given: a MIXED-capability pair
+  // (one side mesh-hashed) has placement fingerprints stripped from both sides
+  // so the engine's asymmetry abstention can fire; a symmetric mesh-less pair
+  // keeps them, still reports placement-driven moves, and the warning must say
+  // reshapes-only.
+  const {
+    base,
+    head,
+    geometryUnavailable,
+    placementOnlyGeometry,
+  } = resolveGeometryChannel(built.base, built.head);
+
+  const diff = diffModels(base, head, {
     scope,
     excludeTypes: excludedTypes,
     // #1891. On by default: a from-scratch re-export re-GUIDs every element,
@@ -163,10 +177,6 @@ function publishCompareResult(built: BuiltPair): {
     // for still degrades to a bare `moved`, the engine's documented fallback.
     matchUnpairedByContent: matchByContent,
   });
-  // Geometry hashes are produced only on the WASM mesh path; if either side was
-  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
-  // can't see shape changes - flag it so the panel can warn.
-  const geometryUnavailable = !hasGeometryHashes(built.base) || !hasGeometryHashes(built.head);
   const result: CompareResult = {
     baseModelId: built.baseModelId,
     headModelId: built.headModelId,
@@ -174,6 +184,7 @@ function publishCompareResult(built: BuiltPair): {
     headName: built.headName,
     scope,
     geometryUnavailable,
+    placementOnlyGeometry,
     excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
     diff,
   };
@@ -306,6 +317,10 @@ export function useCompare() {
       // they say how often the pass fires in the field, and how much of what it
       // finds it resolves versus hands back for review.
       const matches = contentMatchCounts(payload.diff.contentMatches);
+      // Products vs type objects (headline-count confusion, see
+      // `productTypeCounts.ts`): the field's evidence for how often a run's
+      // engine-wide counts actually include type-object changes.
+      const split = productTypeSplit(payload.diff.entries);
       posthog.capture('model_compare_run', {
         scope: payload.scope,
         changed_entity_count: payload.diff.entries.length,
@@ -321,6 +336,12 @@ export function useCompare() {
         content_match_duplicated: matches.duplicated,
         content_match_deduplicated: matches.deduplicated,
         content_match_ambiguous: matches.ambiguous,
+        product_added: split.products.added,
+        product_modified: split.products.modified,
+        product_deleted: split.products.deleted,
+        type_object_added: split.typeObjects.added,
+        type_object_modified: split.typeObjects.modified,
+        type_object_deleted: split.typeObjects.deleted,
       });
     } catch (err) {
       console.error('[compare] comparison failed', err);

@@ -13,11 +13,15 @@
  * model A:
  *
  *   - added    (B only) → green   on B
- *   - modified (A and B) → yellow  on B, **hide** the A copy
+ *   - modified (A and B) → yellow  on B, **hide** the A copy — unless B's copy
+ *                          has no geometry at all, in which case the yellow
+ *                          goes on A and nothing is hidden (see the branch)
  *   - deleted  (A only) → red     on A
  *   - unchanged          → ghost grey on B + hide A  (when "show unchanged"),
- *                          otherwise hide both
- *   - content-matched    → blue    on B, **hide** the A copy (see below)
+ *                          otherwise hide both — same drawable-copy caveat as
+ *                          `modified`
+ *   - content-matched    → blue    on B, **hide** the A copy (see below) —
+ *                          same drawable-copy caveat as `modified`
  *
  * Colours match the threejs compare example's palette. Keys are federation
  * **global** ids (`CompareRef.globalId`) — exactly what the renderer's
@@ -89,16 +93,39 @@ export function buildCompareOverlay(
         break;
 
       case 'modified':
-        if (headGlobal !== undefined) colorOverrides.set(headGlobal, COMPARE_COLORS.modified);
-        // Hide the old (base) copy so the yellow head reads cleanly.
-        if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+        // Normally: colour the head copy, hide the base copy so the yellow head
+        // reads cleanly. That rests on the head copy being DRAWABLE — which it
+        // is not when the revision removed the element's Representation, or the
+        // geometry pass produced nothing for it on that side. Colouring an id
+        // with no mesh is a no-op, so hiding the base copy as well would erase
+        // the element from the scene: a real change rendered as nothing at all.
+        // With no head geometry there is no duplicate to suppress either, so
+        // mark the base copy instead and leave it visible.
+        if (headGlobal !== undefined && entry.head?.ref.meshed !== false) {
+          colorOverrides.set(headGlobal, COMPARE_COLORS.modified);
+          if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+        } else if (baseGlobal !== undefined) {
+          colorOverrides.set(baseGlobal, COMPARE_COLORS.modified);
+        }
         break;
 
       case 'unchanged':
         if (showUnchanged) {
-          if (headGlobal !== undefined) colorOverrides.set(headGlobal, COMPARE_COLORS.unchanged);
-          if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+          // The same drawable-copy rule as `modified`, because it is the same
+          // "hide A, colour B" move: under scope='data' a base-meshed element
+          // whose head Representation was stripped classifies `unchanged`
+          // (data identical, geometry ignored), and hiding its base copy —
+          // the only drawable one — would erase it from the scene. Ghost the
+          // copy that can actually be drawn.
+          if (headGlobal !== undefined && entry.head?.ref.meshed !== false) {
+            colorOverrides.set(headGlobal, COMPARE_COLORS.unchanged);
+            if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
+          } else if (baseGlobal !== undefined) {
+            colorOverrides.set(baseGlobal, COMPARE_COLORS.unchanged);
+          }
         } else {
+          // Hiding is the point here — invisibility is the requested rendering
+          // for unchanged elements, so `meshed` has nothing to protect.
           if (headGlobal !== undefined) hiddenIds.add(headGlobal);
           if (baseGlobal !== undefined) hiddenIds.add(baseGlobal);
         }
@@ -119,9 +146,22 @@ export function buildCompareOverlay(
   // resolution the engine explicitly declined to make.
   for (const match of diff.contentMatches ?? []) {
     if (!isRetiringMatch(match.kind)) continue;
-    for (const fingerprint of match.base) hiddenIds.add(fingerprint.ref.globalId);
-    for (const fingerprint of match.head) {
-      colorOverrides.set(fingerprint.ref.globalId, COMPARE_COLORS.matched);
+    // The drawable-copy rule again (same as `modified`/`unchanged` above): a
+    // base-meshed element re-GUIDed AND Representation-stripped retires as
+    // `renamed` under data scope, and "hide A, colour B" would then hide its
+    // only drawable copy while colouring a head id the renderer has no mesh
+    // for. When no head copy is drawable, mark the base copies instead and
+    // suppress nothing — there is no duplicate geometry to suppress.
+    const headDrawable = match.head.some((fingerprint) => fingerprint.ref.meshed !== false);
+    if (headDrawable) {
+      for (const fingerprint of match.base) hiddenIds.add(fingerprint.ref.globalId);
+      for (const fingerprint of match.head) {
+        colorOverrides.set(fingerprint.ref.globalId, COMPARE_COLORS.matched);
+      }
+    } else {
+      for (const fingerprint of match.base) {
+        colorOverrides.set(fingerprint.ref.globalId, COMPARE_COLORS.matched);
+      }
     }
   }
 

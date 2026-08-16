@@ -159,8 +159,20 @@ export interface DrawingLine {
   ifcType: string;
   /** Model index for multi-model federation */
   modelIndex: number;
-  /** Distance from section plane (for depth sorting) */
+  /**
+   * VIEW DEPTH at the line's start point (issue #2639, see the convention
+   * comment in projection-bands.ts): the negated flip-adjusted signed depth,
+   * so 0 at the cut plane, increasing into the kept half, smaller means
+   * nearer the viewer. Hidden-line removal compares this against the
+   * occluder depth buffer, which stores the same quantity.
+   */
   depth: number;
+  /**
+   * View depth at the line's END point, when it differs from `depth` (e.g.
+   * a sloped edge). The hidden-line classifier lerps `depth`..`depthEnd`
+   * along the 2D line per sample; omitted means constant depth.
+   */
+  depthEnd?: number;
 }
 
 /**
@@ -221,6 +233,19 @@ export interface CutSegment {
    *  Carried so the polygon builder can split one entity's cut into per-material
    *  loops (material-layer walls/slabs). Absent when the cutter has no colour. */
   color?: [number, number, number, number];
+  /** Max |coordinate| of the source triangle's LOCAL vertex positions —
+   *  i.e. the `Float32Array` values BEFORE the per-mesh RTC `origin` was
+   *  added. This is the quantity that actually bounds float32 rounding
+   *  noise (quantization happens when the mesh is authored in its local
+   *  frame, not when a double-precision `origin` is added afterward), so
+   *  it must be used instead of `p0_2d`/`p1_2d`'s world-frame magnitude
+   *  when sizing a scale-aware weld tolerance — otherwise a small element
+   *  sitting at a large RTC origin gets a tolerance scaled to its
+   *  distance from the model origin instead of its own extent (#2622).
+   *  Absent when the segment wasn't produced by `SectionCutter` (e.g.
+   *  hand-built test fixtures), in which case callers fall back to the
+   *  segment's own 2D coordinate magnitude. */
+  localMaxCoord?: number;
 }
 
 /**

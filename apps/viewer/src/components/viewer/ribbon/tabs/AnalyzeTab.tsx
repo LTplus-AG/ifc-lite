@@ -10,6 +10,7 @@
  */
 
 import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring } from '@/icons';
+import { Box as ZoneBox } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -44,13 +45,13 @@ export function AnalyzeTab() {
       <RibbonGroup label="Validate">
         <RibbonLargeButton
           icon={Issue}
-          label="BCF Issues"
+          label="BCF issues"
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />
         <RibbonLargeButton
           icon={Check}
-          label="IDS Check"
+          label="IDS check"
           tooltip="IDS validation"
           active={activeWorkspacePanels.has('ids')}
           onClick={() => handleToggleRightPanel('ids')}
@@ -81,6 +82,15 @@ export function AnalyzeTab() {
           active={activeWorkspacePanels.has('layers')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('layers')}
         />
+        {/* Location zones (#1810), reachable from a toolbar for the first time
+            (#2508): the ActivityBar rail was its only entry point. */}
+        <RibbonLargeButton
+          icon={ZoneBox}
+          label="Zones"
+          tooltip="Location zones (sections / takt areas)"
+          active={activeWorkspacePanels.has('zones')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+        />
       </RibbonGroup>
 
       <RibbonGroupDivider />
@@ -88,15 +98,15 @@ export function AnalyzeTab() {
       <RibbonGroup label="Data">
         <RibbonLargeButton
           icon={List}
-          label="List"
-          tooltip="Lists & schedules"
-          active={activeWorkspacePanels.has('list')}
-          onClick={() => handleToggleBottomPanel('list')}
+          label="Lists"
+          tooltip="Entity lists"
+          active={activeWorkspacePanels.has('lists')}
+          onClick={() => handleToggleBottomPanel('lists')}
         />
         <RibbonLargeButton
           icon={Schedule}
           label="Schedule"
-          tooltip="Schedule (Gantt)"
+          tooltip="Construction schedule (Gantt)"
           active={activeWorkspacePanels.has('gantt')}
           onClick={() => handleToggleBottomPanel('gantt')}
         />

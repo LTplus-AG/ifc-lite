@@ -31,6 +31,7 @@ import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostic
 import { computeWorkerCount } from './worker-count.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
+import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 // The compiled-module memo lives in its own module so the main-thread
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
@@ -698,6 +699,11 @@ export async function* processParallel(
         // A rotated/missing engine binary after a redeploy (#1363) surfaces
         // here as the worker's wasm-init failure — let the host reload.
         notifyIfWasmAssetUnavailable(msg.message);
+        // #2527 follow-up: re-plant the worker realm's panic-location stash
+        // (if this error was a wasm trap) on THIS realm's global, before the
+        // error below is thrown/captured, so `attachWasmPanicLocation` in
+        // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+        restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();
@@ -1484,6 +1490,15 @@ export async function* processParallel(
       // so a stale-deploy 404 of the wasm (#1363) lands here — let the host
       // reload onto the current deployment.
       notifyIfWasmAssetUnavailable(data.message);
+      // #2527 follow-up: re-plant the worker realm's panic-location stash
+      // (if this error was a wasm trap) on THIS realm's global, before the
+      // error below is thrown, so `attachWasmPanicLocation` in
+      // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+      // This is the SAME `geometry.worker.ts` as the main process-worker
+      // pool below, so it forwards the same `wasmPanicLocation`/`wasmPanicAt`
+      // fields on its `{type:'error'}` message — this handler previously
+      // dropped them on the floor.
+      restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
       prepassError = new Error(data.message);
       prepassDone = true;
       prepassWorker.terminate();

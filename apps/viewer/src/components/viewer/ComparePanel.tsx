@@ -29,6 +29,7 @@ import { CompareResultsList, CountBadge, LISTED_STATES, type CompareBucket } fro
 import { CompareRunControls } from './compare/CompareRunControls';
 import { changedTypeCounts, contentMatchRows, hasReportableChanges, MAX_ROWS_PER_GROUP, type CompareMatchRow, type CompareRow } from './compare/changeRow';
 import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import { productTypeSplit, typeObjectHint } from '@/lib/compare/productTypeCounts';
 import type { DiffState, DiffEntry } from '@ifc-lite/diff';
 
 interface ComparePanelProps {
@@ -131,6 +132,12 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
 
   const counts = result?.diff.counts;
   const canRun = !!baseModelId && !!headModelId && baseModelId !== headModelId && !running;
+
+  // Products vs type objects (headline-count confusion, see `productTypeCounts.ts`).
+  const split = useMemo(
+    () => (result ? productTypeSplit(result.diff.entries) : null),
+    [result],
+  );
 
   // Classes present among the current changes - the "ignore a class" picker's
   // options (#1470). Excluded classes are already absent from the diff.
@@ -277,6 +284,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 onRun={() => void runComparison()}
                 error={error}
                 geometryUnavailable={!!result?.geometryUnavailable}
+                placementOnlyGeometry={!!result?.placementOnlyGeometry}
                 excludedTypes={excludedTypes}
                 changedTypeCounts={typeCounts}
                 onAddExcludedType={addExcludedType}
@@ -295,9 +303,24 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                   )}
                   {...tourAnchor(TOUR_ANCHORS.compareCounts)}
                 >
-                  <CountBadge label="Changed" value={counts.modified} color={COMPARE_COLORS.modified} />
-                  <CountBadge label="Added" value={counts.added} color={COMPARE_COLORS.added} />
-                  <CountBadge label="Deleted" value={counts.deleted} color={COMPARE_COLORS.deleted} />
+                  <CountBadge
+                    label="Changed"
+                    value={split?.products.modified ?? counts.modified}
+                    color={COMPARE_COLORS.modified}
+                    hint={typeObjectHint(split?.typeObjects.modified ?? 0)}
+                  />
+                  <CountBadge
+                    label="Added"
+                    value={split?.products.added ?? counts.added}
+                    color={COMPARE_COLORS.added}
+                    hint={typeObjectHint(split?.typeObjects.added ?? 0)}
+                  />
+                  <CountBadge
+                    label="Deleted"
+                    value={split?.products.deleted ?? counts.deleted}
+                    color={COMPARE_COLORS.deleted}
+                    hint={typeObjectHint(split?.typeObjects.deleted ?? 0)}
+                  />
                   {contentMatchingRan(result?.diff.contentMatches) && (
                     <CountBadge label="Matched" value={matchCounts.matchedElements} color={COMPARE_COLORS.matched} />
                   )}
@@ -326,6 +349,7 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
                 result={result}
                 groups={groups}
                 counts={counts}
+                split={split}
                 matchRows={matchRows}
                 selectedKey={selectedKey}
                 onFocus={focusEntry}

@@ -170,10 +170,12 @@ export interface GeometryChange {
  *   distance still travels with the record for the caller to judge).
  * - same size, centre beyond `moveTolerance` → `moved`.
  * - same size and same centre, yet the hash differs → `reshaped` with distance
- *   0. This is what a re-tessellation looks like, and it is also what a
- *   reshape confined to the interior of the box looks like. An axis-aligned
- *   bounding box genuinely cannot separate those two, so this does not claim
- *   to: it reports the honest "the shape changed, it did not move".
+ *   0. This is what a reshape confined to the interior of the box looks like.
+ *   A pure re-triangulation of an unchanged surface no longer reaches here at
+ *   all — the geometry hash is retriangulation-invariant (see `geom_hash.rs`) —
+ *   but a re-tessellation that introduces new vertices still does. An
+ *   axis-aligned bounding box genuinely cannot separate those two, so this does
+ *   not claim to: it reports the honest "the shape changed, it did not move".
  */
 export function classifyGeometryChange(
   baseAabb: EntityAabb | undefined,

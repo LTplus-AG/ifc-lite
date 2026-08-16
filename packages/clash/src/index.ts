@@ -25,14 +25,15 @@ export {
   type ClashRulePreset,
 } from './disciplines.js';
 export { createClashEngine, type ClashEngine, type ClashBackend, type CreateClashEngineOptions } from './engine.js';
-export { makeExclusionSet, isExcluded, pairKey } from './exclude.js';
+export { makeExclusionSet, isExcluded, pairKey, qualifiedKey } from './exclude.js';
 export {
   buildTriageSystemPrompt,
   buildTriageUserMessage,
   parseTriageResponse,
   type ClashTriageResult,
 } from './triage.js';
-export { groupClashes, type GroupOptions } from './grouping.js';
+export { groupClashes, isClusterGroupingIneffective, type GroupOptions } from './grouping.js';
+export { groupDuplicateSets } from './duplicate-sets.js';
 export {
   clashReviewKey,
   aggregateReviewStatus,
@@ -45,10 +46,26 @@ export {
   penetrationDepth,
   isTouching,
   sortClashes,
+  summarizeClashes,
+  ruleHadNoMatch,
+  classifyRuleCoverage,
   type ClashSortBy,
+  type RuleCoverageOutcome,
 } from './analysis.js';
 export {
   findDuplicates,
   DUPLICATES_RULE,
   type DuplicateOptions,
 } from './duplicates.js';
+/**
+ * Per-triangle mesh analysis, re-exported for consumers outside this package
+ * (issue #2199: "mesh analysis reachable from TypeScript"). Previously
+ * package-internal — `triangleArea` existed for the clash contact solver but
+ * nothing outside `@ifc-lite/clash` could reach it, so the viewer's Measure
+ * tool had no path to a triangulated-mesh area even though every `MeshData`
+ * already carries the `positions`/`indices` a caller needs to use it.
+ */
+export {
+  triangleArea,
+  type Triangle,
+} from './contact/triangle.js';

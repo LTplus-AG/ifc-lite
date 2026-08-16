@@ -255,8 +255,9 @@ export async function downloadBinary(onProgress?: ProgressCallback): Promise<str
   }
 
   // Verify archive integrity before we extract / chmod / execute it. Fails
-  // closed on a checksum mismatch; fails open (with a warning) for older
-  // releases that predate the checksum pipeline.
+  // closed on a mismatch AND on a missing checksum: every release this
+  // package version can download publishes a .sha256 sidecar per archive
+  // (see checksum.ts for why that mapping holds).
   await verifyArchiveChecksum(archivePath, resolvedAssetUrl, platformInfo.archiveName);
 
   console.log('Extracting archive...');

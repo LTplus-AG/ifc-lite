@@ -11,7 +11,7 @@
  */
 
 import type { IfcxFile, IfcxNode, MergeRecord, MergeResolution, ProvenanceAuthor, ProvenanceBase, ProvenanceCheck, WaivedCheck } from '@ifc-lite/ifcx';
-import { IFCLITE_ATTR, computeLayerId, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
+import { IFCLITE_ATTR, computeLayerId, createProvenanceManifest, setProvenance, IFCX_VERSION } from '@ifc-lite/ifcx';
 import type { ComponentAttributes, MergeConflict, MergeOp, MergePlan, ResolutionInput } from './types.js';
 import { opsForComponentChange } from './three-way.js';
 
@@ -249,7 +249,7 @@ export function buildMergeLayer(init: MergeLayerInit): PublishedMergeLayer {
   const bare: IfcxFile = {
     header: {
       id: '',
-      ifcxVersion: init.ifcxVersion ?? 'ifcx_alpha',
+      ifcxVersion: init.ifcxVersion ?? IFCX_VERSION,
       dataVersion: init.dataVersion ?? '1.0.0',
       author: init.author.principal,
       timestamp: manifest.created,

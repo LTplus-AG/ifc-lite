@@ -14,7 +14,7 @@
  * plain numbers.
  */
 
-import { earClip, joinHoles, type Pt } from './symbolic-overlay-pipelines.js';
+import { triangulateRings, type Pt } from './fill-triangulate.js';
 
 /** Semantic cardinal section axis: down (Y), front (Z), side (X). */
 export type SectionAxis = 'down' | 'front' | 'side';
@@ -141,12 +141,16 @@ export interface CapFillGeometry {
 /**
  * Triangulate the cut polygons and lift them onto the section plane.
  *
- * Hole-aware ear-clipping (reused from the IfcAnnotationFillArea fill path)
- * replaces the old convex fan. The fan ignored holes and inverted on the
- * CONCAVE cross-sections that arbitrary IFC profiles (and material-layer
- * slabs) cut into, leaving the cut face uncovered — it read as a hollow
- * shell. Section 2D points are (x, y); the triangulator works in (x, z),
- * so y maps to z.
+ * Even-odd hole-aware triangulation (shared with the IfcAnnotationFillArea
+ * fill path) replaces the old convex fan. The fan ignored holes and inverted
+ * on the CONCAVE cross-sections that arbitrary IFC profiles (and
+ * material-layer slabs) cut into, leaving the cut face uncovered — it read as
+ * a hollow shell. Section 2D points are (x, y); the triangulator works in
+ * (x, z), so y maps to z.
+ *
+ * Holes are SUBTRACTED, not merely stitched (#2516): a plane through a wall
+ * opening or a slab void used to come back with the hole's own ring bridged in
+ * but almost nothing clipped, so the cap rendered near-empty.
  *
  * Returns `null` when nothing survives (no polygon had three usable points),
  * so the caller can skip buffer creation entirely.
@@ -174,12 +178,14 @@ export function buildCapFillGeometry(
     const holeRings: Pt[][] = polygon.polygon.holes
       .filter((h) => h.length >= 3)
       .map((h) => h.map((p) => ({ x: p.x, z: p.y })));
-    const stitched = holeRings.length > 0 ? joinHoles(outerRing, holeRings) : outerRing;
-    const tris = earClip(stitched);
+    const { points: capPoints, triangles: tris } = triangulateRings([
+      outerRing,
+      ...holeRings,
+    ]);
     if (tris.length === 0) continue;
 
     const baseVertex = vertexOffset;
-    for (const pt of stitched) {
+    for (const pt of capPoints) {
       const [x3d, y3d, z3d] = lift(pt.x, pt.z);
       fillVertices.push(x3d, y3d, z3d, color[0], color[1], color[2], color[3]);
       vertexOffset++;

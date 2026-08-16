@@ -1,5 +1,82 @@
 # @ifc-lite/wasm
 
+## 4.6.0
+
+### Minor Changes
+
+- [#2574](https://github.com/LTplus-AG/ifc-lite/pull/2574) [`5cf117d`](https://github.com/LTplus-AG/ifc-lite/commit/5cf117d1eb16dba7f3e7be67114e26ce3ec44a8f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `clashIntersectionSolid` — the overlap VOLUME of a clashing pair, as a solid.
+
+  Clash presentation today marks the contact _point_. A point cannot show how deep an overlap is, what shape it has, or which direction it runs. BIMcollab Zoom and Solibri instead draw the intersection volume as an opaque solid inside two ghosted parents, which reads at a glance. This is the engine half of that: given the world-space triangles of two clashing elements, return the mesh of their actual overlap.
+
+  It runs on the existing pure-Rust exact CSG kernel — the same arrangement that cuts opening voids — through `BoolOp::Intersection`, which the kernel already implements. No new geometry code, and no need for the `A − (A − B)` derivation: intersection is a first-class kernel op. A new `ifc_lite_geometry::intersection_solid` wraps it; the wasm export is a thin binding over that.
+
+  On demand, one pair per call. Nothing in the detection sweep touches it, so scan cost is unchanged. Measured on a road/bridge certification model via an internal test harness that enumerates 88 candidate pairs over a 48-element test-only allowlist (the CLI at defaults finds 50 clashes on the same model, with the shipped exclusions applied), one `intersection_solid` call costs a median of 0.59 ms and a max of 38.6 ms release-build; the max is a 264-triangle railing against a beam, and every pair not involving those railings is under 10 ms. Computing all 88 harness pairs eagerly would have cost 216 ms.
+
+  Results carry f64 positions rather than the f32 the mesh pipeline uses elsewhere, because the caller reports a volume: on the analytic rotated-box oracle the f64 path returns exactly 9.375 m³ where the f32 round-trip returns 9.374999882.
+
+  **The result is gated, and often absent.** The kernel snaps input coordinates to a `2^-16 m ≈ 15.26 µm` grid and treats faces inside `near_band_from_extent` as coplanar. Inside that band a thin overlap is resolved as a contact, not a solid, and the returned volume is _exactly 2/3_ of the truth — measured at world offsets 0, 10, 100 and 1000 m, at every tessellation. A −33 % solid is worse than no solid, because it looks plausible. So `intersection_solid` returns a solid only above 4× that band, where the volume is exact to f64, and otherwise reports why: `no-overlap`, `below-kernel-resolution` (with the measured thickness and the depth that would have been needed), `empty-operand` or `budget-exhausted`. Callers should keep the existing contact marker whenever `isSolid` is false.
+
+  How often that happens is the honest headline. The CLI at defaults finds 50 clashes on the bridge model (8 of them `IfcBeam`×`IfcBeam`, all authored bearing details rather than coordination defects); the coverage breakdown below is not that number — it comes from the internal harness's 88 candidate pairs over its 48-element allowlist, which bypasses the shipped element adapter and applies no void/host or spatial-container exclusions. Of those 88 harness pairs, **30 yield a solid, 54 return `no-overlap` and 4 `below-kernel-resolution`**. The 54 are pairs whose interpenetration is below the snap grid; their reported sub-micron distances land on the `f32` ULP at each pair's coordinate magnitude, so they are quantization noise rather than a measured graze — not evidence either way of a coordination issue. For those, no intersection solid exists at this kernel's resolution and the viewer will fall back to the contact marker. The feature helps most where clashes are deep; the largest solid found was 0.0727 m³ between two crossing beams.
+
+  **The gate is rotation-invariant for box pairs.** Its thickness measurement was originally taken against the world axes, which is only the penetration depth when the contact normal happens to be parallel to one — and a building grid rotated off the world frame is the common case, not the exception. Rotating the oracle's own 15–122 µm slab overlaps rigidly by an oblique angle (an isometry: the same overlap, the same answer required) made every one of them clear the gate, returning volumes of 36 % to 103 % of the truth and drifting with tessellation. The gate now measures along the pair's candidate contact normals, derived analytically from the operands' own face planes — the classical 15 OBB separating-axis candidates when both operands present a box frame — with the world axes always kept in the set, so the measure can only ever get stricter, never looser. For an operand that is not a box the set stays the world axes: that is conservative, not correct, and is documented as such in the code. On the bridge model every one of the 88 harness pairs returns a byte-identical outcome before and after, so this closes a reachable correctness hole without moving any number that was already right.
+
+  Verified against an analytic oracle before any wiring: axis-aligned and rotated boxes with hand-derived expected volumes, asserted at 12, 48 and 192 triangles per operand (and at every mixed pair of those) so a tessellation-sampling artifact cannot pass — the failure mode a previous clash depth metric shipped with. Degenerate inputs are covered: coplanar touching faces, sub-micron grazes, disjoint pairs and empty operands all return a reason rather than a sliver or a crash.
+
+## 4.5.1
+
+### Patch Changes
+
+- [#2539](https://github.com/LTplus-AG/ifc-lite/pull/2539) [`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the wasm panic hook so it actually survives `new IfcAPI()`: every realm was constructing an
+  `IfcAPI` before doing any work, and `IfcAPI::new()` called `console_error_panic_hook::set_once()`
+  directly — which owns its own `Once` and unconditionally replaces whatever panic hook is currently
+  installed. That silently overwrote the panic-location-stashing hook installed at module init,
+  so `globalThis.__ifclite_wasm_panic` was never written and the source-location attribution added
+  for [#2527](https://github.com/LTplus-AG/ifc-lite/issues/2527) was inert in production. `IfcAPI::new()` now calls the crate's own idempotent
+  `set_panic_hook()`, which no-ops if the stashing hook is already installed.
+
+  This is a runtime behavior change for the published `@ifc-lite/wasm` package: every uncaught Rust
+  panic now stashes `{ location, at }` on the realm's JS global (source location only, sanitised of
+  build-machine paths — never the panic message) for the duration of the panic hook's lifetime, where
+  downstream consumers (the viewer's error tracking) can read and consume it.
+
+## 4.5.0
+
+### Minor Changes
+
+- [#2579](https://github.com/LTplus-AG/ifc-lite/pull/2579) [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee) Thanks [@louistrue](https://github.com/louistrue)! - `splitMeshByZones(positions, indices, zones, footprints?, footprintCounts?)` cuts one element into one closed solid per location zone, plus the remainder (issue [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508) item 2).
+
+  Everything is in the caller's frame, and positions cross as f64: the split's whole value over an AABB estimate is exactness, and an f64 to f32 round trip at the boundary would put a crack back into every shared zone plane. A zone is an oriented box by default, or a vertical prism when its `footprintCounts` entry is non-zero.
+
+  Each result carries its own enclosed volume, and the handle carries `sumErrorRel` - how far the pieces are from summing to the whole. That is the invariant the issue puts above every other for this feature, and it is exposed rather than enforced: the expected cause of a failure is zones that overlap each other, and a number the caller can show beats a silent refusal.
+
+## 4.4.1
+
+### Patch Changes
+
+- [#2556](https://github.com/LTplus-AG/ifc-lite/pull/2556) [`b10224f`](https://github.com/LTplus-AG/ifc-lite/commit/b10224f6541212227fc011ba1184fd52ad206447) Thanks [@mpancera](https://github.com/mpancera)! - Write the IFCX header version under `ifcxVersion`, so exported files can be read back. The Rust IFC5 exporter emitted `header.version`, but readers look for `header.ifcxVersion` — the key buildingSMART's own reference files use and the one `@ifc-lite/ifcx` requires. Every file `ifc-lite export --format ifcx` produced was therefore rejected by our own parser with "Invalid IFCX file: missing or invalid header.ifcxVersion", which also meant an exported file could not be opened in the viewer. Every other IFCX writer in the repo (the TS `ifc5-exporter`, `packages/ifcx`'s writer, the layer-stack publish path) already used `ifcxVersion`; the Rust exporter was the only outlier. Verified by changing only that header key on an exported file, leaving the rest of the document untouched: it goes from rejected to parsed.
+
+## 4.4.0
+
+### Minor Changes
+
+- [#1344](https://github.com/LTplus-AG/ifc-lite/pull/1344) [`63496ec`](https://github.com/LTplus-AG/ifc-lite/commit/63496ec0ae63c54c3bcbc5ecaec537877dc48831) Thanks [@louistrue](https://github.com/louistrue)! - Add DFJSON (Dragonfly) energy-model export alongside HBJSON. Each `IfcSpace` becomes an extruded `Room2D` (floor polygon + floor-to-ceiling height) grouped into stories — the simpler Ladybug Tools target for mostly-vertical-wall models. Surfaces:
+
+  - `GeometryProcessor.exportDfjson(buffer, name)` (`@ifc-lite/geometry`)
+  - `bim.export.dfjson({ name, filename })` + `ExportDfjsonOptions` (`@ifc-lite/sdk`)
+  - `ifc-lite export <file> --format dfjson` (`@ifc-lite/cli`)
+
+  The Rust source of truth is `ifc-lite-export::export_dfjson`, reusing the same analytic floor-footprint extraction as HBJSON, so the two exports agree on where a footprint lands.
+
+  They do not cover the same set of spaces, by design: each builder applies its own admissibility rules downstream of that shared extraction. A `Room2D` is a floor polygon swept straight up, so DFJSON reports a space as `skipped` when it cannot be represented that way — a zero-height extrusion, an extrusion that leans more than ~2° off vertical, or a sloped floor ring — where HBJSON still emits a solid. Emitting those as vertical plates anyway would land the floor correctly and every wall wrongly, with nothing in the stats to say so. Conversely DFJSON keeps a space that HBJSON's watertightness gate rejects, since a 2D plate has nothing to fail. On real models that runs in both directions — 19 HBJSON rooms vs 17 DFJSON on one file, 46 vs 47 on another.
+
+  A model carrying duplicated `IfcSpace` geometry (Revit does this) runs the same `dedupe_colliding` pass HBJSON uses, so overlapping plates drop the same copies rather than double-counting floor area.
+
+  The `Building` → `Story` → `Room2D` nesting comes from the file's own `IfcBuilding` / `IfcBuildingStorey` / `IfcSpace` containment, and both carry their IFC `Name` into `display_name` — the point of the format for an IFC-shaped model, and the thing HBJSON's flat `rooms` array drops. Grouping by floor elevation instead would only approximate the partition the file already states: on `Office_A_20110811.ifc` a 1 m elevation band splits the model's two populated storeys into three stories. That heuristic survives as the fallback for spaces the file places nowhere, and for models that declare no spatial structure at all.
+
+  Known v1 limitation: `Room2D.display_name` is still `R{expressId}` rather than the `IfcSpace` `Name` — the same as HBJSON's rooms today, so the two stay in step.
+
+  Both energy exports apply the mutation view, so entities authored in-session (drawn spaces, in particular) are visible to the analytic exporter rather than silently missing — the DFJSON half of [#1908](https://github.com/LTplus-AG/ifc-lite/issues/1908). Regeneration through `StepExporter` happens only when the overlay actually carries edits (`hasPendingChanges()`), so an unedited model still hands its retained source bytes straight to the exporter. The gate, the byte resolution and the WASM handle lifecycle are shared between the two formats rather than written twice.
+
 ## 4.3.1
 
 ### Patch Changes

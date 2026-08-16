@@ -66,6 +66,43 @@ fn detect_schema_handles_doubled_apostrophe_escape_before_the_real_endsec() {
     assert_eq!(detect_schema(content.as_bytes()), "IFC2X3");
 }
 
+/// `detect_schema` extracts the RAW (still STEP-escaped) text between the
+/// first two apostrophes following `FILE_SCHEMA`. Both `step.rs`'s
+/// `source_schema` fallback and `merged.rs` feed that text straight into
+/// `escape()` when the header is re-written, which doubles `\` again -- so
+/// `detect_schema` must un-double `\\` itself first, or a schema label
+/// carrying a literal `\` would round-trip corrupted (four backslashes out
+/// for two in). No real schema label (IFC2X3, IFC4, IFC4X3_ADD2, ...)
+/// contains a backslash, so this never fires on a real file; this test pins
+/// the un-double -> re-escape seam with a synthetic label.
+#[test]
+fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
+    let source = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC\\\\4'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
+    assert_eq!(detect_schema(source.as_bytes()), "IFC\\4");
+}
+
+/// End-to-end scenario for the same seam through the real `export_step`
+/// path: a source file whose `FILE_SCHEMA` label carries a literal `\`,
+/// exported with no explicit target schema (so `step.rs:196` falls back to
+/// `source_schema` and `step.rs:217` re-escapes it), must round-trip the
+/// label instead of compounding the escape.
+#[test]
+fn export_step_round_trips_a_backslash_carrying_schema_label_through_source_schema_fallback() {
+    use crate::step::{export_step_with_stats, StepOptions};
+
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC\\\\4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+
+    let (step, _stats) = export_step_with_stats(source, &StepOptions::default());
+    let schema_line = step
+        .lines()
+        .find(|l| l.starts_with("FILE_SCHEMA("))
+        .expect("a FILE_SCHEMA header line");
+    assert_eq!(
+        schema_line, "FILE_SCHEMA(('IFC\\\\4'));",
+        "source schema label must round-trip, not compound its escaping"
+    );
+}
+
 #[test]
 fn split_top_level_args_respects_nesting() {
     let args = "'a',$,(#1,#2,#3),IFCBOOLEAN(.T.),#9";
@@ -139,11 +176,6 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
     use crate::step::{export_step_with_stats, PropMutation, StepOptions};
     use ifc_lite_core::EntityScanner;
 
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
     // A STRICT ISO 10303-21 6.3.2.4/6.3.2.5 un-escaper: every literal `'`
     // and `\` in the string's plain-text value MUST appear doubled in the
     // literal. A run of backslashes with an ODD length is malformed under
@@ -188,7 +220,7 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
         out
     }
 
-    let src = fixture("ara3d/duplex.ifc");
+    let src = fixture_or_skip!("ara3d/duplex.ifc");
     let mut scanner = EntityScanner::new(&src[..]);
     let mut wall = None;
     while let Some((id, t, _s, _e)) = scanner.next_entity() {

@@ -225,7 +225,12 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
       setIsExporting(false);
       setPhase(null);
     }
-  }, [source, camera, scaleFactor]);
+    // `showHiddenEdges` belongs here. Omitting it does not merely stale the
+    // value, it FREEZES it at the mount-time default, so the toggle moves in
+    // the UI and the exported sheet never changes. There is no exhaustive-deps
+    // lint in this repo to catch that, and no orchestrator test can see it -
+    // the option is honoured correctly one layer down.
+  }, [source, camera, scaleFactor, showHiddenEdges]);
 
   const displayedLabel = displayedScale
     ? `As displayed (about 1:${formatScaleFactorLabel(displayedScale)})`

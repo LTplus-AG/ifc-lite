@@ -10,12 +10,23 @@ export class ClashIntersectionSolidJs {
     [Symbol.dispose](): void;
     /**
      * `""` when `isSolid`, otherwise one of:
-     * - `"malformed-operand"` — `positionsA`/`positionsB` is not a flat
-     *   `[x, y, z, …]` triple (length not a multiple of 3), or
-     *   `indicesA`/`indicesB` references a vertex past the end of its own
-     *   operand's positions. Computing on either would silently drop the
-     *   offending triangle rather than report the true operand, so this is
-     *   caught before the boolean runs at all.
+     * - `"malformed-operand"` — any of FOUR malformations, all rejected
+     *   before the boolean runs, because computing on them would silently
+     *   drop the offending triangle (or worse) rather than report the true
+     *   operand:
+     *   1. `positionsA`/`positionsB` is not a flat `[x, y, z, …]` triple
+     *      (length not a multiple of 3);
+     *   2. `indicesA`/`indicesB` has a length that is not a multiple of 3,
+     *      so it does not describe whole triangles;
+     *   3. `indicesA`/`indicesB` references a vertex past the end of its own
+     *      operand's positions;
+     *   4. a position is **non-finite** (NaN or infinity). This one is worth
+     *      calling out to callers: a NaN coordinate is caught by neither
+     *      length check, and left alone it can be absorbed into a
+     *      normal-looking answer or corrupt a face enough to report a
+     *      genuinely overlapping pair as `"no-overlap"`. So if you are
+     *      debugging an unexpected `"no-overlap"`, check your inputs for
+     *      NaN — it surfaces here, not there.
      * - `"empty-operand"` — an operand had no triangles.
      * - `"no-overlap"` — the exact intersection is empty. Covers a disjoint
      *   pair AND a *touching* pair, including any graze below the kernel's

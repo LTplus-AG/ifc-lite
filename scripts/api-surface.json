@@ -173,10 +173,12 @@
     "pairKey: function",
     "parseTriageResponse: function",
     "penetrationDepth: function",
+    "qualifiedKey: function",
     "reviewStatusToBcfTopicStatus: function",
     "ruleHadNoMatch: function",
     "rulesFromPresets: function",
     "sortClashes: function",
+    "summarizeClashes: function",
     "triangleArea: function"
   ],
   "@ifc-lite/clash/bcf": [

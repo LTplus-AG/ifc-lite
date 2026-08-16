@@ -9,16 +9,19 @@ import type { DiffEntry } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { describeChange } from './describeChange.js';
-import { summarizeGeometryChange, type Aabb } from './geometrySummary.js';
+import { summarizeGeometryChange, type WorldAabb } from './geometrySummary.js';
 
-const box = (min: [number, number, number], max: [number, number, number]): Aabb => ({ min, max });
+// `summarizeGeometryChange` requires the world brand (#2659): these fixtures
+// are authored directly in the absolute world frame.
+const box = (min: [number, number, number], max: [number, number, number]): WorldAabb =>
+  ({ frame: 'world', min, max });
 
 describe('summarizeGeometryChange (#1197)', () => {
   it('reports no move and no reshape for an identical bounding box', () => {
     // The wall that "moved 1.09 m" had an identical bbox between revisions — a
     // re-tessellation dragged the old *vertex-weighted* centroid, not the box.
     const b = box([0, 0, 0], [3, 0.3, 2.7]);
-    const summary = summarizeGeometryChange(b, { min: [...b.min] as [number, number, number], max: [...b.max] as [number, number, number] });
+    const summary = summarizeGeometryChange(b, box([...b.min] as [number, number, number], [...b.max] as [number, number, number]));
     assert.ok(summary);
     assert.strictEqual(summary!.movedDistance, 0, 'identical box must not read as moved');
     assert.strictEqual(summary!.reshaped, false);
@@ -217,6 +220,34 @@ describe('describeChange - resolved material', () => {
     assert.strictEqual(material!.kind, 'added');
     assert.strictEqual(material!.before, undefined);
     assert.strictEqual(material!.after, 'topsoil');
+  });
+});
+
+describe('describeChange - a meshed element moved under the wasm local frame (#2529)', () => {
+  it('reports the move when the translation is carried only by MeshData.origin', async () => {
+    // Local-frame contract (rust/geometry/src/router/transforms/mod.rs, default
+    // ON for wasm): world vertex = origin + position, and origin is the
+    // element's AABB centre, so it follows the element. A pure translation
+    // leaves `positions` byte-identical - the panel used to answer
+    // "movedDistance 0, reshaped false" for an element that moved 40 m.
+    const cube = (origin: [number, number, number]) => ({
+      expressId: 1,
+      positions: new Float32Array([-0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]),
+      origin,
+    });
+    const entry = modifiedEntry('IfcWall');
+    entry.changeKinds = ['geometry'];
+    const models = new Map<string, FederatedModel>([
+      ['A', { geometryResult: { meshes: [cube([10, 2, 3])] } } as unknown as FederatedModel],
+      ['B', { geometryResult: { meshes: [cube([50, 2, 3])] } } as unknown as FederatedModel],
+    ]);
+    const detail = describeChange(entry, models);
+    assert.ok(detail?.geometry, 'a geometry change must be described');
+    assert.ok(
+      Math.abs(detail!.geometry!.movedDistance - 40) < 1e-6,
+      `element moved 40 m via origin only; got ${detail!.geometry!.movedDistance}`,
+    );
+    assert.strictEqual(detail!.geometry!.reshaped, false, 'a pure translation is not a reshape');
   });
 });
 

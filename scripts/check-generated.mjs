@@ -20,15 +20,22 @@
  * script didn't run — `generate-docs-sections.mjs --check` (node-tests) and
  * `check-unused-locals.mjs` (Lint) — and both fast-failed CI with zero test
  * signal, exactly the failure mode this script exists to catch locally. The
- * list below is re-derived from scratch against every step in the
- * `build` / `lint` / `node-tests` jobs, not assumed:
+ * fix at the time re-derived the list from every step in the `build` / `lint`
+ * / `node-tests` jobs — but that scope was itself the bug: it named three
+ * jobs instead of the whole workflow, so `rust-tests`' own `cargo metadata
+ * --locked` gate (same shape, same "fails before any test signal" cost) sat
+ * unaudited and uncovered until a #2631 review caught it (issue #2631). The
+ * list below is re-derived from EVERY job in .github/workflows/test.yml, not
+ * a chosen subset:
  *   1. check:bim-globals         (node-tests, before `pnpm test`)
  *   2. check:api-surface         (node-tests, before `pnpm test`)
  *   3. check:server-attr-indices (node-tests, before `pnpm test`)
- *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`)
+ *   4. generate-docs-sections.mjs --check (node-tests, before `pnpm test`;
+ *      also docs-checks — the docs-only-PR twin of the same command)
  *   5. check-unused-locals.mjs   (lint job)
- *   6. plato clash-math freshness (plato-check job)          -- INFO only, see below
- *   7. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
+ *   6. cargo metadata --locked   (rust-tests job, before Clippy/`cargo test`)
+ *   7. plato clash-math freshness (plato-check job)          -- INFO only, see below
+ *   8. committed wasm .d.ts vs Rust source (build job)        -- INFO only, see below
  *
  * Steps deliberately NOT treated as a generated-artifact gate here, and why:
  *   - `pnpm fixtures:check` (build job) compares downloaded test-fixture
@@ -49,14 +56,35 @@
  *   - `pnpm --filter=@ifc-lite/viewer check:templates` (node-tests):
  *     typechecks against bim-globals.d.ts (gate 1's output) but doesn't
  *     itself compare a generated artifact — covered transitively by gate 1.
+ *   - `check-server-bin-targets.mjs` and its regression harness
+ *     (`check-server-bin-targets.test.mjs`, `lib/server-bin-targets-parse.test.mjs`,
+ *     node-tests): cross-checks three hand-maintained lists (platform.ts,
+ *     package.json, server-binaries.yml) against each other for parity —
+ *     nothing is regenerated from source into a committed artifact, so
+ *     there is nothing to diff.
+ *   - `scripts/lib/unused-locals-classify.test.mjs` (node-tests): a unit
+ *     test of gate 5's own parsing logic, not a gate over generated content.
+ *   - The geometry-census job's `Census` step (`cargo test -p
+ *     ifc-lite-geometry --features triangulation-alt --test
+ *     triangulation_invariance`): checks a live sweep against a checked-in
+ *     golden (tests/manifests/watertightness_census.tsv), which is the same
+ *     shape as (7)/(8) below in spirit, but its own job comment documents
+ *     re-blessing as a manual "run, download the uploaded artifact, replace
+ *     the golden" workflow — no `--check`-style command this script could
+ *     invoke — and the sweep itself costs ~20 minutes over the ~1.4GB
+ *     fixture corpus, the same cost class that keeps (7) and (8) opt-in.
+ *     Left out rather than added half-wired.
  *
- * (1)-(5) each need only a single-package `turbo build` (bim-globals ->
+ * (1)-(6) each need only a single-package `turbo build` (bim-globals ->
  * @ifc-lite/sandbox, server-attr-indices -> @ifc-lite/parser), an
  * already-built `dist/` across all published packages (api-surface,
- * unused-locals), or nothing at all (docs-sections), and run in well under
- * two minutes total, so they run unconditionally here.
+ * unused-locals), or nothing at all (docs-sections, cargo metadata), and run
+ * in well under two minutes total, so they run unconditionally here — (6) is
+ * SKIPPED rather than run when `cargo` isn't on PATH, since a frontend-only
+ * contributor's machine may not have the Rust toolchain installed at all,
+ * and an absent binary is not evidence of a stale lockfile.
  *
- * (6) and (7) are deliberately NOT run by default:
+ * (7) and (8) are deliberately NOT run by default:
  *   - Plato clones `plato` + `ara3d-sdk` at pinned SHAs and does a `dotnet
  *     build` of Plato.CLI (needs the .NET 9 SDK) on first run. Minutes, plus
  *     a toolchain most contributors don't have installed.
@@ -152,11 +180,11 @@ function record(name, status, detail, fix) {
   if (fix) console.log(`   fix: ${fix}`);
 }
 
-function runGate(name, cmd, args, fix) {
+function runGate(name, cmd, args, fix, opts = {}) {
   hr();
   console.log(`Running ${name}: ${[cmd, ...args].join(' ')}`);
   try {
-    run(cmd, args);
+    run(cmd, args, opts);
     record(name, 'pass', null, null);
   } catch (e) {
     const output = [e.stdout, e.stderr].filter(Boolean).join('\n');
@@ -261,7 +289,40 @@ if (!BUILD_FIRST && !allDistBuilt()) {
   }
 }
 
-// 6. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
+// 6. Cargo.lock is in sync with the manifests (rust-tests job). Cheap
+// (resolve only, no compile), and it fails BEFORE Clippy or `cargo test` run
+// — the same "zero test signal" shape as gates 1-5, just missed at first
+// because the original version of this script only audited the build/lint/
+// node-tests jobs (#2631 review). Skipped, not failed, when `cargo` is not
+// on PATH: this repo's frontend-only contributors don't necessarily have
+// the Rust toolchain installed, and CI's own rust-tests job only runs when
+// the `rust` path filter fires, so an absent binary here proves nothing
+// about staleness.
+if (which('cargo')) {
+  runGate(
+    'cargo metadata --locked',
+    'cargo',
+    ['metadata', '--locked', '--format-version', '1'],
+    'cargo update -p <the crate whose Cargo.toml you edited> --workspace   (or, if a release bumped every manifest, re-run scripts/sync-versions.js) — then commit Cargo.lock',
+    // `cargo metadata` prints the FULL resolved dependency graph as JSON on
+    // stdout — tens of MB in this workspace — and execFileSync's default
+    // 1MB maxBuffer throws ENOBUFS on that before cargo even gets to
+    // report a real lock-file mismatch. The CI step avoids this by piping
+    // to /dev/null; this script needs the buffer instead, since it wants
+    // the text back on failure.
+    { maxBuffer: 64 * 1024 * 1024 },
+  );
+} else {
+  record(
+    'cargo metadata --locked',
+    'skip',
+    'cargo is not on PATH — nothing to run this gate against. CI\'s rust-tests\n' +
+      'job runs it unconditionally whenever rust/**, Cargo.toml, or Cargo.lock changed.',
+    'Install the Rust toolchain (see rust-toolchain.toml), or re-run this script once it is on PATH.',
+  );
+}
+
+// 7. Plato clash-math freshness — INFO by default; needs .NET SDK + network.
 if (FULL) {
   if (which('dotnet')) {
     runGate(
@@ -289,7 +350,7 @@ if (FULL) {
   );
 }
 
-// 7. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
+// 8. Committed wasm .d.ts vs Rust source — INFO by default; needs a wasm rebuild.
 if (FULL) {
   if (which('wasm-pack') && which('cargo')) {
     hr();

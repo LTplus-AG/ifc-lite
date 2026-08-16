@@ -25,12 +25,7 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
-import {
-  collectReferencedEntityIds,
-  getVisibleEntityIds,
-  collectStyleEntities,
-  filterHiddenRefsFromRelationshipLine,
-} from './reference-collector.js';
+import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { retypeStepLine, retypeArgTokens } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
@@ -384,40 +379,19 @@ export class StepExporter {
     // `visibleOnly` never gets its line written by the source-iteration pass
     // either, so counting it as "modified" would make the header claim a
     // change the DATA section does not contain (CodeRabbit finding on #2414).
-    //
-    // Deliberately NOT conditional on the source having bytes. `source` is a
-    // mandatory accessor, so the `&& this.dataStore.source` conjunct this
-    // replaced was always true — but "fixing" it into a byte test is a live
-    // regression, not a no-op: an overlay-only model (created entities over
-    // `EMPTY_SOURCE_BYTES`) would skip the closure entirely, leave
-    // `allowedEntityIds` null, and export every HIDDEN entity under
-    // `visibleOnly`. The closure itself is already correct without source
-    // bytes — `reference-collector.ts` serves an overlay-authored entity's
-    // refs from its creation payload and scopes its own byte scan (#2339).
     let allowedEntityIds: Set<number> | null = null;
-    // Populated alongside `allowedEntityIds` below. `getVisibleEntityIds`
-    // excludes a hidden PRODUCT's own line from the closure, but `IFCREL*` is
-    // an unconditional root a few lines down and its bytes are copied verbatim
-    // by the source-iteration pass — nothing there filters a `#N` the closure
-    // just excluded out of the relationship's own attribute list. Kept so the
-    // source-iteration and overlay new-entity passes can run
-    // `filterHiddenRefsFromRelationshipLine` against the SAME exclusion set
-    // `collectReferencedEntityIds` used, rather than a second, possibly
-    // divergent notion of "hidden" (#2398).
-    let hiddenProductIds: ReadonlySet<number> | null = null;
-    if (options.visibleOnly) {
-      const visible = getVisibleEntityIds(
+    if (options.visibleOnly && this.dataStore.source) {
+      const { roots, hiddenProductIds } = getVisibleEntityIds(
         this.dataStore,
         options.hiddenEntityIds ?? new Set(),
         options.isolatedEntityIds ?? null,
         effective,
       );
-      hiddenProductIds = visible.hiddenProductIds;
       allowedEntityIds = collectReferencedEntityIds(
-        visible.roots,
+        roots,
         this.dataStore.source,
         effective,
-        visible.hiddenProductIds,
+        hiddenProductIds,
       );
       // Second pass: collect IFCSTYLEDITEM entities that reference included
       // geometry. Styled items reference geometry items but nothing references
@@ -1144,20 +1118,7 @@ export class StepExporter {
           sourceSchema,
           overlayActive,
         );
-        let nextEntityText = mutated.text;
-
-        // A hidden PRODUCT's own line is already out of the export via
-        // `allowedEntityIds` — this is the relationship that NAMED it.
-        // `IFCREL*` is an unconditional root (see `getVisibleEntityIds`), so
-        // its bytes reach here unfiltered even when one of the ids they name
-        // was just excluded; left alone that ships a `#N` with no `#N=` line
-        // (#2398). Checked before the nomination below: a relationship this
-        // withholds must not also be counted as a delivered modification.
-        if (hiddenProductIds !== null && hiddenProductIds.size > 0 && entityType.startsWith('IFCREL')) {
-          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, hiddenProductIds);
-          if (filtered === null) continue;
-          nextEntityText = filtered;
-        }
+        const nextEntityText = mutated.text;
 
         // A retype or a positional edit that CHANGED the line is what makes
         // this entity count; a named attribute edit was already nominated by
@@ -1455,13 +1416,7 @@ export class StepExporter {
             sourceSchema,
           );
         }
-        let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
-        // Same gap as the source-iteration pass, for an overlay-authored
-        // relationship instead of a parsed one (#2398).
-        if (hiddenProductIds !== null && hiddenProductIds.size > 0 && upperType.startsWith('IFCREL')) {
-          line = filterHiddenRefsFromRelationshipLine(line, hiddenProductIds);
-          if (line === null) continue;
-        }
+        const line = `#${entity.expressId}=${upperType}(${argsText});`;
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);
           if (converted !== null) {

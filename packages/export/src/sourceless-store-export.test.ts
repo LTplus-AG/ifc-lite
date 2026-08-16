@@ -8,10 +8,13 @@
  * `IfcDataStore.source` is a mandatory accessor; "this model kept no bytes" is
  * spelled `EMPTY_SOURCE_BYTES`, which is a real and supported state — server
  * parsed stores (`apps/viewer/src/utils/serverDataModel.ts`), synthetic stores,
- * GLB and point-cloud models all have one. Nothing in this package's suite
- * built such a store, so every `if (!store.source)` guard in `step-exporter.ts`
- * was untested dead code, and the shape of the "obvious" repair differs from
- * site to site. These cases pin both directions.
+ * GLB and point-cloud models all have one. Every `if (!store.source)` guard in
+ * `step-exporter.ts` was therefore dead code, and the shape of the "obvious"
+ * repair differs from site to site. These cases pin both directions.
+ *
+ * `sourceless-header-count.test.ts` (#2414) was the first case in this package
+ * to export from such a store; it covers the header's modification count. This
+ * file covers the line readers and the visible-only closure instead.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -118,13 +121,17 @@ function parsedStoreWithPset(): IfcDataStore {
 
 describe('StepExporter over a store with no source bytes', () => {
   /**
-   * THE TRAP, pinned. `export` used to gate the visible-only closure on
-   * `options.visibleOnly && this.dataStore.source` — always true, because
-   * `source` is mandatory. Repairing that conjunct into a byte test
-   * (`source.byteLength > 0`) is NOT a no-op: it leaves `allowedEntityIds`
-   * null for an overlay-only model, which means NO filtering at all and every
-   * hidden entity in the file. Measured on the unrepaired-into-a-byte-test
-   * build, this export contained `#102=IFCWALL` — the wall the caller hid.
+   * A FENCE, not a regression guard — this passes on current `main` and is
+   * meant to keep doing so.
+   *
+   * `export` gates the visible-only closure on `options.visibleOnly &&
+   * this.dataStore.source`, whose second conjunct is always true because
+   * `source` is mandatory. Someone will read that as a bug and "repair" it
+   * into a byte test (`source.byteLength > 0`). That is NOT a no-op: it leaves
+   * `allowedEntityIds` null for an overlay-only model, which means NO
+   * filtering at all and every hidden entity in the file. Measured on a build
+   * with that byte test applied, this export contained `#102=IFCWALL` — the
+   * wall the caller hid. This case is what turns that edit red.
    *
    * The closure is correct without source bytes because `reference-collector`
    * serves an overlay-authored entity's refs from its creation payload and

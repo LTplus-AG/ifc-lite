@@ -34,35 +34,46 @@
  * nothing that names it is written, and it does not appear in the file — the
  * same outcome as the source-less store the server path builds.
  *
- * ## Why the incidental readers are exempt
+ * ## The incidental readers, and why the clamp is never harmless
  *
- * This predicate is deliberately NOT applied to the incidental readers
+ * This predicate is not applied on this branch to the incidental readers
  * (`getRelatedEntities`, `getPropertySetName`, `getElementQuantityName`, …).
  * Those decode a range and match a pattern in it.
  *
- * The exemption is NOT justified by the clamp being harmless. `clampRange`
- * (`source-bytes.ts`) floors the start at 0, so a decode is empty only when the
- * range ENDS at or before byte 0. A negative offset carrying a real length
- * clamps up to the beginning of the file and decodes the WRONG record: measured,
- * `decodeUtf8(-2, -2 + offsetOfSecondPset)` returns the first pset's line, and
- * `getPropertySetName` then reports the FIRST pset's name for the second one — a
- * confidently wrong answer, not a null. An overrunning END, by contrast, is
- * genuinely benign: it decodes the intended record plus trailing bytes, and the
- * anchored patterns those readers use still match the right thing.
+ * The exemption is NOT justified by the clamp being harmless, in EITHER
+ * direction the range can leave the source. `clampRange` (`source-bytes.ts`)
+ * does not empty a range; it moves an endpoint onto a real file byte, and the
+ * window that survives still holds somebody else's record. Measured on a
+ * two-record source:
  *
- * What actually makes the exemption safe is that no such ref reaches them, for
- * two independent reasons. `OVERLAY_BYTE_OFFSET` (`-1`) is the only negative
- * offset produced anywhere in the repo, and (a) all three sites that write it —
- * `store-editor.ts`'s `addEntity` and `effective-index.ts`'s `get` /
- * `[Symbol.iterator]` — pair it with `byteLength: 0`, the one shape whose clamp
- * really does decode to the empty string; and (b) it is synthesised on read by
- * the EFFECTIVE index and never written back into `dataStore.entityIndex.byId`,
- * which is the index these readers consult.
+ * - **Negative offset.** A negative start carrying a real length floors to 0
+ *   and decodes from the beginning of the FILE, so `getPropertySetName`
+ *   reports the FIRST pset's name for the second one — a confidently wrong
+ *   answer, not a null.
+ * - **Overrunning end.** Equally wrong, and this is the shape that is
+ *   REACHABLE. `(byteOffset: 0, byteLength: 9999)` for `#1` clamps to EOF, so
+ *   the window ends at the file's LAST record; `getPropertyIdsInSet(#1)`
+ *   answers `[201, 202]`, which are `#2`'s members. The `$`-anchored patterns
+ *   match at the end of the CLAMPED window, i.e. against whatever record the
+ *   file happens to end on. `getPropertySetName` is right there only by luck,
+ *   because its pattern is unanchored.
  *
- * Either reason falling away makes the wrong answer reachable — a producer that
- * paired a negative offset with a real length, or one that wrote overlay refs
- * into the parsed index, would need this predicate applied at those readers too.
- * Both are pinned by `source-ref-bounds.test.ts` so the change is not silent.
+ * The negative offset is unreachable — `OVERLAY_BYTE_OFFSET` (`-1`) is the
+ * only one in the repo, all three sites that write it pair it with
+ * `byteLength: 0`, and it is synthesised by the EFFECTIVE index rather than
+ * written into `dataStore.entityIndex.byId`, which is the index these readers
+ * consult (all pinned by `source-ref-bounds.test.ts`). The overrun is not: it
+ * is the same corrupt-store shape as above, a ref claiming bytes the source
+ * cannot serve.
+ *
+ * So the exemption is a live defect, not a safe simplification, and it is
+ * older than this branch. Removing it — gating these readers on this
+ * predicate, which also makes them agree with the source-iteration pass — is
+ * the subject of #2678, with the probe and the tests. It is deliberately not
+ * done here: this branch is about the emission predicate, and the two changes
+ * touch the same docstring. When #2678 lands, the per-call-site consequence
+ * lives in `step-exporter.ts`'s `entityLineText` and the argument stays here,
+ * cited rather than repeated.
  */
 
 import type { ExportEntityRef } from './entity-iteration.js';

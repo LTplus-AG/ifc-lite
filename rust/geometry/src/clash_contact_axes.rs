@@ -149,6 +149,22 @@ fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<[f64; 3]> {
 /// a mesh with hundreds of mutually non-parallel triangle normals; an
 /// ordinary `n`-gon extrusion contributes at most `n + 2` families, and 64
 /// covers a 62-gon — finer than any real IFC profile tessellation.
+///
+/// The direction of error when the cap DOES bite, stated plainly because the
+/// rest of this module is careful about it: truncating drops candidate axes,
+/// and a dropped axis can only make the gate find LESS separation, so a
+/// contact it would otherwise withhold can be admitted. That is the unsafe
+/// direction — the opposite of the "gate-tightening only" property the
+/// generalisation otherwise has.
+///
+/// It is nonetheless a strict improvement on every input, because the
+/// alternative is not an uncapped scan: before this, `gate_axes` fell back to
+/// the three WORLD axes for any operand that was not a perfect box (its own
+/// doc called that "conservative, not correct"). A tessellated cylinder went
+/// from 3 candidate axes to at least 64 per operand plus their crosses. So
+/// the cap leaves the generalisation incomplete for meshes with more than 64
+/// distinct normal families — a tessellated dome or a swept curved BREP, not
+/// a profile extrusion — rather than making anything worse than it was.
 const MAX_FACE_FAMILIES: usize = 64;
 
 /// The distinct face-normal direction families of `m`: one canonical unit

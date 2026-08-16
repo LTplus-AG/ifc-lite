@@ -78,6 +78,14 @@ export function MeasureOverlay() {
   const cursorPosRef = React.useRef<{ x: number; y: number } | null>(null);
   // Only update snap indicator position when snap target changes (not on every cursor move)
   const [snapIndicatorPos, setSnapIndicatorPos] = useState<{ x: number; y: number } | null>(null);
+  // Live cursor position, tracked in STATE only while a polyline is being
+  // traced. The rubber-band segment needs the cursor even when there is no
+  // snap target (cursor over empty background, or Snap toggled off, in which
+  // case the hover raycast never runs and snapTarget is never updated) —
+  // without this the segment flickers off over gaps and is absent entirely
+  // with Snap off. Outside polyline tracing this stays null so ordinary mouse
+  // movement keeps causing zero re-renders, which is why cursorPosRef exists.
+  const [polylineCursor, setPolylineCursor] = useState<{ x: number; y: number } | null>(null);
   // Collapsed by default for minimal UI.
   const [section, setSection] = useState<PanelSection | null>(null);
   // Ref to the overlay container for coordinate conversion
@@ -93,6 +101,12 @@ export function MeasureOverlay() {
         cursorPosRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
       } else {
         cursorPosRef.current = { x: e.clientX, y: e.clientY };
+      }
+      // Feed the rubber band while a polyline is active. Read from the store
+      // directly (not a subscription) so this listener never needs re-binding
+      // and mousemove outside polyline tracing stays render-free.
+      if (useViewerStore.getState().activePolyline) {
+        setPolylineCursor(cursorPosRef.current);
       }
     };
 
@@ -112,6 +126,15 @@ export function MeasureOverlay() {
       setSnapIndicatorPos(null);
     }
   }, [snapTarget]);
+
+  // Drop the tracked cursor when no polyline is being traced, so a finished or
+  // cancelled polyline's last position cannot leak into the next one as a
+  // stale rubber-band endpoint.
+  useEffect(() => {
+    if (!activePolyline) {
+      setPolylineCursor(null);
+    }
+  }, [activePolyline]);
 
   const handleClear = useCallback(() => {
     clearMeasurements();
@@ -405,7 +428,10 @@ export function MeasureOverlay() {
         activeMeasurement={activeMeasurement}
         snapTarget={snapTarget}
         snapVisualization={snapVisualization}
-        hoverPosition={snapIndicatorPos}
+        // Snapped position wins so the rubber band lands on the snapped
+        // point; the raw cursor is the fallback that keeps the segment
+        // alive over empty background and with Snap off.
+        hoverPosition={snapIndicatorPos ?? polylineCursor}
         projectToScreen={projectToScreen}
         constraintEdge={measurementConstraintEdge}
         unitDisplayOverrides={unitDisplayOverrides}

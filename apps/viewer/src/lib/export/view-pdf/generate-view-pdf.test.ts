@@ -320,16 +320,41 @@ describe('generateViewPdf (#2042)', () => {
     assert.ok(Math.abs(flipped.page.heightMm - 50) < 1e-3);
   });
 
-  it('draws the cut rim as heavy cut lines', async () => {
+  it('draws the cut rim as heavy cut lines, ON the cut plane', async () => {
     const { record, createDocument, download } = recorder();
-    await generateViewPdf(
+    const result = await generateViewPdf(
       { view: view(), camera: CAMERA, section: sectionAtQuarterX(false), scaleFactor: 100 },
       { createDocument, download },
     );
-    // `cut` is the 0.5 mm weight in the shared table; nothing else in this
-    // drawing reaches it, so its presence is the rim's signature.
     const heavy = record.strokes.filter((s) => Math.abs(s.width - 0.5) < CLOSE);
     assert.ok(heavy.length > 0, 'the section rim must print at the cut line weight');
+
+    // Weight alone is NOT the rim's signature: the generator's own cut
+    // polygons carry category `cut` too, so "some stroke is 0.5 mm" would
+    // still pass with the rim dropped. What is unique to the rim is WHERE it
+    // lands. The camera looks down -Z and the cut plane is X = 1, so the
+    // cross-section face collapses to a single vertical line at the kept
+    // half's outer edge, spanning the box's full 3 m height.
+    for (const s of heavy) {
+      assert.ok(Math.abs(s.x1 - s.x2) < 1e-3, `a rim stroke must be vertical, got ${s.x1}..${s.x2}`);
+    }
+    const xs = heavy.flatMap((s) => [s.x1, s.x2]);
+    const spread = Math.max(...xs) - Math.min(...xs);
+    assert.ok(spread < 1e-3, `every rim stroke must sit on the one cut plane, spread ${spread}`);
+
+    // The cut is at the edge of the kept half, i.e. one of the two margins.
+    const rimX = xs[0];
+    const atMargin =
+      Math.abs(rimX - 10) < 1e-3 || Math.abs(rimX - (result.page.widthMm - 10)) < 1e-3;
+    assert.ok(atMargin, `the rim must lie on the cut plane at a page edge, got ${rimX}`);
+
+    // Full height of the box: 3 m at 1:100 is 30 mm. A partial rim (a missed
+    // cut triangle) shortens this.
+    const ys = heavy.flatMap((s) => [s.y1, s.y2]);
+    assert.ok(
+      Math.abs((Math.max(...ys) - Math.min(...ys)) - 30) < 1e-3,
+      `the rim must span the full 3 m section height, got ${Math.max(...ys) - Math.min(...ys)}`,
+    );
   });
 
   it('files the sheet under the EXACT scale, never a rounded one', async () => {

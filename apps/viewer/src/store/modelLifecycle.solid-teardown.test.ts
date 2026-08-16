@@ -68,6 +68,15 @@ function assertPresentationGone(where: string): void {
   assert.equal(s.clashContactLines, null, `${where} must not leave the contact-line overlay drawn`);
   assert.equal(s.clashOverlapBox, null, `${where} must not leave the overlap wireframe box drawn`);
   assert.equal(s.clashHighlightColors, null, `${where} must not leave the A/B pair tint applied`);
+  // `focusClash` takes ownership of the shared ghost channel too — the X-Ray
+  // focus mode ghosts the pair's context, and the resolved-solid path ghosts
+  // the ENTIRE model (`installClashGhost(new Set())`, useClash.ts). It is in a
+  // different slice from every field above, so no clash action clears it: the
+  // teardown dropped the selected id and the solid and left the survivors
+  // fully translucent with nothing selected and no way to tell why (#2654
+  // review, second report). `Set()` here means "ghost everything", so a
+  // surviving EMPTY set is the worst case, not the harmless one.
+  assert.equal(s.ghostExceptEntities, null, `${where} must not leave the scene ghosted with nothing selected`);
 }
 
 describe('model-lifecycle teardown drops the intersection-solid presentation (#2654 review)', () => {

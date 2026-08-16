@@ -15,12 +15,24 @@ import { BrowserDropboxApiClient } from './http-client.js';
 import { decodeCurrentAccount } from './dropbox-types.js';
 
 // Endpoints per Dropbox's own OAuth guide (`developers.dropbox.com/oauth-guide`,
-// "Implementing OAuth" / "PKCE", checked 2026-08-15): the authorization
-// endpoint is `https://www.dropbox.com/oauth2/authorize`, the token endpoint
-// is `https://www.dropbox.com/oauth2/token` — not `api.dropboxapi.com`, which
-// hosts only the data-plane RPC endpoints this package's `http-client.ts` calls.
+// "Implementing OAuth" / "PKCE", checked 2026-08-16). The two live on
+// *different* hosts, which is easy to get wrong:
+//
+//  - authorization: `https://www.dropbox.com/oauth2/authorize` — a web page
+//    the user is navigated to, served by the www front end.
+//  - token: `https://api.dropboxapi.com/oauth2/token` — an API endpoint, on
+//    the same API host as the data-plane RPCs in `http-client.ts`.
+//
+// `www.dropbox.com/oauth2/token` is NOT an alias of the token endpoint: it
+// answers a well-formed exchange with the www front end's generic
+// `text/html` "Error (400)" page instead of the RFC 6749 §5.2 JSON body, so
+// a sign-in pointed there dies at the exchange with a bare
+// "token endpoint returned 400" and no reason. Verified against both hosts
+// with a deliberately invalid code: `api.dropboxapi.com` answers
+// `{"error": "invalid_grant", ...}`, `www.dropbox.com` answers HTML.
+// `test/auth.test.ts` pins the host so this cannot silently drift back.
 const AUTHORIZE_ENDPOINT = 'https://www.dropbox.com/oauth2/authorize';
-const TOKEN_ENDPOINT = 'https://www.dropbox.com/oauth2/token';
+const TOKEN_ENDPOINT = 'https://api.dropboxapi.com/oauth2/token';
 
 /**
  * Least-privileged scopes for read-only browsing and download of an IFC

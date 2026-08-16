@@ -15,11 +15,16 @@ export const DROPBOX_MANIFEST: PluginManifest = {
     // `get_current_account`). `content.dropboxapi.com` for `files/download`
     // (a *separate* host by Dropbox's own convention — RPC endpoints and
     // content endpoints are split, unlike Graph's single `graph.microsoft.com`).
-    // `www.dropbox.com` for the OAuth token endpoint (`/oauth2/token`) that
-    // `auth.ts`'s `exchangeAuthorizationCode`/`refreshAccessToken` calls
-    // through `ctx.fetch` — same non-Graph-credential caveat as the msgraph
+    // `api.dropboxapi.com` doubles as the OAuth *token* host (`/oauth2/token`,
+    // which `auth.ts`'s `exchangeAuthorizationCode`/`refreshAccessToken` call
+    // through `ctx.fetch`) — same non-Graph-credential caveat as the msgraph
     // manifest documents for its own token host: that request carries no
     // bearer token, only the PKCE code/verifier exchange itself.
+    //
+    // `www.dropbox.com` is deliberately NOT listed: the only thing served
+    // from it is the authorization *page*, which the user is navigated to in
+    // a popup (`window.open`) and never fetched — an allowlist entry would
+    // grant this provider a fetch capability it does not use.
     //
     // No `publicNetwork`: unlike Graph's pre-signed `@microsoft.graph.downloadUrl`
     // (a foreign CDN host reached without credentials), Dropbox's
@@ -27,7 +32,7 @@ export const DROPBOX_MANIFEST: PluginManifest = {
     // — see the citations in `http-client.ts` and `provider.ts` for why this
     // is safe to send bearer-authenticated through `ctx.fetch` rather than
     // routed through `ctx.fetchPublic`.
-    network: ['api.dropboxapi.com', 'content.dropboxapi.com', 'www.dropbox.com'],
+    network: ['api.dropboxapi.com', 'content.dropboxapi.com'],
   },
   // Public client (PKCE, no client_secret) — see `auth.ts`. The app key is
   // not a secret, so a plain textfield is enough, matching source-msgraph's

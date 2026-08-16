@@ -101,6 +101,24 @@ Sign-in is a popup, not a full-page redirect: `signIn()` opens
 `https://www.dropbox.com/oauth2/authorize` in a popup and polls it for a
 same-origin redirect back to this app.
 
+**The two OAuth endpoints are on different hosts.** The authorization page is
+`https://www.dropbox.com/oauth2/authorize`; the token endpoint is
+`https://api.dropboxapi.com/oauth2/token`, on the same API host as the
+data-plane RPCs. `www.dropbox.com/oauth2/token` is not an alias — it answers
+a well-formed exchange with the www front end's generic `text/html`
+"Error (400)" page instead of the RFC 6749 §5.2 JSON body, so pointing the
+token exchange there fails every sign-in with a bare "token endpoint returned
+400" and no reason. `test/auth.test.ts` pins the token host.
+
+The app registration's **redirect URI must match the built `redirect_uri`
+byte for byte**, scheme, host, port and path included: `signIn()` sends
+`window.location.origin + REDIRECT_PATH`, so `http://localhost:5199/...` and
+`http://127.0.0.1:5199/...` are two different registrations. A mismatch never
+reaches this code — Dropbox redirects the popup to
+`www.dropbox.com/oauth2/authorize_error?...&error_name=invalid_redirect_uri`
+before any callback happens, which is also a cheap way to check a
+registration without signing in.
+
 ## What the app registration needs (maintainer action — not done here)
 
 No app key is committed to this package; it's a required, non-secret

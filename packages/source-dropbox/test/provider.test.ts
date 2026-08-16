@@ -49,9 +49,13 @@ describe('DropboxProvider', () => {
     expect(satisfiesCaretRange(PLUGIN_API_VERSION, provider.manifest.api)).toBe(true);
     expect(provider.manifest.auth).toBe('interactive');
     expect(provider.auth).toBeDefined();
-    expect(provider.manifest.permissions.network).toEqual(
-      expect.arrayContaining(['api.dropboxapi.com', 'content.dropboxapi.com', 'www.dropbox.com']),
-    );
+    // Exact, not `arrayContaining`: the point of the allowlist is what it
+    // leaves out. `www.dropbox.com` serves only the authorization page, which
+    // is navigated to in a popup and never fetched, so it must not be here.
+    expect(provider.manifest.permissions.network).toEqual([
+      'api.dropboxapi.com',
+      'content.dropboxapi.com',
+    ]);
     expect(provider.manifest.permissions.publicNetwork).toBeUndefined();
   });
 

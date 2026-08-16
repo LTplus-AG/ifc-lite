@@ -51,7 +51,8 @@
 
 use crate::clash_contact_axes::{dot3, gate_axes};
 use crate::kernel::arrangement::Tri;
-use crate::kernel::mesh_bridge::{intersection_tris, near_band_from_extent};
+use crate::kernel::mesh_bridge::intersection_tris;
+use crate::kernel::near_band::near_band_from_extent;
 use crate::mesh::Mesh;
 
 /// Multiple of the kernel's near-coplanar band above which the intersection
@@ -272,3 +273,7 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
         volume_m3: tri_volume(&tris),
     }
 }
+
+#[cfg(test)]
+#[path = "clash_solid_world_frame_tests.rs"]
+mod world_frame_tests;

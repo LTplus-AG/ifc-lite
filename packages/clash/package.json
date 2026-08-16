@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/clash",
-  "version": "1.6.8",
+  "version": "1.7.0",
   "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
   "type": "module",
   "main": "./dist/index.js",
@@ -48,6 +48,7 @@
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/world-frame-fixtures": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

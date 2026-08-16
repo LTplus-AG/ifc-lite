@@ -252,6 +252,15 @@ async function main() {
     pairs,
   };
 
+  // `report()` prints a block per corpus pair, so stdout here holds far more
+  // than a pipe buffer — and on a pipe (every CI log) stdout is asynchronous.
+  // A bare `process.exit()` tears the process down with that remainder still
+  // queued, cutting the log off mid-report without the verdict line, which is
+  // the only part anyone reads. So exit from the write CALLBACK: writes are
+  // ordered, so it fires only once everything before it has reached the pipe.
+  // Setting `process.exitCode` and returning would flush too, but this run
+  // holds a live IfcAPI, and an immediate exit is what keeps a lingering
+  // handle from parking the job instead of ending it.
   report(scorecard);
   if (SELF_TEST) {
     const broken = harnessBroken || pairs.some((pair) => pair.fixtureFailures.length > 0);
@@ -261,14 +270,15 @@ async function main() {
           ? 'FAIL — the harness cannot be trusted'
           : 'PASS — all three mutants rejected on every pair, on per-pair clauses alone'
       }\n`,
+      () => process.exit(broken ? 1 : 0),
     );
-    process.exit(broken ? 1 : 0);
+    return;
   }
   if (WRITE) {
     writeFileSync(SCORECARD, `${JSON.stringify(scorecard, replacer, 2)}\n`);
     process.stdout.write(`\nwrote ${SCORECARD}\n`);
   }
-  process.exit(failed ? 1 : 0);
+  process.stdout.write('', () => process.exit(failed ? 1 : 0));
 }
 
 /** Durations are wall clock and would churn the committed artifact on every

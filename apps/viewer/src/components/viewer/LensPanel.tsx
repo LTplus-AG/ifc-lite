@@ -1217,6 +1217,9 @@ export function LensPanel({ onClose }: LensPanelProps) {
   const showEntities = useViewerStore((s) => s.showEntities);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const clearIsolation = useViewerStore((s) => s.clearIsolation);
+  // Viewport's aggregation resolver (#2531): rule isolation runs a rule's
+  // matches through it so a geometry-less assembly isolates as its parts.
+  const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   // Ownership bookkeeping lives in the STORE (not component state/refs) so a
   // panel unmount/remount neither loses which hidden ids the lens owns nor
   // strands a rule isolation it can no longer release.
@@ -1327,11 +1330,80 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const matchingIds = useViewerStore.getState().lensRuleEntityIds.get(ruleId);
     if (!matchingIds || matchingIds.length === 0) return;
 
-    isolateEntities(matchingIds);
+    // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+    // container, ...) owns no mesh: its geometry hangs off the
+    // IfcRelAggregates parts, and the renderer resolves `isolatedEntities`
+    // against mesh ids directly (viewportUtils' buildRenderOptions ->
+    // `isolatedIds`). Isolating the bare matched id therefore blanks the view.
+    // Resolve through the Viewport channel #2531 added
+    // (`resolveHighlightIds`, backed by expandToGeometryBearingIds), exactly
+    // as SearchModal.text.tsx's commit and SearchModal.filter.tsx's "Isolate
+    // in 3D" (#2660) do: a geometry-bearing id passes through untouched and
+    // deduplicated, a geometry-less one is replaced by its geometry-bearing
+    // parts.
+    //
+    // The resolved ids are APPENDED to the raw matches, never substituted for
+    // them (#2680). The resolver bounds-checks against the type-visibility
+    // FILTERED mesh list, and TYPE_VISIBILITY_SEMANTIC_DEFAULTS starts
+    // `spaces`, `spatialZones`, `openings` and `virtualElements` all OFF
+    // (store/constants.ts) -- so a rule matching walls AND spaces (colouring
+    // spaces by area is an ordinary lens) resolves the walls, returns
+    // non-empty, and the spaces would silently drop out of the isolation set
+    // under replace semantics. Nothing looks wrong at first, because those
+    // types are hidden anyway; it goes wrong when the user turns spaces back
+    // on with the isolation still active and they stay hidden with no way to
+    // tell why. Carrying an id that owns no mesh is free: it simply never
+    // matches the renderer's whitelist. That also subsumes the
+    // nothing-resolved case (renderer not registered yet, or the whole match
+    // geometry-less), where the raw ids are all that is left -- and isolating
+    // an empty set would hide the ENTIRE model.
+    //
+    // #2660's second fallback -- walking IfcRelAggregates in the data store
+    // when the resolver comes back empty because the parts are HIDDEN types
+    // -- is deliberately not replicated here, and `expandFilterRowsThroughAggregation`
+    // does not fit anyway (it consumes filter-result rows, while a lens rule
+    // hands over globalIds). That fallback only pays off next to a
+    // type-visibility gate that flips the parts' toggles back on; the lens
+    // panel has no such gate, so isolating hidden-type parts would still
+    // render nothing. Adding one is a feature, not this fix.
+    const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? [];
+    const isolationIds = [...new Set([...resolved, ...matchingIds])];
+
+    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): if
+    // the channel already holds exactly these ids it CLEARS instead of
+    // isolating. Switching from rule A to a rule B that lands on the SAME set
+    // would therefore un-isolate the model while the record below claims B
+    // owns an isolation that no longer exists -- and the next release, finding
+    // an empty channel, would disown it silently.
+    //
+    // This is PRE-EXISTING and the resolution above does not widen it: two
+    // rules whose criteria differ but whose matches coincide ("walls with a
+    // fire rating of 60" and "walls on level 2" over a model where those are
+    // the same walls) always collided this way, and appending the raw matches
+    // unconditionally keeps every other pair distinguishable -- an
+    // assembly-matching rule yields {assembly, ...parts} while a
+    // parts-matching rule yields {...parts}, sets that differ by the
+    // assembly's own id and cannot collapse onto each other.
+    //
+    // Release the channel first so the isolate call below always takes its
+    // isolate branch -- same
+    // `ruleIsolationOwnsChannel` set-equality predicate the teardown path uses,
+    // so both ends agree on when the channel holds a given set, and the
+    // re-isolate re-runs the un-hide the toggle branch would have skipped.
+    // Clicking the SAME rule again still un-isolates: that path returned above.
+    if (ruleIsolationOwnsChannel(useViewerStore.getState().isolatedEntities, isolationIds)) {
+      clearIsolation();
+    }
+    isolateEntities(isolationIds);
     // Record ownership: rule id + the exact ids pushed into the channel, so a
     // later release can verify the channel still holds what the lens applied.
-    setLensRuleIsolation({ ruleId, entityIds: [...matchingIds] });
-  }, [isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
+    // These MUST be the ids just isolated, not the raw matches: releaseRuleIsolation
+    // compares this record set-wise against the channel
+    // (ruleIsolationOwnsChannel), so recording the raw matches while pushing
+    // the expanded ones makes the lens disown its own isolation and the
+    // un-isolate click leaves the model stuck isolated.
+    setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
+  }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
 
   // Safety net: if the lens got deactivated while the panel was unmounted
   // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation

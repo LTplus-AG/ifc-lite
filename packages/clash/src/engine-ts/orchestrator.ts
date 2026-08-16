@@ -5,6 +5,7 @@
 import { matchesSelector } from '../selectors.js';
 import { inferClashSeverity } from '../disciplines.js';
 import { isExcluded, qualifiedKey } from '../exclude.js';
+import { summarizeClashes } from '../analysis.js';
 import {
   DEFAULT_CLASH_SETTINGS,
   type Clash,
@@ -14,8 +15,6 @@ import {
   type ClashRule,
   type ClashRuleCoverage,
   type ClashSettings,
-  type ClashSeverity,
-  type ClashSummary,
 } from '../types.js';
 import type { ClashKernel } from './kernel.js';
 
@@ -130,7 +129,7 @@ export async function runClash(
 
   const result: ClashResult = {
     clashes,
-    summary: buildSummary(clashes),
+    summary: summarizeClashes(clashes),
     rulesRun: rules,
     ruleCoverage,
     settings: { tolerance, excludeVoidsAndHosts },
@@ -161,15 +160,3 @@ function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function buildSummary(clashes: Clash[]): ClashSummary {
-  const byRule: Record<string, number> = {};
-  const byTypePair: Record<string, number> = {};
-  const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
-  for (const c of clashes) {
-    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
-    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
-    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
-    bySeverity[c.severity] += 1;
-  }
-  return { total: clashes.length, byRule, byTypePair, bySeverity };
-}

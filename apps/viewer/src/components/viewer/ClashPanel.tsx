@@ -20,12 +20,14 @@ import {
   Layers,
   FilePlus,
   MessageSquare,
+  Ban,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
+import type { SaveResult } from '@/lib/clash/persistence';
 import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
@@ -174,6 +176,70 @@ function ClashReviewControls({
   );
 }
 
+/**
+ * "Everything touching this class" — one button per DISTINCT class of the
+ * clash. Module-level (not nested in `ClashPanel`, like `ClashReviewControls`
+ * above): a component defined inside a render body is a new function
+ * identity every render, so React remounts the subtree instead of
+ * reconciling it — harmless while these stay stateless, but the pattern
+ * compounds every time another one gets added inside the panel body.
+ */
+function ExcludeAnyButton({ tag, count, onExclude }: { tag: string; count: number; onExclude: () => void }) {
+  return (
+    <button
+      onClick={onExclude}
+      title={`Stop reporting ${tag} against anything at all`}
+      className="rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+    >
+      Exclude anything touching {tag}
+      {count > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({count})</span>}
+    </button>
+  );
+}
+
+/** The exclusion actions offered on an expanded clash, narrowest label last. Module-level, see `ExcludeAnyButton`. */
+function ClashExclusionActions({
+  clash,
+  typeAnyCountOf,
+  typePairCount,
+  onExcludeTypeAny,
+  onExcludeTypePair,
+  onExcludeElementPair,
+}: {
+  clash: Clash;
+  typeAnyCountOf: (tag: string) => number;
+  typePairCount: number;
+  onExcludeTypeAny: (tag: string) => void;
+  onExcludeTypePair: () => void;
+  onExcludeElementPair: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 px-7 pt-1.5">
+      <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+      <span className="text-[10px] text-muted-foreground">Overlap by design?</span>
+      <ExcludeAnyButton tag={clash.a.tag} count={typeAnyCountOf(clash.a.tag)} onExclude={() => onExcludeTypeAny(clash.a.tag)} />
+      {clash.b.tag !== clash.a.tag && (
+        <ExcludeAnyButton tag={clash.b.tag} count={typeAnyCountOf(clash.b.tag)} onExclude={() => onExcludeTypeAny(clash.b.tag)} />
+      )}
+      <button
+        onClick={onExcludeTypePair}
+        title={`Stop reporting any ${clash.a.tag} against any ${clash.b.tag}`}
+        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      >
+        Exclude all {clash.a.tag} × {clash.b.tag}
+        {typePairCount > 1 && <span className="ml-1 tabular-nums text-muted-foreground">({typePairCount})</span>}
+      </button>
+      <button
+        onClick={onExcludeElementPair}
+        title="Stop reporting these two elements against each other"
+        className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-muted"
+      >
+        Exclude just this pair
+      </button>
+    </div>
+  );
+}
+
 export function ClashPanel({ onClose }: ClashPanelProps) {
   const {
     result,
@@ -206,6 +272,15 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     highlightAll,
     clearHighlight,
     clearAll,
+    exclusions,
+    suppressedCount,
+    exclusionCountOf,
+    excludeTypePair,
+    excludeTypeAny,
+    excludeElementPair,
+    removeExclusion,
+    setExclusionEnabled,
+    clearExclusions,
     invalidateSolidCompute,
   } = useClash();
 
@@ -220,6 +295,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
 
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** Flat pairs vs. the existing spatial-cluster grouping (`groupClashes({ by:
+   *  'cluster' })`, already computed into `groups` on every run for BCF export —
+   *  this is the first time the RESULTS LIST itself surfaces it). View-only
+   *  state: it doesn't change what was detected, only how it's displayed. */
+  const [resultView, setResultView] = useState<'pairs' | 'issues'>('pairs');
+  const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   // View settings live in the store so they survive a panel switch (#1464).
   const sortBy = useViewerStore((s) => s.clashSortBy);
   const setSortBy = useViewerStore((s) => s.setClashSortBy);
@@ -251,10 +332,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     s.clearEntitySelection();
     s.clearIsolation();
     s.clearGhost();
-    s.setClashSelectedId(null);
-    s.setClashHighlightColors(null);
-    s.setClashOverlapBox(null);
-    s.clearClashSolid();
+    // One call, not a field list: this cleanup used to clear the selected id,
+    // the pair tint, the overlap box and the solid but NOT `clashContactLines`,
+    // so a focused clash whose contact interface HAD been built (the preferred
+    // marker — `useClash` sets the lines and nulls the box in that case) left
+    // its outline drawn after the panel unmounted (#2654 review).
+    s.clearClashFocus();
     s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
     // Drop any in-flight solid compute too — without this, a compute kicked
     // off just before the panel closes can resolve AFTER this cleanup runs
@@ -316,6 +399,11 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     [result, groups, visibleClashes],
   );
   const isDuplicateSetView = setSections !== null;
+  // A duplicate scan's grouping is coincident SETS, not spatial proximity, so
+  // the Pairs/Issues toggle and its epsilon wording do not apply there, and a
+  // stale 'issues' choice from an earlier clash scan must not leak in either
+  // (`resultView` is component state that survives a result change). (#2535)
+  const effectiveResultView = isDuplicateSetView ? 'pairs' : resultView;
 
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.
@@ -364,8 +452,38 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     }));
   }, [result, setSections, visibleClashes, groupBy]);
 
+  /**
+   * The same (filtered, sorted) clashes re-organized along the existing spatial
+   * clustering (`groups`, from `groupClashes({ by: 'cluster' })`) instead of
+   * severity/rule/type-pair — one section per coordination issue rather than per
+   * raw pair. A group can straddle the current filters (touching/status), so
+   * only its VISIBLE members are shown and empty groups are dropped; the pairs
+   * inside are never removed, only re-organized (issue #groupClashes-ui).
+   */
+  const issueSections = useMemo(() => {
+    if (!groups) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+    const visibleIds = new Set(visibleClashes.map((c) => c.id));
+    return groups
+      .map((g) => ({
+        key: g.id,
+        label: g.title,
+        color: SEVERITY[g.severity].color,
+        items: sortClashes(
+          g.members.filter((m) => visibleIds.has(m.id)),
+          sortBy,
+        ),
+      }))
+      .filter((s) => s.items.length > 0);
+  }, [groups, visibleClashes, sortBy]);
+
+  const activeSections = effectiveResultView === 'issues' ? issueSections : sections;
+
   const total = result?.summary.total ?? 0;
   const shown = visibleClashes.length;
+  // Filter-aware: `groups.length` would count clusters that the touching/status
+  // filters have emptied out, so the header would say "2 issues" while the list
+  // below (built from the same `issueSections`) renders only 1.
+  const issueCount = issueSections.length;
   const bySeverity = result?.summary.bySeverity;
 
   // Case (c) from the clash-matrix design: "0 clashes" because no rule matched
@@ -416,7 +534,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     | { kind: 'detail'; clash: Clash };
   const displayRows = useMemo<ClashDisplayRow[]>(() => {
     const rows: ClashDisplayRow[] = [];
-    for (const section of sections) {
+    for (const section of activeSections) {
       rows.push({ kind: 'group', key: section.key, label: section.label, color: section.color, count: section.items.length });
       if (collapsed.has(section.key)) continue;
       for (const clash of section.items) {
@@ -425,7 +543,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       }
     }
     return rows;
-  }, [sections, collapsed, expanded]);
+  }, [activeSections, collapsed, expanded]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowVirtualizer = useVirtualizer({
@@ -434,7 +552,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     estimateSize: (i) => {
       const r = displayRows[i];
       // Detail rows carry the two element rows plus the review controls (#1468).
-      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 180 : 52;
+      return r.kind === 'group' ? 32 : r.kind === 'detail' ? 214 : 52;
     },
     overscan: 16,
     getItemKey: (i) => {
@@ -500,6 +618,37 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     },
     [setReview],
   );
+
+  /** Add an exclusion, surfacing a refused write instead of dropping it. */
+  const applyExclusion = useCallback((add: () => SaveResult): void => {
+    const res = add();
+    if (!res.ok) toast.error(res.message);
+  }, []);
+
+  /**
+   * How many clashes of the CURRENT (already exclusion-filtered) result share a
+   * type pair — i.e. how many a type-pair rule would remove right now. Read off
+   * the result summary, whose bucket key is the sorted `"<tag> vs <tag>"` pair.
+   */
+  const typePairCount = useCallback(
+    (clash: Clash): number => result?.summary.byTypePair[[clash.a.tag, clash.b.tag].sort().join(' vs ')] ?? 0,
+    [result],
+  );
+
+  /**
+   * How many clashes of the CURRENT result touch a given IFC class on EITHER
+   * side — the reach of a one-sided rule. Counted off the clash list rather
+   * than summed out of `byTypePair`, whose keys are a joined string and would
+   * have to be parsed back apart.
+   */
+  const typeAnyCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of result?.clashes ?? []) {
+      const tags = c.a.tag === c.b.tag ? [c.a.tag] : [c.a.tag, c.b.tag];
+      for (const tag of tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return counts;
+  }, [result]);
 
   /** One side (A or B) of a clash inside the expanded row (#1276). */
   const ElementRow = ({ el, side }: { el: ClashElementRef; side: 0 | 1 }) => (
@@ -741,11 +890,41 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       {/* Summary */}
       {result && (
         <div className="px-3 py-2.5 border-b border-border" {...tourAnchor(TOUR_ANCHORS.clashSummary)}>
+          {/* Pairs vs. issues: the same result re-organized along the existing
+              spatial clustering (`groupClashes({ by: 'cluster' })`), so many
+              element pairs on one clash of geometry read as one coordination
+              issue instead of N rows. Only shown once there's something to
+              cluster, and never for a duplicate scan, whose grouping is
+              coincident sets, not proximity clusters (#2535). */}
+          {total > 0 && groups && !isDuplicateSetView && (
+            <div
+              className="mb-1.5 inline-flex rounded-md border border-border overflow-hidden text-[11px]"
+              title={`Issues group nearby pairs within ${clusterEpsilon}m (adjustable in Clash settings)`}
+            >
+              <button
+                type="button"
+                onClick={() => setResultView('pairs')}
+                className={cn('px-2 py-0.5', resultView === 'pairs' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                Pairs
+              </button>
+              <button
+                type="button"
+                onClick={() => setResultView('issues')}
+                className={cn('px-2 py-0.5', resultView === 'issues' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+              >
+                Issues
+              </button>
+            </div>
+          )}
           <div className="flex items-baseline justify-between mb-1.5">
-            <span className="text-2xl font-semibold tabular-nums">{total}</span>
+            <span className="text-2xl font-semibold tabular-nums">{effectiveResultView === 'issues' ? issueCount : total}</span>
             <span className="text-xs text-muted-foreground">
-              {total === 1 ? 'clash' : 'clashes'}
-              {hideTouching && touchingCount > 0 && ` · ${shown} shown`}
+              {effectiveResultView === 'issues'
+                ? `${issueCount === 1 ? 'issue' : 'issues'} · ${total} ${total === 1 ? 'pair' : 'pairs'}`
+                : `${total === 1 ? 'clash' : 'clashes'}${hideTouching && touchingCount > 0 ? ` · ${shown} shown` : ''}${
+                    groups && !isDuplicateSetView ? ` · ${issueCount} ${issueCount === 1 ? 'issue' : 'issues'}` : ''
+                  }`}
             </span>
           </div>
           {total > 0 && bySeverity && (
@@ -778,21 +957,27 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         <div className="px-3 py-2 border-b border-border text-xs space-y-1.5">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Layers className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-            <select
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-              disabled={isDuplicateSetView}
-              title={
-                isDuplicateSetView
-                  ? 'Duplicate scans always group by coincident set'
-                  : undefined
-              }
-              className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <option value="severity">By severity</option>
-              <option value="rule">By rule</option>
-              <option value="typePair">By type pair</option>
-            </select>
+            {effectiveResultView === 'issues' ? (
+              <span className="text-muted-foreground" title={`Spatial cluster radius: ${clusterEpsilon}m (Clash settings)`}>
+                Grouped by proximity
+              </span>
+            ) : (
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
+                disabled={isDuplicateSetView}
+                title={
+                  isDuplicateSetView
+                    ? 'Duplicate scans always group by coincident set'
+                    : undefined
+                }
+                className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="severity">By severity</option>
+                <option value="rule">By rule</option>
+                <option value="typePair">By type pair</option>
+              </select>
+            )}
             <ArrowUpDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
             <select
               value={sortBy}
@@ -903,6 +1088,62 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
         </div>
       )}
 
+      {/* The user's own exclusions: what is hidden, how much, and how to undo it.
+          Always listed while any rule exists — a suppression the user cannot see
+          is indistinguishable from a detector that missed something. */}
+      {exclusions.length > 0 && (
+        <div className="border-b border-border bg-muted/20 px-3 py-1.5 text-[11px]">
+          <div className="flex items-center gap-1.5">
+            <Ban className="h-3 w-3 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="font-medium">Excluded</span>
+            <span className="text-muted-foreground">
+              {exclusions.length} {exclusions.length === 1 ? 'rule' : 'rules'}
+              {suppressedCount > 0 && ` · ${suppressedCount} hidden`}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-5 px-1.5 text-[10px]"
+              title="Remove every exclusion and show all clashes again"
+              onClick={() => applyExclusion(clearExclusions)}
+            >
+              Clear all
+            </Button>
+          </div>
+          <ul className="mt-1 max-h-24 space-y-0.5 overflow-auto">
+            {exclusions.map((rule) => {
+              const n = exclusionCountOf(rule);
+              return (
+                <li key={rule.id} className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    onChange={(e) => applyExclusion(() => setExclusionEnabled(rule.id, e.target.checked))}
+                    aria-label={`${rule.enabled ? 'Disable' : 'Enable'} exclusion ${rule.label}`}
+                    className="h-3 w-3 shrink-0 accent-primary"
+                  />
+                  <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] uppercase tracking-wide text-muted-foreground">
+                    {rule.kind === 'typeAny' ? 'any' : rule.kind === 'typePair' ? 'type' : 'pair'}
+                  </span>
+                  <span className={cn('truncate', !rule.enabled && 'text-muted-foreground line-through')}>{rule.label}</span>
+                  <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                    {n} {rule.enabled ? 'hidden' : 'would hide'}
+                  </span>
+                  <button
+                    onClick={() => applyExclusion(() => removeExclusion(rule.id))}
+                    aria-label={`Remove exclusion ${rule.label}`}
+                    title="Remove this exclusion"
+                    className="shrink-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
       {/* Results — virtualized so 10k+ clashes stay smooth (#1277). */}
       <div ref={scrollRef} className="flex-1 overflow-auto min-h-0" {...tourAnchor(TOUR_ANCHORS.clashResults)}>
         {!result && !running && (
@@ -989,6 +1230,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
                       <div className="px-7 py-1 text-[10px] text-muted-foreground">{describeClash(row.clash)}</div>
                       <ElementRow el={row.clash.a} side={0} />
                       <ElementRow el={row.clash.b} side={1} />
+                      <ClashExclusionActions
+                        clash={row.clash}
+                        typeAnyCountOf={(tag) => typeAnyCounts.get(tag) ?? 0}
+                        typePairCount={typePairCount(row.clash)}
+                        onExcludeTypeAny={(tag) => applyExclusion(() => excludeTypeAny(tag))}
+                        onExcludeTypePair={() => applyExclusion(() => excludeTypePair(row.clash))}
+                        onExcludeElementPair={() => applyExclusion(() => excludeElementPair(row.clash))}
+                      />
                       <ClashReviewControls
                         status={reviewOf(row.clash)}
                         comment={reviewCommentOf(row.clash)}

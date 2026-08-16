@@ -36,6 +36,7 @@ import { center, overlapBounds } from './math/aabb.js';
 import { boxDistance, boxesTouch, minExtent, similarity } from './duplicate-metric.js';
 import { sameShape, shapeSignature, type ShapeSignature } from './shape-signature.js';
 import { isExcluded, qualifiedKey } from './exclude.js';
+import { summarizeClashes } from './analysis.js';
 import type {
   Clash,
   ClashElement,
@@ -43,7 +44,6 @@ import type {
   ClashResult,
   ClashRule,
   ClashSeverity,
-  ClashSummary,
   ExclusionSet,
 } from './types.js';
 
@@ -54,6 +54,15 @@ export interface DuplicateOptions {
    * `ClashResult.settings.tolerance`. It bounds {@link boxDistance}: for two
    * equally-sized boxes that is exactly the distance between their centres, and
    * a difference in size adds to it. Default 10 mm.
+   *
+   * It is an upper bound, not the whole gate. {@link boxesTouch} is applied
+   * first, and two copies stop touching once the offset exceeds the element's
+   * own extent on the offset axis, so the EFFECTIVE tolerance per axis is
+   * `min(positionTolerance, extent on that axis)`. A 200 mm wall gets the full
+   * 10 mm on all three axes; a 2 mm plate gets 10 mm in its plane and 2 mm
+   * along its normal. That is deliberate — see {@link boxesTouch} for why
+   * clear air between two surfaces makes them two objects — and it is pinned by
+   * the "effective tolerance is min(positionTolerance, extent) per axis" test.
    */
   positionTolerance?: number;
   /** Distance (m) at/below which a same-shape pair is treated as an EXACT
@@ -106,18 +115,6 @@ function toRef(el: ClashElement): ClashElementRef {
   return { key: el.key, ref: el.ref, model: el.model, tag: el.tag, name: el.name };
 }
 
-function buildSummary(clashes: Clash[]): ClashSummary {
-  const byRule: Record<string, number> = {};
-  const byTypePair: Record<string, number> = {};
-  const bySeverity: Record<ClashSeverity, number> = { critical: 0, major: 0, minor: 0, info: 0 };
-  for (const c of clashes) {
-    byRule[c.rule] = (byRule[c.rule] ?? 0) + 1;
-    const pair = [c.a.tag, c.b.tag].sort().join(' vs ');
-    byTypePair[pair] = (byTypePair[pair] ?? 0) + 1;
-    bySeverity[c.severity] += 1;
-  }
-  return { total: clashes.length, byRule, byTypePair, bySeverity };
-}
 
 /**
  * Find duplicate / fully-overlapping elements. Returns a {@link ClashResult}
@@ -285,7 +282,23 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     } else {
       if (!boxesTouch(elA.bounds, elB.bounds)) return;
       const dist = boxDistance(elA.bounds, elB.bounds);
-      if (dist > positionTolerance) return;
+      // Written as an acceptance (`!(dist <= tol)`), not a rejection
+      // (`dist > tol`), so a non-comparable distance abstains instead of
+      // asserting a pair. NaN fails every comparison, so bounds carrying NaN
+      // pass `boxesTouch` (its own comparisons are false too) and would fall
+      // through a `>` rejection and be reported as coincident with elements
+      // hundreds of metres away.
+      //
+      // The deprecated `iouThreshold` branch above is NOT a model for this: it
+      // is a rejection (`sim < iouThreshold`), and it happens to abstain on two
+      // NaN boxes only because `similarity` clamps them to 0 rather than
+      // returning NaN. It does not abstain in general — against a degenerate
+      // (zero-volume) element it takes the `aabbApproxEqual` fallback, whose
+      // per-axis comparisons are all false against NaN, so it returns 1 and
+      // reports the pair even at the default 0.9; and at `iouThreshold` 0 the
+      // rejection is false for every pair. That branch is deprecated and
+      // unchanged here; the two gates do not agree on non-finite bounds.
+      if (!(dist <= positionTolerance)) return;
       exact = dist <= exactTolerance;
     }
     // Only now, on a pair that already coincides, is the shape worth measuring.
@@ -343,9 +356,15 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   // objects offset by a few metres (still inside a metre-scale tolerance) are
   // never skipped just because many small elements shrank an average cell size.
   // Sweep along the axis with the widest spread of box minima so the active set
-  // (and thus the comparison count) stays small. Eviction is exact rather than
-  // conservative: it drops only boxes that no longer touch on `axis`, and a pair
-  // that does not touch is rejected by the gate anyway.
+  // (and thus the comparison count) stays small. Eviction drops only boxes that
+  // no longer touch on `axis`, which is lossless for the DEFAULT gate — a pair
+  // that does not touch is rejected by `boxesTouch` anyway. It is NOT lossless
+  // for the deprecated `iouThreshold` branch: `similarity`'s degenerate fallback
+  // matches disjoint boxes that are within `tol` per axis, so in legacy mode the
+  // sweep can evict a pair that gate would have reported, and whether it does
+  // depends on which axis has the widest spread of minima — i.e. on the rest of
+  // the model. That axis-dependence predates the distance gate (the sweep is
+  // unchanged), so `iouThreshold` still restores the pre-1.7 gate as documented.
   let axis = 0;
   let bestSpread = -Infinity;
   for (let a = 0; a < 3; a += 1) {
@@ -363,9 +382,28 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     }
   }
 
-  const order = elements.map((_, i) => i).sort(
-    (x, y) => elements[x].bounds.min[axis] - elements[y].bounds.min[axis],
-  );
+  // The sweep key must be a TOTAL order, so it is compared, never subtracted.
+  // `a - b` returns NaN for any pair involving a non-finite minimum — NaN bounds
+  // from a direct SDK caller, and `+Infinity` from `fromPositions` when no vertex
+  // on an axis was finite (it returns the box inverted). A comparator that
+  // answers NaN violates the contract `Array.prototype.sort` requires, and V8's
+  // TimSort then merges runs against that answer and emits an arbitrary
+  // permutation of the WHOLE array: the sweep's eviction sees minima going
+  // backwards, drops boxes that are still live, and real duplicates elsewhere in
+  // the model silently disappear. One unjudgeable element must cost only itself.
+  // Non-finite minima sort last, after every finite one, which is what the gate
+  // already does with them — `consider` abstains on a distance it cannot
+  // compare, so they contribute nothing wherever they sit, and putting them at
+  // the end keeps them out of the active set for the whole finite sweep.
+  const sweepKey = (i: number): number => {
+    const v = elements[i].bounds.min[axis];
+    return Number.isFinite(v) ? v : Number.POSITIVE_INFINITY;
+  };
+  const order = elements.map((_, i) => i).sort((x, y) => {
+    const kx = sweepKey(x);
+    const ky = sweepKey(y);
+    return kx < ky ? -1 : kx > ky ? 1 : 0;
+  });
   // `active` holds indices whose box still extends past the current box's start
   // on `axis`; only those can overlap, so we compare against just them.
   const active: number[] = [];
@@ -387,7 +425,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
 
   return {
     clashes,
-    summary: buildSummary(clashes),
+    summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
     ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },

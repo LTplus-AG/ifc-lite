@@ -475,3 +475,65 @@ describe('syncSourceModel — the revision id lands on the replacement model', (
     assert.equal(state.activeModelId, result.reloadedModelId);
   });
 });
+
+describe("syncSourceModel — a resync keeps the surviving half of the user's X-ray", () => {
+  // Drives the REAL `removeModel`, not the harness stub. `removeModel` runs one
+  // line before `purgeStaleEntityState`, and the stub hid that: #2654 added an
+  // unconditional `clearGhost()` to `removeModel`, which made the purge's ghost
+  // and isolation filters (syncSourceModel.ts:262-271) dead code on their only
+  // production path — every sync silently wiped the user's X-ray — and every
+  // test here stayed green because the stub only deletes a map entry.
+  const realRemoveModel = (id: string): void => { useViewerStore.getState().removeModel(id); };
+
+  /** MODEL_ID owns global ids 0..100; the untouched sibling owns 1000..1100. */
+  function seedFederationWithSibling(): void {
+    seedStore(makeModel({ idOffset: 0, maxExpressId: 100 }));
+    useViewerStore.setState((state) => {
+      const models = new Map(state.models);
+      models.set('sibling', makeModel({ id: 'sibling', name: 'Sibling', idOffset: 1000, maxExpressId: 100 }));
+      return { models };
+    });
+  }
+
+  it('keeps the ids owned by a surviving model and drops only the burned ones', async () => {
+    seedFederationWithSibling();
+    // 5 lives in the model being replaced (burned by the swap); 1005 in the
+    // sibling, which the sync does not touch.
+    useViewerStore.setState({ ghostExceptEntities: new Set([5, 1005]) });
+    const h = makeHarness();
+
+    await syncSourceModel({
+      modelId: MODEL_ID,
+      tag: makeTag(),
+      sourceHost: h.sourceHost,
+      addModel: h.addModel,
+      removeModel: realRemoveModel,
+    });
+
+    assert.deepEqual(
+      [...(useViewerStore.getState().ghostExceptEntities ?? new Set())],
+      [1005],
+      "a resync must keep the part of the user's X-ray that still belongs to a loaded model",
+    );
+  });
+
+  it('keeps the surviving half of an isolation the same way', async () => {
+    seedFederationWithSibling();
+    useViewerStore.setState({ isolatedEntities: new Set([5, 1005]) });
+    const h = makeHarness();
+
+    await syncSourceModel({
+      modelId: MODEL_ID,
+      tag: makeTag(),
+      sourceHost: h.sourceHost,
+      addModel: h.addModel,
+      removeModel: realRemoveModel,
+    });
+
+    assert.deepEqual(
+      [...(useViewerStore.getState().isolatedEntities ?? new Set())],
+      [1005],
+      'a resync must not hide the sibling by dropping the isolation wholesale',
+    );
+  });
+});

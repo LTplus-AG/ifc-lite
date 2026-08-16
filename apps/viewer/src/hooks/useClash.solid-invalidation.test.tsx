@@ -20,6 +20,13 @@
  * even known whether the new run will find anything. If the old solid/ghost
  * presentation is still standing after that call, the flow never invalidated
  * it.
+ *
+ * The ghost is established THROUGH the hook (`focusClash` in ghost mode), not
+ * by writing `ghostExceptEntities` into the store directly: since the #2574
+ * unconditional-clear regression fix, clash releases only the isolation/ghost
+ * presentation it itself installed (a user's isolation/ghost in the same
+ * shared channels survives a run — see useClash.run-preserves-isolation.test),
+ * so a raw seed would test state clash never owned.
  */
 
 import '@/test/setup-dom.js';
@@ -27,6 +34,7 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import type { Clash } from '@ifc-lite/clash';
 
 import { useViewerStore } from '@/store';
 import { useClash } from './useClash.js';
@@ -56,26 +64,49 @@ async function renderHook(): Promise<ClashApi> {
 const originalState = useViewerStore.getState();
 after(() => { useViewerStore.setState(originalState, true); });
 
-/** Seed the store as if a prior `focusClash` had already resolved a solid and
- *  applied the BIMcollab-style full-model ghost (see useClash.ts L456-L491). */
-function seedResolvedSolidPresentation(): void {
+/** The clash a prior run would have focused. Refs resolve through the
+ *  federation registry (model 'A' registers at offset 0, so the global id
+ *  equals the express id). */
+const OLD_CLASH: Clash = {
+  id: 'clash-old',
+  a: { key: 'A:1', ref: 1, model: 'A', tag: 'IfcWall' },
+  b: { key: 'A:2', ref: 2, model: 'A', tag: 'IfcWall' },
+  rule: 'all-clashes',
+  status: 'hard',
+  distance: -0.5,
+  point: [0.75, 0.5, 0.5],
+  bounds: { min: [0.5, 0, 0], max: [1, 1, 1] },
+  severity: 'major',
+};
+
+/** Put the presentation in the state a prior `focusClash` leaves once its
+ *  solid compute has resolved: focus the clash in ghost mode THROUGH the hook
+ *  — so the ghost is recorded as clash-installed, exactly as a real focus is —
+ *  then overlay the resolved-solid fields the async compute would have
+ *  written. */
+async function seedResolvedSolidPresentation(api: ClashApi): Promise<void> {
   useViewerStore.setState({
     models: new Map(),
-    clashSelectedId: 'clash-old',
-    clashSolidStatus: 'solid',
-    clashSolidMesh: { positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) },
-    clashSolidVolumeM3: 0.42,
-    ghostExceptEntities: new Set<number>(), // full-model ghost, as focusClash applies
+    clashSelectedId: null,
+    isolatedEntities: null,
+    ghostExceptEntities: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
     clashContactLines: null,
+  });
+  useViewerStore.getState().registerModelOffset('A', 100);
+  await act(async () => { api.focusClash(OLD_CLASH, 'ghost'); });
+  useViewerStore.setState({
+    clashSolidStatus: 'solid',
+    clashSolidMesh: { positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) },
+    clashSolidVolumeM3: 0.42,
   });
 }
 
 describe('useClash solid-presentation invalidation on detection replace (#2574 CodeRabbit)', () => {
   it('run() discards a stale solid + full-model ghost before the new detection flow starts', async () => {
     const api = await renderHook();
-    seedResolvedSolidPresentation();
+    await seedResolvedSolidPresentation(api);
     assert.equal(useViewerStore.getState().clashSolidStatus, 'solid', 'setup sanity: a solid must be showing before run()');
     assert.ok(useViewerStore.getState().ghostExceptEntities, 'setup sanity: the model must be ghosted before run()');
 
@@ -89,7 +120,7 @@ describe('useClash solid-presentation invalidation on detection replace (#2574 C
 
   it('runDuplicates() discards a stale solid + full-model ghost before the new scan starts', async () => {
     const api = await renderHook();
-    seedResolvedSolidPresentation();
+    await seedResolvedSolidPresentation(api);
     assert.equal(useViewerStore.getState().clashSolidStatus, 'solid', 'setup sanity: a solid must be showing before runDuplicates()');
     assert.ok(useViewerStore.getState().ghostExceptEntities, 'setup sanity: the model must be ghosted before runDuplicates()');
 

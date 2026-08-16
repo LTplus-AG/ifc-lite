@@ -4,7 +4,7 @@
 
 import type { SourceFile } from '@ifc-lite/plugin-api';
 import type { DownloadedSourceFileStatus } from '@/lib/sources/persistence';
-import { FileBox, RefreshCw } from 'lucide-react';
+import { FileBox, RefreshCw, Star } from 'lucide-react';
 
 interface SourceFileRowProps {
   file: SourceFile;
@@ -14,6 +14,8 @@ interface SourceFileRowProps {
   syncingFile: boolean;
   onSyncLoadedFile: () => void;
   downloadedStatus: DownloadedSourceFileStatus;
+  favourited: boolean;
+  onToggleFavourite: () => void;
 }
 
 export function SourceFileRow({
@@ -24,6 +26,8 @@ export function SourceFileRow({
   syncingFile,
   onSyncLoadedFile,
   downloadedStatus,
+  favourited,
+  onToggleFavourite,
 }: SourceFileRowProps) {
   const isLoadedInHierarchy = loadedModelNames.length > 0;
   const isUpdateAvailable = downloadedStatus === 'update-available';
@@ -69,6 +73,17 @@ export function SourceFileRow({
               )}
             </span>
           </span>
+        </button>
+        <button
+          type="button"
+          className={`mt-0.5 shrink-0 rounded p-0.5 hover:bg-accent hover:text-foreground ${
+            favourited ? 'text-amber-500' : 'text-muted-foreground'
+          }`}
+          aria-label={`${favourited ? 'Remove' : 'Add'} favourite: ${file.name}`}
+          aria-pressed={favourited}
+          onClick={onToggleFavourite}
+        >
+          <Star className={`h-3.5 w-3.5 ${favourited ? 'fill-current' : ''}`} />
         </button>
         {isLoadedInHierarchy && (
           <span className="flex shrink-0 items-center gap-1">

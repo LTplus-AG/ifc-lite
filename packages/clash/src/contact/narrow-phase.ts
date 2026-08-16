@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { buildMeshBvh, queryMeshCross } from "./mesh-bvh.js";
-import { triTriIntersect } from "./tri-tri.js";
+import { triTriIntersect, type ProjectedPlaneEps } from "./tri-tri.js";
 import type { Triangle } from "./triangle.js";
 import { triangleAt, triangleCount } from "./triangle.js";
 import type { AABB, Mesh, Vec3 } from "./types.js";
@@ -12,7 +12,7 @@ import type { AABB, Mesh, Vec3 } from "./types.js";
  * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
  * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
  * larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
- * `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` and
+ * `near_band_from_extent` in `rust/geometry/src/kernel/near_band.rs` and
  * `precisionFloor` in `engine-ts/narrow.ts` — kept local rather than shared
  * because plane-distance tolerance and penetration-depth tolerance are
  * different jobs, even though both derive from the same f32 ingestion floor.
@@ -30,25 +30,43 @@ const F32_ULP_SCALE = 1 / 4_194_304; // 2^-22
  * bit-identical — f32 values, and a too-tight fixed epsilon then reads that
  * rounding noise as a genuine non-coplanar separation, discarding the
  * shared-face contact entirely rather than reporting it as
- * `touch`/`coplanar`. Extent is the max abs coordinate over both meshes'
- * AABBs (already computed by the BVH build, so this costs nothing extra).
- * The result is floored at the old fixed `1e-6`: scaling must only ever
- * *widen* the tolerance relative to the constant it replaces, never narrow
- * it — a bare `extent * F32_ULP_SCALE` with only the 1.0 extent floor is far
- * tighter than `1e-6` for any extent under ~4.19 m, which reintroduces the
- * exact dropped-shared-face bug this function exists to fix.
+ * `touch`/`coplanar`.
+ *
+ * Crucially, the extent must be taken PER AXIS and projected onto each
+ * plane's own normal (`epsForPlane` in `./tri-tri.js`), not collapsed to a
+ * single max over all three axes of both AABBs. The tolerance is compared
+ * against a signed distance measured along ONE plane normal, and each
+ * coordinate's rounding noise enters that distance weighted by its axis's
+ * normal component; an axis orthogonal to the normal contributes nothing.
+ * A max-over-axes scalar instead scales the tolerance to the meshes'
+ * DISTANCE FROM THE WORLD ORIGIN along whichever axis happens to be
+ * largest, even when that axis is irrelevant to the plane being tested:
+ * two horizontal faces (normal Z) with a genuine 2.0 mm Z-clearance
+ * authored 10 km along X got planeEps = 10000 * 2^-22 = 2.384 mm, inflated
+ * entirely by the irrelevant X axis, and were fabricated as coplanar
+ * contact (above ~8.4 km extent every near-parallel candidate pair reads
+ * as coplanar). Same reasoning as the LOCAL-vs-world tolerance sizing in
+ * `section-cutter.ts` (#2622): size the tolerance off the quantity the
+ * noise actually scales with, never off an unrelated world magnitude.
+ *
+ * The projected result is floored at the old fixed `1e-6`
+ * (`ProjectedPlaneEps.floor`): scaling must only ever *widen* the tolerance
+ * relative to the constant it replaces, never narrow it: a bare
+ * `extent * F32_ULP_SCALE` is far tighter than `1e-6` for any extent under
+ * ~4.19 m, which reintroduces the exact dropped-shared-face bug this
+ * function exists to fix.
  */
-function scaledPlaneEps(aabbA: AABB, aabbB: AABB): number {
-  let extent = 1.0;
+function scaledPlaneEps(aabbA: AABB, aabbB: AABB): ProjectedPlaneEps {
+  const axisNoise: [number, number, number] = [0, 0, 0];
   for (const aabb of [aabbA, aabbB]) {
     for (const v of [aabb.min, aabb.max]) {
-      for (const c of v) {
-        const a = Math.abs(c);
-        if (a > extent) extent = a;
+      for (let i = 0; i < 3; i++) {
+        const a = Math.abs(v[i] as number) * F32_ULP_SCALE;
+        if (a > (axisNoise[i] as number)) axisNoise[i] = a;
       }
     }
   }
-  return Math.max(1e-6, extent * F32_ULP_SCALE);
+  return { axisNoise, floor: 1e-6 };
 }
 
 export type TrianglePair =
@@ -75,8 +93,9 @@ export interface NarrowPhaseOptions {
   readonly epsilon?: number;
   /**
    * Plane-distance tolerance for coplanarity and Möller sign tests. Defaults
-   * to {@link scaledPlaneEps}'s f32-ULP floor for this pair's coordinate
-   * magnitude, not a fixed constant — see that function's doc.
+   * to {@link scaledPlaneEps}'s per-axis f32-ULP noise, projected onto each
+   * tested plane's own normal, not a fixed constant nor a single max over
+   * all axes; see that function's doc.
    */
   readonly planeEps?: number;
   /** BVH leaf size for per-mesh triangle BVHs. Default 8. */

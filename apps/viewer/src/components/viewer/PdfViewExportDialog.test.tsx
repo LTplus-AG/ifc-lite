@@ -27,7 +27,7 @@
 import '@/test/setup-dom.js';
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import React, { act } from 'react';
+import { act } from 'react';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store/index.js';

@@ -19,11 +19,12 @@ interface SourceProviderRowProps {
   onOpenSettings: () => void;
   onBrowse: () => void;
   /**
-   * Fires whenever this provider's signed-in identity changes. Auth lives in
-   * this row, but the favourites list above it is filtered by identity, so it
-   * has to learn about a sign-in that happens while the panel is open.
+   * Reports this provider's signed-in identity once its auth has SETTLED. Auth
+   * lives in this row, but the favourites list above it is filtered by
+   * identity, so it has to learn about a sign-in that happens while the panel
+   * is open — and, just as much, about a silent restore that resolves nothing.
    */
-  onIdentityChange?: (identityId: string | null) => void;
+  onIdentityChange?: (providerId: string, identityId: string | null) => void;
 }
 
 /**
@@ -85,9 +86,18 @@ export function SourceProviderRow({
   const interactive = auth.status !== 'not-interactive';
 
   const identityId = auth.identity?.id ?? null;
+  // Gated on the auth being settled, and that gate is the whole point rather
+  // than tidiness. A silent `restore()` that resolves no session leaves
+  // `identityId` at the `null` it already held while restoring, so an effect
+  // keyed on the id alone never re-runs — the listener above would keep
+  // whatever it last heard, which on a fresh mount is nothing at all. The
+  // status transition is the only edge that "signed out after all" produces.
+  const settled = auth.status !== 'restoring' && auth.status !== 'busy';
+  const providerId = manifest.name;
   useEffect(() => {
-    onIdentityChange?.(identityId);
-  }, [identityId, onIdentityChange]);
+    if (!settled) return;
+    onIdentityChange?.(providerId, identityId);
+  }, [identityId, onIdentityChange, providerId, settled]);
 
   // prefsVersion is not read directly — it exists to re-run this derivation
   // after the settings dialog saves or forgets values.

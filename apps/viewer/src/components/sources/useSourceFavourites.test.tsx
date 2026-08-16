@@ -22,7 +22,8 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { SourceContainer, SourceFile, SourceProject } from '@ifc-lite/plugin-api';
-import { loadFavourites, favouriteKey } from '@/lib/sources/favourites';
+import { loadFavourites, favouriteKey, saveFavourites } from '@/lib/sources/favourites';
+import { syncSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 import { SourceFolderStep } from './SourceFolderStep.js';
 import { useSourceFavourites } from './useSourceFavourites.js';
 
@@ -197,5 +198,46 @@ describe('favouriting a file from the browser', () => {
       false,
       'pinning a revision would poison the loaded/update-available status',
     );
+  });
+});
+
+describe('two accounts sharing one browser profile', () => {
+  it("shows account A's favourite as unstarred to account B, and B's press adds rather than deletes", () => {
+    // A and B are the same provider in the same browser profile, so they share
+    // one favourites blob and receive the same provider-side folder id. Only
+    // the identity stamp tells their records apart.
+    saveFavourites(PROVIDER, [
+      {
+        providerId: PROVIDER,
+        kind: 'folder',
+        projectId: project.id,
+        projectName: project.name,
+        fileAreaId: fileArea.id,
+        fileAreaName: fileArea.name,
+        containerId: folder.id,
+        containerName: folder.name,
+        identityId: 'user-a',
+        addedAt: 1_000,
+      },
+    ]);
+    syncSourceCatalogCacheOwner(PROVIDER, 'user-b');
+
+    renderStep();
+
+    const add = star('Add favourite: Models');
+    assert.equal(
+      add.getAttribute('aria-pressed'),
+      'false',
+      "B never starred this folder, so it cannot render starred to B",
+    );
+
+    click(add);
+
+    assert.deepStrictEqual(
+      loadFavourites(PROVIDER).map((item) => item.identityId).sort(),
+      ['user-a', 'user-b'],
+      "B's press must add B's own record and leave A's alone",
+    );
+    assert.equal(star('Remove favourite: Models').getAttribute('aria-pressed'), 'true');
   });
 });

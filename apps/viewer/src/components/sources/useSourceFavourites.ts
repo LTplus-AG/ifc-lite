@@ -40,6 +40,12 @@ export function useSourceFavourites({
 }: UseSourceFavouritesOptions) {
   const [items, setItems] = useState<SourceFavourite[]>(() => loadFavourites(providerId));
 
+  // The identity every key on this screen is scoped to. Read per render rather
+  // than memoised: it is the same stamp a star press writes, and the stored
+  // blob holds every account that has used this browser profile, so a key built
+  // without it would match another account's record.
+  const identityId = readSourceCatalogCacheOwner(providerId);
+
   const keys = useMemo(() => new Set(items.map((item) => favouriteKey(item))), [items]);
 
   const apply = useCallback(
@@ -62,9 +68,11 @@ export function useSourceFavourites({
   const isFolderFavourite = useCallback(
     (containerId: string) =>
       selectedProject
-        ? keys.has(favouriteKey({ providerId, projectId: selectedProject.id, kind: 'folder', containerId }))
+        ? keys.has(
+            favouriteKey({ providerId, projectId: selectedProject.id, kind: 'folder', containerId, identityId }),
+          )
         : false,
-    [keys, providerId, selectedProject],
+    [identityId, keys, providerId, selectedProject],
   );
 
   const isFileFavourite = useCallback(
@@ -77,10 +85,11 @@ export function useSourceFavourites({
               kind: 'file',
               containerId: file.containerId,
               fileId: file.id,
+              identityId,
             }),
           )
         : false,
-    [keys, providerId, selectedProject],
+    [identityId, keys, providerId, selectedProject],
   );
 
   const toggleFolderFavourite = useCallback(
@@ -95,11 +104,11 @@ export function useSourceFavourites({
         fileAreaName: selectedFileArea.name,
         containerId: container.id,
         containerName: container.name,
-        identityId: readSourceCatalogCacheOwner(providerId),
+        identityId,
         addedAt: Date.now(),
       });
     },
-    [apply, providerId, selectedFileArea, selectedProject],
+    [apply, identityId, providerId, selectedFileArea, selectedProject],
   );
 
   const toggleFileFavourite = useCallback(
@@ -125,11 +134,11 @@ export function useSourceFavourites({
         containerName,
         fileId: file.id,
         fileName: file.name,
-        identityId: readSourceCatalogCacheOwner(providerId),
+        identityId,
         addedAt: Date.now(),
       });
     },
-    [apply, folders, providerId, selectedFileArea, selectedProject],
+    [apply, folders, identityId, providerId, selectedFileArea, selectedProject],
   );
 
   /** Refreshes a stale label after the source renamed the folder or file underneath the favourite. */

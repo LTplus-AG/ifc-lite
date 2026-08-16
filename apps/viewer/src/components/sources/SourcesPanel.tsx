@@ -41,15 +41,26 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
   const [downloading, setDownloading] = useState(false);
   // Bumped when saved prefs change so rows/contexts re-derive configured state.
   const [prefsVersion, setPrefsVersion] = useState(0);
-  // Same pattern for the favourites list: one counter for stored favourites,
-  // one for the signed-in identity a favourite is filtered by.
+  // Same counter pattern for the favourites the list reads from storage. Its
+  // other half, the identity those favourites are filtered by, is live auth
+  // state rather than a counter: only the provider rows know it.
   const [favouritesVersion, setFavouritesVersion] = useState(0);
-  const [identityVersion, setIdentityVersion] = useState(0);
+  const [liveIdentities, setLiveIdentities] = useState<ReadonlyMap<string, string | null>>(
+    () => new Map(),
+  );
   // The favourite a click asked to jump to; consumed once by the browser.
   const [browseTarget, setBrowseTarget] = useState<SourceFavourite | null>(null);
 
   const bumpFavourites = useCallback(() => setFavouritesVersion((v) => v + 1), []);
-  const bumpIdentity = useCallback(() => setIdentityVersion((v) => v + 1), []);
+  // Referentially stable, and a no-op when the reported identity is unchanged:
+  // the rows call this from an effect, so a fresh Map every time would re-render
+  // the list on every render of the panel.
+  const recordIdentity = useCallback((providerId: string, identityId: string | null) => {
+    setLiveIdentities((previous) => {
+      if (previous.has(providerId) && previous.get(providerId) === identityId) return previous;
+      return new Map(previous).set(providerId, identityId);
+    });
+  }, []);
 
   const openFavourite = useCallback((favourite: SourceFavourite) => {
     setBrowseTarget(favourite);
@@ -249,7 +260,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
         <SourceFavouritesList
           sourceHost={sourceHost}
           favouritesVersion={favouritesVersion}
-          identityVersion={identityVersion}
+          liveIdentities={liveIdentities}
           onOpen={openFavourite}
           onChanged={bumpFavourites}
         />
@@ -263,7 +274,7 @@ export function SourcesPanel({ onClose }: SourcesPanelProps) {
               prefsVersion={prefsVersion}
               onOpenSettings={() => setSettingsFor(p.manifest.name)}
               onBrowse={() => setBrowsing(p.manifest.name)}
-              onIdentityChange={bumpIdentity}
+              onIdentityChange={recordIdentity}
             />
           ))}
         </ul>

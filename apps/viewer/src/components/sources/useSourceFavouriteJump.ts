@@ -17,6 +17,8 @@ interface UseSourceFavouriteJumpOptions {
   allFiles: readonly SourceFile[];
   loadingFolders: boolean;
   loadingFiles: boolean;
+  /** True while the current selection's file listing still has pages outstanding. */
+  filesHaveMore: boolean;
   /** Browser state the jump rebuilds, in the order the wizard would have reached it. */
   enterFileArea: (project: SourceProject, fileArea: SourceContainer) => void;
   selectContainer: (container: SourceContainer) => void;
@@ -46,6 +48,7 @@ export function useSourceFavouriteJump({
   allFiles,
   loadingFolders,
   loadingFiles,
+  filesHaveMore,
   enterFileArea,
   selectContainer,
   toggleFile,
@@ -115,6 +118,20 @@ export function useSourceFavouriteJump({
       // no-op and `syncFileArea` sets both flags together), which is why the
       // direct-children fixture exists in `SourceBrowserFavouriteJump.test.tsx`.
       if (loadingFiles || loadingFolders) return;
+      // "Not in the listing" only means "gone" once the listing is the WHOLE
+      // listing. Without `eagerFileSweep` (off by default — Dalux is the only
+      // provider that opts in) `useSourceCatalogSync` fetches the first page
+      // only, so a favourited file further down is absent for a reason that
+      // has nothing to do with it being deleted.
+      //
+      // Residual gap, deliberately left open rather than papered over: nothing
+      // here drains the remaining pages. A favourite past page one therefore
+      // stays pending and silently does not preselect until the user presses
+      // "Load more files", at which point this effect re-runs and completes the
+      // jump. Draining instead is unbounded — a folder can hold thousands of
+      // files across dozens of round trips — and a wrong "no longer in this
+      // folder" on a file that is right there is the worse of the two failures.
+      if (filesHaveMore) return;
       pendingRef.current = null;
       toast.info('That file is no longer in this folder');
       return;
@@ -124,6 +141,7 @@ export function useSourceFavouriteJump({
     toggleFile(file);
   }, [
     allFiles,
+    filesHaveMore,
     loadingFiles,
     loadingFolders,
     renameFavourite,

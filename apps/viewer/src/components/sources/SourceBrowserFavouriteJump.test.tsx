@@ -190,6 +190,15 @@ class DirectChildrenProvider extends FakeProvider {
   override readonly manifest = directChildrenManifest;
   private releaseChildren: (() => void) | null = null;
 
+  /**
+   * Splits the file listing over two pages, the favourited file on the second.
+   * `eagerFileSweep` is off by default, so this is the SHIPPED shape for every
+   * provider but Dalux: `useSourceCatalogSync` fetches page one and stops.
+   */
+  constructor(private readonly pageFiles = false) {
+    super();
+  }
+
   override listContainers(
     _ctx: PluginContext,
     _projectId: string,
@@ -210,17 +219,27 @@ class DirectChildrenProvider extends FakeProvider {
     _ctx?: PluginContext,
     _projectId?: string,
     containerId?: string,
+    _filter?: unknown,
+    options?: { cursor?: string },
   ): Promise<Page<SourceFile>> {
     this.fileListings += 1;
-    return Promise.resolve({
-      items: [IN_FOLDER, ELSEWHERE].filter((file) => file.containerId === containerId),
-    });
+    const items = [IN_FOLDER, ELSEWHERE].filter((file) => file.containerId === containerId);
+    if (!this.pageFiles) return Promise.resolve({ items });
+    return options?.cursor === undefined
+      ? Promise.resolve({ items: [], cursor: 'page-2' })
+      : Promise.resolve({ items });
   }
 
   release(): void {
     this.releaseChildren?.();
     this.releaseChildren = null;
   }
+}
+
+function button(label: string): HTMLButtonElement | undefined {
+  return [...document.body.querySelectorAll('button')].find(
+    (candidate) => candidate.textContent?.includes(label),
+  ) as HTMLButtonElement | undefined;
 }
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
@@ -412,6 +431,48 @@ describe('jumping while the listing is still in flight', () => {
       assert.ok(
         text().includes('Load 1 file as federated model'),
         'the pending jump must survive the window and preselect the file once listed',
+      );
+    } finally {
+      toast.info = originalInfo;
+    }
+  });
+
+  it('does not call a favourite gone while its folder has file pages outstanding', async () => {
+    // The default shape: without `eagerFileSweep` only the FIRST page of a
+    // folder's files is fetched, so "not in the listing" says nothing about
+    // whether the file exists. Reporting it gone here is a lie about a file
+    // sitting on page two.
+    const provider = new DirectChildrenProvider(true);
+    const infoToasts: string[] = [];
+    const originalInfo = toast.info;
+    toast.info = (message: string) => {
+      infoToasts.push(message);
+      originalInfo(message);
+    };
+    try {
+      await jumpTo(favourite({ kind: 'file', fileId: 'file-1', fileName: 'Tower.ifc' }), provider);
+      provider.release();
+      await pump();
+
+      assert.deepStrictEqual(
+        infoToasts,
+        [],
+        'page one being short of the file is not the file being deleted',
+      );
+
+      // And the jump is still pending, so the user's own "Load more files"
+      // finishes it — the residual gap is that nothing drains those pages for
+      // them, not that the jump was thrown away.
+      const loadMore = button('Load more files');
+      assert.ok(loadMore, 'the outstanding page must still be offered');
+      await act(async () => {
+        loadMore.click();
+      });
+      await pump();
+
+      assert.ok(
+        text().includes('Load 1 file as federated model'),
+        'the favourited file must be selected once its page arrives',
       );
     } finally {
       toast.info = originalInfo;

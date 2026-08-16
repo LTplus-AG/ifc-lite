@@ -15,7 +15,9 @@
  *    `persistence.ts` this is a user gesture, so failing silently would leave a
  *    star that looks set and is not.
  * 4. The owner stamp hides another account's bookmarks without deleting them,
- *    which is the whole point of stamping rather than clearing on sign-out.
+ *    which is the whole point of stamping rather than clearing on sign-out —
+ *    and ADDRESSES them apart, so account B's star press adds B's own record
+ *    instead of consuming the identical one A already stored.
  */
 
 import { beforeEach, describe, it } from 'node:test';
@@ -292,6 +294,44 @@ describe('favourites identity stamping', () => {
     const dalux = folderFavourite({ providerId: 'dalux-build', identityId: null });
     saveFavourites('dalux-build', [dalux]);
     assert.equal(visibleFavourites(loadFavourites('dalux-build'), null).length, 1);
+  });
+
+  // Filtering the LIST is only half of it. Storage is one blob per provider
+  // holding every account that has used this browser profile, and the provider
+  // hands both of them the same folder and file ids, so the key that addresses
+  // a record has to carry the identity too.
+  it('addresses two accounts\' identical favourites as two different keys', () => {
+    assert.notEqual(
+      favouriteKey(folderFavourite({ identityId: 'user-a' })),
+      favouriteKey(folderFavourite({ identityId: 'user-b' })),
+    );
+  });
+
+  it("does not let account B's star press delete account A's identical favourite", () => {
+    const theirs = folderFavourite({ identityId: 'user-a' });
+    saveFavourites('dropbox', [theirs]);
+
+    // Same provider, same project, same folder id — a different account.
+    const result = toggleFavourite(folderFavourite({ identityId: 'user-b', addedAt: 2_000 }));
+
+    assert.equal(result.added, true, 'B starred a folder B had not starred before');
+    assert.deepStrictEqual(
+      loadFavourites('dropbox').map((item) => item.identityId).sort(),
+      ['user-a', 'user-b'],
+      "B's press must add B's record, not consume A's",
+    );
+  });
+
+  it("does not report account A's favourite as already starred to account B", () => {
+    saveFavourites('dropbox', [folderFavourite({ identityId: 'user-a' })]);
+    const items = loadFavourites('dropbox');
+
+    assert.equal(isFavourited(items, favouriteKey(folderFavourite({ identityId: 'user-a' }))), true);
+    assert.equal(
+      isFavourited(items, favouriteKey(folderFavourite({ identityId: 'user-b' }))),
+      false,
+      'a filled star on a folder B never starred is what makes the delete above happen',
+    );
   });
 });
 

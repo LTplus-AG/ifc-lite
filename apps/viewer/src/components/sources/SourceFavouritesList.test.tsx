@@ -8,6 +8,10 @@
  * actually re-open, so every test here clicks or asserts on absence:
  *
  * - another account's favourites are not on screen, and are still in storage;
+ * - visibility follows LIVE auth state, so an interactive provider shows
+ *   nothing until its silent restore settles and nothing at all once that
+ *   restore comes back signed-out — the persisted owner stamp outlives the tab
+ *   and would otherwise render last session's account to whoever is here now;
  * - a provider this build no longer registers renders DISABLED rather than
  *   vanishing, because dropping bookmarks on a plugin change is worse than
  *   showing a dead one;
@@ -92,12 +96,17 @@ function favourite(overrides: Partial<SourceFavourite> = {}): SourceFavourite {
 
 const mounted: Array<{ root: Root; container: HTMLElement }> = [];
 
-function renderList(host: SourceHost): { opened: SourceFavourite[]; rerender: () => void } {
+function renderList(
+  host: SourceHost,
+  /** What the provider rows have reported; empty means "auth has not settled". */
+  liveIdentities: ReadonlyMap<string, string | null> = new Map(),
+): { opened: SourceFavourite[]; rerender: (identities?: ReadonlyMap<string, string | null>) => void } {
   const opened: SourceFavourite[] = [];
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
   let version = 0;
+  let identities = liveIdentities;
 
   const paint = () => {
     act(() => {
@@ -105,7 +114,7 @@ function renderList(host: SourceHost): { opened: SourceFavourite[]; rerender: ()
         <SourceFavouritesList
           sourceHost={host}
           favouritesVersion={version}
-          identityVersion={0}
+          liveIdentities={identities}
           onOpen={(item) => opened.push(item)}
           onChanged={() => {
             version += 1;
@@ -120,7 +129,8 @@ function renderList(host: SourceHost): { opened: SourceFavourite[]; rerender: ()
 
   return {
     opened,
-    rerender: () => {
+    rerender: (next?: ReadonlyMap<string, string | null>) => {
+      if (next) identities = next;
       version += 1;
       paint();
     },
@@ -219,11 +229,59 @@ describe('SourceFavouritesList — identity scoping', () => {
       favourite({ identityId: 'user-b', containerId: 'folder-2', containerName: 'Theirs' }),
     ]);
 
-    renderList(host);
+    renderList(host, new Map([['fixture-provider', 'user-a']]));
 
     assert.ok(rowButton('Mine'), "the signed-in identity's favourite must render");
     assert.equal(rowButton('Theirs'), undefined, "another identity's favourite must not render");
     assert.equal(loadFavourites('fixture-provider').length, 2, 'nothing is deleted by the filter');
+  });
+
+  it('shows nothing for an interactive provider whose session has not restored yet', () => {
+    // The catalog-cache owner is written to localStorage and outlives the tab,
+    // so on a fresh mount it still names LAST session's account while
+    // `restore()` is in flight. Deriving visibility from it put user-a's folder
+    // names in front of whoever opened the panel next.
+    const host = new SourceHost();
+    host.register(new FakeProvider(manifest({ auth: 'interactive' })));
+    syncSourceCatalogCacheOwner('fixture-provider', 'user-a');
+    saveFavourites('fixture-provider', [favourite({ identityId: 'user-a', containerName: 'Mine' })]);
+
+    // Empty map: no row has reported a settled identity.
+    const handle = renderList(host);
+    // Compared as a boolean, not as the element: `assert` formats the actual
+    // value on failure, and inspecting a happy-dom node OOMs the runner.
+    assert.equal(
+      rowButton('Mine') === undefined,
+      true,
+      'a stamped-but-unconfirmed identity must not put rows on screen',
+    );
+
+    handle.rerender(new Map([['fixture-provider', 'user-a']]));
+    assert.ok(rowButton('Mine'), 'and they come back the moment the restore confirms user-a');
+  });
+
+  it('hides them for good when the restore resolves signed-out, stamp or no stamp', () => {
+    // The half that made this permanent rather than transient: a restore that
+    // resolves no session leaves the row's identity at the `null` it already
+    // held, so nothing about the id changes and the stale stamp was never
+    // re-read. Signed out must mean no rows.
+    const host = new SourceHost();
+    host.register(new FakeProvider(manifest({ auth: 'interactive' })));
+    syncSourceCatalogCacheOwner('fixture-provider', 'user-a');
+    saveFavourites('fixture-provider', [favourite({ identityId: 'user-a', containerName: 'Mine' })]);
+    // A failed silent restore clears the owner key, but a stale one is exactly
+    // what this must survive, so leave it in place and report signed-out.
+    const handle = renderList(host, new Map([['fixture-provider', 'user-a']]));
+    assert.ok(rowButton('Mine'), 'precondition: they are on screen while signed in');
+
+    handle.rerender(new Map([['fixture-provider', null]]));
+
+    assert.equal(
+      rowButton('Mine') === undefined,
+      true,
+      'a signed-out provider shows no favourites',
+    );
+    assert.equal(loadFavourites('fixture-provider').length, 1, 'and nothing was deleted');
   });
 });
 

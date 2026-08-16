@@ -271,6 +271,8 @@ export function SourceBrowser({
     [openFileAreaFromCatalog, startFileAreas],
   );
 
+  const selectedContainerId = selectedContainer?.id ?? null;
+
   useSourceFavouriteJump({
     target: openTarget,
     selectedProject,
@@ -280,13 +282,12 @@ export function SourceBrowser({
     allFiles,
     loadingFolders: catalog.loadingFolders,
     loadingFiles: catalog.loadingFiles,
+    filesHaveMore: catalog.hasMoreFiles(selectedContainerId),
     enterFileArea: enterFileAreaDirect,
     selectContainer,
     toggleFile,
     renameFavourite: favourites.rename,
   });
-
-  const selectedContainerId = selectedContainer?.id ?? null;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">

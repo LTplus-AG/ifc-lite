@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useMemo } from 'react';
+import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import type { SourceHost } from '@/services/sources/source-host';
 import { readSourceCatalogCacheOwner } from '@/lib/sources/persistence';
 import { isPrefsConfigured, loadResolvedSourcePrefs } from '@/lib/sources/preferences';
@@ -20,8 +21,11 @@ interface SourceFavouritesListProps {
   sourceHost: SourceHost;
   /** Bumped by the panel whenever a favourite is added, removed or renamed. */
   favouritesVersion: number;
-  /** Bumped whenever any provider row reports a new signed-in identity. */
-  identityVersion: number;
+  /**
+   * Signed-in identity per provider id, as the provider rows report it once
+   * their auth has settled. A provider absent from the map has not settled yet.
+   */
+  liveIdentities: ReadonlyMap<string, string | null>;
   onOpen: (favourite: SourceFavourite) => void;
   onChanged: () => void;
 }
@@ -32,6 +36,33 @@ interface FavouriteRow {
   readonly providerTitle: string;
   /** Non-null when the row cannot be opened, and says why. */
   readonly disabledReason: string | null;
+}
+
+/**
+ * Which identity's favourites a provider may show, or `undefined` for "its auth
+ * has not settled yet, so show none".
+ *
+ * Live auth state wherever there is any, NOT the persisted catalog-cache stamp.
+ * That stamp outlives the tab by design, so between mount and the moment
+ * `restore()` settles it still names the LAST session's account: reading it
+ * here put account A's folder and file names in front of whoever opened the
+ * panel next. Worse, it kept them there — a restore that resolves signed-out
+ * leaves the row's identity at `null`, which is what it already was on mount,
+ * so the row's report never re-fires and the list never re-derived.
+ */
+function visibleOwner(
+  providerId: string,
+  provider: FileSourceProvider | undefined,
+  liveIdentities: ReadonlyMap<string, string | null>,
+): string | null | undefined {
+  // A provider this build no longer registers has no row and so no live state.
+  // Its stamp outlives the plugin, which is exactly what still keeps another
+  // account's rows off screen here.
+  if (provider === undefined) return readSourceCatalogCacheOwner(providerId);
+  // Preference-auth providers have no identity at all and stamp `null` at
+  // creation time; there is nothing to wait for.
+  if (provider.manifest.auth !== 'interactive') return null;
+  return liveIdentities.has(providerId) ? (liveIdentities.get(providerId) ?? null) : undefined;
 }
 
 /**
@@ -46,22 +77,22 @@ interface FavouriteRow {
 export function SourceFavouritesList({
   sourceHost,
   favouritesVersion,
-  identityVersion,
+  liveIdentities,
   onOpen,
   onChanged,
 }: SourceFavouritesListProps) {
   const rows = useMemo<FavouriteRow[]>(() => {
-    // Neither counter is read directly — they exist to re-derive this list
-    // after a star press elsewhere or a sign-in while the panel is open.
+    // The counter is not read directly — it exists to re-derive this list after
+    // a star press elsewhere in the panel.
     void favouritesVersion;
-    void identityVersion;
 
     const all: FavouriteRow[] = [];
     for (const providerId of listFavouriteProviderIds()) {
       const provider = sourceHost.get(providerId);
-      // The stamp filter runs even for an unregistered provider: its owner key
-      // outlives the plugin, so another account still must not see the rows.
-      const items = visibleFavourites(loadFavourites(providerId), readSourceCatalogCacheOwner(providerId));
+      const owner = visibleOwner(providerId, provider, liveIdentities);
+      // Auth still in flight: show nothing rather than last session's rows.
+      if (owner === undefined) continue;
+      const items = visibleFavourites(loadFavourites(providerId), owner);
       if (items.length === 0) continue;
 
       const configured =
@@ -83,7 +114,7 @@ export function SourceFavouritesList({
       }
     }
     return all.sort((left, right) => right.favourite.addedAt - left.favourite.addedAt);
-  }, [favouritesVersion, identityVersion, sourceHost]);
+  }, [favouritesVersion, liveIdentities, sourceHost]);
 
   if (rows.length === 0) return null;
 

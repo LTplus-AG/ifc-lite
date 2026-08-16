@@ -85,12 +85,21 @@ function tryWrite(key: string, value: string, what: string): boolean {
   }
 }
 
-/** Identity of a favourite for toggling and dedupe. Provider-scoped, so the same file in two providers is two favourites. */
+/**
+ * Identity of a favourite for toggling and dedupe. Provider-scoped, so the same
+ * file in two providers is two favourites — and identity-scoped for the same
+ * reason the catalog cache is (see `syncSourceCatalogCacheOwner`): storage is
+ * one blob per provider holding every account that ever used this browser
+ * profile, and the provider hands the same project/folder/file ids to all of
+ * them. Without the identity segment account B's star press matched account A's
+ * stored record: it DELETED it instead of adding B's own, and until then the
+ * folder rendered already-starred to B, who had never starred it.
+ */
 export function favouriteKey(
-  favourite: Pick<SourceFavourite, 'providerId' | 'projectId' | 'kind' | 'containerId' | 'fileId'>,
+  favourite: Pick<SourceFavourite, 'providerId' | 'projectId' | 'kind' | 'containerId' | 'fileId' | 'identityId'>,
 ): string {
   const target = favourite.kind === 'file' ? (favourite.fileId ?? '') : favourite.containerId;
-  return `${favourite.providerId}:${favourite.projectId}:${favourite.kind}:${target}`;
+  return `${favourite.providerId}:${favourite.identityId ?? ''}:${favourite.projectId}:${favourite.kind}:${target}`;
 }
 
 /** Per-record validation, so one hand-edited or older-build entry drops out instead of taking the whole list with it. */

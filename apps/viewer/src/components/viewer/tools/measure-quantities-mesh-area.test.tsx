@@ -172,6 +172,51 @@ describe('a corrupt submesh does not zero its occurrence\'s mesh area (defect 2)
   });
 });
 
+describe('selection changes do not re-sum the corpus (mesh area is selection-independent)', () => {
+  it('does not re-read mesh positions when only the selection changes', () => {
+    // `positions` is a getter that counts every read. `collectMeshAreas`
+    // must read it while summing, so a re-collection on a selection change
+    // is observable as a growing count. The area total is a pure function
+    // of the loaded mesh data, so arrow-keying through the spatial tree
+    // must not re-sum every loaded triangle on the main thread.
+    let positionReads = 0;
+    const countingMesh = (expressId: number) => ({
+      expressId,
+      get positions() {
+        positionReads += 1;
+        return [0, 0, 0, 3, 0, 0, 0, 4, 0];
+      },
+      indices: [0, 1, 2],
+    });
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['m1:42']),
+      models: new Map([['m1', federatedModel({
+        id: 'm1',
+        ifcDataStore: null,
+        geometryResult: { meshes: [countingMesh(42), countingMesh(43)] },
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    assert.match(container.textContent ?? '', /Area mesh\s*6 m²/, container.textContent ?? '');
+    assert.ok(positionReads > 0, 'the counting getter was never exercised — the test is not observing the sum');
+
+    const readsAfterFirstSummary = positionReads;
+    act(() => {
+      useViewerStore.setState({ selectedEntitiesSet: new Set(['m1:43']) });
+    });
+    act(() => {
+      useViewerStore.setState({ selectedEntitiesSet: new Set(['m1:42', 'm1:43']) });
+    });
+    assert.match(container.textContent ?? '', /Area mesh/, container.textContent ?? '');
+    assert.equal(
+      positionReads,
+      readsAfterFirstSummary,
+      `selection changes re-read mesh positions (${readsAfterFirstSummary} -> ${positionReads}): the whole corpus is being re-summed per selection click`,
+    );
+  });
+});
+
 describe('a present-but-empty mesh record reads as no mesh, not measured-zero (CodeRabbit)', () => {
   it('does not count toward "Area mesh" and is reported as no triangulated mesh', () => {
     useViewerStore.setState({

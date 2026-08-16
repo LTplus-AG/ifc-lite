@@ -179,6 +179,37 @@ export function MeasureQuantities() {
     return selectedEntity ? [selectedEntity] : [];
   }, [selectedEntitiesSet, selectedEntity]);
 
+  // Mesh-derived surface area (issue #2199, "mesh analysis reachable from
+  // TypeScript"): summed live from each submesh's `positions`/`indices`
+  // (`measure-modes/mesh-area.ts`'s `collectMeshAreas`), unlike
+  // `geometryVolume` which is a scalar the wasm hashing pass computed once.
+  // Because it re-reads `positions` every time, it is NOT invalidated by
+  // federation re-baking the way `geometryVolume` is — a
+  // `'same-crs'`/`'reprojected'` alignment mutates `positions` in place
+  // (`geometryVolumesSurviveAlignment`'s own contract), so summing
+  // triangles from the CURRENT positions already reflects the geometry on
+  // screen. `rescaledModelIds` therefore does not gate this collection —
+  // and neither, by construction, does `store`: `collectMeshAreas` takes
+  // mesh data alone, so there is no `store`-shaped parameter for a future
+  // early return to gate it on (see the resolution below, and the
+  // adversarial review of 85ebf7d1's confirmed defect: the lookup used to
+  // sit after `if (!store) continue` and silently drop an already-computed
+  // area for any ref whose model lacked an `IfcDataStore`).
+  //
+  // Its OWN memo, keyed on the mesh data alone: per-entity total mesh area
+  // is selection-independent (it iterates every loaded model's triangles,
+  // never `refs`), so recomputing it inside the selection-keyed `summary`
+  // memo below would re-sum the whole federation's triangles on the main
+  // thread on every selection click.
+  const meshAreaByGlobalId = useMemo(
+    () => collectMeshAreas(
+      models.size > 0
+        ? [...models.values()].map((m) => m.geometryResult?.meshes)
+        : [geometryResult?.meshes],
+    ),
+    [models, geometryResult],
+  );
+
   const summary = useMemo(() => {
     if (refs.length === 0) return null;
 
@@ -222,28 +253,6 @@ export function MeasureQuantities() {
     } else {
       collectVolumes(geometryResult?.meshes, geometryResult?.instancedGeometryVolumes);
     }
-
-    // Mesh-derived surface area (issue #2199, "mesh analysis reachable from
-    // TypeScript"): summed live from each submesh's `positions`/`indices`
-    // (`measure-modes/mesh-area.ts`'s `collectMeshAreas`), unlike
-    // `geometryVolume` which is a scalar the wasm hashing pass computed once.
-    // Because it re-reads `positions` every time, it is NOT invalidated by
-    // federation re-baking the way `geometryVolume` is — a
-    // `'same-crs'`/`'reprojected'` alignment mutates `positions` in place
-    // (`geometryVolumesSurviveAlignment`'s own contract), so summing
-    // triangles from the CURRENT positions already reflects the geometry on
-    // screen. `rescaledModelIds` therefore does not gate this collection —
-    // and neither, by construction, does `store`: `collectMeshAreas` takes
-    // mesh data alone, so there is no `store`-shaped parameter for a future
-    // early return to gate it on (see the resolution below, and the
-    // adversarial review of 85ebf7d1's confirmed defect: the lookup used to
-    // sit after `if (!store) continue` and silently drop an already-computed
-    // area for any ref whose model lacked an `IfcDataStore`).
-    const meshAreaByGlobalId = collectMeshAreas(
-      models.size > 0
-        ? [...models.values()].map((m) => m.geometryResult?.meshes)
-        : [geometryResult?.meshes],
-    );
 
     // Resolved directly from `refs`, BEFORE the store-dependent loop below —
     // not inside it — so no store-related branch in that loop can ever skip
@@ -319,7 +328,7 @@ export function MeasureQuantities() {
       withoutStore,
       rescaled,
     };
-  }, [refs, models, ifcDataStore, geometryResult]);
+  }, [refs, models, ifcDataStore, geometryResult, meshAreaByGlobalId]);
 
   // Totals are already SI, so display resolves against an EMPTY unit context —
   // handing it the file's declared millimetres would scale a metre total again.

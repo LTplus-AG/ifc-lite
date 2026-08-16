@@ -151,6 +151,13 @@ function makeHarness(): Harness {
                     stats.draws.push(boundVertexBuffer);
                 };
             }
+            // The sky pass issues a NON-indexed draw (pass.draw(3)); record it
+            // so a test can pin the env rebind to AFTER the sky draw, not merely
+            // after the sky pipeline was set (the boundary Greptile/CodeRabbit
+            // flagged on #2669).
+            if (prop === 'draw') {
+                return () => { stats.commands.push({ op: 'draw' }); };
+            }
             return () => undefined;
         },
     });
@@ -413,7 +420,7 @@ describe('lighting environment bind ordering', () => {
     // no geometry ("the model disappears when I change the environment") on
     // strict drivers. The env must be (re)bound at group(1) AFTER the sky pass
     // and BEFORE the first geometry draw.
-    it('rebinds the environment at group(1) after the sky pass, before geometry', () => {
+    it('rebinds the environment at group(1) after the sky draw, before geometry', () => {
         const h = makeHarness();
         seedBatches(h);
         h.stats.commands.length = 0;
@@ -421,13 +428,18 @@ describe('lighting environment bind ordering', () => {
 
         const cmds = h.stats.commands;
         const firstPipeline = cmds.findIndex((c) => c.op === 'setPipeline');
-        const firstDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
+        // The sky pass's own non-indexed draw — the real boundary the env
+        // rebind must clear. Anchoring on this (not just on a setPipeline)
+        // is what rejects a rebind issued before the sky actually drew.
+        const skyDraw = cmds.findIndex((c) => c.op === 'draw');
+        const firstGeometryDraw = cmds.findIndex((c) => c.op === 'drawIndexed');
         assert.ok(firstPipeline >= 0, 'the sky pass must set a pipeline');
-        assert.ok(firstDraw > firstPipeline, 'geometry must draw after a pipeline is set');
+        assert.ok(skyDraw > firstPipeline, 'the sky must draw after its pipeline is set');
+        assert.ok(firstGeometryDraw > skyDraw, 'geometry must draw after the sky');
         const envBind = cmds.findIndex(
-            (c, i) => c.op === 'setBindGroup' && c.index === 1 && i > firstPipeline && i < firstDraw,
+            (c, i) => c.op === 'setBindGroup' && c.index === 1 && i > skyDraw && i < firstGeometryDraw,
         );
-        assert.ok(envBind >= 0, 'group(1) must be re-bound after the sky pass and before geometry');
+        assert.ok(envBind >= 0, 'group(1) must be re-bound after the sky draw and before geometry');
     });
 
     it('binds the environment at group(1) before geometry with the sky off (Default preset)', () => {

@@ -438,7 +438,11 @@ jobs:
       # A #2634 review found the fail-loud branch only engaged when the whole
       # run was unparseable — a run with one recognised diagnostic and one
       # unrecognised one silently dropped the unrecognised one instead of
-      # failing. Pinned here so that gap can't reopen unnoticed.
+      # failing. Pinned here so that gap can't reopen unnoticed. The #2663
+      # review found the twin gap one level up: the exit status itself was
+      # never inspected, so an ENOBUFS-truncated or OOM-killed run handed the
+      # classifier a prefix that parsed cleanly into a confident undercount.
+      # untrustworthyExitReason is pinned in the same file.
       - name: Check unused-locals output classification
         run: node --test scripts/lib/unused-locals-classify.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated

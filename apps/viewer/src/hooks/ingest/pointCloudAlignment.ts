@@ -62,12 +62,31 @@
  * matrix's translation column exactly zero. The f32 matrix then carries
  * only rotation + scale, applied to already-small residual positions.
  *
- * Units: LAS/LAZ coordinates are in the projected CRS's native unit
- * (`IfcProjectedCRS.MapUnit`, resolved by `resolveMapUnitToMetreScale`;
- * metres unless the file explicitly says otherwise). `decodeOriginOffset`
- * is therefore expressed in that SAME native unit, and the matrix's
- * linear factor `k = mapUnitScale / effectiveScale` converts residual
- * native units → viewer metres in one multiply.
+ * Units (PR #2623 review): LAS/LAZ coordinates are in the projected CRS's
+ * native unit (`IfcProjectedCRS.MapUnit`, resolved by
+ * `resolveMapUnitToMetreScale`; metres unless the file explicitly says
+ * otherwise) — that convention is LAS/LAZ-specific, not shared by any other
+ * point-cloud format. Every OTHER format this module supports either
+ * mandates metres (E57 cartesian coordinates, ASTM E2807) or has no unit
+ * convention at all (PCD/PLY/PTS/XYZ; producing pipelines vary), and this
+ * module assumes metres for that second group too — the common case, and
+ * the same assumption a bare `raw - offset` with no conversion silently
+ * made before this fix, just now stated instead of implied.
+ *
+ * `computePointCloudAlignment`'s `sourceUnit` parameter selects which of
+ * the two conventions the CALLER's format uses, and both `decodeOriginOffset`
+ * and the aligned matrix's linear factor `k` are derived consistently for
+ * that unit:
+ *   - `'mapUnit'` (LAS/LAZ): `decodeOriginOffset` is native-map-unit,
+ *     `k = mapUnitScale / effectiveScale` converts native-unit residuals to
+ *     viewer metres.
+ *   - `'metre'` (E57/PCD/PLY/PTS/XYZ): `decodeOriginOffset` is metres
+ *     directly, `k = 1 / effectiveScale` (no further unit conversion —
+ *     the residual is already metres).
+ * Picking the wrong `sourceUnit` for a format reproduces the exact defect
+ * the review caught: a MapUnit-native offset subtracted from a metre-native
+ * raw coordinate (or vice versa), landing the cloud thousands of km off for
+ * any CRS whose MapUnit isn't already the metre.
  */
 
 import type { ModelGeoref } from './federationAlign.js';
@@ -159,17 +178,42 @@ export function invertMapConversion(
   };
 }
 
+/**
+ * Which unit convention `computePointCloudAlignment`'s caller's point-cloud
+ * FORMAT stores raw coordinates in — see the module doc's "Units" section.
+ *   - `'mapUnit'`: LAS/LAZ only. Coordinates are in the projected CRS's
+ *     native `IfcProjectedCRS.MapUnit`.
+ *   - `'metre'`: every other supported format (E57 — spec-mandated; PCD,
+ *     PLY, PTS, XYZ — no format convention, metres assumed and documented
+ *     here rather than left implicit).
+ */
+export type PointCloudSourceUnit = 'mapUnit' | 'metre';
+
 export interface PointCloudAlignmentTransform {
   /**
-   * (Easting, Northing, OrthogonalHeight)-axis offset in the map CRS's
-   * NATIVE unit (the unit LAS/LAZ coordinates are stored in — see module
-   * doc), subtracted from raw decoded point coordinates BEFORE narrowing
-   * to f32. Threaded through `streamPointCloud`'s `originOffset` option.
-   * This is the map-space image of the viewer-frame origin (the map
-   * conversion's own offsets PLUS the reference model's RTC/origin
-   * shift), so the aligned matrix needs no f32 translation at all.
+   * (Easting, Northing, OrthogonalHeight)-axis offset, subtracted from raw
+   * decoded point coordinates BEFORE narrowing to f32. Threaded through
+   * `streamPointCloud`'s `originOffset` option. This is the map-space image
+   * of the viewer-frame origin (the map conversion's own offsets PLUS the
+   * reference model's RTC/origin shift), so the aligned matrix needs no f32
+   * translation at all.
+   *
+   * Expressed in the unit named by {@link decodeOriginOffsetUnit} — NOT
+   * always the map CRS's native unit. See the module doc's "Units" section;
+   * this is the exact value PR #2623's review flagged as MapUnit-native
+   * regardless of caller format, which is wrong for every format except
+   * LAS/LAZ.
    */
   decodeOriginOffset: readonly [number, number, number];
+  /**
+   * The unit {@link decodeOriginOffset} (and the residual positions the
+   * aligned matrix's `k` factor consumes) are expressed in — whichever
+   * `sourceUnit` the caller passed to `computePointCloudAlignment`. Carried
+   * alongside the offset so a consumer can tell which convention a given
+   * transform was computed for without re-deriving it from the caller's
+   * format.
+   */
+  decodeOriginOffsetUnit: PointCloudSourceUnit;
   /**
    * Column-major 4x4 (16 floats, WebGPU/three.js convention: column i at
    * `[4*i .. 4*i+3]`) GPU model matrix mapping decode-shifted,
@@ -196,8 +240,19 @@ export interface PointCloudAlignmentTransform {
  * federated IFC model into the reference frame. Returns `null` when the
  * conversion is unusable (degenerate axis direction or ~zero scale) so
  * the caller can hide/disable the alignment toggle.
+ *
+ * `sourceUnit` (PR #2623 review) selects which unit convention the
+ * CALLER's point-cloud format stores raw coordinates in — see
+ * {@link PointCloudSourceUnit} and the module doc's "Units" section.
+ * Defaults to `'mapUnit'` (LAS/LAZ's convention, and this function's
+ * behaviour before #2623 threaded alignment to any other format) so every
+ * existing single-argument call site keeps its prior numbers unchanged.
+ * Callers that ingest E57/PCD/PLY/PTS/XYZ MUST pass `'metre'` explicitly.
  */
-export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlignmentTransform | null {
+export function computePointCloudAlignment(
+  georef: ModelGeoref,
+  sourceUnit: PointCloudSourceUnit = 'mapUnit',
+): PointCloudAlignmentTransform | null {
   const lengthUnitScale = georef.lengthUnitScale ?? 1;
   const mapUnitScale = resolveMapUnitToMetreScale(georef.projectedCRS.mapUnitScale, lengthUnitScale);
   if (!(mapUnitScale > 0)) return null;
@@ -229,8 +284,13 @@ export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlign
   // `totalYupOffset` — and `applyMapConversion` (metre-space params,
   // effective scale) is the SAME forward map this module's inverse
   // mirrors, so decode-shifted residuals transform to viewer space with a
-  // ZERO translation column. Convert the result back to the map CRS's
-  // native unit because that's what LAS/LAZ coordinates are stored in.
+  // ZERO translation column. `originMap` is metres (applyMapConversion's
+  // params above are metre-scaled). Convert to the CALLER's unit (see
+  // module doc, "Units" / PR #2623 review): `'mapUnit'` (LAS/LAZ) divides
+  // back to the map CRS's native unit because that's what LAS/LAZ
+  // coordinates are stored in; `'metre'` (every other format) keeps it as
+  // metres, since none of those formats share LAS/LAZ's MapUnit
+  // convention.
   const originMap = applyMapConversion(
     {
       eastings: conv.eastings * mapUnitScale,
@@ -245,29 +305,33 @@ export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlign
     off.y,
   );
   if (!originMap) return null; // unreachable: axis validated above
-  const decodeOriginOffset: readonly [number, number, number] = [
-    originMap.e / mapUnitScale,
-    originMap.n / mapUnitScale,
-    originMap.h / mapUnitScale,
-  ];
+  const decodeOriginOffset: readonly [number, number, number] = sourceUnit === 'mapUnit'
+    ? [originMap.e / mapUnitScale, originMap.n / mapUnitScale, originMap.h / mapUnitScale]
+    : [originMap.e, originMap.n, originMap.h];
 
   // Aligned matrix operates on (px,py,pz) — the Z-up→Y-up-swapped,
   // decode-time-shifted residual positions the ingest path uploads (see
   // `swapZupChunkToYup` in pointCloudIngest.ts: px=rE, py=rH, pz=-rN,
-  // where rE/rN/rH = raw LAS (E,N,H) minus decodeOriginOffset, in native
-  // map units).
+  // where rE/rN/rH = raw (E,N,H) minus decodeOriginOffset, in whichever
+  // unit `sourceUnit` named — native map units for LAS/LAZ, metres for
+  // every other format).
   //
   // Map→local in metres (mirrors `invertMapConversion`, with the residual
   // deltas already taken in f64 at decode time):
   //   ifcX = k*(a*rE + b*rN),  ifcY = k*(-b*rE + a*rN),  ifcZ = k*rH
-  // where k = mapUnitScale / effectiveScale converts native-unit residuals
-  // straight to viewer metres. Converting IFC Z-up → viewer Y-up:
+  // where k converts the residual's unit straight to viewer metres:
+  //   - 'mapUnit': k = mapUnitScale / effectiveScale (native-unit residual
+  //     → metres, then effective scale).
+  //   - 'metre': k = 1 / effectiveScale (residual is already metres — the
+  //     mapUnitScale factor would double-convert it, reproducing the
+  //     PR #2623 review's defect).
+  // Converting IFC Z-up → viewer Y-up:
   //   viewer = (ifcX, ifcZ, -ifcY)   [translation ≡ 0 by the fold above]
   // Substituting rE=px, rN=-pz, rH=py:
   //   viewerX = k*a*px - k*b*pz
   //   viewerY = k*py
   //   viewerZ = k*b*px + k*a*pz
-  const k = mapUnitScale / scale;
+  const k = sourceUnit === 'mapUnit' ? mapUnitScale / scale : 1 / scale;
   const alignedMatrix = new Float32Array([
     k * a, 0, k * b, 0,
     0, k, 0, 0,
@@ -289,6 +353,7 @@ export function computePointCloudAlignment(georef: ModelGeoref): PointCloudAlign
 
   return {
     decodeOriginOffset,
+    decodeOriginOffsetUnit: sourceUnit,
     alignedMatrix,
     unalignedMatrix,
   };

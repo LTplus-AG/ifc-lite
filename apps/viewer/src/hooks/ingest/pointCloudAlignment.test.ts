@@ -16,6 +16,13 @@ import {
 } from './pointCloudAlignment.js';
 import type { ModelGeoref } from './federationAlign.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
+import {
+  decodeAsciiPoints,
+  decodePcd,
+  decodePly,
+  decodeE57Scan,
+  type Data3DEntry,
+} from '@ifc-lite/pointcloud';
 
 function assertClose(actual: number, expected: number, eps = 1e-6, msg?: string): void {
   assert.ok(
@@ -464,5 +471,203 @@ describe('computePointCloudAlignment with map-absolute geometry (#2526)', () => 
     assertClose(out.x, local.x, 1e-6, 'x');
     assertClose(out.y, local.z, 1e-6, 'y');
     assertClose(out.z, -local.y, 1e-6, 'z');
+  });
+});
+
+/**
+ * PR #2623 review — confirmed defect: `decodeOriginOffset` was ALWAYS
+ * expressed in the map CRS's native `MapUnit` (feet, in this fixture),
+ * regardless of the point-cloud format consuming it. That was safe while a
+ * LAS/LAZ-only gate kept the offset away from every other format — LAS
+ * conventionally shares the CRS's MapUnit. This PR removes that gate, so
+ * the same offset now feeds E57/PCD/PLY/PTS/XYZ decoders. But E57 cartesian
+ * coordinates are spec-mandated to be METRES (ASTM E2807) independent of
+ * MapUnit, and PCD/PLY/PTS/XYZ have no unit convention at all — so a
+ * MapUnit-native offset subtracted from a metre-native raw coordinate
+ * (`decoders do a bare `raw - offset`) landed the cloud thousands of km off
+ * for any CRS whose MapUnit isn't already the metre.
+ *
+ * Fixture matches the review's own repro exactly: MapUnit = foot
+ * (mapUnitScale 0.3048), conversion eastings/northings/orthogonalHeight =
+ * 1_000_000 / 2_000_000 / 300 (feet) = 304_800 / 609_600 / 91.44 (metres).
+ * A scan point sitting EXACTLY at that map position — the metre-native
+ * equivalent — must decode to a residual near zero. Decoding it against the
+ * MapUnit-native offset instead reproduces the review's measured
+ * 1_554_514 m residual bit-for-bit (same fixture numbers), proving these
+ * assertions are not vacuous: they fail specifically when the wrong unit is
+ * used, not for an unrelated reason.
+ */
+describe('format-native decode unit for the origin offset (PR #2623 review)', () => {
+  const FOOT_GEOREF = makeGeoref({
+    mapConversion: { eastings: 1_000_000, northings: 2_000_000, orthogonalHeight: 300 },
+    projectedCRS: { mapUnitScale: 0.3048 },
+  });
+  // The map-space position of the conversion origin, in metres — what an
+  // E57/PCD/PLY/PTS/XYZ point AT that position encodes per their (spec or
+  // assumed) metre convention.
+  const POINT_AT_ORIGIN_METRES: readonly [number, number, number] = [304_800, 609_600, 91.44];
+
+  it("computePointCloudAlignment('metre') converts the offset out of MapUnit into metres", () => {
+    const mapUnit = computePointCloudAlignment(FOOT_GEOREF, 'mapUnit');
+    const metre = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(mapUnit && metre);
+    assert.strictEqual(mapUnit.decodeOriginOffsetUnit, 'mapUnit');
+    assert.strictEqual(metre.decodeOriginOffsetUnit, 'metre');
+    // Native (feet) — bug-compatible for LAS/LAZ, matches the pre-existing
+    // "foot-based CRS" pin above.
+    assertClose(mapUnit.decodeOriginOffset[0], 1_000_000, 1e-6);
+    assertClose(mapUnit.decodeOriginOffset[1], 2_000_000, 1e-6);
+    assertClose(mapUnit.decodeOriginOffset[2], 300, 1e-6);
+    // Metres — the fix, for every other format.
+    assertClose(metre.decodeOriginOffset[0], 304_800, 1e-6);
+    assertClose(metre.decodeOriginOffset[1], 609_600, 1e-6);
+    assertClose(metre.decodeOriginOffset[2], 91.44, 1e-6);
+    // Defaulting the parameter reproduces the 'mapUnit' behaviour byte for
+    // byte — no existing single-argument call site's numbers move.
+    const defaulted = computePointCloudAlignment(FOOT_GEOREF);
+    assert.ok(defaulted);
+    assert.strictEqual(defaulted.decodeOriginOffsetUnit, 'mapUnit');
+    assert.strictEqual(defaulted.decodeOriginOffset[0], mapUnit.decodeOriginOffset[0]);
+  });
+
+  it("'metre' aligned matrix's k does not double-apply the MapUnit conversion", () => {
+    // A distinct bug shape from the offset unit itself: the offset can be
+    // metre-correct while the aligned matrix's linear factor `k` still
+    // assumes a native-map-unit residual (k = mapUnitScale/scale instead of
+    // 1/scale). That silently rescales every 'metre'-format point by
+    // mapUnitScale (0.3048 here) instead of leaving it as viewer metres.
+    const t = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(t);
+    // A point 100 m east / 50 m up of the conversion origin, in the SAME
+    // metre-native raw frame E57/PCD/PLY/PTS/XYZ decoders consume.
+    const raw: readonly [number, number, number] = [
+      POINT_AT_ORIGIN_METRES[0] + 100,
+      POINT_AT_ORIGIN_METRES[1],
+      POINT_AT_ORIGIN_METRES[2] + 50,
+    ];
+    const out = runAlignmentChain(t, raw);
+    assertClose(out.x, 100, 1e-4, 'x (would read ~30.48 if k wrongly applied mapUnitScale)');
+    assertClose(out.y, 50, 1e-4, 'y');
+    assertClose(out.z, 0, 1e-4, 'z');
+  });
+
+  function residual(pos: Float32Array): number {
+    return Math.hypot(pos[0], pos[1], pos[2]);
+  }
+
+  it('E57 (decodeE57Scan, no pose): metre offset gives ~0 residual, MapUnit offset reproduces the review\'s 1,554,514 m', () => {
+    const wrong = computePointCloudAlignment(FOOT_GEOREF, 'mapUnit');
+    const right = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(wrong && right);
+
+    const buildEntry = (): { entry: Data3DEntry; logical: Uint8Array } => {
+      const [x, y, z] = POINT_AT_ORIGIN_METRES;
+      const lenF64 = 8;
+      const headerBytes = 4 + 2 + 3 * 2;
+      const packetSize = headerBytes + lenF64 * 3;
+      const buf = new ArrayBuffer(packetSize);
+      const view = new DataView(buf);
+      view.setUint8(0, 1);
+      view.setUint8(1, 0);
+      view.setUint16(2, packetSize - 1, true);
+      view.setUint16(4, 3, true);
+      for (let i = 0; i < 3; i++) view.setUint16(6 + i * 2, lenF64, true);
+      let cursor = headerBytes;
+      view.setFloat64(cursor, x, true); cursor += lenF64;
+      view.setFloat64(cursor, y, true); cursor += lenF64;
+      view.setFloat64(cursor, z, true);
+      const entry: Data3DEntry = {
+        guid: 'test',
+        recordCount: 1,
+        binaryFileOffset: 0,
+        prototype: [
+          { name: 'cartesianX', kind: 'Float', precision: 'double' },
+          { name: 'cartesianY', kind: 'Float', precision: 'double' },
+          { name: 'cartesianZ', kind: 'Float', precision: 'double' },
+        ],
+      };
+      return { entry, logical: new Uint8Array(buf) };
+    };
+
+    const { entry: entryWrong, logical: logicalWrong } = buildEntry();
+    const decodedWrong = decodeE57Scan(logicalWrong, entryWrong, wrong.decodeOriginOffset);
+    const residualWrong = residual(decodedWrong.positions);
+    assertClose(residualWrong, 1_554_514, 1, 'RED (MapUnit-native offset on a metre-native E57 point)');
+
+    const { entry: entryRight, logical: logicalRight } = buildEntry();
+    const decodedRight = decodeE57Scan(logicalRight, entryRight, right.decodeOriginOffset);
+    assertClose(residual(decodedRight.positions), 0, 1e-3, 'GREEN (metre offset)');
+  });
+
+  it('PCD (decodePcd, ascii): metre offset gives ~0 residual, MapUnit offset does not', () => {
+    const wrong = computePointCloudAlignment(FOOT_GEOREF, 'mapUnit');
+    const right = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(wrong && right);
+
+    const buildPcd = (): Uint8Array => {
+      const [x, y, z] = POINT_AT_ORIGIN_METRES;
+      const header = [
+        '# .PCD test',
+        'VERSION 0.7',
+        'FIELDS x y z',
+        'SIZE 4 4 4',
+        'TYPE F F F',
+        'COUNT 1 1 1',
+        'WIDTH 1',
+        'HEIGHT 1',
+        'VIEWPOINT 0 0 0 1 0 0 0',
+        'POINTS 1',
+        'DATA ascii',
+        '',
+      ].join('\n');
+      return new TextEncoder().encode(`${header}${x} ${y} ${z}\n`);
+    };
+
+    const decodedWrong = decodePcd(buildPcd(), wrong.decodeOriginOffset);
+    assertClose(residual(decodedWrong.positions), 1_554_514, 1, 'RED (MapUnit-native offset)');
+
+    const decodedRight = decodePcd(buildPcd(), right.decodeOriginOffset);
+    assertClose(residual(decodedRight.positions), 0, 1e-3, 'GREEN (metre offset)');
+  });
+
+  it('PLY (decodePly, ascii): metre offset gives ~0 residual, MapUnit offset does not', () => {
+    const wrong = computePointCloudAlignment(FOOT_GEOREF, 'mapUnit');
+    const right = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(wrong && right);
+
+    const buildPly = (): Uint8Array => {
+      const [x, y, z] = POINT_AT_ORIGIN_METRES;
+      const header =
+        'ply\n' +
+        'format ascii 1.0\n' +
+        'element vertex 1\n' +
+        'property float x\nproperty float y\nproperty float z\n' +
+        'end_header\n';
+      return new TextEncoder().encode(`${header}${x} ${y} ${z}\n`);
+    };
+
+    const decodedWrong = decodePly(buildPly(), wrong.decodeOriginOffset);
+    assertClose(residual(decodedWrong.positions), 1_554_514, 1, 'RED (MapUnit-native offset)');
+
+    const decodedRight = decodePly(buildPly(), right.decodeOriginOffset);
+    assertClose(residual(decodedRight.positions), 0, 1e-3, 'GREEN (metre offset)');
+  });
+
+  it('ASCII (decodeAsciiPoints, XYZ and PTS): metre offset gives ~0 residual, MapUnit offset does not', () => {
+    const wrong = computePointCloudAlignment(FOOT_GEOREF, 'mapUnit');
+    const right = computePointCloudAlignment(FOOT_GEOREF, 'metre');
+    assert.ok(wrong && right);
+    const [x, y, z] = POINT_AT_ORIGIN_METRES;
+
+    for (const format of ['xyz', 'pts'] as const) {
+      const bytes = new TextEncoder().encode(
+        format === 'pts' ? `1\n${x} ${y} ${z}\n` : `${x} ${y} ${z}\n`,
+      );
+      const decodedWrong = decodeAsciiPoints(bytes, format, wrong.decodeOriginOffset);
+      assertClose(residual(decodedWrong.positions), 1_554_514, 1, `RED (${format}, MapUnit-native offset)`);
+
+      const decodedRight = decodeAsciiPoints(bytes, format, right.decodeOriginOffset);
+      assertClose(residual(decodedRight.positions), 0, 1e-3, `GREEN (${format}, metre offset)`);
+    }
   });
 });

@@ -9,16 +9,19 @@ import type { DiffEntry } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { describeChange } from './describeChange.js';
-import { summarizeGeometryChange, type Aabb } from './geometrySummary.js';
+import { summarizeGeometryChange, type WorldAabb } from './geometrySummary.js';
 
-const box = (min: [number, number, number], max: [number, number, number]): Aabb => ({ min, max });
+// `summarizeGeometryChange` requires the world brand (#2659): these fixtures
+// are authored directly in the absolute world frame.
+const box = (min: [number, number, number], max: [number, number, number]): WorldAabb =>
+  ({ frame: 'world', min, max });
 
 describe('summarizeGeometryChange (#1197)', () => {
   it('reports no move and no reshape for an identical bounding box', () => {
     // The wall that "moved 1.09 m" had an identical bbox between revisions — a
     // re-tessellation dragged the old *vertex-weighted* centroid, not the box.
     const b = box([0, 0, 0], [3, 0.3, 2.7]);
-    const summary = summarizeGeometryChange(b, { min: [...b.min] as [number, number, number], max: [...b.max] as [number, number, number] });
+    const summary = summarizeGeometryChange(b, box([...b.min] as [number, number, number], [...b.max] as [number, number, number]));
     assert.ok(summary);
     assert.strictEqual(summary!.movedDistance, 0, 'identical box must not read as moved');
     assert.strictEqual(summary!.reshaped, false);

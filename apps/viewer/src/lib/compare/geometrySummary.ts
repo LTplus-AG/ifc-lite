@@ -13,7 +13,7 @@
  * a second copy would eventually drop on one side.
  */
 
-import type { MeshData } from '@ifc-lite/geometry';
+import type { CoordinateInfo, MeshData } from '@ifc-lite/geometry';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { composeWorldPlacement } from './worldPlacement.js';
@@ -36,8 +36,50 @@ const MOVE_EPS = 2e-3;
 /** Per-axis bounding-box size change above this counts as a reshape. */
 const RESHAPE_EPS = 1e-3;
 
-/** Axis-aligned bounding box in the renderer world frame. */
+/**
+ * Axis-aligned bounding box in the renderer's Y-up axes. The bare shape says
+ * nothing about WHICH frame its numbers are in - and two boxes in different
+ * frames look exactly alike at a call site, which is how one side of a
+ * comparison ended up absolute world while the other stayed RTC-relative -
+ * so this module only ever hands out the branded {@link WorldAabb}.
+ */
 export interface Aabb { min: readonly [number, number, number]; max: readonly [number, number, number] }
+
+/**
+ * An {@link Aabb} whose coordinates are ABSOLUTE world (Y-up): the model's
+ * RTC offset and origin shift folded in, the frame `MeshData.geometryAabb`
+ * is contracted to be in. The `frame` tag is a real runtime field, not a
+ * phantom brand: an untagged box in an unstated frame does not typecheck
+ * where a `WorldAabb` is required, and a debugger shows what a box claims
+ * to be.
+ */
+export interface WorldAabb extends Aabb { readonly frame: 'world' }
+
+/** The Y-up translation that lifts a model's render-frame coordinates
+ *  (`origin + positions`) into the absolute world frame - see
+ *  {@link renderToWorldShift}. */
+export interface RenderToWorldShift { readonly x: number; readonly y: number; readonly z: number }
+
+/**
+ * A model's render-to-world shift, read off its `CoordinateInfo`:
+ *
+ *   world_yup = render + originShift + rtcAsYup,  rtcAsYup = (rtc.x, rtc.z, -rtc.y)
+ *
+ * (`wasmRtcOffset` is recorded in IFC Z-up axes; `originShift` is already
+ * Y-up). The same composition as `federationAlign.ts`'s `totalYupOffset` and
+ * `scanSectionMath.ts`'s `pointCloudRenderFrameShift`, both derived from
+ * `reproject.ts`. Absent info (or absent offsets) means the render frame IS
+ * the world frame - the zero shift keeps un-georeferenced models bit-exact.
+ */
+export function renderToWorldShift(info: CoordinateInfo | undefined): RenderToWorldShift {
+  const shift = info?.originShift;
+  const rtc = info?.wasmRtcOffset;
+  return {
+    x: (shift?.x ?? 0) + (rtc?.x ?? 0),
+    y: (shift?.y ?? 0) + (rtc?.z ?? 0),
+    z: (shift?.z ?? 0) - (rtc?.y ?? 0),
+  };
+}
 
 /** Mutable AABB accumulator for {@link meshBounds} / {@link meshBoundsIndex}. */
 interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
@@ -47,20 +89,27 @@ function emptyBox(): Box {
 }
 
 /**
- * Fold one mesh's vertices into `box`, reconstructing the world coordinate.
+ * Fold one mesh's vertices into `box`, reconstructing the ABSOLUTE world
+ * coordinate.
  *
  * `positions` are NOT world on the wasm path: the pipeline defaults to a
  * per-element local frame (`rust/geometry/src/router/transforms/mod.rs`), so
- * world vertex i = `origin + positions[3i..3i+3]`, and `origin` is the
+ * render vertex i = `origin + positions[3i..3i+3]`, and `origin` is the
  * element's AABB centre - it FOLLOWS the element. Summing raw positions
  * therefore reported a pure translation as `movedDistance = 0` (the panel
  * showed no move, the bulk CSV wrote `MovedDistance_m = 0`): only `origin`
  * moved, and the positions were byte-identical. The exact trap
  * `buildFingerprints.ts` documents against.
+ *
+ * `origin + positions` is still only the RENDER frame (RTC/origin shift
+ * subtracted); `toWorld` lifts it into the absolute frame `geometryAabb`
+ * lives in, so a box folded here is comparable with a wasm box on the other
+ * side. All arithmetic in f64: origin and shift are f64, so a 2 m move stays
+ * readable next to a 6,600 km coordinate.
  */
-function foldMeshWorldPositions(mesh: MeshData, box: Box): void {
+function foldMeshWorldPositions(mesh: MeshData, box: Box, toWorld: RenderToWorldShift): void {
   const o = mesh.origin;
-  const ox = o?.[0] ?? 0, oy = o?.[1] ?? 0, oz = o?.[2] ?? 0;
+  const ox = (o?.[0] ?? 0) + toWorld.x, oy = (o?.[1] ?? 0) + toWorld.y, oz = (o?.[2] ?? 0) + toWorld.z;
   const p = mesh.positions;
   for (let i = 0; i < p.length; i += 3) {
     const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
@@ -69,38 +118,56 @@ function foldMeshWorldPositions(mesh: MeshData, box: Box): void {
   }
 }
 
-/** A folded accumulator as an {@link Aabb}, or null when nothing was folded. */
-function finishBox(box: Box): Aabb | null {
+/** A folded accumulator as a {@link WorldAabb}, or null when nothing was
+ *  folded. World because {@link foldMeshWorldPositions} folded `toWorld` in. */
+function finishBox(box: Box): WorldAabb | null {
   if (box.minX === Infinity) return null;
-  return { min: [box.minX, box.minY, box.minZ], max: [box.maxX, box.maxY, box.maxZ] };
+  return { frame: 'world', min: [box.minX, box.minY, box.minZ], max: [box.maxX, box.maxY, box.maxZ] };
 }
 
-/** The wasm pass's whole-entity world box as an {@link Aabb} copy. */
-function fromEntityAabb(aabb: { min: readonly number[]; max: readonly number[] }): Aabb {
+/** The wasm pass's whole-entity ABSOLUTE world box as a {@link WorldAabb}
+ *  copy. Already absolute at the source (see `MeshData.geometryAabb`), so no
+ *  shift is applied here. */
+function fromEntityAabb(aabb: { min: readonly number[]; max: readonly number[] }): WorldAabb {
   return {
+    frame: 'world',
     min: [aabb.min[0], aabb.min[1], aabb.min[2]],
     max: [aabb.max[0], aabb.max[1], aabb.max[2]],
   };
 }
 
 /**
- * Axis-aligned bounding box of an entity's meshes (renderer world frame).
+ * Axis-aligned bounding box of an entity's meshes, ALWAYS in the absolute
+ * world frame ({@link WorldAabb}).
  *
  * Prefers `MeshData.geometryAabb` - the whole-entity ABSOLUTE world box from
  * the wasm hashing pass, RTC offset and per-element `origin` already folded in
  * (all submeshes of an entity carry the identical box). It is the same box
  * `buildFingerprints.ts` feeds the diff engine, and the only one that stays
  * comparable when two revisions chose different RTC offsets. When the pass
- * produced no box (hashing off, older cache, NaN sentinel dropped), the
- * fallback folds `origin + positions` per vertex - origin-correct, though
- * still RTC-relative like the positions themselves.
+ * produced no box (hashing off, older cache, NaN sentinel dropped - see
+ * `geometry-fingerprints.ts`), the fallback folds
+ * `toWorld + origin + positions` per vertex, landing in the SAME absolute
+ * frame.
+ *
+ * `toWorld` is the owning model's {@link renderToWorldShift} and is required,
+ * not defaulted: a hashed entity can keep its box in one revision and lose it
+ * to the NaN drop in the other, and when the fallback stayed RTC-relative
+ * that pair compared a world box against a render box - on a georeferenced
+ * model the reported "movement" was the RTC offset, a fabricated number worse
+ * than the `movedDistance = 0` the origin fold fixed (#2659). An optional
+ * shift would let the next call site quietly reintroduce exactly that.
  */
-export function meshBounds(meshes: readonly MeshData[], globalId: number): Aabb | null {
+export function meshBounds(
+  meshes: readonly MeshData[],
+  globalId: number,
+  toWorld: RenderToWorldShift,
+): WorldAabb | null {
   let box: Box | null = null;
   for (const mesh of meshes) {
     if (mesh.expressId !== globalId) continue;
     if (mesh.geometryAabb) return fromEntityAabb(mesh.geometryAabb);
-    foldMeshWorldPositions(mesh, box ??= emptyBox());
+    foldMeshWorldPositions(mesh, box ??= emptyBox(), toWorld);
   }
   return box ? finishBox(box) : null;
 }
@@ -112,8 +179,11 @@ export function meshBounds(meshes: readonly MeshData[], globalId: number): Aabb 
  * copy of this loop is how the report path missed the `origin` fold that
  * `meshBounds`'s contract requires (#2529).
  */
-export function meshBoundsIndex(meshes: readonly MeshData[]): Map<number, Aabb> {
-  const resolved = new Map<number, Aabb>();
+export function meshBoundsIndex(
+  meshes: readonly MeshData[],
+  toWorld: RenderToWorldShift,
+): Map<number, WorldAabb> {
+  const resolved = new Map<number, WorldAabb>();
   const acc = new Map<number, Box>();
   for (const mesh of meshes) {
     if (resolved.has(mesh.expressId)) continue;
@@ -124,7 +194,7 @@ export function meshBoundsIndex(meshes: readonly MeshData[]): Map<number, Aabb> 
     }
     let box = acc.get(mesh.expressId);
     if (!box) acc.set(mesh.expressId, box = emptyBox());
-    foldMeshWorldPositions(mesh, box);
+    foldMeshWorldPositions(mesh, box, toWorld);
   }
   for (const [id, box] of acc) {
     const aabb = finishBox(box);
@@ -197,8 +267,13 @@ export function placementMoveSummary(
  * Classify an A→B bounding-box change as a move and/or reshape. Pure (takes
  * pre-computed AABBs) so a bulk report can pre-index every element's bounds in
  * one pass instead of re-scanning the mesh array per element (#1202).
+ *
+ * Takes {@link WorldAabb}, not bare {@link Aabb}: the subtraction below is
+ * only meaningful between boxes in the SAME frame, and requiring the brand
+ * makes a mixed-frame pair (the #2659 defect) a type error instead of a
+ * plausible-looking displacement.
  */
-export function summarizeGeometryChange(ba: Aabb | null, bb: Aabb | null): GeometrySummary | null {
+export function summarizeGeometryChange(ba: WorldAabb | null, bb: WorldAabb | null): GeometrySummary | null {
   const zero = { x: 0, y: 0, z: 0 };
   if (!ba || !bb) return { movedDistance: 0, delta: zero, reshaped: true, sizeDelta: zero };
 

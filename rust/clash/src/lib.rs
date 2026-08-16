@@ -31,6 +31,7 @@
 
 mod aabb;
 mod bvh;
+mod depth;
 mod generated;
 mod narrow;
 mod obb;

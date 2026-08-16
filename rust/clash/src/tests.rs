@@ -444,6 +444,49 @@ fn an_enclosed_layer_is_labelled_mesh_measured() {
 }
 
 #[test]
+fn a_coincident_footprint_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
+    // Structural pin, not just a value pin: this branch (surfaces coincide,
+    // no triangle crossing, AABB penetration beyond tolerance) built its
+    // `NarrowResult` directly and never checked `precision_floor` — unlike
+    // the crossing branch (`a_through_penetration_below_the_precision_floor_
+    // reports_touch_not_a_labelled_hard_clash` above), which does. Same
+    // shape and true depth (0.04 m) as `coincident_footprint_layers_are_
+    // labelled_mesh_measured` above, translated 1,000,000 units out where
+    // `precision_floor` grows to ~0.238 m (> 0.04 m): must report `Touch`,
+    // not `Hard`/`Mesh`/-0.04. Mirrors the TS fixture in
+    // `engine-ts/depth-provenance.test.ts`.
+    let off = 1_000_000.0_f32;
+    let session = session_of_parts(&[
+        box_hxyz(off + 5.0, 5.0, 0.1, 5.0, 5.0, 0.1),
+        box_hxyz(off + 5.0, 5.0, 0.285, 5.0, 5.0, 0.125),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Touch);
+    assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
+fn an_enclosed_pair_below_the_precision_floor_reports_touch_not_a_labelled_hard_clash() {
+    // Same regression as above, for the enclosed-solid branch (one element's
+    // AABB wholly inside the other's, no surface crossing at all): it also
+    // built its `NarrowResult` directly and never checked `precision_floor`.
+    // Same shape and true depth (0.04 m) as `an_enclosed_layer_is_labelled_
+    // mesh_measured` above, same 1,000,000-unit translation; must report
+    // `Touch`, not `Hard`. Mirrors the TS fixture in
+    // `engine-ts/depth-provenance.test.ts`.
+    let off = 1_000_000.0_f32;
+    let session = session_of_parts(&[
+        box_hxyz(off + 5.0, 5.0, 0.02, 5.0, 5.0, 0.02),
+        box_hxyz(off + 5.0, 5.0, 0.125, 5.0, 5.0, 0.125),
+    ]);
+    let result = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(result.records.len(), 1);
+    assert_eq!(result.records[0].status, ClashStatus::Touch);
+    assert_eq!(result.records[0].distance, 0.0);
+}
+
+#[test]
 fn a_clearance_gap_is_labelled_mesh_measured() {
     // `min_dist` is an exact triangle-to-triangle distance, not a box reading.
     let session = session_of_cubes(&[(0.0, 0.0, 0.0), (2.0, 0.0, 0.0)]);

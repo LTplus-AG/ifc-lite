@@ -267,6 +267,44 @@ describe('hard-clash distance provenance', () => {
     expect(res.distance).toBe(-0.03999999910593033);
   });
 
+  it('reports touch, not a mesh-labelled hard clash, for a coincident-footprint pair below the f32 precision floor', () => {
+    // Reviewer's regression (PR #2536 review): the "coincident-footprint
+    // stacked box layers" fixture above (true depth 0.04 m) still reports
+    // `mesh`/-0.04 no matter how far it sits from the origin, because that
+    // branch (surfaces coincide, no triangle crossing, AABB penetration
+    // beyond tolerance) builds its `NarrowResult` directly and never checked
+    // `precisionFloor` — unlike the crossing branch just above, which does.
+    // Translate the SAME shape 1,000,000 units out, where the floor grows to
+    // ~0.238 m (> the true 0.04 m depth): this must report `touch`, exactly
+    // like the crossing-branch pin above, not `hard`/`mesh`/-0.04.
+    const off = 1_000_000;
+    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.2]);
+    const b = boxEl('B', 'IfcSlab', [off, 0, 0.16], [off + 10, 10, 0.41]);
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const res = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
+    if (!res) throw new Error('expected a clash');
+    expect(res.status).toBe('touch');
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBe(0);
+  });
+
+  it('reports touch, not a mesh-labelled hard clash, for an enclosed box pair below the f32 precision floor', () => {
+    // Same regression as above, for the "enclosed box layer" branch (one
+    // element's AABB wholly inside the other's, no surface crossing at all):
+    // it also built its `NarrowResult` directly and never checked
+    // `precisionFloor`. Same true depth (0.04 m) and same 1,000,000-unit
+    // translation as the fixture above; must report `touch`, not `hard`.
+    const off = 1_000_000;
+    const a = boxEl('A', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.04]);
+    const b = boxEl('B', 'IfcSlab', [off, 0, 0], [off + 10, 10, 0.25]);
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const res = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
+    if (!res) throw new Error('expected a clash');
+    expect(res.status).toBe('touch');
+    expect(res.distanceKind).toBe('mesh');
+    expect(res.distance).toBe(0);
+  });
+
   it('carries the label onto the public Clash', async () => {
     const engine = createClashEngine();
     const res = await engine.run(

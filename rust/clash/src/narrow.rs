@@ -7,28 +7,10 @@
 //! and result construction match bit-for-bit so the two engines agree.
 
 use crate::aabb::{aabb_contains, bounds_of_points, overlap_bounds, signed_gap, Aabb};
-use crate::obb::{is_through_penetration, obb_penetration_depth};
+use crate::depth::{box_measured_depth, depth_clash_result};
 use crate::triangle::{tri_tri_distance, tri_tri_intersect};
 use crate::tri_mesh::TriMesh;
 use crate::vec3::{centroid, mid, Vec3};
-
-/// Exact box-box penetration depth when BOTH meshes are (within tolerance)
-/// rectangular boxes, else `None` — the only source of a `Mesh` label for a
-/// distance that used to come from `TriMesh::max_penetration_into`, a
-/// nearest-crossing-vertex sampling probe that converges to 0 under
-/// retessellation instead of to the true depth (see `obb.rs`, `tests.rs`).
-/// Also declines (returns `None`) for a THROUGH-PENETRATION pair — a thin
-/// member piercing clean through the other, e.g. a duct through a wall —
-/// where the MTD is dominated by the piercing member's own extent, not the
-/// material crossed. Faithful port of the TS `boxMeasuredDepth` (#2536).
-fn box_measured_depth(small: &TriMesh, large: &TriMesh) -> Option<f64> {
-    let oa = small.get_obb()?;
-    let ob = large.get_obb()?;
-    if is_through_penetration(&oa, &ob) {
-        return None;
-    }
-    obb_penetration_depth(&oa, &ob)
-}
 
 /// Clash classification. Discriminants match the public ABI (`Hard = 0`, etc.).
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -58,47 +40,6 @@ pub struct NarrowResult {
     pub distance_kind: DistanceKind,
     pub point: Vec3,
     pub bounds: Aabb,
-}
-
-/// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
-/// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
-/// larger magnitudes the ULP only grows. Same term/reasoning as
-/// `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` —
-/// kept here rather than shared since the two crates serve different callers.
-const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0; // 2^-22
-
-/// Penetration-depth floor below which a computed overlap cannot be
-/// distinguished from float32 rounding noise, scaled to the pair's own
-/// coordinate magnitude (a fixed constant would be far too tight for infra
-/// models far from the origin, and far too loose for small ones near it).
-///
-/// `tri_mesh.rs` ingests geometry from f32 buffers and stores/queries it in
-/// f64, so f64 arithmetic cannot recover precision the source never had: two
-/// surfaces authored flush round to adjacent f32 values, and the resulting
-/// "penetration" is bit-noise at the ULP of the largest operand coordinate,
-/// not a measured overlap. Extent is the max abs coordinate over both
-/// elements' AABBs, floored at 1.0 so a model near the origin still gets the
-/// single-unit ULP, not zero.
-///
-/// The floor grows linearly with distance from the origin, same as f32
-/// precision itself: on a georeferenced model (real map coordinates,
-/// hundreds of km out) the floor reaches decimetre scale and a genuine clash
-/// below it reclassifies as `Touch` — not a bug, since f32 genuinely cannot
-/// represent a finer distinction there. The fix is ingesting geometry closer
-/// to the origin (or in f64), not lowering this floor.
-fn precision_floor(aabb_a: &Aabb, aabb_b: &Aabb) -> f64 {
-    let mut extent = 1.0f64;
-    for b in [aabb_a, aabb_b] {
-        for v in [&b.min, &b.max] {
-            for &c in v {
-                let a = c.abs();
-                if a > extent {
-                    extent = a;
-                }
-            }
-        }
-    }
-    extent * F32_ULP_SCALE
 }
 
 /// Run the narrow phase for a candidate element pair.
@@ -261,33 +202,19 @@ pub fn test_pair(
         } else {
             (-signed_gap(aabb_a, aabb_b)).max(0.0)
         };
-        // The floor wins: checked BEFORE the through-penetration guard below
-        // decides `Mesh` vs `Estimate`, so a pair that is both below the f32
-        // floor AND a through-penetration reports `Touch` — not measurable at
-        // this magnitude regardless of which quantity produced it.
-        if penetration <= precision_floor(aabb_a, aabb_b) {
-            if !report_touch {
-                return None;
-            }
-            return Some(NarrowResult {
-                status: ClashStatus::Touch,
-                distance: 0.0,
-                distance_kind: DistanceKind::Mesh, // distance is exact (0)
-                point,
-                bounds: contact_bounds,
-            });
-        }
-        return Some(NarrowResult {
-            status: ClashStatus::Hard,
-            distance: -penetration,
-            distance_kind: if measured {
-                DistanceKind::Mesh
-            } else {
-                DistanceKind::Estimate
-            },
+        // The through-penetration guard above only decides `measured`, i.e.
+        // `Estimate` vs `Mesh` — `depth_clash_result` applies the f32 floor
+        // first, so a pair that is both a through-penetration and below the
+        // floor for this pair's scale reports `Touch` regardless.
+        return depth_clash_result(
+            penetration,
+            measured,
+            aabb_a,
+            aabb_b,
+            report_touch,
             point,
-            bounds: contact_bounds,
-        });
+            contact_bounds,
+        );
     }
 
     // Fully-enclosed solid: one element's AABB is wholly inside the other's,
@@ -306,22 +233,19 @@ pub fn test_pair(
     };
     if enclosed {
         let box_depth = box_measured_depth(small, large);
-        return Some(match box_depth {
-            Some(d) => NarrowResult {
-                status: ClashStatus::Hard,
-                distance: -d,
-                distance_kind: DistanceKind::Mesh,
-                point: overlap.center(),
-                bounds: overlap,
-            },
-            None => NarrowResult {
-                status: ClashStatus::Hard,
-                distance: signed_gap(aabb_a, aabb_b),
-                distance_kind: DistanceKind::Estimate,
-                point: overlap.center(),
-                bounds: overlap,
-            },
-        });
+        let depth = box_depth.unwrap_or_else(|| -signed_gap(aabb_a, aabb_b));
+        // May legitimately return `None` (depth below the f32 floor and
+        // `!report_touch`) — a suppressed touch, not "no clash" — so return
+        // it as-is rather than falling through further.
+        return depth_clash_result(
+            depth,
+            box_depth.is_some(),
+            aabb_a,
+            aabb_b,
+            report_touch,
+            overlap.center(),
+            overlap,
+        );
     }
 
     if min_dist == f64::INFINITY {
@@ -347,19 +271,22 @@ pub fn test_pair(
             {
                 // Tight contact region (clamped to the element overlap, not the
                 // whole-element AABB intersection, #1362/#1402). Exact box-box
-                // depth when both are boxes.
+                // depth when both are boxes. May legitimately return `None`
+                // (below the f32 floor and `!report_touch`) — a suppressed
+                // touch, not "no shared volume" — so return it as-is rather
+                // than falling through to the face-touch handling meant for
+                // the "probes failed" case below.
                 let box_depth = box_measured_depth(small, large);
-                return Some(NarrowResult {
-                    status: ClashStatus::Hard,
-                    distance: box_depth.map_or(gap, |d| -d),
-                    distance_kind: if box_depth.is_some() {
-                        DistanceKind::Mesh
-                    } else {
-                        DistanceKind::Estimate
-                    },
-                    point: mid(closest_a, closest_b),
-                    bounds: contact_bounds,
-                });
+                let depth = box_depth.unwrap_or(-gap);
+                return depth_clash_result(
+                    depth,
+                    box_depth.is_some(),
+                    aabb_a,
+                    aabb_b,
+                    report_touch,
+                    mid(closest_a, closest_b),
+                    contact_bounds,
+                );
             }
             // Only a face touch (no shared volume): fall through to the touch
             // handling below, which suppresses it unless report_touch is set.

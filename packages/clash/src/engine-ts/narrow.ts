@@ -100,6 +100,45 @@ function precisionFloor(elA: ClashElement, elB: ClashElement): number {
 }
 
 /**
+ * Turns a candidate penetration depth into the final `(status, distanceKind,
+ * distance)` triple. This is the ONLY place in this file allowed to build a
+ * `'mesh'`- or `'estimate'`-labelled `hard` result off a depth number — every
+ * branch below that can label a result `'mesh'` off `boxMeasuredDepth` (or
+ * its AABB-estimate fallback) MUST route through here rather than building
+ * the `NarrowResult` literal itself. That is what makes the f32 floor apply
+ * to all of them: the floor is checked here, before `measured` ever gets to
+ * pick `mesh` vs `estimate`, so a depth below the floor always reports
+ * `touch` regardless of which branch or which quantity produced it (see
+ * `precisionFloor`). A fourth `mesh`-labelling branch added later inherits
+ * this precedence automatically as long as it calls this function instead of
+ * writing its own literal.
+ */
+function depthClashResult(
+  depth: number,
+  measured: boolean,
+  elA: ClashElement,
+  elB: ClashElement,
+  rule: ClashRule,
+  point: Vec3,
+  bounds: AABB,
+): NarrowResult | null {
+  if (depth <= precisionFloor(elA, elB)) {
+    if (!rule.reportTouch) return null;
+    // distance is exactly 0 here (the classification, not a measurement, is
+    // what changed), so `mesh` — consistent with the other exact-distance
+    // `touch` result.
+    return { status: 'touch', distance: 0, distanceKind: 'mesh', point, bounds };
+  }
+  return {
+    status: 'hard',
+    distance: -depth,
+    distanceKind: measured ? 'mesh' : 'estimate',
+    point,
+    bounds,
+  };
+}
+
+/**
  * Narrow-phase test for one candidate element pair.
  *
  * Gathers candidate triangle pairs through the per-element triangle BVHs (work
@@ -231,28 +270,12 @@ export function testPair(
     const penetration = measured
       ? boxDepth
       : Math.max(0, -signedGap(elA.bounds, elB.bounds));
-    // The f32 precision floor is checked BEFORE the through-penetration guard
-    // decides distanceKind: a pair that is both a through-penetration (AABB
-    // estimate, no crossing-triangle vertex inside either solid) and below the
-    // floor for this pair's coordinate scale reports `touch`, not a `mesh`- or
-    // `estimate`-labelled `hard` clash — the number is not measurable at that
-    // magnitude regardless of which quantity produced it (see `precisionFloor`).
-    // The floor wins: it is checked first, so the guard below only chooses
-    // between `estimate` and `mesh` for pairs already above the floor.
-    if (penetration <= precisionFloor(elA, elB)) {
-      if (!rule.reportTouch) return null;
-      // distance is exactly 0 here (the classification, not a measurement, is
-      // what changed), so `mesh` — consistent with the other exact-distance
-      // `touch` result below.
-      return { status: 'touch', distance: 0, distanceKind: 'mesh', point, bounds: contactBounds };
-    }
-    return {
-      status: 'hard',
-      distance: -penetration,
-      distanceKind: measured ? 'mesh' : 'estimate',
-      point,
-      bounds: contactBounds,
-    };
+    // The through-penetration guard above only decides `measured`, i.e.
+    // `estimate` vs `mesh` — `depthClashResult` applies the f32 floor first,
+    // so a pair that is both a through-penetration and below the floor for
+    // this pair's coordinate scale reports `touch` regardless (see
+    // `depthClashResult`).
+    return depthClashResult(penetration, measured, elA, elB, rule, point, contactBounds);
   }
 
   // Fully-enclosed solid: no surface crossing, but one element's AABB is wholly
@@ -266,20 +289,17 @@ export function testPair(
   // Either way there is no surface crossing. When both elements are boxes the
   // exact box-box depth is available (see `boxMeasuredDepth`) and is reported
   // as measured; otherwise the AABB gap is an estimate, not a measured depth.
-  if (aabbContains(elB.bounds, elA.bounds)) {
-    if (triA.count > 0 && triB.containsPoint(triA.tri(0)[0])) {
-      const boxDepth = boxMeasuredDepth(small, large);
-      return boxDepth != null
-        ? { status: 'hard', distance: -boxDepth, distanceKind: 'mesh', point: center(overlap), bounds: overlap }
-        : { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
-    }
-  } else if (aabbContains(elA.bounds, elB.bounds)) {
-    if (triB.count > 0 && triA.containsPoint(triB.tri(0)[0])) {
-      const boxDepth = boxMeasuredDepth(small, large);
-      return boxDepth != null
-        ? { status: 'hard', distance: -boxDepth, distanceKind: 'mesh', point: center(overlap), bounds: overlap }
-        : { status: 'hard', distance: signedGap(elA.bounds, elB.bounds), distanceKind: 'estimate', point: center(overlap), bounds: overlap };
-    }
+  const enclosed = aabbContains(elB.bounds, elA.bounds)
+    ? triA.count > 0 && triB.containsPoint(triA.tri(0)[0])
+    : aabbContains(elA.bounds, elB.bounds) && triB.count > 0 && triA.containsPoint(triB.tri(0)[0]);
+  if (enclosed) {
+    const boxDepth = boxMeasuredDepth(small, large);
+    const depth = boxDepth ?? -signedGap(elA.bounds, elB.bounds);
+    // `depthClashResult` may return `null` here (depth below the f32 floor
+    // and `!rule.reportTouch`) — that is a suppressed touch, not "no clash",
+    // so return it as-is rather than falling through to the coincide check
+    // below.
+    return depthClashResult(depth, boxDepth != null, elA, elB, rule, center(overlap), overlap);
   }
 
   if (minDist === Infinity) {
@@ -313,14 +333,13 @@ export function testPair(
         // full member length and sits away from the real contact (#1362/#1402).
         // When both elements are boxes the exact box-box depth is available
         // (see `boxMeasuredDepth`) and is reported as measured, not estimated.
+        // `depthClashResult` may return `null` (below the f32 floor and
+        // `!rule.reportTouch`) — a suppressed touch, not "no shared volume",
+        // so return it as-is rather than falling through to the face-touch
+        // handling meant for the "probes failed" case below.
         const boxDepth = boxMeasuredDepth(small, large);
-        return {
-          status: 'hard',
-          distance: boxDepth != null ? -boxDepth : gap,
-          distanceKind: boxDepth != null ? 'mesh' : 'estimate',
-          point: mid(closestA, closestB),
-          bounds: contactBounds,
-        };
+        const depth = boxDepth ?? -gap;
+        return depthClashResult(depth, boxDepth != null, elA, elB, rule, mid(closestA, closestB), contactBounds);
       }
       // Only a face touch (no shared volume): fall through to the touch handling
       // below, which suppresses it unless reportTouch is set.

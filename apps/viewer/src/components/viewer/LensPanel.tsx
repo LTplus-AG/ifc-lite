@@ -1369,6 +1369,25 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? [];
     const isolationIds = [...new Set([...resolved, ...matchingIds])];
 
+    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): if
+    // the channel already holds exactly these ids it CLEARS instead of
+    // isolating. Switching from rule A to a rule B that lands on the SAME set
+    // would therefore un-isolate the model while the record below claims B
+    // owns an isolation that no longer exists -- and the next release, finding
+    // an empty channel, would disown it silently.
+    //
+    // Pre-existing (two rules matching identical raw ids always collided this
+    // way), but the resolution above WIDENS it: a rule matching an assembly
+    // and a rule matching that assembly's parts now land on the same resolved
+    // set where their raw matches differed. Release the channel first so the
+    // isolate call below always takes its isolate branch -- same
+    // `ruleIsolationOwnsChannel` set-equality predicate the teardown path uses,
+    // so both ends agree on when the channel holds a given set, and the
+    // re-isolate re-runs the un-hide the toggle branch would have skipped.
+    // Clicking the SAME rule again still un-isolates: that path returned above.
+    if (ruleIsolationOwnsChannel(useViewerStore.getState().isolatedEntities, isolationIds)) {
+      clearIsolation();
+    }
     isolateEntities(isolationIds);
     // Record ownership: rule id + the exact ids pushed into the channel, so a
     // later release can verify the channel still holds what the lens applied.
@@ -1378,7 +1397,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // the expanded ones makes the lens disown its own isolation and the
     // un-isolate click leaves the model stuck isolated.
     setLensRuleIsolation({ ruleId, entityIds: [...isolationIds] });
-  }, [cameraCallbacks, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
+  }, [cameraCallbacks, clearIsolation, isolateEntities, releaseRuleIsolation, setLensRuleIsolation]);
 
   // Safety net: if the lens got deactivated while the panel was unmounted
   // (e.g. a flavor switch cleared activeLensId), a recorded rule isolation

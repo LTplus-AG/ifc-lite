@@ -68,6 +68,17 @@ const LENS: Lens = {
       color: '#00ff00',
     },
     {
+      // Raw matches DIFFERENT from rule-assembly's, but the same set once
+      // resolved: the assembly resolves to its parts, the parts resolve to
+      // themselves. Exactly the collision the expansion widened into reach.
+      id: 'rule-parts',
+      name: 'Assembly parts',
+      enabled: true,
+      criteria: { type: 'ifcType', ifcType: 'IfcBuildingElementPart' },
+      action: 'colorize',
+      color: '#ffff00',
+    },
+    {
       // The mixed match: an ordinary lens over an attribute matches a wall, an
       // assembly and a space at once.
       id: 'rule-mixed',
@@ -92,10 +103,13 @@ function seedLens(options: {
   useViewerStore.setState({
     savedLenses: [LENS],
     activeLensId: LENS.id,
-    lensRuleCounts: new Map([['rule-assembly', 1], ['rule-wall', 1], ['rule-mixed', 3]]),
+    lensRuleCounts: new Map([
+      ['rule-assembly', 1], ['rule-wall', 1], ['rule-parts', 3], ['rule-mixed', 3],
+    ]),
     lensRuleEntityIds: new Map([
       ['rule-assembly', [ASSEMBLY]],
       ['rule-wall', [WALL]],
+      ['rule-parts', [ASSEMBLY, PART_A, PART_B]],
       ['rule-mixed', [WALL, ASSEMBLY, HIDDEN_SPACE]],
     ]),
     lensRuleIsolation: null,
@@ -159,7 +173,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
 
     // A count of 0 renders the row un-clickable (RuleRow's `isEmpty`), which
     // would make every assertion below vacuously unreachable instead of red.
-    assert.equal(container.querySelectorAll('div[role="button"]').length, 3);
+    assert.equal(container.querySelectorAll('div[role="button"]').length, 4);
   });
 
   it('isolates the assembly\'s geometry-bearing parts, not its bare id', () => {
@@ -242,6 +256,44 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
       'a rule whose matches already own meshes must isolate exactly those ids',
     );
     assert.deepEqual(useViewerStore.getState().lensRuleIsolation?.entityIds, [WALL]);
+  });
+
+  it('switches to another rule that resolves to the SAME set without the toggle clearing it', () => {
+    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): fed
+    // the ids the channel already holds it CLEARS. So switching from the
+    // assembly rule to a rule whose DIFFERENT raw matches resolve to the same
+    // set un-isolated the model while the panel recorded the new rule as the
+    // owner of an isolation that no longer existed. Pre-existing for two rules
+    // with identical raw matches; the resolution widened it to an assembly
+    // rule versus a parts rule, which is an ordinary pair of lens rules.
+    seedLens({ resolveHighlightIds: assemblyResolver });
+    const container = render(<LensPanel onClose={() => {}} />);
+    const expected = new Set([PART_A, PART_B, ASSEMBLY]);
+
+    click(ruleRow(container, 'Assemblies'));
+    assert.deepEqual(useViewerStore.getState().isolatedEntities, expected, 'precondition: rule A isolates the set');
+    assert.equal(useViewerStore.getState().lensRuleIsolation?.ruleId, 'rule-assembly');
+
+    click(ruleRow(container, 'Assembly parts'));
+
+    const s = useViewerStore.getState();
+    assert.deepEqual(
+      s.isolatedEntities,
+      expected,
+      'switching rules must leave the model isolated over the set, not blank the channel via the toggle',
+    );
+    assert.equal(s.lensRuleIsolation?.ruleId, 'rule-parts', 'the new rule must be recorded as the owner');
+    assert.deepEqual(
+      [...(s.lensRuleIsolation?.entityIds ?? [])].sort((a, b) => a - b),
+      [ASSEMBLY, PART_A, PART_B],
+      'the record must hold the set actually in the channel',
+    );
+
+    // And the handover must leave the release path working: the new owner
+    // still owns the channel, so its own re-click clears.
+    click(ruleRow(container, 'Assembly parts'));
+    assert.equal(useViewerStore.getState().isolatedEntities, null, 'releasing the new owner must clear the channel');
+    assert.equal(useViewerStore.getState().lensRuleIsolation, null);
   });
 
   it('keeps every matched id on a MIXED rule, where some resolve and some resolve to nothing', () => {

@@ -72,6 +72,16 @@ test('a recognised violation plus a genuine compile error is does-not-compile, c
   assert.deepEqual(classifyTscOutput(output), { kind: 'does-not-compile', count: 1 });
 });
 
+test('a genuine compile error does NOT mask an unrecognised diagnostic in the same run', () => {
+  // The other-error branch used to be evaluated first, so a run mixing a real
+  // compile error with a diagnostic the script cannot classify came back as
+  // does-not-compile — a count reported as if the output had been fully
+  // understood. Any leftover `TS####` must win.
+  const output = "src/c.ts(9,1): error TS2304: Cannot find name 'Bar'.\n"
+    + "src/b.ts(4,3): warning TS6385: 'oldApi' is deprecated.\n";
+  assert.deepEqual(classifyTscOutput(output), { kind: 'unparseable' });
+});
+
 test('multiple recognised violations alone all count', () => {
   const output = "src/a.ts(1,1): error TS6133: 'x' is declared but its value is never read.\n"
     + "src/a.ts(2,1): error TS6192: All imports in import declaration are unused.\n";

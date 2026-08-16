@@ -57,11 +57,17 @@ export function classifyTscOutput(output) {
   const otherErrorCount = output.match(OTHER_ERROR_RE)?.length ?? 0;
   const totalDiagnostics = output.match(ANY_TS_DIAGNOSTIC_RE)?.length ?? 0;
 
-  if (otherErrorCount > 0) {
-    return { kind: 'does-not-compile', count: unusedCount };
-  }
+  // Unparseable is checked FIRST, ahead of does-not-compile: an unrecognised
+  // diagnostic sitting alongside a genuine compile error is just as much a
+  // parsing failure as one sitting alongside a recognised violation, and
+  // folding it into "this package doesn't compile" would report a number this
+  // script cannot actually stand behind. Any leftover `TS####` fails loud,
+  // whatever else matched.
   if (totalDiagnostics > unusedCount + otherErrorCount) {
     return { kind: 'unparseable' };
+  }
+  if (otherErrorCount > 0) {
+    return { kind: 'does-not-compile', count: unusedCount };
   }
   if (unusedCount === 0) {
     return { kind: 'no-diagnostics' };

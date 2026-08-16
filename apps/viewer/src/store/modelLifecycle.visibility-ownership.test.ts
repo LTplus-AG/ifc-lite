@@ -21,12 +21,15 @@
  * makes that filter dead code on its only production path, and "Sync from
  * source" silently wipes the user's X-ray.
  *
- * So the teardown is scoped by OWNERSHIP EVIDENCE available at the store
- * level: a clash is focused (`clashSelectedId !== null`), or the set is EMPTY
- * — the "ghost everything / hide everything" degenerate state that is clash's
- * resolved-solid signature and that no owner can want to keep (the same
- * reasoning `purgeStaleEntityState` already applies to an emptied isolate
- * set, syncSourceModel.ts:262-264).
+ * So the teardown is scoped by clash's OWN ownership record,
+ * `clashVisibilityOwned` (clash slice), content-matched against the live
+ * channel by `releaseOwnedClashVisibility` — the same predicate, on the same
+ * record, that `useClash`'s run-start release uses.
+ *
+ * The previous revision inferred ownership from `clashSelectedId` instead, and
+ * that inference is wrong in both directions; the running reproductions live in
+ * `hooks/useClash.model-teardown-ownership.test.tsx`, which drives the real
+ * hook. This file pins the store-level contract underneath them.
  */
 
 import '@/test/setup-dom.js';
@@ -61,12 +64,27 @@ beforeEach(() => {
     clashSelectedId: null,
     clashHighlightColors: null,
     clashSolidStatus: 'none',
+    clashVisibilityOwned: null,
     ghostExceptEntities: null,
     isolatedEntities: null,
     lensAppliedColors: null,
     pendingColorUpdates: null,
   });
 });
+
+/** Seed the shared channel the way `useClash`'s install helpers do: the channel
+ *  itself plus the ownership record naming exactly what was installed. Both
+ *  writes go through the real store actions. */
+function installClashOwned(channel: 'ghost' | 'isolate', ids: number[]): void {
+  const s = useViewerStore.getState();
+  if (channel === 'isolate') s.setIsolatedEntities(new Set(ids));
+  else s.setGhostExceptEntities(new Set(ids));
+  const installed =
+    channel === 'isolate'
+      ? useViewerStore.getState().isolatedEntities
+      : useViewerStore.getState().ghostExceptEntities;
+  s.setClashVisibilityOwned(installed ? { channel, ids: installed } : null);
+}
 
 describe('removeModel leaves visibility state it does not own (#2654 second review)', () => {
   it('KEEPS a user X-ray when no clash is focused — syncSourceModel purges it afterwards', () => {
@@ -98,21 +116,40 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
     );
   });
 
-  it('CLEARS a ghost when a clash IS focused — that ghost is focusClash\'s', () => {
+  it('KEEPS a ghost another owner installed even while a clash is SELECTED', () => {
+    // The divergence the previous revision's gate could not see: a
+    // highlight-mode focus leaves `clashSelectedId` set while owning neither
+    // channel, so the next owner's ghost is not clash's to clear.
     useViewerStore.setState({
       clashSelectedId: 'rule-1 modelA:12 modelB:34',
+      clashVisibilityOwned: null,
       ghostExceptEntities: new Set<number>([12, 34]),
     });
     useViewerStore.getState().removeModel('modelA');
-    assert.equal(useViewerStore.getState().ghostExceptEntities, null, 'a focused clash owns the ghost channel');
+    assert.notEqual(
+      useViewerStore.getState().ghostExceptEntities,
+      null,
+      'a selection is not an ownership claim — clash disowns both channels in highlight mode',
+    );
   });
 
-  it('CLEARS an EMPTY ghost even with no clash focused — "ghost everything" is never wanted', () => {
-    // The resolved-solid path installs `new Set()`, and a run that finished
-    // after a teardown can leave the field set with `clashSelectedId` already
-    // null. Nothing else installs an empty ghost: `setGhostExceptEntities`
-    // maps a falsy argument to null, and the other owners always pass ids.
-    useViewerStore.setState({ ghostExceptEntities: new Set<number>() });
+  it('CLEARS a ghost clash OWNS — that ghost is focusClash\'s', () => {
+    useViewerStore.setState({ clashSelectedId: 'rule-1 modelA:12 modelB:34' });
+    installClashOwned('ghost', [12, 34]);
+    useViewerStore.getState().removeModel('modelA');
+    const s = useViewerStore.getState();
+    assert.equal(s.ghostExceptEntities, null, 'clash owns this ghost and must release it');
+    assert.equal(s.clashVisibilityOwned, null, 'and drop the claim with it');
+  });
+
+  it('CLEARS an EMPTY ghost clash owns — the resolved-solid path\'s "ghost everything"', () => {
+    // `focusClash`'s solid branch installs `installClashGhost(new Set())`, and
+    // a compute that lands after a teardown can leave `clashSelectedId` null
+    // while that ghost stands. The ownership record covers it; the previous
+    // revision guessed at it from `size === 0`, which would also have thrown
+    // away an empty set some OTHER owner installed.
+    installClashOwned('ghost', []);
+    useViewerStore.setState({ clashSelectedId: null });
     useViewerStore.getState().removeModel('modelA');
     assert.equal(
       useViewerStore.getState().ghostExceptEntities,
@@ -121,10 +158,24 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
     );
   });
 
-  it('CLEARS an EMPTY isolation — it would hide the whole scene', () => {
-    useViewerStore.setState({ isolatedEntities: new Set<number>() });
+  it('CLEARS an isolation clash owns with NO clash selected — selectElement\'s case', () => {
+    // `useClash.selectElement` installs a NON-EMPTY isolation and never writes
+    // `clashSelectedId`. Left standing, `isEntityVisible` hides everything.
+    installClashOwned('isolate', [12]);
+    useViewerStore.setState({ clashSelectedId: null });
     useViewerStore.getState().removeModel('modelA');
-    assert.equal(useViewerStore.getState().isolatedEntities, null, 'an empty isolate set hides everything');
+    assert.equal(useViewerStore.getState().isolatedEntities, null, 'a clash-owned isolation hides the scene');
+  });
+
+  it('KEEPS an isolation whose content no longer matches the claim', () => {
+    // The user took the channel over after clash installed. The record still
+    // names `isolate`, but ownership is decided by CONTENT.
+    installClashOwned('isolate', [12]);
+    useViewerStore.getState().isolateEntities([10_012]);
+    useViewerStore.getState().removeModel('modelA');
+    const s = useViewerStore.getState();
+    assert.ok(s.isolatedEntities, 'a stale claim must not release someone else\'s isolation');
+    assert.deepEqual([...s.isolatedEntities], [10_012], 'and must leave it untouched');
   });
 
   it('does not touch a paint channel clash never took', () => {
@@ -148,8 +199,8 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
     useViewerStore.setState({
       clashSelectedId: 'rule-1 modelA:12 modelB:34',
       clashSolidStatus: 'solid',
-      ghostExceptEntities: new Set<number>(),
     });
+    installClashOwned('ghost', []);
     const seq = useViewerStore.getState().clashSolidRequestSeq;
 
     useViewerStore.getState().removeModel('never-loaded');

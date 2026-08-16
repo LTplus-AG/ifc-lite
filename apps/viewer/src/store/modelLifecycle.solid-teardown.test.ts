@@ -71,12 +71,18 @@ const PAIR_TINT = new Map<number, [number, number, number, number]>([
 
 function seedResolvedSolidPresentation(): void {
   seedFederation();
+  // The full-model ghost the resolved-solid path installs
+  // (`installClashGhost(new Set())`), WITH the ownership record that install
+  // writes — the teardown releases the channel on clash's own claim, not on an
+  // inference from `clashSelectedId` (#2654 third review).
+  const solidGhost = new Set<number>();
   useViewerStore.setState({
     clashSelectedId: 'rule-1 modelA:12 modelB:34',
     clashSolidStatus: 'solid',
     clashSolidMesh: { positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) },
     clashSolidVolumeM3: 0.42,
-    ghostExceptEntities: new Set<number>(),
+    ghostExceptEntities: solidGhost,
+    clashVisibilityOwned: { channel: 'ghost', ids: solidGhost },
     isolatedEntities: null,
     lensAppliedColors: null,
     // The channel that actually carries the colour to the GPU.
@@ -212,9 +218,11 @@ describe('model-lifecycle teardown drops the intersection-solid presentation (#2
     // `installClashIsolation`. Isolate is one click from every panel row. Left
     // behind, `isEntityVisible` hides everything outside the pair — and if the
     // pair lived in the removed model, everything full stop.
+    const pairIsolation = new Set<number>([12, 34]);
     useViewerStore.setState({
       ghostExceptEntities: null,
-      isolatedEntities: new Set<number>([12, 34]),
+      isolatedEntities: pairIsolation,
+      clashVisibilityOwned: { channel: 'isolate', ids: pairIsolation },
     });
     useViewerStore.getState().removeModel('modelA');
     assert.equal(
@@ -231,6 +239,33 @@ describe('model-lifecycle teardown drops the intersection-solid presentation (#2
     });
     useViewerStore.getState().clearAllModels();
     assert.equal(useViewerStore.getState().isolatedEntities, null, 'clearAllModels must drop the isolation');
+  });
+
+  it('resetViewerState() RELEASES the paint channel — `null` is a no-op in the effect that owns it', () => {
+    // `resetViewerState` sets `pendingColorUpdates: null`, and the effect that
+    // drains that field returns immediately on `null`
+    // (`useGeometryStreaming.ts`, "if (pendingColorUpdates === null) return").
+    // Only a non-null EMPTY map reaches `scene.clearColorOverrides()`. So the
+    // outgoing file's clash pair tint stayed pushed at the renderer across a
+    // model switch — and this was also the one teardown path still calling
+    // `clearClash()` directly instead of the shared helper (#2654 third review).
+    useViewerStore.getState().resetViewerState();
+    const pushed = useViewerStore.getState().pendingColorUpdates;
+    assert.ok(pushed !== null, 'resetViewerState must PUSH an empty map, not null the field');
+    assert.equal(pushed!.size, 0, 'an empty map is what reaches clearColorOverrides()');
+  });
+
+  it('a full teardown releases the paint channel to EMPTY, not to the outgoing file\'s lens', () => {
+    // `lensAppliedColors` is keyed by the OUTGOING models' global ids. On a
+    // per-model removal it is the channel's rightful prior owner and is
+    // restored; with every model gone there is nothing for it to colour, and
+    // replaying it would paint the next scene with the previous one's colours.
+    const lens = new Map<number, [number, number, number, number]>([[7, [0.2, 0.4, 0.6, 1]]]);
+    useViewerStore.setState({ lensAppliedColors: lens });
+    useViewerStore.getState().clearAllModels();
+    const pushed = useViewerStore.getState().pendingColorUpdates;
+    assert.ok(pushed !== null, 'clearAllModels must PUSH the paint channel');
+    assert.equal(pushed!.size, 0, 'and to an EMPTY map — no model is left for those overrides to apply to');
   });
 
   it('removeModel() keeps the clash RESULT — only the focused presentation goes', () => {

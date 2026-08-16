@@ -46,6 +46,7 @@ import {
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
+import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
@@ -152,16 +153,6 @@ export function filterResultBySeverity(result: ClashResult, severities: Set<Clas
   return { ...result, clashes, summary: summarizeClashes(clashes) };
 }
 
-/** Content equality for the visibility provenance records below. The shared
- *  channels are only ever REPLACED wholesale (every slice setter stores a
- *  fresh `Set`), never mutated in place, so equal members mean the channel
- *  still shows exactly the presentation clash installed. */
-function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) if (!b.has(id)) return false;
-  return true;
-}
-
 export function useClash() {
   const result = useViewerStore((s) => s.clashResult);
   const groups = useViewerStore((s) => s.clashGroups);
@@ -210,75 +201,50 @@ export function useClash() {
   // `clashSolidRequestSeq` in the clash slice, bumped by every setter that ends
   // a focus — see the field doc there (#2574).
 
-  /**
-   * The CONTENT this hook last installed into the SHARED isolation / ghost
-   * visibility channels (`isolatedEntities` / `ghostExceptEntities`). Those
-   * channels are shared with features clash does not own - "Isolate in 3D"
-   * from the advanced filter (#2532), assembly isolation (#2531), the spaces
-   * X-ray - so clash teardown may only release a presentation clash itself
-   * installed. (#2574 regression: the run-start discard cleared these
-   * channels unconditionally, so a user's isolation was destroyed before any
-   * clash result existed.)
-   *
-   * Ownership is tested by VALUE (`sameMembers`), not by `Set` reference:
-   * reference identity would be exact, but it is destroyed by every flow that
-   * snapshots and later restores the channel with equal content in a fresh
-   * `Set` - Space Sketch's open/close view capture (`useSpaceSceneFraming`
-   * clones the prior sets and replays them through the cloning slice setters)
-   * and a source-model resync (`syncSourceModel` rebuilds the kept sets even
-   * when nothing was filtered). Under reference identity those flows silently
-   * converted a clash-owned focus into "user" state, so the next run replaced
-   * the result set but left the old pair isolated/ghosted (#2662 P2). Value
-   * identity survives any content-preserving rewrite, and its one false
-   * positive is harmless by construction: it only fires when the channel
-   * shows EXACTLY the presentation clash installed, in which case releasing
-   * it renders precisely what discarding the clash focus should render.
-   */
-  const appliedIsolation = useRef<ReadonlySet<number> | null>(null);
-  const appliedGhost = useRef<ReadonlySet<number> | null>(null);
+  // The install record for the SHARED isolation / ghost visibility channels
+  // used to live here too, as a pair of `useRef`s. It is now
+  // `clashVisibilityOwned` in the clash slice, for the same reason the
+  // staleness guard moved: a hook-private ref is unreachable from the
+  // model-lifecycle teardowns in `modelSlice` / `store/index`, which were left
+  // INFERRING ownership from `clashSelectedId` — a selection fact that diverges
+  // from ownership in both directions (#2654 third review). See the module doc
+  // on `lib/clash/visibility-ownership.ts`. One record, one predicate over it:
+  // there is no ref/store pair left to drift.
 
   /** Install clash isolation into the shared channel, recording exactly what
    *  was installed so `releaseClashVisibility` can release only that. */
   const installClashIsolation = useCallback((ids: Set<number>): void => {
-    useViewerStore.getState().setIsolatedEntities(ids);
-    appliedIsolation.current = useViewerStore.getState().isolatedEntities;
-    appliedGhost.current = null; // setIsolatedEntities cleared any ghosting
+    const state = useViewerStore.getState();
+    state.setIsolatedEntities(ids);
+    // Read the set BACK from the store: the slice setter clones, and the record
+    // must hold what the channel actually shows. Recording the isolate channel
+    // also drops any ghost claim — `setIsolatedEntities` cleared the ghosting.
+    const installed = useViewerStore.getState().isolatedEntities;
+    state.setClashVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
 
   /** Install clash ghosting (X-Ray context) into the shared channel, with the
    *  same install-record contract as `installClashIsolation`. */
   const installClashGhost = useCallback((ids: Set<number>): void => {
-    useViewerStore.getState().setGhostExceptEntities(ids);
-    appliedGhost.current = useViewerStore.getState().ghostExceptEntities;
-    appliedIsolation.current = null; // setGhostExceptEntities cleared isolation
+    const state = useViewerStore.getState();
+    state.setGhostExceptEntities(ids);
+    const installed = useViewerStore.getState().ghostExceptEntities;
+    state.setClashVisibilityOwned(installed ? { channel: 'ghost', ids: installed } : null);
   }, []);
 
   /**
    * Release the isolation/ghost presentation clash itself installed - and ONLY
    * that. Isolation or ghosting established by another feature (#2532 / #2531
-   * / spaces X-ray) no longer content-matches the install record, so it
+   * / spaces X-ray) no longer content-matches the ownership record, so it
    * survives a clash run untouched - while a clash focus that round-tripped
    * through a snapshot/restore flow (Space Sketch open/close) still matches
    * and is discarded (#2662 P2).
+   *
+   * The predicate is `releaseOwnedClashVisibility`, shared verbatim with the
+   * model-lifecycle teardown so the two cannot disagree about what clash owns.
    */
   const releaseClashVisibility = useCallback((): void => {
-    const state = useViewerStore.getState();
-    if (
-      appliedIsolation.current !== null &&
-      state.isolatedEntities !== null &&
-      sameMembers(state.isolatedEntities, appliedIsolation.current)
-    ) {
-      state.clearIsolation();
-    }
-    if (
-      appliedGhost.current !== null &&
-      state.ghostExceptEntities !== null &&
-      sameMembers(state.ghostExceptEntities, appliedGhost.current)
-    ) {
-      state.clearGhost();
-    }
-    appliedIsolation.current = null;
-    appliedGhost.current = null;
+    releaseOwnedClashVisibility(useViewerStore.getState());
   }, []);
 
   /** Build clash elements + merged exclusions from every loaded model. */
@@ -496,12 +462,14 @@ export function useClash() {
     else {
       // Full-context highlight clears both channels outright - the user asked
       // to see this pair against the WHOLE model, so any isolation would hide
-      // it (pre-#2574 contract, #1275). Clash then owns neither channel.
+      // it (pre-#2574 contract, #1275). Clash then owns neither channel, and
+      // says so: this is the disown a `clashSelectedId`-based gate could not
+      // see, and the reason a model removal used to destroy the ghost the NEXT
+      // owner installed (#2654 third review).
       const state = useViewerStore.getState();
       state.clearIsolation();
       state.clearGhost();
-      appliedIsolation.current = null;
-      appliedGhost.current = null;
+      state.setClashVisibilityOwned(null);
     }
   }, [installClashIsolation, installClashGhost]);
 

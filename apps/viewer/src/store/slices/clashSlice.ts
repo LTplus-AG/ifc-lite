@@ -28,6 +28,7 @@ import {
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
 import type { ClashSolidDegenerateReason } from '@/lib/clash/intersection-solid';
+import type { ClashVisibilityOwnership } from '@/lib/clash/visibility-ownership';
 
 /**
  * Why the focused clash has no intersection solid to show. Extends the wasm
@@ -233,6 +234,31 @@ export interface ClashSlice {
    * reach a hook-private ref guard).
    */
   clashSolidRequestSeq: number;
+  /**
+   * Which SHARED visibility channel (`isolatedEntities` / `ghostExceptEntities`,
+   * visibilitySlice) the clash presentation currently owns, and the exact
+   * content it installed there. `null` when clash owns neither — including
+   * after a `highlight`-mode focus, which clears both channels and takes
+   * ownership of neither.
+   *
+   * Written by `useClash`'s two install helpers, read by
+   * `releaseOwnedClashVisibility` (`lib/clash/visibility-ownership.ts`), which
+   * is the single release both the hook's run-start discard and every
+   * model-lifecycle teardown go through.
+   *
+   * It lives HERE, not in a `useRef` inside `useClash`, because the store-level
+   * teardowns (`removeModel`, `clearAllModels`, `resetViewerState`) cannot read
+   * a hook-private ref and were left inferring ownership from
+   * `clashSelectedId` — a SELECTION fact, wrong in both directions (#2654 third
+   * review; see the module doc on `visibility-ownership.ts`). Same shape as the
+   * lens slice's `lensRuleIsolation` / `lensAppliedHiddenIds`, which record
+   * lens ownership of these same channels in the store for the same reason.
+   *
+   * Deliberately NOT part of `CLASH_FOCUS_RESET`: `clearClashFocus()` also runs
+   * at RUN START, where the release must stay ownership-aware (#2662 P2), and
+   * the release itself is what drops the record.
+   */
+  clashVisibilityOwned: ClashVisibilityOwnership;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
@@ -284,6 +310,10 @@ export interface ClashSlice {
   setClashSolidUnavailable: (reason: ClashSolidUnavailableReason, thicknessM: number, requiredM: number) => void;
   /** Back to `'none'` — no clash focused. */
   clearClashSolid: () => void;
+  /** Record (or drop) clash's claim on a shared visibility channel. Called by
+   *  `useClash`'s install helpers and by `releaseOwnedClashVisibility`; nothing
+   *  else should write it. */
+  setClashVisibilityOwned: (owned: ClashVisibilityOwnership) => void;
   /**
    * End the focused-clash PRESENTATION entirely: the A/B pair tint, the contact
    * marker (lines + AABB box) and the intersection solid, plus the selected id
@@ -522,6 +552,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSolidThicknessM: 0,
     clashSolidRequiredM: 0,
     clashSolidRequestSeq: 0,
+    clashVisibilityOwned: null,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -650,6 +681,8 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         ...CLASH_SOLID_RESET,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
       })),
+
+    setClashVisibilityOwned: (clashVisibilityOwned) => set({ clashVisibilityOwned }),
 
     // The one complete "stop drawing the focused clash" — see the field doc on
     // the action type. Every teardown path routes through this instead of

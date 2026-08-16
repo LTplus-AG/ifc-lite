@@ -17,6 +17,10 @@ import { stringToEntityRef } from '../types.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
+import {
+  endClashScenePresentation,
+  type ClashSceneTeardown,
+} from '@/lib/clash/visibility-ownership';
 
 /**
  * Cross-slice fields the model actions write to. `ifcDataStore` and
@@ -26,119 +30,6 @@ import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 export interface ModelCrossSliceState {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
-}
-
-type ColorOverrides = Map<number, [number, number, number, number]>;
-
-/** The cross-slice fields and actions a model-lifecycle teardown reaches for,
- *  all optional: the slice's own tests drive these actions through a harness
- *  that stubs `get()` with the model slice alone. */
-interface ClashSceneTeardown {
-  clearClashFocus?: () => void;
-  clearClash?: () => void;
-  clearGhost?: () => void;
-  clearIsolation?: () => void;
-  setPendingColorUpdates?: (updates: ColorOverrides) => void;
-  /** Ownership evidence, read BEFORE the clash clear wipes it. */
-  clashSelectedId?: string | null;
-  clashHighlightColors?: ColorOverrides | null;
-  ghostExceptEntities?: Set<number> | null;
-  isolatedEntities?: Set<number> | null;
-  lensAppliedColors?: ColorOverrides | null;
-}
-
-/**
- * End the clash presentation a model-lifecycle path is about to invalidate —
- * the ONE spelling of it, so a third teardown path added tomorrow is complete
- * by construction rather than by remembering a field list (#2654 review).
- *
- * The presentation spans three channels, only the first of which the clash
- * slice can reach:
- *
- *  - the clash slice's own focus fields (solid, contact marker, pair-tint
- *    RECORD, selected id, `clashSolidRequestSeq` bump) via `clearClashFocus` /
- *    `clearClash`, the slice's complete spellings of that teardown;
- *  - the SHARED VISIBILITY channels (`ghostExceptEntities` /
- *    `isolatedEntities`, visibilitySlice). `focusClash` writes exactly one of
- *    them per focus (`applyFocusMode`): `isolate` hides everything but the
- *    pair, `ghost` fades the pair's context, and the resolved-solid path
- *    ghosts the ENTIRE model (`installClashGhost(new Set())`). Left behind,
- *    the survivors stay translucent — or, in isolate mode, invisible — with
- *    nothing selected and no way to tell why (#2654).
- *  - the PAINT channel (`pendingColorUpdates`, dataSlice). `clashHighlightColors`
- *    is only a record; the albedo override the user actually sees is pushed
- *    separately (`useClash.ts:538-539`) into a fire-and-forget effect
- *    (`useGeometryStreaming.ts:906-923` → `scene.setColorOverrides`) that is
- *    undone only by a LATER push. Clearing the record alone leaves the amber/
- *    cyan pair painted on models that survived, and suppresses lens colouring
- *    with it. Every user-initiated end of a focus therefore ends with
- *    `setPendingColorUpdates(lensAppliedColors ?? new Map())` —
- *    `useClash.clearHighlight` (whose comment names this exact failure,
- *    "#1277 review"), `useClash.clearAll`, `ClashPanel`'s unmount cleanup and
- *    the clash tour cleanup. Note `null` is a NO-OP in that effect; only a
- *    non-null empty map reaches `clearColorOverrides()`.
- *
- * ## Why the visibility clear is SCOPED, not unconditional
- *
- * `ghostExceptEntities` / `isolatedEntities` have four owners besides clash —
- * `useClash.releaseClashVisibility` (content-matched against a hook-private
- * install record), `LayerDiffView`, Space Sketch's `useSpaceGhostPreview`
- * ("never clears state it didn't set"), and `syncSourceModel`'s post-removal
- * purge. The last is a hard contract: `syncSourceModel` calls `removeModel`
- * and then `purgeStaleEntityState`, which KEEPS the part of the user's X-ray /
- * isolation still owned by a surviving model and drops only the ids burned
- * with the replaced one. An unconditional clear here makes that filter dead
- * code on its only production path, so "Sync from source" would silently wipe
- * the user's X-ray.
- *
- * `removeModel` cannot consult clash's install record — it is a `useRef`
- * private to a `useClash()` instance — but two store-level facts are enough:
- *
- *  - `clashSelectedId !== null`: a clash IS focused, so whatever sits in the
- *    channel is what `focusClash` put there (it overwrites both channels on
- *    every focus, and clears both outright in `highlight` mode).
- *  - the set is EMPTY: "ghost everything" / "hide everything", the degenerate
- *    state no owner can want to keep and the resolved-solid path's signature.
- *    `purgeStaleEntityState` already applies exactly this reasoning to an
- *    emptied isolate set ("an empty isolate set would hide everything",
- *    syncSourceModel.ts:262-264), and `setGhostExceptEntities` /
- *    `setIsolatedEntities` map a falsy argument to `null`, so no other owner
- *    installs one.
- *
- * `clearAllModels` passes `mode: 'federation-cleared'` and clears both
- * outright: with no model loaded there is nothing left for either channel to
- * refer to, and no purge follows to salvage a survivor's ids.
- *
- * The paint channel is released on the same evidence — a focused clash, or a
- * recorded pair tint — so an unrelated model removal cannot switch off Pset /
- * IDS / schedule colouring that clash never took.
- *
- * This is also why the visibility fields stay OUT of the clash slice's shared
- * `CLASH_FOCUS_RESET`: `clearClashFocus()` is ALSO called at RUN START
- * (`useClash.discardSolidPresentation`), where the release must be ownership-
- * aware for the same reason — #2662 P2. Adding them to that constant fails
- * `useClash.run-preserves-isolation.test.tsx` ("a user-established X-ray ghost
- * SURVIVES run()"), verified.
- */
-function endClashScenePresentation(
-  cross: ClashSceneTeardown,
-  mode: 'model-removed' | 'federation-cleared',
-): void {
-  // Sampled BEFORE the clash clear nulls them.
-  const clashFocused = cross.clashSelectedId != null;
-  const clashPainted = clashFocused || cross.clashHighlightColors != null;
-  const ghost = cross.ghostExceptEntities ?? null;
-  const isolated = cross.isolatedEntities ?? null;
-  const wipeAll = mode === 'federation-cleared';
-
-  if (wipeAll) cross.clearClash?.();
-  else cross.clearClashFocus?.();
-
-  if (ghost && (wipeAll || clashFocused || ghost.size === 0)) cross.clearGhost?.();
-  if (isolated && (wipeAll || clashFocused || isolated.size === 0)) cross.clearIsolation?.();
-  if (wipeAll || clashPainted) {
-    cross.setPendingColorUpdates?.(new Map(cross.lensAppliedColors ?? []));
-  }
 }
 
 export interface ModelSlice {
@@ -282,7 +173,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
-    } & ClashSceneTeardown;
+    };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
     // Drop the model's cloud-source provenance tag (sourcesSlice) so the
@@ -314,9 +205,17 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // `clearClashFocus` bumps `clashSolidRequestSeq`, so an in-flight compute
     // cannot land after this and repaint the solid. The shared helper adds the
     // two channels neither clash action can reach — the isolate/ghost channels
-    // `focusClash` also owns, and the colour-override channel that actually
-    // carries the pair tint; see its doc for the ownership scoping.
-    endClashScenePresentation(cross, 'model-removed');
+    // `focusClash` also owns (released against `clashVisibilityOwned`, clash's
+    // OWN record, not inferred from the selection), and the colour-override
+    // channel that actually carries the pair tint; see its doc.
+    //
+    // Re-`get()` rather than reusing `cross`: `clearMutations` /
+    // `clearMutationView` / `removeSourceTag` above each commit a new state
+    // object, so a snapshot taken before them would read ownership off a
+    // pre-mutation object. None of them touches a field the helper reads today
+    // — verified against `mutationSlice.clearMutations` — but that is a
+    // property of today's implementations, not of this call site.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'model-removed');
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -331,8 +230,10 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // dangling source), which would keep inflating getModifiedEntityCount with
     // no model left to own it — so drop its generated tasks once the federation
     // is empty.
-    const models = get().models;
-    if (models.size <= 1 && models.has(modelId)) {
+    // `models.has(modelId)` is not re-tested here: the early return at the top
+    // already established it, and nothing between can add or remove a model.
+    // Keeping it read as a live condition when it is a tautology.
+    if (get().models.size <= 1) {
       cross.clearGeneratedSchedule?.();
       // Removing the final model empties the federation. Any surviving report
       // (e.g. one whose stored target is the '__legacy__' sentinel, which can
@@ -427,7 +328,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
-    } & ClashSceneTeardown;
+    };
     crossClear.clearIdsValidationReport?.();
     crossClear.clearSourceTags?.();
     // A clash run describes pairs of elements in models that are all about to
@@ -441,7 +342,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // the pair tint it paints go too — with every model unloaded there is
     // nothing left for either to refer to, and `resetViewerState`
     // (store/index.ts) has always nulled the visibility fields here.
-    endClashScenePresentation(crossClear, 'federation-cleared');
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
     // Clear the federation registry
     federationRegistry.clear();
     return set({

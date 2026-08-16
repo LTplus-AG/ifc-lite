@@ -59,6 +59,10 @@ import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouse
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import {
+  endClashScenePresentation,
+  type ClashSceneTeardown,
+} from '@/lib/clash/visibility-ownership';
 
 // Import constants for reset function
 import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility, getPersistedTypeViewMode } from './constants.js';
@@ -585,13 +589,21 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
     // passes and the previous model's solid gets re-pushed when the renderer
     // re-initialises for the new scene.
     //
-    // Delegated to the slice action rather than inlined into the `set` above,
-    // deliberately: `clearClash` is where the solid fields and the
-    // `clashSolidRequestSeq` bump that invalidates an in-flight compute live
-    // together. Inlining the field list here would create the second copy that
-    // #2574's fix exists to avoid. Presets + settings survive (workspace
-    // prefs), exactly as they do everywhere else `clearClash` is called.
-    get().clearClash();
+    // Routed through `endClashScenePresentation`, the shared model-lifecycle
+    // teardown, rather than calling `clearClash()` directly: this was the third
+    // spelling of a teardown #2574 exists to unify, and it was incomplete. The
+    // `set` above puts `pendingColorUpdates: null`, and `null` is a NO-OP in
+    // the effect that owns that channel (`useGeometryStreaming.ts`, "if
+    // (pendingColorUpdates === null) return") — only a non-null EMPTY map
+    // reaches `scene.clearColorOverrides()`. So the outgoing file's clash pair
+    // tint (or lens colouring) stayed pushed at the renderer across a model
+    // switch. The helper releases it with an empty `Map`.
+    //
+    // `'federation-cleared'` is the right mode: every model is gone, so both
+    // visibility channels are cleared outright and the clash RESULT goes with
+    // them — which is what `clearClash()` did here before, unchanged. Presets +
+    // settings survive (workspace prefs), as everywhere else.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
   },
 
   openWorkspacePanel: (panel) => {

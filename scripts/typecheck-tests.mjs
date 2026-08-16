@@ -293,6 +293,46 @@ async function checkAll() {
 // rather than for any other caller: the bug it fixes is invisible in normal
 // use — the generated config still parses, tsc still runs, it just silently
 // stops honouring `noEmit` — so a test is the only thing that keeps it fixed.
+/**
+ * Decide what one invocation asked for, from the arguments after the script
+ * path (`process.argv.slice(2)`).
+ *
+ * This script accepts exactly three shapes and nothing else: no arguments
+ * (the cwd-driven per-package mode, which is how the packages' own
+ * `typecheck` scripts invoke it), `--all`, or `--audit`. Anything else is an
+ * error rather than a mode, because the failure this guard exists to prevent
+ * is a SILENT SUBSTITUTION, not a typo: `node scripts/typecheck-tests.mjs
+ * packages/clash` from the repo root used to ignore its argument and fall
+ * through to the cwd branch, building a 1,115-file program rooted at the repo
+ * — and, because that program's `extends` was bare rather than `./`-prefixed
+ * (fixed above), running WITHOUT noEmit and leaving 9,609 untracked
+ * .js/.d.ts/.map files across the source tree (#2664 review).
+ *
+ * The whole list is validated, not just the first argument. Checking argv[2]
+ * alone left the identical substitution one step away: `--all packages/clash`
+ * dropped the trailing argument and ran the repo-wide check, so a caller who
+ * asked for one package silently got every package. `--all --audit` is
+ * rejected for the same reason — they are two different runs, and picking one
+ * would be a guess.
+ *
+ * Exported for its unit test (typecheck-tests.test.mjs): the accepted set is
+ * only three items, but every wrong answer here is invisible at the call site
+ * — the script runs, succeeds, and reports on something other than what was
+ * asked for.
+ *
+ * @param {string[]} args
+ * @returns {{mode: 'package'|'all'|'audit'} | {error: string}}
+ */
+export function parseCliMode(args) {
+  if (args.length === 0) return { mode: 'package' };
+  if (args.length === 1) {
+    if (args[0] === '--audit') return { mode: 'audit' };
+    if (args[0] === '--all') return { mode: 'all' };
+    return { error: `unrecognised argument ${JSON.stringify(args[0])}` };
+  }
+  return { error: `expected at most one argument, got ${args.map((a) => JSON.stringify(a)).join(' ')}` };
+}
+
 export { writeTestProgram, GENERATED_CONFIG, relativeExtends };
 
 // Only run the CLI when invoked as one — importing this must not typecheck the
@@ -301,28 +341,20 @@ const invokedDirectly = process.argv[1]
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) {
-  const mode = process.argv[2];
+  const parsed = parseCliMode(process.argv.slice(2));
   let exitCode;
-  if (mode === '--audit') exitCode = await audit();
-  else if (mode === '--all') exitCode = await checkAll();
-  else if (mode !== undefined) {
-    // Anything else used to fall through to the no-argument branch, which
-    // checks process.cwd(). `node scripts/typecheck-tests.mjs packages/clash`
-    // from the repo root therefore ignored the argument entirely and built a
-    // 1,115-file program rooted at the repo — and, because that program's
-    // `extends` was bare rather than `./`-prefixed (fixed above), ran WITHOUT
-    // noEmit and left 9,609 untracked .js/.d.ts/.map files across the source
-    // tree (#2664 review). This script takes no package argument; the
-    // per-package mode is cwd-driven by design, because that is how the
-    // packages' own `typecheck` scripts invoke it. Say so instead of silently
-    // doing something else.
-    console.error(`${SCRIPT_NAME}: unrecognised argument "${mode}".`);
+  if ('error' in parsed) {
+    // Say what was wrong instead of silently doing something else — see
+    // parseCliMode above for why an ignored argument is the dangerous case.
+    console.error(`${SCRIPT_NAME}: ${parsed.error}.`);
     console.error('');
     console.error('  This script takes no package argument. Usage:');
     console.error(`    cd <package> && node ../../scripts/${SCRIPT_NAME}   (that one package)`);
     console.error(`    node scripts/${SCRIPT_NAME} --all                   (every package)`);
     console.error(`    node scripts/${SCRIPT_NAME} --audit                 (repo-wide coverage gate)`);
     exitCode = 2;
-  } else exitCode = await checkOnePackage(process.cwd());
+  } else if (parsed.mode === 'audit') exitCode = await audit();
+  else if (parsed.mode === 'all') exitCode = await checkAll();
+  else exitCode = await checkOnePackage(process.cwd());
   process.exit(exitCode);
 }

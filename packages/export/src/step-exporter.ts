@@ -203,13 +203,21 @@ export interface StepExportResult {
      * Non-fatal refusals: things the caller asked for that this export could
      * not write. Empty when the export did everything it was asked to do.
      *
-     * A requested `georefMutations.mapConversion` is the one case today: with
-     * no `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
+     * A requested `georefMutations.mapConversion` is one case: with no
+     * `IfcGeometricRepresentationContext` to reference as `SourceCRS`, the
      * `IfcMapConversion` is skipped (writing it would produce a dangling
      * reference) while the `IfcProjectedCRS` is still written — so the output
      * is indistinguishable from "no map conversion was requested" unless the
-     * caller reads this (#2067). Same `string[]` shape as
-     * `MergeExportResult.stats.warnings`.
+     * caller reads this (#2067).
+     *
+     * A WITHHELD RELATIONSHIP is the other: when a relationship names an
+     * entity this export is not writing, in a slot with no spelling for an
+     * omitted reference, the whole relationship line is dropped rather than
+     * shipped dangling — see {@link relationshipWithheldWarning}. This can
+     * happen on a plain full export with no options set at all, so it is
+     * reported rather than left to be discovered by a diff.
+     *
+     * Same `string[]` shape as `MergeExportResult.stats.warnings`.
      */
     warnings: string[];
   };
@@ -232,6 +240,26 @@ const MAP_CONVERSION_WITHOUT_CONTEXT_WARNING =
  */
 const MAP_CONVERSION_WITHOUT_CRS_WARNING =
   'Cannot create IfcMapConversion: no IfcProjectedCRS was requested and none exists in the file to reference as TargetCRS. Nothing was written.';
+
+/**
+ * Message for a relationship this export DROPPED rather than rewrote.
+ *
+ * `filterHiddenRefsFromRelationshipLine` removes an omitted `#N` from a
+ * SET/LIST attribute, but a single-valued attribute has no STEP spelling for
+ * "omitted" and an empty SET is not the same statement as the original — so in
+ * both of those cases it withholds the whole line and the relationship simply
+ * is not in the output. Withholding beats shipping a dangling `#N`, but it is
+ * not free: every OTHER entity that relationship named loses the association.
+ * A visible element can therefore come out of a plain full export with one
+ * fewer pset than it went in with, and before this warning existed nothing in
+ * the result said so (adversarial review of #2668).
+ *
+ * Deliberately reports the relationship rather than the omitted target: the
+ * target's own omission is already the caller's own doing in every reason but
+ * the unreadable-ref one, whereas the lost association is the surprise.
+ */
+const relationshipWithheldWarning = (expressId: number, type: string): string =>
+  `Relationship #${expressId} (${type}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output.`;
 
 /**
  * What {@link StepExporter.applySourceLineMutations} produced: the rewritten
@@ -433,6 +461,17 @@ export class StepExporter {
     // initialization`. Hoisting it would only trade the throw for the real
     // defect, a predicate that answers "not in the closure" as `false` while
     // the closure is still being built and `true` for the same id afterwards.
+    //
+    // That is a genuine departure from the contract #2637 was closed on —
+    // `reference-collector.ts` still documents the bridge as taking the
+    // caller's OWN output predicate, "not two expressions that happened to
+    // agree". It has an OBSERVABLE consequence, not just a naming one: for an
+    // unreadable source ref this admits, the walk bridges through a
+    // relationship the output then withholds, leaving the relationship's other
+    // target in the closure with nothing naming it — an orphan, pinned by
+    // `unreadable-ref-dangling.test.ts` ("walk and output predicates diverge").
+    // The reverse direction is closed: every id this excludes,
+    // `isOmittedFromOutput` excludes too, so the #2548 leak cannot return.
     const isRefExcludedDuringClosureWalk = (id: number): boolean =>
       (hiddenProductIds !== null && hiddenProductIds.has(id)) || effective.isDeleted(id);
     if (options.visibleOnly && this.dataStore.source) {
@@ -1116,11 +1155,19 @@ export class StepExporter {
 
     /**
      * "May a line this export writes name `#id`?" — the single predicate both
-     * relationship-line filter sites consume, and the exact negation of
-     * `willBeEmitted`. Filter and emission therefore answer ONE question, by
-     * construction rather than by two lists kept in step by hand.
+     * relationship-line filter sites consume, derived from `willBeEmitted`
+     * rather than from a second list kept in step with it by hand.
      *
-     * That hand-kept pair is the bug this replaces. `willBeEmitted` recognises
+     * DERIVED, not identical, and the gaps are named below rather than glossed:
+     * a scope qualifier for ids the file never had, and `deltaOnly`, where
+     * `willBeEmitted` answers `true` for a source record whose line this export
+     * does not write at all (the source-iteration pass is skipped wholesale in
+     * that mode). Nor does this make the CLOSURE WALK agree with either: the
+     * walk keeps `isRefExcludedDuringClosureWalk` and diverges from this
+     * predicate for an unreadable source ref — see the note on that predicate,
+     * and the "walk and output predicates diverge" test.
+     *
+     * The hand-kept second list is the bug this replaces. `willBeEmitted` recognises
      * seven reasons a line never lands — outside the closure, hidden product,
      * tombstoned, never existed, unreadable source ref (#2491), geometry
      * excluded by options, and the `deltaOnly` carve-out — while the filter
@@ -1163,10 +1210,26 @@ export class StepExporter {
      * an eighth reason added to `willBeEmitted` still reaches the filter with
      * no edit here.
      *
-     * See `unreadable-ref-dangling.test.ts` for the reproduction and for the
-     * drift guard that fails if these two ever disagree again (#2637 is the
+     * ## What the filter can and cannot reach
+     *
+     * Only `IFCREL*` lines. A `#N` named from a product's `Representation` or
+     * `ObjectPlacement` slot is not touched, so `includeGeometry:false` — a
+     * reason `willBeEmitted` does answer for — produces the same dangling refs
+     * with this predicate as without it. Measured on `tests/models/AB22.ifc`:
+     * 80 dangling refs before and after, output byte-identical but for the
+     * header timestamp.
+     *
+     * ## Withholding is not free
+     *
+     * When the omitted id sits in a single-valued slot, or is a set's only
+     * member, `filterHiddenRefsFromRelationshipLine` withholds the WHOLE
+     * relationship — so an entity that relationship also named loses the
+     * association, on a plain full export with no options set. That is why the
+     * call sites push {@link relationshipWithheldWarning}.
+     *
+     * See `unreadable-ref-dangling.test.ts` for the reproduction. #2637 is the
      * prior instance of this class, which took seven rounds because the same
-     * decision was recomputed per call site).
+     * decision was recomputed per call site.
      */
     const isOmittedFromOutput = (id: number): boolean =>
       (effective.has(id) || effective.isDeleted(id)) && !willBeEmitted(id);
@@ -1259,7 +1322,10 @@ export class StepExporter {
         const effectiveRelType = effective.effectiveType(expressId, entityRef.type).toUpperCase();
         if (effectiveRelType.startsWith('IFCREL')) {
           const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
-          if (filtered === null) continue;
+          if (filtered === null) {
+            warnings.push(relationshipWithheldWarning(expressId, effectiveRelType));
+            continue;
+          }
           nextEntityText = filtered;
         }
 
@@ -1564,7 +1630,10 @@ export class StepExporter {
         // relationship instead of a parsed one (#2398).
         if (upperType.startsWith('IFCREL')) {
           line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
-          if (line === null) continue;
+          if (line === null) {
+            warnings.push(relationshipWithheldWarning(entity.expressId, upperType));
+            continue;
+          }
         }
         if (converting) {
           const converted = convertStepLine(line, sourceSchema, schema, options.guidRandom);

@@ -15,14 +15,21 @@
  * while an `IFCREL*` naming it was copied verbatim, on a PLAIN full export
  * with no `visibleOnly` and no deletions anywhere in the call.
  *
- * The fix makes both output-line filter sites consume `willBeEmitted` itself,
- * so "will this id be in the file?" has exactly one answer by construction.
- * `drift-guard` below is the other half: it asserts the two agree over every
- * id in the store, so an EIGHTH omission reason added to `willBeEmitted`
- * cannot reintroduce the divergence silently.
+ * The fix makes both output-line filter sites consume the negation of
+ * `willBeEmitted`. What pins that wiring here is BEHAVIOURAL and nothing else:
+ * every test below feeds an input on which the output predicate and the walk
+ * predicate give different answers, and checks the bytes. Substituting the
+ * walk predicate at either call site, or gutting `willBeEmitted` to
+ * `return true`, turns them red.
+ *
+ * An earlier revision of this file also carried a source-text "drift guard"
+ * that `readFileSync`'d `step-exporter.ts` and asserted on its text. It was
+ * removed, not merely relocated: with `willBeEmitted`'s body replaced by
+ * `return true` — the whole defect, restored — all four of its assertions
+ * stayed green while the three behavioural tests below went red. It is also
+ * the pattern `scripts/check-source-text-assertions.mjs` exists to stop.
  */
 
-import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { StepExporter } from './step-exporter.js';
@@ -148,11 +155,18 @@ describe('a plain full export never names an entity whose source ref is unreadab
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
-  it('holds under visibleOnly and includeGeometry:false as well as a plain export', () => {
-    // The same store through the option combinations that switch other
-    // omission reasons on. `deltaOnly` is deliberately absent: that mode emits
-    // a PATCH against a file that already holds the source lines, so unresolved
-    // `#N` in its output is by design, not a dangling ref.
+  it('stays fixed when visibleOnly or includeGeometry:false is also set', () => {
+    // The SAME unreadable-ref store (reason 5) under three option sets, so the
+    // fix is not accidentally contingent on the other options being off. It is
+    // NOT coverage of the closure or geometry omission reasons: no entity in
+    // this store is hidden, and none is geometry-classified, so `visibleOnly`
+    // and `includeGeometry:false` change nothing about which ids are omitted
+    // here. See the file-level note on what those two reasons are and are not
+    // covered by.
+    //
+    // `deltaOnly` is deliberately absent: that mode emits a PATCH against a
+    // file that already holds the source lines, so unresolved `#N` in its
+    // output is by design, not a dangling ref.
     for (const options of [
       { schema: 'IFC4' as const },
       { schema: 'IFC4' as const, visibleOnly: true, hiddenEntityIds: new Set<number>() },
@@ -165,76 +179,100 @@ describe('a plain full export never names an entity whose source ref is unreadab
 });
 
 /**
- * The structural half of the fix, and the reason an EIGHTH omission reason
- * cannot quietly reintroduce this.
- *
- * The behavioural tests above pin the reasons that have a fixture. They cannot
- * pin a reason nobody has written yet. What can is the wiring itself: as long
- * as every relationship-line filter site consumes `isOmittedFromOutput`, and
- * `isOmittedFromOutput` is nothing but the negation of `willBeEmitted`, a new
- * reason added to `willBeEmitted` reaches the filter for free.
- *
- * #2637 is why this is asserted rather than trusted. That defect took seven
- * review rounds precisely because "will this entity be in the output?" was
- * recomputed per call site, so each round fixed one site and left the next.
+ * A store where one relationship's SOLE pset subject has an unreadable source
+ * ref. Reused by both describes below: it is the smallest input on which the
+ * closure walk's predicate and the output filter's predicate give different
+ * answers about `#2`.
  */
-describe('drift guard: the relationship filter and the emission share one predicate', () => {
-  const exporterSource = readFileSync(new URL('./step-exporter.ts', import.meta.url), 'utf8');
-  /**
-   * Comments stripped. The prose above explains the retired gate BY NAME, so a
-   * bare `not.toContain` over the raw file would match this file's own
-   * documentation rather than any live wiring — measured, it did.
-   */
-  const exporterCode = exporterSource
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^[ \t]*\/\/.*$/gm, '');
+function buildStoreWithWithheldPsetRelationship(): IfcDataStore {
+  // `#2` is deliberately the LAST record in the buffer. An overrunning ref is
+  // clamped, not rejected, by the closure walk's byte scan
+  // (`extractRefsFromBytes` over `src.slice(offset, offset + length)`), so a
+  // `#2` placed EARLIER would have its overrun scan read `#10` and `#20`'s
+  // bytes as if they were its own and pull `#10` into the closure that way —
+  // measured, and it would have made the test below pass for the wrong reason.
+  // Last in the buffer, the overrun reaches only past the end, which yields
+  // nothing, and the only route to `#10` is the `#20` bridge this pins.
+  const { store, byId } = buildParsedStore([
+    [1, 'IFCWALL', "#1=IFCWALL('0walA0000000000000000',$,'VisibleWall',$,$,$,$,$);\n"],
+    [10, 'IFCPROPERTYSET', "#10=IFCPROPERTYSET('0pset0000000000000000',$,'Pset_Custom',$,());\n"],
+    [20, 'IFCRELDEFINESBYPROPERTIES', "#20=IFCRELDEFINESBYPROPERTIES('0def00000000000000000',$,$,$,(#2),#10);\n"],
+    [2, 'IFCOPENINGELEMENT', "#2=IFCOPENINGELEMENT('0open0000000000000000',$,'Opening',$,$,$,$,$);\n"],
+  ]);
+  const ref = byId.get(2)!;
+  ref.byteLength = store.source!.byteLength - ref.byteOffset + 64;
+  return store;
+}
 
-  it('derives isOmittedFromOutput from willBeEmitted, with only the scope qualifier', () => {
-    // The qualifier keeps a `#999` the INPUT file already dangled out of the
-    // filter's reach — see the predicate's own doc, and the behavioural pin in
-    // `step-exporter.test.ts`. Everything else it delegates to `willBeEmitted`,
-    // which is what makes an eighth omission reason arrive here for free.
-    expect(exporterCode).toContain(
-      'const isOmittedFromOutput = (id: number): boolean =>\n'
-      + '      (effective.has(id) || effective.isDeleted(id)) && !willBeEmitted(id);',
-    );
+/**
+ * Withholding a relationship is the right trade against shipping a dangling
+ * `#N`, but it is a real edit to the model — and one that reaches a PLAIN full
+ * export, with `visibleOnly`, `includeGeometry` and the overlay all untouched.
+ * Before this warning existed the caller had no way to learn of it short of
+ * diffing the output, which is the "silent" half the adversarial review of
+ * #2668 objected to.
+ */
+describe('a withheld relationship is reported in stats.warnings', () => {
+  it('warns on a plain full export, naming the relationship it dropped', () => {
+    const result = new StepExporter(buildStoreWithWithheldPsetRelationship())
+      .export({ schema: 'IFC4' });
+    const content = decode(result.content);
+
+    // The relationship is gone, not rewritten: `RelatedObjects` named only
+    // `#2`, and an empty SET is a different statement from the original.
+    expect(content).not.toContain('#20=IFCRELDEFINESBYPROPERTIES');
+    expect(findDanglingRefs(content)).toEqual([]);
+
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain('#20');
+    expect(result.stats.warnings[0]).toContain('IFCRELDEFINESBYPROPERTIES');
+    expect(result.stats.warnings[0]).toContain('withheld');
   });
 
-  it('passes isOmittedFromOutput to every filterHiddenRefsFromRelationshipLine call', () => {
-    const calls = [...exporterCode.matchAll(
-      /filterHiddenRefsFromRelationshipLine\(\s*([^)]*?)\s*\)/g,
-    )].map((m) => m[1]);
-    // Two emission passes write a relationship line: source-iteration and the
-    // overlay new-entities pass. A third would have to appear here too.
-    expect(calls).toHaveLength(2);
-    for (const args of calls) {
-      expect(args.split(',').map((a) => a.trim())[1]).toBe('isOmittedFromOutput');
-    }
+  it('stays silent when the relationship is rewritten rather than withheld', () => {
+    // `#3`'s `RelatedElements` keeps `#1`, so the line still ships — a rewrite
+    // is not a lost association and must not raise the warning. Without this
+    // the warning could be pushed unconditionally and the test above would
+    // still pass.
+    const result = new StepExporter(buildStoreWithUnreadableRef()).export({ schema: 'IFC4' });
+    expect(decode(result.content)).toContain('#3=IFCRELCONTAINEDINSPATIALSTRUCTURE');
+    expect(result.stats.warnings).toEqual([]);
   });
+});
 
-  it('leaves no second enumeration gating those call sites', () => {
-    // `mayNameExcludedRefs` was that gate: a shorter, hand-kept list of the
-    // reasons an exclusion might exist, which answered `false` for the
-    // unreadable-ref export above and so suppressed the filter entirely.
-    expect(exporterCode).not.toContain('mayNameExcludedRefs');
-    // Each site is guarded by the class test alone — no extra boolean that
-    // could go stale against `willBeEmitted`.
-    const guards = [...exporterCode.matchAll(/if \((.*?)\.startsWith\('IFCREL'\)\) \{/g)];
-    expect(guards).toHaveLength(2);
-    for (const [, subject] of guards) {
-      expect(subject).not.toContain('&&');
-    }
-  });
+/**
+ * The observable consequence of the walk and the output using DIFFERENT
+ * predicates, pinned so it is recorded rather than rediscovered.
+ *
+ * `reference-collector.ts` documents the contract that the closure bridge uses
+ * the caller's own OUTPUT predicate — the remedy #2637 was closed on. This
+ * change cannot honour that literally: `willBeEmitted` reads `allowedEntityIds`,
+ * which is what the walk is producing, so wiring it into the walk is circular
+ * (measured: `ReferenceError: Cannot access 'willBeEmitted' before
+ * initialization`). The walk therefore keeps the narrower
+ * `isRefExcludedDuringClosureWalk`, and for an unreadable source ref the two
+ * now disagree.
+ *
+ * The consequence is below. The walk asks "is `#2` hidden or deleted?", answers
+ * no, and lets `#20` BRIDGE — pulling `#10` into the closure. The output filter
+ * asks "will `#2` have a line?", answers no, and WITHHOLDS `#20`. `#10` is
+ * emitted with nothing naming it: an orphan pset. Not a dangling ref and not an
+ * invalid file, but not what either predicate intended on its own, and the open
+ * design question on #2668.
+ */
+describe('walk and output predicates diverge: a bridged pset can be orphaned', () => {
+  it('emits #10 that only the withheld #20 named', () => {
+    const result = new StepExporter(buildStoreWithWithheldPsetRelationship())
+      .export({ schema: 'IFC4', visibleOnly: true, hiddenEntityIds: new Set<number>() });
+    const content = decode(result.content);
 
-  it('keeps the closure walk on its own predicate — willBeEmitted there is circular', () => {
-    // `willBeEmitted` reads `allowedEntityIds`, which `collectReferencedEntityIds`
-    // is what produces. Measured: wiring it in throws `ReferenceError: Cannot
-    // access 'willBeEmitted' before initialization`, and hoisting past that
-    // would only give a predicate whose answer changes as the set fills.
-    expect(exporterCode).toContain('const isRefExcludedDuringClosureWalk =');
-    const walkCall = exporterCode.match(/collectReferencedEntityIds\(([\s\S]*?)\);/);
-    expect(walkCall).not.toBeNull();
-    expect(walkCall![1]).toContain('isRefExcludedDuringClosureWalk');
-    expect(walkCall![1]).not.toContain('willBeEmitted');
+    // The bridge fired: `#10` is in the closure only because `#20` named it.
+    expect(content).toContain('#10=IFCPROPERTYSET');
+    // The output filter withheld the very line that bridged it.
+    expect(content).not.toContain('#20=IFCRELDEFINESBYPROPERTIES');
+    // So nothing left in the file references `#10`.
+    expect(content.match(/#10\b/g)).toEqual(['#10']);
+    // Orphaned, not dangling — the file is still valid STEP.
+    expect(findDanglingRefs(content)).toEqual([]);
   });
 });

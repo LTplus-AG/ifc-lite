@@ -314,23 +314,45 @@ export function collectRefsInByteRange(
  *   target into the closure — those are never themselves in `excludeIds` (not
  *   products) — so the target shipped as an orphan line nothing in the output
  *   names (#2548).
- * @param isRefExcluded - The caller's OWN "is this id excluded from what a
- *   relationship names" predicate — the exact one it will use to filter that
- *   relationship's OUTPUT line (`isExcludedFromRelationshipRefs` in
- *   `step-exporter.ts`). When supplied, the bridge decision above uses THIS
- *   predicate instead of inventing `excludeIds.has(id) || !entityIndex.has(id)`
- *   as a proxy for it. The proxy and a caller's real predicate can disagree on
- *   an id that never existed in the file at all (not hidden, not deleted —
- *   just absent, e.g. a pre-existing dangling ref in a truncated source): the
- *   proxy treats "not in the index" as excluded, blocking the bridge, while a
- *   caller whose predicate only excludes a hidden PRODUCT or a TOMBSTONED id
- *   does not, and still emits the relationship's line naming it. Left to
- *   disagree, that combination drops a VISIBLE sibling's pset from the
- *   closure while the unfiltered output line still names it — a dangling ref
- *   the emission pass did not intend to create. Callers with no caller-side
- *   emission predicate to share (`demesh-prune.ts`, `merged-exporter.ts`,
- *   whose own `IFCREL*` output-line filter already reduces to the same
- *   `!entityIndex.has` proxy) omit this and keep the previous behaviour.
+ * @param isRefExcluded - The caller's own "is this id excluded from what a
+ *   relationship names" predicate for the BRIDGE decision. When supplied, the
+ *   bridge uses THIS predicate instead of inventing
+ *   `excludeIds.has(id) || !entityIndex.has(id)` as a proxy for it. The proxy
+ *   and a caller's real predicate can disagree on an id that never existed in
+ *   the file at all (not hidden, not deleted — just absent, e.g. a
+ *   pre-existing dangling ref in a truncated source): the proxy treats "not in
+ *   the index" as excluded, blocking the bridge, while a caller whose
+ *   predicate only excludes a hidden PRODUCT or a TOMBSTONED id does not, and
+ *   still emits the relationship's line naming it. Left to disagree, that
+ *   combination drops a VISIBLE sibling's pset from the closure while the
+ *   unfiltered output line still names it — a dangling ref the emission pass
+ *   did not intend to create. Callers with no caller-side predicate to share
+ *   (`demesh-prune.ts`, `merged-exporter.ts`, whose own `IFCREL*` output-line
+ *   filter already reduces to the same `!entityIndex.has` proxy) omit this and
+ *   keep the previous behaviour.
+ *
+ *   NOT NECESSARILY THE CALLER'S OUTPUT PREDICATE. #2637's remedy was worded
+ *   as "the same function call, not two expressions that happened to agree",
+ *   and `StepExporter` did pass its single output predicate here. It no longer
+ *   can: its output filter is now the negation of `willBeEmitted`, whose first
+ *   act is to consult the very `allowedEntityIds` set THIS call produces, so
+ *   wiring it in is circular (measured: `ReferenceError: Cannot access
+ *   'willBeEmitted' before initialization`; hoisting past the TDZ only trades
+ *   the throw for a predicate whose answer changes as the set fills).
+ *   `StepExporter` therefore passes the narrower
+ *   `isRefExcludedDuringClosureWalk` — hidden product or tombstone — while its
+ *   output filter also answers for the closure, an unreadable source ref and a
+ *   geometry exclusion.
+ *
+ *   The two are ORDERED, not merely different: every id the walk predicate
+ *   excludes, the output predicate excludes too. So a relationship the walk
+ *   refuses to bridge is also one the output withholds, and the #2548 orphan
+ *   this parameter exists to prevent cannot come back that way. The reverse
+ *   gap is open and observable: for an id the walk admits and the output
+ *   omits, the walk bridges through a relationship the output then withholds,
+ *   leaving its target in the closure with nothing naming it. Pinned by
+ *   `unreadable-ref-dangling.test.ts` ("walk and output predicates diverge"),
+ *   and an open design question rather than a settled contract.
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
  * Uses byte-level scanning — no TextDecoder, no regex, no string allocation —

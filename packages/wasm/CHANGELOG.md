@@ -1,5 +1,141 @@
 # @ifc-lite/wasm
 
+## 4.7.0
+
+### Minor Changes
+
+- [#2573](https://github.com/LTplus-AG/ifc-lite/pull/2573) [`33eb685`](https://github.com/LTplus-AG/ifc-lite/commit/33eb685de6c1578727587d87af5c3cd4a30a4122) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `clashIntersectionSolid` — the overlap VOLUME of a clashing pair, as a solid.
+
+  Clash presentation today marks the contact _point_. A point cannot show how deep an overlap is, what shape it has, or which direction it runs. BIMcollab Zoom and Solibri instead draw the intersection volume as an opaque solid inside two ghosted parents, which reads at a glance. This is the engine half of that: given the world-space triangles of two clashing elements, return the mesh of their actual overlap.
+
+  It runs on the existing pure-Rust exact CSG kernel — the same arrangement that cuts opening voids — through `BoolOp::Intersection`, which the kernel already implements. No new geometry code, and no need for the `A − (A − B)` derivation: intersection is a first-class kernel op. A new `ifc_lite_geometry::intersection_solid` wraps it; the wasm export is a thin binding over that.
+
+  On demand, one pair per call. Nothing in the detection sweep touches it, so scan cost is unchanged. Measured on a road/bridge certification model via an internal test harness that enumerates 88 candidate pairs over a 48-element test-only allowlist (the CLI at defaults finds 50 clashes on the same model, with the shipped exclusions applied), one `intersection_solid` call costs a median of 0.59 ms and a max of 38.6 ms release-build; the max is a 264-triangle railing against a beam, and every pair not involving those railings is under 10 ms. Computing all 88 harness pairs eagerly would have cost 216 ms.
+
+  Results carry f64 positions rather than the f32 the mesh pipeline uses elsewhere, because the caller reports a volume: on the analytic rotated-box oracle the f64 path returns exactly 9.375 m³ where the f32 round-trip returns 9.374999882.
+
+  **The result is gated, and often absent.** The kernel snaps input coordinates to a `2^-16 m ≈ 15.26 µm` grid and treats faces inside `near_band_from_extent` as coplanar. Inside that band a thin overlap is resolved as a contact, not a solid, and the returned volume is _exactly 2/3_ of the truth — measured at world offsets 0, 10, 100 and 1000 m, at every tessellation. A −33 % solid is worse than no solid, because it looks plausible. So `intersection_solid` returns a solid only above 4× that band, where the volume is exact to f64, and otherwise reports why: `no-overlap`, `below-kernel-resolution` (with the measured thickness and the depth that would have been needed), `empty-operand` or `budget-exhausted`. Callers should keep the existing contact marker whenever `isSolid` is false.
+
+  How often that happens is the honest headline. The CLI at defaults finds 50 clashes on the bridge model (8 of them `IfcBeam`×`IfcBeam`, all authored bearing details rather than coordination defects); the coverage breakdown below is not that number — it comes from the internal harness's 88 candidate pairs over its 48-element allowlist, which bypasses the shipped element adapter and applies no void/host or spatial-container exclusions. Of those 88 harness pairs, **30 yield a solid, 54 return `no-overlap` and 4 `below-kernel-resolution`**. The 54 are pairs whose interpenetration is below the snap grid; their reported sub-micron distances land on the `f32` ULP at each pair's coordinate magnitude, so they are quantization noise rather than a measured graze — not evidence either way of a coordination issue. For those, no intersection solid exists at this kernel's resolution and the viewer will fall back to the contact marker. The feature helps most where clashes are deep; the largest solid found was 0.0727 m³ between two crossing beams.
+
+  **The gate is rotation-invariant for box pairs.** Its thickness measurement was originally taken against the world axes, which is only the penetration depth when the contact normal happens to be parallel to one — and a building grid rotated off the world frame is the common case, not the exception. Rotating the oracle's own 15–122 µm slab overlaps rigidly by an oblique angle (an isometry: the same overlap, the same answer required) made every one of them clear the gate, returning volumes of 36 % to 103 % of the truth and drifting with tessellation. The gate now measures along the pair's candidate contact normals, derived analytically from the operands' own face planes — the classical 15 OBB separating-axis candidates when both operands present a box frame — with the world axes always kept in the set, so the measure can only ever get stricter, never looser. For an operand that is not a box the set stays the world axes: that is conservative, not correct, and is documented as such in the code. On the bridge model every one of the 88 harness pairs returns a byte-identical outcome before and after, so this closes a reachable correctness hole without moving any number that was already right.
+
+  Verified against an analytic oracle before any wiring: axis-aligned and rotated boxes with hand-derived expected volumes, asserted at 12, 48 and 192 triangles per operand (and at every mixed pair of those) so a tessellation-sampling artifact cannot pass — the failure mode a previous clash depth metric shipped with. Degenerate inputs are covered: coplanar touching faces, sub-micron grazes, disjoint pairs and empty operands all return a reason rather than a sliver or a crash.
+
+### Patch Changes
+
+- [#2536](https://github.com/LTplus-AG/ifc-lite/pull/2536) [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Replace the mesh-depth "measurement" with a real one, box-exact, for hard clashes.
+
+  PR [#2536](https://github.com/LTplus-AG/ifc-lite/issues/2536) was held on review with a measured refutation: `TriMesh.maxPenetrationInto` (the `'mesh'`-labelled depth introduced by `clash-mesh-penetration-depth.md` / `clash-distance-provenance.md` in this same release) measures the distance from the nearest crossing-triangle VERTEX to the other solid's surface — an O(edge length) sampling artifact. On two 2x2x2 boxes overlapping exactly 1.5 m, tessellated at 12/48/192 triangles per element, it reported **0.03 / 0.50 / 0.07**, all labelled `'mesh'` — a sampling artifact that converges to 0 under retessellation, the opposite of what a depth metric should do, while the AABB estimate (labelled `'estimate'`) was the correct 1.5 m the whole time. The labelling had it backwards.
+
+  This is fixed by removing `maxPenetrationInto` and replacing it with `obbPenetrationDepth` (`packages/clash/src/engine-ts/obb.ts`, `rust/clash/src/obb.rs`): when BOTH elements of a hard-clash pair are, within floating tolerance, rectangular boxes (`detectObb` — 3 mutually orthogonal face-normal families, 2 offset planes each, triangulation-independent), the reported depth is the minimum translation distance along a separating axis — the classical two-OBB penetration depth (Gottschalk), computed over the 15 canonical candidate axes (each box's 3 face normals plus the 9 pairwise cross products). This is provably exact for boxes, deterministic, and — because it is derived from the box's face-plane geometry rather than its triangulation — provably unchanged by retessellation; an analytic-oracle test suite (`obb.test.ts`, `tests.rs`) reproduces the maintainer's 0.03/0.50/0.07 numbers against the OLD metric, then asserts the NEW metric reports the true 1.5 m at all three tessellations, plus a 45°-rotated-box case with an independently-derived expected value and a barely-overlapping (5 mm) control.
+
+  **This narrows what the engine claims to measure.** When either element is not a box, there is no certified box-box depth, and the pair falls back to the AABB estimate — labelled `'estimate'`, honestly, not `'mesh'`. This is a real, known regression relative to the removed probe for a handful of non-box shapes (e.g. a concave L-shaped member contained in another element): the reported depth goes back to being a bounding-box dimension rather than the shape's true penetration, exactly as it was before [#1866](https://github.com/LTplus-AG/ifc-lite/issues/1866), and the test suite (`boundaries.test.ts`, `engine.test.ts`, `tests.rs`) now documents this residual explicitly rather than hiding it behind an artifact that only looked right. A non-box depth metric — the maintainer's other suggested option, an intersection-volume-derived depth — is future work; the divergence-theorem machinery already used for the shape-signature work in this package is a plausible starting point, but deriving a _distance_ (not a volume) from it for non-convex solids needs its own design and did not fit in this correction.
+
+  On a real model (AC20-FZK-Haus, 282 total distances across hard/clearance/touch), 9 pairs (3.2%) are now certified `'mesh'` (all box-box); the remaining 273 (96.8%) are `'estimate'`, numerically identical to the pre-[#1866](https://github.com/LTplus-AG/ifc-lite/issues/1866) baseline. This is a far smaller, more conservative change surface than the held PR's 71/282 relabelling, and none of the certified 9 can exhibit the sampling-artifact failure mode — the code path that produced it no longer exists.
+
+  Both kernels changed identically (`obb.ts` / `obb.rs`, bit-identical `OBB_EPS = 1e-6` and axis-projection arithmetic), and the differential suite asserts `distanceKind` parity on every fixture. `TriMesh.distanceToSurface` and `containsPoint` are kept — they are exact, independently tested primitives, just no longer on this hot path.
+
+  **Follow-up (review): a thin member piercing clean through another box was still mislabelled `'mesh'`, at up to 5.5x the true depth.** The box-box minimum translation distance is the wrong quantity for a through-penetration (a duct through a wall, a beam through a slab): it is dominated by the piercing member's own extent along the shared axis, not by the material actually crossed. A 0.4x0.4x2 m duct centred through a 5.0x0.2x3.0 m wall reported **1.1 m** (the duct's own half-length plus the wall's half-thickness) where the true wall thickness is **0.2 m** — and, unlike the pre-[#2536](https://github.com/LTplus-AG/ifc-lite/issues/2536) estimate, it carried the `'mesh'` label a coordinator would trust. `isThroughPenetration` (`obb.ts` / `obb.rs`) now detects this shape — one box's cross-section strictly inside the other's footprint along a shared axis, extending past it on both ends — and declines to certify it, falling back to the AABB estimate exactly as before [#2536](https://github.com/LTplus-AG/ifc-lite/issues/2536) existed. Only attempted when the two boxes share a common frame (every axis of one parallel to an axis of the other); at a generic relative rotation the box-box MTD is unchanged. Also closed: `detectObb` could certify a non-watertight mesh (e.g. a slab exported without its top face) as a zero-thickness box, because a face family whose triangles are all coplanar passed the 2-plane test with no positive extent — a positive-extent guard now rejects it.
+
+  **Follow-up (review): the cross-axis degeneracy guard is now scale-relative, not absolute.** `obbPenetrationDepth` rejected a near-degenerate cross-product candidate with an absolute `len > 1e-6` test and divided by any accepted `len` unconditionally. At large operand scale that absolute cutoff fails in both directions, verified against an exact-rational-arithmetic oracle over all 15 candidates: for two 2000 km near-parallel beams meeting edge-to-edge, the dropped common normal IS the minimum-translation axis, so the min over the remaining axes reported a certified 0.45 m depth for a 0.02 m edge contact (22x); and a disjoint pair of the same beams reported a 0.055 m penetration because the only separating axis of the 15 was the dropped one. Each candidate's verdict now carries a noise bound derived from the operands themselves (the summed half-extents of both boxes plus the center offset, times `8 * EPS / len` - the projection error the `1/len` normalisation can amplify); a verdict inside its own band is skipped, which in a separating-axis test is the conservative direction (skipping a candidate can only fail to find a separation, never invent one), and a verdict outside the band is kept whatever `len` is. Identical change in both kernels (`obb.ts` / `obb.rs`), pinned by mirrored beam fixtures that fail on the old guard with bit-identical wrong values in TS and Rust.
+
+- [#2598](https://github.com/LTplus-AG/ifc-lite/pull/2598) [`2421442`](https://github.com/LTplus-AG/ifc-lite/commit/2421442363c5adf39d9405bf7a0e16b72adc73d1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix half-space plane clipping (`IfcHalfSpaceSolid`/`IfcPolygonalBoundedHalfSpace`
+  subtracts, layered-material band splitting) dropping or misclassifying geometry far
+  from the model origin. `ClippingProcessor` classified each triangle vertex against
+  the clip plane with a fixed `epsilon = 1e-6`, while mesh vertices are f32-native
+  and the plane is f64 end to end. The two callers work in different frames — the
+  half-space path clips inside `BooleanProcessor::process`, in the representation
+  item's local, pre-scale, file-unit coordinates (the plane decoded in f64 from
+  `IfcAxis2Placement3D` before `apply_placement` or unit scaling run), whereas the
+  layered-material path clips an already-scaled, already-placed mesh against
+  interface planes built in metres — but the f32/f64 mismatch is the same in both.
+  Once a coordinate passes
+  16 m from the origin, the f32 rounding step exceeds that fixed epsilon, so a
+  vertex meant to sit exactly on the plane (e.g. a cut
+  flush with a box face) could land on the wrong side of it — non-monotonically, since
+  it depends on which way the rounding lands rather than on distance alone. A unit-box
+  flush cut at 1e-6 lost its entire cross-section at a 100.7 m offset and again at a
+  50000.7 m offset, while surviving at 1000.7 m and 5000.7 m in between.
+
+  `clip_mesh` now scales the classification epsilon to the coordinate magnitude of the
+  **mesh being clipped** (`2⁻²²`, the f32 ULP fraction), floored at the original `1e-6`
+  constant. Only the mesh contributes: the plane is f64 end to end and carries no
+  rounding noise, and its stored point is an arbitrary representative of the plane, so
+  letting it size the tolerance would make two descriptions of the same half-space clip
+  differently. The magnitude is tracked **per axis** and projected onto the clip plane's
+  own unit normal — `eps(n) = max(1e-6, |nₓ|·noiseₓ + |n_y|·noise_y + |n_z|·noise_z)` — rather
+  than collapsed to a single max over all three axes. The tolerance is compared against
+  a signed distance measured along one normal, so each coordinate's rounding noise
+  enters it weighted by that axis's normal component, and an axis orthogonal to the
+  normal contributes nothing. A max over all axes instead sizes the tolerance to the
+  operand's distance from the local origin along whichever axis happens to be largest,
+  even when that axis is irrelevant to the plane being tested: a site-offset model at
+  x = 1e6 mm clipped by a horizontal plane through a wall spanning z = 0..3000 mm got
+  0.238 mm where the real f32 rounding step at that z is 2.4e-4 mm — about 1000x too
+  loose on the only axis that matters, letting genuinely separated geometry classify
+  as on-plane. Same formulation as `ProjectedPlaneEps`/`epsForPlane` in
+  `@ifc-lite/clash`'s contact narrow phase.
+
+  Note the projected form is not uniformly tighter than a max over axes: for a unit
+  normal the weighted sum is bounded by `√3 · max` and reaches it for a body-diagonal
+  normal, so such a plane gets a `√3`-looser tolerance. That is the correct worst case
+  when all three axes' rounding errors align. The tolerance is also invariant under
+  negating the plane normal (each component enters as `|nᵢ|`), which the layered path
+  depends on: it clips one remainder with `+n` and `-n` and welds the two halves, so a
+  direction-dependent epsilon would leave a gap or an overlap at every material
+  interface. Evidence for all of the above is
+  synthetic (constructed box/slab/triangle fixtures at the stated offsets); no corpus
+  model has been shown to change output as a result.
+
+  Two things deliberately left alone. `ClippingProcessor::clip_triangle` — public API
+  with no in-tree production caller — keeps the flat `1e-6`, so external callers of
+  that entry point still get the pre-fix tolerance until it is migrated. And the floor
+  is still a raw constant never rescaled by `unit_scale`, so its physical size depends
+  on the caller's frame; below the ~4.19-unit crossover where the floor rather than the
+  projected term wins, a metre-authored and a millimetre-authored file can pick
+  epsilons differing by `4.194 / E` for a real-world amplitude of `E` metres (~4x at
+  1 m, ~42x at 0.1 m, unbounded as `E` shrinks). Both sides stay sub-micrometre.
+  Rescaling that floor is its own change with its own corpus evidence.
+
+  This does not reuse the exact CSG kernel's `near_band_from_extent` helper
+  (`kernel::mesh_bridge`): that helper's floor is `8·SNAP_GRID` ≈ 1.22e-4, sized for
+  its own snap grid, and its scaling term only exceeds that floor past ~512 m — so for
+  ordinary building-scale models it would have replaced the old `1e-6` with a flat
+  122x-looser epsilon everywhere, not a magnitude-proportional one.
+
+- [#2681](https://github.com/LTplus-AG/ifc-lite/pull/2681) [`f5c96c5`](https://github.com/LTplus-AG/ifc-lite/commit/f5c96c581eebfcc627be96de0670c9540b61623f) Thanks [@louistrue](https://github.com/louistrue)! - Fix the exact CSG kernel welding genuinely separate surfaces together in models
+  placed far from the project origin. The kernel's near-coplanar band
+  (`near_band_from_extent`) sized itself from ONE scalar extent, the max
+  |coordinate| over all three axes of both operands, and then compared that band
+  against a PERPENDICULAR distance to a specific plane. A signed plane distance is
+  `dot(v - p, n)`, so each axis's f32 rounding noise enters it weighted by that
+  axis's normal component and an axis orthogonal to the normal contributes
+  nothing; collapsing to the max therefore sized the band from an axis the plane
+  never sees.
+
+  A georeferenced model 10 km out in X, cut by a Z-normal plane, got a ~2.4 mm
+  band derived entirely from the X magnitude where the real f32 rounding step in Z
+  is the ~122 um floor. Surfaces a genuine 2 mm apart fell inside it, were
+  reconciled as flush, and thin cuts collapsed: the same 2 mm recess that cuts
+  correctly at the origin returned the uncut slab 10 km out (volume
+  0.3000030517580399 instead of 0.29968), i.e. the recess vanished from the
+  result.
+
+  The band is now kept PER AXIS and projected onto the plane's own normal,
+  `sum_i |n_i| * extent_i * 2^-22`, floored at the unchanged `8 * SNAP_GRID` snap
+  scatter envelope. This is the formulation already adopted for the CSG clipper's
+  plane epsilon (`csg/plane_eps.rs`), the clash narrow phase
+  (`packages/clash/src/contact/narrow-phase.ts`) and the section cutter
+  (`packages/drawing-2d/src/section-cutter.ts`), not a fourth one. Comparisons are
+  made in the `|n|`-scaled space, so no normal is normalised and no square root is
+  taken: determinism (byte-identical native == wasm) is unchanged, as is behaviour
+  at the origin.
+
+- [#2536](https://github.com/LTplus-AG/ifc-lite/pull/2536) [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add the `distanceKind` getter to `ClashRunResult` (`rust/wasm-bindings/src/api/clash.rs`) that `@ifc-lite/clash`'s wasm engine reads.
+
+  Without this changeset `@ifc-lite/clash` would publish depending on `@ifc-lite/wasm: workspace:^`, which npm can satisfy with a pre-existing `@ifc-lite/wasm` build that lacks the getter — `wasm-kernel.ts` would then read `undefined` off the result and throw reading an out-of-range index, on the first clash. This bumps `@ifc-lite/wasm` alongside `@ifc-lite/clash` so the published dependency range only ever resolves to a build that has the field.
+
 ## 4.6.0
 
 ### Minor Changes

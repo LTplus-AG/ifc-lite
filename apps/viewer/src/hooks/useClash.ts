@@ -39,7 +39,6 @@ import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
-import { createLatestWinsGuard } from '@/lib/clash/latest-wins';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
@@ -176,16 +175,6 @@ export function useClash() {
   // focused clash can compute its real contact interface for that one pair.
   const elementsByRef = useRef(new Map<number, ClashElement>());
 
-  /**
-   * Staleness guard for the on-demand intersection-solid compute: bumped on
-   * every `focusClash` / `selectElement` / teardown call, captured locally by
-   * the async compute below, and re-checked before the result is ever written
-   * to the store. Without this, selecting clash A then quickly clash B could
-   * have A's compute resolve AFTER B is focused and paint A's stale solid over
-   * B's pair — the store has no other signal that a request was superseded.
-   */
-  const solidRequestGuard = useRef(createLatestWinsGuard());
-
   /** Build clash elements + merged exclusions from every loaded model. */
   const gatherElements = useCallback((): { elements: ClashElement[]; exclusions: ExclusionSet } => {
     const state = useViewerStore.getState();
@@ -207,16 +196,16 @@ export function useClash() {
   /**
    * Drop any in-flight or already-applied intersection-solid presentation
    * before a detection flow replaces the clash result set. `focusClash`'s
-   * async solid compute is keyed to `solidRequestGuard`; without this, `run()`
-   * / `runDuplicates()` cleared `clashSelectedId` but left the guard token
-   * valid, so a compute that was still in flight for the OLD result set could
-   * resolve after the new run finished and repaint its stale mesh plus the
-   * full-model ghosting over results the user can no longer see the pair for
-   * (CodeRabbit #2574). Mirrors the teardown `clearHighlight` already does.
+   * async solid compute is invalidated by `clashSolidRequestSeq` (clashSlice) —
+   * `clearClashSolid()` below bumps it, so this needs no separate guard call.
+   * Without this, `run()` / `runDuplicates()` cleared `clashSelectedId` but
+   * left the compute's request current, so it could resolve after the new run
+   * finished and repaint its stale mesh plus the full-model ghosting over
+   * results the user can no longer see the pair for (CodeRabbit #2574).
+   * Mirrors the teardown `clearHighlight` already does.
    */
   const discardSolidPresentation = useCallback((): void => {
     const state = useViewerStore.getState();
-    solidRequestGuard.current.begin();
     state.clearClashSolid();
     state.clearGhost();
     state.clearIsolation();
@@ -483,17 +472,23 @@ export function useClash() {
       // genuine grazing contacts below the kernel's snap resolution). The
       // synchronous contact-marker painting above is what the user sees the
       // instant they click; this only ever UPGRADES that view, asynchronously.
-      const mySolidToken = solidRequestGuard.current.begin();
+      //
+      // Staleness is checked against `clashSolidRequestSeq` (clashSlice), NOT
+      // a hook-private ref: `setClashSelectedId` just above already bumped it
+      // for this focus, so reading it now captures this request's identity.
+      // ANY later call to `setClashSelectedId` or `clearClashSolid` — from
+      // this hook, a tour cleanup, the Home reset, or any future teardown
+      // path nobody has written yet — bumps it again and this compute drops
+      // its result instead of painting over whatever came after it. That is
+      // the fix for the class of bug, not just the two reported call sites.
+      const mySolidRequestSeq = useViewerStore.getState().clashSolidRequestSeq;
       state.setClashSolidComputing();
       if (elA && elB) {
         computeClashIntersectionSolid(elA.positions, elA.indices, elB.positions, elB.indices)
           .then((result) => {
-            // Stale: the user moved to a different clash (or deselected)
-            // while this was in flight. Every teardown path (clearHighlight,
-            // clearAll, highlightAll, panel unmount, and the next focusClash)
-            // also calls `begin()`, so this is the one check that covers all
-            // of them without duplicating the guard at each site.
-            if (!solidRequestGuard.current.isCurrent(mySolidToken)) return;
+            // Stale: something reset the focused-clash presentation while this
+            // was in flight (see the comment above `mySolidRequestSeq`).
+            if (useViewerStore.getState().clashSolidRequestSeq !== mySolidRequestSeq) return;
             const s = useViewerStore.getState();
             if (result.isSolid) {
               s.setClashSolid({ positions: result.positions, indices: result.indices }, result.volumeM3);
@@ -539,7 +534,7 @@ export function useClash() {
             }
           })
           .catch(() => {
-            if (!solidRequestGuard.current.isCurrent(mySolidToken)) return;
+            if (useViewerStore.getState().clashSolidRequestSeq !== mySolidRequestSeq) return;
             useViewerStore.getState().setClashSolidUnavailable('compute-error', 0, 0);
           });
       } else {
@@ -570,9 +565,9 @@ export function useClash() {
       state.setPendingColorUpdates(one);
       state.setClashOverlapBox(null); state.setClashContactLines(null);
       // Single-element step-through has no PAIR to compute a solid for —
-      // supersede any in-flight compute from a prior focusClash and drop its
-      // solid so it can't paint over this one-element view.
-      solidRequestGuard.current.begin();
+      // `clearClashSolid()` bumps `clashSolidRequestSeq`, superseding any
+      // in-flight compute from a prior focusClash so it can't paint over
+      // this one-element view.
       state.clearClashSolid();
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
@@ -607,7 +602,6 @@ export function useClash() {
     state.setClashHighlightColors(null);
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
     state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
     state.clearClashSolid();
   }, [refOf]);
 
@@ -621,9 +615,8 @@ export function useClash() {
     // or clear it — don't leave the clash A/B colours painted. (#1277 review)
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
     state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
     state.clearClashSolid();
-    setSelectedId(null);
+    setSelectedId(null); // also bumps clashSolidRequestSeq (clashSlice)
   }, [setSelectedId]);
 
   /** Current review status of a clash ('open' when unreviewed). Reactive: reads
@@ -785,9 +778,8 @@ export function useClash() {
     // Drop the clash colour-override (restoring an active lens) + overlap box.
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
     state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
     state.clearClashSolid();
-    clear();
+    clear(); // clearClash() also bumps clashSolidRequestSeq (clashSlice)
   }, [clear]);
 
   /**
@@ -796,9 +788,15 @@ export function useClash() {
    * isolation/colour state themselves and just need the async result, if it
    * lands after teardown, to be dropped instead of re-applying a solid + full-
    * model ghost onto a view the user has already left. Idempotent.
+   *
+   * Bumps `clashSolidRequestSeq` (clashSlice) directly — the same store field
+   * `setClashSelectedId` / `clearClashSolid` bump — rather than a hook-private
+   * ref, so this is no longer the only way to invalidate an in-flight compute;
+   * it now exists purely as an explicit "cancel without resetting anything
+   * else" convenience for a caller that already resets the other fields itself.
    */
   const invalidateSolidCompute = useCallback((): void => {
-    solidRequestGuard.current.begin();
+    useViewerStore.setState((s) => ({ clashSolidRequestSeq: s.clashSolidRequestSeq + 1 }));
   }, []);
 
   return {

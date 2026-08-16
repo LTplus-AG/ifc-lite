@@ -598,10 +598,20 @@ export function Viewport({
   // can be a real depth-tested 3D volume rather than a line list.
   const clashSolidMesh = useViewerStore((s) => s.clashSolidMesh);
   const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  const clashSelectedId = useViewerStore((s) => s.clashSelectedId);
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    if (clashSolidStatus === 'solid' && clashSolidMesh) {
+    // Defence in depth, not the primary fix (#2574 review): `clashSelectedId`
+    // and `clashSolidStatus`/`clashSolidMesh` are reset together by every
+    // current teardown path via `setClashSelectedId` / `clearClashSolid`
+    // (clashSlice.ts, both bump `clashSolidRequestSeq`), so `clashSolidStatus`
+    // should never read `'solid'` while nothing is selected. Gating the actual
+    // draw on `clashSelectedId` too means that even a future path that resets
+    // one without the other — or a resolved compute that lands after some
+    // teardown nobody's added the invalidation to yet — still can't leave an
+    // orphaned opaque solid on screen with no clash focused.
+    if (clashSelectedId && clashSolidStatus === 'solid' && clashSolidMesh) {
       renderer.setClashIntersectionSolid({
         positions: clashSolidMesh.positions,
         indices: clashSolidMesh.indices,
@@ -610,7 +620,7 @@ export function Viewport({
     } else {
       renderer.setClashIntersectionSolid(null);
     }
-  }, [clashSolidMesh, clashSolidStatus, isInitialized]);
+  }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);

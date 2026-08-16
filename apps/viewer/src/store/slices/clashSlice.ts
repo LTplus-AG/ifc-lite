@@ -171,6 +171,21 @@ export interface ClashSlice {
   clashSolidThicknessM: number;
   /** For `below-kernel-resolution`: depth the kernel would have needed, metres. `0` otherwise. */
   clashSolidRequiredM: number;
+  /**
+   * Monotonic counter bumped by every store action that can invalidate an
+   * in-flight `focusClash` solid compute: `setClashSelectedId` (the focused
+   * clash changed or was cleared) and `clearClashSolid` / `clearClash` (the
+   * presentation was torn down without a selection change, e.g. `selectElement`).
+   * The async compute in `useClash.focusClash` captures this value right after
+   * kicking off, and only writes its result if it is still current when the
+   * promise settles — this makes the guard store state instead of a private
+   * `useRef`, so ANY teardown path that resets the focused-clash presentation
+   * invalidates the compute by construction, not just the ones that remembered
+   * to call a specific cancel function (#2574 review: `tours/clash.ts` and
+   * `store/homeView.ts` reset these same fields directly and neither could
+   * reach a hook-private ref guard).
+   */
+  clashSolidRequestSeq: number;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
@@ -307,6 +322,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSolidReason: null,
     clashSolidThicknessM: 0,
     clashSolidRequiredM: 0,
+    clashSolidRequestSeq: 0,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
@@ -355,7 +371,23 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       persistSettings();
     },
 
-    setClashSelectedId: (clashSelectedId) => set({ clashSelectedId }),
+    // Changing (or clearing) which clash is focused always drops any
+    // intersection-solid presentation for the PREVIOUS focus and bumps
+    // `clashSolidRequestSeq`, invalidating any in-flight compute for it — see
+    // the field doc above. `focusClash` re-applies `setClashSolidComputing()`
+    // right after this for the newly selected clash, so the momentary `'none'`
+    // here is never painted.
+    setClashSelectedId: (clashSelectedId) =>
+      set((s) => ({
+        clashSelectedId,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+        clashSolidStatus: 'none',
+        clashSolidMesh: null,
+        clashSolidVolumeM3: 0,
+        clashSolidReason: null,
+        clashSolidThicknessM: 0,
+        clashSolidRequiredM: 0,
+      })),
     setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
     setClashContactLines: (clashContactLines) => set({ clashContactLines }),
@@ -389,14 +421,15 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashSolidRequiredM: requiredM,
       }),
     clearClashSolid: () =>
-      set({
+      set((s) => ({
         clashSolidStatus: 'none',
         clashSolidMesh: null,
         clashSolidVolumeM3: 0,
         clashSolidReason: null,
         clashSolidThicknessM: 0,
         clashSolidRequiredM: 0,
-      }),
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);
@@ -507,8 +540,11 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     clearClash: () =>
       // Keep presets + settings (workspace prefs, like saved lenses): only the
-      // run result/panel state is cleared.
-      set({
+      // run result/panel state is cleared. Sets `clashSelectedId`/solid fields
+      // directly (rather than delegating to `setClashSelectedId`/`clearClashSolid`)
+      // so bump `clashSolidRequestSeq` here too — it must invalidate an
+      // in-flight solid compute exactly like those two do.
+      set((s) => ({
         clashResult: null,
         clashGroups: null,
         clashRunning: false,
@@ -517,13 +553,14 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashSelectedId: null,
         clashHighlightColors: null,
         clashOverlapBox: null,
-    clashContactLines: null,
+        clashContactLines: null,
         clashSolidStatus: 'none',
         clashSolidMesh: null,
         clashSolidVolumeM3: 0,
         clashSolidReason: null,
         clashSolidThicknessM: 0,
         clashSolidRequiredM: 0,
-      }),
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
   };
 };

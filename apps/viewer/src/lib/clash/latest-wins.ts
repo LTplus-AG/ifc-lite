@@ -5,17 +5,24 @@
 /**
  * A "latest request wins" guard for an async operation kicked off from a
  * synchronous UI event that can fire again before the first call resolves —
- * exactly `focusClash`'s on-demand intersection-solid compute: clicking clash
- * A then quickly clash B must not have A's compute land AFTER B is focused and
- * paint A's stale solid over B's pair. There is no other signal in the store
- * that a request was superseded (the store doesn't know which JS closure is
- * "the current one"), so this token is the only thing that can tell.
+ * the shape of race `focusClash`'s on-demand intersection-solid compute has
+ * to defend against: clicking clash A then quickly clash B must not have A's
+ * compute land AFTER B is focused and paint A's stale solid over B's pair.
  *
- * `begin()` is called synchronously at the START of every attempt (including
- * every teardown/clear path, which calls it and discards the token — it only
- * needs to invalidate whatever came before). The async callback captures the
- * token `begin()` returned and must check `isCurrent(token)` before writing
- * any result to shared state; a `false` means a later `begin()` already ran.
+ * `begin()` must be called synchronously at the START of every new attempt,
+ * and the async callback must capture the token it returns and check
+ * `isCurrent(token)` before writing any result to shared state — a `false`
+ * means a later `begin()` already ran. This module makes no claim about
+ * *which* call sites do that; it is a generic, reusable primitive.
+ * `useClash`'s actual solid-compute guard is `clashSolidRequestSeq`
+ * (clashSlice.ts) instead of an instance of this class: that field is bumped
+ * by `setClashSelectedId` and `clearClashSolid`, store actions every clash-
+ * focus teardown path already calls, so any new teardown path invalidates the
+ * in-flight compute automatically instead of needing to remember to call a
+ * guard like this one (#2574 review: a prior version of this doc claimed
+ * `begin()` ran on "every teardown/clear path" — two call sites,
+ * `tours/clash.ts` and `store/homeView.ts`, reset the same focus fields by
+ * hand and never reached the guard because it lived in a hook-private `useRef`).
  *
  * A plain zustand `set` cannot do this on its own: two `.then` callbacks
  * racing to call `set` in resolution order (not request order) is exactly the

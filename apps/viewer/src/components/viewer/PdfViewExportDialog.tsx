@@ -60,6 +60,7 @@ import { toast } from '@/components/ui/toast';
 import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
 import { readViewPdfSource, readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
+import { resolveKeptHalfSpace } from '@/lib/export/view-pdf/view-section-plane';
 import {
   estimateViewPdfLayout,
   VIEW_PDF_MARGIN_MM,
@@ -186,8 +187,13 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     try {
       // `showScaleStamp` is a real dependency, not decoration: the band changes
       // the page the readout quotes and can push it past the printable limit.
+      // The section is fed in so the estimate describes the sheet the user will
+      // actually get. Without it a cut that removes most of a site model still
+      // quoted the whole model, and the oversize gate below refused an export
+      // whose real page would have been ordinary.
       const layout = estimateViewPdfLayout(drawnMeshes, camera, scaleFactor, {
         includeScaleStamp: showScaleStamp,
+        keptHalfSpace: source?.section ? resolveKeptHalfSpace(source.section) : null,
       });
       if (!layout) return null;
       return { ...layout, ...describePage(layout.page) };

@@ -68,7 +68,14 @@ export function PdfViewPageNotices({
         </Alert>
       )}
 
-      {projectionMode === 'perspective' ? (
+      {projectionMode === null ? (
+        // No camera at all (nothing loaded, or no WebGPU). Falling through to
+        // the orthographic branch here would state "the printed scale is
+        // exact" about a sheet that cannot be produced, which is the one claim
+        // this dialog must never make loosely. Export is already disabled in
+        // this state, so the honest thing is to say nothing about projection.
+        null
+      ) : projectionMode === 'perspective' ? (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Perspective camera</AlertTitle>

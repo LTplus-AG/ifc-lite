@@ -28,6 +28,7 @@
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { clipBoxToHalfSpace } from './clip-box-half-space.js';
 import {
   addScaleStamp,
   buildCameraSectionPlane,
@@ -68,10 +69,27 @@ export function estimateViewPdfLayout(
   meshes: readonly MeshData[],
   camera: CameraFrame,
   scaleFactor: number,
-  options: { marginMm?: number; includeScaleStamp?: boolean } = {},
+  options: {
+    marginMm?: number;
+    includeScaleStamp?: boolean;
+    /**
+     * The half-space the export will keep, exactly as `clipMeshToHalfSpace`
+     * reads it. Passing it stops the estimate quoting the WHOLE model for a
+     * sheet the section has cut down to one bay, which made the oversize gate
+     * refuse pages that would print comfortably.
+     */
+    keptHalfSpace?: { normal: Vec3; offset: number } | null;
+  } = {},
 ): ViewPdfPageEstimate | null {
   const marginMm = options.marginMm ?? VIEW_PDF_MARGIN_MM;
-  const worldBounds = worldBoundsOfMeshes(meshes);
+  const fullBounds = worldBoundsOfMeshes(meshes);
+  if (!fullBounds) return null;
+  const half = options.keptHalfSpace;
+  // A cut that removes everything leaves nothing to estimate, which is the
+  // same "nothing to draw" answer as an empty mesh list.
+  const worldBounds = half
+    ? clipBoxToHalfSpace(fullBounds, half.normal, half.offset)
+    : fullBounds;
   if (!worldBounds) return null;
   const layout = computePdfScaleLayout(
     projectedBounds2D(worldBounds, camera),

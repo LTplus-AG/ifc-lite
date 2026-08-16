@@ -234,6 +234,25 @@ describe('buildColorRaster transparency', () => {
     expect(a).toBe(255);
   });
 
+  it('keeps a translucent surface at FULL colour over bare paper, not pre-darkened', () => {
+    // The case the opaque-backdrop test above cannot see. `pixels` is STRAIGHT
+    // alpha, so a lone 50% red pane must store red at full strength with alpha
+    // 128, and let the PDF do the one and only composite against the paper.
+    // The premultiplied formula `a*src + (1-a)*dst` stores 128 here instead,
+    // which the viewer then multiplies by alpha a SECOND time and prints the
+    // glass about twice as dark as the viewport shows it. Over an opaque wall
+    // the two formulas agree, which is exactly why this needs its own fixture.
+    const glassAlone = flatQuad(0, 2, 0, 2, -1, [1, 0, 0, 0.5]);
+    const raster = build([glassAlone]);
+
+    const [r, g, b, a] = pixelAt(raster, 1, 1);
+    expect(r).toBe(255);
+    expect(g).toBe(0);
+    expect(b).toBe(0);
+    expect(a).toBeGreaterThanOrEqual(127);
+    expect(a).toBeLessThanOrEqual(128);
+  });
+
   it('drops a translucent surface that sits behind an opaque one', () => {
     const opaqueBlue = flatQuad(0, 2, 0, 2, -1, [0, 0, 1, 1]);
     const glassRedBehind = flatQuad(0, 2, 0, 2, -5, [1, 0, 0, 0.5]);

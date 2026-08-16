@@ -361,11 +361,24 @@ function rasterizeShadedTriangle(
       // writing it, so glass in front of a wall composites over the wall and
       // glass behind it is dropped.
       if (d > depth[idx] + depthBias) continue;
-      const inv = 1 - alpha;
-      pixels[o] = Math.round(alpha * r + inv * pixels[o]);
-      pixels[o + 1] = Math.round(alpha * g + inv * pixels[o + 1]);
-      pixels[o + 2] = Math.round(alpha * b + inv * pixels[o + 2]);
-      pixels[o + 3] = Math.round(alpha * 255 + inv * pixels[o + 3]);
+      // STRAIGHT-alpha "over", not the premultiplied form. `pixels` is declared
+      // straight alpha (see ColorRaster), and the premultiplied formula
+      // `a*src + (1-a)*dst` applied to straight values silently scales the
+      // colour by alpha a SECOND time when the destination is transparent
+      // paper: a 0.5-alpha glass pane over nothing stored 0.5*colour with
+      // alpha 0.5, and the PDF then composited that again, printing the glass
+      // about twice as dark as the viewport shows it. Over an OPAQUE wall
+      // (dstA = 255) the two formulas agree, which is why it looked right
+      // wherever there was something behind the glass.
+      const dstA = pixels[o + 3] / 255;
+      const outA = alpha + dstA * (1 - alpha);
+      if (outA <= 0) continue;
+      const srcW = alpha / outA;
+      const dstW = (dstA * (1 - alpha)) / outA;
+      pixels[o] = Math.round(srcW * r + dstW * pixels[o]);
+      pixels[o + 1] = Math.round(srcW * g + dstW * pixels[o + 1]);
+      pixels[o + 2] = Math.round(srcW * b + dstW * pixels[o + 2]);
+      pixels[o + 3] = Math.round(outA * 255);
     }
   }
 }

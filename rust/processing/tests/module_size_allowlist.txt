@@ -64,22 +64,13 @@
 # region — with a single padding the pre-scan could wrongly early-out on a triangle the
 # canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
 # (the test file itself is ratchet-exempt).
-# +219: anchor the plane-offset math (normal + offset) to a local frame — subtract the
-# mesh's first canonical vertex before, add it back after — so `n·v` no longer amplifies a
-# per-facet normal error by the world-frame position magnitude (site coordinates, hundreds
-# to thousands of metres, were fully exposed since only >10km triggers recentring). The
-# derivation and determinism argument live once, inline at the anchor (Step 1.5); the
-# module doc just points there. Plus regression tests: a large-site-coordinate RED/GREEN
-# weld case and an isolated offset-formula gap measurement (RAW vs anchored, at a jitter
-# magnitude that actually survives f32 storage at this scale) documenting the
-# anchor-to-cluster residual.
-# +58: the first-canonical-vertex anchor from the entry above was itself order-dependent —
-# a different triangulator diagonal choice could pick a different `canon_pos[0]`, changing
-# the weld result for the SAME mesh (watertightness census, various/rvt01.ifc #6588).
-# Anchor is now the bbox-min corner (a min-reduction over all canonical vertices), a
-# function of the vertex SET, not of visit order. Plus a regression test permuting vertex
-# order and asserting the welded position of every physical vertex is bit-identical either way.
-         1229 rust/geometry/src/facet_weld.rs
+# -45: local-frame anchor for the plane-offset math (n.v amplified a per-facet normal
+# error by the world-frame position magnitude at site coordinates; the anchor is the
+# bbox-min corner, a function of the vertex SET, so triangulation order cannot change the
+# weld; engagement gated to coordinates that need it). The derivation lives inline at the
+# anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
+# (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
+          907 rust/geometry/src/facet_weld.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.

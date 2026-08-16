@@ -126,6 +126,11 @@ async function seed(): Promise<void> {
     clashResult: null,
     clashRawResult: null,
     clashGroups: null,
+    // Reset the provenance alongside the groups it describes: leaving a
+    // stale 'manual' here would start the next test from a state the
+    // slice documents as impossible (kind set with no groups), so a test
+    // could pass or fail on leaked state rather than on its own setup.
+    clashGroupsKind: null,
     clashExclusions: [],
     clashClusterEpsilon: 1.5,
     clashError: null,

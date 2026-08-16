@@ -97,8 +97,13 @@ the authorization code stranded. So:
 
 **Note on session length**: per Microsoft's docs, a refresh token issued to a
 `spa`-type redirect URI is capped at a 24-hour lifetime regardless of
-`offline_access` — re-authentication (normally silent, via the identity
-platform's own session) is required at least once a day.
+`offline_access`, so re-authentication is required at least once a day. As
+this provider is written that re-authentication is **not** silent: `signIn`
+sends `prompt=select_account`, which always shows the account picker, and
+there is no `prompt=none` path to fall back on. Expect a visible sign-in
+popup once a day. (The account picker is deliberate — see the comment on
+`extraParams` in `src/auth.ts` — but it is a trade against silent renewal,
+not a free choice.)
 
 ## What the app registration needs (maintainer action — not done here)
 

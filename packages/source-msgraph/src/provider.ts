@@ -166,6 +166,11 @@ export class MsGraphProvider implements FileSourceProvider {
       // on that flag in `@ifc-lite/plugin-api`), but this stays a loud error
       // rather than silently serving the wrong (current) bytes for whatever
       // older revision was actually requested.
+      //
+      // Note this compares against the cTag, while `listRevisions` reports
+      // SharePoint version labels — so even the newest *listed* revision is
+      // rejected here. Why that is correct rather than a gap is written out on
+      // `toSourceRevision` in `mapping.ts`.
       throw new Error(
         `Microsoft Graph provider cannot download historical revision "${ref.revisionId}" of ${ref.fileId} — ` +
           'only the current revision is retrievable (Graph exposes no CORS-safe download URL for old versions).',

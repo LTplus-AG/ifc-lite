@@ -18,6 +18,7 @@
  * this one until it pretends to be a parser.
  */
 
+import { RelationshipType } from '@ifc-lite/data';
 import type { FederatedModel } from '@/store';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -48,7 +49,16 @@ export interface FixtureEntity {
  * parser's `StringTable` defines it — both scanners use `idx === 0` as their
  * "row has no searchable text" fast skip.
  */
-export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
+export function fixtureDataStore(
+  entities: FixtureEntity[] = [],
+  options: {
+    /** `IfcRelAggregates` adjacency (parent express id -> child express ids).
+     *  When given, the store carries a minimal `relationships.getRelated`
+     *  satisfying `AggregationRelationships`, so aggregation-walking paths
+     *  (assembly expansion, basket visibility) become exercisable. */
+    aggregates?: Record<number, number[]>;
+  } = {},
+): IfcDataStore {
   const byType = new Map<string, number[]>();
   const byId = new Map<number, FixtureEntity>();
   for (const e of entities) {
@@ -82,9 +92,20 @@ export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
   // mean reimplementing the parser, and a per-test cast would silence the next
   // field a test genuinely needs. If a render path reaches past these three,
   // it belongs in this fixture — add it here and the cast stays honest.
+  const { aggregates } = options;
   return {
     entityIndex: { byType },
     spatialHierarchy: undefined,
+    ...(aggregates
+      ? {
+          relationships: {
+            getRelated: (id: number, relType: RelationshipType, direction: 'forward' | 'inverse') =>
+              relType === RelationshipType.Aggregates && direction === 'forward'
+                ? [...(aggregates[id] ?? [])]
+                : [],
+          },
+        }
+      : {}),
     strings: { get: (idx: number) => strings[idx] ?? '' },
     entities: {
       getTypeName: (id: number) => byId.get(id)?.type ?? null,
@@ -112,7 +133,7 @@ export function fixtureDataStore(entities: FixtureEntity[] = []): IfcDataStore {
  */
 export function fixtureModel(
   id: string,
-  options: { idOffset?: number; entities?: FixtureEntity[] } = {},
+  options: { idOffset?: number; entities?: FixtureEntity[]; aggregates?: Record<number, number[]> } = {},
 ): FederatedModel {
   return {
     id,
@@ -121,7 +142,7 @@ export function fixtureModel(
     // silently exercise the hidden path in every test that seeds a model.
     visible: true,
     idOffset: options.idOffset ?? 0,
-    ifcDataStore: fixtureDataStore(options.entities),
+    ifcDataStore: fixtureDataStore(options.entities, { aggregates: options.aggregates }),
   } as unknown as FederatedModel;
 }
 

@@ -13,37 +13,65 @@
 //! a new one.
 //!
 //! This does NOT mean the crate now has a single plane-epsilon formulation.
-//! `router/voids/aabb_clip.rs` still carries its own — max over axes, scaled
-//! by `1e-6` rather than `2^-22` — against a hand-rolled copy of
-//! `clip_triangle`'s body that does not route through
-//! [`clip_triangle_with_epsilon`]. That divergence is pre-existing and
-//! untouched here; converging it needs its own change with its own evidence.
+//! Two neighbours keep their own, both pre-existing and untouched here;
+//! converging either needs its own change with its own evidence:
+//!
+//! - `router/voids/aabb_clip.rs` — max over axes, scaled by `1e-6` rather than
+//!   `2^-22`, against a hand-rolled copy of `clip_triangle`'s body that does
+//!   not route through [`clip_triangle_with_epsilon`].
+//! - `processors/boolean/halfspace_cap.rs:87` — `on_plane_eps =
+//!   (diag * 1e-5).max(1e-6)`, evaluated immediately after this clip on the
+//!   half-space path. It is sized by a different quantity (the mesh's bounding
+//!   box DIAGONAL, i.e. its size) than the one here (the mesh's coordinate
+//!   MAGNITUDE, i.e. its offset), so no fixed ratio holds between them: for a
+//!   mesh near its local origin `diag * 1e-5` is ~42x looser
+//!   (`1e-5 / 2^-22 ~= 41.9`), while for a far-offset mesh this module's
+//!   epsilon overtakes it. Either way there is no interaction to reason about
+//!   — it runs on the clip's OUTPUT and only decides cap-ring membership; it
+//!   never revisits a front/back verdict.
 //!
 //! # The floor, and its known unit-divergence limitation
 //!
 //! [`super::ClippingProcessor::epsilon`] supplies [`PlaneEps`]'s floor. It is
-//! a raw `f64` constant in whatever unit the mesh happens to be in when
-//! `clip_mesh` runs — `clip_mesh` runs before `scale_mesh`
-//! (`router/processing.rs:818` vs `:846`), so that is the file's native unit,
-//! not metres, and the field is never rescaled by `unit_scale`.
+//! a raw `f64` constant that is never rescaled by `unit_scale`, so WHICH unit
+//! it is denominated in is decided entirely by the caller — and the two
+//! production `clip_mesh` callers differ:
+//!
+//! - FILE UNITS (pre-scale): `processors/boolean/mod.rs`
+//!   (`IfcHalfSpaceSolid` / `IfcPolygonalBoundedHalfSpace`) clips inside
+//!   `BooleanProcessor::process`, which the router dispatches at
+//!   `router/processing.rs:818` and only unit-scales afterwards at `:846`.
+//!   Both mesh and plane are in the file's native unit there — millimetres for
+//!   most IFC files, not metres.
+//! - METRES (post-scale): `router/layers.rs:569-570` (layered-material band
+//!   splitting) clips a `base_mesh` returned by `process_element_with_voids`,
+//!   which routes through `process_element` and has therefore already run
+//!   `scale_mesh` and `apply_placement`. Its interface planes are built from
+//!   `thickness_m`, `offset * scale` and the metre-valued `rtc_offset`
+//!   (`layers.rs:246-273`). Both operands are in metres.
 //!
 //! KNOWN LIMITATION (pre-existing, not introduced by the magnitude-scaling
-//! fix): because the floor is a fixed file-unit constant, identical physical
-//! geometry can classify differently depending on whether the file's units are
-//! metres or millimetres. The projected term overtakes the floor at a
-//! projected noise amplitude of about 4.19 file units
-//! (`1e-6 / 2^-22 ~= 4.194304`) — above that, both unit choices converge on
-//! the same scaled epsilon. Below it, a metre-authored file stays floored at a
-//! constant `1e-6 m` (1 micrometre) regardless of how small the operand gets,
-//! while a millimetre-authored file's scaled term keeps shrinking with the
-//! operand (the floor in mm file units, `1e-6 mm`, is a nanometre and is
-//! essentially never reached) — so the two units can pick different epsilons,
-//! by up to ~40x, for the same real-world extent below the crossover. Both
-//! sides remain sub-micrometre, and no building-scale corpus fixture has
-//! exercised it. Left undone deliberately: rescaling this floor by
-//! `unit_scale` is exactly the kind of tolerance change that needs its own PR
-//! with its own corpus evidence, not a fold-in-on-review-comment fix (see the
-//! 122x-looser-floor mistake avoided by not reusing `near_band_from_extent`).
+//! fix; applies to the FILE-UNIT boolean path — the layers path is always
+//! metres, so it has no unit variance of its own, only the fixed `1e-6 m` =
+//! 1 micrometre floor): because the floor is a fixed constant with no unit
+//! attached, identical physical geometry can classify differently depending on
+//! whether the file is authored in metres or millimetres. The projected term
+//! overtakes the floor at a projected noise amplitude of about 4.19 file units
+//! (`1e-6 / 2^-22 ~= 4.194304`) — above that both unit choices converge on the
+//! same scaled epsilon. Below it a metre-authored file stays floored at a
+//! constant `1e-6 m` regardless of how small the operand gets, while a
+//! millimetre-authored file's scaled term keeps shrinking with the operand
+//! (its floor, `1e-6 mm`, is a nanometre and is essentially never reached).
+//! For a real-world projected noise amplitude of `E` metres below the
+//! crossover the two therefore differ by a factor of `1e-6 / (E * 2^-22) =
+//! 4.194 / E` — about 4x at `E = 1 m`, about 42x at `E = 0.1 m`, and unbounded
+//! as `E` shrinks. (Earlier prose here quoted a flat "~40x"; that is the
+//! `E ~= 0.1 m` case only, not a bound.) Both sides remain sub-micrometre, and
+//! no building-scale corpus fixture has exercised it. Left undone
+//! deliberately: rescaling this floor by `unit_scale` is exactly the kind of
+//! tolerance change that needs its own PR with its own corpus evidence, not a
+//! fold-in-on-review-comment fix (see the 122x-looser-floor mistake avoided by
+//! not reusing `near_band_from_extent`).
 //!
 //! # Why not `near_band_from_extent`
 //!

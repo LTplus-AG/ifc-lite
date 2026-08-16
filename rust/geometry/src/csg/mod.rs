@@ -185,11 +185,11 @@ fn record_csg_op(op: u8, a_tris: usize, b_tris: usize) {
 
 /// CSG Clipping Processor
 pub struct ClippingProcessor {
-    /// Floor for [`Self::clip_mesh`]'s projected classification epsilon. A raw
-    /// `f64` in the mesh's native file unit (not metres — `clip_mesh` runs
-    /// before `scale_mesh`), never rescaled by `unit_scale`. See [`plane_eps`]
-    /// for the sizing rationale and the KNOWN unit-divergence LIMITATION this
-    /// fixed floor carries below the ~4.19-file-unit crossover.
+    /// Floor for [`Self::clip_mesh`]'s projected classification epsilon (and
+    /// the whole tolerance [`Self::clip_triangle`] still uses). Raw `f64`,
+    /// never rescaled by `unit_scale`, so its unit is the caller's: file units
+    /// on the `processors/boolean` path, METRES on `router/layers`. See
+    /// [`plane_eps`] for the frames, the sizing and the KNOWN LIMITATION.
     pub epsilon: f64,
     /// Boolean / CSG failures recorded since the last `take_failures()`.
     /// Interior-mutable so the existing `&self` API stays unchanged.

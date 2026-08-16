@@ -23,14 +23,32 @@
 //!    widen it, and that the normal's own axis still must — so neither a
 //!    uniformly-looser nor a uniformly-tighter epsilon passes.
 //!
+//! 3. SIGN INVARIANCE and the UPPER BOUND —
+//!    `negated_plane_normal_must_get_the_same_tolerance` and
+//!    `a_four_times_looser_ulp_scale_must_not_weld_separate_geometry`. Groups
+//!    1 and 2 all use all-positive normals and all fail only when the epsilon
+//!    is too TIGHT, so between them they leave the projection's `.abs()` and
+//!    the size of `F32_ULP_SCALE` unpinned in the loosening direction. Each
+//!    test carries its own measured mutation evidence.
+//!
 //! `ClippingProcessor` (`csg/mod.rs`) classifies each triangle vertex against
-//! a clip plane with `d >= -epsilon`. That plane arrives in the representation
-//! item's LOCAL, pre-scale, file-unit coordinates (`IfcAxis2Placement3D`,
-//! decoded in f64 — see `parse_half_space_solid` in `processors/boolean/mod.rs`)
-//! — `clip_mesh` runs at `router/processing.rs:818`, before `scale_mesh` (:846)
-//! and before `apply_placement` (which folds in the element's world placement
-//! at the element level, after this returns) — while mesh vertex positions are
-//! f32-native in that same local frame. Once a coordinate exceeds 16 m, the f32 ULP is larger than a fixed
+//! a clip plane with `d >= -epsilon`. WHICH FRAME the operands arrive in
+//! depends on the caller, and the two production callers differ:
+//!
+//! - `processors/boolean/mod.rs` (`IfcHalfSpaceSolid` /
+//!   `IfcPolygonalBoundedHalfSpace`) clips inside `BooleanProcessor::process`,
+//!   dispatched at `router/processing.rs:818`, before `scale_mesh` (:846) and
+//!   before `apply_placement`. Plane and mesh are both in the representation
+//!   item's LOCAL, pre-scale, file-unit coordinates — the plane f64 out of
+//!   `IfcAxis2Placement3D` (`parse_half_space_solid`), the vertices f32-native
+//!   in that same frame. This is the frame every fixture below models.
+//! - `router/layers.rs:569-570` (layered-material band splitting) clips a
+//!   mesh that came back from `process_element_with_voids` → `process_element`
+//!   and has therefore ALREADY been unit-scaled and placed, against interface
+//!   planes built in metres. Not a pre-scale frame at all — the f32/f64 split
+//!   and the ULP argument are identical, but the numbers are metres.
+//!
+//! Once a coordinate exceeds 16 m, the f32 ULP is larger than a fixed
 //! `1e-6`, so a vertex meant to sit exactly on the plane (signed distance 0,
 //! e.g. a cut flush with a box face) can be quantized to the wrong side of the
 //! epsilon band purely from float noise — dropping or flipping triangles that
@@ -510,7 +528,8 @@ fn offset_axis_tolerance_still_scales_when_the_normal_points_along_it() {
     // it passes the test above.
     //
     // NOTE the separation is measured, not nominal: `(1.0e6 - 0.05) as f32`
-    // quantizes to 999999.9375 (the f32 ULP at 1e6 is 0.125), so the geometry
+    // quantizes to 999999.9375 (the f32 ULP at 1e6 is 0.0625: 1e6 lies in
+    // [2^19, 2^20), so the step is 2^19 * 2^-23 = 2^-4), so the geometry
     // actually under test is 0.0625 mm behind the plane, not 0.05. Still an
     // order of magnitude under the 0.238 mm epsilon, so the verdict stands.
     let plane_x = 1.0e6_f64;
@@ -783,5 +802,164 @@ fn body_diagonal_normal_widens_to_the_l1_sum_not_the_per_axis_max() {
          per-axis max {per_axis_max:e} — and a triangle {separation:e} behind \
          the plane stays inside the band. An empty result means the projection \
          degenerated into a max over axes"
+    );
+}
+
+#[test]
+fn negated_plane_normal_must_get_the_same_tolerance() {
+    // SIGN INVARIANCE, at the `clip_mesh` level. `eps(n)` bounds the f32
+    // rounding noise in `|dot(v - p, n)|` — an absolute magnitude. Negating
+    // `n` negates every signed distance but changes no vertex's rounding
+    // error, so the band must be exactly as wide for `-n` as for `+n`.
+    //
+    // Without the per-component `.abs()` in `PlaneEps::for_normal` the
+    // weighted sum goes NEGATIVE for any normal with a negative component and
+    // `.max(floor)` collapses it to the bare `1e-6` — reintroducing the very
+    // defect this file exists to pin, for roughly half of all clip directions.
+    // Every other test here uses an all-positive normal, so all of them pass
+    // with the `.abs()` removed.
+    //
+    // Both production `clip_mesh` callers negate:
+    //   - `router/layers.rs` clips ONE remainder with `+n` (rest, above the
+    //     material interface) and `-n` (band, below it) and welds the two
+    //     results edge-for-edge. That is only sound while the two tolerances
+    //     match; a difference leaves a gap or an overlap at every interface.
+    //   - `processors/boolean/mod.rs` negates the half-space normal whenever
+    //     the `IfcHalfSpaceSolid`'s `AgreementFlag` is `.F.`.
+    //
+    // Mirror-image fixture at a 50 km coordinate, so the projected term (not
+    // the floor) decides:
+    //   eps = 5e4 * 2^-22 ~= 1.192e-2
+    // and each triangle sits a genuine 2 f32-ULPs (7.8125e-3) BEHIND its own
+    // plane — inside that band, so both must be KEPT. Under the mutation the
+    // `-z` case's epsilon drops to 1e-6 and its triangle is discarded while
+    // the `+z` case still keeps three indices: a direction-dependent verdict
+    // on geometrically mirror-image inputs.
+    let plane_z = 5.0e4_f64;
+    // 2 * ULP(5e4). 5e4 is in [2^15, 2^16), so ULP = 2^15 * 2^-23 = 2^-8.
+    let sep = 2.0 * f64::exp2(-8.0);
+
+    let triangle_at_z = |z: f32| Mesh {
+        positions: vec![0.0, 0.0, z, 1000.0, 0.0, z, 0.0, 1000.0, z],
+        indices: vec![0, 1, 2],
+        ..Default::default()
+    };
+
+    let mut verdicts = Vec::new();
+    for sign in [1.0_f64, -1.0] {
+        // Behind a plane with normal `sign * z` means displaced by `-sign * sep`.
+        let z = (plane_z - sign * sep) as f32;
+        let mesh = triangle_at_z(z);
+        let plane = Plane::new(Point3::new(0.0, 0.0, plane_z), Vector3::new(0.0, 0.0, sign));
+
+        // The fixture is only a mirror image if f32 quantization did not eat
+        // the offset asymmetrically. Measure, do not assume.
+        let measured = -plane.signed_distance(&Point3::new(0.0, 0.0, f64::from(z)));
+        assert!(
+            (measured - sep).abs() < 1e-12,
+            "fixture error: with normal sign {sign} the triangle sits \
+             {measured:e} behind the plane, expected exactly {sep:e} — f32 \
+             quantization broke the mirror symmetry and the two halves are no \
+             longer comparable"
+        );
+
+        let eps = eps_for(&mesh, &plane);
+        assert!(
+            eps > sep && eps > 1e-6,
+            "fixture is vacuous: the projected epsilon {eps:e} must exceed both \
+             the {sep:e} separation (so a correct clip KEEPS the triangle) and \
+             the 1e-6 floor (so the floor is not what is being measured)"
+        );
+
+        let out = ClippingProcessor::new()
+            .clip_mesh(&mesh, &plane)
+            .expect("clip must not error");
+        verdicts.push(out.indices.len());
+    }
+
+    assert_eq!(
+        verdicts[0], verdicts[1],
+        "mirror-image inputs produced different clips: normal +z kept {} \
+         indices, normal -z kept {}. The classification epsilon is \
+         direction-DEPENDENT, which means the per-component `.abs()` in the \
+         projection was dropped and the weighted sum went negative for the -z \
+         normal, collapsing eps to the 1e-6 floor. `router/layers.rs` clips \
+         the same remainder with `+n` and `-n` and welds the halves, so this \
+         opens a gap or an overlap at every material interface",
+        verdicts[0], verdicts[1]
+    );
+    assert_eq!(
+        verdicts[0], 3,
+        "sanity: at a 50 km coordinate a triangle only {sep:e} behind the \
+         plane is inside the scaled band and must be kept whole"
+    );
+}
+
+#[test]
+fn a_four_times_looser_ulp_scale_must_not_weld_separate_geometry() {
+    // UPPER BOUND on the epsilon. Every other test here fails when the
+    // tolerance is too TIGHT; none of them fails when it is too LOOSE by less
+    // than ~8x. Measured by mutating `F32_ULP_SCALE` in `csg/plane_eps.rs`:
+    // 4x tighter (2^-24) fails 2 tests, but 4x looser (2^-20) passed the
+    // ENTIRE `ifc-lite-geometry` suite, and only 16x looser (2^-18) failed
+    // anything. "Too loose" is the direction that silently welds genuinely
+    // separate geometry together, so it needs its own pin.
+    //
+    // A millimetre-unit site-offset model: a horizontal plane at z = 1e6 mm
+    // and a slab a genuine 0.5 mm below it. 0.5 is an exact multiple of the
+    // f32 ULP at 1e6 (2^19 * 2^-23 = 0.0625), so the separation survives
+    // quantization exactly and is real geometry, not float noise.
+    //
+    //   shipped 2^-22 : eps = 999999.5 * 2^-22 ~= 2.384e-1 mm  -> DISCARD
+    //   loosened 2^-20: eps = 999999.5 * 2^-20 ~= 9.537e-1 mm  -> keep (bug)
+    //
+    // 0.5 mm sits strictly between, so exactly a 4x loosening flips the
+    // verdict. Half a millimetre of wall is not "on the plane".
+    let plane_z = 1.0e6_f64;
+    let sep = 0.5_f64;
+    let behind_z = (plane_z - sep) as f32;
+    let measured = plane_z - f64::from(behind_z);
+    assert!(
+        (measured - sep).abs() < 1e-12,
+        "fixture error: {sep} mm below 1e6 quantized to {behind_z} — a \
+         {measured:e} mm separation, not the exact multiple of the 0.0625 mm \
+         f32 ULP this test assumes"
+    );
+
+    let mesh = slab_at_z(0.0, 5000.0, behind_z);
+    let plane = Plane::new(Point3::new(0.0, 0.0, plane_z), Vector3::new(0.0, 0.0, 1.0));
+
+    // The discriminating window: the shipped epsilon must be under the
+    // separation (so a correct clip discards) AND within 4x of it (so a 4x
+    // loosening of `F32_ULP_SCALE` crosses it). If a future change moves
+    // either bound this assertion fires instead of the test going vacuous.
+    let eps = eps_for(&mesh, &plane);
+    assert!(
+        eps < sep,
+        "fixture is vacuous: the shipped epsilon {eps:e} must be tighter than \
+         the {sep} mm separation, or a correct implementation also keeps the \
+         slab"
+    );
+    assert!(
+        sep < 4.0 * eps,
+        "fixture is vacuous: the {sep} mm separation must be within 4x of the \
+         shipped epsilon {eps:e}, or a 4x loosening of F32_ULP_SCALE would \
+         still discard the slab and this test would not bound the epsilon \
+         from above"
+    );
+
+    let out = ClippingProcessor::new()
+        .clip_mesh(&mesh, &plane)
+        .expect("clip must not error");
+    assert_eq!(
+        out.indices.len(),
+        0,
+        "a slab a genuine {sep} mm behind a horizontal plane must be \
+         discarded. Keeping it means the classification epsilon ({eps:e}) was \
+         loosened past {sep} mm — at 2^-20 it becomes 9.54e-1 mm — and the \
+         clipper is now welding geometry that is half a millimetre apart onto \
+         the plane. Scaling the tolerance to coordinate magnitude is only \
+         sound while the scale factor stays at the f32 ULP fraction it is \
+         derived from"
     );
 }

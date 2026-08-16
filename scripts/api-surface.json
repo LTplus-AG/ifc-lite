@@ -4221,6 +4221,8 @@
   "@ifc-lite/source-dropbox": [
     "DROPBOX_MANIFEST: const",
     "DropboxProvider: class",
+    "OAUTH_CALLBACK_CHANNEL: const",
+    "OAuthCallbackMessage: interface",
     "REDIRECT_PATH: const"
   ],
   "@ifc-lite/source-msgraph": [

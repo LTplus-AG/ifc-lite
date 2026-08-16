@@ -84,6 +84,10 @@ export class E57StreamingSource implements StreamingPointSource {
   private label?: string;
   /** Test hook: force a fixed window size to exercise straddle/re-read. */
   private windowBytesOverride?: number;
+  /** See `decodeE57Packet`'s `originOffset` param (extends #1804's
+   *  LAS/LAZ pattern). Applied per-scan to cartesian (no pose) or pose
+   *  translation (posed scan) — see `selectStride`. */
+  private originOffset?: readonly [number, number, number];
 
   private opened = false;
   private pageSize = 1024;
@@ -110,12 +114,18 @@ export class E57StreamingSource implements StreamingPointSource {
 
   constructor(
     blob: Blob,
-    options: { label?: string; downsample?: DownsampleHint; windowBytes?: number } = {},
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      windowBytes?: number;
+      originOffset?: readonly [number, number, number];
+    } = {},
   ) {
     this.bytes = new BlobByteSource(blob);
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
     this.windowBytesOverride = options.windowBytes;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -253,8 +263,13 @@ export class E57StreamingSource implements StreamingPointSource {
           // the outer loop re-read a fresh window starting at this packet.
           break;
         }
+        // Offset goes on the cartesian ONLY when the scan has no pose — a
+        // posed scan's cartesian is the local (pre-rotation) frame, so the
+        // offset is applied to the pose translation instead, in
+        // `selectStride` → `applyPoseInPlace`. See `decodeE57Packet`'s doc.
         const packet = decodeE57Packet(
           window, view, local, scan.fields, scan.prototype, scan.recordCount - this.recordsWritten,
+          scan.pose ? undefined : this.originOffset,
         );
         if (packet.packetType !== 1) {
           // Skip non-data packets (index/empty); may appear interleaved.
@@ -266,7 +281,9 @@ export class E57StreamingSource implements StreamingPointSource {
         if (packet.take > 0 && packet.positions) {
           // Phase the stride on the file-global record index so multi-scan
           // downsampling matches the whole-file decoder, not per-scan.
-          const sel = selectStride(packet, this.scanRecordBase + this.recordsWritten, stride, scan.pose);
+          const sel = selectStride(
+            packet, this.scanRecordBase + this.recordsWritten, stride, scan.pose, this.originOffset,
+          );
           if (sel.count > 0) {
             parts.push(sel);
             produced += sel.count;
@@ -411,11 +428,12 @@ function selectStride(
   base: number,
   stride: number,
   pose?: E57Pose,
+  originOffset?: readonly [number, number, number],
 ): SelectedPart {
   const take = packet.take;
   const pos = packet.positions!;
   if (stride === 1) {
-    if (pose) applyPoseInPlace(pos, take, pose);
+    if (pose) applyPoseInPlace(pos, take, pose, originOffset);
     return {
       count: take,
       positions: pos,
@@ -447,7 +465,7 @@ function selectStride(
     if (classifications && packet.classifications) classifications[dst] = packet.classifications[j];
     dst++;
   }
-  if (pose) applyPoseInPlace(positions, count, pose);
+  if (pose) applyPoseInPlace(positions, count, pose, originOffset);
   return { count, positions, colors, intensities, classifications };
 }
 

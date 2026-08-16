@@ -52,7 +52,9 @@ mod symbolic;
 mod types;
 
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
-pub use georeferencing::{extract_georeferencing, Georeferencing};
+pub use georeferencing::{
+    extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
+};
 pub use pipeline_diagnostics::{
     PipelineDiagnostics, PipelinePhaseTimings, PIPELINE_DIAGNOSTICS_SCHEMA_VERSION,
 };

@@ -12,7 +12,11 @@
  * `@ifc-lite/clash/step` subpath so the core stays version-neutral.
  */
 
-import { getInheritanceChainAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
+import {
+  getInheritanceChainAcrossSchemas,
+  isIfcTypeLikeEntity,
+  type IfcDataStore,
+} from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { MeshData } from '@ifc-lite/geometry';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
@@ -124,7 +128,27 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // Drop non-physical / non-product geometry up front so it never becomes a
     // clash candidate (no rule should have to exclude IfcSpace by hand). (#1464)
     const tag = node.type || mesh.ifcType || 'IfcProduct';
-    if (NON_CLASHABLE_TAGS.has(tag) || isSpatialContainerTag(tag)) continue;
+    // Type objects (`IfcWallType`, `IfcSpaceType`, and the `IfcDoorStyle` /
+    // `IfcWindowStyle` spelling IFC2X3 uses and IFC4 deprecates)
+    // are templates, not occurrences: the mesher turns their `RepresentationMaps`
+    // geometry into a mesh that lands on the occurrences instantiating it. That
+    // made a type read as a duplicate of its own occurrence, and clash against
+    // elements it never physically touches. Dropping them here also closes the
+    // gap #1464 left: `IfcSpace` was excluded by name while `IfcSpaceType`
+    // sailed straight through. No `IfcProduct` subclass in any supported schema
+    // ends in `Type`/`Style`, so this never drops an occurrence. It DOES drop
+    // ORPHAN type geometry too (`MeshData.geometryClass === 1`, a type with no
+    // occurrence): the viewer's Model view renders that only when the scene has
+    // no occurrence geometry at all — a type-library file — and its Types view
+    // (which always shows classes 1 and 2) is a catalogue, not a place clash
+    // runs from. Clashing origin-stacked templates against each other would be
+    // pure noise, so excluding class 1 is the intended reading, not collateral.
+    if (
+      NON_CLASHABLE_TAGS.has(tag) ||
+      isSpatialContainerTag(tag) ||
+      isIfcTypeLikeEntity(tag.toUpperCase())
+    )
+      continue;
 
     // The wasm geometry path stores positions in the element's LOCAL frame
     // (world = origin + position; see `MeshData.origin`). Clash works in world

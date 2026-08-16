@@ -26,11 +26,22 @@ export class PlyStreamingSource implements StreamingPointSource {
   private label?: string;
   private chunk: DecodedPointChunk | null = null;
   private served = false;
+  /** See `decodePly`'s `originOffset` param (extends #1804's LAS/LAZ
+   *  pattern). */
+  private originOffset?: readonly [number, number, number];
 
-  constructor(blob: Blob, options: { label?: string; downsample?: DownsampleHint } = {}) {
+  constructor(
+    blob: Blob,
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      originOffset?: readonly [number, number, number];
+    } = {},
+  ) {
     this.blob = blob;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
@@ -53,7 +64,7 @@ export class PlyStreamingSource implements StreamingPointSource {
 
     // Decode now (we already have all bytes). The cost is amortised over
     // the next() call — caller perceives no extra latency.
-    const fullChunk = decodePly(bytes);
+    const fullChunk = decodePly(bytes, this.originOffset);
     this.chunk = applyStride(fullChunk, this.downsample.stride);
     return {
       totalPointCount: this.chunk.pointCount,

@@ -41,7 +41,7 @@
  *     instead of scanned out of the source buffer.
  */
 
-import { getAllAttributesForEntity, type IfcDataStore } from '@ifc-lite/parser';
+import { getAttributeNamesAcrossSchemas, type IfcDataStore } from '@ifc-lite/parser';
 import {
   OVERLAY_BYTE_OFFSET,
   type IfcAttributeValue,
@@ -81,6 +81,60 @@ export interface EffectiveEntityIndex extends CompleteEntityIndex {
    *  the id has source bytes to scan instead. */
   refsOf(id: number): readonly number[] | undefined;
   /**
+   * The same references as {@link refsOf}, GROUPED by authored attribute
+   * instead of flattened — a SET/LIST-valued attribute (`RelatedObjects`, …)
+   * as a nested array of ids, a single-valued attribute (`RelatingType`, …)
+   * as a bare id. `refsOf`'s flat list cannot tell those apart, and the
+   * closure walk needs to: it decides whether an overlay-created `IFCREL*`
+   * may bridge into what it references using the exact same list-vs-bare
+   * distinction `filterHiddenRefsFromRelationshipLine` makes for a
+   * source-backed relationship's OUTPUT line (see
+   * `relationshipRefsSurviveExclusion` in `reference-collector.ts`) — without
+   * this, the authored path could only ask "is EVERY id excluded", which
+   * wrongly permits bridging when a relationship's sole SUBJECT is hidden but
+   * its unrelated TARGET (a pset id, never itself excludable) survives (#2548).
+   * Optional: undefined for the id, or when the caller has no overlay.
+   *
+   * `sourceGroups` is the SAME grouped shape, already parsed from a
+   * SOURCE-backed entity's raw STEP line by the caller (`reference-collector.ts`
+   * has no other way to get one — this class has no bytes to read). When `id`
+   * is source-backed (not overlay-created) and carries a queued positional or
+   * named-attribute mutation, this splices that mutation's EFFECTIVE value in
+   * at the right group before returning — otherwise the caller's raw-text
+   * parse is stale where an edit retargeted a reference the source bytes
+   * never show (#2637 follow-up). Ignored (and safe to omit) for an
+   * overlay-created id, which always has its own authored payload to start
+   * from instead.
+   */
+  refGroupsOf?(
+    id: number,
+    sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
+  ): ReadonlyArray<number | readonly number[]> | undefined;
+  /**
+   * Cheap existence check — no decode, no parse — for "does this SOURCE-backed
+   * id carry ANY queued positional or named-attribute mutation at all". False
+   * for an overlay-created id (its refs come from {@link refsOf} instead) and
+   * for a tombstoned one.
+   *
+   * `collectReferencedEntityIds` in `reference-collector.ts` only pays for
+   * decoding a SOURCE-backed entity's STEP line and re-deriving mutation-aware
+   * groups (via {@link refGroupsOf}) on the `IFCREL*` bridge path, because
+   * that path already needs the parse for its own bridge decision regardless
+   * of whether a mutation exists. An ordinary PRODUCT never takes that path,
+   * so a plain `setPositionalAttribute`/`setAttribute` retargeting one of its
+   * references onto an id the source bytes never named was invisible to the
+   * closure — the byte scan of the original bytes has no way to see it — while
+   * emission (which does apply the mutation) still wrote the new id into the
+   * output line: a dangling ref with no `visibleOnly` involved (#2637
+   * follow-up, round 6: found via a retype-out-of-`IFCREL*` fused with a
+   * same-record retarget, but reproduces identically with NO retype at all —
+   * it is a general gap in the closure, not a retype-specific one). This
+   * method exists so the walk can gate the SAME per-entity decode/parse cost
+   * behind a cheap map lookup for every OTHER entity type too, instead of
+   * paying it unconditionally for every source-backed entity in the file.
+   */
+  hasSourceMutation?(id: number): boolean;
+  /**
    * The effective `#id` value of ONE NAMED attribute of an OVERLAY-created
    * record, or undefined when the id was not created by this overlay, the
    * attribute carries no reference, or the record has since been tombstoned.
@@ -109,6 +163,18 @@ export interface EffectiveEntityIndex extends CompleteEntityIndex {
  * overlay that has queued nothing structural (no creates, no deletes, no
  * retypes) takes the same fast path: attribute and property edits do not change
  * which entities exist or what class they are.
+ *
+ * "Fast path" means `byType`/`size`/`get`/`has` stay pointer-identical to the
+ * source view's own — no id's existence or class can differ when nothing
+ * structural is queued, so there is nothing there for a wrapper to change.
+ * `refGroupsOf` is a different question: a source-backed `IFCREL*`'s
+ * reference can absolutely differ from its raw bytes when the ONLY thing
+ * queued is a positional/named-attribute edit retargeting it — the exact
+ * case with no create, delete or retype to trigger the `OverlayIndex` branch
+ * below. `sourceOnly` still answers that one from `view` when a view is
+ * available, so a `visibleOnly` closure walk sees it even on this fast path
+ * (#2637 follow-up: CodeRabbit found the closure could keep judging such an
+ * id by its stale, pre-edit reference).
  */
 export function getEffectiveEntityIndex(
   dataStore: IfcDataStore,
@@ -128,7 +194,7 @@ export function getEffectiveEntityIndex(
     view && typeof view.getTypeMutations === 'function' ? view.getTypeMutations() : EMPTY_RETYPES;
 
   if (created.size === 0 && tombstones.size === 0 && retypes.size === 0) {
-    return sourceOnly(base, dataStore.entityIndex.byType);
+    return sourceOnly(base, dataStore.entityIndex.byType, view);
   }
   return new OverlayIndex(base, dataStore.entityIndex.byType, view!, created, tombstones, retypes);
 }
@@ -136,9 +202,32 @@ export function getEffectiveEntityIndex(
 const EMPTY_IDS: ReadonlySet<number> = new Set<number>();
 const EMPTY_RETYPES: ReadonlyMap<number, { newType: string }> = new Map();
 
+/** Shared by {@link sourceOnly} and {@link OverlayIndex}'s `hasSourceMutation` —
+ *  see that method's doc on `EffectiveEntityIndex` for why this needs to stay
+ *  a cheap map-lookup-only check with no decode or parse. */
+function hasQueuedSourceMutation(view: MutablePropertyView, id: number): boolean {
+  const positional = typeof view.getPositionalMutationsForEntity === 'function'
+    ? view.getPositionalMutationsForEntity(id)
+    : null;
+  if (positional && positional.size > 0) return true;
+  const attributeMutations = typeof view.getAttributeMutationsForEntity === 'function'
+    ? view.getAttributeMutationsForEntity(id)
+    : [];
+  return attributeMutations.length > 0;
+}
+
 /** The no-overlay answer: the source view, with the extra questions answered
- *  the only way the buffer can answer them. */
-function sourceOnly(base: CompleteEntityIndex, byType: Map<string, number[]>): EffectiveEntityIndex {
+ *  the only way the buffer can answer them.
+ *
+ *  `view` is still threaded through (not discarded, despite there being no
+ *  create/delete/retype to react to) purely so `refGroupsOf` can resolve a
+ *  source-backed id's positional/named-attribute mutations — see this
+ *  function's own doc for why that is a real, reachable gap otherwise. */
+function sourceOnly(
+  base: CompleteEntityIndex,
+  byType: Map<string, number[]>,
+  view: MutablePropertyView | null,
+): EffectiveEntityIndex {
   return {
     get: (id) => base.get(id),
     has: (id) => base.has(id),
@@ -151,6 +240,10 @@ function sourceOnly(base: CompleteEntityIndex, byType: Map<string, number[]>): E
     isOverlayCreated: () => false,
     isDeleted: () => false,
     refsOf: () => undefined,
+    refGroupsOf: view
+      ? (id, sourceGroups) => sourceBackedRefGroups(view, base, EMPTY_RETYPES, id, sourceGroups)
+      : undefined,
+    hasSourceMutation: view ? (id) => hasQueuedSourceMutation(view, id) : undefined,
     effectiveAttributeRef: () => undefined,
     byType,
   };
@@ -259,6 +352,75 @@ class OverlayIndex implements EffectiveEntityIndex {
     return out;
   }
 
+  /**
+   * See the interface doc: unlike {@link refsOf} (a deliberate UNION — see its
+   * own doc for why over-inclusion is harmless there), this is the EFFECTIVE
+   * groups: an override REPLACES its slot's group rather than adding a second
+   * one alongside it. `refsOf`'s union is safe only for a consumer that treats
+   * extra ids as harmless closure growth; `relationshipRefsSurviveExclusion`
+   * is a BLOCKING predicate, so a stale, since-superseded group (e.g. a
+   * `RelatedObjects` list retargeted away from a hidden entity by a later
+   * `setPositionalAttribute`) must not still be able to veto bridging on the
+   * value it was overridden away from.
+   *
+   * Resolved per authored attribute SLOT, same precedence
+   * {@link effectiveAttributeRef} uses for one named attribute: a
+   * `getAttributeMutationsForEntity` override (most specific — names the slot
+   * by schema attribute name) wins, else a `getPositionalMutationsForEntity`
+   * override at that index, else the creation payload's own value at that
+   * index. Not cached: only called for `IFCREL*` entities, and only when a
+   * `visibleOnly`/deletion filter is active, so the extra pass is rare.
+   */
+  refGroupsOf(
+    id: number,
+    sourceGroups?: ReadonlyArray<number | readonly number[] | undefined>,
+  ): ReadonlyArray<number | readonly number[]> | undefined {
+    const entity = this.created.get(id);
+    if (entity) {
+      if (this.tombstones.has(id)) return undefined;
+
+      const effective: Array<IfcAttributeValue | string | undefined> = entity.attributes.slice();
+
+      if (typeof this.view.getPositionalMutationsForEntity === 'function') {
+        const positional = this.view.getPositionalMutationsForEntity(id);
+        if (positional) for (const [index, value] of positional) effective[index] = value;
+      }
+
+      if (typeof this.view.getAttributeMutationsForEntity === 'function') {
+        const effectiveType = this.retypes.get(id)?.newType ?? entity.type;
+        // Cross-schema, not the IFC4 pin — see `applyAttributeMutations` in
+        // `step-exporter.ts` for why: an IFC4X3-only class resolves no slots
+        // under the pin, so a named override on one was silently ignored
+        // here while emission (which already uses this resolver) applied it,
+        // leaving `refGroupsOf` answering from the STALE, pre-override value
+        // (#2637 follow-up).
+        const names = getAttributeNamesAcrossSchemas(effectiveType);
+        for (const { name, value } of this.view.getAttributeMutationsForEntity(id)) {
+          const index = names.indexOf(name);
+          if (index >= 0) effective[index] = value;
+        }
+      }
+
+      return groupsFromAttributeValues(effective);
+    }
+
+    // Source-backed: this class has no parsed attribute list of its own —
+    // delegate to the shared resolver both this branch and `sourceOnly`'s
+    // wiring use, since a source-backed id's mutations answer identically
+    // either way (structural overlay activity elsewhere in the model has no
+    // bearing on THIS id's own positional/attribute edits).
+    if (this.tombstones.has(id)) return undefined;
+    return sourceBackedRefGroups(this.view, this.base, this.retypes, id, sourceGroups);
+  }
+
+  hasSourceMutation(id: number): boolean {
+    // Overlay-created ids answer through `refsOf` instead — see that method's
+    // own doc for why its UNION is the right answer there. A tombstoned id
+    // has no line to walk into regardless of what it once carried.
+    if (this.created.has(id) || this.tombstones.has(id)) return false;
+    return hasQueuedSourceMutation(this.view, id);
+  }
+
   effectiveAttributeRef(id: number, attrName: string): number | undefined {
     const entity = this.created.get(id);
     if (!entity || this.tombstones.has(id)) return undefined;
@@ -274,9 +436,10 @@ class OverlayIndex implements EffectiveEntityIndex {
 
     // No named override — fall back to the positional slot the schema says
     // this attribute lives at, so a positional mutation (or the untouched
-    // creation payload) still answers correctly.
+    // creation payload) still answers correctly. Cross-schema resolver — see
+    // the identical note in `refGroupsOf` above.
     const effectiveType = this.retypes.get(id)?.newType ?? entity.type;
-    const index = getAllAttributesForEntity(effectiveType).findIndex((attr) => attr.name === attrName);
+    const index = getAttributeNamesAcrossSchemas(effectiveType).indexOf(attrName);
     if (index < 0) return undefined;
 
     if (typeof this.view.getPositionalMutationsForEntity === 'function') {
@@ -349,4 +512,81 @@ export function authoredEntityRefs(value: IfcAttributeValue | string | undefined
   const digits = trimmed.slice(1);
   const id = Number.parseInt(digits, 10);
   return Number.isInteger(id) && id > 0 && String(id) === digits ? [id] : [];
+}
+
+/** One authored attribute's contribution to `refGroupsOf`'s grouped shape: a
+ *  bare id for a single-valued attribute, an array (even an empty one, once
+ *  it's known to be list-valued) for a SET/LIST, or `undefined` when the
+ *  value carries no reference at all — matching `relationshipRefsSurviveExclusion`'s
+ *  own "no group == does not participate" reading. */
+function groupFromAttributeValue(value: IfcAttributeValue | string | undefined): number | readonly number[] | undefined {
+  const ids = authoredEntityRefs(value);
+  if (ids.length === 0) return undefined;
+  return Array.isArray(value) || ids.length > 1 ? ids : ids[0];
+}
+
+/** {@link groupFromAttributeValue}, applied over a whole authored attribute
+ *  list — the shared tail of `refGroupsOf`'s overlay-created branch. */
+function groupsFromAttributeValues(
+  values: ReadonlyArray<IfcAttributeValue | string | undefined>,
+): Array<number | readonly number[]> {
+  const groups: Array<number | readonly number[]> = [];
+  for (const value of values) {
+    const group = groupFromAttributeValue(value);
+    if (group !== undefined) groups.push(group);
+  }
+  return groups;
+}
+
+/**
+ * `refGroupsOf` for a SOURCE-backed id (one with no `NewEntity` creation
+ * payload) — shared by `OverlayIndex.refGroupsOf`'s source-backed branch and
+ * `sourceOnly`'s wiring, since neither has a parsed attribute list of its
+ * own to start from: `sourceGroups`, already parsed from the raw STEP line
+ * by the caller (`reference-collector.ts`), is the only starting point
+ * either has. Splices in a queued positional or named-attribute mutation at
+ * the position it names, same precedence as the overlay-created branch: a
+ * `getAttributeMutationsForEntity` override (resolved to a slot via
+ * {@link getAttributeNamesAcrossSchemas}, cross-schema for the identical
+ * reason `applyAttributeMutations` in `step-exporter.ts` is) wins, else a
+ * `getPositionalMutationsForEntity` override at that index, else the raw
+ * text's own group stands.
+ *
+ * Returns undefined — not `sourceGroups` verbatim — when `id` has no
+ * mutation at all (the overwhelmingly common case for an `IFCREL*` entity),
+ * so a caller with no override to apply keeps using its own
+ * already-computed answer instead of paying for a copy that changes nothing.
+ */
+function sourceBackedRefGroups(
+  view: MutablePropertyView,
+  base: CompleteEntityIndex,
+  retypes: ReadonlyMap<number, { newType: string }>,
+  id: number,
+  sourceGroups: ReadonlyArray<number | readonly number[] | undefined> | undefined,
+): ReadonlyArray<number | readonly number[]> | undefined {
+  if (!sourceGroups) return undefined;
+  const positional = typeof view.getPositionalMutationsForEntity === 'function'
+    ? view.getPositionalMutationsForEntity(id)
+    : null;
+  const attributeMutations = typeof view.getAttributeMutationsForEntity === 'function'
+    ? view.getAttributeMutationsForEntity(id)
+    : [];
+  if ((!positional || positional.size === 0) && attributeMutations.length === 0) return undefined;
+
+  const record = base.get(id);
+  const effective: Array<number | readonly number[] | undefined> = sourceGroups.slice();
+  if (positional) {
+    for (const [index, value] of positional) effective[index] = groupFromAttributeValue(value);
+  }
+  if (attributeMutations.length > 0 && record) {
+    const effectiveType = retypes.get(id)?.newType ?? record.type;
+    const names = getAttributeNamesAcrossSchemas(effectiveType);
+    for (const { name, value } of attributeMutations) {
+      const index = names.indexOf(name);
+      if (index >= 0) effective[index] = groupFromAttributeValue(value);
+    }
+  }
+  const out: Array<number | readonly number[]> = [];
+  for (const group of effective) if (group !== undefined) out.push(group);
+  return out;
 }

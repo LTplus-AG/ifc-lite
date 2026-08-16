@@ -108,6 +108,36 @@ describe('decodeAsciiPoints — XYZ', () => {
   });
 });
 
+describe('decodeAsciiPoints — originOffset (extends #1804 to PTS/XYZ)', () => {
+  it('subtracts originOffset in f64 before narrowing to f32', () => {
+    // True coordinate: (500_012.345, 5_000_006.789, 104.321) — survey/
+    // GNSS scale, the exact case PTS/XYZ files carry routinely.
+    const buf = enc.encode('500012.345 5000006.789 104.321\n');
+
+    const withoutOffset = decodeAsciiPoints(buf, 'xyz');
+    // f32 cast of a ~5e6-magnitude value cannot exactly represent the
+    // millimetre-level input.
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodeAsciiPoints(buf, 'xyz', [500_000, 5_000_000, 100]);
+    // Residual is small, so f32 preserves it to micrometre precision —
+    // impossible if the subtraction happened after narrowing to f32 first.
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+    expect(withOffset.bbox.min[0]).toBeCloseTo(12.345, 6);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const buf = enc.encode('1.5 -2.5 3.5\n4 5 6\n');
+    const a = decodeAsciiPoints(buf, 'xyz');
+    const b = decodeAsciiPoints(buf, 'xyz', undefined);
+    expect(Array.from(a.positions)).toEqual(Array.from(b.positions));
+    expect(a.bbox).toEqual(b.bbox);
+  });
+});
+
 describe('decodeAsciiPoints — PTS', () => {
   it('respects header count + 7-column layout', () => {
     // Standard PTS: count line, then X Y Z I(0..255) R G B(0..255)

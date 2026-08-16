@@ -74,6 +74,61 @@ describe('decodePcd ASCII', () => {
   });
 });
 
+describe('decodePcd originOffset (extends #1804 to PCD)', () => {
+  it('subtracts originOffset in f64 before narrowing to f32 — ascii', () => {
+    const buf = buildAsciiPcd([[500012.345, 5000006.789, 104.321]]);
+    const withoutOffset = decodePcd(buf);
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodePcd(buf, [500_000, 5_000_000, 100]);
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+  });
+
+  it('subtracts originOffset in f64 before narrowing to f32 — binary', () => {
+    const header = new TextEncoder().encode([
+      `# .PCD test`,
+      `VERSION 0.7`,
+      `FIELDS x y z`,
+      `SIZE 8 8 8`,
+      `TYPE F F F`,
+      `COUNT 1 1 1`,
+      `WIDTH 1`,
+      `HEIGHT 1`,
+      `POINTS 1`,
+      `DATA binary`,
+      '',
+    ].join('\n'));
+    const body = new ArrayBuffer(24);
+    const view = new DataView(body);
+    view.setFloat64(0, 500012.345, true);
+    view.setFloat64(8, 5000006.789, true);
+    view.setFloat64(16, 104.321, true);
+    const merged = new Uint8Array(header.length + body.byteLength);
+    merged.set(header, 0);
+    merged.set(new Uint8Array(body), header.length);
+
+    const withoutOffset = decodePcd(merged);
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodePcd(merged, [500_000, 5_000_000, 100]);
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const buf = buildAsciiPcd([[1, 2, 3], [-4, -5, -6]]);
+    const a = decodePcd(buf);
+    const b = decodePcd(buf, undefined);
+    expect(Array.from(a.positions)).toEqual(Array.from(b.positions));
+    expect(a.bbox).toEqual(b.bbox);
+  });
+});
+
 describe('decodePcd binary', () => {
   it('round-trips three points', () => {
     // Build a binary PCD by hand: header + 3 * 12 bytes of LE float32

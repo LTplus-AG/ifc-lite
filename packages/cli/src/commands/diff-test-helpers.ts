@@ -205,6 +205,65 @@ END-ISO-10303-21;
 `;
 }
 
+/**
+ * The infrastructure-revision fixture: one IFC4X3 model in two revisions,
+ * carrying the four edit shapes an externally-corroborated comparison of a real
+ * infrastructure certification sample pair found, and nothing else.
+ *
+ * Each element is one shape, so a miss names itself:
+ *
+ * - `COUR` (`IfcCourse`) — **`PredefinedType` cleared** (`.PAVING.` → `$`) and
+ *   nothing else touched. This is the shape that dominated the real pair (19 of
+ *   its 23 modified products), and the one the IFC4 codegen pin hides: an
+ *   `IfcCourse` is IFC4X3-only, so a `PredefinedType` read that names attributes
+ *   through the pin finds no attribute list at all and reports the element
+ *   unchanged. See {@link railTypeModel} for the same defect on `Tag`.
+ * - `PAVE` (`IfcPavement`) — byte-identical in both revisions. The bounding
+ *   control on the other side: widening what the fingerprint can see must not
+ *   start reporting an untouched IFC4X3 element as modified.
+ * - `PROX` (`IfcBuildingElementProxy` → `IfcGeographicElement`) —
+ *   **reclassified**, with a new Description and ObjectType, keeping its
+ *   GlobalId. Four of the real pair's 23 were exactly this.
+ * - `KERB` (`IfcKerb`) — deleted. `SIGN` (`IfcSignal`) — added.
+ *
+ * `PROX` is deliberately an IFC4 class in both revisions: it proves the
+ * comparison still sees a class/description/object-type edit through the pinned
+ * path, so a failure on `COUR` alone localises to the attribute-name lookup
+ * rather than to the fingerprint or the engine.
+ */
+export function infraRevisionModel(revision: 1 | 2): string {
+  const head = revision === 2;
+  return `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2026',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('${guid('PROJ')}',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#50= IFCCOURSE('${guid('COUR')}',$,'Base course',$,$,#40,$,'c1',${head ? '$' : '.PAVING.'});
+#51= IFCPAVEMENT('${guid('PAVE')}',$,'Wearing course',$,$,#40,$,'p1',.FLEXIBLE.);
+${
+  head
+    ? `#52= IFCGEOGRAPHICELEMENT('${guid('PROX')}',$,'Marker','terrain marker','geographic',#40,$,'x1',.TERRAIN.);`
+    : `#52= IFCBUILDINGELEMENTPROXY('${guid('PROX')}',$,'Marker',$,$,#40,$,'x1',.ELEMENT.);`
+}
+${
+  head
+    ? `#53= IFCSIGNAL('${guid('SIGN')}',$,'Signal',$,$,#40,$,'s1',.VISUAL.);`
+    : `#53= IFCKERB('${guid('KERB')}',$,'Kerb',$,$,#40,$,'k1',.USERDEFINED.);`
+}
+ENDSEC;
+END-ISO-10303-21;
+`;
+}
+
 export const BASE_MODEL = model(guid('OLDA'), guid('OLDB'));
 /** Same building, re-exported: the two walls carry brand-new GlobalIds. */
 export const HEAD_MODEL = model(guid('NEWA'), guid('NEWB'));

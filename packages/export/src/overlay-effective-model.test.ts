@@ -369,6 +369,178 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
     expect(out.danglingRefs()).toEqual([]);
   });
 
+  // Coverage gap flagged on #2637: the retype-INTO-IFCREL test above combines
+  // a retype with a from-scratch positional rewrite of BOTH class-specific
+  // slots, never with round 5's own gap shape — a mutation that retargets
+  // ONE relationship attribute onto an entity nothing else in the file names.
+  // A record retyped into `IFCREL*` has no ORIGINAL `IFCREL*` bytes to parse
+  // (its source text is still the OLD class's), so `sourceRelGroups` here
+  // comes from parsing the STALE (pre-retype) text and then splicing the
+  // queued override on top via `refGroupsOf` → `sourceBackedRefGroups` — a
+  // different code path than an entity that was ALWAYS `IFCREL*` takes, and
+  // one round 5 never exercised on its own.
+  it('does not leave a dangling ref when a SOURCE record retyped INTO IfcRelDefinesByProperties is also retargeted onto an otherwise-unreferenced entity', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_TYPE_ID, 'IfcRelDefinesByProperties')).toBe(true);
+    // Reachable only via the retype + retarget below — nothing else in the
+    // base fixture names it.
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('retypedpset'), null, 'Pset_AfterRetype', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_TYPE_ID, 4, [`#${EXISTING_WALL_ID}`]);
+    editor.setAttribute(EXISTING_TYPE_ID, 'RelatingPropertyDefinition', `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.typeOf(EXISTING_TYPE_ID)).toBe('IFCRELDEFINESBYPROPERTIES');
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  // The other direction: a record retyped OUT of `IFCREL*`. `getVisibleEntityIds`
+  // and `step-exporter.ts`'s emission gate both classify by the EFFECTIVE
+  // type, so once #EXISTING_REL_ID stops being an `IFCREL*` class it must (a)
+  // stop being an unconditional root — it is now subject to ordinary
+  // PRODUCT_TYPES visibility like anything else classified `IfcWall` — and
+  // (b) stop having `filterHiddenRefsFromRelationshipLine` applied to its own
+  // line. Hiding it directly is the check that (a) actually happens: a stale
+  // classification that still treated it as `IFCREL*` would keep it in the
+  // file regardless of `hiddenEntityIds`.
+  it('reclassifies a SOURCE record retyped OUT of IfcRelDefinesByProperties as an ordinary product for visibility', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_REL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    // Hidden — proves it is no longer treated as an unconditional IFCREL root.
+    expect(out.typeOf(EXISTING_REL_ID)).toBeNull();
+    // Unaffected: the wall is still contained via the SEPARATE #9
+    // IfcRelContainedInSpatialStructure, not through the retyped record.
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('control: a SOURCE record retyped OUT of IfcRelDefinesByProperties ships normally when left visible', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_REL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  // Sixth layer on #2637 (round 6): the retype-OUT test above and every
+  // retarget test elsewhere touch DIFFERENT records — nothing exercised
+  // retype-OUT and a retarget mutation on the SAME id in the SAME export.
+  // Probing that combination surfaced a REAL dangling ref: once a record is
+  // retyped OUT of `IFCREL*`, `collectReferencedEntityIds` stops treating it
+  // as a relationship (correctly — see the test above), but nothing then
+  // picks up ITS OWN queued mutation either. `sourceRelGroups` (the
+  // mutation-aware answer round 5 built) is only ever computed on the
+  // `IFCREL*` bridge path, so an ordinary product's retargeted reference fell
+  // through to a plain byte scan of the STALE original bytes — which never
+  // named the new target — while emission (which does apply the mutation)
+  // wrote the retargeted id into the output line anyway: a dangling ref, no
+  // `visibleOnly` filtering even involved. Confirmed this reproduces with NO
+  // retype at all (see the control below): the gap is general, not
+  // retype-specific — retype-out just happened to be the shape that found
+  // it. Fixed by extending the same mutation-aware-groups mechanism to any
+  // source-backed entity with a queued mutation (`hasSourceMutation` /
+  // `relationshipRefGroupsFromSourceLine`, `reference-collector.ts`), gated
+  // on a cheap check so an unmutated entity pays no parse cost.
+  it('does not leave a dangling ref when a record retyped OUT of IfcRelDefinesByProperties is ALSO retargeted on the SAME id', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+    // Reachable only via the retarget below — nothing else in the base
+    // fixture names it.
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('fusedpset'), null, 'Pset_Fused', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_REL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_REL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('excludes the SAME record’s retargeted reference when it is hidden, still classified as an ordinary product', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    expect(editor.setEntityType(EXISTING_REL_ID, 'IfcWall')).toBe(true);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('fusedhid'), null, 'Pset_FusedHidden', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_REL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([EXISTING_REL_ID]),
+    });
+    const out = await reparse(result.content);
+
+    // Hidden — proves it is still classified as an ordinary product (not an
+    // unconditional IFCREL root) even with a mutation queued on it.
+    expect(out.typeOf(EXISTING_REL_ID)).toBeNull();
+    // Reachable only through the hidden record, so it must not ship either.
+    expect(out.typeOf(pset.expressId)).toBeNull();
+    expect(out.typeOf(EXISTING_WALL_ID)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  // Control proving the gap above is general, not retype-specific: the SAME
+  // retarget shape on a record that was ALWAYS `IfcWall` (never touched
+  // `IFCREL*` at all) reproduced the identical dangling ref before the fix.
+  it('does not leave a dangling ref when an ordinary (never-retyped) product’s reference is retargeted onto a brand-new entity', async () => {
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('ctrlfusedpset'), null, 'Pset_CtrlFused', null, [],
+    ]);
+    editor.setPositionalAttribute(EXISTING_WALL_ID, 5, `#${pset.expressId}`);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(EXISTING_WALL_ID)).toBe('IFCWALL');
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
   it('emits no pset for a host the closure excluded', async () => {
     const store = await parseBase();
     const { view, editor } = newView(store);
@@ -399,6 +571,71 @@ describe('visibleOnly export sees overlay-created entities (#2012 instance 4)', 
       (id) => out.attributes(id)?.[2],
     );
     expect(psetNames).not.toContain('Pset_Fresh');
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('drops an overlay-created relationship’s pset when its sole subject is hidden (#2548 authored-path gap)', async () => {
+    // `getNewEntities()` (raw `editor.addEntity`, not `addPropertySet`'s
+    // `newPsets` path) is the branch `collectReferencedEntityIds` reads via
+    // `refsOf`/`refGroupsOf` rather than by scanning source bytes. The
+    // exclusion check added for #2548 originally landed only in the
+    // byte-scanned branch — an overlay-created `IfcRelDefinesByProperties`
+    // naming solely a hidden product still bridged into its pset, which is
+    // never itself excludable (not a product), and shipped as an orphan line.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const door = editor.addEntity('IfcWall', [
+      guid('door'), null, 'Hidden Door', null, null, null, null, null, null,
+    ]);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('secretpset'), null, 'Pset_Confidential', null, [],
+    ]);
+    const rel = editor.addEntity('IfcRelDefinesByProperties', [
+      guid('secretrel'), null, null, null, [`#${door.expressId}`], `#${pset.expressId}`,
+    ]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>([door.expressId]),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(door.expressId)).toBeNull();
+    // The relationship's own line: sole subject hidden, so the list would be
+    // emptied and the whole line withheld.
+    expect(out.typeOf(rel.expressId)).toBeNull();
+    // The leak: the pset is reachable ONLY through the withheld relationship,
+    // so it must not survive as an orphan the file no longer names.
+    expect(out.typeOf(pset.expressId)).toBeNull();
+    expect(out.danglingRefs()).toEqual([]);
+  });
+
+  it('control: keeps an overlay-created relationship’s pset when its subject is visible', async () => {
+    // Proves the assertion above is driven by the hidden subject, not by
+    // overlay-created psets being unconditionally dropped.
+    const store = await parseBase();
+    const { view, editor } = newView(store);
+    const door = editor.addEntity('IfcWall', [
+      guid('door'), null, 'Visible Door', null, null, null, null, null, null,
+    ]);
+    const pset = editor.addEntity('IfcPropertySet', [
+      guid('opensetx'), null, 'Pset_Open', null, [],
+    ]);
+    const rel = editor.addEntity('IfcRelDefinesByProperties', [
+      guid('openrelx'), null, null, null, [`#${door.expressId}`], `#${pset.expressId}`,
+    ]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set<number>(),
+    });
+    const out = await reparse(result.content);
+
+    expect(out.typeOf(door.expressId)).not.toBeNull();
+    expect(out.typeOf(rel.expressId)).not.toBeNull();
+    expect(out.typeOf(pset.expressId)).not.toBeNull();
     expect(out.danglingRefs()).toEqual([]);
   });
 });

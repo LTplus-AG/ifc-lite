@@ -88,6 +88,42 @@ test('multiple recognised violations alone all count', () => {
   assert.deepEqual(classifyTscOutput(output), { kind: 'violations', count: 2 });
 });
 
+// ---- `TS####`-shaped text that is NOT a diagnostic (PR #2663 review).
+//
+// The generic "is there a diagnostic here at all" scan used to be a bare
+// /TS\d{4}/ over the whole output, so any `TS####` sequence anywhere counted
+// as a diagnostic — including one sitting inside a message or a file path.
+// The identifier name quoted back by TS6133 is the everyday case: a variable
+// named `TS1234` made its own perfectly-recognised diagnostic come back as
+// `unparseable`, failing the whole gate with "this check's parsing is broken"
+// over a correctly parsed violation. The strings below are verbatim output
+// from the pinned TypeScript 6.0.3 under `--pretty false`.
+
+test('an unused identifier whose NAME looks like a TS code is one violation, not unparseable', () => {
+  // Verbatim tsc 6.0.3 output for `const TS1234 = 1;` under --noUnusedLocals.
+  const output = "src/a.ts(2,9): error TS6133: 'TS1234' is declared but its value is never read.\n";
+  assert.deepEqual(classifyTscOutput(output), { kind: 'violations', count: 1 });
+});
+
+test('a file PATH containing a TS code does not inflate the diagnostic count', () => {
+  const output = "src/TS1234.ts(1,1): error TS6133: 'x' is declared but its value is never read.\n";
+  assert.deepEqual(classifyTscOutput(output), { kind: 'violations', count: 1 });
+});
+
+test('a compile error quoting a TS code in its message is does-not-compile, not unparseable', () => {
+  const output = 'src/a.ts(1,1): error TS2304: Cannot find name \'TS1234\'.\n';
+  assert.deepEqual(classifyTscOutput(output), { kind: 'does-not-compile', count: 0 });
+});
+
+test('CONTROL: an unrecognised diagnostic is still unparseable when the run also quotes a code', () => {
+  // The fix must not buy its accuracy by loosening the fail-loud branch: a
+  // genuinely unclassifiable diagnostic still has to win, even when the
+  // recognised diagnostic next to it carries TS-code-shaped message text.
+  const output = "src/a.ts(2,9): error TS6133: 'TS1234' is declared but its value is never read.\n"
+    + "src/b.ts(4,3): warning TS6385: 'oldApi' is deprecated.\n";
+  assert.deepEqual(classifyTscOutput(output), { kind: 'unparseable' });
+});
+
 // ---- The truncated / killed-run gap (PR #2663 review).
 //
 // classifyTscOutput only ever sees TEXT. If the spawn itself was cut short —

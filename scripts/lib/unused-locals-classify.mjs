@@ -23,13 +23,54 @@
  * imports were — unmeasurable.
  */
 export const UNUSED_CODES = [6133, 6138, 6192, 6196, 6198, 6199];
-export const UNUSED_RE = new RegExp(`error TS(${UNUSED_CODES.join('|')}):`, 'g');
-export const OTHER_ERROR_RE = new RegExp(`error TS(?!(?:${UNUSED_CODES.join('|')})\\b)\\d+:`, 'g');
-// A generic "this looks like a TS diagnostic" signal, independent of the two
-// regexes above. Used to tell "tsc printed diagnostics we can fully account
-// for" apart from "tsc printed at least one diagnostic we cannot classify",
-// which need different, honest outcomes (see classifyTscOutput below).
-export const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/g;
+
+/**
+ * Matches the HEADER of one tsc diagnostic, and nothing else.
+ *
+ * Under `--pretty false` tsc prints exactly one diagnostic per line, opening
+ * with an optional `file(line,col): ` location prefix, then a severity word,
+ * then the code: `src/a.ts(2,9): error TS6133: …`, or bare `error TS5083: …`
+ * for config/global diagnostics that have no file. Anchoring at `^` (with
+ * `m`) and taking the first severity word on the line means at most one match
+ * per line — the header — so text *inside* a message can never be read as a
+ * second diagnostic.
+ *
+ * That distinction is the whole point (PR #2663 review). The previous generic
+ * scan was a bare `/TS\d{4}/g` over the raw output, which counted any
+ * `TS####` sequence anywhere: `error TS6133: 'TS1234' is declared but its
+ * value is never read.` — verbatim tsc 6.0.3 output for an unused identifier
+ * named `TS1234` — scored two "diagnostics" against one recognised
+ * violation, so classifyTscOutput declared its own parsing broken and failed
+ * the gate over output it had in fact parsed correctly. A file path
+ * containing a code (`src/TS1234.ts`) did the same.
+ *
+ * `severity` is captured as well as the code because a diagnostic that is not
+ * an `error` is one this script cannot classify, and must therefore still
+ * reach the fail-loud branch rather than be quietly dropped.
+ */
+const DIAGNOSTIC_HEADER_RE = /^[^\n]*?(error|warning|message) TS(\d+):/gm;
+
+/**
+ * Tokenise tsc's output into the diagnostics it actually printed, one per
+ * header. Every count classifyTscOutput branches on is derived from this ONE
+ * scan, so "is this a diagnostic at all" and "which kind is it" cannot
+ * disagree about where a diagnostic starts.
+ *
+ * @param {string} output ANSI-stripped tsc output.
+ * @returns {{ total: number, unused: number, otherError: number }}
+ */
+function countDiagnostics(output) {
+  let total = 0;
+  let unused = 0;
+  let otherError = 0;
+  for (const [, severity, code] of output.matchAll(DIAGNOSTIC_HEADER_RE)) {
+    total++;
+    if (severity !== 'error') continue;
+    if (UNUSED_CODES.includes(Number(code))) unused++;
+    else otherError++;
+  }
+  return { total, unused, otherError };
+}
 
 /**
  * Classify one package's captured (ANSI-stripped) tsc output.
@@ -39,32 +80,32 @@ export const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/g;
  *    is not an unused-locals code. The package doesn't compile standalone;
  *    that belongs to the typecheck lane, not here, but it must not silently
  *    drop out of the ratchet either.
- *  - { kind: 'unparseable' } — some text matching the generic `TS####` shape
- *    is not accounted for by either recognised pattern above. This must fire
- *    even when OTHER diagnostics in the SAME output parsed fine: a run with
- *    one recognised violation and one diagnostic this script cannot classify
- *    must not silently report just the recognised one (the mixed-output gap
- *    from the #2634 review — the original check only looked for this when
- *    the recognised count was zero).
- *  - { kind: 'no-diagnostics' } — non-zero exit, but no `TS####`-shaped text
- *    at all: tsc returned non-zero without reporting a diagnostic. (A run
+ *  - { kind: 'unparseable' } — at least one diagnostic header (see
+ *    DIAGNOSTIC_HEADER_RE) is not accounted for by either recognised kind:
+ *    a non-`error` severity, or an `error` whose code the branching above
+ *    doesn't reach. This must fire even when OTHER diagnostics in the SAME
+ *    output parsed fine: a run with one recognised violation and one
+ *    diagnostic this script cannot classify must not silently report just
+ *    the recognised one (the mixed-output gap from the #2634 review — the
+ *    original check only looked for this when the recognised count was zero).
+ *  - { kind: 'no-diagnostics' } — non-zero exit, but no diagnostic header at
+ *    all: tsc returned non-zero without reporting a diagnostic. (A run
  *    that was killed or truncated never reaches here — see
  *    untrustworthyExitReason below, which the caller applies first.)
- *  - { kind: 'violations', count } — every `TS####` in the output is either
+ *  - { kind: 'violations', count } — every diagnostic in the output is either
  *    an unused-locals diagnostic or (impossible here, see does-not-compile
  *    above) another error; count is the number of unused-locals diagnostics.
  */
 export function classifyTscOutput(output) {
-  const unusedCount = output.match(UNUSED_RE)?.length ?? 0;
-  const otherErrorCount = output.match(OTHER_ERROR_RE)?.length ?? 0;
-  const totalDiagnostics = output.match(ANY_TS_DIAGNOSTIC_RE)?.length ?? 0;
+  const { total: totalDiagnostics, unused: unusedCount, otherError: otherErrorCount } =
+    countDiagnostics(output);
 
   // Unparseable is checked FIRST, ahead of does-not-compile: an unrecognised
   // diagnostic sitting alongside a genuine compile error is just as much a
   // parsing failure as one sitting alongside a recognised violation, and
   // folding it into "this package doesn't compile" would report a number this
-  // script cannot actually stand behind. Any leftover `TS####` fails loud,
-  // whatever else matched.
+  // script cannot actually stand behind. Any leftover diagnostic header fails
+  // loud, whatever else matched.
   if (totalDiagnostics > unusedCount + otherErrorCount) {
     return { kind: 'unparseable' };
   }

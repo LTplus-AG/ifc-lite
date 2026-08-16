@@ -169,6 +169,17 @@ export interface ClashSlice {
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
+  /**
+   * Overrides the derived spatial-cluster grouping with an explicit one.
+   * Used only by the duplicate scan (#2530): `setClashResult` just derived
+   * `clashGroups` as spatial clusters over the AABB-overlap pairs, which isn't
+   * the grouping duplicate results should show — the scan replaces it with
+   * coincident SETS right after. A later `setClashClusterEpsilon` or exclusion
+   * change still re-derives spatial clusters from `clashRawResult`, so this
+   * override does not survive those (acceptable: neither applies to a
+   * duplicate-scan result).
+   */
+  setClashGroups: (groups: ClashGroup[] | null) => void;
   bumpClashRunSeq: () => void;
   setClashRunning: (running: boolean) => void;
   setClashError: (error: string | null) => void;
@@ -340,6 +351,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       const state = get();
       set({ clashRawResult: raw, ...deriveFromExclusions(raw, state.clashExclusions, state.clashClusterEpsilon) });
     },
+    setClashGroups: (clashGroups) => set({ clashGroups }),
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),

@@ -10,7 +10,7 @@ import { Renderer } from './index.js';
  * `Renderer.init()` must release what a previous `init()` created (issue #2448).
  *
  * `init()` assigns a fresh `RenderPipeline`, `Picker`, `PostProcessor`,
- * `PointCloudRenderer`, `DeviationPipeline`, `EdlPass` and overlay layer over
+ * `PointCloudRenderer`, `DeviationComputer`, `EdlPass` and overlay layer over
  * whatever the fields already hold. Its own comment advertises a
  * `destroy()` + `init()` re-init flow, so the obvious device-loss auto-recovery
  * — call `init()` on the live instance — orphans every one of them, two GPU
@@ -67,7 +67,11 @@ function makeInitialisedRenderer(): { renderer: Renderer; tomb: Tomb } {
     poke(renderer, 'edlPass', stub('edlPass'));
     poke(renderer, 'skyPass', stub('skyPass'));
     poke(renderer, 'pointCloudRenderer', stub('pointCloudRenderer'));
-    poke(renderer, 'deviationPipeline', stub('deviationPipeline'));
+    // `deviationComputer` is the `DeviationComputer` collaborator (#2425)
+    // that now owns the pipeline + BVH cache; `teardown()` calls its
+    // `destroy()` unconditionally, so stubbing the whole field (like every
+    // other collaborator here) still exercises the re-init release path.
+    poke(renderer, 'deviationComputer', stub('deviationComputer'));
 
     // The overlay layer owns its GPU objects behind RendererOverlays.destroy().
     const overlays = read(renderer, 'overlays') as Record<string, unknown>;
@@ -174,7 +178,7 @@ describe('a second init() releases the first init()\'s GPU objects (#2448)', () 
             'edlPass',
             'skyPass',
             'pointCloudRenderer',
-            'deviationPipeline',
+            'deviationComputer',
         ]) {
             assert.ok(tomb.destroyed.includes(name), `${name} was orphaned by the re-init`);
         }

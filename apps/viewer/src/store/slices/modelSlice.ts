@@ -17,6 +17,10 @@ import { stringToEntityRef } from '../types.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
+import {
+  endClashScenePresentation,
+  type ClashSceneTeardown,
+} from '@/lib/clash/visibility-ownership';
 
 /**
  * Cross-slice fields the model actions write to. `ifcDataStore` and
@@ -146,6 +150,14 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
   }),
 
   removeModel: (modelId) => {
+    // A removal that removes nothing must do nothing. `syncSourceModel` and the
+    // collab room teardown can both re-enter with an id that has already gone,
+    // and every cleanup below is keyed to THIS model — but the clash teardown
+    // is not, so a stale id used to drop the user's focused clash, its solid
+    // and its ghost as the side effect of a no-op (#2654 second review). Same
+    // shape, and the same guard, as `updateModel` above.
+    if (!get().models.has(modelId)) return;
+
     // Discard the removed model's mutation footprint before dropping it.
     // Otherwise its mutation view, georef edits, undo/redo stacks and any
     // schedule it owns linger in the store: getModifiedEntityCount keeps
@@ -169,6 +181,42 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // longer exists and the tag map cannot grow without bound.
     cross.removeSourceTag?.(modelId);
 
+    // Drop the focused-clash PRESENTATION — the A/B pair tint, the contact
+    // marker (lines + AABB box) and the on-demand intersection solid, all of
+    // them geometry drawn into the live scene against a model set that is
+    // changing under it (#2654 review). Via `clearClashFocus`, the clash
+    // slice's single complete spelling of that teardown: clearing the solid and
+    // the selected id by hand — as this did — left `clashContactLines` /
+    // `clashOverlapBox` set, and `Viewport`'s marker effect is keyed on those
+    // alone, so the wireframe stayed drawn over models that were gone.
+    // Unconditional, not "only if the
+    // focused clash names this model": a clash id is `${ruleId} ${lo} ${hi}`
+    // with `lo`/`hi` themselves `model:expressId`, and parsing it here would be
+    // a third, subtly different reading of a key format — the exact hazard the
+    // selection purge below calls out and routes through `stringToEntityRef`
+    // to avoid. Losing a highlight on an unrelated model's removal is cheap;
+    // an orphaned opaque solid over the survivors is not.
+    //
+    // The clash RESULT is deliberately kept: it is a list the user is reading,
+    // not something rendered into the scene, and a federated sibling leaving
+    // does not invalidate the pairs that do not involve it. Full teardown
+    // (`clearAllModels`, `resetViewerState`) drops the result as well.
+    //
+    // `clearClashFocus` bumps `clashSolidRequestSeq`, so an in-flight compute
+    // cannot land after this and repaint the solid. The shared helper adds the
+    // two channels neither clash action can reach — the isolate/ghost channels
+    // `focusClash` also owns (released against `clashVisibilityOwned`, clash's
+    // OWN record, not inferred from the selection), and the colour-override
+    // channel that actually carries the pair tint; see its doc.
+    //
+    // Re-`get()` rather than reusing `cross`: `clearMutations` /
+    // `clearMutationView` / `removeSourceTag` above each commit a new state
+    // object, so a snapshot taken before them would read ownership off a
+    // pre-mutation object. None of them touches a field the helper reads today
+    // — verified against `mutationSlice.clearMutations` — but that is a
+    // property of today's implementations, not of this call site.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'model-removed');
+
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
     // longer exists, and the panel's controlled model picker would bind to a
@@ -182,8 +230,10 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // dangling source), which would keep inflating getModifiedEntityCount with
     // no model left to own it — so drop its generated tasks once the federation
     // is empty.
-    const models = get().models;
-    if (models.size <= 1 && models.has(modelId)) {
+    // `models.has(modelId)` is not re-tested here: the early return at the top
+    // already established it, and nothing between can add or remove a model.
+    // Keeping it read as a live condition when it is a tautology.
+    if (get().models.size <= 1) {
       cross.clearGeneratedSchedule?.();
       // Removing the final model empties the federation. Any surviving report
       // (e.g. one whose stored target is the '__legacy__' sentinel, which can
@@ -281,6 +331,18 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     };
     crossClear.clearIdsValidationReport?.();
     crossClear.clearSourceTags?.();
+    // A clash run describes pairs of elements in models that are all about to
+    // be gone, and the on-demand intersection SOLID is a mesh drawn into the
+    // live scene — `Viewport`'s draw gate reads `clashSelectedId` +
+    // `clashSolidStatus`, neither of which any model-lifecycle path used to
+    // touch (#2654 review). `clearClash` drops both and bumps
+    // `clashSolidRequestSeq`, so an in-flight compute cannot land afterwards.
+    // Presets + settings are workspace prefs and survive, as everywhere else.
+    // Through the shared helper so the isolate/ghost `focusClash` installs and
+    // the pair tint it paints go too — with every model unloaded there is
+    // nothing left for either to refer to, and `resetViewerState`
+    // (store/index.ts) has always nulled the visibility fields here.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
     // Clear the federation registry
     federationRegistry.clear();
     return set({

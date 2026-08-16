@@ -74,7 +74,7 @@ import { serializeNominalValue } from './declared-property-type.js';
  * or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
  * `safeUtf8Decode(source, …)` calls this file used to make: `decodeUtf8` is
  * SAB-safe in exactly the same way, and routing through the accessor is what
- * lets `IfcDataStore.source` change shape without touching these eight reads.
+ * lets `IfcDataStore.source` change shape without touching these four reads.
  */
 function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
   return asSourceBytes(src).decodeUtf8(start, end);
@@ -255,9 +255,17 @@ export class StepExporter {
   private ownerHistoryFallbackRef: string | undefined;
   /** Per-host cache of an element's own OwnerHistory ref (`#id` or null). */
   private ownerHistoryByEntity = new Map<number, string | null>();
+  /**
+   * "Can this record's line actually be read out of this store's source?"
+   * (`source-ref-bounds.ts`, #2491). Built once — `dataStore` is assigned in
+   * the constructor and never reassigned — so the gates outside `export`'s
+   * closure share one predicate instead of rebuilding it per call.
+   */
+  private isReadableSourceRef: ReturnType<typeof createSourceRefReader>;
 
   constructor(dataStore: IfcDataStore, mutationView?: MutablePropertyView) {
     this.dataStore = dataStore;
+    this.isReadableSourceRef = createSourceRefReader(dataStore.source);
     this.mutationView = mutationView || null;
     const maxExisting = this.findMaxExpressId();
     const overlayWatermark = typeof mutationView?.peekNextExpressId === 'function'
@@ -1662,7 +1670,7 @@ export class StepExporter {
     // Readability rather than presence, as everywhere else (#2491). A clamped
     // decode would match nothing here, so this is tidiness rather than a bug —
     // but the gates in this file agree on one predicate now.
-    if (entityRef && createSourceRefReader(this.dataStore.source)(entityRef)) {
+    if (entityRef && this.isReadableSourceRef(entityRef)) {
       const entityText = decodeRange(
         this.dataStore.source,
         entityRef.byteOffset,
@@ -2343,17 +2351,69 @@ export class StepExporter {
   }
 
   /**
-   * Get entity IDs related by IfcRelDefinesByProperties (the related objects)
+   * The source STEP text of an entity's line, or `null` when there are no bytes
+   * to read.
+   *
+   * The byte check is on the RANGE, not on `dataStore.source`. `source` is a
+   * MANDATORY accessor — `EMPTY_SOURCE_BYTES` is how "this model kept no bytes"
+   * is spelled (server-parsed, synthetic, GLB and point-cloud stores all have
+   * one) — so the `!this.dataStore.source` guard the five readers below used to
+   * carry never fired. It was also redundant: a zero-length range decodes to
+   * `''`, which fails every regex those readers run, so they already answered
+   * "nothing" for a sourceless store. Scoping the check to the range is what
+   * makes the guard live without changing a single answer, the same shape and
+   * for the same reason as `reference-collector.ts` (#2339).
+   *
+   * An OVERLAY-created entity never reaches here: every caller resolves its id
+   * through `dataStore.entityIndex.byId`, which holds source records only
+   * (`effective-index.ts` synthesises the overlay refs on its own side and
+   * writes nothing back), so an overlay id is already `undefined` at the
+   * lookup and is served by the callers' documented "not a source record"
+   * path. That is why an early return is safe HERE and is NOT safe at the
+   * visible-only closure in `export` — see the comment there.
+   *
+   * ## Why `isReadableSourceRef` and not `byteLength === 0`
+   *
+   * An out-of-range ref does NOT degrade to "no match" here. `decodeUtf8`
+   * clamps the range it cannot address, and the clamped window is still a
+   * window over real file bytes — so these readers answer from somebody
+   * ELSE's record. `source-ref-bounds.ts` (#2491) carries the measured
+   * account of both shapes and of why "a clamped, empty decode already yields
+   * no match" is false; it is not restated here, because an argument kept in
+   * two files is an argument that has to stay true in two files.
+   *
+   * The consequence specific to THIS site is that the wrong answer is acted
+   * on. `retainSharedAtoms` un-skips every id `getPropertyIdsInSet` returns,
+   * so a member list read out of the wrong record un-skips the wrong atoms;
+   * and the source-iteration pass already refuses to emit a record whose ref
+   * fails `isReadableSourceRef` (see the `continue` in `export`), so before
+   * this gate these readers were making decisions on behalf of a container
+   * that the same export had decided not to write. Gating them on the same
+   * predicate is what makes the two passes agree.
+   *
+   * The degradation is the one the exporter already handles: a record with no
+   * emittable bytes, generating nothing and named by nothing. It costs one
+   * answer that used to be right by luck — an overrunning ref on the file's
+   * LAST record clamps back to exactly that record's text — but that record
+   * is one the emission pass drops anyway, so keeping the answer only kept
+   * the disagreement.
    */
-  private getRelatedEntities(relId: number): number[] {
-    const entityRef = this.dataStore.entityIndex.byId.get(relId);
-    if (!entityRef || !this.dataStore.source) return [];
-
-    const entityText = decodeRange(
+  private entityLineText(entityId: number): string | null {
+    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
+    if (!entityRef || !this.isReadableSourceRef(entityRef)) return null;
+    return decodeRange(
       this.dataStore.source,
       entityRef.byteOffset,
       entityRef.byteOffset + entityRef.byteLength
     );
+  }
+
+  /**
+   * Get entity IDs related by IfcRelDefinesByProperties (the related objects)
+   */
+  private getRelatedEntities(relId: number): number[] {
+    const entityText = this.entityLineText(relId);
+    if (entityText === null) return [];
 
     // Parse IfcRelDefinesByProperties: #ID=IFCRELDEFINESBYPROPERTIES('guid',$,$,$,(#objects),#pset);
     // The 5th argument (index 4) is the list of related objects
@@ -2373,14 +2433,8 @@ export class StepExporter {
    * Get the property set ID from IfcRelDefinesByProperties
    */
   private getRelatedPropertySet(relId: number): number | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(relId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(relId);
+    if (entityText === null) return null;
 
     // Last #ID before the closing );
     const match = entityText.match(/,\s*#(\d+)\s*\)\s*;$/);
@@ -2392,14 +2446,8 @@ export class StepExporter {
    * Get the name of a property set by parsing the entity
    */
   private getPropertySetName(psetId: number): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(psetId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(psetId);
+    if (entityText === null) return null;
 
     // Parse: IFCPROPERTYSET('guid',$,'Name',$,...) - Name is 3rd argument
     const match = entityText.match(/IFCPROPERTYSET\s*\([^,]*,[^,]*,'([^']*)'/i);
@@ -2411,14 +2459,8 @@ export class StepExporter {
    * Get the name of an element quantity set by parsing the entity
    */
   private getElementQuantityName(entityId: number): string | null {
-    const entityRef = this.dataStore.entityIndex.byId.get(entityId);
-    if (!entityRef || !this.dataStore.source) return null;
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(entityId);
+    if (entityText === null) return null;
 
     // Parse: IFCELEMENTQUANTITY('guid',$,'Name',...) - Name is 3rd argument
     const match = entityText.match(/IFCELEMENTQUANTITY\s*\([^,]*,[^,]*,'([^']*)'/i);
@@ -2462,14 +2504,8 @@ export class StepExporter {
   }
 
   private getPropertyIdsInSet(psetId: number): number[] {
-    const entityRef = this.dataStore.entityIndex.byId.get(psetId);
-    if (!entityRef || !this.dataStore.source) return [];
-
-    const entityText = decodeRange(
-      this.dataStore.source,
-      entityRef.byteOffset,
-      entityRef.byteOffset + entityRef.byteLength
-    );
+    const entityText = this.entityLineText(psetId);
+    if (entityText === null) return [];
 
     // Parse: IFCPROPERTYSET(...,(#prop1,#prop2,...)); - Last argument is properties list
     const match = entityText.match(/\(\s*(#[^)]+)\s*\)\s*\)\s*;$/);

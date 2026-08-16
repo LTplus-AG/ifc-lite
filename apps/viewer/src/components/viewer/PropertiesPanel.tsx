@@ -763,12 +763,50 @@ export function PropertiesPanel() {
   // IfcSpatialZone in an IfcZone — e.g. one dwelling, house number or fire
   // compartment). Members are hidden-by-default spatial elements, so flip their
   // visibility toggles on first or the isolated set would render nothing (#1075).
+  //
+  // A member can also be geometry-LESS: an IfcElementAssembly (or an IfcStair /
+  // IfcRoof used as a container) carries no mesh of its own, its geometry hangs
+  // off the IfcRelAggregates parts. The renderer matches `isolatedEntities`
+  // against mesh ids directly, so isolating such a member's bare id contributes
+  // nothing renderable and a group made of assemblies blanked the view -- the
+  // same class #2531 fixed for framing and the class trees, and #2660 fixed for
+  // the advanced filter's "Isolate in 3D". Resolve through the same Viewport
+  // channel those use (`cameraCallbacks.resolveHighlightIds`, backed by
+  // `expandToGeometryBearingIds`).
   const handleIsolateGroupMembers = useCallback((groupId: number) => {
     const dataStore = (model?.ifcDataStore ?? ifcDataStore) as IfcDataStore | null;
     if (!dataStore || !selectedEntity) return;
     const members = extractGroupMembersOnDemand(dataStore, groupId);
     if (members.length === 0) return;
     const globalIds = members.map((m) => toGlobalIdFromModels(models, selectedEntity.modelId, m.id));
+    // The members' own ids are ADDED to what the resolver returns, never
+    // REPLACED by it -- the one place this departs from #2660, which isolates
+    // the resolved set alone. The resolver reads the type-visibility-FILTERED
+    // mesh list (Viewport gets ViewportContainer's `filteredGeometry`), and
+    // this handler exists for zones of hidden-by-default IfcSpaces (#1075):
+    // those members resolve to nothing until the toggles below flip, so
+    // replacing would drop exactly the ids the feature is about. Keeping them
+    // costs nothing -- `isolatedEntities` is a whitelist the renderer matches
+    // mesh ids against, and an id with no mesh simply never matches.
+    //
+    // Both store setters take the Set of this array, so the resolver handing
+    // back a member id it passed through is a harmless duplicate rather than a
+    // second entry. Members ride LAST because `selectedEntityId` is the
+    // ARRAY's final element (selectionSlice.ts): the primary selection stays a
+    // member of the group the user clicked instead of an arbitrary aggregated
+    // part -- the #1133 convention SearchModal.text's commit and
+    // HierarchyPanel's group isolate already follow.
+    //
+    // Residual gap, documented rather than pretended closed: an assembly
+    // member whose parts are THEMSELVES hidden types resolves to nothing and
+    // still contributes no geometry, because the toggles below only flip for
+    // the classes present among the DIRECT members. Closing it properly wants
+    // a resolver that sees UNFILTERED geometry, which is Viewport plumbing
+    // shared with frameSelection and the Search tab.
+    const isolationIds = [
+      ...(cameraCallbacks.resolveHighlightIds?.(globalIds) ?? []),
+      ...globalIds,
+    ];
     // Only turn a hidden class toggle on when the zone actually contains members
     // of that class — otherwise clearing isolation later would surface unrelated
     // spaces/zones the user had deliberately hidden (PR #1094 review).
@@ -778,8 +816,8 @@ export function PropertiesPanel() {
     if (!typeVisibility.spatialZones && members.some((m) => m.type === 'IfcSpatialZone')) {
       toggleTypeVisibility('spatialZones');
     }
-    isolateEntities(globalIds);
-    setSelectedEntityIds(globalIds);
+    isolateEntities(isolationIds);
+    setSelectedEntityIds(isolationIds);
     if (cameraCallbacks.frameSelection) {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }

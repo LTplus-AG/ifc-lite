@@ -50,7 +50,11 @@ function aabbApproxEqual(a: AABB, b: AABB, tol: number): boolean {
  * Two properties make it the tolerance a user can reason about:
  * - **Pure translation gives exactly the translation length.** Every corner
  *   moves by `d`, so the result is `|d|`, whatever the shape and whatever the
- *   direction. That is what makes it isotropic, where IoU was not.
+ *   direction. That is what makes *this metric* isotropic, where IoU was not.
+ *   The gate around it is not: `findDuplicates` preconditions on
+ *   {@link boxesTouch}, so the effective tolerance per axis is
+ *   `min(positionTolerance, extent on that axis)` and an element thinner than
+ *   the tolerance gets less than the full tolerance along its thin axis.
  * - **A size difference counts too.** Concentric boxes whose faces differ by δ
  *   are δ apart, so this is centre distance *and* a shape check in one number,
  *   with no second, dimensionless knob.
@@ -80,13 +84,27 @@ export function boxDistance(a: AABB, b: AABB): number {
  *  neighbour it never intersects. Touching (zero gap) counts, so coincident
  *  planar and point geometry still qualifies.
  *
- *  This deliberately excludes one pair the legacy IoU fallback reported: two
- *  zero-thickness sheets offset a few millimetres ALONG THEIR OWN NORMAL are
- *  disjoint (any gap on that axis fails this test), where the old
- *  `aabbApproxEqual` fallback called boxes within `positionTolerance` per axis
- *  the same place. Same reasoning as the 5 mm fixing: geometry with clear air
- *  between the surfaces is two objects, not one modelled twice. Pinned by the
- *  "does not pair two disjoint sheets offset along their own normal" test. */
+ *  Being a precondition, this — not `positionTolerance` alone — sets the
+ *  EFFECTIVE tolerance: two copies separate once the offset exceeds the
+ *  element's own extent on the offset axis, so the pass matches within
+ *  `min(positionTolerance, extent on that axis)` per axis. Only elements
+ *  thicker than the tolerance get the full tolerance on every axis; a 2 mm
+ *  plate gets 10 mm in its plane and 2 mm along its normal at the 10 mm
+ *  default. The zero-thickness sheet is the limiting case, not the only one.
+ *  The same touch condition is enforced a second time, independently, by the
+ *  sweep's eviction on whichever axis it sweeps (`duplicates.ts`), so widening
+ *  only this test would not make the pass isotropic.
+ *
+ *  That excludes pairs the legacy IoU fallback reported: sheets offset a few
+ *  millimetres ALONG THEIR OWN NORMAL are disjoint (any gap on that axis fails
+ *  this test), where the old `aabbApproxEqual` fallback called boxes within
+ *  `positionTolerance` per axis the same place. Same reasoning as the 5 mm
+ *  fixing: geometry with clear air between the surfaces is two objects, not one
+ *  modelled twice. Inflating this test by the tolerance to make the pass
+ *  isotropic would reopen exactly that case — it breaks both the "does not pair
+ *  two small elements that do not even touch" and "does not pair two disjoint
+ *  sheets offset along their own normal" tests, which is why the anisotropy is
+ *  documented rather than removed. */
 export function boxesTouch(a: AABB, b: AABB): boolean {
   for (let i = 0; i < 3; i += 1) {
     if (Math.min(a.max[i], b.max[i]) < Math.max(a.min[i], b.min[i])) return false;

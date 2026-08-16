@@ -36,11 +36,12 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
-  getEntityBounds,
+  createEntityBoundsLookup,
   unionEntityBounds,
   getThemeClearColor,
   accumulateBoundsExcludingTypes,
   hasPendingMeasurementState,
+  type BoundingBox3D,
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
@@ -599,10 +600,24 @@ export function Viewport({
   // can be a real depth-tested 3D volume rather than a line list.
   const clashSolidMesh = useViewerStore((s) => s.clashSolidMesh);
   const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  const clashSelectedId = useViewerStore((s) => s.clashSelectedId);
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
-    if (clashSolidStatus === 'solid' && clashSolidMesh) {
+    // Defence in depth, not the primary fix (#2574 review): `clashSelectedId`
+    // and `clashSolidStatus`/`clashSolidMesh` are reset together by every
+    // current teardown path via `setClashSelectedId` / `clearClashSolid` /
+    // `clearClash` (clashSlice.ts, all three bump `clashSolidRequestSeq`), so
+    // `clashSolidStatus` should never read `'solid'` while nothing is
+    // selected. The `!== null` is the real predicate, not truthiness: a clash
+    // id is `${ruleId} ${lo} ${hi}` and is never `''`, so the two agree today,
+    // but `null` is the value teardown writes and the one worth naming.
+    // Gating the actual
+    // draw on `clashSelectedId` too means that even a future path that resets
+    // one without the other — or a resolved compute that lands after some
+    // teardown nobody's added the invalidation to yet — still can't leave an
+    // orphaned opaque solid on screen with no clash focused.
+    if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
       renderer.setClashIntersectionSolid({
         positions: clashSolidMesh.positions,
         indices: clashSolidMesh.indices,
@@ -611,7 +626,7 @@ export function Viewport({
     } else {
       renderer.setClashIntersectionSolid(null);
     }
-  }, [clashSolidMesh, clashSolidStatus, isInitialized]);
+  }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
@@ -939,24 +954,44 @@ export function Viewport({
         return state.models.get(modelId)?.ifcDataStore?.relationships;
       };
 
+      // World AABB of an id, from the flat mesh list first and the renderer's
+      // per-occurrence AABB second — GPU-instanced occurrences are not in
+      // `geometryResult.meshes` at all, so dropping that fallback would make
+      // every instanced entity read as geometry-less.
+      //
+      // The mesh reader indexes itself by expressId once it is asked about
+      // more than a handful of ids (`createEntityBoundsLookup`), so resolving
+      // a large id set — or one assembly with hundreds of aggregated parts —
+      // is O(meshes + N) rather than one full mesh-array scan per id. The Map
+      // on top memoises the COMBINED answer, so a repeated id costs nothing
+      // and the instanced fallback is queried at most once per id.
+      const createRenderableBoundsLookup = () => {
+        const meshBounds = createEntityBoundsLookup(geometryRef.current ?? null);
+        const scene = rendererRef.current?.getScene();
+        const cache = new Map<number, BoundingBox3D | null>();
+        return (id: number): BoundingBox3D | null => {
+          const hit = cache.get(id);
+          if (hit !== undefined) return hit;
+          const b = meshBounds(id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+          cache.set(id, b);
+          return b;
+        };
+      };
+
       // Shared by frameSelection and resolveHighlightIds: replace ids with no
       // renderable geometry by their nearest aggregated parts that DO render,
       // so a geometry-less assembly (IfcElementAssembly, an IfcStair used as a
-      // container, …) can still be framed and highlighted. One bounds cache
-      // per call — callers don't share cadence with each other, and the
-      // common case (ids that already render) never touches aggregation.
-      const resolveRenderableIds = (ids: readonly number[]): number[] => {
+      // container, …) can still be framed and highlighted. One bounds lookup
+      // per call unless the caller passes its own — callers don't share
+      // cadence with each other, and the common case (ids that already render)
+      // never touches aggregation.
+      const resolveRenderableIds = (
+        ids: readonly number[],
+        boundsOf: (id: number) => BoundingBox3D | null = createRenderableBoundsLookup(),
+      ): number[] => {
         const geom = geometryRef.current;
         if (!geom) return [];
-        const scene = rendererRef.current?.getScene();
-        const boundsCache = new Map<number, ReturnType<typeof getEntityBounds>>();
-        const hasGeometry = (id: number) => {
-          const hit = boundsCache.get(id);
-          if (hit !== undefined) return hit !== null;
-          const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
-          boundsCache.set(id, b);
-          return b !== null;
-        };
+        const hasGeometry = (id: number) => boundsOf(id) !== null;
         return expandToGeometryBearingIds(ids, hasGeometry, {
           resolve: resolveEntityRef,
           relationshipsFor: relationshipsForModel,
@@ -1044,20 +1079,11 @@ export function Viewport({
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
-          const scene = rendererRef.current?.getScene();
-          // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
-          // the renderer's per-occurrence world AABB so framing them still works.
-          // Memoised: getEntityBounds scans the whole mesh array, and every id is
-          // asked twice — once to decide whether it needs expanding, once to
-          // union its box.
-          const boundsCache = new Map<number, ReturnType<typeof getEntityBounds>>();
-          const boundsOf = (id: number) => {
-            const hit = boundsCache.get(id);
-            if (hit !== undefined) return hit;
-            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
-            boundsCache.set(id, b);
-            return b;
-          };
+          // One indexed, memoised lookup shared with the resolution pass below:
+          // every id is asked twice — once to decide whether it needs expanding,
+          // once to union its box — and the mesh reader behind it indexes the
+          // mesh array instead of rescanning it per id.
+          const boundsOf = createRenderableBoundsLookup();
           // An IfcElementAssembly carries no representation of its own — its
           // meshes hang off its IfcRelAggregates parts — so asking it for bounds
           // yields null and Frame used to do nothing at all (#1133). Resolve
@@ -1068,7 +1094,7 @@ export function Viewport({
           // frameSelection moved the camera to an assembly that stayed
           // unhighlighted, because the renderer highlights `selectedEntityIds`
           // directly and that set still held the geometry-less assembly id.
-          const framedIds = resolveRenderableIds(ids);
+          const framedIds = resolveRenderableIds(ids, boundsOf);
           for (const id of framedIds) {
             const b = boundsOf(id);
             if (!b) continue;

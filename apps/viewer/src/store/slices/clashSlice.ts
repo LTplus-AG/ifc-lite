@@ -21,8 +21,14 @@ import type {
   ClashReviewStatus,
   ClashSortBy,
 } from '@ifc-lite/clash';
-import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS } from '@ifc-lite/clash';
+import { CLASH_REVIEW_STATUSES, DEFAULT_CLASH_REVIEW_STATUS, groupClashes } from '@ifc-lite/clash';
+import {
+  applyClashExclusions,
+  exclusionRuleKey,
+  type ClashExclusionRule,
+} from '@/lib/clash/exclusions';
 import type { ClashSolidDegenerateReason } from '@/lib/clash/intersection-solid';
+import type { ClashVisibilityOwnership } from '@/lib/clash/visibility-ownership';
 
 /**
  * Why the focused clash has no intersection solid to show. Extends the wasm
@@ -40,8 +46,10 @@ export type ClashFocusMode = 'highlight' | 'isolate' | 'ghost';
 import {
   buildInitialPresets,
   defaultPresets,
+  loadExclusions,
   loadReviews,
   loadSettings,
+  saveExclusions,
   savePresets,
   saveReviews,
   saveSettings,
@@ -59,6 +67,7 @@ import { reportClashSettingsSaveFailure } from '@/lib/clash/settings-save-notice
 
 export type ClashGroupBy = ClashSettingsGroupBy;
 export type { ClashPreset, ClashGlobalSettings, SaveResult };
+export type { ClashExclusionRule };
 
 /** Fields a user supplies when adding a custom rule (id/flags filled in here). */
 export type NewClashPreset = {
@@ -71,8 +80,35 @@ export type NewClashPreset = {
 
 export interface ClashSlice {
   clashPanelVisible: boolean;
+  /**
+   * The last run's output with the user's ENABLED exclusions removed — what the
+   * panel, the grouping and the BCF export all read.
+   */
   clashResult: ClashResult | null;
+  /**
+   * The same run, unfiltered. Kept so toggling or removing an exclusion can
+   * re-derive `clashResult` (and `clashGroups`) instead of re-running detection,
+   * which is what makes an exclusion genuinely undoable.
+   */
+  clashRawResult: ClashResult | null;
   clashGroups: ClashGroup[] | null;
+  /**
+   * Provenance of `clashGroups` — which of the two writers produced it.
+   * `'derived'`: computed from `clashRawResult` by `deriveGroups` (spatial
+   * clusters, via `setClashResult`, `setClashClusterEpsilon`, or an exclusion
+   * edit). `'manual'`: an explicit override (`setClashGroups`, the duplicate
+   * scan's coincident-SET grouping). `null` iff `clashGroups` is `null`.
+   *
+   * This is the gate that keeps the two writers from fighting over the same
+   * field: `deriveGroups` refuses to replace a `'manual'` grouping unless it
+   * is also given a genuinely new raw result (a fresh run always wins — see
+   * `deriveGroups`'s `newRun` parameter). Without this, a later
+   * `setClashClusterEpsilon` or exclusion edit — neither of which runs a new
+   * scan — would silently re-derive spatial clusters over the SAME duplicate
+   * pairs a manual grouping already covers, mislabeling instead of leaving it
+   * alone (found in review of #2535, PR comment 5305847983).
+   */
+  clashGroupsKind: 'derived' | 'manual' | null;
   clashRunning: boolean;
   clashError: string | null;
   /**
@@ -114,6 +150,18 @@ export interface ClashSlice {
   clashReviews: Map<string, ClashReview>;
   /** Which review statuses are shown in the panel list (view filter). (#1468) */
   clashStatusFilter: Set<ClashReviewStatus>;
+  /**
+   * The user's own exclusion rules — "this overlap is by design" (persisted).
+   * A whole IFC type pair or one specific element pair; see
+   * `lib/clash/exclusions.ts`. Distinct from a REVIEW, which annotates a clash
+   * without hiding it, and from the engine's IFC-derived exclusions, which the
+   * user never sees.
+   */
+  clashExclusions: ClashExclusionRule[];
+  /** Rule id → how many clashes of `clashRawResult` that rule covers (disabled ones too). */
+  clashExclusionCounts: Map<string, number>;
+  /** How many clashes the enabled rules are currently hiding. */
+  clashSuppressedCount: number;
   /** Currently focused clash id (for highlight in the list). */
   clashSelectedId: string | null;
   /**
@@ -171,12 +219,73 @@ export interface ClashSlice {
   clashSolidThicknessM: number;
   /** For `below-kernel-resolution`: depth the kernel would have needed, metres. `0` otherwise. */
   clashSolidRequiredM: number;
+  /**
+   * Monotonic counter bumped by every store action that can invalidate an
+   * in-flight `focusClash` solid compute: `setClashSelectedId` (the focused
+   * clash changed or was cleared) and `clearClashSolid` / `clearClash` (the
+   * presentation was torn down without a selection change, e.g. `selectElement`).
+   * The async compute in `useClash.focusClash` captures this value right after
+   * kicking off, and only writes its result if it is still current when the
+   * promise settles — this makes the guard store state instead of a private
+   * `useRef`, so ANY teardown path that resets the focused-clash presentation
+   * invalidates the compute by construction, not just the ones that remembered
+   * to call a specific cancel function (#2574 review: `tours/clash.ts` and
+   * `store/homeView.ts` reset these same fields directly and neither could
+   * reach a hook-private ref guard).
+   */
+  clashSolidRequestSeq: number;
+  /**
+   * Which SHARED visibility channel (`isolatedEntities` / `ghostExceptEntities`,
+   * visibilitySlice) the clash presentation currently owns, and the exact
+   * content it installed there. `null` when clash owns neither — including
+   * after a `highlight`-mode focus, which clears both channels and takes
+   * ownership of neither.
+   *
+   * Written by `useClash`'s two install helpers, read by
+   * `releaseOwnedClashVisibility` (`lib/clash/visibility-ownership.ts`), which
+   * is the single release both the hook's run-start discard and every
+   * model-lifecycle teardown go through.
+   *
+   * It lives HERE, not in a `useRef` inside `useClash`, because the store-level
+   * teardowns (`removeModel`, `clearAllModels`, `resetViewerState`) cannot read
+   * a hook-private ref and were left inferring ownership from
+   * `clashSelectedId` — a SELECTION fact, wrong in both directions (#2654 third
+   * review; see the module doc on `visibility-ownership.ts`). Same shape as the
+   * lens slice's `lensRuleIsolation` / `lensAppliedHiddenIds`, which record
+   * lens ownership of these same channels in the store for the same reason.
+   *
+   * PART of `CLASH_FOCUS_RESET` (#2654 fourth review): ending a focus ends the
+   * claim, so the by-hand "clear both channels" teardowns drop it without each
+   * having to remember to. That is only safe because every caller releases
+   * BEFORE it clears the focus — see the ordering note on `CLASH_FOCUS_RESET`.
+   * The visibility CHANNELS stay out of that constant: `clearClashFocus()` also
+   * runs at RUN START, where the release must stay ownership-aware (#2662 P2).
+   */
+  clashVisibilityOwned: ClashVisibilityOwnership;
 
   setClashPanelVisible: (visible: boolean) => void;
   toggleClashPanel: () => void;
   setClashResult: (result: ClashResult | null) => void;
-  bumpClashRunSeq: () => void;
+  /**
+   * Overrides the derived spatial-cluster grouping with an explicit one, and
+   * marks it `'manual'` in `clashGroupsKind`. Used only by the duplicate scan
+   * (#2530): `setClashResult` just derived `clashGroups` as spatial clusters
+   * over the AABB-overlap pairs, which isn't the grouping duplicate results
+   * should show — the scan replaces it with coincident SETS right after.
+   *
+   * CORRECTION (review of #2535, PR comment 5305847983): a previous version of
+   * this doc claimed a later `setClashClusterEpsilon` or exclusion change
+   * "still re-derives spatial clusters from `clashRawResult`... (acceptable:
+   * neither applies to a duplicate-scan result)". That was false — the
+   * duplicate scan's `setClashResult(res)` call (before this one) makes
+   * `clashRawResult` the duplicate scan's OWN pairwise result, so both DO
+   * apply to it. The override now survives them because `deriveGroups`
+   * refuses to replace a `'manual'` grouping without a genuinely new raw
+   * result: it lasts exactly until the next `setClashResult` (a real run),
+   * not merely until the next re-derivation from the same raw result.
+   */
   setClashGroups: (groups: ClashGroup[] | null) => void;
+  bumpClashRunSeq: () => void;
   setClashRunning: (running: boolean) => void;
   setClashError: (error: string | null) => void;
   setClashProgress: (progress: ClashProgress | null) => void;
@@ -204,6 +313,31 @@ export interface ClashSlice {
   setClashSolidUnavailable: (reason: ClashSolidUnavailableReason, thicknessM: number, requiredM: number) => void;
   /** Back to `'none'` — no clash focused. */
   clearClashSolid: () => void;
+  /** Record (or drop) clash's claim on a shared visibility channel. Called by
+   *  `useClash`'s install helpers and by `releaseOwnedClashVisibility`; nothing
+   *  else should write it. */
+  setClashVisibilityOwned: (owned: ClashVisibilityOwnership) => void;
+  /**
+   * End the focused-clash PRESENTATION entirely: the A/B pair tint, the contact
+   * marker (lines + AABB box) and the intersection solid, plus the selected id
+   * and the `clashSolidRequestSeq` bump that invalidates an in-flight compute.
+   *
+   * This is the ONLY complete spelling of "stop drawing the focused clash", and
+   * every teardown path must call it rather than listing fields by hand. The
+   * field list lived inline in seven callers and each one had drifted to a
+   * different subset — `removeModel` cleared the solid but not the contact
+   * marker, `ClashPanel`'s unmount cleared the box but not the lines — because
+   * `Viewport.tsx` draws the marker from an effect keyed ONLY on
+   * `clashContactLines`/`clashOverlapBox`, which reads neither `clashSelectedId`
+   * nor `clashSolidStatus`. Dropping the solid therefore does NOT retract the
+   * wireframe, and it hung in world space over models that were already gone
+   * (#2654 review).
+   *
+   * Does NOT touch the clash RESULT (that is `clearClash`), nor the
+   * ghost/isolation/colour-override channels, which are owned by other slices
+   * and restored per-caller (an active lens must come back, not be blanked).
+   */
+  clearClashFocus: () => void;
   // Preset CRUD (persisted). Every one of these returns a SaveResult and only
   // commits to the store when the write actually landed, so the panel can never
   // show a rule change as applied that a refused write (quota, or storage
@@ -221,6 +355,14 @@ export interface ClashSlice {
   setClashReview: (key: string, patch: { status?: ClashReviewStatus; comment?: string }) => SaveResult;
   /** Toggle whether a review status is shown in the list. */
   toggleClashStatusFilter: (status: ClashReviewStatus) => void;
+  // Exclusion CRUD (persisted). Gated on the write landing, like preset CRUD:
+  // an exclusion the panel shows as saved but storage refused would silently
+  // come back on the next reload.
+  /** Add a rule. A duplicate (same kind + same pair, either order) is a no-op. */
+  addClashExclusion: (rule: ClashExclusionRule) => SaveResult;
+  removeClashExclusion: (id: string) => SaveResult;
+  setClashExclusionEnabled: (id: string, enabled: boolean) => SaveResult;
+  clearClashExclusions: () => SaveResult;
   /**
    * Replace the entire clash config (presets + detection settings) and persist.
    * Used when activating a flavor/profile so each one carries its own rule-set.
@@ -228,6 +370,59 @@ export interface ClashSlice {
   applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
   clearClash: () => void;
 }
+
+/**
+ * The intersection-solid state machine at rest. One definition, spread by every
+ * action that returns it to `'none'`, so a field added to the machine cannot be
+ * forgotten by one of them.
+ */
+const CLASH_SOLID_RESET = {
+  clashSolidStatus: 'none',
+  clashSolidMesh: null,
+  clashSolidVolumeM3: 0,
+  clashSolidReason: null,
+  clashSolidThicknessM: 0,
+  clashSolidRequiredM: 0,
+} as const satisfies Partial<ClashSlice>;
+
+/**
+ * Everything `focusClash` paints into the scene for ONE clash, at rest: the
+ * solid plus the pair tint, the contact marker and the selected id. The single
+ * source of truth behind `clearClashFocus` — and spread by `clearClash` too, so
+ * the two can never drift into clearing different subsets.
+ *
+ * `clashVisibilityOwned` is here too — the CLAIM on the shared isolation/ghost
+ * channels, not the channels themselves. Ending a focus ends the claim, whether
+ * or not the caller also cleared the channel. Every by-hand "clear both channels"
+ * path (`useClash.clearHighlight` / `clearAll`, `ClashPanel`'s unmount, the clash
+ * tour cleanup, `homeView`) already routes through `clearClashFocus` /
+ * `clearClash`, so all of them drop the claim by construction rather than by each
+ * remembering to. Left standing, a stale record goes matching → cleared →
+ * MATCHING AGAIN the moment another owner installs an equal set, and the next
+ * model-lifecycle teardown destroys that owner's ghost (#2654 fourth review).
+ *
+ * This is safe ONLY because every caller releases before it clears:
+ * `useClash.discardSolidPresentation` calls `releaseClashVisibility()` first,
+ * and `endClashScenePresentation` (`lib/clash/visibility-ownership.ts`) releases
+ * in its step 1 and clears in its step 2 — see the ordering note there. Clearing
+ * first would null the record under the release, which would then find nothing
+ * to release and silently leave clash's own ghost/isolation on screen.
+ *
+ * The visibility CHANNELS themselves stay out: `clearClashFocus()` also runs at
+ * RUN START, where the release must stay ownership-aware so a user's X-ray
+ * survives `run()` (#2662 P2, `useClash.run-preserves-isolation.test.tsx`).
+ *
+ * `clashSolidRequestSeq` is deliberately NOT here: it is a monotonic counter,
+ * not a resettable field, and each action bumps it off its own current value.
+ */
+const CLASH_FOCUS_RESET = {
+  ...CLASH_SOLID_RESET,
+  clashSelectedId: null,
+  clashHighlightColors: null,
+  clashOverlapBox: null,
+  clashContactLines: null,
+  clashVisibilityOwned: null,
+} as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */
 function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
@@ -239,6 +434,60 @@ function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
     clusterEpsilon: s.clashClusterEpsilon,
     reportTouch: s.clashReportTouch,
     groupBy: s.clashGroupBy,
+  };
+}
+
+/**
+ * Everything derived from (raw result × exclusion rules): the filtered result,
+ * its clusters, each rule's reach and the suppressed total — PLUS the single
+ * gate that keeps this derivation from clobbering a `'manual'` grouping it did
+ * not produce (`setClashGroups`, the duplicate scan's coincident-SET view).
+ *
+ * `clashResult` / `clashExclusionCounts` / `clashSuppressedCount` are always
+ * recomputed from `raw` — exclusions must keep filtering a duplicate scan's
+ * result too. Only the `clashGroups` field is gated: this is `@ifc-lite/clash`
+ * grouping module (spatial clusters, no per-run identity), not a duplicate-
+ * scan detector, and it must never overwrite a grouping some OTHER writer
+ * produced unless it also owns a genuinely new raw result to derive from.
+ *
+ * `newRun` distinguishes the two situations that call this:
+ * - `true` (only from `setClashResult`): `raw` just changed — a real
+ *   detection/scan completed. Any prior manual override was for the
+ *   PREVIOUS run's clashes, which no longer exist, so it is superseded
+ *   unconditionally.
+ * - `false` (`setClashClusterEpsilon`, `commitExclusions`): `raw` is
+ *   UNCHANGED — nothing was re-run, only a setting changed. This derivation
+ *   did not produce the current `'manual'` grouping (if any) and has no basis
+ *   to replace it, so it leaves `clashGroups`/`clashGroupsKind` alone.
+ *
+ * This is the ONLY place `clashGroups` is computed from `clashRawResult` — a
+ * future re-derivation site should route through here (not call
+ * `groupClashes` directly) to inherit the guard for free.
+ */
+function deriveGroups(
+  state: Pick<ClashSlice, 'clashGroups' | 'clashGroupsKind'>,
+  raw: ClashResult | null,
+  rules: readonly ClashExclusionRule[],
+  clusterEpsilon: number,
+  newRun: boolean,
+): Pick<ClashSlice, 'clashResult' | 'clashGroups' | 'clashGroupsKind' | 'clashExclusionCounts' | 'clashSuppressedCount'> {
+  const { result, counts, suppressed } = applyClashExclusions(raw, rules);
+  if (!newRun && state.clashGroupsKind === 'manual') {
+    return {
+      clashResult: result,
+      clashGroups: state.clashGroups,
+      clashGroupsKind: 'manual',
+      clashExclusionCounts: counts,
+      clashSuppressedCount: suppressed,
+    };
+  }
+  const clashGroups = result ? groupClashes(result, { by: 'cluster', epsilon: clusterEpsilon }) : null;
+  return {
+    clashResult: result,
+    clashGroups,
+    clashGroupsKind: clashGroups ? 'derived' : null,
+    clashExclusionCounts: counts,
+    clashSuppressedCount: suppressed,
   };
 }
 
@@ -271,10 +520,27 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     reportClashSettingsSaveFailure(result.message);
   };
 
+  /**
+   * Commit an exclusion-list change only if it persisted, then re-derive the
+   * visible result from the untouched raw run.
+   */
+  const commitExclusions = (next: ClashExclusionRule[]): SaveResult => {
+    const result = saveExclusions(next);
+    if (!result.ok) return result;
+    const state = get();
+    set({
+      clashExclusions: next,
+      ...deriveGroups(state, state.clashRawResult, next, state.clashClusterEpsilon, false),
+    });
+    return result;
+  };
+
   return {
     clashPanelVisible: false,
     clashResult: null,
+    clashRawResult: null,
     clashGroups: null,
+    clashGroupsKind: null,
     clashRunning: false,
     clashError: null,
     clashRunSeq: 0,
@@ -296,6 +562,9 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashPresets: buildInitialPresets(),
     clashReviews: loadReviews(),
     clashStatusFilter: new Set(CLASH_REVIEW_STATUSES),
+    clashExclusions: loadExclusions(),
+    clashExclusionCounts: new Map<string, number>(),
+    clashSuppressedCount: 0,
     clashSelectedId: null,
     clashHighlightColors: null,
     clashOverlapBox: null,
@@ -307,12 +576,23 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     clashSolidReason: null,
     clashSolidThicknessM: 0,
     clashSolidRequiredM: 0,
+    clashSolidRequestSeq: 0,
+    clashVisibilityOwned: null,
 
     setClashPanelVisible: (clashPanelVisible) => set({ clashPanelVisible }),
     toggleClashPanel: () => set((s) => ({ clashPanelVisible: !s.clashPanelVisible })),
-    setClashResult: (clashResult) => set({ clashResult }),
+    // Stores the RAW run and publishes the exclusion-filtered view (plus its
+    // clusters) in the same commit, so no consumer can observe a result that
+    // still contains clashes the user excluded.
+    setClashResult: (raw) => {
+      const state = get();
+      set({
+        clashRawResult: raw,
+        ...deriveGroups(state, raw, state.clashExclusions, state.clashClusterEpsilon, true),
+      });
+    },
+    setClashGroups: (clashGroups) => set({ clashGroups, clashGroupsKind: clashGroups ? 'manual' : null }),
     bumpClashRunSeq: () => set((s) => ({ clashRunSeq: s.clashRunSeq + 1 })),
-    setClashGroups: (clashGroups) => set({ clashGroups }),
     setClashRunning: (clashRunning) => set({ clashRunning }),
     setClashError: (clashError) => set({ clashError }),
     setClashProgress: (clashProgress) => set({ clashProgress }),
@@ -331,7 +611,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       persistSettings();
     },
     setClashClusterEpsilon: (clashClusterEpsilon) => {
-      set({ clashClusterEpsilon: clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon) });
+      const clamped = clampToBounds(clashClusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon);
+      const state = get();
+      // clashGroups is otherwise derived only from setClashResult / commitExclusions
+      // (deriveGroups), so without this the Issues view's radius control — which
+      // now reads live from this same setting — silently did nothing. `newRun:
+      // false` — deriveGroups leaves a 'manual' grouping (duplicate scan) alone.
+      set({
+        clashClusterEpsilon: clamped,
+        ...deriveGroups(state, state.clashRawResult, state.clashExclusions, clamped, false),
+      });
       persistSettings();
     },
     setClashReportTouch: (clashReportTouch) => { set({ clashReportTouch }); persistSettings(); },
@@ -342,6 +631,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     setClashHideTouching: (clashHideTouching) => set({ clashHideTouching }),
     setClashFocusMode: (clashFocusMode) => set({ clashFocusMode }),
     resetClashSettings: () => {
+      const state = get();
       set({
         clashMode: DEFAULT_CLASH_SETTINGS.mode,
         clashTolerance: DEFAULT_CLASH_SETTINGS.tolerance,
@@ -351,11 +641,34 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashReportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
         clashGroupBy: DEFAULT_CLASH_SETTINGS.groupBy,
         showClashRegionBox: true,
+        // The cluster radius may have just changed, so the derived grouping
+        // must follow in the same commit, like setClashClusterEpsilon, and
+        // for the same reason: without this, existing derived results keep
+        // the old radius until the next run. `newRun: false` leaves a manual
+        // (duplicate-scan) grouping alone. (#2535)
+        ...deriveGroups(
+          state,
+          state.clashRawResult,
+          state.clashExclusions,
+          DEFAULT_CLASH_SETTINGS.clusterEpsilon,
+          false,
+        ),
       });
       persistSettings();
     },
 
-    setClashSelectedId: (clashSelectedId) => set({ clashSelectedId }),
+    // Changing (or clearing) which clash is focused always drops any
+    // intersection-solid presentation for the PREVIOUS focus and bumps
+    // `clashSolidRequestSeq`, invalidating any in-flight compute for it — see
+    // the field doc above. `focusClash` re-applies `setClashSolidComputing()`
+    // right after this for the newly selected clash, so the momentary `'none'`
+    // here is never painted.
+    setClashSelectedId: (clashSelectedId) =>
+      set((s) => ({
+        ...CLASH_SOLID_RESET,
+        clashSelectedId,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
     setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
     setClashContactLines: (clashContactLines) => set({ clashContactLines }),
@@ -389,14 +702,21 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashSolidRequiredM: requiredM,
       }),
     clearClashSolid: () =>
-      set({
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
-      }),
+      set((s) => ({
+        ...CLASH_SOLID_RESET,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
+
+    setClashVisibilityOwned: (clashVisibilityOwned) => set({ clashVisibilityOwned }),
+
+    // The one complete "stop drawing the focused clash" — see the field doc on
+    // the action type. Every teardown path routes through this instead of
+    // listing fields, which is what stops the next one from clearing a subset.
+    clearClashFocus: () =>
+      set((s) => ({
+        ...CLASH_FOCUS_RESET,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
 
     createClashPreset: (input) => {
       const name = validatePresetName(input.name);
@@ -481,6 +801,33 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       return result;
     },
 
+    addClashExclusion: (rule) => {
+      const current = get().clashExclusions;
+      const key = exclusionRuleKey(rule);
+      const existing = current.find((r) => exclusionRuleKey(r) === key);
+      if (existing) {
+        // Same pair, either order, same granularity — already excluded. If the
+        // existing rule is enabled, nothing was asked of storage, so this is a
+        // success, not a failure to report. If it was DISABLED, re-clicking the
+        // exclude button must re-enable it: otherwise the button looks broken
+        // (no toast, no change, clashes stay visible).
+        if (existing.enabled) return { ok: true };
+        return commitExclusions(current.map((r) => (r.id === existing.id ? { ...r, enabled: true } : r)));
+      }
+      return commitExclusions([...current, rule]);
+    },
+
+    removeClashExclusion: (id) => {
+      const current = get().clashExclusions;
+      if (!current.some((r) => r.id === id)) return { ok: true };
+      return commitExclusions(current.filter((r) => r.id !== id));
+    },
+
+    setClashExclusionEnabled: (id, enabled) =>
+      commitExclusions(get().clashExclusions.map((r) => (r.id === id ? { ...r, enabled } : r))),
+
+    clearClashExclusions: () => commitExclusions([]),
+
     toggleClashStatusFilter: (status) =>
       set((s) => {
         const next = new Set(s.clashStatusFilter);
@@ -490,6 +837,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       }),
 
     applyClashFlavorConfig: ({ presets, settings }) => {
+      const state = get();
       set({
         clashPresets: presets,
         clashMode: settings.mode,
@@ -499,6 +847,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         clashClusterEpsilon: settings.clusterEpsilon,
         clashReportTouch: settings.reportTouch,
         clashGroupBy: settings.groupBy,
+        // Regroup existing derived results at the flavor's cluster radius in
+        // the same commit (see resetClashSettings; `newRun: false` preserves
+        // a manual duplicate-scan grouping). (#2535)
+        ...deriveGroups(
+          state,
+          state.clashRawResult,
+          state.clashExclusions,
+          settings.clusterEpsilon,
+          false,
+        ),
       });
       // Persist so the activated flavor's config becomes the working set on reload.
       savePresets(presets);
@@ -507,23 +865,23 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     clearClash: () =>
       // Keep presets + settings (workspace prefs, like saved lenses): only the
-      // run result/panel state is cleared.
-      set({
+      // run result plus the focused-clash presentation is cleared. The
+      // presentation half is the shared `CLASH_FOCUS_RESET`, not a second hand-
+      // written field list, so `clearClash` and `clearClashFocus` cannot drift
+      // into clearing different subsets. The `clashSolidRequestSeq` bump comes
+      // with it: an in-flight solid compute must be invalidated here too.
+      set((s) => ({
+        ...CLASH_FOCUS_RESET,
         clashResult: null,
+        clashRawResult: null,
+        clashExclusionCounts: new Map<string, number>(),
+        clashSuppressedCount: 0,
         clashGroups: null,
+        clashGroupsKind: null,
         clashRunning: false,
         clashError: null,
         clashProgress: null,
-        clashSelectedId: null,
-        clashHighlightColors: null,
-        clashOverlapBox: null,
-    clashContactLines: null,
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
-      }),
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
   };
 };

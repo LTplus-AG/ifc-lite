@@ -177,6 +177,27 @@ describe('fromPositions', () => {
     expect(r.max.every(Number.isFinite)).toBe(true);
   });
 
+  it('drops non-finite coordinates instead of propagating ±Infinity into the bounds', () => {
+    // NaN was already dropped as a side effect of `<`/`>` failing both ways.
+    // ±Infinity was not: it propagated into the bounds, and two elements each
+    // carrying -Infinity on the same axis then produced a NaN `boxDistance`.
+    const p = new Float32Array([0, 0, 0, 1, 1, 1, -Infinity, 2, Infinity]);
+    const r = fromPositions(p);
+    // The finite coordinate of the poisoned vertex still counts (y = 2), the
+    // non-finite ones do not — the same per-coordinate rule NaN already got.
+    expect(r).toEqual(box(0, 0, 0, 1, 2, 1));
+    expect(r.min.every(Number.isFinite)).toBe(true);
+    expect(r.max.every(Number.isFinite)).toBe(true);
+  });
+
+  it('drops a coordinate the transform sends to ±Infinity', () => {
+    // Overflow happens after the transform, so the guard has to run after it.
+    const t: Mat4 = [1e300, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+    const p = new Float32Array([0, 0, 0, 1e30, 5, 0]);
+    const r = fromPositions(p, t);
+    expect(r).toEqual(box(0, 0, 0, 0, 5, 0));
+  });
+
   it('applies a column-major transform to every vertex', () => {
     // Translate by (10, 20, 30).
     const t: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 20, 30, 1];

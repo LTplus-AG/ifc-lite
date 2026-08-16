@@ -49,7 +49,12 @@
      956 rust/geometry/src/csg/consolidate.rs
 # -159: inline `mod tests` split out to csg/csg_tests.rs (ratchet-exempt) to make room for the
 # degenerate-triangle NaN-normal fix and its two regression tests; budget refreshed downward.
-     788 rust/geometry/src/csg/mod.rs
+# -117: the vertex-vs-plane classification epsilon (per-axis f32 rounding noise
+# projected onto the clip plane's own normal, floored at 1e-6) and the
+# clip_triangle body that consumes it moved out to csg/plane_eps.rs (365 lines,
+# under the house limit, no row), taking their derivations with them; net down
+# despite the new scaling logic; budget refreshed downward.
+     671 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls
@@ -67,7 +72,13 @@
 # region — with a single padding the pre-scan could wrongly early-out on a triangle the
 # canonical scan would refine. Plus the #[cfg(test)] include for facet_weld_scoped_tests.rs
 # (the test file itself is ratchet-exempt).
-          952 rust/geometry/src/facet_weld.rs
+# -45: local-frame anchor for the plane-offset math (n.v amplified a per-facet normal
+# error by the world-frame position magnitude at site coordinates; the anchor is the
+# bbox-min corner, a function of the vertex SET, so triangulation order cannot change the
+# weld; engagement gated to coordinates that need it). The derivation lives inline at the
+# anchor (Step 1.5); its regression tests moved to facet_weld_scoped_tests.rs
+# (ratchet-exempt), netting the module below the prior budget; budget refreshed downward.
+          907 rust/geometry/src/facet_weld.rs
      633 rust/geometry/src/kernel/arrangement/classify.rs
      566 rust/geometry/src/kernel/fixed.rs
 # NEW (#1655): register-resident FixedInt<K> newtype backing the exact predicate cascade; large because it is a drop-in for bnum's I512 and must carry the full num_traits + std::ops trait surface (16 impls) the fixed_impl! macro binds. Its differential fuzz is split into the sibling tests.rs, kept under budget.
@@ -183,7 +194,7 @@
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
 # +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
 # depth-guard call sites; no code change.
-     713 rust/geometry/src/router/voids/coaxial_union.rs
+     704 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).

@@ -1,6 +1,6 @@
 {
   "name": "ifc-lite",
-  "version": "4.5.1",
+  "version": "4.6.0",
   "description": "High-performance browser IFC parser & renderer",
   "private": true,
   "type": "module",
@@ -29,6 +29,7 @@
     "test:api": "tsx --tsconfig tests/tsconfig.json --test \"tests/api/**/*.test.ts\"",
     "test:integration": "tsx --tsconfig tests/tsconfig.json tests/integration.test.ts",
     "test:wasm-contract": "node scripts/test-wasm-contract.mjs",
+    "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",

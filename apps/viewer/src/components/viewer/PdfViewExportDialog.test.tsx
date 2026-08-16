@@ -241,6 +241,33 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
     assert.equal(exportButton().disabled, true, 'an unprintable page must block Export');
   });
 
+  it('refuses to export rather than inventing a scale when the viewport cannot report one', () => {
+    // A zero-height canvas makes the displayed scale underivable. The label
+    // says so; the danger is the EXPORT quietly substituting a default. On a
+    // sheet whose whole purpose is measurement, handing back a 1:100 drawing
+    // the user never chose is the exact failure this feature exists to
+    // prevent, and it would look completely normal on screen.
+    const canvas = document.createElement('canvas');
+    Object.defineProperty(canvas, 'clientHeight', { value: 0, configurable: true });
+    setGlobalCanvasRef({ current: canvas });
+
+    openDialog();
+    assert.match(
+      document.body.textContent ?? '',
+      /As displayed \(not available\)/,
+      'the unavailable state must be stated, not hidden',
+    );
+    assert.equal(
+      exportButton().disabled,
+      true,
+      'Export must be blocked, not silently fall back to 1:100',
+    );
+
+    // A real scale is still reachable: the user picks a preset.
+    chooseScale('1:100');
+    assert.equal(exportButton().disabled, false, 'choosing a preset must re-enable Export');
+  });
+
   it('rounds a custom scale to a whole number, and draws at the rounded scale', () => {
     // Drafting scales are whole numbers. A fractional entry must not silently
     // draw a sheet at 1:33.7 while the user reads "1:34" anywhere else, so the

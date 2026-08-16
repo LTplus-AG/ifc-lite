@@ -262,7 +262,11 @@ export function clipMeshesToHalfSpace(
   for (const mesh of meshes) {
     const result = clipMeshToHalfSpace(mesh, normal, offset);
     if (result.mesh) kept.push(result.mesh);
-    if (result.rimSegments.length > 0) rimSegments.push(...result.rimSegments);
+    // Appended one at a time, NOT `push(...result.rimSegments)`: a whole-model
+    // clip can produce far more rim segments than the engine's maximum argument
+    // count, and the spread form fails with a RangeError exactly on the large
+    // models this export exists for.
+    for (const segment of result.rimSegments) rimSegments.push(segment);
   }
   return { meshes: kept, rimSegments };
 }

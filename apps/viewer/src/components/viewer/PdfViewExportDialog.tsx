@@ -71,9 +71,6 @@ interface PdfViewExportDialogProps {
 /** The drafting scales offered as presets, coarsest detail last. */
 const SCALE_PRESETS = [10, 20, 50, 100, 200, 500] as const;
 
-/** Used when the viewport cannot report a scale (degenerate camera or canvas). */
-const FALLBACK_SCALE_FACTOR = 100;
-
 /**
  * Generator stage ids to words a user recognises. An unmapped stage falls
  * through to a plain "Working", never to a raw internal identifier.
@@ -154,7 +151,12 @@ export function PdfViewExportDialog({ trigger }: PdfViewExportDialogProps) {
   const customScaleValid = Number.isFinite(customScaleValue) && customScaleValue > 0;
 
   const scaleFactor: number | null = useMemo(() => {
-    if (scaleChoice === 'displayed') return displayedScale ?? FALLBACK_SCALE_FACTOR;
+    // No fallback. When the viewport cannot report its scale the label already
+    // reads "not available", and substituting a silent 1:100 would hand the
+    // user a measured sheet at a scale they never chose - the one failure this
+    // whole feature exists to prevent. `null` disables Export instead, so they
+    // pick a preset or a custom scale.
+    if (scaleChoice === 'displayed') return displayedScale;
     if (scaleChoice === 'custom') return customScaleValid ? customScaleValue : null;
     const preset = Number(scaleChoice);
     return Number.isFinite(preset) && preset > 0 ? preset : null;

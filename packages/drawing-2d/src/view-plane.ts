@@ -198,7 +198,14 @@ export function buildCameraSectionPlane(
   //
   // `cross(tangent, bitangent) === normal` holds by construction, which is
   // what keeps the page from coming out mirrored (#2119 defect class).
-  const upHint = vec3Length(camera.up) < PARALLEL_EPSILON ? fallbackUp(viewDir) : camera.up;
+  // NORMALISED before the parallel test below. `|cross(viewDir, up)|` is
+  // `|up| * sin(angle)`, so testing it against a fixed epsilon without
+  // normalising makes the threshold depend on the LENGTH of `up`: a long up
+  // vector that is genuinely almost parallel to the view still clears the
+  // epsilon, and the basis is then built from a direction that is numerically
+  // noise. Normalising first makes PARALLEL_EPSILON a pure angle tolerance.
+  const upHint =
+    vec3Length(camera.up) < PARALLEL_EPSILON ? fallbackUp(viewDir) : vec3Normalize(camera.up);
   let right = vec3Cross(viewDir, upHint);
   if (vec3Length(right) < PARALLEL_EPSILON) {
     right = vec3Cross(viewDir, fallbackUp(viewDir));

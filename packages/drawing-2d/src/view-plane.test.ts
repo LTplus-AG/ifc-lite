@@ -265,6 +265,49 @@ describe('buildCameraSectionPlane — basis', () => {
     ).toBeCloseTo(1, 12);
   });
 
+  it('treats a LONG, nearly parallel `up` as parallel (the epsilon is an angle, not a length)', () => {
+    // `|cross(viewDir, up)|` is `|up| * sin(angle)`. Testing that against a
+    // fixed epsilon WITHOUT normalising `up` first makes the threshold scale
+    // with `|up|`: this `up` is only 1e-8 rad off the view direction, but its
+    // length of 1000 inflates the cross product to ~1e-5, clearing a 1e-6
+    // epsilon. The basis is then built from what is numerically noise.
+    const camera: CameraFrame = {
+      position: vec3(TARGET.x, TARGET.y + 30, TARGET.z),
+      target: TARGET,
+      up: vec3(1e-8 * 1000, -1000, 0),
+    };
+    const { plane } = buildCameraSectionPlane(camera, BOUNDS);
+    const { normal, tangent, bitangent } = customPlaneOf(plane);
+
+    for (const v of [normal, tangent, bitangent]) {
+      expect(Math.hypot(v.x, v.y, v.z)).toBeCloseTo(1, 12);
+    }
+    expect(vec3Dot(tangent, bitangent)).toBeCloseTo(0, 12);
+    expect(vec3Dot(normal, tangent)).toBeCloseTo(0, 12);
+    expect(vec3Dot(normal, bitangent)).toBeCloseTo(0, 12);
+
+    // The real payload: the projection stays rigid. A basis derived from the
+    // noise direction still passes an orthonormality check (it is normalised
+    // after the fact) while measuring wrong, so pin the distance too.
+    const p0 = TARGET;
+    const p1 = vec3(p0.x + tangent.x * 0.6 + bitangent.x * 0.8,
+                    p0.y + tangent.y * 0.6 + bitangent.y * 0.8,
+                    p0.z + tangent.z * 0.6 + bitangent.z * 0.8);
+    expect(
+      point2DDistance(projectPointForPlane(p0, plane), projectPointForPlane(p1, plane)),
+    ).toBeCloseTo(1, 12);
+
+    // And it agrees with the same camera expressed with a UNIT up: length must
+    // not change the drawing at all.
+    const unit = buildCameraSectionPlane(
+      { ...camera, up: vec3(1e-8, -1, 0) },
+      BOUNDS,
+    );
+    const unitBasis = customPlaneOf(unit.plane);
+    expect(vec3Dot(tangent, unitBasis.tangent)).toBeCloseTo(1, 10);
+    expect(vec3Dot(bitangent, unitBasis.bitangent)).toBeCloseTo(1, 10);
+  });
+
   it('throws instead of emitting a NaN transform when eye and target coincide', () => {
     expect(() =>
       buildCameraSectionPlane({ position: TARGET, target: TARGET, up: vec3(0, 1, 0) }, BOUNDS),

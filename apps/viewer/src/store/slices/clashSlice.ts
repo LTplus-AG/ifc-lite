@@ -219,6 +219,27 @@ export interface ClashSlice {
   setClashSolidUnavailable: (reason: ClashSolidUnavailableReason, thicknessM: number, requiredM: number) => void;
   /** Back to `'none'` — no clash focused. */
   clearClashSolid: () => void;
+  /**
+   * End the focused-clash PRESENTATION entirely: the A/B pair tint, the contact
+   * marker (lines + AABB box) and the intersection solid, plus the selected id
+   * and the `clashSolidRequestSeq` bump that invalidates an in-flight compute.
+   *
+   * This is the ONLY complete spelling of "stop drawing the focused clash", and
+   * every teardown path must call it rather than listing fields by hand. The
+   * field list lived inline in seven callers and each one had drifted to a
+   * different subset — `removeModel` cleared the solid but not the contact
+   * marker, `ClashPanel`'s unmount cleared the box but not the lines — because
+   * `Viewport.tsx` draws the marker from an effect keyed ONLY on
+   * `clashContactLines`/`clashOverlapBox`, which reads neither `clashSelectedId`
+   * nor `clashSolidStatus`. Dropping the solid therefore does NOT retract the
+   * wireframe, and it hung in world space over models that were already gone
+   * (#2654 review).
+   *
+   * Does NOT touch the clash RESULT (that is `clearClash`), nor the
+   * ghost/isolation/colour-override channels, which are owned by other slices
+   * and restored per-caller (an active lens must come back, not be blanked).
+   */
+  clearClashFocus: () => void;
   // Preset CRUD (persisted). Every one of these returns a SaveResult and only
   // commits to the store when the write actually landed, so the panel can never
   // show a rule change as applied that a refused write (quota, or storage
@@ -243,6 +264,37 @@ export interface ClashSlice {
   applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
   clearClash: () => void;
 }
+
+/**
+ * The intersection-solid state machine at rest. One definition, spread by every
+ * action that returns it to `'none'`, so a field added to the machine cannot be
+ * forgotten by one of them.
+ */
+const CLASH_SOLID_RESET = {
+  clashSolidStatus: 'none',
+  clashSolidMesh: null,
+  clashSolidVolumeM3: 0,
+  clashSolidReason: null,
+  clashSolidThicknessM: 0,
+  clashSolidRequiredM: 0,
+} as const satisfies Partial<ClashSlice>;
+
+/**
+ * Everything `focusClash` paints into the scene for ONE clash, at rest: the
+ * solid plus the pair tint, the contact marker and the selected id. The single
+ * source of truth behind `clearClashFocus` — and spread by `clearClash` too, so
+ * the two can never drift into clearing different subsets.
+ *
+ * `clashSolidRequestSeq` is deliberately NOT here: it is a monotonic counter,
+ * not a resettable field, and each action bumps it off its own current value.
+ */
+const CLASH_FOCUS_RESET = {
+  ...CLASH_SOLID_RESET,
+  clashSelectedId: null,
+  clashHighlightColors: null,
+  clashOverlapBox: null,
+  clashContactLines: null,
+} as const satisfies Partial<ClashSlice>;
 
 /** Build the persisted settings blob from current slice state. */
 function snapshotSettings(s: ClashSlice): ClashGlobalSettings {
@@ -379,14 +431,9 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
     // here is never painted.
     setClashSelectedId: (clashSelectedId) =>
       set((s) => ({
+        ...CLASH_SOLID_RESET,
         clashSelectedId,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
       })),
     setClashHighlightColors: (clashHighlightColors) => set({ clashHighlightColors }),
     setClashOverlapBox: (clashOverlapBox) => set({ clashOverlapBox }),
@@ -422,12 +469,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       }),
     clearClashSolid: () =>
       set((s) => ({
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
+        ...CLASH_SOLID_RESET,
+        clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
+      })),
+
+    // The one complete "stop drawing the focused clash" — see the field doc on
+    // the action type. Every teardown path routes through this instead of
+    // listing fields, which is what stops the next one from clearing a subset.
+    clearClashFocus: () =>
+      set((s) => ({
+        ...CLASH_FOCUS_RESET,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
       })),
 
@@ -540,26 +591,18 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
 
     clearClash: () =>
       // Keep presets + settings (workspace prefs, like saved lenses): only the
-      // run result/panel state is cleared. Sets `clashSelectedId`/solid fields
-      // directly (rather than delegating to `setClashSelectedId`/`clearClashSolid`)
-      // so bump `clashSolidRequestSeq` here too — it must invalidate an
-      // in-flight solid compute exactly like those two do.
+      // run result plus the focused-clash presentation is cleared. The
+      // presentation half is the shared `CLASH_FOCUS_RESET`, not a second hand-
+      // written field list, so `clearClash` and `clearClashFocus` cannot drift
+      // into clearing different subsets. The `clashSolidRequestSeq` bump comes
+      // with it: an in-flight solid compute must be invalidated here too.
       set((s) => ({
+        ...CLASH_FOCUS_RESET,
         clashResult: null,
         clashGroups: null,
         clashRunning: false,
         clashError: null,
         clashProgress: null,
-        clashSelectedId: null,
-        clashHighlightColors: null,
-        clashOverlapBox: null,
-        clashContactLines: null,
-        clashSolidStatus: 'none',
-        clashSolidMesh: null,
-        clashSolidVolumeM3: 0,
-        clashSolidReason: null,
-        clashSolidThicknessM: 0,
-        clashSolidRequiredM: 0,
         clashSolidRequestSeq: s.clashSolidRequestSeq + 1,
       })),
   };

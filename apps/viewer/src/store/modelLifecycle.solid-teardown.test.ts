@@ -45,6 +45,15 @@ function seedResolvedSolidPresentation(): void {
     clashSolidMesh: { positions: new Float64Array([0, 0, 0, 1, 0, 0, 0, 1, 0]), indices: new Uint32Array([0, 1, 2]) },
     clashSolidVolumeM3: 0.42,
     ghostExceptEntities: new Set<number>(),
+    // The rest of what `focusClash` paints into the SAME scene: the A/B pair
+    // tint and the contact marker (real contact lines, or the AABB fallback).
+    // `Viewport.tsx` draws the marker off `clashContactLines`/`clashOverlapBox`
+    // alone — its effect never reads `clashSelectedId` or `clashSolidStatus` —
+    // so a teardown that drops only the solid leaves the wireframe hanging in
+    // world space over models that are gone.
+    clashHighlightColors: new Map<number, [number, number, number, number]>([[12, [1, 0.6, 0, 1]]]),
+    clashOverlapBox: { min: [0, 0, 0], max: [1, 1, 1] },
+    clashContactLines: { vertices: [0, 0, 0, 1, 0, 0], color: [1, 0, 1, 1] },
   });
 }
 
@@ -54,6 +63,11 @@ function assertPresentationGone(where: string): void {
   assert.equal(s.clashSolidStatus, 'none', `${where} must drop the intersection-solid presentation`);
   assert.equal(s.clashSolidMesh, null, `${where} must not leave the previous model's solid mesh behind`);
   assert.equal(s.clashSelectedId, null, `${where} must not leave a clash focused on an unloaded model`);
+  // The marker geometry is drawn by an effect keyed ONLY on these fields, so
+  // clearing the solid + the selected id is not enough to make it disappear.
+  assert.equal(s.clashContactLines, null, `${where} must not leave the contact-line overlay drawn`);
+  assert.equal(s.clashOverlapBox, null, `${where} must not leave the overlap wireframe box drawn`);
+  assert.equal(s.clashHighlightColors, null, `${where} must not leave the A/B pair tint applied`);
 }
 
 describe('model-lifecycle teardown drops the intersection-solid presentation (#2654 review)', () => {

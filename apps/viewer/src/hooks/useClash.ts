@@ -165,7 +165,6 @@ export function useClash() {
   const setTolerance = useViewerStore((s) => s.setClashTolerance);
   const setClearance = useViewerStore((s) => s.setClashClearance);
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
-  const setSelectedId = useViewerStore((s) => s.setClashSelectedId);
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
   const setClashReview = useViewerStore((s) => s.setClashReview);
   const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
@@ -206,13 +205,13 @@ export function useClash() {
    */
   const discardSolidPresentation = useCallback((): void => {
     const state = useViewerStore.getState();
-    state.clearClashSolid();
     state.clearGhost();
     state.clearIsolation();
-    state.setClashHighlightColors(null);
+    // `clearClashFocus()` also nulls `clashSelectedId`, which both callers
+    // (`run` / `runDuplicates`) want: the new result set does not contain the
+    // old focused clash's id, and they cleared it by hand right after this.
+    state.clearClashFocus();
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null);
-    state.setClashContactLines(null);
   }, []);
 
   const run = useCallback(
@@ -610,14 +609,16 @@ export function useClash() {
     state.clearEntitySelection();
     state.clearIsolation(); // drop any clash isolation so the full model returns
     state.clearGhost(); // and any X-Ray ghosting
-    state.setClashHighlightColors(null);
+    // The whole focused-clash presentation in one call (tint, contact marker,
+    // solid, selected id, seq bump) — the clash slice owns that field list so
+    // no caller can clear a subset of it (#2654 review).
+    state.clearClashFocus();
     // Restore the colour-override channel to whatever owned it (an active lens),
     // or clear it — don't leave the clash A/B colours painted. (#1277 review)
+    // Not part of `clearClashFocus`: the override channel is another slice's,
+    // and only the caller knows what should own it next.
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null); state.setClashContactLines(null);
-    state.clearClashSolid();
-    setSelectedId(null); // also bumps clashSolidRequestSeq (clashSlice)
-  }, [setSelectedId]);
+  }, []);
 
   /** Current review status of a clash ('open' when unreviewed). Reactive: reads
    *  the subscribed reviews map so the panel repaints on any review change. (#1468) */
@@ -775,10 +776,12 @@ export function useClash() {
     state.clearEntitySelection();
     state.clearIsolation();
     state.clearGhost();
-    // Drop the clash colour-override (restoring an active lens) + overlap box.
+    // Drop the clash colour-override (restoring an active lens). The contact
+    // marker, the tint and the solid are `clearClash`'s job — it spreads the
+    // same `CLASH_FOCUS_RESET` as `clearClashFocus` and bumps
+    // `clashSolidRequestSeq` — so listing them again here would be the second
+    // copy this refactor removes (#2654 review).
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null); state.setClashContactLines(null);
-    state.clearClashSolid();
     clear(); // clearClash() also bumps clashSolidRequestSeq (clashSlice)
   }, [clear]);
 

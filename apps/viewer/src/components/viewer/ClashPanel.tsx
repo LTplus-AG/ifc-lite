@@ -239,10 +239,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     s.clearEntitySelection();
     s.clearIsolation();
     s.clearGhost();
-    s.setClashSelectedId(null);
-    s.setClashHighlightColors(null);
-    s.setClashOverlapBox(null);
-    s.clearClashSolid();
+    // One call, not a field list: this cleanup used to clear the selected id,
+    // the pair tint, the overlap box and the solid but NOT `clashContactLines`,
+    // so a focused clash whose contact interface HAD been built (the preferred
+    // marker — `useClash` sets the lines and nulls the box in that case) left
+    // its outline drawn after the panel unmounted (#2654 review).
+    s.clearClashFocus();
     s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
     // Drop any in-flight solid compute too — without this, a compute kicked
     // off just before the panel closes can resolve AFTER this cleanup runs

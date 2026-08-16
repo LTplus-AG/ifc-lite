@@ -161,8 +161,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
-      setClashSelectedId?: (id: string | null) => void;
-      clearClashSolid?: () => void;
+      clearClashFocus?: () => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
@@ -171,9 +170,15 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // longer exists and the tag map cannot grow without bound.
     cross.removeSourceTag?.(modelId);
 
-    // Drop the focused-clash PRESENTATION — the highlight plus the on-demand
-    // intersection solid, a mesh drawn into the live scene against a model set
-    // that is changing under it (#2654 review). Unconditional, not "only if the
+    // Drop the focused-clash PRESENTATION — the A/B pair tint, the contact
+    // marker (lines + AABB box) and the on-demand intersection solid, all of
+    // them geometry drawn into the live scene against a model set that is
+    // changing under it (#2654 review). Via `clearClashFocus`, the clash
+    // slice's single complete spelling of that teardown: clearing the solid and
+    // the selected id by hand — as this did — left `clashContactLines` /
+    // `clashOverlapBox` set, and `Viewport`'s marker effect is keyed on those
+    // alone, so the wireframe stayed drawn over models that were gone.
+    // Unconditional, not "only if the
     // focused clash names this model": a clash id is `${ruleId} ${lo} ${hi}`
     // with `lo`/`hi` themselves `model:expressId`, and parsing it here would be
     // a third, subtly different reading of a key format — the exact hazard the
@@ -186,10 +191,9 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // does not invalidate the pairs that do not involve it. Full teardown
     // (`clearAllModels`, `resetViewerState`) drops the result as well.
     //
-    // Both setters bump `clashSolidRequestSeq`, so an in-flight compute cannot
-    // land after this and repaint the solid.
-    cross.setClashSelectedId?.(null);
-    cross.clearClashSolid?.();
+    // `clearClashFocus` bumps `clashSolidRequestSeq`, so an in-flight compute
+    // cannot land after this and repaint the solid.
+    cross.clearClashFocus?.();
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no

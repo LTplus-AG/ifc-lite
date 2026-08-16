@@ -15,15 +15,14 @@ export function resetVisibilityForHomeFromStore(): void {
   // clash A/B colouring, the contact overlay (lines + box), and the selected row
   // (#1402). The colour-override channel is restored to an active lens, or emptied.
   //
-  // `setClashSelectedId(null)` also drops any intersection-solid presentation
-  // and bumps `clashSolidRequestSeq` (clashSlice): without that, a resolved
-  // (or still in-flight) `focusClash` solid could keep rendering opaque after
-  // Home / "Show all" brings the rest of the model back, with nothing selected
-  // (#2574 review).
-  state.setClashHighlightColors(null);
-  state.setClashOverlapBox(null);
-  state.setClashContactLines(null);
-  state.setClashSelectedId(null);
+  // `clearClashFocus()` is the clash slice's one complete spelling of that
+  // teardown — the tint, the marker, the solid, the selected id and the
+  // `clashSolidRequestSeq` bump. Without the bump, a resolved (or still
+  // in-flight) `focusClash` solid could keep rendering opaque after Home /
+  // "Show all" brings the rest of the model back, with nothing selected
+  // (#2574 review). Called rather than re-listing the fields so this path
+  // cannot drift out of sync with the others (#2654 review).
+  state.clearClashFocus();
   state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
   useViewerStore.setState({ activeBasketViewId: null });
 }

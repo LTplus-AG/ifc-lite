@@ -39,23 +39,101 @@ const RESHAPE_EPS = 1e-3;
 /** Axis-aligned bounding box in the renderer world frame. */
 export interface Aabb { min: readonly [number, number, number]; max: readonly [number, number, number] }
 
-/** Axis-aligned bounding box of an entity's meshes (renderer world frame). */
+/** Mutable AABB accumulator for {@link meshBounds} / {@link meshBoundsIndex}. */
+interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
+
+function emptyBox(): Box {
+  return { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
+}
+
+/**
+ * Fold one mesh's vertices into `box`, reconstructing the world coordinate.
+ *
+ * `positions` are NOT world on the wasm path: the pipeline defaults to a
+ * per-element local frame (`rust/geometry/src/router/transforms/mod.rs`), so
+ * world vertex i = `origin + positions[3i..3i+3]`, and `origin` is the
+ * element's AABB centre - it FOLLOWS the element. Summing raw positions
+ * therefore reported a pure translation as `movedDistance = 0` (the panel
+ * showed no move, the bulk CSV wrote `MovedDistance_m = 0`): only `origin`
+ * moved, and the positions were byte-identical. The exact trap
+ * `buildFingerprints.ts` documents against.
+ */
+function foldMeshWorldPositions(mesh: MeshData, box: Box): void {
+  const o = mesh.origin;
+  const ox = o?.[0] ?? 0, oy = o?.[1] ?? 0, oz = o?.[2] ?? 0;
+  const p = mesh.positions;
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i] + ox, y = p[i + 1] + oy, z = p[i + 2] + oz;
+    if (x < box.minX) box.minX = x; if (y < box.minY) box.minY = y; if (z < box.minZ) box.minZ = z;
+    if (x > box.maxX) box.maxX = x; if (y > box.maxY) box.maxY = y; if (z > box.maxZ) box.maxZ = z;
+  }
+}
+
+/** A folded accumulator as an {@link Aabb}, or null when nothing was folded. */
+function finishBox(box: Box): Aabb | null {
+  if (box.minX === Infinity) return null;
+  return { min: [box.minX, box.minY, box.minZ], max: [box.maxX, box.maxY, box.maxZ] };
+}
+
+/** The wasm pass's whole-entity world box as an {@link Aabb} copy. */
+function fromEntityAabb(aabb: { min: readonly number[]; max: readonly number[] }): Aabb {
+  return {
+    min: [aabb.min[0], aabb.min[1], aabb.min[2]],
+    max: [aabb.max[0], aabb.max[1], aabb.max[2]],
+  };
+}
+
+/**
+ * Axis-aligned bounding box of an entity's meshes (renderer world frame).
+ *
+ * Prefers `MeshData.geometryAabb` - the whole-entity ABSOLUTE world box from
+ * the wasm hashing pass, RTC offset and per-element `origin` already folded in
+ * (all submeshes of an entity carry the identical box). It is the same box
+ * `buildFingerprints.ts` feeds the diff engine, and the only one that stays
+ * comparable when two revisions chose different RTC offsets. When the pass
+ * produced no box (hashing off, older cache, NaN sentinel dropped), the
+ * fallback folds `origin + positions` per vertex - origin-correct, though
+ * still RTC-relative like the positions themselves.
+ */
 export function meshBounds(meshes: readonly MeshData[], globalId: number): Aabb | null {
-  let any = false;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let box: Box | null = null;
   for (const mesh of meshes) {
     if (mesh.expressId !== globalId) continue;
-    const p = mesh.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
-      any = true;
-      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
-      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
-    }
+    if (mesh.geometryAabb) return fromEntityAabb(mesh.geometryAabb);
+    foldMeshWorldPositions(mesh, box ??= emptyBox());
   }
-  if (!any) return null;
-  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+  return box ? finishBox(box) : null;
+}
+
+/**
+ * One pass over a model's meshes -> express id -> entity world {@link Aabb}.
+ * The bulk-report twin of {@link meshBounds} (#1202): SAME per-mesh fold and
+ * same `geometryAabb` preference, shared so the two cannot drift - a private
+ * copy of this loop is how the report path missed the `origin` fold that
+ * `meshBounds`'s contract requires (#2529).
+ */
+export function meshBoundsIndex(meshes: readonly MeshData[]): Map<number, Aabb> {
+  const resolved = new Map<number, Aabb>();
+  const acc = new Map<number, Box>();
+  for (const mesh of meshes) {
+    if (resolved.has(mesh.expressId)) continue;
+    if (mesh.geometryAabb) {
+      resolved.set(mesh.expressId, fromEntityAabb(mesh.geometryAabb));
+      acc.delete(mesh.expressId);
+      continue;
+    }
+    let box = acc.get(mesh.expressId);
+    if (!box) acc.set(mesh.expressId, box = emptyBox());
+    foldMeshWorldPositions(mesh, box);
+  }
+  for (const [id, box] of acc) {
+    const aabb = finishBox(box);
+    // An entity whose meshes carried no vertices gets NO box - indexing the
+    // empty accumulator would hand `summarizeGeometryChange` an Infinity box
+    // and a NaN distance, where `meshBounds` answers null.
+    if (aabb) resolved.set(id, aabb);
+  }
+  return resolved;
 }
 
 /**

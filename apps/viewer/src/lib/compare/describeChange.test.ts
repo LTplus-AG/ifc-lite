@@ -220,6 +220,34 @@ describe('describeChange - resolved material', () => {
   });
 });
 
+describe('describeChange - a meshed element moved under the wasm local frame (#2529)', () => {
+  it('reports the move when the translation is carried only by MeshData.origin', async () => {
+    // Local-frame contract (rust/geometry/src/router/transforms/mod.rs, default
+    // ON for wasm): world vertex = origin + position, and origin is the
+    // element's AABB centre, so it follows the element. A pure translation
+    // leaves `positions` byte-identical - the panel used to answer
+    // "movedDistance 0, reshaped false" for an element that moved 40 m.
+    const cube = (origin: [number, number, number]) => ({
+      expressId: 1,
+      positions: new Float32Array([-0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, 0.5]),
+      origin,
+    });
+    const entry = modifiedEntry('IfcWall');
+    entry.changeKinds = ['geometry'];
+    const models = new Map<string, FederatedModel>([
+      ['A', { geometryResult: { meshes: [cube([10, 2, 3])] } } as unknown as FederatedModel],
+      ['B', { geometryResult: { meshes: [cube([50, 2, 3])] } } as unknown as FederatedModel],
+    ]);
+    const detail = describeChange(entry, models);
+    assert.ok(detail?.geometry, 'a geometry change must be described');
+    assert.ok(
+      Math.abs(detail!.geometry!.movedDistance - 40) < 1e-6,
+      `element moved 40 m via origin only; got ${detail!.geometry!.movedDistance}`,
+    );
+    assert.strictEqual(detail!.geometry!.reshaped, false, 'a pure translation is not a reshape');
+  });
+});
+
 describe('describeChange - a geometry-less product that was re-georeferenced', () => {
   /** A site under a two-link placement chain; `parentY`/`childY` split its
    *  world Y between the root link and its own. Representation is `$`, so it

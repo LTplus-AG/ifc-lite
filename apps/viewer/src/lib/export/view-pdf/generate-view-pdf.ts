@@ -21,7 +21,14 @@
  * forgets. Callers must await it or attach a rejection handler, or a failed
  * chunk load becomes an unhandled rejection with nothing on screen.
  *
- * DEFECT CLASS 3 — a sheet that does not look like the view it claims to be.
+ * DEFECT CLASS 3 — a sheet with no record of its own scale. The filename says
+ * "1-100"; the paper says nothing, and a printed drawing measured at an assumed
+ * scale is worse than no drawing. So the sheet carries a scale bar and the
+ * ratio (`addScaleStamp`), in a band the page GROWS to hold. The drawing's
+ * transform is passed through that untouched, so furniture can never re-fit a
+ * millimetre of it.
+ *
+ * DEFECT CLASS 4 — a sheet that does not look like the view it claims to be.
  * The default mode is `'shaded'`: the surfaces print as a to-scale raster
  * underlay (`view-pdf-shading.ts`) with this file's vector strokes on top of
  * it. The image is placed through the SAME `PdfScaleTransform` as the strokes,
@@ -36,6 +43,7 @@
 
 import {
   Drawing2DGenerator,
+  addScaleStamp,
   buildCameraSectionPlane,
   clipMeshesToHalfSpace,
   computePdfScaleLayout,
@@ -66,6 +74,7 @@ import {
   type ViewPdfRasterBuilder,
 } from './view-pdf-shading';
 import { resolveKeptHalfSpace, type ViewSectionResolveInput } from './view-section-plane';
+import { drawScaleStamp, type ViewPdfStampTarget } from './view-pdf-stamp';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PUBLIC SHAPES
@@ -102,6 +111,13 @@ export interface ViewPdfExportInput {
    * monochrome line-work-only sheet and nothing else changes with it.
    */
   renderMode?: ViewPdfRenderMode;
+  /**
+   * Print the scale bar and the "1:N" text below the drawing. Defaults to
+   * `true`: a sheet whose only record of its scale is its filename carries none
+   * at all once it is on paper. Off is for a caller placing the drawing in its
+   * own title block, which then owns the scale record.
+   */
+  includeScaleStamp?: boolean;
   onProgress?: (stage: string, progress: number) => void;
 }
 
@@ -122,11 +138,8 @@ export interface ViewPdfExportResult {
 }
 
 /** The slice of jsPDF this writer uses, so a test can stand in for it. */
-export interface ViewPdfDocument extends ViewPdfImageTarget {
-  setDrawColor(r: number, g: number, b: number): void;
+export interface ViewPdfDocument extends ViewPdfImageTarget, ViewPdfStampTarget {
   setLineCap(style: string): void;
-  setLineWidth(width: number): void;
-  setLineDashPattern(pattern: number[], phase: number): void;
   line(x1: number, y1: number, x2: number, y2: number): void;
   output(type: 'blob'): Blob;
 }
@@ -236,7 +249,13 @@ export async function generateViewPdf(
   // IDENTITY flip: the camera basis already delivers x-right / y-up, and
   // `worldPointToPdfMm` supplies the one paper Y flip. See the module docblock.
   const layout = computePdfScaleLayout(drawing.bounds, input.scaleFactor, marginMm);
-  const doc = await (deps.createDocument ?? createJsPdfDocument)(layout.page);
+  // The scale band grows the PAGE and returns `layout.transform` unchanged, so
+  // every millimetre below is the same with the stamp and without it. Nothing
+  // here may go through a fit (`calculateDrawingTransform`): a silently shrunk
+  // drawing is the exact defect this export exists to prevent.
+  const stamped = (input.includeScaleStamp ?? true) ? addScaleStamp(layout, { marginMm }) : null;
+  const transform = stamped?.transform ?? layout.transform;
+  const doc = await (deps.createDocument ?? createJsPdfDocument)(stamped?.page ?? layout.page);
 
   // ── 5. Shaded underlay ──────────────────────────────────────────────────
   // FIRST, before a single stroke: a PDF paints in call order, so anything
@@ -247,10 +266,11 @@ export async function generateViewPdf(
       meshes: drawnMeshes,
       plane,
       viewDepth,
-      // The drawing area, not the page: the margins carry no ink.
+      // The drawing area: margins carry no ink and neither does the scale
+      // band, so this reads the UNSTAMPED page.
       drawingWidthMm: layout.page.widthMm - marginMm * 2,
       drawingHeightMm: layout.page.heightMm - marginMm * 2,
-      transform: layout.transform,
+      transform,
       buildRaster: deps.buildRaster,
       encodePng: deps.encodePng,
       onProgress: input.onProgress,
@@ -268,13 +288,17 @@ export async function generateViewPdf(
   // resolves occlusion the way the viewport does, so a dashed phantom edge laid
   // over a solidly shaded surface reads as a real edge ON that surface, which
   // is the one thing dashes exist to rule out.
-  const strokeCount = writeDrawing(doc, drawing.lines, layout.transform, {
+  const strokeCount = writeDrawing(doc, drawing.lines, transform, {
     includeHiddenLines: renderMode === 'shaded' ? false : (input.includeHiddenLines ?? true),
   });
 
-  // The filename is the sole record of the sheet's scale (v1 has no title
-  // block), so it carries the EXACT factor: rounding here would file a 1:99.5
-  // export as "1-100" and misreport what the page can be measured at (#2119).
+  // Last, so the bar cannot inherit the dash pattern or weight of whatever
+  // stroke happened to be written before it.
+  if (stamped) drawScaleStamp(doc, stamped.stamp);
+
+  // The filename carries the EXACT factor, the same way the printed stamp
+  // does: rounding here would file a 1:99.5 export as "1-100" and misreport
+  // what the page can be measured at (#2119).
   const filename = `${sanitizeFilename(
     `3d-view-1-${formatScaleFactorLabel(input.scaleFactor)}`,
     { fallback: '3d-view' },
@@ -282,7 +306,7 @@ export async function generateViewPdf(
   (deps.download ?? defaultDownload)(doc.output('blob'), filename);
 
   return {
-    page: layout.page,
+    page: stamped?.page ?? layout.page,
     filename,
     strokeCount,
     shading: shaded
@@ -348,10 +372,16 @@ async function createJsPdfDocument(page: PdfPage): Promise<ViewPdfDocument> {
   });
   return {
     setDrawColor: (r, g, b) => { doc.setDrawColor(r, g, b); },
+    setFillColor: (r, g, b) => { doc.setFillColor(r, g, b); },
+    setTextColor: (r, g, b) => { doc.setTextColor(r, g, b); },
     setLineCap: (style) => { doc.setLineCap(style); },
     setLineWidth: (width) => { doc.setLineWidth(width); },
     setLineDashPattern: (pattern, phase) => { doc.setLineDashPattern(pattern, phase); },
+    // jsPDF measures type in points whatever the document unit is.
+    setFontSize: (sizePt) => { doc.setFontSize(sizePt); },
     line: (x1, y1, x2, y2) => { doc.line(x1, y1, x2, y2); },
+    rect: (xMm, yMm, widthMm, heightMm, style) => { doc.rect(xMm, yMm, widthMm, heightMm, style); },
+    text: (text, xMm, yMm, options) => { doc.text(text, xMm, yMm, options); },
     // The format is pinned here rather than passed in: the encoder seam always
     // produces PNG, and 'FAST' keeps jsPDF from re-compressing bytes that are
     // already deflated. Sizes are millimetres, so the image lands at exactly

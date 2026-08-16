@@ -29,13 +29,14 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import {
+  addScaleStamp,
   buildCameraSectionPlane,
   computePdfScaleLayout,
   projectPointForPlane,
   worldBoundsOfMeshes,
   type Bounds2D,
   type CameraFrame,
-  type PdfScaleLayout,
+  type PdfPage,
   type Vec3,
   type WorldBounds3D,
 } from '@ifc-lite/drawing-2d';
@@ -43,23 +44,54 @@ import {
 /** Default blank paper around the drawing, in mm on every side. */
 export const VIEW_PDF_MARGIN_MM = 10;
 
+export interface ViewPdfPageEstimate {
+  /** The whole sheet, scale band included — what the reader gets. */
+  page: PdfPage;
+  /**
+   * The DRAWING's own ink area: page minus margins minus any furniture. The
+   * shading resolution is derived from this, so quoting the stamped page here
+   * would promise pixels for paper the drawing never covers.
+   */
+  drawingWidthMm: number;
+  drawingHeightMm: number;
+}
+
 /**
- * Upper-bound page layout for `meshes` seen from `camera` at 1:`scaleFactor`.
+ * Upper-bound page estimate for `meshes` seen from `camera` at 1:`scaleFactor`.
  *
  * Returns `null` when there is nothing to draw (no mesh contributes a finite
- * vertex). Throws only what `buildCameraSectionPlane` and
- * `computePdfScaleLayout` throw — a degenerate camera (eye == target) or an
+ * vertex). Throws only what `buildCameraSectionPlane`, `computePdfScaleLayout`
+ * and `addScaleStamp` throw — a degenerate camera (eye == target) or an
  * unusable scale — which the dialog surfaces as an error instead of a page.
  */
 export function estimateViewPdfLayout(
   meshes: readonly MeshData[],
   camera: CameraFrame,
   scaleFactor: number,
-  marginMm: number = VIEW_PDF_MARGIN_MM,
-): PdfScaleLayout | null {
+  options: { marginMm?: number; includeScaleStamp?: boolean } = {},
+): ViewPdfPageEstimate | null {
+  const marginMm = options.marginMm ?? VIEW_PDF_MARGIN_MM;
   const worldBounds = worldBoundsOfMeshes(meshes);
   if (!worldBounds) return null;
-  return computePdfScaleLayout(projectedBounds2D(worldBounds, camera), scaleFactor, marginMm);
+  const layout = computePdfScaleLayout(
+    projectedBounds2D(worldBounds, camera),
+    scaleFactor,
+    marginMm,
+  );
+  // The same call the exporter makes, so the quoted page is the printed one:
+  // the band adds height (and, on a drawing narrower than the bar, width), and
+  // the readout has to say so BEFORE the user waits through a generate.
+  // Defaulted the same way `generateViewPdf` defaults it: an estimate that
+  // silently disagreed with the exporter about the sheet's furniture would
+  // quote a page the export never produces.
+  const page = (options.includeScaleStamp ?? true)
+    ? addScaleStamp(layout, { marginMm }).page
+    : layout.page;
+  return {
+    page,
+    drawingWidthMm: layout.page.widthMm - marginMm * 2,
+    drawingHeightMm: layout.page.heightMm - marginMm * 2,
+  };
 }
 
 /**

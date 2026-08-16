@@ -244,6 +244,31 @@ describe('placeShadedUnderlay (#2042)', () => {
     assert.deepEqual(images, [], 'a zero-width image must not be placed at all');
   });
 
+  it('degrades to line work when the drawing itself is edge-on', async () => {
+    // A planar element seen along its own plane, or a section slider dragged
+    // onto a face, leaves a drawing with zero extent on one axis. The real
+    // pixel fit refuses a non-positive size — rightly, it will not invent a
+    // grid — and letting that out rejects the whole export over the one part of
+    // the sheet that is optional.
+    //
+    // The rasteriser is NOT injected here on purpose: the shipped
+    // `buildShadingRaster` and its real `fitRasterPixels` are the thing that
+    // throws, and a stub would accept a zero-width request without complaint.
+    for (const degenerate of [
+      { drawingWidthMm: 0, drawingHeightMm: 30 },
+      { drawingWidthMm: 40, drawingHeightMm: 0 },
+      { drawingWidthMm: Number.NaN, drawingHeightMm: 30 },
+    ]) {
+      const { images, doc } = imageRecorder();
+      const placed = await placeShadedUnderlay(doc, {
+        ...underlayInput(100).input,
+        ...degenerate,
+      });
+      assert.equal(placed, null, `${JSON.stringify(degenerate)} must degrade, not throw`);
+      assert.deepEqual(images, [], 'nothing may be drawn');
+    }
+  });
+
   it('fails the export loudly when the encoder fails', async () => {
     const { images, doc } = imageRecorder();
     await assert.rejects(

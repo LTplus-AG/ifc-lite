@@ -15,6 +15,12 @@
  * changes nothing. (A disabled switch that still LOOKED live would be the same
  * defect one layer up: a control the user moves and the PDF ignores.)
  *
+ * WHY THE SCALE STAMP IS A SWITCH AND NOT A SETTING. A sheet that carries no
+ * scale on the paper is the dangerous default, so the switch is on and the OFF
+ * text says what the user is giving up rather than describing a preference.
+ * The band changes the page size, which is why the readout above it recomputes
+ * from the same flag.
+ *
  * WHY THE RESOLUTION IS STATED. The shading is a raster, and on a very large
  * sheet its pixel count hits a memory cap, so the image gets softer. That costs
  * sharpness and nothing else: the placement rectangle comes from the world
@@ -46,6 +52,14 @@ export interface PdfViewAppearanceSectionProps {
   onRenderModeChange: (mode: ViewPdfRenderMode) => void;
   showHiddenEdges: boolean;
   onShowHiddenEdgesChange: (show: boolean) => void;
+  showScaleStamp: boolean;
+  onShowScaleStampChange: (show: boolean) => void;
+  /**
+   * The ratio exactly as the sheet will print it (`formatSheetScaleLabel`), or
+   * `null` when no scale is chosen yet. Passed in rather than re-derived so the
+   * note cannot describe a different ratio from the one on the paper.
+   */
+  scaleLabel: string | null;
   /** Ink area of the sheet (page minus margins), or `null` when unknown yet. */
   drawingWidthMm: number | null;
   drawingHeightMm: number | null;
@@ -91,6 +105,9 @@ export function PdfViewAppearanceSection({
   onRenderModeChange,
   showHiddenEdges,
   onShowHiddenEdgesChange,
+  showScaleStamp,
+  onShowScaleStampChange,
+  scaleLabel,
   drawingWidthMm,
   drawingHeightMm,
 }: PdfViewAppearanceSectionProps) {
@@ -145,6 +162,26 @@ export function PdfViewAppearanceSection({
           : showHiddenEdges
             ? 'Edges behind other geometry print as dashed lines.'
             : 'Only edges you can actually see are printed.'}
+      </p>
+
+      <div className="flex items-center justify-between gap-4">
+        <Label className="text-sm font-normal" htmlFor="pdf-view-scale-stamp">
+          Print a scale bar and the scale on the sheet
+        </Label>
+        <Switch
+          id="pdf-view-scale-stamp"
+          checked={showScaleStamp}
+          onCheckedChange={onShowScaleStampChange}
+        />
+      </div>
+      <p className="text-xs text-muted-foreground" data-testid="pdf-view-scale-stamp-note">
+        {showScaleStamp
+          ? `A scale bar and the text "Scale ${scaleLabel ?? '1:N'}" print in a band below the ` +
+            'drawing, which makes the page slightly taller. The bar is drawn to scale, so it ' +
+            'stays correct on a photocopy that the printed ratio no longer describes.'
+          : 'The sheet carries no scale of its own. Only do this if it goes into a title block ' +
+            'that states the scale, because a print nobody can check invites measuring it at ' +
+            'the wrong one.'}
       </p>
     </>
   );

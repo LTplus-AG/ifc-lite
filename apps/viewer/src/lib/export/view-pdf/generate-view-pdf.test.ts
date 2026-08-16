@@ -151,10 +151,27 @@ interface RecordedImage {
   order: number;
 }
 
+/** A scale-bar division. `style` is jsPDF's: 'FD' fills and strokes, 'S' strokes. */
+interface RecordedRect {
+  xMm: number; yMm: number; widthMm: number; heightMm: number;
+  style: 'S' | 'FD';
+  order: number;
+}
+
+interface RecordedText {
+  text: string;
+  xMm: number; yMm: number;
+  align: 'left' | 'center';
+  sizePt: number;
+  order: number;
+}
+
 interface Recorded {
   page: PdfPage | null;
   strokes: RecordedStroke[];
   images: RecordedImage[];
+  rects: RecordedRect[];
+  texts: RecordedText[];
   rasterRequests: ShadingRasterRequest[];
   saved: { filename: string; size: number }[];
 }
@@ -165,25 +182,53 @@ interface Recorder {
   deps: ViewPdfDeps;
 }
 
-function recorder(options: { raster?: 'contract' | 'none' } = {}): Recorder {
+/**
+ * `raster: 'real'` leaves the rasteriser seam UNINJECTED, so the export runs
+ * the shipped `buildShadingRaster` and its real pixel-fit arithmetic. That is
+ * the only way to exercise what the fit does with an impossible request: a stub
+ * builder accepts a zero-width drawing happily, so a test that injected one
+ * could not fail if the guard against it were deleted.
+ */
+function recorder(options: { raster?: 'contract' | 'none' | 'real' } = {}): Recorder {
   const record: Recorded = {
-    page: null, strokes: [], images: [], rasterRequests: [], saved: [],
+    page: null, strokes: [], images: [], rects: [], texts: [], rasterRequests: [], saved: [],
   };
   let width = 0;
   let dashed = false;
+  let sizePt = 0;
   let order = 0;
+  const rasterSeam: Pick<ViewPdfDeps, 'buildRaster' | 'encodePng'> =
+    options.raster === 'real'
+      ? {}
+      : {
+          buildRaster: async (request) => {
+            record.rasterRequests.push(request);
+            return options.raster === 'none' ? EMPTY_RASTER : contractRaster(request);
+          },
+          encodePng: async () => PNG_MARKER,
+        };
   return {
     record,
     deps: {
+      ...rasterSeam,
       createDocument: async (page) => {
         record.page = page;
         const doc: ViewPdfDocument = {
           setDrawColor: () => {},
+          setFillColor: () => {},
+          setTextColor: () => {},
           setLineCap: () => {},
           setLineWidth: (w) => { width = w; },
           setLineDashPattern: (pattern) => { dashed = pattern.length > 0; },
+          setFontSize: (size) => { sizePt = size; },
           line: (x1, y1, x2, y2) => {
             record.strokes.push({ x1, y1, x2, y2, width, dashed, order: order++ });
+          },
+          rect: (xMm, yMm, widthMm, heightMm, style) => {
+            record.rects.push({ xMm, yMm, widthMm, heightMm, style, order: order++ });
+          },
+          text: (text, xMm, yMm, textOptions) => {
+            record.texts.push({ text, xMm, yMm, align: textOptions.align, sizePt, order: order++ });
           },
           addImage: (bytes, xMm, yMm, widthMm, heightMm) => {
             record.images.push({ bytes, xMm, yMm, widthMm, heightMm, order: order++ });
@@ -193,11 +238,6 @@ function recorder(options: { raster?: 'contract' | 'none' } = {}): Recorder {
         return doc;
       },
       download: (blob, filename) => { record.saved.push({ filename, size: blob.size }); },
-      buildRaster: async (request) => {
-        record.rasterRequests.push(request);
-        return options.raster === 'none' ? EMPTY_RASTER : contractRaster(request);
-      },
-      encodePng: async () => PNG_MARKER,
     },
   };
 }
@@ -257,6 +297,17 @@ function strokeExtent(record: Recorded): { minX: number; maxX: number; minY: num
 
 const CLOSE = 1e-6;
 
+/**
+ * Height the scale band adds to every sheet, mm.
+ *
+ * Pinned by hand rather than imported: it is a deliberate layout value (a 2.5mm
+ * bar, its tick labels and the ratio text, with their gaps), and reading it out
+ * of the code under test would make every page-size assertion below agree with
+ * whatever the code currently does. It does NOT vary with scale or page size,
+ * which is itself asserted by the 1:100-vs-1:50 test.
+ */
+const STAMP_BAND_MM = 17;
+
 describe('generateViewPdf (#2042)', () => {
   it('sizes the page to the drawing at an exact scale and draws inside its margins', async () => {
     const { record, deps } = recorder();
@@ -265,9 +316,13 @@ describe('generateViewPdf (#2042)', () => {
       deps,
     );
 
-    // 4 m x 3 m at 1:100 is 40 x 30 mm of drawing, plus 10 mm of margin a side.
+    // 4 m x 3 m at 1:100 is 40 x 30 mm of drawing, plus 10 mm of margin a side,
+    // plus the scale band below the drawing (on by default).
     assert.ok(Math.abs(result.page.widthMm - 60) < 1e-4, `width ${result.page.widthMm}`);
-    assert.ok(Math.abs(result.page.heightMm - 50) < 1e-4, `height ${result.page.heightMm}`);
+    assert.ok(
+      Math.abs(result.page.heightMm - (50 + STAMP_BAND_MM)) < 1e-4,
+      `height ${result.page.heightMm}`,
+    );
     assert.deepEqual(record.page, result.page, 'the document must be created at the reported size');
 
     // The showstopper guard: the ink is ON the page, filling exactly the
@@ -359,9 +414,12 @@ describe('generateViewPdf (#2042)', () => {
       },
       deps,
     );
-    // Union extent is 4 m x 3.5 m: page 60 x 55 mm.
+    // Union extent is 4 m x 3.5 m: page 60 x 55 mm, plus the scale band.
     assert.ok(Math.abs(result.page.widthMm - 60) < 1e-4, `width ${result.page.widthMm}`);
-    assert.ok(Math.abs(result.page.heightMm - 55) < 1e-4, `height ${result.page.heightMm}`);
+    assert.ok(
+      Math.abs(result.page.heightMm - (55 + STAMP_BAND_MM)) < 1e-4,
+      `height ${result.page.heightMm}`,
+    );
 
     // Everything above the big box's top edge (page y = 15 mm) belongs to the
     // marker alone. Paper Y grows downward, so "above" is a SMALLER y.
@@ -390,20 +448,34 @@ describe('generateViewPdf (#2042)', () => {
       { view: view(), camera: CAMERA, section: null, scaleFactor: 50 },
       b.deps,
     );
-    // The drawn area doubles; the fixed 10 mm margin does not.
+    // The drawn area doubles; the fixed 10 mm margin does not, and neither does
+    // the scale band — a band that scaled with the drawing would fail here.
     assert.ok(Math.abs((at50.page.widthMm - 20) - 2 * (at100.page.widthMm - 20)) < 1e-4);
-    assert.ok(Math.abs((at50.page.heightMm - 20) - 2 * (at100.page.heightMm - 20)) < 1e-4);
+    const drawnHeight = (page: PdfPage) => page.heightMm - 20 - STAMP_BAND_MM;
+    assert.ok(
+      Math.abs(drawnHeight(at50.page) - 2 * drawnHeight(at100.page)) < 1e-4,
+      `${drawnHeight(at50.page)} vs 2 x ${drawnHeight(at100.page)}`,
+    );
   });
 
   it('keeps the same half of an off-centre cut that the viewport keeps', async () => {
+    // The scale band is off here on purpose: it is furniture whose width floor
+    // would widen the page of the 1 m sliver, and this test is about the CUT.
+    // The band's own page arithmetic is pinned in its own tests below.
     const near = recorder();
     const far = recorder();
     const unflipped = await generateViewPdf(
-      { view: view(), camera: CAMERA, section: sectionAtQuarterX(false), scaleFactor: 100 },
+      {
+        view: view(), camera: CAMERA, section: sectionAtQuarterX(false),
+        scaleFactor: 100, includeScaleStamp: false,
+      },
       near.deps,
     );
     const flipped = await generateViewPdf(
-      { view: view(), camera: CAMERA, section: sectionAtQuarterX(true), scaleFactor: 100 },
+      {
+        view: view(), camera: CAMERA, section: sectionAtQuarterX(true),
+        scaleFactor: 100, includeScaleStamp: false,
+      },
       far.deps,
     );
 
@@ -418,9 +490,14 @@ describe('generateViewPdf (#2042)', () => {
   });
 
   it('draws the cut rim as heavy cut lines, ON the cut plane', async () => {
+    // Scale band off: the rim is checked against the page EDGE, and the band's
+    // minimum bar width would widen this 10 mm-wide sliver of a page.
     const { record, deps } = recorder();
     const result = await generateViewPdf(
-      { view: view(), camera: CAMERA, section: sectionAtQuarterX(false), scaleFactor: 100 },
+      {
+        view: view(), camera: CAMERA, section: sectionAtQuarterX(false),
+        scaleFactor: 100, includeScaleStamp: false,
+      },
       deps,
     );
     const heavy = record.strokes.filter((s) => Math.abs(s.width - 0.5) < CLOSE);
@@ -511,6 +588,259 @@ describe('generateViewPdf (#2042)', () => {
       ),
       /dynamically imported module/,
     );
+  });
+});
+
+/**
+ * The scale the sheet carries on the paper (#2042 follow-up).
+ *
+ * DEFECT CLASS 4 — a printed sheet with no record of its own scale. The
+ * filename says "1-100" and the paper says nothing, so the print gets measured
+ * at an assumed scale, or a photocopy that rescaled the page gets measured at
+ * the scale the original was drawn at. A drawn bar answers both; a printed
+ * ratio answers only the first, so the sheet carries both.
+ *
+ * DEFECT CLASS 5 — furniture that moves the drawing. Adding anything to a sheet
+ * through a fit-to-page transform (`calculateDrawingTransform` is one line
+ * away, in the same package) leaves a page that looks right and measures wrong.
+ * So the second test measures a real distance between projected world points
+ * with the band on and off, and demands every stroke be identical.
+ */
+describe('generateViewPdf scale stamp (#2042)', () => {
+  /** Bar divisions are the only rectangles this writer emits. */
+  const barRects = (record: Recorded) => [...record.rects].sort((a, b) => a.xMm - b.xMm);
+
+  it('prints a to-scale bar and the exact ratio, below the drawing, by default', async () => {
+    const { record, deps } = recorder();
+    const result = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: 100 },
+      deps,
+    );
+
+    // The claim, in the units an engineer would check it in: at 1:100 one metre
+    // is 10 mm of paper, so a division labelled "1" sits 10.000 mm along the
+    // bar and each division rectangle is 10.000 mm wide.
+    const rects = barRects(record);
+    assert.ok(rects.length >= 2, `a scale bar needs divisions, got ${rects.length}`);
+    const barLeft = rects[0].xMm;
+    for (const rect of rects) {
+      assert.ok(
+        Math.abs(rect.widthMm - 10) < 1e-9,
+        `a 1 m division must print 10 mm wide at 1:100, got ${rect.widthMm}`,
+      );
+    }
+    const oneMetre = record.texts.find((t) => t.text === '1');
+    assert.ok(oneMetre, `the bar must label its metres, got ${record.texts.map((t) => t.text)}`);
+    assert.ok(
+      Math.abs(oneMetre.xMm - barLeft - 10) < 1e-9,
+      `the "1" label sits ${oneMetre.xMm - barLeft} mm along the bar, expected 10`,
+    );
+    // Alternating fill: the pattern that still reads after a copier washes the
+    // tick labels out.
+    assert.equal(rects[0].style, 'FD');
+    assert.equal(rects[1].style, 'S');
+
+    // The ratio, verbatim from the shared formatter.
+    assert.ok(
+      record.texts.some((t) => t.text === 'Scale 1:100'),
+      `the sheet must state its scale, got ${record.texts.map((t) => t.text)}`,
+    );
+
+    // On the paper, and clear of the ink: the drawing ends 10 mm above the
+    // pre-band page bottom, and the band lives between there and the new one.
+    const ink = strokeExtent(record);
+    for (const rect of rects) {
+      assert.ok(rect.yMm > ink.maxY, `a bar division overlaps the drawing at y=${rect.yMm}`);
+      assert.ok(rect.yMm + rect.heightMm < result.page.heightMm, 'the bar must be on the page');
+      assert.ok(rect.xMm >= 10 - 1e-9 && rect.xMm + rect.widthMm <= result.page.widthMm - 10 + 1e-9);
+    }
+    for (const text of record.texts) {
+      assert.ok(text.yMm > ink.maxY, `a stamp label overlaps the drawing at y=${text.yMm}`);
+      assert.ok(text.yMm < result.page.heightMm, 'a stamp label must be on the page');
+      assert.ok(text.sizePt > 0, 'text must be sized before it is written');
+    }
+  });
+
+  it('measures identically with the scale band and without it', async () => {
+    const withStamp = recorder();
+    const without = recorder();
+    const stamped = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: 100 },
+      withStamp.deps,
+    );
+    const plain = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: 100, includeScaleStamp: false },
+      without.deps,
+    );
+
+    // The distance between two projected world points - the box's own opposite
+    // corners, 4 m and 3 m apart - must not move by an ulp. This is what a
+    // fit-to-page furniture layout would break, while every other number on the
+    // sheet still looked plausible.
+    const a = strokeExtent(withStamp.record);
+    const b = strokeExtent(without.record);
+    assert.equal(a.maxX - a.minX, b.maxX - b.minX, 'the drawn width must not change');
+    assert.equal(a.maxY - a.minY, b.maxY - b.minY, 'the drawn height must not change');
+    assert.ok(Math.abs((a.maxX - a.minX) - 40) < 1e-9, `4 m at 1:100 is 40 mm, got ${a.maxX - a.minX}`);
+    assert.ok(Math.abs((a.maxY - a.minY) - 30) < 1e-9, `3 m at 1:100 is 30 mm, got ${a.maxY - a.minY}`);
+    // Not merely the same size: the same strokes at the same millimetres.
+    assert.deepEqual(
+      withStamp.record.strokes.map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 })),
+      without.record.strokes.map((s) => ({ x1: s.x1, y1: s.y1, x2: s.x2, y2: s.y2 })),
+    );
+    // The image the strokes sit on moves no more than they do.
+    assert.deepEqual(
+      withStamp.record.images.map((i) => [i.xMm, i.yMm, i.widthMm, i.heightMm]),
+      without.record.images.map((i) => [i.xMm, i.yMm, i.widthMm, i.heightMm]),
+    );
+
+    // All the band did was make the paper taller.
+    assert.equal(stamped.page.widthMm, plain.page.widthMm);
+    assert.ok(
+      Math.abs(stamped.page.heightMm - plain.page.heightMm - STAMP_BAND_MM) < 1e-9,
+      `band added ${stamped.page.heightMm - plain.page.heightMm} mm`,
+    );
+  });
+
+  it('leaves the sheet bare when the caller turns the stamp off', async () => {
+    const { record, deps } = recorder();
+    const result = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: 100, includeScaleStamp: false },
+      deps,
+    );
+    assert.deepEqual(record.rects, [], 'no bar may be drawn when it was turned off');
+    assert.deepEqual(record.texts, [], 'and no text either');
+    assert.ok(Math.abs(result.page.heightMm - 50) < 1e-4, `height ${result.page.heightMm}`);
+    assert.ok(record.strokes.length > 0, 'the drawing itself still prints');
+  });
+
+  it('prints the exact ratio on the sheet, never a rounded one', async () => {
+    // The filename already carries 1:99.5 (pinned above). The PAPER is what an
+    // engineer measures, so it must not round to a materially different scale
+    // either - and the bar must stay to scale at that odd factor.
+    const { record, deps } = recorder();
+    await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: 99.5 },
+      deps,
+    );
+    assert.ok(
+      record.texts.some((t) => t.text === 'Scale 1:99.5'),
+      `expected "Scale 1:99.5", got ${record.texts.map((t) => t.text)}`,
+    );
+    assert.equal(record.texts.filter((t) => t.text.includes('1:100')).length, 0);
+    for (const rect of barRects(record)) {
+      // 1 m at 1:99.5 is 1000/99.5 = 10.0502... mm, not 10.
+      assert.ok(
+        Math.abs(rect.widthMm - 1000 / 99.5) < 1e-9,
+        `a 1 m division at 1:99.5 must be ${1000 / 99.5} mm, got ${rect.widthMm}`,
+      );
+    }
+  });
+
+  it('hedges an "as displayed" factor it had to round, and draws it unrounded', async () => {
+    // The dialog's DEFAULT is "as displayed", which delivers whatever factor
+    // the viewport happens to sit at. Two decimals is all the filename can
+    // carry, and the sheet must quote the same number — so it says the ratio is
+    // the nearest hundredth rather than stating a scale nothing was drawn at.
+    const factor = 87.3456;
+    const { record, deps } = recorder();
+    const result = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: null, scaleFactor: factor },
+      deps,
+    );
+
+    assert.ok(
+      record.texts.some((t) => t.text === 'Scale about 1:87.35'),
+      `expected "Scale about 1:87.35", got ${record.texts.map((t) => t.text)}`,
+    );
+    assert.equal(
+      record.texts.filter((t) => t.text === 'Scale 1:87.35').length,
+      0,
+      'an unhedged ratio would state a scale the drawing was not drawn at',
+    );
+    // Sheet and filename quote the SAME number, which is the mismatch this
+    // export used to carry: the filename rounded while the paper said nothing.
+    assert.equal(result.filename, '3d-view-1-87.35.pdf');
+
+    // And the bar is laid out at the UNROUNDED factor. Every tick label is its
+    // own metre value, so each must sit `metres * 1000/87.3456` mm along the
+    // bar — 5.8e-4 mm per 10 mm away from where the printed 87.35 would put it,
+    // which the second assertion pins so a bar built from the label fails here.
+    const rects = barRects(record);
+    const barLeft = rects[0].xMm;
+    const ticks = record.texts.filter((t) => /^\d+(\.\d+)?( m)?$/.test(t.text));
+    assert.ok(ticks.length >= 2, `the bar must label its metres, got ${ticks.length}`);
+    for (const tick of ticks) {
+      const metres = Number.parseFloat(tick.text);
+      assert.ok(
+        Math.abs(tick.xMm - barLeft - metres * (1000 / factor)) < 1e-9,
+        `the "${tick.text}" tick sits ${tick.xMm - barLeft} mm along the bar, ` +
+          `expected ${metres * (1000 / factor)}`,
+      );
+      if (metres > 0) {
+        assert.ok(
+          Math.abs(tick.xMm - barLeft - metres * (1000 / 87.35)) > 1e-6,
+          `the "${tick.text}" tick is where the PRINTED rounding would put it, not the drawn scale`,
+        );
+      }
+    }
+  });
+});
+
+/**
+ * An edge-on view: a real thing to ask for, and until #2042's follow-up it
+ * rejected the entire export.
+ *
+ * A planar element seen along its own plane projects to a LINE, so the drawing
+ * has zero extent on one axis. The shading rasteriser cannot make a pixel grid
+ * out of that and says so by throwing — which surfaced as a raw internal string
+ * ("Invalid shading raster drawingWidthMm: 0") and lost the user a sheet whose
+ * line work was exact and to scale. The optional part of the sheet must never
+ * take the mandatory part down with it.
+ */
+describe('generateViewPdf edge-on view (#2042)', () => {
+  /**
+   * The section slider dragged to the very start of its travel: the cut lands
+   * exactly on the box's own x = 0 face, so all that survives is that face,
+   * seen edge-on. It draws (a rim is a rim) and it draws a LINE.
+   */
+  const sectionAtTheFace: ViewSectionResolveInput = {
+    plane: { axis: 'side', position: 0, flipped: false },
+    sceneBounds: BOX,
+    uiRange: null,
+  };
+
+  it('degrades to line work instead of rejecting the sheet', async () => {
+    // The REAL rasteriser, uninjected: a stub accepts a zero-width request
+    // without complaint, so injecting one here would test nothing.
+    const { record, deps } = recorder({ raster: 'real' });
+    const result = await generateViewPdf(
+      { view: view(), camera: CAMERA, section: sectionAtTheFace, scaleFactor: 100 },
+      deps,
+    );
+
+    // The drawing really is degenerate on X — that is the input, not an
+    // accident. Without this, everything below would pass on an ordinary view.
+    const ink = strokeExtent(record);
+    assert.ok(record.strokes.length > 0, 'the line work must still be written');
+    assert.ok(
+      Math.abs(ink.maxX - ink.minX) < 1e-9,
+      `an edge-on view draws a line, got ${ink.maxX - ink.minX} mm of width`,
+    );
+    // Shading was asked for (it is the default mode) and quietly skipped,
+    // rather than taking the export down on the way out.
+    assert.equal(result.shading, null, 'a zero-width drawing has no raster to place');
+    assert.deepEqual(record.images, [], 'and nothing may be placed on the page');
+    // The parts that matter still printed, at the scale they claim.
+    assert.ok(
+      Math.abs((ink.maxY - ink.minY) - 30) < 1e-9,
+      `3 m at 1:100 is 30 mm of line work, got ${ink.maxY - ink.minY}`,
+    );
+    assert.ok(
+      record.texts.some((t) => t.text === 'Scale 1:100'),
+      `the sheet still states its scale, got ${record.texts.map((t) => t.text)}`,
+    );
+    assert.equal(record.saved.length, 1, 'and the file is actually delivered');
   });
 });
 

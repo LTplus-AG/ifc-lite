@@ -174,6 +174,39 @@ export function formatScaleFactorLabel(factor: number): string {
   return rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+/**
+ * Relative gap below which a 2-decimal label is the factor rather than a
+ * rounding OF it. Float round-tripping (`1000 / (1000 / f)`) moves a factor by
+ * about 1e-16 relative; a real rounding — 87.3456 shown as "87.35" — moves it
+ * by about 1e-5. Anything in between does not occur, so this sits far from
+ * both and is not a tuned threshold.
+ */
+const LABEL_EXACTNESS = 1e-9;
+
+/**
+ * The ratio a sheet prints for `factor`: `"1:100"` when the label IS the
+ * factor, `"about 1:87.35"` when {@link formatScaleFactorLabel} had to round it.
+ *
+ * WHY THE HEDGE EXISTS. A to-scale sheet is a promise that a distance measured
+ * off the paper converts back at the printed ratio. "As displayed" hands over
+ * whatever factor the viewport happens to sit at — 1:87.3456 — and printing a
+ * bare "1:87.35" would state a scale the drawing was not drawn at, which is the
+ * same defect as an unlabelled sheet wearing a different hat: a number an
+ * engineer would trust and should not. The word says the printed ratio is the
+ * nearest hundredth, and the drawn scale bar next to it carries the exact
+ * length regardless.
+ *
+ * The number itself is left at 2 decimals so the sheet and the export filename
+ * (which goes through the same formatter) can never quote different ratios.
+ */
+export function formatSheetScaleLabel(factor: number): string {
+  const label = formatScaleFactorLabel(factor);
+  const printed = Number(label);
+  const exact =
+    Number.isFinite(printed) && Math.abs(printed - factor) <= Math.abs(factor) * LABEL_EXACTNESS;
+  return exact ? `1:${label}` : `about 1:${label}`;
+}
+
 /** Map one world-space point (metres) to paper space (mm) via `transform`. */
 export function worldPointToPdfMm(point: Point2D, transform: PdfScaleTransform): Point2D {
   return {

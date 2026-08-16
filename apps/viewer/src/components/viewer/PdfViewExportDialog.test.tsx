@@ -22,6 +22,12 @@
  *
  * (The 10 mm margin per side is fixed, so the PAGE does not double while the
  * DRAWING does. Both are asserted.)
+ *
+ * Every sheet also carries a scale bar and the printed ratio in a band below
+ * the drawing, which adds a fixed 17 mm of height and no width — so the quoted
+ * pages above become 60 x 67 mm and 100 x 97 mm. The readout has to say so
+ * BEFORE the export runs, because it is the number that decides whether the
+ * page can be printed at all.
  */
 
 import '@/test/setup-dom.js';
@@ -167,6 +173,18 @@ function hiddenEdgesSwitch(): HTMLButtonElement {
   return el as HTMLButtonElement;
 }
 
+function scaleStampSwitch(): HTMLButtonElement {
+  const el = document.body.querySelector('#pdf-view-scale-stamp');
+  assert.ok(el, 'the scale stamp switch must render');
+  return el as HTMLButtonElement;
+}
+
+function stampNote(): string {
+  const el = document.body.querySelector('[data-testid="pdf-view-scale-stamp-note"]');
+  assert.ok(el, 'the scale stamp note must render');
+  return el.textContent ?? '';
+}
+
 function readout(): string {
   const el = document.body.querySelector('[data-testid="pdf-view-page-readout"]');
   assert.ok(el, 'the page readout must render');
@@ -212,18 +230,20 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
   it('reports the exact page the sheet will be at 1:100', () => {
     openDialog();
     chooseScale('1:100');
-    // 4 m x 3 m at 10 mm/m, plus 10 mm of margin on each side.
-    assert.match(readout(), /Estimated page: 60 x 50 mm \(fits A4 Landscape\)/);
+    // 4 m x 3 m at 10 mm/m, plus 10 mm of margin on each side, plus the
+    // 17 mm scale band. 60 x 67 is portrait, so the containing sheet is too.
+    assert.match(readout(), /Estimated page: 60 x 67 mm \(fits A4 Portrait\)/);
   });
 
   it('doubles the drawn area when the scale factor halves to 1:50', () => {
     openDialog();
     chooseScale('1:100');
-    assert.match(readout(), /Estimated page: 60 x 50 mm/);
+    assert.match(readout(), /Estimated page: 60 x 67 mm/);
     chooseScale('1:50');
-    // Page 100 x 80: the DRAWING doubled (40x30 -> 80x60) while the fixed
-    // 10 mm margin did not, so a test asserting a doubled PAGE would be wrong.
-    assert.match(readout(), /Estimated page: 100 x 80 mm/);
+    // Drawing 80 x 60: the DRAWING doubled (40x30 -> 80x60) while the fixed
+    // 10 mm margin and the 17 mm scale band did not, so a test asserting a
+    // doubled PAGE would be wrong.
+    assert.match(readout(), /Estimated page: 100 x 97 mm/);
   });
 
   it('offers the viewport\'s own scale as the default, stated as a number', () => {
@@ -249,7 +269,7 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
     seedViewer(BIG_BOX_MAX);
     openDialog();
     chooseScale('1:10');
-    assert.match(readout(), /Estimated page: 6020 x 4020 mm/);
+    assert.match(readout(), /Estimated page: 6020 x 4037 mm/);
     assert.match(
       document.body.textContent ?? '',
       /A PDF page cannot exceed 5080 mm on a side/,
@@ -283,6 +303,35 @@ describe('PdfViewExportDialog page arithmetic (#2042)', () => {
     // A real scale is still reachable: the user picks a preset.
     chooseScale('1:100');
     assert.equal(exportButton().disabled, false, 'choosing a preset must re-enable Export');
+  });
+
+  it('quotes the page WITH the scale band, and shrinks it when the band is off', () => {
+    // The band is part of the sheet, so a readout that ignored it would under-
+    // report the page by 17 mm - and under-report it in exactly the direction
+    // that lets an unprintable page look printable.
+    openDialog();
+    chooseScale('1:100');
+    assert.equal(scaleStampSwitch().getAttribute('aria-checked'), 'true', 'the stamp is on by default');
+    assert.match(readout(), /Estimated page: 60 x 67 mm/);
+    click(scaleStampSwitch());
+    assert.equal(scaleStampSwitch().getAttribute('aria-checked'), 'false');
+    assert.match(readout(), /Estimated page: 60 x 50 mm/);
+  });
+
+  it('quotes the ratio the sheet will print, hedged when two decimals had to round it', () => {
+    // The dialog's DEFAULT is "as displayed", which here is 1:75.5905... Two
+    // decimals cannot hold that, so the sheet prints "about 1:75.59" and the
+    // note has to quote the SHEET rather than a tidier number of its own -
+    // otherwise the dialog promises a ratio the paper does not carry.
+    openDialog();
+    assert.match(stampNote(), /the text "Scale about 1:75\.59"/);
+    chooseScale('1:100');
+    assert.match(stampNote(), /the text "Scale 1:100"/);
+    assert.equal(
+      /about/.test(stampNote()),
+      false,
+      'a preset ratio is exact, and a hedge on every sheet would stop meaning anything',
+    );
   });
 
   it('rounds a custom scale to a whole number, and draws at the rounded scale', () => {
@@ -401,6 +450,38 @@ describe('PdfViewExportDialog export input (#2042)', () => {
       calls[0].includeHiddenLines,
       false,
       'turning the switch off must reach the exporter',
+    );
+  });
+
+  it('sends the scale-stamp choice, and defaults it to on', async () => {
+    // The same frozen-callback class as the hidden-edges switch: the control
+    // animates, the exporter honours whatever it is given, and the sheet comes
+    // out with a scale record the user just turned off (or without the one they
+    // left on, which is the dangerous direction).
+    const first = recordingExporter();
+    openDialog(first.exporter);
+    chooseScale('1:100');
+    await runExport();
+    assert.equal(first.calls.length, 1);
+    assert.equal(
+      first.calls[0].includeScaleStamp,
+      true,
+      'a sheet must state its own scale unless the user says otherwise',
+    );
+
+    cleanup();
+    document.body.innerHTML = '';
+
+    const second = recordingExporter();
+    openDialog(second.exporter);
+    chooseScale('1:100');
+    click(scaleStampSwitch());
+    await runExport();
+    assert.equal(second.calls.length, 1);
+    assert.equal(
+      second.calls[0].includeScaleStamp,
+      false,
+      'a frozen callback would still report the mount-time "true" here',
     );
   });
 

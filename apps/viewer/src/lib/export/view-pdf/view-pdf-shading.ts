@@ -128,11 +128,12 @@ export interface ShadedUnderlayPlacement {
 /**
  * Rasterise `input.meshes` and place the image on `doc`.
  *
- * Returns `null` — having drawn nothing — when the rasteriser reports no
- * usable pixels or the rectangle degenerates. That is deliberate: a shaded
- * export must never fail where a line-work export would have succeeded, so the
- * caller carries on and writes the strokes. A rasteriser or encoder that
- * THROWS is a different thing entirely and propagates.
+ * Returns `null` — having drawn nothing — when the drawing area itself is
+ * degenerate (an edge-on view), when the rasteriser reports no usable pixels,
+ * or when the rectangle degenerates. That is deliberate: a shaded export must
+ * never fail where a line-work export would have succeeded, so the caller
+ * carries on and writes the strokes. A rasteriser or encoder that THROWS is a
+ * different thing entirely and propagates.
  *
  * Call this BEFORE any stroke: PDF paints in call order, so the underlay has
  * to be written first for the line work to sit on top of it.
@@ -143,6 +144,21 @@ export async function placeShadedUnderlay(
 ): Promise<ShadedUnderlayPlacement | null> {
   const build = input.buildRaster ?? buildShadingRaster;
   const encode = input.encodePng ?? encodeRasterPng;
+
+  // An edge-on view is a real thing to ask for: a planar element seen along its
+  // own plane projects to a LINE, so the drawing has zero extent on one axis.
+  // `fitRasterPixels` refuses a non-positive size (rightly — it will not invent
+  // a pixel grid), and letting that reach the user rejects the whole export
+  // with a raw internal string over the one part of the sheet that is optional.
+  // The strokes are still exact and still to scale, so degrade to line work,
+  // which is what this function already does for every other reason a raster
+  // cannot be produced.
+  if (
+    !Number.isFinite(input.drawingWidthMm) || !Number.isFinite(input.drawingHeightMm) ||
+    input.drawingWidthMm <= 0 || input.drawingHeightMm <= 0
+  ) {
+    return null;
+  }
 
   input.onProgress?.('shading', 0);
   const { raster, fit } = await build({

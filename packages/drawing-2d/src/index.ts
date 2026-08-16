@@ -179,6 +179,9 @@ export type { SVGExportOptions } from './svg-exporter.js';
 // dependency of this package.
 export {
   computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
+  // The ratio a sheet PRINTS: the same number as the filename, hedged with
+  // "about" when 2 decimals had to round it (#2042).
+  formatSheetScaleLabel,
 } from './pdf-scale.js';
 export type { PdfScaleTransform, PdfPage, PdfScaleLayout, AxisFlip } from './pdf-scale.js';
 
@@ -513,6 +516,11 @@ export {
   calculateViewportBounds,
   calculateDrawingTransform,
 
+  // Scale stamp: the sheet's own record of the scale it was drawn at (#2042).
+  // Grows the page around an EXISTING to-scale layout and returns its
+  // transform untouched, unlike `calculateDrawingTransform`, which re-fits.
+  addScaleStamp,
+
   // Sheet renderers
   renderFrame,
   renderTitleBlock,
@@ -552,6 +560,13 @@ export type {
   ViewportBounds,
   DrawingSheet,
   SheetCreationOptions,
+
+  // Scale stamp types
+  ScaleStampRect,
+  ScaleStampText,
+  ScaleStampBar,
+  ScaleStamp,
+  StampedSheetLayout,
 
   // Renderer types
   FrameRenderResult,

@@ -19,7 +19,11 @@
  *     5080 mm a writer clamps and mis-scales the very thing the export exists
  *     to get right. The readout shows the size before anything is generated and
  *     the warning DISABLES export rather than advising against it.
- *  3. **A perspective image printed as if it had one scale.** It does not. The
+ *  3. **A sheet that does not say what scale it is.** The filename is not on
+ *     the paper. Every sheet carries a drawn scale bar and the ratio unless the
+ *     user turns them off, and the bar survives a photocopy that rescales the
+ *     page while the printed ratio does not.
+ *  4. **A perspective image printed as if it had one scale.** It does not. The
  *     export is always a parallel projection along the current view direction;
  *     the dialog says so in plain words and offers the one-click camera switch
  *     instead of silently changing the user's view.
@@ -53,7 +57,7 @@ import {
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
-import { formatScaleFactorLabel } from '@ifc-lite/drawing-2d';
+import { formatScaleFactorLabel, formatSheetScaleLabel } from '@ifc-lite/drawing-2d';
 import { collectViewMeshes } from '@/lib/export/view-pdf/collect-view-meshes';
 import { readViewPdfSource, readViewZoom } from '@/lib/export/view-pdf/view-pdf-export-source';
 import {
@@ -64,6 +68,7 @@ import {
   deriveDisplayedScaleFactor,
   describePage,
 } from '@/lib/export/view-pdf/view-pdf-scale';
+import { viewPdfPhaseLabel } from '@/lib/export/view-pdf/view-pdf-progress';
 import { PdfViewAppearanceSection } from './PdfViewAppearanceSection';
 import { PdfViewPageNotices } from './PdfViewPageNotices';
 import type {
@@ -92,21 +97,6 @@ interface PdfViewExportDialogProps {
 /** The drafting scales offered as presets, coarsest detail last. */
 const SCALE_PRESETS = [10, 20, 50, 100, 200, 500] as const;
 
-/**
- * Generator stage ids to words a user recognises. An unmapped stage falls
- * through to a plain "Working", never to a raw internal identifier.
- */
-const PHASE_LABEL: Record<string, string> = {
-  cutting: 'Cutting',
-  polygons: 'Building outlines',
-  edges: 'Finding edges',
-  hidden: 'Removing hidden lines',
-  merging: 'Merging lines',
-  complete: 'Writing PDF',
-  shading: 'Shading surfaces',
-  encoding: 'Encoding image',
-};
-
 /** Round a millimetre figure for display without inventing precision. */
 function formatMm(value: number): string {
   const rounded = Math.round(value * 10) / 10;
@@ -132,6 +122,9 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
   const [scaleChoice, setScaleChoice] = useState<string>('displayed');
   const [customScale, setCustomScale] = useState('100');
   const [showHiddenEdges, setShowHiddenEdges] = useState(true);
+  // On by default: the sheet has to state its own scale, or a print measured at
+  // an assumed one is the failure this whole feature exists to prevent.
+  const [showScaleStamp, setShowScaleStamp] = useState(true);
   // Shaded by default: the export exists to reproduce the viewport, and the
   // viewport is solid and coloured.
   const [renderMode, setRenderMode] = useState<ViewPdfRenderMode>('shaded');
@@ -191,16 +184,20 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
   const preview = useMemo(() => {
     if (!camera || drawnMeshes.length === 0 || scaleFactor === null) return null;
     try {
-      const layout = estimateViewPdfLayout(drawnMeshes, camera, scaleFactor);
+      // `showScaleStamp` is a real dependency, not decoration: the band changes
+      // the page the readout quotes and can push it past the printable limit.
+      const layout = estimateViewPdfLayout(drawnMeshes, camera, scaleFactor, {
+        includeScaleStamp: showScaleStamp,
+      });
       if (!layout) return null;
-      return { page: layout.page, ...describePage(layout.page) };
+      return { ...layout, ...describePage(layout.page) };
     } catch (err) {
       // A readout must never take the dialog down; the export itself reports
       // the same failure through toast.error.
       console.debug('[pdf-view] page estimate failed:', err);
       return null;
     }
-  }, [camera, drawnMeshes, scaleFactor]);
+  }, [camera, drawnMeshes, scaleFactor, showScaleStamp]);
 
   // Reset the transient bits every time the dialog opens so a previous run's
   // progress text cannot be read as this run's.
@@ -234,7 +231,8 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         marginMm: VIEW_PDF_MARGIN_MM,
         includeHiddenLines: showHiddenEdges,
         renderMode,
-        onProgress: (stage) => setPhase(PHASE_LABEL[stage] ?? 'Working'),
+        includeScaleStamp: showScaleStamp,
+        onProgress: (stage) => setPhase(viewPdfPhaseLabel(stage)),
       });
       const message =
         `Exported 1:${formatScaleFactorLabel(scaleFactor)} PDF, ` +
@@ -250,6 +248,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
         hidden_edges: renderMode === 'shaded' ? false : showHiddenEdges,
         render_mode: renderMode,
         shading_dpi: result.shading?.dpi ?? null,
+        scale_stamp: showScaleStamp,
       });
       setOpen(false);
     } catch (err) {
@@ -268,7 +267,7 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
     // this repo to catch that, and no orchestrator test can see it: the option
     // is honoured correctly one layer down. `PdfViewExportDialog.test.tsx`
     // drives the real dialog through the `exportViewPdf` seam for exactly this.
-  }, [source, camera, scaleFactor, showHiddenEdges, renderMode, exportViewPdf]);
+  }, [source, camera, scaleFactor, showHiddenEdges, renderMode, showScaleStamp, exportViewPdf]);
 
   const displayedLabel = displayedScale
     ? `As displayed (about 1:${formatScaleFactorLabel(displayedScale)})`
@@ -361,8 +360,13 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
             onRenderModeChange={setRenderMode}
             showHiddenEdges={showHiddenEdges}
             onShowHiddenEdgesChange={setShowHiddenEdges}
-            drawingWidthMm={preview ? preview.page.widthMm - VIEW_PDF_MARGIN_MM * 2 : null}
-            drawingHeightMm={preview ? preview.page.heightMm - VIEW_PDF_MARGIN_MM * 2 : null}
+            showScaleStamp={showScaleStamp}
+            onShowScaleStampChange={setShowScaleStamp}
+            // Through the SAME formatter the sheet prints, so the note cannot
+            // promise a ratio the paper does not carry.
+            scaleLabel={scaleFactor === null ? null : formatSheetScaleLabel(scaleFactor)}
+            drawingWidthMm={preview?.drawingWidthMm ?? null}
+            drawingHeightMm={preview?.drawingHeightMm ?? null}
           />
 
           {source?.sectionEnabled && (

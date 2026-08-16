@@ -1108,7 +1108,17 @@ export function useIfcLoader() {
                 cacheState: 'hit',
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+              // Geometry attribution (#2388) on a cache HIT: `loadTessellationTier`/
+              // `skipSmallCutsAtLoad` are the same const bindings that gate
+              // `buildGeometryCacheKey` above, so a hit is only reachable when they
+              // match what built the cached bytes — they are provably correct for
+              // THIS geometry, not stale or speculative. `diagnostics` is left
+              // undefined on purpose: a cache hit runs no streaming `complete`
+              // event, so there is no CSG-failure count to report for this load;
+              // reporting `loadDiagnostics` here would attribute a PRIOR load's
+              // counters (or a fabricated 0) to this one. The builder already
+              // turns an undefined/null diagnostics into absent CSG fields.
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({

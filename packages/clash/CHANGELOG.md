@@ -29,13 +29,26 @@
   The gate is now `positionTolerance`, a distance in metres (default 10 mm),
   applied to the largest distance any corner of one box has to travel to reach the
   matching corner of the other. For two equally-sized boxes that is exactly the
-  distance between their centres, whatever the shape and whatever the direction, so
-  the effective tolerance is 10 mm for every shape on every axis and on the
-  diagonal. A difference in size counts too — concentric boxes whose faces differ
-  by δ are δ apart — so position and shape are checked by one number with no second,
-  dimensionless knob. Boxes that do not touch at all are never paired, so an
-  element smaller than the tolerance cannot be matched to a neighbour it does not
-  intersect.
+  distance between their centres, whatever the shape and whatever the direction —
+  the metric itself is isotropic, where IoU was not. A difference in size counts
+  too — concentric boxes whose faces differ by δ are δ apart — so position and
+  shape are checked by one number with no second, dimensionless knob.
+
+  One precondition bounds that, and the broad phase enforces it a second time:
+  boxes that do not touch at all are never paired,
+  so an element smaller than the tolerance cannot be matched to a neighbour it
+  does not intersect. Two copies stop touching once the offset exceeds the
+  element's own extent on the offset axis, so the **effective** tolerance is
+  `min(positionTolerance, extent on that axis)` — the full 10 mm on every axis of
+  anything thicker than 10 mm, but only 2 mm along the normal of a 2 mm cladding
+  panel (measured: a `[4, 0.2, 3]` m wall gets 10.00 mm on all three axes; a
+  `[1.2, 0.002, 2.4]` m plate gets 10.00 / 2.00 / 10.00 mm). Offsets in the plane
+  of that same panel still get the full 10 mm. A duplicated thin sheet nudged
+  along its own normal by more than its thickness is deliberately read as two
+  objects rather than one modelled twice — the same judgement that keeps a 5 mm
+  fixing from pairing with a neighbour it never intersects. The previous IoU gate
+  did not report that pair either, so this is a limitation the change did not
+  remove, not one it introduced.
 
   `ClashResult.settings.tolerance` now reports the value that actually decided the
   matches. It previously advertised `positionTolerance`, which governed only the

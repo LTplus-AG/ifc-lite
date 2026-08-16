@@ -261,10 +261,17 @@ describe('findDuplicates', () => {
     ).toEqual(shapes.map(([name]) => [name, true]));
   });
 
-  it('has an effective tolerance equal to positionTolerance for every shape and axis', () => {
+  it('has an effective tolerance equal to positionTolerance on every axis of a shape thicker than it', () => {
     // The deliverable table: bisect for the largest displacement still reported
     // as a duplicate, per shape per axis. Under the IoU gate these spanned 5 mm
     // to 421 mm from one setting; they must now all be the configured metres.
+    //
+    // Every shape below is thicker than `tol` on all three axes, which is the
+    // precondition for that. An element THINNER than the tolerance gets only its
+    // own extent along its thin axis, because the pass also requires the boxes to
+    // touch — see "effective tolerance is min(positionTolerance, extent) per
+    // axis" for the general statement. The assertions here are unchanged; only
+    // this scope was previously left unstated.
     const tol = 0.02;
     const effective = (half: Vec3, axis: number): number => {
       let lo = 0;
@@ -427,6 +434,89 @@ describe('findDuplicates', () => {
     // And coincident sheets (zero gap) still qualify under the distance gate.
     expect(findDuplicates([...filler, sheet('a', 0), sheet('b', 0)]).clashes)
       .toHaveLength(1);
+  });
+
+  it('effective tolerance is min(positionTolerance, extent) per axis', () => {
+    // `boxesTouch` is a precondition on `boxDistance`, so `positionTolerance` is
+    // an upper bound rather than the whole gate: two copies separate once the
+    // offset exceeds the element's own extent on that axis. `boxDistance` alone
+    // is isotropic, the pass is not, and the difference is only visible on
+    // elements THINNER than the tolerance — pinned here so the documented
+    // property (changeset + `positionTolerance` JSDoc) cannot drift from it.
+    //
+    // Inflating `boxesTouch` by the tolerance would make the pass isotropic and
+    // break both "does not pair two small elements that do not even touch" and
+    // the disjoint-sheet test above — the anisotropy is the price of those.
+    //
+    // The touch condition is enforced TWICE, independently: by `boxesTouch` on
+    // all three axes, and by the sweep's eviction on whichever axis it sweeps.
+    // A bare two-element fixture sweeps the offset axis (it is the only axis
+    // with any spread of box minima), so eviction alone would produce this
+    // measurement even if the gate were widened. `filler` therefore repeats
+    // each measurement with the sweep forced onto X, where only `boxesTouch`
+    // can reject — otherwise half the property could be broken unnoticed.
+    const el = (key: string, min: Vec3, max: Vec3): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcPlate',
+      bounds: { min, max }, positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    const filler = (): ClashElement[] =>
+      Array.from({ length: 20 }, (_, i) =>
+        el(`f${i}`, [i * 2 + 10, 0, 0], [i * 2 + 10.1, 0.1, 0.1]));
+    /** Largest offset (mm) along `axis` at which a copy of `size` is still reported. */
+    const effectiveTolerance = (size: Vec3, axis: number, sweepX: boolean): number => {
+      let lo = 0;
+      let hi = 0.05;
+      for (let i = 0; i < 40; i += 1) {
+        const mid = (lo + hi) / 2;
+        const off: Vec3 = [0, 0, 0];
+        off[axis] = mid;
+        const a = el('A', [0, 0, 0], size);
+        const b = el('B', off, [size[0] + off[0], size[1] + off[1], size[2] + off[2]]);
+        const els = sweepX ? [...filler(), a, b] : [a, b];
+        if (findDuplicates(els).clashes.some((c) => c.id === 'duplicates m A m B')) lo = mid;
+        else hi = mid;
+      }
+      return lo * 1000;
+    };
+    const wall: Vec3 = [4, 0.2, 3];
+    const plate: Vec3 = [1.2, 0.002, 2.4];
+    for (const sweepX of [false, true]) {
+      // 200 mm wall: thicker than the tolerance on every axis, so the full 10 mm.
+      for (const axis of [0, 1, 2]) {
+        expect(effectiveTolerance(wall, axis, sweepX)).toBeCloseTo(10, 1);
+      }
+      // 2 mm plate: 10 mm in its plane, its own 2 mm thickness along its normal.
+      expect(effectiveTolerance(plate, 0, sweepX)).toBeCloseTo(10, 1);
+      expect(effectiveTolerance(plate, 2, sweepX)).toBeCloseTo(10, 1);
+      expect(effectiveTolerance(plate, 1, sweepX)).toBeCloseTo(2, 1);
+    }
+  });
+
+  it('abstains on non-finite bounds instead of asserting a pair', () => {
+    // The distance gate is two comparisons, and NaN fails every one of them, so
+    // an element whose bounds a direct SDK caller filled with NaN passes
+    // `boxesTouch` and must NOT then fall through the distance test: it would be
+    // reported as coincident with elements 100 m and 500 m away. A bound that
+    // cannot be compared is a bound the pass cannot judge — abstain, never
+    // assert. The legacy IoU branch (`similarity` returns 0 here) has always
+    // abstained; both gates must agree.
+    const bad: ClashElement = {
+      key: 'BAD', ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    };
+    const far = (key: string, x: number): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [x, 0, 0], max: [x + 1, 1, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    const elements = [bad, far('FAR1', 100), far('FAR2', 500)];
+    expect(findDuplicates(elements).clashes).toHaveLength(0);
+    expect(findDuplicates(elements, { iouThreshold: 0.9 }).clashes).toHaveLength(0);
+    // A NaN bound must not poison its neighbours either: two real coincident
+    // elements in the same run are still reported.
+    const dup = [bad, far('FAR1', 100), far('FAR2', 500), far('FAR2b', 500)];
+    expect(findDuplicates(dup).clashes).toHaveLength(1);
   });
 
   it('marks a nudged same-triangle-count pair minor, and a coincident one major', () => {

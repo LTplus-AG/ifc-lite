@@ -54,6 +54,15 @@ export interface DuplicateOptions {
    * `ClashResult.settings.tolerance`. It bounds {@link boxDistance}: for two
    * equally-sized boxes that is exactly the distance between their centres, and
    * a difference in size adds to it. Default 10 mm.
+   *
+   * It is an upper bound, not the whole gate. {@link boxesTouch} is applied
+   * first, and two copies stop touching once the offset exceeds the element's
+   * own extent on the offset axis, so the EFFECTIVE tolerance per axis is
+   * `min(positionTolerance, extent on that axis)`. A 200 mm wall gets the full
+   * 10 mm on all three axes; a 2 mm plate gets 10 mm in its plane and 2 mm
+   * along its normal. That is deliberate — see {@link boxesTouch} for why
+   * clear air between two surfaces makes them two objects — and it is pinned by
+   * the "effective tolerance is min(positionTolerance, extent) per axis" test.
    */
   positionTolerance?: number;
   /** Distance (m) at/below which a same-shape pair is treated as an EXACT
@@ -285,7 +294,14 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     } else {
       if (!boxesTouch(elA.bounds, elB.bounds)) return;
       const dist = boxDistance(elA.bounds, elB.bounds);
-      if (dist > positionTolerance) return;
+      // Written as an acceptance (`!(dist <= tol)`), not a rejection
+      // (`dist > tol`), so a non-comparable distance abstains instead of
+      // asserting a pair. NaN fails every comparison, so bounds carrying NaN
+      // pass `boxesTouch` (its own comparisons are false too) and would fall
+      // through a `>` rejection and be reported as coincident with elements
+      // hundreds of metres away. The legacy branch below is an acceptance
+      // (`sim < iouThreshold`) and has always abstained here; this matches it.
+      if (!(dist <= positionTolerance)) return;
       exact = dist <= exactTolerance;
     }
     // Only now, on a pair that already coincides, is the shape worth measuring.
@@ -340,9 +356,15 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
   // objects offset by a few metres (still inside a metre-scale tolerance) are
   // never skipped just because many small elements shrank an average cell size.
   // Sweep along the axis with the widest spread of box minima so the active set
-  // (and thus the comparison count) stays small. Eviction is exact rather than
-  // conservative: it drops only boxes that no longer touch on `axis`, and a pair
-  // that does not touch is rejected by the gate anyway.
+  // (and thus the comparison count) stays small. Eviction drops only boxes that
+  // no longer touch on `axis`, which is lossless for the DEFAULT gate — a pair
+  // that does not touch is rejected by `boxesTouch` anyway. It is NOT lossless
+  // for the deprecated `iouThreshold` branch: `similarity`'s degenerate fallback
+  // matches disjoint boxes that are within `tol` per axis, so in legacy mode the
+  // sweep can evict a pair that gate would have reported, and whether it does
+  // depends on which axis has the widest spread of minima — i.e. on the rest of
+  // the model. That axis-dependence predates the distance gate (the sweep is
+  // unchanged), so `iouThreshold` still restores the pre-1.7 gate as documented.
   let axis = 0;
   let bestSpread = -Infinity;
   for (let a = 0; a < 3; a += 1) {

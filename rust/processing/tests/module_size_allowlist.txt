@@ -178,7 +178,9 @@
 # per-cutter prism reconciliation (area·depth ≈ |vol|) defers non-prisms; and a
 # removed-volume upper bound (Σ extended-cutter volume) rejects an over-cut before it
 # commits, while a through-cut of a host thicker than the opening is not mistaken for one.
-     704 rust/geometry/src/router/voids/coaxial_union.rs
+# +9 (#2616): doc-only comments recording the z_tol coalescing rationale at the
+# depth-guard call sites; no code change.
+     713 rust/geometry/src/router/voids/coaxial_union.rs
 # probe.rs +134: the 2D bool-path host/opening extraction — `extruded_solid_from_item`
 # (unwrap IfcMappedItem chains to a single IfcExtrudedAreaSolid + composed transform),
 # `host_extruded_solid` and `opening_extruded_solids` (single-body eligibility gates).
@@ -206,7 +208,6 @@
 # +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
 # -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
      910 rust/processing/src/element.rs
-     468 rust/processing/src/georeferencing.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.

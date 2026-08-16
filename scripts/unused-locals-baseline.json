@@ -1,6 +1,6 @@
 {
-  "apps/viewer": 355,
-  "apps/viewer-embed": 358,
+  "apps/viewer": 350,
+  "apps/viewer-embed": 353,
   "examples/babylonjs-viewer": 1,
   "examples/collab-demo": 1,
   "examples/threejs-collab": 1,
@@ -16,7 +16,7 @@
   "packages/create-ifc-lite": 0,
   "packages/data": 0,
   "packages/diff": 0,
-  "packages/drawing-2d": 30,
+  "packages/drawing-2d": 25,
   "packages/embed-protocol": 0,
   "packages/embed-sdk": 0,
   "packages/encoding": 0,

@@ -319,6 +319,40 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     assert.equal(captures[1].props?.context, 'device_lost');
   });
 
+  it('a context builder that throws costs the enrichment, never the base report', () => {
+    // `buildDeviceLossContext` contains every field read and no known input
+    // makes it throw - so this pins the CALL-SITE containment
+    // (`buildContextSafely`), the layer that matters if a future edit breaks
+    // the builder's own guarantee. Without it, the renderer's per-listener
+    // catch would swallow the ENTIRE loss report, base fields included: the
+    // #2229 invisibility back in full. The builder parameter is a test seam;
+    // production passes only the renderer.
+    const h = makeSource();
+    subscribeViewportHealth(h.source, () => { throw new Error('builder exploded'); });
+
+    h.listeners.deviceLost[0]({ message: SAFARI_LOST, reason: 'render-exception' });
+
+    assert.equal(captures.length, 1, 'the base report must survive its own enrichment');
+    const props = captures[0].props ?? {};
+    assert.deepEqual(
+      Object.keys(props).sort(),
+      ['context', 'device_lost_detail', 'device_lost_reason'],
+      'base fields intact, and a throwing builder contributes no context fields',
+    );
+    assert.equal(props.context, 'device_lost');
+    assert.equal(props.device_lost_reason, 'render-exception');
+    assert.equal(props.device_lost_detail, SAFARI_LOST);
+    assert.ok(
+      warnings.some((args) => args.some((a) => String(a).includes('context build failed'))),
+      'the degraded build is logged, not swallowed silently',
+    );
+
+    h.listeners.degradation[0](h.info);
+    assert.equal(captures.length, 2, 'the degradation wiring has the same containment');
+    assert.equal(captures[1].props?.context, 'render_degraded');
+    assert.equal(captures[1].props?.render_degraded_detail, 'boom');
+  });
+
   it('returns one unsubscribe that detaches every channel', () => {
     // Viewport calls this exactly once on teardown; a partial detach leaks a
     // listener into a renderer that is about to be destroyed.

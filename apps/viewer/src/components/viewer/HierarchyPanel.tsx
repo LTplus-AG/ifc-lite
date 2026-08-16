@@ -30,6 +30,7 @@ import { syncSourceModel } from '@/lib/sources/syncSourceModel';
 import type { TreeNode } from './hierarchy/types';
 import { isSpatialContainer } from './hierarchy/types';
 import { useHierarchyTree } from './hierarchy/useHierarchyTree';
+import { computeTypeIsolationLabel } from './hierarchy/typeIsolationLabel';
 import { HierarchyNode } from './hierarchy/HierarchyNode';
 import { SectionHeader } from './hierarchy/SectionHeader';
 import { StoreyDisplayControls } from './hierarchy/StoreyDisplayControls';
@@ -88,24 +89,22 @@ export function HierarchyPanel() {
   const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const clearSelection = useViewerStore((s) => s.clearSelection);
 
-  // Derive label for type isolation (from Type tab) by checking mesh ifcType
-  const typeIsolationLabel = useMemo(() => {
-    if (!isolatedEntities || isolatedEntities.size === 0) return null;
-    const sampleId = isolatedEntities.values().next().value!;
-    for (const [, model] of models) {
-      const gr = model.geometryResult;
-      if (!gr?.meshes) continue;
-      const mesh = gr.meshes.find((m: { expressId: number }) =>
-        toGlobalIdFromModels(models, model.id, m.expressId) === sampleId,
-      );
-      if (mesh?.ifcType) return mesh.ifcType;
-    }
-    if (geometryResult?.meshes) {
-      const mesh = geometryResult.meshes.find((m: { expressId: number }) => m.expressId === sampleId);
-      if (mesh?.ifcType) return mesh.ifcType;
-    }
-    return `${isolatedEntities.size} elements`;
-  }, [isolatedEntities, models, geometryResult]);
+  // Derive label for type isolation (from the Type tab, or any other
+  // isolation source — e.g. the Filter tab's "Isolate in 3D", #2532) by
+  // resolving each isolated id's IFC type through the data-store index
+  // (O(1) per id via entities.getTypeName) rather than scanning
+  // geometryResult.meshes per id. Only label with a single type name when
+  // EVERY isolated id shares it — a heterogeneous isolation must not claim
+  // a class the user never isolated (#2532 review: the chip mislabelled a
+  // mixed-class Filter result by sampling only the first id). Extracted to
+  // `hierarchy/typeIsolationLabel.ts` (pure, unit-tested) — it also skips ids
+  // that don't resolve to any federated model rather than querying the
+  // fallback store with a raw, un-offset id (#2532 review: could hit an
+  // unrelated entity in a multi-model scene and mislabel the chip).
+  const typeIsolationLabel = useMemo(
+    () => computeTypeIsolationLabel(isolatedEntities, models, ifcDataStore),
+    [isolatedEntities, models, ifcDataStore],
+  );
 
   const hasActiveFilters = selectedStoreys.size > 0 || isolatedEntities !== null || classFilter !== null;
 

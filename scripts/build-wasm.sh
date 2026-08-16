@@ -14,6 +14,17 @@ fi
 
 echo "🦀 Building IFC-Lite WASM..."
 
+# The wasm build rebuilds `std` from source (needed for the panic_abort-only
+# single-thread bundle, and for the atomics-enabled threaded bundle below).
+# This used to live in `.cargo/config.toml`'s `[unstable] build-std`, but that
+# table applies to every `cargo` invocation in the workspace, not just wasm
+# ones — including plain host builds with no `--target` at all — and collided
+# with `[profile.release] panic = "abort"` there (duplicate `core` lang item).
+# Scope it to this script only via the env var equivalent of
+# `unstable.build-std`, so host builds (`cargo test --release`, etc.) never
+# see it.
+export CARGO_UNSTABLE_BUILD_STD="std,panic_abort"
+
 # Build with wasm-pack
 echo "📦 Running wasm-pack..."
 
@@ -132,8 +143,11 @@ if [ "${BUILD_THREADED:-}" = "1" ]; then
 
   # The exact flag set validated on spike/path-b-respike (8fcaff96). RUSTFLAGS
   # fully replaces .cargo/config.toml's target rustflags, so the base flags
-  # (max-memory, stack-size, simd128) are repeated here. build-std stays in
-  # .cargo/config.toml [unstable] and rebuilds std WITH atomics.
+  # (max-memory, stack-size, simd128) are repeated here. build-std is set via
+  # the `CARGO_UNSTABLE_BUILD_STD` env var above (NOT `.cargo/config.toml`'s
+  # `[unstable]` table — that was deliberately moved out of this file; see the
+  # comment near the top of this script and in `.cargo/config.toml`) and
+  # rebuilds std WITH atomics for this threaded build.
   # NOTE for whoever bumps rust-toolchain.toml: since wasm-bindgen 0.2.122, threaded
   # builds on nightlies dated 2026-05-06 or later ALSO need
   # `-C link-arg=--export=__heap_base`. The pinned nightly-2025-11-15 predates that,

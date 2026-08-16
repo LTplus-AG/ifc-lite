@@ -186,6 +186,56 @@ export function useClash() {
    */
   const solidRequestGuard = useRef(createLatestWinsGuard());
 
+  /**
+   * The EXACT Set references this hook last installed into the SHARED
+   * isolation / ghost visibility channels (`isolatedEntities` /
+   * `ghostExceptEntities`). Those channels are shared with features clash does
+   * not own - "Isolate in 3D" from the advanced filter (#2532), assembly
+   * isolation (#2531), the spaces X-ray - so clash teardown may only release a
+   * presentation clash itself installed. Reference identity is the provenance
+   * test: the visibility slice stores a fresh `Set` per write, so once another
+   * feature writes the channel the recorded reference no longer matches and
+   * the release below leaves that state standing. (#2574 regression: the
+   * run-start discard cleared these channels unconditionally, so a user's
+   * isolation was destroyed before any clash result existed.)
+   */
+  const appliedIsolation = useRef<ReadonlySet<number> | null>(null);
+  const appliedGhost = useRef<ReadonlySet<number> | null>(null);
+
+  /** Install clash isolation into the shared channel, recording exactly what
+   *  was installed so `releaseClashVisibility` can release only that. */
+  const installClashIsolation = useCallback((ids: Set<number>): void => {
+    useViewerStore.getState().setIsolatedEntities(ids);
+    appliedIsolation.current = useViewerStore.getState().isolatedEntities;
+    appliedGhost.current = null; // setIsolatedEntities cleared any ghosting
+  }, []);
+
+  /** Install clash ghosting (X-Ray context) into the shared channel, with the
+   *  same install-record contract as `installClashIsolation`. */
+  const installClashGhost = useCallback((ids: Set<number>): void => {
+    useViewerStore.getState().setGhostExceptEntities(ids);
+    appliedGhost.current = useViewerStore.getState().ghostExceptEntities;
+    appliedIsolation.current = null; // setGhostExceptEntities cleared isolation
+  }, []);
+
+  /**
+   * Release the isolation/ghost presentation clash itself installed - and ONLY
+   * that. Isolation or ghosting established by another feature (#2532 / #2531
+   * / spaces X-ray) no longer reference-matches the install record, so it
+   * survives a clash run untouched.
+   */
+  const releaseClashVisibility = useCallback((): void => {
+    const state = useViewerStore.getState();
+    if (appliedIsolation.current !== null && state.isolatedEntities === appliedIsolation.current) {
+      state.clearIsolation();
+    }
+    if (appliedGhost.current !== null && state.ghostExceptEntities === appliedGhost.current) {
+      state.clearGhost();
+    }
+    appliedIsolation.current = null;
+    appliedGhost.current = null;
+  }, []);
+
   /** Build clash elements + merged exclusions from every loaded model. */
   const gatherElements = useCallback((): { elements: ClashElement[]; exclusions: ExclusionSet } => {
     const state = useViewerStore.getState();
@@ -213,18 +263,24 @@ export function useClash() {
    * resolve after the new run finished and repaint its stale mesh plus the
    * full-model ghosting over results the user can no longer see the pair for
    * (CodeRabbit #2574). Mirrors the teardown `clearHighlight` already does.
+   *
+   * Only CLASH-OWNED state is discarded: the solid, the pair colours, the
+   * contact markers, and the isolation/ghost presentation clash itself
+   * installed (via `releaseClashVisibility`). Isolation or ghosting another
+   * feature established (#2532 / #2531 / spaces X-ray) must survive a run
+   * start - the unconditional clears that shipped with #2574 destroyed a
+   * user's isolation before any clash result existed.
    */
   const discardSolidPresentation = useCallback((): void => {
     const state = useViewerStore.getState();
     solidRequestGuard.current.begin();
     state.clearClashSolid();
-    state.clearGhost();
-    state.clearIsolation();
+    releaseClashVisibility();
     state.setClashHighlightColors(null);
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
     state.setClashOverlapBox(null);
     state.setClashContactLines(null);
-  }, []);
+  }, [releaseClashVisibility]);
 
   const run = useCallback(
     async (rules: ClashRule[]): Promise<void> => {
@@ -388,14 +444,19 @@ export function useClash() {
    *                via the renderer's X-Ray path (#1275 "see them in context").
    */
   const applyFocusMode = useCallback((globalIds: number[], mode: ClashFocusMode): void => {
-    const state = useViewerStore.getState();
-    if (mode === 'isolate') state.setIsolatedEntities(new Set(globalIds));
-    else if (mode === 'ghost') state.setGhostExceptEntities(new Set(globalIds));
+    if (mode === 'isolate') installClashIsolation(new Set(globalIds));
+    else if (mode === 'ghost') installClashGhost(new Set(globalIds));
     else {
+      // Full-context highlight clears both channels outright - the user asked
+      // to see this pair against the WHOLE model, so any isolation would hide
+      // it (pre-#2574 contract, #1275). Clash then owns neither channel.
+      const state = useViewerStore.getState();
       state.clearIsolation();
       state.clearGhost();
+      appliedIsolation.current = null;
+      appliedGhost.current = null;
     }
-  }, []);
+  }, [installClashIsolation, installClashGhost]);
 
   /**
    * Select both elements of a clash, highlight them, frame the camera, and apply
@@ -507,9 +568,12 @@ export function useClash() {
               // and is restored the moment this clash is deselected (`clearGhost`/
               // `clearHighlight` do not know about this override — they just
               // clear ghosting outright, which is correct either way).
-              s.clearIsolation();
+              // Installed through the provenance record so the run-start
+              // discard can later release this full-model ghost as clash-owned
+              // (it replaces any isolate-mode focus: setGhostExceptEntities
+              // clears isolation).
               const ghostExceptEntities = new Set<number>();
-              s.setGhostExceptEntities(ghostExceptEntities);
+              installClashGhost(ghostExceptEntities);
               // Drop the amber/cyan pair tint: ghosted, the pair should read
               // as ordinary translucent context (grey, like the rest), not a
               // coloured ghost — the solid alone carries the "here" colour.
@@ -549,7 +613,7 @@ export function useClash() {
         state.setClashSolidUnavailable('empty-operand', 0, 0);
       }
     },
-    [refOf, applyFocusMode],
+    [refOf, applyFocusMode, installClashGhost],
   );
 
   /**

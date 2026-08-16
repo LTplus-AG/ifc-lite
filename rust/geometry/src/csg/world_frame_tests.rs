@@ -8,8 +8,11 @@
 //! |coordinate| over all three axes plus the plane point: a georeferenced
 //! model 10 km out in X, cut by a roughly-Z-normal plane, got a ~2.4 mm
 //! epsilon from the irrelevant X magnitude and collapsed thin flush cuts.
-//! That code never merged, but the kernel's `near_band_from_extent` callers
-//! still take the operand extent as max-over-axes, so the corpus pins the
+//! That code never merged; the kernel's near-coplanar band carried the same
+//! max-over-axes shape and DID reach production, which is what
+//! `a_2mm_recess_cuts_identically_10km_out_in_x` caught. The band now
+//! projects its per-axis extents onto the plane under test
+//! (`kernel/near_band.rs`), and this corpus stays as the live guard on the
 //! invariant the class keeps violating: a boolean's result must not depend
 //! on how far along an ORTHOGONAL axis the operands sit (up to that axis's
 //! own f32 noise).
@@ -73,17 +76,13 @@ fn a_2mm_recess_cuts_at_the_origin() {
     );
 }
 
-// KNOWN-FAILING on the live max-over-axes near band: asserts the CORRECT
-// behaviour. Measured on this code: the far placement returns volume
-// 0.3000030517580399 — the full slab, the 2 mm recess VANISHED — because
-// `near_band_from_extent` reads ~2.4 mm from the irrelevant 10 km X
-// magnitude and welds the cutter's bottom face onto the host top plane.
-// This is exactly the thin-flush-cut collapse #2598 described, live in the
-// kernel's shared band today. When the band is projected onto the plane
-// normal this stops panicking and the `should_panic` fails: remove the
-// attribute (and this comment) in that PR.
+// The live regression guard for the normal-projected near band. It was
+// KNOWN-FAILING under `#[should_panic]` until the band stopped reading the
+// irrelevant 10 km X magnitude: on the max-over-axes form the far placement
+// returns volume 0.3000030517580399, the full slab with the 2 mm recess
+// WELDED AWAY. Mutating the projection back to max-over-axes still reproduces
+// exactly that.
 #[test]
-#[should_panic(expected = "world-frame corpus")]
 fn a_2mm_recess_cuts_identically_10km_out_in_x() {
     let far = recess_volume(WorldFrameCase::FarBaked, THIN_DEPTH);
     assert!(

@@ -20,7 +20,7 @@ export interface NarrowResult {
  * f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
  * value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
  * larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
- * `near_band_from_extent` in `rust/geometry/src/kernel/mesh_bridge.rs` — see
+ * `near_band_from_extent` in `rust/geometry/src/kernel/near_band.rs` — see
  * that function's doc for the derivation; kept here rather than shared
  * because the two live in different language runtimes.
  */

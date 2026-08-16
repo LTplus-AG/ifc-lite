@@ -30,17 +30,12 @@ fn snap(c: f64) -> f64 {
     (c / SNAP_GRID).round() * SNAP_GRID
 }
 
-/// The near-coplanar perpendicular band (metres) from the operand+point
-/// coordinate magnitude `extent`. `8·SNAP_GRID` is the per-axis-snap scatter
-/// envelope near the origin; the `extent·2⁻²²` term widens it for far-from-
-/// origin operands where f32 import is coarser.
-///
-/// Canonical definition — `tritri`, `classify`, and this module all size their
-/// near-coplanar/scatter bands to this SAME formula, so they call this
-/// function rather than mirroring the expression.
-pub(crate) fn near_band_from_extent(extent: f64) -> f64 {
-    (8.0 * SNAP_GRID).max(extent * (1.0 / 4_194_304.0))
-}
+// The near-coplanar perpendicular band lives in `super::near_band`: it keeps
+// the operand extent PER AXIS and projects it onto the plane normal actually
+// being tested. `tritri`, `classify` and this module all size their
+// near-coplanar/scatter bands with that ONE type rather than mirroring the
+// expression.
+use super::near_band::NearBand;
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
@@ -148,9 +143,12 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 /// smallest real feature edge, ~0.2 m — same argument as
 /// `near_on_surface_normal`), so welding the vertex onto the plane only
 /// removes noise. The CUTTER-ONLY direction suffices and never perturbs the
-/// host. The band and far-from-origin widening mirror
-/// `near_on_surface_normal` (8·SNAP_GRID ≈ 122 µm; the `extent·2⁻²²` term
-/// only dominates >32 km out). DETERMINISM: plain FMA-free f64 over
+/// host. The band and its far-from-origin widening mirror
+/// `near_on_surface_normal`: [`NearBand`], sized PER HOST PLANE from the
+/// operands' per-axis extents projected onto that plane's own normal
+/// (8·SNAP_GRID ≈ 122 µm until the projected extent passes ~512 m, so an
+/// offset along an axis this plane does not face never widens it).
+/// DETERMINISM: plain FMA-free f64 over
 /// already-snapped coords, fixed iteration order, nearest-plane ties broken
 /// by face index ⇒ byte-identical native==wasm. Every pinned box−box
 /// manifest is transversal (no cutter vertex within the band of a
@@ -159,16 +157,9 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
     if cutter.is_empty() || host.is_empty() {
         return;
     }
-    let mut extent = 1.0f64;
-    for t in cutter.iter().chain(host.iter()) {
-        for v in t {
-            for &x in v {
-                extent = extent.max(x.abs());
-            }
-        }
-    }
-    let band = near_band_from_extent(extent);
-    let band2 = band * band;
+    let mut band = NearBand::default();
+    band.observe_tris(cutter);
+    band.observe_tris(host);
 
     struct Face {
         t0: [f64; 3],
@@ -176,6 +167,12 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
         t2: [f64; 3],
         n: [f64; 3], // raw (unnormalised) plane normal
         nn: f64,     // |n|²
+        /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
+        /// returns it scaled by `nn` (its comparisons are made against a raw
+        /// `d = dot(v − t0, n)`); the `/ nn` here puts it back into true
+        /// distance units, because the nearest-plane search below compares
+        /// `d²/nn` ACROSS faces with different `|n|`.
+        band2: f64,
     }
     let faces: Vec<Face> = host
         .iter()
@@ -191,7 +188,8 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
             if nn <= 0.0 || !nn.is_finite() {
                 return None; // degenerate host triangle
             }
-            Some(Face { t0: t[0], t1: t[1], t2: t[2], n, nn })
+            let band2 = band.scaled_band2(n, nn) / nn;
+            Some(Face { t0: t[0], t1: t[1], t2: t[2], n, nn, band2 })
         })
         .collect();
 
@@ -213,7 +211,7 @@ fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
                     continue; // already exactly on this plane
                 }
                 let d2 = (d * d) / f.nn;
-                if d2 > band2 {
+                if d2 > f.band2 {
                     continue; // outside the snap-scatter band
                 }
                 if let Some((bd2, _)) = best {

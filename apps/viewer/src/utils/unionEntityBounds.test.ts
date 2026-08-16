@@ -18,7 +18,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeshData } from '@ifc-lite/geometry';
-import { unionEntityBounds, type BoundingBox3D } from './viewportUtils.js';
+import {
+  unionEntityBounds,
+  createEntityBoundsLookup,
+  indexMeshesByEntity,
+  boundsFromIndex,
+  getEntityBounds,
+  type BoundingBox3D,
+} from './viewportUtils.js';
 
 /** A one-triangle mesh for `entityId`, spanning [x0,x0+1] on each axis. */
 function mesh(entityId: number, x0: number): MeshData {
@@ -32,6 +39,16 @@ function mesh(entityId: number, x0: number): MeshData {
 
 function box(lo: number, hi: number): BoundingBox3D {
   return { min: { x: lo, y: lo, z: lo }, max: { x: hi, y: hi, z: hi } };
+}
+
+/** A mesh whose position buffer is too short to describe a vertex. */
+function degenerateMesh(entityId: number, componentCount: number): MeshData {
+  return {
+    expressId: entityId,
+    positions: new Float32Array(componentCount),
+    normals: new Float32Array(componentCount),
+    indices: new Uint32Array(0),
+  } as unknown as MeshData;
 }
 
 const none = () => null;
@@ -120,5 +137,85 @@ describe('unionEntityBounds', () => {
       assert.ok(b);
       assert.equal(b.max.x, 51, 'the instanced fallback must still apply inside the indexed path');
     });
+  });
+});
+
+/**
+ * The expressId index `unionEntityBounds` uses is shared with the viewport's
+ * aggregation resolution (`resolveRenderableIds` in Viewport.tsx), which asks
+ * about ids it discovers as it goes — one geometry-less assembly can expand to
+ * hundreds of parts — and so cannot pass an id count up front. These pin the
+ * shared helpers directly, because Viewport.tsx itself has no runtime harness.
+ */
+describe('indexMeshesByEntity', () => {
+  it('groups every submesh of an entity instead of keeping only the last', () => {
+    const index = indexMeshesByEntity([mesh(1, 0), mesh(2, 10), mesh(1, 100)]);
+    assert.equal(index.get(1)?.length, 2, 'both submeshes of entity 1 are kept');
+    assert.equal(index.get(2)?.length, 1);
+  });
+
+  it('drops meshes with a sub-vertex position buffer, as getEntityBounds does', () => {
+    // `getEntityBounds` filters on `positions.length >= 3`; the index has to
+    // filter identically or it starts handing `boundsFromMeshes` meshes the
+    // unindexed path never saw. Asserted on the index CONTENTS, not on the
+    // resulting bounds: a 0/1/2-component buffer aggregates to null either
+    // way, so a bounds-level assertion here would pass with the filter
+    // deleted and pin nothing at all.
+    const index = indexMeshesByEntity([
+      degenerateMesh(1, 0),
+      degenerateMesh(2, 2),
+      mesh(3, 0),
+      degenerateMesh(3, 1),
+    ]);
+    assert.equal(index.has(1), false, 'an empty position buffer is not indexed');
+    assert.equal(index.has(2), false, 'a 2-component position buffer is not indexed');
+    assert.equal(index.get(3)?.length, 1, 'only entity 3\'s real mesh survives');
+  });
+
+  it('answers through boundsFromIndex exactly as getEntityBounds does', () => {
+    const geom = [mesh(1, 0), mesh(1, 100), mesh(2, 10), degenerateMesh(3, 2)];
+    const index = indexMeshesByEntity(geom);
+    for (const id of [1, 2, 3, 999]) {
+      assert.deepEqual(
+        boundsFromIndex(index, id),
+        getEntityBounds(geom, id),
+        `indexed and unindexed bounds must agree for id ${id}`,
+      );
+    }
+  });
+});
+
+describe('createEntityBoundsLookup', () => {
+  it('answers identically across the switch to the index, without an id count', () => {
+    // No `expectedLookups`: this is the viewport's aggregation case, where the
+    // reader has to index itself part-way through the id stream. Every answer
+    // before AND after the switch must match the unindexed function.
+    const geom = [
+      mesh(1, 0), mesh(2, 10), mesh(3, 20), mesh(4, 30),
+      mesh(5, 40), mesh(6, 50), mesh(6, 150),
+    ];
+    const lookup = createEntityBoundsLookup(geom);
+    for (const id of [1, 2, 3, 4, 5, 6, 999]) {
+      assert.deepEqual(lookup(id), getEntityBounds(geom, id), `id ${id}`);
+    }
+  });
+
+  it('still aggregates every submesh for an id first asked AFTER it indexes', () => {
+    // Entity 6 is the SIXTH distinct id, so it is only ever answered from the
+    // index — the multi-submesh grouping regression (#2532) has to stay caught
+    // on the self-indexing path too, not just the count-driven one.
+    const geom = [
+      mesh(1, 0), mesh(2, 10), mesh(3, 20), mesh(4, 30), mesh(5, 40),
+      mesh(6, 50), mesh(6, 150),
+    ];
+    const b = createEntityBoundsLookup(geom)(6);
+    assert.ok(b);
+    assert.equal(b.min.x, 50);
+    assert.equal(b.max.x, 151, 'entity 6\'s second submesh must contribute');
+  });
+
+  it('returns null for every id once geometry has been released', () => {
+    const lookup = createEntityBoundsLookup(null);
+    for (const id of [1, 2, 3, 4, 5, 6]) assert.equal(lookup(id), null);
   });
 });

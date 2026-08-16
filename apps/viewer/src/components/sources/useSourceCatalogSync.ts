@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FileSourceProvider, PluginContext, SourceContainer, SourceFile } from '@ifc-lite/plugin-api';
 import { toast } from '@/components/ui/toast';
 import { isCatalogCacheable, persistCompleteCatalog, readCachedCatalog } from './sourceCatalogCache';
-import { appendPage, fetchAllFilePages, fetchContainerPage, type PagedItems } from './sourceCatalogPaging';
+import { appendPage, fetchAllFilePages, fetchContainerPage, fetchFilePage, type PagedItems } from './sourceCatalogPaging';
 import {
   collectUniqueById,
   isCatalogComplete,
@@ -32,12 +32,16 @@ interface UseSourceCatalogSyncOptions {
  *   entering a folder fetches its children on demand.
  * - `listFilesIsRecursive` — files are fetched once per area and filtered
  *   client-side per folder; otherwise entering a folder fetches its files.
+ * - `eagerFileSweep` — file listings are swept in full up front, the same way
+ *   Dalux always has been (no source exposes "load more files" as a real user
+ *   concept in its own UI; see `fetchAllFilePages`). Off by default: file
+ *   listings are cursor-paged exactly like folders, first page eager, further
+ *   pages on demand via `loadMoreFiles`.
  *
  * Folder listings are cursor-paged: the first page loads eagerly, further
  * pages on demand via `loadMoreFolders` (never an eager drain, never a silent
- * truncation). File listings are swept in full up front instead — no source
- * (currently just Dalux) exposes "load more files" as a real user concept in
- * its own UI, so there's nothing to page manually; see `fetchAllFilePages`.
+ * truncation). File listings follow the same pattern unless `eagerFileSweep`
+ * opts a provider into the full up-front drain instead.
  * Fully-fetched flat-subtree catalogs are cached in localStorage; partial or
  * per-folder catalogs stay in memory only.
  *
@@ -46,7 +50,7 @@ interface UseSourceCatalogSyncOptions {
  * what remains here is the request lifecycle (generations, aborts, flags).
  */
 export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseSourceCatalogSyncOptions) {
-  const { containerListing, listFilesIsRecursive } = provider.manifest.capabilities;
+  const { containerListing, listFilesIsRecursive, eagerFileSweep } = provider.manifest.capabilities;
   const flatSubtree = containerListing === 'flat-subtree';
   const cacheable = isCatalogCacheable(provider.manifest.capabilities);
   const providerName = provider.manifest.name;
@@ -102,8 +106,10 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
 
   const fetchFiles = useCallback(
     (projectId: string, containerId: string, signal: AbortSignal) =>
-      fetchAllFilePages(provider, ctx, projectId, containerId, signal),
-    [ctx, provider],
+      eagerFileSweep
+        ? fetchAllFilePages(provider, ctx, projectId, containerId, signal)
+        : fetchFilePage(provider, ctx, projectId, containerId, undefined, signal),
+    [ctx, eagerFileSweep, provider],
   );
 
   const maybePersist = useCallback(
@@ -309,6 +315,48 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     [containersByParent, fetchContainers, filesByContainer, folderKeyFor, loadingMore, maybePersist, setError],
   );
 
+  /** The map key holding files for the current selection. */
+  const fileKeyFor = useCallback(
+    (selectedContainerId: string | null) =>
+      resolveCatalogKey(areaRef.current, selectedContainerId, listFilesIsRecursive),
+    [listFilesIsRecursive],
+  );
+
+  const hasMoreFiles = useCallback(
+    (selectedContainerId: string | null) => pageHasMore(filesByContainer, fileKeyFor(selectedContainerId)),
+    [filesByContainer, fileKeyFor],
+  );
+
+  const loadMoreFiles = useCallback(
+    (selectedContainerId: string | null) => {
+      const area = areaRef.current;
+      const key = fileKeyFor(selectedContainerId);
+      if (!area || key === null || loadingMore) return;
+      const current = filesByContainer.get(key);
+      if (current?.cursor === undefined) return;
+
+      const gen = requestGenRef.current;
+      const signal = abortRef.current?.signal ?? new AbortController().signal;
+      setLoadingMore(true);
+      void (async () => {
+        try {
+          const page = await fetchFilePage(provider, ctx, area.projectId, key, current.cursor, signal);
+          if (requestGenRef.current !== gen) return;
+          const next = new Map(filesByContainer).set(key, appendPage(current, page));
+          setFilesByContainer(next);
+          maybePersist(area.projectId, area.fileAreaId, containersByParent, next);
+        } catch (err) {
+          if (requestGenRef.current === gen && !(err instanceof DOMException && err.name === 'AbortError')) {
+            setError(err instanceof Error ? err.message : String(err));
+          }
+        } finally {
+          if (requestGenRef.current === gen) setLoadingMore(false);
+        }
+      })();
+    },
+    [containersByParent, ctx, fileKeyFor, filesByContainer, loadingMore, maybePersist, provider, setError],
+  );
+
   const resetCatalog = useCallback(() => {
     // Same gap as openFileArea above: null the ref after aborting so a later
     // on-demand fetch (openContainer, loadMore*) does not inherit an
@@ -343,5 +391,7 @@ export function useSourceCatalogSync({ provider, ctx, setError, onSynced }: UseS
     resetCatalog,
     hasMoreFolders,
     loadMoreFolders,
+    hasMoreFiles,
+    loadMoreFiles,
   };
 }

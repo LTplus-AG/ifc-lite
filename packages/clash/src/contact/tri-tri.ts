@@ -25,7 +25,10 @@ export type TriTriResult =
  *
  * `planeEps` is the absolute tolerance on signed plane distance — distances
  * with |d| / |N| ≤ planeEps are treated as zero (on-plane). Defaults to 1e-6
- * in model-native units.
+ * in model-native units, which is only valid near the origin (see
+ * `scaledPlaneEps` in `./narrow-phase.js`); the production call path
+ * (`narrowPhase`) always supplies an explicit, coordinate-scaled value, so
+ * this default only applies to direct/standalone callers.
  */
 export function triTriIntersect(a: Triangle, b: Triangle, planeEps = 1e-6): TriTriResult {
   if (isDegenerate(a) || isDegenerate(b)) return { kind: "none" };

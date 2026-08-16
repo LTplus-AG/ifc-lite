@@ -34,6 +34,7 @@ import { ModelBadge } from './ModelBadge';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
+import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import {
   isTouching,
   penetrationDepth,
@@ -355,10 +356,32 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     return sortClashes(list, sortBy);
   }, [result, hideTouching, sortBy, statusFilter, reviewOf]);
 
+  // A duplicate scan renders one section per coincident SET ("3 coincident
+  // IfcColumn objects" holding its pair rows) instead of the generic
+  // severity/rule/typePair buckets — the pairwise rows alone overstate N
+  // copies as N(N−1)/2 sibling findings (#2530). Falls through to the generic
+  // sections for every other run (and if the grouping is stale). Computed
+  // separately from `sections` so the "Group by" control can tell whether it
+  // is actually in effect (review: the select kept re-running this memo and
+  // changing `groupBy` without ever affecting the rendered list).
+  const setSections = useMemo(
+    () => duplicateSetSections(result, groups, visibleClashes),
+    [result, groups, visibleClashes],
+  );
+  const isDuplicateSetView = setSections !== null;
+
   // Group the (filtered, sorted) clash list for display along the selected dimension.
   // Items keep their sorted order within each bucket.
   const sections = useMemo(() => {
     if (!result) return [] as Array<{ key: string; label: string; color?: string; items: Clash[] }>;
+    if (setSections) {
+      return setSections.map((s) => ({
+        key: s.key,
+        label: s.label,
+        color: SEVERITY[s.severity].color,
+        items: s.items,
+      }));
+    }
     const buckets = new Map<string, Clash[]>();
     for (const c of visibleClashes) {
       const key =
@@ -392,7 +415,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
       color: groupBy === 'severity' ? SEVERITY[key as ClashSeverity].color : undefined,
       items,
     }));
-  }, [result, visibleClashes, groupBy]);
+  }, [result, setSections, visibleClashes, groupBy]);
 
   /**
    * The same (filtered, sorted) clashes re-organized along the existing spatial
@@ -868,7 +891,13 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               <select
                 value={groupBy}
                 onChange={(e) => setGroupBy(e.target.value as typeof groupBy)}
-                className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5"
+                disabled={isDuplicateSetView}
+                title={
+                  isDuplicateSetView
+                    ? 'Duplicate scans always group by coincident set'
+                    : undefined
+                }
+                className="min-w-0 rounded border border-border bg-transparent px-1.5 py-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <option value="severity">By severity</option>
                 <option value="rule">By rule</option>

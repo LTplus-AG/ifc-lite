@@ -7,6 +7,7 @@
  */
 
 export { WebGPUDevice } from './device.js';
+export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 export type { ProjectionMode } from './camera-state.js';
@@ -105,7 +106,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
-import { WebGPUDevice } from './device.js';
+import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
@@ -1601,6 +1602,16 @@ export class Renderer {
      */
     getFrameStats(): FrameStats | null {
         return this._lastFrameStats;
+    }
+
+    /**
+     * Vendor/architecture identity of the GPU adapter, snapshotted during
+     * `init()` (issue #2624 device-loss telemetry), or null when the runtime
+     * does not expose `GPUAdapter.info`. Safe to call after a device loss:
+     * the snapshot is plain strings copied at init, not a live GPU object.
+     */
+    getAdapterInfo(): AdapterInfoSnapshot | null {
+        return this.device.getAdapterInfo();
     }
 
     /**

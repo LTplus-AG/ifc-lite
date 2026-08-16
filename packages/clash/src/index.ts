@@ -33,6 +33,7 @@ export {
   type ClashTriageResult,
 } from './triage.js';
 export { groupClashes, isClusterGroupingIneffective, type GroupOptions } from './grouping.js';
+export { groupDuplicateSets } from './duplicate-sets.js';
 export {
   clashReviewKey,
   aggregateReviewStatus,

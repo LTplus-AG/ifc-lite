@@ -17,6 +17,7 @@ import {
   createClashEngine,
   rulesFromPresets,
   groupClashes,
+  groupDuplicateSets,
   findDuplicates,
   clashReviewKey,
   summarizeClashes,
@@ -324,12 +325,30 @@ export function useClash() {
         state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
       }
-      const res = findDuplicates(elements, { exclusions });
+      // The duplicate scan has its own tolerance ("how far apart may two
+      // elements be and still be the same object", default 10 mm) — the clash
+      // engine's `clashTolerance` is a touching band (2 mm) and means something
+      // else, so it must not leak in here. Settable in Clash settings (#2530
+      // review: the knob was previously unreachable from the viewer).
+      const res = findDuplicates(elements, {
+        exclusions,
+        positionTolerance: state.clashDuplicateTolerance,
+      });
       state.setClashResult(res);
       // Completed-run signal for baseline consumers (clash tour run gate).
       state.bumpClashRunSeq();
+      // Coincident SETS, not spatial clusters: three copies of one column are one
+      // finding, and two unrelated duplicate pairs a metre apart stay two. The
+      // panel renders these as its sections (see duplicate-set-sections.ts).
+      const sets = groupDuplicateSets(res);
+      state.setClashGroups(sets);
       state.setClashSelectedId(null);
-      posthog.capture('clash_duplicate_scan', { duplicate_count: res.clashes.length });
+      // duplicate_count counts SETS — what the panel now reports as findings —
+      // not pairwise rows, which overstate N copies by N(N−1)/2 (#2530 review).
+      posthog.capture('clash_duplicate_scan', {
+        duplicate_count: sets.length,
+        pair_count: res.clashes.length,
+      });
     } catch (err) {
       console.error('[clash] duplicate scan failed', err);
       state.setClashError(err instanceof Error ? err.message : String(err));

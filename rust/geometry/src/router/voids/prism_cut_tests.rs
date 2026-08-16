@@ -848,3 +848,106 @@ fn basis_from_depth_matches_opening_frame_seed_convention() {
         "basis_from_depth's v must match OpeningFrame::from_depth's cross_b for the same seed convention"
     );
 }
+
+// --- `dedup_cut_vertices` tolerance boundary (vertex_dedup.rs) ---
+//
+// These call `dedup_cut_vertices` directly, bypassing the full analytic-prism
+// pipeline, so they pin the ULP-scale tolerance itself rather than whatever
+// incidental scatter a corpus fixture happens to produce.
+
+/// Bare mesh with only `positions` populated — `dedup_cut_vertices` never
+/// reads `indices`/`normals`, so a topologically-meaningless point soup is a
+/// faithful, minimal input.
+fn points_mesh(points: &[[f32; 3]]) -> Mesh {
+    let mut m = Mesh::new();
+    for p in points {
+        m.positions.extend_from_slice(p);
+    }
+    m
+}
+
+/// `dental_clinic #217` reconstructed directly: the analytic cut emitted the
+/// same mid-height seam point through two arithmetic paths, landing at
+/// `x = -20.289999008` and `x = -20.290000916` — exactly 2^-19 apart, per the
+/// function's own doc comment. `dedup_cut_vertices` must weld them to one
+/// vertex so the two half-faces share their seam instead of leaving an
+/// unmatched half-edge pair (the hairline-crack defect #217 was filed for).
+#[test]
+fn dental_clinic_217_seam_vertices_2_pow_neg19_apart_merge() {
+    let host = points_mesh(&[[-20.29, 5.0, 0.0]]); // sets the coordinate-magnitude scale only
+    let cut = points_mesh(&[[-20.289_999_008, 0.0, 0.0], [-20.290_000_916, 0.0, 0.0]]);
+    let sep = (cut.positions[0] - cut.positions[3]).abs() as f64;
+    assert!(
+        (sep - 2f64.powi(-19)).abs() < 1e-12,
+        "fixture drifted off the documented 2^-19 separation: {sep}"
+    );
+
+    let out = dedup_cut_vertices(&cut, &host);
+    assert_eq!(
+        out.positions[0], out.positions[3],
+        "seam vertices 2^-19 apart at x~=20.29 must weld to one point"
+    );
+}
+
+/// The tolerance's other edge, which protects real geometry: two vertices
+/// separated by just OVER the 4-f32-ulp tolerance at the same coordinate
+/// magnitude must stay distinct. The function's own doc warns that a coarser
+/// general weld (1e-4 m) "collapsed real geometry and took corpus defects
+/// from 76 to 90" — this is the boundary that regression guards against.
+#[test]
+fn vertices_just_past_4ulp_tolerance_do_not_merge() {
+    let mag = 20.29_f32;
+    let host = points_mesh(&[[mag, 5.0, 0.0]]); // sets the same magnitude scale, far enough not to pin
+    let tol = (mag as f64) * (4.0 / 8_388_608.0); // mirrors dedup_cut_vertices' own formula
+    let sep = tol * 1.2; // comfortably past the boundary, not just past float noise
+    let cut = points_mesh(&[[mag, 0.0, 0.0], [(mag as f64 + sep) as f32, 0.0, 0.0]]);
+    let actual_sep = (cut.positions[3] - cut.positions[0]).abs() as f64;
+    assert!(
+        actual_sep > tol,
+        "fixture must land past tol={tol}, got sep={actual_sep}"
+    );
+
+    let out = dedup_cut_vertices(&cut, &host);
+    assert_ne!(
+        out.positions[0], out.positions[3],
+        "vertices separated past the 4-ulp tolerance must NOT merge (this is the \
+         76->90 corpus-defect regression the tight tolerance guards against)"
+    );
+}
+
+// --- `directed_closed` (closure_checks.rs) ---
+//
+// Unlike `dedup_cut_vertices`, this predicate has no hand-tuned numeric
+// boundary of its own — it is a fixed 0.1mm-grid edge-cancellation audit with
+// no corpus-derived constant to pin. A minimal closed/open mesh exercises the
+// real implementation directly and cheaply, so it is covered here rather than
+// skipped; it does not need the full cut pipeline to be meaningful.
+
+/// Minimal closed manifold: a tetrahedron, consistently outward-wound. Every
+/// directed edge is cancelled by its reverse on the opposite face, so the
+/// audit must accept it.
+fn tetrahedron_mesh() -> Mesh {
+    let tris: [[[f64; 3]; 3]; 4] = [
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]],
+    ];
+    mesh_from_tris(&tris)
+}
+
+#[test]
+fn closed_tetrahedron_passes_directed_closed() {
+    assert!(directed_closed(&tetrahedron_mesh()));
+}
+
+/// Drop one face from the same tetrahedron: three of its edges lose their
+/// cancelling reverse, leaving a boundary loop. `directed_closed` must reject
+/// this — the exact failure mode (unmatched half-edges) the whole
+/// `dedup_cut_vertices` module exists to prevent upstream of.
+#[test]
+fn tetrahedron_missing_face_fails_directed_closed() {
+    let mut m = tetrahedron_mesh();
+    m.indices.truncate(m.indices.len() - 3); // drop the last triangle
+    assert!(!directed_closed(&m));
+}

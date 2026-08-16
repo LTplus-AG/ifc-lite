@@ -14,6 +14,7 @@ export { default as FileGlb } from '~icons/viewer/file-glb';
 export { default as FileKmz } from '~icons/viewer/file-kmz';
 export { default as FileHbjson } from '~icons/viewer/file-hbjson';
 export { default as FileUsd } from '~icons/viewer/file-usd';
+export { default as FilePdf } from '~icons/viewer/file-pdf';
 export { default as Annotate } from '~icons/viewer/annotate';
 export { default as Measure } from '~icons/viewer/measure';
 export { default as Section } from '~icons/viewer/section';

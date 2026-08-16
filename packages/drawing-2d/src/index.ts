@@ -183,6 +183,30 @@ export {
 export type { PdfScaleTransform, PdfPage, PdfScaleLayout, AxisFlip } from './pdf-scale.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TO-SCALE 3D-VIEW EXPORT (issue #2042)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Synthetic camera section plane (orthonormal basis, placed in front of the
+// model) + the world bounds helper that folds `MeshData.origin`.
+// `worldBoundsCorners` stays package-private: `buildCameraSectionPlane` does
+// the corner work itself and no external consumer exists, so publishing it
+// would only be permanent semver liability (PR #1871 review).
+export { buildCameraSectionPlane, worldBoundsOfMeshes } from './view-plane.js';
+export type { CameraFrame, CameraSectionPlane, WorldBounds3D } from './view-plane.js';
+
+// CPU half-space clip standing in for the GPU section clip.
+export { clipMeshToHalfSpace, clipMeshesToHalfSpace } from './half-space-clip.js';
+export type {
+  HalfSpaceClipResult,
+  HalfSpaceClipBatchResult,
+  WorldSegment,
+} from './half-space-clip.js';
+
+// World segments -> classified drawing lines (feeds `GeneratorOptions.extraLines`).
+export { projectWorldLineSeeds } from './world-line-seeds.js';
+export type { WorldLineSeed } from './world-line-seeds.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DXF EXPORT (issue #1861)
 // ═══════════════════════════════════════════════════════════════════════════
 

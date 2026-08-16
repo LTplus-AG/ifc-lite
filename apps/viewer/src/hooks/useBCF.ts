@@ -106,6 +106,19 @@ export function getGlobalRenderer(): Renderer | null {
 }
 
 /**
+ * Get the live viewport canvas (for anything outside the viewport tree that
+ * needs its CSS layout size, e.g. the to-scale PDF export deriving the scale
+ * the viewport is currently displaying at, #2042).
+ *
+ * Read `clientHeight`/`clientWidth`, never `width`/`height`: the attributes are
+ * DEVICE pixels (`css * devicePixelRatio`) and using them makes any physical-
+ * size derivation wrong by exactly that ratio on a Retina display.
+ */
+export function getGlobalCanvas(): HTMLCanvasElement | null {
+  return globalCanvasRef?.current ?? null;
+}
+
+/**
  * Clear the global references (called on unmount to prevent memory leaks)
  */
 export function clearGlobalRefs(): void {

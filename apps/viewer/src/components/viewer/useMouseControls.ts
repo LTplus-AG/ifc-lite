@@ -33,7 +33,7 @@ import {
   updateMeasureScreenCoords,
   shouldStartDragMeasurement,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick } from './selectionHandlers.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -856,16 +856,20 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // handlePolylineClick), so double-click never closes anything.
     const handleDoubleClick = (e: MouseEvent) => {
       if (activeToolRef.current !== 'measure') return;
-      const state = useViewerStore.getState();
-      if (state.measureMode !== 'polyline' || !state.activePolyline) return;
+      // The store side lives in selectionHandlers.ts (beside
+      // handlePolylineClick) so it is reachable from a test without a canvas
+      // — it is the one finish path allowed to drop the browser's duplicate
+      // second click, and that has to be verifiable.
+      const recorded = finishPolylineFromDoubleClick();
+      if (recorded === null) return; // not this gesture — leave the event alone
       e.preventDefault();
-      // finishPolyline drops a double-click's own duplicate near-final point
-      // before checking the minimum (see measurementSlice.ts), so
-      // double-clicking right after the very first placed point can still
-      // collapse below the 2-point minimum — same "did nothing register"
-      // gap as Enter on a 1-point sequence (useKeyboardShortcuts.ts), same
-      // fix: surface it instead of leaving it silent.
-      if (!state.finishPolyline(false)) {
+      // The duplicate near-final point is dropped before the minimum is
+      // checked (see measurementSlice.ts), so double-clicking right after
+      // the very first placed point can still collapse below the 2-point
+      // minimum — same "did nothing register" gap as Enter on a 1-point
+      // sequence (useKeyboardShortcuts.ts), same fix: surface it instead of
+      // leaving it silent.
+      if (!recorded) {
         import('@/components/ui/toast').then(({ toast }) => {
           toast.error('Polyline needs at least 2 points');
         });

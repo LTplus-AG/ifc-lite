@@ -135,14 +135,18 @@ export interface MeasurementSlice {
    * from screen-space proximity to the first point; Enter/double-click
    * always finish open) — never inferred here. No-op if fewer than 2 points
    * are accumulated (or fewer than 3 for `closed`, since a 2-point loop has
-   * no interior) — a double-click's duplicate near-final point is dropped
-   * before this check, so a physical double-click never counts as 2 points.
+   * no interior).
+   *
+   * `fromDoubleClick` opts into dropping the trailing near-duplicate point a
+   * physical double-click leaves behind. It is OFF by default and belongs to
+   * exactly one call site (useMouseControls.ts's `dblclick` handler) — see
+   * the implementation for why every other finish path must not dedup.
    *
    * Returns whether a measurement was actually recorded, so a caller (the
    * Enter shortcut) can tell "finished" apart from "did nothing register"
    * and give feedback instead of leaving the no-op silent.
    */
-  finishPolyline: (closed: boolean) => boolean;
+  finishPolyline: (closed: boolean, options?: { fromDoubleClick?: boolean }) => boolean;
   /** Discard the in-progress polyline without recording a measurement. */
   cancelPolyline: () => void;
   deletePolylineMeasurement: (id: string) => void;
@@ -483,7 +487,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     return { activePolyline: { points: [...state.activePolyline.points, point] } };
   }),
 
-  finishPolyline: (closed) => {
+  finishPolyline: (closed, options) => {
     // Reports whether a measurement was actually recorded (as opposed to a
     // no-op — no active sequence, or too few points to satisfy `minPoints`
     // even after dropping a double-click's duplicate). The Enter shortcut
@@ -503,8 +507,29 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       // duplicate point(s) before validating/recording, mirroring
       // SpaceSketchOverlay's `commitDraw` (same double-click-to-close gesture,
       // same fix).
+      //
+      // SCOPED to that one gesture on purpose (#2641 review). The screen
+      // coordinates this compares are not the click-time ones: the animation
+      // loop's `updateMeasurementScreenCoords` reprojects every placed point
+      // on every camera move, so after orbiting towards a top-down view two
+      // genuinely distinct vertices separated along the view ray collapse to
+      // within DUPLICATE_POINT_SCREEN_RADIUS_PX of each other. Running this
+      // on the Enter path (useKeyboardShortcuts.ts) or the close-loop click
+      // path (selectionHandlers.ts) would then delete real vertices and
+      // report a short length with nothing on screen to say so. Neither of
+      // those gestures synthesises an extra click — Enter appends nothing,
+      // and a close-loop click returns before `addPolylinePoint` — so
+      // neither can produce the duplicate this exists to remove.
+      //
+      // At most ONE point is dropped: the browser generates exactly one extra
+      // `click` per double-click, so removing more could only ever be eating
+      // a vertex the user placed on purpose.
       let points = active.points;
-      while (points.length >= 2 && isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])) {
+      if (
+        options?.fromDoubleClick &&
+        points.length >= 2 &&
+        isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])
+      ) {
         points = points.slice(0, -1);
       }
       const minPoints = closed ? 3 : 2;

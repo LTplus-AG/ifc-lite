@@ -671,6 +671,11 @@ export const DUPLICATE_POINT_SCREEN_RADIUS_PX = 2;
  * Whether `a` and `b` are close enough (screen space) to be the two leading
  * `click` events of one physical double-click, per
  * {@link DUPLICATE_POINT_SCREEN_RADIUS_PX}.
+ *
+ * Only meaningful on the double-click finish path. Placed points are
+ * reprojected on every camera move (`updateMeasurementScreenCoords`), so two
+ * genuinely distinct vertices can satisfy this after an orbit — see
+ * `finishPolyline`'s `fromDoubleClick` option in measurementSlice.ts.
  */
 export function isDuplicateClickPoint(
   a: { screenX: number; screenY: number },

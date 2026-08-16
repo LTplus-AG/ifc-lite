@@ -641,6 +641,30 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
 }
 
 /**
+ * The store side of the Measure tool's double-click finish (#2199), kept
+ * beside {@link handlePolylineClick} because the two are one gesture family
+ * and this one reads the store directly the same way.
+ *
+ * This is the ONLY finish path that may drop a trailing near-duplicate point:
+ * a physical double-click dispatches `click, click, dblclick`, so
+ * `handlePolylineClick` has already appended the browser's second click by
+ * the time this runs. Enter (useKeyboardShortcuts.ts) and the close-loop
+ * click above append nothing extra, and the screen coordinates the duplicate
+ * check compares are reprojected on every camera move, so passing
+ * `fromDoubleClick` from anywhere else would delete real vertices after an
+ * orbit — see `finishPolyline` in measurementSlice.ts.
+ *
+ * Returns `null` when the gesture does not apply (not in polyline mode, or
+ * no sequence in progress) so the caller knows to leave the DOM event alone;
+ * otherwise whether a measurement was actually recorded.
+ */
+export function finishPolylineFromDoubleClick(): boolean | null {
+  const state = useViewerStore.getState();
+  if (state.measureMode !== 'polyline' || !state.activePolyline) return null;
+  return state.finishPolyline(false, { fromDoubleClick: true });
+}
+
+/**
  * Resolve the active model + storey + a snap-aware world point.
  * Surfaces the same toast errors all add-element entry points share.
  *

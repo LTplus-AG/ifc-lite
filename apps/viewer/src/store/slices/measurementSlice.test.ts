@@ -356,7 +356,7 @@ describe('MeasurementSlice', () => {
       // screen, a hair off in world space (real raycasts of two closely
       // spaced pixels rarely land on the exact same world point):
       state.addPolylinePoint({ x: 3.001, y: 4.001, z: 0, screenX: 101, screenY: 101 });
-      state.finishPolyline(false);
+      state.finishPolyline(false, { fromDoubleClick: true });
 
       assert.strictEqual(state.polylineMeasurements.length, 1);
       const m = state.polylineMeasurements[0];
@@ -373,7 +373,7 @@ describe('MeasurementSlice', () => {
       // is genuinely > the duplicate-click screen radius from the previous
       // point — a real, separate click.
       state.addPolylinePoint({ x: 3, y: 4, z: 0, screenX: 100, screenY: 100 });
-      state.finishPolyline(false);
+      state.finishPolyline(false, { fromDoubleClick: true });
 
       assert.strictEqual(state.polylineMeasurements[0].points.length, 3);
     });
@@ -386,10 +386,117 @@ describe('MeasurementSlice', () => {
       // needs.
       state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 0 });
       state.addPolylinePoint({ x: 0.001, y: 0.001, z: 0, screenX: 1, screenY: 1 });
-      state.finishPolyline(false);
+      state.finishPolyline(false, { fromDoubleClick: true });
 
       assert.strictEqual(state.polylineMeasurements.length, 0);
       assert.ok(state.activePolyline, 'sequence must still be in progress, not silently dropped');
+    });
+  });
+
+  // #2641 review (Codex P2): the screen-space dedup above used to run on
+  // EVERY finish path. The screen coordinates it compares are not click-time
+  // ones — the animation loop's `updateMeasurementScreenCoords` reprojects
+  // every placed point on every camera move — so after orbiting towards a
+  // top-down view, vertices separated along the view ray collapse to the
+  // same pixel and were silently deleted, reporting a SHORT length with
+  // nothing on screen to say a vertex went missing.
+  //
+  // The fixture builds the collision the way production does: place points
+  // with well-separated click-time screen coords, then run the real
+  // `updateMeasurementScreenCoords` action with a top-down projector (drops
+  // the depth axis, exactly what an orbit to plan view does to the
+  // projection). No hand-written colliding input anywhere.
+  describe('finishPolyline — a camera orbit must not delete real vertices', () => {
+    /**
+     * Plan view in the renderer's Y-up metre frame: x/z map to the screen,
+     * y (height, and the view ray from directly overhead) is lost. Same
+     * shape as the projector `useAnimationLoop` hands the real action.
+     */
+    const topDown = (w: { x: number; y: number; z: number }) => ({ x: w.x, y: w.z });
+
+    /**
+     * Along the floor, then straight UP a corner: a wall-run-plus-height
+     * trace, the everyday reason a polyline has two vertices on the same
+     * plan position. Click-time screen coords are well separated (the camera
+     * was oblique while placing them); from overhead the last two land on
+     * the same pixel.
+     */
+    const traceRunThenUp = () => {
+      state.setMeasureMode('polyline');
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 100 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 0, screenX: 30, screenY: 100 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 4, screenX: 70, screenY: 100 });
+      // 5m straight up from the previous vertex — its own deliberate click.
+      state.addPolylinePoint({ x: 3, y: 5, z: 4, screenX: 70, screenY: 50 });
+    };
+    /** 3 + 4 + 5, the full traced run. */
+    const FULL_OPEN_LENGTH = 12;
+
+    it('reprojection really does collapse the two last vertices onto one pixel', () => {
+      // Guards the fixture itself. If reprojection ever stopped rewriting
+      // polyline screen coords, the tests below would pass for the wrong
+      // reason: no collision left for the dedup to trip over.
+      traceRunThenUp();
+      state.updateMeasurementScreenCoords(topDown);
+      const pts = state.activePolyline!.points;
+      assert.strictEqual(pts.length, 4);
+      assert.ok(
+        Math.hypot(pts[3].screenX - pts[2].screenX, pts[3].screenY - pts[2].screenY) <= 2,
+        'fixture is inert: the two view-ray-separated vertices did not collapse within the dedup radius',
+      );
+      assert.notStrictEqual(pts[2].y, pts[3].y, 'the collapsed vertices must still be distinct in WORLD space');
+    });
+
+    it('Enter keeps every vertex and reports the full length after an orbit', () => {
+      traceRunThenUp();
+      state.updateMeasurementScreenCoords(topDown);
+
+      // The Enter shortcut's exact call (useKeyboardShortcuts.ts).
+      assert.strictEqual(state.finishPolyline(false), true);
+
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.points.length, 4, 'an orbit must not delete deliberately placed vertices');
+      assert.ok(
+        Math.abs(m.length - FULL_OPEN_LENGTH) < 1e-9,
+        `expected the full ${FULL_OPEN_LENGTH}m, got ${m.length} — a short number the user cannot see is wrong`,
+      );
+    });
+
+    it('the close-loop click keeps every vertex and reports the full perimeter after an orbit', () => {
+      traceRunThenUp();
+      state.updateMeasurementScreenCoords(topDown);
+
+      // The close-loop click's exact call (selectionHandlers.ts).
+      assert.strictEqual(state.finishPolyline(true), true);
+
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.points.length, 4);
+      assert.strictEqual(m.closed, true);
+      // 3 + 4 + 5, plus the closing leg back to the origin, |(3, 5, 4)|.
+      const expected = FULL_OPEN_LENGTH + Math.hypot(3, 5, 4);
+      assert.ok(
+        Math.abs(m.length - expected) < 1e-9,
+        `expected the full perimeter ${expected}, got ${m.length}`,
+      );
+    });
+
+    it('the double-click path still drops its own duplicate after an orbit', () => {
+      // The feature the scoping must not delete. Same reprojection, but the
+      // trailing point IS the browser's second `click`, and the vertices the
+      // user actually placed stay 4 screen px apart from overhead, so the
+      // only thing in dedup range is the duplicate.
+      state.setMeasureMode('polyline');
+      state.startPolyline({ x: 0, y: 0, z: 0, screenX: 0, screenY: 100 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 0, screenX: 30, screenY: 100 });
+      state.addPolylinePoint({ x: 3, y: 0, z: 4, screenX: 70, screenY: 100 });
+      state.addPolylinePoint({ x: 3.001, y: 0, z: 4.001, screenX: 71, screenY: 101 });
+      state.updateMeasurementScreenCoords(topDown);
+
+      assert.strictEqual(state.finishPolyline(false, { fromDoubleClick: true }), true);
+
+      const m = state.polylineMeasurements[0];
+      assert.strictEqual(m.points.length, 3, 'the double-click duplicate must still be dropped');
+      assert.ok(Math.abs(m.length - 7) < 0.01, `expected ~7, got ${m.length}`);
     });
   });
 

@@ -433,6 +433,14 @@ jobs:
       # comment-awareness rests on (a lone apostrophe once blinded it).
       - name: Check server-bin parity gate regressions
         run: node --test scripts/check-server-bin-targets.test.mjs scripts/lib/server-bin-targets-parse.test.mjs
+      # Unit tests for the branching check-unused-locals.mjs uses to decide
+      # "real violation" vs "does not compile" vs "cannot parse this output".
+      # A #2634 review found the fail-loud branch only engaged when the whole
+      # run was unparseable — a run with one recognised diagnostic and one
+      # unrecognised one silently dropped the unrecognised one instead of
+      # failing. Pinned here so that gap can't reopen unnoticed.
+      - name: Check unused-locals output classification
+        run: node --test scripts/lib/unused-locals-classify.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

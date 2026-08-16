@@ -28,6 +28,7 @@ import { toast } from '@/components/ui/toast';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useClash, type ClashFocusMode } from '@/hooks/useClash';
 import type { SaveResult } from '@/lib/clash/persistence';
+import { formatClashSolidVolumeM3 } from '@/lib/clash/clash-solid-volume-format';
 import { useBCF } from '@/hooks/useBCF';
 import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
@@ -39,6 +40,8 @@ import {
   isTouching,
   penetrationDepth,
   sortClashes,
+  classifyRuleCoverage,
+  ruleHadNoMatch,
   DUPLICATES_RULE,
   CLASH_REVIEW_STATUSES,
   type Clash,
@@ -266,6 +269,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     removeExclusion,
     setExclusionEnabled,
     clearExclusions,
+    invalidateSolidCompute,
   } = useClash();
 
   // In-app BCF: create a topic from a clash without leaving the tool (#1279).
@@ -293,6 +297,12 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   /** How the rest of the model is shown when a clash is focused (#1275). */
   const focusMode = useViewerStore((s) => s.clashFocusMode);
   const setFocusMode = useViewerStore((s) => s.setClashFocusMode);
+  /** On-demand intersection-solid state for the focused clash — see `focusClash` in `useClash`. */
+  const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  const clashSolidVolumeM3 = useViewerStore((s) => s.clashSolidVolumeM3);
+  const clashSolidReason = useViewerStore((s) => s.clashSolidReason);
+  const clashSolidThicknessM = useViewerStore((s) => s.clashSolidThicknessM);
+  const clashSolidRequiredM = useViewerStore((s) => s.clashSolidRequiredM);
   const [showHelp, setShowHelp] = useState(false);
   const [creatingTopic, setCreatingTopic] = useState(false);
   // The whole detection-controls block is collapsible so the result list gets
@@ -313,8 +323,14 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
     s.setClashSelectedId(null);
     s.setClashHighlightColors(null);
     s.setClashOverlapBox(null);
+    s.clearClashSolid();
     s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
-  }, []);
+    // Drop any in-flight solid compute too — without this, a compute kicked
+    // off just before the panel closes can resolve AFTER this cleanup runs
+    // and re-apply a solid + full-model ghost onto a view the user already
+    // left (the leaked-ghosting bug this whole feature is most at risk of).
+    invalidateSolidCompute();
+  }, [invalidateSolidCompute]);
 
   const toggleSection = (key: string) =>
     setCollapsed((prev) => {
@@ -450,6 +466,44 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
   // below (built from the same `issueSections`) renders only 1.
   const issueCount = issueSections.length;
   const bySeverity = result?.summary.bySeverity;
+
+  // Case (c) from the clash-matrix design: "0 clashes" because no rule matched
+  // any elements in this model reads as "your model is clean" unless we say
+  // otherwise. `classifyRuleCoverage` distinguishes that from a genuine
+  // zero-clash result; the panel only needs the loud 'no-match' case plus the
+  // list of empty rule names for a short explanation.
+  const coverageOutcome = useMemo(
+    () => (result ? classifyRuleCoverage(result) : 'unknown'),
+    [result],
+  );
+  const emptyRuleNames = useMemo(() => {
+    if (!result?.ruleCoverage) return [] as string[];
+    const names = new Map(result.rulesRun.map((r) => [r.id, r.name]));
+    return result.ruleCoverage.filter(ruleHadNoMatch).map((c) => names.get(c.rule) ?? c.rule);
+  }, [result]);
+  // Describes WHICH selector side(s) matched nothing, per empty rule — used
+  // when the run was a single ad-hoc rule (`runAll`/`runPreset`, one rule),
+  // where "the matrix didn't apply" would be a false claim: there was no
+  // matrix, just one rule whose A or B selector doesn't describe this model.
+  const emptySelectorDescriptions = useMemo(() => {
+    if (!result?.ruleCoverage) return [] as string[];
+    const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
+    return result.ruleCoverage
+      .filter(ruleHadNoMatch)
+      .map((c) => {
+        const rule = rules.get(c.rule);
+        if (!rule) return c.rule;
+        const emptySides: string[] = [];
+        if (c.matchedA === 0) emptySides.push(`selector A ("${rule.a}")`);
+        if (c.matchedB === 0) emptySides.push(`selector B ("${rule.b}")`);
+        return `${emptySides.length > 0 ? emptySides.join(' and ') : 'a selector'} matched 0 elements`;
+      });
+  }, [result]);
+  // Only a real multi-rule discipline-matrix run (`runMatrix`) can be
+  // truthfully described as "the matrix didn't run" — a single ad-hoc rule
+  // (`runAll`'s self-clash, or a one-off `runPreset`) never involved a
+  // matrix at all, so that case must name the empty selector instead.
+  const isMultiRuleRun = (result?.rulesRun.length ?? 0) > 1;
 
   // Flatten sections → a single row list (group header, clash row, and an
   // expanded-detail row for opened clashes) so the list virtualizes cleanly and
@@ -993,6 +1047,24 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
               </Button>
             </div>
           </div>
+          {selectedId && clashSolidStatus !== 'none' && (
+            <div className="text-[11px] text-muted-foreground" data-testid="clash-solid-status">
+              {clashSolidStatus === 'computing' && 'Computing the true overlap volume…'}
+              {clashSolidStatus === 'solid' &&
+                `True overlap volume shown as a solid: ${formatClashSolidVolumeM3(clashSolidVolumeM3)}. Both elements are ghosted so it reads through them.`}
+              {clashSolidStatus === 'unavailable' && (
+                <>
+                  {clashSolidReason === 'below-kernel-resolution'
+                    ? `No solid — this overlap is thinner (${(clashSolidThicknessM * 1000).toFixed(2)} mm) than the kernel can resolve as a volume (needs ≥ ${(clashSolidRequiredM * 1000).toFixed(2)} mm); showing the contact marker instead.`
+                    : clashSolidReason === 'no-overlap'
+                      ? 'No solid — the surfaces touch without a measurable penetration; showing the contact marker instead.'
+                      : clashSolidReason === 'empty-operand'
+                        ? "No solid — one side's geometry isn't available yet; showing the contact marker instead."
+                        : "No solid could be computed for this pair; showing the contact marker instead."}
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -1066,9 +1138,38 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
           </div>
         )}
 
-        {result && total === 0 && (
+        {result && total === 0 && coverageOutcome === 'no-match' && isMultiRuleRun && (
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+            <p className="text-sm font-medium">The matrix didn't apply to this model — it did NOT run.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
+              None of the {result.rulesRun.length} rule(s) matched any elements here, so "0 clashes" doesn't mean
+              this model is clean — nothing was actually checked. This rule set is shaped for MEP/HVAC/electrical/
+              fire coordination; it may not describe this model's disciplines.
+            </p>
+            <p className="mt-1.5 text-[11px] text-muted-foreground max-w-xs">Empty rules: {emptyRuleNames.join(', ')}</p>
+          </div>
+        )}
+
+        {result && total === 0 && coverageOutcome === 'no-match' && !isMultiRuleRun && (
+          <div className="flex flex-col items-center justify-center p-8 text-center">
+            <AlertTriangle className="h-6 w-6 mb-2 text-[#e0af68]" />
+            <p className="text-sm font-medium">No comparison ran — a selector matched nothing.</p>
+            <p className="mt-1.5 text-xs text-muted-foreground max-w-xs">
+              "0 clashes" doesn't mean this model is clean — {emptySelectorDescriptions.join(', ')}, so this rule
+              never compared a single pair.
+            </p>
+          </div>
+        )}
+
+        {result && total === 0 && coverageOutcome !== 'no-match' && (
           <div className="flex flex-col items-center justify-center p-8 text-center text-muted-foreground">
             <p className="text-sm">No clashes found for this rule set. 🎉</p>
+            {coverageOutcome === 'partial' && emptyRuleNames.length > 0 && (
+              <p className="mt-1.5 text-[11px] max-w-xs">
+                {emptyRuleNames.length} rule(s) matched no elements and never ran: {emptyRuleNames.join(', ')}
+              </p>
+            )}
           </div>
         )}
 

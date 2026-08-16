@@ -241,6 +241,184 @@ describe('clash --json stdout hygiene', () => {
   );
 });
 
+/**
+ * A structural-only model (beams + columns, deliberately overlapping) — no
+ * MEP/HVAC/electrical/fire element anywhere, the shape of an infrastructure
+ * model (e.g. buildingSMART's Infra-Bridge.ifc). Every `CLASH_RULE_PRESETS`
+ * entry has a `selectorA` drawn from MEP/HVAC/fire/electrical, so none of
+ * them match anything here — this is the reported defect's repro shape.
+ */
+function buildStructuralOnlyModel(): string {
+  const creator = new IfcCreator({ Name: 'StructuralOnlyTest' });
+  const storey = creator.addIfcBuildingStorey({ Name: 'L1', Elevation: 0 });
+  creator.addIfcBeam(storey, { Start: [0, 0, 1], End: [4, 0, 1], Width: 0.3, Height: 0.5 });
+  // Column placed to interpenetrate the beam, so a real clash exists — proving
+  // "0 clashes" here is purely a coverage artifact, not an empty model.
+  creator.addIfcColumn(storey, { Position: [2, 0, 0], Width: 0.3, Depth: 0.3, Height: 3 });
+  return creator.toIfc().content;
+}
+
+/** Structural model PLUS an MEP pipe interpenetrating a beam: the discipline
+ *  matrix's MEPxSTR rule matches and finds it — control for "unaffected". */
+function buildMepAndStructuralModel(): string {
+  const creator = new IfcCreator({ Name: 'MepAndStructuralTest' });
+  const storey = creator.addIfcBuildingStorey({ Name: 'L1', Elevation: 0 });
+  creator.addIfcBeam(storey, { Start: [0, 0, 1], End: [4, 0, 1], Width: 0.3, Height: 0.5 });
+  // Extruded along local X (not the [0,0,1] default) so it runs THROUGH the
+  // beam's span rather than merely touching it at one end.
+  creator.addElement(storey, {
+    IfcType: 'IFCPIPESEGMENT',
+    Placement: { Location: [1, 0, 1] },
+    Profile: { ProfileType: 'AREA', Radius: 0.1 },
+    Depth: 2,
+    ExtrusionDirection: [1, 0, 0],
+    PredefinedType: 'RIGIDSEGMENT',
+    Name: 'Pipe-001',
+  });
+  return creator.toIfc().content;
+}
+
+describe('clash --matrix rule coverage (#2536)', () => {
+  beforeAll(() => {
+    assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
+  });
+
+  it(
+    'warns "no rule matched anything" instead of reporting a silent 0 on an infrastructure-shaped model',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-no-match-'));
+      const modelPath = join(dir, 'model.ifc');
+      try {
+        await writeFile(modelPath, buildStructuralOnlyModel());
+
+        const [{ stdout: humanOut }, { stdout: jsonOut }] = await Promise.all([
+          execFileAsync(process.execPath, [CLI_ENTRY, 'clash', modelPath, '--matrix'], {
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+          execFileAsync(process.execPath, [CLI_ENTRY, 'clash', modelPath, '--matrix', '--json'], {
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+        ]);
+
+        // The symptom from the bug report: the matrix reports zero clashes.
+        const payload = JSON.parse(jsonOut) as {
+          summary: { total: number };
+          ruleCoverageOutcome: string;
+          ruleCoverage: Array<{ rule: string; matchedA: number; matchedB: number | null }> | null;
+        };
+        expect(payload.summary.total).toBe(0);
+
+        // The fix: that zero is now distinguishable as "the matrix never ran".
+        expect(payload.ruleCoverageOutcome).toBe('no-match');
+        expect(payload.ruleCoverage).not.toBeNull();
+        expect(payload.ruleCoverage!.every((c) => c.matchedA === 0 || c.matchedB === 0)).toBe(true);
+
+        expect(humanOut).toContain('WARNING');
+        expect(humanOut).toContain('did NOT run');
+        expect(humanOut).not.toMatch(/exit code|non-zero/i);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+
+  it(
+    'exits zero even when no rule matched anything — this is a signal, not an error',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-no-match-exit-'));
+      const modelPath = join(dir, 'model.ifc');
+      try {
+        await writeFile(modelPath, buildStructuralOnlyModel());
+        // execFileAsync rejects on non-zero exit, so simply resolving proves it.
+        await expect(
+          execFileAsync(process.execPath, [CLI_ENTRY, 'clash', modelPath, '--matrix', '--json'], {
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+        ).resolves.toBeDefined();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+
+  it(
+    'a model the matrix DOES apply to is unaffected: real clash reported, coverage reads clean/partial',
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-has-match-'));
+      const modelPath = join(dir, 'model.ifc');
+      try {
+        await writeFile(modelPath, buildMepAndStructuralModel());
+
+        const { stdout: jsonOut } = await execFileAsync(
+          process.execPath,
+          [CLI_ENTRY, 'clash', modelPath, '--matrix', '--json'],
+          { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+        );
+        const payload = JSON.parse(jsonOut) as {
+          summary: { total: number };
+          ruleCoverageOutcome: string;
+        };
+        expect(payload.summary.total).toBeGreaterThan(0);
+        expect(payload.ruleCoverageOutcome).not.toBe('no-match');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+
+  it(
+    'the default --a/--b path never blames "the clash matrix" when one selector is just empty (maintainer review)',
+    async () => {
+      // buildStructuralOnlyModel has beams and columns but no IfcRoof — the
+      // default (non --matrix) path builds exactly one ad-hoc rule, so
+      // `matchedA > 0` (beams) and `matchedB === 0` (no roofs) is a single
+      // empty selector on ONE hand-built rule, never "the matrix".
+      const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-clash-empty-selector-'));
+      const modelPath = join(dir, 'model.ifc');
+      try {
+        await writeFile(modelPath, buildStructuralOnlyModel());
+
+        const [{ stdout: humanOut }, { stdout: jsonOut }] = await Promise.all([
+          execFileAsync(process.execPath, [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcBeam', '--b', 'IfcRoof'], {
+            timeout: 120_000,
+            maxBuffer: 64 * 1024 * 1024,
+          }),
+          execFileAsync(
+            process.execPath,
+            [CLI_ENTRY, 'clash', modelPath, '--a', 'IfcBeam', '--b', 'IfcRoof', '--json'],
+            { timeout: 120_000, maxBuffer: 64 * 1024 * 1024 },
+          ),
+        ]);
+
+        const payload = JSON.parse(jsonOut) as {
+          summary: { total: number };
+          ruleCoverageOutcome: string;
+          ruleCoverage: Array<{ rule: string; matchedA: number; matchedB: number | null }> | null;
+        };
+        expect(payload.summary.total).toBe(0);
+        expect(payload.ruleCoverageOutcome).toBe('no-match');
+        expect(payload.ruleCoverage).not.toBeNull();
+        expect(payload.ruleCoverage![0]?.matchedA).toBeGreaterThan(0); // IfcBeam matched
+        expect(payload.ruleCoverage![0]?.matchedB).toBe(0); // IfcRoof matched nothing
+
+        // The fix: names the empty selector, never claims a matrix ran.
+        expect(humanOut).toContain('WARNING');
+        expect(humanOut).toContain('selector B ("IfcRoof")');
+        expect(humanOut).not.toMatch(/matrix/i);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000,
+  );
+});
+
 describe('clashCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
   // `sharedProcessor` (clash.ts) is module-scoped, so each test uses a
   // uniquely-named model file — `meshModel`'s cache key is `basename(filePath)`

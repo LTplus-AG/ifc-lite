@@ -47,7 +47,10 @@ export {
   isTouching,
   sortClashes,
   summarizeClashes,
+  ruleHadNoMatch,
+  classifyRuleCoverage,
   type ClashSortBy,
+  type RuleCoverageOutcome,
 } from './analysis.js';
 export {
   findDuplicates,

@@ -13,6 +13,7 @@ import {
   type ClashElementRef,
   type ClashResult,
   type ClashRule,
+  type ClashRuleCoverage,
   type ClashSettings,
 } from '../types.js';
 import type { ClashKernel } from './kernel.js';
@@ -37,6 +38,7 @@ export async function runClash(
   const maxPairs = settings.maxCandidatePairs ?? Infinity;
 
   const clashes: Clash[] = [];
+  const ruleCoverage: ClashRuleCoverage[] = [];
   const seen = new Set<string>();
   let droppedPairs = 0;
   // A single GLOBAL candidate-pair budget across the whole run (not per rule),
@@ -60,6 +62,11 @@ export async function runClash(
         if (matchesSelector(tag, rule.a)) groupA.push(i);
         if (groupB && matchesSelector(tag, rule.b!)) groupB.push(i);
       }
+      ruleCoverage.push({
+        rule: rule.id,
+        matchedA: groupA.length,
+        matchedB: groupB ? groupB.length : null,
+      });
 
       const ruleTolerance = rule.tolerance ?? tolerance;
       settings.onProgress?.({ phase: 'broad', rule: rule.id, done: 0, total: 0 });
@@ -123,6 +130,7 @@ export async function runClash(
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: rules,
+    ruleCoverage,
     settings: { tolerance, excludeVoidsAndHosts },
   };
   if (droppedPairs > 0) {

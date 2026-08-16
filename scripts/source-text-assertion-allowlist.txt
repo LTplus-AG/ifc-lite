@@ -22,6 +22,7 @@
 apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.
 packages/geometry/src/prepass-class-spans.test.ts                           # pins TS constants against `pub const` in rust/processing/src/shard_classes.rs. TS cannot import a Rust const; the root fix is emitting them, not rewriting the test.
+apps/viewer/src/utils/aggregation.test.ts                                   # ONE assertion left (the SearchModal.text.tsx half converted behaviourally). Viewport.tsx's `setCameraCallbacks({ frameSelection, resolveHighlightIds })` sits inside `renderer.init().then(...)`, and `renderer.init()` REJECTS under happy-dom even with `navigator.gpu` stubbed (no real adapter/device, no WebGPU canvas context) -- confirmed empirically, not asserted -- so the callbacks this test pins are never registered in-harness.
 
 # ── Detector false positives: listed so the ratchet passes, not to be converted ──
 # The detector is deliberately lexical rather than data-flow (see the script

@@ -260,6 +260,27 @@ export class TokenManager {
       // is already true by the time this task runs — clear()'s session swap
       // is synchronous and immediate, not itself queued — so the write is
       // skipped outright rather than needing to be undone afterwards.
+      //
+      // That guarantee covers everything up to the point this task calls
+      // `storage.set()` — but `storage.set()` is itself a genuine `await`,
+      // and `clear()`/`setTokens()` swap `this.session` synchronously,
+      // outside the queue, the instant they're called. Nothing stops either
+      // of them from landing *during* that `await`, i.e. after the check
+      // above has already passed. When that happens, the queue still keeps
+      // storage itself correct — clear()'s delete() / setTokens()'s set()
+      // is strictly ordered after this write and wins — so there is nothing
+      // to roll back at the storage layer. What's left uncovered is this
+      // function's own return value: without a second check, `run()` would
+      // resolve with `merged` regardless, handing the original caller of
+      // `getValidAccessToken()` a live-looking access token for a session
+      // that, by the time they receive it, has already been signed out of
+      // or superseded. So the identity is re-checked immediately after the
+      // write too, and a post-write mismatch rejects the same way a
+      // pre-write one does — the write already happened, but it's already
+      // been (or is about to be) overwritten/deleted by the operation that
+      // changed `this.session`, so discarding this task's own success and
+      // reporting failure to its caller is reporting the true outcome, not
+      // adding a rollback.
       await this.enqueue(async () => {
         if (session !== this.session) {
           // clear() ran (or a new session started) before this write's
@@ -271,6 +292,15 @@ export class TokenManager {
           throw new NotSignedInError('signed out while the token refresh was in flight');
         }
         await this.config.storage.set(this.config.storageKey, mergedJson);
+        if (session !== this.session) {
+          // clear() or setTokens() landed while storage.set() above was
+          // in flight — after the check but before the write settled.
+          // Storage is still correct (the queue orders the operation that
+          // changed `this.session` strictly after this write), but this
+          // caller's session is no longer current, so the token this task
+          // just wrote must not be handed back as a valid result.
+          throw new NotSignedInError('signed out while the token refresh was in flight');
+        }
       });
 
       return merged;

@@ -376,13 +376,80 @@ describe('TokenManager storage-write TOCTOU (async backends whose set()/delete()
     storage.releaseGate();
     await clearPromise;
     expect(clearResolved).toBe(true);
-    await pending.catch(() => {});
+
+    // The caller who started this refresh under the old session must be
+    // rejected, not handed the token this write just persisted. clear()
+    // swapped `this.session` before the gated write settled — the write
+    // itself is already correctly ordered behind clear()'s delete() at the
+    // storage layer (checked below), but without a post-write re-check the
+    // *promise* this caller is awaiting would still resolve with a token
+    // for a session that, by the time they receive it, has been signed out
+    // of.
+    await expect(pending).rejects.toThrow(NotSignedInError);
     await flush();
 
     // Storage must read as signed-out: the delete always runs after the
     // write it was ordered behind, never before it.
     const stored = await manager.getTokens();
     expect(stored).toBeUndefined();
+  });
+
+  it("setTokens() strictly waits for an in-flight refresh write the same way clear() does, and disarms the stale refresh's return value to its original caller too", async () => {
+    // Companion to the test above, and the second writer the review
+    // confirmed reproduces the same window: refresh()'s session check
+    // passes before setTokens() runs, then setTokens() swaps
+    // `this.session` synchronously while the refresh's own write is still
+    // gated on a slow backend. Storage itself always ends up holding the
+    // new session's tokens (the queue orders setTokens()'s own write after
+    // the gated one — checked below) — the caller-facing leak is that the
+    // *original* caller of getValidAccessToken(), who started the refresh
+    // under the old session, would resolve successfully with the stale
+    // refreshed token instead of being told their session had moved on.
+    const storage = createGatedStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+    storage.armGate();
+
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    // The refresh response arrives; the session check passes (setTokens()
+    // hasn't run yet) and the write starts but blocks on the gate.
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+    await flush();
+
+    // A brand-new sign-in lands via setTokens() — no clear() involved —
+    // while that write is still gated.
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    const setNewPromise = manager.setTokens(newTokens);
+    await flush();
+
+    storage.releaseGate();
+    await setNewPromise;
+
+    // The caller who started the refresh under the old session must be
+    // told their session is gone, not handed the stale token.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage correctly holds the new session's tokens regardless — the
+    // queue still orders setTokens()'s own write strictly after the gated
+    // one, same as it orders clear()'s delete() in the test above.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
   });
 });
 
@@ -501,7 +568,13 @@ describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (review
     expect(storage.log).toEqual(['set:start:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}']);
 
     storage.releaseWriteGate();
-    await Promise.all([pending.catch(() => {}), clearPromise, setNewPromise]);
+    // `pending` is asserted on its own line below rather than folded into
+    // this Promise.all — clear() and setNewPromise are expected to
+    // fulfill, but pending is expected to *reject* (see assertion below),
+    // and Promise.all rejects as soon as any member does, which would
+    // abort awaiting the other two mid-flight.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await Promise.all([clearPromise, setNewPromise]);
     await flush();
 
     // Real invocation order, not just final state: the stale write starts
@@ -624,7 +697,13 @@ describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (review
     // The refresh's network request answers only now, after the new
     // sign-in's write has already landed.
     resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
-    await pending.catch(() => {});
+
+    // The original caller must be told their session moved on, not handed
+    // the stale refreshed token — here via the pre-write check, since
+    // setTokens() swapped `this.session` before the refresh's queued task
+    // even started (unlike the gated-storage tests above, there is no
+    // window for the write to begin before the swap in this test).
+    await expect(pending).rejects.toThrow(NotSignedInError);
     await flush();
 
     // The new sign-in's tokens must survive — the stale refresh must not

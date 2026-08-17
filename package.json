@@ -81,12 +81,12 @@
     "@changesets/cli": "^2.31.1",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.62.1",
-    "@posthog/cli": "0.9.4",
-    "@types/node": "^26.1.2",
-    "knip": "^6.29.0",
+    "@posthog/cli": "0.11.1",
+    "@types/node": "^26.2.0",
+    "knip": "^6.32.2",
     "oxlint": "^1.42.0",
-    "tsx": "^4.23.1",
-    "turbo": "^2.10.7",
+    "tsx": "^4.23.12",
+    "turbo": "^2.10.9",
     "typescript": "^6.0.3"
   },
   "engines": {

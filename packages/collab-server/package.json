@@ -31,16 +31,16 @@
     "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/merge": "workspace:^",
     "lib0": "^0.2.99",
-    "ws": "^8.21.1",
+    "ws": "^8.21.3",
     "y-protocols": "^1.0.6",
-    "yjs": "^13.6.31"
+    "yjs": "^13.6.32"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "@types/ws": "^8.5.13",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10",
-    "y-websocket": "^3.0.0"
+    "y-websocket": "^3.1.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

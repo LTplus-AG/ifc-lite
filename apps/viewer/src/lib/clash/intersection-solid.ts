@@ -20,7 +20,9 @@ import init, { clashIntersectionSolid } from '@ifc-lite/wasm';
 /**
  * Why the kernel could not resolve a solid — the full set of `degenerateReason`
  * strings `clashIntersectionSolid` can return, pinned against the Rust source by
- * `intersection-solid.test.ts`.
+ * `scripts/check-clash-degenerate-reason-parity.mjs`. (`intersection-solid.test.ts`
+ * exercises the kernel's BEHAVIOUR; a declaration-parity claim needs both
+ * SOURCES, which is banned in test files, so it lives as a lint.)
  *
  * That is a wider set than the geometry crate's `DegenerateReason` enum:
  * `'malformed-operand'` is the wasm BINDING's own verdict, produced by

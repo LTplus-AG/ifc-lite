@@ -116,12 +116,34 @@ test('RED (vacuity guard) when BOTH extractors find nothing — two empty sets a
 
 test('a reason named only in a comment does not count, on either side', () => {
   assert.deepEqual([...kernelReasons('    // - `"invented-reason"` — prose only.\n')], []);
+  // Not just FULL-LINE `//`: a trailing comment and a `/* … */` block are prose
+  // too, and the Rust side must drop them exactly as the TS side already does.
+  assert.deepEqual([...kernelReasons('let x = 1; // reason: "trailing-reason"\n')], []);
+  assert.deepEqual(
+    [...kernelReasons('/*\n    reason: "commented-out-reason",\n*/\nlet x = 1;\n')],
+    [],
+  );
   assert.deepEqual(
     [...declaredReasons(
       "export type ClashSolidDegenerateReason =\n  /** prose about 'invented-reason' */\n  | 'no-overlap';",
     )],
     ['no-overlap'],
   );
+});
+
+test('RED when a Rust arm is COMMENTED OUT but the union still declares it', () => {
+  // The false-GREEN this guards: delete a reason from the binding by commenting
+  // its arm out, and a comment-blind extractor still "finds" it in the block
+  // comment — so the phantom check never fires and the TS union keeps a member
+  // the kernel can no longer emit.
+  const rust = replaceOnce(
+    realRust,
+    'DegenerateReason::NoOverlap => ("no-overlap", 0.0, 0.0),',
+    '/* DegenerateReason::NoOverlap => ("no-overlap", 0.0, 0.0), */',
+  );
+  const { status, out } = runOn({ rust });
+  assert.equal(status, 1, out);
+  assert.match(out, /declares 'no-overlap' but the kernel can never emit it/);
 });
 
 test('a reason named only in a Rust #[cfg(test)] module does not count', () => {

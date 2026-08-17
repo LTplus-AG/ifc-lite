@@ -56,10 +56,17 @@ const TS_REL = 'apps/viewer/src/lib/clash/intersection-solid.ts';
  */
 export function kernelReasons(rustSource) {
   const testMod = rustSource.indexOf('#[cfg(test)]');
+  // Comments go FIRST, and all three forms of them: `/* … */` blocks, trailing
+  // `//`, and full-line `//` (`//!` and `///` included, both being `//`-led).
+  // Dropping only full-line comments left a false-GREEN: comment an arm OUT and
+  // a comment-blind extractor still "finds" its literal, so the kernel set keeps
+  // a reason the binding can no longer emit and the phantom check never fires.
+  // Same naive strip the TS side uses below — symmetric by construction. No
+  // string literal in the binding contains `//`, so nothing real is eaten; if a
+  // future strip ever over-reached, the vacuity guard fails the check closed.
   const code = (testMod === -1 ? rustSource : rustSource.slice(0, testMod))
-    .split('\n')
-    .filter((line) => !line.trimStart().startsWith('//'))
-    .join('\n');
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
   const found = new Set();
   // `reason: "malformed-operand"` — the binding-level rejections.
   for (const m of code.matchAll(/reason:\s*"([a-z-]+)"/g)) found.add(m[1]);

@@ -51,6 +51,21 @@ describe('matchConstraint — simpleValue', () => {
     expect(matchConstraint(sv('42'), '42.0000005')).toBe(true); // within tolerance
   });
 
+  it('scales the numeric tolerance with the magnitude of the IDS value', () => {
+    // Every other numeric fixture here has |value| <= 42 and a delta of 5e-7,
+    // so a FLAT 1e-6 passes all of them and the relative term
+    // `1e-6 * (1 + |castValue|)` in numericEpsilon is unexercised. At 1e6 the
+    // two differ by six orders of magnitude: relative gives ~1.0, flat gives
+    // 1e-6. This is the real case — a length in millimetres round-tripped
+    // through text loses more than 1e-6 absolute.
+    expect(matchConstraint(sv('1000000'), 1000000.5)).toBe(true);
+    // ...and the tolerance must stay a tolerance: still bounded, not open.
+    expect(matchConstraint(sv('1000000'), 1000002)).toBe(false);
+    // The scaling is relative, so a small value keeps a small window: 0.5 is
+    // nowhere near 1, even though 0.5 was accepted as slack at 1e6 above.
+    expect(matchConstraint(sv('1'), 1.5)).toBe(false);
+  });
+
   it('matches boolean true (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('true'), true)).toBe(true);
     // Numeric `1` / `0` are NOT valid boolean literals per IDS 1.0.

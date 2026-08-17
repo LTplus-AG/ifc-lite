@@ -155,6 +155,7 @@ async function seedRoom(): Promise<void> {
     clashError: null,
     clashRunning: false,
     clashSelectedId: null,
+    clashHighlightColors: null,
     isolatedEntities: null,
     ghostExceptEntities: null,
   });
@@ -172,6 +173,11 @@ async function seedRoom(): Promise<void> {
     maxExpressId: 2,
     loadState: 'complete',
   });
+  await mountProbe();
+}
+
+/** Mount a FRESH `useClash()` instance and point `api` at it. */
+async function mountProbe(): Promise<void> {
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -179,6 +185,19 @@ async function seedRoom(): Promise<void> {
     root!.render(<Probe />);
   });
   assert.ok(api, 'useClash must be mounted');
+}
+
+/**
+ * Throw the mounted `useClash()` away and mount a new one, the way switching
+ * panels does. `api` is nulled first so the assertion inside `mountProbe`
+ * proves the handle came from the NEW instance, not the discarded one.
+ */
+async function remountProbe(): Promise<void> {
+  const previous = root;
+  root = null;
+  api = null;
+  if (previous) await act(async () => previous.unmount());
+  await mountProbe();
 }
 
 beforeEach(() => {
@@ -335,8 +354,58 @@ describe('clash results are usable in a collaborative room', () => {
       'a row whose id space was superseded must not focus — it would target the wrong element');
     assert.equal(s.isolatedEntities, null,
       'and must not isolate anything: isolating Wall C for a row reading "Wall A" is a lie');
+    // Isolation is only half of what a focus does. The pair is also PAINTED the
+    // A/B clash colours through the renderer's colour-override channel, and a
+    // stale row painting two innocent walls amber and cyan is the same lie told
+    // in the mode the user is most likely to be in (the default is `ghost`, not
+    // `isolate`, so nothing gets isolated there at all).
+    assert.equal(s.clashHighlightColors?.size ?? 0, 0,
+      'and must paint nothing: the A/B clash colours on the wrong two walls is the same lie');
     assert.match(s.clashError ?? '', /re-run/i,
       'the refusal must be EXPLAINED — a silently inert panel is the defect #2696 named');
+  });
+
+  /**
+   * The refusal must not be private to the `useClash()` instance that PUBLISHED
+   * the result. Two things make a hook-private guard (a `useRef` holding the
+   * published federation) wrong here, and both are reachable by clicking:
+   *
+   *  - `useClash()` is mounted by TWO components — `ClashPanel` and
+   *    `ClashBcfExportDialog` — so at any moment there can be an instance that
+   *    never ran anything and therefore has nothing recorded to refuse against;
+   *  - `ClashPanel` unmounts when the user switches panels, taking its refs
+   *    with it, while the result itself lives in the store and comes straight
+   *    back when the panel does.
+   *
+   * A ref-based guard would go quiet in exactly those cases — the result stays
+   * on screen, the ids stay stale, and the guard that was supposed to refuse
+   * them is gone. This is the third time a hook-private ref in this file has
+   * had to be moved for the same reason (#2574 the solid staleness guard,
+   * #2654 the visibility-ownership record); the identity is bound to the RESULT
+   * OBJECT (`lib/clash/federation-identity.ts`) so there is no instance for it
+   * to be private to.
+   */
+  it('the refusal survives a REMOUNT: it is bound to the result, not to a hook instance', async () => {
+    await seedRoom();
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const clash = useViewerStore.getState().clashResult?.clashes[0];
+    assert.ok(clash, 'the overlapping pair must be found');
+
+    const edited = await parse(THREE_WALLS_C_FIRST);
+    await act(async () => { useViewerStore.getState().setIfcDataStore(edited); });
+
+    // Switch away from the Clash panel and back: the instance that published
+    // this result is gone, and the one handling the click never ran anything.
+    await remountProbe();
+
+    await act(async () => { api!.focusClash(clash!, 'isolate'); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, null,
+      'a fresh useClash() must refuse the superseded row too — the guard cannot be per-instance');
+    assert.equal(s.isolatedEntities, null, 'and must isolate nothing');
+    assert.equal(s.clashHighlightColors?.size ?? 0, 0, 'and paint nothing');
+    assert.equal(s.clashError, CLASH_SUPERSEDED_MESSAGE, 'and still explain itself');
   });
 
   /**

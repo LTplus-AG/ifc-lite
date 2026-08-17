@@ -470,7 +470,16 @@ export function useClash() {
    *
    * The registry stays as the fallback for a ref whose model is no longer in
    * `state.models` but is still registered; and `null` survives when neither
-   * knows the id, so a result whose models have been torn down stays inert.
+   * knows the id, so a result whose models are gone stays inert.
+   *
+   * "Gone" means the id is gone. A model REBUILT under the id a stale ref
+   * names is resolved against the new model, and a dense express id will
+   * usually be in range — leaving a room and rejoining it rebuilds
+   * `room:<roomId>`, and `removeModel` deliberately keeps the clash result
+   * (`modelSlice.ts`, "the clash RESULT is deliberately kept"). Nothing here
+   * can tell those two models apart: whether a published result still
+   * describes the loaded federation is a question about the RESULT, not about
+   * one ref, and it belongs wherever the result is invalidated.
    */
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
     const state = useViewerStore.getState();

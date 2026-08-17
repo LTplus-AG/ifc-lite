@@ -199,19 +199,23 @@ export class TriMesh {
    * Exact distance from `p` to this mesh's surface: the minimum point-to-
    * triangle distance over the whole mesh.
    *
-   * Not on the narrow-phase hot path as of PR #2536 (its former caller,
-   * `maxPenetrationInto`, was removed — see `obb.ts`): a nearest-crossing-
-   * VERTEX distance-to-surface probe is a sampling artifact that converges to
-   * 0 under retessellation rather than to the true penetration depth. Kept as
-   * a genuinely exact, independently tested primitive (see the shared probe
-   * fixture in `tri-mesh.test.ts` / `kernel_tests.rs`) for future callers that
-   * need it — e.g. clearance-to-nearest-surface — not as dead weight. Driven
-   * by the triangle BVH rather than a linear scan so it stays cheap when it IS
-   * called. The BVH is used through a plain `queryAABB`, so the value is still
-   * the exact global minimum:
+   * Its sole production client is `crossingVertexPenetration` in `depth.ts`,
+   * which feeds the f32 noise-floor gate for an AABB-contained pair — a
+   * yes/no evidence input to `hard` vs `touch`, never a reported depth. It
+   * took over from `maxPenetrationInto`, removed in PR #2536 because a
+   * nearest-crossing-VERTEX distance-to-surface probe is a sampling artifact
+   * that converges to 0 under retessellation rather than to the true
+   * penetration depth; see `crossingVertexPenetration`'s own doc comment for
+   * why that underestimation is harmless for a floor test and disqualifying
+   * for a depth. Beyond that client it is a genuinely exact, independently
+   * tested primitive (see the shared probe fixture in `tri-mesh.test.ts` /
+   * `kernel_tests.rs`). Driven by the triangle BVH rather than a linear scan
+   * so it stays cheap. The BVH is used through a plain `queryAABB`, so the
+   * value is still the exact global minimum:
    *
-   * TODO(remove-by: no production caller has appeared by the next
-   * clash-engine feature pass, or on maintainer request): tracking issue
+   * TODO(remove-by: `crossingVertexPenetration` stops needing a
+   * point-to-surface distance for the contained-pair floor test, or on
+   * maintainer request; owner @BIMvoice): tracking issue
    * https://github.com/LTplus-AG/ifc-lite/issues/2646.
    *
    * 1. Query the cube of half-size `h` centred on `p`. Every triangle within

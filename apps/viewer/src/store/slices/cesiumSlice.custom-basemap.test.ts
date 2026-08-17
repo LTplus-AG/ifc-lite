@@ -131,6 +131,46 @@ describe('CesiumSlice — custom basemap persistence (issue #2685)', () => {
     assert.strictEqual(storage.store[DATA_SOURCE_KEY], 'google-photorealistic');
   });
 
+  /**
+   * Leaving `'custom'` because the basemap was removed is a source change like
+   * any other, and must tear down what a source change tears down: the terrain
+   * elevation cache and the four terrain state fields. Those are keyed to the
+   * source that was on screen — a sampled height and a clip plane measured
+   * against the custom basemap's terrain mean nothing under the fallback — and
+   * `setCesiumDataSource` is the one place that knows the full list.
+   *
+   * The clearing branch used to write `cesiumDataSource` itself, which is the
+   * shape that guarantees the two drift: adding a fifth field to
+   * `setCesiumDataSource` would leave this path resetting four. Asserting the
+   * fields here is only half the guard — the other half is that there is no
+   * second code path left to forget the cache clear, which the delegation makes
+   * structural rather than remembered.
+   */
+  it('clearing the basemap tears terrain down exactly as any other source change does', async () => {
+    const slice = await buildSlice();
+    slice.state.setCesiumCustomBasemap(BASEMAP);
+    slice.state.setCesiumDataSource('custom');
+    // Terrain state as it stands after a sample against the custom basemap.
+    (slice.state as unknown as { setCesiumTerrainHeight: (h: number | null) => void })
+      .setCesiumTerrainHeight(412.5);
+    (slice.state as unknown as { setCesiumTerrainSource: (s: string | null) => void })
+      .setCesiumTerrainSource('cesium-world-terrain');
+    (slice.state as unknown as { setCesiumTerrainSaveHeight: (h: number | null) => void })
+      .setCesiumTerrainSaveHeight(412.5);
+    (slice.state as unknown as { setCesiumTerrainClipY: (y: number | null) => void })
+      .setCesiumTerrainClipY(-3);
+
+    slice.state.setCesiumCustomBasemap(null);
+
+    const s = slice.state as unknown as Record<string, unknown>;
+    assert.strictEqual(s.cesiumDataSource, 'google-photorealistic');
+    assert.strictEqual(s.cesiumTerrainHeight, null,
+      'a height sampled under the removed basemap must not survive the fallback');
+    assert.strictEqual(s.cesiumTerrainSource, null);
+    assert.strictEqual(s.cesiumTerrainSaveHeight, null);
+    assert.strictEqual(s.cesiumTerrainClipY, null);
+  });
+
   it('does not disturb the selection when clearing while another source is active', async () => {
     const slice = await buildSlice();
     slice.state.setCesiumCustomBasemap(BASEMAP);

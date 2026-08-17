@@ -13,6 +13,7 @@ import {
   decodeCustomBasemap,
   encodeCustomBasemap,
   probeTileAccess,
+  TILE_PROBE_TIMEOUT_MS,
   toUrlTemplateProviderOptions,
   validateCustomBasemap,
   type CustomBasemap,
@@ -323,6 +324,58 @@ describe('custom basemap — browser access (CORS) probe', () => {
     assert.strictEqual(result.status, 'blocked');
     assert.match(result.message ?? '', /does not allow browser access/i);
   });
+
+  /**
+   * A host that completes the TCP handshake and then never answers is not a
+   * `fetch` rejection — the promise simply stays pending. The probe is on the
+   * user's Save path, so an unbounded wait is a Save button that spins with no
+   * verdict and no way to tell whether the check is slow or hung.
+   */
+  /**
+   * The stand-in host answers eventually (`after` ms) and honours an abort, so
+   * an unbounded probe returns `ok` rather than hanging the suite — the failure
+   * is an assertion, not a timeout.
+   */
+  const slowHost = (after: number) => (_url: unknown, init?: RequestInit) => new Promise<Response>(
+    (resolve, reject) => {
+      const t = setTimeout(() => resolve(new Response('', { status: 200 })), after);
+      init?.signal?.addEventListener('abort', () => {
+        clearTimeout(t);
+        reject(init.signal!.reason);
+      });
+    },
+  );
+
+  it('bounds the wait — a host that does not answer must not leave Save spinning', async () => {
+    let signal: AbortSignal | null | undefined;
+    const result = await probeTileAccess(basemap, (url, init) => {
+      signal = init?.signal;
+      return slowHost(400)(url, init);
+    }, 5);
+    assert.ok(signal, 'the probe must pass an abort signal, or nothing can bound the wait');
+    assert.strictEqual(result.status, 'blocked',
+      'the probe must give a verdict on its own clock, not on the server\'s');
+  });
+
+  // The bound above is exercised at 5 ms so the suite does not wait on it; this
+  // pins that the SHIPPED default is a real, finite bound rather than the
+  // parameter having been added and left off.
+  it('ships a finite default bound', () => {
+    assert.ok(Number.isFinite(TILE_PROBE_TIMEOUT_MS) && TILE_PROBE_TIMEOUT_MS > 0);
+    assert.ok(TILE_PROBE_TIMEOUT_MS <= 30_000, 'a bound the user will not sit through is not a bound');
+  });
+
+  /**
+   * ...and it must not be reported as a CORS refusal. "This server does not
+   * allow browser access" is a specific, actionable claim; a host that is
+   * merely slow may serve tiles perfectly once the globe is up, and telling the
+   * user their server is misconfigured would send them to fix the wrong thing.
+   */
+  it('names a timeout as a timeout, not as a CORS refusal', async () => {
+    const result = await probeTileAccess(basemap, slowHost(400), 5);
+    assert.doesNotMatch(result.message ?? '', /does not allow browser access/i);
+    assert.match(result.message ?? '', /did not respond|timed out/i);
+  });
 });
 
 describe('custom basemap — runtime tile failures', () => {
@@ -344,6 +397,32 @@ describe('custom basemap — runtime tile failures', () => {
   it('ignores an error shape it cannot classify rather than guessing', () => {
     assert.strictEqual(classifyTileProviderError({}), null);
     assert.strictEqual(classifyTileProviderError({ error: new Error('boom') }), null);
+  });
+
+  /**
+   * The `'statusCode' in inner` boundary is deliberate, and this states it as a
+   * decision rather than leaving it to be read as an oversight.
+   *
+   * Review raised the opposite reading: an `<img>` error event carries no
+   * `statusCode` PROPERTY at all, so it is rejected here instead of being
+   * reported as blocked — and an image-element failure is one of the ways a
+   * CORS refusal surfaces. The absence is kept refused because the two absences
+   * are not the same evidence. `{ statusCode: undefined }` is a
+   * `RequestErrorEvent` that ran and got no response: Cesium built that object
+   * BECAUSE a request failed, and the missing status is the finding. An object
+   * with no such key is some other event entirely, and "no response reached JS"
+   * cannot be inferred from "this is not a request error" — a DOM `Event`, a
+   * decode failure, or any future Cesium shape would all land in it and each
+   * would raise a confident, specific, wrong message over a basemap that may be
+   * fine. `attachTileSuccessRetraction` only retracts a banner this function
+   * raised, so a wrong raise is not self-correcting.
+   */
+  it('refuses to classify an error with no statusCode KEY — absence of the key is not absence of a response', () => {
+    // What an <img> error event looks like: no `statusCode` key anywhere.
+    assert.strictEqual(classifyTileProviderError({ error: { type: 'error', target: {} } }), null);
+    assert.strictEqual(classifyTileProviderError({ error: {} }), null);
+    // Whereas the key present and undefined IS the CORS finding, above.
+    assert.ok(classifyTileProviderError({ error: { statusCode: undefined } }));
   });
 });
 

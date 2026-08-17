@@ -216,7 +216,7 @@ export interface CesiumCrossSliceState {
   editEnabled: boolean;
 }
 
-export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState, [], [], CesiumSlice> = (set) => ({
+export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState, [], [], CesiumSlice> = (set, get) => ({
   cesiumAvailable: false,
   cesiumEnabled: false,
   cesiumDataSource: loadDataSource(),
@@ -267,13 +267,22 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
     }
     removeFromStorage(STORAGE_KEY_CUSTOM_BASEMAP);
     // Clearing the basemap must also leave the `'custom'` source, or the
-    // overlay stays selected on a source with nothing to draw. Persist the
-    // fallback too, so the next reload agrees with what is on screen now.
-    set((s) => {
-      if (s.cesiumDataSource !== 'custom') return { cesiumCustomBasemap: null };
-      saveToStorage(STORAGE_KEY_DATA_SOURCE, FALLBACK_DATA_SOURCE);
-      return { cesiumCustomBasemap: null, cesiumDataSource: FALLBACK_DATA_SOURCE };
-    });
+    // overlay stays selected on a source with nothing to draw.
+    //
+    // DELEGATED to `setCesiumDataSource` rather than writing `cesiumDataSource`
+    // here. Writing it locally is the shape that guarantees drift: that action
+    // also clears the terrain elevation cache and resets four terrain fields —
+    // a sampled height and a clip plane measured under the removed basemap mean
+    // nothing under the fallback — and a fifth item added there tomorrow would
+    // silently not happen on this path. Delegating leaves one definition of
+    // "the source changed" instead of two that must be kept in step.
+    //
+    // Ordered source-first so no observer ever sees the one inconsistent
+    // intermediate state (`'custom'` selected with no basemap). Source-changed
+    // with the old basemap still in state is a state the app is already fine in
+    // — it is what picking another source from the menu does.
+    if (get().cesiumDataSource === 'custom') get().setCesiumDataSource(FALLBACK_DATA_SOURCE);
+    set({ cesiumCustomBasemap: null });
   },
   setCesiumIonToken: (token) => {
     clearTerrainElevationCache();

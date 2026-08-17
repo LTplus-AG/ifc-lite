@@ -313,13 +313,50 @@ export function firstTileUrl(basemap: CustomBasemap): string {
  * a `no-cors` request resolves opaquely and would report success for exactly
  * the server this check exists to catch.
  */
+/**
+ * How long the probe waits for the zero tile before giving up.
+ *
+ * A `fetch` that is refused rejects promptly; a host that completes the
+ * handshake and then never answers does not reject at all, and the probe runs
+ * on the user's Save path — so without a bound, Save spins with no verdict and
+ * no way to tell a slow check from a hung one. Ten seconds is well past any
+ * tile server worth configuring and well short of the point where a user
+ * concludes the button is broken.
+ *
+ * Overridable per call so the tests can exercise the bound without waiting on
+ * it; the shipped default is what production uses.
+ */
+export const TILE_PROBE_TIMEOUT_MS = 10_000;
+
+/**
+ * Distinct from {@link BROWSER_ACCESS_BLOCKED} because it is a different claim.
+ * "This server does not allow browser access" is specific and actionable, and
+ * it would be the wrong thing to tell someone whose host is merely slow — the
+ * tiles may serve perfectly once the globe is up, and the user would be sent to
+ * fix a CORS configuration that is fine.
+ */
+function tileProbeTimedOutMessage(timeoutMs: number): string {
+  // Derived from the bound actually applied, not written out beside it: a
+  // message naming a duration the code no longer uses is worse than none.
+  const seconds = Math.max(1, Math.round(timeoutMs / 1000));
+  return `The server did not respond within ${seconds} second${seconds === 1 ? '' : 's'}, so browser access could not be verified. It may still work — check the imagery once the globe is up.`;
+}
+
 export async function probeTileAccess(
   basemap: CustomBasemap,
   fetchImpl: typeof fetch = fetch,
+  timeoutMs: number = TILE_PROBE_TIMEOUT_MS,
 ): Promise<TileAccessResult> {
   const url = firstTileUrl(basemap);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new DOMException('Timeout', 'TimeoutError')), timeoutMs);
   try {
-    const response = await fetchImpl(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
+    const response = await fetchImpl(url, {
+      method: 'GET',
+      mode: 'cors',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
     if (response.ok) return { status: 'ok', httpStatus: response.status };
     // "Normal for a deeper-starting pyramid" is true of a 404 and false of an
     // auth refusal: a 401/403 means every tile at every zoom will be refused,
@@ -339,7 +376,16 @@ export async function probeTileAccess(
       message: `The server allows browser access but answered ${response.status} for the zoom-0 tile. That is normal for a service whose tiles start at a deeper zoom; check the imagery once the globe is over your site.`,
     };
   } catch {
+    // Our own abort is the one rejection that is NOT evidence about CORS: the
+    // request never got an answer either way. Everything else reaching here is
+    // the opaque `TypeError` the platform gives for a blocked or unreachable
+    // request, which is exactly the finding.
+    if (controller.signal.aborted) {
+      return { status: 'blocked', message: tileProbeTimedOutMessage(timeoutMs) };
+    }
     return { status: 'blocked', message: BROWSER_ACCESS_BLOCKED };
+  } finally {
+    clearTimeout(timer);
   }
 }
 

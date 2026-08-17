@@ -101,6 +101,9 @@ export function CesiumOverlay({
     if (!cesiumEnabled || !containerRef.current) return;
 
     let cancelled = false;
+    // Cesium's `addEventListener` returns its own remover; hold it so the
+    // cleanup can detach the basemap error listener with the effect.
+    let removeBasemapErrorListener: (() => void) | null = null;
     setStatus('loading');
     setError(null);
     setBasemapWarning(null);
@@ -220,17 +223,47 @@ export function CesiumOverlay({
               // no `statusCode` and the globe just stays empty. Cesium retries
               // and re-raises per tile, so the listener fires repeatedly —
               // setting the same string is a no-op for React.
-              provider.errorEvent.addEventListener((event: unknown) => {
-                const message = classifyTileProviderError(event);
-                if (message) setBasemapWarning(message);
-              });
+              //
+              // `!cancelled` for the same reason the `addImageryProvider` line
+              // below has it. Cesium frees a tile's texture on teardown but
+              // never cancels the in-flight request, and `viewer.destroy()`
+              // does not clear this listener array — so a provider belonging to
+              // an already-destroyed viewer can still raise, and warn about a
+              // basemap the user has since switched away from. Pick Custom with
+              // a slow host, switch to OSM Map inside the connect timeout, and
+              // BROWSER_ACCESS_BLOCKED lands on top of a working OSM globe.
+              //
+              // The unsubscribe Cesium returns is kept rather than discarded,
+              // so the listener's lifetime is the EFFECT's rather than the
+              // provider's — the flag alone would leave a dead listener holding
+              // this closure for as long as the provider lives.
+              removeBasemapErrorListener = provider.errorEvent.addEventListener(
+                (event: unknown) => {
+                  const message = classifyTileProviderError(event);
+                  if (message && !cancelled) setBasemapWarning(message);
+                },
+              );
               // …and this is how it goes away again: a single transient failure
               // must not leave the banner up forever over a working basemap.
-              attachTileSuccessRetraction(provider, setBasemapWarning);
+              //
+              // Guarded too, and this one matters more than the listener,
+              // because it RETRACTS. Switch away from a slow custom basemap to
+              // a different one that genuinely is CORS-blocked, and a late tile
+              // from the destroyed provider would clear the new basemap's
+              // legitimate warning — leaving a blank globe with nothing on
+              // screen, the exact failure this feature exists to eliminate.
+              // The wrapper is left on the dead provider; only its effect on
+              // this component's state is cut, which is all that outlives the
+              // provider anyway.
+              attachTileSuccessRetraction(provider, (update) => {
+                if (!cancelled) setBasemapWarning(update);
+              });
               if (!cancelled) viewer.imageryLayers.addImageryProvider(provider);
             } catch (e) {
               console.warn('[CesiumOverlay] Custom basemap unavailable:', e);
-              setBasemapWarning('That tile URL could not be used as a basemap.');
+              // Same effect, same hole: the constructor can throw after a
+              // teardown that already cleared the banner.
+              if (!cancelled) setBasemapWarning('That tile URL could not be used as a basemap.');
             }
           }
         } else if (dataSource === 'osm-buildings') {
@@ -292,6 +325,8 @@ export function CesiumOverlay({
       // The destroyed viewer also took the tileset + sun-path entities.
       tilesetRef.current = null;
       invalidateSolarRef.current();
+      removeBasemapErrorListener?.();
+      removeBasemapErrorListener = null;
       setStatus('idle');
       setBasemapWarning(null);
     };
@@ -361,24 +396,37 @@ export function CesiumOverlay({
         className="absolute inset-0 z-0"
         style={{ pointerEvents: 'none' }}
       />
-      {status === 'loading' && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded text-xs text-white font-mono">
-          <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-          Loading 3D context...
-        </div>
-      )}
-      {status === 'error' && error && (
-        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 px-3 py-1.5 bg-red-900/80 backdrop-blur-sm rounded text-xs text-red-200 font-mono">
-          {error}
-        </div>
-      )}
-      {basemapWarning && (
-        <div
-          role="status"
-          className="absolute top-2 left-1/2 -translate-x-1/2 z-10 max-w-md px-3 py-1.5 bg-amber-900/80 backdrop-blur-sm rounded text-xs text-amber-100"
-        >
-          {basemapWarning}
-        </div>
+      {/*
+        One stack, not three absolutely positioned siblings at the same offset.
+        The basemap warning is raised from inside the init routine — the custom
+        branch runs before `setStatus('ready')` — so it and the loading banner
+        are both on screen for exactly the case that most needs reading, a slow
+        or refused tile host, and at `top-2 left-1/2` they landed on top of each
+        other. Stacked, each banner keeps its own colour and the order is
+        status-then-warning.
+      */}
+      {(status === 'loading' || (status === 'error' && error) || basemapWarning) && (
+      <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-1.5">
+        {status === 'loading' && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-black/60 backdrop-blur-sm rounded text-xs text-white font-mono">
+            <div className="h-3 w-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            Loading 3D context...
+          </div>
+        )}
+        {status === 'error' && error && (
+          <div className="px-3 py-1.5 bg-red-900/80 backdrop-blur-sm rounded text-xs text-red-200 font-mono">
+            {error}
+          </div>
+        )}
+        {basemapWarning && (
+          <div
+            role="status"
+            className="max-w-md px-3 py-1.5 bg-amber-900/80 backdrop-blur-sm rounded text-xs text-amber-100"
+          >
+            {basemapWarning}
+          </div>
+        )}
+      </div>
       )}
     </>
   );

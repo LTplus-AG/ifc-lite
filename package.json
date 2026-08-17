@@ -90,8 +90,8 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": "22.x || 24.x",
-    "pnpm": ">=8.0.0"
+    "node": ">=22.11 <23 || 24.x",
+    "pnpm": ">=10.0.0"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0"

@@ -296,9 +296,10 @@ export function PdfViewExportDialog({ trigger, exportViewPdf }: PdfViewExportDia
             Export PDF (to-scale 3D view)
           </DialogTitle>
           <DialogDescription>
-            Saves what you see in the 3D viewport at an exact scale. Shaded surfaces are
-            embedded as an image placed at exact size; all line work stays vector, so
-            measurements taken off the print are correct.
+            Saves everything currently visible, projected along your current view
+            direction at an exact scale. Shaded surfaces are embedded as an image placed
+            at exact size; all line work stays vector, so measurements taken off the
+            print are correct.
           </DialogDescription>
         </DialogHeader>
 

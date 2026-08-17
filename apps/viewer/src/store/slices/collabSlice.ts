@@ -67,6 +67,12 @@ import {
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import {
+  isRoomModel,
+  roomModelIdOf,
+  roomMutationView,
+  roomStore,
+} from '@/lib/collab/room-model-target';
+import {
   attachAnnotationInbound,
   annotationToCrdtFields,
   type AnnotationDocApi,
@@ -127,6 +133,19 @@ export interface CollabSlice {
   collabStatus: CollabStatus;
   /** Current room id, or `null`. */
   collabRoomId: string | null;
+  /**
+   * The id of the model this room's edits belong to, fixed for the session —
+   * the model the owner seeded, or the recipient's reconstructed
+   * `room:<roomId>`. `null` off a session (and for an owner sharing a bare
+   * legacy store with no model record).
+   *
+   * Both edit directions used to resolve the room's model as "whatever is
+   * active", which is wrong the moment the user loads a second file:
+   * `upsertModel` does not switch focus (modelSlice.ts). See
+   * `@/lib/collab/room-model-target`, which is the only thing allowed to
+   * answer this question, so the two directions cannot disagree again.
+   */
+  collabRoomModelId: string | null;
   /** This client's resolved role (UI gating only). */
   collabRole: CollabRole | null;
   /** Local ephemeral identity (handle + color). */
@@ -439,6 +458,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabSession: null,
   collabStatus: 'disconnected',
   collabRoomId: null,
+  collabRoomModelId: null,
   collabDraftBaseline: null,
   collabPeersSinceBaseline: false,
   collabRole: null,
@@ -469,7 +489,23 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Set the join token up front (not just at the end): setting collabRoomId
     // re-renders subscribers (e.g. ShareDialog) that immediately mint a
     // role-scoped share link, which needs our admin bearer to be available.
-    set({ collabConnecting: true, collabRoomId: roomId, collabRole: role, collabSelfToken: token ?? null });
+    // The model this room's edits belong to, resolved ONCE, before any await:
+    // for an owner it is the model they pressed Share on (the same one `seed()`
+    // reads); for a recipient it is the `room:<roomId>` the reconstruct below
+    // registers — named here, not there, so the two cannot spell it
+    // differently. Every later resolution reads this via
+    // `@/lib/collab/room-model-target`, never `activeModelId`, which the user
+    // can change with two clicks (`upsertModel` does not switch focus,
+    // modelSlice.ts).
+    const reconstructedModelId = `room:${roomId}`;
+    const roomModelId = seed ? get().activeModelId : reconstructedModelId;
+    set({
+      collabConnecting: true,
+      collabRoomId: roomId,
+      collabRoomModelId: roomModelId,
+      collabRole: role,
+      collabSelfToken: token ?? null,
+    });
 
     // Role gate: joining as viewer/commenter must drop any edit mode the
     // user had on locally — otherwise the gizmo/geometry card would stay
@@ -678,7 +714,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         // The recipient is registered as a real model (not the bare legacy store
         // path) so it gets an activeModelId + an editable MutablePropertyView —
         // which is what lets a recipient's edits flow back to the owner.
-        const roomModelId = `room:${roomId}`;
+        // This IS the session-level `roomModelId` (this branch is `!seed`, so
+        // that expression resolved to exactly this const) — restated with the
+        // narrower type, since TS cannot narrow `string | null` across the
+        // branch. The edit paths target the same value by construction.
+        const roomModelId = reconstructedModelId;
         let modelCreated = false;
 
         // Re-derive the whole model from the doc. Cheap metadata refresh always;
@@ -816,60 +856,62 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     }
 
     // Remote → local apply (plan §7.5): replay peers' property/attribute edits
-    // into the active model's MutablePropertyView (no undo tracking, no echo).
-    // The active model is resolved *per event* (not captured once) so switching
-    // models mid-session targets the currently-active view, not a stale one.
-    const applyStore = get().ifcDataStore;
-    if (applyStore) {
-      const activeView = () => {
-        const modelId = get().activeModelId;
-        return modelId ? get().mutationViews.get(modelId) : undefined;
-      };
-      remoteApplyTeardown = attachRemoteApply(docApi!, session, applyStore, {
-        onProperty: (entityId, pset, prop, value, type) => {
-          const view = activeView();
-          if (!view) return;
-          view.setProperty(entityId, pset, prop, value, type);
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-        onPropertyDelete: (entityId, pset, prop) => {
-          const view = activeView();
-          if (!view) return;
-          view.deleteProperty(entityId, pset, prop);
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-        // A peer's whole Pset vanished (its last property was deleted, which
-        // cascades). Property names are unavailable at this point (see the
-        // handler's doc comment in mutation-bridge.ts), so drop the entire set
-        // rather than trying to replay per-property deletes.
-        onPsetDelete: (entityId, pset) => {
-          const view = activeView();
-          if (!view) return;
-          view.deletePropertySet(entityId, pset);
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-        onAttribute: (entityId, attrName, value) => {
-          const view = activeView();
-          if (!view) return;
-          view.setAttribute(entityId, attrName, value === null ? '' : String(value));
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-        // A peer moved/rotated an entity: reflect it on the local mesh by
-        // pushing the incremental renderer-frame delta (no undo, no echo).
-        onPlacement: (entityId, placement) => {
-          reconcilePlacementMesh(get, applyStore, session.doc, entityId, placement);
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-        // A peer deleted an entity: hide its mesh (matches the owner's local
-        // removeEntity, which hides rather than destroying GPU buffers).
-        onEntityDelete: (entityId) => {
-          const modelId = get().activeModelId ?? '';
-          const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
-          get().hideEntities([globalId]);
-          set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
-        },
-      });
-    }
+    // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
+    //
+    // Resolved per event off `collabRoomModelId`, never off `activeModelId` and
+    // never captured once. A peer's edit carries an expressId in the ROOM's id
+    // space, so it is only meaningful against the room's own store and view.
+    // Targeting the active model wrote it into the user's own file instead —
+    // into `undoStacks`, `dirtyModels` and the export path, surviving a reload.
+    // `roomStore` returns null until the room model is registered, and every
+    // handler drops the event rather than falling back to another model; the
+    // next reconstruct rebuilds the whole model from the CRDT anyway.
+    remoteApplyTeardown = attachRemoteApply(docApi!, session, () => roomStore(get()), {
+      onProperty: (entityId, pset, prop, value, type) => {
+        const view = roomMutationView(get());
+        if (!view) return;
+        view.setProperty(entityId, pset, prop, value, type);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+      onPropertyDelete: (entityId, pset, prop) => {
+        const view = roomMutationView(get());
+        if (!view) return;
+        view.deleteProperty(entityId, pset, prop);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+      // A peer's whole Pset vanished (its last property was deleted, which
+      // cascades). Property names are unavailable at this point (see the
+      // handler's doc comment in mutation-bridge.ts), so drop the entire set
+      // rather than trying to replay per-property deletes.
+      onPsetDelete: (entityId, pset) => {
+        const view = roomMutationView(get());
+        if (!view) return;
+        view.deletePropertySet(entityId, pset);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+      onAttribute: (entityId, attrName, value) => {
+        const view = roomMutationView(get());
+        if (!view) return;
+        view.setAttribute(entityId, attrName, value === null ? '' : String(value));
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+      // A peer moved/rotated an entity: reflect it on the local mesh by
+      // pushing the incremental renderer-frame delta (no undo, no echo).
+      onPlacement: (entityId, placement) => {
+        const store = roomStore(get());
+        if (!store) return;
+        reconcilePlacementMesh(get, store, session.doc, entityId, placement);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+      // A peer deleted an entity: hide its mesh (matches the owner's local
+      // removeEntity, which hides rather than destroying GPU buffers).
+      onEntityDelete: (entityId) => {
+        const modelId = roomModelIdOf(get()) ?? '';
+        const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
+        get().hideEntities([globalId]);
+        set((s) => ({ mutationVersion: s.mutationVersion + 1 }));
+      },
+    });
 
     // Annotation (markup) sync: reflect peers' pins into the local slice, and
     // seed our existing local pins into the room ("share existing + new").
@@ -950,6 +992,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabSession: null,
       collabStatus: 'disconnected',
       collabRoomId: null,
+      collabRoomModelId: null,
       collabDraftBaseline: null,
       collabPeersSinceBaseline: false,
       collabRole: null,
@@ -1015,28 +1058,40 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     return role === 'commenter' || role === 'editor' || role === 'admin';
   },
 
+  // The three mirrors below take no modelId — their caller gates on
+  // `isRoomModel` before calling. They still resolve the ROOM's store rather
+  // than the top-level (active-model) one, so the entityId is turned into a
+  // room path against the model that id belongs to.
   mirrorPropertyEdit: (entityId, psetName, propName, value, valueType) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    const store = roomStore(get());
     if (!session || !store || !docApi) return;
     mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType);
   },
 
   mirrorPropertyDelete: (entityId, psetName, propName) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    const store = roomStore(get());
     if (!session || !store || !docApi) return;
     mirrorPropertyDelete(docApi, session, store, entityId, psetName, propName);
   },
 
   mirrorAttributeEdit: (entityId, attrName, value) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    const store = roomStore(get());
     if (!session || !store || !docApi) return;
     mirrorAttribute(docApi, session, store, entityId, attrName, value);
   },
 
   mirrorPlacementEdit: (modelId, entityId, deltaIfc, deltaYaw = 0) => {
+    // Only the ROOM's model syncs: an edit on any other loaded model is the
+    // user's private work, and mirroring it broadcast their file into the
+    // shared room, where the id resolved to some unrelated entity of the
+    // owner's model. Gated inside each of the four modelId-taking mirrors
+    // rather than at their call sites, so a new call site cannot forget. (The
+    // property/attribute mirrors carry no modelId, so their gate is in
+    // mutationSlice.)
+    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
     const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
     if (!session || !store || !docApi || !placementApi || !placementAppliedLoc) return;
@@ -1057,7 +1112,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   readCollabPlacement: (entityId) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    // The room's store: this resolves an entityId to a room path and reads or
+    // writes the room's CRDT, so the active model is the wrong subject the
+    // moment it is not the room's.
+    const store = roomStore(get());
     if (!session || !store || !placementApi || !docApi) return null;
     const path = pathForEntity(store, entityId);
     if (!path || !docApi.hasEntity(session.doc, path)) return null;
@@ -1074,7 +1132,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   collabTranslateEntity: (entityId, deltaIfc) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    // Room store — see `readCollabPlacement`.
+    const store = roomStore(get());
     if (!session || !store || !docApi || !placementApi) return false;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
@@ -1099,7 +1158,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   collabRotateEntity: (entityId, deltaYaw) => {
     const session = get().collabSession;
-    const store = get().ifcDataStore;
+    // Room store — see `readCollabPlacement`.
+    const store = roomStore(get());
     if (!session || !store || !docApi || !placementApi) return false;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
@@ -1115,6 +1175,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   mirrorEntityRemove: (modelId, entityId) => {
+    // Room model only — see `mirrorPlacementEdit`.
+    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
     const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
     if (!session || !store || !docApi) return;
@@ -1126,6 +1188,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {
+    // Room model only — see `mirrorPlacementEdit`.
+    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
     const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
     if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
@@ -1167,6 +1231,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   mirrorEntityGeometry: (modelId, entityId, mesh) => {
+    // Room model only — see `mirrorPlacementEdit`.
+    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
     const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
     if (!session || !store || !geomApiRef || !makeBlobStore) return;

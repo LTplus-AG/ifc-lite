@@ -9,6 +9,7 @@
 import { type StateCreator } from 'zustand';
 import type { ViewerState } from '../index.js';
 import type { MutablePropertyView, NewEntity, IfcAttributeValue } from '@ifc-lite/mutations';
+import { isRoomModel } from '@/lib/collab/room-model-target';
 import { StoreEditor } from '@ifc-lite/mutations';
 import type { Mutation, ChangeSet, PropertyValue } from '@ifc-lite/mutations';
 import { PropertyValueType, QuantityType } from '@ifc-lite/data';
@@ -1226,8 +1227,13 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Mirror into the collab CRDT (no-op without a session).
-    if (modelId === get().activeModelId) {
+    // Mirror into the collab CRDT (no-op without a session) — but only for the
+    // ROOM's model. `activeModelId` was the wrong subject: a user who joins a
+    // room and then loads and selects their own file (two clicks —
+    // `upsertModel` does not switch focus) broadcast that private model's edits
+    // into the shared room, where the id landed on whatever entity it resolved
+    // to in the owner's model. See `@/lib/collab/room-model-target`.
+    if (isRoomModel(get(), modelId)) {
       get().mirrorPropertyEdit(entityId, psetName, propName, value, valueType);
     }
 
@@ -1262,8 +1268,13 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Mirror into the collab CRDT (no-op without a session).
-    if (modelId === get().activeModelId) {
+    // Mirror into the collab CRDT (no-op without a session) — but only for the
+    // ROOM's model. `activeModelId` was the wrong subject: a user who joins a
+    // room and then loads and selects their own file (two clicks —
+    // `upsertModel` does not switch focus) broadcast that private model's edits
+    // into the shared room, where the id landed on whatever entity it resolved
+    // to in the owner's model. See `@/lib/collab/room-model-target`.
+    if (isRoomModel(get(), modelId)) {
       get().mirrorPropertyDelete(entityId, psetName, propName);
     }
 
@@ -1430,8 +1441,13 @@ export const createMutationSlice: StateCreator<
       };
     });
 
-    // Mirror into the collab CRDT (no-op without a session).
-    if (modelId === get().activeModelId) {
+    // Mirror into the collab CRDT (no-op without a session) — but only for the
+    // ROOM's model. `activeModelId` was the wrong subject: a user who joins a
+    // room and then loads and selects their own file (two clicks —
+    // `upsertModel` does not switch focus) broadcast that private model's edits
+    // into the shared room, where the id landed on whatever entity it resolved
+    // to in the owner's model. See `@/lib/collab/room-model-target`.
+    if (isRoomModel(get(), modelId)) {
       get().mirrorAttributeEdit(entityId, attrName, value);
     }
 

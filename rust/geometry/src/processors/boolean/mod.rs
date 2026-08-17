@@ -223,7 +223,10 @@ impl BooleanClippingProcessor {
 
         // Parse IfcAxis2Placement3D to get transformation matrix
         // The Position defines the plane's coordinate system:
-        // - Location = plane point (in world coordinates)
+        // - Location = plane point (in the representation item's local,
+        //   pre-placement, pre-scale coordinates — this function does not
+        //   compose the element's ObjectPlacement, which is folded in later
+        //   by apply_placement at the element level)
         // - Z-axis (Axis) = plane normal (in local coordinates, needs transformation)
         let position_transform = parse_axis2_placement_3d(&position, decoder)?;
 

@@ -14,7 +14,7 @@ use std::collections::HashSet;
 
 use crate::aabb::Aabb;
 use crate::bvh::Bvh;
-use crate::narrow::{test_pair, ClashStatus};
+use crate::narrow::{test_pair, ClashStatus, DistanceKind};
 use crate::tri_mesh::TriMesh;
 
 /// One classified clash between two elements (GLOBAL element indices).
@@ -23,6 +23,8 @@ pub struct ClashRecord {
     pub b: u32,
     pub status: ClashStatus,
     pub distance: f64,
+    /// Whether `distance` was measured on the meshes or estimated from the AABBs.
+    pub distance_kind: DistanceKind,
     pub point: [f64; 3],
     /// `[minx, miny, minz, maxx, maxy, maxz]`.
     pub bounds: [f64; 6],
@@ -188,6 +190,7 @@ impl ClashSession {
                     b: b_global,
                     status: r.status,
                     distance: r.distance,
+                    distance_kind: r.distance_kind,
                     point: r.point,
                     bounds: [
                         r.bounds.min[0],

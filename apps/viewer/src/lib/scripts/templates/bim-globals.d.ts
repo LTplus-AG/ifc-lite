@@ -216,6 +216,12 @@ declare namespace BimClash {
     status: ClashStatus;
     /** Signed: `<0` penetration depth, `>0` gap. */
     distance: number;
+    /**
+     * Provenance of `distance`. The engine always sets it; it is optional only so
+     * that a clash rehydrated from a run recorded before this field existed stays
+     * assignable — absent means "unknown", never "measured".
+     */
+    distanceKind?: ClashDistanceKind;
     /** True contact point (hard) or closest-point midpoint (clearance/touch). */
     point: Vec3;
     /** Overlap region (hard) or closest-segment box (clearance/touch). */
@@ -275,6 +281,40 @@ declare namespace BimClash {
 
   /** How a detected clash is classified. `touch` is suppressed unless opted in. */
   export type ClashStatus = 'hard' | 'clearance' | 'touch';
+
+  /**
+   * How a clash's `distance` was obtained — the two are NOT interchangeable and
+   * were indistinguishable in the output before this field existed.
+   *
+   * - `'mesh'` — measured on the triangle meshes. For `clearance` it is the
+   *   exact triangle-to-triangle gap. For `touch` it is usually that same exact
+   *   gap, with one exception: a pair whose every candidate depth falls below
+   *   the pair's f32 precision floor also reports `touch`, with `distance: 0`
+   *   and `distanceKind: 'mesh'` — there the 0 is a CLASSIFICATION (the
+   *   surfaces are flush to within what the f32 source coordinates can
+   *   represent; nothing is measurably penetrating), not a measured gap.
+   *   For a hard clash it is the exact
+   *   box-box penetration depth (minimum translation distance along a
+   *   separating axis, Gottschalk), certified only when BOTH elements are —
+   *   within tolerance — rectangular boxes (`obb.ts`); this replaced an
+   *   earlier "deepest crossing-triangle vertex" probe that was a sampling
+   *   artifact, converging to 0 as a mesh was retessellated instead of to the
+   *   true depth (PR #2536).
+   * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
+   *   dimension. Reported for a hard clash whenever the narrow phase could not
+   *   certify a box-box depth. That happens in four shapes, all common in real
+   *   models: either element is not (confirmed) a box; surfaces that only
+   *   coincide (stacked layers sharing a footprint); one solid modelled wholly
+   *   inside another; and a member piercing clean through the other — even
+   *   when BOTH are boxes, because the box-box minimum-translation-distance is
+   *   then dominated by the piercing member's own extent along the shared
+   *   axis, not by the material it actually crossed, and is withheld from
+   *   `'mesh'` for exactly that reason. The value is then a property of the two
+   *   BOXES, not of the solids — it can equal an element's own thickness rather
+   *   than how far the two actually interpenetrate. Treat it as an indication of
+   *   scale, not as a measurement.
+   */
+  export type ClashDistanceKind = 'mesh' | 'estimate';
 }
 
 // ── Sandbox globals ─────────────────────────────────────────────────────

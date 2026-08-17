@@ -453,6 +453,24 @@ jobs:
       # untrustworthyExitReason is pinned in the same file.
       - name: Check unused-locals output classification
         run: node --test scripts/lib/unused-locals-classify.test.mjs
+      # check-lint-ran.mjs buffered oxlint's whole output, wrote it, then
+      # process.exit()'d. On a PIPE — every CI log — stdout is asynchronous, so
+      # the exit discarded most of the write: a 120k-line failing run reached
+      # the log as ~1k lines, cut mid-diagnostic, with no summary and no error
+      # line. A genuine eslint(no-control-regex) failure was diagnosed off such
+      # a log as "pre-existing warnings, not ours". A TTY or a file kept
+      # everything, so hand-testing never showed it — this drives the gate
+      # through a pipe and asserts the bytes that arrive.
+      - name: Check lint gate survives a piped stdout
+        run: node --test scripts/check-lint-ran.test.mjs
+      # The Release workflow runs ONLY on main, and only on an actual publish,
+      # so nothing on a PR ever read release-crates.mjs's publish ORDER. #2574
+      # added a versioned dev-dependency (ifc-lite-clash) to rust/geometry and
+      # it sat latent until the next release, where cargo refused to publish
+      # geometry ahead of clash — AFTER npm had already gone out, leaving
+      # crates.io behind npm. This makes that order a PR-visible gate.
+      - name: Check the crates publish order matches the dependency graph
+        run: node --test scripts/release-crates-order.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

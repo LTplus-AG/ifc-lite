@@ -6,6 +6,7 @@ import { BVH, type AABB, type MeshWithBounds } from '@ifc-lite/spatial';
 import type { Mat4, Vec3 } from '../types.js';
 import { sub, cross, dot, distSq } from '../math/vec3.js';
 import { closestPtPointTriangle } from '../math/triangle-distance.js';
+import { detectObb, type Obb } from './obb.js';
 
 /**
  * Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
@@ -14,9 +15,17 @@ import { closestPtPointTriangle } from '../math/triangle-distance.js';
  * IEEE-754 literals (not computed via `normalize()`) so the Rust kernel uses
  * byte-identical components — `|RAY_DIR| === 1` exactly.
  */
-const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+export const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
 /** Parallel-reject + forward-crossing threshold. Same literal in the Rust kernel. */
-const RAY_EPS = 1e-9;
+export const RAY_EPS = 1e-9;
+
+/** The axis-aligned cube of half-size `h` centred on `p`. */
+function cubeAround(p: Vec3, h: number): AABB {
+  return {
+    min: [p[0] - h, p[1] - h, p[2] - h],
+    max: [p[0] + h, p[1] + h, p[2] + h],
+  };
+}
 
 /**
  * A triangle mesh with a per-triangle BVH for narrow-phase queries. Built once
@@ -29,6 +38,18 @@ export class TriMesh {
   private readonly indices: Uint32Array;
   private readonly transform?: Mat4;
   private readonly bvh: BVH;
+  /**
+   * Starting half-size for the expanding-cube probe in `distanceToSurface`: a
+   * power-of-two fraction of the mesh's longest axis, scaled down by the cube
+   * root of the triangle count so it lands near the average triangle size.
+   * Derived with exact power-of-two arithmetic (no `pow`/`cbrt`, whose last bit
+   * is not guaranteed to agree between JS and Rust) — the Rust
+   * `TriMesh::probe_seed` computes the identical value.
+   */
+  private readonly probeSeed: number;
+  /** Memoized `detectObb(this)` result; `undefined` until first requested.
+   * Computed at most once per element per run, same lifetime as the mesh. */
+  private obbCache: Obb | null | undefined;
 
   constructor(positions: Float32Array, indices: Uint32Array, transform?: Mat4) {
     this.positions = positions;
@@ -37,9 +58,31 @@ export class TriMesh {
     this.count = Math.floor(indices.length / 3);
 
     const items: MeshWithBounds[] = [];
+    let extent = 0;
+    const lo: Vec3 = [Infinity, Infinity, Infinity];
+    const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
     for (let t = 0; t < this.count; t += 1) {
-      items.push({ bounds: this.triBounds(t), expressId: t });
+      const bounds = this.triBounds(t);
+      items.push({ bounds, expressId: t });
+      for (let a = 0; a < 3; a += 1) {
+        if (bounds.min[a] < lo[a]) lo[a] = bounds.min[a];
+        if (bounds.max[a] > hi[a]) hi[a] = bounds.max[a];
+      }
     }
+    for (let a = 0; a < 3; a += 1) {
+      const e = hi[a] - lo[a];
+      if (e > extent) extent = e;
+    }
+    // Halve the extent once per factor of 8 in the triangle count (≈ one
+    // subdivision step per axis). Both the loop and the division are exact.
+    let divisor = 1;
+    let cap = 8;
+    while (cap <= this.count && divisor < 1048576) {
+      divisor *= 2;
+      cap *= 8;
+    }
+    const seed = extent / divisor;
+    this.probeSeed = seed > 0 && seed < Infinity ? seed : 1;
     this.bvh = BVH.build(items);
   }
 
@@ -97,6 +140,13 @@ export class TriMesh {
     return this.bvh.queryAABB(bounds);
   }
 
+  /** Memoized `Obb` for this mesh, or `null` when the mesh is not (within
+   * tolerance) a rectangular box. See `obb.ts` for the detection rule. */
+  getObb(): Obb | null {
+    if (this.obbCache === undefined) this.obbCache = detectObb(this);
+    return this.obbCache;
+  }
+
   /**
    * Mean of every vertex (world-space, transform applied), summed in index
    * order. A rigid-invariant interior probe for the volumetric-overlap check in
@@ -121,23 +171,20 @@ export class TriMesh {
     return [sx / n, sy / n, sz / n];
   }
 
-  /**
-   * True when `p` is inside this closed mesh. Casts a fixed-direction ray and
-   * counts forward crossings against every triangle (Möller–Trumbore,
-   * double-sided so winding doesn't matter); an odd count means inside.
-   *
-   * Iterates all triangles in index order — deliberately NOT the BVH — so the
-   * result is bit-identical to the Rust `contains_point`. Only invoked in the
-   * rare enclosed-solid branch of the narrow phase, so the O(n) cost is fine.
-   */
-  /**
-   * Exact distance from `p` to this mesh's surface: the minimum point-to-
-   * triangle distance over every triangle. Iterated in index order (not the
-   * BVH) so the code shape stays identical to the Rust `distance_to_surface`;
-   * the minimum itself is order-independent. Only invoked from the contained-
-   * pair depth measurement (#1866), so the O(n) scan is fine.
-   */
-  distanceToSurface(p: Vec3): number {
+  /** Minimum point-to-triangle distance over `tris`, as a squared distance. */
+  private minDistSqOver(p: Vec3, tris: readonly number[]): number {
+    let best = Infinity;
+    for (const t of tris) {
+      const [a, b, c] = this.tri(t);
+      const q = closestPtPointTriangle(p, a, b, c);
+      const d2 = distSq(p, q);
+      if (d2 < best) best = d2;
+    }
+    return best;
+  }
+
+  /** Exhaustive fallback for `distanceToSurface`: every triangle, index order. */
+  private distanceToSurfaceScan(p: Vec3): number {
     let best = Infinity;
     for (let t = 0; t < this.count; t += 1) {
       const [a, b, c] = this.tri(t);
@@ -149,37 +196,83 @@ export class TriMesh {
   }
 
   /**
-   * Mesh-level penetration of this mesh into `other`, measured at the vertices
-   * of the triangles flagged in `crossFlags` (the pairs the narrow phase saw
-   * genuinely crossing `other`): the maximum distance-to-surface of `other`
-   * over those vertices that lie inside `other`. Each vertex is visited once
-   * (deduped by vertex index, in index order — bit-identical to the Rust
-   * `max_penetration_into`). Returns 0 when no flagged vertex is inside, e.g.
-   * a thin member piercing straight through, whose crossing-triangle vertices
-   * all sit outside `other` (#1866).
+   * Exact distance from `p` to this mesh's surface: the minimum point-to-
+   * triangle distance over the whole mesh.
+   *
+   * Not on the narrow-phase hot path as of PR #2536 (its former caller,
+   * `maxPenetrationInto`, was removed — see `obb.ts`): a nearest-crossing-
+   * VERTEX distance-to-surface probe is a sampling artifact that converges to
+   * 0 under retessellation rather than to the true penetration depth. Kept as
+   * a genuinely exact, independently tested primitive (see the shared probe
+   * fixture in `tri-mesh.test.ts` / `kernel_tests.rs`) for future callers that
+   * need it — e.g. clearance-to-nearest-surface — not as dead weight. Driven
+   * by the triangle BVH rather than a linear scan so it stays cheap when it IS
+   * called. The BVH is used through a plain `queryAABB`, so the value is still
+   * the exact global minimum:
+   *
+   * TODO(remove-by: no production caller has appeared by the next
+   * clash-engine feature pass, or on maintainer request): tracking issue
+   * https://github.com/LTplus-AG/ifc-lite/issues/2646.
+   *
+   * 1. Query the cube of half-size `h` centred on `p`. Every triangle within
+   *    distance `h` of `p` has its closest point inside that cube, hence its
+   *    AABB intersects the cube, hence it is in the candidate set.
+   * 2. If the candidate minimum `d` satisfies `d <= h`, the true minimum is
+   *    `<= h` too, so its triangle was a candidate and `d` IS the true minimum.
+   * 3. Otherwise `d` is still an upper bound on the true minimum, so one more
+   *    query at half-size `d` provably captures the closest triangle.
+   *
+   * The reported value is therefore the same minimum the linear scan returns —
+   * `min` selects an element, it does not accumulate, so visiting a superset of
+   * the argmin in a different order returns the identical `f64`. The Rust
+   * `distance_to_surface` runs the identical sequence of queries on the identical
+   * BVH, so the two kernels stay bit-identical to each other (see the shared
+   * probe fixture in `tri-mesh.test.ts` / `kernel_tests.rs`).
+   *
+   * The `wider.length === 0` arm below is unreachable, not a tested fallback:
+   * `cubeAround(p, d)` with `d > h` strictly contains `cubeAround(p, h)`, whose
+   * query was already non-empty, so every triangle that made `hits` non-empty
+   * also intersects the wider cube — `wider` cannot come back empty. It is kept
+   * only as defence-in-depth against a future `queryTris` regression, not as a
+   * code path with coverage; do not read it as a tested safety net.
    */
-  maxPenetrationInto(other: TriMesh, crossFlags: Uint8Array): number {
-    const seen = new Uint8Array(Math.floor(this.positions.length / 3));
-    let depth = 0;
-    for (let t = 0; t < this.count; t += 1) {
-      if (crossFlags[t] === 0) continue;
-      const o = t * 3;
-      for (let k = 0; k < 3; k += 1) {
-        const vi = this.indices[o + k];
-        if (seen[vi] === 1) continue;
-        seen[vi] = 1;
-        const v = this.vertex(vi);
-        if (!other.containsPoint(v)) continue;
-        const d = other.distanceToSurface(v);
-        if (d > depth) depth = d;
+  distanceToSurface(p: Vec3): number {
+    if (this.count === 0) return Infinity;
+    let h = this.probeSeed;
+    // 64 doublings from a positive seed overflow to Infinity, whose cube
+    // intersects every finite box — so the loop only runs out on NaN geometry,
+    // which falls through to the exhaustive scan rather than spinning.
+    for (let step = 0; step < 64; step += 1) {
+      const hits = this.queryTris(cubeAround(p, h));
+      if (hits.length > 0) {
+        const d = Math.sqrt(this.minDistSqOver(p, hits));
+        if (d <= h) return d;
+        const wider = this.queryTris(cubeAround(p, d));
+        if (wider.length > 0) return Math.sqrt(this.minDistSqOver(p, wider));
+        return this.distanceToSurfaceScan(p);
       }
+      h *= 2;
     }
-    return depth;
+    return this.distanceToSurfaceScan(p);
   }
 
+  /**
+   * True when `p` is inside this closed mesh. Casts a fixed-direction ray and
+   * counts forward crossings (Möller–Trumbore, double-sided so winding doesn't
+   * matter); an odd count means inside.
+   *
+   * Only the triangles the BVH reports along the ray are tested. A triangle the
+   * ray hits at `tHit > RAY_EPS > 0` is hit inside its own AABB, so the slab
+   * test admits it — the candidate set is a superset of the triangles a linear
+   * scan would count, and the crossing count is an integer sum, so the parity
+   * (and hence the verdict) is unchanged by the visit order. `RAY_DIR` is a
+   * unit vector exactly, so `BVH.raycast`'s normalisation is the identity and
+   * the slab test sees exactly `RAY_DIR`; the Rust `Bvh::raycast` mirrors this
+   * traversal operation for operation, keeping the two kernels bit-identical.
+   */
   containsPoint(p: Vec3): boolean {
     let crossings = 0;
-    for (let t = 0; t < this.count; t += 1) {
+    for (const t of this.bvh.raycast(p, RAY_DIR)) {
       const [v0, v1, v2] = this.tri(t);
       const e1 = sub(v1, v0);
       const e2 = sub(v2, v0);
@@ -197,5 +290,16 @@ export class TriMesh {
       if (tHit > RAY_EPS) crossings += 1; // strictly forward
     }
     return (crossings & 1) === 1;
+  }
+
+  /** Number of vertices in this mesh (positions are packed `x, y, z`). */
+  vertexCount(): number {
+    return Math.floor(this.positions.length / 3);
+  }
+
+  /** The three vertex indices of triangle `t` (local, 0-based). */
+  triIndices(t: number): [number, number, number] {
+    const o = t * 3;
+    return [this.indices[o], this.indices[o + 1], this.indices[o + 2]];
   }
 }

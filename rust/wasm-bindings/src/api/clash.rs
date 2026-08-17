@@ -69,6 +69,7 @@ impl ClashSession {
         let mut b = Vec::with_capacity(n);
         let mut status = Vec::with_capacity(n);
         let mut distance = Vec::with_capacity(n);
+        let mut distance_kind = Vec::with_capacity(n);
         let mut points = Vec::with_capacity(n * 3);
         let mut bounds = Vec::with_capacity(n * 6);
 
@@ -77,6 +78,7 @@ impl ClashSession {
             b.push(record.b);
             status.push(record.status as u8);
             distance.push(record.distance);
+            distance_kind.push(record.distance_kind as u8);
             points.extend_from_slice(&record.point);
             bounds.extend_from_slice(&record.bounds);
         }
@@ -86,6 +88,7 @@ impl ClashSession {
             b,
             status,
             distance,
+            distance_kind,
             points,
             bounds,
         }
@@ -106,6 +109,9 @@ pub struct ClashRunResult {
     b: Vec<u32>,
     status: Vec<u8>,
     distance: Vec<f64>,
+    /// Provenance of `distance`, one per record: `0` = measured on the meshes,
+    /// `1` = estimated from the element AABBs. Mirrors `DistanceKind`.
+    distance_kind: Vec<u8>,
     points: Vec<f64>,
     bounds: Vec<f64>,
 }
@@ -130,6 +136,11 @@ impl ClashRunResult {
     #[wasm_bindgen(getter)]
     pub fn distance(&self) -> Vec<f64> {
         self.distance.clone()
+    }
+
+    #[wasm_bindgen(getter, js_name = distanceKind)]
+    pub fn distance_kind(&self) -> Vec<u8> {
+        self.distance_kind.clone()
     }
 
     #[wasm_bindgen(getter)]

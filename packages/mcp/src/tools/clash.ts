@@ -113,13 +113,19 @@ async function runRules(m: LoadedModel, rules: ClashRule[], ctx: ToolContext): P
 }
 
 /** Project a `Clash` down to a compact, JSON-friendly display row. */
-function displayClash(c: Clash): Record<string, unknown> {
+/** Exported for direct unit testing (see clash.test.ts distanceKind coverage). */
+export function displayClash(c: Clash): Record<string, unknown> {
   return {
     id: c.id,
     rule: c.rule,
     status: c.status,
     severity: c.severity,
     distance: c.distance,
+    // Provenance of `distance` (see Clash.distanceKind): a hard-clash distance
+    // labelled 'estimate' is a box dimension read off the AABBs, not a mesh
+    // measurement — an agent consuming this must not report it as a precise
+    // interpenetration depth.
+    distanceKind: c.distanceKind,
     point: c.point,
     a: { key: c.a.key, ref: c.a.ref, tag: c.a.tag, name: c.a.name },
     b: { key: c.b.key, ref: c.b.ref, tag: c.b.tag, name: c.b.name },

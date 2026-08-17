@@ -129,6 +129,7 @@ export class TsKernel implements ClashKernel {
         b: resolveBIdx[j],
         status: res.status,
         distance: res.distance,
+        distanceKind: res.distanceKind,
         point: res.point,
         bounds: res.bounds,
       });

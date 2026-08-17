@@ -27,7 +27,8 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { IfcCreator } from '@ifc-lite/create';
 import { GeometryProcessor } from '@ifc-lite/geometry';
-import { clashCommand } from './clash.js';
+import { clashCommand, formatClashRow } from './clash.js';
+import type { Clash } from '@ifc-lite/clash';
 
 const execFileAsync = promisify(execFile);
 
@@ -200,6 +201,46 @@ describe('clash --group cluster ineffectiveness note', () => {
   );
 });
 
+function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {
+  return {
+    id: 'c1',
+    a: { model: 'm', key: 'a', ref: 1, tag: 'IfcSlab' },
+    b: { model: 'm', key: 'b', ref: 2, tag: 'IfcSlab' },
+    rule: 'r',
+    status: 'hard',
+    distance,
+    distanceKind,
+    point: [0, 0, 0],
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    severity: 'major',
+  };
+}
+
+describe('formatClashRow penetration provenance', () => {
+  it('prints a mesh-measured depth as a plain penetration', () => {
+    expect(formatClashRow(clashOf(-0.25, 'mesh'))).toContain('penetration 0.250m');
+    expect(formatClashRow(clashOf(-0.25, 'mesh'))).not.toContain('estimate');
+  });
+
+  it('marks an AABB estimate as approximate, so it cannot read as a measurement', () => {
+    const row = formatClashRow(clashOf(-0.25, 'estimate'));
+    expect(row).toContain('penetration ~0.250m (AABB estimate)');
+  });
+
+  it('leaves a clearance gap unmarked (it is always mesh-measured)', () => {
+    expect(formatClashRow(clashOf(0.25, 'mesh'))).toContain('gap 0.250m');
+  });
+
+  it('treats an absent distanceKind as unknown, not measured', () => {
+    // A clash with no distanceKind at all (a pre-label rehydrated run, or a
+    // producer — e.g. findDuplicates — that has not attached one) must not
+    // render as an unqualified "measured" penetration: absent means unknown,
+    // and unknown is displayed the same as an estimate.
+    const row = formatClashRow(clashOf(-0.25, undefined));
+    expect(row).toContain('penetration ~0.250m (AABB estimate)');
+  });
+});
+
 describe('clash --json stdout hygiene', () => {
   beforeAll(() => {
     assertBuildArtifactsAvailable(CLI_ENTRY, WASM_RUNTIME);
@@ -259,19 +300,30 @@ function buildStructuralOnlyModel(): string {
 }
 
 /** Structural model PLUS an MEP pipe interpenetrating a beam: the discipline
- *  matrix's MEPxSTR rule matches and finds it — control for "unaffected". */
+ *  matrix's MEPxSTR rule matches and finds it - control for "unaffected".
+ *
+ *  The pipe is oriented via `Placement.Axis` (local Z = world X), NOT via
+ *  `ExtrusionDirection: [1, 0, 0]`. The extrusion direction is expressed in
+ *  the PROFILE's coordinate system, so [1, 0, 0] lies IN the profile plane
+ *  (invalid per IFC4 IfcExtrudedAreaSolid.WR31) and sweeps the disc into a
+ *  zero-volume flat ribbon. An earlier version of this fixture did exactly
+ *  that: the ribbon sat buried at the beam's mid-plane with an exactly-zero
+ *  measurable overlap, and this test only "passed" while the enclosed-solid
+ *  narrow-phase branch reported every buried element as `hard` no matter the
+ *  depth. Under the f32 noise floor (#2536) a zero-depth pair is `touch`,
+ *  which matrix rules don't report - correctly, since a zero-volume solid
+ *  displaces nothing. This pipe is a real 0.2 m-diameter cylinder running
+ *  x = 1..3 inside the beam, a genuine hard clash ~5 orders of magnitude
+ *  above the noise floor. */
 function buildMepAndStructuralModel(): string {
   const creator = new IfcCreator({ Name: 'MepAndStructuralTest' });
   const storey = creator.addIfcBuildingStorey({ Name: 'L1', Elevation: 0 });
   creator.addIfcBeam(storey, { Start: [0, 0, 1], End: [4, 0, 1], Width: 0.3, Height: 0.5 });
-  // Extruded along local X (not the [0,0,1] default) so it runs THROUGH the
-  // beam's span rather than merely touching it at one end.
   creator.addElement(storey, {
     IfcType: 'IFCPIPESEGMENT',
-    Placement: { Location: [1, 0, 1] },
+    Placement: { Location: [1, 0, 1], Axis: [1, 0, 0] },
     Profile: { ProfileType: 'AREA', Radius: 0.1 },
     Depth: 2,
-    ExtrusionDirection: [1, 0, 0],
     PredefinedType: 'RIGIDSEGMENT',
     Name: 'Pipe-001',
   });

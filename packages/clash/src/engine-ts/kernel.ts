@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { AABB, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
+import type { AABB, ClashDistanceKind, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
 
 /**
  * One detected clash, in kernel terms: a pair of GLOBAL element indices plus the
@@ -17,6 +17,8 @@ export interface NarrowRecord {
   b: number;
   status: ClashStatus;
   distance: number;
+  /** Whether `distance` was measured on the meshes or estimated from the AABBs. */
+  distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
 }

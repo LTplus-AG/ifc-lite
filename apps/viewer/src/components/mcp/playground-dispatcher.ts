@@ -463,7 +463,8 @@ function clashCapNote(result: ClashResult): string {
  * burying them past the cap; clearance gaps are positive, so the same order
  * surfaces the tightest gaps first.
  */
-function topClashRows(clashes: Clash[], cap: number): {
+/** Exported for direct unit testing (see playground-dispatcher.test.ts distanceKind coverage). */
+export function topClashRows(clashes: Clash[], cap: number): {
   rows: Record<string, unknown>[];
   truncated: { shown: number; dropped: number; total: number } | null;
 } {
@@ -475,6 +476,9 @@ function topClashRows(clashes: Clash[], cap: number): {
     status: c.status,
     severity: c.severity,
     distance: c.distance,
+    // See Clash.distanceKind: absent or 'estimate' means `distance` is a box
+    // dimension read off the AABBs, not a mesh measurement.
+    distanceKind: c.distanceKind,
     point: c.point,
     a: { key: c.a.key, ref: c.a.ref, tag: c.a.tag, name: c.a.name },
     b: { key: c.b.key, ref: c.b.ref, tag: c.b.tag, name: c.b.name },

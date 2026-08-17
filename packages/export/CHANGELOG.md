@@ -1,5 +1,34 @@
 # @ifc-lite/export
 
+## 2.9.3
+
+### Patch Changes
+
+- [#2678](https://github.com/LTplus-AG/ifc-lite/pull/2678) [`cc8cfcf`](https://github.com/LTplus-AG/ifc-lite/commit/cc8cfcf426b02bd999aa37e0fa12ca2ff3ee18de) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `StepExporter`'s incidental line readers no longer answer from another entity's record when a source ref is out of range.
+
+  `entityLineText` gated on `byteLength === 0`, on the stated grounds that an out-of-range ref degrades to "a clamped, empty decode, which is the same answer". It does not. `IfcSourceBytes.decodeUtf8` clamps an unaddressable range onto real file bytes, so the window that survives holds a DIFFERENT record. On a two-record source, giving `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)` the ref `(byteOffset: 0, byteLength: 9999)`:
+
+  ```
+  getPropertySetName([#1](https://github.com/LTplus-AG/ifc-lite/issues/1))  = "SetA"      <- right, by luck: that pattern is unanchored
+  getPropertyIdsInSet([#1](https://github.com/LTplus-AG/ifc-lite/issues/1)) = [201, 202]  <- wrong: those are [#2](https://github.com/LTplus-AG/ifc-lite/issues/2)'s members ([#1](https://github.com/LTplus-AG/ifc-lite/issues/1)'s are [101, 102])
+  ```
+
+  The `$`-anchored patterns (`getPropertyIdsInSet`, `getRelatedPropertySet`) match at the end of the CLAMPED window, i.e. against whatever record the file ends on. `retainSharedAtoms` then calls `skipIds.delete(atomId)` for every id returned, so a member list read out of the wrong record un-skips the wrong atoms.
+
+  The readers are now gated on `isReadableSourceRef` ([#2491](https://github.com/LTplus-AG/ifc-lite/issues/2491)), the same predicate the source-iteration pass already uses to decide whether a record's line is emitted at all — so the two passes agree, instead of one making decisions on behalf of a container the other had decided not to write. A record with an unreadable ref degrades to the shape the exporter already handles: nothing generated for it, nothing naming it.
+
+  The defect is pre-existing, not introduced by [#2398](https://github.com/LTplus-AG/ifc-lite/issues/2398) — the same probe gives `[201, 202]` on the commit before it. What [#2398](https://github.com/LTplus-AG/ifc-lite/issues/2398) added was a docstring arguing the behaviour was safe for every out-of-range shape except a negative offset; that docstring, and the matching rationale in `source-ref-bounds.ts`, are corrected to the measured behaviour, in one place with the other citing it.
+
+  Also pinned: the byte range's START. Advancing `byteOffset` by one while leaving the end alone previously passed every test in the package, because no reader parses anything from the record's first byte.
+
+- [#2398](https://github.com/LTplus-AG/ifc-lite/pull/2398) [`79503d3`](https://github.com/LTplus-AG/ifc-lite/commit/79503d3346c6c383c831b08ecaab94c6da13192d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make the dead `if (!dataStore.source)` guards in `StepExporter`'s five line readers live, without changing an answer. `IfcDataStore.source` is a mandatory accessor — a model that kept no bytes carries `EMPTY_SOURCE_BYTES`, not `null` — so those guards never fired. They were also redundant where they sat: a zero-length range decodes to `''`, which fails every regex the readers below them run.
+
+  `getRelatedEntities`, `getRelatedPropertySet`, `getPropertySetName`, `getElementQuantityName` and `getPropertyIdsInSet` now share one `entityLineText` reader whose check is on the entity's BYTE RANGE rather than on `source`. Strictly equivalent, verified by mutation: swapping the range check back for the old guard leaves every test in the package passing.
+
+  Left as-is, verified neutral: the per-entity `byteLength === 0 || byteOffset < 0` skip in the source-iteration pass and the owner-history read already conjoin their own byte check, and `EntityExtractor` construction degrades safely.
+
+  A new `sourceless-store-export.test.ts` drives `StepExporter` from a store with no source bytes and pins both directions, with file-parsed controls alongside. (`sourceless-header-count.test.ts`, [#2414](https://github.com/LTplus-AG/ifc-lite/issues/2414), was the first such case in this package; this one covers the reader and closure paths it does not.)
+
 ## 2.9.2
 
 ### Patch Changes

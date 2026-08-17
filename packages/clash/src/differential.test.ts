@@ -139,6 +139,12 @@ function assertParity(a: ClashResult, b: ClashResult): void {
     if (!y) continue;
     expect(y.status).toBe(x.status);
     expect(y.severity).toBe(x.severity);
+    // Provenance is a discrete label, so it must match EXACTLY — an epsilon
+    // comparison on `distance` alone would let one kernel measure the meshes
+    // while the other read the AABBs, on a fixture where the two happen to
+    // agree numerically.
+    expect(y.distanceKind, `clash ${x.id} distanceKind must match`).toBe(x.distanceKind);
+    expect(x.distanceKind, `clash ${x.id} must carry a distanceKind`).toBeDefined();
     expect(Math.abs(y.distance - x.distance)).toBeLessThan(EPS);
     for (let i = 0; i < 3; i += 1) {
       expect(Math.abs(y.point[i] - x.point[i])).toBeLessThan(EPS);
@@ -295,11 +301,46 @@ describe('differential: WASM kernel === TS kernel', () => {
     expect(n).toBe(1);
   });
 
-  it('agrees on the contained-pair mesh-level depth (#1866)', async () => {
+  it('agrees on the mesh label for coincident-footprint BOX layers', async () => {
+    // Stacked BOX layers sharing a footprint: no crossing-triangle vertex lies
+    // inside the other solid, so this lands in the coplanar-overlap branch.
+    // Both parts are boxes, so both kernels must certify the exact box-box
+    // depth (the Z overlap) and BOTH must say so.
+    const lower = boxHxyz('L1', 'IfcSlab', [5, 5, 0.1], [5, 5, 0.1]);
+    const upper = boxHxyz('L2', 'IfcSlab', [5, 5, 0.285], [5, 5, 0.125]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcSlab', b: 'IfcSlab', mode: 'hard' }];
+    const a = await ts.run([lower, upper], rules);
+    const b = await wasm.run([lower, upper], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('mesh');
+  });
+
+  it('agrees on the estimate label for two walls crossing at an X-junction', async () => {
+    // The through-penetration guard's cross-section containment test is where
+    // the two kernels are easiest to drift apart: it is one `-`-vs-`+` sign in
+    // each of `obb.ts` and `obb.rs`, with no shared source. This pair is the
+    // one that discriminates — at an X-junction of two equal-height walls the
+    // height axis TIES, so the sign decides between the honest 0.2 m AABB
+    // estimate and the wall's full 3 m height certified as `'mesh'`. Patching
+    // only one kernel makes THIS test fail (verified: TS-only fix, before the
+    // Rust side and the WASM rebuild).
+    const wallA = boxHxyz('WA', 'IfcWall', [0, 0, 1.5], [5, 0.1, 1.5]);
+    const wallB = boxHxyz('WB', 'IfcWall', [0, 0, 1.5], [0.1, 5, 1.5]);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcWall', mode: 'hard' }];
+    const a = await ts.run([wallA, wallB], rules);
+    const b = await wasm.run([wallA, wallB], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('estimate');
+  });
+
+  it('agrees on the AABB-estimate fallback for a non-box contained pair (#1866)', async () => {
     // Concave L prism (notch [1,2]x[1,2] inside the AABB but outside the solid)
     // and a small box in the notch, AABB-contained, dipping ~0.05 into the notch
-    // wall at x=1. The reported depth is measured from the crossing triangles'
-    // vertices, so both kernels must run the identical mesh-depth path.
+    // wall at x=1. The L prism is not a box, so neither kernel can certify a
+    // box-box depth here; both must agree on the (now honestly labelled)
+    // AABB-estimate fallback rather than diverge on it.
     const positions = new Float32Array([
       0, 0, 0, 2, 0, 0, 2, 1, 0, 1, 1, 0, 1, 2, 0, 0, 2, 0,
       0, 0, 1, 2, 0, 1, 2, 1, 1, 1, 1, 1, 1, 2, 1, 0, 2, 1,
@@ -315,7 +356,11 @@ describe('differential: WASM kernel === TS kernel', () => {
       positions, indices, bounds: { min: [0, 0, 0], max: [2, 2, 1] },
     };
     const duct = boxHxyz('B', 'IfcDuctSegment', [1.2, 1.4, 0.5], [0.25, 0.2, 0.2]);
-    const n = await bothAgree([wall, duct], [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }]);
-    expect(n).toBe(1);
+    const rules: ClashRule[] = [{ id: 'r', name: 'r', a: 'IfcWall', b: 'IfcDuct*', mode: 'hard' }];
+    const a = await ts.run([wall, duct], rules);
+    const b = await wasm.run([wall, duct], rules);
+    assertParity(a, b);
+    expect(a.clashes).toHaveLength(1);
+    expect(a.clashes[0].distanceKind).toBe('estimate');
   });
 });

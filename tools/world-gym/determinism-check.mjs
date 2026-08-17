@@ -171,16 +171,24 @@ async function main() {
     perSeed: results.map(({ seed, family, identical, byteLength }) => ({ seed, family, identical, byteLength })),
   };
 
+  // The summary carries a perSeed row for every seed, so on a pipe — every CI
+  // log — it is far past the pipe buffer, and stdout on a pipe is asynchronous.
+  // `process.exit()` on the next line would discard whatever has not drained,
+  // leaving a log that stops mid-JSON with no verdict at all. Exit from the
+  // write CALLBACK instead: writes are ordered, so it fires only once the JSON
+  // has reached the pipe, and the exit stays immediate (this run generates
+  // models through the WASM kernel; waiting on a natural exit could park it).
   if (saltFailures.length > 0) {
     process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
     process.stderr.write(`SALT INVARIANTS FAILED: ${saltFailures.map((f) => f.why).join('; ')}\n`);
-    process.exit(1);
+    process.stdout.write('', () => process.exit(1));
+    return;
   }
 
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   if (failures.length > 0) {
     process.stderr.write(`DETERMINISM CHECK FAILED: ${failures.length}/${seedCount} seeds produced non-identical output across two runs.\n`);
-    process.exit(1);
+    process.stdout.write('', () => process.exit(1));
   } else {
     process.stderr.write(`DETERMINISM CHECK PASSED: ${seedCount}/${seedCount} seeds byte-identical across two runs (${delayMs}ms apart).\n`);
   }

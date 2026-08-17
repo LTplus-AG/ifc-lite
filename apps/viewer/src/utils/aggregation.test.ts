@@ -14,6 +14,8 @@ import {
   type AggregationModelAccess,
   type AggregationRelationships,
 } from './aggregation';
+import { fileURLToPath } from 'node:url';
+import { stripSource } from '@/test/strip-comments.js';
 
 /** Minimal forward-only IfcRelAggregates graph from an adjacency map. */
 function makeRelationships(adjacency: Record<number, number[]>): AggregationRelationships {
@@ -189,12 +191,16 @@ describe('expandToGeometryBearingIds', () => {
   // this additionally requires BOTH callbacks route through the SAME shared
   // helper, which is what actually closes the highlight/frame mismatch.
   it('frameSelection and resolveHighlightIds share the same aggregation resolution', () => {
-    const source = readFileSync(
+    // Prepared by the shared helper (`@/test/strip-comments.ts`), a TypeScript
+    // parse rather than a lexical scan: a regex stripper desyncs on a regex
+    // literal carrying an unbalanced quote, after which a following `//` is no
+    // longer seen as a comment (#2393). `masked`, not `code`: every anchor
+    // below is real code, so blanking string/template/JSX-text bodies costs
+    // nothing and closes the string-literal decoy at the same time.
+    const viewportPath = fileURLToPath(
       new URL('../components/viewer/Viewport.tsx', import.meta.url),
-      'utf8',
-    )
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '');
+    );
+    const { masked: source } = stripSource(readFileSync(viewportPath, 'utf8'), viewportPath);
 
     const helperStart = source.indexOf('const resolveRenderableIds = ');
     assert.ok(helperStart >= 0, 'resolveRenderableIds helper defined');
@@ -216,6 +222,59 @@ describe('expandToGeometryBearingIds', () => {
     assert.ok(
       highlightBody.includes('resolveRenderableIds('),
       'resolveHighlightIds must use the SAME resolution as frameSelection, not a separate one',
+    );
+  });
+
+  // Same no-harness constraint, second property: HOW that shared resolution
+  // asks for bounds. `resolveRenderableIds` decides `hasGeometry` for every
+  // input id AND every aggregated descendant, so a per-id `getEntityBounds`
+  // (a full scan of the mesh array, per call) makes one isolate O(ids ×
+  // meshes). It must read through the self-indexing lookup instead — and it
+  // must keep the renderer's per-occurrence fallback, because GPU-instanced
+  // occurrences are not in the mesh array at all and would otherwise every one
+  // of them read as geometry-less and get dropped or wrongly expanded.
+  // Behaviour of the lookup itself is pinned in unionEntityBounds.test.ts.
+  it('the shared bounds lookup is indexed and keeps the instanced fallback', () => {
+    // Prepared by the shared helper (`@/test/strip-comments.ts`), a TypeScript
+    // parse rather than a lexical scan: a regex stripper desyncs on a regex
+    // literal carrying an unbalanced quote, after which a following `//` is no
+    // longer seen as a comment (#2393). `masked`, not `code`: every anchor
+    // below is real code, so blanking string/template/JSX-text bodies costs
+    // nothing and closes the string-literal decoy at the same time.
+    const viewportPath = fileURLToPath(
+      new URL('../components/viewer/Viewport.tsx', import.meta.url),
+    );
+    const { masked: source } = stripSource(readFileSync(viewportPath, 'utf8'), viewportPath);
+
+    const start = source.indexOf('const createRenderableBoundsLookup = ');
+    assert.ok(start >= 0, 'the shared bounds lookup helper is defined');
+    // Assert the END marker too. `indexOf` returns -1 when it is gone, and
+    // `slice(start, -1)` silently runs to the end of the FILE instead of
+    // failing — the assertions below would then be inspecting most of
+    // Viewport.tsx rather than this helper, and would pass or fail on
+    // unrelated code. A source-text guard that can address the wrong region
+    // is worse than none, because it still reports green.
+    const end = source.indexOf('const resolveRenderableIds = ', start);
+    assert.ok(end >= 0, 'resolveRenderableIds follows the lookup helper');
+    const body = source.slice(start, end);
+
+    assert.ok(
+      body.includes('createEntityBoundsLookup('),
+      'bounds must come from the self-indexing reader, not a per-id getEntityBounds scan',
+    );
+    assert.ok(
+      body.includes('getInstancedEntityBounds('),
+      'instanced occurrences live outside the mesh array — the fallback must stay',
+    );
+
+    const helperStart2 = source.indexOf('const resolveRenderableIds = ');
+    assert.ok(helperStart2 >= 0, 'resolveRenderableIds is defined');
+    const helperEnd2 = source.indexOf('setCameraCallbacks({', helperStart2);
+    assert.ok(helperEnd2 >= 0, 'setCameraCallbacks bounds the helper');
+    const helperBody2 = source.slice(helperStart2, helperEnd2);
+    assert.ok(
+      !helperBody2.includes('getEntityBounds('),
+      'resolveRenderableIds must not scan the mesh array per id',
     );
   });
 

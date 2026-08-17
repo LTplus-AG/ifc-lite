@@ -21,8 +21,9 @@
  * The provider fixture mirrors Dalux (`flat-subtree` + recursive files), which
  * is the shipped capability pair this ran into. A second fixture mirrors
  * Dropbox/msgraph (`direct-children` + per-folder files), whose two-step
- * `openContainer` is the only way to reach the folders-before-files window the
- * last test pins down.
+ * `openContainer` is the only way to reach the folders-before-files window one
+ * of the tests pins down. A third splits the FOLDER listing over two pages,
+ * which is what the folder branch's paging guard exists for.
  */
 
 import '@/test/setup-dom.js';
@@ -77,11 +78,17 @@ const manifest: PluginManifest = {
 
 const FOLDER: SourceContainer = { id: 'folder-1', name: 'Models', parentId: 'area-1' };
 const OTHER_FOLDER: SourceContainer = { id: 'folder-2', name: 'Drawings', parentId: 'area-1' };
+/** Nested one level down, so a fabricated `parentId` of the area root is a
+ *  visibly different trail rather than an accidentally correct guess. */
+const NESTED_FOLDER: SourceContainer = { id: 'folder-3', name: 'Archive', parentId: 'folder-1' };
 const IN_FOLDER: SourceFile = {
   id: 'file-1', name: 'Tower.ifc', containerId: 'folder-1', currentRevisionId: 'rev-1',
 };
 const ELSEWHERE: SourceFile = {
   id: 'file-2', name: 'Podium.ifc', containerId: 'folder-2', currentRevisionId: 'rev-1',
+};
+const IN_NESTED: SourceFile = {
+  id: 'file-3', name: 'Superseded.ifc', containerId: 'folder-3', currentRevisionId: 'rev-1',
 };
 
 class FakeProvider implements FileSourceProvider {
@@ -236,6 +243,42 @@ class DirectChildrenProvider extends FakeProvider {
   }
 }
 
+/**
+ * Splits the FOLDER listing over two pages, the favourited folder on the
+ * second: the folder-side twin of `DirectChildrenProvider(true)` above.
+ * Folder listings are cursor-paged for every provider (`useSourceCatalogSync`
+ * fetches page one and stops; there is no folder equivalent of
+ * `eagerFileSweep`), so this is the shipped shape, not a corner case.
+ *
+ * Capabilities stay Dalux-shaped (`flat-subtree` + recursive files) so the
+ * whole area is one folder listing keyed by the area id, which is exactly the
+ * key `hasMoreFolders` consults while the jump is still parked at the root.
+ */
+class PagedFoldersProvider extends FakeProvider {
+  /** Page two's contents; empty models a folder genuinely gone from the source. */
+  constructor(private readonly secondPage: readonly SourceContainer[] = [NESTED_FOLDER]) {
+    super();
+  }
+
+  override listContainers(
+    _ctx?: PluginContext,
+    _projectId?: string,
+    parentId?: string,
+    options?: { cursor?: string },
+  ): Promise<Page<SourceContainer>> {
+    if (!parentId) return Promise.resolve({ items: [{ id: 'area-1', name: 'Documents' }] });
+    this.folderListings += 1;
+    return options?.cursor === undefined
+      ? Promise.resolve({ items: [FOLDER, OTHER_FOLDER], cursor: 'folder-page-2' })
+      : Promise.resolve({ items: [...this.secondPage] });
+  }
+
+  override listFiles(): Promise<Page<SourceFile>> {
+    this.fileListings += 1;
+    return Promise.resolve({ items: [IN_FOLDER, ELSEWHERE, IN_NESTED] });
+  }
+}
+
 function button(label: string): HTMLButtonElement | undefined {
   return [...document.body.querySelectorAll('button')].find(
     (candidate) => candidate.textContent?.includes(label),
@@ -280,6 +323,21 @@ async function jumpTo(target: SourceFavourite, provider: FakeProvider): Promise<
 
 function text(): string {
   return document.body.textContent ?? '';
+}
+
+/**
+ * The breadcrumb above the file list, as "Area / Folder / Subfolder".
+ * `SourceFolderStep` builds it by walking `selectedContainer.parentId` up to
+ * the file area, so it is where a fabricated parent becomes visible: a
+ * synthesised stand-in claiming the area root renders one level shallower than
+ * the folder really is.
+ */
+function trail(): string {
+  const crumbs = document.body.querySelector('div.flex.flex-wrap.items-center.gap-x-1');
+  // Loud rather than empty: an unmatched selector would otherwise read as
+  // "the jump went nowhere" when the markup was merely restyled.
+  assert.ok(crumbs, 'no breadcrumb row in the DOM - has SourceFolderStep been restyled?');
+  return [...crumbs.querySelectorAll('button')].map((crumb) => crumb.textContent ?? '').join(' / ');
 }
 
 beforeEach(() => {
@@ -477,5 +535,72 @@ describe('jumping while the listing is still in flight', () => {
     } finally {
       toast.info = originalInfo;
     }
+  });
+});
+
+/**
+ * Regression cover for the folder branch of the same paging hole the file
+ * branch above already pins down (#2671). Folder listings are cursor-paged for
+ * every provider, so a favourited folder past page one is absent from
+ * `sortedFolders` for a reason that has nothing to do with it being gone,
+ * and falling through there does not merely mis-report it: it synthesises a
+ * container whose `parentId` is a guess at the area root, wrong for any folder
+ * that is not directly under it.
+ */
+describe('jumping to a favourite folder past the first page', () => {
+  it('waits for the outstanding folder page instead of fabricating a parent', async () => {
+    const provider = new PagedFoldersProvider();
+    await jumpTo(
+      favourite({ containerId: NESTED_FOLDER.id, containerName: NESTED_FOLDER.name }),
+      provider,
+    );
+
+    // Page one has landed and both spinners are down, so the outstanding
+    // cursor is the only thing that can hold the jump back at this point.
+    const loadMore = button('Load more folders');
+    assert.ok(loadMore, 'the outstanding folder page must still be offered');
+    assert.equal(
+      trail(),
+      'Documents',
+      'a folder missing only because its page is unfetched must not be entered yet',
+    );
+
+    await act(async () => {
+      loadMore.click();
+    });
+    await pump();
+
+    // A stand-in claiming the area root would read "Documents / Archive".
+    assert.equal(
+      trail(),
+      'Documents / Models / Archive',
+      'the real folder must resolve the favourite, parent and all',
+    );
+    assert.ok(text().includes('Superseded.ifc'), "the favourited folder's own file must be listed");
+  });
+
+  it('still opens a favourite the fully-paged listing no longer holds', async () => {
+    // The guard must not turn a graceful degradation into a dead end. Once
+    // every page is in, "not listed" does mean gone, and the favourite's own
+    // ids still open the folder: that fallback stays reachable.
+    const provider = new PagedFoldersProvider([]);
+    await jumpTo(favourite({ containerId: 'folder-gone', containerName: 'Retired' }), provider);
+
+    const loadMore = button('Load more folders');
+    assert.ok(loadMore, 'the outstanding folder page must still be offered');
+    await act(async () => {
+      loadMore.click();
+    });
+    await pump();
+
+    assert.equal(
+      trail(),
+      'Documents / Retired',
+      'a folder absent from a complete listing must still open from the stored ids',
+    );
+    assert.ok(
+      text().includes('No IFC files found in this folder'),
+      'and it must open empty rather than showing the files of another folder',
+    );
   });
 });

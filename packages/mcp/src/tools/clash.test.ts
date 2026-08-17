@@ -16,11 +16,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { GeometryProcessor, type GeometryResult, type MeshData } from '@ifc-lite/geometry';
+import type { Clash } from '@ifc-lite/clash';
 import type { ToolContext } from '../context.js';
 import { DEFAULT_CONFIG, InMemoryModelRegistry, NOOP_PROGRESS, SILENT_LOGGER } from '../context.js';
 import { fullScope } from '../auth/scope.js';
 import { loadIfcModel } from '../loader.js';
-import { clashTools } from './clash.js';
+import { clashTools, displayClash } from './clash.js';
 
 const SAMPLE = `ISO-10303-21;
 HEADER;
@@ -92,6 +93,37 @@ afterAll(async () => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {
+  return {
+    id: 'c1',
+    a: { model: 'm', key: 'a', ref: 1, tag: 'IfcSlab' },
+    b: { model: 'm', key: 'b', ref: 2, tag: 'IfcSlab' },
+    rule: 'r',
+    status: 'hard',
+    distance,
+    distanceKind,
+    point: [0, 0, 0],
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    severity: 'major',
+  };
+}
+
+describe('displayClash distance provenance', () => {
+  it('carries distanceKind through to the MCP JSON row, mesh-measured', () => {
+    expect(displayClash(clashOf(-0.25, 'mesh')).distanceKind).toBe('mesh');
+  });
+
+  it('carries distanceKind through to the MCP JSON row, AABB estimate', () => {
+    expect(displayClash(clashOf(-0.25, 'estimate')).distanceKind).toBe('estimate');
+  });
+
+  it('carries an absent distanceKind through as undefined, not silently as measured', () => {
+    const row = displayClash(clashOf(-0.25, undefined));
+    expect('distanceKind' in row).toBe(true);
+    expect(row.distanceKind).toBeUndefined();
+  });
 });
 
 describe('meshModel WASM disposal (#1959 P1 leak)', () => {

@@ -146,9 +146,10 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
     }
 }
 
-/// Near-coplanar band formula, canonical in `mesh_bridge` (sized to the
-/// snap-scatter envelope `mesh_bridge::mesh_to_tris` produces).
-use super::mesh_bridge::near_band_from_extent;
+/// Near-coplanar band, canonical in `near_band` (sized to the snap-scatter
+/// envelope `mesh_bridge::mesh_to_tris` produces, then projected onto the
+/// plane being tested).
+use super::near_band::NearBand;
 
 #[inline]
 fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -203,7 +204,11 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 ///
 /// `band` is an absolute power-of-two multiple of `SNAP_GRID` (≈ the 2-operand
 /// scatter envelope, ~0.12 mm) widened only for far-from-origin operands where
-/// f32 import is coarser — always THREE orders below the smallest real feature
+/// f32 import is coarser — and only by the part of that offset the tested
+/// plane can actually see, since [`NearBand`] projects the per-axis extents
+/// onto that plane's normal. A model 10 km out in X therefore leaves a
+/// Z-normal slab at the floor rather than opening it to ~2.4 mm and welding
+/// genuinely separate faces. The band stays THREE orders below the smallest real feature
 /// edge (~0.2 m). A poke-through cap fails the slab test (its far vertices sit
 /// midway through the host, far from the surface) so it can never qualify; a
 /// sub-band-sized transversal micro-sliver CAN now qualify, but its entire
@@ -215,19 +220,18 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
     }
-    let mut extent = 1.0f64;
+    let mut band = NearBand::default();
     for p in t1.iter().chain(t2.iter()) {
-        for &c in p {
-            extent = extent.max(c.abs());
-        }
+        band.observe_point(p);
     }
-    let band = near_band_from_extent(extent); // 2^-22
-    let band2 = band * band;
-    // All three vertices of `t` within `band` of `plane`'s supporting plane?
+    // All three vertices of `t` within the band of `plane`'s supporting plane?
+    // The band is resolved against THAT plane's own normal, so an operand far
+    // from the origin along an axis the plane does not face does not widen it.
     let in_slab = |t: &[[f64; 3]; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
+        let band2 = band.scaled_band2(n, nn); // scaled by |n|², like `d` below
         t.iter().all(|&v| {
             let d = ti_dot(ti_sub(v, plane[0]), n); // perp_dist · |n|
-            (d * d) / nn <= band2
+            d * d <= band2
         })
     };
     in_slab(t2, t1, n1, nn1) || in_slab(t1, t2, n2, nn2)

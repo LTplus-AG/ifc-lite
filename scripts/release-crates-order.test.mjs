@@ -73,8 +73,15 @@ function versionedIfcDeps(crateDir) {
     if (!inDeps || line.startsWith('#') || !line.startsWith('ifc-lite-')) continue;
     const name = line.match(/^(ifc-lite-[a-z0-9-]+)/)?.[1];
     if (!name) continue;
-    // Inherits the workspace entry, which carries a version.
-    if (/\.workspace\s*=\s*true/.test(line)) out.add(name);
+    // Inherits the workspace entry, which carries a version. BOTH spellings
+    // must be recognised, and the repo uses both: `rust/geometry` writes the
+    // dotted `ifc-lite-clash.workspace = true`, while `rust/export` writes the
+    // inline-table `ifc-lite-core = { workspace = true }`. Matching only the
+    // dotted form left every one of export's three versioned dependencies
+    // invisible here, so this gate would have passed an order that publishes
+    // export before core, geometry and processing -- exactly the failure it
+    // exists to prevent.
+    if (/(^|[.{,\s])workspace\s*=\s*true/.test(line)) out.add(name);
     // Or states one inline.
     else if (/version\s*=/.test(line)) out.add(name);
     // Otherwise path-only: stripped at publish time, no ordering constraint.

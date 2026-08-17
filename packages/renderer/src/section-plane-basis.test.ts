@@ -41,7 +41,7 @@ describe('planeBasis', () => {
     const tilts: Array<[number, number, number]> = [
       [0.5, 0.5, Math.SQRT1_2],
       [Math.SQRT1_2, 0, Math.SQRT1_2],
-      [0.1, 0.99, 0.05],   // near-vertical — exercises the X-fallback branch
+      [0.1, 0.99, 0.05],   // near-vertical normal (near-horizontal plane)
       [-0.3, -0.6, 0.74],
       [Math.SQRT1_2, Math.SQRT1_2, 0],
     ];
@@ -60,12 +60,114 @@ describe('planeBasis', () => {
   });
 
   it('is sign-stable around the +Y / -Y boundary', () => {
-    // The reference-axis switch (Y vs X) happens at |ny| = 0.9. Stepping
-    // through the boundary should not produce a NaN or zero-length basis.
+    // Stepping through the old |ny| = 0.9 reference-axis switch must not
+    // produce a NaN or zero-length basis.
     for (let nyStep = 0.85; nyStep <= 0.95; nyStep += 0.01) {
       const ny = nyStep;
       const nx = Math.sqrt(Math.max(0, 1 - ny * ny));
       assertOrthonormal([nx, ny, 0], `near-Y ny=${ny.toFixed(2)}`);
+    }
+  });
+});
+
+/**
+ * Continuity.
+ *
+ * The basis IS the coordinate frame a face-picked drawing is generated in
+ * (`useDrawingGeneration` hands `custom.tangent`/`custom.bitangent` to the
+ * cutter as `customPlane`). A discontinuity in it is therefore a drawing that
+ * jumps orientation between two picks on nearly-identical faces.
+ *
+ * The old derivation switched its reference axis at `|ny| = 0.9` — a plane
+ * 25.8 degrees off horizontal, i.e. an ordinary ~6:12 roof pitch, reachable
+ * from `setSectionPlaneFromFace`. Measured across that boundary at nz = 0 the
+ * tangent inverted exactly (dot = -1); with nz = 0.3 it was an arbitrary
+ * 133-degree rotation, and the jump was asymmetric — `ny < 0` did not flip.
+ *
+ * Continuity everywhere is impossible (hairy-ball theorem: a tangent field on
+ * the sphere must vanish somewhere), so what is asserted is continuity
+ * everywhere EXCEPT the two poles `n = ±Y`, where the plane is exactly
+ * horizontal and its in-plane rotation is a free choice anyway.
+ */
+describe('planeBasis is continuous away from the ±Y poles', () => {
+  /** Neighbouring-sample floor: 1-degree steps may not move the frame >8deg. */
+  const MIN_DOT = 0.99;
+
+  const sphere = (theta: number, phi: number): [number, number, number] => [
+    Math.sin(theta) * Math.cos(phi),
+    Math.cos(theta),
+    Math.sin(theta) * Math.sin(phi),
+  ];
+
+  const assertClose = (
+    a: readonly [number, number, number],
+    b: readonly [number, number, number],
+    label: string,
+  ) => {
+    const A = planeBasis(a);
+    const B = planeBasis(b);
+    const dt = dot(A.tangent, B.tangent);
+    const db = dot(A.bitangent, B.bitangent);
+    assert.ok(dt > MIN_DOT, `${label}: tangent jumped, dot = ${dt.toFixed(4)}`);
+    assert.ok(db > MIN_DOT, `${label}: bitangent jumped, dot = ${db.toFixed(4)}`);
+  };
+
+  it('does not jump across the old |ny| = 0.9 reference-axis boundary', () => {
+    // Straddle the boundary at a range of nz, since the size of the old jump
+    // depended on nz (180 degrees at nz = 0, 133 degrees at nz = 0.3).
+    for (let nz = 0; nz <= 0.43; nz += 0.01) {
+      for (const sign of [1, -1]) {
+        const at = (ny: number): [number, number, number] => {
+          const nx = Math.sqrt(Math.max(0, 1 - ny * ny - nz * nz));
+          return [nx, sign * ny, nz];
+        };
+        assertClose(at(0.8999), at(0.9001), `nz=${nz.toFixed(2)} sign=${sign}`);
+      }
+    }
+  });
+
+  it('is continuous over the whole sphere except the poles', () => {
+    // 1-degree lat/long grid, skipping only a 1-degree cap around each pole.
+    const step = Math.PI / 180;
+    for (let theta = step; theta < Math.PI - step / 2; theta += step) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += step) {
+        const label = `theta=${((theta * 180) / Math.PI).toFixed(0)} phi=${((phi * 180) / Math.PI).toFixed(0)}`;
+        assertClose(sphere(theta, phi), sphere(theta + step, phi), `${label} +dtheta`);
+        assertClose(sphere(theta, phi), sphere(theta, phi + step), `${label} +dphi`);
+      }
+    }
+  });
+
+  it('stays continuous in the pole neighbourhood the new construction is sensitive at', () => {
+    // The replacement's only singular points are n = ±Y. Approaching one and
+    // walking all the way around it must still move the frame smoothly — the
+    // fix must not trade the 0.9 circle for a new jump next to the pole.
+    const step = Math.PI / 180;
+    for (const theta of [1e-3, 1e-6, 1e-9, Math.PI - 1e-3, Math.PI - 1e-6]) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += step) {
+        assertClose(
+          sphere(theta, phi),
+          sphere(theta, phi + step),
+          `pole theta=${theta} phi=${phi.toFixed(3)}`,
+        );
+      }
+    }
+  });
+
+  it('never points the bitangent downward, so elevations stay upright', () => {
+    // `bitangent` is the drawing's +Y (screen up). The old X-fallback branch
+    // gave `bitangent · Y < 0` for every normal with ny > 0.9 while the
+    // ny < -0.9 half stayed upright — the asymmetry, seen from the drawing's
+    // side: two picks either side of a ridge produced one upside-down sheet.
+    for (let theta = 0; theta <= Math.PI; theta += Math.PI / 180) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += Math.PI / 12) {
+        const n = sphere(theta, phi);
+        const { bitangent } = planeBasis(n);
+        assert.ok(
+          bitangent[1] >= -EPS,
+          `theta=${((theta * 180) / Math.PI).toFixed(0)} phi=${((phi * 180) / Math.PI).toFixed(0)}: bitangent points down (${bitangent[1].toFixed(4)})`,
+        );
+      }
     }
   });
 });

@@ -29,9 +29,10 @@
  * square with the hatch axes of the cut a click would actually commit — the
  * same call #2494 made for the renderer's billboard bases, where routing to
  * one derivation fixed defects no local floor would have caught. (2) is fixed
- * here, at the seam, by screening the inputs: `planeBasis`'s own `|ny| < 0.9`
- * reference-axis test is only meaningful for a UNIT normal, so normalising
- * before the call is required for correctness, not merely tidy.
+ * here, at the seam, by screening the inputs: `planeBasis` degrades a
+ * non-finite normal to a cardinal basis rather than reporting it, and a hover
+ * hint with nothing drawable should paint nothing rather than a square in an
+ * unrelated orientation — so the finiteness screen belongs on this side.
  */
 
 import { planeBasis } from '@ifc-lite/renderer';

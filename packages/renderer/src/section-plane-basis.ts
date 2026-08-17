@@ -16,11 +16,13 @@
  * is the single source of truth.
  *
  * Convention:
- *   • The renderer/world is Y-up. We pick world-Y as the reference axis,
- *     unless the normal is too parallel to Y (within ~25°) — in that case
- *     we fall back to world-X to avoid a degenerate cross-product.
+ *   • The renderer/world is Y-up. World-Y is the reference axis for every
+ *     normal except exactly ±Y, where the cross product vanishes and we
+ *     fall back to world-X. `tangent` is therefore horizontal and
+ *     `bitangent` never points downward, so a face-picked elevation comes
+ *     out upright.
  *   • For the cardinal Y-axis plane (normal = [0,1,0]) the resulting
- *     basis is `tangent ≈ [1,0,0]`, `bitangent ≈ [0,0,-1]`. That matches
+ *     basis is `tangent = [0,0,-1]`, `bitangent = [1,0,0]`. That matches
  *     the cardinal-axis cap projection (`'down'` axis maps `(x, z) →
  *     (2D.x, 2D.y)` with z mirrored on flip), so face-picking a perfectly
  *     horizontal floor reproduces the same hatch orientation as the
@@ -66,6 +68,9 @@ function degenerateBasis(): PlaneBasis {
  *      hatch doesn't rotate when state is reconstructed (e.g. on reload
  *      or when the renderer rebuilds resources).
  *   5. Every component of both axes is finite, for every input.
+ *   6. The result is *continuous* in the normal, everywhere except the two
+ *      poles `n = ±Y` — nearby normals give nearby bases, so two
+ *      face picks on nearly the same face give nearly the same drawing.
  *
  * Normalising up front is what makes 3 and 5 true rather than aspirational
  * (#2489). Before it, the function read the caller's magnitudes directly and
@@ -75,16 +80,17 @@ function degenerateBasis(): PlaneBasis {
  *     is true and `NaN < 1e-9` is false — and reached the divisions as
  *     `Infinity / Infinity` / `NaN / NaN`. Both axes came back all-NaN and
  *     went into the section gizmo's vertex buffer and the cap's lift-to-3D.
- *   • The `|ny| < 0.9` reference-axis pick only measures the angle to Y when
- *     `|normal| = 1`. `[10, 1, 0]` is 6° off horizontal but was routed down
- *     the near-vertical fallback, flipping the hatch axis 180° purely
- *     because the caller had not normalised.
+ *   • The reference-axis pick of the day (`|ny| < 0.9`, since removed for
+ *     being discontinuous) only measures the angle to Y when `|normal| = 1`.
+ *     `[10, 1, 0]` is 6° off horizontal but was routed down that fallback,
+ *     flipping the hatch axis 180° purely because the caller had not
+ *     normalised.
  *   • The `1e-9` tangent floor is a length, so a short-but-perfectly-valid
  *     normal such as `[1e-12, 0, 0]` was declared degenerate and returned a
  *     zero-length bitangent.
- * A unit normal makes the cross product with the reference axis at least
- * 0.43 long, so the fallback below is now reachable only for a normal with
- * no direction at all.
+ * Normalisation keeps the sole remaining fallback below an exact test — it is
+ * reachable only for a normal with no direction at all, or one pointing
+ * exactly along ±Y.
  */
 export function planeBasis(normal: Vec3Tuple): PlaneBasis {
   const nlen = Math.hypot(normal[0], normal[1], normal[2]);
@@ -96,11 +102,43 @@ export function planeBasis(normal: Vec3Tuple): PlaneBasis {
   const ny = normal[1] / nlen;
   const nz = normal[2] / nlen;
 
-  // Reference axis: Y-up unless the normal is nearly parallel to Y, in
-  // which case fall back to X. The 0.9 threshold matches the gizmo's
-  // existing reference-axis pick in `section-plane.ts`, so the gizmo
-  // and the cap hatch never disagree on which fallback they used.
-  const useY = Math.abs(ny) < 0.9;
+  // Reference axis: world Y, for EVERY normal that is not exactly ±Y. The
+  // resulting tangent is `normalize(normal × Ŷ)` — the horizontal in-plane
+  // direction — which depends only on the normal's azimuth and is therefore
+  // continuous over the whole sphere minus the two poles.
+  //
+  // It used to switch to world X at `|ny| >= 0.9` "to avoid a degenerate
+  // cross-product", but 0.9 is nowhere near degenerate: the cross is still
+  // 0.436 long there. All the switch bought was a JUMP. Measured at the
+  // boundary, `ny = 0.8999 → 0.9001` inverted the tangent exactly (dot = -1)
+  // at `nz = 0` and rotated it 133 degrees at `nz = 0.3`, and it was
+  // asymmetric — the `ny < 0` crossing did not move at all. `|ny| = 0.9` is a
+  // plane 25.8 degrees off horizontal, an ordinary ~6:12 roof pitch, and
+  // `setSectionPlaneFromFace` reaches it from a face pick: two picks on roof
+  // faces straddling that pitch produced drawings rotated 133-180 degrees
+  // apart, because this basis IS the drawing's coordinate frame
+  // (`useDrawingGeneration` feeds it to the cutter as `customPlane`).
+  //
+  // No construction can be continuous everywhere — the hairy-ball theorem
+  // forbids a nowhere-zero tangent field on a sphere, so at least one normal
+  // must be singular. The two poles are the right place for it: `n = ±Y` is
+  // an exactly horizontal plane, whose drawing is a plan whose in-plane
+  // rotation is a free choice. (The branchless Frisvad/Duff construction gets
+  // that down to ONE singular point, but only by winding the frame twice
+  // around it, which puts `bitangent · Y = -nx` — i.e. it turns every
+  // elevation on one half of the sphere upside down. Two poles is the price
+  // of `bitangent · Y = sin(tilt) >= 0` everywhere, which is what keeps
+  // face-picked elevations upright.)
+  //
+  // At the poles themselves the X fallback keeps the historical answer
+  // (`planeBasis([0,1,0]) = tangent [0,0,-1], bitangent [1,0,0]`), which is
+  // what makes a picked horizontal floor reproduce the "Down" preset's hatch
+  // orientation. That value cannot also be the limit from every direction —
+  // the frame winds once around the pole, so `[1e-9, 1, 0]` and `[-1e-9, 1, 0]`
+  // are 180° apart no matter what is chosen here. That is the singularity, and
+  // it is parked where its cost is lowest: the plane is exactly horizontal, so
+  // the drawing is a plan and its in-plane rotation carries no meaning.
+  const useY = nx !== 0 || nz !== 0;
   const refX = useY ? 0 : 1;
   const refY = useY ? 1 : 0;
   const refZ = 0;
@@ -110,10 +148,13 @@ export function planeBasis(normal: Vec3Tuple): PlaneBasis {
   let ty = nz * refX - nx * refZ;
   let tz = nx * refY - ny * refX;
   let tlen = Math.hypot(tx, ty, tz);
-  if (tlen < 1e-9) {
-    // Unreachable for a unit normal — the reference-axis pick above keeps
-    // this cross product at least 0.43 long — but kept so a future edit to
-    // the 0.9 threshold degrades instead of dividing by zero.
+  if (!(tlen > 0)) {
+    // Unreachable: `useY` is false only for `n = ±Y`, whose cross with X is
+    // exactly unit. Kept so a future edit degrades instead of dividing by
+    // zero — and tested as `> 0` rather than against a fixed floor, because
+    // any floor here is a re-run of the same defect: `|normal × Ŷ|` is the
+    // tilt's sine, so a floor would restore a jump circle at the tilt where
+    // it bites.
     tx = 0; ty = 0; tz = -1;
     tlen = 1;
   }

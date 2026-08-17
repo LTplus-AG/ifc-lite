@@ -36,7 +36,7 @@ import { describe, it, expect } from 'vitest';
 
 import { DropboxProvider } from '../src/provider.js';
 import { dropboxAuth } from '../src/auth.js';
-import { createDropboxMockContext } from './dropbox-api-mock.js';
+import { createDropboxMockContext, DROPBOX_MOCK_ACCESS_TOKEN } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
 const WORLD: DropboxMockWorld = {
@@ -106,9 +106,15 @@ function createRefreshHarness(): Harness {
     if (href.includes('/oauth2/token')) {
       tokenPosts.push(href);
       await gate;
+      // Must be the token the API mock ACCEPTS. Returning an arbitrary string
+      // here makes every subsequent call 401, `currentIdentity` swallow it to
+      // `null`, and the "still signed out" assertion below pass no matter what
+      // `signOut` did — measured: it stayed green with `signOut` replaced by a
+      // complete no-op. `auth.test.ts`'s own refresh stub already returns this
+      // constant; deviating from that is what made the assertion vacuous.
       return new Response(
         JSON.stringify({
-          access_token: 'refreshed-access-token',
+          access_token: DROPBOX_MOCK_ACCESS_TOKEN,
           token_type: 'bearer',
           expires_in: 14_400,
         }),

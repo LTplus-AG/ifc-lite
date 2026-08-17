@@ -9,12 +9,11 @@ The viewer's loader shifts every `mesh.expressId` into the federated global id
 space in place, while `IfcDataStore` keeps local express ids. `elementsFromStep`
 used `mesh.expressId` to address the store anyway, so for any model with a
 non-zero `idOffset` every lookup missed: `key` fell back to the synthetic
-`expressid:N`, name and storey came back empty, and `buildStepExclusions` found
-no relationships — so the void / host / assembly exclusions silently stopped
-excluding, and a door in the opening it fills was reported as a hard clash.
-`ref` was wrong in the other direction, with `federation.toGlobalId` adding the
-offset a second time. (`tag` survived: it falls back to `mesh.ifcType`, which
-the loader sets correctly, so nothing on screen looked wrong.)
+`expressid:N`, `tag` read `Unknown`, name and storey came back empty, and
+`buildStepExclusions` found no relationships — so the void / host / assembly
+exclusions silently stopped excluding, and a door in the opening it fills was
+reported as a hard clash. `ref` was wrong in the other direction, with
+`federation.toGlobalId` adding the offset a second time.
 
 `elementsFromStep` now takes `meshIdOffset`: the shift the host has already
 applied to `mesh.expressId`. It subtracts that back out before touching the

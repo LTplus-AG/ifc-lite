@@ -28,13 +28,15 @@
  * and pre-shifted mesh ids, exactly as the loader leaves it, and drives the real
  * `useClash().run()`.
  *
- * ## What actually dies without the wiring, and what does not
+ * ## What actually dies without the wiring
  *
- * `tag` is NOT a reliable discriminator here, contrary to what a store-only
- * reading suggests: `elementsFromStep` computes `node.type || mesh.ifcType ||
- * 'IfcProduct'`, and the viewer's `MeshData` carries a correct `ifcType`, so a
- * missed store lookup still reads `IfcWall` off the mesh. The signals that do
- * die are asserted below:
+ * `tag` dies too, contrary to what the `node.type || mesh.ifcType ||
+ * 'IfcProduct'` expression in `elementsFromStep` reads like: every production
+ * `EntityTable` returns the literal `'Unknown'` from `getTypeName` on a miss,
+ * and `'Unknown'` is truthy, so the `mesh.ifcType` arm never runs and the
+ * correct `ifcType` on the viewer's `MeshData` cannot rescue it. The adapter
+ * asserts this directly (`packages/clash/src/adapters/step.test.ts`). The
+ * signals asserted below:
  *
  *  - `key` degrades from the durable IfcGUID to the synthetic `expressid:N` —
  *    the key every review state and user exclusion rule is stored against;

@@ -97,15 +97,18 @@ export interface StepAdapterOptions {
    * (`useIfcLoader`: `mesh.expressId = mesh.expressId + idOffset`) while
    * `IfcDataStore` keeps LOCAL ids, so for every federated model past the first
    * `mesh.expressId` is NOT a key into `store`. Without this, every lookup in
-   * the loop below misses: `key` degrades to the synthetic fallback,
-   * name/storey come back empty, and `buildStepExclusions` finds no
-   * relationships at all — so void/host/assembly pairs silently stop being
-   * excluded. `ref` was wrong in the other direction, with
+   * the loop below misses: `key` degrades to the synthetic fallback, `tag`
+   * reads `Unknown`, name/storey come back empty, and `buildStepExclusions`
+   * finds no relationships at all — so void/host/assembly pairs silently stop
+   * being excluded. `ref` was wrong in the other direction, with
    * `federation.toGlobalId` adding the offset a second time.
    *
-   * `tag` is the one field that does NOT degrade, and that is what made this so
-   * quiet: it reads `node.type || mesh.ifcType`, and the host's `mesh.ifcType`
-   * is correct, so the panel kept showing plausible type names throughout.
+   * `tag` degrades with the rest, despite the `node.type || mesh.ifcType`
+   * expression below reading as though the mesh could rescue it: every
+   * production `EntityTable` returns the literal string `'Unknown'` from
+   * `getTypeName` on a miss, and `'Unknown'` is truthy, so the `mesh.ifcType`
+   * arm is unreachable on a store lookup that missed. `Unknown` next to a blank
+   * name is the loudest on-screen symptom of this bug.
    *
    * The viewer's own compare path (`lib/compare/buildFingerprints.ts`) does the
    * same subtraction for the same reason. The CLI / MCP / playground callers

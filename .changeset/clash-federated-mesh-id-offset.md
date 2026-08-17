@@ -23,11 +23,28 @@ exactly once. Callers that pass local meshes (CLI, MCP, the playground) leave it
 at its `0` default and are unaffected — it stays optional deliberately, since
 `elementsFromStep` is published API and requiring it would break every external
 caller. To keep a forgotten offset from being silent in any host, the adapter
-now also warns once when EVERY element in a model resolves to an empty
-GlobalId, which is the signature of exactly this wiring mistake.
+now also warns once when every element in a model resolves to an empty GlobalId
+*and the store does hold GlobalIds* — the signature of exactly this wiring
+mistake. A model whose store has none (a GLB import, whose store carries
+geometry and no IFC entities) is left alone: there, every element missing is the
+normal state, not a defect.
 
-No clash result is persisted, and both the review state and the user exclusion
-rules are keyed on the durable element key rather than on `ref`, so nothing
-stored has to be migrated. Review status that a pre-fix session saved against a
-federated model past the first was keyed on the synthetic `expressid:N`
-fallback, though, so it no longer matches and those clashes come back as `open`.
+The synthetic key an element without a GlobalId falls back to is now scoped to
+its model — `expressid:<encoded modelId>:<expressId>` rather than
+`expressid:<expressId>`. Express ids are only unique within a model, and review
+state and user element-pair exclusions are keyed on the element key alone
+(deliberately, so they survive a reload), so in a federation the unqualified
+form made two models' elements one identity: a review status or an exclusion set
+on one model's element silently covered another model's element. Two federated
+GLB models produced ONE review key where there should have been two.
+
+Migration: elements that have a GlobalId — nearly all of them, and every one
+this fix restores — are unaffected; only the fallback changes shape. A review
+status or an element-pair exclusion a previous session stored against the old
+`expressid:N` string stops matching: the clash comes back as `open`, the
+exclusion rule stays listed but suppresses nothing. Nothing is mis-applied, and
+nothing else reads the string. In the viewer that fallback is per-load anyway
+(the model id is a per-load uuid), which is the honest position for an element
+that carries no durable identity of its own. Review status a pre-fix session
+saved against a federated model past the first was likewise keyed on the old
+fallback and no longer matches.

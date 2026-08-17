@@ -3,9 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from 'vitest';
-import { IfcParser } from '@ifc-lite/parser';
+import { createSyntheticDataStore, IfcParser } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { createClashEngine } from '../engine.js';
+import { clashReviewKey } from '../review.js';
 import { elementsFromStep } from './step.js';
 
 const WALL_GUID = '3vB2YO$MX4xv5uCqZZG05x';
@@ -517,5 +518,126 @@ describe('elementsFromStep - total GlobalId miss warning', () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  it('stays silent for an entity-less (GLB) store, where every miss is EXPECTED', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // Exactly what the viewer's GLB ingest builds (`createMinimalGlbDataStore`):
+      // renderable meshes, no IFC entity rows at all. Every element falling back
+      // is the normal state of that model, not a host wiring bug.
+      const { elements } = elementsFromStep({
+        store: createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 1, entityCount: 2 }),
+        meshes: [solidBoxMesh(1, 0), solidBoxMesh(2, 0.5)],
+        modelId: 'glb-model',
+      });
+      expect(elements).toHaveLength(2);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('stays silent when the store HAS rows but none of them carries a GlobalId', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      elementsFromStep({
+        store: createSyntheticDataStore({
+          schemaVersion: 'IFC4',
+          fileSize: 1,
+          // Rows the ids DO hit — they simply have no GlobalId. A malformed
+          // export, not an offset the host forgot.
+          entities: [
+            { expressId: 1, type: 'IfcWall' },
+            { expressId: 2, type: 'IfcWall' },
+          ],
+        }),
+        meshes: [solidBoxMesh(1, 0), solidBoxMesh(2, 0.5)],
+        modelId: 'guidless-model',
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+/**
+ * The SYNTHETIC FALLBACK KEY has to be unique per model.
+ *
+ * `key` is the durable element identity, and both `clashReviewKey`
+ * (`../review.ts`) and the viewer's `elementPairExclusion`
+ * (`apps/viewer/src/lib/clash/exclusions.ts`) key on it ALONE — dropping
+ * `model` on purpose, because in the viewer that is a per-load
+ * `crypto.randomUUID()` and folding it in would make every saved rule go inert
+ * on the next reload. That makes an UNQUALIFIED fallback dangerous the moment
+ * two models are federated: a bare `expressid:2` means "element 2" in both of
+ * them, so a review status or a user exclusion set on one model's element also
+ * covers a different model's element.
+ *
+ * The natural population is a GLB-sourced federation: the viewer's GLB ingest
+ * builds an entity-less store, so every element legitimately falls back, and
+ * two such models fall back onto the same ids from 1 upwards.
+ */
+describe('elementsFromStep - the fallback key is model-scoped', () => {
+  function glbStore() {
+    return createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 1, entityCount: 2 });
+  }
+
+  it('mints DIFFERENT keys for the same local express id in two models', () => {
+    const a = elementsFromStep({ store: glbStore(), meshes: [solidBoxMesh(2, 0)], modelId: 'model-a' });
+    const b = elementsFromStep({ store: glbStore(), meshes: [solidBoxMesh(2, 0)], modelId: 'model-b' });
+
+    expect(a.elements[0].key.startsWith('expressid:')).toBe(true);
+    expect(b.elements[0].key.startsWith('expressid:')).toBe(true);
+    expect(a.elements[0].key).not.toBe(b.elements[0].key);
+  });
+
+  it('keeps the two models apart in `clashReviewKey` — the durable review identity', () => {
+    const build = (modelId: string) =>
+      elementsFromStep({
+        store: glbStore(),
+        meshes: [solidBoxMesh(1, 0), solidBoxMesh(2, 0.5)],
+        modelId,
+      }).elements;
+    const a = build('model-a');
+    const b = build('model-b');
+
+    const keyA = clashReviewKey({ rule: 'r', a: a[0], b: a[1] });
+    const keyB = clashReviewKey({ rule: 'r', a: b[0], b: b[1] });
+
+    // Two clashes in two models must be two review keys. One key here means a
+    // status set on model A's pair silently marks model B's pair reviewed too.
+    expect(new Set([keyA, keyB]).size).toBe(2);
+  });
+
+  it('never lets a model id put a SPACE inside the key — `clashReviewKey` separates on one', () => {
+    // A CLI run keys the model on `basename(filePath)`, and file names have spaces.
+    const { elements } = elementsFromStep({
+      store: glbStore(),
+      meshes: [solidBoxMesh(2, 0)],
+      modelId: 'Bridge Model rev B.ifc',
+    });
+    expect(elements[0].key).not.toMatch(/\s/);
+    // ...and the encoding stays injective: a different model is a different key.
+    const other = elementsFromStep({
+      store: glbStore(),
+      meshes: [solidBoxMesh(2, 0)],
+      modelId: 'Bridge Model rev C.ifc',
+    });
+    expect(other.elements[0].key).not.toBe(elements[0].key);
+  });
+
+  it('leaves a real IfcGUID untouched: only the FALLBACK changes shape', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const { elements } = elementsFromStep({
+      store,
+      meshes: [solidBoxMesh(wallId, 0)],
+      modelId: 'model-2',
+    });
+    expect(elements[0].key).toBe(FED_WALL_GUID);
   });
 });

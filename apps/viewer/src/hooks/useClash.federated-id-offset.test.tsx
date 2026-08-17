@@ -54,8 +54,9 @@ import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { ClashRule } from '@ifc-lite/clash';
+import { createSyntheticDataStore, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { clashReviewKey, type ClashRule } from '@ifc-lite/clash';
+import { applyClashExclusions, elementPairExclusion } from '@/lib/clash/exclusions.js';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { useClash } from './useClash.js';
@@ -325,5 +326,126 @@ describe('useClash gathers a federated model past the first with the offset the 
     assert.equal(crossModel.length, 1, 'the host wall and the federated wall really do overlap');
     const keys = [crossModel[0].a.key, crossModel[0].b.key].sort();
     assert.deepEqual(keys, [HOST_WALL_GUID, FED_WALL_GUID].sort(), 'both sides keep their durable key');
+  });
+});
+
+// ─── The other half: elements that have NO durable key ──────────────────────
+
+/**
+ * Subtracting the offset put the adapter back in the LOCAL id space, which is
+ * where the fallback key lives too — and local ids repeat across a federation.
+ * Every model's elements are numbered from 1, so a bare `expressid:2` names an
+ * element in EVERY model at once.
+ *
+ * `clashReviewKey` (`@ifc-lite/clash`) and `elementPairExclusion`
+ * (`@/lib/clash/exclusions`) key on the durable element key ALONE, dropping
+ * `model` on purpose: it is a per-load `crypto.randomUUID()`, so folding it in
+ * would make every saved review and rule go inert on the next reload. That
+ * design is what turns a repeated key into cross-model bleed rather than a
+ * cosmetic duplicate — one review status, one exclusion, two different models'
+ * elements.
+ *
+ * A GLB-sourced federation is the natural population: the viewer's GLB ingest
+ * builds an ENTITY-LESS store (`createMinimalGlbDataStore` ->
+ * `createSyntheticDataStore`), so there is no GlobalId to key on for any
+ * element in the file, and the fallback is all there is. This seeds exactly
+ * that, through the real hook, and asserts on the two consumers.
+ */
+const GLB_RULE: ClashRule = { id: 'all-clashes', name: 'All elements', a: '*', mode: 'hard' };
+
+/** Two GLB models, each with its own pair of overlapping boxes, local ids 1 and 2. */
+async function seedGlbFederation(): Promise<void> {
+  useViewerStore.getState().clearAllModels();
+
+  // The viewer's GLB path: renderable meshes, no IFC entity rows at all.
+  const glbStore = (): IfcDataStore =>
+    createSyntheticDataStore({ schemaVersion: 'IFC4', fileSize: 1, entityCount: 2 });
+
+  const offsetA = useViewerStore.getState().registerModelOffset('A', MODEL_RANGE);
+  const offsetB = useViewerStore.getState().registerModelOffset('B', MODEL_RANGE);
+  assert.equal(offsetA, 0, 'setup sanity: the FIRST model always registers at offset 0');
+  assert.ok(offsetB > 0, 'setup sanity: the SECOND model must get a non-zero offset');
+
+  const models = new Map<string, FederatedModel>([
+    // Overlapping pair at x ∈ [0, 1.5] — one clash inside model A.
+    ['A', model('A', glbStore(), [boxMesh(1, 0, 'IfcWall'), boxMesh(2, 0.5, 'IfcWall')], offsetA, MODEL_RANGE)],
+    [
+      'B',
+      model(
+        'B',
+        glbStore(),
+        // Same LOCAL ids 1 and 2, meshes shifted as the loader leaves them, and
+        // parked far away on x so B's pair only ever clashes with itself.
+        [boxMesh(1 + offsetB, 10, 'IfcWall'), boxMesh(2 + offsetB, 10.5, 'IfcWall')],
+        offsetB,
+        MODEL_RANGE,
+      ),
+    ],
+  ]);
+
+  useViewerStore.setState({
+    models,
+    activeModelId: 'A',
+    clashResult: null,
+    clashRawResult: null,
+    clashGroups: null,
+    clashError: null,
+    clashRunning: false,
+    clashSelectedId: null,
+    isolatedEntities: null,
+    ghostExceptEntities: null,
+  });
+
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root!.render(<Probe />);
+  });
+  assert.ok(api, 'useClash must be mounted');
+}
+
+describe('useClash keeps two GLB models apart when neither has a stored GlobalId', () => {
+  it('gives each model its own review key and its own element-pair exclusion', async () => {
+    await seedGlbFederation();
+
+    await act(async () => {
+      await api!.run([GLB_RULE]);
+    });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashError, null, 'the run must not error');
+    const clashes = s.clashResult!.clashes;
+
+    const inA = clashes.filter((c) => c.a.model === 'A' && c.b.model === 'A');
+    const inB = clashes.filter((c) => c.a.model === 'B' && c.b.model === 'B');
+    assert.equal(inA.length, 1, 'setup sanity: model A\'s two boxes overlap');
+    assert.equal(inB.length, 1, 'setup sanity: model B\'s two boxes overlap');
+    assert.equal(clashes.length, 2, 'setup sanity: and nothing crosses between the models');
+
+    // Every element here legitimately falls back — that is what a GLB is.
+    for (const ref of clashes.flatMap((c) => [c.a, c.b])) {
+      assert.ok(ref.key.startsWith('expressid:'), 'a GLB element has no GlobalId to key on');
+    }
+
+    // 1. Review state. Two clashes in two models are two coordination items.
+    const reviewKeys = new Set([clashReviewKey(inA[0]), clashReviewKey(inB[0])]);
+    assert.equal(
+      reviewKeys.size,
+      2,
+      'one review key for two models: marking A\'s clash resolved also resolves B\'s',
+    );
+
+    // 2. User exclusions. A rule the user draws on model A must not silently
+    //    suppress the equivalent pair in model B.
+    const rule = elementPairExclusion(inA[0].a, inA[0].b);
+    const outcome = applyClashExclusions(s.clashResult, [rule]);
+    assert.equal(
+      outcome.suppressed,
+      1,
+      'the exclusion set on model A also swallowed model B\'s clash',
+    );
+    assert.equal(outcome.result!.clashes.length, 1, 'model B\'s clash must survive');
+    assert.equal(outcome.result!.clashes[0].a.model, 'B', 'and it is model B\'s that survives');
   });
 });

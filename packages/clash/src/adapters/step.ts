@@ -97,7 +97,7 @@ export interface StepAdapterOptions {
    * (`useIfcLoader`: `mesh.expressId = mesh.expressId + idOffset`) while
    * `IfcDataStore` keeps LOCAL ids, so for every federated model past the first
    * `mesh.expressId` is NOT a key into `store`. Without this, every lookup in
-   * the loop below misses: `key` degrades to the synthetic `expressid:N`,
+   * the loop below misses: `key` degrades to the synthetic fallback,
    * name/storey come back empty, and `buildStepExclusions` finds no
    * relationships at all — so void/host/assembly pairs silently stop being
    * excluded. `ref` was wrong in the other direction, with
@@ -130,7 +130,10 @@ export interface StepAdapterOptions {
    *     viewer's call at the level that actually broke (it fails if
    *     `meshIdOffset` is dropped from `gatherElements`);
    *   - the total-miss `console.warn` at the end of `elementsFromStep` reports
-   *     a forgotten offset at RUNTIME, in any host, including new ones.
+   *     a forgotten offset at RUNTIME, in any host, including new ones — for
+   *     any model whose store actually holds GlobalIds. It stays silent for a
+   *     store that holds none (a GLB import), where a total miss is the normal
+   *     state and warning would only teach the reader to ignore the message.
    *
    * A dev-only `expressId < 0` assert was considered and rejected: it fires
    * only when the subtrahend is too LARGE, whereas the failure that shipped was
@@ -163,6 +166,54 @@ function worldFramePositions(local: Float32Array, o: [number, number, number]): 
     out[i + 2] = local[i + 2] + o[2];
   }
   return out;
+}
+
+/**
+ * The durable key for an element that has NO stored GlobalId — a malformed /
+ * fallback-only IFC root, or every element of a GLB-sourced model, whose store
+ * carries geometry and no IFC entities at all.
+ *
+ * ## Why the model id is in it
+ *
+ * `key` is the element identity that `clashReviewKey` (`../review.ts`) and the
+ * viewer's `elementPairExclusion` (`apps/viewer/src/lib/clash/exclusions.ts`)
+ * are BOTH keyed on, and both drop `model` on purpose — in the viewer that is a
+ * per-load `crypto.randomUUID()`, so folding it in would make every saved
+ * review and every saved rule go inert on the next reload. A GlobalId is
+ * globally unique, so that works. An express id is only unique WITHIN a model:
+ * every file is numbered from 1, so a bare `expressid:2` names an element in
+ * every model of a federation at once, and a review status or an exclusion set
+ * on one model's element would silently cover another model's element.
+ *
+ * ## Why it is encoded
+ *
+ * `clashReviewKey` composes `rule`, `a.key` and `b.key` with a SPACE, on the
+ * stated ground that a space never occurs inside an IfcGUID. A model id is not
+ * an IfcGUID — the CLI passes `basename(filePath)` — so it can. Percent-
+ * encoding is injective (distinct model ids stay distinct keys) and emits no
+ * space, so the separator assumption keeps holding.
+ *
+ * The `expressid:` prefix is unchanged, and this is a pure fallback: an element
+ * WITH a GlobalId is keyed on it exactly as before.
+ */
+function syntheticKey(modelId: string, expressId: number): string {
+  return `expressid:${encodeURIComponent(modelId)}:${expressId}`;
+}
+
+/**
+ * Whether this store carries ANY GlobalId at all — i.e. whether a total miss
+ * says something about the ids we used, or only about the file.
+ *
+ * Called at most once per `elementsFromStep`, and only on the already-degraded
+ * path, so the scan is off every normal run. It short-circuits on the first
+ * hit, which is the answer for any real IFC.
+ */
+function storeHasAnyGlobalId(store: IfcDataStore): boolean {
+  const { entities } = store;
+  for (let i = 0; i < entities.count; i += 1) {
+    if (entities.getGlobalId(entities.expressId[i])) return true;
+  }
+  return false;
 }
 
 export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult {
@@ -237,9 +288,10 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const storedGlobalId = store.entities.getGlobalId(expressId);
     const storedName = store.entities.getName(expressId);
 
-    // Fall back to a model-scoped synthetic key rather than dropping geometry:
-    // malformed IFC roots / fallback-only elements still participate in clashes.
-    const key = storedGlobalId || `expressid:${expressId}`;
+    // Fall back to a MODEL-SCOPED synthetic key rather than dropping geometry:
+    // malformed IFC roots, and whole GLB-sourced models, still participate in
+    // clashes. See {@link syntheticKey} for why the model id belongs in it.
+    const key = storedGlobalId || syntheticKey(modelId, expressId);
     if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
@@ -270,12 +322,27 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
   // EVERY GlobalId lookup misses, never just some. A real file can carry the
   // occasional fallback-only root with no GlobalId, but "not one element in
   // this model has one" is a host wiring bug, and it is silent otherwise —
-  // `key` degrades to `expressid:N`, `buildStepExclusions` below finds no
-  // relationships, and the caller gets a plausible-looking result set with the
-  // void/host/assembly exclusions quietly disabled.
+  // `key` degrades to the synthetic fallback, `buildStepExclusions` below finds
+  // no relationships, and the caller gets a plausible-looking result set with
+  // the void/host/assembly exclusions quietly disabled.
   //
-  // One `if` outside the loop: no per-element cost.
-  if (elements.length > 0 && missingGlobalIds === elements.length) {
+  // The `storeHasAnyGlobalId` guard is what keeps that from crying wolf. A
+  // total miss means "the ids we used are wrong" only if there was something to
+  // hit: a GLB-sourced model has an ENTITY-LESS store
+  // (`createMinimalGlbDataStore` -> `createSyntheticDataStore` in the viewer),
+  // so EVERY element missing is its normal, correct state, and warning on it
+  // would fire on a correct configuration on every run — which teaches people
+  // to ignore the one message that reports the real defect. The same goes for a
+  // file whose roots carry no GlobalId at all. When the store does hold
+  // GlobalIds and not one of our ids reached them, the ids are the problem.
+  //
+  // One `if` outside the loop, and the scan behind it runs only when the whole
+  // model already missed: no per-element cost.
+  if (
+    elements.length > 0 &&
+    missingGlobalIds === elements.length &&
+    storeHasAnyGlobalId(store)
+  ) {
     console.warn(
       `[clash/step] every element in model "${modelId}" (${elements.length}) resolved to an ` +
         `empty GlobalId. This usually means \`meshIdOffset\` (used: ${meshIdOffset}) does not ` +

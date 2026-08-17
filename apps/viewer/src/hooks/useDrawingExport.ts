@@ -5,6 +5,7 @@
 import { useCallback } from 'react';
 import { posthog } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
   renderFrame,
@@ -967,25 +968,13 @@ function useDrawingExport({
           const { start, end } = line.line;
           if (!isFinite(start.x) || !isFinite(start.y) || !isFinite(end.x) || !isFinite(end.y)) continue;
 
-          let lineWidth = 0.25;
-          let dash: number[] = [];
-          switch (line.category) {
-            case 'cut': lineWidth = 0.5; break; // matches the polygon-outline stroke width above (fallback path only)
-            case 'hidden': lineWidth = 0.18; dash = [1, 0.6]; break;
-            case 'silhouette': lineWidth = 0.35; break;
-            case 'crease': lineWidth = 0.18; break;
-            case 'boundary': lineWidth = 0.25; break;
-            case 'annotation': lineWidth = 0.13; break;
-            default: lineWidth = 0.25;
-          }
-          if (line.visibility === 'hidden') {
-            dash = [1, 0.6];
-            lineWidth *= 0.7;
-          }
+          // Shared with the to-scale 3D-view PDF (#2042) so the two writers
+          // cannot drift into two different line hierarchies.
+          const { lineWidthMm, dash } = pdfLineStyleFor(line.category, line.visibility);
 
           const p0 = mapPoint(start.x, start.y);
           const p1 = mapPoint(end.x, end.y);
-          doc.setLineWidth(lineWidth);
+          doc.setLineWidth(lineWidthMm);
           doc.setLineDashPattern(dash, 0);
           doc.line(p0.x, p0.y, p1.x, p1.y);
         }

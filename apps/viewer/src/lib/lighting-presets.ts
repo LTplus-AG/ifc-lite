@@ -49,6 +49,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       skyColor: [0.42, 0.52, 0.65],
       groundColor: [0.22, 0.19, 0.15],
       ambientIntensity: 0.3,
+      // A small clear-sky sun casts a crisp terminator.
+      sunSoftness: 0.12,
       exposure: 0.9,
     },
   },
@@ -66,6 +68,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       ambientIntensity: 0.45,
       fillIntensity: 0.1,
       rimIntensity: 0.08,
+      // A cloud-covered sky is a huge effective source — near-shadowless.
+      sunSoftness: 0.85,
       exposure: 0.85,
       sky: {
         zenith: [0.5, 0.54, 0.58],
@@ -86,6 +90,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       skyColor: [0.3, 0.26, 0.32],
       groundColor: [0.16, 0.11, 0.08],
       ambientIntensity: 0.22,
+      // Low sun, still a small source — crisp, long shadows.
+      sunSoftness: 0.18,
       exposure: 0.82,
     },
   },
@@ -103,6 +109,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       ambientIntensity: 0.3,
       fillIntensity: 0.08,
       rimIntensity: 0.2,
+      // Moonlight reads a touch softer than a clear-day sun.
+      sunSoftness: 0.4,
       exposure: 0.75,
       // Explicit night sky — the altitude-derived palette would read the
       // high moon direction as a midday sun and paint a blue daytime sky.

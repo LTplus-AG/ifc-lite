@@ -12,7 +12,7 @@
  * lets the node test runner render that component.
  */
 
-import { FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FileUsd, Screenshot } from '@/icons';
+import { FileCsv, FileGlb, FileHbjson, FileIfc, FileJson, FileKmz, FilePdf, FileUsd, Screenshot } from '@/icons';
 import type { ExportIconSet } from '../../toolbar/export-commands';
 
 export const RIBBON_EXPORT_ICONS: ExportIconSet = {
@@ -24,4 +24,5 @@ export const RIBBON_EXPORT_ICONS: ExportIconSet = {
   csv: FileCsv,
   json: FileJson,
   screenshot: Screenshot,
+  pdf: FilePdf,
 };

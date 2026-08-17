@@ -42,6 +42,14 @@ export interface LightingEnvironment {
   fillIntensity?: number;
   /** Rim-light strength (historic default 0.15). */
   rimIntensity?: number;
+  /**
+   * Sun terminator softness — the diffuse "wrap" that lifts the light/shadow
+   * boundary off a hard `max(N·L, 0)` toward wrap-around lighting. 0 is a crisp
+   * terminator (hard shadows); larger values soften it (overcast look). Historic
+   * default 0.3 (the value the term was hardcoded to before it was exposed).
+   * Clamped to [0, 1] on resolve.
+   */
+  sunSoftness?: number;
   /** Pre-tonemap exposure multiplier (historic default 0.85). */
   exposure?: number;
   /**
@@ -108,6 +116,12 @@ function lerp3(a: Vec3Color, b: Vec3Color, t: number): Vec3Color {
 function band(x: number, lo: number, hi: number): number {
   const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
   return t * t * (3 - 2 * t);
+}
+
+/** Clamp to [0, 1], mapping any non-finite input to 0. */
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0;
+  return Math.min(1, Math.max(0, x));
 }
 
 /**
@@ -178,6 +192,7 @@ export function resolveEnvironment(env?: LightingEnvironment): ResolvedEnvironme
     ambientIntensity: env?.ambientIntensity ?? 0.25,
     fillIntensity: env?.fillIntensity ?? 0.15,
     rimIntensity: env?.rimIntensity ?? 0.15,
+    sunSoftness: clamp01(env?.sunSoftness ?? 0.3),
     exposure: env?.exposure ?? 0.85,
     skyEnabled: env?.skyEnabled ?? false,
     sky: {
@@ -198,7 +213,7 @@ export const ENVIRONMENT_UNIFORM_SIZE = 80;
  *   sunColor: vec3     + ambientIntensity: f32  → floats 4..7
  *   skyColor: vec3     + exposure: f32          → floats 8..11
  *   groundColor: vec3  + fillIntensity: f32     → floats 12..15
- *   rimIntensity: f32  + 3 pad floats           → floats 16..19
+ *   rimIntensity: f32  + sunSoftness: f32 + 2 pad → floats 16..19
  */
 export function packEnvironmentUniforms(
   env: ResolvedEnvironment,
@@ -222,7 +237,7 @@ export function packEnvironmentUniforms(
   buf[14] = env.groundColor[2];
   buf[15] = env.fillIntensity;
   buf[16] = env.rimIntensity;
-  buf[17] = 0;
+  buf[17] = env.sunSoftness;
   buf[18] = 0;
   buf[19] = 0;
   return buf;

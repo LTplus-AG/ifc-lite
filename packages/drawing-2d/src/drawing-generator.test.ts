@@ -369,3 +369,99 @@ describe('generate() outline provider basis agreement (PR #2644 review)', () => 
     expect(farLines.every((l) => l.line.start.x <= -90 && l.line.end.x <= -90)).toBe(true);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #2682 — line work must survive a mesh that is not outward-wound
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The same mesh with every triangle's last two indices swapped: identical
+ * positions and identical edges, every face wound INWARD.
+ *
+ * ifc-lite's winding is explicitly unreliable (`MeshData.indices`), so this is
+ * a shape the generator really receives — not a synthetic curiosity.
+ */
+function reverseWinding(mesh: MeshData): MeshData {
+  const indices = new Uint32Array(mesh.indices.length);
+  for (let t = 0; t + 2 < mesh.indices.length; t += 3) {
+    indices[t] = mesh.indices[t];
+    indices[t + 1] = mesh.indices[t + 2];
+    indices[t + 2] = mesh.indices[t + 1];
+  }
+  return { ...mesh, indices };
+}
+
+/** Order-independent identity of a drawing line: endpoints, band and depths. */
+function lineIdentity(l: DrawingLine): string {
+  const a = `${l.line.start.x.toFixed(6)},${l.line.start.y.toFixed(6)}`;
+  const b = `${l.line.end.x.toFixed(6)},${l.line.end.y.toFixed(6)}`;
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  const depths = [l.depth ?? 0, l.depthEnd ?? l.depth ?? 0].map((d) => d.toFixed(6)).sort();
+  return `${lo}|${hi}|${l.category}|${l.visibility}|${depths.join('~')}`;
+}
+
+/** Bounded projection bands, i.e. what a real floor plan uses. */
+function bandedPlanConfig(position: number): SectionConfig {
+  return {
+    plane: { axis: 'y', position, flipped: false },
+    projectionDepth: 3,
+    projectionBelowDepth: 3,
+    projectionAboveDepth: 3,
+    includeHiddenLines: true,
+    creaseAngle: 30,
+    scale: 100,
+  };
+}
+
+async function drawingFor(meshes: MeshData[], config: SectionConfig) {
+  const generator = new Drawing2DGenerator();
+  await generator.initialize();
+  return generator.generate(meshes, config, GEN_OPTIONS);
+}
+
+describe('generate() line work on non-outward-wound meshes (issue #2682)', () => {
+  // A tall element — a shaft/core wall spanning several storeys, world Y in
+  // [0, 10] — cut in plan at Y = 9.5 with the usual 3 m projection bands.
+  // Its NEAR rim (the top, Y = 10) is in band; its FAR rim (the base, Y = 0)
+  // is 9.5 m away and the band drops it.
+  const tallOutward = () => boxMesh(1, [0, 0, 0], [4, 10, 4]);
+
+  it('draws the outline of an INWARD-wound element instead of a blank sheet', async () => {
+    const config = bandedPlanConfig(9.5);
+
+    const outward = await drawingFor([tallOutward()], config);
+    const inward = await drawingFor([reverseWinding(tallOutward())], config);
+
+    const outwardLines = projectionLinesOf(outward.lines, 1);
+    const inwardLines = projectionLinesOf(inward.lines, 1);
+
+    // The control: an outward-wound box gets its four outline lines.
+    expect(outwardLines.length).toBe(4);
+
+    // The defect: the inward-wound twin used to silhouette the FAR rim, which
+    // the projection band culls, leaving ZERO projection lines. The winding
+    // must not decide whether the element is drawn at all.
+    expect(inwardLines.length).toBe(4);
+
+    // Acceptance (issue #2682): same positions, reversed index order, SAME
+    // line work — right down to the band and the hidden-line depths.
+    expect(inwardLines.map(lineIdentity).sort()).toEqual(outwardLines.map(lineIdentity).sort());
+  });
+
+  it('keeps the whole drawing identical for the inward-wound twin of a multi-element scene', async () => {
+    // Two boxes, one occluding the other, viewed with generous bands — the
+    // uncut "3D view" shape the PDF export uses. Every line the generator can
+    // emit (cut, projection, visibility, depth) must be winding-independent.
+    const config = sectionConfig({ axis: 'z', position: 0, flipped: false });
+
+    const outward = await drawingFor([farBox(), nearBox()], config);
+    const inward = await drawingFor(
+      [reverseWinding(farBox()), reverseWinding(nearBox())],
+      config,
+    );
+
+    expect(outward.lines.length).toBeGreaterThan(0);
+    expect(inward.lines.map(lineIdentity).sort()).toEqual(outward.lines.map(lineIdentity).sort());
+    expect(inward.bounds).toEqual(outward.bounds);
+  });
+});

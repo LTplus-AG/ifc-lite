@@ -29,6 +29,7 @@ import { GLBExportDialog } from '../GLBExportDialog';
 import { KmzExportDialog } from '../KmzExportDialog';
 import { EnergyModelExportDialog } from '../EnergyModelExportDialog';
 import { UsdExportDialog } from '../UsdExportDialog';
+import { PdfViewExportDialog } from '../PdfViewExportDialog';
 
 /** The CSV tables the exporter can emit. */
 export type CsvExportType = 'entities' | 'properties' | 'quantities' | 'spatial';
@@ -188,6 +189,19 @@ export const EXPORT_COMMANDS = [
     tooltip: 'Save viewport as PNG',
     requires: 'model',
     group: 3,
+    emphasis: 'small',
+  },
+  {
+    // Its own group: group 3 is already at the three-command ceiling the ribbon
+    // stack allows, and this is a drawing output rather than a data table.
+    id: 'pdf',
+    kind: 'dialog',
+    Dialog: PdfViewExportDialog,
+    label: 'PDF',
+    menuLabel: 'Export PDF (to-scale 3D view)',
+    tooltip: 'Export PDF (to-scale 3D view)',
+    requires: 'model',
+    group: 4,
     emphasis: 'small',
   },
 ] as const satisfies readonly ExportCommand[];

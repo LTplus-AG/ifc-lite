@@ -17,13 +17,22 @@
  * the lines sampled against it agree on frame and sign by construction,
  * for cardinal and custom planes alike.
  *
+ * The vertex fetch, the projected-extent walk and the barycentric test are
+ * shared with the shaded colour raster via `raster-core.ts`. The per-pixel
+ * loop below is NOT shared: this one maps the extent onto `width - 1` (pixel
+ * CENTRES sit on the bounds edges), which is right for sampling a buffer and
+ * wrong for an image whose rectangle must cover the extent exactly, so
+ * `color-raster.ts` maps edge-to-edge instead.
+ *
  * Internal module: not exported from the package index.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
-import type { Vec3, Bounds2D, SectionPlaneConfig } from './types.js';
-import { vec3, boundsEmpty, boundsExtendPoint, EPSILON } from './math.js';
+import type { Bounds2D, SectionPlaneConfig } from './types.js';
+import { EPSILON } from './math.js';
 import { signedDepth, projectPointForPlane } from './projection-bands.js';
+import type { RasterVertex } from './raster-core.js';
+import { getVertex, barycentricCoords, computeProjectedBounds } from './raster-core.js';
 
 export interface DepthRaster {
   /** Per-pixel minimum view depth; Infinity where nothing rasterized. */
@@ -33,67 +42,19 @@ export interface DepthRaster {
   bounds: Bounds2D;
 }
 
-interface RasterVertex {
-  x: number;
-  y: number;
-  depth: number;
-}
-
-function getVertex(
-  positions: Float32Array,
-  index: number,
-  origin?: [number, number, number],
-): Vec3 {
-  const base = index * 3;
-  // World space: positions are stored in the element's local frame
-  // (world = origin + local) - see section-cutter.ts / edge-extractor.ts.
-  return origin
-    ? vec3(
-        positions[base] + origin[0],
-        positions[base + 1] + origin[1],
-        positions[base + 2] + origin[2],
-      )
-    : vec3(positions[base], positions[base + 1], positions[base + 2]);
-}
-
 /**
  * 2D bounds of every occluder vertex whose view depth lies in
- * `[0, occluderDepth]` (the kept half of the section). Empty (non-finite)
- * when no vertex is in the window.
+ * `[0, occluderDepth]` (the kept half of the section), grown by a 1% margin
+ * so geometry on the exact edge still rasterizes cleanly. Empty (non-finite)
+ * when no vertex is in the window: the caller degrades to "everything
+ * visible".
  */
 export function computeOccluderBounds(
   meshes: MeshData[],
   plane: SectionPlaneConfig,
   occluderDepth: number,
 ): Bounds2D {
-  let bounds = boundsEmpty();
-
-  for (const mesh of meshes) {
-    const { positions, origin } = mesh;
-    const vertexCount = positions.length / 3;
-    for (let i = 0; i < vertexCount; i++) {
-      const v = getVertex(positions, i, origin);
-      const viewDepth = -signedDepth(v, plane);
-      if (viewDepth >= 0 && viewDepth <= occluderDepth) {
-        bounds = boundsExtendPoint(bounds, projectPointForPlane(v, plane));
-      }
-    }
-  }
-
-  const width = bounds.max.x - bounds.min.x;
-  const height = bounds.max.y - bounds.min.y;
-  if (!Number.isFinite(width) || !Number.isFinite(height)) {
-    return bounds; // empty: caller degrades to "everything visible"
-  }
-
-  // Small margin so geometry on the exact edge still rasterizes cleanly.
-  const margin = Math.max(width, height) * 0.01;
-  bounds.min.x -= margin;
-  bounds.min.y -= margin;
-  bounds.max.x += margin;
-  bounds.max.y += margin;
-
-  return bounds;
+  return computeProjectedBounds(meshes, plane, occluderDepth, 0.01);
 }
 
 /**
@@ -229,37 +190,4 @@ function rasterizeTriangle(
       }
     }
   }
-}
-
-function barycentricCoords(
-  px: number,
-  py: number,
-  p0: { x: number; y: number },
-  p1: { x: number; y: number },
-  p2: { x: number; y: number },
-): { u: number; v: number; w: number } {
-  const v0x = p1.x - p0.x;
-  const v0y = p1.y - p0.y;
-  const v1x = p2.x - p0.x;
-  const v1y = p2.y - p0.y;
-  const v2x = px - p0.x;
-  const v2y = py - p0.y;
-
-  const dot00 = v0x * v0x + v0y * v0y;
-  const dot01 = v0x * v1x + v0y * v1y;
-  const dot02 = v0x * v2x + v0y * v2y;
-  const dot11 = v1x * v1x + v1y * v1y;
-  const dot12 = v1x * v2x + v1y * v2y;
-
-  const denom = dot00 * dot11 - dot01 * dot01;
-  // Handle degenerate triangles (zero area) by returning invalid coordinates
-  if (Math.abs(denom) < 1e-10) {
-    return { u: -1, v: -1, w: -1 };
-  }
-  const invDenom = 1 / denom;
-  const v = (dot11 * dot02 - dot01 * dot12) * invDenom;
-  const w = (dot00 * dot12 - dot01 * dot02) * invDenom;
-  const u = 1 - v - w;
-
-  return { u, v, w };
 }

@@ -174,6 +174,47 @@ export function formatScaleFactorLabel(factor: number): string {
   return rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
 }
 
+/**
+ * How close the 2-decimal label has to be to the real factor to call it exact.
+ *
+ * Deliberately an ULP-scale tolerance and not a loose relative one. "Exact"
+ * here means the printed digits ARE the factor, give or take the error of
+ * representing it as a double - so the only slack allowed is that
+ * representation error, which is what `Number.EPSILON` measures. A loose
+ * relative tolerance grows with the factor and quietly re-admits the very
+ * thing this label exists to disclose: at 1e-9 relative, a factor of
+ * 100000000.004 sits 0.004 from its printed 100000000 and 0.004 is inside a
+ * 0.1 tolerance, so a rounded ratio would print as "1:100000000" with no
+ * hedge. Four ULP leaves room for the divide-and-round round trip without
+ * ever spanning a real difference in the printed digits.
+ */
+const LABEL_EXACTNESS_ULPS = 4;
+
+/**
+ * The ratio a sheet prints for `factor`: `"1:100"` when the label IS the
+ * factor, `"about 1:87.35"` when {@link formatScaleFactorLabel} had to round it.
+ *
+ * WHY THE HEDGE EXISTS. A to-scale sheet is a promise that a distance measured
+ * off the paper converts back at the printed ratio. "As displayed" hands over
+ * whatever factor the viewport happens to sit at — 1:87.3456 — and printing a
+ * bare "1:87.35" would state a scale the drawing was not drawn at, which is the
+ * same defect as an unlabelled sheet wearing a different hat: a number an
+ * engineer would trust and should not. The word says the printed ratio is the
+ * nearest hundredth, and the drawn scale bar next to it carries the exact
+ * length regardless.
+ *
+ * The number itself is left at 2 decimals so the sheet and the export filename
+ * (which goes through the same formatter) can never quote different ratios.
+ */
+export function formatSheetScaleLabel(factor: number): string {
+  const label = formatScaleFactorLabel(factor);
+  const printed = Number(label);
+  const exact =
+    Number.isFinite(printed) &&
+    Math.abs(printed - factor) <= Math.abs(factor) * Number.EPSILON * LABEL_EXACTNESS_ULPS;
+  return exact ? `1:${label}` : `about 1:${label}`;
+}
+
 /** Map one world-space point (metres) to paper space (mm) via `transform`. */
 export function worldPointToPdfMm(point: Point2D, transform: PdfScaleTransform): Point2D {
   return {

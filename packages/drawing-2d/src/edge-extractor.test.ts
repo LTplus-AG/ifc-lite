@@ -166,3 +166,94 @@ describe('EdgeExtractor origin lift (world = origin + local)', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Issue #2682 — winding-robust silhouettes
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The same mesh with every triangle's last two indices swapped: identical
+ * positions, identical edges, every face wound INWARD.
+ */
+function reverseWinding(mesh: MeshData): MeshData {
+  const indices = new Uint32Array(mesh.indices.length);
+  for (let t = 0; t + 2 < mesh.indices.length; t += 3) {
+    indices[t] = mesh.indices[t];
+    indices[t + 1] = mesh.indices[t + 2];
+    indices[t + 2] = mesh.indices[t + 1];
+  }
+  return { ...mesh, indices };
+}
+
+/** Order-independent identity of a projection line: endpoints + band + depth. */
+function lineKey(line: {
+  line: { start: { x: number; y: number }; end: { x: number; y: number } };
+  visibility: string;
+  depth?: number;
+  depthEnd?: number;
+}): string {
+  const a = `${line.line.start.x.toFixed(6)},${line.line.start.y.toFixed(6)}`;
+  const b = `${line.line.end.x.toFixed(6)},${line.line.end.y.toFixed(6)}`;
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  const depths = [line.depth ?? 0, line.depthEnd ?? line.depth ?? 0]
+    .map((d) => d.toFixed(6))
+    .sort();
+  return `${lo}|${hi}|${line.visibility}|${depths.join('~')}`;
+}
+
+function silhouetteLinesFor(mesh: MeshData) {
+  const extractor = new EdgeExtractor(30);
+  const edges = extractor.extractEdges(mesh);
+  const silhouettes = extractor.extractSilhouettes(edges, getViewDirectionForPlane(planPlane));
+  return extractor.edgesToProjectionLines(silhouettes, planPlane, { below: 3, above: 3 });
+}
+
+describe('EdgeExtractor winding robustness (issue #2682)', () => {
+  // A TALL element (local Y in [-5, 0.5]) cut in plan at Y = 1 with a 3 m
+  // projection band: the NEAR rim (Y = 0.5) is in band, the FAR rim (Y = -5)
+  // is not. The winding-sensitive silhouette test picks the far rim on an
+  // inward-wound solid, and the band then drops it — a blank drawing.
+  //
+  // NOTE: this file's shared `boxMesh` is itself wound INWARD (signed volume
+  // -4 for the 2 x h x 2 box). That is not a slip in the fixture, it is
+  // ifc-lite winding in the wild, and it is why the tests above never noticed:
+  // their boxes are short enough for the far rim to stay inside the band. The
+  // outward-wound twin is the REVERSED one.
+  const tallInward = () => boxMesh(7, -5, 0.5);
+  const tallOutward = () => reverseWinding(boxMesh(7, -5, 0.5));
+
+  it('gives an inward-wound solid the same silhouette line work as its outward twin', () => {
+    const outward = silhouetteLinesFor(tallOutward());
+    const inward = silhouetteLinesFor(tallInward());
+
+    // Existence first, so the equality below cannot pass on two empty sets.
+    expect(outward.length).toBe(4);
+    expect(inward.length).toBe(4);
+    expect(inward.map(lineKey).sort()).toEqual(outward.map(lineKey).sort());
+  });
+
+  // CONTROL, not a guard: an open sheet has no enclosed volume, so the
+  // orientation test is inconclusive and the mesh is left alone. This is green
+  // both with and without the fix by construction — its job is to pin that a
+  // zero-volume mesh survives the new code path unchanged, not to catch a
+  // regression in it. The falsifiable anti-overcorrection assertion is
+  // `expect(outward.length).toBe(4)` above: invert the sign test and a
+  // correctly wound solid loses its near rim.
+  it('leaves an open (zero-volume) sheet alone — the orientation test stays inconclusive', () => {
+    const positions = new Float32Array([0, 0, 0, 2, 0, 0, 2, 0, 2, 0, 0, 2]);
+    const sheet: MeshData = {
+      expressId: 8,
+      ifcType: 'IfcSlab',
+      modelIndex: 0,
+      positions,
+      normals: new Float32Array(positions.length),
+      indices: new Uint32Array([0, 1, 2, 0, 2, 3]),
+      color: [1, 1, 1, 1],
+    };
+    const outward = silhouetteLinesFor(sheet);
+    const inward = silhouetteLinesFor(reverseWinding(sheet));
+
+    expect(outward.length).toBeGreaterThan(0);
+    expect(inward.map(lineKey).sort()).toEqual(outward.map(lineKey).sort());
+  });
+});

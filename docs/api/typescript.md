@@ -46,6 +46,7 @@ ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
+| [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
 | [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
 | [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
 <!-- END GENERATED: package-index -->

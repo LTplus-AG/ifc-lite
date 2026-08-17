@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
 import {
+  BROWSER_ACCESS_BLOCKED,
+  attachTileSuccessRetraction,
   buildCreditHtml,
   classifyTileProviderError,
   decodeCustomBasemap,
@@ -69,8 +71,21 @@ describe('custom basemap — URL template validation', () => {
     assert.match(basemap.url, /\{reverseY\}/);
   });
 
-  it('accepts the {s} subdomain placeholder', () => {
-    ok({ ...VALID, url: 'https://{s}.tiles.example.org/{z}/{x}/{y}.png' });
+  it('rejects {s}: the editor has no subdomains field, so it would 404 silently', () => {
+    // Cesium DOES substitute {s}, from a `subdomains` option defaulting to
+    // a/b/c. Accepting the token without collecting that option lets a server
+    // sharding over 1,2,3,4 validate, save, and then 404 every tile at render
+    // with no banner — a 404 carries a statusCode, so the runtime classifier
+    // correctly stays quiet. Reject at input time instead, and say why.
+    const result = err({ ...VALID, url: 'https://{s}.tiles.example.org/{z}/{x}/{y}.png' });
+    assert.strictEqual(result.field, 'url');
+    assert.match(result.message, /\{s\}/);
+    assert.match(result.message, /subdomain/i);
+  });
+
+  it('does not advertise {s} in the supported-placeholder list', () => {
+    const result = err({ ...VALID, url: 'https://t.example.org/{z}/{x}/{y}/{apiKey}.png' });
+    assert.doesNotMatch(result.message, /\{s\}/);
   });
 
   it('rejects an unsupported placeholder rather than passing it to Cesium verbatim', () => {
@@ -154,6 +169,29 @@ describe('custom basemap — Cesium provider options', () => {
     const options = toUrlTemplateProviderOptions(ok({ ...VALID, maximumLevel: undefined }));
     assert.ok(!('maximumLevel' in options));
   });
+
+  it('hands Cesium the ESCAPED credit markup, not the raw field', () => {
+    // buildCreditHtml is tested directly above, but that leaves the escaping
+    // untested at the point where it matters: the object handed to
+    // `new UrlTemplateImageryProvider(...)`. Assert the integration, so
+    // replacing `buildCreditHtml(basemap)` with `basemap.credit` fails here.
+    const options = toUrlTemplateProviderOptions(ok({
+      ...VALID,
+      credit: '<img src=x onerror=alert(1)> Example NMA',
+    }));
+    assert.ok(options.credit.startsWith('<a href='), `expected an anchor, got: ${options.credit}`);
+    assert.match(options.credit, /&lt;img/);
+    assert.doesNotMatch(options.credit, /<img/);
+  });
+
+  it('escapes the credit even with no link, so the raw field never reaches the provider', () => {
+    const options = toUrlTemplateProviderOptions(ok({
+      ...VALID,
+      creditUrl: undefined,
+      credit: '<b>Example</b>',
+    }));
+    assert.strictEqual(options.credit, '&lt;b&gt;Example&lt;/b&gt;');
+  });
 });
 
 describe('custom basemap — persistence codec', () => {
@@ -167,6 +205,50 @@ describe('custom basemap — persistence codec', () => {
     assert.strictEqual(decodeCustomBasemap(null), null);
     assert.strictEqual(decodeCustomBasemap('not json'), null);
     assert.strictEqual(decodeCustomBasemap('[]'), null);
+    // `typeof null === 'object'`, so the explicit null check is load-bearing.
+    assert.strictEqual(decodeCustomBasemap('null'), null);
+    assert.strictEqual(decodeCustomBasemap('42'), null);
+    assert.strictEqual(decodeCustomBasemap('"a string"'), null);
+  });
+
+  // localStorage is hand-editable, and the decoded value feeds the store's
+  // *initial state* — a throw here is a white screen with no in-app recovery.
+  // `??` only rescues null/undefined, so every field a validator calls a string
+  // method on has to be type-checked, not defaulted.
+  describe('a stored field of the wrong TYPE returns null instead of throwing', () => {
+    const NON_STRINGS: [string, unknown][] = [
+      ['number', 123],
+      ['zero', 0],
+      ['boolean true', true],
+      ['boolean false', false],
+      ['array', []],
+      ['object', {}],
+    ];
+    for (const [label, value] of NON_STRINGS) {
+      for (const field of ['url', 'credit', 'creditUrl'] as const) {
+        it(`${field} as ${label}`, () => {
+          const raw = JSON.stringify({ ...VALID, [field]: value });
+          assert.strictEqual(decodeCustomBasemap(raw), null);
+        });
+      }
+    }
+
+    it('protocol as a number', () => {
+      assert.strictEqual(decodeCustomBasemap(JSON.stringify({ ...VALID, protocol: 7 })), null);
+    });
+
+    it('maximumLevel as a numeric string', () => {
+      assert.strictEqual(decodeCustomBasemap(JSON.stringify({ ...VALID, maximumLevel: '20' })), null);
+    });
+
+    it('every field wrong at once', () => {
+      const raw = JSON.stringify({ protocol: {}, url: [], credit: 1, creditUrl: true, maximumLevel: 'x' });
+      assert.strictEqual(decodeCustomBasemap(raw), null);
+    });
+
+    it('an empty object, which supplies nothing at all', () => {
+      assert.strictEqual(decodeCustomBasemap('{}'), null);
+    });
   });
 
   it('re-validates on read, so a hand-edited entry cannot inject an unchecked value', () => {
@@ -181,15 +263,15 @@ describe('custom basemap — persistence codec', () => {
 });
 
 describe('custom basemap — browser access (CORS) probe', () => {
-  const basemap = ok({ ...VALID, url: 'https://{s}.t.example.org/{z}/{x}/{reverseY}.png' });
+  const basemap = ok({ ...VALID, url: 'https://t.example.org/{z}/{x}/{reverseY}.png' });
 
-  it('substitutes a concrete zero tile, including the subdomain placeholder', async () => {
+  it('substitutes a concrete zero tile, leaving no placeholder behind', async () => {
     let seen = '';
     await probeTileAccess(basemap, async (url) => {
       seen = String(url);
       return new Response('', { status: 200 });
     });
-    assert.strictEqual(seen, 'https://a.t.example.org/0/0/0.png');
+    assert.strictEqual(seen, 'https://t.example.org/0/0/0.png');
     assert.doesNotMatch(seen, /[{}]/);
   });
 
@@ -213,6 +295,26 @@ describe('custom basemap — browser access (CORS) probe', () => {
     assert.strictEqual(result.httpStatus, 404);
     assert.match(result.message ?? '', /404/);
   });
+
+  it('calls a 404 normal for a deeper-starting pyramid, and does not flag it', async () => {
+    const result = await probeTileAccess(basemap, async () => new Response('', { status: 404 }));
+    assert.match(result.message ?? '', /normal for a service whose tiles start at a deeper zoom/);
+    assert.ok(!result.concerning);
+  });
+
+  for (const status of [401, 403]) {
+    it(`does NOT call a ${status} normal — an auth refusal applies at every zoom`, async () => {
+      const result = await probeTileAccess(basemap, async () => new Response('', { status }));
+      // CORS itself is fine: the response reached JavaScript.
+      assert.strictEqual(result.status, 'ok');
+      assert.strictEqual(result.httpStatus, status);
+      // But the reassuring 404 wording would be a lie here.
+      assert.doesNotMatch(result.message ?? '', /normal/i);
+      assert.match(result.message ?? '', /authorisation failure/i);
+      assert.match(result.message ?? '', /API key/i);
+      assert.strictEqual(result.concerning, true, 'an auth refusal must not render as calm status text');
+    });
+  }
 
   it('reports a blocked server when fetch rejects, and says so in the user-facing message', async () => {
     const result = await probeTileAccess(basemap, async () => {
@@ -242,5 +344,77 @@ describe('custom basemap — runtime tile failures', () => {
   it('ignores an error shape it cannot classify rather than guessing', () => {
     assert.strictEqual(classifyTileProviderError({}), null);
     assert.strictEqual(classifyTileProviderError({ error: new Error('boom') }), null);
+  });
+});
+
+describe('custom basemap — the browser-access banner can come back down', () => {
+  // One failed tile raises the banner; one ad-blocker rule or DNS blip is
+  // enough to produce one. Without a retraction the warning then sits
+  // permanently over a basemap that is drawing perfectly.
+  function fakeProvider(behaviour: () => unknown) {
+    return { requestImage: (() => behaviour()) as (...args: never[]) => unknown };
+  }
+
+  function tracker() {
+    let warning: string | null = null;
+    return {
+      get value() { return warning; },
+      set(next: string | null) { warning = next; },
+      update(fn: (current: string | null) => string | null) { warning = fn(warning); },
+    };
+  }
+
+  it('clears the CORS warning once a tile request resolves', async () => {
+    const warn = tracker();
+    warn.set(BROWSER_ACCESS_BLOCKED);
+    const provider = fakeProvider(() => Promise.resolve({ width: 256 }));
+    attachTileSuccessRetraction(provider, warn.update.bind(warn));
+
+    await (provider.requestImage as () => Promise<unknown>)();
+    await Promise.resolve();
+    assert.strictEqual(warn.value, null, 'a readable tile disproves "no browser access"');
+  });
+
+  it('leaves the warning up while requests keep failing', async () => {
+    const warn = tracker();
+    warn.set(BROWSER_ACCESS_BLOCKED);
+    const provider = fakeProvider(() => Promise.reject(new Error('blocked')));
+    attachTileSuccessRetraction(provider, warn.update.bind(warn));
+
+    await assert.rejects(() => (provider.requestImage as () => Promise<unknown>)());
+    await Promise.resolve();
+    assert.strictEqual(warn.value, BROWSER_ACCESS_BLOCKED);
+  });
+
+  it('retracts ONLY the CORS message — a tile proves nothing about other warnings', async () => {
+    const warn = tracker();
+    warn.set('No custom basemap is configured. Add a tile URL in Sun & Sky → Base map.');
+    const provider = fakeProvider(() => Promise.resolve({ width: 256 }));
+    attachTileSuccessRetraction(provider, warn.update.bind(warn));
+
+    await (provider.requestImage as () => Promise<unknown>)();
+    await Promise.resolve();
+    assert.match(warn.value ?? '', /No custom basemap is configured/);
+  });
+
+  it('passes a throttled (undefined) request straight through', () => {
+    const warn = tracker();
+    const provider = fakeProvider(() => undefined);
+    attachTileSuccessRetraction(provider, warn.update.bind(warn));
+    assert.strictEqual((provider.requestImage as () => unknown)(), undefined);
+  });
+
+  it('still forwards arguments and the return value to the wrapped provider', async () => {
+    const warn = tracker();
+    let seen: unknown[] = [];
+    const promised = Promise.resolve('image');
+    const provider = {
+      requestImage: ((...args: unknown[]) => { seen = args; return promised; }) as (...a: never[]) => unknown,
+    };
+    attachTileSuccessRetraction(provider, warn.update.bind(warn));
+    const returned = (provider.requestImage as (...a: unknown[]) => unknown)(1, 2, 3);
+    assert.deepStrictEqual(seen, [1, 2, 3]);
+    assert.strictEqual(returned, promised);
+    await promised;
   });
 });

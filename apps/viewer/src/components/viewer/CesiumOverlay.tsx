@@ -24,7 +24,7 @@ import { useViewerStore } from '@/store';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
-import { classifyTileProviderError, toUrlTemplateProviderOptions } from '@/lib/geo/custom-basemap';
+import { attachTileSuccessRetraction, classifyTileProviderError, toUrlTemplateProviderOptions } from '@/lib/geo/custom-basemap';
 import { loadCesium } from './cesium/cesium-module';
 import { useCesiumBridge } from './cesium/useCesiumBridge';
 import { useCesiumModel } from './cesium/useCesiumModel';
@@ -224,6 +224,9 @@ export function CesiumOverlay({
                 const message = classifyTileProviderError(event);
                 if (message) setBasemapWarning(message);
               });
+              // …and this is how it goes away again: a single transient failure
+              // must not leave the banner up forever over a working basemap.
+              attachTileSuccessRetraction(provider, setBasemapWarning);
               if (!cancelled) viewer.imageryLayers.addImageryProvider(provider);
             } catch (e) {
               console.warn('[CesiumOverlay] Custom basemap unavailable:', e);

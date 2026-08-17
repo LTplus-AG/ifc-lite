@@ -57,8 +57,20 @@ export type ValidationResult =
  * slot, a WMTS `{TileMatrix}`) that Cesium would send verbatim, producing a
  * 404 on every tile — so it is rejected at input time with the token named,
  * instead of showing up later as a blank globe.
+ *
+ * **`{s}` is deliberately absent.** Cesium does substitute it, but from a
+ * `subdomains` option this editor has no field for, so it would default to
+ * `["a","b","c"]` — and a server sharding over `1,2,3,4` would then validate,
+ * save, probe a hostname that may not exist, and 404 every tile at render with
+ * no banner (a 404 carries a `statusCode`, so the runtime classifier correctly
+ * stays quiet). That is precisely the silent blank globe this allowlist exists
+ * to prevent, and subdomain sharding is a load-balancing hint rather than a
+ * correctness requirement — the bare host almost always serves the same
+ * pyramid. Rejecting it at input time names the problem while the user is
+ * looking at the field. Adding `subdomains` later re-admits the token as a new
+ * capability, the same way `protocol` admits WMTS: an addition, not a fix.
  */
-const SUPPORTED_PLACEHOLDERS = new Set(['z', 'x', 'y', 'reverseX', 'reverseY', 'reverseZ', 's']);
+const SUPPORTED_PLACEHOLDERS = new Set(['z', 'x', 'y', 'reverseX', 'reverseY', 'reverseZ']);
 
 const PLACEHOLDER_RE = /\{([^}]*)\}/g;
 
@@ -100,7 +112,10 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
   for (const match of url.matchAll(PLACEHOLDER_RE)) {
     const token = match[1];
     if (!SUPPORTED_PLACEHOLDERS.has(token)) {
-      return fail('url', `"{${token}}" is not a tile placeholder this viewer substitutes. Supported: {z}, {x}, {y}, {reverseX}, {reverseY}, {reverseZ}, {s}.`);
+      const hint = token === 's'
+        ? ' This viewer has no subdomain field, so {s} would be filled from Cesium\'s a/b/c default and 404 on a server that shards differently — use the bare hostname instead.'
+        : '';
+      return fail('url', `"{${token}}" is not a tile placeholder this viewer substitutes. Supported: {z}, {x}, {y}, {reverseX}, {reverseY}, {reverseZ}.${hint}`);
     }
     seen.add(token);
   }
@@ -202,47 +217,88 @@ export function encodeCustomBasemap(basemap: CustomBasemap): string {
   return JSON.stringify(basemap);
 }
 
+/** Sentinel for "present but the wrong type" — distinct from a missing field. */
+const INVALID: unique symbol = Symbol('invalid');
+
+/** `undefined` passes through; anything present that is not a string fails. */
+function optionalString(value: unknown): string | undefined | typeof INVALID {
+  if (value === undefined) return undefined;
+  return typeof value === 'string' ? value : INVALID;
+}
+
 /**
  * Read a stored basemap back. Re-validates rather than trusting the string:
  * localStorage is hand-editable and shared with every other tab on the origin,
  * so a stored `creditUrl: "javascript:…"` must not become an on-canvas anchor.
  * An unrecognised `protocol` (a WMTS entry written by a later build) returns
  * null instead of being rendered as if it were XYZ.
+ *
+ * **Types are checked here, not defaulted.** `CustomBasemapDraft` is a
+ * compile-time shape; `JSON.parse` output honours none of it, and
+ * `validateCustomBasemap` reaches for `.trim()` on the string fields. A
+ * hand-edited `"url": 123` would therefore throw a `TypeError` — out of
+ * `loadCustomBasemap`, out of `createCesiumSlice`, and out of the module-scope
+ * store creation, i.e. a white screen with no in-app way to clear the key. So
+ * every field is type-checked before the draft is built, and the whole body is
+ * wrapped: this function's contract is "returns null on anything it dislikes",
+ * and a decoder for hostile input owes the caller that unconditionally.
  */
 export function decodeCustomBasemap(raw: string | null): CustomBasemap | null {
   if (!raw) return null;
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+
+    const protocol = optionalString(record.protocol);
+    const url = optionalString(record.url);
+    const credit = optionalString(record.credit);
+    const creditUrl = optionalString(record.creditUrl);
+    if (protocol === INVALID || url === INVALID || credit === INVALID || creditUrl === INVALID) {
+      return null;
+    }
+    // `validateCustomBasemap` already rejects a non-integer maximumLevel, but
+    // check the type here too so the reason is "wrong type", not "out of range".
+    const maximumLevel = record.maximumLevel;
+    if (maximumLevel !== undefined && typeof maximumLevel !== 'number') return null;
+
+    const result = validateCustomBasemap({ protocol, url, credit, creditUrl, maximumLevel });
+    return result.ok ? result.basemap : null;
   } catch {
     return null;
   }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
-  const draft = parsed as CustomBasemapDraft;
-  const result = validateCustomBasemap({
-    protocol: draft.protocol,
-    url: draft.url,
-    credit: draft.credit,
-    creditUrl: draft.creditUrl,
-    maximumLevel: draft.maximumLevel,
-  });
-  return result.ok ? result.basemap : null;
 }
 
 // ─── Browser access (CORS) ──────────────────────────────────────────────────
 
 export interface TileAccessResult {
+  /** Whether a browser may read this server's tiles at all (the CORS verdict). */
   status: 'ok' | 'blocked';
   message?: string;
   httpStatus?: number;
+  /**
+   * True when the message reports a problem the user should act on, even
+   * though CORS itself is fine — a 401/403 says the key is missing or wrong.
+   * Kept separate from `status` because the two verdicts are independent.
+   */
+  concerning?: boolean;
 }
 
 export const BROWSER_ACCESS_BLOCKED =
   'This server does not allow browser access (no CORS headers), or it could not be reached. Tiles would render blank rather than fail visibly.';
 
-/** Substitute a concrete z0 tile so the template can be fetched once. */
+/**
+ * Substitute a concrete z0 tile so the template can be fetched once. Every
+ * placeholder that survives validation is numeric (`{s}` is rejected), so a
+ * flat `0` is a well-formed tile address for all of them.
+ */
 export function firstTileUrl(basemap: CustomBasemap): string {
-  return basemap.url.replace(PLACEHOLDER_RE, (_match, token: string) => (token === 's' ? 'a' : '0'));
+  return basemap.url.replace(PLACEHOLDER_RE, '0');
 }
 
 /**
@@ -265,6 +321,18 @@ export async function probeTileAccess(
   try {
     const response = await fetchImpl(url, { method: 'GET', mode: 'cors', cache: 'no-store' });
     if (response.ok) return { status: 'ok', httpStatus: response.status };
+    // "Normal for a deeper-starting pyramid" is true of a 404 and false of an
+    // auth refusal: a 401/403 means every tile at every zoom will be refused,
+    // so reassuring wording there would be actively wrong. CORS is fine either
+    // way — the response reached JavaScript — which is why `status` stays 'ok'.
+    if (response.status === 401 || response.status === 403) {
+      return {
+        status: 'ok',
+        httpStatus: response.status,
+        concerning: true,
+        message: `The server allows browser access but refused the tile with ${response.status}. That is an authorisation failure, not a missing tile, so every zoom level will be refused the same way — check whether this service needs an API key in the URL, and whether the key it carries is still valid.`,
+      };
+    }
     return {
       status: 'ok',
       httpStatus: response.status,
@@ -273,6 +341,46 @@ export async function probeTileAccess(
   } catch {
     return { status: 'blocked', message: BROWSER_ACCESS_BLOCKED };
   }
+}
+
+/** The slice of a Cesium imagery provider this module needs to wrap. */
+export interface RequestImageProvider {
+  requestImage: (...args: never[]) => unknown;
+}
+
+/**
+ * Make the browser-access banner retractable.
+ *
+ * `classifyTileProviderError` raises the banner from a **single** failed tile,
+ * which one ad-blocker rule or one DNS blip is enough to produce. Without a way
+ * back down, that transient failure leaves "this server does not allow browser
+ * access" sitting permanently over a basemap that is drawing fine.
+ *
+ * Cesium signals recovery internally (`TileProviderError.reportSuccess`) but
+ * exposes no success event, so the evidence is taken from the request itself: a
+ * `requestImage` promise that RESOLVES means a cross-origin tile was read by
+ * this browser — which is precisely the claim the banner denies, and therefore
+ * precisely what retracts it. Nothing else is retracted: a successful tile
+ * disproves "no browser access" and says nothing about any other warning.
+ *
+ * `requestImage` returns `undefined` when Cesium throttles the request; that is
+ * not a failure and not a success, so it is passed through untouched.
+ */
+export function attachTileSuccessRetraction(
+  provider: RequestImageProvider,
+  setWarning: (update: (current: string | null) => string | null) => void,
+): void {
+  const original = provider.requestImage.bind(provider) as (...args: unknown[]) => unknown;
+  provider.requestImage = ((...args: unknown[]) => {
+    const pending = original(...args);
+    if (pending && typeof (pending as PromiseLike<unknown>).then === 'function') {
+      Promise.resolve(pending).then(
+        () => setWarning((current) => (current === BROWSER_ACCESS_BLOCKED ? null : current)),
+        () => { /* failures belong to the errorEvent listener, not here */ },
+      );
+    }
+    return pending;
+  }) as RequestImageProvider['requestImage'];
 }
 
 /**

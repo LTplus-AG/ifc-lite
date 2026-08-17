@@ -145,4 +145,42 @@ describe('CesiumSlice — custom basemap persistence (issue #2685)', () => {
     assert.strictEqual(slice.state.cesiumCustomBasemap, null);
     installLocalStorage();
   });
+
+  // `createCesiumSlice` runs on EVERY store creation, whatever the selected
+  // data source, and the slice is spread into `useViewerStore` at module scope.
+  // A throw out of `loadCustomBasemap` therefore kills the app at boot: white
+  // screen, and the Remove button lives in UI that can no longer mount. So a
+  // corrupted key must degrade to "no custom basemap", never to an exception.
+  describe('a corrupted storage key must not brick the boot path', () => {
+    const CORRUPT: [string, string][] = [
+      ['url as a number', '{"protocol":"xyz","url":123,"credit":"c"}'],
+      ['url as an array', '{"protocol":"xyz","url":[],"credit":"c"}'],
+      ['url as an object', '{"protocol":"xyz","url":{},"credit":"c"}'],
+      ['url as a boolean', '{"protocol":"xyz","url":true,"credit":"c"}'],
+      ['credit as a number', JSON.stringify({ ...BASEMAP, credit: 5 })],
+      ['creditUrl as a number', JSON.stringify({ ...BASEMAP, creditUrl: 5 })],
+      ['protocol as a number', JSON.stringify({ ...BASEMAP, protocol: 7 })],
+      ['maximumLevel as a string', JSON.stringify({ ...BASEMAP, maximumLevel: '20' })],
+      ['an empty object', '{}'],
+      ['a bare null', 'null'],
+      ['a bare number', '42'],
+      ['truncated JSON', '{"protocol":"xyz","url":'],
+    ];
+
+    for (const [label, raw] of CORRUPT) {
+      it(`${label} — boots with no custom basemap`, async () => {
+        storage.store[BASEMAP_KEY] = raw;
+        const slice = await buildSlice();
+        assert.strictEqual(slice.state.cesiumCustomBasemap, null);
+      });
+
+      it(`${label} — and does not strand the picker on the custom source`, async () => {
+        storage.store[DATA_SOURCE_KEY] = 'custom';
+        storage.store[BASEMAP_KEY] = raw;
+        const slice = await buildSlice();
+        assert.strictEqual(slice.state.cesiumCustomBasemap, null);
+        assert.strictEqual(slice.state.cesiumDataSource, 'google-photorealistic');
+      });
+    }
+  });
 });

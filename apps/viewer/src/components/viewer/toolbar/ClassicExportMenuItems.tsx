@@ -30,6 +30,7 @@ export const CLASSIC_EXPORT_ICONS: ExportIconSet = {
   csv: FileSpreadsheet,
   json: FileJson,
   screenshot: Camera,
+  pdf: FileText,
 };
 
 interface ClassicExportRowProps extends ResolvedExportCommand {

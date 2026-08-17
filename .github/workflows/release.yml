@@ -166,17 +166,25 @@ jobs:
 
       - name: Create Release Pull Request or Publish
         id: changesets
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
+        uses: changesets/action@198f833dd7d863100ea6e28967bc9a9fdefadb0a # v2.1.0
         with:
-          version: pnpm run version
-          publish: pnpm run release
-          commit: 'chore: version packages'
-          title: 'chore: version packages'
+          # v2 RENAMED every one of these. The old spellings were `version`,
+          # `publish`, `commit` and `title`, and GitHub Actions IGNORES an
+          # unknown `with:` key rather than failing — so carrying them across
+          # the major bump would leave the action with no version script and
+          # no publish script, and it would report success having published
+          # nothing. A release that goes green and ships nothing is worse
+          # than one that fails, so these names are load-bearing.
+          version-script: pnpm run version
+          publish-script: pnpm run release
+          commit-message: 'chore: version packages'
+          pr-title: 'chore: version packages'
+          # Also moved: v2 reads the token from this INPUT and no longer from
+          # `env.GITHUB_TOKEN`. It defaults to the automatic `github.token`,
+          # whose generated events do not trigger workflows — see the comment
+          # on the Checkout step. The PAT must stay, and it must be here.
+          github-token: ${{ secrets.RELEASE_PAT }}
         env:
-          # PAT (not GITHUB_TOKEN) so the version PR + its commits are
-          # authored by a real user identity and CI triggers on them — see
-          # the comment on the Checkout step for the full rationale.
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           # npm publishes use OIDC trusted publishing — no NPM_TOKEN.
           # `id-token: write` (set at job level) + npm CLI ≥ 11.5.1 +
           # NPM_CONFIG_PROVENANCE complete the handshake automatically

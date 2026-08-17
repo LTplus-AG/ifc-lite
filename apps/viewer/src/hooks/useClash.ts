@@ -46,7 +46,7 @@ import {
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
-import { createLatestWinsGuard } from '@/lib/clash/latest-wins';
+import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
@@ -153,16 +153,6 @@ export function filterResultBySeverity(result: ClashResult, severities: Set<Clas
   return { ...result, clashes, summary: summarizeClashes(clashes) };
 }
 
-/** Content equality for the visibility provenance records below. The shared
- *  channels are only ever REPLACED wholesale (every slice setter stores a
- *  fresh `Set`), never mutated in place, so equal members mean the channel
- *  still shows exactly the presentation clash installed. */
-function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) if (!b.has(id)) return false;
-  return true;
-}
-
 export function useClash() {
   const result = useViewerStore((s) => s.clashResult);
   const groups = useViewerStore((s) => s.clashGroups);
@@ -192,7 +182,6 @@ export function useClash() {
   const setTolerance = useViewerStore((s) => s.setClashTolerance);
   const setClearance = useViewerStore((s) => s.setClashClearance);
   const setGroupBy = useViewerStore((s) => s.setClashGroupBy);
-  const setSelectedId = useViewerStore((s) => s.setClashSelectedId);
   const setPanelVisible = useViewerStore((s) => s.setClashPanelVisible);
   const setClashReview = useViewerStore((s) => s.setClashReview);
   const addExclusion = useViewerStore((s) => s.addClashExclusion);
@@ -206,85 +195,56 @@ export function useClash() {
   // focused clash can compute its real contact interface for that one pair.
   const elementsByRef = useRef(new Map<number, ClashElement>());
 
-  /**
-   * Staleness guard for the on-demand intersection-solid compute: bumped on
-   * every `focusClash` / `selectElement` / teardown call, captured locally by
-   * the async compute below, and re-checked before the result is ever written
-   * to the store. Without this, selecting clash A then quickly clash B could
-   * have A's compute resolve AFTER B is focused and paint A's stale solid over
-   * B's pair — the store has no other signal that a request was superseded.
-   */
-  const solidRequestGuard = useRef(createLatestWinsGuard());
+  // The intersection-solid staleness guard that used to live here (a
+  // `createLatestWinsGuard()` ref) is gone: it was private to one `useClash()`
+  // instance, so no teardown outside this hook could invalidate it. It is now
+  // `clashSolidRequestSeq` in the clash slice, bumped by every setter that ends
+  // a focus — see the field doc there (#2574).
 
-  /**
-   * The CONTENT this hook last installed into the SHARED isolation / ghost
-   * visibility channels (`isolatedEntities` / `ghostExceptEntities`). Those
-   * channels are shared with features clash does not own - "Isolate in 3D"
-   * from the advanced filter (#2532), assembly isolation (#2531), the spaces
-   * X-ray - so clash teardown may only release a presentation clash itself
-   * installed. (#2574 regression: the run-start discard cleared these
-   * channels unconditionally, so a user's isolation was destroyed before any
-   * clash result existed.)
-   *
-   * Ownership is tested by VALUE (`sameMembers`), not by `Set` reference:
-   * reference identity would be exact, but it is destroyed by every flow that
-   * snapshots and later restores the channel with equal content in a fresh
-   * `Set` - Space Sketch's open/close view capture (`useSpaceSceneFraming`
-   * clones the prior sets and replays them through the cloning slice setters)
-   * and a source-model resync (`syncSourceModel` rebuilds the kept sets even
-   * when nothing was filtered). Under reference identity those flows silently
-   * converted a clash-owned focus into "user" state, so the next run replaced
-   * the result set but left the old pair isolated/ghosted (#2662 P2). Value
-   * identity survives any content-preserving rewrite, and its one false
-   * positive is harmless by construction: it only fires when the channel
-   * shows EXACTLY the presentation clash installed, in which case releasing
-   * it renders precisely what discarding the clash focus should render.
-   */
-  const appliedIsolation = useRef<ReadonlySet<number> | null>(null);
-  const appliedGhost = useRef<ReadonlySet<number> | null>(null);
+  // The install record for the SHARED isolation / ghost visibility channels
+  // used to live here too, as a pair of `useRef`s. It is now
+  // `clashVisibilityOwned` in the clash slice, for the same reason the
+  // staleness guard moved: a hook-private ref is unreachable from the
+  // model-lifecycle teardowns in `modelSlice` / `store/index`, which were left
+  // INFERRING ownership from `clashSelectedId` — a selection fact that diverges
+  // from ownership in both directions (#2654 third review). See the module doc
+  // on `lib/clash/visibility-ownership.ts`. One record, one predicate over it:
+  // there is no ref/store pair left to drift.
 
   /** Install clash isolation into the shared channel, recording exactly what
    *  was installed so `releaseClashVisibility` can release only that. */
   const installClashIsolation = useCallback((ids: Set<number>): void => {
-    useViewerStore.getState().setIsolatedEntities(ids);
-    appliedIsolation.current = useViewerStore.getState().isolatedEntities;
-    appliedGhost.current = null; // setIsolatedEntities cleared any ghosting
+    const state = useViewerStore.getState();
+    state.setIsolatedEntities(ids);
+    // Read the set BACK from the store: the slice setter clones, and the record
+    // must hold what the channel actually shows. Recording the isolate channel
+    // also drops any ghost claim — `setIsolatedEntities` cleared the ghosting.
+    const installed = useViewerStore.getState().isolatedEntities;
+    state.setClashVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
 
   /** Install clash ghosting (X-Ray context) into the shared channel, with the
    *  same install-record contract as `installClashIsolation`. */
   const installClashGhost = useCallback((ids: Set<number>): void => {
-    useViewerStore.getState().setGhostExceptEntities(ids);
-    appliedGhost.current = useViewerStore.getState().ghostExceptEntities;
-    appliedIsolation.current = null; // setGhostExceptEntities cleared isolation
+    const state = useViewerStore.getState();
+    state.setGhostExceptEntities(ids);
+    const installed = useViewerStore.getState().ghostExceptEntities;
+    state.setClashVisibilityOwned(installed ? { channel: 'ghost', ids: installed } : null);
   }, []);
 
   /**
    * Release the isolation/ghost presentation clash itself installed - and ONLY
    * that. Isolation or ghosting established by another feature (#2532 / #2531
-   * / spaces X-ray) no longer content-matches the install record, so it
+   * / spaces X-ray) no longer content-matches the ownership record, so it
    * survives a clash run untouched - while a clash focus that round-tripped
    * through a snapshot/restore flow (Space Sketch open/close) still matches
    * and is discarded (#2662 P2).
+   *
+   * The predicate is `releaseOwnedClashVisibility`, shared verbatim with the
+   * model-lifecycle teardown so the two cannot disagree about what clash owns.
    */
   const releaseClashVisibility = useCallback((): void => {
-    const state = useViewerStore.getState();
-    if (
-      appliedIsolation.current !== null &&
-      state.isolatedEntities !== null &&
-      sameMembers(state.isolatedEntities, appliedIsolation.current)
-    ) {
-      state.clearIsolation();
-    }
-    if (
-      appliedGhost.current !== null &&
-      state.ghostExceptEntities !== null &&
-      sameMembers(state.ghostExceptEntities, appliedGhost.current)
-    ) {
-      state.clearGhost();
-    }
-    appliedIsolation.current = null;
-    appliedGhost.current = null;
+    releaseOwnedClashVisibility(useViewerStore.getState());
   }, []);
 
   /** Build clash elements + merged exclusions from every loaded model. */
@@ -308,29 +268,31 @@ export function useClash() {
   /**
    * Drop any in-flight or already-applied intersection-solid presentation
    * before a detection flow replaces the clash result set. `focusClash`'s
-   * async solid compute is keyed to `solidRequestGuard`; without this, `run()`
-   * / `runDuplicates()` cleared `clashSelectedId` but left the guard token
-   * valid, so a compute that was still in flight for the OLD result set could
-   * resolve after the new run finished and repaint its stale mesh plus the
-   * full-model ghosting over results the user can no longer see the pair for
-   * (CodeRabbit #2574). Mirrors the teardown `clearHighlight` already does.
+   * async solid compute is invalidated by `clashSolidRequestSeq` (clashSlice),
+   * which `clearClashFocus()` below bumps — so this needs no separate guard
+   * call. Without this, `run()` / `runDuplicates()` cleared `clashSelectedId`
+   * but left the compute's request current, so a compute still in flight for
+   * the OLD result set could resolve after the new run finished and repaint its
+   * stale mesh plus the full-model ghosting over results the user can no longer
+   * see the pair for (CodeRabbit #2574). Mirrors the teardown `clearHighlight`
+   * already does.
    *
-   * Only CLASH-OWNED state is discarded: the solid, the pair colours, the
-   * contact markers, and the isolation/ghost presentation clash itself
-   * installed (via `releaseClashVisibility`). Isolation or ghosting another
-   * feature established (#2532 / #2531 / spaces X-ray) must survive a run
-   * start - the unconditional clears that shipped with #2574 destroyed a
-   * user's isolation before any clash result existed.
+   * Only CLASH-OWNED state is discarded: the focused-clash presentation (via
+   * `clearClashFocus`, the clash slice's single complete spelling of it) and
+   * the isolation/ghost presentation clash itself installed (via
+   * `releaseClashVisibility`). Isolation or ghosting another feature
+   * established (#2532 / #2531 / spaces X-ray) must survive a run start - the
+   * unconditional clears that shipped with #2574 destroyed a user's isolation
+   * before any clash result existed.
    */
   const discardSolidPresentation = useCallback((): void => {
     const state = useViewerStore.getState();
-    solidRequestGuard.current.begin();
-    state.clearClashSolid();
     releaseClashVisibility();
-    state.setClashHighlightColors(null);
+    // `clearClashFocus()` also nulls `clashSelectedId`, which both callers
+    // (`run` / `runDuplicates`) want: the new result set does not contain the
+    // old focused clash's id, and both clear it by hand right after this.
+    state.clearClashFocus();
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null);
-    state.setClashContactLines(null);
   }, [releaseClashVisibility]);
 
   const run = useCallback(
@@ -500,12 +462,14 @@ export function useClash() {
     else {
       // Full-context highlight clears both channels outright - the user asked
       // to see this pair against the WHOLE model, so any isolation would hide
-      // it (pre-#2574 contract, #1275). Clash then owns neither channel.
+      // it (pre-#2574 contract, #1275). Clash then owns neither channel, and
+      // says so: this is the disown a `clashSelectedId`-based gate could not
+      // see, and the reason a model removal used to destroy the ghost the NEXT
+      // owner installed (#2654 third review).
       const state = useViewerStore.getState();
       state.clearIsolation();
       state.clearGhost();
-      appliedIsolation.current = null;
-      appliedGhost.current = null;
+      state.setClashVisibilityOwned(null);
     }
   }, [installClashIsolation, installClashGhost]);
 
@@ -595,17 +559,23 @@ export function useClash() {
       // genuine grazing contacts below the kernel's snap resolution). The
       // synchronous contact-marker painting above is what the user sees the
       // instant they click; this only ever UPGRADES that view, asynchronously.
-      const mySolidToken = solidRequestGuard.current.begin();
+      //
+      // Staleness is checked against `clashSolidRequestSeq` (clashSlice), NOT
+      // a hook-private ref: `setClashSelectedId` just above already bumped it
+      // for this focus, so reading it now captures this request's identity.
+      // ANY later call to `setClashSelectedId` or `clearClashSolid` — from
+      // this hook, a tour cleanup, the Home reset, or any future teardown
+      // path nobody has written yet — bumps it again and this compute drops
+      // its result instead of painting over whatever came after it. That is
+      // the fix for the class of bug, not just the two reported call sites.
+      const mySolidRequestSeq = useViewerStore.getState().clashSolidRequestSeq;
       state.setClashSolidComputing();
       if (elA && elB) {
         computeClashIntersectionSolid(elA.positions, elA.indices, elB.positions, elB.indices)
           .then((result) => {
-            // Stale: the user moved to a different clash (or deselected)
-            // while this was in flight. Every teardown path (clearHighlight,
-            // clearAll, highlightAll, panel unmount, and the next focusClash)
-            // also calls `begin()`, so this is the one check that covers all
-            // of them without duplicating the guard at each site.
-            if (!solidRequestGuard.current.isCurrent(mySolidToken)) return;
+            // Stale: something reset the focused-clash presentation while this
+            // was in flight (see the comment above `mySolidRequestSeq`).
+            if (useViewerStore.getState().clashSolidRequestSeq !== mySolidRequestSeq) return;
             const s = useViewerStore.getState();
             if (result.isSolid) {
               s.setClashSolid({ positions: result.positions, indices: result.indices }, result.volumeM3);
@@ -654,7 +624,7 @@ export function useClash() {
             }
           })
           .catch(() => {
-            if (!solidRequestGuard.current.isCurrent(mySolidToken)) return;
+            if (useViewerStore.getState().clashSolidRequestSeq !== mySolidRequestSeq) return;
             useViewerStore.getState().setClashSolidUnavailable('compute-error', 0, 0);
           });
       } else {
@@ -685,9 +655,9 @@ export function useClash() {
       state.setPendingColorUpdates(one);
       state.setClashOverlapBox(null); state.setClashContactLines(null);
       // Single-element step-through has no PAIR to compute a solid for —
-      // supersede any in-flight compute from a prior focusClash and drop its
-      // solid so it can't paint over this one-element view.
-      solidRequestGuard.current.begin();
+      // `clearClashSolid()` bumps `clashSolidRequestSeq`, superseding any
+      // in-flight compute from a prior focusClash so it can't paint over
+      // this one-element view.
       state.clearClashSolid();
       applyFocusMode([el.ref], mode);
       requestAnimationFrame(() => state.cameraCallbacks.frameSelection?.());
@@ -722,7 +692,6 @@ export function useClash() {
     state.setClashHighlightColors(null);
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
     state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
     state.clearClashSolid();
   }, [refOf]);
 
@@ -731,15 +700,16 @@ export function useClash() {
     state.clearEntitySelection();
     state.clearIsolation(); // drop any clash isolation so the full model returns
     state.clearGhost(); // and any X-Ray ghosting
-    state.setClashHighlightColors(null);
+    // The whole focused-clash presentation in one call (tint, contact marker,
+    // solid, selected id, seq bump) — the clash slice owns that field list so
+    // no caller can clear a subset of it (#2654 review).
+    state.clearClashFocus();
     // Restore the colour-override channel to whatever owned it (an active lens),
     // or clear it — don't leave the clash A/B colours painted. (#1277 review)
+    // Not part of `clearClashFocus`: the override channel is another slice's,
+    // and only the caller knows what should own it next.
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
-    state.clearClashSolid();
-    setSelectedId(null);
-  }, [setSelectedId]);
+  }, []);
 
   /** Current review status of a clash ('open' when unreviewed). Reactive: reads
    *  the subscribed reviews map so the panel repaints on any review change. (#1468) */
@@ -926,12 +896,13 @@ export function useClash() {
     state.clearEntitySelection();
     state.clearIsolation();
     state.clearGhost();
-    // Drop the clash colour-override (restoring an active lens) + overlap box.
+    // Drop the clash colour-override (restoring an active lens). The contact
+    // marker, the tint and the solid are `clearClash`'s job — it spreads the
+    // same `CLASH_FOCUS_RESET` as `clearClashFocus` and bumps
+    // `clashSolidRequestSeq` — so listing them again here would be the second
+    // copy this refactor removes (#2654 review).
     state.setPendingColorUpdates(state.lensAppliedColors ?? new Map());
-    state.setClashOverlapBox(null); state.setClashContactLines(null);
-    solidRequestGuard.current.begin();
-    state.clearClashSolid();
-    clear();
+    clear(); // clearClash() also bumps clashSolidRequestSeq (clashSlice)
   }, [clear]);
 
   /**
@@ -940,9 +911,15 @@ export function useClash() {
    * isolation/colour state themselves and just need the async result, if it
    * lands after teardown, to be dropped instead of re-applying a solid + full-
    * model ghost onto a view the user has already left. Idempotent.
+   *
+   * Bumps `clashSolidRequestSeq` (clashSlice) directly — the same store field
+   * `setClashSelectedId` / `clearClashSolid` bump — rather than a hook-private
+   * ref, so this is no longer the only way to invalidate an in-flight compute;
+   * it now exists purely as an explicit "cancel without resetting anything
+   * else" convenience for a caller that already resets the other fields itself.
    */
   const invalidateSolidCompute = useCallback((): void => {
-    solidRequestGuard.current.begin();
+    useViewerStore.setState((s) => ({ clashSolidRequestSeq: s.clashSolidRequestSeq + 1 }));
   }, []);
 
   return {

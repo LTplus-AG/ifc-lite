@@ -389,6 +389,14 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # typecheck-tests.mjs writes the `extends` of every generated test
+      # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
+      # MODULE, so the base config is not found and the `noEmit` it carries
+      # silently stops applying -- a repo-root run then scattered 9,609
+      # untracked .js/.d.ts/.map files through the source tree (#2664 review).
+      # Nothing about that is visible in normal use, so it is pinned here.
+      - name: Check typecheck-tests extends resolution
+        run: node --test scripts/typecheck-tests.test.mjs
       # A test that reads its subject's SOURCE and asserts on the text passes
       # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
       # with the row handler unwired (#2396 verbatim). The harness that made
@@ -433,6 +441,36 @@ jobs:
       # comment-awareness rests on (a lone apostrophe once blinded it).
       - name: Check server-bin parity gate regressions
         run: node --test scripts/check-server-bin-targets.test.mjs scripts/lib/server-bin-targets-parse.test.mjs
+      # Unit tests for the branching check-unused-locals.mjs uses to decide
+      # "real violation" vs "does not compile" vs "cannot parse this output".
+      # A #2634 review found the fail-loud branch only engaged when the whole
+      # run was unparseable — a run with one recognised diagnostic and one
+      # unrecognised one silently dropped the unrecognised one instead of
+      # failing. Pinned here so that gap can't reopen unnoticed. The #2663
+      # review found the twin gap one level up: the exit status itself was
+      # never inspected, so an ENOBUFS-truncated or OOM-killed run handed the
+      # classifier a prefix that parsed cleanly into a confident undercount.
+      # untrustworthyExitReason is pinned in the same file.
+      - name: Check unused-locals output classification
+        run: node --test scripts/lib/unused-locals-classify.test.mjs
+      # check-lint-ran.mjs buffered oxlint's whole output, wrote it, then
+      # process.exit()'d. On a PIPE — every CI log — stdout is asynchronous, so
+      # the exit discarded most of the write: a 120k-line failing run reached
+      # the log as ~1k lines, cut mid-diagnostic, with no summary and no error
+      # line. A genuine eslint(no-control-regex) failure was diagnosed off such
+      # a log as "pre-existing warnings, not ours". A TTY or a file kept
+      # everything, so hand-testing never showed it — this drives the gate
+      # through a pipe and asserts the bytes that arrive.
+      - name: Check lint gate survives a piped stdout
+        run: node --test scripts/check-lint-ran.test.mjs
+      # The Release workflow runs ONLY on main, and only on an actual publish,
+      # so nothing on a PR ever read release-crates.mjs's publish ORDER. #2574
+      # added a versioned dev-dependency (ifc-lite-clash) to rust/geometry and
+      # it sat latent until the next release, where cargo refused to publish
+      # geometry ahead of clash — AFTER npm had already gone out, leaving
+      # crates.io behind npm. This makes that order a PR-visible gate.
+      - name: Check the crates publish order matches the dependency graph
+        run: node --test scripts/release-crates-order.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

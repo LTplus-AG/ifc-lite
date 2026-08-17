@@ -220,7 +220,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
               <NumberField value={clearance} step={0.01} min={0} onCommit={setClearance} suffix="m" />
             </SettingRow>
 
-            <SettingRow label="Duplicate tolerance" hint="How far apart (m) two elements may be and still count as the same object in the duplicate scan.">
+            <SettingRow label="Duplicate tolerance" hint="How far apart (m) two elements may be and still count as the same object in the duplicate scan. Capped by each element's own thickness: a 2 mm plate gets 2 mm across its thickness, not the full value.">
               <NumberField value={duplicateTolerance} step={0.001} min={0} onCommit={setDuplicateTolerance} suffix="m" />
             </SettingRow>
 

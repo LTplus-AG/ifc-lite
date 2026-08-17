@@ -16,6 +16,19 @@
  * So the file count is asserted, not assumed. If a future refactor moves the
  * source, renames a directory or breaks the config's globs, this fails loudly
  * instead of quietly going back to linting zero files.
+ *
+ * NOTHING in this file may call `process.exit()`. On a pipe — which is every
+ * CI log and every `pnpm lint | tee` — Node's stdout is asynchronous, and
+ * `process.exit()` tears the process down with the queued write still queued.
+ * oxlint's output is far larger than the pipe buffer, so the log stopped
+ * mid-diagnostic with no summary and no error line: a real
+ * `eslint(no-control-regex)` failure was read off such a log as "pre-existing
+ * warnings, not ours". Set `process.exitCode` and let the process end on its
+ * own instead; Node then drains stdout first, at any output size, on a pipe,
+ * a file or a TTY alike. `fs.writeSync(1, …)` would also flush, but fd 1 is
+ * non-blocking when it is a pipe, so a large enough write can throw EAGAIN —
+ * i.e. it regresses precisely as output grows, which is the direction this
+ * output only ever moves.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -48,7 +61,8 @@ const TARGETS = [
  *  unanchored first-match read report one file and fail a healthy run. */
 const SUMMARY_RE = /Finished in [^\n]*? on (\d[\d,]*) files with (\d+) rules/g;
 
-/** Run oxlint over one directory and return what it says it did. */
+/** Run oxlint over one directory and return what it says it did, or `null` if
+ *  the run cannot be trusted — the caller then stops with exit code 1. */
 function lint(dir) {
   // `pnpm exec` rather than `npx`: npx silently DOWNLOADS the latest oxlint when
   // the workspace copy is missing, so a broken install would lint with an
@@ -61,7 +75,7 @@ function lint(dir) {
 
   if (result.error) {
     console.error(`lint: could not run oxlint on ${dir}: ${result.error.message}`);
-    process.exit(1);
+    return null;
   }
 
   const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
@@ -70,7 +84,7 @@ function lint(dir) {
   const finished = [...output.matchAll(SUMMARY_RE)].at(-1);
   if (!finished) {
     console.error(`lint: oxlint printed no summary for ${dir}, so it is not clear it ran at all`);
-    process.exit(1);
+    return null;
   }
   return {
     files: Number(finished[1].replace(/,/g, '')),
@@ -79,31 +93,41 @@ function lint(dir) {
   };
 }
 
-let totalFiles = 0;
-let ruleCount = 0;
-let failed = 0;
-const short = [];
+/** Returns the exit code. Every path RETURNS it — see the header: an exit code
+ *  assigned to `process.exitCode` lets Node drain stdout, `process.exit()`
+ *  does not. */
+function main() {
+  let totalFiles = 0;
+  let ruleCount = 0;
+  let failed = 0;
+  const short = [];
 
-for (const { dir, min } of TARGETS) {
-  const { files, rules, status } = lint(dir);
-  totalFiles += files;
-  ruleCount = Math.max(ruleCount, rules);
-  if (status !== 0) failed = status;
-  if (files < min) short.push({ dir, files, min });
-  if (rules === 0) {
-    console.error(`lint: oxlint ran with zero rules enabled on ${dir}, so it checked nothing`);
-    process.exit(1);
+  for (const { dir, min } of TARGETS) {
+    const run = lint(dir);
+    if (run === null) return 1; // lint() has already said why
+    const { files, rules, status } = run;
+    totalFiles += files;
+    ruleCount = Math.max(ruleCount, rules);
+    if (status !== 0) failed = status;
+    if (files < min) short.push({ dir, files, min });
+    if (rules === 0) {
+      console.error(`lint: oxlint ran with zero rules enabled on ${dir}, so it checked nothing`);
+      return 1;
+    }
   }
+
+  if (short.length > 0) {
+    console.error('lint: a lint target shrank past its floor, which is how this gate goes');
+    console.error('      quiet — the config globs no longer match the source there:\n');
+    for (const { dir, files, min } of short) {
+      console.error(`      ${dir}: ${files} files (expected at least ${min})`);
+    }
+    return 1;
+  }
+
+  if (failed !== 0) return failed;
+  console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets, ${ruleCount} rules, no errors.`);
+  return 0;
 }
 
-if (short.length > 0) {
-  console.error('lint: a lint target shrank past its floor, which is how this gate goes');
-  console.error('      quiet — the config globs no longer match the source there:\n');
-  for (const { dir, files, min } of short) {
-    console.error(`      ${dir}: ${files} files (expected at least ${min})`);
-  }
-  process.exit(1);
-}
-
-if (failed !== 0) process.exit(failed);
-console.log(`lint: ${totalFiles.toLocaleString()} files across ${TARGETS.length} targets, ${ruleCount} rules, no errors.`);
+process.exitCode = main();

@@ -10,6 +10,23 @@ export class ClashIntersectionSolidJs {
     [Symbol.dispose](): void;
     /**
      * `""` when `isSolid`, otherwise one of:
+     * - `"malformed-operand"` — any of FOUR malformations, all rejected
+     *   before the boolean runs, because computing on them would silently
+     *   drop the offending triangle (or worse) rather than report the true
+     *   operand:
+     *   1. `positionsA`/`positionsB` is not a flat `[x, y, z, …]` triple
+     *      (length not a multiple of 3);
+     *   2. `indicesA`/`indicesB` has a length that is not a multiple of 3,
+     *      so it does not describe whole triangles;
+     *   3. `indicesA`/`indicesB` references a vertex past the end of its own
+     *      operand's positions;
+     *   4. a position is **non-finite** (NaN or infinity). This one is worth
+     *      calling out to callers: a NaN coordinate is caught by neither
+     *      length check, and left alone it can be absorbed into a
+     *      normal-looking answer or corrupt a face enough to report a
+     *      genuinely overlapping pair as `"no-overlap"`. So if you are
+     *      debugging an unexpected `"no-overlap"`, check your inputs for
+     *      NaN — it surfaces here, not there.
      * - `"empty-operand"` — an operand had no triangles.
      * - `"no-overlap"` — the exact intersection is empty. Covers a disjoint
      *   pair AND a *touching* pair, including any graze below the kernel's
@@ -74,6 +91,7 @@ export class ClashRunResult {
     readonly b: Uint32Array;
     readonly bounds: Float64Array;
     readonly distance: Float64Array;
+    readonly distanceKind: Uint8Array;
     readonly points: Float64Array;
     readonly status: Uint8Array;
 }
@@ -1838,6 +1856,7 @@ export interface InitOutput {
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
     readonly clashrunresult_distance: (a: number, b: number) => void;
+    readonly clashrunresult_distanceKind: (a: number, b: number) => void;
     readonly clashrunresult_points: (a: number, b: number) => void;
     readonly clashrunresult_status: (a: number, b: number) => void;
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;

@@ -10,9 +10,12 @@
 //! normal of this pair be?" — and the gate itself is the only caller.
 //!
 //! The short version, in full in [`gate_axes`]: the world axes are always in
-//! the set, and when both operands present a box frame the classical 15 OBB
-//! separating-axis candidates join them. Because the gate takes the MINIMUM
-//! extent over the set, adding an axis can only tighten it.
+//! the set, and every distinct face-normal direction of EACH operand joins
+//! them too — box-shaped or not — along with every pairwise cross product
+//! between an `a`-face axis and a `b`-face axis. For two boxes that reduces
+//! to the classical 15 OBB separating-axis candidates. Because the gate
+//! takes the MINIMUM extent over the set, adding an axis can only tighten
+//! it.
 
 use crate::mesh::Mesh;
 
@@ -137,19 +140,47 @@ fn face_normal(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> Option<[f64; 3]> {
     Some([cross[0] / cross_len, cross[1] / cross_len, cross[2] / cross_len])
 }
 
-/// The three mutually perpendicular face-normal directions of a box-shaped
-/// operand, or `None` when the mesh's faces do not fall into exactly three such
-/// families.
+/// Cap on distinct face-normal direction families collected per operand.
+/// `gate_axes` crosses every family of `a` against every family of `b`
+/// (`O(|families_a| · |families_b|)`), but this module runs on ONE selected
+/// clash pair at a time, never the detection sweep (`clash_solid` module
+/// docs, "On demand, never eager"), so a few thousand candidates cost
+/// nothing a user would notice. The cap only bounds the pathological case of
+/// a mesh with hundreds of mutually non-parallel triangle normals; an
+/// ordinary `n`-gon extrusion contributes at most `n + 2` families, and 64
+/// covers a 62-gon — finer than any real IFC profile tessellation.
 ///
-/// This is the *direction* half of the sibling PR's `detect_obb` and nothing
-/// more: the gate below needs candidate contact normals, not a certified box,
-/// so the offset-plane and positive-extent checks that `detect_obb` performs to
-/// justify a *penetration depth* are not needed here — an operand whose faces
-/// span three orthogonal directions contributes exactly those three candidate
-/// normals whether or not it is a closed rectangular box, and a wrong guess
-/// costs nothing but a redundant axis (see `gate_axes`).
-fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
-    let mut groups: Vec<[f64; 3]> = Vec::with_capacity(3);
+/// The direction of error when the cap DOES bite, stated plainly because the
+/// rest of this module is careful about it: truncating drops candidate axes,
+/// and a dropped axis can only make the gate find LESS separation, so a
+/// contact it would otherwise withhold can be admitted. That is the unsafe
+/// direction — the opposite of the "gate-tightening only" property the
+/// generalisation otherwise has.
+///
+/// It is nonetheless a strict improvement on every input, because the
+/// alternative is not an uncapped scan: before this, `gate_axes` fell back to
+/// the three WORLD axes for any operand that was not a perfect box (its own
+/// doc called that "conservative, not correct"). A tessellated cylinder went
+/// from 3 candidate axes to at least 64 per operand plus their crosses. So
+/// the cap leaves the generalisation incomplete for meshes with more than 64
+/// distinct normal families — a tessellated dome or a swept curved BREP, not
+/// a profile extrusion — rather than making anything worse than it was.
+const MAX_FACE_FAMILIES: usize = 64;
+
+/// The distinct face-normal direction families of `m`: one canonical unit
+/// direction per group of mutually-parallel (within `ORTHO_EPS`) triangle
+/// face normals, in first-seen order, capped at `MAX_FACE_FAMILIES`.
+///
+/// Unlike a box-frame detector, this makes NO claim the families are
+/// mutually perpendicular or that there are exactly three — it works for ANY
+/// polyhedral mesh, box-shaped or not. A flat face is a legitimate candidate
+/// contact-normal direction whether or not the rest of the mesh forms a
+/// rectangular box: a chamfered beam end, a mitred pipe joint or an
+/// arbitrary extruded profile still has flat faces, and the true contact
+/// normal of a planar touch between two polyhedra is parallel to one of
+/// those faces (see `gate_axes`).
+fn face_axis_families(m: &Mesh) -> Vec<[f64; 3]> {
+    let mut groups: Vec<[f64; 3]> = Vec::new();
     let vert = |i: u32| -> [f64; 3] {
         let o = (i as usize) * 3;
         [
@@ -159,6 +190,9 @@ fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
         ]
     };
     for t in m.indices.chunks_exact(3) {
+        if groups.len() >= MAX_FACE_FAMILIES {
+            break;
+        }
         let (a, b, c) = (vert(t[0]), vert(t[1]), vert(t[2]));
         let n = match face_normal(a, b, c) {
             Some(n) => n,
@@ -170,11 +204,20 @@ fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
         if groups.iter().any(|g| dot3(*g, cn) > 1.0 - ORTHO_EPS) {
             continue;
         }
-        if groups.len() >= 3 {
-            return None; // a fourth direction family: not a box frame
-        }
         groups.push(cn);
     }
+    groups
+}
+
+/// The three mutually perpendicular face-normal directions of a box-shaped
+/// operand, or `None` when the mesh's faces do not fall into exactly three
+/// such families. A special case of [`face_axis_families`] (exactly 3
+/// families, mutually orthogonal); kept `cfg(test)` for the box-specific
+/// unit tests below, its only remaining caller — `gate_axes` calls the more
+/// general function directly.
+#[cfg(test)]
+fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
+    let groups = face_axis_families(m);
     if groups.len() != 3 {
         return None;
     }
@@ -190,30 +233,38 @@ fn orthogonal_face_axes(m: &Mesh) -> Option<[[f64; 3]; 3]> {
 
 /// Unit directions the thickness is measured along.
 ///
-/// Always the three world axes — that is the historical behaviour and it is the
-/// floor, never the ceiling: the thickness below is the MINIMUM extent over
-/// this set, so every extra axis can only *lower* the measured thickness and
-/// therefore only ever tightens the gate. Adding an axis can withhold a solid
-/// that used to be returned; it can never admit one that used to be withheld.
+/// Always the three world axes — the historical behaviour, and the floor,
+/// never the ceiling: thickness is the MINIMUM extent over this set, so
+/// every extra axis can only *lower* it and therefore only tighten the gate.
+/// An added axis can withhold a solid that used to be returned; it can never
+/// admit one that used to be withheld.
 ///
-/// When BOTH operands present a box frame, the set also carries the classical
-/// 15 OBB separating-axis candidates (each operand's three face normals plus
-/// their nine pairwise cross products). The true contact normal of a box-box
-/// overlap is one of those 15 — analytically, from the operands' own face
-/// planes — so for a rotated contact the minimum lands on the real penetration
-/// direction instead of on whichever world axis the wedge happens to be
-/// thinnest along.
+/// The set also carries EVERY distinct face-normal direction
+/// ([`face_axis_families`]) of each operand, box-shaped or not, plus every
+/// pairwise cross product between an `a`-family axis and a `b`-family axis.
+/// For two boxes this reduces to the classical 15 OBB separating-axis
+/// candidates the #2573 review's box-box fix introduced. For a non-box
+/// operand — a chamfered beam end, a mitred pipe joint, an arbitrary profile
+/// — it is the direct generalisation: that operand's own flat faces are
+/// still legitimate candidate contact-normal directions, since the true
+/// contact normal of a planar touch between two polyhedra is parallel to a
+/// face of at least one of them. That closes the review's finding: a box vs.
+/// a corner-chamfering tetrahedron now includes the tetrahedron's own
+/// cut-face normal, not just the world axes.
 ///
-/// For a non-box operand the set stays the three world axes. That is
-/// **conservative, not correct**: a rotated contact between two general meshes
-/// is still measured against the world frame and its thickness can still be
-/// overstated. Closing that needs a real contact-normal estimator over the
-/// original operand faces; this function deliberately does not improvise one.
+/// Not a completeness guarantee for every contact — a genuinely curved
+/// touch, or a true normal that is a cross product of edge directions no
+/// face here exposes, is not derivable this way — so the blind spot is
+/// narrowed, not eliminated. But an extra axis can only tighten the gate,
+/// never certify a shallow contact as thick; where the true normal is not
+/// among these candidates the world-axis floor still applies the module's
+/// trust threshold, just without certainty the measured extent is the true
+/// minimum. There is no cheaper analytic candidate left to add without
+/// inventing a depth.
 pub(crate) fn gate_axes(a: &Mesh, b: &Mesh) -> Vec<[f64; 3]> {
     let mut axes: Vec<[f64; 3]> = vec![[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-    let (Some(fa), Some(fb)) = (orthogonal_face_axes(a), orthogonal_face_axes(b)) else {
-        return axes;
-    };
+    let fa = face_axis_families(a);
+    let fb = face_axis_families(b);
     axes.extend_from_slice(&fa);
     axes.extend_from_slice(&fb);
     for u in &fa {
@@ -228,152 +279,5 @@ pub(crate) fn gate_axes(a: &Mesh, b: &Mesh) -> Vec<[f64; 3]> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A closed axis-aligned box, 12 triangles over 8 vertices, centered at
-    /// `center` with half-extents `half`. Winding is not made consistent
-    /// (mixed CW/CCW across faces) because `orthogonal_face_axes` canonicalizes
-    /// every normal before grouping, so the sign of a raw cross product never
-    /// matters here — only its direction family.
-    fn box_mesh(center: [f64; 3], half: [f64; 3]) -> Mesh {
-        let (cx, cy, cz) = (center[0], center[1], center[2]);
-        let (hx, hy, hz) = (half[0], half[1], half[2]);
-        let verts: [[f64; 3]; 8] = [
-            [cx - hx, cy - hy, cz - hz],
-            [cx + hx, cy - hy, cz - hz],
-            [cx + hx, cy + hy, cz - hz],
-            [cx - hx, cy + hy, cz - hz],
-            [cx - hx, cy - hy, cz + hz],
-            [cx + hx, cy - hy, cz + hz],
-            [cx + hx, cy + hy, cz + hz],
-            [cx - hx, cy + hy, cz + hz],
-        ];
-        let mut m = Mesh::new();
-        for v in verts {
-            m.positions.push(v[0] as f32);
-            m.positions.push(v[1] as f32);
-            m.positions.push(v[2] as f32);
-        }
-        m.indices = vec![
-            0, 1, 2, 0, 2, 3, // -z
-            4, 5, 6, 4, 6, 7, // +z
-            0, 1, 5, 0, 5, 4, // -y
-            3, 2, 6, 3, 6, 7, // +y
-            0, 4, 7, 0, 7, 3, // -x
-            1, 5, 6, 1, 6, 2, // +x
-        ];
-        m
-    }
-
-    /// Append an extra, non-degenerate but numerically-thin "sliver" triangle
-    /// to `m`: three points that are almost — but not exactly — collinear
-    /// (`c` sits 0.001 off being exactly `a + 2*(b - a)`). Its cross-product
-    /// magnitude (~4.2e-3, asserted in `sliver_fixture_is_actually_a_sliver`
-    /// below) is small only *relative to its own edge lengths*: sin θ ≈
-    /// 7.9e-5, well under [`MIN_SIN_THETA`], while its raw magnitude is far
-    /// above the old `AXIS_EPS = 1e-6` absolute cutoff — the fixture is
-    /// deliberately NOT a small-magnitude edge case, so it isolates the
-    /// relative-vs-absolute distinction the fix makes. `a`, `b`, `c` sit at
-    /// ordinary building-scale coordinates (tens of metres), not near the
-    /// origin, so this is not a small-operand effect — it is a stray sliver
-    /// triangle incidentally present in an otherwise ordinary mesh (the kind
-    /// a tessellator can emit alongside real box faces).
-    fn push_sliver_triangle(m: &mut Mesh) {
-        let a = [50.0_f64, 60.0, 12.5];
-        let b = [53.0_f64, 63.0, 15.5]; // a + (3, 3, 3)
-        let c = [56.0_f64, 66.0, 18.501]; // a + (6, 6, 6.001): nearly 2*(b-a)
-        let base = (m.positions.len() / 3) as u32;
-        for v in [a, b, c] {
-            m.positions.push(v[0] as f32);
-            m.positions.push(v[1] as f32);
-            m.positions.push(v[2] as f32);
-        }
-        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
-    }
-
-    /// Sanity check on the fixture itself: the sliver triangle's sin θ and
-    /// cross-product magnitude really do land in the ranges the doc comments
-    /// claim, so the two tests below are exercising the intended regime.
-    #[test]
-    fn sliver_fixture_is_actually_a_sliver() {
-        let a = [50.0_f64, 60.0, 12.5];
-        let b = [53.0_f64, 63.0, 15.5];
-        let c = [56.0_f64, 66.0, 18.501];
-        let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-        let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-        let cross = cross3(e1, e2);
-        let cross_len = dot3(cross, cross).sqrt();
-        let sin_theta = cross_len / (dot3(e1, e1).sqrt() * dot3(e2, e2).sqrt());
-        assert!(
-            cross_len > 0.0 && cross_len < 1e-2,
-            "cross magnitude out of the intended sliver range: {cross_len}"
-        );
-        assert!(
-            sin_theta < MIN_SIN_THETA,
-            "sin theta {sin_theta} is not below MIN_SIN_THETA — fixture is not a sliver"
-        );
-        assert!(
-            face_normal(a, b, c).is_none(),
-            "face_normal should reject this sliver"
-        );
-    }
-
-    /// A box with sub-millimetre edges must still yield 3 orthogonal face
-    /// axes. This is exactly what the original `AXIS_EPS = 1e-6` absolute
-    /// threshold on the cross-product magnitude broke: a 0.4 mm half-extent
-    /// box's corner triangles have cross-product magnitude ~1.6e-7, under
-    /// that fixed cutoff, so every face normal was dropped and
-    /// `orthogonal_face_axes` fell back to `None`. The sin-θ based test in
-    /// `face_normal` is scale-free — a right-angle corner has sin θ = 1
-    /// regardless of the operand's absolute size — so this must return
-    /// `Some` with 3 mutually perpendicular axes.
-    #[test]
-    fn small_box_yields_three_orthogonal_axes() {
-        let m = box_mesh([0.0, 0.0, 0.0], [0.0002, 0.0002, 0.0002]);
-        let axes = orthogonal_face_axes(&m);
-        assert!(
-            axes.is_some(),
-            "sub-millimetre box should still yield 3 orthogonal face axes"
-        );
-        let axes = axes.unwrap();
-        for i in 0..3 {
-            for j in (i + 1)..3 {
-                assert!(
-                    dot3(axes[i], axes[j]).abs() <= ORTHO_EPS,
-                    "axes {i} and {j} are not orthogonal: dot = {}",
-                    dot3(axes[i], axes[j])
-                );
-            }
-        }
-    }
-
-    /// An ordinary (building-scale, non-degenerate) box mesh that also
-    /// happens to carry one incidental near-degenerate sliver triangle must
-    /// still yield the box's 3 real orthogonal face axes — the sliver must
-    /// be excluded, not counted as a spurious 4th direction family. This is
-    /// exactly what the threshold-free `normalize3` (checking only
-    /// zero-length/non-finite) got wrong: the sliver's direction is
-    /// finite and nonzero, so it passed through and `orthogonal_face_axes`
-    /// saw 4 families and returned `None` for a mesh that should qualify.
-    #[test]
-    fn sliver_triangle_does_not_displace_real_box_axes() {
-        let mut m = box_mesh([1000.0, 500.0, 20.0], [2.0, 1.5, 1.0]);
-        push_sliver_triangle(&mut m);
-        let axes = orthogonal_face_axes(&m);
-        assert!(
-            axes.is_some(),
-            "an incidental sliver triangle must not turn a valid box mesh into None"
-        );
-        let axes = axes.unwrap();
-        for i in 0..3 {
-            for j in (i + 1)..3 {
-                assert!(
-                    dot3(axes[i], axes[j]).abs() <= ORTHO_EPS,
-                    "axes {i} and {j} are not orthogonal: dot = {}",
-                    dot3(axes[i], axes[j])
-                );
-            }
-        }
-    }
-}
+#[path = "clash_contact_axes_tests.rs"]
+mod tests;

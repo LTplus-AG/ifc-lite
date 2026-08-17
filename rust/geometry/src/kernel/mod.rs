@@ -28,6 +28,7 @@ pub mod interval;
 pub mod manifest;
 pub mod mesh_bridge;
 pub mod mesh_volume;
+pub(crate) mod near_band;
 pub mod predicates;
 pub mod rational;
 pub(crate) mod signed_volume;

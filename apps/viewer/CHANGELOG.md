@@ -1,5 +1,104 @@
 # @ifc-lite/viewer
 
+## 1.35.0
+
+### Minor Changes
+
+- [#2535](https://github.com/LTplus-AG/ifc-lite/pull/2535) [`e5acbb2`](https://github.com/LTplus-AG/ifc-lite/commit/e5acbb2589628d7e9f8a9d640c4b82d11f510929) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Surface the existing spatial clash grouping (`groupClashes({ by: 'cluster' })`, already used for BCF export) in the Clash panel's results list itself. Previously the panel only ever listed raw element pairs, so a model where several nearby pairs are really one coordination problem (e.g. a cluster of beam clashes at a single connection) read as many rows instead of one issue.
+
+  The panel now shows a "Pairs" / "Issues" toggle plus an issue count next to the pair total. In the Issues view, results are grouped by spatial proximity (default cluster radius 1.5 m, adjustable in Clash settings' existing "Cluster radius" field); each group is expandable to the individual pairs it contains — nothing is hidden, only re-organized.
+
+- [#2641](https://github.com/LTplus-AG/ifc-lite/pull/2641) [`743d4db`](https://github.com/LTplus-AG/ifc-lite/commit/743d4db5396447317999032b024e31491630d129) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a multi-click polyline measurement mode to the Measure tool, alongside the existing drag-to-measure distance gesture.
+
+  A new "Polyline" toggle in the Measure panel switches the tool from the original drag (A to B) gesture to accumulating points via successive clicks. Double-click or Enter finishes the sequence as an open polyline (reports the sum-of-segments length); clicking back near the first point (once at least 3 points are placed) closes it into a loop instead, reporting the perimeter (the same sum plus the closing segment). Escape cancels an in-progress sequence without recording anything. The panel always prints which basis a number was computed under ("Length" vs. "Perimeter (closed)") rather than leaving it implicit.
+
+  The two gestures are mutually exclusive by construction: switching modes cancels whichever gesture was in progress in the mode being left (`setMeasureMode` in `measurementSlice.ts`), and polyline mode never starts a drag measurement (`shouldStartDragMeasurement` gates `mousedown` in `useMouseControls.ts`) — the original drag-to-measure flow is unchanged.
+
+  This is the first consumer of the mode; distances continue to route through the existing `formatDistance`/`resolveQuantityDisplay` unit-display path, honouring the same `unitDisplayOverrides`. Neither toolbar hosts any of this UI — it lives entirely in the shared Measure panel, per the existing `measure-parity.test.tsx` guard.
+
+  Deliberately out of scope for this change: free-polygon/rectangle area, three-point angle, minimum distance, diameter/radius, and circle-centre snapping — each still needs either mesh analysis reachable from TypeScript or its own interaction beyond the polyline primitive shipped here.
+
+- [#2675](https://github.com/LTplus-AG/ifc-lite/pull/2675) [`aea7c6b`](https://github.com/LTplus-AG/ifc-lite/commit/aea7c6b08f1f3bc5577ff190f3ec594403d64cd2) Thanks [@louistrue](https://github.com/louistrue)! - Clash exclusions: mark an overlap as by design and stop it counting.
+
+  A coordinator can exclude a whole IFC type pair, a one-sided type rule that
+  excludes every clash involving one type regardless of what it meets, or one
+  specific element pair. Each rule shows how many clashes it is hiding, and rules
+  can be disabled or removed. They persist in local storage and apply to the last
+  run without re-detecting.
+
+  This note exists because the feature shipped in [#2535](https://github.com/LTplus-AG/ifc-lite/issues/2535) under a changeset that
+  named only `@ifc-lite/clash`. Consuming a changeset deletes it, so the
+  viewer-facing description of a viewer feature would otherwise have been lost
+  from `apps/viewer/CHANGELOG.md` permanently rather than merely delayed.
+
+### Patch Changes
+
+- [#2654](https://github.com/LTplus-AG/ifc-lite/pull/2654) [`6b1b5a2`](https://github.com/LTplus-AG/ifc-lite/commit/6b1b5a23e72b998b242b3443c5d7ff453c2d6305) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an orphaned clash intersection-solid render surviving the clash tour and Home / "Show all".
+
+  `focusClash` (`apps/viewer/src/hooks/useClash.ts`) computes the true intersection solid for a focused clash pair asynchronously, ghosts the whole model, and draws the solid opaque. The in-flight compute was staled out by `solidRequestGuard`, a `useRef` private to one `useClash()` hook instance — no code outside that hook's own callbacks could ever invalidate it.
+
+  Two teardown paths reset the same fields `useClash.clearHighlight()` resets (selection, isolation, ghost, pair colours, the contact overlay, `clashSelectedId`) directly against the store, written before the on-demand solid feature landed:
+
+  - the clash tour's "zoom-to-clash" step cleanup (`apps/viewer/src/lib/tours/tours/clash.ts`)
+  - the Home / "Show all" reset, `resetVisibilityForHomeFromStore` (`apps/viewer/src/store/homeView.ts`)
+
+  Neither called anything that could invalidate the guard, so running the clash tour to completion, or clicking Home / "Show all", while a clash solid was showing (or its compute was still in flight) left an orphaned opaque intersection-solid mesh rendering with nothing selected and no clash focused — or let a since-superseded compute land afterward and reapply the full-model ghost the user had just cleared.
+
+  Rather than adding `clearClashSolid()` calls at these two sites (which would leave the same gap for the next teardown path that forgets to), the invalidation now lives in the clash store slice itself: `setClashSelectedId`, `clearClashSolid` and `clearClash` (`apps/viewer/src/store/slices/clashSlice.ts`) all reset the solid presentation and bump a new `clashSolidRequestSeq` counter. `focusClash`'s async compute checks that counter instead of a private ref, so any code path that changes or clears the focused **clash** — including ones not written yet — invalidates an in-flight solid compute by construction. `Viewport.tsx` additionally gates the solid draw on `clashSelectedId !== null` as defence in depth.
+
+  That "by construction" property covers clash-_focus_ teardown. The paths that replace or unload the **model** the presentation belongs to are a separate, pre-existing gap and touched no clash field at all, so a resolved solid and a non-null `clashSelectedId` both survived them — which meant the render gate passed too, and the previous model's solid was eligible to be re-pushed into the new scene when the renderer re-initialised. All three now route through the same store invalidation:
+
+  - `resetViewerState()` (`apps/viewer/src/store/index.ts`), the primary-file "open another model" reset. Same stale-model-reference class as the `compareResult` / `zoneAssignments` / `searchIndexes` drops beside it — a clash result is keyed by `model:expressId` pairs from the outgoing model, and an IFCX recomposition reassigns expressIds outright.
+  - `clearAllModels()` (`apps/viewer/src/store/slices/modelSlice.ts`): a full federation teardown leaves nothing for a solid to be drawn against.
+  - `removeModel()` drops the focused-clash **presentation** but keeps the clash **result**: the result is a list the user is reading, while the solid is a mesh in the live scene whose model set just changed under it.
+
+  Clash presets and settings are workspace preferences and survive all three, as they do everywhere else `clearClash` is called.
+
+  The solid is not the only thing `focusClash` draws, though, and the same "one decision, several spellings" shape produced a second ghost. Ending a clash focus means clearing the A/B pair tint, the contact marker (`clashContactLines`, or the `clashOverlapBox` AABB fallback) and the solid — but that field list was written out by hand in seven callers, and they had drifted to different subsets. `Viewport.tsx` draws the contact marker from an effect keyed on `[clashOverlapBox, clashContactLines, showClashRegionBox]` alone — it reads neither `clashSelectedId` nor `clashSolidStatus` — so a teardown that cleared only the solid and the selected id did not retract the wireframe. Two callers had that bug:
+
+  - `removeModel()` left the contact outline drawn in world space over models that had just been unloaded.
+  - `ClashPanel`'s unmount cleanup cleared `clashOverlapBox` but not `clashContactLines`, which is the field that carries the marker in the common case: `focusClash` prefers the real contact interface and nulls the box when it can build one. Closing the panel on such a clash left its outline behind.
+
+  Both are fixed by making the field list exist once. `clearClashFocus()` (`apps/viewer/src/store/slices/clashSlice.ts`) is now the single complete spelling of "stop drawing the focused clash" — tint, marker, solid, selected id and the `clashSolidRequestSeq` bump — and `clearClash` composes the same shared constant, so the two cannot drift. Every teardown path (`removeModel`, `ClashPanel`'s unmount, the clash tour cleanup, Home / "Show all", `useClash`'s `clearHighlight` / `clearAll` / pre-run discard) calls it instead of listing fields, so a teardown path added later is complete by construction rather than by remembering.
+
+  The clash-slice fields are not the whole presentation, though. `focusClash` writes two more channels that no clash action can reach, and the model-lifecycle paths were leaving both behind:
+
+  - The shared **visibility** channels (`ghostExceptEntities` / `isolatedEntities`, `visibilitySlice`). `focusClash` writes exactly one of them per focus: `isolate` hides everything but the pair (one click from every panel row), `ghost` fades the pair's context, and the resolved-solid path ghosts the _entire_ model (`installClashGhost(new Set())`) so nothing opaque buries the overlap. Focus a clash in a federated session, then remove the model it belongs to: the solid, the marker and the selected id all went, while every surviving model stayed translucent — or, in isolate mode, invisible — with nothing selected and no way to tell why.
+  - The **colour-override** channel (`pendingColorUpdates`, `dataSlice`). `clashHighlightColors` is only a record of the A/B tint; the albedo override the user actually sees is pushed separately into a fire-and-forget effect (`useGeometryStreaming.ts` → `scene.setColorOverrides`) that is undone only by a _later_ push. Clearing the record left the amber/cyan pair painted on the models that survived, and kept lens colouring suppressed with it. Every user-initiated end of a focus already ends with `setPendingColorUpdates(lensAppliedColors ?? new Map())` for exactly this reason.
+
+  `removeModel()`, `clearAllModels()` and `resetViewerState()` now end all three channels through one helper, `endClashScenePresentation` (`apps/viewer/src/lib/clash/visibility-ownership.ts`), so a fourth model-lifecycle teardown is complete by construction rather than by remembering. `resetViewerState` was the odd one out: it set `pendingColorUpdates: null`, and `null` is a **no-op** in the effect that owns that channel — only a non-null _empty_ map reaches `scene.clearColorOverrides()` — so the outgoing file's pair tint stayed pushed at the renderer across a model switch.
+
+  The two shared channels are released **by ownership, not unconditionally** — they have several owners besides clash (`LayerDiffView`, Space Sketch's ghost preview, "Isolate in 3D", IDS/BCF isolation, and `syncSourceModel`'s post-removal purge), and the last is a hard contract: `syncSourceModel` calls `removeModel` one line before `purgeStaleEntityState`, which deliberately _keeps_ the part of the user's X-ray or isolation still owned by a surviving model and drops only the ids burned with the replaced one. An unconditional clear would make that filter dead code on its only production path, so "Sync from source" would silently wipe the user's X-ray.
+
+  Clash's ownership record therefore moved out of `useClash` and into the store, as `clashVisibilityOwned` on the clash slice — the channel it installed into plus the exact content it installed. It is written by the two install helpers, dropped by `applyFocusMode`'s `highlight` branch (which clears both channels and owns neither afterwards), and read by one shared predicate, `releaseOwnedClashVisibility`, which releases a channel only while it still content-matches the record. Both `useClash`'s run-start discard and every model-lifecycle teardown call that one predicate over that one record, so there is no hook-private copy left for the store's view to diverge from. It is the same shape as the lens slice's `lensRuleIsolation` / `lensAppliedHiddenIds`, which record lens ownership of these same channels in the store for the same reason.
+
+  An earlier revision of this fix inferred ownership at the store level from `clashSelectedId` instead, because the record was unreachable there. That inference is wrong in both directions, and both are now covered by tests driving the real hook: `applyFocusMode`'s `highlight` mode — the panel's default row click — leaves a clash _selected_ while owning neither channel, so an unrelated model removal destroyed the ghost the next owner installed (on the `syncSourceModel` path, the original regression above); and `selectElement` — the chevron expand and the per-side button — installs a non-empty clash isolation and never writes `clashSelectedId`, so that isolation survived the removal and `isEntityVisible` returned false for everything.
+
+  The colour channel has no ownership record of its own, so it is released on the two facts that do mean clash painted: a recorded pair tint (`clashHighlightColors`, written only by clash), or a visibility release that verifiably succeeded. An unrelated model removal therefore cannot switch off Pset / IDS / schedule colouring clash never took. A full teardown (`clearAllModels` / `resetViewerState`) clears all three outright and releases the colour channel to an _empty_ map rather than replaying `lensAppliedColors`: those overrides are keyed by the outgoing models' global ids.
+
+  This is also why the visibility **channels** stay out of the clash slice's shared `CLASH_FOCUS_RESET` constant, even though that is where the rest of the field list lives: `clearClashFocus()` is also called at run start, where the release must be ownership-aware so a user's own X-ray survives pressing Run.
+
+  The ownership **record** is a different thing, and leaving it out of that constant left one residual hole. `releaseOwnedClashVisibility` and `applyFocusMode`'s `highlight` branch were the only two places that dropped it, so every path that clears both channels _by hand_ — `useClash.clearHighlight` / `clearAll`, `ClashPanel`'s unmount, the clash tour cleanup, Home / "Show all" — ended the focus while leaving the record standing. Because ownership is tested by **value**, that stale record goes matching → cleared → _matching again_ the moment any other owner installs a set with equal content: focus a clash in ghost mode, clear the highlight, let the spaces X-ray ghost the same two elements, then remove an unrelated model, and that owner's ghost was destroyed — "Sync from source wipes the user's X-ray" all over again, by a narrower route. `clashVisibilityOwned` is therefore now a member of `CLASH_FOCUS_RESET` itself: every one of those paths already routes through `clearClashFocus()` / `clearClash()`, so ending the focus ends the claim by construction rather than by each caller remembering to.
+
+  That only works in one order. Since the clash clear now nulls the record, the release must run **before** it; released afterwards, the predicate reads `null`, finds nothing to release, and leaves clash's own ghost or isolation standing over a scene whose models just changed — the originally reported bug, reopened. `endClashScenePresentation` is ordered accordingly (sample the paint fact, release the visibility channels, then clear the focus), as `useClash.discardSolidPresentation` already was. The order is also self-enforcing rather than merely documented: each step re-reads the store instead of sharing one snapshot, so a reordering cannot hide behind a stale read — it fails eight tests across three files.
+
+  `removeModel()` is now also a genuine no-op for an id that is not loaded, matching `updateModel`. `syncSourceModel` and the collab room teardown can both re-enter with an already-removed id, and every other cleanup in `removeModel` is keyed to that model — but the clash teardown is not, so a stale id used to drop the user's focused clash as the side effect of a removal that removed nothing.
+
+  One known gap remains, pre-existing and out of scope here: `useClash.run()` writes its result without a staleness check, so a run that finishes _after_ `clearAllModels()` can repopulate `clashResult` with pairs from models that are no longer loaded. The teardown paths themselves are complete; that race is a separate defect on the write side.
+
+- [#2641](https://github.com/LTplus-AG/ifc-lite/pull/2641) [`743d4db`](https://github.com/LTplus-AG/ifc-lite/commit/743d4db5396447317999032b024e31491630d129) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix three defects in the multi-click polyline measurement mode found by adversarial review:
+
+  - Switching away from the Measure tool with a polyline sequence in progress (or a drag mid-flight) no longer strands it. `setActiveTool` now clears the in-progress gesture whenever it leaves `'measure'` — the only way `MeasureOverlay` ever unmounts, since it is gated purely on `activeTool === 'measure'`. Switching back to Measure always starts clean.
+  - Finishing a polyline with a physical double-click no longer appends a spurious near-duplicate vertex. Browsers dispatch `click, click, dblclick` for one gesture; `finishPolyline` now drops a trailing point that lands within a couple CSS px of the previous one before validating/recording, the same fix `SpaceSketchOverlay`'s polygon tool already applies to its own double-click-to-close gesture. That duplicate check is scoped to the double-click gesture alone: the screen coordinates it compares are reprojected on every camera move, so running it on the Enter or close-loop-click paths deleted genuinely distinct vertices that happened to line up after an orbit and reported a short length with nothing on screen to say so.
+  - Pressing Enter (or double-clicking) on a 1-point sequence — too few points to finish — now shows an error toast instead of doing nothing silently. The sequence is left in progress rather than cancelled, matching how the AddElement polygon tool handles the same too-few-points case.
+
+- Updated dependencies [[`90d5b35`](https://github.com/LTplus-AG/ifc-lite/commit/90d5b3563c7732c674dfd4890ab94d201b83db3d), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39), [`33eb685`](https://github.com/LTplus-AG/ifc-lite/commit/33eb685de6c1578727587d87af5c3cd4a30a4122), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39), [`33eb685`](https://github.com/LTplus-AG/ifc-lite/commit/33eb685de6c1578727587d87af5c3cd4a30a4122), [`e5acbb2`](https://github.com/LTplus-AG/ifc-lite/commit/e5acbb2589628d7e9f8a9d640c4b82d11f510929), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39), [`2421442`](https://github.com/LTplus-AG/ifc-lite/commit/2421442363c5adf39d9405bf7a0e16b72adc73d1), [`2297fa9`](https://github.com/LTplus-AG/ifc-lite/commit/2297fa9ceeda69d754d77b83aba86152e2dee02b), [`3dd3dd4`](https://github.com/LTplus-AG/ifc-lite/commit/3dd3dd41c50f027b705b3a3b04c72f3aea66c0df), [`f5c96c5`](https://github.com/LTplus-AG/ifc-lite/commit/f5c96c581eebfcc627be96de0670c9540b61623f), [`1419b86`](https://github.com/LTplus-AG/ifc-lite/commit/1419b86206d7bc10c6f80ff6d2c33eb5958466dc), [`4a0897c`](https://github.com/LTplus-AG/ifc-lite/commit/4a0897cd5ebcfb9f0f79dc181d243bd618853a3a), [`cc8cfcf`](https://github.com/LTplus-AG/ifc-lite/commit/cc8cfcf426b02bd999aa37e0fa12ca2ff3ee18de), [`79503d3`](https://github.com/LTplus-AG/ifc-lite/commit/79503d3346c6c383c831b08ecaab94c6da13192d), [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39)]:
+  - @ifc-lite/clash@1.8.0
+  - @ifc-lite/wasm@4.7.0
+  - @ifc-lite/create@2.1.1
+  - @ifc-lite/renderer@1.48.1
+  - @ifc-lite/export@2.9.3
+
 ## 1.34.0
 
 ### Minor Changes

@@ -130,11 +130,24 @@ function buildRules(args: string[], mode: ClashMode, tolerance: number | undefin
   return [rule];
 }
 
-function formatClashRow(clash: Clash): string {
+/**
+ * One clash as a human-readable row.
+ *
+ * A penetration whose `distanceKind` is `'estimate'` was read off the element
+ * AABBs, not measured on the meshes, so it is printed as an approximation and
+ * labelled. Calling it a flat "penetration" is the overclaim this label exists
+ * to stop: for stacked layers that number is a box dimension, and it can equal
+ * an element's own thickness. Exported for direct unit testing.
+ */
+export function formatClashRow(clash: Clash): string {
   const aName = clash.a.name ? `${clash.a.tag} "${clash.a.name}"` : clash.a.tag;
   const bName = clash.b.name ? `${clash.b.tag} "${clash.b.name}"` : clash.b.tag;
+  // Absent `distanceKind` means "unknown provenance" (a clash rehydrated from
+  // a pre-label run, or a producer that has not been updated yet), never
+  // "measured" — so only an explicit 'mesh' renders unqualified.
+  const estimated = clash.distanceKind !== 'mesh';
   const distance = clash.distance < 0
-    ? `penetration ${Math.abs(clash.distance).toFixed(3)}m`
+    ? `penetration ${estimated ? '~' : ''}${Math.abs(clash.distance).toFixed(3)}m${estimated ? ' (AABB estimate)' : ''}`
     : `gap ${clash.distance.toFixed(3)}m`;
   return `  [${clash.severity}] ${aName} x ${bName} (${clash.status}, ${distance})`;
 }

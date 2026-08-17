@@ -283,6 +283,7 @@ export function SourceBrowser({
     loadingFolders: catalog.loadingFolders,
     loadingFiles: catalog.loadingFiles,
     filesHaveMore: catalog.hasMoreFiles(selectedContainerId),
+    foldersHaveMore: catalog.hasMoreFolders(selectedContainerId),
     enterFileArea: enterFileAreaDirect,
     selectContainer,
     toggleFile,

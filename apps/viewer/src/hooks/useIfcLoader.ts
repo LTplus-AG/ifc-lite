@@ -15,6 +15,7 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
+import { buildModelLoadedGeometryProps } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -33,6 +34,7 @@ import {
   type EntityWorldAabb,
   type GeometryResult,
   type TessellationQuality,
+  type GeometryDiagnostics,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
@@ -336,6 +338,11 @@ export function useIfcLoader() {
     // point-cloud / server / cache load never sets it), so a lower IFC tier is
     // never pointlessly retried for a load it cannot help.
     let attemptedTessellationTier: TessellationQuality | null | undefined = null;
+    // Geometry diagnostics from the stream's `complete` event, hoisted so the
+    // `ifc_model_loaded` capture below can attribute a triangle-count anomaly
+    // to CSG fallbacks instead of guessing (#2388). `null` = no producer sent
+    // any, which the capture reports as absent rather than as a zero.
+    let loadDiagnostics: GeometryDiagnostics | null = null;
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -1006,6 +1013,13 @@ export function useIfcLoader() {
       // serving the failed attempt's cached bytes.
       const loadTessellationTier = options?.tierOverride ??
         resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // Geometry attribution (#2388): read ONCE here, next to the tier it must
+      // be reported alongside, so every `ifc_model_loaded` capture site below
+      // states the same fact. The tier cannot stand in for it — a retry always
+      // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
+      // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
+      // `?geomTier=lowest`, so the two are indistinguishable without the flag.
+      const isResourceRetryLoad = options?.isResourceRetry === true;
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
@@ -1101,7 +1115,17 @@ export function useIfcLoader() {
                 cacheState: 'hit',
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+              // Geometry attribution (#2388) on a cache HIT: `loadTessellationTier`/
+              // `skipSmallCutsAtLoad` are the same const bindings that gate
+              // `buildGeometryCacheKey` above, so a hit is only reachable when they
+              // match what built the cached bytes — they are provably correct for
+              // THIS geometry, not stale or speculative. `diagnostics` is left
+              // undefined on purpose: a cache hit runs no streaming `complete`
+              // event, so there is no CSG-failure count to report for this load;
+              // reporting `loadDiagnostics` here would attribute a PRIOR load's
+              // counters (or a fabricated 0) to this one. The builder already
+              // turns an undefined/null diagnostics into absent CSG fields.
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1162,7 +1186,22 @@ export function useIfcLoader() {
           const state = useViewerStore.getState();
           await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
+          // Geometry attribution (#2388), server row: `is_resource_retry` and
+          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
+          // fell through to WASM because the server was momentarily down, then
+          // OOMed, then retried into a recovered server, lands HERE — and
+          // without the flag that row is indistinguishable from a normal load.
+          //
+          // The two fidelity fields are deliberately NOT reported here. They
+          // describe LOCAL-WASM tessellation; the server produces canonical
+          // full-fidelity geometry under its own cache key and applies neither
+          // (see the comment on the branch condition above). Spreading
+          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
+          // and `skip_small_cuts` values this load never applied — a
+          // fabricated attribution of exactly the kind #2388 exists to
+          // prevent. Absent stays absent; `is_resource_retry` is the one fact
+          // that is true on this path.
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
           setLoading(false);
           return;
         }
@@ -1737,6 +1776,7 @@ export function useIfcLoader() {
               // object stays on `event.diagnostics` for any UI/telemetry consumer.
               if (event.diagnostics) {
                 const d = event.diagnostics;
+                loadDiagnostics = event.diagnostics;
                 finalCsgFailures = d.totalCsgFailures;
                 if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
                   console.info(
@@ -2019,23 +2059,42 @@ export function useIfcLoader() {
       // wire. captureModelLoaded also retains the snapshot for the device-loss
       // report (#2624): if the GPU device later dies, its capture can say how
       // big the model on the device was.
-      captureModelLoaded(buildModelLoadedPayload({
-        format,
-        fileSizeMB,
-        loadTarget: target.kind,
-        loadPath: 'wasm',
-        meshCount: allMeshes.length,
-        totalElapsedMs,
-        totalVertices,
-        totalTriangles,
-        fileReadMs,
-        metadataCompleteMs,
-        firstGeometryBatchMs: firstAppendGeometryBatchMs,
-        firstVisibleGeometryMs,
-        streamCompleteMs,
-        totalCsgFailures: finalCsgFailures,
-        wasHidden: wasHidden(),
-      }), { fileSizeMB, totalTriangles, meshCount: allMeshes.length });
+      captureModelLoaded(
+        {
+          ...buildModelLoadedPayload({
+            format,
+            fileSizeMB,
+            loadTarget: target.kind,
+            loadPath: 'wasm',
+            meshCount: allMeshes.length,
+            totalElapsedMs,
+            totalVertices,
+            totalTriangles,
+            fileReadMs,
+            metadataCompleteMs,
+            firstGeometryBatchMs: firstAppendGeometryBatchMs,
+            firstVisibleGeometryMs,
+            streamCompleteMs,
+            totalCsgFailures: finalCsgFailures,
+            wasHidden: wasHidden(),
+          }),
+          // Geometry attribution (#2388): the CSG-failure counts this load
+          // actually recorded, plus the two fidelity inputs (tier + small-cut
+          // skip) that change triangle counts WITHOUT changing the mesh roster
+          // and that no failure counter can see. Without these, a repeat of
+          // #2388 is unattributable from telemetry. `total_csg_failures` here
+          // is the same value `buildModelLoadedPayload` already put on the
+          // payload (both read the streaming `complete` event's diagnostics),
+          // so the spread below is a same-value overwrite, not a conflicting one.
+          ...buildModelLoadedGeometryProps({
+            diagnostics: loadDiagnostics,
+            tessellationTier: loadTessellationTier,
+            skipSmallCuts: skipSmallCutsAtLoad,
+            isResourceRetry: isResourceRetryLoad,
+          }),
+        },
+        { fileSizeMB, totalTriangles, meshCount: allMeshes.length },
+      );
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this

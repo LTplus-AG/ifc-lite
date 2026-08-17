@@ -27,6 +27,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { writeTestProgram, GENERATED_CONFIG } from './typecheck-tests.mjs';
+import { classifyTscOutput, untrustworthyExitReason } from './lib/unused-locals-classify.mjs';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
 const baselinePath = join(repoRoot, 'scripts', 'unused-locals-baseline.json');
@@ -43,21 +44,6 @@ function packageDirs() {
     .map((dir) => relative(repoRoot, dir))
     .sort();
 }
-
-/**
- * The TypeScript diagnostics that mean "declared and never used". More than one
- * code matters: TS6192 is "all imports in this declaration are unused", which is
- * precisely the dead-import case this check exists for, and treating it as an
- * unrelated error made `apps/viewer` — where those imports were — unmeasurable.
- */
-const UNUSED_CODES = [6133, 6138, 6192, 6196, 6198, 6199];
-const UNUSED_RE = new RegExp(`error TS(${UNUSED_CODES.join('|')}):`, 'g');
-const OTHER_ERROR_RE = new RegExp(`error TS(?!(?:${UNUSED_CODES.join('|')})\\b)\\d+:`);
-// A generic "tsc did print at least one diagnostic" signal, independent of the
-// two regexes above. Used only to tell "tsc ran and reported something we
-// failed to parse" apart from "tsc genuinely produced no diagnostic text",
-// which need different, honest failure messages (see countViolations).
-const ANY_TS_DIAGNOSTIC_RE = /TS\d{4}/;
 
 /**
  * Strip ANSI escape sequences (SGR colour/style codes) from captured child
@@ -121,40 +107,62 @@ function countViolations(dir) {
     // upstream of tsc in this spawn chain that ignores both of the above)
     // before matching, rather than trusting the two defenses above blindly.
     const output = stripAnsi(`${err.stdout ?? ''}${err.stderr ?? ''}`);
-    const count = output.match(UNUSED_RE)?.length ?? 0;
-    if (OTHER_ERROR_RE.test(output)) {
+    // Before the text is classified at all: was this even a tsc run that
+    // finished? A truncated capture (ENOBUFS) or a killed child (OOM/SIGKILL)
+    // hands back a PREFIX of tsc's diagnostics, and a prefix of well-formed
+    // diagnostics parses perfectly — 5000 diagnostics came back as a confident
+    // `{ kind: 'violations', count: 97 }` in the #2663 review, with err.code
+    // unread. `--update` would then bake that undercount into the baseline and
+    // lower the bar permanently. Only a plain numeric exit status is trusted.
+    const badExit = untrustworthyExitReason(err);
+    if (badExit) {
+      console.error(`❌ check-unused-locals could not run tsc to completion for ${dir}: ${badExit}.`);
+      console.error('   Any diagnostics captured are a truncated prefix, not a complete count,');
+      console.error('   so this run cannot be measured — and must never be written to the baseline.');
+      console.error('\n   Raw (ANSI-stripped) partial output:\n');
+      console.error(output.split('\n').map((l) => `   ${l}`).join('\n'));
+      process.exit(1);
+    }
+    // The actual accounting lives in scripts/lib/unused-locals-classify.mjs,
+    // unit-tested on its own (scripts/lib/unused-locals-classify.test.mjs) —
+    // including the mixed-output case where one diagnostic parses fine and a
+    // second, in the same run, does not. That case must fail loud too, not
+    // just the fully-unparseable one (#2634 review).
+    const result = classifyTscOutput(output);
+    if (result.kind === 'does-not-compile') {
       // The package does not compile. That belongs to the typecheck lane, not
       // here — but it must not silently drop out of the ratchet either, or
       // breaking a build becomes a way to lose the guard. Reported, not skipped.
-      return { count, unmeasurable: true };
+      return { count: result.count, unmeasurable: true };
     }
-    if (count === 0) {
-      if (ANY_TS_DIAGNOSTIC_RE.test(output)) {
-        // tsc printed at least one `TS####` diagnostic, but it matched neither
-        // the unused-locals codes nor the "any other error" pattern. That is
-        // not a compile error to report and fold into the ratchet like the
-        // branch above — it means this script's own parsing is broken (a tsc
-        // output-format change, an escape sequence the strip above doesn't
-        // cover, etc). Reporting that as "does not compile standalone" would
-        // be a confidently wrong answer wearing the same clothes as a real
-        // compile failure. Fail the whole run loudly instead of guessing.
-        console.error(`❌ check-unused-locals cannot parse tsc's output for ${dir}.`);
-        console.error('   tsc reported at least one TS diagnostic, but it matched neither the');
-        console.error('   unused-locals codes nor the generic "other error" pattern — this is a');
-        console.error('   bug in the check\'s parsing, not a compile error in the package.');
-        console.error('\n   Raw (ANSI-stripped) output:\n');
-        console.error(output.split('\n').map((l) => `   ${l}`).join('\n'));
-        process.exit(1);
-      }
+    if (result.kind === 'unparseable') {
+      // tsc printed at least one `TS####`-shaped diagnostic that classifyTscOutput
+      // could not fully account for — whether or not OTHER diagnostics in the
+      // same run parsed fine. That is not a compile error to report and fold
+      // into the ratchet; it means this script's own parsing is broken (a tsc
+      // output-format change, an escape sequence the strip above doesn't
+      // cover, etc). Reporting only the recognised diagnostics would be a
+      // confidently wrong answer wearing the same clothes as a real, complete
+      // count. Fail the whole run loudly instead of guessing.
+      console.error(`❌ check-unused-locals cannot parse tsc's output for ${dir}.`);
+      console.error('   tsc reported at least one TS diagnostic that matched neither the');
+      console.error('   unused-locals codes nor the generic "other error" pattern — this is a');
+      console.error('   bug in the check\'s parsing, not a compile error in the package.');
+      console.error('\n   Raw (ANSI-stripped) output:\n');
+      console.error(output.split('\n').map((l) => `   ${l}`).join('\n'));
+      process.exit(1);
+    }
+    if (result.kind === 'no-diagnostics') {
       // Non-zero exit, and nothing here explains it: no unused diagnostics, no
-      // other `error TS####`, no TS diagnostic of any kind. tsc never ran, or
-      // died without reporting — a missing binary, a killed process, a failure
-      // printed in a shape this does not parse. The one thing that must not
+      // other `error TS####`, no TS diagnostic of any kind. The exit itself
+      // was clean (a killed child, a truncated capture and a failed spawn all
+      // exited above), so tsc ran and returned non-zero while printing a
+      // failure in a shape this does not parse. The one thing that must not
       // happen is calling it zero, which would read as a clean package and
       // could be written into the baseline as one (review, #2603).
       return { count: 0, unmeasurable: true };
     }
-    return { count, unmeasurable: false };
+    return { count: result.count, unmeasurable: false };
   }
 }
 

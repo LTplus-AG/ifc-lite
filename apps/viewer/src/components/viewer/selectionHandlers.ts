@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
+import { raycastForPolylinePoint, isNearPolylineStart } from './measureHandlers.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -35,9 +36,16 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
     return;
   }
 
-  // Measure tool now uses drag interaction (see mousedown/mousemove/mouseup)
+  // Measure tool: drag mode uses mousedown/mousemove/mouseup (see
+  // measureHandlers.ts) and never reaches here. Polyline mode (#2199) is the
+  // opposite — it does nothing on mousedown/drag, so a click is the ONLY
+  // gesture that adds a point, which is what makes the two modes unable to
+  // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
   if (tool === 'measure') {
-    return; // Skip click handling for measure tool
+    if (useViewerStore.getState().measureMode === 'polyline') {
+      handlePolylineClick(ctx, x, y);
+    }
+    return;
   }
 
   // Section-tool face-pick (issue #243): clicking any visible face places
@@ -593,6 +601,67 @@ export function handleSplitHover(ctx: MouseHandlerContext, x: number, y: number)
     });
   }
   return true;
+}
+
+/**
+ * Handle a click landing on the scene while the Measure tool's polyline mode
+ * is active (#2199). One click state machine, three outcomes:
+ *
+ *   - no sequence in progress → start one at the clicked point.
+ *   - sequence in progress, click lands near the FIRST point (screen space,
+ *     ≥3 points already placed) → close the loop, finishing as a perimeter.
+ *   - otherwise → append the clicked point.
+ *
+ * Finishing an OPEN polyline is a different gesture entirely (double-click
+ * or Enter — see `finishOpenPolyline`'s call sites in useMouseControls.ts /
+ * useKeyboardShortcuts.ts), so a click never finishes anything but a closed
+ * loop. A miss (no raycast hit) is a no-op — it neither starts nor extends
+ * a sequence, matching how a drag-mode click into empty space does nothing.
+ */
+export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: number): void {
+  const picked = raycastForPolylinePoint(ctx, x, y);
+  if (!picked) return;
+
+  const state = useViewerStore.getState();
+  ctx.setSnapTarget(picked.snapTarget);
+
+  const active = state.activePolyline;
+  if (!active) {
+    state.startPolyline(picked.point);
+    return;
+  }
+
+  const first = active.points[0];
+  if (active.points.length >= 3 && isNearPolylineStart(picked.point, first)) {
+    state.finishPolyline(true);
+    return;
+  }
+
+  state.addPolylinePoint(picked.point);
+}
+
+/**
+ * The store side of the Measure tool's double-click finish (#2199), kept
+ * beside {@link handlePolylineClick} because the two are one gesture family
+ * and this one reads the store directly the same way.
+ *
+ * This is the ONLY finish path that may drop a trailing near-duplicate point:
+ * a physical double-click dispatches `click, click, dblclick`, so
+ * `handlePolylineClick` has already appended the browser's second click by
+ * the time this runs. Enter (useKeyboardShortcuts.ts) and the close-loop
+ * click above append nothing extra, and the screen coordinates the duplicate
+ * check compares are reprojected on every camera move, so passing
+ * `fromDoubleClick` from anywhere else would delete real vertices after an
+ * orbit — see `finishPolyline` in measurementSlice.ts.
+ *
+ * Returns `null` when the gesture does not apply (not in polyline mode, or
+ * no sequence in progress) so the caller knows to leave the DOM event alone;
+ * otherwise whether a measurement was actually recorded.
+ */
+export function finishPolylineFromDoubleClick(): boolean | null {
+  const state = useViewerStore.getState();
+  if (state.measureMode !== 'polyline' || !state.activePolyline) return null;
+  return state.finishPolyline(false, { fromDoubleClick: true });
 }
 
 /**

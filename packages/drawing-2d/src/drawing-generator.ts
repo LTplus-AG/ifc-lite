@@ -80,6 +80,18 @@ export interface GeneratorOptions {
    * instead (PR #2644 review).
    */
   outlineProvider?: (mesh: MeshData, axis: SectionAxis, flipped: boolean) => MeshOutline2D | null;
+  /**
+   * Pre-projected lines merged in BEFORE the hidden-line stage (issue #2042):
+   * the section RIM of a CPU half-space clip. Build them with
+   * `projectWorldLineSeeds`, never a hand-rolled projection — they must share
+   * this config's plane basis and view-depth convention.
+   *
+   * They are classified alongside the projection lines even though they carry
+   * `category: 'cut'`: cutter-produced cut lines sit in the plane at view
+   * depth 0 and can never be occluded, but on an oblique 3D view a rim edge
+   * can sit behind other geometry and must print dashed.
+   */
+  extraLines?: DrawingLine[];
   /** Progress callback */
   onProgress?: (stage: string, progress: number) => void;
 }
@@ -311,9 +323,13 @@ export class Drawing2DGenerator {
     // ─────────────────────────────────────────────────────────────────────────
     // STAGE 5: Hidden Line Removal
     // ─────────────────────────────────────────────────────────────────────────
-    let allLines = [...cutLines, ...projectionLines];
+    // Caller-supplied rim lines (issue #2042) are classifiable like projection
+    // lines despite their 'cut' category — see `GeneratorOptions.extraLines`.
+    const extraLines = opts.extraLines ?? [];
+    const classifiable = [...extraLines, ...projectionLines];
+    let allLines = [...cutLines, ...classifiable];
 
-    if (opts.includeHiddenLines && projectionLines.length > 0) {
+    if (opts.includeHiddenLines && classifiable.length > 0) {
       report('hidden', 0);
 
       // Compute bounds for depth buffer
@@ -346,8 +362,13 @@ export class Drawing2DGenerator {
       // already-dashed OVERHEAD line. So classify the visible (below-cut)
       // projection lines and pass overhead lines through unchanged — otherwise
       // an unoccluded overhead beam would be re-marked 'visible' (solid).
-      const toClassify = allLines.filter((l) => l.category !== 'cut' && l.visibility === 'visible');
-      const passthrough = allLines.filter((l) => l.category !== 'cut' && l.visibility !== 'visible');
+      //
+      // The split is by SOURCE (`classifiable` vs the cutter's own
+      // `cutLines`), not by category: `extraLines` carry `category: 'cut'`
+      // yet must be classified. Filtering `allLines` on `category !== 'cut'`
+      // would both skip them AND drop them from the recombination below.
+      const toClassify = classifiable.filter((l) => l.visibility === 'visible');
+      const passthrough = classifiable.filter((l) => l.visibility !== 'visible');
       const classifiedLines = this.hiddenLineClassifier.applyVisibility(toClassify);
 
       // Recombine with cut lines (always visible) + overhead pass-through.

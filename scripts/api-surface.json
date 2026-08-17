@@ -2436,7 +2436,9 @@
     "AuthorizationRequestConfig: interface",
     "ExchangeAuthorizationCodeParams: interface",
     "NotSignedInError: class",
+    "OAUTH_CALLBACK_CHANNEL: const",
     "OAuthAuthorizationError: class",
+    "OAuthCallbackMessage: interface",
     "OAuthError: class",
     "OAuthRedirectOriginError: class",
     "OAuthStateMismatchError: class",
@@ -2448,6 +2450,7 @@
     "TokenManagerConfig: interface",
     "TokenSet: interface",
     "TokenStorage: interface",
+    "WaitForOAuthCallbackOptions: interface",
     "createAuthorizationRequest: function",
     "createPkcePair: function",
     "deriveCodeChallengeS256: function",
@@ -2455,7 +2458,8 @@
     "generateCodeVerifier: function",
     "generateState: function",
     "parseAuthorizationCallback: function",
-    "refreshAccessToken: function"
+    "refreshAccessToken: function",
+    "waitForOAuthCallback: function"
   ],
   "@ifc-lite/parser": [
     "AutoParseResult: type",
@@ -4213,6 +4217,11 @@
   "@ifc-lite/source-dalux": [
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"
+  ],
+  "@ifc-lite/source-msgraph": [
+    "MSGRAPH_MANIFEST: const",
+    "MsGraphProvider: class",
+    "REDIRECT_PATH: const"
   ],
   "@ifc-lite/spatial": [
     "AABB: interface",

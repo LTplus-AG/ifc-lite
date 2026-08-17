@@ -69,7 +69,7 @@ function cubeAt(globalId: number, x: number): MeshData {
     normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
     indices: new Uint32Array([0, 1, 2]),
     color: [1, 1, 1, 1],
-  } as MeshData;
+  };
 }
 
 function model(id: string, idOffset = 0): FederatedModel {

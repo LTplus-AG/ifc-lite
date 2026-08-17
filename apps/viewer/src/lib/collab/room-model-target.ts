@@ -113,9 +113,15 @@ export function roomStore(state: RoomModelTargetState): IfcDataStore | null {
  *
  * Mirrors `roomStore`'s addressing exactly — including deliberately NOT
  * falling back to the active model's meshes while the room model is known but
- * not yet registered. `setGeometryResult` writes through to the active model's
- * record (dataSlice.ts), so the record is current whether or not the room
- * model happens to be the active one.
+ * not yet registered.
+ *
+ * Reading the RECORD rather than the top-level `geometryResult` is current in
+ * both directions, by two different mechanisms: `setGeometryResult` and
+ * `appendGeometryBatch` write through to the active model's record
+ * (dataSlice.ts), which covers an owner and a streaming load, and a
+ * recipient's room model — the case this mainly exists for, since it is
+ * usually NOT active — is kept current by `applyRoomModelData`'s `updateModel`
+ * branch (room-model-apply.ts).
  */
 export function roomMeshes(state: RoomModelTargetState): MeshData[] | null {
   const id = state.collabRoomModelId;

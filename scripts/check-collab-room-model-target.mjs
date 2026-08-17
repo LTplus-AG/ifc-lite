@@ -258,8 +258,13 @@ and ships in their exported IFC. Resolve through \`roomStore\` / \`roomMutationV
 //
 // A region that no longer exists fails closed via `region`, so extracting this
 // helper into its own module means re-pointing the guard, not dropping it.
+//
+// Both banned members are matched WITHOUT their receiver, like check 2's:
+// banning the `get().geometryResult` spelling only is evaded by
+// `const s = get(); … roomMeshes(get()) ?? s.geometryResult?.meshes`, which is
+// the same read under a different name and reinstates the fallback in full.
 assertRegion(region(collab, 'function reconcilePlacementMesh(', 'collab placement reconciler'), {
-  banned: ['.activeModelId', 'get().geometryResult'],
+  banned: ['.activeModelId', '.geometryResult'],
   required: ['roomModelIdOf(get())', 'roomMeshes(get())'],
   consequence: `The mesh this moves is addressed by \`globalId\`, which is \`idOffset + expressId\`
 of a NAMED model. The room's reconstructed model has \`idOffset: 0\` and the

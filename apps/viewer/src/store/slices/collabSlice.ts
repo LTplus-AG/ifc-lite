@@ -931,8 +931,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Resolved per event off `collabRoomModelId`, never off `activeModelId` and
     // never captured once. A peer's edit carries an expressId in the ROOM's id
     // space, so it is only meaningful against the room's own store and view.
-    // Targeting the active model wrote it into the user's own file instead —
-    // into `undoStacks`, `dirtyModels` and the export path, surviving a reload.
+    // Targeting the active model wrote it into the user's own file instead.
+    // Not into `undoStacks` / `dirtyModels` — the handlers below call the view
+    // directly, which is what "no undo tracking" above means — but into that
+    // view's overlay and append-only `mutationHistory`, which the exporter and
+    // `getModifiedEntityCount` read, so it survived a reload and shipped in
+    // their exported IFC.
     // `roomStore` returns null until the room model is registered, and every
     // handler drops the event rather than falling back to another model; the
     // next reconstruct rebuilds the whole model from the CRDT anyway.

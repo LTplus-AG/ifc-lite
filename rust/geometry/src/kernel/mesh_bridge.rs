@@ -12,13 +12,15 @@ use super::arrangement::{
 use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
 
-/// f32-near-coplanar reconciliation snap grid (metres). A POWER OF TWO so the
-/// snap `(c/G).round()*G` is an EXACT f64 op ⇒ bit-deterministic across
-/// x86_64/aarch64/wasm. Real IFC is authored in f32, so an intended-flush face is
-/// NOT exactly coplanar after import; snapping both operands to a shared grid
-/// makes such faces EXACTLY coplanar so the exact coplanar path fires instead of
-/// emitting a noise sliver. Resolution is tunable against the test corpus;
-/// 2^-16 m ≈ 15 µm.
+/// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
+/// metres (#2684): 15 µm on the METRE path (`router/layers`), 15 nm on the
+/// FILE-UNIT boolean path, where f32 import noise is ~7.6 µm either way, so a
+/// millimetre file's snap moves nothing. `csg/plane_eps.rs` records the same
+/// divergence for the clipper's floor; `tests/snap_grid_unit_denomination.rs`
+/// measures it. A POWER OF TWO so `(c/G).round()*G` is an EXACT f64 op ⇒
+/// bit-deterministic across x86_64/aarch64/wasm. Real IFC is f32-authored, so an
+/// intended-flush face is NOT exactly coplanar after import; a shared grid makes
+/// such faces EXACTLY coplanar, firing the exact path instead of a noise sliver.
 ///
 /// Canonical definition — `tritri` and `arrangement` size their near-coplanar
 /// bands to the scatter envelope this snap produces, so they import this
@@ -146,8 +148,8 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
 /// host. The band and its far-from-origin widening mirror
 /// `near_on_surface_normal`: [`NearBand`], sized PER HOST PLANE from the
 /// operands' per-axis extents projected onto that plane's own normal
-/// (8·SNAP_GRID ≈ 122 µm until the projected extent passes ~512 m, so an
-/// offset along an axis this plane does not face never widens it).
+/// (8·SNAP_GRID until the projected extent passes ~512 CALLER units, not metres
+/// (#2684), so an offset along an axis this plane does not face never widens it).
 /// DETERMINISM: plain FMA-free f64 over
 /// already-snapped coords, fixed iteration order, nearest-plane ties broken
 /// by face index ⇒ byte-identical native==wasm. Every pinned box−box

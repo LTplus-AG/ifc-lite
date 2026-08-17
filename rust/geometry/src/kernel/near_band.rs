@@ -69,7 +69,7 @@ pub(crate) const NEAR_BAND_FLOOR: f64 = 8.0 * SNAP_GRID;
 /// one), then ask it per plane.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct NearBand {
-    /// Max |coordinate| per axis, in metres.
+    /// Max |coordinate| per axis, in the CALLER's unit — not metres (#2684).
     axis_extent: [f64; 3],
 }
 

@@ -744,13 +744,13 @@ mod tests {
 
     #[test]
     fn phase_a_is_deterministic_on_a_45_degree_face() {
-        // normal ∝ (1,1,0)/√2 — |n_x| == |n_y|; the index tiebreak must pick a
-        // stable axis (X before Y), exactly, on every platform.
+        // normal ∝ (1,1,0)/√2 — |n_x| == |n_y|, so the index tiebreak alone (never
+        // the f64 magnitude) must pick X before Y, exactly, on every platform.
+        // Assert the CHOSEN axis: comparing two calls to a pure function is a
+        // tautology that survives a reversed `ia.cmp(&ib)`.
         let t = [[0., 0., 0.], [1., -1., 0.], [1., -1., 2.]];
-        let a = projection_axis(&t);
-        let b = projection_axis(&t);
-        assert_eq!(a.map(|x| x.0), b.map(|x| x.0));
-        assert!(a.is_some());
+        assert_eq!(axis_candidates(&t)[..2], [DropAxis::X, DropAxis::Y]);
+        assert_eq!(projection_axis(&t).expect("not degenerate").0, DropAxis::X);
     }
 
     #[test]

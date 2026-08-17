@@ -66,6 +66,15 @@ import {
 } from '@/lib/collab/geometry-sync';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import {
+  PLACEMENT_EPS,
+  YAW_EPS,
+  clearAppliedPlacements,
+  rendererDeltaForPlacement,
+  sweepPlacements,
+  yawOf,
+  type PlacementSweepApi,
+} from '@/lib/collab/placement-sweep';
+import {
   attachAnnotationInbound,
   annotationToCrdtFields,
   type AnnotationDocApi,
@@ -304,41 +313,11 @@ let placementAppliedLoc: Map<number, [number, number, number]> | null = null;
 // baked into each entity's live mesh, relative to its baked baseline.
 let placementAppliedYaw: Map<number, number> | null = null;
 
-const PLACEMENT_EPS = 1e-6;
-const YAW_EPS = 1e-4;
-
-/** Yaw (radians, about Z) encoded by a placement's refDirection (local +X). */
-function yawOf(placement: LocalPlacement | null): number {
-  const ref = placement?.refDirection ?? [1, 0, 0];
-  return Math.atan2(ref[1], ref[0]);
-}
-
 /** Normalize a builder's STEP-uppercase type ('IFCWALL') to IFC case ('IfcWall'). */
 function normalizeIfcClass(stepType: string): string {
   if (!stepType.toUpperCase().startsWith('IFC')) return stepType;
   const rest = stepType.slice(3);
   return `Ifc${rest.charAt(0).toUpperCase()}${rest.slice(1).toLowerCase()}`;
-}
-
-/**
- * Renderer-frame (Y-up) translation that positions an entity's mesh per
- * `placement`, measured from its baked `baseline`. The mesh is baked at the
- * baseline, so only the difference is applied. IFC is Z-up storey-local; the
- * renderer is Y-up: (x, y, z) → (x, z, -y). (This matches the owner's existing
- * `translateEntity` mapping, and shares its "parent placement is unrotated"
- * simplification — fine for storey-local edits.)
- */
-function rendererDeltaForPlacement(
-  baseline: LocalPlacement | null,
-  placement: LocalPlacement,
-): [number, number, number] {
-  const bx = baseline?.location[0] ?? 0;
-  const by = baseline?.location[1] ?? 0;
-  const bz = baseline?.location[2] ?? 0;
-  const dx = placement.location[0] - bx;
-  const dy = placement.location[1] - by;
-  const dz = placement.location[2] - bz;
-  return [dx, dz, -dy];
 }
 
 /**
@@ -570,6 +549,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       getGeometry: (doc, geomId) => collabMod.getGeometry(doc, geomId),
       iterEntities: (doc) => collabMod.iterEntities(doc),
     };
+    // Doc reads for the reconstruct-side placement sweep (placement-sweep.ts).
+    const sweepApi: PlacementSweepApi = {
+      iterEntities: (doc) => collabMod.iterEntities(doc),
+      getEntityPlacement: (doc, path) => collabMod.getEntityPlacement(doc, path),
+      getPlacementBaseline: (doc, path) => collabMod.getPlacementBaseline(doc, path),
+    };
     // Expose the geometry API + a blob-store factory so a local create can push
     // the new mesh blob into the room later (not just at seed).
     geomApiRef = geomApi;
@@ -731,6 +716,13 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {
               lastGeomCount = geomCount;
+              // Every mesh below is rebuilt from its baked blob, i.e. back at
+              // `meta.placementBaseline`. The applied-placement bookkeeping
+              // describes the meshes being replaced, so it is now false — and
+              // false in the one direction that silently pins the damage: the
+              // sweep at the end of this reconstruct would read "already
+              // applied" and leave the entity reverted. Forget it first.
+              clearAppliedPlacements(placementAppliedLoc, placementAppliedYaw);
               // Re-key meshes into the reconstructed id space (pathToId) so 3D
               // selection resolves to the right inspector entry. Blobs are
               // fetched in parallel (cached by geomId) and rendered incrementally
@@ -762,6 +754,25 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
                 );
               }
+            }
+            // Placement is NOT carried by the blobs: a hydrated mesh sits at the
+            // `usd::xformop` it was baked at, and only a live placement *event*
+            // ever moved it. So re-derive it from the doc here — for a late
+            // joiner (which receives no such event at all), for an event dropped
+            // before this model existed, and for the meshes just re-hydrated
+            // above. Idempotent: `sweepPlacements` skips anything already
+            // applied, so this is a no-op on a room where nothing has moved.
+            if (get().collabRoomId === roomId) {
+              sweepPlacements(
+                sweepApi,
+                session.doc,
+                payload.pathToId,
+                placementAppliedLoc,
+                placementAppliedYaw,
+                (entityId, placement) => {
+                  reconcilePlacementMesh(get, payload.dataStore, session.doc, entityId, placement);
+                },
+              );
             }
           } finally {
             reconstructing = false;

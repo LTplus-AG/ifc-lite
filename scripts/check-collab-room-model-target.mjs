@@ -177,6 +177,41 @@ function region(file, marker, label) {
 }
 
 /**
+ * A banned entry is either a plain substring, or `{ needle, exceptOn }` — the
+ * same substring with a short list of receivers that are NOT the store.
+ *
+ * The exception list exists for exactly one shape: a member name that a LOCAL
+ * also carries. `.geometryResult` is banned in the reconstruct region because
+ * reading the ACTIVE model's meshes there is the defect; but that region's
+ * freshly-parsed `payload` legitimately carries a `geometryResult` of its own,
+ * and it is a parse result, not a store read. Naming the allowed RECEIVER (and
+ * only within one region) keeps the ban bare — `const s = get(); s.geometryResult`
+ * still trips it — which is the property check 2b's comment relies on.
+ *
+ * Receivers are matched as whole identifiers, so `notPayload.geometryResult`
+ * is not silently excused by an `exceptOn: ['payload']`.
+ */
+function bannedHitsFor(reg, entry) {
+  const needle = typeof entry === 'string' ? entry : entry.needle;
+  const exceptOn = typeof entry === 'string' ? [] : (entry.exceptOn ?? []);
+  const hits = [];
+  let at = reg.text.indexOf(needle);
+  while (at !== -1) {
+    // The identifier immediately left of the leading `.`, if any.
+    const before = reg.text.slice(0, at);
+    const receiver = /([A-Za-z0-9_$]+)$/.exec(before)?.[1] ?? '';
+    if (!exceptOn.includes(receiver)) {
+      // Show a little of what precedes it, so `get().x` and `s.x` are told apart
+      // in the report even though only the identifier drives `exceptOn`.
+      const context = before.slice(-12).replace(/\s+/g, ' ').trimStart();
+      hits.push(`${reg.file.rel}:${reg.file.lineOf(reg.offset + at)}: …${context}${needle}…`);
+    }
+    at = reg.text.indexOf(needle, at + 1);
+  }
+  return hits;
+}
+
+/**
  * The two halves of every check: the banned shapes must be absent, and at least
  * one by-id call must be present. The second half is what stops the first from
  * being satisfied by deleting the code.
@@ -184,12 +219,8 @@ function region(file, marker, label) {
 function assertRegion(reg, { banned, required, consequence }) {
   if (!reg) return;
   const hits = [];
-  for (const needle of banned) {
-    let at = reg.text.indexOf(needle);
-    while (at !== -1) {
-      hits.push(`${reg.file.rel}:${reg.file.lineOf(reg.offset + at)}: ${needle}…`);
-      at = reg.text.indexOf(needle, at + 1);
-    }
+  for (const entry of banned) {
+    hits.push(...bannedHitsFor(reg, entry));
   }
   if (hits.length > 0) {
     fail([`${reg.label} resolves the room's model as the ACTIVE model:`, '', ...hits.map((h) => `  ${h}`), '', consequence]);
@@ -212,13 +243,41 @@ const collab = load(COLLAB_SLICE);
 const mutation = load(MUTATION_SLICE);
 
 // ── 1. The recipient's re-derivation (#2705) ────────────────────────────────
+//
+// The two `get().set…(` needles ban the WRITE. They were the whole check, and
+// that left the READ side open: this region could resolve its own store and
+// model off the active one —
+//
+//   const st = get().ifcDataStore; const mid = get().activeModelId ?? '';
+//
+// — and both this guard and the collab-gate test stayed green. That is a scope
+// gap rather than a regression (the region's own code never did this), but
+// #2708 adds placement resolution INTO this region, where the model an id is
+// resolved against is the whole question, so the read side is now load-bearing.
+//
+// Banned WITHOUT their receiver, for check 2's reason: banning the `get()`
+// spelling only is evaded by `const s = get(); … s.ifcDataStore`, the same read
+// under a different name. The region's legitimate reads are `roomModelId` (its
+// own const) and the parse `payload`, so nothing here needs the active model.
 assertRegion(region(collab, 'const reconstruct = async () => {', 'collab recipient reconstruct'), {
-  banned: ['get().setIfcDataStore(', 'get().setGeometryResult('],
+  banned: [
+    'get().setIfcDataStore(',
+    'get().setGeometryResult(',
+    '.activeModelId',
+    '.ifcDataStore',
+    '.mutationViews',
+    // `payload` is this region's freshly-parsed model, not a store read — see
+    // `bannedHitsFor`. Every other receiver is banned, `get()` included.
+    { needle: '.geometryResult', exceptOn: ['payload'] },
+  ],
   required: ['applyRoomModelData('],
   consequence: `Those setters target \`activeModelId\`, but the reconstruct's target is the room
 model: a recipient with their own file active loses that file's store and
-meshes on the next peer edit. Route the write through
-\`applyRoomModelData(get(), roomModelId, { … })\`
+meshes on the next peer edit. The reads are the same defect one step earlier —
+resolving the store, the model id or the meshes off the ACTIVE model makes
+everything downstream address the wrong model, whatever it is finally written
+through. Use this region's own \`roomModelId\` / \`payload\`, and route writes
+through \`applyRoomModelData(get(), roomModelId, { … })\`
 (apps/viewer/src/lib/collab/room-model-apply.ts).`,
 });
 
@@ -231,8 +290,20 @@ meshes on the next peer edit. Route the write through
 // the room's equivalents are `roomModelIdOf` / `roomStore` / `roomMutationView`
 // — while `.models` (used for `toGlobalIdFromModels`) is model-agnostic and
 // stays allowed.
+//
+// KNOWN RESIDUAL, and the reason it is left open: because `.models` has a
+// legitimate reader here, this region can still reach a model record by walking
+// the map (`[...get().models.values()][0]`) rather than by id. That is a much
+// weaker evasion than the ones closed above — with `.activeModelId` banned there
+// is no way to ask which model the USER has selected, so a walk can only pick an
+// arbitrary one, not the specific wrong one the bug produced. Banning `.models`
+// outright would false-positive on `toGlobalIdFromModels`, and this guard does
+// not force a ban through a legitimate reader. Recorded, demonstrated, not fixed.
 assertRegion(region(collab, 'remoteApplyTeardown = attachRemoteApply(', 'collab inbound apply'), {
-  banned: ['.activeModelId', '.ifcDataStore', '.mutationViews'],
+  // `.geometryResult` was missing here even though check 2b bans it one layer
+  // down: this handler could inline `get().geometryResult?.meshes` instead of
+  // calling the reconciler and stay green. Demonstrated, so banned.
+  banned: ['.activeModelId', '.ifcDataStore', '.mutationViews', '.geometryResult'],
   required: ['roomStore(get())', 'roomMutationView(get())', 'roomModelIdOf(get())'],
   consequence: `A peer's edit carries an expressId in the ROOM's id space. Replaying it into
 the ACTIVE model writes it into the user's own file — into that model's view
@@ -264,7 +335,10 @@ and ships in their exported IFC. Resolve through \`roomStore\` / \`roomMutationV
 // `const s = get(); … roomMeshes(get()) ?? s.geometryResult?.meshes`, which is
 // the same read under a different name and reinstates the fallback in full.
 assertRegion(region(collab, 'function reconcilePlacementMesh(', 'collab placement reconciler'), {
-  banned: ['.activeModelId', '.geometryResult'],
+  // `.ifcDataStore` / `.mutationViews` complete the set: a reconciler that
+  // re-derives a placement from the ACTIVE model's store or view is the same
+  // wrong-model defect as reading its meshes, and was demonstrably unguarded.
+  banned: ['.activeModelId', '.geometryResult', '.ifcDataStore', '.mutationViews'],
   required: ['roomModelIdOf(get())', 'roomMeshes(get())'],
   consequence: `The mesh this moves is addressed by \`globalId\`, which is \`idOffset + expressId\`
 of a NAMED model. The room's reconstructed model has \`idOffset: 0\` and the
@@ -332,7 +406,26 @@ SHARED model. Take \`modelId\` first and gate on
   assertRegion(region(collab, action.header, `collab ${action.name}`), {
     // The gate and the store lookup are one call, so naming either half
     // separately is the split this guard exists to prevent.
-    banned: ['roomStore(get())', 'get().models.get(modelId)', 'get().ifcDataStore'],
+    //
+    // Two of these used to carry their `get()` receiver, which is the alias
+    // evasion checks 2 and 2b were explicitly written to avoid — `const s =
+    // get(); s.ifcDataStore` is the same read, and it passed. They are bare
+    // now. `.models.get(modelId)` keeps its argument so `toGlobalIdFromModels(
+    // get().models, …)`, which is model-agnostic, stays legal.
+    //
+    // `.activeModelId` / `.geometryResult` / `.mutationViews` are new here.
+    // An action that TAKES a `modelId` has no business asking what is active:
+    // `roomStoreFor(get(), get().activeModelId ?? '')` satisfied the required
+    // call while gating on precisely the wrong model. These ten regions read
+    // none of the five members today, so the ban is exact, not approximate.
+    banned: [
+      'roomStore(get())',
+      '.models.get(modelId)',
+      '.ifcDataStore',
+      '.activeModelId',
+      '.geometryResult',
+      '.mutationViews',
+    ],
     required: ['roomStoreFor(get(), modelId)'],
     consequence: `\`${action.name}\` resolves its store without binding it to \`modelId\`. Use
 \`roomStoreFor(get(), modelId)\`, which returns the room's store ONLY when

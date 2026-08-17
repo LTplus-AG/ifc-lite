@@ -32,6 +32,15 @@ const result = await engine.run(elements, [
 console.log(result.summary.total, 'clashes');
 ```
 
+If your host has already shifted `mesh.expressId` into a federated global id
+space (as the viewer's loader does for every model past the first) while the
+`IfcDataStore` keeps local ids, pass that shift as `meshIdOffset` so the adapter
+can address the store correctly:
+
+```ts
+elementsFromStep({ store, meshes, modelId, federation, meshIdOffset: model.idOffset });
+```
+
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
 differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently
 resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping,

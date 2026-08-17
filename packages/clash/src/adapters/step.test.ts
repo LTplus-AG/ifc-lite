@@ -300,3 +300,125 @@ describe('elementsFromStep', () => {
     expect(elements).toHaveLength(0);
   });
 });
+
+// A federated model past the first: the viewer's loader (`useIfcLoader`) shifts
+// every `mesh.expressId` into the global id space by that model's `idOffset`
+// BEFORE anything downstream sees the meshes. The `IfcDataStore` is untouched
+// and stays in the LOCAL id space, so an adapter handed those meshes has to
+// subtract the offset back out before it can look anything up.
+const FED_OFFSET = 1_000_000;
+
+const FED_WALL_GUID = '0fEdW4LLX4xv5uCqZZG05x';
+const FED_DOOR_GUID = '0fEdD00RX4xv5uCqZZG05x';
+const FED_OPENING_GUID = '0fEd0pENX4xv5uCqZZG05x';
+const FED_STOREY_GUID = '0fEdSt0YX4xv5uCqZZG05x';
+
+// Wall hosting an opening that a door fills, both contained in a storey. The
+// wall/door pair is exactly the void/host exclusion the engine must honour.
+const FEDERATED_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('federated.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCBUILDINGSTOREY('${FED_STOREY_GUID}',$,'Level 3',$,$,$,$,$,.ELEMENT.,9.);
+#2=IFCWALL('${FED_WALL_GUID}',$,'Federated Wall',$,$,$,$,$,$);
+#3=IFCOPENINGELEMENT('${FED_OPENING_GUID}',$,'Door Opening',$,$,$,$,$,$);
+#4=IFCDOOR('${FED_DOOR_GUID}',$,'Federated Door',$,$,$,$,$,$,$,$,$,$);
+#5=IFCRELVOIDSELEMENT('1v01d00AX4xv5uCqZZG05x',$,$,$,#2,#3);
+#6=IFCRELFILLSELEMENT('1f1LLs0AX4xv5uCqZZG05x',$,$,$,#3,#4);
+#7=IFCRELCONTAINEDINSPATIALSTRUCTURE('1c0nt40AX4xv5uCqZZG05x',$,$,$,(#2,#4),#1);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+/** The viewer's federation bridge: local expressId -> global id. */
+const fedFederation = { toGlobalId: (_modelId: string, expressId: number) => expressId + FED_OFFSET };
+
+describe('elementsFromStep - federated model at a non-zero id offset', () => {
+  it('resolves key / tag / name / storey / ref from meshes the loader already shifted', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    expect(wallId).toBeGreaterThan(0);
+
+    const { elements } = elementsFromStep({
+      store,
+      // As the loader leaves them: already in the global id space.
+      meshes: [solidBoxMesh(wallId + FED_OFFSET, 0)],
+      modelId: 'model-2',
+      federation: fedFederation,
+      meshIdOffset: FED_OFFSET,
+    });
+
+    expect(elements).toHaveLength(1);
+    const el = elements[0];
+    // The DURABLE key must be the real IfcGUID, never the synthetic fallback.
+    expect(el.key).toBe(FED_WALL_GUID);
+    expect(el.key.startsWith('expressid:')).toBe(false);
+    expect(el.tag).toBe('IfcWall');
+    expect(el.name).toBe('Federated Wall');
+    expect(el.storey).toBe('Level 3');
+    // The offset is applied exactly ONCE, so the ref IS the mesh's own
+    // (already global) id — the one the renderer and the selection channel
+    // address this element by, and the one `fromGlobalId` in `useClash.refOf`
+    // round-trips back to (model-2, wallId).
+    expect(el.ref).toBe(wallId + FED_OFFSET);
+    expect(el.ref).not.toBe(wallId + 2 * FED_OFFSET); // the double-offset defect
+  });
+
+  it('honours the void/host exclusion for a federated model (silent-failure half)', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+    expect(wallId).toBeGreaterThan(0);
+    expect(doorId).toBeGreaterThan(0);
+
+    // Overlapping bodies: without the exclusion this is one hard clash.
+    const { elements, exclusions } = elementsFromStep({
+      store,
+      meshes: [solidBoxMesh(wallId + FED_OFFSET, 0), solidBoxMesh(doorId + FED_OFFSET, 0.5)],
+      modelId: 'model-2',
+      federation: fedFederation,
+      meshIdOffset: FED_OFFSET,
+    });
+    expect(elements).toHaveLength(2);
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      elements,
+      [{ id: 'r', name: 'all', a: '*', mode: 'hard' }],
+      { exclusions },
+    );
+
+    // A door in the opening it fills is not a clash — for the second model too.
+    expect(result.clashes).toHaveLength(0);
+  });
+
+  it('control: the same fixture at offset 0 already worked', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+
+    const { elements, exclusions } = elementsFromStep({
+      store,
+      meshes: [solidBoxMesh(wallId, 0), solidBoxMesh(doorId, 0.5)],
+      modelId: 'model-1',
+      federation: { toGlobalId: (_m, id) => id },
+      meshIdOffset: 0,
+    });
+
+    expect(elements.find((e) => e.tag === 'IfcWall')?.key).toBe(FED_WALL_GUID);
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(elements, [{ id: 'r', name: 'all', a: '*', mode: 'hard' }], {
+      exclusions,
+    });
+    expect(result.clashes).toHaveLength(0);
+  });
+});

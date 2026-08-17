@@ -88,6 +88,26 @@ export interface StepAdapterOptions {
   modelId: string;
   /** When provided, `ref` is the federated globalId; otherwise the expressId. */
   federation?: FederationLike;
+  /**
+   * The federation offset the HOST has ALREADY added to every `mesh.expressId`,
+   * so this adapter can subtract it back out and address `store` in its own
+   * (local) id space. Default 0 — meshes are local.
+   *
+   * The viewer's loader shifts meshes into the global id space in place
+   * (`useIfcLoader`: `mesh.expressId = mesh.expressId + idOffset`) while
+   * `IfcDataStore` keeps LOCAL ids, so for every federated model past the first
+   * `mesh.expressId` is NOT a key into `store`. Without this, every lookup in
+   * the loop below misses: `key` degrades to the synthetic `expressid:N`, `tag`
+   * reads `Unknown`, name/storey come back empty, and `buildStepExclusions`
+   * finds no relationships at all — so void/host/assembly pairs silently stop
+   * being excluded. `ref` was wrong in the other direction, with
+   * `federation.toGlobalId` adding the offset a second time.
+   *
+   * The viewer's own compare path (`lib/compare/buildFingerprints.ts`) does the
+   * same subtraction for the same reason. The CLI / MCP / playground callers
+   * hand over local meshes and leave this at its `0` default.
+   */
+  meshIdOffset?: number;
   /** Aligns this model into the common world frame (RTC + building rotation). */
   worldTransform?: Mat4;
   /** Precompute void/host/assembly exclusions. Default true. */
@@ -115,14 +135,26 @@ function worldFramePositions(local: Float32Array, o: [number, number, number]): 
 }
 
 export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult {
-  const { store, meshes, modelId, federation, worldTransform, buildExclusions = true } = options;
+  const {
+    store,
+    meshes,
+    modelId,
+    federation,
+    worldTransform,
+    buildExclusions = true,
+    meshIdOffset = 0,
+  } = options;
 
   const elements: ClashElement[] = [];
   const byExpressId = new Map<number, ClashElement>();
 
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length === 0) continue;
-    const expressId = mesh.expressId;
+    // STORE-LOCAL id. Everything below that touches `store` — the entity table,
+    // `EntityNode`, the relationship graph in `buildStepExclusions` — must use
+    // this, never `mesh.expressId`, which the host may already have shifted
+    // into the global id space (see `meshIdOffset`).
+    const expressId = mesh.expressId - meshIdOffset;
     const node = new EntityNode(store, expressId);
 
     // Drop non-physical / non-product geometry up front so it never becomes a
@@ -178,6 +210,11 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
 
     const element: ClashElement = {
       key,
+      // `expressId` is local here, so the offset is applied exactly ONCE and
+      // the result is the id the renderer/selection channel already uses for
+      // this mesh — i.e. `mesh.expressId` again, whenever `meshIdOffset` and
+      // the federation agree (they are both read off the same `model.idOffset`
+      // in the viewer). See the federated round-trip test in `step.test.ts`.
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
       tag,

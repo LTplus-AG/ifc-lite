@@ -19,6 +19,9 @@ Provided:
   interface and serves a currently-valid access token, refreshing
   transparently and de-duplicating concurrent refreshes onto a single
   in-flight request.
+- `waitForOAuthCallback`: the popup-side handoff, i.e. how the redirect page
+  gets the authorization code back to the page that opened the popup. See
+  "The popup handoff" below — this is not the mechanism you would expect.
 
 Explicitly **not** provided, by design:
 - Any actual provider implementation (Google Drive, Dropbox, OneDrive, ...).
@@ -27,6 +30,46 @@ Explicitly **not** provided, by design:
 
 Each of those is provider-specific and belongs in that provider's own
 package, built on top of this one.
+
+## The popup handoff — why it is not `popup.closed`
+
+A provider opens the authorization URL in a popup and needs the redirect URL
+back. The obvious way is to poll `popup.closed` and `popup.location.href`
+until the redirect lands on the app's own origin. **That does not work in a
+cross-origin-isolated host, and it fails misleadingly.**
+
+A host that wants `SharedArrayBuffer` must send
+`Cross-Origin-Opener-Policy: same-origin` (the ifc-lite viewer does). Under
+that header, opening a *cross-origin* popup severs the opener relationship:
+the `WindowProxy` `window.open` returns is a stub that reports
+`closed === true` while the window is visibly open, and whose `location`
+throws `SecurityError`. Probed live against the running viewer, with a
+same-origin control popup behaving normally in the same probe — so the cause
+is the popup being cross-origin, and every authorization endpoint is on
+someone else's origin. The poll loop therefore rejects every sign-in as
+"cancelled" on its first tick, while the user is still on the consent screen.
+
+What still works: the redirect lands back on the app's own origin, so the
+callback page is same-origin with its opener and can hand the result over a
+`BroadcastChannel`, which is scoped by origin and unaffected by the severed
+opener link. `waitForOAuthCallback` is the listening half; the host serves
+the callback page and posts `OAUTH_CALLBACK_CHANNEL` messages of shape
+`OAuthCallbackMessage` from it (that page must be a static file, not the SPA
+fallback, or the popup boots a second copy of the whole application). The
+opener never touches the popup at all.
+
+Two consequences to know before changing this:
+
+- Messages are routed by the sign-in attempt's `state`, so two providers or
+  two tabs signing in concurrently cannot complete each other's flow. That
+  routing check is *not* the security check — `parseAuthorizationCallback`
+  still validates `state` and the redirect origin authoritatively.
+- **Cancellation is not detectable.** `popup.closed` is the only signal a
+  browser gives for "the user closed the window", and it is precisely what
+  COOP made unusable. A closed popup falls through to the caller's timeout.
+  This is a deliberate trade: there is no correct substitute signal.
+
+`src/callback-channel.ts` carries the full probe and reasoning.
 
 ## Token storage — the trade-off, and this package's default
 

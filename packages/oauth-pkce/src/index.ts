@@ -12,6 +12,9 @@ export { createPkcePair, deriveCodeChallengeS256, generateCodeVerifier, generate
 export { createAuthorizationRequest, parseAuthorizationCallback } from './authorization.js';
 export type { ParseAuthorizationCallbackOptions } from './authorization.js';
 
+export { OAUTH_CALLBACK_CHANNEL, waitForOAuthCallback } from './callback-channel.js';
+export type { OAuthCallbackMessage, WaitForOAuthCallbackOptions } from './callback-channel.js';
+
 export { exchangeAuthorizationCode, refreshAccessToken } from './token-exchange.js';
 export type { ExchangeAuthorizationCodeParams, RefreshAccessTokenParams } from './token-exchange.js';
 

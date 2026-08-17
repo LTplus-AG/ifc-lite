@@ -47,6 +47,11 @@ import { clashFramingBounds } from '@/lib/clash/clash-framing';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
+import {
+  clashFederationIsCurrent,
+  recordGatheredModel,
+  type ClashFederationIdentity,
+} from '@/lib/clash/federation-identity';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
 import { downloadBlob } from '@/lib/export/download';
@@ -247,11 +252,28 @@ export function useClash() {
     releaseOwnedClashVisibility(useViewerStore.getState());
   }, []);
 
-  /** Build clash elements + merged exclusions from every loaded model. */
-  const gatherElements = useCallback((): { elements: ClashElement[]; exclusions: ExclusionSet } => {
+  /**
+   * Build clash elements + merged exclusions from every loaded model — and, in
+   * the same pass, the identity of the federation those elements came from
+   * (`lib/clash/federation-identity.ts`).
+   *
+   * The identity is captured HERE, not at the top of `run()`, because it must
+   * describe the world the run actually EXAMINED. Captured before the opening
+   * `await nextFrameOrTimeout(...)`, a teardown landing during that frame would
+   * invalidate a run whose elements were then gathered from the NEW federation
+   * — a result that is perfectly current, discarded. Captured in this loop, off
+   * the same `state` snapshot the elements are read from, the two cannot
+   * describe different worlds.
+   */
+  const gatherElements = useCallback((): {
+    elements: ClashElement[];
+    exclusions: ExclusionSet;
+    federationIdentity: ClashFederationIdentity;
+  } => {
     const state = useViewerStore.getState();
     const elements: ClashElement[] = [];
     const exclusions: ExclusionSet = new Set<string>();
+    const federationIdentity = new Map<string, unknown>();
     const federation = { toGlobalId: (modelId: string, expressId: number) => state.toGlobalId(modelId, expressId) };
 
     for (const [modelId, model] of state.models) {
@@ -261,9 +283,50 @@ export function useClash() {
       const built = elementsFromStep({ store, meshes, modelId, federation });
       elements.push(...built.elements);
       for (const key of built.exclusions) exclusions.add(key);
+      // Only models that actually CONTRIBUTED elements — the condition the
+      // module doc's correctness argument is stated on, so it is checked here
+      // rather than assumed. Having a store and meshes is not the same thing:
+      // `elementsFromStep` can build nothing from them (every mesh filtered
+      // out), and such a model can hold no row, so recording it would let its
+      // removal discard a result it contributed nothing to.
+      if (built.elements.length === 0) continue;
+      recordGatheredModel(federationIdentity, modelId, model);
     }
-    return { elements, exclusions };
+    return { elements, exclusions, federationIdentity };
   }, []);
+
+  /**
+   * The ONE publish site for a detection result — both `run()` and
+   * `runDuplicates()` go through it, so the staleness check and the
+   * "`setClashResult` then `bumpClashRunSeq`" pairing exist in exactly one
+   * place and cannot drift apart (two sites with two copies of a check is this
+   * repo's defining bug class, #2637).
+   *
+   * A run holds the thread for as long as the geometry takes, and the user can
+   * tear the federation down while it does: "Clear all" / "Open file"
+   * (`clearAllModels`, `resetViewerState`), "Remove model" (`removeModel`), or
+   * a collab peer edit replacing the active model's data store
+   * (`dataSlice.setIfcDataStore`, driven by `collabSlice`). Landing anyway
+   * repopulated the panel with pairs whose refs resolve to nothing, every row
+   * inert because `focusClash` bails at `refs.length === 0`, with nothing on
+   * screen to explain it. `clashRunSeq` could not prevent this: it is a
+   * completion signal bumped AFTER a successful write, not a cancellation
+   * guard (see its field doc in `clashSlice`).
+   *
+   * @returns whether the result was published. A discarded run must not go on
+   *   to write its dependent state (groups, selection, telemetry) either.
+   */
+  const publishClashResult = useCallback(
+    (federationIdentity: ClashFederationIdentity, res: ClashResult): boolean => {
+      const state = useViewerStore.getState();
+      if (!clashFederationIsCurrent(federationIdentity, state.models)) return false;
+      state.setClashResult(res);
+      // Completed-run signal for baseline consumers (clash tour run gate).
+      state.bumpClashRunSeq();
+      return true;
+    },
+    [],
+  );
 
   /**
    * Drop any in-flight or already-applied intersection-solid presentation
@@ -308,7 +371,7 @@ export function useClash() {
         // a hidden tab never delivers a frame, and the whole run sits after this
         // await, so an unbounded wait means the run simply never starts. (#2385)
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-        const { elements, exclusions } = gatherElements();
+        const { elements, exclusions, federationIdentity } = gatherElements();
         if (elements.length === 0) {
           state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
@@ -324,10 +387,9 @@ export function useClash() {
         });
         // Publishes the raw run, the user's exclusion-filtered view of it, and
         // the spatial clusters (the BCF unit) in one commit; the panel list
-        // groups by its own dimension separately.
-        state.setClashResult(res);
-        // Completed-run signal for baseline consumers (clash tour run gate).
-        state.bumpClashRunSeq();
+        // groups by its own dimension separately. Discarded outright if the
+        // federation it examined is gone — see `publishClashResult`.
+        if (!publishClashResult(federationIdentity, res)) return;
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -343,7 +405,7 @@ export function useClash() {
         state.setClashProgress(null);
       }
     },
-    [gatherElements, discardSolidPresentation],
+    [gatherElements, discardSolidPresentation, publishClashResult],
   );
 
   /**
@@ -406,7 +468,7 @@ export function useClash() {
       // Paint the running state before the (synchronous) scan blocks the thread.
       // Bounded for the same reason as the clash run above (#2385).
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
-      const { elements, exclusions } = gatherElements();
+      const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
         state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
@@ -420,9 +482,13 @@ export function useClash() {
         exclusions,
         positionTolerance: state.clashDuplicateTolerance,
       });
-      state.setClashResult(res);
-      // Completed-run signal for baseline consumers (clash tour run gate).
-      state.bumpClashRunSeq();
+      // Same guard as `run()`, through the same helper. The scan itself is
+      // synchronous, so today nothing can interleave between the gather and
+      // this publish — but the two sites are one line apart in behaviour and
+      // must not be one line apart in correctness: adding a yield to the
+      // duplicate scan tomorrow would otherwise reopen the defect on this path
+      // alone, silently.
+      if (!publishClashResult(federationIdentity, res)) return;
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The
       // panel renders these as its sections (see duplicate-set-sections.ts).
@@ -443,7 +509,7 @@ export function useClash() {
       state.setClashRunning(false);
       state.setClashProgress(null);
     }
-  }, [gatherElements, discardSolidPresentation]);
+  }, [gatherElements, discardSolidPresentation, publishClashResult]);
 
   /**
    * Resolve a clash ref back to its model + local expressId. `null` means "no

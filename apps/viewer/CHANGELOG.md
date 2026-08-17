@@ -1,5 +1,33 @@
 # @ifc-lite/viewer
 
+## 1.36.0
+
+### Minor Changes
+
+- [#2688](https://github.com/LTplus-AG/ifc-lite/pull/2688) [`58ae85b`](https://github.com/LTplus-AG/ifc-lite/commit/58ae85bbb9c42506850db1ff2efa1debe379f799) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Phase 1 of the Blender-like lighting work ([#2670](https://github.com/LTplus-AG/ifc-lite/issues/2670)): expose light-hardness and shadow-feel controls in the standalone WebGPU viewer.
+  
+  **Renderer** — `LightingEnvironment` gains a `sunSoftness` field: the diffuse-wrap that sets the sun terminator, previously hardcoded to `0.3` in the shader. `0` is a crisp light/shadow boundary (harder shadows), larger values soften it (overcast). Resolved into the existing environment uniform (a spare pad slot, no UBO size change) and clamped to `[0, 1]`; omitting it reproduces the historic look exactly.
+  
+  **Viewer** — the Sun & Sky panel adds two sliders (WebGPU shading, hidden in world-context mode): **Light hardness** (deepens shadows by cutting hemisphere ambient + fill) and **Terminator softness** (trims the preset's `sunSoftness`). Both are user trims composed onto the active preset — switching presets changes the base, the trims persist — mirroring Exposure. Presets now carry per-preset softness (crisp Day/Evening, soft Overcast) so the terminator changes with the sky being simulated. Settings persist in localStorage.
+
+### Patch Changes
+
+- [#2696](https://github.com/LTplus-AG/ifc-lite/pull/2696) [`572100f`](https://github.com/LTplus-AG/ifc-lite/commit/572100fcdc3df89bd0461445e14e05809d1581a8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a clash run that finishes after the models it examined are gone repopulating the result list. Both publish sites in `useClash` wrote `setClashResult` unconditionally, so clearing the federation mid-run ("Clear all", "Open file", "Remove model", or a collab peer edit replacing the active model's data store) was undone seconds later by the finishing run. After a teardown every restored row is inert — focusing one resolves no entity refs — and after a collab peer edit the rows still focus but point at entities the peer's edit renumbered, so they select the wrong elements. Each run now records the identity of the federation it actually gathered elements from (each contributing model id mapped to its entity table, the express-id space its refs are derived from) and both sites publish through one guard that drops the result if any of those models is gone or has been re-parsed. The identity is read off the federation rather than bumped by each teardown, so no enumeration of teardown paths can fall out of date; and because it is keyed on the entity table rather than the `ifcDataStore` wrapper, a background spatial-index publish — which replaces the wrapper while every express id stays put — leaves a correct run alone.
+
+- [#2633](https://github.com/LTplus-AG/ifc-lite/pull/2633) [`c706f34`](https://github.com/LTplus-AG/ifc-lite/commit/c706f3452df4ab64a17966d5e965cf6518ccd417) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `@ifc-lite/source-msgraph`: a Microsoft Graph (OneDrive/SharePoint) file-source provider implementing `FileSourceProvider` from `@ifc-lite/plugin-api`. Browses the signed-in user's OneDrive (folders and files), lists version history, and downloads the current revision of a file via Graph's pre-signed `@microsoft.graph.downloadUrl` — never `GET .../content` directly, which 302-redirects in a way a browser can't follow under a CORS preflight.
+  
+  Authentication is delegated OAuth 2.0 Authorization Code + PKCE (`@ifc-lite/oauth-pkce`), scope `offline_access https://graph.microsoft.com/Files.Read` — no admin consent required, no client secret. No client ID is committed; it's a required, non-secret `clientId` preference the deployment configures (see the package README for what to register in Azure AD).
+  
+  Registered alongside `@ifc-lite/source-dalux` in the viewer's `createRegisteredProviders()`.
+  
+  The popup handoff is a `BroadcastChannel` from the redirect page, not the usual `popup.closed`/`popup.location` poll. A host that serves `Cross-Origin-Opener-Policy: same-origin` (the viewer does, for `SharedArrayBuffer`) has its opener link severed by the cross-origin authorization hop: `popup.closed` reads `true` while the popup is visibly open, so the poll loop rejects every sign-in as "cancelled" before the user has even consented. The viewer now serves the redirect path as a small static page (`apps/viewer/public/oauth/msgraph/callback.html`, routed in dev by `apps/viewer/vite-plugins/oauth-callback.ts` and in production by a `vercel.json` rewrite) instead of letting the SPA fallback boot a second copy of the whole application inside the popup.
+  
+  Because that failure is a property of the popup being cross-origin rather than of any one provider, the waiting side ships as `waitForOAuthCallback` (plus the `OAUTH_CALLBACK_CHANNEL` name and its `OAuthCallbackMessage` shape) in `@ifc-lite/oauth-pkce`, so every provider built on that package shares one implementation. Messages are routed by the sign-in attempt's `state`, which is what keeps two concurrent sign-ins from completing each other's flow; `parseAuthorizationCallback` still performs the authoritative CSRF check. One consequence is deliberate: cancellation is no longer detectable, because `popup.closed` is the only signal a browser gives for it and that is exactly what COOP made unusable, so closing the popup now waits out the timeout.
+- Updated dependencies [[`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38), [`58ae85b`](https://github.com/LTplus-AG/ifc-lite/commit/58ae85bbb9c42506850db1ff2efa1debe379f799), [`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38), [`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38), [`c706f34`](https://github.com/LTplus-AG/ifc-lite/commit/c706f3452df4ab64a17966d5e965cf6518ccd417), [`b8fb71e`](https://github.com/LTplus-AG/ifc-lite/commit/b8fb71e5c19ddf405563664f29e8a6ec22f36b63)]:
+  - @ifc-lite/drawing-2d@2.1.0
+  - @ifc-lite/renderer@1.49.0
+  - @ifc-lite/source-msgraph@0.2.0
+
 ## 1.35.0
 
 ### Minor Changes

@@ -167,8 +167,9 @@ describe('sunSoftness (terminator wrap)', () => {
 
   it('maps a non-finite softness to 0 (crisp terminator), never NaN in the uniform', () => {
     assert.strictEqual(resolveEnvironment({ sunSoftness: NaN }).sunSoftness, 0);
+    assert.strictEqual(resolveEnvironment({ sunSoftness: Infinity }).sunSoftness, 0);
     const buf = packEnvironmentUniforms(resolveEnvironment({ sunSoftness: Infinity }));
-    assert.ok(Number.isFinite(buf[17]));
+    assert.strictEqual(buf[17], 0);
   });
 });
 

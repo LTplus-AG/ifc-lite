@@ -329,6 +329,68 @@ describe('useClash gathers a federated model past the first with the offset the 
     const keys = [crossModel[0].a.key, crossModel[0].b.key].sort();
     assert.deepEqual(keys, [HOST_WALL_GUID, FED_WALL_GUID].sort(), 'both sides keep their durable key');
   });
+
+  /**
+   * The RESOLUTION half, end to end: a ref this file's fix now builds correctly
+   * must come back out of `useClash`'s `refOf` as the federated model's own
+   * LOCAL express id.
+   *
+   * The two halves were fixed against different bases and only meet here.
+   * `refOf` (#2697) resolves `ref.model` + `ref.ref` through
+   * `resolveGlobalIdInModel`, which subtracts `model.idOffset` and range-checks
+   * against `maxExpressId`. While the offset was applied TWICE, `wallId +
+   * 2*offset` fell outside model B's own range, so `refOf` answered `null` and
+   * every row on a federated model past the first was inert — and every test of
+   * `refOf` on a non-zero offset had to hand-build its refs to say anything at
+   * all. Built once (this file's fix), the ref lands inside the range and the
+   * row resolves.
+   *
+   * This is the assertion neither PR could make alone: the ref is PRODUCED by
+   * the real `run()` and CONSUMED by the real `highlightAll()`, so a regression
+   * in either direction — a reinstated double offset, or a resolver that stops
+   * subtracting — shows up as the wrong local id or as no selection at all.
+   */
+  it('a clash row on the federated model resolves back to its LOCAL express id', async () => {
+    const { offset, wallId } = await seedFederation();
+
+    await act(async () => {
+      await api!.run([ALL_RULE]);
+    });
+
+    const s0 = useViewerStore.getState();
+    assert.equal(s0.clashError, null, 'the run must not error');
+    const wallRef = s0.clashResult!.clashes
+      .flatMap((c) => [c.a, c.b])
+      .find((r) => r.model === 'B' && r.key === FED_WALL_GUID);
+    assert.ok(wallRef, 'setup sanity: the federated wall must appear in a row');
+    assert.equal(wallRef!.ref, wallId + offset, 'setup sanity: built in the global id space, once');
+
+    // `highlightAll` ADDS to the selection; start from empty so the assertion
+    // below reads exactly what this result resolved to.
+    useViewerStore.getState().clearEntitySelection();
+    await act(async () => {
+      api!.highlightAll();
+    });
+
+    const s = useViewerStore.getState();
+    assert.ok(
+      s.selectedEntitiesSet.has(`B:${wallId}`),
+      `the federated wall's row must resolve to B's LOCAL express id ${wallId}; ` +
+        `selection was [${[...s.selectedEntitiesSet].join(', ')}]`,
+    );
+    // The GLOBAL id is what the renderer highlights, and it is the ref itself —
+    // resolution must not shift the number the 3D view is addressed by.
+    assert.ok(
+      s.selectedEntityIds.has(wallId + offset),
+      'the renderer highlight set must carry the GLOBAL id the mesh is drawn under',
+    );
+    // The host model's own row half still resolves alongside it: this is a
+    // federation, and the fix must not trade one model's rows for the other's.
+    assert.ok(
+      [...s.selectedEntitiesSet].some((k) => k.startsWith('A:')),
+      'the first model\'s half of the cross-model pair must resolve too',
+    );
+  });
 });
 
 // ─── The other half: elements that have NO durable key ──────────────────────

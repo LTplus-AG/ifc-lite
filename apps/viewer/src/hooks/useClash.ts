@@ -606,10 +606,8 @@ export function useClash() {
    * can answer with a DIFFERENT model, reintroducing exactly the ambiguity this
    * resolver exists to remove — and the supersede check below cannot catch it,
    * being keyed on `ref.model`, so the model the search wandered into is never
-   * validated at all. That path is reachable by construction today: the
-   * double-offset defect below puts every ref from a federated model past the
-   * first outside its own model's range. A ref that does not fit its own loaded
-   * model is now `null` — inert and visible beats resolved and wrong.
+   * validated at all. A ref that does not fit its own loaded model is now
+   * `null` — inert and visible beats resolved and wrong.
    *
    * The remaining fallback is not itself gated by identity: when the named model
    * is absent there is no id space of its own left to compare against, and this
@@ -632,17 +630,17 @@ export function useClash() {
    * named model is loaded, and the gap is one level up, in what keeps a result
    * alive past its models.
    *
-   * NOTE on exactness: this resolver is only as good as the `ref` it is handed,
-   * and `ref` is currently mis-built for any federated model past the first —
-   * `useIfcLoader` shifts `mesh.expressId` by `idOffset` at load, and
-   * `elementsFromStep` then puts that already-shifted id through `toGlobalId`,
-   * applying the offset twice. That is a pre-existing defect one level up (it
-   * predates this resolver and degrades `key`, `tag` and `name` too, in the
-   * adapter); it is NOT fixed here, and no claim below should be read as
-   * "the resolved element is guaranteed to be the right one" for such a model.
-   * Such a ref falls outside its own model's range, so it now goes INERT rather
-   * than resolving into a neighbour's id range. The row was never usable; it is
-   * now honestly unusable instead of silently pointing somewhere else.
+   * NOTE on exactness: this resolver is only as good as the `ref` it is handed.
+   * Until #2704 it was handed a broken one for any federated model past the
+   * first — `useIfcLoader` shifts `mesh.expressId` by `idOffset` at load, and
+   * `elementsFromStep` put that already-shifted id through `toGlobalId`,
+   * applying the offset twice, so the ref fell outside its own model's range
+   * and this resolver answered `null`: every such row inert. #2704 hands
+   * `elementsFromStep` the `meshIdOffset` it needs (see `gatherElements`), so
+   * the offset is applied exactly once and those refs land in range and
+   * resolve. `useClash.federated-id-offset.test.tsx` drives the two halves
+   * together — ref built by the real `run()`, resolved by the real
+   * `highlightAll()` — because neither half's own tests can see the join.
    *
    * ## Which id SPACE
    *

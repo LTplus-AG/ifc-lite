@@ -33,6 +33,7 @@ import { summarizeClashes, type Clash, type ClashResult, type ClashRule } from '
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
 import { rememberFederationIdentity } from '@/lib/clash/federation-identity.js';
+import { elementPairExclusion } from '@/lib/clash/exclusions.js';
 import { CLASH_SUPERSEDED_MESSAGE, useClash } from './useClash.js';
 
 // ─── Fixture: two walls, meshed as overlapping unit boxes ───────────────────
@@ -339,13 +340,11 @@ describe('clash results are usable in a collaborative room', () => {
    * from a no-op. This pins the subtrahend and the range guard on a model with
    * a NON-ZERO offset.
    *
-   * The result is hand-built rather than produced by `run()` on purpose. The
-   * ref-PRODUCTION path applies `idOffset` twice for a federated model (mesh
-   * express ids are already shifted by `useIfcLoader` before
-   * `elementsFromStep` puts them through `toGlobalId`), a pre-existing defect
-   * one level up from this resolver. Feeding `refOf` a correctly-formed ref
-   * pins the CONTRACT it is responsible for without encoding that bug as an
-   * expectation.
+   * The result is hand-built rather than produced by `run()` so the OUT-OF-RANGE
+   * half (global 1099, past model B's `maxExpressId`) can be stated directly —
+   * a real run only ever emits ids it owns. The in-range half is covered end to
+   * end by `useClash.federated-id-offset.test.tsx`, which resolves a ref the
+   * real `run()` built for a model at a real non-zero offset.
    */
   it('a ref from a model with a non-zero idOffset resolves to the LOCAL express id, in range', async () => {
     await seedRoom();
@@ -406,10 +405,10 @@ describe('clash results are usable in a collaborative room', () => {
    * rows nothing moved under — unload the second of two files and every row
    * wholly inside the first would stop working.
    *
-   * Hand-built so the identity can be bound directly, without a two-model run:
-   * the ref-production path double-applies `idOffset` for a federated model
-   * (see the test above), which would make a real second model's rows inert for
-   * an unrelated reason and hide what this pins.
+   * Hand-built so the identity can be bound directly and ONE model's table
+   * swapped in isolation: a real two-model run would have to arrange a
+   * cross-model overlap first, and what is under test here is the per-model
+   * scoping of the gate, not detection.
    */
   it('superseding ONE model refuses only that model\'s refs, not the whole result', async () => {
     await seedRoom();
@@ -476,5 +475,68 @@ describe('clash results are usable in a collaborative room', () => {
     assert.equal(s.clashSelectedId, 'c1', 'the resolvable half must still focus the row');
     assert.deepEqual([...(s.isolatedEntities ?? [])], [1],
       'only the still-valid element is isolated — the superseded one is not guessed at');
+  });
+
+  /**
+   * The gate must be asked of `clashRawResult`, the object the publish site
+   * bound the identity to — NOT of `clashResult`, which is re-derived.
+   *
+   * `applyClashExclusions` returns the very same object while nothing is
+   * suppressed (`if (suppressed === 0) return { result, ... }`), so with no
+   * exclusion rules the two store fields hold ONE object and the distinction is
+   * invisible: swapping `clashRawResult` for `clashResult` in `refOf` leaves
+   * every other test in this file green. The moment a rule actually suppresses
+   * a row, `deriveGroups` publishes `{ ...result, clashes: kept }` — a fresh
+   * object the identity WeakMap has never seen. `clashRefModelIsCurrent`
+   * answers `true` for an unknown result by design (unknown must never refuse),
+   * so reading the derived object would silently disable the gate for exactly
+   * the users who excluded something, and their stale rows would go back to
+   * isolating the wrong elements.
+   *
+   * So: exclude one row, supersede the model, and require the OTHER row to
+   * still be refused.
+   */
+  it('the supersede gate survives an exclusion rule re-deriving the result', async () => {
+    await seedRoom();
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const roomStore = useViewerStore.getState().models.get(ROOM_MODEL_ID)!.ifcDataStore!;
+
+    // A second row, so one can be excluded and one left to refuse. Hand-built
+    // onto the run's own result object so it keeps the identity `run()` bound.
+    const raw = useViewerStore.getState().clashRawResult!;
+    const first = raw.clashes[0];
+    const spare: Clash = {
+      ...first,
+      id: 'spare',
+      a: { ...first.a, key: 'spare-a', ref: 1 },
+      b: { ...first.b, key: 'spare-b', ref: 2 },
+    };
+    const withSpare: ClashResult = { ...raw, clashes: [...raw.clashes, spare] };
+    withSpare.summary = summarizeClashes(withSpare.clashes);
+    rememberFederationIdentity(withSpare, new Map<string, unknown>([[ROOM_MODEL_ID, roomStore.entities]]));
+    await act(async () => { useViewerStore.getState().setClashResult(withSpare); });
+
+    // Exclude the spare. This is what forces the re-derivation.
+    await act(async () => {
+      useViewerStore.getState().addClashExclusion(elementPairExclusion(spare.a, spare.b));
+    });
+    const derived = useViewerStore.getState();
+    assert.notEqual(derived.clashResult, derived.clashRawResult,
+      'setup sanity: an enabled exclusion must make the published result a DIFFERENT object');
+    const survivor = derived.clashResult!.clashes[0];
+    assert.equal(survivor.id, first.id, 'setup sanity: the un-excluded row is the one still published');
+
+    // The peer edit that renumbers the id space under the same model id.
+    const edited = await parse(THREE_WALLS_C_FIRST);
+    await act(async () => { useViewerStore.getState().setIfcDataStore(edited); });
+
+    await act(async () => { api!.focusClash(survivor, 'isolate'); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, null,
+      'a superseded row must still be refused after an exclusion re-derived the result');
+    assert.equal(s.isolatedEntities, null,
+      'and must still isolate nothing — the gate was read off the derived object and went blind');
+    assert.equal(s.clashError, CLASH_SUPERSEDED_MESSAGE, 'the refusal must still be explained');
   });
 });

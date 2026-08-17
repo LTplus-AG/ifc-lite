@@ -17,8 +17,24 @@
 
 import init, { clashIntersectionSolid } from '@ifc-lite/wasm';
 
-/** Why the kernel could not resolve a solid — mirrors `DegenerateReason` in `clash_solid.rs`. */
+/**
+ * Why the kernel could not resolve a solid — the full set of `degenerateReason`
+ * strings `clashIntersectionSolid` can return, pinned against the Rust source by
+ * `intersection-solid.test.ts`.
+ *
+ * That is a wider set than the geometry crate's `DegenerateReason` enum:
+ * `'malformed-operand'` is the wasm BINDING's own verdict, produced by
+ * `mesh_from` in `clash_solid.rs` before the boolean ever runs, and has no enum
+ * variant behind it. The reason crosses the wasm boundary as an untyped string
+ * and is cast on arrival, so TypeScript cannot catch a member missing here.
+ */
 export type ClashSolidDegenerateReason =
+  /**
+   * The binding rejected an operand rather than computing on it: a positions or
+   * indices length that is not a multiple of 3, an index past its own operand's
+   * vertex count, or a non-finite (NaN/infinity) coordinate.
+   */
+  | 'malformed-operand'
   | 'empty-operand'
   | 'no-overlap'
   | 'below-kernel-resolution'

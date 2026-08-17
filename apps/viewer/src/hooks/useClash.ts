@@ -283,8 +283,13 @@ export function useClash() {
       const built = elementsFromStep({ store, meshes, modelId, federation });
       elements.push(...built.elements);
       for (const key of built.exclusions) exclusions.add(key);
-      // Only models that actually contributed elements: a skipped model can
-      // hold no row, so its removal invalidates nothing. See the module doc.
+      // Only models that actually CONTRIBUTED elements — the condition the
+      // module doc's correctness argument is stated on, so it is checked here
+      // rather than assumed. Having a store and meshes is not the same thing:
+      // `elementsFromStep` can build nothing from them (every mesh filtered
+      // out), and such a model can hold no row, so recording it would let its
+      // removal discard a result it contributed nothing to.
+      if (built.elements.length === 0) continue;
       recordGatheredModel(federationIdentity, modelId, model);
     }
     return { elements, exclusions, federationIdentity };

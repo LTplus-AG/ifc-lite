@@ -39,6 +39,7 @@ import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore, type FederatedModel } from '@/store';
+import { posthog } from '@/lib/analytics';
 import { useClash } from './useClash.js';
 
 // ─── Fixture: two walls per model, meshed as overlapping unit boxes ──────────
@@ -181,11 +182,25 @@ function tearDownMidRun(action: () => void): () => void {
   });
 }
 
+/**
+ * Telemetry sink. `run()`'s only observable write after the publish guard is
+ * `posthog.capture('clash_detection_run', ...)` — dropping the early return
+ * changes nothing else in the store, so this is what pins "a discarded run must
+ * not go on to write its dependent state".
+ */
+const captured: string[] = [];
+const realCapture = posthog.capture;
+
 beforeEach(() => {
   api = null;
+  captured.length = 0;
+  posthog.capture = ((event: string) => {
+    captured.push(event);
+  }) as typeof posthog.capture;
 });
 
 afterEach(async () => {
+  posthog.capture = realCapture;
   const current = root;
   root = null;
   if (current) await act(async () => current.unmount());
@@ -196,6 +211,7 @@ afterEach(async () => {
 describe('a clash run landing after its models are gone must not repopulate the result', () => {
   it('"Clear all" mid-run: the finishing run must not repopulate clashResult', async () => {
     await seed(['A']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
     const unsub = tearDownMidRun(() => useViewerStore.getState().clearAllModels());
 
     await act(async () => { await api!.run([ALL_RULE]); });
@@ -205,10 +221,15 @@ describe('a clash run landing after its models are gone must not repopulate the 
     assert.equal(s.models.size, 0, 'setup sanity: the teardown really ran mid-flight');
     assert.equal(s.clashResult, null, 'a run over models that are gone must not repopulate the result list');
     assert.equal(s.clashRawResult, null, 'the raw result must be discarded with the derived one');
+    assert.equal(s.clashGroups, null, 'a discarded run must not publish its groups either');
+    assert.equal(s.clashRunSeq, seqBefore, 'a discarded run must not signal a completed run');
+    assert.ok(!captured.includes('clash_detection_run'),
+      'a discarded run must not report itself as a completed detection run');
   });
 
   it('"Open file" mid-run (resetViewerState + clearAllModels): the finishing run must not repopulate clashResult', async () => {
     await seed(['A']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
     const unsub = tearDownMidRun(() => {
       // The order the load path uses: reset the view, then drop the models.
       useViewerStore.getState().resetViewerState();
@@ -221,10 +242,13 @@ describe('a clash run landing after its models are gone must not repopulate the 
     const s = useViewerStore.getState();
     assert.equal(s.models.size, 0, 'setup sanity: the teardown really ran mid-flight');
     assert.equal(s.clashResult, null, 'a run over models that are gone must not repopulate the result list');
+    assert.equal(s.clashGroups, null, 'a discarded run must not publish its groups either');
+    assert.equal(s.clashRunSeq, seqBefore, 'a discarded run must not signal a completed run');
   });
 
   it('removeModel mid-run: the run examined the removed model, so its result must be discarded', async () => {
     await seed(['A', 'B']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
     const unsub = tearDownMidRun(() => useViewerStore.getState().removeModel('B'));
 
     await act(async () => { await api!.run([ALL_RULE]); });
@@ -234,10 +258,13 @@ describe('a clash run landing after its models are gone must not repopulate the 
     assert.equal(s.models.size, 1, 'setup sanity: exactly one model was removed mid-flight');
     assert.equal(s.clashResult, null,
       'the gathered element set included B, so every pair naming B would be an inert row');
+    assert.equal(s.clashGroups, null, 'a discarded run must not publish its groups either');
+    assert.equal(s.clashRunSeq, seqBefore, 'a discarded run must not signal a completed run');
   });
 
   it('a collab peer edit mid-run (setIfcDataStore) must discard the result: express ids get reassigned', async () => {
     await seed(['A']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
     const replacement = await parse(TWO_WALLS);
     const unsub = tearDownMidRun(() => useViewerStore.getState().setIfcDataStore(replacement));
 
@@ -249,6 +276,52 @@ describe('a clash run landing after its models are gone must not repopulate the 
       'setup sanity: the peer edit really replaced the active model data store mid-flight');
     assert.equal(s.clashResult, null,
       'the result was computed against the pre-edit store, whose express ids no longer hold');
+    assert.equal(s.clashGroups, null, 'a discarded run must not publish its groups either');
+    assert.equal(s.clashRunSeq, seqBefore, 'a discarded run must not signal a completed run');
+  });
+
+  /**
+   * `runDuplicates` has no interleaving window today — the scan between the
+   * gather and the publish is synchronous — so this drives the discard through
+   * the one seam the path does have: the federation changing WHILE
+   * `gatherElements` iterates. That is exactly the state `publishClashResult`
+   * is defined on, and it is the only place the duplicate path's dependent
+   * write (`setClashGroups`) can be pinned. Without it, deleting the early
+   * return after a discarded publish leaves the whole suite green.
+   */
+  it('a discarded duplicate scan must not publish its duplicate sets either', async () => {
+    await seed(['A', 'B']);
+    const seqBefore = useViewerStore.getState().clashRunSeq;
+    useViewerStore.setState((s) => {
+      const models = new Map(s.models);
+      const b = models.get('B')!;
+      const bStore = b.ifcDataStore!;
+      let fired = false;
+      models.set('B', {
+        ...b,
+        // Read inside `gatherElements`' loop, after A has already been
+        // recorded and its elements taken — the federation the scan examined
+        // is gone by the time it publishes.
+        get ifcDataStore() {
+          if (!fired) {
+            fired = true;
+            useViewerStore.getState().removeModel('A');
+          }
+          return bStore;
+        },
+      } as FederatedModel);
+      return { models };
+    });
+
+    await act(async () => { await api!.runDuplicates(); });
+
+    const s = useViewerStore.getState();
+    assert.ok(!s.models.has('A'), 'setup sanity: A really went away while the scan was gathering');
+    assert.equal(s.clashResult, null, 'the scan examined A, which is gone');
+    assert.equal(s.clashGroups, null, 'a discarded scan must not publish its duplicate SETS either');
+    assert.equal(s.clashRunSeq, seqBefore, 'a discarded scan must not signal a completed run');
+    assert.ok(!captured.includes('clash_duplicate_scan'),
+      'a discarded scan must not report itself as a completed scan');
   });
 });
 
@@ -293,6 +366,46 @@ describe('a normal clash run still publishes its result', () => {
     assert.ok(s.models.has('C'), 'setup sanity: the model was really added mid-flight');
     assert.ok(s.clashResult && s.clashResult.clashes.length >= 1,
       'nothing the run examined went away, so its result is still about models that exist');
+  });
+
+  /**
+   * The background spatial-index build (`utils/loadingUtils.ts`
+   * `buildSpatialIndexGuarded`) republishes the ACTIVE model's store as a
+   * shallow clone once the index is ready. Every loader starts it AFTER
+   * `finalizeModel(... loadState: 'complete')` — `useIfcLoader.ts:1899`,
+   * `useIfcCache.ts:450`, `useIfcServer.ts:384` — so the UI is interactive and
+   * Run is clickable while it runs, for seconds on a large model.
+   *
+   * That publish changes the store REFERENCE while leaving every express id
+   * untouched: the clone shares the entity table, so every ref the run
+   * computed still resolves and still focuses. A guard keyed on the store
+   * wrapper throws the run away here — a correct result, silently discarded,
+   * with no `clashError` to distinguish it from "no clashes found".
+   */
+  it('the background spatial-index publish mid-run must not discard the result', async () => {
+    await seed(['A']);
+    const store = useViewerStore.getState().models.get('A')!.ifcDataStore!;
+    // `buildSpatialIndexGuarded` guards on the ACTIVE store and writes through
+    // `setIfcDataStore`, so mirror its precondition.
+    useViewerStore.setState({ ifcDataStore: store });
+    const unsub = tearDownMidRun(() => {
+      // Verbatim the publish at loadingUtils.ts:41-42: the index is attached to
+      // the captured store, which is then re-published as a shallow clone.
+      const capturedStore = useViewerStore.getState().ifcDataStore!;
+      useViewerStore.getState().setIfcDataStore({ ...capturedStore });
+    });
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+    unsub();
+
+    const s = useViewerStore.getState();
+    const published = s.models.get('A')!.ifcDataStore!;
+    assert.notEqual(published, store, 'setup sanity: the store REFERENCE really was replaced mid-flight');
+    assert.equal(published.entities, store.entities,
+      'setup sanity: a shallow clone shares the entity table, so no express id moved');
+    assert.equal(s.clashError, null, 'the run must not error');
+    assert.ok(s.clashResult && s.clashResult.clashes.length >= 1,
+      'no express id changed, so every row still resolves: this result must be published');
   });
 
   it('removing a model the run never examined does not discard the result', async () => {

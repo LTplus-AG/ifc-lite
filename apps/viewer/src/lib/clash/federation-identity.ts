@@ -48,21 +48,34 @@
  *
  * ## What makes up the identity
  *
- * For every model the run actually took elements from: its id, mapped to its
- * `ifcDataStore` REFERENCE. That is precisely what the refs in a `ClashResult`
- * depend on — `elementsFromStep` derives every `ref` from an express id in that
- * store, via `toGlobalId(modelId, expressId)`. A model whose store object is
- * still the same object still answers for those ids; anything else does not.
+ * For every model the run actually took elements from: its id, mapped to that
+ * model's ENTITY TABLE (`ifcDataStore.entities`), not to the `ifcDataStore`
+ * wrapper. What the refs in a `ClashResult` depend on is the express id space —
+ * `elementsFromStep` derives every `ref` from an express id via
+ * `toGlobalId(modelId, expressId)` — and the entity table is that id space,
+ * while the wrapper is merely the object holding it. `identityToken` carries
+ * the full argument for why the table is the load-bearing grain; the short
+ * version is that the wrapper is replaced by writes that move no id (the
+ * background spatial-index publish clones it on every load), so keying on it
+ * discarded runs that were perfectly correct.
  *
  * Deliberately NOT part of the identity:
  *
- *  - models the run SKIPPED (no store, no meshes). They contributed no
- *    elements, so no row can refer to them and their removal invalidates
- *    nothing.
- *  - models ADDED during the run. The result is then merely incomplete, not
- *    wrong: every row still names a model that exists and still focuses. A
- *    second file finishing its load mid-run must not silently throw the run
- *    away.
+ *  - models the run SKIPPED (no store, no meshes, or no elements built). They
+ *    contributed no elements, so no row can refer to them and their removal
+ *    invalidates nothing.
+ *  - models ADDED during the run. Every row still names a model that exists and
+ *    still focuses, so the published result stays usable and a second file
+ *    finishing its load mid-run must not silently throw the run away. Note this
+ *    is weaker than "merely incomplete": if the added file is GEOREFERENCED,
+ *    `realignFederationModels` (`hooks/ingest/federationRealign.ts`) re-bakes
+ *    every non-anchor model by mutating `geometryResult` in place and publishes
+ *    through `updateModel(modelId, { preAlignment, federationAlignmentStatus })`,
+ *    leaving `ifcDataStore` untouched — so the models MOVE and the run's clash
+ *    points, AABBs and pair set describe the pre-realign frame. Those rows are
+ *    mis-placed, not inert; re-running is the remedy. Discarding a whole run
+ *    because another file happened to land is the worse trade, and no identity
+ *    keyed on the id space can see a pure geometry re-bake anyway.
  *  - `geometryResult`. A re-mesh replaces meshes but keeps express ids, so the
  *    published rows still resolve and still focus. Including it would discard
  *    live runs on benign geometry churn.
@@ -71,16 +84,50 @@
 /** The per-model fields the identity is read from. Structural, not the store's
  *  `FederatedModel`, so this module stays testable without the viewer store. */
 export interface FederationModelIdentity {
-  ifcDataStore?: unknown;
+  ifcDataStore?: { entities?: unknown } | null;
 }
 
 /**
- * Model id → the `ifcDataStore` object the run read its express ids from.
- * Compared by REFERENCE: a data store is replaced wholesale (`setIfcDataStore`
- * builds a new model record), never patched in place, so reference equality is
- * exactly "the ids this run computed still mean what it thought".
+ * Model id → the entity table the run read its express ids from.
+ * Compared by REFERENCE — see {@link identityToken} for why that is exactly
+ * "the ids this run computed still mean what it thought".
  */
 export type ClashFederationIdentity = ReadonlyMap<string, unknown>;
+
+/**
+ * The one definition of the token, used by BOTH the capture and the check so
+ * they cannot drift apart.
+ *
+ * `store.entities` — the columnar entity table (`IfcDataStore.entities`) — and
+ * NOT the `ifcDataStore` wrapper around it. The wrapper is the wrong grain: it
+ * is replaced by writes that move no express id at all, and the background
+ * spatial-index build does exactly that on every load
+ * (`utils/loadingUtils.ts` `buildSpatialIndexGuarded` publishes
+ * `setIfcDataStore({ ...capturedStore })`, a shallow clone that shares this
+ * very table). Keyed on the wrapper, a run that lands during that window — a
+ * window every loader opens AFTER the model reports `loadState: 'complete'`,
+ * so the user can and does hit Run inside it — is thrown away though every one
+ * of its rows still resolves.
+ *
+ * The table is the right grain in both directions:
+ *
+ *  - it is never assigned or mutated in place on a live store. No `store.entities =`
+ *    exists outside a store's own construction, and nothing appends to the
+ *    table after `EntityTableBuilder.build()`. So a token that holds means the
+ *    express ids genuinely have not moved.
+ *  - every path that DOES move express ids builds a whole new store, and with
+ *    it a new table: a re-parse (`IfcParser.parseColumnar`), a worker handoff
+ *    (`fromTransport` rebuilds the columns), and the collab peer edit — which
+ *    re-derives the model from the CRDT through `parseIfcxViewerModel` before
+ *    calling `setIfcDataStore` (`collabSlice`). So a token that breaks really
+ *    is a run whose refs no longer hold.
+ *
+ * A store without an entity table falls back to the store object itself, so
+ * such a model is compared exactly as it was before — never silently equal.
+ */
+function identityToken(model: FederationModelIdentity): unknown {
+  return model.ifcDataStore?.entities ?? model.ifcDataStore;
+}
 
 /**
  * Record the identity of one model the run took elements from. Called from
@@ -93,16 +140,16 @@ export function recordGatheredModel(
   modelId: string,
   model: FederationModelIdentity,
 ): void {
-  into.set(modelId, model.ifcDataStore);
+  into.set(modelId, identityToken(model));
 }
 
 /**
- * Is every model this run examined still loaded, with the same data store?
+ * Is every model this run examined still loaded, with the same entity table?
  *
  * `false` means the run described a world that no longer exists and its result
  * must be dropped: `clearAllModels` / `resetViewerState` empty the map,
  * `removeModel` drops one key, and a collab peer edit
- * (`setIfcDataStore`) swaps one value.
+ * (`setIfcDataStore` with a re-derived store) swaps one value.
  *
  * An EMPTY captured identity returns `true` — vacuously current. It cannot
  * arise from a real run (`run()` and `runDuplicates()` both bail with "No model
@@ -113,9 +160,9 @@ export function clashFederationIsCurrent(
   captured: ClashFederationIdentity,
   models: ReadonlyMap<string, FederationModelIdentity>,
 ): boolean {
-  for (const [modelId, store] of captured) {
+  for (const [modelId, token] of captured) {
     const current = models.get(modelId);
-    if (!current || current.ifcDataStore !== store) return false;
+    if (!current || identityToken(current) !== token) return false;
   }
   return true;
 }

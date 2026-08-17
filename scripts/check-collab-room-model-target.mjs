@@ -38,6 +38,20 @@
  * longer routes through the by-id helper, is an error rather than a silent
  * pass. An absence guard that scans nothing passes forever.
  *
+ * The outbound checks (3 and 4) are STRUCTURAL rather than a text scan for a
+ * remembered pattern, because the earlier "somewhere in this file there is at
+ * least one gate" shape was evadable in exactly the way it existed to prevent —
+ * a gate could be deleted from most call sites, or aliased past
+ * (`const st = get;`), and still pass. Instead:
+ *
+ *   - the set of actions to check is ENUMERATED from the source, keyed on
+ *     "takes an entityId", so a newly added mirror is covered on the day it is
+ *     written rather than the day someone updates this file;
+ *   - each one must both TAKE a `modelId` and resolve through the single call
+ *     that binds the store to it, so the gate cannot be half-performed;
+ *   - every call site is checked, not just one, and the per-action counts are
+ *     floored so a deletion is a deliberate diff.
+ *
  * Run via `node scripts/check-collab-room-model-target.mjs` (CI node-test job).
  */
 
@@ -209,8 +223,16 @@ meshes on the next peer edit. Route the write through
 });
 
 // ── 2. Inbound: a peer's edit replayed into a local view ────────────────────
+//
+// The banned members are matched WITHOUT their receiver (`.activeModelId`, not
+// `get().activeModelId`): banning the `get()` spelling only is evaded by
+// `const st = get;` … `st().ifcDataStore`, which is the same read with a
+// different name. These three fields have no legitimate reader in this region —
+// the room's equivalents are `roomModelIdOf` / `roomStore` / `roomMutationView`
+// — while `.models` (used for `toGlobalIdFromModels`) is model-agnostic and
+// stays allowed.
 assertRegion(region(collab, 'remoteApplyTeardown = attachRemoteApply(', 'collab inbound apply'), {
-  banned: ['get().activeModelId', 'get().ifcDataStore', 'get().mutationViews'],
+  banned: ['.activeModelId', '.ifcDataStore', '.mutationViews'],
   required: ['roomStore(get())', 'roomMutationView(get())', 'roomModelIdOf(get())'],
   consequence: `A peer's edit carries an expressId in the ROOM's id space. Replaying it into
 the ACTIVE model writes it into the user's own file — into undoStacks,
@@ -219,52 +241,126 @@ exported IFC. Resolve through \`roomStore\` / \`roomMutationView\` /
 \`roomModelIdOf\` (apps/viewer/src/lib/collab/room-model-target.ts).`,
 });
 
-// ── 3. Outbound: local edits mirrored into the room ─────────────────────────
-// Whole-file, not a region: `activeModelId` has no legitimate reader in this
-// slice, and the gate it used to guard is repeated at three call sites.
-{
-  const hits = [];
-  let at = mutation.clean.indexOf('get().activeModelId');
-  while (at !== -1) {
-    hits.push(`${MUTATION_SLICE}:${mutation.lineOf(at)}: get().activeModelId`);
-    at = mutation.clean.indexOf('get().activeModelId', at + 1);
-  }
-  if (hits.length > 0) {
-    fail([
-      'collab outbound mirror gate reads the ACTIVE model:',
-      '',
-      ...hits.map((h) => `  ${h}`),
-      '',
-      `A user who joins a room and then loads and selects their own file would
-broadcast that PRIVATE model's edits into the shared room, where the id lands on
-whatever entity it resolves to in the owner's model. Gate on
-\`isRoomModel(get(), modelId)\` (apps/viewer/src/lib/collab/room-model-target.ts).`,
-    ]);
-  } else if (!mutation.clean.includes('isRoomModel(get(), modelId)')) {
-    fail([
-      `collab outbound mirror gate: no \`isRoomModel(get(), modelId)\` in ${MUTATION_SLICE}.`,
-      '',
-      'The mirror gate no longer names the room model, so "does not read',
-      'activeModelId" is satisfied vacuously.',
-    ]);
-  }
+// ── 3. Outbound: every entity action gates itself, by construction ─────────
+//
+// The rule, and the reason this is discovered rather than listed: an expressId
+// is meaningless without the model whose id space it belongs to, so a collab
+// action that takes an `entityId` MUST take a `modelId` too, and MUST resolve
+// its store through `roomStoreFor(get(), modelId)` — the single call that is
+// both the room gate and the store lookup.
+//
+// Doing the lookup without the gate is strictly worse than the bug it replaces:
+// the room's `idToPath` is dense over its own ids, so a PRIVATE model's
+// expressId resolves to a REAL path of the SHARED model, `hasEntity` says yes,
+// and the write lands on an unrelated peer's entity. Resolving against the
+// user's own store merely fails closed.
+//
+// Actions are ENUMERATED from the source, not listed here, so a new one is
+// covered the day it is written rather than the day someone remembers to add it
+// to this file. Actions with no `entityId` (the annotation mirrors, which are
+// room-level markup) are room-scoped already and are correctly exempt.
+const ENTITY_ACTION_RE = /\n {2}((?:mirror|collab|readCollab)[A-Za-z]*): \(([^)]*)\) => \{/g;
+/** Every collab action in the slice implementation, with its parameter list. */
+const collabActions = [];
+for (const m of collab.clean.matchAll(ENTITY_ACTION_RE)) {
+  const params = m[2].split(',').map((p) => p.trim()).filter(Boolean);
+  collabActions.push({ name: m[1], params, header: m[0].slice(1), offset: m.index + 1 });
+}
+const entityActions = collabActions.filter((a) => a.params.includes('entityId'));
+
+// Fail closed: if the shape of the slice changed enough that the scan finds
+// (almost) nothing, "every action is gated" would be vacuously true.
+const ENTITY_ACTION_FLOOR = 10;
+if (entityActions.length < ENTITY_ACTION_FLOOR) {
+  fail([
+    `collab entity actions: found ${entityActions.length} in ${COLLAB_SLICE}, expected at least ${ENTITY_ACTION_FLOOR}.`,
+    '',
+    'This guard enumerates the actions it checks. Finding fewer than exist means',
+    'the scan no longer matches the slice, so nothing meaningful was checked.',
+    'Re-point the pattern, and lower this floor only alongside a real deletion.',
+  ]);
 }
 
-// ── 4. Outbound: the modelId-taking mirrors gate themselves ────────────────
-// These are called unconditionally from mutationSlice, so the gate has to live
-// inside each one — a new call site cannot forget what it never had to write.
-for (const mirror of [
-  'mirrorPlacementEdit: (modelId, entityId, deltaIfc, deltaYaw = 0) => {',
-  'mirrorEntityRemove: (modelId, entityId) => {',
-  'mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {',
-  'mirrorEntityGeometry: (modelId, entityId, mesh) => {',
-]) {
-  const name = mirror.slice(0, mirror.indexOf(':'));
-  assertRegion(region(collab, mirror, `collab ${name}`), {
-    banned: [],
-    required: ['isRoomModel(get(), modelId)'],
-    consequence: '',
+for (const action of entityActions) {
+  if (action.params[0] !== 'modelId') {
+    fail([
+      `collab ${action.name} takes an entityId but no leading modelId (${COLLAB_SLICE}:${collab.lineOf(action.offset)}).`,
+      '',
+      `  (${action.params.join(', ')})`,
+      '',
+      `An expressId only means something against the model it came from. Without
+the modelId this action cannot tell a room edit from an edit on the user's own
+file, and resolving it against the room's store writes a real path of the
+SHARED model. Take \`modelId\` first and gate on
+\`roomStoreFor(get(), modelId)\` (apps/viewer/src/lib/collab/room-model-target.ts).`,
+    ]);
+    continue;
+  }
+  assertRegion(region(collab, action.header, `collab ${action.name}`), {
+    // The gate and the store lookup are one call, so naming either half
+    // separately is the split this guard exists to prevent.
+    banned: ['roomStore(get())', 'get().models.get(modelId)', 'get().ifcDataStore'],
+    required: ['roomStoreFor(get(), modelId)'],
+    consequence: `\`${action.name}\` resolves its store without binding it to \`modelId\`. Use
+\`roomStoreFor(get(), modelId)\`, which returns the room's store ONLY when
+\`modelId\` is the room's model — see its doc comment for why the lookup alone
+is the dangerous half.`,
   });
+}
+
+// ── 4. The call sites hand over the EDITED model ───────────────────────────
+//
+// With the gate in the callee, the call site has exactly one job left, and
+// getting it wrong re-opens the corruption one level up: passing
+// `activeModelId` would make the gate approve a private model's edit. Every
+// call is checked (not "at least one"), and the counts are floored so deleting
+// a call site is a deliberate, visible diff rather than a free pass.
+//
+// `mutationSlice.collab-gate.test.ts` pins the same property behaviourally for
+// the three property/attribute mirrors; this covers all of them.
+const CALL_SITE_FLOOR = {
+  mirrorPropertyEdit: 1,
+  mirrorPropertyDelete: 1,
+  mirrorAttributeEdit: 1,
+  mirrorPlacementEdit: 3,
+  mirrorEntityRemove: 1,
+  mirrorEntityCreate: 2,
+  mirrorEntityGeometry: 1,
+  readCollabPlacement: 3,
+  collabTranslateEntity: 2,
+  collabRotateEntity: 1,
+};
+{
+  const entityActionNames = new Set(entityActions.map((a) => a.name));
+  const seen = new Map();
+  const CALL_RE = /get\(\)\.((?:mirror|collab|readCollab)[A-Za-z]*)\(\s*([A-Za-z0-9_.()!]*)/g;
+  for (const m of mutation.clean.matchAll(CALL_RE)) {
+    const [, name, firstArg] = m;
+    if (!entityActionNames.has(name)) continue;
+    seen.set(name, (seen.get(name) ?? 0) + 1);
+    if (firstArg !== 'modelId') {
+      fail([
+        `${MUTATION_SLICE}:${mutation.lineOf(m.index)}: \`${name}\` is handed \`${firstArg}\`, not \`modelId\`.`,
+        '',
+        `The room gate inside \`${name}\` trusts the modelId it is given. Handing it
+anything but the model this edit was made ON — \`activeModelId\` above all —
+approves mirroring a PRIVATE model's edit into the shared room, which is the
+defect this guard exists to prevent.`,
+      ]);
+    }
+  }
+  for (const [name, floor] of Object.entries(CALL_SITE_FLOOR)) {
+    const count = seen.get(name) ?? 0;
+    if (count < floor) {
+      fail([
+        `collab call sites: \`${name}\` is called ${count}× in ${MUTATION_SLICE}, expected at least ${floor}.`,
+        '',
+        'A call site was removed or renamed. If the removal is deliberate, lower the',
+        'floor in this guard in the same commit; otherwise an edit path silently',
+        'stopped syncing to the room.',
+      ]);
+    }
+  }
 }
 
 if (failures.length > 0) {
@@ -275,4 +371,8 @@ if (failures.length > 0) {
   process.exit(1);
 }
 
-console.log('check-collab-room-model-target: OK (4 regions, 0 active-model targeting)');
+const callSiteTotal = Object.values(CALL_SITE_FLOOR).reduce((a, b) => a + b, 0);
+console.log(
+  `check-collab-room-model-target: OK (2 regions, ${entityActions.length} entity actions self-gated, ` +
+    `${callSiteTotal} call sites bound to modelId)`,
+);

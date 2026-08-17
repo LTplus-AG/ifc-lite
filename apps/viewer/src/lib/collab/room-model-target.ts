@@ -95,6 +95,31 @@ export function roomStore(state: RoomModelTargetState): IfcDataStore | null {
 }
 
 /**
+ * The store an OUTBOUND room edit must be resolved against — the room's, but
+ * only when `modelId` IS the room's model. `null` means "do not mirror".
+ *
+ * Store selection and the room gate are one decision, and this is the call that
+ * makes them inseparable. Splitting them is worse than the bug they replace:
+ * resolving a foreign expressId against the user's OWN store yields a path in
+ * their own id space, which the room's document does not contain, so
+ * `mirrorPlacement` fails closed on `hasEntity` and the edit is a silent
+ * no-op. Resolving that same id against the ROOM's store yields a REAL path of
+ * the shared model — the room's `idToPath` is dense over its own ids — so the
+ * write lands on an unrelated peer's entity, for everyone. A caller that picks
+ * the right store and forgets the subject is armed, not fixed.
+ *
+ * See `room-model-gate.test.ts`, which runs both halves against the real
+ * document.
+ */
+export function roomStoreFor(
+  state: RoomModelTargetState,
+  modelId: string,
+): IfcDataStore | null {
+  if (!isRoomModel(state, modelId)) return null;
+  return roomStore(state);
+}
+
+/**
  * The editable view an inbound room edit must be written through, or
  * `undefined` when the room model has none registered yet (a view is created
  * when a model is selected). Dropping the edit is correct: the alternative is

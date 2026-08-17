@@ -67,10 +67,10 @@ import {
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import {
-  isRoomModel,
   roomModelIdOf,
   roomMutationView,
   roomStore,
+  roomStoreFor,
 } from '@/lib/collab/room-model-target';
 import {
   attachAnnotationInbound,
@@ -144,6 +144,23 @@ export interface CollabSlice {
    * `upsertModel` does not switch focus (modelSlice.ts). See
    * `@/lib/collab/room-model-target`, which is the only thing allowed to
    * answer this question, so the two directions cannot disagree again.
+   *
+   * KNOWN GAP — this goes stale if the room's model is removed mid-session.
+   * `removeModel` (modelSlice.ts) purges every other dangling reference to a
+   * removed model (mutation views, undo stacks, source tags, clash focus, IDS
+   * report, selection, activeStorey) but not this one. The session then fails
+   * CLOSED and silently: `roomStore` finds no model for the id, so inbound peer
+   * events are all dropped and every outbound mirror is dead, while RoomPanel
+   * still shows the room as live. Unrecoverable without a rejoin.
+   *
+   * Do NOT "fix" this by clearing the field on removal. `roomModelIdOf` falls
+   * back to `activeModelId` when this is `null` — that fallback exists for the
+   * no-session / bare-legacy-store case — so clearing it mid-session would make
+   * the room target whatever the user has selected, which is exactly the
+   * corruption this whole module exists to prevent. Failing closed is strictly
+   * better than that. A real fix has to decide what removing the shared model
+   * MEANS (end the session? refuse the removal?), which is a product question,
+   * so it is recorded here rather than guessed at.
    */
   collabRoomModelId: string | null;
   /** This client's resolved role (UI gating only). */
@@ -197,15 +214,30 @@ export interface CollabSlice {
 
   // ── Mutation mirror (plan §7.5) — called by mutationSlice after a local
   //    edit. No-ops without an active session. ───────────────────────────────
+  //
+  //    EVERY action below takes the edited `modelId` as its first argument and
+  //    gates itself on `roomStoreFor(get(), modelId)`, which returns the room's
+  //    store only when that model IS the room's. The gate lives in the callee,
+  //    never at the call site: a caller that resolves the room's store for an
+  //    edit on another model writes a real path of the SHARED model — see
+  //    `roomStoreFor`'s doc comment and `room-model-gate.test.ts`. Taking the
+  //    `modelId` is what makes forgetting impossible; a new action that omits
+  //    it is rejected by `scripts/check-collab-room-model-target.mjs`.
   mirrorPropertyEdit: (
+    modelId: string,
     entityId: number,
     psetName: string,
     propName: string,
     value: unknown,
     valueType: PropertyValueType,
   ) => void;
-  mirrorPropertyDelete: (entityId: number, psetName: string, propName: string) => void;
-  mirrorAttributeEdit: (entityId: number, attrName: string, value: unknown) => void;
+  mirrorPropertyDelete: (
+    modelId: string,
+    entityId: number,
+    psetName: string,
+    propName: string,
+  ) => void;
+  mirrorAttributeEdit: (modelId: string, entityId: number, attrName: string, value: unknown) => void;
   /**
    * Mirror a geometry move/rotate to the CRDT after a local STEP edit. Composes
    * the IFC-frame translation `deltaIfc` and yaw `deltaYaw` (radians, about Z)
@@ -224,20 +256,29 @@ export interface CollabSlice {
    * Read an entity's current local placement from the CRDT (`usd::xformop`),
    * for stores with no STEP placement chain (a recipient's reconstructed IFCX
    * model). Returns null outside a session or when the entity has no placement.
+   *
+   * Also the gizmo's "is this entity movable?" gate, via `readEntityPosition` —
+   * so `modelId` is load-bearing twice over: without it the gizmo appears on a
+   * PRIVATE model's entities (the room's dense `idToPath` resolves any id), and
+   * dragging it runs the corruption.
    */
-  readCollabPlacement: (entityId: number) => LocalPlacement | null;
+  readCollabPlacement: (modelId: string, entityId: number) => LocalPlacement | null;
   /**
    * Collab-native MOVE for a store with no STEP chain (recipient): composes
    * `deltaIfc` onto the entity's current placement, writes `usd::xformop`,
    * mirrors to peers, and moves the local mesh. Returns true when applied.
    */
-  collabTranslateEntity: (entityId: number, deltaIfc: [number, number, number]) => boolean;
+  collabTranslateEntity: (
+    modelId: string,
+    entityId: number,
+    deltaIfc: [number, number, number],
+  ) => boolean;
   /**
    * Collab-native ROTATE (yaw about Z) for a store with no STEP chain. Composes
    * the yaw onto `usd::xformop`, mirrors to peers, and live-rotates the local
    * mesh about its bbox centre. Returns true when applied.
    */
-  collabRotateEntity: (entityId: number, deltaYaw: number) => boolean;
+  collabRotateEntity: (modelId: string, entityId: number, deltaYaw: number) => boolean;
   /**
    * Mirror an entity deletion (tombstone) to the CRDT so peers remove it.
    * Called by mutationSlice after a local removeEntity. No-op without a session
@@ -489,14 +530,24 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Set the join token up front (not just at the end): setting collabRoomId
     // re-renders subscribers (e.g. ShareDialog) that immediately mint a
     // role-scoped share link, which needs our admin bearer to be available.
-    // The model this room's edits belong to, resolved ONCE, before any await:
-    // for an owner it is the model they pressed Share on (the same one `seed()`
-    // reads); for a recipient it is the `room:<roomId>` the reconstruct below
+    // The model this room's edits belong to, resolved ONCE, before any await
+    // inside this function: for an owner it is whatever is active when the join
+    // begins; for a recipient it is the `room:<roomId>` the reconstruct below
     // registers — named here, not there, so the two cannot spell it
     // differently. Every later resolution reads this via
     // `@/lib/collab/room-model-target`, never `activeModelId`, which the user
     // can change with two clicks (`upsertModel` does not switch focus,
     // modelSlice.ts).
+    //
+    // NOT provably the same snapshot `seed()` reads, and this comment used to
+    // claim it was. `seed()` is a closure built in ShareDialog over
+    // React-captured `ifcDataStore` / `activeModelId` from the render that ran
+    // the effect, whereas the read below is live Zustand state — and
+    // `ShareDialog` awaits `mintRoomToken(...)` between the two. A user who
+    // switches models during that round-trip would seed the captured store
+    // while this records the newer id. Latent rather than live (the window is a
+    // single network call and nothing else re-enters), but the honest statement
+    // is "two snapshots that normally agree", not "the same one".
     const reconstructedModelId = `room:${roomId}`;
     const roomModelId = seed ? get().activeModelId : reconstructedModelId;
     set({
@@ -1058,27 +1109,30 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     return role === 'commenter' || role === 'editor' || role === 'admin';
   },
 
-  // The three mirrors below take no modelId — their caller gates on
-  // `isRoomModel` before calling. They still resolve the ROOM's store rather
-  // than the top-level (active-model) one, so the entityId is turned into a
-  // room path against the model that id belongs to.
-  mirrorPropertyEdit: (entityId, psetName, propName, value, valueType) => {
+  // `roomStoreFor` is the room gate and the store lookup in one call: it hands
+  // back the ROOM's store, and only when `modelId` IS the room's model. Doing
+  // the lookup without the gate is the dangerous half — the room's `idToPath`
+  // is dense over its own ids, so a PRIVATE model's expressId resolves to a
+  // real path of the SHARED model and the mirror writes it onto an unrelated
+  // peer's entity. Gating in the callee (not at the call site) means a new
+  // caller cannot forget.
+  mirrorPropertyEdit: (modelId, entityId, psetName, propName, value, valueType) => {
     const session = get().collabSession;
-    const store = roomStore(get());
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi) return;
     mirrorProperty(docApi, session, store, entityId, psetName, propName, value, valueType);
   },
 
-  mirrorPropertyDelete: (entityId, psetName, propName) => {
+  mirrorPropertyDelete: (modelId, entityId, psetName, propName) => {
     const session = get().collabSession;
-    const store = roomStore(get());
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi) return;
     mirrorPropertyDelete(docApi, session, store, entityId, psetName, propName);
   },
 
-  mirrorAttributeEdit: (entityId, attrName, value) => {
+  mirrorAttributeEdit: (modelId, entityId, attrName, value) => {
     const session = get().collabSession;
-    const store = roomStore(get());
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi) return;
     mirrorAttribute(docApi, session, store, entityId, attrName, value);
   },
@@ -1087,13 +1141,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // Only the ROOM's model syncs: an edit on any other loaded model is the
     // user's private work, and mirroring it broadcast their file into the
     // shared room, where the id resolved to some unrelated entity of the
-    // owner's model. Gated inside each of the four modelId-taking mirrors
-    // rather than at their call sites, so a new call site cannot forget. (The
-    // property/attribute mirrors carry no modelId, so their gate is in
-    // mutationSlice.)
-    if (!isRoomModel(get(), modelId)) return;
+    // owner's model. `roomStoreFor` is that gate and the store lookup in one
+    // call — see its doc comment for why the lookup alone is the dangerous
+    // half — and it is inside every modelId-taking action rather than at their
+    // call sites, so a new call site cannot forget.
     const session = get().collabSession;
-    const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi || !placementAppliedLoc) return;
     if (!get().canCollabEdit()) return;
     const path = pathForEntity(store, entityId);
@@ -1110,12 +1163,14 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     if (placementAppliedYaw) placementAppliedYaw.set(entityId, yawOf(next) - yawOf(baseline));
   },
 
-  readCollabPlacement: (entityId) => {
+  readCollabPlacement: (modelId, entityId) => {
     const session = get().collabSession;
-    // The room's store: this resolves an entityId to a room path and reads or
-    // writes the room's CRDT, so the active model is the wrong subject the
-    // moment it is not the room's.
-    const store = roomStore(get());
+    // Room model only — see `mirrorPlacementEdit`. This is a read, but not a
+    // harmless one: `readEntityPosition` uses it as the gizmo's "is this entity
+    // movable?" gate, so an ungated version puts the move gizmo on a PRIVATE
+    // model's entities (the room's dense `idToPath` resolves any id to some
+    // real room path), and dragging it runs the write below.
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !placementApi || !docApi) return null;
     const path = pathForEntity(store, entityId);
     if (!path || !docApi.hasEntity(session.doc, path)) return null;
@@ -1130,10 +1185,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     );
   },
 
-  collabTranslateEntity: (entityId, deltaIfc) => {
+  collabTranslateEntity: (modelId, entityId, deltaIfc) => {
     const session = get().collabSession;
-    // Room store — see `readCollabPlacement`.
-    const store = roomStore(get());
+    // Room model only — see `mirrorPlacementEdit`.
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi) return false;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
@@ -1156,10 +1211,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     return true;
   },
 
-  collabRotateEntity: (entityId, deltaYaw) => {
+  collabRotateEntity: (modelId, entityId, deltaYaw) => {
     const session = get().collabSession;
-    // Room store — see `readCollabPlacement`.
-    const store = roomStore(get());
+    // Room model only — see `mirrorPlacementEdit`.
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi) return false;
     if (!get().canCollabEdit()) return false;
     const path = pathForEntity(store, entityId);
@@ -1176,9 +1231,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   mirrorEntityRemove: (modelId, entityId) => {
     // Room model only — see `mirrorPlacementEdit`.
-    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
-    const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi) return;
     if (!get().canCollabEdit()) return;
     mirrorEntityDelete(docApi, session, store, entityId);
@@ -1189,9 +1243,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   mirrorEntityCreate: (modelId, entityId, ifcType, guid, mesh) => {
     // Room model only — see `mirrorPlacementEdit`.
-    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
-    const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !docApi || !placementApi || !geomApiRef) return;
     if (!get().canCollabEdit()) return;
     // Overlay (runtime-created) entities aren't in the store's GUID maps, so
@@ -1232,9 +1285,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
 
   mirrorEntityGeometry: (modelId, entityId, mesh) => {
     // Room model only — see `mirrorPlacementEdit`.
-    if (!isRoomModel(get(), modelId)) return;
     const session = get().collabSession;
-    const store = get().models.get(modelId)?.ifcDataStore ?? get().ifcDataStore;
+    const store = roomStoreFor(get(), modelId);
     if (!session || !store || !geomApiRef || !makeBlobStore) return;
     if (!get().canCollabEdit()) return;
     const path = pathForEntity(store, entityId);

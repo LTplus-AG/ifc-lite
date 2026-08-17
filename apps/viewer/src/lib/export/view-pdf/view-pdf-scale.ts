@@ -10,8 +10,11 @@
  * "displays at" is a ratio between world metres and PHYSICAL paper millimetres,
  * and the browser's own physical-size reference is the CSS pixel: 96 CSS px is
  * one inch, by definition, on every display regardless of its backing-store
- * density. A canvas' `width`/`height` attributes are DEVICE pixels
- * (`cssHeight * devicePixelRatio`), so a caller that measures those, or an
+ * density. A canvas' `width`/`height` attributes are the BACKING STORE size,
+ * conventionally `cssHeight * devicePixelRatio` (this viewport's canvas is
+ * currently sized with no DPR factor, so the two coincide today; the rule
+ * stands because that is a renderer detail this module must not depend on),
+ * so a caller that measures those, or an
  * implementation that "corrects" a CSS measurement by `devicePixelRatio`,
  * reports a scale off by exactly the ratio — 1:151 printed on a sheet labelled
  * 1:76 on a Retina display. Nothing about the resulting PDF looks wrong; only

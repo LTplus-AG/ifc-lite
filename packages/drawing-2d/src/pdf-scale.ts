@@ -175,13 +175,20 @@ export function formatScaleFactorLabel(factor: number): string {
 }
 
 /**
- * Relative gap below which a 2-decimal label is the factor rather than a
- * rounding OF it. Float round-tripping (`1000 / (1000 / f)`) moves a factor by
- * about 1e-16 relative; a real rounding — 87.3456 shown as "87.35" — moves it
- * by about 1e-5. Anything in between does not occur, so this sits far from
- * both and is not a tuned threshold.
+ * How close the 2-decimal label has to be to the real factor to call it exact.
+ *
+ * Deliberately an ULP-scale tolerance and not a loose relative one. "Exact"
+ * here means the printed digits ARE the factor, give or take the error of
+ * representing it as a double - so the only slack allowed is that
+ * representation error, which is what `Number.EPSILON` measures. A loose
+ * relative tolerance grows with the factor and quietly re-admits the very
+ * thing this label exists to disclose: at 1e-9 relative, a factor of
+ * 100000000.004 sits 0.004 from its printed 100000000 and 0.004 is inside a
+ * 0.1 tolerance, so a rounded ratio would print as "1:100000000" with no
+ * hedge. Four ULP leaves room for the divide-and-round round trip without
+ * ever spanning a real difference in the printed digits.
  */
-const LABEL_EXACTNESS = 1e-9;
+const LABEL_EXACTNESS_ULPS = 4;
 
 /**
  * The ratio a sheet prints for `factor`: `"1:100"` when the label IS the
@@ -203,7 +210,8 @@ export function formatSheetScaleLabel(factor: number): string {
   const label = formatScaleFactorLabel(factor);
   const printed = Number(label);
   const exact =
-    Number.isFinite(printed) && Math.abs(printed - factor) <= Math.abs(factor) * LABEL_EXACTNESS;
+    Number.isFinite(printed) &&
+    Math.abs(printed - factor) <= Math.abs(factor) * Number.EPSILON * LABEL_EXACTNESS_ULPS;
   return exact ? `1:${label}` : `about 1:${label}`;
 }
 

@@ -274,6 +274,15 @@ export function buildScaleStamp(options: ScaleStampOptions): ScaleStamp {
  * The page gains exactly `SCALE_STAMP_HEIGHT_MM` of height, and width only if
  * the band is wider than the drawing. The transform is returned as it came in
  * — see {@link StampedSheetLayout.transform}.
+ *
+ * PRECONDITION on `marginMm`: the bar's end tick labels are centred on their
+ * ticks, so roughly half a label hangs past each end of the bar. The margin has
+ * to absorb that. Zero (or a very small) margin is accepted by the guard below
+ * and lays the band out correctly, but the outermost label can then sit partly
+ * off the page. The export path passes `VIEW_PDF_MARGIN_MM` (10 mm), which is
+ * comfortably more than any label produced by the 1-2-5 division sequence.
+ * This is a cosmetic bound only: it does not move the bar, so a division still
+ * measures exactly its labelled world length whatever the margin.
  */
 export function addScaleStamp(
   base: PdfScaleLayout,

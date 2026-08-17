@@ -30,9 +30,14 @@
 //!
 //! 3. Therefore the ratio that actually matters — grid ÷ noise, i.e. "is the
 //!    snap coarse enough to absorb the f32 jitter it exists to absorb?" — is
-//!    2.0 in a metre file (works as designed) and 0.002 in a millimetre file
-//!    (the snap is a NO-OP; it moves nothing, because the grid is 500x finer
-//!    than the noise).
+//!    2.0 in a metre file (works as designed) and 0.002 in a millimetre file,
+//!    where the grid is ~500x finer than the noise.
+//!
+//! 4. The snap therefore goes INERT past |c| = 128 CALLER UNITS, where the f32
+//!    spacing becomes a multiple of the grid so every f32 is already on it.
+//!    Verified by exhaustive f32 sweep, not inferred. That is 12.8 cm in a
+//!    millimetre file — i.e. EVERY building coordinate — and 128 m in a metre
+//!    one, so even metre files lose the snap far from the origin.
 //!
 //! THE CONCLUSION THAT FOLLOWS: since the noise being absorbed is physically
 //! invariant, the grid absorbing it must be physically invariant too. That

@@ -14,13 +14,14 @@ use crate::mesh::Mesh;
 
 /// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
 /// metres (#2684): 15 µm on the METRE path (`router/voids`), 15 nm on the
-/// FILE-UNIT boolean path, where f32 import noise is ~7.6 µm either way, so a
-/// millimetre file's snap moves nothing. `csg/plane_eps.rs` records the same
-/// divergence for the clipper's floor; `tests/snap_grid_unit_denomination.rs`
-/// measures it. A POWER OF TWO so `(c/G).round()*G` is an EXACT f64 op ⇒
-/// bit-deterministic across x86_64/aarch64/wasm. Real IFC is f32-authored, so an
-/// intended-flush face is NOT exactly coplanar after import; a shared grid makes
-/// such faces EXACTLY coplanar, firing the exact path instead of a noise sliver.
+/// FILE-UNIT boolean path. Past |c| = 128 CALLER UNITS the f32 spacing is
+/// itself a multiple of the grid, so every f32 is already on it and the snap
+/// is INERT — 12.8 cm in a millimetre file (so all of it), 128 m in a metre
+/// one. `csg/plane_eps.rs` records the same divergence for the clipper's
+/// floor; `tests/snap_grid_unit_denomination.rs` measures both. A POWER OF TWO
+/// so `(c/G).round()*G` is EXACT f64 ⇒ bit-deterministic across
+/// x86_64/aarch64/wasm. Real IFC is f32-authored, so an intended-flush face is
+/// NOT coplanar after import; the grid is what makes it so.
 ///
 /// Canonical definition — `tritri` and `arrangement` size their near-coplanar
 /// bands to the scatter envelope this snap produces, so they import this
@@ -94,7 +95,6 @@ pub fn tris_to_mesh(tris: &[Tri]) -> Mesh {
     }
     m
 }
-
 
 /// Orient a closed operand OUTWARD before it enters the arrangement.
 ///

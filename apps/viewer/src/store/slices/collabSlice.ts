@@ -65,6 +65,7 @@ import {
   type CollabGeomApi,
 } from '@/lib/collab/geometry-sync';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
+import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import {
   attachAnnotationInbound,
   annotationToCrdtFields,
@@ -723,10 +724,15 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 loadState: 'complete',
               });
             } else {
-              // Re-derivation on a peer edit: refresh the active model's store in
-              // place (keeps the model id + activeModelId stable). setIfcDataStore
-              // also updates the global store the outbound mirror reads.
-              get().setIfcDataStore(payload.dataStore);
+              // Re-derivation on a peer edit: refresh the ROOM model's store in
+              // place (keeps the model id + activeModelId stable). Addressed by
+              // id, not through the bare active-model setter: the recipient may
+              // have their own model active (see `applyRoomModelData`), and
+              // writing there would replace their file's store with the room's.
+              // When the room model IS active this still goes through
+              // setIfcDataStore, so the global store the outbound mirror reads
+              // stays in sync.
+              applyRoomModelData(get(), roomModelId, { ifcDataStore: payload.dataStore });
             }
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {
@@ -745,7 +751,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   cache: geomCache,
                   onProgress: (soFar) => {
                     if (get().collabRoomId === roomId && soFar.length > 0) {
-                      get().setGeometryResult(buildGeometryResultFromMeshes(soFar.slice()));
+                      applyRoomModelData(get(), roomModelId, {
+                        geometryResult: buildGeometryResultFromMeshes(soFar.slice()),
+                      });
                     }
                   },
                 },
@@ -758,9 +766,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 );
               }
               if (get().collabRoomId === roomId) {
-                get().setGeometryResult(
-                  meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
-                );
+                applyRoomModelData(get(), roomModelId, {
+                  geometryResult:
+                    meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
+                });
               }
             }
           } finally {

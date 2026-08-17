@@ -1,5 +1,15 @@
 # @ifc-lite/renderer
 
+## 1.49.0
+
+### Minor Changes
+
+- [#2688](https://github.com/LTplus-AG/ifc-lite/pull/2688) [`58ae85b`](https://github.com/LTplus-AG/ifc-lite/commit/58ae85bbb9c42506850db1ff2efa1debe379f799) Thanks [@Blogbotana](https://github.com/Blogbotana)! - Phase 1 of the Blender-like lighting work ([#2670](https://github.com/LTplus-AG/ifc-lite/issues/2670)): expose light-hardness and shadow-feel controls in the standalone WebGPU viewer.
+  
+  **Renderer** — `LightingEnvironment` gains a `sunSoftness` field: the diffuse-wrap that sets the sun terminator, previously hardcoded to `0.3` in the shader. `0` is a crisp light/shadow boundary (harder shadows), larger values soften it (overcast). Resolved into the existing environment uniform (a spare pad slot, no UBO size change) and clamped to `[0, 1]`; omitting it reproduces the historic look exactly.
+  
+  **Viewer** — the Sun & Sky panel adds two sliders (WebGPU shading, hidden in world-context mode): **Light hardness** (deepens shadows by cutting hemisphere ambient + fill) and **Terminator softness** (trims the preset's `sunSoftness`). Both are user trims composed onto the active preset — switching presets changes the base, the trims persist — mirroring Exposure. Presets now carry per-preset softness (crisp Day/Evening, soft Overcast) so the terminator changes with the sky being simulated. Settings persist in localStorage.
+
 ## 1.48.1
 
 ### Patch Changes

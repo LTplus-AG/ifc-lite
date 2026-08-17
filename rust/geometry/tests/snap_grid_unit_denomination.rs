@@ -67,6 +67,29 @@
 //! corpus evidence — the same reasoning `csg/plane_eps.rs` records for the
 //! clipper's epsilon floor, which carries the identical unit question.
 //!
+//! WHY THIS IS A CONTROLLED SYNTHETIC COMPARISON AND NOT A CORPUS SPLIT.
+//!
+//! The obvious way to evidence #2684 is to split the watertightness census by
+//! authoring unit and compare. That instrument is INVALID here, and measuring
+//! it says so loudly. Over the 33 censused models:
+//!
+//!     unit         hosts with open edges     open edges/host (worst model dropped)
+//!     millimetre   4.8%  (18/375)            1.22
+//!     metre        36.5% (178/488)           12.20
+//!
+//! Read naively that says the INERT-snap millimetre files are 7.6x healthier,
+//! i.e. the opposite of this file's thesis. It says no such thing: the metre
+//! offenders are all Revit exports (ISSUE_129, rvt01, duplex, Snowdon,
+//! ISSUE_159 - versions 2011 through 2024), while the millimetre models come
+//! from ArchiCAD, Allplan and others. **Authoring unit is collinear with
+//! exporter in this corpus**, and exporter dominates geometry difficulty, so a
+//! unit-split census measures the exporter and reports it as a unit effect.
+//!
+//! Hence the synthetic fixtures below: identical physical geometry, two
+//! authoring units, everything else held constant. That is the only comparison
+//! in which the unit is the sole varying term. A corpus number would look more
+//! authoritative and mean less.
+//!
 //! Run with:
 //!   cargo test -p ifc-lite-geometry --test snap_grid_unit_denomination -- --nocapture
 

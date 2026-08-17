@@ -29,10 +29,11 @@ import assert from 'node:assert/strict';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import type { ClashRule } from '@ifc-lite/clash';
+import { summarizeClashes, type Clash, type ClashResult, type ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useViewerStore } from '@/store';
-import { useClash } from './useClash.js';
+import { rememberFederationIdentity } from '@/lib/clash/federation-identity.js';
+import { CLASH_SUPERSEDED_MESSAGE, useClash } from './useClash.js';
 
 // ─── Fixture: two walls, meshed as overlapping unit boxes ───────────────────
 
@@ -55,6 +56,25 @@ function ifc4(body: string): string {
 const TWO_WALLS = [
   "#1=IFCWALL('0aaaaaaaaaaaaaaaaaaaaa',$,'Wall A',$,$,$,$,$,.STANDARD.);",
   "#2=IFCWALL('0bbbbbbbbbbbbbbbbbbbbb',$,'Wall B',$,$,$,$,$,.STANDARD.);",
+].join('\n');
+
+/**
+ * The SAME two walls after a peer inserted one ahead of them: id 1 is now
+ * Wall C and id 2 is now Wall A.
+ *
+ * The renumbering is written out by hand here rather than produced by the real
+ * IFCX path — these fixtures are STEP, so `IfcParser` takes the express ids
+ * straight from the `#N` labels. What it STANDS IN FOR is
+ * `packages/ifcx/src/entity-extractor.ts`, where a collab re-derivation assigns
+ * express ids from a counter walked over composed-node order
+ * (`nextExpressId++`), so an insertion genuinely does shift every id after it.
+ * The test is about what `refOf` does with a renumbered store, not about which
+ * parser renumbered it.
+ */
+const THREE_WALLS_C_FIRST = [
+  "#1=IFCWALL('0ccccccccccccccccccccc',$,'Wall C',$,$,$,$,$,.STANDARD.);",
+  "#2=IFCWALL('0aaaaaaaaaaaaaaaaaaaaa',$,'Wall A',$,$,$,$,$,.STANDARD.);",
+  "#3=IFCWALL('0bbbbbbbbbbbbbbbbbbbbb',$,'Wall B',$,$,$,$,$,.STANDARD.);",
 ].join('\n');
 
 async function parse(body: string): Promise<IfcDataStore> {
@@ -265,5 +285,196 @@ describe('clash results are usable in a collaborative room', () => {
       'every clashing element must be highlighted — highlightAll returned early on unresolved refs');
     assert.equal(s.selectedEntity?.modelId, ROOM_MODEL_ID,
       'the highlighted refs must resolve to the room model');
+  });
+
+  /**
+   * The id space a published result was computed on can be REPLACED under the
+   * very same model id, and the collab room does it on every peer edit:
+   * `collabSlice`'s live `onDocUpdate → reconstruct()` re-derives the model
+   * from the CRDT and calls `setIfcDataStore(payload.dataStore)`, which
+   * (`dataSlice`) swaps the store under the same key and leaves `idOffset` and
+   * `maxExpressId` exactly as the first build left them. Express ids are a
+   * sequential counter over composed-node order, so any structural edit
+   * renumbers everything after it.
+   *
+   * Resolving "model id + number" against the NEW store then still succeeds —
+   * the numbers are dense and in range — and answers with a DIFFERENT element
+   * than the row names. A row reading "Wall A vs Wall B" would isolate and
+   * colour Wall C and Wall A. That is strictly worse than the dead row this
+   * PR set out to fix: a dead row tells the user nothing happened, a
+   * mis-targeted one tells them something false.
+   */
+  it('a peer edit that renumbers the model must not let a stale row target the wrong element', async () => {
+    await seedRoom();
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const clash = useViewerStore.getState().clashResult?.clashes[0];
+    assert.ok(clash, 'the overlapping pair must be found');
+    assert.deepEqual([clash!.a.name, clash!.b.name].sort(), ['Wall A', 'Wall B'],
+      'setup sanity: the row names the two walls the run examined');
+
+    // The peer edit, verbatim: a re-derived store swapped in under the same id.
+    const edited = await parse(THREE_WALLS_C_FIRST);
+    await act(async () => { useViewerStore.getState().setIfcDataStore(edited); });
+
+    const s0 = useViewerStore.getState();
+    assert.equal(s0.models.get(ROOM_MODEL_ID)?.ifcDataStore, edited,
+      'setup sanity: the peer edit replaced the store under the same model id');
+    assert.equal(edited.entities.getName(1), 'Wall C',
+      'setup sanity: the numbers the stale row carries now name different elements');
+
+    await act(async () => { api!.focusClash(clash!, 'isolate'); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, null,
+      'a row whose id space was superseded must not focus — it would target the wrong element');
+    assert.equal(s.isolatedEntities, null,
+      'and must not isolate anything: isolating Wall C for a row reading "Wall A" is a lie');
+    assert.match(s.clashError ?? '', /re-run/i,
+      'the refusal must be EXPLAINED — a silently inert panel is the defect #2696 named');
+  });
+
+  /**
+   * `refOf` subtracts the owning model's `idOffset`, and every model in the
+   * tests above has `idOffset: 0` — so nothing above can tell the subtraction
+   * from a no-op. This pins the subtrahend and the range guard on a model with
+   * a NON-ZERO offset.
+   *
+   * The result is hand-built rather than produced by `run()` on purpose. The
+   * ref-PRODUCTION path applies `idOffset` twice for a federated model (mesh
+   * express ids are already shifted by `useIfcLoader` before
+   * `elementsFromStep` puts them through `toGlobalId`), a pre-existing defect
+   * one level up from this resolver. Feeding `refOf` a correctly-formed ref
+   * pins the CONTRACT it is responsible for without encoding that bug as an
+   * expectation.
+   */
+  it('a ref from a model with a non-zero idOffset resolves to the LOCAL express id, in range', async () => {
+    await seedRoom();
+    const store = await parse(TWO_WALLS);
+    // A federated second model at offset 100: its global ids are 101 and 102.
+    useViewerStore.getState().upsertModel({
+      id: 'B',
+      name: 'B.ifc',
+      ifcDataStore: store,
+      geometryResult: geometry([]),
+      visible: true,
+      collapsed: false,
+      schemaVersion: 'IFC4',
+      loadedAt: Date.now(),
+      fileSize: 0,
+      idOffset: 100,
+      maxExpressId: 2,
+      loadState: 'complete',
+    });
+
+    const el = (ref: number, name: string) => ({ key: name, ref, model: 'B', tag: 'IfcWall', name });
+    const clash = (id: string, a: number, b: number): Clash => ({
+      id,
+      a: el(a, `#${a}`),
+      b: el(b, `#${b}`),
+      rule: 'all-clashes',
+      status: 'hard' as const,
+      distance: -0.5,
+      point: [0, 0, 0] as [number, number, number],
+      bounds: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] },
+      severity: 'major' as const,
+    });
+    // Second pair: an id far above the model's parse-time maximum (offset 100 +
+    // local 999). No loaded model owns it, so it must NOT resolve.
+    const result: ClashResult = {
+      clashes: [clash('c1', 101, 102), clash('c2', 1099, 101)],
+      summary: summarizeClashes([]),
+      rulesRun: [ALL_RULE],
+      settings: { tolerance: 0.001, excludeVoidsAndHosts: true },
+    };
+    result.summary = summarizeClashes(result.clashes);
+    await act(async () => { useViewerStore.getState().setClashResult(result); });
+
+    // `highlightAll` ADDS to the selection; start from empty so the assertion
+    // below reads exactly what this result resolved to.
+    useViewerStore.getState().clearEntitySelection();
+    await act(async () => { api!.highlightAll(); });
+
+    const selected = [...useViewerStore.getState().selectedEntitiesSet].sort();
+    assert.deepEqual(selected, ['B:1', 'B:2'],
+      'global 101/102 must resolve to LOCAL 1/2 (idOffset subtracted), and 1099 to nothing');
+  });
+
+  /**
+   * The supersede check is deliberately asked PER MODEL, not of the federation
+   * as a whole. The publish gate's whole-federation question is right for a
+   * write that happens once as a unit; asked of a single ref it would disable
+   * rows nothing moved under — unload the second of two files and every row
+   * wholly inside the first would stop working.
+   *
+   * Hand-built so the identity can be bound directly, without a two-model run:
+   * the ref-production path double-applies `idOffset` for a federated model
+   * (see the test above), which would make a real second model's rows inert for
+   * an unrelated reason and hide what this pins.
+   */
+  it('superseding ONE model refuses only that model\'s refs, not the whole result', async () => {
+    await seedRoom();
+    const roomStore = useViewerStore.getState().models.get(ROOM_MODEL_ID)!.ifcDataStore!;
+    const bStore = await parse(TWO_WALLS);
+    useViewerStore.getState().upsertModel({
+      id: 'B',
+      name: 'B.ifc',
+      ifcDataStore: bStore,
+      geometryResult: geometry([]),
+      visible: true,
+      collapsed: false,
+      schemaVersion: 'IFC4',
+      loadedAt: Date.now(),
+      fileSize: 0,
+      idOffset: 100,
+      maxExpressId: 2,
+      loadState: 'complete',
+    });
+
+    const el = (model: string, ref: number) => ({ key: `${model}#${ref}`, ref, model, tag: 'IfcWall' });
+    const result: ClashResult = {
+      clashes: [{
+        id: 'c1',
+        a: el(ROOM_MODEL_ID, 1),
+        b: el('B', 101),
+        rule: 'all-clashes',
+        status: 'hard' as const,
+        distance: -0.5,
+        point: [0, 0, 0] as [number, number, number],
+        bounds: { min: [0, 0, 0] as [number, number, number], max: [1, 1, 1] as [number, number, number] },
+        severity: 'major' as const,
+      }],
+      summary: summarizeClashes([]),
+      rulesRun: [ALL_RULE],
+      settings: { tolerance: 0.001, excludeVoidsAndHosts: true },
+    };
+    result.summary = summarizeClashes(result.clashes);
+    // Exactly what a run gathering from both models would have recorded.
+    rememberFederationIdentity(result, new Map<string, unknown>([
+      [ROOM_MODEL_ID, roomStore.entities],
+      ['B', bStore.entities],
+    ]));
+    await act(async () => { useViewerStore.getState().setClashResult(result); });
+
+    // Only B's id space is replaced. The room model is untouched.
+    const bEdited = await parse(THREE_WALLS_C_FIRST);
+    await act(async () => { useViewerStore.getState().updateModel('B', { ifcDataStore: bEdited }); });
+
+    useViewerStore.getState().clearEntitySelection();
+    await act(async () => { api!.highlightAll(); });
+
+    assert.deepEqual([...useViewerStore.getState().selectedEntitiesSet], [`${ROOM_MODEL_ID}:1`],
+      'the untouched model\'s ref must still resolve; only the superseded model\'s ref is refused');
+    assert.equal(useViewerStore.getState().clashError, CLASH_SUPERSEDED_MESSAGE,
+      'and the refusal of the superseded half must still be explained');
+
+    // Focusing the same half-superseded pair: `focusClash` proceeds on the one
+    // side it can still resolve (`refs.length === 0` is its only bail), and
+    // paints only that side. Stated explicitly because "half a pair" is the
+    // direct consequence of checking per model rather than per result.
+    await act(async () => { api!.focusClash(result.clashes[0], 'isolate'); });
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, 'c1', 'the resolvable half must still focus the row');
+    assert.deepEqual([...(s.isolatedEntities ?? [])], [1],
+      'only the still-valid element is isolated — the superseded one is not guessed at');
   });
 });

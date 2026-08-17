@@ -49,7 +49,9 @@ import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
 import {
   clashFederationIsCurrent,
+  clashRefModelIsCurrent,
   recordGatheredModel,
+  rememberFederationIdentity,
   type ClashFederationIdentity,
 } from '@/lib/clash/federation-identity';
 import { posthog } from '@/lib/analytics';
@@ -63,6 +65,27 @@ import { nextFrameOrTimeout } from '@/utils/frameWait';
  * blocking the run entirely. (#2385)
  */
 const PAINT_FRAME_WAIT_MS = 250;
+
+/**
+ * Shown when a clash row is refused because the id space it was computed on has
+ * been replaced (see `refOf`). The refusal must never be silent: a panel full of
+ * rows that do nothing, with nothing on screen to explain it, is the exact
+ * defect #2696 was written against.
+ *
+ * Worded as "the model DATA was replaced", not "the model changed", because the
+ * check cannot tell an edit from a reload. The identity is the model's entity
+ * table by reference (`lib/clash/federation-identity.ts`), and a load publishes
+ * a partial store and then the full one (`useIfcLoader`'s `onPartialDataStore` /
+ * `onFullDataStore`), which replaces the table without moving a single express
+ * id. A run started inside that window — the user must both hit Run before the
+ * metadata finishes AND already have meshes for it to gather — would be refused
+ * afterwards though its rows are sound. That is the same conservative grain
+ * #2696 chose for the publish gate and defends at length; this only widens the
+ * window from the instant of publish to the life of the result. The remedy the
+ * message names, a re-run, is correct in that case as much as in a real edit.
+ */
+export const CLASH_SUPERSEDED_MESSAGE =
+  'The model data was replaced since this clash run, so these results no longer match it. Re-run detection.';
 
 interface SelectionRef {
   modelId: string;
@@ -320,6 +343,11 @@ export function useClash() {
     (federationIdentity: ClashFederationIdentity, res: ClashResult): boolean => {
       const state = useViewerStore.getState();
       if (!clashFederationIsCurrent(federationIdentity, state.models)) return false;
+      // The identity travels WITH the result object. Publish-time currency is
+      // not the end of the question: the federation can be superseded while the
+      // result is on screen, and only a result that remembers what it was
+      // computed on can refuse to resolve afterwards (see `refOf`).
+      rememberFederationIdentity(res, federationIdentity);
       state.setClashResult(res);
       // Completed-run signal for baseline consumers (clash tour run gate).
       state.bumpClashRunSeq();
@@ -512,48 +540,120 @@ export function useClash() {
   }, [gatherElements, discardSolidPresentation, publishClashResult]);
 
   /**
-   * Resolve a clash ref back to its model + local expressId. `null` means "no
-   * loaded model owns this id", which every caller reads as "this row is
-   * inert" (`focusClash` bails at `refs.length === 0`) — so a resolver that is
-   * merely INCOMPLETE silently disables the whole panel.
+   * Resolve a clash ref back to its model + local expressId. `null` means "this
+   * row is inert": every caller reads it that way (`focusClash` bails at
+   * `refs.length === 0`), so a resolver that is merely INCOMPLETE silently
+   * disables the whole panel, and one that is merely OPTIMISTIC silently
+   * targets the wrong element.
    *
-   * A `ClashElementRef` carries BOTH halves of its identity: `ref` (the
+   * ## Which model
+   *
+   * A `ClashElementRef` carries both halves of its identity: `ref` (the
    * federated global id) and `model` (the store model id it was gathered from,
-   * `adapters/step.ts` `model: modelId`). Resolving through the named model's
-   * own `idOffset` — the field the renderer's id space is built from
-   * (`Viewport.tsx` modelId→idOffset) — is therefore exact, and needs no
-   * search over id ranges that two models could both claim.
+   * `adapters/step.ts` `model: modelId`). Resolving against the NAMED model,
+   * rather than searching for whichever model's range happens to contain the
+   * number, removes the ambiguity between two models that both claim it — a
+   * collab room model and a normally loaded one both sit at `idOffset: 0`.
    *
-   * The `federationRegistry` singleton (`fromGlobalId`) searched those ranges
-   * instead, and knows only the models that went through
-   * `registerModelOffset`. A model put into `state.models` any other way is
-   * invisible to it. That is exactly the collab room model: `collabSlice`'s
-   * recipient reconstruct registers it with `upsertModel({ id: 'room:<id>',
-   * ..., idOffset: 0 })` and never calls `registerModelOffset`, so in a room
-   * EVERY clash row was dead — while clicking the same element in the 3D view
-   * selected it normally, that path resolving through `state.models`
-   * (`resolveEntityRef`). The panel now agrees with the viewport.
+   * The `federationRegistry` singleton (`fromGlobalId`) did that search, and
+   * knows only models that went through `registerModelOffset`. A model put into
+   * `state.models` any other way is invisible to it. That is exactly the collab
+   * room model: `collabSlice`'s recipient reconstruct registers it with
+   * `upsertModel({ id: 'room:<id>', ..., idOffset: 0 })` and never calls
+   * `registerModelOffset`, so in a room EVERY clash row was dead — while
+   * clicking the same element in the 3D view selected it normally, that path
+   * resolving through `state.models` (`resolveEntityRef`).
    *
-   * The registry stays as the fallback for a ref whose model is no longer in
-   * `state.models` but is still registered; and `null` survives when neither
-   * knows the id, so a result whose models are gone stays inert.
+   * The lookup itself is DELEGATED to `resolveGlobalIdInModel`, which shares its
+   * range and overlay predicates with the store's canonical
+   * `resolveGlobalIdFromModels`. A private range check here would be another
+   * spelling of "which ids does a model own", and would miss the overlay ids
+   * (StoreEditor duplicates, scripted adds) the canonical resolver's second pass
+   * exists for. Two resolvers disagreeing about one id space is what produced
+   * this bug in the first place.
    *
-   * "Gone" means the id is gone. A model REBUILT under the id a stale ref
-   * names is resolved against the new model, and a dense express id will
-   * usually be in range — leaving a room and rejoining it rebuilds
-   * `room:<roomId>`, and `removeModel` deliberately keeps the clash result
-   * (`modelSlice.ts`, "the clash RESULT is deliberately kept"). Nothing here
-   * can tell those two models apart: whether a published result still
-   * describes the loaded federation is a question about the RESULT, not about
-   * one ref, and it belongs wherever the result is invalidated.
+   * ## No fallback search across LOADED models
+   *
+   * The registry fallback is reached only when `ref.model` is not in
+   * `state.models` at all — its documented purpose, and the only case it can
+   * honestly serve. It used to run whenever the range check missed, which
+   * quietly covered a second, very different case: the named model IS loaded
+   * and simply does not own this number. There `fromGlobalId` range-searches and
+   * can answer with a DIFFERENT model, reintroducing exactly the ambiguity this
+   * resolver exists to remove — and the supersede check below cannot catch it,
+   * being keyed on `ref.model`, so the model the search wandered into is never
+   * validated at all. That path is reachable by construction today: the
+   * double-offset defect below puts every ref from a federated model past the
+   * first outside its own model's range. A ref that does not fit its own loaded
+   * model is now `null` — inert and visible beats resolved and wrong.
+   *
+   * The remaining fallback is not itself gated by identity: when the named model
+   * is absent there is no id space of its own left to compare against, and this
+   * is the behaviour that shipped before. It is narrow — the two paths that drop
+   * a model unregister it in the same action (`removeModel` →
+   * `federationRegistry.unregisterModel`, `clearAllModels` →
+   * `federationRegistry.clear()`), and `resetViewerState` does not touch
+   * `models` — so in practice the registry has already forgotten it too and the
+   * answer is `null`.
+   *
+   * NOTE on exactness: this resolver is only as good as the `ref` it is handed,
+   * and `ref` is currently mis-built for any federated model past the first —
+   * `useIfcLoader` shifts `mesh.expressId` by `idOffset` at load, and
+   * `elementsFromStep` then puts that already-shifted id through `toGlobalId`,
+   * applying the offset twice. That is a pre-existing defect one level up (it
+   * predates this resolver and degrades `key`, `tag` and `name` too, in the
+   * adapter); it is NOT fixed here, and no claim below should be read as
+   * "the resolved element is guaranteed to be the right one" for such a model.
+   * Such a ref falls outside its own model's range, so it now goes INERT rather
+   * than resolving into a neighbour's id range. The row was never usable; it is
+   * now honestly unusable instead of silently pointing somewhere else.
+   *
+   * ## Which id SPACE
+   *
+   * Naming the model is not enough, because the id space behind a model id can
+   * be REPLACED while the id stays: a collab peer edit re-derives the model
+   * from the CRDT and calls `setIfcDataStore`, which swaps the entity table
+   * under the same key and leaves `idOffset` and `maxExpressId` untouched
+   * (`dataSlice`). Express ids are a sequential counter over composed-node
+   * order (`packages/ifcx/src/entity-extractor.ts`), so any structural edit
+   * renumbers everything after it — and every stale ref then still looks
+   * resolvable, and resolves to the WRONG element. Leaving a room and rejoining
+   * rebuilds `room:<roomId>` the same way.
+   *
+   * So the result's own recorded federation identity — captured by the run and
+   * bound to the result object at the publish site
+   * (`lib/clash/federation-identity.ts`) — is checked FIRST, for the model THIS
+   * ref names. Per-model, not federation-wide: see `clashRefModelIsCurrent` for
+   * why the publish gate's whole-federation question is the wrong one to ask of
+   * a single ref. The check lives here rather than in each of `focusClash` /
+   * `selectElement` / `highlightAll` because that is an enumeration of call
+   * sites, and the next caller added would not be covered.
+   *
+   * Refuse — not clear. What is actually wrong with a superseded row is that its
+   * NUMBERS no longer denote what they denoted; everything else it carries —
+   * the recorded `name`, GlobalId, distance and severity — is still a true
+   * record of what the run found, and stays readable and exportable. Clearing
+   * would throw that away, out of a click handler, at the moment the user asked
+   * to look at it, and would orphan the review statuses they had already set
+   * (`clashReviews` survives `clearClash` by design, but has nothing left to
+   * annotate). Refusing stops the one harmful act — resolving stale numbers —
+   * and leaves the remedy, a re-run, one click away and named on screen.
    */
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
     const state = useViewerStore.getState();
-    const model = state.models.get(ref.model);
-    if (model) {
-      const expressId = ref.ref - (model.idOffset ?? 0);
-      if (expressId >= 0 && expressId <= model.maxExpressId) return { modelId: ref.model, expressId };
+    // Asked of `clashRawResult`, the object the publish site handed the store —
+    // `clashResult` is re-derived from it by every exclusion edit, so it is a
+    // different object with no identity bound to it. Scoped to THIS ref's
+    // model: a run's other models moving says nothing about this number.
+    if (!clashRefModelIsCurrent(state.clashRawResult, ref.model, state.models)) {
+      if (state.clashError !== CLASH_SUPERSEDED_MESSAGE) state.setClashError(CLASH_SUPERSEDED_MESSAGE);
+      return null;
     }
+    // A LOADED model answers for its own ids or not at all — no range search
+    // across other models. See "No fallback search across loaded models".
+    if (state.models.has(ref.model)) return state.resolveGlobalIdInModel(ref.model, ref.ref);
+    // Model not loaded: there is no id space of its own to ask, so the registry
+    // is the only thing that can still answer.
     return state.fromGlobalId(ref.ref);
   }, []);
 

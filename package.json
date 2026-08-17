@@ -78,7 +78,7 @@
   },
   "devDependencies": {
     "@changesets/changelog-github": "^1.0.0",
-    "@changesets/cli": "^2.31.1",
+    "@changesets/cli": "^3.0.0",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.62.1",
     "@posthog/cli": "0.9.4",
@@ -90,8 +90,8 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": "22.x || 24.x",
-    "pnpm": ">=8.0.0"
+    "node": ">=22.11 <23 || 24.x",
+    "pnpm": ">=10.0.0"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0"

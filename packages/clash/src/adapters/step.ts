@@ -97,15 +97,46 @@ export interface StepAdapterOptions {
    * (`useIfcLoader`: `mesh.expressId = mesh.expressId + idOffset`) while
    * `IfcDataStore` keeps LOCAL ids, so for every federated model past the first
    * `mesh.expressId` is NOT a key into `store`. Without this, every lookup in
-   * the loop below misses: `key` degrades to the synthetic `expressid:N`, `tag`
-   * reads `Unknown`, name/storey come back empty, and `buildStepExclusions`
-   * finds no relationships at all — so void/host/assembly pairs silently stop
-   * being excluded. `ref` was wrong in the other direction, with
+   * the loop below misses: `key` degrades to the synthetic `expressid:N`,
+   * name/storey come back empty, and `buildStepExclusions` finds no
+   * relationships at all — so void/host/assembly pairs silently stop being
+   * excluded. `ref` was wrong in the other direction, with
    * `federation.toGlobalId` adding the offset a second time.
+   *
+   * `tag` is the one field that does NOT degrade, and that is what made this so
+   * quiet: it reads `node.type || mesh.ifcType`, and the host's `mesh.ifcType`
+   * is correct, so the panel kept showing plausible type names throughout.
    *
    * The viewer's own compare path (`lib/compare/buildFingerprints.ts`) does the
    * same subtraction for the same reason. The CLI / MCP / playground callers
    * hand over local meshes and leave this at its `0` default.
+   *
+   * ## Optional ON PURPOSE — not an oversight
+   *
+   * The obvious hardening is to make this REQUIRED, and the repo has the
+   * precedent: `buildFingerprints.ts` declares `idOffset: number` and does this
+   * exact subtraction, which is why compare never had this bug. It is
+   * deliberately NOT copied here. `buildFingerprints` is app-internal
+   * (`apps/viewer`), free to break at will; `elementsFromStep` is published API
+   * — `@ifc-lite/clash` exposes it as the `./step` subpath export — so
+   * requiring the member is a breaking change for every external caller, all of
+   * which legitimately pass local meshes and would have to add a `0` to keep
+   * compiling. That is a major bump to harden one in-repo call site, on a
+   * patch-level bugfix.
+   *
+   * What covers the gap instead, since the optional signature is exactly what
+   * let the viewer wiring be deleted and stay green:
+   *   - `apps/viewer/src/hooks/useClash.federated-id-offset.test.tsx` pins the
+   *     viewer's call at the level that actually broke (it fails if
+   *     `meshIdOffset` is dropped from `gatherElements`);
+   *   - the total-miss `console.warn` at the end of `elementsFromStep` reports
+   *     a forgotten offset at RUNTIME, in any host, including new ones.
+   *
+   * A dev-only `expressId < 0` assert was considered and rejected: it fires
+   * only when the subtrahend is too LARGE, whereas the failure that shipped was
+   * a forgotten offset, i.e. a subtrahend of 0 producing positive, plausible,
+   * entirely wrong ids. It would not have caught this bug. The total-miss check
+   * keys on the damage instead, so it catches both directions.
    */
   meshIdOffset?: number;
   /** Aligns this model into the common world frame (RTC + building rotation). */
@@ -147,6 +178,8 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
 
   const elements: ClashElement[] = [];
   const byExpressId = new Map<number, ClashElement>();
+  /** Elements whose GlobalId lookup came back empty — see the check below. */
+  let missingGlobalIds = 0;
 
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length === 0) continue;
@@ -207,6 +240,7 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // Fall back to a model-scoped synthetic key rather than dropping geometry:
     // malformed IFC roots / fallback-only elements still participate in clashes.
     const key = storedGlobalId || `expressid:${expressId}`;
+    if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
       key,
@@ -228,6 +262,27 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
 
     elements.push(element);
     byExpressId.set(expressId, element);
+  }
+
+  // A wrong `meshIdOffset` — above all a FORGOTTEN one — leaves ids that are
+  // positive, plausible and simply address the wrong rows, so nothing about an
+  // individual id gives it away. Its signature is the SHAPE of the damage:
+  // EVERY GlobalId lookup misses, never just some. A real file can carry the
+  // occasional fallback-only root with no GlobalId, but "not one element in
+  // this model has one" is a host wiring bug, and it is silent otherwise —
+  // `key` degrades to `expressid:N`, `buildStepExclusions` below finds no
+  // relationships, and the caller gets a plausible-looking result set with the
+  // void/host/assembly exclusions quietly disabled.
+  //
+  // One `if` outside the loop: no per-element cost.
+  if (elements.length > 0 && missingGlobalIds === elements.length) {
+    console.warn(
+      `[clash/step] every element in model "${modelId}" (${elements.length}) resolved to an ` +
+        `empty GlobalId. This usually means \`meshIdOffset\` (used: ${meshIdOffset}) does not ` +
+        'match the shift the host applied to `mesh.expressId`, so the store is being addressed ' +
+        'with ids it does not contain — element keys, names and the void/host exclusions are ' +
+        'all degraded.',
+    );
   }
 
   const exclusions = buildExclusions

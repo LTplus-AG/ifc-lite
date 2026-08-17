@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { IfcParser } from '@ifc-lite/parser';
 import type { MeshData } from '@ifc-lite/geometry';
 import { createClashEngine } from '../engine.js';
@@ -420,5 +420,102 @@ describe('elementsFromStep - federated model at a non-zero id offset', () => {
       exclusions,
     });
     expect(result.clashes).toHaveLength(0);
+  });
+});
+
+/**
+ * The TOTAL-MISS guard.
+ *
+ * A forgotten `meshIdOffset` produces nothing an assertion on the id itself
+ * could catch: `mesh.expressId - 0` is positive, plausible, and simply
+ * addresses the wrong row. What IS distinctive is the SHAPE of the damage —
+ * every single GlobalId lookup misses, never some. Real IFC does have the
+ * occasional fallback-only root with no GlobalId, but "not one element in this
+ * model has one" is a wiring bug, not a file.
+ *
+ * See the `meshIdOffset` JSDoc on `StepAdapterOptions` for why a dev-only
+ * `expressId < 0` assert was rejected instead: it fires only on a too-LARGE
+ * subtrahend, the mirror image of the failure that actually shipped.
+ */
+describe('elementsFromStep - total GlobalId miss warning', () => {
+  async function fedStore() {
+    return new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+  }
+
+  it('warns ONCE when every element misses, naming the model and the offset it used', async () => {
+    const store = await fedStore();
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      // The defect verbatim: meshes already shifted, `meshIdOffset` forgotten.
+      const { elements } = elementsFromStep({
+        store,
+        meshes: [solidBoxMesh(wallId + FED_OFFSET, 0), solidBoxMesh(doorId + FED_OFFSET, 0.5)],
+        modelId: 'model-2',
+        federation: fedFederation,
+      });
+      expect(elements).toHaveLength(2);
+      expect(warn).toHaveBeenCalledTimes(1);
+      const msg = warn.mock.calls[0].join(' ');
+      expect(msg).toContain('[clash/step]');
+      expect(msg).toContain('model-2');
+      expect(msg).toContain('meshIdOffset');
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('stays silent when the offset IS passed', async () => {
+    const store = await fedStore();
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      elementsFromStep({
+        store,
+        meshes: [solidBoxMesh(wallId + FED_OFFSET, 0), solidBoxMesh(doorId + FED_OFFSET, 0.5)],
+        modelId: 'model-2',
+        federation: fedFederation,
+        meshIdOffset: FED_OFFSET,
+      });
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('stays silent on a PARTIAL miss: that is a file with fallback-only roots, not a wiring bug', async () => {
+    const store = await fedStore();
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { elements } = elementsFromStep({
+        store,
+        // One real wall, one mesh for an id the store simply does not have.
+        meshes: [solidBoxMesh(wallId, 0), solidBoxMesh(987_654, 0.5)],
+        modelId: 'model-1',
+        meshIdOffset: 0,
+      });
+      expect(elements).toHaveLength(2);
+      expect(elements.filter((e) => e.key.startsWith('expressid:'))).toHaveLength(1);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('stays silent when there are no elements at all', async () => {
+    const store = await fedStore();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { elements } = elementsFromStep({ store, meshes: [], modelId: 'model-1' });
+      expect(elements).toHaveLength(0);
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

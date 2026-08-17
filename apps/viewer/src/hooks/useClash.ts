@@ -445,8 +445,41 @@ export function useClash() {
     }
   }, [gatherElements, discardSolidPresentation]);
 
+  /**
+   * Resolve a clash ref back to its model + local expressId. `null` means "no
+   * loaded model owns this id", which every caller reads as "this row is
+   * inert" (`focusClash` bails at `refs.length === 0`) — so a resolver that is
+   * merely INCOMPLETE silently disables the whole panel.
+   *
+   * A `ClashElementRef` carries BOTH halves of its identity: `ref` (the
+   * federated global id) and `model` (the store model id it was gathered from,
+   * `adapters/step.ts` `model: modelId`). Resolving through the named model's
+   * own `idOffset` — the field the renderer's id space is built from
+   * (`Viewport.tsx` modelId→idOffset) — is therefore exact, and needs no
+   * search over id ranges that two models could both claim.
+   *
+   * The `federationRegistry` singleton (`fromGlobalId`) searched those ranges
+   * instead, and knows only the models that went through
+   * `registerModelOffset`. A model put into `state.models` any other way is
+   * invisible to it. That is exactly the collab room model: `collabSlice`'s
+   * recipient reconstruct registers it with `upsertModel({ id: 'room:<id>',
+   * ..., idOffset: 0 })` and never calls `registerModelOffset`, so in a room
+   * EVERY clash row was dead — while clicking the same element in the 3D view
+   * selected it normally, that path resolving through `state.models`
+   * (`resolveEntityRef`). The panel now agrees with the viewport.
+   *
+   * The registry stays as the fallback for a ref whose model is no longer in
+   * `state.models` but is still registered; and `null` survives when neither
+   * knows the id, so a result whose models have been torn down stays inert.
+   */
   const refOf = useCallback((ref: ClashElementRef): SelectionRef | null => {
-    return useViewerStore.getState().fromGlobalId(ref.ref);
+    const state = useViewerStore.getState();
+    const model = state.models.get(ref.model);
+    if (model) {
+      const expressId = ref.ref - (model.idOffset ?? 0);
+      if (expressId >= 0 && expressId <= model.maxExpressId) return { modelId: ref.model, expressId };
+    }
+    return state.fromGlobalId(ref.ref);
   }, []);
 
   /**

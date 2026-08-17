@@ -321,9 +321,25 @@ export class StepExporter {
     const sourceSchema = (this.dataStore.schemaVersion as IfcSchemaVersion) || 'IFC4';
     const converting = needsConversion(sourceSchema, schema);
 
+    // Read ONCE, here, and consumed everywhere below instead of re-spelling
+    // `options.applyMutations !== false` per site. `options` is the caller's
+    // object and this export re-enters it dozens of times; an accessor that
+    // answered differently on the second read would have let the effective
+    // index be built WITH the overlay while a later guard — including the
+    // relationship-filter precondition — decided there was none. Reading each
+    // option that feeds that precondition exactly once makes the two agree by
+    // construction rather than by every site happening to spell it the same
+    // way (adversarial review of #2668's replacement gate).
+    const applyMutations = options.applyMutations !== false;
+    // Same, for the other option the precondition reads. `isGeometryExcluded`
+    // below and both output passes' own geometry skips consume this one const,
+    // so "the gate thinks geometry is included while the predicate thinks it is
+    // excluded" is not a state this export can reach.
+    const excludeGeometry = options.includeGeometry === false;
+
     if (
       schema === 'IFC2X3' &&
-      options.applyMutations !== false &&
+      applyMutations &&
       options.georefMutations &&
       (
         Object.keys(options.georefMutations.projectedCRS ?? {}).length > 0 ||
@@ -392,7 +408,7 @@ export class StepExporter {
     const effective = getEffectiveEntityIndex(
       this.dataStore,
       this.mutationView,
-      options.applyMutations !== false,
+      applyMutations,
     );
 
     // Does this id belong to an entity the OVERLAY created (`createEntity` /
@@ -406,6 +422,70 @@ export class StepExporter {
     // disagree — see `source-ref-bounds.ts` for the corrupt file the weaker
     // "is there a source / does the ref claim bytes" pair let through (#2491).
     const isReadableSourceRef = createSourceRefReader(this.dataStore.source);
+
+    /**
+     * "Does this model hold a record whose bytes this export cannot read?" —
+     * the one disjunct of {@link mayNameOmittedRefs} that is not already a
+     * value in hand, so it is a function and called last, behind `||`.
+     *
+     * Scans the EFFECTIVE index, and that is a requirement rather than an
+     * implementation detail: it has to cover the id space
+     * `isOmittedFromOutput` answers over, and an unreadable record can live in
+     * `deferredEntityIndex` — the secondary index `getCompleteEntityIndex`
+     * exists to merge — and nowhere in `entityIndex.byId`. Scanning `byId`,
+     * the obvious cheaper source, was measured to leave the gate false and
+     * ship the dangling ref; `relationship-filter-gate.test.ts` pins the
+     * merged scan behaviourally so that shortcut cannot come back as an
+     * optimisation.
+     *
+     * Reads the ref ITERATION yields — what the source-iteration pass's own
+     * skip reads — rather than re-asking `effective.get(id)` per id as
+     * `willBeEmitted` does, which on the largest files would cost a binary
+     * search and an allocation per entity and defeat the point of the gate.
+     * Every index here keeps the two in step by construction:
+     * `CompactEntityIndex` serves `get`, `has` and iteration from one pair of
+     * `Uint32Array`s, a `Map` trivially agrees, the merged deferred view is
+     * `byId.get ?? deferred.get` over `yield* byId; yield* deferred`, and
+     * `OverlayIndex` filters both by one tombstone set. An index whose `has`
+     * accepted an id its iteration never yields would defeat this — and would
+     * equally defeat the source-iteration pass's skip, so that file is broken
+     * either way; nothing in the repo builds one.
+     *
+     * Not short-circuited on `overlayActive`: an overlay-created record carries
+     * `(OVERLAY_BYTE_OFFSET, 0)` and so counts as unreadable here, which would
+     * make this always answer true once an overlay exists. Harmless —
+     * `overlayActive` is an earlier disjunct, so this never runs then — and
+     * correct if it ever did.
+     *
+     * ## Why a standalone pass rather than a value off the index
+     *
+     * Measured: 12.0 ms of a 470 ms export at 714,485 entities (2.55%), one
+     * call, whole index walked because a well-formed model gives it nothing to
+     * short-circuit on. The cheaper shape was prototyped and is 13x faster —
+     * `min(byteLength)` and `max(byteOffset + byteLength)` over
+     * `CompactEntityIndex`'s own `Uint32Array`s answer "is every ref readable
+     * within `extent`" exactly and allocation-free in 0.74 ms — and was not
+     * taken, because 11 ms does not buy what it costs.
+     *
+     * It could only stand in FRONT of this loop, never replace it:
+     * `EntityByIdIndex` is a structural type and plain `Map`s satisfy it
+     * (`synthetic-data-store.ts` builds one), so the walk stays for those. That
+     * makes it a second implementation of one predicate across a package
+     * boundary — the defect class #2637, #2668 and this gate are all instances
+     * of. And storing it at construction is the invariant
+     * `source-ref-bounds.ts` exists to delete: `CompactEntityIndex` is built by
+     * its builder, by `compactEntityIndexFromColumns` in the transport, and by
+     * embedders, so a value one producer writes is a value the next can skip,
+     * whereas testing the ref where it is READ cannot be bypassed. If 2.5% ever
+     * has to go, the safe shape is a memoized derivation the index computes
+     * from its own arrays on demand — not a field set at build time.
+     */
+    const hasAnyUnreadableSourceRef = (): boolean => {
+      for (const [, ref] of effective) {
+        if (!isReadableSourceRef(ref)) return true;
+      }
+      return false;
+    };
 
     // Build visible-only closure if requested. Classification, the closure walk
     // and the style pass all run over the EFFECTIVE index: an overlay-created
@@ -527,7 +607,7 @@ export class StepExporter {
     // so a source entity's line is assumed to already exist in the file being
     // patched, geometry or not.
     const isGeometryExcluded = (entityId: number, recordType: string): boolean =>
-      options.includeGeometry === false
+      excludeGeometry
       && this.isGeometryEntity(effective.effectiveType(entityId, recordType));
     const hasEmittableHostBytes = (entityId: number): boolean => {
       if (allowedEntityIds !== null && !allowedEntityIds.has(entityId)) return false;
@@ -577,10 +657,10 @@ export class StepExporter {
     const skipPropertySetIds = new Set<number>();
     const skipRelationshipIds = new Set<number>();
 
-    const overlayActive = !!this.mutationView && (options.applyMutations !== false);
+    const overlayActive = !!this.mutationView && applyMutations;
 
     // Process mutations if we have a mutation view
-    if (this.mutationView && (options.applyMutations !== false)) {
+    if (this.mutationView && applyMutations) {
       const mutations = this.mutationView.getMutations();
 
       // Attribute values come from the *overlay*, never from the mutation
@@ -934,7 +1014,7 @@ export class StepExporter {
     // Process georeferencing mutations (only when applyMutations is enabled)
     const newGeorefLines: string[] = [];
     const warnings: string[] = [];
-    if (options.applyMutations !== false && options.georefMutations) {
+    if (applyMutations && options.georefMutations) {
       const gm = options.georefMutations;
       // `effective.byType`, not the raw index: a source IfcProjectedCRS the
       // session tombstoned is still in `dataStore.entityIndex`, so the modify
@@ -1080,7 +1160,7 @@ export class StepExporter {
     // drop out of delta exports.
     const overlayNewEntityCount = (
       this.mutationView
-      && options.applyMutations !== false
+      && applyMutations
       && typeof this.mutationView.getNewEntities === 'function'
     ) ? this.mutationView.getNewEntities().length : 0;
     // Georef-only deltas (newGeorefLines populated but no entity changes) must
@@ -1188,16 +1268,14 @@ export class StepExporter {
      * pass skip an entity's line while an `IFCREL*` naming it shipped verbatim,
      * dangling.
      *
-     * Deriving the filter from `willBeEmitted` is also what retires the
-     * `mayNameExcludedRefs` gate that used to stand in front of both call
-     * sites. That gate was a SECOND, shorter enumeration of the same reasons
+     * Deriving the filter from `willBeEmitted` is also what fixed the
+     * `mayNameExcludedRefs` gate that stands in front of both call sites. That
+     * gate used to be a SECOND, shorter enumeration of the same reasons
      * (hidden products exist, or an overlay is active) and answered `false` for
      * exactly the unreadable-ref export above, so the filter never ran at all.
-     * Any cheap gate here would have to be re-derived every time an eighth
-     * reason is added; running the filter unconditionally cannot go stale.
-     * It is also close to free when nothing is excluded:
-     * `filterHiddenRefsFromRelationshipLine` returns the input string
-     * unchanged unless some ref actually failed the predicate.
+     * It is now {@link mayNameOmittedRefs} — see there for why a gate is kept
+     * at all (running the filter on every `IFCREL*` line costs +13% of a
+     * 714k-entity export) and for the enumeration it has to cover.
      *
      * ## The one qualifier on top of `willBeEmitted`
      *
@@ -1246,6 +1324,89 @@ export class StepExporter {
     const isOmittedFromOutput = (id: number): boolean =>
       (effective.has(id) || effective.isDeleted(id)) && !willBeEmitted(id);
 
+    /**
+     * "Can ANY id be omitted from this export at all?" — the precondition both
+     * `IFCREL*` filter sites are gated on, so the common export pays nothing.
+     *
+     * ## Why a gate exists
+     *
+     * Running `filterHiddenRefsFromRelationshipLine` on every `IFCREL*` line
+     * costs a re-parse of that line's attribute list, and a large model is
+     * mostly relationships. Measured on `tests/models/ara3d/schependomlaan.ifc`
+     * (714,485 entities, 21 interleaved reps in randomised order): 463 ms
+     * median with this gate false versus 523 ms filtering unconditionally,
+     * **+13%**. That is a real price paid on every export to protect a state
+     * most exports are not in. With the gate, the same export is 475 ms, +2.7%,
+     * all of it the fourth disjunct's one pass.
+     *
+     * ## Why THIS gate, and not the one that shipped before
+     *
+     * The gate this replaces was a second, hand-kept enumeration of "reasons an
+     * entity might be excluded", and it went stale exactly as such lists do: it
+     * named hidden products and the overlay and knew nothing about an unreadable
+     * source ref, so the bug this branch fixes reached the output with the
+     * filter switched off. A cheap gate is safe only as an OVER-APPROXIMATION of
+     * `isOmittedFromOutput` that can be checked against `willBeEmitted` branch
+     * by branch — so every branch is listed, with the disjunct that covers it:
+     *
+     * | `willBeEmitted` answers NO at                | covered by                    |
+     * |----------------------------------------------|-------------------------------|
+     * | `allowedEntityIds !== null && !has(id)`      | `allowedEntityIds !== null`   |
+     * | `!ref`, because the overlay tombstoned `id`  | `overlayActive`               |
+     * | overlay-created, geometry excluded           | `overlayActive`               |
+     * | `!isReadableSourceRef(ref)`                  | `hasAnyUnreadableSourceRef()` |
+     * | source-backed, geometry excluded             | `excludeGeometry`             |
+     * | `!ref`, because `id` never existed           | out of scope (below)          |
+     * | `!ref` while `has(id)` is TRUE               | nothing (below)               |
+     *
+     * "Never existed" needs no disjunct: `isOmittedFromOutput`'s own
+     * `(has || isDeleted)` qualifier already drops it, deliberately — a
+     * pre-existing dangling ref in somebody else's file is not this export's to
+     * repair (see that predicate's note).
+     *
+     * The last row is a real hole and is stated rather than hidden: an index
+     * that answers `has(id)` for an id its iteration never yields makes
+     * `isOmittedFromOutput` true with no disjunct true. It needs an index whose
+     * `has`, `get` and iteration disagree, which nothing in the repo builds and
+     * which would already break the source-iteration pass's own skip — see
+     * {@link hasAnyUnreadableSourceRef}, which rests on the same agreement.
+     *
+     * Three of the four disjuncts are reads of values this export already
+     * computed. Only the fourth costs anything, and it short-circuits: `||`
+     * evaluates it solely when the other three are false, i.e. only for an
+     * export that has nothing else to filter for.
+     *
+     * ## The two spellings that are deliberately NOT the obvious ones
+     *
+     * `allowedEntityIds !== null`, not `options.visibleOnly === true`. Not the
+     * same test: the closure is built under `if (options.visibleOnly &&
+     * this.dataStore.source)`, which is TRUTHY rather than `=== true`, and which
+     * is a SECOND read of the caller's object. A plain-JS caller of this
+     * published package passing `visibleOnly: 1` — or a `get visibleOnly()` that
+     * answers `true` once — built the closure while the gate read false and
+     * shipped a relationship naming an entity outside it. Executed, not
+     * reasoned: 192 of an 800-case sweep over `visibleOnly`/`hidden`/`isolated`
+     * combinations shipped a dangling ref against the `=== true` spelling, 0
+     * against this one. Reading the state the walk PRODUCED cannot disagree with
+     * the walk, whatever `options` says afterwards.
+     *
+     * It is also wider than the `hiddenProductIds.size > 0` the old gate used: a
+     * closure exists whenever `visibleOnly` was requested, even with nothing
+     * hidden, and can exclude an entity the roots simply never reach. No fixture
+     * has produced that case, so the widening is defensive — but a gate that is
+     * true too often costs speed on a rare path, while one that is false too
+     * rarely ships a corrupt file, and this one costs nothing.
+     *
+     * `overlayActive` and `excludeGeometry` are the SAME consts the effective
+     * index and `isGeometryExcluded` are built from — one read of `options` per
+     * question, shared — so those two cannot disagree with the predicate either.
+     */
+    const mayNameOmittedRefs =
+      allowedEntityIds !== null
+      || overlayActive
+      || excludeGeometry
+      || hasAnyUnreadableSourceRef();
+
     // A modified pset is replaced wholesale, which skips ALL of its member atoms.
     // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
     // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
@@ -1289,7 +1450,7 @@ export class StepExporter {
         const entityType = entityRef.type.toUpperCase();
 
         // Skip geometry if not included
-        if (options.includeGeometry === false && this.isGeometryEntity(entityType)) {
+        if (excludeGeometry && this.isGeometryEntity(entityType)) {
           continue;
         }
 
@@ -1332,7 +1493,7 @@ export class StepExporter {
         // has to agree with what actually got written, the same way
         // `getVisibleEntityIds` already does for the visibility walk itself.
         const effectiveRelType = effective.effectiveType(expressId, entityRef.type).toUpperCase();
-        if (effectiveRelType.startsWith('IFCREL')) {
+        if (mayNameOmittedRefs && effectiveRelType.startsWith('IFCREL')) {
           const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
           if (filtered === null) {
             warnings.push(relationshipWithheldWarning(expressId, effectiveRelType));
@@ -1556,7 +1717,7 @@ export class StepExporter {
     // `exportPropertiesOnly()` modes.
     if (
       this.mutationView
-      && (options.applyMutations !== false)
+      && applyMutations
       && typeof this.mutationView.getNewEntities === 'function'
     ) {
       const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
@@ -1572,7 +1733,7 @@ export class StepExporter {
         // STEP requires UPPERCASE entity type tokens; the upper-case happens
         // here at the file-format boundary.
         const upperType = effectiveType.toUpperCase();
-        if (options.includeGeometry === false && this.isGeometryEntity(upperType)) {
+        if (excludeGeometry && this.isGeometryEntity(upperType)) {
           continue;
         }
         if (allowedEntityIds !== null && !allowedEntityIds.has(entity.expressId)) {
@@ -1640,7 +1801,15 @@ export class StepExporter {
         let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
         // Same gap as the source-iteration pass, for an overlay-authored
         // relationship instead of a parsed one (#2398).
-        if (upperType.startsWith('IFCREL')) {
+        //
+        // `mayNameOmittedRefs` is provably TRUE wherever this line executes:
+        // the block enclosing this pass requires `this.mutationView` and
+        // `applyMutations`, which is `overlayActive`, which is one of the gate's
+        // own disjuncts. Spelled out anyway so both filter sites read the same —
+        // the previous gate's failure was one site's condition drifting from
+        // what the filter needed, and a pass reachable without an overlay would
+        // otherwise silently need the gate re-derived here.
+        if (mayNameOmittedRefs && upperType.startsWith('IFCREL')) {
           line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
           if (line === null) {
             warnings.push(relationshipWithheldWarning(entity.expressId, upperType));

@@ -113,7 +113,8 @@ the authorization code stranded. So:
 
 - The redirect lands back on this app's own origin, and that page hands the
   result to the opener over a `BroadcastChannel` (name and message shape:
-  `src/callback-channel.ts`). The host serves that page: see
+  `@ifc-lite/oauth-pkce`'s `src/callback-channel.ts`, which owns this
+  mechanism for every provider built on it). The host serves that page: see
   `apps/viewer/public/oauth/dropbox/callback.html` plus the dev-server route
   in `apps/viewer/vite-plugins/oauth-callback.ts` and the `vercel.json`
   rewrite. Without such a route the SPA fallback answers the redirect with the

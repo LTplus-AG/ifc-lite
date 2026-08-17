@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { dropboxAuth } from '../src/auth.js';
-import { OAUTH_CALLBACK_CHANNEL } from '../src/callback-channel.js';
+import { OAUTH_CALLBACK_CHANNEL } from '@ifc-lite/oauth-pkce';
 import { DROPBOX_MOCK_ACCESS_TOKEN, createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
@@ -217,7 +217,8 @@ describe('dropboxAuth', () => {
     });
 
     // Cross-attempt routing (a broadcast carrying someone else's `state` must
-    // be ignored, not consumed) is covered in `callback-channel.test.ts`.
+    // be ignored, not consumed) is covered by `@ifc-lite/oauth-pkce`'s
+    // own `test/callback-channel.test.ts`.
     // Asserting it through `signIn` would mean leaving its real 5-minute
     // timeout pending in the test worker.
   });

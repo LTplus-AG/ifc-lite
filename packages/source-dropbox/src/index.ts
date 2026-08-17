@@ -5,8 +5,9 @@
 export { DropboxProvider } from './provider.js';
 export { DROPBOX_MANIFEST } from './manifest.js';
 export { REDIRECT_PATH } from './auth.js';
-// Exported so a host that serves the callback route (see
-// `apps/viewer/public/oauth/dropbox/callback.html`) can name the same channel
-// rather than re-deriving the string.
-export { OAUTH_CALLBACK_CHANNEL } from './callback-channel.js';
-export type { OAuthCallbackMessage } from './callback-channel.js';
+// `OAUTH_CALLBACK_CHANNEL` / `OAuthCallbackMessage` are deliberately NOT
+// re-exported here. They belong to `@ifc-lite/oauth-pkce`, which owns the
+// popup-callback mechanism and publishes them itself; a host that serves the
+// callback route should import them from there. Publishing the same two names
+// from two packages would make them impossible to remove later without a
+// breaking change on both.

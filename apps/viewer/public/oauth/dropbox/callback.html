@@ -48,7 +48,7 @@
       The handoff is a BroadcastChannel rather than the popup's opener, because
       the app serves Cross-Origin-Opener-Policy: same-origin and the
       cross-origin authorization hop severs the opener relationship in both
-      directions. packages/source-dropbox/src/callback-channel.ts documents the
+      directions. packages/oauth-pkce/src/callback-channel.ts documents the
       probe and the consequences.
     -->
     <p id="status">Completing sign-in. You can close this window.</p>
@@ -56,7 +56,7 @@
       (function () {
         'use strict';
         // Keep byte-identical to OAUTH_CALLBACK_CHANNEL in
-        // packages/source-dropbox/src/callback-channel.ts. This file is not
+        // packages/oauth-pkce/src/callback-channel.ts. This file is not
         // bundled, so it cannot import the constant.
         var CHANNEL = 'ifc-lite:oauth-callback';
 

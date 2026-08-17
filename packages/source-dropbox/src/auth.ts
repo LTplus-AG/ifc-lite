@@ -8,12 +8,12 @@ import {
   createAuthorizationRequest,
   exchangeAuthorizationCode,
   parseAuthorizationCallback,
+  waitForOAuthCallback,
 } from '@ifc-lite/oauth-pkce';
 import type { PluginContext, SourceAuth, SourceIdentity } from '@ifc-lite/plugin-api';
 
 import { BrowserDropboxApiClient } from './http-client.js';
 import { decodeCurrentAccount } from './dropbox-types.js';
-import { waitForOAuthCallback } from './callback-channel.js';
 
 // Endpoints per Dropbox's own OAuth guide (`developers.dropbox.com/oauth-guide`,
 // "Implementing OAuth" / "PKCE", checked 2026-08-16). The two live on
@@ -173,8 +173,9 @@ export const dropboxAuth: SourceAuth = {
     // `Cross-Origin-Opener-Policy: same-origin`, `popup.closed` is `true` and
     // `popup.location` throws for a cross-origin popup even while it is open
     // and working, so the usual poll loop rejects every sign-in as
-    // "cancelled" on its first tick. `callback-channel.ts` documents the
-    // probe. Cancellation therefore falls back to the timeout.
+    // "cancelled" on its first tick. `@ifc-lite/oauth-pkce`'s
+    // `callback-channel.ts` documents the probe. Cancellation therefore falls
+    // back to the timeout.
     let callbackUrl: string;
     try {
       callbackUrl = await waitForOAuthCallback({

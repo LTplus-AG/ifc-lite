@@ -40,16 +40,12 @@ import { createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
 const WORLD: DropboxMockWorld = {
+  accountId: 'account-1',
+  displayName: 'Mock User',
+  email: 'mock@example.com',
   items: [
-    { id: 'id:folder-a', name: 'Alpha', path: '/Alpha', kind: 'folder' },
-    {
-      id: 'id:file-1',
-      name: 'model.ifc',
-      path: '/Alpha/model.ifc',
-      kind: 'file',
-      size: 12,
-      content: 'MODEL-BYTES',
-    },
+    { id: 'id:f-alpha', name: 'Alpha', kind: 'folder' },
+    { id: 'id:file-1', name: 'model.ifc', parentId: 'id:f-alpha', kind: 'file', size: 12, content: 'MODEL-BYTES' },
   ],
 };
 

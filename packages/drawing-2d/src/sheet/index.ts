@@ -70,6 +70,18 @@ export {
   calculateOptimalDivisions,
 } from './scale-bar-types.js';
 
+// Scale stamp (the printed scale record of a to-scale PDF sheet, #2042).
+// `buildScaleStamp` stays package-private: `addScaleStamp` is the only entry
+// point a consumer needs, and an unused public export is semver liability.
+export type {
+  ScaleStampRect,
+  ScaleStampText,
+  ScaleStampBar,
+  ScaleStamp,
+  StampedSheetLayout,
+} from './scale-stamp.js';
+export { addScaleStamp } from './scale-stamp.js';
+
 // Sheet types
 export type {
   ViewportBounds,

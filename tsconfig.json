@@ -118,6 +118,12 @@
       "@ifc-lite/source-dalux/*": [
         "packages/source-dalux/dist/*"
       ],
+      "@ifc-lite/oauth-pkce": [
+        "packages/oauth-pkce/dist/index.d.ts"
+      ],
+      "@ifc-lite/oauth-pkce/*": [
+        "packages/oauth-pkce/dist/*"
+      ],
       "@ifc-lite/plugin-api/*": [
         "packages/plugin-api/dist/*"
       ]

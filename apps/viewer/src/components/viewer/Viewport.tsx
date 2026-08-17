@@ -14,7 +14,7 @@ import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
 import { effectiveIsolatedIds } from '@/lib/effective-isolation';
-import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
+import { composeLightingEnvironment } from '@/lib/compose-environment';
 import {
   useSelectionState,
   useVisibilityState,
@@ -420,32 +420,31 @@ export function Viewport({
   // clear, and Cesium draws its own atmosphere.
   const envPreset = useViewerStore((s) => s.envPreset);
   const envExposure = useViewerStore((s) => s.envExposure);
+  const envHardness = useViewerStore((s) => s.envHardness);
+  const envSoftness = useViewerStore((s) => s.envSoftness);
   const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
   const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
   const solarSunAltitude = useViewerStore((s) => s.solarSunInfo?.altitude);
 
   const environment = useMemo<LightingEnvironment>(() => {
     const preset = LIGHTING_PRESETS[envPreset].environment;
-    const env: LightingEnvironment = {
-      ...preset,
-      skyEnabled: (preset.skyEnabled ?? false) && !cesiumActive,
-      exposure: (preset.exposure ?? 0.85) * envExposure,
-    };
-    if (solarEnabledForEnv && solarSunDirection) {
-      const altitude = solarSunAltitude
-        ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI);
-      const sun = sunLightingForAltitude(altitude);
-      env.sunDirection = solarSunDirection;
-      env.sunColor = sun.color;
-      env.sunIntensity = (preset.sunIntensity ?? 0.55) * sun.intensityFactor;
-      env.ambientIntensity = (preset.ambientIntensity ?? 0.25) * sun.ambientFactor;
-      // Let the sky derive its palette from the real sun altitude.
-      delete env.sky;
-    }
-    return env;
+    const solar = (solarEnabledForEnv && solarSunDirection)
+      ? {
+          sunDirection: solarSunDirection,
+          altitudeDeg: solarSunAltitude
+            ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI),
+        }
+      : null;
+    return composeLightingEnvironment(
+      preset,
+      { exposure: envExposure, hardness: envHardness, softness: envSoftness },
+      { cesiumActive: !!cesiumActive, solar },
+    );
   }, [
     envPreset,
     envExposure,
+    envHardness,
+    envSoftness,
     cesiumActive,
     solarEnabledForEnv,
     solarSunDirection,

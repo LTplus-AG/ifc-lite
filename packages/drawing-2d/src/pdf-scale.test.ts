@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm,
   flipBounds2D, formatScaleFactorLabel, type AxisFlip,
+  formatSheetScaleLabel,
 } from './pdf-scale.js';
 import type { Bounds2D } from './types.js';
 
@@ -194,5 +195,41 @@ describe('worldLengthToPdfMm', () => {
     const { transform: t200 } = computePdfScaleLayout(bounds10x6, 200, 10);
     expect(worldLengthToPdfMm(1, t50)).toBeCloseTo(20, 10);
     expect(worldLengthToPdfMm(1, t200)).toBeCloseTo(5, 10);
+  });
+});
+
+describe('formatSheetScaleLabel (#2042)', () => {
+  it('states a whole-number ratio without hedging it', () => {
+    expect(formatSheetScaleLabel(100)).toBe('1:100');
+    expect(formatSheetScaleLabel(50)).toBe('1:50');
+  });
+
+  it('states a two-decimal ratio it can print exactly', () => {
+    expect(formatSheetScaleLabel(87.35)).toBe('1:87.35');
+    expect(formatSheetScaleLabel(99.5)).toBe('1:99.5');
+  });
+
+  it('hedges a ratio it had to round', () => {
+    // The "as displayed" case: the viewport sits wherever it sits.
+    expect(formatSheetScaleLabel(87.3456)).toBe('about 1:87.35');
+  });
+
+  it('still hedges when the factor is huge, where a RELATIVE tolerance would not', () => {
+    // The regression this pins. "Exact" is a claim about the printed digits,
+    // so its slack must be double-representation error and nothing more. A
+    // relative tolerance grows with the factor: at 1e-9 relative, 1e8 buys a
+    // slack of 0.1, and a factor 0.004 away from its printed value sails
+    // through as exact. The sheet would then print a bare ratio it was not
+    // drawn at, which is precisely what this label exists to prevent.
+    expect(formatSheetScaleLabel(100000000.004)).toBe('about 1:100000000');
+  });
+
+  it('survives the divide-and-round trip that produces real factors', () => {
+    // Factors reach this via `1000 / worldToMm`, so the round trip has to stay
+    // on the exact side or every ordinary sheet would print hedged.
+    for (const factor of [10, 20, 50, 100, 200, 500]) {
+      const roundTripped = 1000 / (1000 / factor);
+      expect(formatSheetScaleLabel(roundTripped)).toBe(`1:${factor}`);
+    }
   });
 });

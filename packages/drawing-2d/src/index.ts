@@ -179,8 +179,47 @@ export type { SVGExportOptions } from './svg-exporter.js';
 // dependency of this package.
 export {
   computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
+  // The ratio a sheet PRINTS: the same number as the filename, hedged with
+  // "about" when 2 decimals had to round it (#2042).
+  formatSheetScaleLabel,
 } from './pdf-scale.js';
 export type { PdfScaleTransform, PdfPage, PdfScaleLayout, AxisFlip } from './pdf-scale.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TO-SCALE 3D-VIEW EXPORT (issue #2042)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Synthetic camera section plane (orthonormal basis, placed in front of the
+// model) + the world bounds helper that folds `MeshData.origin`.
+// `worldBoundsCorners` stays package-private: `buildCameraSectionPlane` does
+// the corner work itself and no external consumer exists, so publishing it
+// would only be permanent semver liability (PR #1871 review).
+export { buildCameraSectionPlane, worldBoundsOfMeshes } from './view-plane.js';
+export type { CameraFrame, CameraSectionPlane, WorldBounds3D } from './view-plane.js';
+
+// CPU half-space clip standing in for the GPU section clip.
+export { clipMeshToHalfSpace, clipMeshesToHalfSpace } from './half-space-clip.js';
+export type {
+  HalfSpaceClipResult,
+  HalfSpaceClipBatchResult,
+  WorldSegment,
+} from './half-space-clip.js';
+
+// World segments -> classified drawing lines (feeds `GeneratorOptions.extraLines`).
+export { projectWorldLineSeeds } from './world-line-seeds.js';
+export type { WorldLineSeed } from './world-line-seeds.js';
+
+// Flat-shaded RGBA underlay for the to-scale PDF: the surfaces the viewport
+// shows, placed under the vector line work. `raster-core.ts` (the primitives
+// this shares with the hidden-line depth raster) stays package-private.
+export {
+  buildColorRaster,
+  fitRasterPixels,
+  DEFAULT_SHADING_DPI,
+  MAX_SHADING_PIXELS,
+  MAX_SHADING_DIMENSION_PX,
+} from './color-raster.js';
+export type { ColorRaster, ColorRasterOptions, RasterFit } from './color-raster.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DXF EXPORT (issue #1861)
@@ -477,6 +516,11 @@ export {
   calculateViewportBounds,
   calculateDrawingTransform,
 
+  // Scale stamp: the sheet's own record of the scale it was drawn at (#2042).
+  // Grows the page around an EXISTING to-scale layout and returns its
+  // transform untouched, unlike `calculateDrawingTransform`, which re-fits.
+  addScaleStamp,
+
   // Sheet renderers
   renderFrame,
   renderTitleBlock,
@@ -516,6 +560,13 @@ export type {
   ViewportBounds,
   DrawingSheet,
   SheetCreationOptions,
+
+  // Scale stamp types
+  ScaleStampRect,
+  ScaleStampText,
+  ScaleStampBar,
+  ScaleStamp,
+  StampedSheetLayout,
 
   // Renderer types
   FrameRenderResult,

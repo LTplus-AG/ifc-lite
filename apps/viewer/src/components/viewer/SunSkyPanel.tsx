@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import type { CesiumDataSource } from '@/store/slices/cesiumSlice';
 import type { SolarSweepMode } from '@/store/slices/solarSlice';
 import { LIGHTING_PRESETS, LIGHTING_PRESET_ORDER, isLightingPresetId } from '@/lib/lighting-presets';
+import { LightingTrimControls } from './LightingTrimControls';
 import { posthog } from '@/lib/analytics';
 import {
   solarDisplayOffsetMinutes,
@@ -53,8 +54,6 @@ export function SunSkyPanel() {
   const setSkyEnabled = useViewerStore((s) => s.setEnvSkyEnabled);
   const preset = useViewerStore((s) => s.envPreset);
   const setPreset = useViewerStore((s) => s.setEnvPreset);
-  const exposure = useViewerStore((s) => s.envExposure);
-  const setExposure = useViewerStore((s) => s.setEnvExposure);
 
   const cesiumAvailable = useViewerStore((s) => s.cesiumAvailable);
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -180,31 +179,9 @@ export function SunSkyPanel() {
             </label>
           )}
 
-          {/* Exposure — WebGPU shading only, hidden in world-context mode */}
-          {!cesiumEnabled && (
-            <label className="flex flex-col gap-0.5">
-              <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-                <span>Exposure</span>
-                <button
-                  type="button"
-                  onClick={() => setExposure(1)}
-                  title="Reset exposure"
-                  className={cn('tabular-nums transition-colors', exposure !== 1 && 'text-foreground hover:text-teal-600')}
-                >
-                  {exposure.toFixed(2)}×
-                </button>
-              </span>
-              <input
-                type="range"
-                min={0.4}
-                max={2}
-                step={0.05}
-                value={exposure}
-                onChange={(e) => setExposure(Number(e.target.value))}
-                className="w-full accent-teal-600"
-              />
-            </label>
-          )}
+          {/* WebGPU shading trims (exposure + light hardness + terminator
+              softness) — hidden in world-context mode, where Cesium lights. */}
+          {!cesiumEnabled && <LightingTrimControls />}
 
           {/* Sun study — needs a georeferenced model for the real sun */}
           {cesiumAvailable && (

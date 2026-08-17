@@ -1,0 +1,1002 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { describe, expect, it, vi } from 'vitest';
+import { TokenManager } from '../src/token-manager.js';
+import { exchangeAuthorizationCode } from '../src/token-exchange.js';
+import { NotSignedInError, TokenExchangeError } from '../src/errors.js';
+import type { TokenSet, TokenStorage } from '../src/types.js';
+
+function createMemoryStorage(): TokenStorage {
+  const map = new Map<string, string>();
+  return {
+    async get(key) {
+      return map.get(key);
+    },
+    async set(key, value) {
+      map.set(key, value);
+    },
+    async delete(key) {
+      map.delete(key);
+    },
+  };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+/** Drains pending microtasks. `TokenManager` now routes every storage
+ *  access through its internal serialization queue (see `token-manager.ts`),
+ *  which adds extra promise-chain hops beyond a bare `await storage.get()` —
+ *  a fixed handful of `await Promise.resolve()` calls that was enough to
+ *  reach a specific await point before is no longer a reliable tick count.
+ *  Looping considerably past what's needed is harmless (there are no timers
+ *  or real I/O involved, just promise microtasks) and keeps these tests from
+ *  being coupled to the exact number of internal `await`s the queue adds. */
+async function flush(times = 30): Promise<void> {
+  for (let i = 0; i < times; i++) {
+    await Promise.resolve();
+  }
+}
+
+describe('TokenManager.getValidAccessToken', () => {
+  it('returns the stored access token without a network call when it is not near expiry', async () => {
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn();
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'still-fresh', refreshToken: 'r1', expiresAt: 1_000_000 + 10 * 60_000 });
+
+    const token = await manager.getValidAccessToken();
+
+    expect(token).toBe('still-fresh');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('refreshes when the stored token is within the skew window of expiry', async () => {
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'refreshed', refresh_token: 'r2', expires_in: 3600 }));
+    let now = 1_000_000;
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => now,
+      refreshSkewMs: 60_000,
+    });
+    // Expires in 30s — inside the 60s skew window, so this must trigger a refresh.
+    await manager.setTokens({ accessToken: 'about-to-expire', refreshToken: 'r1', expiresAt: now + 30_000 });
+
+    const token = await manager.getValidAccessToken();
+
+    expect(token).toBe('refreshed');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const stored = await manager.getTokens();
+    expect(stored?.accessToken).toBe('refreshed');
+    expect(stored?.refreshToken).toBe('r2');
+  });
+
+  it('preserves the old refresh token when the refresh response omits a new one', async () => {
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'refreshed', expires_in: 3600 }));
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 0,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'r1', expiresAt: -1 });
+
+    await manager.getValidAccessToken();
+
+    const stored = await manager.getTokens();
+    expect(stored?.refreshToken).toBe('r1');
+  });
+
+  it('throws NotSignedInError when nothing is stored', async () => {
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage: createMemoryStorage(),
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: vi.fn() as unknown as typeof fetch,
+    });
+    await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
+  });
+
+  it('throws NotSignedInError when the token is expired and there is no refresh token', async () => {
+    const storage = createMemoryStorage();
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: vi.fn() as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', expiresAt: 0 });
+
+    await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
+  });
+
+  it('collapses two concurrent refreshes triggered by an expired token into a single token-endpoint request', async () => {
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // Two callers race on the same expired token, as would happen when a page
+    // fires several API calls at once.
+    const first = manager.getValidAccessToken();
+    const second = manager.getValidAccessToken();
+
+    // Let both calls reach the refresh step before the token endpoint responds.
+    await flush();
+
+    resolveFetch(jsonResponse({ access_token: 'refreshed-once', refresh_token: 'new-refresh', expires_in: 3600 }));
+
+    const [firstToken, secondToken] = await Promise.all([first, second]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(firstToken).toBe('refreshed-once');
+    expect(secondToken).toBe('refreshed-once');
+  });
+
+  it('does not reuse a settled refresh for a later, separate expiry (dedup is in-flight-only, not a cache)', async () => {
+    const storage = createMemoryStorage();
+    let now = 1_000_000;
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'first-refresh', refresh_token: 'r2', expires_in: 3600 }))
+      .mockResolvedValueOnce(jsonResponse({ access_token: 'second-refresh', refresh_token: 'r3', expires_in: 3600 }));
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => now,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'r1', expiresAt: now - 1 });
+
+    const token1 = await manager.getValidAccessToken();
+    now += 3600 * 1000 + 1; // advance past the first refresh's own expiry
+    const token2 = await manager.getValidAccessToken();
+
+    expect(token1).toBe('first-refresh');
+    expect(token2).toBe('second-refresh');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let a refresh that was already in flight resurrect the session after clear()', async () => {
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is triggered (e.g. by a background call) and is still
+    // in flight when the user signs out.
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    await manager.clear();
+
+    // The token endpoint now answers the refresh that started before sign-out.
+    resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage must still read as signed-out — the in-flight refresh's result
+    // must not have been persisted after clear() ran.
+    const stored = await manager.getTokens();
+    expect(stored).toBeUndefined();
+  });
+
+  it('does not hand a stale pre-clear() refresh to a caller under a brand-new session', async () => {
+    // Reviewer-confirmed defect: clear() bumps `generation` but never resets
+    // `pendingRefresh`, so refresh()'s dedup check (`if (this.pendingRefresh)
+    // return this.pendingRefresh;`) is generation-blind. A refresh started
+    // under the old session is handed straight to a caller signed in under a
+    // brand-new one.
+    const storage = createMemoryStorage();
+    // Each fetch call gets its own resolver — A's and B's requests must be
+    // separately resolvable, since the whole point of this test is that B
+    // issues its own request rather than being handed A's.
+    const resolvers: Array<(value: Response) => void> = [];
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'stale-refresh-token', expiresAt: 0 });
+
+    // A starts a refresh; it's still in flight when the user signs out.
+    const pendingA = manager.getValidAccessToken();
+    await flush();
+
+    await manager.clear();
+
+    // A brand-new sign-in follows, with a token already inside the skew
+    // window so B's own call has to go through refresh() again.
+    await manager.setTokens({ accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 });
+
+    // B calls under the new session, needing its own refresh.
+    const pendingB = manager.getValidAccessToken();
+    await flush();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    // The token endpoint answers A's stale request first, then B's.
+    resolvers[0](jsonResponse({ access_token: 'stale-result', refresh_token: 'stale-new-refresh', expires_in: 3600 }));
+    resolvers[1](jsonResponse({ access_token: 'fresh-result', refresh_token: 'fresh-new-refresh', expires_in: 3600 }));
+
+    await expect(pendingA).rejects.toThrow(NotSignedInError);
+    // B has a valid, freshly-signed-in session and must not be rejected by
+    // A's stale, doomed promise.
+    await expect(pendingB).resolves.toBe('fresh-result');
+  });
+});
+
+describe('TokenManager storage-write TOCTOU (async backends whose set()/delete() can complete out of invocation order)', () => {
+  /** Models a `TokenStorage` where `set()` and `delete()` are independent
+   *  async operations with no ordering guarantee relative to each other —
+   *  e.g. IndexedDB, a browser-extension storage API, or a network-backed
+   *  store. `set()` is gated on an externally-resolved promise so a test can
+   *  let a `delete()` "land" first even though `set()` was invoked first. */
+  function createGatedStorage(): TokenStorage & { armGate: () => void; releaseGate: () => void } {
+    const map = new Map<string, string>();
+    // `gate` is `null` (writes go through immediately) until `armGate()` is
+    // called, so the test's own seeding `setTokens()` call isn't blocked —
+    // only the write under test is.
+    let gate: Promise<void> | null = null;
+    let release: () => void = () => {};
+    return {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        if (gate) await gate;
+        map.set(key, value);
+      },
+      async delete(key) {
+        map.delete(key);
+      },
+      armGate() {
+        gate = new Promise((resolve) => {
+          release = resolve;
+        });
+      },
+      releaseGate: () => release(),
+    };
+  }
+
+  it('clear() strictly waits for an in-flight refresh write instead of racing it, even against a slow backend', async () => {
+    // Historical context: the design this replaced kept a generation
+    // counter and re-checked it before persisting, but the storage write it
+    // gated was a *separate* awaited step from the check. On a backend
+    // where writes/deletes aren't ordered by invocation time, clear()'s
+    // delete() could complete before the in-flight refresh's set() did,
+    // resurrecting the session at the storage layer even though clear()
+    // had "won" logically.
+    //
+    // `TokenManager` now serializes every storage operation it performs
+    // through its own queue (see `token-manager.ts`), regardless of what
+    // ordering guarantees the backend itself offers — so that specific
+    // interleaving (an independently-issued delete() outrunning an
+    // independently-issued set()) can no longer happen: there are no two
+    // independent calls to race, only one queue. The trade-off this buys is
+    // exactly what this test checks: `clear()` now *waits* for the gated
+    // write ahead of it rather than resolving early, and only then deletes
+    // — so the end state is deterministically signed-out no matter how slow
+    // that write is.
+    const storage = createGatedStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+    storage.armGate();
+
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    // The refresh response arrives; refresh()'s session check passes
+    // (clear() hasn't run yet) and it starts (but does not finish) the
+    // gated storage write — the write is now queued and holding the queue.
+    resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
+    await flush();
+
+    // clear() is called while that write is still gated. It must not
+    // resolve until the write ahead of it in the queue does.
+    let clearResolved = false;
+    const clearPromise = manager.clear().then(() => {
+      clearResolved = true;
+    });
+    await flush();
+    expect(clearResolved).toBe(false);
+
+    // Only now does the gated write actually complete — clear()'s delete()
+    // is queued behind it and can only run afterwards.
+    storage.releaseGate();
+    await clearPromise;
+    expect(clearResolved).toBe(true);
+
+    // The caller who started this refresh under the old session must be
+    // rejected, not handed the token this write just persisted. clear()
+    // swapped `this.session` before the gated write settled — the write
+    // itself is already correctly ordered behind clear()'s delete() at the
+    // storage layer (checked below), but without a post-write re-check the
+    // *promise* this caller is awaiting would still resolve with a token
+    // for a session that, by the time they receive it, has been signed out
+    // of.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // Storage must read as signed-out: the delete always runs after the
+    // write it was ordered behind, never before it.
+    const stored = await manager.getTokens();
+    expect(stored).toBeUndefined();
+  });
+
+  it("setTokens() strictly waits for an in-flight refresh write the same way clear() does, and disarms the stale refresh's return value to its original caller too", async () => {
+    // Companion to the test above, and the second writer the review
+    // confirmed reproduces the same window: refresh()'s session check
+    // passes before setTokens() runs, then setTokens() swaps
+    // `this.session` synchronously while the refresh's own write is still
+    // gated on a slow backend. Storage itself always ends up holding the
+    // new session's tokens (the queue orders setTokens()'s own write after
+    // the gated one — checked below) — the caller-facing leak is that the
+    // *original* caller of getValidAccessToken(), who started the refresh
+    // under the old session, would resolve successfully with the stale
+    // refreshed token instead of being told their session had moved on.
+    const storage = createGatedStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+    storage.armGate();
+
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    // The refresh response arrives; the session check passes (setTokens()
+    // hasn't run yet) and the write starts but blocks on the gate.
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+    await flush();
+
+    // A brand-new sign-in lands via setTokens() — no clear() involved —
+    // while that write is still gated.
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    const setNewPromise = manager.setTokens(newTokens);
+    await flush();
+
+    storage.releaseGate();
+    await setNewPromise;
+
+    // The caller who started the refresh under the old session must be
+    // told their session is gone, not handed the stale token.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage correctly holds the new session's tokens regardless — the
+    // queue still orders setTokens()'s own write strictly after the gated
+    // one, same as it orders clear()'s delete() in the test above.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
+  });
+});
+
+describe('TokenManager: the check-then-rollback pair was itself a TOCTOU (reviewer-confirmed against ccaaee1c8)', () => {
+  // Two defects were confirmed here against `ccaaee1c8`'s compare-then-
+  // rollback (token-manager.ts:209-215 at that commit): (1) the rollback's
+  // own `get()`-then-`delete()` is a second check-then-act, so a legitimate
+  // new sign-in's `set()` landing in the gap between them got wiped by the
+  // "unconditional" `delete()`; (2) a throwing rollback `delete()` left the
+  // session resurrected in storage while `clear()` itself had already
+  // resolved successfully. Both were reproduced RED against `ccaaee1c8`
+  // with a gated/interleaving storage double before this redesign (a
+  // `get()` double using `queueMicrotask` to land a competing `set()`
+  // between its return and the caller's continuation, plus an `armWriteGate`
+  // double to hold a refresh's write open while `clear()` ran), confirmed
+  // GREEN once the check-then-write became a single queued unit, and RED
+  // again on reverting the fix alone.
+  //
+  // The redesign removes the rollback code path entirely rather than
+  // patching it — `refresh()`'s session check and its storage write are now
+  // one task on `TokenManager`'s own serialization queue (see
+  // `token-manager.ts`), so there is no `await` boundary between them for a
+  // concurrent `clear()`/`setTokens()` to land in, and nothing to detect
+  // and undo afterwards. That makes the original interleavings themselves
+  // unreachable: the exact repro doubles above can no longer force the
+  // rollback branch, because there is no rollback branch. What's left to
+  // test is the invariant that superseded it — the two tests below.
+  /** Like the gate in the describe block above, but also keeps an
+   *  invocation log — `log` records, in real invocation order, when each
+   *  storage call actually starts and finishes. That is what makes this
+   *  test a real test of serialization rather than an accident of timing:
+   *  a `delete()`/`set()` call that fires *while the gated `set()` is still
+   *  blocked* — i.e. that doesn't serialize — shows up as `"delete:start"`
+   *  appearing before `"set:end:..."` in the log, regardless of what final
+   *  value ends up in storage once everything settles. The gate itself is
+   *  single-use (cleared after the first call consumes it) so only the
+   *  refresh's write is held open; a later call's own timing is what the
+   *  log is there to catch. */
+  function createGatedLoggingStorage(): TokenStorage & {
+    armWriteGate: () => void;
+    releaseWriteGate: () => void;
+    log: string[];
+  } {
+    const map = new Map<string, string>();
+    let writeGate: Promise<void> | null = null;
+    let releaseWrite: () => void = () => {};
+    const log: string[] = [];
+    return {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        log.push(`set:start:${value}`);
+        if (writeGate) {
+          await writeGate;
+          writeGate = null;
+        }
+        map.set(key, value);
+        log.push(`set:end:${value}`);
+      },
+      async delete(key) {
+        log.push('delete:start');
+        map.delete(key);
+        log.push('delete:end');
+      },
+      armWriteGate() {
+        writeGate = new Promise((resolve) => {
+          releaseWrite = resolve;
+        });
+      },
+      releaseWriteGate: () => releaseWrite(),
+      log,
+    };
+  }
+
+  it('lets a legitimate new sign-in survive a stale refresh write, clear(), and the new sign-in all queuing behind one slow backend call — no rollback required', async () => {
+    const storage = createGatedLoggingStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+    storage.log.length = 0; // drop the seed write from the log
+
+    // A refresh starts; its eventual write is held open by the gate.
+    storage.armWriteGate();
+    const pending = manager.getValidAccessToken();
+    await flush();
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+    await flush();
+
+    // The write's session check has already passed (clear() hasn't run
+    // yet) and it is now blocked on the gate, holding the queue. clear()
+    // and a fresh sign-in are both issued now — under a serialized manager
+    // neither can even *invoke* its storage call until the gated write
+    // settles; under an unserialized one they'd fire immediately.
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    const clearPromise = manager.clear();
+    const setNewPromise = manager.setTokens(newTokens);
+    await flush();
+
+    // Before the gate is released, nothing but the gated write's own
+    // "set:start" should have reached the log — clear()'s delete() and the
+    // new sign-in's set() must not have been invoked yet.
+    expect(storage.log).toEqual(['set:start:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}']);
+
+    storage.releaseWriteGate();
+    // `pending` is asserted on its own line below rather than folded into
+    // this Promise.all — clear() and setNewPromise are expected to
+    // fulfill, but pending is expected to *reject* (see assertion below),
+    // and Promise.all rejects as soon as any member does, which would
+    // abort awaiting the other two mid-flight.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await Promise.all([clearPromise, setNewPromise]);
+    await flush();
+
+    // Real invocation order, not just final state: the stale write starts
+    // and finishes first, only then does the delete start and finish, only
+    // then does the new sign-in's write start and finish. No operation's
+    // call to storage began while another was still in flight.
+    expect(storage.log).toEqual([
+      'set:start:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}',
+      'set:end:{"accessToken":"stale-refresh-result","refreshToken":"stale-r2","expiresAt":4600000}',
+      'delete:start',
+      'delete:end',
+      `set:start:${JSON.stringify(newTokens)}`,
+      `set:end:${JSON.stringify(newTokens)}`,
+    ]);
+
+    // And because of that strict ordering, the legitimate new sign-in
+    // survives — no compare, no rollback, nothing to accidentally wipe.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
+  });
+
+  it('propagates a clear() storage-delete failure to its caller and still leaves no resurrected session behind', async () => {
+    // The rollback this replaced is gone, so the only remaining path where
+    // a `delete()` failure could hide a resurrected session is clear()'s
+    // own delete(). Session invalidation (`this.session = new Session()`)
+    // is synchronous and unconditional — it does not depend on the storage
+    // delete succeeding — so even when the physical delete fails, a
+    // concurrently in-flight refresh's write, when its turn in the queue
+    // comes, still sees `session !== this.session` and refuses to write.
+    const map = new Map<string, string>();
+    let deleteCalls = 0;
+    const storage: TokenStorage = {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        map.set(key, value);
+      },
+      async delete(key) {
+        deleteCalls += 1;
+        if (deleteCalls === 1) {
+          throw new Error('backend delete failed');
+        }
+        map.delete(key);
+      },
+    };
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is in flight when the user signs out.
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    // clear()'s delete() (the first and only delete call in this test)
+    // fails — the failure must reach the caller, not be swallowed.
+    await expect(manager.clear()).rejects.toThrow('backend delete failed');
+
+    // The in-flight refresh answers after clear() (and its failed delete)
+    // have already run. Session invalidation happened regardless of the
+    // delete's outcome, so the refresh's write must still be refused.
+    resolveFetch(jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }));
+    await expect(pending).rejects.toThrow(NotSignedInError);
+
+    // Storage was never touched by the refresh (no resurrection); it still
+    // holds whatever the failed delete() left behind (the pre-sign-out
+    // tokens), not the stale refreshed ones.
+    const stored = await manager.getTokens();
+    expect(stored?.accessToken).toBe('expired');
+  });
+
+  it('does not let a stale refresh write clobber a brand-new sign-in that arrives via setTokens() with no clear() in between', async () => {
+    // clear() disarms an in-flight refresh by replacing `this.session`
+    // synchronously. setTokens() — the path an interactive sign-in that
+    // starts *without* an intervening sign-out takes (e.g. re-authenticating
+    // as a different account while a background refresh of the old one is
+    // still in flight) — must disarm it the same way. If it doesn't, the
+    // refresh's queued write still sees `session === this.session` once its
+    // turn comes up, passes the check, and overwrites the new sign-in's
+    // tokens with the stale refreshed ones.
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // A refresh is in flight (its network request hasn't resolved yet) when
+    // a brand-new interactive sign-in completes — no clear() involved.
+    const pending = manager.getValidAccessToken();
+    await flush();
+
+    const newTokens = { accessToken: 'new-session-token', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    await manager.setTokens(newTokens);
+
+    // The refresh's network request answers only now, after the new
+    // sign-in's write has already landed.
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+
+    // The original caller must be told their session moved on, not handed
+    // the stale refreshed token — here via the pre-write check, since
+    // setTokens() swapped `this.session` before the refresh's queued task
+    // even started (unlike the gated-storage tests above, there is no
+    // window for the write to begin before the swap in this test).
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // The new sign-in's tokens must survive — the stale refresh must not
+    // have been allowed to overwrite them.
+    const stored = await manager.getTokens();
+    expect(stored).toEqual(newTokens);
+  });
+});
+
+describe('TokenManager: clear()/setTokens() landing while getValidAccessToken() is still reading storage', () => {
+  // The tests above all `await flush()` between starting
+  // `getValidAccessToken()` and calling `clear()`/`setTokens()`. That flush
+  // lets the call get past its `await this.getTokens()` and into `refresh()`,
+  // which is where the session used to be captured — so the refresh always
+  // captured the *pre*-clear session and the disarm worked. Without the
+  // flush, `clear()` lands while the token read is still in flight, and a
+  // session captured after that read is the *post*-clear one: every identity
+  // check downstream then compares the new session against itself and passes.
+  // These two tests remove the flush; the ones above keep it, since they pin
+  // that the disarm still works once the refresh is past that point.
+
+  it('does not resurrect the session when clear() lands while the token read is still in flight', async () => {
+    const storage = createMemoryStorage();
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({ access_token: 'resurrected', refresh_token: 'new-refresh', expires_in: 3600 }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // No flush: `clear()` runs while `getValidAccessToken()` is still awaiting
+    // its storage read, i.e. before it has reached the refresh step at all.
+    const pending = manager.getValidAccessToken();
+    await manager.clear();
+
+    // The user signed out. The caller must be told so, not handed a live
+    // access token minted after the sign-out.
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // And nothing may have been written back under the key they signed out of.
+    expect(await manager.getTokens()).toBeUndefined();
+  });
+
+  it('does not let a refresh started before a new sign-in overwrite it, when setTokens() lands during the token read', async () => {
+    const storage = createMemoryStorage();
+    let resolveFetch: (value: Response) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+    const manager = new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      fetch: fetchMock as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+    await manager.setTokens({ accessToken: 'expired', refreshToken: 'the-refresh-token', expiresAt: 0 });
+
+    // No flush: the brand-new sign-in lands while the previous session's
+    // `getValidAccessToken()` is still awaiting its storage read.
+    const pending = manager.getValidAccessToken();
+    const newTokens = { accessToken: 'BRAND_NEW', refreshToken: 'new-refresh', expiresAt: 999_999 };
+    await manager.setTokens(newTokens);
+
+    resolveFetch(jsonResponse({ access_token: 'stale-refresh-result', refresh_token: 'stale-r2', expires_in: 3600 }));
+
+    await expect(pending).rejects.toThrow(NotSignedInError);
+    await flush();
+
+    // The new sign-in's tokens must survive the previous session's refresh.
+    expect(await manager.getTokens()).toEqual(newTokens);
+  });
+});
+
+describe('TokenManager: a stored entry that parses but is not a TokenSet', () => {
+  /**
+   * A `TokenStorage` whose writes take a macrotask to land, which is what a
+   * real `IndexedDB` or network-backed store costs and what the plain
+   * in-memory double above does not model.
+   *
+   * The latency is the point. Seeding used to be `void storage.set(...)`,
+   * discarding the promise, and every assertion in this block therefore ran
+   * against whatever storage held at that moment. With a zero-latency `set`
+   * that happened to be the seeded value, so the block looked green. With
+   * one macrotask of latency it is an *empty* store, and all 21 "no stored
+   * session" assertions below still pass — they pass with a perfectly valid
+   * `TokenSet` substituted into the malformed table too, because "nothing
+   * stored" and "malformed entry rejected" are indistinguishable from
+   * outside. Negative assertions cannot police their own seeding.
+   *
+   * Keeping the latency here is what makes dropping the `await` observable:
+   * the positive control at the end of this block ("still accepts a
+   * well-formed entry") is the assertion that reads a value back, and it is
+   * the one that reds. Scoped to this block deliberately — the timing tests
+   * further up are written against the zero-latency double and are sensitive
+   * to the extra tick.
+   */
+  function createLatentMemoryStorage(): TokenStorage {
+    const map = new Map<string, string>();
+    return {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        map.set(key, value);
+      },
+      async delete(key) {
+        map.delete(key);
+      },
+    };
+  }
+
+  /** Seeds storage directly, the way a corrupted/truncated `localStorage`
+   *  entry, a key collision with some other writer, or a `TokenSet` written
+   *  by a future version with a different shape would appear on restore —
+   *  i.e. bypassing `setTokens()`, which is the only writer whose output is
+   *  known-good. The seeding write is awaited; see
+   *  `createLatentMemoryStorage` above for why that is load-bearing rather
+   *  than tidiness. */
+  async function managerOverRawEntry(raw: string): Promise<TokenManager> {
+    const storage = createLatentMemoryStorage();
+    await storage.set('acct-1', raw);
+    return new TokenManager({
+      storageKey: 'acct-1',
+      storage,
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      // Any network call at all is a failure here: a malformed entry must be
+      // treated as "no session", never as something worth refreshing — the
+      // refresh token in a malformed blob is no more trustworthy than the
+      // access token next to it.
+      fetch: (async () => {
+        throw new Error('no request should be issued for a malformed stored entry');
+      }) as unknown as typeof fetch,
+      now: () => 1_000_000,
+    });
+  }
+
+  // Each entry is valid JSON, so the existing `JSON.parse` try/catch does not
+  // fire; what makes it unusable is its *shape*. Before the shape check, the
+  // first three produced `Bearer undefined`, `Bearer 12345` and `Bearer `
+  // respectively on the wire — a header the provider rejects with a 401 the
+  // caller has no way to attribute, instead of a `NotSignedInError` that
+  // routes it straight to interactive sign-in.
+  const malformed: ReadonlyArray<readonly [string, string]> = [
+    ['no accessToken field at all', JSON.stringify({ refreshToken: 'r1', expiresAt: 9_000_000 })],
+    ['accessToken of the wrong type', JSON.stringify({ accessToken: 12345, expiresAt: 9_000_000 })],
+    ['an empty accessToken', JSON.stringify({ accessToken: '', expiresAt: 9_000_000 })],
+    ['no expiresAt, so freshness is unknowable', JSON.stringify({ accessToken: 'a1' })],
+    ['a non-numeric expiresAt', JSON.stringify({ accessToken: 'a1', expiresAt: 'soon' })],
+    ['a NaN expiresAt (JSON-encoded as null)', JSON.stringify({ accessToken: 'a1', expiresAt: Number.NaN })],
+    ['a refreshToken of the wrong type', JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000, refreshToken: 7 })],
+    ['a JSON scalar rather than an object', '42'],
+    ['a JSON array rather than an object', '[]'],
+    ['JSON null', 'null'],
+  ];
+
+  for (const [label, raw] of malformed) {
+    it(`reports no stored session for ${label}`, async () => {
+      const stored = await (await managerOverRawEntry(raw)).getTokens();
+      expect(stored).toBeUndefined();
+    });
+
+    it(`throws NotSignedInError rather than serving a broken token for ${label}`, async () => {
+      const manager = await managerOverRawEntry(raw);
+      await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
+    });
+  }
+
+  it('does not accept an accessToken that is only whitespace', async () => {
+    // `.length === 0` passes a whitespace-only string, which produces the
+    // header `Authorization: Bearer    ` — the same unattributable 401 as
+    // `Bearer undefined`, which is exactly what this guard exists to stop.
+    const manager = await managerOverRawEntry(JSON.stringify({ accessToken: '   \t\n ', expiresAt: 9_000_000 }));
+
+    expect(await manager.getTokens()).toBeUndefined();
+    await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
+  });
+
+  it('does not turn a successful sign-in into an unbreakable re-auth loop when the provider sends a non-string refresh_token', async () => {
+    // End-to-end statement of the invariant `isTokenSet` claims: nothing
+    // this package writes can fail it. `requestToken` validated only
+    // `access_token`, so `"refresh_token": 12345` was copied through into
+    // the persisted entry — and `getTokens()` then read that entry back as
+    // "no session". Sign-in succeeded, the app saw a signed-out user, and
+    // signing in again reproduced it forever. The exchange must reject
+    // instead, so the failure is reported once, at its cause.
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: 'a1', refresh_token: 12345, expires_in: 3600 }));
+
+    await expect(
+      exchangeAuthorizationCode({
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        redirectUri: 'https://app.example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier-value',
+        fetch: fetchMock as unknown as typeof fetch,
+        now: () => 1_000_000,
+      }),
+    ).rejects.toThrow(TokenExchangeError);
+  });
+
+  it('still accepts a well-formed entry that omits only the optional fields', async () => {
+    // The guard must fail closed on malformed input without also rejecting
+    // the legitimately minimal shape: `refreshToken`, `scope` and `tokenType`
+    // are all optional on `TokenSet`, and a provider that issues a
+    // non-refreshable token writes exactly this.
+    const manager = await managerOverRawEntry(JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000 }));
+
+    expect(await manager.getTokens()).toEqual({ accessToken: 'a1', expiresAt: 9_000_000 });
+    expect(await manager.getValidAccessToken()).toBe('a1');
+  });
+});
+
+describe('the exchange and the storage guard agree on what counts as an access token', () => {
+  // These two predicates live in different files and disagreed. The exchange
+  // in `token-exchange.ts` rejected on `.length === 0`; `isTokenSet` in
+  // `token-manager.ts` rejects on `.trim().length === 0`. Every string the
+  // two disagree about is a sign-in that *succeeds*, persists, and is then
+  // read back as "no session" on the very next call — the user watches
+  // sign-in complete and is signed out immediately, with nothing anywhere
+  // naming the cause. `"   "` was such a string.
+  //
+  // Pinned as an agreement rather than as two independent assertions on
+  // purpose: the defect was not either predicate on its own, it was the gap
+  // between them, and a future loosening of one side has to move the other
+  // or land here.
+  const candidates: ReadonlyArray<readonly [string, string]> = [
+    ['an ordinary token', 'a1'],
+    ['a token with surrounding whitespace', ' padded '],
+    ['an empty token', ''],
+    ['spaces only', '   '],
+    ['tabs and newlines only', '\t\n'],
+    // Escaped rather than written literally: JavaScript's trim() treats
+    // U+00A0 as whitespace, so this is a real case, and a literal one
+    // would be invisible to a reader of the diff.
+    ['a non-breaking space only', '\u00a0'],
+  ];
+
+  for (const [label, candidate] of candidates) {
+    it(`treats ${label} the same way on both sides`, async () => {
+      // Side 1: does the token endpoint's answer survive the exchange?
+      let exchanged: TokenSet | undefined;
+      try {
+        exchanged = await exchangeAuthorizationCode({
+          tokenEndpoint: 'https://auth.example.com/token',
+          clientId: 'client-1',
+          redirectUri: 'https://app.example.com/callback',
+          code: 'auth-code',
+          codeVerifier: 'verifier-value',
+          fetch: (async () =>
+            jsonResponse({ access_token: candidate, expires_in: 3600 })) as unknown as typeof fetch,
+          now: () => 1_000_000,
+        });
+      } catch (error) {
+        expect(error).toBeInstanceOf(TokenExchangeError);
+      }
+
+      // Side 2: does the same string survive a storage round trip?
+      const storage = createMemoryStorage();
+      const manager = new TokenManager({
+        storageKey: 'acct-1',
+        storage,
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        fetch: (async () => {
+          throw new Error('no request should be issued while reading a stored entry');
+        }) as unknown as typeof fetch,
+        now: () => 1_000_000,
+      });
+      await storage.set('acct-1', JSON.stringify({ accessToken: candidate, expiresAt: 9_000_000 }));
+      const readBack = await manager.getTokens();
+
+      expect(exchanged !== undefined).toBe(readBack !== undefined);
+
+      // And when both accept it, neither may quietly rewrite the credential:
+      // trimming a token that has content would hand the provider a
+      // different string from the one it issued.
+      if (exchanged) expect(exchanged.accessToken).toBe(candidate);
+      if (readBack) expect(readBack.accessToken).toBe(candidate);
+    });
+  }
+});

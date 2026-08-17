@@ -71,7 +71,7 @@ describe('planeBasis', () => {
 });
 
 /**
- * Continuity.
+ * Continuity (#2714).
  *
  * The basis IS the coordinate frame a face-picked drawing is generated in
  * (`useDrawingGeneration` hands `custom.tangent`/`custom.bitangent` to the
@@ -89,7 +89,7 @@ describe('planeBasis', () => {
  * everywhere EXCEPT the two poles `n = ±Y`, where the plane is exactly
  * horizontal and its in-plane rotation is a free choice anyway.
  */
-describe('planeBasis is continuous away from the ±Y poles', () => {
+describe('planeBasis is continuous away from the ±Y poles (#2714)', () => {
   /** Neighbouring-sample floor: 1-degree steps may not move the frame >8deg. */
   const MIN_DOT = 0.99;
 

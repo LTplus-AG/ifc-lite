@@ -20,7 +20,7 @@
  *     normal except exactly ±Y, where the cross product vanishes and we
  *     fall back to world-X. `tangent` is therefore horizontal and
  *     `bitangent` never points downward, so a face-picked elevation comes
- *     out upright.
+ *     out upright (#2714).
  *   • For the cardinal Y-axis plane (normal = [0,1,0]) the resulting
  *     basis is `tangent = [0,0,-1]`, `bitangent = [1,0,0]`. That matches
  *     the cardinal-axis cap projection (`'down'` axis maps `(x, z) →
@@ -69,7 +69,7 @@ function degenerateBasis(): PlaneBasis {
  *      or when the renderer rebuilds resources).
  *   5. Every component of both axes is finite, for every input.
  *   6. The result is *continuous* in the normal, everywhere except the two
- *      poles `n = ±Y` — nearby normals give nearby bases, so two
+ *      poles `n = ±Y` (#2714) — nearby normals give nearby bases, so two
  *      face picks on nearly the same face give nearly the same drawing.
  *
  * Normalising up front is what makes 3 and 5 true rather than aspirational
@@ -105,7 +105,7 @@ export function planeBasis(normal: Vec3Tuple): PlaneBasis {
   // Reference axis: world Y, for EVERY normal that is not exactly ±Y. The
   // resulting tangent is `normalize(normal × Ŷ)` — the horizontal in-plane
   // direction — which depends only on the normal's azimuth and is therefore
-  // continuous over the whole sphere minus the two poles.
+  // continuous over the whole sphere minus the two poles (#2714).
   //
   // It used to switch to world X at `|ny| >= 0.9` "to avoid a degenerate
   // cross-product", but 0.9 is nowhere near degenerate: the cross is still

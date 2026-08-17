@@ -108,7 +108,7 @@
       "tar": "^7.5.21",
       "rollup": "^4.59.0",
       "esbuild": "^0.28.1",
-      "vite": "8.2.0",
+      "vite": "^8.1.0",
       "vitest": "^4.1.0",
       "@vitest/expect": "^4.1.0",
       "@vitest/runner": "^4.1.0",
@@ -122,7 +122,8 @@
       "js-yaml@4": "^4.3.1",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
-      "minimatch": "^10.2.5"
+      "minimatch": "^10.2.5",
+      "@zip.js/zip.js": "2.8.26"
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

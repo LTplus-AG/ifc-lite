@@ -67,6 +67,7 @@ import {
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import { applyRoomModelData } from '@/lib/collab/room-model-apply';
 import {
+  roomMeshes,
   roomModelIdOf,
   roomMutationView,
   roomStore,
@@ -430,6 +431,15 @@ function composePlacement(
  * *incremental* renderer-frame translation since this client last reconciled
  * it. Shared by inbound remote apply, the recipient's own collab edit, and the
  * owner's track bookkeeping — so own-edits and remote-edits never double-apply.
+ *
+ * `entityId` is in the ROOM's id space at every call site, so the model it is
+ * resolved against is read here from `roomModelIdOf` rather than threaded in as
+ * a parameter. That is not a shortcut: the two outbound callers
+ * (`collabTranslateEntity` / `collabRotateEntity`) already returned early
+ * unless `roomStoreFor(get(), modelId)` was non-null, which is true only when
+ * `modelId === roomModelIdOf(get())` — so a parameter would be a second
+ * spelling of a value that is provably the same, and a second thing a future
+ * call site could get wrong.
  */
 function reconcilePlacementMesh(
   get: () => ViewerState,
@@ -449,7 +459,13 @@ function reconcilePlacementMesh(
     baseline = placement;
     placementApi.setPlacementBaseline(doc, path, baseline);
   }
-  const modelId = get().activeModelId ?? '';
+  // The ROOM's model, not the active one. `entityId` is in the room's id
+  // space, and `globalId` is `idOffset + expressId` of a NAMED model: the
+  // reconstructed room model is registered with `idOffset: 0` (see the
+  // recipient `reconstruct` below) while the user's own file generally is not,
+  // so a recipient with their own file active would move an unrelated mesh —
+  // or none — for an edit that was delivered correctly.
+  const modelId = roomModelIdOf(get()) ?? '';
   const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
 
   // ── Translation ──
@@ -476,7 +492,10 @@ function reconcilePlacementMesh(
   const appliedYaw = placementAppliedYaw.get(entityId) ?? 0;
   const incYaw = targetYaw - appliedYaw;
   if (Math.abs(incYaw) >= YAW_EPS) {
-    const meshes = get().geometryResult?.meshes ?? null;
+    // Same reason as `modelId` above: the pivot is this entity's bbox centre,
+    // looked up by the room-model `globalId`, so it has to come out of the
+    // room model's meshes.
+    const meshes = roomMeshes(get());
     const c = getEntityCenter(meshes, globalId);
     if (c) {
       get().setPendingMeshRotations(

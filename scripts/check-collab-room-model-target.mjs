@@ -17,8 +17,8 @@
  *   1. the recipient's `reconstruct` replaced the user's own store and meshes
  *      with the room's on the next peer edit (#2705; repaired by a reload);
  *   2. inbound peer edits were replayed into the user's own model's view under
- *      a room-id-space expressId, landing in `undoStacks`, `dirtyModels` and
- *      the export path (survives a reload);
+ *      a room-id-space expressId, landing in that view's overlay and
+ *      `mutationHistory` — the export path (survives a reload);
  *   3. outbound, the user's edits on their PRIVATE model were mirrored into the
  *      shared room and applied to whatever entity the id resolved to there.
  *
@@ -235,10 +235,38 @@ assertRegion(region(collab, 'remoteApplyTeardown = attachRemoteApply(', 'collab 
   banned: ['.activeModelId', '.ifcDataStore', '.mutationViews'],
   required: ['roomStore(get())', 'roomMutationView(get())', 'roomModelIdOf(get())'],
   consequence: `A peer's edit carries an expressId in the ROOM's id space. Replaying it into
-the ACTIVE model writes it into the user's own file — into undoStacks,
-dirtyModels and the export path, where it survives a reload and ships in their
-exported IFC. Resolve through \`roomStore\` / \`roomMutationView\` /
+the ACTIVE model writes it into the user's own file — into that model's view
+overlay and mutationHistory, i.e. the export path, where it survives a reload
+and ships in their exported IFC. Resolve through \`roomStore\` / \`roomMutationView\` /
 \`roomModelIdOf\` (apps/viewer/src/lib/collab/room-model-target.ts).`,
+});
+
+// ── 2b. The shared mesh reconciler the inbound region CALLS ────────────────
+//
+// `reconcilePlacementMesh` is a module-level helper, so it sits OUTSIDE every
+// region above even though the inbound apply's `onPlacement` and three of the
+// slice's own actions all funnel through it. That is exactly how it kept
+// `get().activeModelId` and `get().geometryResult` through the fix: check 2
+// scans the handler, and the handler is one call long.
+//
+// The consequence is the defect this guard exists to prevent, one layer down.
+// The reconstructed room model is registered with `idOffset: 0` while a
+// recipient's own file generally has a non-zero offset, so with their own file
+// active a DELIVERED placement edit is turned into a globalId of the wrong
+// model — it moves an unrelated mesh, or none. Same for the rotate pivot, which
+// reads the bbox centre out of the active model's meshes.
+//
+// A region that no longer exists fails closed via `region`, so extracting this
+// helper into its own module means re-pointing the guard, not dropping it.
+assertRegion(region(collab, 'function reconcilePlacementMesh(', 'collab placement reconciler'), {
+  banned: ['.activeModelId', 'get().geometryResult'],
+  required: ['roomModelIdOf(get())', 'roomMeshes(get())'],
+  consequence: `The mesh this moves is addressed by \`globalId\`, which is \`idOffset + expressId\`
+of a NAMED model. The room's reconstructed model has \`idOffset: 0\` and the
+user's own file generally does not, so resolving against the ACTIVE model moves
+the wrong mesh — or none — for a peer edit that was delivered correctly.
+Resolve through \`roomModelIdOf\` / \`roomMeshes\`
+(apps/viewer/src/lib/collab/room-model-target.ts).`,
 });
 
 // ── 3. Outbound: every entity action gates itself, by construction ─────────
@@ -373,6 +401,6 @@ if (failures.length > 0) {
 
 const callSiteTotal = Object.values(CALL_SITE_FLOOR).reduce((a, b) => a + b, 0);
 console.log(
-  `check-collab-room-model-target: OK (2 regions, ${entityActions.length} entity actions self-gated, ` +
+  `check-collab-room-model-target: OK (3 regions, ${entityActions.length} entity actions self-gated, ` +
     `${callSiteTotal} call sites bound to modelId)`,
 );

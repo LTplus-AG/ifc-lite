@@ -14,8 +14,10 @@
  *
  *   - inbound: a peer's edit — an expressId in the ROOM's id space — was
  *     written into the USER'S OWN model's `MutablePropertyView`, landing in
- *     `undoStacks`, `dirtyModels` and the export path. It survives a reload and
- *     ships in their exported IFC.
+ *     that view's overlay and append-only `mutationHistory` (not in
+ *     `undoStacks` / `dirtyModels`, which only `mutationSlice` writes). The
+ *     exporter and `getModifiedEntityCount` read it, so it survives a reload
+ *     and ships in their exported IFC.
  *   - outbound: an edit on the user's PRIVATE model was mirrored into the
  *     shared room and applied to whatever entity the id resolved to there,
  *     corrupting the owner's model for everyone.
@@ -35,11 +37,16 @@ import { createDataSlice, type DataSlice, type DataCrossSliceState } from '../..
 import type { FederatedModel } from '../../store/types.js';
 import {
   isRoomModel,
+  roomMeshes,
   roomModelIdOf,
   roomMutationView,
   roomStore,
   type RoomModelTargetState,
 } from './room-model-target.js';
+import { toGlobalIdFromModels } from '../../store/globalId.js';
+import { getEntityCenter } from '../../utils/viewportUtils.js';
+import { buildGeometryResultFromMeshes } from './geometry-sync.js';
+import type { MeshData } from '@ifc-lite/geometry';
 
 type TestState = ModelSlice & ModelCrossSliceState & DataSlice & DataCrossSliceState & {
   collabRoomModelId: string | null;
@@ -54,7 +61,18 @@ function markerView(tag: string): MutablePropertyView {
   return { __tag: tag } as unknown as MutablePropertyView;
 }
 
-function model(id: string): FederatedModel {
+/** A unit cube centred on `x`, tagged with the GLOBAL id it renders under. */
+function cubeAt(globalId: number, x: number): MeshData {
+  return {
+    expressId: globalId,
+    positions: new Float32Array([x - 1, -1, -1, x + 1, -1, -1, x + 1, 1, 1]),
+    normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    indices: new Uint32Array([0, 1, 2]),
+    color: [1, 1, 1, 1],
+  } as MeshData;
+}
+
+function model(id: string, idOffset = 0): FederatedModel {
   return {
     id,
     name: id,
@@ -65,7 +83,7 @@ function model(id: string): FederatedModel {
     schemaVersion: 'IFC4',
     loadedAt: 0,
     fileSize: 0,
-    idOffset: 0,
+    idOffset,
     maxExpressId: 0,
   } as unknown as FederatedModel;
 }
@@ -214,5 +232,94 @@ describe('room-model-target', () => {
     assert.equal(state.activeModelId, ROOM_MODEL_ID);
     assert.equal(roomStore(target()), state.ifcDataStore);
     assert.equal(isRoomModel(target(), ROOM_MODEL_ID), true);
+  });
+
+  /**
+   * The same defect on the GEOMETRY side, which the first pass missed:
+   * `reconcilePlacementMesh` moves a mesh addressed by `globalId` (=
+   * `idOffset + expressId` of a NAMED model) and pivots it about that mesh's
+   * bbox centre, and both reads went through the ACTIVE model.
+   *
+   * It is not a fail-closed miss. The recipient's reconstructed room model is
+   * registered with `idOffset: 0` and their own file is offset above it, so a
+   * peer's edit on room entity 7 resolved to global 1_000_007 — which, in a
+   * federation, is a REAL mesh of the user's own file. The delivered edit moves
+   * an unrelated element of a model that is not even in the room.
+   */
+  describe('placement reconcile: the mesh is addressed in the ROOM model’s id space', () => {
+    const ENTITY_ID = 7;
+    const OWN_OFFSET = 1_000_000;
+
+    /** Room model + own file, each with a mesh at the id the other's offset produces. */
+    function federateWithMeshes(): void {
+      state.upsertModel(model(ROOM_MODEL_ID, 0));
+      state.collabRoomModelId = ROOM_MODEL_ID;
+      state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(ENTITY_ID, 10)]));
+
+      state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
+      state.setActiveModel(OWN_MODEL_ID);
+      state.setGeometryResult(
+        buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]),
+      );
+    }
+
+    it('the premise: the room model’s offset is 0 and the user’s own file’s is not', () => {
+      federateWithMeshes();
+      assert.equal(state.models.get(ROOM_MODEL_ID)?.idOffset, 0);
+      assert.equal(state.models.get(OWN_MODEL_ID)?.idOffset, OWN_OFFSET);
+      assert.equal(state.activeModelId, OWN_MODEL_ID);
+    });
+
+    it('resolves the moved mesh’s globalId off the room model', () => {
+      federateWithMeshes();
+      const globalId = toGlobalIdFromModels(
+        state.models,
+        roomModelIdOf(target()) ?? '',
+        ENTITY_ID,
+      );
+      assert.equal(globalId, ENTITY_ID);
+    });
+
+    it('the active-model spelling names a real mesh of a model that is not in the room', () => {
+      federateWithMeshes();
+      const wrong = toGlobalIdFromModels(state.models, state.activeModelId ?? '', ENTITY_ID);
+      assert.equal(wrong, OWN_OFFSET + ENTITY_ID);
+      assert.notEqual(wrong, ENTITY_ID);
+      // Not a silent no-op: it hits geometry, so the edit is applied to the
+      // wrong element rather than dropped.
+      const hit = getEntityCenter(state.geometryResult?.meshes ?? null, wrong);
+      assert.ok(hit, 'the wrong id resolves to a real mesh of the user’s own file');
+      assert.equal(hit.x, 500);
+    });
+
+    it('takes the rotate pivot from the ROOM model’s meshes, not the active one’s', () => {
+      federateWithMeshes();
+      const globalId = toGlobalIdFromModels(
+        state.models,
+        roomModelIdOf(target()) ?? '',
+        ENTITY_ID,
+      );
+      const centre = getEntityCenter(roomMeshes(target()), globalId);
+      assert.ok(centre, 'the room mesh must resolve');
+      assert.equal(centre.x, 10);
+      // What the old read returned for that same id: nothing, so every rotate
+      // a peer sent was dropped on the floor.
+      assert.equal(getEntityCenter(state.geometryResult?.meshes ?? null, globalId), null);
+    });
+
+    it('with no room model id, reduces to the active model’s meshes', () => {
+      state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
+      state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]));
+      assert.equal(state.collabRoomModelId, null);
+      assert.equal(roomMeshes(target()), state.geometryResult?.meshes);
+    });
+
+    it('yields no meshes (not the user’s) while the room model is unregistered', () => {
+      state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
+      state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]));
+      state.collabRoomModelId = ROOM_MODEL_ID;
+      assert.ok(state.geometryResult?.meshes.length, 'the user’s meshes would be the fallback');
+      assert.equal(roomMeshes(target()), null);
+    });
   });
 });

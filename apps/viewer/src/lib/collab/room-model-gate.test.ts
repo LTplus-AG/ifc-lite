@@ -137,6 +137,9 @@ describe('room edits are gated on the room model, not just resolved against it',
       ]),
       ifcDataStore: ownModelStore,
       mutationViews: new Map<string, MutablePropertyView>(),
+      // Not exercised here (these tests are about stores, not meshes); the
+      // mesh-side addressing is pinned in `room-model-target.test.ts`.
+      geometryResult: null,
     };
   });
 

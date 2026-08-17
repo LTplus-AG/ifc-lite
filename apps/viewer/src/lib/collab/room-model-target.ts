@@ -19,9 +19,12 @@
  * their own file — two clicks — has a different model active. From that point:
  *
  *   - a peer's edit was written into the USER'S OWN model's view, under an
- *     entityId from the room's id space. That lands in `undoStacks`,
- *     `dirtyModels` and the export path, so it survives a reload and ships in
- *     their exported IFC;
+ *     entityId from the room's id space. The inbound handlers call the view
+ *     directly, so it does NOT reach `undoStacks` / `dirtyModels` (those are
+ *     written only by `mutationSlice` actions). It lands in the view's overlay
+ *     and its append-only `mutationHistory`, which is what the exporter and
+ *     `getModifiedEntityCount` read — so it survives a reload, counts as a
+ *     modified element and ships in their exported IFC;
  *   - the user's edits on their PRIVATE model were mirrored into the shared
  *     room and applied to whatever entity the id resolved to there, corrupting
  *     the owner's model for everyone.
@@ -41,6 +44,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { FederatedModel } from '@/store/types';
 
@@ -57,6 +61,8 @@ export interface RoomModelTargetState {
   models: Map<string, FederatedModel>;
   ifcDataStore: IfcDataStore | null;
   mutationViews: Map<string, MutablePropertyView>;
+  /** Active model's meshes — the pre-session fallback for `roomMeshes` only. */
+  geometryResult: GeometryResult | null;
 }
 
 /**
@@ -92,6 +98,29 @@ export function roomStore(state: RoomModelTargetState): IfcDataStore | null {
   const id = state.collabRoomModelId;
   if (id === null) return state.ifcDataStore;
   return state.models.get(id)?.ifcDataStore ?? null;
+}
+
+/**
+ * The meshes a room edit's *rendered* effect must be measured against.
+ *
+ * The companion to `roomStore` on the geometry side. A placement edit is
+ * applied to a mesh addressed by `globalId` (= the model's `idOffset` +
+ * expressId) and pivoted about that mesh's bbox centre, so reading the centre
+ * out of the ACTIVE model's meshes is the same defect one layer down: the
+ * reconstructed room model is registered with `idOffset: 0` while a
+ * recipient's own file generally is not, so the id names a different mesh, or
+ * none.
+ *
+ * Mirrors `roomStore`'s addressing exactly — including deliberately NOT
+ * falling back to the active model's meshes while the room model is known but
+ * not yet registered. `setGeometryResult` writes through to the active model's
+ * record (dataSlice.ts), so the record is current whether or not the room
+ * model happens to be the active one.
+ */
+export function roomMeshes(state: RoomModelTargetState): MeshData[] | null {
+  const id = state.collabRoomModelId;
+  if (id === null) return state.geometryResult?.meshes ?? null;
+  return state.models.get(id)?.geometryResult?.meshes ?? null;
 }
 
 /**

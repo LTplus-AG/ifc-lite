@@ -7,9 +7,17 @@
  * the wasm binding's own contract, `isSolid` / `degenerateReason` /
  * `thicknessM` / `requiredM`, is exactly what the viewer's fallback UI reads,
  * so a mocked kernel would test our own assumptions about the contract
- * instead of the contract). Two fixtures: a deep box overlap (must resolve a
- * solid with the right volume) and two disjoint boxes (must fall back
- * cleanly with `no-overlap` and zero geometry).
+ * instead of the contract). Four fixtures: a deep box overlap (must resolve a
+ * solid with the right volume), two disjoint boxes (`no-overlap`), an empty
+ * operand (`empty-operand`), and an operand whose index points past its own
+ * vertex list (`malformed-operand`).
+ *
+ * The DECLARATION-parity half — that `ClashSolidDegenerateReason` lists exactly
+ * the reasons `clash_solid.rs` can emit — is not here. It can only be made by
+ * reading both sources, which is a source-text assertion and banned in test
+ * files; it lives as a lint in
+ * `scripts/check-clash-degenerate-reason-parity.mjs`, with its own regression
+ * harness alongside it.
  */
 
 import { describe, it } from 'node:test';
@@ -153,78 +161,5 @@ describe('computeClashIntersectionSolid (real wasm)', () => {
     assert.equal(result.isSolid, false);
     if (result.isSolid) return;
     assert.equal(result.reason, 'malformed-operand');
-  });
-});
-
-/**
- * The reason strings cross the wasm boundary as an untyped string and are cast
- * (`as ClashSolidDegenerateReason`) on arrival, so TypeScript cannot catch a
- * union that has drifted from the kernel. `'malformed-operand'` was missing for
- * exactly that reason: it is produced by the BINDING's own operand validation
- * (`mesh_from`), not by the geometry crate's `DegenerateReason` enum the union's
- * doc comment says it mirrors — so mirroring the enum silently missed it.
- *
- * This reads both sources and asserts the two sets are equal, in BOTH
- * directions: a reason added on the Rust side without a union member fails
- * here, and so does a phantom union member the kernel can never emit.
- */
-describe('ClashSolidDegenerateReason ↔ clash_solid.rs parity', () => {
-  const rustPath = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..', '..', '..', '..', '..', 'rust', 'wasm-bindings', 'src', 'api', 'clash_solid.rs',
-  );
-  const tsPath = join(dirname(fileURLToPath(import.meta.url)), 'intersection-solid.ts');
-
-  /** Every non-empty `reason` string literal the binding can assign, from its
-   *  CODE only — comments are stripped first so prose can never satisfy this. */
-  function kernelReasons(rustSource: string): Set<string> {
-    const testMod = rustSource.indexOf('#[cfg(test)]');
-    const code = (testMod === -1 ? rustSource : rustSource.slice(0, testMod))
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('//'))
-      .join('\n');
-    const found = new Set<string>();
-    // `reason: "malformed-operand"` — the binding-level rejections.
-    for (const m of code.matchAll(/reason:\s*"([a-z-]+)"/g)) found.add(m[1]);
-    // `DegenerateReason::NoOverlap => ("no-overlap", …)` — the enum mapping,
-    // including the braced `BelowKernelResolution { … } => (…)` arm.
-    for (const m of code.matchAll(/DegenerateReason::\w+(?:\s*\{[^}]*\})?\s*=>\s*\(\s*"([a-z-]+)"/g)) {
-      found.add(m[1]);
-    }
-    return found;
-  }
-
-  /** The union's members, read from the .ts SOURCE — a type is erased at runtime.
-   *  Comments are stripped first, symmetrically with `kernelReasons`, so a
-   *  member named only in a doc comment cannot stand in for a real one. */
-  function declaredReasons(tsSource: string): Set<string> {
-    const code = tsSource.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const block = /export type ClashSolidDegenerateReason =([\s\S]*?);/.exec(code);
-    assert.ok(block, 'ClashSolidDegenerateReason declaration not found');
-    return new Set([...block[1].matchAll(/'([a-z-]+)'/g)].map((m) => m[1]));
-  }
-
-  it('declares exactly the reasons the kernel can emit', () => {
-    const kernel = kernelReasons(readFileSync(rustPath, 'utf8'));
-    const declared = declaredReasons(readFileSync(tsPath, 'utf8'));
-    // Neither extractor may come back empty — two empty sets are "equal" and
-    // would turn this into a test that passes by finding nothing.
-    assert.ok(kernel.size > 0, 'no reason strings extracted from clash_solid.rs');
-    assert.ok(declared.size > 0, 'no members extracted from the union');
-    assert.deepEqual(
-      [...declared].sort(),
-      [...kernel].sort(),
-      'ClashSolidDegenerateReason has drifted from clash_solid.rs',
-    );
-  });
-
-  it('extracts nothing from a comment that merely mentions a reason', () => {
-    assert.deepEqual([...kernelReasons('    // - `"invented-reason"` — prose only.\n')], []);
-    assert.deepEqual(
-      [...declaredReasons(
-        "export type ClashSolidDegenerateReason =\n  /** prose about 'invented-reason' */\n  | 'no-overlap';",
-      )],
-      ['no-overlap'],
-    );
   });
 });

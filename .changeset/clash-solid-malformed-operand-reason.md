@@ -21,7 +21,12 @@ positionally or falls through to that string. The defect was that the type
 claimed a value the runtime can produce is impossible, so any future
 exhaustiveness check over it would have been built on a set that is short by one.
 
-A new test pins the union against `clash_solid.rs` itself, comparing the two
-sets in both directions, so adding a reason on either side without the other now
-fails; a second test confirms through the real wasm kernel that a
-malformed operand does come back as `'malformed-operand'`.
+A new test confirms through the real wasm kernel that a malformed operand does
+come back as `'malformed-operand'`. Declaration parity — that the union lists
+exactly the reasons `clash_solid.rs` can emit, in both directions — can only be
+claimed by reading both sources, which is a source-text assertion and banned in
+test files, so it is a CI lint instead:
+`scripts/check-clash-degenerate-reason-parity.mjs`. It refuses to pass on two
+empty sets, and its own regression harness
+(`scripts/check-clash-degenerate-reason-parity.test.mjs`) turns each drift and
+each vacuity mode red against mutated copies of the real sources.

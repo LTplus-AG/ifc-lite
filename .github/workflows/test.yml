@@ -417,6 +417,20 @@ jobs:
       # viewer's canonical load path, which fires on every IFC load.
       - name: Check WASM handle disposal
         run: node scripts/check-wasm-disposal.mjs
+      # `degenerateReason` crosses the wasm boundary as an untyped string and is
+      # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
+      # a union that has drifted from the kernel -- `'malformed-operand'` was
+      # missing exactly that way (#2717). Cross-language declaration parity can
+      # only be claimed by reading both SOURCES, which is banned in test files
+      # by the source-text gate above, so it is a lint here instead.
+      - name: Check clash degenerate-reason parity
+        run: node scripts/check-clash-degenerate-reason-parity.mjs
+      # Executable proof the parity gate cannot pass vacuously: two empty sets
+      # are "equal", so a broken extractor would otherwise turn it green. Each
+      # drift direction and each vacuity mode runs against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check clash degenerate-reason parity gate regressions
+        run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

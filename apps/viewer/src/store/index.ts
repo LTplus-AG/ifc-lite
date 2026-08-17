@@ -59,6 +59,10 @@ import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouse
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import {
+  endClashScenePresentation,
+  type ClashSceneTeardown,
+} from '@/lib/clash/visibility-ownership';
 
 // Import constants for reset function
 import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility, getPersistedTypeViewMode } from './constants.js';
@@ -271,6 +275,11 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   resetViewerState: () => {
     invalidateVisibleBasketCache();
     const [set, get] = args;
+    // Measurements (#2641 review): the slice owns the full list of its own
+    // fields to clear on a model switch — see resetAllMeasurementState's doc
+    // comment (measurementSlice.ts) for why this must not be a field list
+    // duplicated here.
+    get().resetAllMeasurementState();
     set({
       // Selection (legacy)
       selectedEntityId: null,
@@ -347,27 +356,6 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       // Hover/Context
       hoverState: { entityId: null, screenX: 0, screenY: 0 },
       contextMenu: { isOpen: false, entityId: null, screenX: 0, screenY: 0 },
-
-      // Measurements
-      measurements: [],
-      pendingMeasurePoint: null,
-      activeMeasurement: null,
-      snapTarget: null,
-      // #2199 §5: the relative-coordinate datum is stored in RENDERER space,
-      // so it belongs to the scene it was picked in. `clearMeasurements`
-      // deliberately keeps it (tidying a distance list must not move the
-      // user's setting-out origin), but a new primary file is a new scene —
-      // carried over, it would subtract a point from the outgoing model and
-      // print a plausible, meaningless offset.
-      measureReferencePoint: null,
-      edgeLockState: {
-        edge: null,
-        meshExpressId: null,
-        edgeT: 0,
-        lockStrength: 0,
-        isCorner: false,
-        cornerValence: 0,
-      },
 
       // Section plane: reset axis/position/enabled/flipped (those are
       // model-relative and meaningless when switching files), but PRESERVE
@@ -574,6 +562,32 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       ...POINT_CLOUD_DEFAULTS,
       pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
     });
+
+    // Clash (#2654 review) — same stale-model-reference class as
+    // `compareResult` and `zoneAssignments` above: a clash result is keyed by
+    // `model:expressId` pairs from the OUTGOING model, and an IFCX
+    // recomposition reassigns expressIds outright, so a surviving result can
+    // silently describe different entities. Worse, the on-demand intersection
+    // SOLID is a mesh drawn into the live scene: `clashSelectedId` and
+    // `clashSolidStatus: 'solid'` surviving here means `Viewport`'s draw gate
+    // passes and the previous model's solid gets re-pushed when the renderer
+    // re-initialises for the new scene.
+    //
+    // Routed through `endClashScenePresentation`, the shared model-lifecycle
+    // teardown, rather than calling `clearClash()` directly: this was the third
+    // spelling of a teardown #2574 exists to unify, and it was incomplete. The
+    // `set` above puts `pendingColorUpdates: null`, and `null` is a NO-OP in
+    // the effect that owns that channel (`useGeometryStreaming.ts`, "if
+    // (pendingColorUpdates === null) return") — only a non-null EMPTY map
+    // reaches `scene.clearColorOverrides()`. So the outgoing file's clash pair
+    // tint (or lens colouring) stayed pushed at the renderer across a model
+    // switch. The helper releases it with an empty `Map`.
+    //
+    // `'federation-cleared'` is the right mode: every model is gone, so both
+    // visibility channels are cleared outright and the clash RESULT goes with
+    // them — which is what `clearClash()` did here before, unchanged. Presets +
+    // settings survive (workspace prefs), as everywhere else.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
   },
 
   openWorkspacePanel: (panel) => {

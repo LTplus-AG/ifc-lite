@@ -31,15 +31,17 @@
 
 mod aabb;
 mod bvh;
+mod depth;
 mod generated;
 mod narrow;
+mod obb;
 mod triangle;
 mod tri_mesh;
 mod vec3;
 mod session;
 
 pub use aabb::Aabb;
-pub use narrow::ClashStatus;
+pub use narrow::{ClashStatus, DistanceKind};
 pub use session::{ClashRecord, ClashSession, RuleResult};
 
 #[cfg(test)]

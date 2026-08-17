@@ -7,6 +7,7 @@ import { findDuplicates } from './duplicates.js';
 import { groupClashes } from './grouping.js';
 import { groupDuplicateSets } from './duplicate-sets.js';
 import { makeExclusionSet, qualifiedKey } from './exclude.js';
+import { fromPositions } from './math/aabb.js';
 import type { ClashElement, Vec3 } from './types.js';
 
 let nextRef = 1;
@@ -143,6 +144,11 @@ describe('findDuplicates', () => {
     expect(c.rule).toBe('duplicates');
     // Coincident solids embed each other — depth is reported as a real overlap.
     expect(c.distance).toBeLessThan(0);
+    // findDuplicates reads distance off the two AABBs (minExtent of the
+    // overlap), never off the meshes, so it must always be labelled an
+    // estimate — never left unset, which the CLI/MCP/viewer would otherwise
+    // render as an unqualified measurement (see Clash.distanceKind).
+    expect(c.distanceKind).toBe('estimate');
   });
 
   it('does not flag elements that are far apart', () => {
@@ -261,10 +267,17 @@ describe('findDuplicates', () => {
     ).toEqual(shapes.map(([name]) => [name, true]));
   });
 
-  it('has an effective tolerance equal to positionTolerance for every shape and axis', () => {
+  it('has an effective tolerance equal to positionTolerance on every axis of a shape thicker than it', () => {
     // The deliverable table: bisect for the largest displacement still reported
     // as a duplicate, per shape per axis. Under the IoU gate these spanned 5 mm
     // to 421 mm from one setting; they must now all be the configured metres.
+    //
+    // Every shape below is thicker than `tol` on all three axes, which is the
+    // precondition for that. An element THINNER than the tolerance gets only its
+    // own extent along its thin axis, because the pass also requires the boxes to
+    // touch — see "effective tolerance is min(positionTolerance, extent) per
+    // axis" for the general statement. The assertions here are unchanged; only
+    // this scope was previously left unstated.
     const tol = 0.02;
     const effective = (half: Vec3, axis: number): number => {
       let lo = 0;
@@ -427,6 +440,165 @@ describe('findDuplicates', () => {
     // And coincident sheets (zero gap) still qualify under the distance gate.
     expect(findDuplicates([...filler, sheet('a', 0), sheet('b', 0)]).clashes)
       .toHaveLength(1);
+  });
+
+  it('effective tolerance is min(positionTolerance, extent) per axis', () => {
+    // `boxesTouch` is a precondition on `boxDistance`, so `positionTolerance` is
+    // an upper bound rather than the whole gate: two copies separate once the
+    // offset exceeds the element's own extent on that axis. `boxDistance` alone
+    // is isotropic, the pass is not, and the difference is only visible on
+    // elements THINNER than the tolerance — pinned here so the documented
+    // property (changeset + `positionTolerance` JSDoc) cannot drift from it.
+    //
+    // Inflating `boxesTouch` by the tolerance would make the pass isotropic and
+    // break both "does not pair two small elements that do not even touch" and
+    // the disjoint-sheet test above — the anisotropy is the price of those.
+    //
+    // The touch condition is enforced TWICE, independently: by `boxesTouch` on
+    // all three axes, and by the sweep's eviction on whichever axis it sweeps.
+    // A bare two-element fixture sweeps the offset axis (it is the only axis
+    // with any spread of box minima), so eviction alone would produce this
+    // measurement even if the gate were widened. `filler` therefore repeats
+    // each measurement with the sweep forced onto X, where only `boxesTouch`
+    // can reject — otherwise half the property could be broken unnoticed.
+    const el = (key: string, min: Vec3, max: Vec3): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcPlate',
+      bounds: { min, max }, positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    const filler = (): ClashElement[] =>
+      Array.from({ length: 20 }, (_, i) =>
+        el(`f${i}`, [i * 2 + 10, 0, 0], [i * 2 + 10.1, 0.1, 0.1]));
+    /** Largest offset (mm) along `axis` at which a copy of `size` is still reported. */
+    const effectiveTolerance = (size: Vec3, axis: number, sweepX: boolean): number => {
+      let lo = 0;
+      let hi = 0.05;
+      for (let i = 0; i < 40; i += 1) {
+        const mid = (lo + hi) / 2;
+        const off: Vec3 = [0, 0, 0];
+        off[axis] = mid;
+        const a = el('A', [0, 0, 0], size);
+        const b = el('B', off, [size[0] + off[0], size[1] + off[1], size[2] + off[2]]);
+        const els = sweepX ? [...filler(), a, b] : [a, b];
+        if (findDuplicates(els).clashes.some((c) => c.id === 'duplicates m A m B')) lo = mid;
+        else hi = mid;
+      }
+      return lo * 1000;
+    };
+    const wall: Vec3 = [4, 0.2, 3];
+    const plate: Vec3 = [1.2, 0.002, 2.4];
+    for (const sweepX of [false, true]) {
+      // 200 mm wall: thicker than the tolerance on every axis, so the full 10 mm.
+      for (const axis of [0, 1, 2]) {
+        expect(effectiveTolerance(wall, axis, sweepX)).toBeCloseTo(10, 1);
+      }
+      // 2 mm plate: 10 mm in its plane, its own 2 mm thickness along its normal.
+      expect(effectiveTolerance(plate, 0, sweepX)).toBeCloseTo(10, 1);
+      expect(effectiveTolerance(plate, 2, sweepX)).toBeCloseTo(10, 1);
+      expect(effectiveTolerance(plate, 1, sweepX)).toBeCloseTo(2, 1);
+    }
+  });
+
+  it('abstains on non-finite bounds instead of asserting a pair', () => {
+    // The distance gate is two comparisons, and NaN fails every one of them, so
+    // an element whose bounds a direct SDK caller filled with NaN passes
+    // `boxesTouch` and must NOT then fall through the distance test: it would be
+    // reported as coincident with elements 100 m and 500 m away. A bound that
+    // cannot be compared is a bound the pass cannot judge — abstain, never
+    // assert.
+    //
+    // The deprecated IoU branch is NOT the standard being matched here. On this
+    // fixture it also reports nothing, but only because `similarity` clamps two
+    // solid NaN boxes to 0 — against a DEGENERATE element it takes the
+    // `aabbApproxEqual` fallback, whose per-axis comparisons are all false
+    // against NaN, and asserts the pair at the default 0.9. Pinned below so the
+    // divergence is on record rather than described as agreement; that branch is
+    // deprecated and deliberately left as it is.
+    const bad: ClashElement = {
+      key: 'BAD', ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    };
+    const far = (key: string, x: number): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [x, 0, 0], max: [x + 1, 1, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    const elements = [bad, far('FAR1', 100), far('FAR2', 500)];
+    expect(findDuplicates(elements).clashes).toHaveLength(0);
+    expect(findDuplicates(elements, { iouThreshold: 0.9 }).clashes).toHaveLength(0);
+
+    // The divergence: a zero-volume element (a sheet, a surface-modelled plate)
+    // takes `similarity`'s degenerate fallback, which calls a NaN box "the same
+    // place". The default gate abstains; the deprecated one asserts.
+    const flat: ClashElement = {
+      key: 'FLAT', ref: nextRef++, model: 'm', tag: 'IfcPlate',
+      bounds: { min: [100, 0, 0], max: [101, 0, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    };
+    expect(findDuplicates([bad, flat]).clashes).toHaveLength(0);
+    expect(findDuplicates([bad, flat], { iouThreshold: 0.9 }).clashes).toHaveLength(1);
+  });
+
+  it('does not let one non-finite element lose duplicates elsewhere in the model', () => {
+    // Abstaining on the bad element is only half of it. The broad phase sorts
+    // element indices by `bounds.min[axis]` and the comparator used to subtract
+    // them, so EVERY comparison involving the bad element answered NaN. That
+    // breaks the total order `Array.prototype.sort` requires: V8's TimSort
+    // merges runs against those answers and returns an arbitrary permutation of
+    // the whole array, the sweep then sees minima going backwards, evicts boxes
+    // that are still live, and true duplicates with nothing wrong with them are
+    // never compared. The damage is global, not local to the bad element.
+    //
+    // Two things this fixture must do to be able to observe that, both learned
+    // the hard way from a version of it that could not fail:
+    //   - MORE THAN 22 ELEMENTS. Below 22, V8's TimSort is a plain binary
+    //     insertion sort over a single run, and the broken comparator cannot
+    //     express itself at all — a 4-element fixture passes against it. Past
+    //     22 is necessary, not sufficient; measured against the broken
+    //     comparator this fixture still passes at 23 elements (11 pairs) and
+    //     fails at 25 (12 pairs), which is why `pairs` is 12 and not 11.
+    //   - UNSORTED INPUT. Run detection preserves an already-ascending (or
+    //     already-descending) input almost exactly, bad element included, so a
+    //     tidy fixture also hides it. Elements arrive in file order, which is
+    //     arbitrary; the coprime stride below stands in for that.
+    const pairs = 12;
+    const twin = (key: string, x: number): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [x, 0, 0], max: [x + 1, 1, 1] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    // 12 coincident pairs, each pair 10 m from the next so no pair can touch
+    // another — with a correct sweep exactly 12 duplicates are reported.
+    const laidOut: ClashElement[] = [];
+    for (let i = 0; i < pairs; i += 1) {
+      laidOut.push(twin(`A${i}`, i * 10), twin(`B${i}`, i * 10 + 0.002));
+    }
+    const scatter = (els: ClashElement[]): ClashElement[] =>
+      els.map((_, k) => els[(k * 7) % els.length]);
+    expect(findDuplicates(scatter(laidOut)).clashes).toHaveLength(pairs);
+
+    const withNaN = scatter(laidOut);
+    withNaN.splice(12, 0, {
+      key: 'BAD2', ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: { min: [NaN, NaN, NaN], max: [NaN, NaN, NaN] },
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    expect(findDuplicates(withNaN).clashes).toHaveLength(pairs);
+
+    // The `fromPositions` guard does not make this unreachable. When no vertex
+    // is finite on an axis it returns the box INVERTED (min `+Infinity`, max
+    // `-Infinity`) so `boxesTouch` rejects it — a sound bound, but still a
+    // non-finite minimum, and `Infinity - Infinity` is NaN too. Two such
+    // elements are enough, and they come through the adapters, not the SDK.
+    const inverted = (key: string): ClashElement => ({
+      key, ref: nextRef++, model: 'm', tag: 'IfcWall',
+      bounds: fromPositions(new Float32Array([NaN, NaN, NaN, NaN, NaN, NaN])),
+      positions: new Float32Array(0), indices: new Uint32Array(0),
+    });
+    expect(Number.isFinite(inverted('probe').bounds.min[0])).toBe(false);
+    const withInfinite = scatter(laidOut);
+    withInfinite.splice(12, 0, inverted('INF1'), inverted('INF2'));
+    expect(findDuplicates(withInfinite).clashes).toHaveLength(pairs);
   });
 
   it('marks a nudged same-triangle-count pair minor, and a coincident one major', () => {

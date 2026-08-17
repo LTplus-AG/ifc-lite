@@ -76,7 +76,7 @@
 //! # Why not `near_band_from_extent`
 //!
 //! Despite sharing the `2^-22` term, `near_band_from_extent`
-//! (`kernel/mesh_bridge.rs`) is not reused here: its floor (`8*SNAP_GRID`
+//! (`kernel/near_band.rs`) is not reused here: its floor (`8*SNAP_GRID`
 //! ~= 1.22e-4) is sized for the exact kernel's snap grid and is only overtaken
 //! past ~512 m, so at building extents it would flatten the epsilon 122x
 //! looser.
@@ -89,7 +89,7 @@ use super::{ClipResult, Plane, Triangle};
 /// f32-ULP scale factor for a "worst-case" single-precision coordinate: for a
 /// value with magnitude in `[2, 4)` the true float32 ULP is `2^-22`, and for
 /// larger magnitudes the ULP only grows. Same `2^-22` term (and reasoning) as
-/// `near_band_from_extent` in `kernel/mesh_bridge.rs` and `F32_ULP_SCALE` in
+/// `NearBand` in `kernel/near_band.rs` and `F32_ULP_SCALE` in
 /// `packages/clash/src/contact/narrow-phase.ts` — kept local rather than
 /// shared because plane-distance tolerance and penetration-depth tolerance are
 /// different jobs, even though both derive from the same f32 ingestion floor.

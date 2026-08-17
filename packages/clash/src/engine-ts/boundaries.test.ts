@@ -176,20 +176,21 @@ describe('hard rule: an overlap exactly equal to tolerance is contact, not a cla
   });
 });
 
-describe('contained pair: penetration depth is measured in BOTH directions (#1866)', () => {
-  it('uses the deeper of the two mesh-level measurements, not just the smaller mesh', async () => {
+describe('contained pair: a non-box element falls back to the labelled AABB estimate (#1866)', () => {
+  it('reports the AABB estimate, honestly labelled, for a concave contained pair', async () => {
     // Concave L-prism (20 triangles) vs a fanned box (24 triangles) laid across
     // the notch wall at x = 1. The box's AABB is inside the prism's, so this is
     // the contained-pair branch.
     //
-    // The narrow phase iterates the mesh with FEWER triangles, so here "small"
-    // is the L-prism. Measuring only small→large gives 0: the prism's crossing
-    // triangles are the notch wall, whose corners all sit outside the box. The
-    // real depth is large→small — the box's crossing-triangle vertices buried in
-    // the prism, deepest at its z = 0.2 / z = 0.8 corners, 0.2 m from the
-    // prism's z faces. Drop that term and the engine silently falls back to the
-    // AABB estimate of 0.6 m: it TRIPLES the reported penetration depth, which
-    // is exactly the over-report #1866 was filed for.
+    // #1866 was originally fixed by `maxPenetrationInto` — a nearest-crossing-
+    // vertex probe held (PR #2536) for being a sampling artifact that converges
+    // to 0 under retessellation instead of to the true depth (see `obb.ts`).
+    // Its replacement, the box-box SAT depth, cannot certify a concave L-prism
+    // (it is not a box), so this KNOWN case regresses to the pre-#1866 AABB
+    // signed-gap estimate (here the box's own shortest extent, 0.6 m) —
+    // reported HONESTLY as `'estimate'`, not silently mislabelled `'mesh'` the
+    // way the old probe was. A non-box depth metric is future work (see the PR
+    // #2536 hold comment's "landing conditions").
     const prism = lPrismElement('L', 'IfcSlab');
     const bar = fanBoxElement('BAR', 'IfcBeam', [0.9, 1.5, 0.5], [0.5, 0.3, 0.3]);
     const engine = createClashEngine({ backend: 'ts' });
@@ -200,10 +201,8 @@ describe('contained pair: penetration depth is measured in BOTH directions (#186
     expect(result.summary.total).toBe(1);
     const c = result.clashes[0];
     expect(c.status).toBe('hard');
-    // Real mesh depth: 0.2 m (the deepest crossing-triangle vertex inside the
-    // prism), NOT the 0.6 m AABB proxy (the box's own shortest extent).
-    expect(c.distance).toBeCloseTo(-0.2, 3);
-    expect(c.distance).not.toBeCloseTo(-0.6, 3);
+    expect(c.distanceKind).toBe('estimate');
+    expect(c.distance).toBeCloseTo(-0.6, 3);
   });
 });
 

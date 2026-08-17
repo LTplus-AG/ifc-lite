@@ -166,24 +166,24 @@ ara3d/ISSUE_126_model.ifc	100504	SweptSolid	0	50	0	0	0	-
 ara3d/ISSUE_126_model.ifc	111997	SweptSolid	27	51	0	0	27	0
 ara3d/ISSUE_126_model.ifc	131771	SweptSolid	0	96	0	0	0	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	6891	Clipping	91	345	0	1	56	6
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	7526	SweptSolid	1113	958	1	1	993	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	7526	SweptSolid	1119	1157	0	1	931	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8434	Clipping	0	44	0	1	0	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	8756	Clipping	4	28	0	1	3	3
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	864	1160	1	1	860	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	9094	SweptSolid	723	824	1	1	717	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	11115	Clipping	21	167	0	1	9	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	1674	1399	1	1	1234	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	252	1513	0	1	155	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	443	485	0	1	460	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	461	867	0	1	395	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	12381	SweptSolid	2106	2332	1	1	1811	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	32810	SweptSolid	260	1536	0	1	144	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	34385	SweptSolid	493	725	1	1	571	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	36735	SweptSolid	458	882	0	1	375	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57084	SweptSolid	54	109	0	1	52	12
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57776	SweptSolid	57	111	0	1	41	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	57944	Clipping	23	99	0	1	23	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	58297	Clipping	67	221	0	1	19	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid	244	393	0	1	214	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59111	SweptSolid	1723	1764	0	1	2008	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	59957	SweptSolid	37	55	0	1	37	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60118	SweptSolid	17	123	1	1	17	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	60344	SweptSolid	0	36	0	1	0	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	728	1413	1	1	758	3
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	61300	Clipping	743	1429	1	1	768	3
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63146	Clipping	20	106	0	1	23	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63466	Clipping	16	164	0	1	22	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	63721	SweptSolid	6	22	0	1	6	0
@@ -204,34 +204,34 @@ ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	141060	SweptSoli
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145270	SweptSolid	46	96	0	1	50	6
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145756	SweptSolid	13	101	0	1	13	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	145897	SweptSolid	32	70	0	1	32	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148665	SweptSolid	474	912	0	1	350	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148665	SweptSolid	519	1008	0	1	388	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	148864	SweptSolid	3	97	0	1	3	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149277	SweptSolid	221	447	1	1	261	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149280	SweptSolid	230	825	0	1	187	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196139	SweptSolid	145	161	0	1	130	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196326	SweptSolid	88	68	0	1	91	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149277	SweptSolid	356	562	0	1	312	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	149280	SweptSolid	214	993	0	1	284	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196139	SweptSolid	148	174	0	1	129	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	196326	SweptSolid	92	83	0	1	101	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	233296	SweptSolid	0	46	0	1	0	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	244479	SweptSolid	356	394	0	1	267	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	244479	SweptSolid	403	639	0	1	340	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247051	Clipping	29	164	1	1	29	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247203	Clipping	18	88	0	1	18	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247726	Clipping	38	180	0	1	38	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	247953	Clipping	37	165	0	1	38	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	1050	915	1	1	999	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	425	273	1	1	620	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	295370	SweptSolid	622	473	1	1	515	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	296868	SweptSolid	621	572	1	1	553	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299369	SweptSolid	0	32	0	1	0	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	299638	SweptSolid	10	10	0	1	10	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	316547	SweptSolid	263	576	0	1	183	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	332017	SweptSolid	172	360	0	1	118	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	316547	SweptSolid	279	649	0	1	250	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	332017	SweptSolid	222	387	0	1	129	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	332205	SweptSolid	63	263	0	1	3	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	333923	SweptSolid	1124	1143	1	1	1311	6
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	335218	SweptSolid	791	764	1	1	1425	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	333923	SweptSolid	1326	1347	1	1	1209	6
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	335218	SweptSolid	1110	1095	1	1	1334	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	337691	SweptSolid	27	93	0	1	27	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359157	SweptSolid	0	52	0	1	6	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359305	SweptSolid	20	60	0	1	12	0
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359480	SweptSolid	32	44	0	1	32	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359480	SweptSolid	18	30	0	1	18	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359627	SweptSolid	0	52	0	1	6	-
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	359926	SweptSolid	0	52	0	1	6	-
-ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360075	SweptSolid	33	44	0	1	33	0
+ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360075	SweptSolid	34	44	0	1	34	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360237	SweptSolid	57	79	0	1	57	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360384	SweptSolid	7	43	0	1	7	0
 ara3d/ISSUE_129_N1540_17_EXE_MOD_448200_02_09_11SMC_IGC_V17.ifc	360680	SweptSolid	0	32	0	1	0	-
@@ -406,7 +406,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	91968	CSG	0	120	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	92642	CSG	12	68	1	0	13	12
 ara3d/S_Office_Integrated Design Archi.ifc	93316	CSG	0	64	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	93990	CSG	0	108	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	94664	CSG	4	160	0	0	4	4
 ara3d/S_Office_Integrated Design Archi.ifc	99549	SweptSolid	0	52	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	368885	SweptSolid	0	36	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	414959	SweptSolid	0	40	0	0	0	-
@@ -446,7 +446,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	764543	CSG	0	124	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	765185	CSG	0	118	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	765827	CSG	0	64	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	766469	CSG	0	112	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	767111	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	767111	CSG	0	108	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	767445	Curve2D	0	0	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	768209	CSG	0	224	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	768976	CSG	0	232	0	0	0	-
@@ -475,7 +475,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	868663	CSG	0	124	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	869305	CSG	0	118	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	869947	CSG	0	64	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	870589	CSG	0	108	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	871231	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	871231	CSG	0	108	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	902095	SweptSolid	0	36	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	903633	SweptSolid	0	52	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	904243	SweptSolid	0	32	0	0	0	-
@@ -484,7 +484,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	905288	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	905959	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	906627	CSG	6	82	0	0	6	6
 ara3d/S_Office_Integrated Design Archi.ifc	907295	CSG	0	52	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	907963	CSG	0	216	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	907963	CSG	0	212	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	908631	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	909123	SweptSolid	0	32	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	909362	SweptSolid	0	32	0	0	0	-
@@ -501,7 +501,7 @@ ara3d/S_Office_Integrated Design Archi.ifc	951723	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	952413	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	953100	CSG	3	137	1	0	3	3
 ara3d/S_Office_Integrated Design Archi.ifc	953787	CSG	0	116	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	16	228	0	0	16	13
+ara3d/S_Office_Integrated Design Archi.ifc	954474	CSG	13	225	0	0	4	7
 ara3d/S_Office_Integrated Design Archi.ifc	955161	CSG	0	216	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	955764	SweptSolid	0	32	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	969935	Curve2D	0	0	0	0	0	-
@@ -520,10 +520,10 @@ ara3d/S_Office_Integrated Design Archi.ifc	974962	SweptSolid	0	156	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	976762	Curve2D	0	0	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	977404	CSG	0	120	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	978049	CSG	0	120	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	978691	CSG	0	114	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	979333	CSG	0	60	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	978691	CSG	0	112	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	979333	CSG	0	32	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	979975	CSG	0	114	0	0	0	-
-ara3d/S_Office_Integrated Design Archi.ifc	980617	CSG	0	32	0	0	0	-
+ara3d/S_Office_Integrated Design Archi.ifc	980617	CSG	0	108	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	986525	SweptSolid	0	36	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	987406	SweptSolid	0	32	0	0	0	-
 ara3d/S_Office_Integrated Design Archi.ifc	997903	SweptSolid	0	36	0	0	0	-
@@ -1127,10 +1127,10 @@ various/rvt01.ifc	11168	Tessellation	26	66	0	1	23	0
 various/rvt01.ifc	11232	Tessellation	14	56	0	1	14	6
 various/rvt01.ifc	11304	Tessellation	7	27	0	1	7	0
 various/rvt01.ifc	11477	Tessellation	0	0	0	1	7	-
-various/rvt01.ifc	11563	Tessellation	15	15	0	1	11	0
-various/rvt01.ifc	11627	Tessellation	46	54	0	1	17	3
-various/rvt01.ifc	11690	Tessellation	26	82	0	1	26	6
-various/rvt01.ifc	11753	Tessellation	6	2	0	1	9	0
+various/rvt01.ifc	11563	Tessellation	23	18	0	1	26	0
+various/rvt01.ifc	11627	Tessellation	63	63	0	1	54	3
+various/rvt01.ifc	11690	Tessellation	72	93	0	1	56	6
+various/rvt01.ifc	11753	Tessellation	10	4	0	1	16	0
 various/rvt01.ifc	11803	SweptSolid	26	52	0	1	22	0
 various/rvt01.ifc	12235	SweptSolid	13	33	0	1	13	0
 various/rvt01.ifc	12345	SweptSolid	5	67	0	1	5	0
@@ -1149,7 +1149,7 @@ various/rvt01.ifc	15301	SweptSolid	69	188	0	1	72	8
 various/rvt01.ifc	15857	SweptSolid	61	178	0	1	67	12
 various/rvt01.ifc	15917	SweptSolid	64	187	0	1	83	16
 various/rvt01.ifc	16231	SweptSolid	45	100	0	1	42	0
-various/rvt01.ifc	16286	SweptSolid	53	130	1	1	66	8
+various/rvt01.ifc	16286	SweptSolid	53	146	1	1	66	8
 various/rvt01.ifc	16805	SweptSolid	45	95	0	1	39	8
 various/rvt01.ifc	17553	Tessellation	4	10	0	1	4	0
 various/rvt01.ifc	17615	Tessellation	20	44	0	1	20	0
@@ -1174,7 +1174,7 @@ various/rvt01.ifc	31430	Tessellation	17	41	0	1	14	0
 various/rvt01.ifc	31577	Tessellation	11	41	0	1	11	0
 various/rvt01.ifc	31648	Tessellation	13	39	0	1	6	0
 various/rvt01.ifc	32081	SweptSolid	62	175	1	1	52	0
-various/rvt01.ifc	33639	SweptSolid	168	214	0	1	169	24
+various/rvt01.ifc	33639	SweptSolid	122	308	0	1	157	24
 various/rvt01.ifc	37278	Tessellation	4	16	0	1	5	0
 various/rvt01.ifc	37347	Tessellation	49	106	0	1	46	0
 various/rvt01.ifc	37455	Tessellation	66	145	1	1	57	3

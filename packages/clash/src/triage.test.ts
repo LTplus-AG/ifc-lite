@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { parseTriageResponse } from './triage.js';
+import { buildTriageUserMessage, parseTriageResponse } from './triage.js';
 import type { ClashResult } from './types.js';
 
 function makeResult(): ClashResult {
@@ -42,6 +42,28 @@ function makeResult(): ClashResult {
     settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
   };
 }
+
+describe('buildTriageUserMessage distance provenance', () => {
+  it('labels an AABB-estimated penetration in the LLM prompt, so it is not reported as a measurement', () => {
+    const result = makeResult();
+    result.clashes[0].distanceKind = 'estimate';
+    // "Sample Critical/Major Clashes" only includes critical/major severities
+    // (see buildTriageUserMessage) — bump c2 to major so both rows render.
+    result.clashes[1].severity = 'major';
+    result.clashes[1].distanceKind = 'mesh';
+    const msg = buildTriageUserMessage(result);
+    expect(msg).toContain('~0.010 m (AABB estimate)');
+    expect(msg).toContain('0.005 m (rule: r1)');
+    expect(msg).not.toContain('0.005 m (AABB estimate)');
+  });
+
+  it('treats an absent distanceKind as unknown provenance, not a measurement', () => {
+    const result = makeResult();
+    // distanceKind left unset entirely — the pre-label / unlabelled-producer case.
+    const msg = buildTriageUserMessage(result);
+    expect(msg).toContain('~0.010 m (AABB estimate)');
+  });
+});
 
 describe('parseTriageResponse', () => {
   afterEach(() => {

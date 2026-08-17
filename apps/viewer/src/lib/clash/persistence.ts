@@ -47,6 +47,8 @@ export interface ClashGlobalSettings {
   clearance: number;
   /** Duplicate-scan position tolerance (m): how far apart two elements may be
    *  and still count as the same object (`findDuplicates.positionTolerance`).
+   *  An upper bound, not the whole gate: the effective tolerance per axis is
+   *  `min(this, extent on that axis)` — see `findDuplicates.positionTolerance`.
    *  Distinct from `tolerance`, which is the clash engine's touching band. */
   duplicateTolerance: number;
   clusterEpsilon: number;

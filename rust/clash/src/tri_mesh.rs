@@ -10,16 +10,18 @@
 
 use crate::aabb::Aabb;
 use crate::bvh::Bvh;
+use crate::obb::{detect_obb, MeshLike, Obb};
 use crate::triangle::closest_pt_point_triangle;
 use crate::vec3::{cross, dist_sq, dot, sub, Vec3};
+use std::cell::RefCell;
 
 /// Fixed ray direction for point-in-solid tests: `normalize([1, √3, √5])`.
 /// NON-axis-aligned so the ray never grazes axis-aligned box edges/vertices
 /// (which would double-count). Exact IEEE-754 literals, byte-identical to the
 /// TS kernel's `RAY_DIR` — `|RAY_DIR| == 1` exactly.
-const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
+pub(crate) const RAY_DIR: Vec3 = [0.3333333333333333, 0.5773502691896257, 0.7453559924999299];
 /// Parallel-reject + forward-crossing threshold. Same literal in the TS kernel.
-const RAY_EPS: f64 = 1e-9;
+pub(crate) const RAY_EPS: f64 = 1e-9;
 
 /// A triangle mesh with a per-triangle BVH over its triangle AABBs.
 pub struct TriMesh {
@@ -30,6 +32,25 @@ pub struct TriMesh {
     /// Number of triangles.
     pub count: usize,
     bvh: Bvh,
+    /// Starting half-size for the expanding-cube probe in `distance_to_surface`:
+    /// a power-of-two fraction of the mesh's longest axis, scaled down by the
+    /// cube root of the triangle count so it lands near the average triangle
+    /// size. Derived with exact power-of-two arithmetic (no `powi`/`cbrt`, whose
+    /// last bit is not guaranteed to agree with JS) — the TS `TriMesh.probeSeed`
+    /// computes the identical value.
+    #[allow(dead_code)]
+    probe_seed: f64,
+    /// Memoized `detect_obb(self)` result; `None` until first requested (the
+    /// outer `Option` is the "not yet computed" marker, the inner one is
+    /// "not a box"). Computed at most once per element per run, same
+    /// lifetime as the mesh — mirrors the TS `TriMesh.obbCache`.
+    obb_cache: RefCell<Option<Option<Obb>>>,
+}
+
+/// The axis-aligned cube of half-size `h` centred on `p`.
+#[allow(dead_code)]
+fn cube_around(p: Vec3, h: f64) -> Aabb {
+    Aabb::new([p[0] - h, p[1] - h, p[2] - h], [p[0] + h, p[1] + h, p[2] + h])
 }
 
 impl TriMesh {
@@ -67,17 +88,61 @@ impl TriMesh {
         let mut items: Vec<(u32, Aabb)> = Vec::with_capacity(count);
         // Build the per-triangle bounds inline so we can populate the BVH before
         // moving the buffers into the struct.
+        let mut lo = [f64::INFINITY; 3];
+        let mut hi = [f64::NEG_INFINITY; 3];
         for t in 0..count {
             let bounds = tri_bounds(&positions, &indices, t);
+            for a in 0..3 {
+                if bounds.min[a] < lo[a] {
+                    lo[a] = bounds.min[a];
+                }
+                if bounds.max[a] > hi[a] {
+                    hi[a] = bounds.max[a];
+                }
+            }
             items.push((t as u32, bounds));
         }
+        let mut extent = 0.0f64;
+        for a in 0..3 {
+            let e = hi[a] - lo[a];
+            if e > extent {
+                extent = e;
+            }
+        }
+        // Halve the extent once per factor of 8 in the triangle count (≈ one
+        // subdivision step per axis). Both the loop and the division are exact.
+        let mut divisor = 1.0f64;
+        let mut cap: usize = 8;
+        while cap <= count && divisor < 1048576.0 {
+            divisor *= 2.0;
+            cap *= 8;
+        }
+        let seed = extent / divisor;
+        let probe_seed = if seed > 0.0 && seed < f64::INFINITY {
+            seed
+        } else {
+            1.0
+        };
         let bvh = Bvh::build(&items);
         Self {
             positions,
             indices,
             count,
             bvh,
+            probe_seed,
+            obb_cache: RefCell::new(None),
         }
+    }
+
+    /// Memoized `Obb` for this mesh, or `None` when the mesh is not (within
+    /// tolerance) a rectangular box. See `obb.rs` for the detection rule.
+    pub fn get_obb(&self) -> Option<Obb> {
+        if let Some(cached) = *self.obb_cache.borrow() {
+            return cached;
+        }
+        let computed = detect_obb(self);
+        *self.obb_cache.borrow_mut() = Some(computed);
+        computed
     }
 
     /// World-space vertex `i`.
@@ -133,12 +198,24 @@ impl TriMesh {
         [s[0] / nf, s[1] / nf, s[2] / nf]
     }
 
-    /// Exact distance from `p` to this mesh's surface: the minimum point-to-
-    /// triangle distance over every triangle. Iterated in index order (not the
-    /// BVH) so the code shape stays identical to the TS `distanceToSurface`;
-    /// the minimum itself is order-independent. Only invoked from the
-    /// contained-pair depth measurement (#1866), so the O(n) scan is fine.
-    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
+    /// Minimum point-to-triangle distance over `tris`, as a squared distance.
+    #[allow(dead_code)]
+    fn min_dist_sq_over(&self, p: Vec3, tris: &[u32]) -> f64 {
+        let mut best = f64::INFINITY;
+        for &t in tris {
+            let [a, b, c] = self.tri(t as usize);
+            let q = closest_pt_point_triangle(p, a, b, c);
+            let d2 = dist_sq(p, q);
+            if d2 < best {
+                best = d2;
+            }
+        }
+        best
+    }
+
+    /// Exhaustive fallback for `distance_to_surface`: every triangle, index order.
+    #[allow(dead_code)]
+    fn distance_to_surface_scan(&self, p: Vec3) -> f64 {
         let mut best = f64::INFINITY;
         for t in 0..self.count {
             let [a, b, c] = self.tri(t);
@@ -151,57 +228,92 @@ impl TriMesh {
         best.sqrt()
     }
 
-    /// Mesh-level penetration of this mesh into `other`, measured at the
-    /// vertices of the triangles flagged in `cross_flags` (the pairs the narrow
-    /// phase saw genuinely crossing `other`): the maximum distance-to-surface
-    /// of `other` over those vertices that lie inside `other`. Each vertex is
-    /// visited once (deduped by vertex index, in index order — bit-identical to
-    /// the TS `maxPenetrationInto`). Returns 0 when no flagged vertex is
-    /// inside, e.g. a thin member piercing straight through, whose crossing-
-    /// triangle vertices all sit outside `other` (#1866).
-    pub fn max_penetration_into(&self, other: &TriMesh, cross_flags: &[bool]) -> f64 {
-        let mut seen = vec![false; self.positions.len() / 3];
-        let mut depth = 0.0f64;
-        // `cross_flags` has one entry per triangle (len == self.count).
-        for (t, &flagged) in cross_flags.iter().enumerate() {
-            if !flagged {
-                continue;
-            }
-            let o = t * 3;
-            for k in 0..3 {
-                let vi = self.indices[o + k] as usize;
-                if seen[vi] {
-                    continue;
-                }
-                seen[vi] = true;
-                let v = self.vertex(vi as u32);
-                if !other.contains_point(v) {
-                    continue;
-                }
-                let d = other.distance_to_surface(v);
-                if d > depth {
-                    depth = d;
-                }
-            }
+    /// Exact distance from `p` to this mesh's surface: the minimum point-to-
+    /// triangle distance over the whole mesh.
+    ///
+    /// Not on the narrow-phase hot path as of PR #2536 (its former caller,
+    /// `max_penetration_into`, was removed — see `obb.rs`): a nearest-crossing-
+    /// VERTEX distance-to-surface probe is a sampling artifact that converges
+    /// to 0 under retessellation rather than to the true penetration depth.
+    /// Kept as a genuinely exact, independently tested primitive (see the
+    /// shared probe fixture in `kernel_tests.rs` / `tri-mesh.test.ts`) for
+    /// future callers that need it — e.g. clearance-to-nearest-surface — not
+    /// as dead weight. Driven by the triangle BVH rather than a linear scan so
+    /// it stays cheap when it IS called:
+    ///
+    /// TODO(remove-by: no production caller has appeared by the next
+    /// clash-engine feature pass, or on maintainer request): tracking issue
+    /// https://github.com/LTplus-AG/ifc-lite/issues/2646.
+    ///
+    /// 1. Query the cube of half-size `h` centred on `p`. Every triangle within
+    ///    distance `h` of `p` has its closest point inside that cube, hence its
+    ///    AABB intersects the cube, hence it is in the candidate set.
+    /// 2. If the candidate minimum `d` satisfies `d <= h`, the true minimum is
+    ///    `<= h` too, so its triangle was a candidate and `d` IS the true minimum.
+    /// 3. Otherwise `d` is still an upper bound on the true minimum, so one more
+    ///    query at half-size `d` provably captures the closest triangle.
+    ///
+    /// `min` selects an element rather than accumulating, so visiting a superset
+    /// of the argmin in a different order returns the identical `f64`. The TS
+    /// `distanceToSurface` runs the identical sequence of queries on the
+    /// identical BVH, keeping the two kernels bit-identical (see the shared probe
+    /// fixture in `kernel_tests.rs` / `tri-mesh.test.ts`).
+    ///
+    /// The `wider.is_empty()` arm below is unreachable, not a tested fallback:
+    /// `cube_around(p, d)` with `d > h` strictly contains `cube_around(p, h)`,
+    /// whose query was already non-empty, so every triangle that made `hits`
+    /// non-empty also intersects the wider cube — `wider` cannot come back
+    /// empty. It is kept only as defence-in-depth against a future
+    /// `query_tris` regression, not as a code path with coverage; do not read
+    /// it as a tested safety net.
+    #[allow(dead_code)]
+    pub fn distance_to_surface(&self, p: Vec3) -> f64 {
+        if self.count == 0 {
+            return f64::INFINITY;
         }
-        depth
+        let mut h = self.probe_seed;
+        // 64 doublings from a positive seed overflow to infinity, whose cube
+        // intersects every finite box — so the loop only runs out on NaN
+        // geometry, which falls through to the exhaustive scan rather than
+        // spinning.
+        for _ in 0..64 {
+            let hits = self.query_tris(&cube_around(p, h));
+            if !hits.is_empty() {
+                let d = self.min_dist_sq_over(p, &hits).sqrt();
+                if d <= h {
+                    return d;
+                }
+                let wider = self.query_tris(&cube_around(p, d));
+                if !wider.is_empty() {
+                    return self.min_dist_sq_over(p, &wider).sqrt();
+                }
+                return self.distance_to_surface_scan(p);
+            }
+            h *= 2.0;
+        }
+        self.distance_to_surface_scan(p)
     }
 
     /// True when `p` is inside this closed mesh. Casts a fixed-direction ray and
     /// counts forward crossings against every triangle (Möller–Trumbore,
     /// double-sided so winding doesn't matter); an odd count means inside.
     ///
-    /// Iterates all triangles in index order — deliberately NOT the BVH — so the
-    /// result is bit-identical to the TS `containsPoint`. Only invoked in the
-    /// rare enclosed-solid branch of the narrow phase, so the O(n) cost is fine.
+    /// Only the triangles the BVH reports along the ray are tested. A triangle
+    /// the ray hits at `t_hit > RAY_EPS > 0` is hit inside its own AABB, so the
+    /// slab test admits it — the candidate set is a superset of the triangles a
+    /// linear scan would count, and the crossing count is an integer sum, so the
+    /// parity (and hence the verdict) is unchanged by the visit order. `RAY_DIR`
+    /// is a unit vector exactly, so `Bvh::raycast`'s normalisation is the
+    /// identity and the slab test sees exactly `RAY_DIR`; the TS
+    /// `BVH.raycast` mirrors this traversal, keeping the kernels bit-identical.
     // Keep the bare `u < 0.0 || u > 1.0` comparisons (not `RangeInclusive::contains`):
     // they must match the TS kernel's operators EXACTLY, including NaN handling
     // (`contains` would skip a NaN `u`, the comparison does not), or parity breaks.
     #[allow(clippy::manual_range_contains)]
     pub fn contains_point(&self, p: Vec3) -> bool {
         let mut crossings: u32 = 0;
-        for t in 0..self.count {
-            let [v0, v1, v2] = self.tri(t);
+        for t in self.bvh.raycast(p, RAY_DIR) {
+            let [v0, v1, v2] = self.tri(t as usize);
             let e1 = sub(v1, v0);
             let e2 = sub(v2, v0);
             let pv = cross(RAY_DIR, e2);
@@ -226,6 +338,26 @@ impl TriMesh {
             }
         }
         crossings & 1 == 1
+    }
+
+    /// Number of vertices in this mesh (positions are packed `x, y, z`).
+    pub(crate) fn vertex_count(&self) -> usize {
+        self.positions.len() / 3
+    }
+
+    /// The three vertex indices of triangle `t` (local, 0-based).
+    pub(crate) fn tri_indices(&self, t: usize) -> [u32; 3] {
+        let o = t * 3;
+        [self.indices[o], self.indices[o + 1], self.indices[o + 2]]
+    }
+}
+
+impl MeshLike for TriMesh {
+    fn tri_count(&self) -> usize {
+        self.count
+    }
+    fn tri_verts(&self, t: usize) -> [Vec3; 3] {
+        self.tri(t)
     }
 }
 

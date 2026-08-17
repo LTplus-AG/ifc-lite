@@ -2025,13 +2025,14 @@ export class Renderer {
                 },
             });
 
-            // Global lighting environment: write the uniform once per frame
-            // and bind at group(1) — every pipeline derived from the main
-            // shader shares this layout, and bind groups persist across
-            // setPipeline calls within the pass.
+            // Global lighting environment: write the uniform once per frame.
+            // The group(1) bind is deferred until AFTER the sky pass below —
+            // the sky pipeline has an incompatible layout (its own group(0),
+            // no group(1)), so drawing the sky invalidates a group(1) binding
+            // on conformant WebGPU implementations (see the rebind after the
+            // sky block).
             const environment = resolveEnvironment(options.environment);
             this.pipeline.updateEnvironment(options.environment);
-            pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Procedural sky background — replaces the flat clear colour.
             // Drawn before any geometry at the reverse-Z far plane with depth
@@ -2073,6 +2074,18 @@ export class Renderer {
             }
 
             pass.setPipeline(this.pipeline.getPipeline());
+
+            // Bind the global lighting environment at group(1) AFTER any sky
+            // draw. The sky pipeline's layout (its own group(0), no group(1))
+            // is incompatible with the main layout, so drawing the sky
+            // invalidates the group(1) binding on strict WebGPU
+            // implementations. The flat batch loops below re-set only group(0)
+            // per batch (the instanced passes re-bind group(1) themselves), so
+            // without this rebind every non-'default' lighting preset — the
+            // only presets that enable the sky — blanked the model on those
+            // drivers. Binding while the main pipeline is current keeps it
+            // valid for every main-family draw that follows.
+            pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();

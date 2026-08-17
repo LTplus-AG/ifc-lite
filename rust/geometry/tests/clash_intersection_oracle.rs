@@ -623,3 +623,231 @@ fn f64_output_is_what_makes_the_volume_exact() {
          is stale and the f64 output may no longer be justified"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Non-box operands — the #2573 adversarial-review rotation blind spot.
+//
+// `gate_axes` used to add the analytic box-derived candidate axes only when
+// BOTH operands presented a detected box frame; otherwise it fell back to the
+// three world axes alone. For a unit contact normal `n`, `max_i(|n_i)| >=
+// 1/sqrt(3)`, so that fallback could overstate a true perpendicular contact
+// depth by up to sqrt(3) ~ 1.73x — enough to certify a genuinely-shallow,
+// below-threshold contact as `Solid` whenever either operand was not a box
+// (a chamfered beam end, a mitred pipe joint, a sloped member — the common
+// case in real IFC, not the exception). The fix in `clash_contact_axes.rs`
+// generalises the candidate-axis set to EVERY operand's own face normals,
+// box-shaped or not, plus their pairwise cross products.
+// ---------------------------------------------------------------------------
+
+/// A right-angle corner tetrahedron chamfering a box's own corner `corner`,
+/// with legs of length `t` retreating along -x, -y, -z from `corner`. This is
+/// a NON-box mesh (4 triangular faces; `orthogonal_face_axes` returns `None`
+/// for it), and for any [`box_mesh`] whose own corner is `corner`, the
+/// tetrahedron sits entirely inside it, so `intersection(box, tet) == tet`
+/// exactly. The tetrahedron's own "cut face" (the one opposite the apex) has
+/// unit normal `(1,1,1)/sqrt(3)`, an oblique direction none of the box's
+/// three world-aligned face normals can represent — the review's rotation
+/// blind spot.
+///
+/// True perpendicular penetration depth, measured from the apex to the
+/// opposite face along that `(1,1,1)/sqrt(3)` normal, is `t / sqrt(3)`.
+/// Analytic volume is `t^3 / 6`.
+fn corner_tet(corner: [f64; 3], t: f64) -> Mesh {
+    let apex = corner;
+    let p_x = [corner[0] - t, corner[1], corner[2]];
+    let p_y = [corner[0], corner[1] - t, corner[2]];
+    let p_z = [corner[0], corner[1], corner[2] - t];
+    let mut m = Mesh::new();
+    for v in [apex, p_x, p_y, p_z] {
+        m.positions.push(v[0] as f32);
+        m.positions.push(v[1] as f32);
+        m.positions.push(v[2] as f32);
+    }
+    // Outward-oriented faces (apex=0, p_x=1, p_y=2, p_z=3), verified by hand:
+    // for each face, cross(edge1, edge2) dotted with (centroid - face_point)
+    // is negative (normal points away from the centroid).
+    m.indices = vec![
+        0, 1, 2, // apex, p_x, p_y
+        0, 2, 3, // apex, p_y, p_z
+        0, 3, 1, // apex, p_z, p_x
+        1, 3, 2, // p_x, p_z, p_y (the oblique cut face)
+    ];
+    m
+}
+
+fn tet_volume_analytic(t: f64) -> f64 {
+    t * t * t / 6.0
+}
+
+#[test]
+fn corner_tet_fixture_matches_its_own_analytic_volume() {
+    // Validate the fixture independently before trusting any measurement
+    // built on it. `t` chosen well clear of the trust threshold (true depth
+    // `t/sqrt(3)` in the multi-millimetre range) so the documented snap-grid
+    // quantization error near the gate boundary does not leak into this
+    // check — this is a check on the FIXTURE, not on the gate.
+    for &t in &[5.0e-3f64, 1.0e-2, 5.0e-2] {
+        let corner = [10.0, 10.0, 10.0];
+        let big_box = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], 1);
+        let tet = corner_tet(corner, t);
+        let expected = tet_volume_analytic(t);
+        let ctx = format!("t={t}");
+        let v = volume_of(&intersection_solid(&big_box, &tet), &ctx);
+        let rel_err = (v - expected).abs() / expected;
+        assert!(
+            rel_err < 0.005,
+            "{ctx}: clip volume {v}, analytic {expected}, rel_err {rel_err}"
+        );
+    }
+}
+
+#[test]
+fn oblique_non_box_contact_below_the_trust_threshold_is_withheld() {
+    // THE #2573 review finding. Before the fix: at true perpendicular depths
+    // of 450 um and 488 um — both below the 488.28 um trust threshold this
+    // 10 m extent computes (4 * near_band_from_extent(10)) — this returned
+    // `Solid` instead of `Degenerate(BelowKernelResolution)`, because the
+    // world-axis fallback measured the wedge's world-axis extent (up to
+    // 1.73x the true depth) instead of the true (1,1,1)/sqrt(3) thickness.
+    let corner = [10.0, 10.0, 10.0];
+    for depth_um in [450.0f64, 488.0] {
+        let true_depth = depth_um * 1.0e-6;
+        let t = true_depth * 3.0f64.sqrt();
+        for &n in &TESSELLATIONS {
+            let big_box = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], n);
+            let tet = corner_tet(corner, t);
+            let ctx = format!("depth={depth_um}um n={n}");
+            match degenerate_reason(&intersection_solid(&big_box, &tet), &ctx) {
+                DegenerateReason::BelowKernelResolution {
+                    thickness_m,
+                    required_m,
+                } => {
+                    // Tolerance: one snap cell, matching the rotated box-box
+                    // oracle's own bound above — the tetrahedron's vertices
+                    // don't land exactly on the kernel's 2^-16 grid either,
+                    // and f32 `Mesh` positions add their own ~1e-7 m noise.
+                    assert!(
+                        (thickness_m - true_depth).abs() < 1.0 / 65536.0,
+                        "{ctx}: measured thickness {thickness_m}, true perpendicular depth {true_depth}"
+                    );
+                    assert!(
+                        required_m >= 4.0 * NEAR_BAND_FLOOR - 1e-12,
+                        "{ctx}: required {required_m} below the band floor"
+                    );
+                }
+                other => panic!("{ctx}: expected BelowKernelResolution, got {other:?}"),
+            }
+        }
+    }
+}
+
+#[test]
+fn oblique_non_box_contact_above_the_trust_threshold_returns_the_exact_solid() {
+    // Counterpart: the fix must not withhold a contact that IS deep enough.
+    // At 500 um (just over the 488.28 um threshold) this correctly returned
+    // `Solid` even before the fix, per the review; pinned here as the
+    // boundary partner of the withheld case above, now also checked against
+    // the analytic volume.
+    let corner = [10.0, 10.0, 10.0];
+    for depth_um in [500.0f64, 1000.0, 2000.0] {
+        let true_depth = depth_um * 1.0e-6;
+        let t = true_depth * 3.0f64.sqrt();
+        let big_box = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], 1);
+        let tet = corner_tet(corner, t);
+        let expected = tet_volume_analytic(t);
+        let ctx = format!("depth={depth_um}um");
+        let v = volume_of(&intersection_solid(&big_box, &tet), &ctx);
+        let rel_err = (v - expected).abs() / expected;
+        assert!(
+            rel_err < 0.02,
+            "{ctx}: volume {v}, expected {expected}, rel_err {rel_err}"
+        );
+    }
+}
+
+#[test]
+fn oblique_non_box_sweep_never_returns_a_grossly_wrong_volume() {
+    // The review's second, unrelated-looking observation: sweeping this same
+    // construction from 50 to 2000 um true depth, the UNFIXED code returned
+    // a volume of 2.36e-6 m^3 at exactly 400 um against an expected 5.5e-11
+    // m^3 (~42,500x), with sane behaviour at the depths either side.
+    //
+    // Root-caused independently here (not merely reproduced): with the old
+    // world-axis-only fallback, this fixture's world-axis wedge thickness
+    // cleared the 488.28 um gate for true depths roughly 280-450 um even
+    // though the TRUE perpendicular depth was still below it. Admitted at
+    // that penetration, the kernel's arrangement returns a genuinely
+    // UNCLOSED partial shell for this fixture (6 triangles, `tris=6`, one
+    // directed edge in each pair unmatched — instrumented and confirmed
+    // directly against `tris.len()` and a directed-edge-pairing check before
+    // this fix), not a closed 10-triangle solid. `tri_volume`'s divergence-
+    // theorem sum is only meaningful on a closed 2-manifold; on that open
+    // shell it returns a number with no geometric relationship to the true
+    // volume — the 42,500x outlier. It is NOT `BudgetExhausted` (the
+    // arrangement completes) and NOT an artifact of the reviewer's probe: it
+    // reproduces deterministically on this exact construction and is a real,
+    // if narrow, gap in `tri_volume`'s precondition.
+    //
+    // Fixing the gate to measure the TRUE contact-normal thickness (this
+    // file's other two tests above) withholds every one of these before
+    // `tri_volume` ever runs on the bad shell, which is what this sweep
+    // checks: no depth in this below-threshold range may return `Solid` at
+    // all, let alone a wrong one.
+    let corner = [10.0, 10.0, 10.0];
+    let big_box = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], 1);
+    for depth_um in [50.0f64, 100.0, 200.0, 300.0, 350.0, 380.0, 390.0, 395.0, 400.0, 405.0, 410.0, 420.0, 450.0, 488.0] {
+        let true_depth = depth_um * 1.0e-6;
+        let t = true_depth * 3.0f64.sqrt();
+        let tet = corner_tet(corner, t);
+        let ctx = format!("depth={depth_um}um");
+        match intersection_solid(&big_box, &tet) {
+            IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution { .. }) => {}
+            other => panic!(
+                "{ctx}: every depth here is below the 488.28um trust threshold, \
+                 expected BelowKernelResolution, got {other:?}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn two_disjoint_below_band_slivers_are_withheld_not_pooled_into_one_bounding_box() {
+    // CodeRabbit review finding on #2573: the thickness gate accumulated
+    // `lo`/`hi` over every triangle the kernel returned, with no regard for
+    // whether they formed one connected overlap or several disjoint ones. A
+    // single operand pair CAN produce more than one disjoint overlap
+    // component — e.g. one operand shaped like a dumbbell (two separate
+    // boxes, as one triangle soup) straddling both ends of the other. Here,
+    // `b` is exactly that: two boxes that each graze opposite faces of `a`
+    // by 16 snap cells (~244 µm — individually below the 488 µm trust
+    // threshold this operand pair's extent requires; confirmed against a
+    // single such sliver alone, which the kernel resolves as a genuine
+    // overlap and correctly reports `BelowKernelResolution` with
+    // `thickness_m ≈ 244 µm`). Each component's OWN thickness is ~244 µm and
+    // must be withheld. Pooling them into a single bounding box instead
+    // reports a ~10 m extent along every world axis (component 1 sits near
+    // x=0, component 2 near x=10, so the union spans the operand's full
+    // 10 m size) — comfortably above the trust threshold — and the API
+    // would return a `Solid` whose volume sums two below-resolution slivers
+    // the module's own docs say must never be reported.
+    let depth = 16.0 / 65536.0; // 16 snap cells, ~244 µm
+    for &n in &TESSELLATIONS {
+        let a = box_mesh([0.0, 0.0, 0.0], [10.0, 10.0, 10.0], n);
+        let mut b = box_mesh([-1.0, -1.0, -1.0], [depth, 11.0, 11.0], n);
+        b.merge(&box_mesh([10.0 - depth, -1.0, -1.0], [11.0, 11.0, 11.0], n));
+
+        match intersection_solid(&a, &b) {
+            IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution { thickness_m, .. }) => {
+                assert!(
+                    thickness_m < 1.0e-3,
+                    "n={n}: per-component thickness should read ~{depth} m, got {thickness_m} m \
+                     (looks pooled across both disjoint components instead of measured per-component)"
+                );
+            }
+            other => panic!(
+                "n={n}: two below-band disjoint slivers must be withheld, got {other:?} \
+                 (a pooled bounding box across both components would wrongly pass the gate)"
+            ),
+        }
+    }
+}

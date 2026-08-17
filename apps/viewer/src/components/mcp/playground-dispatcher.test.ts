@@ -16,7 +16,37 @@ import assert from 'node:assert/strict';
 
 import { GeometryProcessor, type GeometryResult } from '@ifc-lite/geometry';
 import { ToolErrorCode } from '@ifc-lite/mcp/browser';
-import { dispatch, parsePlaygroundModel, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+import type { Clash } from '@ifc-lite/clash';
+import { dispatch, parsePlaygroundModel, topClashRows, type LoadedPlaygroundModel } from './playground-dispatcher.js';
+
+function clashOf(distance: number, distanceKind: Clash['distanceKind']): Clash {
+  return {
+    id: 'c1',
+    a: { model: 'm', key: 'a', ref: 1, tag: 'IfcSlab' },
+    b: { model: 'm', key: 'b', ref: 2, tag: 'IfcSlab' },
+    rule: 'r',
+    status: 'hard',
+    distance,
+    distanceKind,
+    point: [0, 0, 0],
+    bounds: { min: [0, 0, 0], max: [1, 1, 1] },
+    severity: 'major',
+  };
+}
+
+describe('topClashRows distance provenance', () => {
+  it('carries distanceKind through to the playground JSON row', () => {
+    const { rows } = topClashRows([clashOf(-0.25, 'estimate')], 10);
+    assert.equal((rows[0] as { distanceKind?: string }).distanceKind, 'estimate');
+  });
+
+  it('carries an absent distanceKind through as undefined, not silently as measured', () => {
+    const { rows } = topClashRows([clashOf(-0.25, undefined)], 10);
+    const row = rows[0] as { distanceKind?: string };
+    assert.equal('distanceKind' in row, true);
+    assert.equal(row.distanceKind, undefined);
+  });
+});
 
 function ifc4(body: string): string {
   return [

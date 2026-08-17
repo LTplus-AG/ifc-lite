@@ -589,12 +589,24 @@ export function useClash() {
    *
    * The remaining fallback is not itself gated by identity: when the named model
    * is absent there is no id space of its own left to compare against, and this
-   * is the behaviour that shipped before. It is narrow — the two paths that drop
-   * a model unregister it in the same action (`removeModel` →
-   * `federationRegistry.unregisterModel`, `clearAllModels` →
+   * is the behaviour that shipped before. For a model that was REGISTERED it is
+   * narrow — the two paths that drop one unregister it in the same action
+   * (`removeModel` → `federationRegistry.unregisterModel`, `clearAllModels` →
    * `federationRegistry.clear()`), and `resetViewerState` does not touch
-   * `models` — so in practice the registry has already forgotten it too and the
-   * answer is `null`.
+   * `models` — so the registry has forgotten it too and the answer is `null`.
+   *
+   * That does NOT hold for a model the registry never held, which is precisely
+   * the class this resolver was fixed for. The collab room model is created by
+   * `upsertModel` with `idOffset: 0` and no `registerModelOffset` call
+   * (`collabSlice`), so `unregisterModel` is a no-op for it and there is nothing
+   * to forget. Leaving the room while a published clash result is kept drops
+   * `room:<roomId>` from `state.models` and sends its refs down this fallback,
+   * where `fromGlobalId` range-searches the registry and can land inside a
+   * DIFFERENT, still-loaded file — isolating and painting two of its elements,
+   * with no error. Established by review with an executed probe. Not closed
+   * here: this resolver's contract is which model answers for a ref while the
+   * named model is loaded, and the gap is one level up, in what keeps a result
+   * alive past its models.
    *
    * NOTE on exactness: this resolver is only as good as the `ref` it is handed,
    * and `ref` is currently mis-built for any federated model past the first —

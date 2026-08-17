@@ -18,6 +18,8 @@
 
 import type { KeyValueStore, Logger, PluginContext } from '@ifc-lite/plugin-api';
 
+import { resetTokenManagerCache } from '../src/auth.js';
+
 export const DROPBOX_MOCK_ACCESS_TOKEN = 'mock-access-token';
 
 export interface DropboxMockItem {
@@ -419,6 +421,13 @@ const silentLogger: Logger = {
  * to split them across.
  */
 export function createDropboxMockContext(world: DropboxMockWorld, options: DropboxMockOptions = {}): PluginContext {
+  // `createTokenManager` caches one manager per app key for the lifetime of
+  // the module, and every mock context here uses the same `mock-client-id`.
+  // Without this reset a test would inherit the PREVIOUS test's manager — and
+  // with it that manager's `ctx.storage`, so a fresh context's seeded tokens
+  // would be ignored in favour of a stale suite-wide store.
+  resetTokenManagerCache();
+
   const tokens = {
     accessToken: DROPBOX_MOCK_ACCESS_TOKEN,
     refreshToken: 'mock-refresh-token',

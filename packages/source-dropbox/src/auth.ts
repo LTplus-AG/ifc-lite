@@ -70,12 +70,55 @@ export async function requireClientId(ctx: PluginContext): Promise<string> {
   return clientId;
 }
 
+/**
+ * One `TokenManager` per app key, for the lifetime of the page.
+ *
+ * `TokenManager`'s protections are all PER-INSTANCE: `clear()` swaps
+ * `this.session` and queues its delete on `this.queue`, and a refresh checks
+ * `session !== this.session` on its own instance before writing. A refresh in
+ * flight on instance A therefore cannot see a `clear()` performed on instance
+ * B — so building a fresh manager per call makes sign-out unable to disarm an
+ * in-flight refresh, and the refresh writes a valid token set back AFTER
+ * sign-out deleted it. The user is silently signed back in on the next mount,
+ * with a live refresh token left in `localStorage`. Reproduced end to end
+ * against this package before the cache existed; `test/refresh-race.test.ts`
+ * is the guard.
+ *
+ * Why keyed on `clientId` and not on `ctx`: the host mints a fresh
+ * `PluginContext` per operation (`SourceHost.createContext` in the viewer), so
+ * a listing and a `signOut()` never share one and keying on `ctx` would
+ * de-duplicate nothing. The resource being protected is the single stored
+ * token set, which lives under one fixed {@link STORAGE_KEY} inside the host's
+ * per-provider storage namespace, so the app key that selects the account is
+ * the right identity.
+ *
+ * The consequence is that the first caller's `ctx.fetch`/`ctx.storage` are the
+ * ones the cached manager keeps using. That is sound because both derive from
+ * this package's constant manifest rather than from anything context-varying:
+ * `fetch` is the manifest's permission check, `storage` is `localStorage`
+ * namespaced by the manifest name.
+ */
+const managerCache = new Map<string, TokenManager>();
+
+/**
+ * Drops every cached manager. Called on sign-out, where keeping an instance
+ * that holds a refresh lock for a session that no longer exists would leave
+ * the next sign-in serializing behind it.
+ */
+export function resetTokenManagerCache(): void {
+  managerCache.clear();
+}
+
 /** Shared with `provider.ts`, which needs the same token manager to mint an
  *  access token for plain API calls (listing, download, ...) — a single
  *  definition keeps the storage key and token endpoint from drifting between
- *  the two call sites. */
+ *  the two call sites, and a single *instance* keeps their refreshes from
+ *  racing a sign-out (see {@link managerCache}). */
 export function createTokenManager(ctx: PluginContext, clientId: string): TokenManager {
-  return new TokenManager({
+  const cached = managerCache.get(clientId);
+  if (cached) return cached;
+
+  const manager = new TokenManager({
     storageKey: STORAGE_KEY,
     // `ctx.storage` (`KeyValueStore`) is structurally compatible with
     // `TokenStorage` — see the `@ifc-lite/oauth-pkce` README's storage
@@ -86,6 +129,8 @@ export function createTokenManager(ctx: PluginContext, clientId: string): TokenM
     clientId,
     fetch: ctx.fetch,
   });
+  managerCache.set(clientId, manager);
+  return manager;
 }
 
 /** Reads `account_id`/`name.display_name`/`email` off `/2/users/get_current_account`.
@@ -218,8 +263,19 @@ export const dropboxAuth: SourceAuth = {
     // stale token set left over from before the preference was cleared — so
     // fall back to a placeholder rather than no-op. `TokenManager.clear()`
     // never uses `clientId` itself, only `storageKey`.
-    const manager = createTokenManager(ctx, clientId ?? 'unconfigured');
-    await manager.clear();
+    createTokenManager(ctx, clientId ?? 'unconfigured');
+    // Disarm EVERY cached manager, not only the one for the current app key.
+    // `clear()` is what swaps the session an in-flight refresh re-checks
+    // before it writes, and that check is per-instance. Keying the fallback on
+    // `'unconfigured'` means a cleared preference would otherwise leave the
+    // manager cached under the REAL app key still armed, free to write a valid
+    // token set back after this sign-out deleted it. They all share one
+    // `storageKey`, so clearing them all is idempotent on storage.
+    await Promise.all([...managerCache.values()].map((m) => m.clear()));
+    // The tokens these managers held a refresh lock for are gone; keeping the
+    // instances would leave the next sign-in serializing behind a lock for a
+    // session that no longer exists.
+    resetTokenManagerCache();
   },
 
   async getIdentity(ctx: PluginContext): Promise<SourceIdentity | null> {

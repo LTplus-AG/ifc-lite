@@ -24,6 +24,7 @@ import { useViewerStore } from '@/store';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
+import { classifyTileProviderError, toUrlTemplateProviderOptions } from '@/lib/geo/custom-basemap';
 import { loadCesium } from './cesium/cesium-module';
 import { useCesiumBridge } from './cesium/useCesiumBridge';
 import { useCesiumModel } from './cesium/useCesiumModel';
@@ -70,9 +71,21 @@ export function CesiumOverlay({
   const invalidateSolarRef = useRef<() => void>(() => {});
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Non-fatal basemap trouble — a custom tile server the browser is not allowed
+   * to read (#2685). Deliberately NOT `status: 'error'`: the overlay is
+   * otherwise working (model, terrain, camera sync all live) and the hooks below
+   * key off `status`, so failing the whole overlay over imagery would tear down
+   * a working world context.
+   */
+  const [basemapWarning, setBasemapWarning] = useState<string | null>(null);
 
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
   const dataSource = useViewerStore((s) => s.cesiumDataSource);
+  const storedCustomBasemap = useViewerStore((s) => s.cesiumCustomBasemap);
+  // Null unless the custom source is actually selected, so editing the tile URL
+  // while another basemap is showing does not tear down and rebuild the viewer.
+  const customBasemap = dataSource === 'custom' ? storedCustomBasemap : null;
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
   const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
@@ -90,6 +103,7 @@ export function CesiumOverlay({
     let cancelled = false;
     setStatus('loading');
     setError(null);
+    setBasemapWarning(null);
 
     (async () => {
       try {
@@ -186,6 +200,36 @@ export function CesiumOverlay({
             });
             if (!cancelled) viewer.imageryLayers.addImageryProvider(osm);
           } catch (e) { console.warn('[CesiumOverlay] OSM base map unavailable:', e); }
+        } else if (dataSource === 'custom') {
+          // User-supplied XYZ tile template (#2685). Same globe treatment as
+          // the OSM map: the imagery IS the context, draped over terrain.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          if (!customBasemap) {
+            // Reachable only if the picker and the stored basemap disagree; the
+            // globe would otherwise come up blank with no explanation.
+            setBasemapWarning('No custom basemap is configured. Add a tile URL in Sun & Sky → Base map.');
+          } else {
+            try {
+              const provider = new Cesium.UrlTemplateImageryProvider(
+                toUrlTemplateProviderOptions(customBasemap),
+              );
+              // The failure this catches is the one that otherwise looks like
+              // nothing: a server without `Access-Control-Allow-Origin` never
+              // produces a response, so Cesium reports a RequestErrorEvent with
+              // no `statusCode` and the globe just stays empty. Cesium retries
+              // and re-raises per tile, so the listener fires repeatedly —
+              // setting the same string is a no-op for React.
+              provider.errorEvent.addEventListener((event: unknown) => {
+                const message = classifyTileProviderError(event);
+                if (message) setBasemapWarning(message);
+              });
+              if (!cancelled) viewer.imageryLayers.addImageryProvider(provider);
+            } catch (e) {
+              console.warn('[CesiumOverlay] Custom basemap unavailable:', e);
+              setBasemapWarning('That tile URL could not be used as a basemap.');
+            }
+          }
         } else if (dataSource === 'osm-buildings') {
           // OSM massing context: keep the globe with the satellite base map —
           // the extruded buildings sit ON TOP of the imagery, and the globe
@@ -246,8 +290,9 @@ export function CesiumOverlay({
       tilesetRef.current = null;
       invalidateSolarRef.current();
       setStatus('idle');
+      setBasemapWarning(null);
     };
-  }, [cesiumEnabled, ionToken, terrainEnabled, dataSource]);
+  }, [cesiumEnabled, ionToken, terrainEnabled, dataSource, customBasemap]);
 
   // ─── Coordinate bridge: georeference to a place on the globe ────────────
   // After the viewer effect (it needs a live viewer for terrain sampling) and
@@ -324,6 +369,14 @@ export function CesiumOverlay({
           {error}
         </div>
       )}
+      {basemapWarning && (
+        <div
+          role="status"
+          className="absolute top-2 left-1/2 -translate-x-1/2 z-10 max-w-md px-3 py-1.5 bg-amber-900/80 backdrop-blur-sm rounded text-xs text-amber-100"
+        >
+          {basemapWarning}
+        </div>
+      )}
     </>
   );
 }
@@ -341,8 +394,9 @@ async function addDataSourceLayer(
 ): Promise<InstanceType<typeof import('cesium').Cesium3DTileset> | null> {
   try {
     switch (dataSource) {
-      case 'osm-map': {
-        // Plain OSM base map: the imagery layer is the whole context (added in
+      case 'osm-map':
+      case 'custom': {
+        // Flat imagery bases: the imagery layer is the whole context (added in
         // Effect 1). There is no 3D tileset to place — return null so solar
         // shadows fall on the globe alone.
         return null;

@@ -18,8 +18,13 @@ import type { StateCreator } from 'zustand';
 import type { MapConversion } from '@ifc-lite/parser';
 
 import { clearTerrainElevationCache } from '@/lib/geo/terrain-elevation';
+import {
+  decodeCustomBasemap,
+  encodeCustomBasemap,
+  type CustomBasemap,
+} from '@/lib/geo/custom-basemap';
 
-export type CesiumDataSource = 'google-photorealistic' | 'osm-buildings' | 'osm-map';
+export type CesiumDataSource = 'google-photorealistic' | 'osm-buildings' | 'osm-map' | 'custom';
 
 export interface CesiumPlacementDraft {
   eastings: number;
@@ -35,6 +40,12 @@ export interface CesiumSlice {
   cesiumAvailable: boolean;
   cesiumEnabled: boolean;
   cesiumDataSource: CesiumDataSource;
+  /**
+   * User-supplied XYZ tile basemap for the `'custom'` data source (#2685).
+   * `null` when none is configured — the `'custom'` source is then unusable and
+   * the picker says so rather than rendering an empty globe.
+   */
+  cesiumCustomBasemap: CustomBasemap | null;
   /** Resolved Cesium ion access token (user override or build-time default). */
   cesiumIonToken: string;
   /** Terrain enabled (Cesium World Terrain). */
@@ -98,6 +109,8 @@ export interface CesiumSlice {
   setCesiumEnabled: (enabled: boolean) => void;
   toggleCesium: () => void;
   setCesiumDataSource: (source: CesiumDataSource) => void;
+  /** Save (or clear, with `null`) the custom XYZ basemap. Persists per browser. */
+  setCesiumCustomBasemap: (basemap: CustomBasemap | null) => void;
   setCesiumIonToken: (token: string) => void;
   setCesiumTerrainEnabled: (enabled: boolean) => void;
   setCesiumTerrainHeight: (height: number | null) => void;
@@ -122,6 +135,19 @@ export interface CesiumSlice {
 
 const STORAGE_KEY_ION_TOKEN = 'ifc-lite:cesium-ion-token';
 const STORAGE_KEY_DATA_SOURCE = 'ifc-lite:cesium-data-source';
+/**
+ * The custom XYZ basemap is stored **per browser**, alongside the ion token and
+ * the data-source choice above — not in the project.
+ *
+ * Reasoning (issue #2685): a tile URL is a property of the person viewing, not
+ * of the building. It routinely embeds a personal API key, so a value that
+ * travelled with a shared project would hand that key to everyone the project
+ * reaches; and the project artifact here is an IFC file, which has no viewer
+ * preference channel that inventing one for a basemap URL would be a
+ * proportionate use of. The stored value is a single JSON object, so lifting it
+ * into a project document later is an addition, not a migration.
+ */
+const STORAGE_KEY_CUSTOM_BASEMAP = 'ifc-lite:cesium-custom-basemap';
 
 /**
  * Default Cesium ion token provided at build time.
@@ -151,11 +177,27 @@ function saveToStorage(key: string, value: string): void {
   } catch { /* storage unavailable */ }
 }
 
+function removeFromStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch { /* storage unavailable */ }
+}
+
+/** Where the picker lands when the `'custom'` source loses its basemap. */
+const FALLBACK_DATA_SOURCE: CesiumDataSource = 'google-photorealistic';
+
+function loadCustomBasemap(): CustomBasemap | null {
+  return decodeCustomBasemap(loadFromStorage(STORAGE_KEY_CUSTOM_BASEMAP, ''));
+}
+
 function loadDataSource(): CesiumDataSource {
-  const stored = loadFromStorage(STORAGE_KEY_DATA_SOURCE, 'google-photorealistic');
-  return stored === 'osm-buildings' || stored === 'osm-map'
-    ? stored
-    : 'google-photorealistic';
+  const stored = loadFromStorage(STORAGE_KEY_DATA_SOURCE, FALLBACK_DATA_SOURCE);
+  if (stored === 'osm-buildings' || stored === 'osm-map') return stored;
+  // 'custom' only survives a reload while a valid basemap is still stored;
+  // otherwise the overlay would come up on a source with nothing behind it and
+  // render an empty globe.
+  if (stored === 'custom' && loadCustomBasemap()) return 'custom';
+  return FALLBACK_DATA_SOURCE;
 }
 
 /** Resolve the Cesium ion token: user override > build-time default */
@@ -178,6 +220,7 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
   cesiumAvailable: false,
   cesiumEnabled: false,
   cesiumDataSource: loadDataSource(),
+  cesiumCustomBasemap: loadCustomBasemap(),
   cesiumIonToken: resolveIonToken(),
   cesiumTerrainEnabled: true,
   cesiumTerrainHeight: null,
@@ -214,6 +257,22 @@ export const createCesiumSlice: StateCreator<CesiumSlice & CesiumCrossSliceState
       cesiumTerrainSource: null,
       cesiumTerrainSaveHeight: null,
       cesiumTerrainClipY: null,
+    });
+  },
+  setCesiumCustomBasemap: (basemap) => {
+    if (basemap) {
+      saveToStorage(STORAGE_KEY_CUSTOM_BASEMAP, encodeCustomBasemap(basemap));
+      set({ cesiumCustomBasemap: basemap });
+      return;
+    }
+    removeFromStorage(STORAGE_KEY_CUSTOM_BASEMAP);
+    // Clearing the basemap must also leave the `'custom'` source, or the
+    // overlay stays selected on a source with nothing to draw. Persist the
+    // fallback too, so the next reload agrees with what is on screen now.
+    set((s) => {
+      if (s.cesiumDataSource !== 'custom') return { cesiumCustomBasemap: null };
+      saveToStorage(STORAGE_KEY_DATA_SOURCE, FALLBACK_DATA_SOURCE);
+      return { cesiumCustomBasemap: null, cesiumDataSource: FALLBACK_DATA_SOURCE };
     });
   },
   setCesiumIonToken: (token) => {

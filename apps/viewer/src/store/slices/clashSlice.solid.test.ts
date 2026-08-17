@@ -140,13 +140,18 @@ describe('ClashSlice focused-clash presentation teardown', () => {
     assertNothingDrawn('clearClashFocus');
   });
 
-  it('clearClashFocus invalidates an in-flight solid compute (seq bump)', () => {
+  // Producer half only: this slice is exercised in isolation, with no hook and
+  // no kernel, so "a compute resolves after teardown" is not a state it can
+  // reach. It pins the token bump; the join — a real compute in flight across
+  // `clearClashFocus` — is in
+  // `hooks/useClash.solid-inflight-invalidation.test.tsx`.
+  it('clearClashFocus bumps clashSolidRequestSeq, the token an in-flight solid compute is checked against', () => {
     const seq = state.clashSolidRequestSeq;
     state.setClashSolidComputing();
     state.clearClashFocus();
     assert.ok(
       state.clashSolidRequestSeq > seq,
-      'a compute that resolves after teardown must be dropped, not painted',
+      'without the bump, a compute that resolves after teardown keeps its request token valid and paints',
     );
   });
 

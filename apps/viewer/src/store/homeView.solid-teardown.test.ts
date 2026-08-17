@@ -60,7 +60,12 @@ describe('resetVisibilityForHomeFromStore drops the intersection-solid presentat
     assert.equal(s.clashSolidMesh, null, 'the stale solid mesh must not survive the Home reset');
   });
 
-  it('invalidates an in-flight solid compute (clashSolidRequestSeq bumps)', () => {
+  // Producer half only: this seeds `clashSolidStatus: 'computing'` as a plain
+  // string, so no compute is in flight and nothing here can observe whether a
+  // stale one still paints. It pins that the reset BUMPS the token; that the
+  // bump actually stops a real landing compute is pinned end-to-end in
+  // `hooks/useClash.solid-inflight-invalidation.test.tsx`.
+  it('bumps clashSolidRequestSeq, the token an in-flight solid compute is checked against', () => {
     useViewerStore.setState({ clashSelectedId: 'clash-old', clashSolidStatus: 'computing', clashSolidMesh: null });
     const seqBefore = useViewerStore.getState().clashSolidRequestSeq;
 

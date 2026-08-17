@@ -22,7 +22,7 @@
     "@ifc-lite/embed-protocol": "workspace:^"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

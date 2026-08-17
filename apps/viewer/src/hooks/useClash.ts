@@ -303,7 +303,31 @@ export function useClash() {
       const store = model.ifcDataStore;
       const meshes = model.geometryResult?.meshes;
       if (!store || !meshes || meshes.length === 0) continue;
-      const built = elementsFromStep({ store, meshes, modelId, federation });
+      // `useIfcLoader` shifts every `mesh.expressId` into the GLOBAL id space by
+      // this model's `idOffset` while `ifcDataStore` stays LOCAL, so the adapter
+      // has to be told the offset or it addresses the store with ids that are
+      // not in it.
+      //
+      // `model.idOffset` is the right number to hand over, and it agrees with
+      // `federation.toGlobalId` (which resolves through the `federationRegistry`
+      // singleton, not through this map) because both come from the SAME
+      // `registerModelOffset` call: `useIfcLoader` stores that return value as
+      // `idOffset` on the model record at the same moment it shifts the meshes
+      // by it. A PRIMARY load cannot skew them either — it runs
+      // `clearAllModels()` first, which calls `federationRegistry.clear()`, so
+      // the primary always registers at offset 0 and its meshes are left
+      // unshifted. Federated IFCX layers (`useIfcFederation`) likewise keep
+      // `idOffset: 0` and unshifted meshes.
+      //
+      // Only the secondary (federated add) path assigns a non-zero offset, and
+      // it is the one path that shifts the meshes.
+      const built = elementsFromStep({
+        store,
+        meshes,
+        modelId,
+        federation,
+        meshIdOffset: model.idOffset ?? 0,
+      });
       elements.push(...built.elements);
       for (const key of built.exclusions) exclusions.add(key);
       // Only models that actually CONTRIBUTED elements — the condition the

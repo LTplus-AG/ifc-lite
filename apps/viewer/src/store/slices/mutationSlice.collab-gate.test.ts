@@ -163,6 +163,36 @@ describe('mutationSlice — mirrors are handed the EDITED model, not the active 
     s.setAttribute('edited', 1, 'Name', 'x');
     assert.deepStrictEqual(mirrors, []);
   });
+
+  /**
+   * `readCollabPlacement` is the placement half of the same rule, and the one
+   * that was ungated when this PR was first pushed. `readEntityPosition` is the
+   * GizmoOverlay's "is this entity movable?" gate and `readEntityRotation` the
+   * rotate card's, so handing either the ACTIVE model would put the move gizmo
+   * on a PRIVATE model's entities — and dragging it runs the write.
+   *
+   * Both reach the collab fallback here because the model has no registered
+   * `ifcDataStore`, which is the real "no STEP chain" branch: with no store
+   * there is nothing for `resolvePlacementChain` to walk.
+   */
+  it('readEntityPosition / readEntityRotation forward their own modelId to readCollabPlacement', () => {
+    const seen: unknown[] = [];
+    const { state } = buildSlice(true, 'edited');
+    (state() as unknown as Record<string, unknown>).readCollabPlacement = (modelId: unknown) => {
+      seen.push(modelId);
+      return null;
+    };
+    const s = state();
+
+    s.readEntityPosition('edited', 1);
+    s.readEntityRotation('edited', 1);
+
+    assert.deepStrictEqual(
+      seen,
+      ['edited', 'edited'],
+      'the placement read must name the model the entity id came from',
+    );
+  });
 });
 
 /**

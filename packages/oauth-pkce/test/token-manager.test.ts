@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { TokenManager } from '../src/token-manager.js';
 import { exchangeAuthorizationCode } from '../src/token-exchange.js';
 import { NotSignedInError, TokenExchangeError } from '../src/errors.js';
-import type { TokenStorage } from '../src/types.js';
+import type { TokenSet, TokenStorage } from '../src/types.js';
 
 function createMemoryStorage(): TokenStorage {
   const map = new Map<string, string>();
@@ -791,14 +791,54 @@ describe('TokenManager: clear()/setTokens() landing while getValidAccessToken() 
 });
 
 describe('TokenManager: a stored entry that parses but is not a TokenSet', () => {
+  /**
+   * A `TokenStorage` whose writes take a macrotask to land, which is what a
+   * real `IndexedDB` or network-backed store costs and what the plain
+   * in-memory double above does not model.
+   *
+   * The latency is the point. Seeding used to be `void storage.set(...)`,
+   * discarding the promise, and every assertion in this block therefore ran
+   * against whatever storage held at that moment. With a zero-latency `set`
+   * that happened to be the seeded value, so the block looked green. With
+   * one macrotask of latency it is an *empty* store, and all 21 "no stored
+   * session" assertions below still pass — they pass with a perfectly valid
+   * `TokenSet` substituted into the malformed table too, because "nothing
+   * stored" and "malformed entry rejected" are indistinguishable from
+   * outside. Negative assertions cannot police their own seeding.
+   *
+   * Keeping the latency here is what makes dropping the `await` observable:
+   * the positive control at the end of this block ("still accepts a
+   * well-formed entry") is the assertion that reads a value back, and it is
+   * the one that reds. Scoped to this block deliberately — the timing tests
+   * further up are written against the zero-latency double and are sensitive
+   * to the extra tick.
+   */
+  function createLatentMemoryStorage(): TokenStorage {
+    const map = new Map<string, string>();
+    return {
+      async get(key) {
+        return map.get(key);
+      },
+      async set(key, value) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        map.set(key, value);
+      },
+      async delete(key) {
+        map.delete(key);
+      },
+    };
+  }
+
   /** Seeds storage directly, the way a corrupted/truncated `localStorage`
    *  entry, a key collision with some other writer, or a `TokenSet` written
    *  by a future version with a different shape would appear on restore —
    *  i.e. bypassing `setTokens()`, which is the only writer whose output is
-   *  known-good. */
-  function managerOverRawEntry(raw: string): TokenManager {
-    const storage = createMemoryStorage();
-    void storage.set('acct-1', raw);
+   *  known-good. The seeding write is awaited; see
+   *  `createLatentMemoryStorage` above for why that is load-bearing rather
+   *  than tidiness. */
+  async function managerOverRawEntry(raw: string): Promise<TokenManager> {
+    const storage = createLatentMemoryStorage();
+    await storage.set('acct-1', raw);
     return new TokenManager({
       storageKey: 'acct-1',
       storage,
@@ -836,12 +876,13 @@ describe('TokenManager: a stored entry that parses but is not a TokenSet', () =>
 
   for (const [label, raw] of malformed) {
     it(`reports no stored session for ${label}`, async () => {
-      const stored = await managerOverRawEntry(raw).getTokens();
+      const stored = await (await managerOverRawEntry(raw)).getTokens();
       expect(stored).toBeUndefined();
     });
 
     it(`throws NotSignedInError rather than serving a broken token for ${label}`, async () => {
-      await expect(managerOverRawEntry(raw).getValidAccessToken()).rejects.toThrow(NotSignedInError);
+      const manager = await managerOverRawEntry(raw);
+      await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
     });
   }
 
@@ -849,7 +890,7 @@ describe('TokenManager: a stored entry that parses but is not a TokenSet', () =>
     // `.length === 0` passes a whitespace-only string, which produces the
     // header `Authorization: Bearer    ` — the same unattributable 401 as
     // `Bearer undefined`, which is exactly what this guard exists to stop.
-    const manager = managerOverRawEntry(JSON.stringify({ accessToken: '   \t\n ', expiresAt: 9_000_000 }));
+    const manager = await managerOverRawEntry(JSON.stringify({ accessToken: '   \t\n ', expiresAt: 9_000_000 }));
 
     expect(await manager.getTokens()).toBeUndefined();
     await expect(manager.getValidAccessToken()).rejects.toThrow(NotSignedInError);
@@ -883,9 +924,79 @@ describe('TokenManager: a stored entry that parses but is not a TokenSet', () =>
     // the legitimately minimal shape: `refreshToken`, `scope` and `tokenType`
     // are all optional on `TokenSet`, and a provider that issues a
     // non-refreshable token writes exactly this.
-    const manager = managerOverRawEntry(JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000 }));
+    const manager = await managerOverRawEntry(JSON.stringify({ accessToken: 'a1', expiresAt: 9_000_000 }));
 
     expect(await manager.getTokens()).toEqual({ accessToken: 'a1', expiresAt: 9_000_000 });
     expect(await manager.getValidAccessToken()).toBe('a1');
   });
+});
+
+describe('the exchange and the storage guard agree on what counts as an access token', () => {
+  // These two predicates live in different files and disagreed. The exchange
+  // in `token-exchange.ts` rejected on `.length === 0`; `isTokenSet` in
+  // `token-manager.ts` rejects on `.trim().length === 0`. Every string the
+  // two disagree about is a sign-in that *succeeds*, persists, and is then
+  // read back as "no session" on the very next call — the user watches
+  // sign-in complete and is signed out immediately, with nothing anywhere
+  // naming the cause. `"   "` was such a string.
+  //
+  // Pinned as an agreement rather than as two independent assertions on
+  // purpose: the defect was not either predicate on its own, it was the gap
+  // between them, and a future loosening of one side has to move the other
+  // or land here.
+  const candidates: ReadonlyArray<readonly [string, string]> = [
+    ['an ordinary token', 'a1'],
+    ['a token with surrounding whitespace', ' padded '],
+    ['an empty token', ''],
+    ['spaces only', '   '],
+    ['tabs and newlines only', '\t\n'],
+    // Escaped rather than written literally: JavaScript's trim() treats
+    // U+00A0 as whitespace, so this is a real case, and a literal one
+    // would be invisible to a reader of the diff.
+    ['a non-breaking space only', '\u00a0'],
+  ];
+
+  for (const [label, candidate] of candidates) {
+    it(`treats ${label} the same way on both sides`, async () => {
+      // Side 1: does the token endpoint's answer survive the exchange?
+      let exchanged: TokenSet | undefined;
+      try {
+        exchanged = await exchangeAuthorizationCode({
+          tokenEndpoint: 'https://auth.example.com/token',
+          clientId: 'client-1',
+          redirectUri: 'https://app.example.com/callback',
+          code: 'auth-code',
+          codeVerifier: 'verifier-value',
+          fetch: (async () =>
+            jsonResponse({ access_token: candidate, expires_in: 3600 })) as unknown as typeof fetch,
+          now: () => 1_000_000,
+        });
+      } catch (error) {
+        expect(error).toBeInstanceOf(TokenExchangeError);
+      }
+
+      // Side 2: does the same string survive a storage round trip?
+      const storage = createMemoryStorage();
+      const manager = new TokenManager({
+        storageKey: 'acct-1',
+        storage,
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        fetch: (async () => {
+          throw new Error('no request should be issued while reading a stored entry');
+        }) as unknown as typeof fetch,
+        now: () => 1_000_000,
+      });
+      await storage.set('acct-1', JSON.stringify({ accessToken: candidate, expiresAt: 9_000_000 }));
+      const readBack = await manager.getTokens();
+
+      expect(exchanged !== undefined).toBe(readBack !== undefined);
+
+      // And when both accept it, neither may quietly rewrite the credential:
+      // trimming a token that has content would hand the provider a
+      // different string from the one it issued.
+      if (exchanged) expect(exchanged.accessToken).toBe(candidate);
+      if (readBack) expect(readBack.accessToken).toBe(candidate);
+    });
+  }
 });

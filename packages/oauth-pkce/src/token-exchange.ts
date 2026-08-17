@@ -127,7 +127,17 @@ async function requestToken(
     throw new TokenExchangeError(`token endpoint returned ${response.status}${detail}`, response.status);
   }
 
-  if (!parsed || typeof parsed.access_token !== 'string' || parsed.access_token.length === 0) {
+  // Non-whitespace, not merely non-empty, and the two are not
+  // interchangeable here. `TokenManager`'s `isTokenSet` reads back with
+  // `.trim().length === 0`, so a `"   "` access token accepted at this end
+  // is written to storage and then read back as *no session*: the exchange
+  // reports success, the caller believes it is signed in, and the very next
+  // `getTokens()` throws `NotSignedInError` with nothing naming the cause.
+  // The two sides have to agree, and the strict form is the correct one to
+  // agree on — `"   "` produces the header `Authorization: Bearer    ` and a
+  // 401 the caller cannot attribute to anything. Rejecting here reports the
+  // failure once, at its cause.
+  if (!parsed || typeof parsed.access_token !== 'string' || parsed.access_token.trim().length === 0) {
     throw new TokenExchangeError('token endpoint response is missing "access_token"');
   }
 

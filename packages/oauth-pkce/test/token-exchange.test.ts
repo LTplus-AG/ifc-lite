@@ -126,6 +126,46 @@ describe('exchangeAuthorizationCode', () => {
       }),
     ).rejects.toThrow(TokenExchangeError);
   });
+
+  it('rejects a whitespace-only access_token, not just an empty one', async () => {
+    // The check here was `.length === 0`, which passes `"   "`. That is
+    // unusable as a bearer credential — it produces the header
+    // `Authorization: Bearer    ` and a 401 nothing can attribute — and it
+    // is also rejected by `TokenManager`'s `isTokenSet` on the way back out
+    // of storage, so accepting it here meant a sign-in that succeeded and a
+    // session that was gone by the next read. See the cross-file agreement
+    // suite in `token-manager.test.ts`.
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: '   \t\n ', expires_in: 3600 }));
+    await expect(
+      exchangeAuthorizationCode({
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        redirectUri: 'https://app.example.com/callback',
+        code: 'auth-code',
+        codeVerifier: 'verifier-value',
+        fetch: fetchMock as unknown as typeof fetch,
+      }),
+    ).rejects.toThrow(TokenExchangeError);
+  });
+
+  it('keeps a non-blank access token exactly as sent, surrounding whitespace included', async () => {
+    // The blank check must not turn into a trim of the credential itself:
+    // whitespace is only grounds for rejecting a token that is *nothing but*
+    // whitespace, never grounds for rewriting one that has content. A
+    // silently trimmed token would be a different credential from the one
+    // the provider issued.
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: ' padded ', expires_in: 3600 }));
+    const tokens = await exchangeAuthorizationCode({
+      tokenEndpoint: 'https://auth.example.com/token',
+      clientId: 'client-1',
+      redirectUri: 'https://app.example.com/callback',
+      code: 'auth-code',
+      codeVerifier: 'verifier-value',
+      fetch: fetchMock as unknown as typeof fetch,
+    });
+
+    expect(tokens.accessToken).toBe(' padded ');
+  });
 });
 
 describe('provider error text in a token-endpoint failure is bounded and stripped', () => {
@@ -230,5 +270,24 @@ describe('refreshAccessToken', () => {
 
     expect(tokens.accessToken).toBe('access-2');
     expect(tokens.expiresAt).toBe(60_000);
+  });
+
+  it('rejects a whitespace-only access_token from the refresh grant too', async () => {
+    // `refreshAccessToken` and `exchangeAuthorizationCode` share
+    // `requestToken`, so this is the same guard — but the consequence is
+    // worse on this path. A refresh result is written back over a working
+    // session by `TokenManager.refresh`, so a blank token here signs out a
+    // user who was already signed in, mid-session, with no interaction to
+    // attribute it to.
+    const fetchMock = vi.fn(async () => jsonResponse({ access_token: ' ', expires_in: 60 }));
+    await expect(
+      refreshAccessToken({
+        tokenEndpoint: 'https://auth.example.com/token',
+        clientId: 'client-1',
+        refreshToken: 'refresh-1',
+        fetch: fetchMock as unknown as typeof fetch,
+        now: () => 0,
+      }),
+    ).rejects.toThrow(TokenExchangeError);
   });
 });

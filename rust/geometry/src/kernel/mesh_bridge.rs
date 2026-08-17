@@ -13,7 +13,7 @@ use super::signed_volume::signed_volume6;
 use crate::mesh::Mesh;
 
 /// f32-near-coplanar reconciliation snap grid, in the CALLER's unit — NOT
-/// metres (#2684): 15 µm on the METRE path (`router/layers`), 15 nm on the
+/// metres (#2684): 15 µm on the METRE path (`router/voids`), 15 nm on the
 /// FILE-UNIT boolean path, where f32 import noise is ~7.6 µm either way, so a
 /// millimetre file's snap moves nothing. `csg/plane_eps.rs` records the same
 /// divergence for the clipper's floor; `tests/snap_grid_unit_denomination.rs`

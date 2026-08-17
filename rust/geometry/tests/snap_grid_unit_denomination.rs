@@ -13,11 +13,17 @@
 //!
 //! WHAT IS ESTABLISHED HERE, by measurement rather than by argument:
 //!
-//! 1. f32 import noise is PHYSICALLY INVARIANT. The same physical point carries
-//!    the same physical ULP whether the file says metres or millimetres (7.63 µm
-//!    vs 7.81 µm at 66.8 m — they differ only by which binade the mantissa lands
-//!    in, not by the unit). f32 is a RELATIVE precision, and the physical
-//!    coordinate is the same in both files.
+//! 1. f32 import noise is physically invariant TO WITHIN A FACTOR OF 2. The same
+//!    physical point carries near-enough the same physical ULP whether the file
+//!    says metres or millimetres, because f32 is a RELATIVE precision and the
+//!    physical coordinate is identical. The residue is binade alignment: 1000 is
+//!    not a power of two, so the two coordinates land 2^9 or 2^10 apart in
+//!    exponent and the ratio is exactly 2^Δ/1000 ∈ {1.024, 1.953}. Swept over
+//!    200k log-uniform magnitudes from 1 cm to 10 km: **1.024x for ~96.5% of
+//!    magnitudes, 1.953x for the other ~3.5%** — the worst case landing at
+//!    64.77 m, one binade below this file's 66.8 m probe. So "invariant" is the
+//!    honest word only with that bound attached, which is why the assertion
+//!    below is `< 2.0` and not `≈ 1`.
 //!
 //! 2. `SNAP_GRID` is NOT physically invariant. It is 15.26 µm in a metre file
 //!    and 15.26 nm in a millimetre one — 1000x, decided by authoring convention.
@@ -31,7 +37,18 @@
 //! THE CONCLUSION THAT FOLLOWS: since the noise being absorbed is physically
 //! invariant, the grid absorbing it must be physically invariant too. That
 //! argues for a `unit_scale`-relative grid (fixed PHYSICAL size), not the
-//! current file-unit-relative one (fixed RELATIVE precision).
+//! current file-unit-relative one (fixed RELATIVE precision). The ≤2x binade
+//! wobble in point 1 does not weaken this: it is a factor of two against a
+//! factor of a thousand, and a millimetre file's grid/noise stays below 0.004
+//! at every building-scale magnitude either way.
+//!
+//! HOW THIS FILE GOES STALE, since the tripwires below cannot see every fix.
+//! Both of them probe the KERNEL-visible grid, via `subtract` and via the
+//! mirrored constant. A fix at the SEAM instead — scaling operands to metres
+//! inside `BooleanProcessor` before the kernel, leaving `mesh_to_tris` and
+//! `SNAP_GRID` untouched — would fix production while leaving all three tests
+//! green and this header quietly wrong. If you fix #2684 that way, update this
+//! file by hand; nothing here will tell you to.
 //!
 //! WHY THAT FIX IS NOT IN THIS FILE: `SNAP_GRID` must stay a POWER OF TWO or the
 //! snap `(c/G).round()*G` stops being an exact f64 op and the kernel loses
@@ -214,8 +231,15 @@ fn snap_grid_constant_has_not_moved() {
 fn f32_import_noise_is_physically_invariant_but_the_snap_grid_is_not() {
     // The design argument for #2684, reduced to two numbers per unit.
     //
-    // If this test ever fails on the NOISE half, the premise of the whole issue
-    // is wrong and the recommendation in this file's header must be revisited.
+    // HONESTY NOTE: the first two assertions here are closer to executable
+    // documentation than to guards. `noise_ratio < 2.0` holds for every
+    // representable coordinate (the ratio is exactly 2^Δ/1000 for Δ ∈ {9,10},
+    // so 1.024 or 1.953 and nothing else), and `grid_ratio ≈ 1000` cancels
+    // SNAP_GRID entirely — it reduces to METRE_FILE/MILLIMETRE_FILE. Neither
+    // can realistically fail. They are here to state the premise in a form the
+    // compiler checks rather than to catch a regression; the teeth of this file
+    // are the third assertion below and the sibling tests, both of which were
+    // mutation-verified to bite.
     let noise_m = ulp_metres(66.8, METRE_FILE);
     let noise_mm = ulp_metres(66_800.0, MILLIMETRE_FILE);
 

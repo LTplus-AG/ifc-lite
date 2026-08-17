@@ -34,7 +34,12 @@ import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometr
 import { useViewerStore } from '@/store';
 import { rememberFederationIdentity } from '@/lib/clash/federation-identity.js';
 import { elementPairExclusion } from '@/lib/clash/exclusions.js';
-import { CLASH_SUPERSEDED_MESSAGE, useClash } from './useClash.js';
+import {
+  CLASH_MODEL_UNLOADED_MESSAGE,
+  CLASH_REF_UNRESOLVED_MESSAGE,
+  CLASH_SUPERSEDED_MESSAGE,
+  useClash,
+} from './useClash.js';
 
 // ─── Fixture: two walls, meshed as overlapping unit boxes ───────────────────
 
@@ -396,6 +401,12 @@ describe('clash results are usable in a collaborative room', () => {
     const selected = [...useViewerStore.getState().selectedEntitiesSet].sort();
     assert.deepEqual(selected, ['B:1', 'B:2'],
       'global 101/102 must resolve to LOCAL 1/2 (idOffset subtracted), and 1099 to nothing');
+    // The 1099 half is refused because model B, though loaded, does not own the
+    // number. That refusal used to be SILENT while the supersede refusal beside
+    // it set a message, so the row went dead with nothing on screen — the
+    // asymmetry that reads as "the click is broken" (#2697 review).
+    assert.equal(useViewerStore.getState().clashError, CLASH_REF_UNRESOLVED_MESSAGE,
+      'a ref its own loaded model cannot answer for must be refused OUT LOUD');
   });
 
   /**
@@ -475,6 +486,116 @@ describe('clash results are usable in a collaborative room', () => {
     assert.equal(s.clashSelectedId, 'c1', 'the resolvable half must still focus the row');
     assert.deepEqual([...(s.isolatedEntities ?? [])], [1],
       'only the still-valid element is isolated — the superseded one is not guessed at');
+  });
+
+  /**
+   * A model the identity NAMES and that is no longer loaded is known-gone, not
+   * unknown — and must be refused rather than fall through to the registry.
+   *
+   * `refOf`'s last resort, when `ref.model` is not in `state.models`, is
+   * `fromGlobalId` — a range search over the `federationRegistry` singleton.
+   * The reasoning that made that safe was that the two paths which drop a model
+   * unregister it in the same action, so the registry has forgotten it too and
+   * the search answers `null`. That holds only for a model the registry ever
+   * HELD. The collab room model is put into the store by `collabSlice`'s
+   * `upsertModel({ id: 'room:<id>', idOffset: 0 })` and never goes through
+   * `registerModelOffset`, so `removeModel` → `unregisterModel` is a no-op on
+   * it and there is nothing to forget — while a normally loaded file's
+   * registered range still covers the very same low numbers.
+   *
+   * Leaving a room (`collabSlice.ts`) is the ordinary way in: `removeModel`
+   * runs `endClashScenePresentation(..., 'model-removed')` → `clearClashFocus`,
+   * NOT `clearClash`, so the published result survives the room model and every
+   * row stays clickable. Clicking one then range-searched into a different
+   * file and isolated two of ITS elements, with no error — the same
+   * "mis-targeted beats dead" defect as the peer-edit case above, reached
+   * through absence instead of replacement.
+   */
+  it('a row whose model was REMOVED must refuse, not range-search into another file', async () => {
+    await seedRoom();
+    // A normally loaded local file, registered so the singleton owns its range.
+    // Registered first and at offset 0, so its range covers the room model's
+    // raw ids 1 and 2 — exactly the collision the fallback search walks into.
+    const other = await parse(TWO_WALLS);
+    useViewerStore.getState().registerModelOffset('A', 100);
+    useViewerStore.getState().upsertModel({
+      id: 'A',
+      name: 'A.ifc',
+      ifcDataStore: other,
+      geometryResult: geometry([]),
+      visible: true,
+      collapsed: false,
+      schemaVersion: 'IFC4',
+      loadedAt: Date.now(),
+      fileSize: 0,
+      idOffset: 0,
+      maxExpressId: 100,
+      loadState: 'complete',
+    });
+    assert.deepEqual(useViewerStore.getState().fromGlobalId(1), { modelId: 'A', expressId: 1 },
+      'setup sanity: the registry claims the room model\'s ids for the registered local file');
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const clash = useViewerStore.getState().clashResult?.clashes[0];
+    assert.ok(clash, 'the overlapping pair must be found');
+    assert.equal(clash!.a.model, ROOM_MODEL_ID, 'setup sanity: the pair was gathered from the room model');
+
+    // Leaving the room, verbatim: the room model is removed, the result is not.
+    await act(async () => { useViewerStore.getState().removeModel(ROOM_MODEL_ID); });
+    const afterRemove = useViewerStore.getState();
+    assert.equal(afterRemove.models.has(ROOM_MODEL_ID), false, 'setup sanity: the room model is gone');
+    assert.ok(afterRemove.clashRawResult, 'setup sanity: removeModel keeps the result — it only ends the focus');
+
+    await act(async () => { api!.focusClash(clash!, 'isolate'); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, null,
+      'a row naming a model that is GONE must not focus — its numbers belong to nothing loaded');
+    assert.equal(s.isolatedEntities, null,
+      'and must isolate nothing: isolating another file\'s elements for a room row is a lie');
+    assert.equal(s.clashError, CLASH_MODEL_UNLOADED_MESSAGE,
+      'the refusal must be explained, not silent — and as UNLOADED, not "replaced": '
+      + 'nothing was replaced, and a re-run cannot bring back a model that is not there');
+  });
+
+  /**
+   * The counter-example to the test above: refusing a NAMED-but-gone model must
+   * not spread to a model the identity has no entry for. The run took no
+   * elements from such a model, so it holds no ref into it and nothing about
+   * its absence can invalidate a number. Unloading an unrelated file must leave
+   * every row of the surviving model working.
+   */
+  it('a model the result never referenced can be unloaded without disabling any row', async () => {
+    await seedRoom();
+    const unrelated = await parse(TWO_WALLS);
+    useViewerStore.getState().upsertModel({
+      id: 'unrelated',
+      name: 'unrelated.ifc',
+      ifcDataStore: unrelated,
+      geometryResult: geometry([]),
+      visible: true,
+      collapsed: false,
+      schemaVersion: 'IFC4',
+      loadedAt: Date.now(),
+      fileSize: 0,
+      idOffset: 500,
+      maxExpressId: 2,
+      loadState: 'complete',
+    });
+
+    await act(async () => { await api!.run([ALL_RULE]); });
+    const clash = useViewerStore.getState().clashResult?.clashes[0];
+    assert.ok(clash, 'the overlapping pair must be found');
+
+    await act(async () => { useViewerStore.getState().removeModel('unrelated'); });
+    await act(async () => { api!.focusClash(clash!, 'isolate'); });
+
+    const s = useViewerStore.getState();
+    assert.equal(s.clashSelectedId, clash!.id,
+      'unloading a model the result never referenced must not disable its rows');
+    assert.deepEqual([...(s.isolatedEntities ?? [])].sort(), [clash!.a.ref, clash!.b.ref].sort(),
+      'the pair must still isolate normally');
+    assert.equal(s.clashError, null, 'and nothing must be reported as superseded');
   });
 
   /**

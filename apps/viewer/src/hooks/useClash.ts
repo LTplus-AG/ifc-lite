@@ -87,6 +87,41 @@ const PAINT_FRAME_WAIT_MS = 250;
 export const CLASH_SUPERSEDED_MESSAGE =
   'The model data was replaced since this clash run, so these results no longer match it. Re-run detection.';
 
+/**
+ * Shown when a clash row is refused because the model it names is no longer
+ * LOADED (see `refOf`).
+ *
+ * Separate from {@link CLASH_SUPERSEDED_MESSAGE} because the two are different
+ * facts with different remedies, and the gate's caller can tell them apart for
+ * free — `state.models.has(ref.model)`. Telling a user whose room model left
+ * with them that "the model data was replaced" and they should re-run would be
+ * false on both halves: nothing was replaced, and a re-run over a federation
+ * that no longer contains the model cannot bring the row back. What can is
+ * loading the model again.
+ *
+ * The model is not NAMED in the message: `ClashElementRef.model` is a store id
+ * (`room:<roomId>`, or a load-time key), the display name lived on the model
+ * entry that has just been dropped from `state.models`, and a message quoting
+ * an internal id would be worse than one that quotes nothing.
+ */
+export const CLASH_MODEL_UNLOADED_MESSAGE =
+  'A model these clash results reference is no longer loaded, so its rows cannot be opened. Load it again, or re-run detection.';
+
+/**
+ * Shown when a clash row's model IS loaded but does not own the id the row
+ * carries (see `refOf`).
+ *
+ * The refusal itself is deliberate — a loaded model answers for its own ids or
+ * not at all, rather than letting a range search wander into another file. What
+ * was wrong was that it was SILENT, while the two refusals above set a message:
+ * the row went dead with nothing on screen, which reads as "the click is
+ * broken" (#2697 review). Distinct wording again because the remedy differs —
+ * there is nothing for the user to load or re-run away; the row is a record of
+ * an element this model no longer has.
+ */
+export const CLASH_REF_UNRESOLVED_MESSAGE =
+  'Some clash rows reference elements that are no longer in the model they were found in, so those rows cannot be opened.';
+
 interface SelectionRef {
   modelId: string;
   expressId: number;
@@ -609,26 +644,31 @@ export function useClash() {
    * validated at all. A ref that does not fit its own loaded model is now
    * `null` — inert and visible beats resolved and wrong.
    *
-   * The remaining fallback is not itself gated by identity: when the named model
-   * is absent there is no id space of its own left to compare against, and this
-   * is the behaviour that shipped before. For a model that was REGISTERED it is
-   * narrow — the two paths that drop one unregister it in the same action
-   * (`removeModel` → `federationRegistry.unregisterModel`, `clearAllModels` →
-   * `federationRegistry.clear()`), and `resetViewerState` does not touch
-   * `models` — so the registry has forgotten it too and the answer is `null`.
+   * The remaining fallback is reached only by a ref whose model the supersede
+   * gate below did not refuse — which, since that gate now answers `false` for a
+   * model its identity NAMES and that is gone, means a ref the result holds no
+   * identity for at all: a hand-built fixture, or a result published before
+   * identities existed. Those have nothing to compare against, and the registry
+   * is the only thing that can still answer them, so the pre-existing behaviour
+   * is kept for exactly that case.
    *
-   * That does NOT hold for a model the registry never held, which is precisely
-   * the class this resolver was fixed for. The collab room model is created by
-   * `upsertModel` with `idOffset: 0` and no `registerModelOffset` call
-   * (`collabSlice`), so `unregisterModel` is a no-op for it and there is nothing
-   * to forget. Leaving the room while a published clash result is kept drops
-   * `room:<roomId>` from `state.models` and sends its refs down this fallback,
-   * where `fromGlobalId` range-searches the registry and can land inside a
-   * DIFFERENT, still-loaded file — isolating and painting two of its elements,
-   * with no error. Established by review with an executed probe. Not closed
-   * here: this resolver's contract is which model answers for a ref while the
-   * named model is loaded, and the gap is one level up, in what keeps a result
-   * alive past its models.
+   * It used to be reached by every ref into an absent model, on the reasoning
+   * that the two paths which drop one unregister it in the same action
+   * (`removeModel` → `federationRegistry.unregisterModel`, `clearAllModels` →
+   * `federationRegistry.clear()`), so the registry had forgotten it too and the
+   * answer was `null` anyway. That does NOT hold for a model the registry never
+   * held, which is precisely the class this resolver was fixed for: the collab
+   * room model is created by `upsertModel` with `idOffset: 0` and no
+   * `registerModelOffset` call (`collabSlice`), so `unregisterModel` is a no-op
+   * for it and there is nothing to forget. Leaving the room while a published
+   * clash result is kept drops `room:<roomId>` from `state.models` and sent its
+   * refs down this fallback, where `fromGlobalId` range-searched the registry
+   * and landed inside a DIFFERENT, still-loaded file — isolating and painting
+   * two of its elements, with no error. Established by review with an executed
+   * probe, and closed one level up in `clashRefModelIsCurrent`: a named model
+   * that is gone is known-gone, and a known-gone model's refs are refused with
+   * the same message and the same "refuse, don't clear" reasoning as a
+   * superseded one.
    *
    * NOTE on exactness: this resolver is only as good as the `ref` it is handed.
    * Until #2704 it was handed a broken one for any federated model past the
@@ -679,13 +719,27 @@ export function useClash() {
     // `clashResult` is re-derived from it by every exclusion edit, so it is a
     // different object with no identity bound to it. Scoped to THIS ref's
     // model: a run's other models moving says nothing about this number.
+    const loaded = state.models.has(ref.model);
     if (!clashRefModelIsCurrent(state.clashRawResult, ref.model, state.models)) {
-      if (state.clashError !== CLASH_SUPERSEDED_MESSAGE) state.setClashError(CLASH_SUPERSEDED_MESSAGE);
+      // Two different facts reach this branch — the id space under the model id
+      // was replaced, or the model is gone — and only the second is knowable
+      // here, from `loaded`. See the two message doc blocks for why they are
+      // not worded the same.
+      const message = loaded ? CLASH_SUPERSEDED_MESSAGE : CLASH_MODEL_UNLOADED_MESSAGE;
+      if (state.clashError !== message) state.setClashError(message);
       return null;
     }
     // A LOADED model answers for its own ids or not at all — no range search
     // across other models. See "No fallback search across loaded models".
-    if (state.models.has(ref.model)) return state.resolveGlobalIdInModel(ref.model, ref.ref);
+    if (loaded) {
+      const resolved = state.resolveGlobalIdInModel(ref.model, ref.ref);
+      // Refusing silently here, while the branch above explains itself, is the
+      // asymmetry that reads as a broken click (#2697 review).
+      if (!resolved && state.clashError !== CLASH_REF_UNRESOLVED_MESSAGE) {
+        state.setClashError(CLASH_REF_UNRESOLVED_MESSAGE);
+      }
+      return resolved;
+    }
     // Model not loaded: there is no id space of its own to ask, so the registry
     // is the only thing that can still answer.
     return state.fromGlobalId(ref.ref);

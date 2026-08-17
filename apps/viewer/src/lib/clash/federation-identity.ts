@@ -220,11 +220,29 @@ export function rememberFederationIdentity(
  * it holds no ref). Unknown must never refuse — a false refusal is the inert
  * panel this whole PR exists to fix.
  *
- * A model that has LEFT `models` is not refused here either — there is no id
- * space left to compare, and `removeModel` unregisters it from the federation
- * registry in the same breath, so the caller's resolution simply finds nothing.
- * What this catches is the case that silently SUCCEEDS: the model still there,
- * under the same id, holding a different id space.
+ * A model that has LEFT `models` IS refused, and that is the one asymmetry
+ * with the paragraph above: absence is not the same kind of ignorance. A model
+ * the identity has no entry for is genuinely unknown to this result — the run
+ * took nothing from it, so no ref points into it and its state cannot make any
+ * number wrong. A model the identity NAMES and that is gone is known-gone: the
+ * result holds refs into an id space that is no longer loaded, and there is no
+ * honest answer for them.
+ *
+ * It used to return `true` here, on the reasoning that the two paths which drop
+ * a model unregister it from the federation registry in the same breath
+ * (`removeModel` → `unregisterModel`, `clearAllModels` → `clear()`), so the
+ * caller's fallback range search would simply find nothing. That holds only for
+ * a model the registry ever HELD. The collab room model is put into `models` by
+ * `collabSlice`'s `upsertModel({ id: 'room:<id>', idOffset: 0 })` and never goes
+ * through `registerModelOffset`, so `unregisterModel` is a no-op on it and there
+ * is nothing to forget — while a normally loaded file's registered range still
+ * covers the same low numbers. Leaving a room keeps the published result
+ * (`removeModel` ends the clash PRESENTATION, it does not clear the result), so
+ * the rows stayed clickable and range-searched into a different file, isolating
+ * and colouring two of ITS elements with no error at all (measured in review).
+ *
+ * So this catches two shapes, not one: the model still there under the same id
+ * holding a DIFFERENT id space, and the model that is no longer there at all.
  */
 export function clashRefModelIsCurrent(
   result: object | null | undefined,
@@ -235,6 +253,7 @@ export function clashRefModelIsCurrent(
   const identity = identities.get(result);
   if (!identity || !identity.has(modelId)) return true;
   const current = models.get(modelId);
-  if (!current) return true;
+  // Named by the identity and no longer loaded: known-gone, not unknown.
+  if (!current) return false;
   return identityToken(current) === identity.get(modelId);
 }

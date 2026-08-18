@@ -28,8 +28,26 @@ export interface BlobMeta {
   uploadedAt?: string;
 }
 
+/** Per-call options for {@link BlobStore.put}. */
+export interface BlobPutOptions {
+  /**
+   * Abort the upload.
+   *
+   * A HUNG upload is worse than a failed one (#2798). A rejection is counted,
+   * retried and can trip a caller's failure ceiling; a request that never
+   * settles produces no failure at all, so nothing retries, no ceiling trips,
+   * and a seed simply never resolves while the UI reports work in progress.
+   * That is absence being indistinguishable from success, which is what let
+   * the #2790 outage run for weeks.
+   *
+   * Implementations that cannot honour it must ignore it rather than throw:
+   * an in-memory store completes synchronously and has nothing to abort.
+   */
+  readonly signal?: AbortSignal;
+}
+
 export interface BlobStore {
-  put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta>;
+  put(bytes: Uint8Array, contentType?: string, options?: BlobPutOptions): Promise<BlobMeta>;
   get(hash: BlobHash): Promise<Uint8Array | null>;
   has(hash: BlobHash): Promise<boolean>;
   delete(hash: BlobHash): Promise<boolean>;
@@ -228,7 +246,11 @@ export class HttpBlobStore implements BlobStore {
     return h;
   }
 
-  async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
+  async put(
+    bytes: Uint8Array,
+    contentType?: string,
+    options?: BlobPutOptions,
+  ): Promise<BlobMeta> {
     const hash = this.hasher(bytes);
     const res = await this.fetchImpl(this.url(hash), {
       method: 'PUT',
@@ -236,6 +258,7 @@ export class HttpBlobStore implements BlobStore {
       // TS 5.7's tightened `Uint8Array<ArrayBufferLike>` typing doesn't
       // satisfy `BodyInit` directly; the runtime accepts Uint8Array fine.
       body: bytes as unknown as BodyInit,
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
     if (!res.ok) {
       throw new Error(`@ifc-lite/collab: blob PUT failed: ${res.status} ${res.statusText}`);
@@ -302,10 +325,17 @@ export class HttpBlobStore implements BlobStore {
 export class LayeredBlobStore implements BlobStore {
   constructor(private readonly local: BlobStore, private readonly remote: BlobStore) {}
 
-  async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
+  async put(
+    bytes: Uint8Array,
+    contentType?: string,
+    options?: BlobPutOptions,
+  ): Promise<BlobMeta> {
+    // The signal must reach the REMOTE half in particular: `Promise.all` does
+    // not settle until both do, so a remote upload that hangs hangs this call
+    // as well, and the `.catch` below never runs because nothing rejects.
     const [meta] = await Promise.all([
-      this.local.put(bytes, contentType),
-      this.remote.put(bytes, contentType).catch(() => null),
+      this.local.put(bytes, contentType, options),
+      this.remote.put(bytes, contentType, options).catch(() => null),
     ]);
     return meta;
   }

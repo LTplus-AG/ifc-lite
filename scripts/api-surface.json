@@ -264,6 +264,7 @@
     "BlobHash: type",
     "BlobHasher: type",
     "BlobMeta: interface",
+    "BlobPutOptions: interface",
     "BlobStore: interface",
     "BoundPropertyView: interface",
     "BoxParams: interface",

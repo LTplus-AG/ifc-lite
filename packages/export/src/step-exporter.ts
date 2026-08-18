@@ -154,14 +154,20 @@ export interface StepExportOptions {
    * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:
    * the `IfcPropertySet` / `IfcElementQuantity` roots regenerated for
    * mutated (or overlay-created) property and quantity sets, their
-   * `IfcRelDefinesByProperties` links, and any `IFCPROXY` placeholder minted
-   * by schema conversion. Without it those come from the platform CSPRNG, so
-   * two exports of the same model differ in exactly those bytes - which
-   * breaks byte-reproducibility for in-store builds that call
+   * `IfcRelDefinesByProperties` links. Without it those come from the platform
+   * CSPRNG, so two exports of the same model differ in exactly those bytes -
+   * which breaks byte-reproducibility for in-store builds that call
    * `addPropertySet` / `addQuantitySet` (the sets themselves live in the
    * mutation overlay and only become IFC roots here). Pass the same seeded
    * source used for `SpatialAnchor.guidRandom` to close that gap. Default
-   * (omitted) behaviour is unchanged: random.
+   * (omitted) behaviour for THESE ids is unchanged: random.
+   *
+   * NOT the `IFCPROXY` placeholders any more (#2733). Those used to be minted
+   * from this source too, so an omitted `guidRandom` made every downgraded
+   * IFC4X3 entity differ on re-export. They are now derived from the source
+   * line when this is omitted, and only fall back to this source when it is
+   * supplied - so passing a seeded source still pins them, but NOT passing one
+   * no longer makes them random. See `convertStepLine`.
    */
   guidRandom?: RandomSource;
   /**

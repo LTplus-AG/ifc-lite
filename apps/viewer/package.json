@@ -51,6 +51,7 @@
     "@ifc-lite/pointcloud": "workspace:^",
     "@ifc-lite/query": "workspace:^",
     "@ifc-lite/source-dalux": "workspace:^",
+    "@ifc-lite/source-dropbox": "workspace:^",
     "@ifc-lite/source-msgraph": "workspace:^",
     "@ifc-lite/renderer": "workspace:^",
     "@ifc-lite/sandbox": "workspace:^",

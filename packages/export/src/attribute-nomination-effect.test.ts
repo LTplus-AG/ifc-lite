@@ -41,9 +41,10 @@ function headerClaimedModifications(stepText: string): number | null {
 
 const WALL_ID = 8;
 const WALL_TYPE_ID = 5;
-const CRS_ID = 40;
 const WALL_NAME = 'Existing Wall';
-/** The `Name` an IfcProjectedCRS is already carrying in {@link BASE_IFC}. */
+/** The `Name` an IfcProjectedCRS is already carrying in {@link BASE_IFC}. The
+ *  georeferencing block that read it moved to `step-georeferencing.test.ts`
+ *  with the phase (#2475 step 2a); `#40` stays in the corpus. */
 const CRS_NAME = 'EPSG:1000';
 
 const BASE_IFC = `ISO-10303-21;
@@ -129,43 +130,6 @@ describe('a full export counts an attribute edit only when the line changed', ()
 
     const result = new StepExporter(store, view).export({ schema: 'IFC4' });
 
-    expect(result.stats.modifiedEntityCount).toBe(1);
-  });
-});
-
-describe('a georeferencing edit is the same site with the same signal', () => {
-  it('writing the Name the IfcProjectedCRS already has claims nothing', async () => {
-    // The georef branch queues its fields into the very same
-    // `modifiedAttributes` map and its `changed` flag is INTENT — a field was
-    // supplied, not a field that differs. Found in the same sweep as #2483's
-    // two cases and fixed with them, since it is the same mechanism one site
-    // over.
-    const store = await parseBase();
-    const view = new MutablePropertyView(null, 'test-model');
-
-    const result = new StepExporter(store, view).export({
-      schema: 'IFC4',
-      georefMutations: { projectedCRS: { name: CRS_NAME } },
-    });
-    const text = new TextDecoder().decode(result.content);
-
-    const crsLine = text.split('\n').map((l) => l.trim()).find((l) => l.startsWith(`#${CRS_ID}=`));
-    expect(crsLine).toBe(`#${CRS_ID}=IFCPROJECTEDCRS('${CRS_NAME}',$,$,$,$,$,$);`);
-    expect(result.stats.modifiedEntityCount).toBe(0);
-    expect(headerClaimedModifications(text)).toBeNull();
-  });
-
-  it('writing a DIFFERENT Name still counts and still lands', async () => {
-    const store = await parseBase();
-    const view = new MutablePropertyView(null, 'test-model');
-
-    const result = new StepExporter(store, view).export({
-      schema: 'IFC4',
-      georefMutations: { projectedCRS: { name: 'EPSG:2056' } },
-    });
-    const text = new TextDecoder().decode(result.content);
-
-    expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 });

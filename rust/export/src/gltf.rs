@@ -49,6 +49,20 @@ pub use from_meshes::{export_glb_from_meshes, try_export_glb_from_meshes};
 use matrix::{affine_inverse, compose_world_meta, occurrence_node_matrix};
 
 /// Options for glTF/GLB export.
+///
+/// ```
+/// # use ifc_lite_export::{GltfOptions, TessellationQuality};
+/// let opts = GltfOptions::default().with_tessellation_quality(TessellationQuality::Low);
+/// ```
+///
+/// `#[non_exhaustive]` plus builders, for the reason [`ModelOptions`] gives:
+/// this will grow, and `non_exhaustive` forbids EVERY struct expression from
+/// outside this crate, `..Default::default()` included. Builders are the shape
+/// that keeps an external caller compiling when a field is added. The fields
+/// stay public, so reading one or assigning to one still works.
+///
+/// [`ModelOptions`]: crate::ModelOptions
+#[non_exhaustive]
 pub struct GltfOptions {
     /// Attach `asset.extras` (counts) and per-node `extras.expressId`.
     pub include_metadata: bool,
@@ -100,6 +114,71 @@ impl Default for GltfOptions {
             quantize: false,
             tessellation_quality: TessellationQuality::Medium,
         }
+    }
+}
+
+impl GltfOptions {
+    /// See [`GltfOptions::include_metadata`].
+    #[must_use]
+    pub fn with_include_metadata(mut self, yes: bool) -> Self {
+        self.include_metadata = yes;
+        self
+    }
+
+    /// See [`GltfOptions::isolated`].
+    #[must_use]
+    pub fn with_isolated(mut self, ids: Vec<u32>) -> Self {
+        self.isolated = ids;
+        self
+    }
+
+    /// See [`GltfOptions::hidden`].
+    #[must_use]
+    pub fn with_hidden(mut self, ids: Vec<u32>) -> Self {
+        self.hidden = ids;
+        self
+    }
+
+    /// See [`GltfOptions::hidden_types`].
+    #[must_use]
+    pub fn with_hidden_types(mut self, types: Vec<String>) -> Self {
+        self.hidden_types = types;
+        self
+    }
+
+    /// See [`GltfOptions::lit`].
+    #[must_use]
+    pub fn with_lit(mut self, yes: bool) -> Self {
+        self.lit = yes;
+        self
+    }
+
+    /// See [`GltfOptions::emissive`].
+    #[must_use]
+    pub fn with_emissive(mut self, yes: bool) -> Self {
+        self.emissive = yes;
+        self
+    }
+
+    /// See [`GltfOptions::model_id`].
+    #[must_use]
+    pub fn with_model_id(mut self, id: Option<String>) -> Self {
+        self.model_id = id;
+        self
+    }
+
+    /// See [`GltfOptions::quantize`].
+    #[must_use]
+    pub fn with_quantize(mut self, yes: bool) -> Self {
+        self.quantize = yes;
+        self
+    }
+
+    /// See [`GltfOptions::tessellation_quality`].
+    #[must_use]
+    pub fn with_tessellation_quality(mut self, quality: TessellationQuality) -> Self {
+        self.tessellation_quality = quality;
+        self
     }
 }
 

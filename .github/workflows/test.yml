@@ -478,6 +478,14 @@ jobs:
       # through a pipe and asserts the bytes that arrive.
       - name: Check lint gate survives a piped stdout
         run: node --test scripts/check-lint-ran.test.mjs
+      # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
+      # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
+      # returned twenty lines of prose and the tar two lines down exited 2,
+      # surfacing as a bare `status: 2` that reads like a corrupt download.
+      # That script is the only route to a WASM bundle on a machine without a
+      # Rust toolchain, so the failure blocked the whole viewer build.
+      - name: Check npm pack output is read machine-readably
+        run: node --test scripts/lib/npm-pack-output.test.mjs
       # The Release workflow runs ONLY on main, and only on an actual publish,
       # so nothing on a PR ever read release-crates.mjs's publish ORDER. #2574
       # added a versioned dev-dependency (ifc-lite-clash) to rust/geometry and

@@ -14,8 +14,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { createCollabDoc, seedFromStep, snapshotToIfcx } from '@ifc-lite/collab';
 import type { SeedGeometryReport } from './geometry-sync.js';
+import type { GeometrySeedMarker } from './geometry-seed-signal.js';
 import {
   classifySeed,
+  interruptedSeedMarker,
   markerFromReport,
   missingRoomGeometryMessage,
   readGeometrySeedMarker,
@@ -63,6 +65,34 @@ describe('seed outcome: nothing-to-seed vs failed', () => {
     assert.ok(seedFailureMessage(released), 'a model whose meshes were all skipped shared no geometry');
   });
 
+  it('reports a partial share when meshes were dropped before upload', () => {
+    // No failed request, no exception: the room is simply missing 40 of the
+    // model's elements because their CPU data was released. Classifying this
+    // as a clean share is the same silence the whole fix exists to remove.
+    const dropped = report({
+      offered: 100,
+      attempted: 60,
+      seeded: 60,
+      skipped: { noPath: 0, noEntity: 0, empty: 40 },
+    });
+    assert.equal(classifySeed(dropped), 'partial');
+    assert.ok(seedFailureMessage(dropped));
+  });
+
+  it('stays silent when the only skips are meshes with no entity of their own', () => {
+    // Deliberate: `noPath`/`noEntity` have no established baseline in a normal
+    // share, so they stay in the report and the console rather than becoming a
+    // toast on every share.
+    const structural = report({
+      offered: 100,
+      attempted: 98,
+      seeded: 98,
+      skipped: { noPath: 2, noEntity: 0, empty: 0 },
+    });
+    assert.equal(classifySeed(structural), 'seeded');
+    assert.equal(seedFailureMessage(structural), null);
+  });
+
   it('reports success when every mesh landed', () => {
     const ok = report({ offered: 42, attempted: 42, seeded: 42 });
     assert.equal(classifySeed(ok), 'seeded');
@@ -77,11 +107,12 @@ describe('seed outcome: nothing-to-seed vs failed', () => {
 });
 
 describe('joiner: warn on a room that should have had geometry', () => {
-  const marker = (patch: Partial<ReturnType<typeof markerFromReport>> = {}) => ({
+  const marker = (patch: Partial<GeometrySeedMarker> = {}): GeometrySeedMarker => ({
     expected: 0,
     seeded: 0,
     failed: 0,
     abandoned: false,
+    interrupted: false,
     at: '2026-08-18T00:00:00.000Z',
     ...patch,
   });
@@ -106,6 +137,19 @@ describe('joiner: warn on a room that should have had geometry', () => {
     assert.equal(
       missingRoomGeometryMessage({ marker: marker({ expected: 305, seeded: 305 }), geometryRecords: 305, hydratedMeshes: 305 }),
       null,
+    );
+  });
+
+  it('warns when the owner\'s seed threw before it could count its geometry', () => {
+    // An interrupted seed records `expected: 0` because it never learned the
+    // real number. That must not buy the silence a genuine "nothing to seed"
+    // gets: this is the shape a room takes when the share threw outright.
+    assert.ok(
+      missingRoomGeometryMessage({
+        marker: marker({ expected: 0, interrupted: true }),
+        geometryRecords: 0,
+        hydratedMeshes: 0,
+      }),
     );
   });
 
@@ -134,6 +178,17 @@ describe('seed marker in the doc', () => {
     const doc = createCollabDoc();
     writeGeometrySeedMarker(doc, markerFromReport(null, 'now'));
     assert.equal(readGeometrySeedMarker(doc)?.expected, 0);
+  });
+
+  it('carries an interrupted seed through the doc, so a joiner still warns', () => {
+    const doc = createCollabDoc();
+    writeGeometrySeedMarker(doc, interruptedSeedMarker('now'));
+    const read = readGeometrySeedMarker(doc);
+    assert.equal(read?.interrupted, true);
+    assert.ok(
+      missingRoomGeometryMessage({ marker: read, geometryRecords: 0, hydratedMeshes: 0 }),
+      'a seed that threw is not a room with nothing to seed',
+    );
   });
 
   it('treats a malformed marker as absent', () => {

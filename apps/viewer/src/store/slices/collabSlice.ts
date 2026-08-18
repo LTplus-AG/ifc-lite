@@ -66,6 +66,7 @@ import {
   type SeedGeometryReport,
 } from '@/lib/collab/geometry-sync';
 import {
+  interruptedSeedMarker,
   markerFromReport,
   missingRoomGeometryMessage,
   readGeometrySeedMarker,
@@ -704,6 +705,20 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
           collabSeedFailure:
             'Sharing this model did not complete. People joining this link may see an incomplete model.',
         });
+        // Tell joiners too. This path never learned how much geometry the model
+        // had, so the marker records "interrupted" rather than "expected: 0",
+        // which would read as the legitimate nothing-to-seed case and silence
+        // the very warning this room needs.
+        if (get().collabRoomId === roomId) {
+          try {
+            session.transact(() => {
+              writeGeometrySeedMarker(session.doc, interruptedSeedMarker(new Date().toISOString()));
+            });
+          } catch (markerErr) {
+            // eslint-disable-next-line no-console
+            console.error('[collab] could not record the interrupted seed:', markerErr);
+          }
+        }
       }
     } else {
       // Recipient (deep-link join, no local model): reconstruct the full model
@@ -828,7 +843,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 geometryRecords: geomCount,
                 hydratedMeshes: lastMeshCount,
               });
-              if (missing) {
+              if (missing && get().collabRoomId === roomId) {
                 warnedMissingGeometry = true;
                 // eslint-disable-next-line no-console
                 console.warn(`[collab] recipient: ${missing}`);

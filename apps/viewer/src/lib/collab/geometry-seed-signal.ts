@@ -38,6 +38,14 @@ export interface GeometrySeedMarker {
   failed: number;
   /** True when the upload phase stopped early (the store refused everything). */
   abandoned: boolean;
+  /**
+   * The seed threw before it could count what it had, so `expected` says
+   * nothing. Distinct from `expected: 0`, which is a positive assertion that
+   * there was nothing to seed: recording an interrupted seed as `expected: 0`
+   * would tell every joiner to stay quiet about a room that is missing its
+   * model.
+   */
+  interrupted: boolean;
   /** ISO timestamp of the seed attempt. */
   at: string;
 }
@@ -59,11 +67,22 @@ export type SeedOutcome =
  * term (classifying on `seeded === 0` alone) turns every structure-only or
  * empty model into a false alarm, and an alarm that cries wolf is how the
  * original outage stayed invisible.
+ *
+ * `skipped.empty` counts as a partial share, not a clean one: those are meshes
+ * the model HAS and the room does not get, and on a large model in
+ * bounded-geometry mode there can be a lot of them. `skipped.noPath` and
+ * `skipped.noEntity` are deliberately NOT counted here. They are structural
+ * mismatches with no established baseline in a normal share, and promoting an
+ * unknown-frequency condition to a user-facing warning is how an alarm starts
+ * crying wolf. Both stay in the report and in the console warning, so
+ * promoting them later is a one-line change once someone has the numbers.
  */
 export function classifySeed(report: SeedGeometryReport | null | undefined): SeedOutcome {
   if (!report || report.offered === 0) return 'nothing-to-seed';
   if (report.seeded === 0) return 'failed';
-  if (report.failed > 0 || report.seeded < report.attempted) return 'partial';
+  if (report.failed > 0 || report.seeded < report.attempted || report.skipped.empty > 0) {
+    return 'partial';
+  }
   return 'seeded';
 }
 
@@ -75,7 +94,11 @@ export function seedFailureMessage(report: SeedGeometryReport | null | undefined
   const outcome = classifySeed(report);
   if (!report || outcome === 'nothing-to-seed' || outcome === 'seeded') return null;
   if (outcome === 'partial') {
-    return `Shared, but ${report.failed} of ${report.attempted} geometry uploads failed. People joining this link will be missing some elements.`;
+    const missing = report.offered - report.seeded;
+    if (report.failed > 0) {
+      return `Shared, but ${report.failed} of ${report.attempted} geometry uploads failed. People joining this link will be missing some elements.`;
+    }
+    return `Shared, but ${missing} of ${report.offered} elements could not be sent (their geometry is no longer in memory). People joining this link will be missing them.`;
   }
   if (report.abandoned) {
     return 'Geometry upload failed: the server is refusing uploads. People joining this link will see the model structure but no 3D geometry.';
@@ -114,8 +137,17 @@ export function markerFromReport(report: SeedGeometryReport | null | undefined, 
     seeded: report?.seeded ?? 0,
     failed: report?.failed ?? 0,
     abandoned: report?.abandoned ?? false,
+    interrupted: false,
     at,
   };
+}
+
+/**
+ * Marker for a seed that threw before it produced a report. `expected` is
+ * unknown, so it is recorded as interrupted rather than as zero.
+ */
+export function interruptedSeedMarker(at: string): GeometrySeedMarker {
+  return { expected: 0, seeded: 0, failed: 0, abandoned: false, interrupted: true, at };
 }
 
 /**
@@ -136,6 +168,7 @@ export function readGeometrySeedMarker(doc: SeedMetaDoc): GeometrySeedMarker | n
     seeded: num(rec.seeded) ?? 0,
     failed: num(rec.failed) ?? 0,
     abandoned: rec.abandoned === true,
+    interrupted: rec.interrupted === true,
     at: typeof rec.at === 'string' ? rec.at : '',
   };
 }
@@ -162,7 +195,10 @@ export interface RoomGeometryState {
 export function missingRoomGeometryMessage(state: RoomGeometryState): string | null {
   if (state.hydratedMeshes > 0) return null;
   if (state.marker) {
-    if (state.marker.expected === 0) return null;
+    // An interrupted seed never learned how much geometry it had, so its
+    // `expected: 0` is not the "nothing to seed" assertion and must not buy
+    // the silence that one does.
+    if (state.marker.expected === 0 && !state.marker.interrupted) return null;
     return 'This shared model has no 3D geometry: the sender was not able to upload it. Ask them to share the link again.';
   }
   if (state.geometryRecords > 0) {

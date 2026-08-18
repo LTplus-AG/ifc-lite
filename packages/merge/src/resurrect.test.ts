@@ -237,6 +237,42 @@ describe('shell strips and shadowed subtrees (verification-round fixes)', () => 
     expect(merged.get('storey')?.components.size ?? 0).toBe(0);
   });
 
+  it('theirs strips a parent to an empty shell while ours concurrently edits it → modify-vs-delete with a recorded (empty) theirs, resolved without a shadow-killing tombstone', () => {
+    // Unlike the auto-merged case above, ours here touches `storey` ITSELF
+    // (not just the child) — that's what turns the shell-strip into a real
+    // conflict instead of an automatic "theirs" application.
+    const oursEdit = makeLayer([{ path: 'storey', attributes: { [FIRE]: 'REI90' } }], 'ours-edit');
+    const strip = makeLayer(
+      [{ path: 'storey', children: { Wall: null }, attributes: { [CLASS]: null } }],
+      'strip'
+    );
+    const plan = planThreeWayMerge({
+      ancestor: [treeBase],
+      ours: [treeBase, oursEdit],
+      theirs: [treeBase, strip],
+    });
+    expect(plan.conflicts).toHaveLength(1);
+    const conflict = plan.conflicts[0];
+    expect(conflict.kind).toBe('modify-vs-delete');
+    expect(conflict.path).toBe('storey');
+    // The recorded (empty) theirs state is what routes applyResolutions
+    // into the removal-opinions path instead of a plain tombstone.
+    expect(conflict.theirs).toBeDefined();
+    expect(conflict.theirs?.attributes).toEqual({});
+
+    const applied = applyResolutions(plan, [{ path: 'storey', choice: 'theirs' }]);
+    // No tombstone-entity op: that would shadow-kill wall-1, which theirs
+    // never touched directly.
+    expect(applied.ops).not.toContainEqual({ op: 'tombstone-entity', path: 'storey' });
+    const merged = stateAfterMerge([treeBase, oursEdit], [...plan.autoOps, ...applied.ops]);
+    // The whole point of the branch: the child survives instead of dying
+    // under a parent tombstone it was never the target of.
+    expect(merged.get('wall-1')?.deleted).toBe(false);
+    expect(merged.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI60');
+    expect(merged.get('storey')?.deleted ?? false).toBe(false);
+    expect(merged.get('storey')?.components.size ?? 0).toBe(0);
+  });
+
   it('theirs deletes a parent whose child ours edited → ONE subtree conflict on the parent', () => {
     const oursEdit = makeLayer([{ path: 'wall-1', attributes: { [FIRE]: 'REI90' } }], 'ours-edit');
     const theirsDel = makeLayer(

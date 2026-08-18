@@ -211,7 +211,7 @@ export function CesiumOverlay({
           if (!customBasemap) {
             // Reachable only if the picker and the stored basemap disagree; the
             // globe would otherwise come up blank with no explanation.
-            setBasemapWarning('No custom basemap is configured. Add a tile URL in Sun & Sky → Base map.');
+            setBasemapWarning('No custom basemap is configured. Add a tile URL in Sun & Sky > Base map.');
           } else {
             try {
               const provider = new Cesium.UrlTemplateImageryProvider(
@@ -275,7 +275,7 @@ export function CesiumOverlay({
           try {
             const imagery = await Cesium.createWorldImageryAsync();
             if (!cancelled) viewer.imageryLayers.addImageryProvider(imagery);
-          } catch { /* imagery unavailable — buildings still render */ }
+          } catch { /* imagery unavailable: buildings still render */ }
         } else {
           // Photorealistic tiles bring their own ground; the globe would
           // z-fight underneath them.
@@ -398,8 +398,8 @@ export function CesiumOverlay({
       />
       {/*
         One stack, not three absolutely positioned siblings at the same offset.
-        The basemap warning is raised from inside the init routine — the custom
-        branch runs before `setStatus('ready')` — so it and the loading banner
+        The basemap warning is raised from inside the init routine, since the
+        custom branch runs before `setStatus('ready')`, so it and the loading banner
         are both on screen for exactly the case that most needs reading, a slow
         or refused tile host, and at `top-2 left-1/2` they landed on top of each
         other. Stacked, each banner keeps its own colour and the order is

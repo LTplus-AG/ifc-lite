@@ -105,7 +105,7 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
   }
   if (parsed.username || parsed.password) {
     // Never echo the value back: the message is rendered in the UI.
-    return fail('url', 'Remove the username and password from the URL — they would be stored in this browser in cleartext and sent with every tile request.');
+    return fail('url', 'Remove the username and password from the URL: they would be stored in this browser in cleartext and sent with every tile request.');
   }
 
   const seen = new Set<string>();
@@ -113,7 +113,7 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
     const token = match[1];
     if (!SUPPORTED_PLACEHOLDERS.has(token)) {
       const hint = token === 's'
-        ? ' This viewer has no subdomain field, so {s} would be filled from Cesium\'s a/b/c default and 404 on a server that shards differently — use the bare hostname instead.'
+        ? ' This viewer has no subdomain field, so {s} would be filled from Cesium\'s a/b/c default and 404 on a server that shards differently: use the bare hostname instead.'
         : '';
       return fail('url', `"{${token}}" is not a tile placeholder this viewer substitutes. Supported: {z}, {x}, {y}, {reverseX}, {reverseY}, {reverseZ}.${hint}`);
     }
@@ -124,7 +124,7 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
   if (!seen.has('x') && !seen.has('reverseX')) missing.push('{x}');
   if (!seen.has('y') && !seen.has('reverseY')) missing.push('{y}');
   if (missing.length > 0) {
-    return fail('url', `An XYZ template needs ${missing.join(', ')} — without it every request is the same tile.`);
+    return fail('url', `An XYZ template needs ${missing.join(', ')}: without it every request is the same tile.`);
   }
 
   const credit = (draft.credit ?? '').trim();
@@ -132,7 +132,7 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
     // Required, not optional: an XYZ template carries no capabilities document,
     // so there is nowhere but this field for the attribution to come from, and
     // most public imagery is licensed on condition of visible credit.
-    return fail('credit', 'Attribution is required. Most public imagery is licensed on condition of visible credit, and an XYZ URL carries none — copy the wording the provider asks for.');
+    return fail('credit', 'Attribution is required. Most public imagery is licensed on condition of visible credit, and an XYZ URL carries none: copy the wording the provider asks for.');
   }
 
   const creditUrl = (draft.creditUrl ?? '').trim();
@@ -162,7 +162,7 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
     // wrong tile at every zoom for a genuinely reverse-Z service. That failure
     // has no visible signal, unlike the CORS/blocked-host case this feature
     // otherwise makes loud, so it is rejected here instead.
-    return fail('maximumLevel', 'A "{reverseZ}" template needs a maximum zoom level — without it Cesium cannot invert the level and silently falls back to the ordinary {z} numbering.');
+    return fail('maximumLevel', 'A "{reverseZ}" template needs a maximum zoom level: without it Cesium cannot invert the level and silently falls back to the ordinary {z} numbering.');
   }
 
   return {
@@ -349,7 +349,7 @@ function tileProbeTimedOutMessage(timeoutMs: number): string {
   // Derived from the bound actually applied, not written out beside it: a
   // message naming a duration the code no longer uses is worse than none.
   const seconds = Math.max(1, Math.round(timeoutMs / 1000));
-  return `The server did not respond within ${seconds} second${seconds === 1 ? '' : 's'}, so browser access could not be verified. It may still work — check the imagery once the globe is up.`;
+  return `The server did not respond within ${seconds} second${seconds === 1 ? '' : 's'}, so browser access could not be verified. It may still work: check the imagery once the globe is up.`;
 }
 
 export async function probeTileAccess(
@@ -377,7 +377,7 @@ export async function probeTileAccess(
         status: 'ok',
         httpStatus: response.status,
         concerning: true,
-        message: `The server allows browser access but refused the tile with ${response.status}. That is an authorisation failure, not a missing tile, so every zoom level will be refused the same way — check whether this service needs an API key in the URL, and whether the key it carries is still valid.`,
+        message: `The server allows browser access but refused the tile with ${response.status}. That is an authorisation failure, not a missing tile, so every zoom level will be refused the same way: check whether this service needs an API key in the URL, and whether the key it carries is still valid.`,
       };
     }
     return {

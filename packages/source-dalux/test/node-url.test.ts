@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { parseDaluxNode } from '../src/provider.js';
+import { parseDaluxNode } from '../src/node-url.js';
 import { BrowserDaluxApiClient } from '../src/http-client.js';
 
 describe('parseDaluxNode', () => {

@@ -56,8 +56,9 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
 /**
  * Bridge an `IfcDataStore` (produced by `@ifc-lite/parser`) into the
  * abstract `IFCDataAccessor` the IDS validator consumes. The single
- * canonical translation — viewer, MCP server, and the corpus-parity
- * harness all use this rather than re-implementing the projection.
+ * canonical translation: viewer, MCP server, and the buildingSMART corpus
+ * harness (`src/__corpus__/corpus.test.ts`) all use this rather than
+ * re-implementing the projection.
  *
  * Mirrors upstream `IfcOpenShell/ifctester` semantics: classification
  * sub-reference walking, IfcExternalReferenceRelationship for

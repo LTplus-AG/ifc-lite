@@ -26,6 +26,13 @@
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { BlobStore, CollabSession } from '@ifc-lite/collab';
 import { decodeMesh, encodeMesh } from './mesh-codec';
+import {
+  DEFAULT_UPLOAD_MAX_FAILURES,
+  DEFAULT_UPLOAD_RETRIES,
+  DEFAULT_UPLOAD_RETRY_DELAYS_MS,
+  putBlobWithRetry,
+  uploadCountOption,
+} from './blob-upload';
 
 /** The collab doc + geometry helpers this module needs (injected). */
 export interface CollabGeomApi {
@@ -50,7 +57,9 @@ export interface CollabGeomApi {
  * `pathFor` maps a mesh's `expressId` to its GUID entity path (skipped when it
  * returns null). A single entity can own several meshes (multi-material /
  * multiple representation items), so refs are *appended* per path rather than
- * overwritten. Returns the number of meshes seeded.
+ * overwritten. Returns a `SeedGeometryReport`: never throws on a failed
+ * upload, because "the room got no geometry" is a fact the caller has to be
+ * able to act on rather than a rejection it can swallow.
  */
 export interface SeedGeometryOptions {
   /** Max blob uploads in parallel. Default 16. */
@@ -60,10 +69,52 @@ export interface SeedGeometryOptions {
   /**
    * Replace each entity's geometry refs with the seeded geomIds (via
    * `setGeometryRef`) instead of appending. Used by resize, which swaps a
-   * wall's mesh for a freshly-tessellated one — the old blob is left orphaned
+   * wall's mesh for a freshly-tessellated one: the old blob is left orphaned
    * (no entity refs it) and so isn't hydrated.
    */
   replace?: boolean;
+  /** Extra attempts per blob after the first one fails. Default 2. */
+  retries?: number;
+  /** Backoff before each retry, in ms. Default `[150, 600]` (index = attempt). */
+  retryDelaysMs?: readonly number[];
+  /**
+   * Stop uploading after this many blobs have failed outright. A store that
+   * refuses every write (the collab-server volume running out of inodes did
+   * exactly this) would otherwise take `meshes x (1 + retries)` doomed requests
+   * before the caller learns anything: 300k+ for a real model. Default 10.
+   */
+  maxFailures?: number;
+}
+
+/**
+ * What a seed actually put in the room. The counts are the whole point: only
+ * the owner knows how many meshes it *had*, so only the owner can tell "this
+ * model has no geometry to share" (`offered === 0`, legitimate) apart from
+ * "this model's geometry never made it into the room" (`offered > 0 &&
+ * seeded === 0`, broken). Nothing downstream can recover that distinction.
+ */
+export interface SeedGeometryReport {
+  /** Meshes handed to the seed by the caller. */
+  offered: number;
+  /** Meshes that passed the pre-flight checks and had an upload attempted. */
+  attempted: number;
+  /** Meshes whose blob landed AND whose ref was recorded in the doc. */
+  seeded: number;
+  /** Uploads that failed after every retry. */
+  failed: number;
+  /** Pre-flight skips. Deterministic, so never retried. */
+  skipped: {
+    /** Mesh's expressId has no entity path. */
+    noPath: number;
+    /** Owning entity isn't in the doc (structure seed missed it). */
+    noEntity: number;
+    /** Mesh carries no triangles (CPU data released in bounded-geometry mode). */
+    empty: number;
+  };
+  /** True when the upload phase stopped early on `maxFailures`. */
+  abandoned: boolean;
+  /** First upload error, for the log. */
+  error?: unknown;
 }
 
 export async function seedGeometryToRoom(
@@ -73,7 +124,7 @@ export async function seedGeometryToRoom(
   meshes: readonly MeshData[],
   pathFor: (expressId: number) => string | null,
   opts: SeedGeometryOptions = {},
-): Promise<number> {
+): Promise<SeedGeometryReport> {
   // 1. Resolve the seedable meshes up front (valid geometry + entity path + the
   //    owning entity already in the doc), before any network I/O.
   interface SeedJob {
@@ -86,7 +137,10 @@ export async function seedGeometryToRoom(
   let skippedNoEntity = 0;
   for (const mesh of meshes) {
     // A mesh whose CPU data was released (bounded-geometry mode) carries no
-    // triangles — skip it so we don't seed an empty blob that renders nothing.
+    // triangles. Skip it so we don't seed an empty blob that renders nothing.
+    // On a large model this can skip EVERY mesh while the owner's own viewport
+    // still renders from its GPU copy, so the caller has to be told (see the
+    // report's `skipped.empty`), not just the console.
     if (mesh.positions.length === 0 || mesh.indices.length === 0) {
       skippedEmpty++;
       continue;
@@ -97,7 +151,7 @@ export async function seedGeometryToRoom(
       continue;
     }
     // The owning entity must already be in the doc (the structure seed creates
-    // it). Skip rather than let addGeometryRef throw and abort the whole seed —
+    // it). Skip rather than let addGeometryRef throw and abort the whole seed:
     // a non-zero count here means structure seeding missed some products.
     if (!api.hasEntity(session.doc, path)) {
       skippedNoEntity++;
@@ -110,23 +164,52 @@ export async function seedGeometryToRoom(
   //    *minutes* for a large model (thousands of serial network PUTs) and was the
   //    main reason recipients saw geometry trickle in. Content-addressed, so
   //    identical meshes dedupe server-side. Collect (path, hash) for step 3.
-  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 16, jobs.length || 1));
+  //
+  //    Failures are isolated per blob. They used to reject the enclosing
+  //    Promise.all, which meant one bad upload discarded the doc refs for every
+  //    blob that HAD landed: the room ended up with zero geometry instead of
+  //    "all but one". `maxFailures` then stops a store that is refusing
+  //    everything, so the caller hears about it in seconds rather than after
+  //    every mesh has been tried.
+  // Guarded like the other numeric options: `Math.min(NaN, n)` is NaN, and
+  // `Array.from({length: NaN})` builds ZERO workers, so a NaN concurrency
+  // uploads nothing at all rather than uploading slowly.
+  const concurrency = Math.max(
+    1,
+    Math.min(uploadCountOption(opts.concurrency, 16) || 16, jobs.length || 1),
+  );
+  const retries = uploadCountOption(opts.retries, DEFAULT_UPLOAD_RETRIES);
+  const retryDelaysMs = opts.retryDelaysMs ?? DEFAULT_UPLOAD_RETRY_DELAYS_MS;
+  const maxFailures = Math.max(1, uploadCountOption(opts.maxFailures, DEFAULT_UPLOAD_MAX_FAILURES));
   const refs: { path: string; hash: string }[] = [];
   let nextJob = 0;
   let uploaded = 0;
+  let failed = 0;
+  let abandoned = false;
+  let firstError: unknown;
   const worker = async (): Promise<void> => {
     while (nextJob < jobs.length) {
+      if (failed >= maxFailures) {
+        abandoned = true;
+        return;
+      }
       const job = jobs[nextJob++];
-      const meta = await blobStore.put(encodeMesh(job.mesh), 'application/octet-stream');
-      refs.push({ path: job.path, hash: meta.hash });
-      uploaded++;
-      if (opts.onProgress && uploaded % 50 === 0) opts.onProgress(uploaded, jobs.length);
+      try {
+        const meta = await putBlobWithRetry(blobStore, encodeMesh(job.mesh), retries, retryDelaysMs);
+        refs.push({ path: job.path, hash: meta.hash });
+        uploaded++;
+        if (opts.onProgress && uploaded % 50 === 0) opts.onProgress(uploaded, jobs.length);
+      } catch (err) {
+        failed++;
+        if (firstError === undefined) firstError = err;
+      }
     }
   };
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
 
-  // 3. Record geometry + refs in the doc — local Yjs ops (fast), batched into a
-  //    single transaction so peers receive one update instead of thousands.
+  // 3. Record geometry + refs in the doc, for the blobs that landed: local Yjs
+  //    ops (fast), batched into a single transaction so peers receive one
+  //    update instead of thousands.
   session.transact(() => {
     for (const { path, hash } of refs) {
       api.createGeometry(session.doc, hash, { type: 'mesh', source: 'mesh-blob', blobHash: hash });
@@ -144,19 +227,29 @@ export async function seedGeometryToRoom(
       for (const { path, hash } of refs) api.addGeometryRef(session.doc, path, hash);
     }
   });
-  opts.onProgress?.(jobs.length, jobs.length);
+  opts.onProgress?.(refs.length, jobs.length);
 
-  const count = refs.length;
-  if (skippedNoPath > 0 || skippedEmpty > 0 || skippedNoEntity > 0) {
+  const report: SeedGeometryReport = {
+    offered: meshes.length,
+    attempted: jobs.length,
+    seeded: refs.length,
+    failed,
+    skipped: { noPath: skippedNoPath, noEntity: skippedNoEntity, empty: skippedEmpty },
+    abandoned,
+    error: firstError,
+  };
+  if (skippedNoPath > 0 || skippedEmpty > 0 || skippedNoEntity > 0 || failed > 0) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[collab] seedGeometryToRoom: seeded ${count}/${meshes.length} meshes — ` +
+      `[collab] seedGeometryToRoom: seeded ${report.seeded}/${meshes.length} meshes, ` +
+        `${failed} upload(s) failed${abandoned ? ' (stopped early: the blob store is refusing uploads)' : ''}, ` +
         `${skippedNoPath} skipped (no entity path), ` +
         `${skippedNoEntity} skipped (entity not seeded in doc), ` +
         `${skippedEmpty} skipped (empty/memory-released geometry).`,
+      firstError ?? '',
     );
   }
-  return count;
+  return report;
 }
 
 /**

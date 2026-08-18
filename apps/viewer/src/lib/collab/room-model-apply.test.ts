@@ -112,6 +112,39 @@ describe('applyRoomModelData', () => {
     );
   });
 
+  /**
+   * `ViewportContainer`'s merged-geometry cache is keyed on mesh COUNT per
+   * model and otherwise trusts already-cached meshes unchanged. A reconstruct
+   * commonly re-derives the SAME entity count with DIFFERENT content (a
+   * peer's placement/geometry edit) while the room model is NOT active, which
+   * the count trigger can't see. Without a content-version bump the merged
+   * render buffer would keep stale (pre-edit) room-model geometry.
+   */
+  it('bumps geometryContentVersion when the (inactive) room model’s geometry changes', () => {
+    state.addModel(model('local', 'local'));
+    state.upsertModel(model(ROOM_MODEL_ID, 'room-v1'));
+    state.setActiveModel('local');
+    const versionBefore = state.geometryContentVersion;
+
+    applyRoomModelData(state, ROOM_MODEL_ID, { geometryResult: markerGeometry('room-v2') });
+
+    assert.ok(
+      state.geometryContentVersion > versionBefore,
+      'geometryContentVersion must bump so the merged-geometry cache rebuilds rather than trusting stale cached meshes',
+    );
+  });
+
+  it('does NOT bump geometryContentVersion for an ifcDataStore-only patch (no geometry changed)', () => {
+    state.addModel(model('local', 'local'));
+    state.upsertModel(model(ROOM_MODEL_ID, 'room-v1'));
+    state.setActiveModel('local');
+    const versionBefore = state.geometryContentVersion;
+
+    applyRoomModelData(state, ROOM_MODEL_ID, { ifcDataStore: markerStore('room-v2') });
+
+    assert.strictEqual(state.geometryContentVersion, versionBefore);
+  });
+
   it('routes through the active-model setters when the room model IS active', () => {
     // The ordinary recipient case: the room model is the only model and is
     // active, so the top-level `ifcDataStore` (read by the outbound mutation

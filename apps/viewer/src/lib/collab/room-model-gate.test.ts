@@ -130,6 +130,9 @@ describe('room edits are gated on the room model, not just resolved against it',
     // The two-click state: joined a room, then loaded and selected own file.
     state = {
       collabRoomModelId: ROOM_MODEL_ID,
+      // A live session: `startCollab` sets this in the same `set()` call as
+      // `collabRoomModelId`, before any await — see room-model-target.ts.
+      collabRoomId: 'r1',
       activeModelId: OWN_MODEL_ID,
       models: new Map([
         [ROOM_MODEL_ID, model(ROOM_MODEL_ID, roomModelStore)],
@@ -199,9 +202,29 @@ describe('room edits are gated on the room model, not just resolved against it',
    * the top-level one. A single-model session must not change at all.
    */
   it('with no room model id, reduces to the pre-existing active-model behaviour', () => {
-    const solo: RoomModelTargetState = { ...state, collabRoomModelId: null };
+    // OFF a session entirely — `collabRoomId: null` too — is what "no room
+    // model id" means pre-existing-behaviour-wise. See the next test for the
+    // DIFFERENT (fail-closed) case: a null id WHILE a session is live.
+    const solo: RoomModelTargetState = { ...state, collabRoomModelId: null, collabRoomId: null };
     assert.equal(roomStoreFor(solo, OWN_MODEL_ID), ownModelStore);
     assert.equal(roomStoreFor(solo, ROOM_MODEL_ID), null);
+  });
+
+  /**
+   * MAJOR (CodeRabbit CLI, PR #2706 review): `ShareDialog` awaits
+   * `mintRoomToken()` and does not re-check cancellation before calling
+   * `startCollab`. If the last model is removed during that await,
+   * `startCollab` runs with `activeModelId === null` and records a null
+   * `collabRoomModelId` — WHILE `collabRoomId` is already set (a live
+   * session). The old `roomModelIdOf` could not tell this apart from "no
+   * session" and fell back to `activeModelId`, which would target whatever
+   * the user loads next. Must fail closed instead: no store, for any model.
+   */
+  it('a live session with no room model id (removed mid-mint) fails closed, never falls back to active', () => {
+    const raced: RoomModelTargetState = { ...state, collabRoomModelId: null, collabRoomId: 'r1' };
+    assert.equal(roomStoreFor(raced, OWN_MODEL_ID), null);
+    assert.equal(roomStoreFor(raced, ROOM_MODEL_ID), null);
+    assert.equal(roomStore(raced), null, 'must not silently resolve to the active model’s store');
   });
 
   /**

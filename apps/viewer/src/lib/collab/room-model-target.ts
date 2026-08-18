@@ -57,6 +57,21 @@ export interface RoomModelTargetState {
    * pre-existing active-model behaviour is the only thing available.
    */
   collabRoomModelId: string | null;
+  /**
+   * `null` off a session, non-null the instant `startCollab` begins — set in
+   * the SAME synchronous `set()` call as `collabRoomModelId`, before any
+   * await, so the two are never observed out of step. This is the "is a
+   * session live" signal `roomModelIdOf` (and the resolvers below) gate on:
+   * `ShareDialog` awaits `mintRoomToken()` and does not re-check cancellation
+   * before calling `startCollab`, so if the last model is removed during that
+   * await, `startCollab` runs with no active model and records a null
+   * `collabRoomModelId` — WHILE a session is live. Falling back to
+   * `activeModelId` in that state would target whatever the user loads next,
+   * which is exactly the corruption this module exists to prevent. Off a
+   * session (`collabRoomId === null`) the active-model fallback is safe: there
+   * is no room boundary yet for it to misaddress.
+   */
+  collabRoomId: string | null;
   activeModelId: string | null;
   models: Map<string, FederatedModel>;
   ifcDataStore: IfcDataStore | null;
@@ -65,16 +80,23 @@ export interface RoomModelTargetState {
   geometryResult: GeometryResult | null;
 }
 
+/** Whether `startCollab` has run for the current session — see `collabRoomId` above. */
+function sessionIsLive(state: RoomModelTargetState): boolean {
+  return state.collabRoomId !== null;
+}
+
 /**
  * The id of the model a room's edits belong to.
  *
- * Falls back to `activeModelId` only when no room model id was recorded, which
- * is exactly the no-session / no-model-record case: off a session this reduces
- * to the behaviour every caller had before, so single-model sessions are
- * unaffected.
+ * Falls back to `activeModelId` only OFF A SESSION, which is exactly the
+ * no-session / no-model-record case: this reduces to the behaviour every
+ * caller had before, so single-model, non-collab use is unaffected. DURING a
+ * live session a null `collabRoomModelId` is never guessed at — see the field
+ * doc on `collabRoomId` for why guessing here is the bug, not a convenience.
  */
 export function roomModelIdOf(state: RoomModelTargetState): string | null {
-  return state.collabRoomModelId ?? state.activeModelId;
+  if (sessionIsLive(state)) return state.collabRoomModelId;
+  return state.activeModelId;
 }
 
 /** True when `modelId` is the room's model — the gate for mirroring outbound. */
@@ -93,10 +115,17 @@ export function isRoomModel(state: RoomModelTargetState, modelId: string): boole
  * the room model exists the correct answer is "no store", and the caller drops
  * the event; the next reconstruct rebuilds the whole model from the CRDT
  * anyway, so nothing is lost.
+ *
+ * The `state.ifcDataStore` fallback below only fires OFF a session (see
+ * `sessionIsLive`) — the same null `collabRoomModelId` DURING a live session
+ * (the `startCollab`-races-model-removal case `roomModelIdOf`'s `collabRoomId`
+ * doc describes) must fail closed here too, or this is the same "resolve a
+ * room-id-space path against the user's own file" defect one call earlier.
  */
 export function roomStore(state: RoomModelTargetState): IfcDataStore | null {
+  if (!sessionIsLive(state)) return state.ifcDataStore;
   const id = state.collabRoomModelId;
-  if (id === null) return state.ifcDataStore;
+  if (id === null) return null;
   return state.models.get(id)?.ifcDataStore ?? null;
 }
 
@@ -122,10 +151,15 @@ export function roomStore(state: RoomModelTargetState): IfcDataStore | null {
  * recipient's room model — the case this mainly exists for, since it is
  * usually NOT active — is kept current by `applyRoomModelData`'s `updateModel`
  * branch (room-model-apply.ts).
+ *
+ * Same fail-closed rule as `roomStore`: the `state.geometryResult` fallback
+ * below only fires OFF a session; during a live session a null
+ * `collabRoomModelId` returns `null` rather than the active model's meshes.
  */
 export function roomMeshes(state: RoomModelTargetState): MeshData[] | null {
+  if (!sessionIsLive(state)) return state.geometryResult?.meshes ?? null;
   const id = state.collabRoomModelId;
-  if (id === null) return state.geometryResult?.meshes ?? null;
+  if (id === null) return null;
   return state.models.get(id)?.geometryResult?.meshes ?? null;
 }
 

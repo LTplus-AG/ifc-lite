@@ -50,6 +50,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 
 type TestState = ModelSlice & ModelCrossSliceState & DataSlice & DataCrossSliceState & {
   collabRoomModelId: string | null;
+  /** `null` off a session, set the instant `startCollab` begins — see room-model-target.ts. */
+  collabRoomId: string | null;
   mutationViews: Map<string, MutablePropertyView>;
 };
 
@@ -120,6 +122,7 @@ describe('room-model-target', () => {
       ...modelSlice,
       ...dataSlice,
       collabRoomModelId: null,
+      collabRoomId: null,
       mutationViews: new Map(),
     } as TestState;
   });
@@ -133,6 +136,8 @@ describe('room-model-target', () => {
   function joinRoomThenOpenOwnFile(): void {
     state.upsertModel(model(ROOM_MODEL_ID));
     state.collabRoomModelId = ROOM_MODEL_ID;
+    // `startCollab` sets this in the same `set()` call as `collabRoomModelId`.
+    state.collabRoomId = 'r1';
     state.mutationViews.set(ROOM_MODEL_ID, markerView(ROOM_MODEL_ID));
 
     state.upsertModel(model(OWN_MODEL_ID));
@@ -191,6 +196,7 @@ describe('room-model-target', () => {
     state.upsertModel(model(OWN_MODEL_ID));
     state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
     state.collabRoomModelId = ROOM_MODEL_ID;
+    state.collabRoomId = 'r1';
 
     assert.equal(state.activeModelId, OWN_MODEL_ID);
     assert.ok(state.ifcDataStore, 'the user’s store is loaded and would be the fallback');
@@ -227,6 +233,7 @@ describe('room-model-target', () => {
   it('when the room model IS active, room targeting and active targeting agree', () => {
     state.upsertModel(model(ROOM_MODEL_ID));
     state.collabRoomModelId = ROOM_MODEL_ID;
+    state.collabRoomId = 'r1';
     state.mutationViews.set(ROOM_MODEL_ID, markerView(ROOM_MODEL_ID));
 
     assert.equal(state.activeModelId, ROOM_MODEL_ID);
@@ -254,6 +261,7 @@ describe('room-model-target', () => {
     function federateWithMeshes(): void {
       state.upsertModel(model(ROOM_MODEL_ID, 0));
       state.collabRoomModelId = ROOM_MODEL_ID;
+      state.collabRoomId = 'r1';
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(ENTITY_ID, 10)]));
 
       state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
@@ -318,8 +326,63 @@ describe('room-model-target', () => {
       state.upsertModel(model(OWN_MODEL_ID, OWN_OFFSET));
       state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(OWN_OFFSET + ENTITY_ID, 500)]));
       state.collabRoomModelId = ROOM_MODEL_ID;
+      state.collabRoomId = 'r1';
       assert.ok(state.geometryResult?.meshes.length, 'the user’s meshes would be the fallback');
       assert.equal(roomMeshes(target()), null);
+    });
+  });
+
+  /**
+   * MAJOR (CodeRabbit CLI, PR #2706 review): `ShareDialog` awaits
+   * `mintRoomToken()` and does not re-check cancellation before calling
+   * `startCollab`. If the last model is removed during that await,
+   * `startCollab` runs with `activeModelId === null` and records a null
+   * `collabRoomModelId` — WHILE `collabRoomId` is already set, synchronously,
+   * in the same `set()` call (see `startCollab`, collabSlice.ts). The session
+   * is live and every resolver must fail closed rather than fall back to
+   * `activeModelId`, which would silently target whatever model the user
+   * loads next.
+   */
+  describe('a live session with no room model id (last model removed mid-mint) fails closed', () => {
+    beforeEach(() => {
+      // No model ever loaded — mirrors `activeModelId` being null when
+      // `startCollab`'s synchronous `set()` ran.
+      state.collabRoomModelId = null;
+      state.collabRoomId = 'r1';
+    });
+
+    it('roomModelIdOf does not fall back to activeModelId', () => {
+      assert.equal(roomModelIdOf(target()), null);
+    });
+
+    it('roomStore resolves to no store, even with a store loaded afterward', () => {
+      // The user loads a (private) file AFTER the race — activeModelId and
+      // ifcDataStore are now non-null, which is exactly what must NOT leak
+      // through as "the room's store".
+      state.upsertModel(model(OWN_MODEL_ID));
+      state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
+      assert.ok(state.ifcDataStore, 'a store now exists and would be the (wrong) fallback');
+      assert.equal(roomStore(target()), null);
+    });
+
+    it('roomMeshes resolves to no meshes, even with geometry loaded afterward', () => {
+      state.upsertModel(model(OWN_MODEL_ID, 1_000_000));
+      state.setGeometryResult(buildGeometryResultFromMeshes([cubeAt(1_000_007, 500)]));
+      assert.ok(state.geometryResult?.meshes.length, 'meshes now exist and would be the (wrong) fallback');
+      assert.equal(roomMeshes(target()), null);
+    });
+
+    it('isRoomModel rejects every model id, including one loaded afterward', () => {
+      state.upsertModel(model(OWN_MODEL_ID));
+      state.setActiveModel(OWN_MODEL_ID);
+      assert.equal(isRoomModel(target(), OWN_MODEL_ID), false);
+    });
+
+    it('roomMutationView resolves to no view', () => {
+      state.upsertModel(model(OWN_MODEL_ID));
+      state.mutationViews.set(OWN_MODEL_ID, markerView(OWN_MODEL_ID));
+      state.setActiveModel(OWN_MODEL_ID);
+      assert.equal(roomMutationView(target()), undefined);
     });
   });
 });

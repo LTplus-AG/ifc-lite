@@ -979,7 +979,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       },
       // A peer deleted an entity: hide its mesh (matches the owner's local
       // removeEntity, which hides rather than destroying GPU buffers).
+      //
+      // Unlike the four handlers above, this one does not go through
+      // `roomMutationView` / `roomStore`'s own null check, so it needs its
+      // own: in the named-but-unregistered window (recipient with
+      // `?room=&model=` before the first reconstruct completes),
+      // `roomModelIdOf` already names the room model, but `toGlobalIdFromModels`
+      // falls back to the bare expressId for a model it can't find — which can
+      // collide with an offset-0 model of the user's OWN. Gating on
+      // `roomStore` (registered only once the model exists) makes this drop
+      // the event exactly like its siblings until then.
       onEntityDelete: (entityId) => {
+        if (!roomStore(get())) return;
         const modelId = roomModelIdOf(get()) ?? '';
         const globalId = toGlobalIdFromModels(get().models, modelId, entityId);
         get().hideEntities([globalId]);

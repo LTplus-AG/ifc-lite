@@ -59,21 +59,65 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const rootArgIndex = process.argv.indexOf('--root');
+const ROOT =
+  rootArgIndex !== -1 && process.argv[rootArgIndex + 1]
+    ? process.argv[rootArgIndex + 1]
+    : join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const COLLAB_SLICE = 'apps/viewer/src/store/slices/collabSlice.ts';
 const MUTATION_SLICE = 'apps/viewer/src/store/slices/mutationSlice.ts';
 
 /**
- * Blank out comments so a `//`-quoted symbol (these regions document exactly
- * the shapes being banned) doesn't read as code, and single/double-quoted
- * strings so a stray brace in a literal can't desync the region scan. Template
- * literals are left alone: their `${...}` braces are balanced.
+ * Blank out comments and quoted-string contents so they can't desync or
+ * falsely satisfy the region scan below, WITHOUT blanking real code.
+ *
+ * Template literals get the same treatment, but they need their own state:
+ * the QUASI text (everything between backticks, outside `${...}`) is prose —
+ * a backtick string can spell `roomStoreFor(get(), modelId)` with no real
+ * call anywhere, which would satisfy the REQUIRED-call half of a check
+ * vacuously — so quasi text is blanked exactly like a plain string. But an
+ * `${...}` interpolation is a real, executable expression: it can itself
+ * contain the BANNED shapes (`` `${get().activeModelId}` ``), so it must be
+ * scanned as code, not blanked away — blanking it would open a hole in the
+ * other half of the same check. So: blank the quasi text, recurse into `${…}`
+ * as ordinary code (comments/strings/nested templates and all), and track
+ * brace depth per-interpolation so a `{`/`}` inside `${ foo({a:1}) }` doesn't
+ * get mistaken for the interpolation's own closing brace.
  */
 function blankNoise(source) {
   let out = '';
   let i = 0;
+  // Stack of open template-literal interpolations, each tracking the brace
+  // depth opened INSIDE that interpolation (so nested `{`/`}` in real code
+  // doesn't prematurely close it). Empty stack / top !== 'quasi' means "code".
+  const stack = [];
+  const inQuasi = () => stack.length > 0 && stack[stack.length - 1].mode === 'quasi';
   while (i < source.length) {
+    if (inQuasi()) {
+      const two = source.slice(i, i + 2);
+      if (two === '${') {
+        stack.push({ mode: 'code', depth: 0 });
+        out += two;
+        i += 2;
+        continue;
+      }
+      if (source[i] === '`') {
+        stack.pop();
+        out += '`';
+        i += 1;
+        continue;
+      }
+      if (source[i] === '\\') {
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      out += source[i] === '\n' ? '\n' : ' ';
+      i += 1;
+      continue;
+    }
+    // Code mode (top-level, or inside a `${...}` interpolation).
     const two = source.slice(i, i + 2);
     if (two === '//') {
       while (i < source.length && source[i] !== '\n') {
@@ -107,6 +151,32 @@ function blankNoise(source) {
       out += quote;
       i += 1;
       continue;
+    }
+    if (source[i] === '`') {
+      stack.push({ mode: 'quasi' });
+      out += '`';
+      i += 1;
+      continue;
+    }
+    if (stack.length > 0) {
+      // Inside a `${...}` interpolation: track this interpolation's own
+      // brace depth so its real `{`/`}` code doesn't get miscounted as the
+      // interpolation boundary.
+      if (source[i] === '{') {
+        stack[stack.length - 1].depth += 1;
+      } else if (source[i] === '}') {
+        const top = stack[stack.length - 1];
+        if (top.depth > 0) {
+          top.depth -= 1;
+        } else {
+          // Closes the interpolation itself; back to quasi mode (or another
+          // interpolation/quasi frame further down the stack).
+          stack.pop();
+          out += '}';
+          i += 1;
+          continue;
+        }
+      }
     }
     out += source[i];
     i += 1;

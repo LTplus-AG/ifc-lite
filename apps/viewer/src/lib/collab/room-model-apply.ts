@@ -35,6 +35,9 @@ export interface RoomModelApplyState {
   ) => void;
   setIfcDataStore: (store: IfcDataStore | null) => void;
   setGeometryResult: (result: GeometryResult | null) => void;
+  /** Signal that mesh positions/normals were mutated in place (dataSlice.ts) — see
+   *  the call below for why the non-active-model branch needs it too. */
+  bumpGeometryContentVersion: () => void;
 }
 
 /**
@@ -55,7 +58,20 @@ export function applyRoomModelData(
     else state.updateModel(roomModelId, { ifcDataStore: patch.ifcDataStore });
   }
   if (patch.geometryResult !== undefined) {
-    if (isActive) state.setGeometryResult(patch.geometryResult);
-    else state.updateModel(roomModelId, { geometryResult: patch.geometryResult });
+    if (isActive) {
+      state.setGeometryResult(patch.geometryResult);
+    } else {
+      state.updateModel(roomModelId, { geometryResult: patch.geometryResult });
+      // ViewportContainer's merged-geometry cache is keyed on mesh COUNT per
+      // model; it appends only the meshes past the previously seen count and
+      // otherwise trusts the cached copies of earlier ones unchanged. A
+      // reconstruct commonly re-derives the SAME entity count with DIFFERENT
+      // content (a peer's placement/geometry edit), which the count-based
+      // trigger can't see — exactly the "in-place mutation" case
+      // `geometryContentVersion` exists for (dataSlice.ts). Without this, a
+      // recipient viewing a DIFFERENT active model keeps stale (pre-edit)
+      // room-model geometry in the merged render buffer.
+      state.bumpGeometryContentVersion();
+    }
   }
 }

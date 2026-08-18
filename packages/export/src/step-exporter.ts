@@ -221,10 +221,9 @@ export type SourceLineMutations = SourceLineDelivery & { text: string };
  * `overlayNewEntityCount` are eagerly-computed values whose value is only
  * defined after work that runs past this construction site, so hoisting them
  * would change what they compute rather than where they are named;
- * `generatedTypeOwnedPsetIds` is read in one phase only — it is now a local
- * inside `step-property-sets.ts:generatePropertyAndQuantitySetEntities`, which
- * holds the loop that writes it AND the loop that reads it, so the claim stayed
- * true through the extraction rather than surviving it by accident (#2475).
+ * `generatedTypeOwnedPsetIds` is read in one phase only — a local inside
+ * `step-property-sets.ts:generatePropertyAndQuantitySetEntities`, which holds
+ * both the loop that writes it and the loop that reads it (#2475).
  */
 export interface ExportPass {
   /** Output accumulator: every DATA-section line this export will write. */
@@ -1421,20 +1420,18 @@ export class StepExporter {
   }
 
   /**
-   * The exporter state `step-property-sets.ts` cannot read off the pass
-   * (#2475 steps 2b and 2c).
+   * The state `step-property-sets.ts` cannot read off the pass (#2475 2b/2c).
    *
    * `allocateExpressId` is the same callback `georefContext` hands out, over
    * the same counter, so the ids the two phases allocate stay in one sequence.
    * `ownerHistory` is passed by reference — the object is this exporter's, and
-   * `export()` resets it. `isReadableSourceRef` is the instance predicate
-   * rather than `pass.isReadableSourceRef`, because two of this module's
-   * consumers (`buildRelDefinesByPropertiesIndex`, `retainSharedAtoms`) run
-   * with no pass in hand; both readers are built over the same source.
+   * `export()` resets it. `isReadableSourceRef` is the instance predicate, not
+   * `pass.isReadableSourceRef`, because two consumers of that module
+   * (`buildRelDefinesByPropertiesIndex`, `retainSharedAtoms`) run with no pass
+   * in hand; both readers are built over the same source.
    *
-   * Rebuilt per call rather than memoised, as `georefContext` is: it is four
-   * field reads and two closures, and the four call sites run once each per
-   * export except `retainSharedAtoms`, which hoists it out of its loop.
+   * Rebuilt per call, as `georefContext` is: every call site runs once per
+   * export bar `retainSharedAtoms`, which hoists it out of its loop.
    */
   private propertySetContext(): PropertySetContext {
     return {

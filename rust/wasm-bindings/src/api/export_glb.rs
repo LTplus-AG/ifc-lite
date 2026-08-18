@@ -74,6 +74,11 @@ impl IfcAPI {
             // The viewer loads the GLB directly; quantization is a server/export-pipeline
             // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
             quantize: false,
+            // Stated rather than inherited from `setTessellationQuality`, so this
+            // export keeps emitting exactly what it emitted before. Whether an
+            // export should follow the density the viewer is displaying at is a
+            // separate question from whether a caller can name one.
+            tessellation_quality: ifc_lite_export::TessellationQuality::Medium,
         };
         ifc_lite_export::try_export_glb(content, &opts)
             .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))

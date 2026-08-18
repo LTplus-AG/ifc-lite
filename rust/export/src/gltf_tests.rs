@@ -6,6 +6,9 @@
 //! the module have to live beside it rather than inside it.
 
 use super::*;
+// The exporters route through the quality-carrying entry point now, so the
+// plain one is named here rather than inherited from the parent module.
+use ifc_lite_processing::process_geometry;
 
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
 fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {

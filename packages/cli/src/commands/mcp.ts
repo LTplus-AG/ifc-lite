@@ -156,7 +156,12 @@ export async function mcpCommand(args: string[]): Promise<void> {
           // Keys per-session state (layer workspaces) and its disposal
           // (#1030); the transport rejects servers built without it.
           sessionId,
-          config: { readOnly, bsddEndpoint: bsdd, samplingEnabled: false },
+          config: {
+            readOnly,
+            bsddEndpoint: bsdd,
+            allowedPaths: allowedPaths.length > 0 ? allowedPaths : undefined,
+            samplingEnabled: false,
+          },
         });
       },
     };

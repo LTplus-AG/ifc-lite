@@ -54,7 +54,6 @@ import * as path from 'node:path';
 import * as Y from 'yjs';
 import { collectReferencedBlobHashes } from '@ifc-lite/collab';
 import { FilePersistence } from './persistence.js';
-import { defaultMetrics } from './metrics.js';
 import type { RoomManager } from './room-manager.js';
 
 /** Match exactly 32 lowercase hex chars (the client's `fnv128` output). */

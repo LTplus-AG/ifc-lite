@@ -50,7 +50,22 @@ interface MaterialTotals {
   byClass: Array<{ ifcClass: string; count: number }>;
 }
 
-/** Pick a quantity value by candidate names (case-insensitive), else by type. */
+/**
+ * Pick a quantity value by candidate names (case-insensitive), else by type:
+ * when nothing matches a candidate but the map is non-empty, fall back to the
+ * alphabetically-first name. That fallback exists for vendor-specific
+ * quantity names (e.g. "PerimeterArea", "TopArea") that carry a real value of
+ * the right type but never match the IFC-standard candidate list — without
+ * it, such an element contributes nothing to the total and its row is
+ * dropped from the panel even though the quantity was there all along.
+ *
+ * The tiebreak is alphabetical rather than "whichever the map saw first":
+ * map insertion order mirrors the order qsets/quantities were encountered
+ * while scanning the element (itself downstream of on-demand-parse vs.
+ * type-fallback ordering, see the qsets selection above) — a happenstance of
+ * traversal, not a meaningful choice. Sorting by name at least makes the
+ * fallback reproducible independent of that traversal order.
+ */
 function pickQuantity(
   byName: Map<string, number>,
   candidates: string[],
@@ -59,7 +74,50 @@ function pickQuantity(
     const v = byName.get(c);
     if (v !== undefined) return v;
   }
-  return undefined;
+  if (byName.size === 0) return undefined;
+  const firstName = [...byName.keys()].sort()[0];
+  return byName.get(firstName);
+}
+
+const VOLUME_CANDIDATES = ['netvolume', 'grossvolume', 'volume'];
+const AREA_CANDIDATES = [
+  'netarea',
+  'grossarea',
+  'netsidearea',
+  'grosssidearea',
+  'netfloorarea',
+  'grossfloorarea',
+  'area',
+];
+const WEIGHT_CANDIDATES = ['netweight', 'grossweight', 'weight'];
+
+/**
+ * Build per-name quantity maps from an element's (or its type's) qsets and
+ * pick one value of each quantity kind — the single place all three call
+ * sites (volume/area/weight) share, so the "match a candidate name, else by
+ * type" rule from `pickQuantity`'s docstring is applied identically to all
+ * three instead of three copies that can silently drift apart (as they did:
+ * only the volume call site implemented the fallback).
+ */
+export function aggregateQuantitiesFromQsets(
+  qsets: ReadonlyArray<{ quantities: ReadonlyArray<{ name: string; type: number; value: number }> }>,
+): { volume?: number; area?: number; weight?: number } {
+  const volByName = new Map<string, number>();
+  const areaByName = new Map<string, number>();
+  const weightByName = new Map<string, number>();
+  for (const qset of qsets) {
+    for (const q of qset.quantities) {
+      const key = q.name.toLowerCase();
+      if (q.type === QuantityType.Volume) volByName.set(key, q.value);
+      else if (q.type === QuantityType.Area) areaByName.set(key, q.value);
+      else if (q.type === QuantityType.Weight) weightByName.set(key, q.value);
+    }
+  }
+  return {
+    volume: pickQuantity(volByName, VOLUME_CANDIDATES),
+    area: pickQuantity(areaByName, AREA_CANDIDATES),
+    weight: pickQuantity(weightByName, WEIGHT_CANDIDATES),
+  };
 }
 
 /** Format an aggregated quantity with magnitude-appropriate precision. */
@@ -191,33 +249,19 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 return own.some((qset) => qset.quantities.length > 0) ? own : typeQsetsFor(entityId);
               })();
           if (qsets.length === 0) continue;
-          const volByName = new Map<string, number>();
-          const areaByName = new Map<string, number>();
-          const weightByName = new Map<string, number>();
-          for (const qset of qsets) {
-            for (const q of qset.quantities) {
-              const key = q.name.toLowerCase();
-              if (q.type === QuantityType.Volume) volByName.set(key, q.value);
-              else if (q.type === QuantityType.Area) areaByName.set(key, q.value);
-              else if (q.type === QuantityType.Weight) weightByName.set(key, q.value);
-            }
-          }
+          const { volume: vol, area, weight: wt } = aggregateQuantitiesFromQsets(qsets);
 
-          const vol = pickQuantity(volByName, ['netvolume', 'grossvolume', 'volume'])
-            ?? (volByName.size > 0 ? [...volByName.values()][0] : undefined);
           if (vol !== undefined) {
             result.volume += vol * weight;
             result.hasVolume = true;
             result.elementsWithVolume += 1;
           }
 
-          const area = pickQuantity(areaByName, ['netarea', 'grossarea', 'netsidearea', 'grosssidearea', 'netfloorarea', 'grossfloorarea', 'area']);
           if (area !== undefined) {
             result.area += area * weight;
             result.hasArea = true;
           }
 
-          const wt = pickQuantity(weightByName, ['netweight', 'grossweight', 'weight']);
           if (wt !== undefined) {
             result.weight += wt * weight;
             result.hasWeight = true;

@@ -223,7 +223,7 @@ function buildStructuralConnectionStore(): { store: IfcDataStore; byId: Map<numb
 }
 
 describe('the relationship filter runs when geometry is excluded', () => {
-  it('does not ship IfcRelConnectsStructuralMember naming the placement it dropped', () => {
+  it('rewrites ConditionCoordinateSystem to $ instead of withholding the association', () => {
     const { store, byId } = buildStructuralConnectionStore();
     // Pins the isolation this test claims: no ref here is unreadable, so the
     // unreadable-ref disjunct is false and cannot be what runs the filter.
@@ -234,20 +234,44 @@ describe('the relationship filter runs when geometry is excluded', () => {
 
     // The omission: `#5` is geometry-classified, so the source pass skips it.
     expect(content).not.toContain('#5=IFCAXIS2PLACEMENT3D');
-    // Measured with no geometry disjunct in the gate: `#6` shipped verbatim
-    // and `#5` dangled. This is the assertion that catches that.
     expect(findDanglingRefs(content)).toEqual([]);
-    // `ConditionCoordinateSystem` is single-valued, so there is no STEP
-    // spelling for "omitted" and the whole relationship is withheld — which
-    // costs `#1` and `#2` their structural connection, hence the warning.
-    expect(content).not.toContain('#6=IFCRELCONNECTSSTRUCTURALMEMBER');
-    expect(result.stats.warnings).toHaveLength(1);
-    expect(result.stats.warnings[0]).toContain('#6');
+    // `ConditionCoordinateSystem` is OPTIONAL in both IFC4 and IFC4X3
+    // (`IFC4_ADD2_TC1.exp:8523`, `IFC4X3.exp:9774`) and is the sole
+    // `IFCREL*` attribute typed to an entity `isGeometryEntity` classifies —
+    // so the relationship is rewritten with `$` in its place rather than
+    // withheld, keeping #1 and #2's structural association and producing no
+    // warning.
+    expect(content).toMatch(
+      /#6=IFCRELCONNECTSSTRUCTURALMEMBER\('0rel00000000000000000',\$,\$,\$,#1,#2,\$,\$,\$,\$\);/,
+    );
+    expect(result.stats.warnings).toHaveLength(0);
 
-    // Not vacuous: the two non-geometry entities are still exported, so the
-    // clean dangling list is the filter's doing and not an empty file.
+    // Not vacuous: the two non-geometry entities are still exported.
     expect(content).toContain('#1=IFCSTRUCTURALCURVEMEMBER');
     expect(content).toContain('#2=IFCSTRUCTURALPOINTCONNECTION');
+  });
+
+  it('withholds the eccentricity subtype instead, because its 11th attribute is mandatory', () => {
+    // IfcRelConnectsWithEccentricity appends ConnectionConstraint (mandatory
+    // IfcConnectionGeometry) after ConditionCoordinateSystem, so the position-
+    // and-count-matched $ rewrite above must NOT fire here: attrCount is 11,
+    // not 10, and this arm falls through to the general withhold rule.
+    const { store } = buildParsedStore([
+      [1, 'IFCSTRUCTURALCURVEMEMBER', "#1=IFCSTRUCTURALCURVEMEMBER('0mem00000000000000000',$,'Beam',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n"],
+      [2, 'IFCSTRUCTURALPOINTCONNECTION', "#2=IFCSTRUCTURALPOINTCONNECTION('0con00000000000000000',$,'Node',$,$,$,$,$,$);\n"],
+      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));\n'],
+      [5, 'IFCAXIS2PLACEMENT3D', '#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n'],
+      [7, 'IFCCONNECTIONPOINTECCENTRICITY', '#7=IFCCONNECTIONPOINTECCENTRICITY($,$,$,$,10.);\n'],
+      [6, 'IFCRELCONNECTSWITHECCENTRICITY', "#6=IFCRELCONNECTSWITHECCENTRICITY('0rel00000000000000000',$,$,$,#1,#2,$,$,$,#5,#7);\n"],
+    ]);
+
+    const result = new StepExporter(store).export({ schema: 'IFC4', includeGeometry: false });
+    const content = decode(result.content);
+
+    expect(findDanglingRefs(content)).toEqual([]);
+    expect(content).not.toContain('#6=IFCRELCONNECTSWITHECCENTRICITY');
+    expect(result.stats.warnings).toHaveLength(1);
+    expect(result.stats.warnings[0]).toContain('#6');
   });
 
   it('control: the same store with geometry INCLUDED keeps the relationship', () => {

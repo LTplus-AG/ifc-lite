@@ -635,10 +635,12 @@ export function filterHiddenRefsFromRelationshipLine(
   if (!match) return line;
   const [, prefix, argsText, suffix] = match;
   const attrs = splitTopLevelArgs(argsText);
+  const entityType = prefix.slice(prefix.indexOf('=') + 1, -1).toUpperCase();
 
   let changed = false;
   const nextAttrs: string[] = [];
-  for (const attr of attrs) {
+  for (let index = 0; index < attrs.length; index++) {
+    const attr = attrs[index];
     if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
       const inner = attr.slice(1, -1);
       const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
@@ -657,12 +659,59 @@ export function filterHiddenRefsFromRelationshipLine(
     }
 
     const refMatch = attr.match(/^#(\d+)$/);
-    if (refMatch && isExcluded(Number(refMatch[1]))) return null;
+    if (refMatch && isExcluded(Number(refMatch[1]))) {
+      if (isOptionalTrailingRef(entityType, attrs.length, index)) {
+        changed = true;
+        nextAttrs.push('$');
+        continue;
+      }
+      return null;
+    }
     nextAttrs.push(attr);
   }
 
   if (!changed) return line;
   return `${prefix}${nextAttrs.join(',')}${suffix}`;
+}
+
+/**
+ * The ONE named exception to "a single-valued STEP attribute has no spelling
+ * for omitted": `IfcRelConnectsStructuralMember.ConditionCoordinateSystem`
+ * (position 10 of 10 — `GlobalId, OwnerHistory, Name, Description,
+ * RelatingStructuralMember, RelatedStructuralConnection, AppliedCondition,
+ * AdditionalConditions, SupportedLength, ConditionCoordinateSystem`) is
+ * declared `OPTIONAL IfcAxis2Placement3D` in both IFC4 (`IFC4_ADD2_TC1.exp`
+ * line 8523) and IFC4X3 (`IFC4X3.exp` line 9774), and `IFCAXIS2PLACEMENT3D`
+ * is the one entry in {@link StepExporter.isGeometryEntity}'s allowlist an
+ * `IFCREL*` line can name in a single-valued slot — re-derived by scanning
+ * every `IFCREL*` attribute in both schema files against that allowlist
+ * (`scripts/` has no permanent copy of this scan; it was run ad hoc against
+ * `packages/codegen/schemas/*.exp` and found exactly this one hit).
+ *
+ * `$` here loses nothing IFC4/IFC4X3 requires: the attribute is optional by
+ * schema, so a reader must already accept it absent. Withholding the whole
+ * relationship instead — the general rule below, correct for every OTHER
+ * `IFCREL*` bare-scalar slot, none of which this scan found to be optional —
+ * would delete the member-to-connection association over one dispensable
+ * coordinate system, under `includeGeometry: false` alone, with no
+ * `visibleOnly` and no deletion involved.
+ *
+ * Deliberately narrow rather than a general schema-optionality table: the
+ * scan that justifies it is exact for the schemas this repo ships (IFC2X3,
+ * IFC4, IFC4X3) and covers a single position of a single entity type, so a
+ * position-indexed special case is bounded and checkable; a general table
+ * would need every `IFCREL*` attribute's optionality across three schemas
+ * and would change output for classes this scan proved unaffected. Matched
+ * on the exact type token and attribute COUNT (10) rather than just position
+ * 10, so `IFCRELCONNECTSWITHECCENTRICITY` — the one subtype, which appends
+ * `ConnectionConstraint` as an 11th, MANDATORY attribute and pushes
+ * `ConditionCoordinateSystem` to position 9 of 11 — is excluded from this
+ * arm and falls through to the general withhold rule; that mandatory 11th
+ * attribute cannot itself be `$`, and a rewrite that only spelled position 9
+ * regardless of type would be wrong for that subtype's own dangling case.
+ */
+function isOptionalTrailingRef(entityType: string, attrCount: number, index: number): boolean {
+  return entityType === 'IFCRELCONNECTSSTRUCTURALMEMBER' && attrCount === 10 && index === 9;
 }
 
 /**

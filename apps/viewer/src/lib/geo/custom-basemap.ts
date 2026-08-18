@@ -154,6 +154,16 @@ export function validateCustomBasemap(draft: CustomBasemapDraft): ValidationResu
       return fail('maximumLevel', `Maximum zoom must be a whole number between 1 and ${MAX_TILE_LEVEL}.`);
     }
   }
+  if (seen.has('reverseZ') && maximumLevel === undefined) {
+    // Cesium's UrlTemplateImageryProvider only flips {reverseZ} when
+    // `maximumLevel` is defined (`defined(maximumLevel) && level < maximumLevel
+    // ? maximumLevel - level - 1 : level`). Without it, {reverseZ} silently
+    // resolves to the ordinary `level` — no error, no blank globe, just the
+    // wrong tile at every zoom for a genuinely reverse-Z service. That failure
+    // has no visible signal, unlike the CORS/blocked-host case this feature
+    // otherwise makes loud, so it is rejected here instead.
+    return fail('maximumLevel', 'A "{reverseZ}" template needs a maximum zoom level — without it Cesium cannot invert the level and silently falls back to the ordinary {z} numbering.');
+  }
 
   return {
     ok: true,

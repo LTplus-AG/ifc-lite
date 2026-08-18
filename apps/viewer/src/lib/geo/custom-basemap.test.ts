@@ -111,6 +111,26 @@ describe('custom basemap — URL template validation', () => {
     const basemap = ok({ ...VALID, maximumLevel: undefined });
     assert.strictEqual(basemap.maximumLevel, undefined);
   });
+
+  it('rejects {reverseZ} without a maximumLevel — Cesium only inverts the level when one is set, and silently falls back to {z} otherwise', () => {
+    // UrlTemplateImageryProvider.js: `defined(maximumLevel) && level < maximumLevel
+    // ? maximumLevel - level - 1 : level`. Without `maximumLevel`, {reverseZ}
+    // resolves to the ordinary level with no error and no blank globe — just
+    // the wrong tile at every zoom for a genuinely reverse-Z service.
+    const result = err({
+      ...VALID,
+      url: 'https://t.example.org/{reverseZ}/{x}/{y}.png',
+      maximumLevel: undefined,
+    });
+    assert.strictEqual(result.field, 'maximumLevel');
+    assert.match(result.message, /reverseZ/);
+  });
+
+  it('accepts {reverseZ} once a maximumLevel is supplied', () => {
+    const basemap = ok({ ...VALID, url: 'https://t.example.org/{reverseZ}/{x}/{y}.png', maximumLevel: 18 });
+    assert.match(basemap.url, /\{reverseZ\}/);
+    assert.strictEqual(basemap.maximumLevel, 18);
+  });
 });
 
 describe('custom basemap — attribution is required', () => {

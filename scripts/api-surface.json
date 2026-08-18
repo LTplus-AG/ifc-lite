@@ -191,14 +191,21 @@
     "AABB: interface",
     "ContactOptions: interface",
     "Mesh: interface",
+    "MeshBvh: interface",
+    "MeshDistance: interface",
+    "MinDistanceOptions: interface",
     "NarrowPhaseOptions: interface",
     "SharedFaceCluster: interface",
     "SharedFaceOptions: interface",
     "TrianglePair: type",
     "Vec3: type",
+    "buildMeshBvh: function",
     "clusterSharedFaces: function",
     "contactClusters: function",
-    "narrowPhase: function"
+    "minDistanceBetweenBvhs: function",
+    "minDistanceBetweenMeshes: function",
+    "narrowPhase: function",
+    "queryMeshCross: function"
   ],
   "@ifc-lite/clash/ifcx": [
     "IfcxAdapterOptions: interface",

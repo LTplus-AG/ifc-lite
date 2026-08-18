@@ -19,24 +19,52 @@
  * formats belong to the measurement, not to the tool.
  */
 
-import { angleBetweenDeg, normalize, sub, type Point3 } from './angle-vec';
+import { angleBetweenDeg, cross, dot, norm, normalize, sub, type Point3 } from './angle-vec';
 
 /**
- * Below this the two rays are treated as pointing the same way, or exactly
- * opposite ways, rather than as a very small or very large angle.
+ * Pick resolution: the snap layer's own floor, `MIN_SNAP_TOLERANCE` in
+ * `packages/renderer/src/snap-weld.ts` (the CSG kernel's reconcile grid,
+ * 1/65536 m = 15.3 um). Mirrored rather than imported because this module is
+ * pure display maths with no renderer dependency; the sibling test pins the
+ * two together.
  *
- * This is not cosmetic rounding. Picks snap to welded vertices and to the
- * merged collinear runs `snap-edge-runs.ts` reconstructs, so three picks along
- * one straight edge is a REACHABLE input, not a pathological one — the apex
- * lands on an interior junction of a run whose endpoints are the other two
- * picks. Exact 180 never survives the f32 round trip, so without a band that
- * case reports something like 179.9997 degrees and the reader is left to
- * decide whether that is a real dogleg.
+ * Two picks closer than this are the SAME pick as far as the snap layer is
+ * concerned: vertex snapping returns the WELDED REPRESENTATIVE point, so two
+ * picks on one vertex come back byte-identical, and two distinct snapped
+ * picks are at least this far apart.
  */
-const COLLINEAR_TOLERANCE_DEG = 0.01;
+const PICK_RESOLUTION_M = 1 / 65536;
 
-/** Below this a ray has no direction: the apex and that pick coincide. */
-const DEGENERATE_LENGTH_M = 1e-9;
+/**
+ * Below this a ray has no usable direction.
+ *
+ * Tied to pick resolution, NOT to an arbitrarily small epsilon. An earlier
+ * version used 1e-9 m — 15,259x BELOW the snap floor — so no reachable input
+ * could ever land in the band (0, 1e-9]: the guard classified nothing, and
+ * the test that "pinned it from both sides" pinned a constant with no
+ * behavioural consequence. A ray shorter than one pick resolution has a
+ * direction made entirely of cursor noise, and that is what is worth
+ * refusing to measure.
+ */
+const DEGENERATE_LENGTH_M = PICK_RESOLUTION_M;
+
+/**
+ * Collinearity is judged as a PERPENDICULAR DISTANCE, not as an angle.
+ *
+ * `snap-weld.ts:43-54` makes this argument and this module follows it: "An
+ * angle tolerance would be the wrong primitive here", because a fixed angle is
+ * simultaneously too tight for short rays far from the origin and too loose
+ * for long ones near it. Measured against the snap layer's own noise, a fixed
+ * 0.01 degree band is ESCAPED by a genuinely straight triple at 100 m
+ * coordinates with 10 cm rays (~0.014 degrees of direction noise), while at
+ * 2 m rays the same band is ~14x wider than the noise and folds real
+ * sub-millimetre doglegs into "straight".
+ *
+ * So: the far pick is collinear when its perpendicular offset from the
+ * apex->a line is within pick resolution. That scales with ray length for
+ * free, and is expressed in the unit the snap layer actually guarantees.
+ */
+const COLLINEAR_OFFSET_M = PICK_RESOLUTION_M;
 
 /**
  * Which of the four genuinely different answers three picks have.
@@ -82,7 +110,7 @@ export function threePointAngle(
   a: Point3,
   b: Point3,
   degenerateLengthM: number = DEGENERATE_LENGTH_M,
-  collinearToleranceDeg: number = COLLINEAR_TOLERANCE_DEG,
+  collinearOffsetM: number = COLLINEAR_OFFSET_M,
 ): ThreePointAngle {
   const ra = sub(a, apex);
   const rb = sub(b, apex);
@@ -98,8 +126,14 @@ export function threePointAngle(
 
   const degrees = angleBetweenDeg(ua, ub);
 
-  if (degrees <= collinearToleranceDeg) return { kind: 'zero', degrees: 0 };
-  if (degrees >= 180 - collinearToleranceDeg) return { kind: 'straight', degrees: 180 };
+  // Perpendicular offset of b from the apex->a line. `ua` is unit, so
+  // |ua x rb| IS that distance — no division, and it scales with rb's length
+  // exactly as the tolerance argument above requires.
+  if (norm(cross(ua, rb)) <= collinearOffsetM) {
+    // Collinear. Which of the two collinear answers is a question of
+    // DIRECTION, which a perpendicular offset cannot tell apart.
+    return dot(ua, ub) >= 0 ? { kind: 'zero', degrees: 0 } : { kind: 'straight', degrees: 180 };
+  }
   return { kind: 'angled', degrees };
 }
 

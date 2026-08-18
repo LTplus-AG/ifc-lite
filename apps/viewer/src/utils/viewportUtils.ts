@@ -530,21 +530,33 @@ export interface PendingMeasurementState {
   /** Finished multi-click polylines (#2199) — their placed vertices still
    *  need reprojecting on every camera move, same as drag measurements. */
   polylineMeasurements: { length: number };
+  /** In-progress angle sequence (#2735), or null. */
+  activeAngle: unknown;
+  /** Finished angle measurements (#2735) — their picks are reprojected too. */
+  angleMeasurements: { length: number };
 }
 
 /**
  * True when there is any measurement state whose screen coordinates could
- * be stale after a camera move — drag-mode measurements/gesture, or
+ * be stale after a camera move — drag-mode measurements/gesture,
  * polyline-mode sequences/finished polylines (#2641 review defect: this used
  * to check only `measurements`/`activeMeasurement`, so with polyline-only
  * state the reprojection pass never ran and placed points, segments and
- * labels froze at their click-time screen position while orbiting).
+ * labels froze at their click-time screen position while orbiting), or angle
+ * sequences/measurements (#2735, the same defect a third time).
+ *
+ * This gate and `updateMeasurementScreenCoords` are a PAIR. Reprojection logic
+ * added there without an arm here is dead code for any state this gate does
+ * not recognise, and the symptom is identical to having written no
+ * reprojection at all.
  */
 export function hasPendingMeasurementState(state: PendingMeasurementState): boolean {
   return (
     state.measurements.length > 0 ||
     state.activeMeasurement !== null ||
     state.activePolyline !== null ||
-    state.polylineMeasurements.length > 0
+    state.polylineMeasurements.length > 0 ||
+    state.activeAngle !== null ||
+    state.angleMeasurements.length > 0
   );
 }

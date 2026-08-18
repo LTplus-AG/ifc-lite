@@ -418,6 +418,25 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       points: m.points.map(reprojectPoint),
     }));
 
+    // Angle picks (#2735) need the same treatment, and for the same reason the
+    // polyline comment above gives: the overlay draws its rays and label from
+    // `screenX/screenY`, so without reprojection every finished angle would
+    // stay frozen at its click-time pixel while the model orbits underneath.
+    // `reprojectPoint` sets `hasChanges` itself, so an angle moving is enough
+    // to defeat the early exit below even when nothing else changed.
+    let updatedActiveAngle = state.activeAngle;
+    if (state.activeAngle) {
+      updatedActiveAngle = {
+        ...state.activeAngle,
+        picks: state.activeAngle.picks.map((pick) => ({ ...pick, point: reprojectPoint(pick.point) })),
+      };
+    }
+
+    const updatedAngleMeasurements = state.angleMeasurements.map((m) => ({
+      ...m,
+      picks: m.picks.map((pick) => ({ ...pick, point: reprojectPoint(pick.point) })),
+    }));
+
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -428,6 +447,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       activeMeasurement: updatedActiveMeasurement,
       activePolyline: updatedActivePolyline,
       polylineMeasurements: updatedPolylineMeasurements,
+      activeAngle: updatedActiveAngle,
+      angleMeasurements: updatedAngleMeasurements,
     });
   },
 

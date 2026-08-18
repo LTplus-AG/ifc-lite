@@ -444,9 +444,20 @@ export function MeasureOverlay() {
             ? activePolyline
               ? 'Click to add point · dbl-click/Enter to finish · click start to close · Esc to cancel'
               : 'Click to start polyline'
-            : activeMeasurement
-              ? 'Release to complete'
-              : 'Drag to measure'}
+            : measureMode === 'angle'
+              ? // In angle mode `activeMeasurement` is ALWAYS null — the drag
+                // gate refuses to start one — so falling through to the drag
+                // branch below would permanently show "Drag to measure" in a
+                // mode that ignores drags entirely. The hint has to name the
+                // gesture that actually works, and which pick is next.
+                !activeAngle
+                ? 'Click the apex of the angle'
+                : activeAngle.picks.length === 1
+                  ? 'Click the first direction · Esc to cancel'
+                  : 'Click the second direction · Esc to cancel'
+              : activeMeasurement
+                ? 'Release to complete'
+                : 'Drag to measure'}
         </span>
       </div>
 

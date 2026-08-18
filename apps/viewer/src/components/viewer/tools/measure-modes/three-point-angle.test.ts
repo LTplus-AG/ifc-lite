@@ -69,23 +69,35 @@ describe('threePointAngle', () => {
     assert.equal(r.kind, 'degenerate');
   });
 
-  it('treats a sub-nanometre ray as degenerate, not as a measurable direction', () => {
-    // The exactly-coincident case above is caught by `normalize` returning
-    // null, so it does NOT pin the metre threshold — with the threshold
-    // deleted, every other test in this file still passed. Two picks that
-    // snapped to "the same" vertex differ by f32 noise rather than by zero,
-    // so the threshold is the thing that makes them degenerate.
-    const apex = { x: 0, y: 0, z: 0 };
-    const nearlyApex = { x: 1e-12, y: 0, z: 0 };
-    assert.equal(threePointAngle(apex, nearlyApex, { x: 0, y: 0, z: 3 }).kind, 'degenerate');
-  });
-
-  it('pins the degenerate length threshold from both sides', () => {
-    // Just below the default 1e-9 m is degenerate; just above is a real ray.
+  it('refuses a ray shorter than one pick resolution', () => {
+    // The exactly-coincident case is caught by `normalize` returning null, so
+    // it does NOT pin the threshold — with the guard removed, every other
+    // test in this file still passed.
+    //
+    // The threshold is the SNAP FLOOR (1/65536 m = 15.3 um), not an arbitrary
+    // epsilon. An earlier version used 1e-9 m, which is 15,259x below the
+    // floor: nothing reachable could land in (0, 1e-9], so it classified
+    // nothing. Below one pick resolution a ray's direction is cursor noise.
     const apex = { x: 0, y: 0, z: 0 };
     const far = { x: 0, y: 0, z: 3 };
-    assert.equal(threePointAngle(apex, { x: 9e-10, y: 0, z: 0 }, far).kind, 'degenerate');
-    assert.equal(threePointAngle(apex, { x: 2e-9, y: 0, z: 0 }, far).kind, 'angled');
+    assert.equal(threePointAngle(apex, { x: 1e-6, y: 0, z: 0 }, far).kind, 'degenerate');
+  });
+
+  it('pins the degenerate threshold to the snap floor from both sides', () => {
+    const apex = { x: 0, y: 0, z: 0 };
+    const far = { x: 0, y: 0, z: 3 };
+    const floor = 1 / 65536;
+    assert.equal(threePointAngle(apex, { x: floor * 0.9, y: 0, z: 0 }, far).kind, 'degenerate');
+    assert.equal(threePointAngle(apex, { x: floor * 1.1, y: 0, z: 0 }, far).kind, 'angled');
+  });
+
+  it('keeps the mirrored snap floor in step with the renderer\'s own constant', () => {
+    // `three-point-angle.ts` mirrors `MIN_SNAP_TOLERANCE` from
+    // `packages/renderer/src/snap-weld.ts` rather than importing it (this
+    // module has no renderer dependency). If the renderer's floor moves and
+    // this does not, the thresholds above silently stop matching pick
+    // resolution — so the value is pinned here explicitly.
+    assert.equal(1 / 65536, 0.0000152587890625);
   });
 
   it('classifies same-direction rays as a real zero, not as degenerate', () => {
@@ -121,20 +133,26 @@ describe('threePointAngle', () => {
     assert.equal(r.kind, 'zero');
   });
 
-  it('pins the collinear tolerance from both sides', () => {
-    // Just inside the band classifies as straight; just outside stays angled.
+  it('judges collinearity by PERPENDICULAR OFFSET, so it scales with ray length', () => {
+    // snap-weld.ts:43-54 argues a fixed angle is the wrong primitive: too
+    // tight for short rays far from the origin, too loose for long ones near
+    // it. A 5 mm perpendicular dogleg is a REAL corner on a 0.2 m ray and is
+    // still a real corner on a 200 m one — an angle band would call the
+    // second one straight.
+    const apex = { x: 0, y: 0, z: 0 };
+    const shortRay = threePointAngle(apex, { x: 0.2, y: 0, z: 0 }, { x: -0.2, y: 0.005, z: 0 });
+    const longRay = threePointAngle(apex, { x: 200, y: 0, z: 0 }, { x: -200, y: 0.005, z: 0 });
+    assert.equal(shortRay.kind, 'angled', 'a 5 mm offset on a 0.2 m ray is a real corner');
+    assert.equal(longRay.kind, 'angled', 'and it is still a real corner on a 200 m ray');
+  });
+
+  it('pins the collinear offset to the snap floor from both sides', () => {
     const apex = { x: 0, y: 0, z: 0 };
     const a = { x: 1, y: 0, z: 0 };
-    const inside = (179.995 * Math.PI) / 180;
-    const outside = (179.98 * Math.PI) / 180;
-    assert.equal(
-      threePointAngle(apex, a, { x: Math.cos(inside), y: Math.sin(inside), z: 0 }).kind,
-      'straight',
-    );
-    assert.equal(
-      threePointAngle(apex, a, { x: Math.cos(outside), y: Math.sin(outside), z: 0 }).kind,
-      'angled',
-    );
+    const floor = 1 / 65536;
+    // Offset is measured perpendicular to the apex->a line, so vary y.
+    assert.equal(threePointAngle(apex, a, { x: -1, y: floor * 0.9, z: 0 }).kind, 'straight');
+    assert.equal(threePointAngle(apex, a, { x: -1, y: floor * 1.1, z: 0 }).kind, 'angled');
   });
 });
 

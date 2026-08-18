@@ -815,4 +815,45 @@ describe('DaluxBuildProvider', () => {
       expect(result.message).toContain('500');
     });
   });
+
+  // ─── the baseUrl preference actually reaches the wire (#2792) ────────────
+  // The node plumbing is well covered on both sides, but the JOIN between them
+  // is one line in createClient. Reverting just that line left every other test
+  // in this PR green, which is the whole defect family this repo keeps hitting.
+
+  describe('baseUrl preference', () => {
+    it('sends the node selector on requests when a non-default base URL is set', async () => {
+      const seen: string[] = [];
+      const fetchImpl = vi.fn((url: string) => {
+        seen.push(String(url));
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve({ data: [] }) }));
+      }) as unknown as typeof fetch;
+
+      const ctx = createMockCtx(fetchImpl, {
+        apiKey: 'test-key-123',
+        baseUrl: 'https://node2.field.dalux.com/service/api',
+      });
+      await provider.listProjects(ctx);
+
+      expect(seen.length, 'no request was made').toBeGreaterThan(0);
+      expect(
+        seen[0],
+        `the baseUrl preference never reached the request: ${seen[0]}`,
+      ).toContain('daluxNode=node2');
+    });
+
+    it('sends no selector at all when the preference is absent', async () => {
+      // The node1 majority must be byte-for-byte unaffected.
+      const seen: string[] = [];
+      const fetchImpl = vi.fn((url: string) => {
+        seen.push(String(url));
+        return Promise.resolve(mockResponse({ json: () => Promise.resolve({ data: [] }) }));
+      }) as unknown as typeof fetch;
+
+      await provider.listProjects(createMockCtx(fetchImpl, { apiKey: 'test-key-123' }));
+
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen[0]).not.toContain('daluxNode');
+    });
+  });
 });

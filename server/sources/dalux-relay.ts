@@ -95,35 +95,6 @@ export function resolveUpstreamOrigin(
   return originForNode(requested);
 }
 
-/**
- * Node-aware target and path for the LOCAL DEV proxy.
- *
- * Production routes `/api/dalux` through {@link createDaluxRelayHandler}; dev
- * routes it through Vite's proxy, which resolves a target per request. Both
- * must agree on which node a request reaches and on stripping our routing
- * parameter, so both call this rather than reimplementing the allowlist. It
- * lives here, beside the handler, for the same reason the path allowlist does:
- * dev and prod diverging is the bug.
- *
- * An unknown node falls back to the default target here rather than erroring,
- * because a Vite `router` has no way to answer 400 — the production relay is
- * the one that rejects it, and this keeps dev from silently pointing a bad
- * value somewhere unexpected.
- */
-export function resolveDevProxy(
-  reqUrl: string | undefined,
-  config: DaluxRelayConfig = DEFAULT_DALUX_RELAY_CONFIG,
-): { target: string; path: string } {
-  const url = new URL(reqUrl ?? '/', 'http://localhost');
-  const target =
-    resolveUpstreamOrigin(url.searchParams.get(DALUX_NODE_PARAM), config) ?? config.upstreamOrigin;
-
-  url.searchParams.delete(DALUX_NODE_PARAM);
-  const query = url.searchParams.toString();
-  const path = url.pathname.replace(/^\/api\/dalux/, config.upstreamBasePath);
-  return { target, path: `${path}${query ? `?${query}` : ''}` };
-}
-
 export const DEFAULT_DALUX_RELAY_CONFIG: DaluxRelayConfig = {
   upstreamOrigin: 'https://node1.field.dalux.com',
   upstreamBasePath: '/service/api',

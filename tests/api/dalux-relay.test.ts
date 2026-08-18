@@ -4,7 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDaluxRelayHandler, loadDaluxRelayConfig, resolveUpstreamPath, DEFAULT_DALUX_RELAY_CONFIG, type DaluxRelayConfig, resolveDevProxy } from '../../server/sources/dalux-relay.js';
+import { createDaluxRelayHandler, loadDaluxRelayConfig, resolveUpstreamPath, DEFAULT_DALUX_RELAY_CONFIG, type DaluxRelayConfig } from '../../server/sources/dalux-relay.js';
 
 const APP_ORIGIN = 'https://app.example';
 
@@ -324,32 +324,5 @@ test('accepts the full documented node range', async () => {
     const response = await handler(get(`/api/dalux/5.1/projects?daluxNode=${node}`));
     assert.equal(response.status, 200, `${node} was rejected`);
     assert.equal(captured[0].url, `https://${node}.field.dalux.com/service/api/5.1/projects`);
-  }
-});
-
-// --- dev proxy parity (#2792) ------------------------------------------------
-// Vite's dev proxy resolves a target per request instead of going through the
-// handler, so it must reach the SAME node and strip the SAME routing param.
-// A hardcoded dev target would send a node2 developer to node1 silently.
-
-test('the dev proxy routes to the selected node and strips the selector', () => {
-  const node2 = resolveDevProxy('/api/dalux/5.1/projects?daluxNode=node2&limit=10');
-  assert.equal(node2.target, 'https://node2.field.dalux.com');
-  assert.equal(node2.path, '/service/api/5.1/projects?limit=10');
-  assert.ok(!node2.path.includes('daluxNode'), 'routing param leaked to dev upstream');
-});
-
-test('the dev proxy matches the handler for the default node', () => {
-  const plain = resolveDevProxy('/api/dalux/5.1/projects');
-  assert.equal(plain.target, DEFAULT_DALUX_RELAY_CONFIG.upstreamOrigin);
-  assert.equal(plain.path, '/service/api/5.1/projects');
-});
-
-test('the dev proxy never routes an unknown node somewhere unexpected', () => {
-  // A Vite `router` cannot answer 400, so it falls back to the default target
-  // instead of forwarding a caller-supplied host. The handler is what rejects.
-  for (const bad of ['evil.com', 'node0', 'https://node2.field.dalux.com', '../node2']) {
-    const resolved = resolveDevProxy(`/api/dalux/5.1/projects?daluxNode=${encodeURIComponent(bad)}`);
-    assert.equal(resolved.target, DEFAULT_DALUX_RELAY_CONFIG.upstreamOrigin, `${bad} changed the dev target`);
   }
 });

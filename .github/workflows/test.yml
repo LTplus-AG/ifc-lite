@@ -543,6 +543,14 @@ jobs:
         # silently consume the whole job budget.
         timeout-minutes: 5
         run: pnpm test:integration
+      - name: API route tests (relay handlers)
+        # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
+        # so the Dalux relay's path allowlist and node allowlist - the guards
+        # that stop an unauthenticated public endpoint becoming an open proxy -
+        # existed in the repo but never in the pipeline. A guard no lane invokes
+        # is not a gate.
+        timeout-minutes: 5
+        run: pnpm test:api
       - name: WASM contract tests (real processGeometryBatch boundary)
         run: pnpm test:wasm-contract
       # The snap cache reconstructs model edges from the mesher's per-triangle

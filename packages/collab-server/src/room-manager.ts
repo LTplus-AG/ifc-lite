@@ -120,6 +120,17 @@ export class Room {
     this.id = id;
     this.doc = new Y.Doc();
     this.awareness = new Awareness(this.doc);
+    // y-protocols' Awareness constructor self-registers a local state of `{}`
+    // for its own clientID and renews it every ~15s. The server is a relay,
+    // not a participant: left in place, that entry is broadcast to every
+    // client as a peer, so every room badge read one too high (#2791). It
+    // showed "(2)" directly above a roster saying "You're the only one here",
+    // because the roster filters on a `user` field and the badge did not.
+    // Clearing the state also stops the renewal, which y-protocols guards on
+    // `getLocalState() !== null`.
+    // This must stay BEFORE the `update` listener is wired up below, so that
+    // clearing it cannot broadcast a removal for a peer no client ever saw.
+    this.awareness.setLocalState(null);
     this.persistence = opts.persistence;
     this.compactEvery = opts.compactEvery ?? 1000;
     this.auditSink = opts.auditSink ?? noopAuditSink;

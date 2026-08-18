@@ -17,7 +17,7 @@ import * as path from 'node:path';
 import { RoomManager } from '../src/room-manager.js';
 import { MemoryPersistence } from '../src/persistence.js';
 import { FsBlobStorage } from '../src/blob-route.js';
-import { resolveBlobGcConfig, startBlobGc } from '../src/blob-gc.js';
+import { resolveBlobGcConfig, startBlobGc } from '../src/blob-gc-worker.js';
 import { defaultMetrics } from '../src/metrics.js';
 
 const dirs: string[] = [];

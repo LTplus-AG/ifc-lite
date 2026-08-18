@@ -17,11 +17,11 @@ import { geometryMap } from '@ifc-lite/collab';
 import { FilePersistence } from '../src/persistence.js';
 import { FsBlobStorage } from '../src/blob-route.js';
 import {
-  BlobGcWorker,
   collectLiveBlobRefs,
   collectPersistedBlobRefs,
   planBlobGc,
 } from '../src/blob-gc.js';
+import { BlobGcWorker } from '../src/blob-gc-worker.js';
 
 const H = (c: string) => c.repeat(32);
 const A = H('a');

@@ -7,7 +7,7 @@
 
 import { FilePersistence, startCollabServer } from './server.js';
 import { FsBlobStorage } from './blob-route.js';
-import { resolveBlobGcConfig, startBlobGc } from './blob-gc.js';
+import { resolveBlobGcConfig, startBlobGc } from './blob-gc-worker.js';
 import { FsLayerRegistry } from './layer-registry-fs.js';
 import { createAccessControl } from './access-control.js';
 

@@ -163,3 +163,4 @@ export {
   type RegistryAuthorizeFn,
 } from './layer-registry-route.js';
 export * from './blob-gc.js';
+export * from './blob-gc-worker.js';

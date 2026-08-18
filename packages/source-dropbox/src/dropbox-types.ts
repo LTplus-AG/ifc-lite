@@ -140,6 +140,9 @@ function decodeFileMetadata(
  *  `FileMetadata` (never a folder or a deleted marker). */
 export function decodeFileMetadataStrict(raw: unknown): DropboxFileMetadata {
   if (!isRecord(raw)) throw new Error('Dropbox file metadata: not an object');
+  if (raw['.tag'] !== 'file') {
+    throw new Error(`Dropbox file metadata: expected ".tag" "file", got ${JSON.stringify(raw['.tag'])}`);
+  }
   const name = requireString(raw, 'name', 'file metadata');
   return decodeFileMetadata(raw, name, optionalString(raw, 'path_lower'));
 }

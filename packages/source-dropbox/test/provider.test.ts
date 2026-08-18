@@ -7,7 +7,7 @@ import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { DropboxProvider } from '../src/provider.js';
 import { decodeSearchResult } from '../src/dropbox-types.js';
-import { clampPageSize, clampSearchPageSize } from '../src/mapping.js';
+import { clampPageSize, clampRevisionsPageSize, clampSearchPageSize } from '../src/mapping.js';
 import { createDropboxMockContext } from './dropbox-api-mock.js';
 import type { DropboxMockWorld } from './dropbox-api-mock.js';
 
@@ -197,6 +197,15 @@ describe('DropboxProvider', () => {
       // collapsed onto one constant.
       expect(clampPageSize(10_000)).toBe(2000);
     });
+
+    // `0 < limit < 1` used to floor to `0` via `Math.floor`, which every one
+    // of these Dropbox endpoints rejects (`min_value=1`); clamp up to 1
+    // rather than sending an out-of-range `limit`/`max_results`.
+    it('clamps a sub-1 limit up to 1, not down to 0', () => {
+      expect(clampPageSize(0.5)).toBe(1);
+      expect(clampSearchPageSize(0.5)).toBe(1);
+      expect(clampRevisionsPageSize(0.5)).toBe(1);
+    });
   });
 
   describe('download', () => {
@@ -260,6 +269,80 @@ describe('DropboxProvider', () => {
       }
 
       expect(allIds).toEqual(['rev-5', 'rev-4', 'rev-3', 'rev-2', 'rev-1']);
+    });
+
+    // Regression test: the cursor must follow the *raw* last entry, not the
+    // last surviving decoded one. If a malformed row happens to be the last
+    // one on a page, deriving `before_rev` from the decoded array would
+    // strand the rest of the history (`has_more: true`, but no cursor to
+    // continue from) — or, on a page with only some malformed rows, repeat a
+    // page. Reproduced here by corrupting the last raw entry's `name` so it
+    // fails to decode while `has_more` stays true.
+    it('derives the next cursor from the raw last entry even when it fails to decode', async () => {
+      const base = createDropboxMockContext(WORLD);
+      const ref = { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-many-revs' };
+      const warnings: unknown[] = [];
+      const ctx = {
+        ...base,
+        log: {
+          ...base.log,
+          warn: (...args: unknown[]) => warnings.push(args),
+        },
+        fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const href = typeof input === 'string' ? input : input.toString();
+          if (!href.includes('/files/list_revisions')) return base.fetch(input, init);
+
+          const response = await base.fetch(input, init);
+          const payload = await response.json();
+          const entries = payload.entries as Array<Record<string, unknown>>;
+          // Corrupt the last (oldest-of-page) raw entry so it fails to decode.
+          delete entries[entries.length - 1].name;
+          return new Response(JSON.stringify(payload), {
+            status: response.status,
+            headers: response.headers,
+          });
+        }) as typeof fetch,
+      };
+
+      const page = await provider.listRevisions!(ctx, ref, { limit: 2 });
+
+      // The malformed row was dropped, but the other one on the page decoded fine.
+      expect(page.items.map((r) => r.id)).toEqual(['rev-5']);
+      expect(warnings.length).toBe(1);
+      // The cursor still follows the raw last entry (`rev-4`), not the last
+      // *decoded* one (`rev-5`) — otherwise the next page would restart at
+      // `rev-5` and repeat it forever.
+      expect(page.cursor).toBe('rev-4');
+    });
+
+    // Regression test: `decodeFileMetadataStrict` must reject a non-`"file"`
+    // discriminator rather than relabeling it. `files/list_revisions` is
+    // documented to only ever return `FileMetadata`, but a decoder that
+    // trusts that instead of checking `.tag` would silently accept a
+    // malformed/future response shape as a file.
+    it('drops a revision entry whose ".tag" is not "file" instead of relabeling it', async () => {
+      const base = createDropboxMockContext(WORLD);
+      const ref = { projectId: 'me', containerId: 'id:f-alpha', fileId: 'id:file-many-revs' };
+      const warnings: unknown[] = [];
+      const ctx = {
+        ...base,
+        log: { ...base.log, warn: (...args: unknown[]) => warnings.push(args) },
+        fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const href = typeof input === 'string' ? input : input.toString();
+          if (!href.includes('/files/list_revisions')) return base.fetch(input, init);
+
+          const response = await base.fetch(input, init);
+          const payload = await response.json();
+          const entries = payload.entries as Array<Record<string, unknown>>;
+          entries[0]['.tag'] = 'folder';
+          return new Response(JSON.stringify(payload), { status: response.status, headers: response.headers });
+        }) as typeof fetch,
+      };
+
+      const page = await provider.listRevisions!(ctx, ref, { limit: 2 });
+
+      expect(page.items.map((r) => r.id)).toEqual(['rev-4']);
+      expect(warnings.length).toBe(1);
     });
   });
 

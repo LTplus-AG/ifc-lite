@@ -9,9 +9,9 @@ const CONTENT_BASE_URL = 'https://content.dropboxapi.com/2';
 
 /** Upstream response bodies are interpolated into thrown `Error` messages,
  * which reach user-facing toasts unmodified — cap them the same way
- * `source-msgraph`/`source-dalux` do. Never includes the request's own
- * `Authorization` header value, which never reaches this function in the
- * first place — `ctx.fetch` attaches it. */
+ * `source-msgraph`/`source-dalux` do. Only the upstream *response* body is
+ * interpolated; the request's own `Authorization` header (set below) is
+ * never included in a thrown message. */
 const MAX_ERROR_BODY_CHARS = 200;
 
 function truncate(text: string, max = MAX_ERROR_BODY_CHARS): string {

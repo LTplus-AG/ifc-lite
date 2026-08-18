@@ -59,7 +59,7 @@ const fixtures: ConformanceFixtures = {
   // this fixture list assumed, there is a real page boundary here for
   // `packages/source-fixture/src/conformance/paging.ts`'s "listRevisions: a
   // real page boundary forces cursor-following to work" check to exercise.
-  // `id:file-1` has 2 revisions in `WORLD` below, enough to cross
+  // `id:file-1` has 2 revisions in `WORLD` above, enough to cross
   // `smallPageLimit: 1`.
   fileWithRevisions: { containerId: 'id:f-alpha', fileId: 'id:file-1' },
   //

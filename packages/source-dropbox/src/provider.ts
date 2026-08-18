@@ -51,9 +51,9 @@ export class DropboxProvider implements FileSourceProvider {
   readonly manifest = DROPBOX_MANIFEST;
   readonly auth = dropboxAuth;
 
-  async listProjects(ctx: PluginContext, _options?: ListProjectsOptions): Promise<Page<SourceProject>> {
+  async listProjects(ctx: PluginContext, options?: ListProjectsOptions): Promise<Page<SourceProject>> {
     const client = await this.createClient(ctx);
-    const raw = await client.rpc('/users/get_current_account', null);
+    const raw = await client.rpc('/users/get_current_account', null, options?.signal);
     const account = decodeCurrentAccount(raw);
 
     return {
@@ -197,11 +197,18 @@ export class DropboxProvider implements FileSourceProvider {
     );
     const result = decodeListRevisionsResult(raw);
     const revisions = decodeFileRevisions(ctx, result.entries);
-    const oldestOfPage = revisions[revisions.length - 1];
+    // The page boundary follows the *raw* last entry, not the last surviving
+    // decoded one: if `decodeFileRevisions` drops a malformed row (see
+    // `convertListLenient`), deriving `before_rev` from the decoded array
+    // would either repeat a page (dropped row wasn't the true last) or, if
+    // every row on the page failed to decode, strand the remaining history
+    // with `has_more: true` and no cursor to continue from.
+    const lastRaw = result.entries[result.entries.length - 1] as { rev?: unknown } | undefined;
+    const nextBeforeRev = typeof lastRaw?.rev === 'string' ? lastRaw.rev : undefined;
 
     return {
       items: revisions.map(toSourceRevision),
-      cursor: result.has_more && oldestOfPage ? oldestOfPage.rev : undefined,
+      cursor: result.has_more ? nextBeforeRev : undefined,
     };
   }
 

@@ -139,6 +139,10 @@ describe('dropboxAuth', () => {
      * broadcast and never touches the popup at all.
      */
     it('completes sign-in from the callback page broadcast, with a popup severed by COOP', async () => {
+      // Focused timeout, well under `POPUP_TIMEOUT_MS` (5 minutes) and
+      // Vitest's own default (5s): the mock broadcast fires on a `setTimeout(0)`,
+      // so if the callback contract regresses, this fails fast with an
+      // intentional message instead of the ambiguous default test timeout.
       const base = createDropboxMockContext(WORLD);
       await base.storage.delete('dropbox:tokens');
 
@@ -214,7 +218,7 @@ describe('dropboxAuth', () => {
       expect(await ctx.storage.get('dropbox:tokens')).toBeDefined();
       // Nothing read the inoperable API on the way through.
       expect(locationReads).toBe(0);
-    });
+    }, 2000);
 
     // Cross-attempt routing (a broadcast carrying someone else's `state` must
     // be ignored, not consumed) is covered by `@ifc-lite/oauth-pkce`'s

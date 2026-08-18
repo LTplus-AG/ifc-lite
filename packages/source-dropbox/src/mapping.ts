@@ -147,7 +147,7 @@ const MAX_PAGE_SIZE = 2000;
  *  argument will accept. */
 export function clampPageSize(limit: number | undefined): number {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_PAGE_SIZE;
-  return Math.min(requested, MAX_PAGE_SIZE);
+  return Math.max(1, Math.min(requested, MAX_PAGE_SIZE));
 }
 
 const DEFAULT_SEARCH_PAGE_SIZE = 100;
@@ -163,7 +163,7 @@ const MAX_SEARCH_PAGE_SIZE = 1000;
  *  option will accept — see {@link MAX_SEARCH_PAGE_SIZE}. */
 export function clampSearchPageSize(limit: number | undefined): number {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_SEARCH_PAGE_SIZE;
-  return Math.min(requested, MAX_SEARCH_PAGE_SIZE);
+  return Math.max(1, Math.min(requested, MAX_SEARCH_PAGE_SIZE));
 }
 
 const DEFAULT_REVISIONS_PAGE_SIZE = 10;
@@ -178,5 +178,5 @@ const MAX_REVISIONS_PAGE_SIZE = 100;
  *  argument will accept — see {@link MAX_REVISIONS_PAGE_SIZE}. */
 export function clampRevisionsPageSize(limit: number | undefined): number {
   const requested = limit && limit > 0 ? Math.floor(limit) : DEFAULT_REVISIONS_PAGE_SIZE;
-  return Math.min(requested, MAX_REVISIONS_PAGE_SIZE);
+  return Math.max(1, Math.min(requested, MAX_REVISIONS_PAGE_SIZE));
 }

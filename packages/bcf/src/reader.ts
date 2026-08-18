@@ -317,14 +317,21 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
 
   const markupContent = await readEntryCapped(markupFile, 'string', budget);
 
-  // Parse Topic element
-  const topicMatch = markupContent.match(/<Topic\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Topic>/);
+  // Parse Topic element. Attributes are captured generically (not anchored to
+  // Guid being first) and pulled out with extractAttr, so a spec-legal file
+  // that orders attributes differently from our own writer still parses.
+  const topicMatch = markupContent.match(/<Topic\b([^>]*)>([\s\S]*?)<\/Topic>/);
   if (!topicMatch) {
     console.warn(`Invalid markup.bcf in ${topicFolder}: missing Topic element`);
     return null;
   }
 
-  const guid = topicMatch[1];
+  const topicAttrs = topicMatch[1];
+  const guid = extractAttr(topicAttrs, 'Guid');
+  if (!guid) {
+    console.warn(`Invalid markup.bcf in ${topicFolder}: Topic element missing Guid`);
+    return null;
+  }
   const topicContent = topicMatch[2];
 
   // Header (source IFC files) sits before Topic in the markup, so parse it from
@@ -332,8 +339,8 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const header = parseHeaderFiles(markupContent);
 
   // Extract topic attributes
-  const topicTypeMatch = markupContent.match(/<Topic[^>]*TopicType="([^"]+)"/);
-  const topicStatusMatch = markupContent.match(/<Topic[^>]*TopicStatus="([^"]+)"/);
+  const topicType = extractAttr(topicAttrs, 'TopicType');
+  const topicStatus = extractAttr(topicAttrs, 'TopicStatus');
 
   // Extract topic elements
   const title = extractElement(topicContent, 'Title') || 'Untitled';
@@ -363,9 +370,10 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
 
   // Extract related topics
   const relatedTopics: string[] = [];
-  const relatedMatches = topicContent.matchAll(/<RelatedTopic\s+Guid="([^"]+)"/g);
+  const relatedMatches = topicContent.matchAll(/<RelatedTopic\b([^>]*)\/?>/g);
   for (const match of relatedMatches) {
-    relatedTopics.push(match[1]);
+    const relatedGuid = extractAttr(match[1], 'Guid');
+    if (relatedGuid) relatedTopics.push(relatedGuid);
   }
 
   // Parse comments
@@ -378,8 +386,8 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
     guid,
     title,
     description,
-    topicType: topicTypeMatch?.[1],
-    topicStatus: topicStatusMatch?.[1],
+    topicType,
+    topicStatus,
     priority,
     index: index ? parseInt(index, 10) : undefined,
     creationDate,
@@ -433,6 +441,23 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
   }
 
   return files;
+}
+
+/**
+ * Extract an attribute's value from a captured opening-tag attribute string.
+ *
+ * XML attribute order is not semantically significant, so every caller that
+ * needs an attribute off an opening tag must first capture the tag's whole
+ * attribute list generically (e.g. `<Tag\b([^>]*)>`) and then pull individual
+ * attributes out of that captured string with this helper, rather than
+ * anchoring a single regex to one specific attribute position (e.g.
+ * `<Tag\s+Guid="..."`). The latter shape only matches when a foreign tool
+ * happens to write that attribute first, which our own writer.ts always does
+ * -- so a self round-trip can never catch the fragility (see reader.test.ts's
+ * "interop: attribute order independence" suite).
+ */
+function extractAttr(attrsString: string, attrName: string): string | undefined {
+  return attrsString.match(new RegExp(`\\b${attrName}="([^"]*)"`))?.[1];
 }
 
 /**
@@ -544,10 +569,14 @@ function parseComments(markupContent: string): BCFComment[] {
   const comments: BCFComment[] = [];
 
   // Collect every top-level comment-wrapper opening tag and where its body starts.
-  const openRe = /<Comment\s+Guid="([^"]+)"[^>]*>/g;
+  // Attributes are captured generically and pulled out with extractAttr so a
+  // Guid that isn't the tag's first attribute still matches (see extractAttr).
+  const openRe = /<Comment\b([^>]*)>/g;
   const opens: { guid: string; tagStart: number; bodyStart: number }[] = [];
   for (let m = openRe.exec(markupContent); m; m = openRe.exec(markupContent)) {
-    opens.push({ guid: m[1], tagStart: m.index, bodyStart: m.index + m[0].length });
+    const guid = extractAttr(m[1], 'Guid');
+    if (!guid) continue;
+    opens.push({ guid, tagStart: m.index, bodyStart: m.index + m[0].length });
   }
 
   for (let i = 0; i < opens.length; i++) {
@@ -568,14 +597,15 @@ function parseComments(markupContent: string): BCFComment[] {
     const modifiedAuthor = extractElement(content, 'ModifiedAuthor');
 
     // Extract viewpoint reference
-    const viewpointMatch = content.match(/<Viewpoint\s+Guid="([^"]+)"/);
+    const viewpointMatch = content.match(/<Viewpoint\b([^>]*)\/?>/);
+    const viewpointGuid = viewpointMatch ? extractAttr(viewpointMatch[1], 'Guid') : undefined;
 
     comments.push({
       guid: opens[i].guid,
       date,
       author,
       comment,
-      viewpointGuid: viewpointMatch?.[1],
+      viewpointGuid,
       modifiedDate,
       modifiedAuthor,
     });
@@ -599,10 +629,13 @@ async function parseViewpoints(
   // Format: <Viewpoint Guid="xxx"><Viewpoint>filename.bcfv</Viewpoint><Snapshot>snapshot.png</Snapshot></Viewpoint>
   const viewpointInfoMap = new Map<string, { viewpointFile?: string; snapshotFile?: string }>();
 
-  // Match full viewpoint elements with both viewpoint and snapshot references
-  const viewpointElementRegex = /<Viewpoint\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Viewpoint>/g;
+  // Match full viewpoint elements with both viewpoint and snapshot references.
+  // Attributes are captured generically and pulled out with extractAttr so a
+  // Guid that isn't the tag's first attribute still matches (see extractAttr).
+  const viewpointElementRegex = /<Viewpoint\b([^>]*)>([\s\S]*?)<\/Viewpoint>/g;
   for (const match of markupContent.matchAll(viewpointElementRegex)) {
-    const guid = match[1];
+    const guid = extractAttr(match[1], 'Guid');
+    if (!guid) continue;
     const content = match[2];
 
     const viewpointFileMatch = content.match(/<Viewpoint>([^<]+)<\/Viewpoint>/);
@@ -615,10 +648,11 @@ async function parseViewpoints(
   }
 
   // Also match self-closing viewpoint references
-  const simpleViewpointRefs = markupContent.matchAll(/<Viewpoint\s+Guid="([^"]+)"[^>]*\/>/g);
+  const simpleViewpointRefs = markupContent.matchAll(/<Viewpoint\b([^>]*)\/>/g);
   for (const match of simpleViewpointRefs) {
-    if (!viewpointInfoMap.has(match[1])) {
-      viewpointInfoMap.set(match[1], {});
+    const guid = extractAttr(match[1], 'Guid');
+    if (guid && !viewpointInfoMap.has(guid)) {
+      viewpointInfoMap.set(guid, {});
     }
   }
 

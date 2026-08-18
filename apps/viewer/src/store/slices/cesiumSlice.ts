@@ -180,7 +180,9 @@ function saveToStorage(key: string, value: string): void {
 function removeFromStorage(key: string): void {
   try {
     localStorage.removeItem(key);
-  } catch { /* storage unavailable */ }
+  } catch (error) {
+    console.warn(`[cesium] failed to remove '${key}' from localStorage`, error);
+  }
 }
 
 /** Where the picker lands when the `'custom'` source loses its basemap. */

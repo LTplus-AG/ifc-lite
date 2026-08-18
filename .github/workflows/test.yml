@@ -103,6 +103,14 @@ jobs:
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
+              # The relay handlers and their tests. `pnpm test:api` runs in this
+              # job, so without these a PR touching ONLY the relay skips the one
+              # lane that exercises its allowlists - the guard would exist and
+              # never fire, which is the failure this filter block already warns
+              # about twice above.
+              - 'server/**'
+              - 'api/**'
+              - 'tests/api/**'
               # The lint CONFIG, so a PR that only edits it cannot skip the
               # Lint job that reads it. Absent CI reads as green here, and a
               # guard cannot fire in a job that never runs.

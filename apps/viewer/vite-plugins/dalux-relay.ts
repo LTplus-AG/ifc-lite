@@ -37,7 +37,12 @@ export function daluxRelayRoute(): Plugin {
 
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';
-        if (!url.startsWith('/api/dalux')) return next();
+        // Match the path BOUNDARY, not the prefix: a bare `startsWith` also
+        // claims `/api/dalux5.1/projects`, and the handler would then strip
+        // `/api/dalux` and relay `5.1/projects` from an unrelated route
+        // instead of passing it on.
+        const path = url.split('?')[0];
+        if (path !== '/api/dalux' && !path.startsWith('/api/dalux/')) return next();
 
         void (async () => {
           try {

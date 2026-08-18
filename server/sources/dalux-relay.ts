@@ -47,6 +47,83 @@ export interface DaluxRelayConfig {
   readonly allowedOrigins: readonly string[];
 }
 
+/**
+ * Query parameter naming which Dalux node to reach (#2792).
+ *
+ * Dalux assigns each customer a node and shows it on the same page as the API
+ * key, so a user on node2+ could not use Dalux Box at all: the client's URL no
+ * longer matched the declared relay upstream, so it was never rewritten to the
+ * same-origin relay, and Dalux sends no CORS headers.
+ *
+ * The client sends the node NAME, never a URL, and the origin is assembled
+ * here from {@link DALUX_NODE_PATTERN}.
+ *
+ * The origin stays ours to build for the reason in this file's header: the
+ * endpoint is unauthenticated, publicly reachable and holds no credential of
+ * its own, so whatever host it can be aimed at is reachable by ANY anonymous
+ * client through our egress IPs. Assembling the origin from a node name bounds
+ * that to Dalux; a caller-supplied base URL would widen it to arbitrary
+ * outbound requests from our infrastructure, including hosts not reachable
+ * from the internet at all, and third-party traffic attributed to and billed
+ * to us. The residual risk documented above is this one, already scoped to a
+ * single host.
+ */
+export const DALUX_NODE_PARAM = 'daluxNode';
+
+/** `node1`, `node2`, ... and nothing else. Anchored; no dots, no userinfo. */
+const DALUX_NODE_PATTERN = /^node[1-9][0-9]{0,2}$/;
+
+/** Origin for a validated node name. */
+function originForNode(node: string): string {
+  return `https://${node}.field.dalux.com`;
+}
+
+/**
+ * Resolve the upstream origin for a request.
+ *
+ * Returns `null` for a present-but-invalid node so the caller can answer 400
+ * rather than silently falling back to node1 — a user whose node was rejected
+ * must be told, not quietly pointed at someone else's node where every call
+ * would fail authentication in a confusing way.
+ */
+export function resolveUpstreamOrigin(
+  requested: string | null,
+  config: DaluxRelayConfig,
+): string | null {
+  if (requested === null || requested === '') return config.upstreamOrigin;
+  if (!DALUX_NODE_PATTERN.test(requested)) return null;
+  return originForNode(requested);
+}
+
+/**
+ * Node-aware target and path for the LOCAL DEV proxy.
+ *
+ * Production routes `/api/dalux` through {@link createDaluxRelayHandler}; dev
+ * routes it through Vite's proxy, which resolves a target per request. Both
+ * must agree on which node a request reaches and on stripping our routing
+ * parameter, so both call this rather than reimplementing the allowlist. It
+ * lives here, beside the handler, for the same reason the path allowlist does:
+ * dev and prod diverging is the bug.
+ *
+ * An unknown node falls back to the default target here rather than erroring,
+ * because a Vite `router` has no way to answer 400 — the production relay is
+ * the one that rejects it, and this keeps dev from silently pointing a bad
+ * value somewhere unexpected.
+ */
+export function resolveDevProxy(
+  reqUrl: string | undefined,
+  config: DaluxRelayConfig = DEFAULT_DALUX_RELAY_CONFIG,
+): { target: string; path: string } {
+  const url = new URL(reqUrl ?? '/', 'http://localhost');
+  const target =
+    resolveUpstreamOrigin(url.searchParams.get(DALUX_NODE_PARAM), config) ?? config.upstreamOrigin;
+
+  url.searchParams.delete(DALUX_NODE_PARAM);
+  const query = url.searchParams.toString();
+  const path = url.pathname.replace(/^\/api\/dalux/, config.upstreamBasePath);
+  return { target, path: `${path}${query ? `?${query}` : ''}` };
+}
+
 export const DEFAULT_DALUX_RELAY_CONFIG: DaluxRelayConfig = {
   upstreamOrigin: 'https://node1.field.dalux.com',
   upstreamBasePath: '/service/api',
@@ -200,13 +277,20 @@ export function createDaluxRelayHandler(
       return jsonError(400, 'Path is not a relayable Dalux Build endpoint', cors);
     }
 
-    // `path` is the rewrite's own routing parameter, not a Dalux query param.
+    // `path` and the node selector are OUR routing parameters, not Dalux query
+    // params. Forwarding them would put them in the upstream query string.
     const forwardedParams = new URLSearchParams(url.search);
     forwardedParams.delete('path');
+    forwardedParams.delete(DALUX_NODE_PARAM);
     const query = forwardedParams.toString();
 
+    const upstreamOrigin = resolveUpstreamOrigin(url.searchParams.get(DALUX_NODE_PARAM), config);
+    if (upstreamOrigin === null) {
+      return jsonError(400, 'Unknown Dalux node', cors);
+    }
+
     const upstream = new URL(
-      `${config.upstreamOrigin}${config.upstreamBasePath}/${upstreamPath}${query ? `?${query}` : ''}`,
+      `${upstreamOrigin}${config.upstreamBasePath}/${upstreamPath}${query ? `?${query}` : ''}`,
     );
 
     const forwardedHeaders = new Headers();

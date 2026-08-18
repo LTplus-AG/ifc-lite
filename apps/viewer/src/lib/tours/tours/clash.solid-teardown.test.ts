@@ -66,7 +66,10 @@ describe('clash tour "zoom-to-clash" cleanup drops the intersection-solid presen
     assert.equal(s.clashSolidMesh, null, 'the stale solid mesh must not survive tour cleanup');
   });
 
-  it('cleanup() invalidates an in-flight solid compute (clashSolidRequestSeq bumps)', () => {
+  // Producer half only — see the note in `store/homeView.solid-teardown.test.ts`.
+  // The end-to-end join (a real compute in flight across this cleanup) is in
+  // `hooks/useClash.solid-inflight-invalidation.test.tsx`.
+  it('cleanup() bumps clashSolidRequestSeq, the token an in-flight solid compute is checked against', () => {
     const zoomStep = CLASH_TOUR.steps.find((s) => s.id === 'zoom-to-clash');
     assert.ok(zoomStep?.cleanup);
 

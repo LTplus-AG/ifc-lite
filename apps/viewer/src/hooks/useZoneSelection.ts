@@ -21,7 +21,7 @@ import type { EntityRef } from '@/store/types';
 import type { ZoneAssignmentsByElement } from '@/lib/zones/types';
 
 export interface ZoneSelectionResolution {
-  /** Global ids that matched AND resolved through `fromGlobalId` — feeds
+  /** Global ids that matched AND resolved to a loaded model — feeds
    *  `setSelectedEntityIds` (the channel that drives highlight and
    *  frameSelection). */
   globalIds: number[];
@@ -33,17 +33,19 @@ export interface ZoneSelectionResolution {
 /**
  * Pure core of {@link selectElementsInZone}, extracted for unit tests.
  *
- * A matched assignment whose global id no longer resolves through
- * `fromGlobalId` (e.g. the model was unloaded between the last assignment
- * recompute and this call) is dropped from BOTH outputs — the two selection
- * channels must never diverge, and the caller's "Selected N element(s)"
- * toast must count what was actually selected (PR #1869 review).
+ * A matched assignment whose global id no longer resolves to a loaded model
+ * (e.g. the model was unloaded between the last assignment recompute and this
+ * call) is dropped from BOTH outputs — the two selection channels must never
+ * diverge, and the caller's "Selected N element(s)" toast must count what was
+ * actually selected (PR #1869 review).
+ *
+ * `resolve` is supplied by {@link selectElementsInZone}; tests pass their own.
  */
 export function resolveZoneSelection(
   zoneAssignments: ZoneAssignmentsByElement,
   setId: string,
   zoneId: string | null,
-  fromGlobalId: (globalId: number) => { modelId: string; expressId: number } | null | undefined,
+  resolve: (globalId: number) => { modelId: string; expressId: number } | null | undefined,
 ): ZoneSelectionResolution {
   const globalIds: number[] = [];
   const refs: EntityRef[] = [];
@@ -54,7 +56,7 @@ export function resolveZoneSelection(
       ? assignment.touchedZoneIds.length === 0
       : assignment.zoneId === zoneId || assignment.touchedZoneIds.includes(zoneId);
     if (!matches) continue;
-    const lookup = fromGlobalId(globalId);
+    const lookup = resolve(globalId);
     if (!lookup) continue;
     globalIds.push(globalId);
     refs.push({ modelId: lookup.modelId, expressId: lookup.expressId });
@@ -72,6 +74,21 @@ export function resolveZoneSelection(
  * for that row).
  *
  * Returns the number of elements actually selected (matched AND resolved).
+ *
+ * Resolution goes through the store's canonical `resolveGlobalIdFromModels`
+ * (`modelSlice.ts`) — the same resolver `resolveEntityRef.ts` calls "the single
+ * source of truth" — and only falls back to the `federationRegistry` singleton
+ * (`fromGlobalId`) for a model that has left `state.models` but is still
+ * registered. It used to consult the registry ALONE, which made this a silent
+ * no-op in a collaborative room: `collabSlice.ts` seeds the room model with
+ * `upsertModel` and never calls `registerModelOffset`, so the registry knew
+ * none of its ids, every lookup returned `null`, and every matched element was
+ * dropped. Federated-IFCX composition (`useIfcFederation.ts`) has the same gap.
+ * PR #2697 is the sibling fix for the clash path.
+ *
+ * The store pass is also the only one that sees overlay-allocated ids (its
+ * documented second pass through `mutationViews`), which a plain offset-range
+ * check misses.
  */
 export function selectElementsInZone(setId: string, zoneId: string | null): number {
   const state = useViewerStore.getState();
@@ -79,7 +96,7 @@ export function selectElementsInZone(setId: string, zoneId: string | null): numb
     state.zoneAssignments,
     setId,
     zoneId,
-    (globalId) => state.fromGlobalId(globalId),
+    (globalId) => state.resolveGlobalIdFromModels(globalId) ?? state.fromGlobalId(globalId),
   );
 
   state.clearEntitySelection();

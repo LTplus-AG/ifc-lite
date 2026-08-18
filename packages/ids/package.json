@@ -25,10 +25,10 @@
   "dependencies": {
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/parser": "workspace:*",
-    "@xmldom/xmldom": "^0.9.10"
+    "@xmldom/xmldom": "^0.9.11"
   },
   "devDependencies": {
-    "happy-dom": "^20.11.1",
+    "happy-dom": "^20.11.2",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   },

@@ -18,6 +18,10 @@
       "destination": "/api/dalux?path=:path*"
     },
     {
+      "source": "/oauth/msgraph/callback",
+      "destination": "/oauth/msgraph/callback.html"
+    },
+    {
       "source": "/mcp",
       "destination": "/index.html"
     },

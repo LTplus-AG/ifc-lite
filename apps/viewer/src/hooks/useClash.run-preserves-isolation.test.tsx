@@ -146,6 +146,11 @@ async function seed(): Promise<void> {
   useViewerStore.setState({
     models: new Map([['A', model(store, [boxMesh(1, 0), boxMesh(2, 0.5)])]]),
     clashResult: null,
+    // The RAW result too, or the previous test's run survives into this one:
+    // it carries the federation identity it was computed on, and the fresh
+    // model map below supersedes it — so `refOf` would (correctly) refuse to
+    // resolve any row against an id space this seed just replaced.
+    clashRawResult: null,
     clashGroups: null,
     clashError: null,
     clashRunning: false,

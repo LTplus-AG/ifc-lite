@@ -468,12 +468,41 @@ describe('orderRulesByCost — cheap-first reordering', () => {
     assert.deepStrictEqual(reordered.map((r) => r.kind), ['ifcType', 'name', 'property', 'quantity']);
   });
 
-  it('is a stable sort — two equal-cost rules keep their input order', () => {
+  // NOTE on what this can and cannot catch. `Array.prototype.sort` has been
+  // stable BY SPECIFICATION since ES2019, so no fixture at any size can make
+  // deleting the explicit `|| a.i - b.i` tie-break in orderRulesByCost fail —
+  // equal-comparing elements keep their input order either way. This test
+  // therefore does not guard the tie-break's existence; it guards its
+  // DIRECTION, which is a real mutation (`b.i - a.i` reverses equal-cost rules
+  // and reddens this assertion). The tie-break stays in production because it
+  // states the intended ordering at the comparator rather than leaving it to
+  // an implicit language guarantee — and because its direction is pinned here.
+  it('keeps equal-cost rules in authored order, ascending by input index', () => {
     const a = Rule.name('contains', 'a');
     const b = Rule.name('contains', 'b');
     const reordered = order([a, b]);
     assert.strictEqual(reordered[0], a);
     assert.strictEqual(reordered[1], b);
+
+    // Same guarantee when the sort actually has work to do: three equal-cost
+    // `name` rules interleaved with cheaper and dearer kinds must come out in
+    // authored order relative to one another, not merely undisturbed.
+    const n1 = Rule.name('contains', '1');
+    const n2 = Rule.name('contains', '2');
+    const n3 = Rule.name('contains', '3');
+    const mixed = order([
+      Rule.property('Pset_X', 'P', 'eq', 'v'),
+      n1,
+      Rule.ifcType(['IfcWall']),
+      n2,
+      Rule.quantity('Qto_X', 'Q', 'gt', 1),
+      n3,
+    ]);
+    assert.deepStrictEqual(
+      mixed.map((r) => r.kind),
+      ['ifcType', 'name', 'name', 'name', 'property', 'quantity'],
+    );
+    assert.deepStrictEqual(mixed.slice(1, 4), [n1, n2, n3]);
   });
 
   it('does not mutate the input array', () => {

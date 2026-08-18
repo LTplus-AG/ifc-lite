@@ -59,10 +59,16 @@ describe('level-offsets', () => {
       assert.strictEqual(offsets.get(3), 2);
     });
 
-    it('preserves elevation ordering with equal gaps', () => {
+    it('preserves elevation ordering with equal gaps, from unsorted input', () => {
       // Storeys with non-uniform original spacing should still
       // become uniformly spaced under Exploded.
-      const store = makeStore(new Map([[1, 0], [2, 4], [3, 5], [4, 12]]));
+      //
+      // The Map is deliberately NOT in ascending elevation order. Map iteration
+      // follows insertion order, and `storeyElevations` is built while walking
+      // the file, so storeys arrive in IFC entity order — arbitrary. Every
+      // fixture here used to be pre-sorted, which made both the `.sort()` and
+      // the `sorted[0][1]` base in computeStoreyOffsets deleted-equivalent.
+      const store = makeStore(new Map([[4, 12], [1, 0], [3, 5], [2, 4]]));
       const offsets = computeStoreyOffsets(store, 3);
       // Targets: 0, 3, 6, 9. Deltas: 0, -1, +1, -3.
       assert.strictEqual(offsets.get(1), undefined);

@@ -87,6 +87,70 @@ export interface ModelSlice {
    * This is more reliable because it uses Zustand state which is always in sync with React
    */
   resolveGlobalIdFromModels: (globalId: number) => GlobalIdLookup | null;
+
+  /**
+   * The same resolution as {@link resolveGlobalIdFromModels}, SCOPED to one
+   * named model: "does this model own this global id, and as which local
+   * express id?".
+   *
+   * For a caller that already knows the owner — a clash ref carries the model
+   * it was gathered from — searching every model is not just wasted work, it is
+   * wrong: two models' ranges can overlap (a collab room model and a normally
+   * loaded one both sit at offset 0), and the search answers with whichever it
+   * reaches first. Scoping removes that ambiguity.
+   *
+   * It shares the range and overlay predicates with the unscoped resolver
+   * above, so the two cannot drift — a private range check in a caller is how
+   * this codebase produced two resolvers that disagreed about the same id space
+   * (#2697).
+   *
+   * Not the only spelling in the repo, and this doc must not claim otherwise:
+   * `store/globalId.ts` `fromGlobalIdFromModels` holds an independent copy that
+   * deliberately differs — it does not sort by `idOffset`, and it has a
+   * single-model fallback that answers even when the range check misses, for
+   * legacy single-store behaviour. Unifying them is a separate change with its
+   * own risk; what this pair guarantees is that the SCOPED and UNSCOPED
+   * resolvers on this slice always agree.
+   */
+  resolveGlobalIdInModel: (modelId: string, globalId: number) => GlobalIdLookup | null;
+}
+
+/**
+ * Parse-time ownership: a model owns `[idOffset, idOffset + maxExpressId]` from
+ * the original parse. Returns the LOCAL express id, or `null`.
+ *
+ * `model.idOffset` bare, no `?? 0`: it is a required `number` on
+ * `FederatedModel` (`store/types.ts`), and the unscoped resolver this is
+ * extracted from has always read it bare. `null` is returned for a miss, so a
+ * caller must test `!== null` — local id `0` is a legitimate answer and a
+ * truthiness test would drop it.
+ */
+function localIdInParseRange(model: FederatedModel, globalId: number): number | null {
+  const localId = globalId - model.idOffset;
+  return localId >= 0 && localId <= model.maxExpressId ? localId : null;
+}
+
+/**
+ * Overlay ownership: duplicates / scripted adds through StoreEditor land ABOVE
+ * the model's parse-time `maxExpressId`, so `localIdInParseRange` cannot see
+ * them; the model's mutation view can. Returns the LOCAL express id, or `null`.
+ */
+function localIdInOverlay(
+  model: FederatedModel,
+  globalId: number,
+  view: { getNewEntity: (id: number) => unknown } | undefined,
+): number | null {
+  if (!view) return null;
+  const localId = globalId - model.idOffset;
+  if (localId <= model.maxExpressId) return null; // parse-range's business
+  return view.getNewEntity(localId) !== null ? localId : null;
+}
+
+/** The mutation views registered on the store, if the owning slice is present. */
+function mutationViewsOf(
+  state: unknown,
+): Map<string, { getNewEntity: (id: number) => unknown }> | undefined {
+  return (state as { mutationViews?: Map<string, { getNewEntity: (id: number) => unknown }> }).mutationViews;
 }
 
 export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [], [], ModelSlice> = (set, get) => ({
@@ -431,42 +495,43 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
    */
   resolveGlobalIdFromModels: (globalId: number) => {
     const models = get().models;
-    const mutationViews = (get() as unknown as { mutationViews?: Map<string, { getNewEntity: (id: number) => unknown }> }).mutationViews;
+    const mutationViews = mutationViewsOf(get());
 
     // Sort models by offset for correct range checking
     const sortedModels = Array.from(models.values()).sort((a, b) => a.idOffset - b.idOffset);
 
     // Find the model that contains this globalId.
     //
-    // First pass — parse-time range. A model owns ids in
-    // `[offset, offset + maxExpressId]` from the original parse. This
-    // is the fast path covering 99% of selections.
+    // First pass — parse-time range (`localIdInParseRange`). The fast path
+    // covering 99% of selections.
     //
-    // Second pass — overlay-allocated ids. Duplicates / scripted adds
-    // through StoreEditor land ABOVE the model's parse-time
-    // maxExpressId, so they fall outside the first-pass range. The
-    // federation resolver knows nothing about overlay state, so we
-    // consult each model's mutation view for the freshly-added
-    // entity. Falls back gracefully when no view is registered.
+    // Second pass — overlay-allocated ids (`localIdInOverlay`). Kept a
+    // SEPARATE pass, not folded into a per-model "parse-range or overlay"
+    // test: every model's parse range must be tried before any model's
+    // overlay, or an overlay id of the first model could shadow a plain
+    // parse-time id of the second.
     for (const model of sortedModels) {
-      const localId = globalId - model.idOffset;
-      if (localId >= 0 && localId <= model.maxExpressId) {
-        return { modelId: model.id, expressId: localId };
-      }
+      const localId = localIdInParseRange(model, globalId);
+      if (localId !== null) return { modelId: model.id, expressId: localId };
     }
 
-    if (mutationViews) {
-      for (const model of sortedModels) {
-        const localId = globalId - model.idOffset;
-        if (localId <= model.maxExpressId) continue; // already covered above
-        const view = mutationViews.get(model.id);
-        if (!view) continue;
-        if (view.getNewEntity(localId) !== null) {
-          return { modelId: model.id, expressId: localId };
-        }
-      }
+    for (const model of sortedModels) {
+      const localId = localIdInOverlay(model, globalId, mutationViews?.get(model.id));
+      if (localId !== null) return { modelId: model.id, expressId: localId };
     }
 
+    return null;
+  },
+
+  resolveGlobalIdInModel: (modelId: string, globalId: number) => {
+    const model = get().models.get(modelId);
+    if (!model) return null;
+    // Same two rules as the unscoped resolver, in the same order — there is
+    // only one model to try, so the two passes collapse into two calls.
+    const parsed = localIdInParseRange(model, globalId);
+    if (parsed !== null) return { modelId, expressId: parsed };
+    const overlay = localIdInOverlay(model, globalId, mutationViewsOf(get())?.get(modelId));
+    if (overlay !== null) return { modelId, expressId: overlay };
     return null;
   },
 });

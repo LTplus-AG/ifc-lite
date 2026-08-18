@@ -25,7 +25,7 @@
 //! Collapsing the three axes to their max therefore sizes the band from an
 //! axis the plane never sees. A model 10 km out in X, cut by a Z-normal
 //! plane, got `band = 1e4 * 2^-22 ~= 2.4 mm` from the irrelevant X magnitude
-//! where the real f32 rounding step in Z is ~1.2e-4 m (the `8*SNAP_GRID`
+//! where the real f32 rounding step in Z is ~1.2e-4 (the `8*SNAP_GRID`
 //! floor). Two surfaces a genuine 2 mm apart then fell inside the band, were
 //! reconciled as flush, and a 2 mm recess VANISHED — the same thin-flush-cut
 //! collapse #2598 described for the clipper, live in the kernel's shared band
@@ -54,7 +54,9 @@ use super::mesh_bridge::SNAP_GRID;
 const F32_ULP_SCALE: f64 = 1.0 / 4_194_304.0;
 
 /// The band's floor: the per-axis-snap scatter envelope near the origin, for
-/// two operands, with margin (~122 µm). Unchanged from the scalar formula and
+/// two operands, with margin — `8*SNAP_GRID` in CALLER units, so ~122 µm on a
+/// metre-denominated caller and ~122 nm on a millimetre-denominated one
+/// (#2684). Unchanged from the scalar formula and
 /// deliberately NOT projected: it is a tuned absolute allowance for
 /// [`SNAP_GRID`] quantization, not a coordinate-magnitude term, and tightening
 /// it is a tolerance change needing its own corpus evidence. Same split as
@@ -69,7 +71,7 @@ pub(crate) const NEAR_BAND_FLOOR: f64 = 8.0 * SNAP_GRID;
 /// one), then ask it per plane.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct NearBand {
-    /// Max |coordinate| per axis, in metres.
+    /// Max |coordinate| per axis, in the CALLER's unit — not metres (#2684).
     axis_extent: [f64; 3],
 }
 

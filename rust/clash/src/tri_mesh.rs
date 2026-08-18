@@ -38,7 +38,6 @@ pub struct TriMesh {
     /// size. Derived with exact power-of-two arithmetic (no `powi`/`cbrt`, whose
     /// last bit is not guaranteed to agree with JS) — the TS `TriMesh.probeSeed`
     /// computes the identical value.
-    #[allow(dead_code)]
     probe_seed: f64,
     /// Memoized `detect_obb(self)` result; `None` until first requested (the
     /// outer `Option` is the "not yet computed" marker, the inner one is
@@ -48,7 +47,6 @@ pub struct TriMesh {
 }
 
 /// The axis-aligned cube of half-size `h` centred on `p`.
-#[allow(dead_code)]
 fn cube_around(p: Vec3, h: f64) -> Aabb {
     Aabb::new([p[0] - h, p[1] - h, p[2] - h], [p[0] + h, p[1] + h, p[2] + h])
 }
@@ -199,7 +197,6 @@ impl TriMesh {
     }
 
     /// Minimum point-to-triangle distance over `tris`, as a squared distance.
-    #[allow(dead_code)]
     fn min_dist_sq_over(&self, p: Vec3, tris: &[u32]) -> f64 {
         let mut best = f64::INFINITY;
         for &t in tris {
@@ -214,7 +211,6 @@ impl TriMesh {
     }
 
     /// Exhaustive fallback for `distance_to_surface`: every triangle, index order.
-    #[allow(dead_code)]
     fn distance_to_surface_scan(&self, p: Vec3) -> f64 {
         let mut best = f64::INFINITY;
         for t in 0..self.count {
@@ -231,18 +227,22 @@ impl TriMesh {
     /// Exact distance from `p` to this mesh's surface: the minimum point-to-
     /// triangle distance over the whole mesh.
     ///
-    /// Not on the narrow-phase hot path as of PR #2536 (its former caller,
-    /// `max_penetration_into`, was removed — see `obb.rs`): a nearest-crossing-
-    /// VERTEX distance-to-surface probe is a sampling artifact that converges
-    /// to 0 under retessellation rather than to the true penetration depth.
-    /// Kept as a genuinely exact, independently tested primitive (see the
-    /// shared probe fixture in `kernel_tests.rs` / `tri-mesh.test.ts`) for
-    /// future callers that need it — e.g. clearance-to-nearest-surface — not
-    /// as dead weight. Driven by the triangle BVH rather than a linear scan so
-    /// it stays cheap when it IS called:
+    /// Its sole production client is `depth::crossing_vertex_penetration`,
+    /// which feeds the f32 noise-floor gate for an AABB-contained pair — a
+    /// yes/no evidence input to `Hard` vs `Touch`, never a reported depth. It
+    /// took over from `max_penetration_into`, removed in PR #2536 because a
+    /// nearest-crossing-VERTEX distance-to-surface probe is a sampling
+    /// artifact that converges to 0 under retessellation rather than to the
+    /// true penetration depth; see `crossing_vertex_penetration`'s own doc
+    /// comment for why that underestimation is harmless for a floor test and
+    /// disqualifying for a depth. Beyond that client it is a genuinely exact,
+    /// independently tested primitive (see the shared probe fixture in
+    /// `kernel_tests.rs` / `tri-mesh.test.ts`). Driven by the triangle BVH
+    /// rather than a linear scan so it stays cheap:
     ///
-    /// TODO(remove-by: no production caller has appeared by the next
-    /// clash-engine feature pass, or on maintainer request): tracking issue
+    /// TODO(remove-by: `crossing_vertex_penetration` stops needing a
+    /// point-to-surface distance for the contained-pair floor test, or on
+    /// maintainer request; owner @BIMvoice): tracking issue
     /// https://github.com/LTplus-AG/ifc-lite/issues/2646.
     ///
     /// 1. Query the cube of half-size `h` centred on `p`. Every triangle within
@@ -266,7 +266,6 @@ impl TriMesh {
     /// empty. It is kept only as defence-in-depth against a future
     /// `query_tris` regression, not as a code path with coverage; do not read
     /// it as a tested safety net.
-    #[allow(dead_code)]
     pub fn distance_to_surface(&self, p: Vec3) -> f64 {
         if self.count == 0 {
             return f64::INFINITY;

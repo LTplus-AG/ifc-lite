@@ -158,6 +158,28 @@ describe('projectedAabbRadiusPx (perspective)', () => {
     assert.ok(Number.isFinite(beyond), `depth > radius must project finitely, got ${beyond}`);
     assert.ok(beyond > 0, `expected a positive pixel radius, got ${beyond}`);
   });
+
+  // Every other perspective fixture in this file uses fovYRadians = PI/2, and
+  // tan(PI/4) = 1 is the multiplicative identity — so `/ (depth * tanHalfFov)`
+  // and `/ depth` are indistinguishable and the whole FOV term can be deleted
+  // with the suite still green. (The file's only other value is 0, which exits
+  // early at the `!(tanHalfFov > 0)` guard.) A non-identity FOV is the only
+  // thing that pins it, including the half-angle: `tan(fov)` instead of
+  // `tan(fov/2)`, and a degrees-for-radians mix-up of the kind documented in
+  // snap-geometry-utils.ts, all land on different numbers here.
+  it('divides by tan(fovY/2): a 60° FOV magnifies against the 90° baseline', () => {
+    const cam = perspectiveCam({ fovYRadians: Math.PI / 3 });
+    // radius = sqrt(12)/2 = sqrt(3), depth = 100, tan(PI/6) = 1/sqrt(3),
+    // halfViewport = 500 → sqrt(3) / (100 / sqrt(3)) * 500 = 3/100 * 500 = 15.
+    const px = projectedAabbRadiusPx([-1, -1, -101], [1, 1, -99], cam);
+    assert.ok(Math.abs(px - 15) < 1e-9, `expected 15 px at 60° FOV, got ${px}`);
+
+    // Same box at the 90° baseline: sqrt(3)/100*500 = 8.6602540…, i.e. exactly
+    // tan(PI/6) of the above. Dropping the FOV factor collapses both to this.
+    const baseline = projectedAabbRadiusPx([-1, -1, -101], [1, 1, -99], perspectiveCam());
+    assert.ok(Math.abs(baseline - Math.sqrt(3) * 5) < 1e-9, `got ${baseline}`);
+    assert.ok(px > baseline, 'a narrower FOV must project the same box LARGER');
+  });
 });
 
 describe('projectedAabbRadiusPx (orthographic)', () => {
@@ -191,6 +213,19 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
     // Union box z ∈ [-200, -100] looking down -Z: nearest depth = 100.
     const px = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, perspectiveCam());
     assert.ok(Math.abs(px - (1 / 100) * 500) < 1e-9, `got ${px}`);
+  });
+
+  // Same identity trap as the projectedAabbRadiusPx case above: this function
+  // has its own copy of the `/ (minDepth * tanHalfFov)` term, so it needs its
+  // own non-identity FOV to keep that copy observable.
+  it('divides by tan(fovY/2) at the nearest union depth too', () => {
+    const cam = perspectiveCam({ fovYRadians: Math.PI / 3 });
+    // maxOccRadius = 1, minDepth = 100, tan(PI/6) = 1/sqrt(3) → 1/(100/sqrt(3))*500
+    const px = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, cam);
+    assert.ok(Math.abs(px - Math.sqrt(3) * 5) < 1e-9, `got ${px}`);
+    const baseline = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, perspectiveCam());
+    assert.ok(Math.abs(baseline - 5) < 1e-9, `got ${baseline}`);
+    assert.ok(px > baseline, 'a narrower FOV must project the same template LARGER');
   });
 
   it('is an upper bound for every real occurrence in the box', () => {

@@ -61,7 +61,12 @@ fn transform_with_translation(tx: f64, ty: f64, tz: f64) -> [f64; 16] {
 /// `site_local` (see `normalize_to_site_local` doc comment, lib.rs:~110-135).
 #[test]
 fn raw_ifc_with_large_site_translation_shifts_all_meshes_and_relabels() {
-    let (tx, ty, tz) = (123456.0, -7000.5, 2000.0);
+    // A realistic georeferenced placement: easting/northing far from the
+    // origin, elevation a normal building height. The Z component must stay
+    // *below* `LARGE_COORD_THRESHOLD`, otherwise all three components exceed
+    // it and the guard's `&&` is indistinguishable from `||` — the shift
+    // happens either way and the conjunction goes untested.
+    let (tx, ty, tz) = (123456.0, -7000.5, 2.0);
     let mut result = processing_result(
         Some(RAW_IFC_MESH_COORDINATE_SPACE),
         Some(transform_with_translation(tx, ty, tz)),
@@ -113,6 +118,54 @@ fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
     );
     assert_eq!(result.meshes[0].positions, original_positions_a);
     assert_eq!(result.meshes[1].positions, original_positions_b);
+}
+
+/// Pin `LARGE_COORD_THRESHOLD` itself. The other two fixtures straddle it by
+/// two orders of magnitude (1.0 vs 123456.0), so any threshold anywhere in
+/// between would satisfy them both. Bracket the constant instead: a single
+/// axis just *above* 1 km must shift, the same axis just *below* must not.
+#[test]
+fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
+    for (translation, should_shift) in [
+        ([LARGE_COORD_THRESHOLD + 0.5, 0.0, 0.0], true),
+        ([LARGE_COORD_THRESHOLD - 0.5, 0.0, 0.0], false),
+    ] {
+        let [tx, ty, tz] = translation;
+        let original = processing_result(
+            Some(RAW_IFC_MESH_COORDINATE_SPACE),
+            Some(transform_with_translation(tx, ty, tz)),
+        );
+        let original_positions_a = original.meshes[0].positions.clone();
+
+        let mut result = original;
+        normalize_to_site_local(&mut result);
+
+        if should_shift {
+            assert_eq!(
+                result.mesh_coordinate_space.as_deref(),
+                Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
+                "tx={tx} is past the threshold and must be shifted"
+            );
+            let expected_a: Vec<f32> = original_positions_a
+                .chunks_exact(3)
+                .flat_map(|c| {
+                    [
+                        (c[0] as f64 - tx) as f32,
+                        (c[1] as f64 - ty) as f32,
+                        (c[2] as f64 - tz) as f32,
+                    ]
+                })
+                .collect();
+            assert_eq!(result.meshes[0].positions, expected_a);
+        } else {
+            assert_eq!(
+                result.mesh_coordinate_space.as_deref(),
+                Some(RAW_IFC_MESH_COORDINATE_SPACE),
+                "tx={tx} is inside the threshold and must be left alone"
+            );
+            assert_eq!(result.meshes[0].positions, original_positions_a);
+        }
+    }
 }
 
 /// `site_local`, `model_rtc`, and `None` are all coordinate spaces the

@@ -1465,6 +1465,15 @@ export class StepExporter {
             attributeOverrides,
             positionalOverrides,
             pass.sourceSchema,
+            // Overlay-created entities report a rejected REAL edit exactly as
+            // source-backed ones do. Without this the slot was kept and NOTHING
+            // was said - the silent discard this whole change exists to
+            // prevent, surviving in the one path that had no test.
+            (attr, value) =>
+              pass.warnings.push(
+                `entity #${entity.expressId}: attribute ${attr} not written - ` +
+                  `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+              ),
           );
         }
         let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;

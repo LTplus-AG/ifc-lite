@@ -89,12 +89,41 @@ describe('a non-numeric REAL-typed attribute edit', () => {
     const { line, warnings } = await exportWithScale('2.5');
     expect(line).toMatch(/,2\.5[,)]/);
     expect(line).not.toContain("'2.5'");
-    expect(warnings).not.toContain('Scale');
+    // Empty, not merely free of 'Scale': a filtered assertion still passes if
+    // the export starts emitting some unrelated warning.
+    expect(warnings).toBe('');
   });
 
   it('still clears the slot for an empty value, and warns about nothing', async () => {
     const { line, warnings } = await exportWithScale('');
     expect(line).toContain('#41=IFCMAPCONVERSION($,#40,1000.,2000.,0.,$,$,$);');
-    expect(warnings).not.toContain('Scale');
+    expect(warnings).toBe('');
+  });
+
+  it('reports a rejected REAL edit on an OVERLAY-CREATED entity too', async () => {
+    // This path had no test, which is exactly why the rejection callback was
+    // wired into the helper and never passed at the call site: the slot was
+    // kept and nothing was said - the silent discard this change exists to
+    // prevent, surviving inside the change preventing it.
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+    const created = view.createEntity('IfcMapConversion', [
+      null, null, null, null, null, null, null, null,
+    ]);
+    new StoreEditor(store, view).setAttribute(created.expressId, 'Scale', 'abc');
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const text = new TextDecoder().decode(result.content);
+    const line = text.split('\n').find((l) => l.startsWith(`#${created.expressId}=`)) ?? '';
+    const warnings = result.stats.warnings.join('\n');
+
+    expect(line, 'a non-numeric value was written into a REAL slot').not.toContain("'abc'");
+    expect(warnings, 'the rejection was silent on the overlay path').toContain(
+      `#${created.expressId}`,
+    );
+    expect(warnings).toContain('Scale');
   });
 });

@@ -25,14 +25,24 @@ const P = (x: number, y: number, z: number): AnglePick => ({
 
 describe('angle mode store (#2735)', () => {
   let state: MeasurementSlice;
+  let setState: (
+    partial: Partial<MeasurementSlice> | ((state: MeasurementSlice) => Partial<MeasurementSlice>),
+  ) => void;
+  let getState: () => MeasurementSlice;
 
   beforeEach(() => {
-    const setState = (partial: any) => {
+    // Typed shims rather than `as any`, matching the adjacent
+    // `measurementSlice.test.ts`: an `any`-cast mock would let an incompatible
+    // signature go undetected, which is the one thing a store test exists to
+    // catch. Only the third argument (the zustand StoreApi, unused by this
+    // slice) keeps its cast, as it does there.
+    setState = (partial) => {
       state = typeof partial === 'function'
         ? { ...state, ...partial(state) }
         : { ...state, ...partial };
     };
-    state = createMeasurementSlice(setState as any, (() => state) as any, {} as any);
+    getState = () => state;
+    state = createMeasurementSlice(setState, getState, {} as never);
   });
 
   const s = () => state;
@@ -64,9 +74,16 @@ describe('angle mode store (#2735)', () => {
     assert.equal(s().activeAngle, null);
   });
 
-  it('entering angle mode cancels an in-progress drag measurement', () => {
+  it('entering angle mode cancels an IN-PROGRESS drag measurement', () => {
+    // The earlier version of this test asserted `activeMeasurement === null`
+    // straight after switching mode — but the slice STARTS with it null, so it
+    // passed even if `setMeasureMode` stopped clearing drag state entirely.
+    // A drag has to exist before cancelling it means anything.
+    s().startMeasurement({ x: 1, y: 2, z: 3, screenX: 10, screenY: 20 });
+    assert.notEqual(s().activeMeasurement, null, 'precondition: a drag is in progress');
+
     s().setMeasureMode('angle');
-    assert.equal(s().activeMeasurement, null);
+    assert.equal(s().activeMeasurement, null, 'switching to angle must cancel the drag');
     assert.equal(s().snapTarget, null);
   });
 

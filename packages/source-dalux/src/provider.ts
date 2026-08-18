@@ -51,6 +51,43 @@ import {
 
 const DEFAULT_BASE_URL = 'https://node1.field.dalux.com/service/api';
 
+/** `node1`, `node2`, ... Mirrors the relay's own allowlist. */
+const DALUX_NODE_PATTERN = /^node[1-9][0-9]{0,2}$/;
+
+/**
+ * Read a user-entered Dalux base URL and return just the node name.
+ *
+ * Dalux assigns each customer a node and prints the base URL beside the API
+ * key, so users paste the whole thing. Only the node name is kept, and only if
+ * it is a real Dalux field node: everything else about the URL is ours to
+ * decide, and forwarding a user-supplied origin to the relay would let it be
+ * pointed at an arbitrary host carrying the caller's API key.
+ *
+ * Returns undefined for blank input or the default node, so the common case
+ * sends no parameter at all. Throws on input that looks like a deliberate
+ * attempt to reach somewhere else, because silently falling back to node1
+ * would present as "my key does not work" rather than "that URL is wrong".
+ */
+export function parseDaluxNode(raw: string | undefined | null): string | undefined {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed === '') return undefined;
+
+  let host: string;
+  try {
+    host = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    throw new Error(`Not a valid Dalux base URL: ${trimmed}`);
+  }
+
+  const match = /^(node[1-9][0-9]{0,2})\.field\.dalux\.com$/.exec(host);
+  if (!match || !DALUX_NODE_PATTERN.test(match[1])) {
+    throw new Error(
+      `Not a Dalux node URL: ${trimmed}. Expected something like https://node2.field.dalux.com/service/api`,
+    );
+  }
+  return match[1] === 'node1' ? undefined : match[1];
+}
+
 export class DaluxBuildProvider implements FileSourceProvider {
   readonly manifest = DALUX_MANIFEST;
 
@@ -393,6 +430,12 @@ export class DaluxBuildProvider implements FileSourceProvider {
   private async createClient(ctx: PluginContext): Promise<BrowserDaluxApiClient> {
     const apiKey = await ctx.getPreference('apiKey');
     if (!apiKey) throw new Error('Dalux API key not configured');
-    return new BrowserDaluxApiClient({ baseUrl: DEFAULT_BASE_URL, apiKey }, ctx);
+    const node = parseDaluxNode(await ctx.getPreference('baseUrl'));
+    // `baseUrl` stays the canonical default even for a non-default node: the
+    // host only rewrites to the same-origin relay while the URL matches the
+    // manifest's declared upstream, and Dalux serves no CORS headers, so a
+    // rewritten base would bypass the relay and fail in the browser. The node
+    // travels as a parameter the relay resolves server-side (#2792).
+    return new BrowserDaluxApiClient({ baseUrl: DEFAULT_BASE_URL, apiKey, node }, ctx);
   }
 }

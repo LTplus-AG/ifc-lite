@@ -7,6 +7,16 @@ import type { PluginContext } from '@ifc-lite/plugin-api';
 export interface DaluxCredentials {
   readonly baseUrl: string;
   readonly apiKey: string;
+  /**
+   * Dalux node name (`node2`, ...) when the user is not on the default node.
+   *
+   * Sent as a query parameter rather than baked into `baseUrl` on purpose:
+   * the host only rewrites a URL to the same-origin relay when it still
+   * matches the manifest's declared upstream, and Dalux serves no CORS
+   * headers, so changing the base URL here would bypass the relay and fail
+   * in the browser. The server resolves the name to an origin (#2792).
+   */
+  readonly node?: string;
 }
 
 interface DaluxPageLink {
@@ -77,6 +87,11 @@ export class BrowserDaluxApiClient {
     return this.credentials.baseUrl;
   }
 
+  /** Add the caller's node selector, if any, so the relay can resolve it. */
+  private stampNode(url: URL): void {
+    if (this.credentials.node) url.searchParams.set('daluxNode', this.credentials.node);
+  }
+
   debug(message: string, details?: Record<string, unknown>): void {
     this.ctx.log.debug(`Dalux ${message}`, details ?? {});
   }
@@ -87,6 +102,7 @@ export class BrowserDaluxApiClient {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = new URL(path.startsWith('/') ? `${this.credentials.baseUrl}${path}` : path);
+    this.stampNode(url);
     for (const [key, value] of Object.entries(params)) {
       if (value === undefined || value === null || value === '') continue;
       url.searchParams.set(key, String(value));
@@ -124,7 +140,15 @@ export class BrowserDaluxApiClient {
     return response.json() as Promise<unknown>;
   }
 
-  async getBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  async getBinary(rawUrl: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+    // Binary downloads take a fully-built URL (revision content, and any
+    // `nextPage` link Dalux hands back), so they need the node selector too.
+    // Missing it here would send file downloads to the default node while
+    // listings went to the user's own — the failure would look like "the file
+    // is gone" rather than "wrong host".
+    const parsed = new URL(rawUrl);
+    this.stampNode(parsed);
+    const url = parsed.toString();
     this.debug('binary GET request', { url });
     const response = await this.ctx.fetch(url, {
       headers: {

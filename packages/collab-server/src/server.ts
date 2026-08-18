@@ -100,6 +100,12 @@ function applyCors(
 
 export interface StartCollabServerOptions {
   port?: number;
+  /**
+   * Application-level keepalive period in ms (default 15s). Exposed so tests
+   * can observe the keepalive without waiting on the real cadence; production
+   * callers should leave it alone. See `Room.sendKeepalive`.
+   */
+  keepaliveIntervalMs?: number;
   host?: string;
   persistence?: Persistence;
   authenticate?: AuthenticateFn;
@@ -205,6 +211,14 @@ export interface CollabServerHandle {
 }
 
 const PING_INTERVAL_MS = 30_000;
+
+/**
+ * Application-level keepalive period. Must stay comfortably under
+ * y-websocket's hardcoded 30s `messageReconnectTimeout`; 15s matches the
+ * awareness renewal cadence the client's watchdog was written around.
+ * See `Room.sendKeepalive`.
+ */
+const KEEPALIVE_INTERVAL_MS = 15_000;
 
 export async function startCollabServer(
   opts: StartCollabServerOptions = {},
@@ -390,7 +404,11 @@ export async function startCollabServer(
       // surfacing as a process-level unhandledRejection. Catch the error,
       // log it, and close the socket with a non-1000 code so the client
       // sees a deterministic shutdown.
-      handleConnection(ws, req, { roomManager, authenticate }).catch((err) => {
+      handleConnection(ws, req, {
+        roomManager,
+        authenticate,
+        keepaliveIntervalMs: opts.keepaliveIntervalMs,
+      }).catch((err) => {
         // eslint-disable-next-line no-console
         console.error('[collab-server] connection setup failed:', err);
         try {
@@ -439,6 +457,8 @@ export async function startCollabServer(
 interface ConnectionContext {
   roomManager: RoomManager;
   authenticate: AuthenticateFn;
+  /** See `StartCollabServerOptions.keepaliveIntervalMs`. */
+  keepaliveIntervalMs?: number;
 }
 
 async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: ConnectionContext) {
@@ -475,6 +495,12 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: C
   };
   room.addConnection(conn);
 
+  // Application-level keepalive. Distinct from the protocol ping below: only
+  // a real message refreshes y-websocket's reconnect watchdog.
+  const keepalive = setInterval(() => {
+    room.sendKeepalive(conn);
+  }, ctx.keepaliveIntervalMs ?? KEEPALIVE_INTERVAL_MS);
+
   let alive = true;
   const ping = setInterval(() => {
     if (!alive) {
@@ -494,6 +520,7 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: C
 
   const cleanup = () => {
     clearInterval(ping);
+    clearInterval(keepalive);
     room.removeConnection(conn);
   };
   ws.on('close', cleanup);

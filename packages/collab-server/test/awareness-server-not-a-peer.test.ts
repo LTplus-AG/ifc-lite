@@ -31,8 +31,12 @@ import { WebSocket } from 'ws';
 import { WebsocketProvider } from 'y-websocket';
 import { MemoryPersistence, startCollabServer } from '../src/server.js';
 
-async function startServer() {
-  const handle = await startCollabServer({ port: 0, persistence: new MemoryPersistence() });
+async function startServer(extra: { keepaliveIntervalMs?: number } = {}) {
+  const handle = await startCollabServer({
+    port: 0,
+    persistence: new MemoryPersistence(),
+    ...extra,
+  });
   const address = handle.httpServer.address();
   const port = typeof address === 'object' && address ? address.port : 0;
   return { handle, url: `ws://127.0.0.1:${port}` };
@@ -134,4 +138,70 @@ describe('server awareness is not a peer', () => {
     b.provider.destroy();
     await handle.stop();
   }, 15_000);
+});
+
+describe('server keepalive', () => {
+  // The ghost this file removes was ALSO an accidental keepalive: its ~15s
+  // renewal was the only server-to-client traffic in a single-occupant room,
+  // and it was what fed y-websocket's 30s `messageReconnectTimeout`. Removing
+  // the ghost without an explicit keepalive put every lone client into a
+  // permanent ~30s disconnect/reconnect loop.
+  //
+  // Measured over 75s, one client, three builds:
+  //   ghost cleared, no keepalive -> closes at t=30s and t=63s
+  //   ghost present (old main)    -> 0 closes
+  //   ghost cleared + keepalive   -> 0 closes
+  //
+  // None of the tests above catch that: the fault needs >30s of wall clock,
+  // and `messageReconnectTimeout` is a module const in y-websocket with no
+  // per-provider override, so it cannot be shortened. Hence one real-time
+  // test, plus a fast one for the mechanism itself.
+
+  it('sends awareness keepalive frames to an idle peer', async () => {
+    const { handle, url } = await startServer({ keepaliveIntervalMs: 120 });
+    const raw = new WebSocket(`${url}/keepalive-room`);
+    await new Promise<void>((resolve, reject) => {
+      raw.once('open', () => resolve());
+      raw.once('error', reject);
+    });
+
+    const frames: Uint8Array[] = [];
+    raw.on('message', (d: Buffer) => frames.push(new Uint8Array(d)));
+    await new Promise((r) => setTimeout(r, 900));
+
+    // MESSAGE_AWARENESS = 1, payload = one varUint 0 (zero clients named).
+    const keepalives = frames.filter(
+      (f) => f.length === 3 && f[0] === 1 && f[1] === 1 && f[2] === 0,
+    );
+    expect(
+      keepalives.length,
+      `expected repeated keepalive frames; got ${frames.length} frames: ${JSON.stringify(frames.map((f) => [...f]))}`,
+    ).toBeGreaterThanOrEqual(3);
+
+    raw.close();
+    await handle.stop();
+  }, 15_000);
+
+  it('a lone client stays connected past the 30s reconnect timeout', async () => {
+    const { handle, url } = await startServer();
+    const { provider } = connect(url, 'lonely-room');
+
+    let closes = 0;
+    provider.on('connection-close', () => {
+      closes += 1;
+    });
+    await synced(provider);
+
+    // One full watchdog window plus margin. The regression fired at t=30.0s.
+    await new Promise((r) => setTimeout(r, 45_000));
+
+    expect(
+      closes,
+      'lone client was dropped by the client-side reconnect watchdog: no server traffic for 30s',
+    ).toBe(0);
+    expect(provider.wsconnected).toBe(true);
+
+    provider.destroy();
+    await handle.stop();
+  }, 90_000);
 });

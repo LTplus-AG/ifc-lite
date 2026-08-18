@@ -34,6 +34,13 @@ import { createRateLimiter, type RateLimitOptions, type RateLimiter } from './ra
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 
+/**
+ * An awareness update naming ZERO clients: a single varUint `0` length prefix.
+ * `applyAwarenessUpdate` decodes it as a no-op, but it is a real WebSocket
+ * message, which is the point. See `Room.sendKeepalive`.
+ */
+const EMPTY_AWARENESS_UPDATE = new Uint8Array([0]);
+
 // Inner sync-message subtypes (mirror y-protocols/sync constants) used for
 // the cheap pre-verify frame peek. Kept local so the peek never has to call
 // the full readSyncMessage (which applies payloads to the doc as a side
@@ -230,6 +237,37 @@ export class Room {
       );
       safeSend(conn.ws, encoding.toUint8Array(aenc));
     }
+  }
+
+  /**
+   * Send an application-level keepalive to one peer.
+   *
+   * y-websocket's client closes a connection after
+   * `messageReconnectTimeout` (30s, a module-level const, not configurable)
+   * with no inbound MESSAGE, and only `websocket.onmessage` refreshes that
+   * clock (y-websocket/src/y-websocket.js:186,387-396). WebSocket protocol
+   * pings do not count: they are auto-ponged below the message layer, so the
+   * `ws.ping()` loop in `server.ts` cannot feed it.
+   *
+   * This server does not echo a peer's own updates back to it
+   * (`if (conn === origin) continue;` below, and the same for doc updates), so
+   * a room with ONE occupant produces no server-to-client traffic at all after
+   * the initial handshake. y-websocket's own comment says the timeout assumes
+   * "not even your own awareness updates (which are updated every 15 seconds)"
+   * come back, i.e. the reference server echoes them and ours does not.
+   *
+   * Until #2791 that gap was masked by an accident: the server's own Awareness
+   * ghost state renewed every ~15s and was broadcast to everyone, feeding the
+   * watchdog. Clearing the ghost removes the accident, so the keepalive has to
+   * be explicit. Measured: with the ghost gone and no keepalive, a lone client
+   * closed and reconnected at t=30s and t=63s over a 75s window; with either
+   * one present, zero closes.
+   */
+  sendKeepalive(conn: PeerConnection): void {
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, MESSAGE_AWARENESS);
+    encoding.writeVarUint8Array(enc, EMPTY_AWARENESS_UPDATE);
+    safeSend(conn.ws, encoding.toUint8Array(enc));
   }
 
   removeConnection(conn: PeerConnection): void {

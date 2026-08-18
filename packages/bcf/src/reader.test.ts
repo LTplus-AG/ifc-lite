@@ -463,4 +463,73 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(project.version).toBe('2.1');
     });
   });
+
+  describe('markup.bcf <Viewpoints> element (plural, per BCF 2.1/3.0 schema)', () => {
+    it('resolves the markup-declared Snapshot filename even when it does not follow the buildingSMART naming convention', async () => {
+      // The <Viewpoints Guid="..."> markup element is the top-level element linking a
+      // viewpoint's GUID to its .bcfv file and snapshot image (see writer.ts
+      // writeMarkupFile, which emits exactly this plural tag). A prior regex here
+      // looked for singular <Viewpoint Guid="..."> -- the tag Comment elements use to
+      // *reference* a viewpoint -- which can never match this markup element. That left
+      // the reader silently falling back to guessing the snapshot filename from
+      // naming-convention patterns (Viewpoint_<guid>.bcfv -> Snapshot_<guid>.png etc.).
+      // Third-party BCF files are free to name their entries however they like per
+      // spec; when the snapshot filename doesn't match any guessed pattern, the
+      // snapshot the markup explicitly names must still be found.
+      const zip = new JSZip();
+      const topicGuid = '11111111-1111-1111-1111-111111111111';
+      const vpGuid = '22222222-2222-2222-2222-222222222222';
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"><DetailedVersion>2.1</DetailedVersion></Version>');
+      zip.file(
+        `${topicGuid}/markup.bcf`,
+        `<?xml version="1.0" encoding="utf-8"?>
+<Markup>
+  <Topic Guid="${topicGuid}">
+    <Title>Custom filenames</Title>
+  </Topic>
+  <Viewpoints Guid="${vpGuid}">
+    <Viewpoint>custom_camera_view.bcfv</Viewpoint>
+    <Snapshot>custom_image_export.png</Snapshot>
+  </Viewpoints>
+</Markup>`
+      );
+      zip.file(
+        `${topicGuid}/custom_camera_view.bcfv`,
+        `<?xml version="1.0" encoding="utf-8"?>
+<VisualizationInfo Guid="${vpGuid}">
+  <PerspectiveCamera>
+    <CameraViewPoint><X>0</X><Y>0</Y><Z>0</Z></CameraViewPoint>
+    <CameraDirection><X>1</X><Y>0</Y><Z>0</Z></CameraDirection>
+    <CameraUpVector><X>0</X><Y>0</Y><Z>1</Z></CameraUpVector>
+    <FieldOfView>60</FieldOfView>
+  </PerspectiveCamera>
+</VisualizationInfo>`
+      );
+      zip.file(`${topicGuid}/custom_image_export.png`, new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4]));
+
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const project = await readBCF(buffer);
+      const topic = project.topics.get(topicGuid);
+
+      expect(topic?.viewpoints).toHaveLength(1);
+      const vp = topic!.viewpoints[0];
+      // The viewpoint's own GUID comes from the .bcfv file's VisualizationInfo element,
+      // independent of this markup lookup, so it was never at risk -- but the snapshot
+      // association was.
+      expect(vp.guid).toBe(vpGuid);
+      expect(vp.snapshot).toBeDefined();
+      expect(vp.snapshotData).toBeDefined();
+    });
+
+    it('still finds the buildingSMART-fixture snapshot via the plural tag (regression against PerspectiveCamera.bcf)', async () => {
+      const filePath = join(TEST_DATA_DIR, 'PerspectiveCamera.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.viewpoints).toHaveLength(1);
+      expect(topic.viewpoints[0].guid).toBe('caddfaad-73b0-4751-8d3f-ba2a4a954b7a');
+      expect(topic.viewpoints[0].snapshot).toBeDefined();
+    });
+  });
 });

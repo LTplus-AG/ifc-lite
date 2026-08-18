@@ -595,12 +595,21 @@ async function parseViewpoints(
 ): Promise<BCFViewpoint[]> {
   const viewpoints: BCFViewpoint[] = [];
 
-  // Parse viewpoint references from markup.bcf to get snapshot filenames
-  // Format: <Viewpoint Guid="xxx"><Viewpoint>filename.bcfv</Viewpoint><Snapshot>snapshot.png</Snapshot></Viewpoint>
+  // Parse viewpoint references from markup.bcf to get snapshot filenames.
+  // The markup element is plural -- <Viewpoints Guid="xxx"><Viewpoint>file.bcfv</Viewpoint>
+  // <Snapshot>file.png</Snapshot></Viewpoints> -- per the BCF 2.1/3.0 schema (see
+  // writer.ts writeMarkupFile) and buildingSMART's own reference fixtures. A prior
+  // version of this regex looked for singular <Viewpoint Guid="..."> instead, which is
+  // the tag Comment elements use to reference a viewpoint (see parseComments below) --
+  // it can never match the top-level markup element, so this map was always empty and
+  // every snapshot resolution silently fell through to the filename-guessing fallback.
+  // On a real-world file whose viewpoint/snapshot filenames don't follow the
+  // buildingSMART naming convention, that fallback fails to find the snapshot at all
+  // even though markup.bcf names it explicitly.
   const viewpointInfoMap = new Map<string, { viewpointFile?: string; snapshotFile?: string }>();
 
   // Match full viewpoint elements with both viewpoint and snapshot references
-  const viewpointElementRegex = /<Viewpoint\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Viewpoint>/g;
+  const viewpointElementRegex = /<Viewpoints\s+Guid="([^"]+)"[^>]*>([\s\S]*?)<\/Viewpoints>/g;
   for (const match of markupContent.matchAll(viewpointElementRegex)) {
     const guid = match[1];
     const content = match[2];
@@ -615,7 +624,7 @@ async function parseViewpoints(
   }
 
   // Also match self-closing viewpoint references
-  const simpleViewpointRefs = markupContent.matchAll(/<Viewpoint\s+Guid="([^"]+)"[^>]*\/>/g);
+  const simpleViewpointRefs = markupContent.matchAll(/<Viewpoints\s+Guid="([^"]+)"[^>]*\/>/g);
   for (const match of simpleViewpointRefs) {
     if (!viewpointInfoMap.has(match[1])) {
       viewpointInfoMap.set(match[1], {});

@@ -65,6 +65,12 @@ describe('blob gc entrypoint', () => {
     child = spawn(tsx, [path.join(pkgRoot, 'src', 'bin.ts')], {
       env: {
         ...process.env,
+        // Pin the feature flag rather than inheriting it. A developer or CI
+        // runner with COLLAB_BLOB_GC=0 set would otherwise turn this test into
+        // a check that the sweep does nothing, which is the opposite of what
+        // it asserts. It fails safe today, but a test whose meaning depends on
+        // the ambient environment is not a test.
+        COLLAB_BLOB_GC: '1',
         COLLAB_HOST: '127.0.0.1',
         COLLAB_PORT: '0',
         COLLAB_DATA_DIR: dataDir,

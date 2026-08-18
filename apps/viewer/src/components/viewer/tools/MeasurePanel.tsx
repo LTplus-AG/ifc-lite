@@ -259,7 +259,7 @@ export function MeasureOverlay() {
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
             }`}
-            title="Cycle measure mode — Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels)"
+            title="Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels)"
           >
             {measureMode === 'polyline' ? 'Polyline' : measureMode === 'angle' ? 'Angle' : 'Distance'}
           </button>
@@ -445,8 +445,8 @@ export function MeasureOverlay() {
               ? 'Click to add point · dbl-click/Enter to finish · click start to close · Esc to cancel'
               : 'Click to start polyline'
             : measureMode === 'angle'
-              ? // In angle mode `activeMeasurement` is ALWAYS null — the drag
-                // gate refuses to start one — so falling through to the drag
+              ? // In angle mode `activeMeasurement` is ALWAYS null - the drag
+                // gate refuses to start one - so falling through to the drag
                 // branch below would permanently show "Drag to measure" in a
                 // mode that ignores drags entirely. The hint has to name the
                 // gesture that actually works, and which pick is next.

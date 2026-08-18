@@ -532,13 +532,13 @@ export interface PendingMeasurementState {
   polylineMeasurements: { length: number };
   /** In-progress angle sequence (#2735), or null. */
   activeAngle: unknown;
-  /** Finished angle measurements (#2735) — their picks are reprojected too. */
+  /** Finished angle measurements (#2735) - their picks are reprojected too. */
   angleMeasurements: { length: number };
 }
 
 /**
  * True when there is any measurement state whose screen coordinates could
- * be stale after a camera move — drag-mode measurements/gesture,
+ * be stale after a camera move - drag-mode measurements/gesture,
  * polyline-mode sequences/finished polylines (#2641 review defect: this used
  * to check only `measurements`/`activeMeasurement`, so with polyline-only
  * state the reprojection pass never ran and placed points, segments and

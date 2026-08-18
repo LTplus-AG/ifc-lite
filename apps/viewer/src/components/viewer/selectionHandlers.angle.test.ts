@@ -3,15 +3,15 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * WIRING tests for angle mode (#2735) — click -> store -> readout.
+ * WIRING tests for angle mode (#2735) - click -> store -> readout.
  *
  * These exist because an adversarial review found the pure layer was
  * mutation-hardened while the layer that CONNECTS it was covered by nothing.
  * Two mutations survived the entire 5001-test viewer suite:
  *
- *   1. `handleAngleClick`'s body replaced with a bare `return` — the tool is
+ *   1. `handleAngleClick`'s body replaced with a bare `return` - the tool is
  *      completely dead, no pick ever registers, every test still passes.
- *   2. the panel feeding `picks[1]` as the apex instead of `picks[0]` — every
+ *   2. the panel feeding `picks[1]` as the apex instead of `picks[0]` - every
  *      displayed angle is wrong (the 3-4-5 fixture's 90 degrees renders 36.9).
  *
  * Both are invisible to tests of pure functions and of the store in isolation,
@@ -82,7 +82,7 @@ describe('handleAngleClick wiring (#2735)', () => {
     assert.equal(useViewerStore.getState().angleMeasurements.length, 0);
   });
 
-  it('a click registers a pick — the tool is not dead', () => {
+  it('a click registers a pick - the tool is not dead', () => {
     // Kills the "replace the handler body with `return`" mutation.
     handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
     assert.equal(useViewerStore.getState().activeAngle?.picks.length, 1);
@@ -91,7 +91,7 @@ describe('handleAngleClick wiring (#2735)', () => {
   it('three clicks produce the angle a user would READ, apex first', () => {
     // Kills the "panel feeds the wrong pick as apex" mutation. The fixture is
     // the 3-4-5 right triangle with the apex at its RIGHT angle, so measuring
-    // at either other vertex yields 36.9 or 53.1 — all three distinguishable.
+    // at either other vertex yields 36.9 or 53.1 - all three distinguishable.
     handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
     handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0);
     handleAngleClick(fakeCtx({ x: 0, y: 3, z: 0 }), 0, 3);
@@ -115,7 +115,7 @@ describe('handleAngleClick wiring (#2735)', () => {
   it('drops the second half of a physical double-click', () => {
     // Browsers fire click, click, dblclick. Without this guard a habitual
     // double-click on a DIRECTION point makes picks 2 and 3 coincide and
-    // records a confident "0.0°" — a junk measurement rendered as a real
+    // records a confident "0.0°" - a junk measurement rendered as a real
     // answer, not an em dash. An earlier version of the handler argued the
     // maths already covered this; it does not, because only APEX-coincidence
     // is degenerate.

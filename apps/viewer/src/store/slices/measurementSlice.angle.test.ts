@@ -8,7 +8,7 @@
  * The reset-home tests below are the ones that matter most. This slice
  * documents a #2199 regression where a hand-maintained reset list silently
  * missed newly added fields, so each reset is asserted by the VALUE it leaves
- * behind — deleting a field from a reset object flips a named test rather than
+ * behind - deleting a field from a reset object flips a named test rather than
  * passing because nothing looked at it.
  */
 
@@ -76,7 +76,7 @@ describe('angle mode store (#2735)', () => {
 
   it('entering angle mode cancels an IN-PROGRESS drag measurement', () => {
     // The earlier version of this test asserted `activeMeasurement === null`
-    // straight after switching mode — but the slice STARTS with it null, so it
+    // straight after switching mode - but the slice STARTS with it null, so it
     // passed even if `setMeasureMode` stopped clearing drag state entirely.
     // A drag has to exist before cancelling it means anything.
     s().startMeasurement({ x: 1, y: 2, z: 3, screenX: 10, screenY: 20 });

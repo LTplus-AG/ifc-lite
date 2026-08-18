@@ -148,7 +148,7 @@ export function getApproximateWorldPosition(
  * Whether a mousedown on the Measure tool should start the drag-to-measure
  * gesture (`handleMeasureDown`/`activeMeasurement`). `false` in two cases:
  * shift is held (the existing orbit-while-measuring escape hatch), or the
- * tool is in any CLICK-driven mode — polyline (#2199) or angle (#2735) —
+ * tool is in any CLICK-driven mode - polyline (#2199) or angle (#2735) -
  * where a click, not a drag, is the only gesture that places a point (see
  * `handlePolylineClick` / `handleAngleClick` in selectionHandlers.ts).
  *
@@ -160,7 +160,7 @@ export function getApproximateWorldPosition(
  * Tested as `mode === 'drag'` rather than `mode !== 'polyline'` deliberately.
  * The exclusion form is a DENY-LIST: every new click-driven mode has to
  * remember to add itself, and forgetting means the drag gesture silently runs
- * underneath it — two state machines live at once, which is the exact failure
+ * underneath it - two state machines live at once, which is the exact failure
  * this gate exists to prevent. The allow-list form makes a new mode
  * click-driven by default, which is the safe direction to be wrong in.
  */

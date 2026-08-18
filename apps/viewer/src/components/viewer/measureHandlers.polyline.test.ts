@@ -145,12 +145,12 @@ describe('isNearPolylineStart', () => {
   });
 });
 
-describe('shouldStartDragMeasurement — angle mode (#2735)', () => {
+describe('shouldStartDragMeasurement - angle mode (#2735)', () => {
   it('never starts a drag in angle mode', () => {
     // The single gate that stops two mode state machines running at once.
     // Angle mode places points by click, so a drag starting underneath it
     // would leave `activeMeasurement` non-null while a pick sequence is in
-    // progress — the exact corruption `setMeasureMode` exists to prevent.
+    // progress - the exact corruption `setMeasureMode` exists to prevent.
     assert.equal(shouldStartDragMeasurement('angle', false), false);
   });
 

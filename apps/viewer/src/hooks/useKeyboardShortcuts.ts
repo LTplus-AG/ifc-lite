@@ -301,7 +301,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
       // Same for a part-finished angle sequence (#2735). Its own branch for
       // the same reason: at most one of activeMeasurement / activePolyline /
       // activeAngle is non-null at a time, and merging them would hide that.
-      // No Enter counterpart — an angle finishes itself on its last pick, so
+      // No Enter counterpart - an angle finishes itself on its last pick, so
       // there is no "finish early" state to confirm.
       if (key === 'escape' && activeAngle) {
         e.preventDefault();

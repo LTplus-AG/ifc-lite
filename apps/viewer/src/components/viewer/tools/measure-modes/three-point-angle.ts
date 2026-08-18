@@ -11,7 +11,7 @@
  * correction here retroactively fixes every measurement already on screen.
  *
  * WHY ONLY DEGREES. #2199 asked for degrees, percent slope and 1:n ratio.
- * Percent and ratio express rise over run against a HORIZONTAL reference —
+ * Percent and ratio express rise over run against a HORIZONTAL reference -
  * that is what makes them meaningful for `inclination.ts`, whose reference is
  * the ground plane. Three arbitrary picks have no such reference: the same
  * 30 degree angle can sit in any orientation, and printing "58%" beside it
@@ -39,7 +39,7 @@ const PICK_RESOLUTION_M = 1 / 65536;
  * Below this a ray has no usable direction.
  *
  * Tied to pick resolution, NOT to an arbitrarily small epsilon. An earlier
- * version used 1e-9 m — 15,259x BELOW the snap floor — so no reachable input
+ * version used 1e-9 m - 15,259x BELOW the snap floor - so no reachable input
  * could ever land in the band (0, 1e-9]: the guard classified nothing, and
  * the test that "pinned it from both sides" pinned a constant with no
  * behavioural consequence. A ray shorter than one pick resolution has a
@@ -71,7 +71,7 @@ const COLLINEAR_OFFSET_M = PICK_RESOLUTION_M;
  *
  * `degenerate` and `zero` both produce 0 degrees, so a formatter without a
  * discriminator would have to render "I measured nothing" and "I measured a
- * real zero angle" identically — the same trap `InclinationKind` exists to
+ * real zero angle" identically - the same trap `InclinationKind` exists to
  * avoid.
  */
 export type ThreePointAngleKind =
@@ -90,8 +90,8 @@ export interface ThreePointAngle {
    * The angle at the apex in degrees, always in [0, 180].
    *
    * UNSIGNED and unfolded. Unsigned because a sign would need a reference
-   * plane the three picks do not carry. Unfolded — 120 stays 120 rather than
-   * folding to 60 — because the apex makes the answer directed: the user
+   * plane the three picks do not carry. Unfolded - 120 stays 120 rather than
+   * folding to 60 - because the apex makes the answer directed: the user
    * pointed at a specific corner, and reporting its supplement would answer a
    * question they did not ask. (Edge-to-edge angle, where no apex is picked,
    * is the case that genuinely has to fold; see #2735's later slice.)
@@ -127,7 +127,7 @@ export function threePointAngle(
   const degrees = angleBetweenDeg(ua, ub);
 
   // Perpendicular offset of b from the apex->a line. `ua` is unit, so
-  // |ua x rb| IS that distance — no division, and it scales with rb's length
+  // |ua x rb| IS that distance - no division, and it scales with rb's length
   // exactly as the tolerance argument above requires.
   if (norm(cross(ua, rb)) <= collinearOffsetM) {
     // Collinear. Which of the two collinear answers is a question of
@@ -147,7 +147,7 @@ export function threePointAngle(
 export function formatThreePointAngle(r: ThreePointAngle): string {
   switch (r.kind) {
     case 'degenerate':
-      return '—';
+      return '-';
     case 'zero':
       return '0.0°';
     case 'straight':

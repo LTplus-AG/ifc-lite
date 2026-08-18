@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Every fixture here is deliberately ASYMMETRIC — no 45 degree angles, no
+ * Every fixture here is deliberately ASYMMETRIC - no 45 degree angles, no
  * equilateral triangles, no unit-length rays.
  *
  * A symmetric fixture passes under argument swaps, folds and inversions, so it
@@ -25,7 +25,7 @@ const LEG_3 = { x: 0, y: 0, z: 3 };
 describe('threePointAngle', () => {
   it('measures at the APEX, not at either ray end', () => {
     // Apex at the right angle: 90. If the implementation measured at a ray end
-    // instead it would read 36.87 or 53.13 — both distinguishable.
+    // instead it would read 36.87 or 53.13 - both distinguishable.
     const r = threePointAngle(APEX_3_4_5, LEG_4, LEG_3);
     assert.equal(r.kind, 'angled');
     assert.ok(Math.abs(r.degrees - 90) < 1e-9, `expected 90, got ${r.degrees}`);
@@ -39,7 +39,7 @@ describe('threePointAngle', () => {
   });
 
   it('reports an obtuse angle unfolded: 120, not its 60 supplement', () => {
-    // The apex makes the answer directed — folding to [0,90] would answer a
+    // The apex makes the answer directed - folding to [0,90] would answer a
     // question the user did not ask.
     const apex = { x: 0, y: 0, z: 0 };
     const a = { x: 1, y: 0, z: 0 };
@@ -71,7 +71,7 @@ describe('threePointAngle', () => {
 
   it('refuses a ray shorter than one pick resolution', () => {
     // The exactly-coincident case is caught by `normalize` returning null, so
-    // it does NOT pin the threshold — with the guard removed, every other
+    // it does NOT pin the threshold - with the guard removed, every other
     // test in this file still passed.
     //
     // The threshold is the SNAP FLOOR (1/65536 m = 15.3 um), not an arbitrary
@@ -96,7 +96,7 @@ describe('threePointAngle', () => {
     // `packages/renderer/src/snap-weld.ts` rather than importing it (this
     // module has no renderer dependency). If the renderer's floor moves and
     // this does not, the thresholds above silently stop matching pick
-    // resolution — so the value is pinned here explicitly.
+    // resolution - so the value is pinned here explicitly.
     assert.equal(1 / 65536, 0.0000152587890625);
   });
 
@@ -122,7 +122,7 @@ describe('threePointAngle', () => {
     // pointing along it. atan2(|cross|, dot) has no domain restriction.
     //
     // My first version of this test used two hand-written near-opposite rays
-    // and passed under BOTH implementations — it asserted a property it could
+    // and passed under BOTH implementations - it asserted a property it could
     // not observe. This one was found by search and verified to NaN.
     const v = { x: 0.010309278033673763, y: 0.02247191034257412, z: 0.022900763899087906 };
     const apex = { x: 0, y: 0, z: 0 };
@@ -137,7 +137,7 @@ describe('threePointAngle', () => {
     // snap-weld.ts:43-54 argues a fixed angle is the wrong primitive: too
     // tight for short rays far from the origin, too loose for long ones near
     // it. A 5 mm perpendicular dogleg is a REAL corner on a 0.2 m ray and is
-    // still a real corner on a 200 m one — an angle band would call the
+    // still a real corner on a 200 m one - an angle band would call the
     // second one straight.
     const apex = { x: 0, y: 0, z: 0 };
     const shortRay = threePointAngle(apex, { x: 0.2, y: 0, z: 0 }, { x: -0.2, y: 0.005, z: 0 });
@@ -158,7 +158,7 @@ describe('threePointAngle', () => {
 
 describe('formatThreePointAngle', () => {
   it('renders a degenerate pick as an em dash, never as 0.0 degrees', () => {
-    assert.equal(formatThreePointAngle({ kind: 'degenerate', degrees: 0 }), '—');
+    assert.equal(formatThreePointAngle({ kind: 'degenerate', degrees: 0 }), '-');
   });
 
   it('distinguishes a real zero from a degenerate one', () => {

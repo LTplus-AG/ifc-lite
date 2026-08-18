@@ -53,11 +53,11 @@ describe('hasPendingMeasurementState — animation-loop reprojection gate', () =
   });
 });
 
-describe('hasPendingMeasurementState — angle state (#2735)', () => {
+describe('hasPendingMeasurementState - angle state (#2735)', () => {
   it('an in-progress angle sequence keeps the reprojection pass running', () => {
     // This gate and `updateMeasurementScreenCoords` are a pair: reprojection
     // written there without an arm here is dead code, and the symptom is
-    // identical to having written none — placed picks freeze at their
+    // identical to having written none - placed picks freeze at their
     // click-time pixel while the model orbits. That is #2641's defect, and
     // this is its third occurrence.
     assert.equal(

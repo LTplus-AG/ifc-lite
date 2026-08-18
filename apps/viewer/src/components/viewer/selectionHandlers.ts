@@ -648,8 +648,8 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
 /**
  * Click handler for angle mode (#2735).
  *
- * There is no finish gesture — every angle kind has a FIXED pick count and the
- * store finishes the measurement itself on the last pick — so polyline's
+ * There is no finish gesture - every angle kind has a FIXED pick count and the
+ * store finishes the measurement itself on the last pick - so polyline's
  * `fromDoubleClick` apparatus has no analogue here.
  *
  * But the duplicate-click DEFENCE still does, and an earlier version of this
@@ -658,12 +658,12 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
  * Only APEX-coincidence is degenerate. Browsers fire `click, click, dblclick`,
  * so a habitual double-click produces three distinct failures here:
  *
- *   1. double-clicking a DIRECTION point makes picks 2 and 3 coincide — a
+ *   1. double-clicking a DIRECTION point makes picks 2 and 3 coincide - a
  *      recorded "0.0°", rendered as a real answer rather than an em dash;
  *   2. double-clicking the THIRD pick finishes on the first click and the
  *      second click starts a stray new sequence, so "1/3 picks · apex set"
  *      appears unbidden;
- *   3. double-clicking the APEX puts picks 1 and 2 a pixel or two apart — a
+ *   3. double-clicking the APEX puts picks 1 and 2 a pixel or two apart - a
  *      ray whose direction is cursor noise, and pick 3 then yields a
  *      confident, wrong `angled` number.
  *

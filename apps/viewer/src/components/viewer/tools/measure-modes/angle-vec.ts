@@ -7,8 +7,8 @@
  *
  * Deliberately local rather than pulled from a maths library: these operate on
  * the same plain `{x,y,z}` shape `polyline.ts` already uses for picked points,
- * so the angle modules stay pure display maths over stored picks — the
- * `inclination.ts` precedent — with nothing to mock and no renderer types in
+ * so the angle modules stay pure display maths over stored picks - the
+ * `inclination.ts` precedent - with nothing to mock and no renderer types in
  * the test surface.
  */
 
@@ -53,7 +53,7 @@ export function normalize(v: Point3): Point3 | null {
  *
  * MEASURED: normalising an f32-derived vector leaves its own self-dot up to
  * ~6.7e-16 ABOVE 1, because `x/n` rounds independently per component. `acos`
- * returns NaN outside [-1, 1], so this is not a tail risk — sampling 200k
+ * returns NaN outside [-1, 1], so this is not a tail risk - sampling 200k
  * f32 direction vectors produced 44,915 NaNs. A concrete reproducible case,
  * pinned in the sibling test:
  *
@@ -61,12 +61,12 @@ export function normalize(v: Point3): Point3 | null {
  *     dot(normalize(v), normalize(v)) = 1.0000000000000002   ->  acos = NaN
  *
  * It bites hardest for near-parallel rays, which is exactly what `zero` and
- * `straight` exist to classify — so the degenerate cases would poison the
+ * `straight` exist to classify - so the degenerate cases would poison the
  * common ones. `atan2` has no such domain restriction.
  *
  * Precision is NOT the argument, and claiming it would overstate the case:
  * measured against exact values, `acos`'s error peaks around 2.7e-9 degrees
- * near 0 and 180 — invisible at the one decimal these readouts render.
+ * near 0 and 180 - invisible at the one decimal these readouts render.
  *
  * Inputs need not be unit length; the ratio form is scale-invariant.
  */

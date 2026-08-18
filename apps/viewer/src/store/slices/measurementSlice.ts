@@ -86,7 +86,7 @@ export interface MeasurementSlice {
   angleKind: AngleKind;
   /** A fixed-length angle sequence in progress, or null. */
   activeAngle: ActiveAngle | null;
-  /** Finished angle measurements. Picks only — degrees are derived on render. */
+  /** Finished angle measurements. Picks only - degrees are derived on render. */
   angleMeasurements: AngleMeasurement[];
   /** Finished polyline measurements — kept separate from `measurements`
    *  (distance-only) rather than folded in, since they carry an extra basis
@@ -139,7 +139,7 @@ export interface MeasurementSlice {
   setAngleKind: (kind: AngleKind) => void;
   /**
    * Append a pick. When the sequence reaches `ANGLE_REQUIRED_PICKS[kind]` it
-   * finishes ITSELF into `angleMeasurements` — there is no finish gesture, so
+   * finishes ITSELF into `angleMeasurements` - there is no finish gesture, so
    * unlike `finishPolyline` there is no double-click duplicate to defend
    * against.
    */
@@ -514,7 +514,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // Symmetric: discard the state of the mode being LEFT, and cancel any
     // in-progress drag when entering a click-driven mode. Written as spread
     // arms over one object rather than per-mode early returns so adding a
-    // fourth mode cannot leave an arm behind — the regression this slice
+    // fourth mode cannot leave an arm behind - the regression this slice
     // documents at `resetAllMeasurementState` was exactly a hand-maintained
     // list that missed a newly added field.
     const leaving = state.measureMode;

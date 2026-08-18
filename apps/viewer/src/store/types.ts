@@ -98,7 +98,7 @@ export interface ActiveAngle {
 /**
  * A finished angle measurement.
  *
- * Only the PICKS are stored, never the resulting degrees — the readout is
+ * Only the PICKS are stored, never the resulting degrees - the readout is
  * derived on render by `threePointAngle`. That follows `inclination.ts` rather
  * than `PolylineMeasurement` (which does store its `length`): an angle's value
  * is pure maths over its picks, so deriving it means a correction to the maths

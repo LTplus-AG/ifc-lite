@@ -496,9 +496,13 @@ export class DuckDBIntegration {
 }
 
 /**
- * Escape a string for SQL (prevent SQL injection)
+ * Escape a string for SQL (prevent SQL injection).
+ *
+ * Exported for direct unit testing: the surrounding INSERT-building logic
+ * requires a live DuckDB-WASM connection, so exercising this string-escaping
+ * logic through that path is impractical in a unit test.
  */
-function escapeSQL(value: string | null | undefined): string {
+export function escapeSQL(value: string | null | undefined): string {
   if (value === null || value === undefined) {
     return '';
   }

@@ -258,7 +258,9 @@ export class HttpBlobStore implements BlobStore {
       // TS 5.7's tightened `Uint8Array<ArrayBufferLike>` typing doesn't
       // satisfy `BodyInit` directly; the runtime accepts Uint8Array fine.
       body: bytes as unknown as BodyInit,
-      ...(options?.signal ? { signal: options.signal } : {}),
+      // Spread so the key is ABSENT when there is no signal: `signal:
+      // undefined` is not equivalent to omitting it for every fetch impl.
+      ...(options?.signal && { signal: options.signal }),
     });
     if (!res.ok) {
       throw new Error(`@ifc-lite/collab: blob PUT failed: ${res.status} ${res.statusText}`);

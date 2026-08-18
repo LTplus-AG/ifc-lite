@@ -17,7 +17,8 @@
 
 import { describe, expect, it } from 'vitest';
 import type { IfcxFile } from '@ifc-lite/ifcx';
-import { componentKeyForAttribute, extractStackState } from './component-state.js';
+import { componentKeyForAttribute, extractStackState, projectStackStates } from './component-state.js';
+import { planThreeWayMerge } from './three-way.js';
 
 describe('componentKeyForAttribute', () => {
   it('buckets a custom (non-Pset_) set name as pset:<name> when the value is a typed property record', () => {
@@ -112,5 +113,87 @@ describe('extractStackState + a whole-pset tombstone lookup on a custom-named se
     // one the deletion happened to be classified into.
     const surviving = [...(entity?.components.values() ?? [])].filter((attrs) => key in attrs);
     expect(surviving).toEqual([]);
+  });
+});
+
+/**
+ * `projectSide` (the fast-path 05 §5.7 clone-on-write fold, this file's
+ * `for (const layer of suffix)` loop) folds a side's suffix layers
+ * weakest-first, per attribute — same contract as `extractStackState`'s
+ * comment: "later opinions shadow earlier ones per attribute." That
+ * ordering was structurally unpinned: every `ours`/`theirs` array in the
+ * rest of this suite (three-way.test.ts, merge-layer.test.ts,
+ * resurrect.test.ts, fast-path-differential.test.ts,
+ * real-model-fuzz.test.ts, ref-flow-resolutions.test.ts) is
+ * `[...ancestor, oneLayer]` — a suffix of length exactly 1, so "earlier"
+ * never exists and the fold cannot be observed. This fixture uses a
+ * TWO-layer ours suffix that writes the SAME attribute in both layers
+ * (with different values, so the fold is observable at all) plus an
+ * attribute written only in the earlier layer (so shadowing-per-attribute
+ * is distinguished from wholesale replacement).
+ */
+describe('projectSide folds a multi-layer suffix weakest-first, per attribute', () => {
+  const FIRE = 'bsi::ifc::v5a::Pset_FireSafety::FireRating';
+  const SMOKE = 'bsi::ifc::v5a::Pset_FireSafety::SmokeRating';
+
+  function layerAt(id: string, attributes: Record<string, unknown>): IfcxFile {
+    return {
+      header: { id, ifcxVersion: 'ifcx_alpha', dataVersion: '1.0.0', author: 't', timestamp: 't' },
+      imports: [],
+      schemas: {},
+      data: [{ path: 'e1', attributes }],
+    } as unknown as IfcxFile;
+  }
+
+  const ancestor = [layerAt('base', { [FIRE]: { type: 'IfcLabel', value: 'REI60' } })];
+  // Ours suffix: two layers, weakest first.
+  //  - o1 (earlier): writes FIRE=REI90 AND SmokeRating=S30.
+  //  - o2 (later):   writes FIRE=REI120 only — SMOKE is untouched here.
+  // Correct (weakest-first) fold: FIRE=REI120 (o2 shadows o1), SMOKE=S30
+  // (only o1 wrote it, so o2 must not erase it). A reversed fold instead
+  // yields FIRE=REI90 (o1 clobbers o2 because it is applied last).
+  const oursSuffix = [
+    layerAt('o1', { [FIRE]: { type: 'IfcLabel', value: 'REI90' }, [SMOKE]: { type: 'IfcLabel', value: 'S30' } }),
+    layerAt('o2', { [FIRE]: { type: 'IfcLabel', value: 'REI120' } }),
+  ];
+  // Theirs: unrelated edit to the same attribute so the merge matrix
+  // records a real `concurrent-edit` conflict whose `ours` snapshot is
+  // the folded component — carrying the fold-order-dependent value into
+  // an actual merge result, not just an internal state map.
+  const theirsSuffix = [layerAt('t1', { [FIRE]: { type: 'IfcLabel', value: 'REI999' } })];
+
+  it('this fixture is fast-path eligible (no tombstones, shared ancestor prefix) — the fold under test actually runs', () => {
+    // Confirms which code path executes: a null return here would mean
+    // the assertions below exercise extractStackState's full fold
+    // instead of projectSide's clone-on-write fold.
+    const projected = projectStackStates(ancestor, oursSuffix, theirsSuffix);
+    expect(projected).not.toBeNull();
+  });
+
+  it('later layer shadows the earlier layer PER ATTRIBUTE: FireRating from o2, SmokeRating survives from o1', () => {
+    const projected = projectStackStates(ancestor, oursSuffix, theirsSuffix);
+    const oursComponent = projected?.o.get('e1')?.components.get('pset:Pset_FireSafety');
+    expect(oursComponent).toEqual({
+      [FIRE]: { type: 'IfcLabel', value: 'REI120' },
+      [SMOKE]: { type: 'IfcLabel', value: 'S30' },
+    });
+  });
+
+  it('matches extractStackState (the reference fold) on the same multi-layer stack', () => {
+    const projected = projectStackStates(ancestor, oursSuffix, theirsSuffix);
+    const reference = extractStackState([...ancestor, ...oursSuffix]);
+    expect(projected?.o.get('e1')?.components.get('pset:Pset_FireSafety')).toEqual(
+      reference.get('e1')?.components.get('pset:Pset_FireSafety')
+    );
+  });
+
+  it('the fold-order-dependent value reaches an actual merge conflict via planThreeWayMerge', () => {
+    const plan = planThreeWayMerge({ ancestor, ours: [...ancestor, ...oursSuffix], theirs: [...ancestor, ...theirsSuffix] });
+    const conflict = plan.conflicts.find((c) => c.path === 'e1' && c.componentKey === 'pset:Pset_FireSafety');
+    expect(conflict?.kind).toBe('concurrent-edit');
+    expect(conflict?.ours?.attributes).toEqual({
+      [FIRE]: { type: 'IfcLabel', value: 'REI120' },
+      [SMOKE]: { type: 'IfcLabel', value: 'S30' },
+    });
   });
 });

@@ -18,7 +18,58 @@ import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
 import { formatDistance } from './formatDistance';
+import type { AngleKind, AngleMeasurement } from '@/store/types';
 import { formatThreePointAngle, threePointAngle } from './measure-modes/three-point-angle';
+import { edgePairAngle, facePairAngle, formatAnglePair } from './measure-modes/edge-face-angle';
+
+/**
+ * The three angle kinds, their button text and what each one asks the user to
+ * click. `Record<AngleKind, ...>` is not used here because the ORDER is part of
+ * the UI; the exhaustiveness that matters (how many picks each needs) already
+ * lives on `ANGLE_REQUIRED_PICKS`.
+ */
+/**
+ * Readout for a stored angle, derived on render and never persisted, so a
+ * correction to the maths retroactively fixes every measurement already listed.
+ *
+ * Switching on `kind` rather than on pick COUNT: three-point and face pairs
+ * would both be distinguishable by count today, but edges take four picks and a
+ * future kind could collide, and the kind is the thing that is actually true.
+ */
+function formatAngleMeasurement(a: AngleMeasurement): string {
+  switch (a.kind) {
+    case 'points':
+      return formatThreePointAngle(
+        threePointAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point),
+      );
+    case 'edges':
+      return formatAnglePair(
+        edgePairAngle(
+          a.picks[0].point,
+          a.picks[1].point,
+          a.picks[2].point,
+          a.picks[3].point,
+        ),
+      );
+    case 'faces':
+      return formatAnglePair(
+        facePairAngle(
+          a.picks[0].normal ?? { x: 0, y: 0, z: 0 },
+          a.picks[1].normal ?? { x: 0, y: 0, z: 0 },
+        ),
+      );
+  }
+}
+
+const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, string, string]> = [
+  ['points', '3-Point', 'Angle at an apex: click the corner first, then the two directions'],
+  [
+    'edges',
+    'Edges',
+    'Angle between two lines: click two points on the first, then two on the second. Four clicks, because snap metadata yields tessellation segments rather than whole edges',
+  ],
+  ['faces', 'Faces', 'Angle between two planes: click one face, then the other'],
+];
 import {
   distanceComponents,
   formatAxisDeltas,
@@ -71,6 +122,9 @@ export function MeasureOverlay() {
   const measureMode = useViewerStore((s) => s.measureMode);
   const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
   const activeAngle = useViewerStore((s) => s.activeAngle);
+  const angleKind = useViewerStore((s) => s.angleKind);
+  const setAngleKind = useViewerStore((s) => s.setAngleKind);
+  const cancelAngle = useViewerStore((s) => s.cancelAngle);
   const deleteAngleMeasurement = useViewerStore((s) => s.deleteAngleMeasurement);
   const setMeasureMode = useViewerStore((s) => s.setMeasureMode);
   const activePolyline = useViewerStore((s) => s.activePolyline);
@@ -263,6 +317,32 @@ export function MeasureOverlay() {
           >
             {measureMode === 'polyline' ? 'Polyline' : measureMode === 'angle' ? 'Angle' : 'Distance'}
           </button>
+          {measureMode === 'angle' && (
+            <>
+              {ANGLE_KIND_LABELS.map(([kind, label, hint]) => (
+                <button
+                  key={kind}
+                  onClick={() => {
+                    // Discard any half-placed sequence: its picks belong to the
+                    // OLD kind and need a different count, so carrying them over
+                    // would finish the new measurement early with the wrong
+                    // inputs. The store rejects a mismatched pick, so without
+                    // this the tool would look frozen instead.
+                    cancelAngle();
+                    setAngleKind(kind);
+                  }}
+                  className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
+                    angleKind === kind
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+                  }`}
+                  title={hint}
+                >
+                  {label}
+                </button>
+              ))}
+            </>
+          )}
           <button
             onClick={toggleSnap}
             className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
@@ -392,13 +472,7 @@ export function MeasureOverlay() {
                           {/* Derived on render, never stored: a correction to
                               the maths retroactively fixes every measurement
                               already listed. */}
-                          {formatThreePointAngle(
-                            threePointAngle(
-                              a.picks[0].point,
-                              a.picks[1].point,
-                              a.picks[2].point,
-                            ),
-                          )}
+                          {formatAngleMeasurement(a)}
                         </span>
                         <Button
                           variant="ghost"

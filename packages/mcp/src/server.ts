@@ -73,6 +73,7 @@ import { disposeLayerWorkspace } from './tools/layer-store.js';
 import { ToolRegistry } from './tools/types.js';
 import { validateInput } from './validate.js';
 import { ViewerManager } from './viewer-manager.js';
+import type { ViewerState } from './viewer-manager.js';
 
 export const SERVER_NAME = 'ifc-lite-mcp';
 
@@ -178,6 +179,36 @@ export class MCPServer {
   /** Update the auth scope mid-session (e.g. token refresh). */
   setScope(scope: AuthScope): void {
     this.scope = scope;
+  }
+
+  /**
+   * Open the in-process viewer for the first loaded model if configured to
+   * do so, otherwise a no-op. Makes `ServerConfig.autoOpenViewer` /
+   * `.viewerPort` (issue #2731 finding 4) actually take effect for any
+   * caller that constructs `MCPServer` with `config`, not just the CLI.
+   *
+   * Precedence: `overrides` (an explicit, per-call instruction — this is
+   * what a CLI flag like `--viewer` represents) beats `this.config` (set at
+   * construction, e.g. by an embedder) beats the built-in default of "do
+   * not auto-open, port 0". A field left `undefined` at one level falls
+   * through to the next.
+   *
+   * No-ops (returns `null`) when auto-open resolves to `false`/`undefined`,
+   * or when no model is loaded yet. Errors from `ViewerManager.open()`
+   * propagate — callers that already have their own logging/fallback (the
+   * CLI does) can catch and report; callers that don't want that risk can
+   * check `registry.count()` first.
+   */
+  async maybeAutoOpenViewer(overrides?: { autoOpen?: boolean; port?: number }): Promise<ViewerState | null> {
+    const autoOpen = overrides?.autoOpen ?? this.config.autoOpenViewer ?? false;
+    if (!autoOpen) return null;
+    const model = this.registry.list()[0];
+    if (!model) return null;
+    const port = overrides?.port ?? this.config.viewerPort ?? 0;
+    const state = await this.viewer.open(model, port);
+    const adapters = this.viewer.adapters();
+    if (adapters) model.backend.attachStreamingAdapters(adapters.viewer, adapters.visibility);
+    return state;
   }
 
   isInitialized(): boolean {

@@ -20,7 +20,7 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import { ownerHistoryRef } from './_emit-helpers.js';
@@ -62,6 +62,11 @@ export function addBeamToStore(
   params: BeamInStoreParams,
 ): BeamBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
+
+  // A non-finite Start/End coordinate makes the derived beamLen NaN, and
+  // `NaN <= 0` is false, so the distinct-points check below never fires.
+  // Validate the source coordinates instead of trusting the derived value.
+  assertFinitePoint3({ Start: params.Start, End: params.End }, 'addBeamToStore');
 
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).

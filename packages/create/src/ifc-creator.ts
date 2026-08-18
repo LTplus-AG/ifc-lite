@@ -35,7 +35,7 @@ import type {
 
 import {
   esc, stepLine, num, vecLen, vecNorm, vecCross,
-  NON_ELEMENT_TYPES,
+  NON_ELEMENT_TYPES, assertPositiveFinite, assertFinitePoint3,
 } from './ifc-creator-math.js';
 import { generateIfcGuid, isValidIfcGuid } from '@ifc-lite/encoding';
 
@@ -243,6 +243,8 @@ export class IfcCreator {
    * upward by Height.
    */
   addIfcWall(storeyId: number, params: WallParams): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcWall');
+    assertPositiveFinite({ Thickness: params.Thickness, Height: params.Height }, 'addIfcWall');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -296,6 +298,9 @@ export class IfcCreator {
    * Width along +X, Depth along +Y, Thickness extruded along +Z.
    */
   addIfcSlab(storeyId: number, params: SlabParams): number {
+    assertPositiveFinite({ Thickness: params.Thickness }, 'addIfcSlab');
+    if (params.Width !== undefined) assertPositiveFinite({ Width: params.Width }, 'addIfcSlab');
+    if (params.Depth !== undefined) assertPositiveFinite({ Depth: params.Depth }, 'addIfcSlab');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -342,6 +347,7 @@ export class IfcCreator {
    * Cross-section centered, extruded upward by Height.
    */
   addIfcColumn(storeyId: number, params: ColumnParams): number {
+    assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Height: params.Height }, 'addIfcColumn');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -373,6 +379,8 @@ export class IfcCreator {
    * Cross-section (Width × Height) centered on the beam axis.
    */
   addIfcBeam(storeyId: number, params: BeamParams): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcBeam');
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcBeam');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -415,12 +423,15 @@ export class IfcCreator {
    * (rotated into world space by Direction). Width extends along local +Y.
    */
   addIfcStair(storeyId: number, params: StairParams): number {
-    if (params.NumberOfRisers <= 0) throw new Error('addStair: NumberOfRisers must be > 0');
-    if (params.RiserHeight <= 0) throw new Error('addStair: RiserHeight must be > 0');
-    if (params.TreadLength <= 0) throw new Error('addStair: TreadLength must be > 0');
-    if (params.Width <= 0) throw new Error('addStair: Width must be > 0');
+    assertPositiveFinite({
+      NumberOfRisers: params.NumberOfRisers,
+      RiserHeight: params.RiserHeight,
+      TreadLength: params.TreadLength,
+      Width: params.Width,
+    }, 'addStair');
 
     const direction = params.Direction ?? 0;
+    if (!Number.isFinite(direction)) throw new Error('addStair: Direction must be a finite number');
     // Use LocalPlacement rotation so both step positions AND profiles rotate together
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -474,8 +485,9 @@ export class IfcCreator {
    * Optional Slope is in radians and creates a single slope along +X.
    */
   addIfcRoof(storeyId: number, params: RoofParams): number {
+    assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Thickness: params.Thickness }, 'addIfcRoof');
     const slope = params.Slope ?? 0;
-    if (slope < 0 || slope >= Math.PI / 2) {
+    if (!Number.isFinite(slope) || slope < 0 || slope >= Math.PI / 2) {
       throw new Error('addIfcRoof: Slope must be in radians between 0 and π/2 (e.g. Math.PI / 12 for 15°)');
     }
 
@@ -522,15 +534,13 @@ export class IfcCreator {
    * The ridge runs along the longer footprint dimension to keep the roof height reasonable.
    */
   addIfcGableRoof(storeyId: number, params: GableRoofParams): number {
-    if (params.Width <= 0) throw new Error('addIfcGableRoof: Width must be > 0');
-    if (params.Depth <= 0) throw new Error('addIfcGableRoof: Depth must be > 0');
-    if (params.Thickness <= 0) throw new Error('addIfcGableRoof: Thickness must be > 0');
-    if (params.Slope <= 0 || params.Slope >= Math.PI / 2) {
+    assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Thickness: params.Thickness }, 'addIfcGableRoof');
+    if (!Number.isFinite(params.Slope) || params.Slope <= 0 || params.Slope >= Math.PI / 2) {
       throw new Error('addIfcGableRoof: Slope must be in radians between 0 and π/2 (e.g. Math.PI / 12 for 15°)');
     }
 
     const overhang = params.Overhang ?? 0;
-    if (overhang < 0) throw new Error('addIfcGableRoof: Overhang must be >= 0');
+    if (!Number.isFinite(overhang) || overhang < 0) throw new Error('addIfcGableRoof: Overhang must be a finite number >= 0');
 
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
@@ -608,9 +618,10 @@ export class IfcCreator {
    * Position is wall-local: [distance_along_wall, 0, base_height].
    */
   addIfcWallDoor(wallId: number, params: WallDoorParams): number {
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcWallDoor');
     const { storeyId, placementId, wallThickness } = this.getHostedWallInfo(wallId);
     const thickness = params.Thickness ?? wallThickness;
-    if (thickness <= 0) throw new Error('addIfcWallDoor: Thickness must be > 0');
+    assertPositiveFinite({ Thickness: thickness }, 'addIfcWallDoor');
 
     const openingId = this.addWallOpening(wallId, placementId, {
       Name: params.Name ? `${params.Name} Opening` : 'Door Opening',
@@ -649,9 +660,10 @@ export class IfcCreator {
    * Position is wall-local: [distance_along_wall, 0, sill_height].
    */
   addIfcWallWindow(wallId: number, params: WallWindowParams): number {
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcWallWindow');
     const { storeyId, placementId, wallThickness } = this.getHostedWallInfo(wallId);
     const thickness = params.Thickness ?? wallThickness;
-    if (thickness <= 0) throw new Error('addIfcWallWindow: Thickness must be > 0');
+    assertPositiveFinite({ Thickness: thickness }, 'addIfcWallWindow');
 
     const openingId = this.addWallOpening(wallId, placementId, {
       Name: params.Name ? `${params.Name} Opening` : 'Window Opening',
@@ -688,11 +700,13 @@ export class IfcCreator {
    * Create a door element. Width × Height × Thickness panel.
    */
   addIfcDoor(storeyId: number, params: DoorParams): number {
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcDoor');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
     const thickness = params.Thickness ?? 0.05;
+    assertPositiveFinite({ Thickness: thickness }, 'addIfcDoor');
     const profileId = this.addRectangleProfile(params.Width, thickness);
     const solidId = this.addExtrudedAreaSolid(profileId, params.Height);
     const shapeId = this.addShapeRepresentation('Body', [solidId]);
@@ -720,11 +734,13 @@ export class IfcCreator {
    * Create a window element. Width × Height × Thickness frame.
    */
   addIfcWindow(storeyId: number, params: WindowParams): number {
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcWindow');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
 
     const thickness = params.Thickness ?? 0.05;
+    assertPositiveFinite({ Thickness: thickness }, 'addIfcWindow');
     const profileId = this.addRectangleProfile(params.Width, thickness);
     const solidId = this.addExtrudedAreaSolid(profileId, params.Height);
     const shapeId = this.addShapeRepresentation('Body', [solidId]);
@@ -752,7 +768,9 @@ export class IfcCreator {
    * Width along +Y, Length along +X, Rise optionally inclines the ramp.
    */
   addIfcRamp(storeyId: number, params: RampParams): number {
+    assertPositiveFinite({ Width: params.Width, Length: params.Length, Thickness: params.Thickness }, 'addIfcRamp');
     const rise = params.Rise ?? 0;
+    if (!Number.isFinite(rise)) throw new Error('addIfcRamp: Rise must be a finite number');
     let axis: Point3D = [0, 0, 1];
     let refDir: Point3D = [1, 0, 0];
     if (rise > 0) {
@@ -795,6 +813,8 @@ export class IfcCreator {
    * Create a railing from Start to End with given Height.
    */
   addIfcRailing(storeyId: number, params: RailingParams): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcRailing');
+    assertPositiveFinite({ Height: params.Height }, 'addIfcRailing');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -807,6 +827,7 @@ export class IfcCreator {
     });
 
     const railWidth = params.Width ?? 0.05;
+    assertPositiveFinite({ Width: railWidth }, 'addIfcRailing');
 
     // Rail solid — extrude along the rail direction (dir) at rail Height
     const railProfileId = this.addRectangleProfile(railWidth, railWidth);
@@ -865,6 +886,7 @@ export class IfcCreator {
    * Create a plate (thin flat element, e.g. steel plate).
    */
   addIfcPlate(storeyId: number, params: PlateParams): number {
+    assertPositiveFinite({ Thickness: params.Thickness }, 'addIfcPlate');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -873,6 +895,7 @@ export class IfcCreator {
     if (params.Profile && params.Profile.length >= 3) {
       profileId = this.addArbitraryProfile(params.Profile);
     } else {
+      assertPositiveFinite({ Width: params.Width, Depth: params.Depth }, 'addIfcPlate');
       profileId = this.addRectangleProfile(params.Width, params.Depth, [params.Width / 2, params.Depth / 2]);
     }
 
@@ -900,6 +923,8 @@ export class IfcCreator {
    * Create a structural member (brace, strut, etc.) from Start to End.
    */
   addIfcMember(storeyId: number, params: MemberParams): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcMember');
+    assertPositiveFinite({ Width: params.Width, Height: params.Height }, 'addIfcMember');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -937,6 +962,7 @@ export class IfcCreator {
    * Create a footing (foundation). Position is top centre, Height extends downward.
    */
   addIfcFooting(storeyId: number, params: FootingParams): number {
+    assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Height: params.Height }, 'addIfcFooting');
     // Offset placement downward so extrusion starts at bottom
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: [params.Position[0], params.Position[1], params.Position[2] - params.Height],
@@ -969,6 +995,10 @@ export class IfcCreator {
    * Uses circular cross-section by default, rectangular if IsRectangular is set.
    */
   addIfcPile(storeyId: number, params: PileParams): number {
+    assertPositiveFinite({ Length: params.Length, Diameter: params.Diameter }, 'addIfcPile');
+    if (params.RectangularDepth !== undefined) {
+      assertPositiveFinite({ RectangularDepth: params.RectangularDepth }, 'addIfcPile');
+    }
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: [params.Position[0], params.Position[1], params.Position[2] - params.Length],
     });
@@ -1005,6 +1035,7 @@ export class IfcCreator {
    * Create a space (room volume).
    */
   addIfcSpace(storeyId: number, params: SpaceParams): number {
+    assertPositiveFinite({ Height: params.Height }, 'addIfcSpace');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -1013,6 +1044,7 @@ export class IfcCreator {
     if (params.Profile && params.Profile.length >= 3) {
       profileId = this.addArbitraryProfile(params.Profile);
     } else {
+      assertPositiveFinite({ Width: params.Width, Depth: params.Depth }, 'addIfcSpace');
       profileId = this.addRectangleProfile(params.Width, params.Depth, [params.Width / 2, params.Depth / 2]);
     }
 
@@ -1041,12 +1073,15 @@ export class IfcCreator {
    * Create a curtain wall. Thin panel from Start to End, extruded by Height.
    */
   addIfcCurtainWall(storeyId: number, params: CurtainWallParams): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcCurtainWall');
+    assertPositiveFinite({ Height: params.Height }, 'addIfcCurtainWall');
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
     const wallLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const dir: Point3D = vecNorm([dx, dy, dz]);
     const thickness = params.Thickness ?? 0.05;
+    assertPositiveFinite({ Thickness: thickness }, 'addIfcCurtainWall');
 
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Start,
@@ -1078,7 +1113,9 @@ export class IfcCreator {
    * Create a furnishing element (furniture/equipment bounding box).
    */
   addIfcFurnishingElement(storeyId: number, params: FurnishingParams): number {
+    assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Height: params.Height }, 'addIfcFurnishingElement');
     const direction = params.Direction ?? 0;
+    if (!Number.isFinite(direction)) throw new Error('addIfcFurnishingElement: Direction must be a finite number');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
       RefDirection: direction !== 0 ? [Math.cos(direction), Math.sin(direction), 0] : undefined,
@@ -1109,6 +1146,7 @@ export class IfcCreator {
    * Create a proxy element (generic element for custom/unclassified objects).
    */
   addIfcBuildingElementProxy(storeyId: number, params: ProxyParams): number {
+    assertPositiveFinite({ Height: params.Height }, 'addIfcBuildingElementProxy');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -1117,6 +1155,7 @@ export class IfcCreator {
     if (params.Profile && params.Profile.length >= 3) {
       profileId = this.addArbitraryProfile(params.Profile);
     } else {
+      assertPositiveFinite({ Width: params.Width, Depth: params.Depth }, 'addIfcBuildingElementProxy');
       profileId = this.addRectangleProfile(params.Width, params.Depth, [params.Width / 2, params.Depth / 2]);
     }
 
@@ -1153,6 +1192,7 @@ export class IfcCreator {
     Radius: number;
     Height: number;
   } & ElementAttributes): number {
+    assertPositiveFinite({ Radius: params.Radius, Height: params.Height }, 'addIfcCircularColumn');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -1190,6 +1230,14 @@ export class IfcCreator {
     FlangeThickness: number;
     FilletRadius?: number;
   } & ElementAttributes): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcIShapeBeam');
+    assertPositiveFinite({
+      OverallWidth: params.OverallWidth, OverallDepth: params.OverallDepth,
+      WebThickness: params.WebThickness, FlangeThickness: params.FlangeThickness,
+    }, 'addIfcIShapeBeam');
+    if (params.FilletRadius !== undefined) {
+      assertPositiveFinite({ FilletRadius: params.FilletRadius }, 'addIfcIShapeBeam');
+    }
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -1238,6 +1286,11 @@ export class IfcCreator {
     Thickness: number;
     FilletRadius?: number;
   } & ElementAttributes): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcLShapeMember');
+    assertPositiveFinite({ Depth: params.Depth, Width: params.Width, Thickness: params.Thickness }, 'addIfcLShapeMember');
+    if (params.FilletRadius !== undefined) {
+      assertPositiveFinite({ FilletRadius: params.FilletRadius }, 'addIfcLShapeMember');
+    }
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -1283,6 +1336,14 @@ export class IfcCreator {
     FlangeThickness: number;
     FilletRadius?: number;
   } & ElementAttributes): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcTShapeMember');
+    assertPositiveFinite({
+      FlangeWidth: params.FlangeWidth, Depth: params.Depth,
+      WebThickness: params.WebThickness, FlangeThickness: params.FlangeThickness,
+    }, 'addIfcTShapeMember');
+    if (params.FilletRadius !== undefined) {
+      assertPositiveFinite({ FilletRadius: params.FilletRadius }, 'addIfcTShapeMember');
+    }
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -1332,6 +1393,14 @@ export class IfcCreator {
     FlangeThickness: number;
     FilletRadius?: number;
   } & ElementAttributes): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcUShapeMember');
+    assertPositiveFinite({
+      Depth: params.Depth, FlangeWidth: params.FlangeWidth,
+      WebThickness: params.WebThickness, FlangeThickness: params.FlangeThickness,
+    }, 'addIfcUShapeMember');
+    if (params.FilletRadius !== undefined) {
+      assertPositiveFinite({ FilletRadius: params.FilletRadius }, 'addIfcUShapeMember');
+    }
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];
@@ -1378,6 +1447,7 @@ export class IfcCreator {
     WallThickness: number;
     Height: number;
   } & ElementAttributes): number {
+    assertPositiveFinite({ Radius: params.Radius, WallThickness: params.WallThickness, Height: params.Height }, 'addIfcHollowCircularColumn');
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });
@@ -1415,6 +1485,14 @@ export class IfcCreator {
     InnerFilletRadius?: number;
     OuterFilletRadius?: number;
   } & ElementAttributes): number {
+    assertFinitePoint3({ Start: params.Start, End: params.End }, 'addIfcRectangleHollowBeam');
+    assertPositiveFinite({ XDim: params.XDim, YDim: params.YDim, WallThickness: params.WallThickness }, 'addIfcRectangleHollowBeam');
+    if (params.InnerFilletRadius !== undefined) {
+      assertPositiveFinite({ InnerFilletRadius: params.InnerFilletRadius }, 'addIfcRectangleHollowBeam');
+    }
+    if (params.OuterFilletRadius !== undefined) {
+      assertPositiveFinite({ OuterFilletRadius: params.OuterFilletRadius }, 'addIfcRectangleHollowBeam');
+    }
     const dx = params.End[0] - params.Start[0];
     const dy = params.End[1] - params.Start[1];
     const dz = params.End[2] - params.Start[2];

@@ -4,6 +4,7 @@
 
 import type { FileSourceProvider } from '@ifc-lite/plugin-api';
 import { DaluxBuildProvider } from '@ifc-lite/source-dalux';
+import { DropboxProvider } from '@ifc-lite/source-dropbox';
 import { MsGraphProvider } from '@ifc-lite/source-msgraph';
 
 /**
@@ -14,13 +15,14 @@ import { MsGraphProvider } from '@ifc-lite/source-msgraph';
  * drifting apart) read from this list — so the test can never drift from
  * what the running app actually does.
  *
- * `@ifc-lite/source-msgraph` requires a `clientId` preference (an Azure AD
- * app registration) to actually sign in — see that package's README for
- * what to register. Registering it here with no client id configured is
+ * `@ifc-lite/source-dropbox` requires a `clientId` preference (a Dropbox app
+ * key), and `@ifc-lite/source-msgraph` requires a `clientId` preference (an
+ * Azure AD app registration), to actually sign in. See each package's README
+ * for what to register. Registering them here with no client id configured is
  * still correct: the provider shows up with a sign-in affordance that fails
- * with a clear "not configured" message until the deployment sets one,
- * rather than the provider silently not existing.
+ * with a clear "not configured" message until the deployment sets one, rather
+ * than the provider silently not existing.
  */
 export function createRegisteredProviders(): FileSourceProvider[] {
-  return [new DaluxBuildProvider(), new MsGraphProvider()];
+  return [new DaluxBuildProvider(), new DropboxProvider(), new MsGraphProvider()];
 }

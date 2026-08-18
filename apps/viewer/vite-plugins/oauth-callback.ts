@@ -5,7 +5,8 @@
 import type { Plugin } from 'vite';
 
 /**
- * OAuth redirect paths are extension-less (`/oauth/msgraph/callback`), because
+ * OAuth redirect paths are extension-less (`/oauth/dropbox/callback`,
+ * `/oauth/msgraph/callback`, one per provider), because
  * they have to match the redirect URI registered with the provider byte for
  * byte and that is what is registered. Vite's dev server answers any
  * extension-less path with the SPA fallback, so the redirect used to boot a
@@ -17,6 +18,8 @@ import type { Plugin } from 'vite';
  * the two lists in lockstep.
  */
 const CALLBACK_PAGES: Record<string, string> = {
+  // @ifc-lite/source-dropbox, REDIRECT_PATH in its src/auth.ts.
+  '/oauth/dropbox/callback': '/oauth/dropbox/callback.html',
   // @ifc-lite/source-msgraph, REDIRECT_PATH in its src/auth.ts.
   '/oauth/msgraph/callback': '/oauth/msgraph/callback.html',
 };

@@ -90,4 +90,23 @@ describe('STEP header modification count vs includeGeometry:false', () => {
       result.stats.newEntityCount + result.stats.modifiedEntityCount,
     );
   });
+
+  it('an overlay-created geometry-classified entity excluded by includeGeometry:false must not appear in DATA', async () => {
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+    const editor = new StoreEditor(store, view);
+    // Created purely through the overlay (`getNewEntities()`), not by editing
+    // a source entity — this is the overlay-new-entities pass, the mirror of
+    // the source-iteration pass covered above. IFCSHAPEREPRESENTATION is on
+    // `isGeometryEntity`'s list, so it must be dropped the same way.
+    editor.addEntity('IfcShapeRepresentation', [null, 'Body', 'SweptSolid', [`#21`]]);
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      includeGeometry: false,
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).not.toContain('IFCSHAPEREPRESENTATION');
+  });
 });

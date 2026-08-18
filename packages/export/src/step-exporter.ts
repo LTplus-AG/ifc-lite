@@ -276,6 +276,90 @@ export interface ExportPass {
 }
 
 /**
+ * The state one `export()` call shares across its seven phases.
+ *
+ * Introduced by step 1 of #2475: `export()` is ~1267 lines and the phases a
+ * split would separate are held together by ~30 local bindings, most of which
+ * are read in three or more phases. Naming that set once — as an interface
+ * with a single construction site at the top of `export()` — is what lets a
+ * later phase extraction take one parameter instead of fifteen.
+ *
+ * Two properties of this object are load-bearing and must survive every later
+ * move:
+ *
+ * 1. **The predicates are members, not duplicated expressions.** Six of them
+ *    (`isOverlayCreated`, `isReadableSourceRef`, `isGeometryExcluded`,
+ *    `hasEmittableHostBytes`, `willBeEmitted`,
+ *    `isExcludedFromRelationshipRefs`) exist precisely so two phases cannot
+ *    disagree about a gate — see the comments at their construction sites for
+ *    the corrupt files the earlier, per-phase versions let through (#2491,
+ *    #2414, #2398, #2637). A phase that reimplements one of these instead of
+ *    reading it off the pass reintroduces exactly that class of defect.
+ * 2. **`allowedEntityIds` and `hiddenProductIds` are mutable, and the
+ *    predicates close over the pass rather than over a snapshot.** The
+ *    visible-only closure walk assigns both AFTER construction, and
+ *    `isExcludedFromRelationshipRefs` is handed to that walk while they are
+ *    still null. Reading them through `pass` keeps the walk's bridge decision
+ *    and the output-line filtering on one answer, which is the invariant the
+ *    #2637 regression broke.
+ *
+ * Deliberately NOT on the pass, and why: `mayNameExcludedRefs` and
+ * `overlayNewEntityCount` are eagerly-computed values whose value is only
+ * defined after work that runs past this construction site, so hoisting them
+ * would change what they compute rather than where they are named;
+ * `generatedTypeOwnedPsetIds` is read in one phase only.
+ */
+export interface ExportPass {
+  /** Output accumulator: every DATA-section line this export will write. */
+  readonly entities: string[];
+  /** Lines contributed by entities that have no source record. */
+  newEntityCount: number;
+
+  // ---- resolved options / schema ----
+  readonly schema: IfcSchemaVersion;
+  readonly sourceSchema: IfcSchemaVersion;
+  readonly converting: boolean;
+  readonly sourceHeader: IfcSourceHeader | undefined;
+  readonly schemaToken: string;
+  readonly overlayActive: boolean;
+
+  // ---- indexes and ledgers ----
+  readonly effective: EffectiveEntityIndex;
+  readonly modifications: ModificationLedger;
+  /** Widened from the imported `InPlaceNominees` (whose sets are readonly)
+   *  because the collection passes below add to them. */
+  readonly inPlaceNominees: { attribute: Set<number>; georeferencing: Set<number> };
+
+  // ---- visible-only closure results (assigned after construction) ----
+  allowedEntityIds: Set<number> | null;
+  hiddenProductIds: ReadonlySet<number> | null;
+
+  // ---- the collection passes' output ----
+  readonly modifiedEntities: Set<number>;
+  readonly modifiedAttributes: Map<number, Map<string, string>>;
+  readonly newPropertySets: Array<{ entityId: number; psets: PropertySet[] }>;
+  readonly newQuantitySets: Array<{ entityId: number; qsets: QuantitySet[] }>;
+  readonly typeOwnedPsetNamesByEntity: Map<number, Set<string>>;
+  readonly typeOwnedPsetIdsByEntity: Map<number, number[]>;
+  readonly rewrittenEntityIds: Set<number>;
+  readonly rewrittenEntityLines: Map<number, string>;
+  readonly overlayTypeOwnedPsets: Map<number, IfcAttributeValue>;
+  readonly skipPropertySetIds: Set<number>;
+  readonly skipRelationshipIds: Set<number>;
+  readonly newGeorefLines: string[];
+  readonly warnings: string[];
+
+  // ---- the shared predicates (see item 1 above) ----
+  readonly buildHeader: (modifications: number) => string;
+  readonly isOverlayCreated: (entityId: number) => boolean;
+  readonly isReadableSourceRef: ReturnType<typeof createSourceRefReader>;
+  readonly isGeometryExcluded: (entityId: number, recordType: string) => boolean;
+  readonly hasEmittableHostBytes: (entityId: number) => boolean;
+  readonly willBeEmitted: (entityId: number) => boolean;
+  readonly isExcludedFromRelationshipRefs: (id: number) => boolean;
+}
+
+/**
  * IFC STEP file exporter
  */
 export class StepExporter {
@@ -1170,7 +1254,7 @@ export class StepExporter {
     let attributed = false;
     if (attributeMutations && attributeMutations.size > 0) {
       const beforeAttributes = text;
-      text = this.applyAttributeMutations(text, workingType, attributeMutations);
+      text = this.applyAttributeMutations(text, workingType, attributeMutations, sourceSchema);
       attributed = text !== beforeAttributes;
     }
 
@@ -1194,6 +1278,7 @@ export class StepExporter {
     entityText: string,
     entityType: string,
     attributeMutations: Map<string, string>,
+    schemaVersion: IfcSchemaVersion,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
@@ -1216,6 +1301,7 @@ export class StepExporter {
     // argument list here means the file speaks a different schema, and growing
     // a record we did not author would corrupt it.
     let changed = false;
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
 
     for (const [attrName, value] of attributeMutations) {
       const index = attrNames.indexOf(attrName);
@@ -1223,7 +1309,7 @@ export class StepExporter {
       // The source path shares every `$`-slot hole with the overlay-created
       // path, because a source record has plenty of `$` slots of its own. Both
       // go through the one helper below.
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
       changed = true;
     }
 
@@ -1245,15 +1331,31 @@ export class StepExporter {
    * with `$`. So the declared type decides first, and inference is the fallback
    * for slots the schema does not classify (references, SELECTs, numerics),
    * where reading the old token is exactly the right heuristic.
+   *
+   * Before this REAL check existed, "the declared type decides first" was true
+   * for enum/string slots only — a REAL-backed slot (`IfcMapConversion.
+   * OrthogonalHeight`, any other `IfcLengthMeasure`/`IfcReal`-typed attribute)
+   * fell straight to `serializeAttributeValue`'s token inference, which quotes
+   * anything it cannot recognize as numeric. A schema-legal `$` placeholder
+   * carries no digits to recognize, so setting such a field for the first time
+   * wrote `'12345'` in a slot ISO 10303-21 requires to be an unquoted REAL —
+   * silently invalid output (#2724, LTplus-AG/ifc-lite#2475).
    */
   private serializeNamedAttribute(
     entityType: string,
     index: number,
     value: string,
     currentToken: string,
+    realSlots: ReadonlySet<number>,
   ): string {
     if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
     if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
+    if (realSlots.has(index)) {
+      const trimmed = value.trim();
+      if (trimmed === '') return '$';
+      const numberValue = Number(trimmed);
+      if (Number.isFinite(numberValue)) return toStepReal(numberValue);
+    }
     return serializeAttributeValue(value, currentToken);
   }
 
@@ -1318,12 +1420,12 @@ export class StepExporter {
 
     // Every `named` index is < attrNames.length by construction, and padding
     // has taken args.length to at least that, so each one lands.
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
     for (const [index, value] of named) {
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
     }
 
     if (positionalOverrides && positionalOverrides.size > 0) {
-      const realSlots = getRealTypedSlots(entityType, schemaVersion);
       for (const [index, value] of positionalOverrides) {
         if (index < 0 || index >= args.length) continue;
         args[index] = this.serializePositionalOverride(

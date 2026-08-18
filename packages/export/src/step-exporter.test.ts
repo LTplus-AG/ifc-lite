@@ -1342,4 +1342,52 @@ describe('StepExporter', () => {
     expect(content).toContain("#6=IFCQUANTITYLENGTH('Length'");
     expect(findDanglingRefs(content)).toEqual([]);
   });
+
+  // Coverage gap: no test drove `export()` with a source schema genuinely
+  // different from the target `schema` option, so `converting` (schema-converter.ts
+  // `needsConversion`) was always false and both `if (converting)` branches below
+  // were dead code — confirmed by mutation testing (`if (false && converting)`
+  // in either branch alone: 708/708 tests still pass). `schema-converter.test.ts`
+  // only unit-tests `convertStepLine` directly, never through the exporter.
+  //
+  // This pins the SOURCE-ITERATION branch (~line 1225): a source-backed entity
+  // whose type is renamed between IFC2X3 and IFC4 (`IFC2X3_TO_IFC4` map in
+  // schema-converter.ts) must come out under its IFC4 name, not pass through
+  // unconverted under its IFC2X3 name.
+  it('converts a source-backed entity type when exporting to a different schema (IFC2X3 -> IFC4)', () => {
+    const dataStore = buildMockDataStore([
+      [5, 'IFCELECTRICDISTRIBUTIONPOINT', "#5=IFCELECTRICDISTRIBUTIONPOINT('1ys5Xwuxz8gPJk6N$NGhA5',$,'Panel',$,$,$,$,$);"],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC2X3';
+
+    const result = new StepExporter(dataStore).export({ schema: 'IFC4' });
+    const content = decode(result.content);
+
+    expect(content).toContain('#5=IFCELECTRICDISTRIBUTIONBOARD(');
+    expect(content).not.toContain('IFCELECTRICDISTRIBUTIONPOINT');
+  });
+
+  // Same coverage gap, but for the OVERLAY pass (~line 1511): an entity
+  // created via `mutationView.createEntity` — never source-backed — of a
+  // class that needs conversion must ALSO have its rendered `argsText`
+  // (here just the entity-type token) run through `convertStepLine`,
+  // independently of the source-iteration pass above.
+  it('converts an overlay-created entity type when exporting to a different schema (IFC2X3 -> IFC4)', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,$,$);"],
+    ]);
+    (dataStore as unknown as { schemaVersion: string }).schemaVersion = 'IFC2X3';
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.setExpressIdWatermark(1);
+    const created = view.createEntity('IFCELECTRICDISTRIBUTIONPOINT', []);
+
+    const result = new StepExporter(dataStore, view).export({
+      schema: 'IFC4',
+      applyMutations: true,
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain(`#${created.expressId}=IFCELECTRICDISTRIBUTIONBOARD(`);
+    expect(content).not.toContain('IFCELECTRICDISTRIBUTIONPOINT');
+  });
 });

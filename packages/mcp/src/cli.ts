@@ -171,11 +171,12 @@ async function main(): Promise<void> {
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly})\n`);
 
     if (opts.autoViewer && registry.count() > 0) {
-      const first = registry.list()[0];
       try {
-        const state = await server.viewer.open(first, opts.viewerPort);
-        const adapters = server.viewer.adapters();
-        if (adapters) first.backend.attachStreamingAdapters(adapters.viewer, adapters.visibility);
+        // Explicit CLI flags (--viewer / --viewer-port) always win, so pass
+        // them as the override rather than relying on `server.config` — see
+        // `MCPServer.maybeAutoOpenViewer`'s precedence rule.
+        const state = await server.maybeAutoOpenViewer({ autoOpen: opts.autoViewer, port: opts.viewerPort });
+        if (!state) throw new Error('viewer did not open');
         process.stderr.write(`[ifc-lite-mcp] viewer ready at ${state.url}\n`);
         if (opts.openBrowser) {
           const cmd = process.platform === 'darwin' ? 'open'

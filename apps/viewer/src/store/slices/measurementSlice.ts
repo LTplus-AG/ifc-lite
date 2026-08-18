@@ -20,7 +20,12 @@ import type {
   MeasureMode,
   ActivePolyline,
   PolylineMeasurement,
+  ActiveAngle,
+  AngleKind,
+  AngleMeasurement,
+  AnglePick,
 } from '../types.js';
+import { ANGLE_REQUIRED_PICKS } from '../types.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
@@ -77,6 +82,12 @@ export interface MeasurementSlice {
   measureMode: MeasureMode;
   /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
   activePolyline: ActivePolyline | null;
+  /** Which angle the tool measures when `measureMode === 'angle'` (#2735). */
+  angleKind: AngleKind;
+  /** A fixed-length angle sequence in progress, or null. */
+  activeAngle: ActiveAngle | null;
+  /** Finished angle measurements. Picks only — degrees are derived on render. */
+  angleMeasurements: AngleMeasurement[];
   /** Finished polyline measurements — kept separate from `measurements`
    *  (distance-only) rather than folded in, since they carry an extra basis
    *  (open length vs. closed perimeter) that a drag measurement never has. */
@@ -124,6 +135,17 @@ export interface MeasurementSlice {
    *  leaving 'polyline' discards any in-progress click sequence. A no-op if
    *  already in the requested mode (does not disturb in-progress state). */
   setMeasureMode: (mode: MeasureMode) => void;
+  /** Switch which angle is measured. Discards any in-progress sequence. */
+  setAngleKind: (kind: AngleKind) => void;
+  /**
+   * Append a pick. When the sequence reaches `ANGLE_REQUIRED_PICKS[kind]` it
+   * finishes ITSELF into `angleMeasurements` — there is no finish gesture, so
+   * unlike `finishPolyline` there is no double-click duplicate to defend
+   * against.
+   */
+  addAnglePick: (pick: AnglePick) => void;
+  cancelAngle: () => void;
+  deleteAngleMeasurement: (id: string) => void;
   /** Begin a polyline sequence at `point`. No-op if one is already active —
    *  use {@link addPolylinePoint} to extend it. */
   startPolyline: (point: MeasurePoint) => void;
@@ -214,6 +236,9 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   measureMode: 'drag',
   activePolyline: null,
   polylineMeasurements: [],
+  angleKind: 'points',
+  activeAngle: null,
+  angleMeasurements: [],
 
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
@@ -304,6 +329,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     // click-sequence left behind by "clear" would be a stale trap.
     activePolyline: null,
     polylineMeasurements: [],
+    activeAngle: null,
+    angleMeasurements: [],
   }),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
@@ -463,19 +490,56 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   // Polyline (multi-click) measurement actions (#2199)
   setMeasureMode: (mode) => set((state) => {
     if (mode === state.measureMode) return {};
-    if (mode === 'polyline') {
-      // Entering polyline mode: cancel any in-progress drag so the two
-      // gestures can never both be "active" at once.
-      return {
-        measureMode: mode,
-        activeMeasurement: null,
-        snapTarget: null,
-        measurementConstraintEdge: null,
-      };
-    }
-    // Leaving polyline mode: discard any in-progress click sequence.
-    return { measureMode: mode, activePolyline: null };
+    // Symmetric: discard the state of the mode being LEFT, and cancel any
+    // in-progress drag when entering a click-driven mode. Written as spread
+    // arms over one object rather than per-mode early returns so adding a
+    // fourth mode cannot leave an arm behind — the regression this slice
+    // documents at `resetAllMeasurementState` was exactly a hand-maintained
+    // list that missed a newly added field.
+    const leaving = state.measureMode;
+    return {
+      measureMode: mode,
+      ...(leaving === 'polyline' ? { activePolyline: null } : {}),
+      ...(leaving === 'angle' ? { activeAngle: null } : {}),
+      ...(mode !== 'drag'
+        ? { activeMeasurement: null, snapTarget: null, measurementConstraintEdge: null }
+        : {}),
+    };
   }),
+
+  setAngleKind: (kind) => set((state) => {
+    if (kind === state.angleKind) return {};
+    // Switching kind mid-sequence discards it: picks already taken mean
+    // something different under the new kind.
+    return { angleKind: kind, activeAngle: null };
+  }),
+
+  addAnglePick: (pick) => set((state) => {
+    const kind = state.angleKind;
+    // Defence in depth: the handler filters by kind, but a mismatched pick
+    // reaching the store would produce an angle measured from the wrong sort
+    // of input, silently.
+    if (pick.kind !== kind) return {};
+    const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
+    const picks = [...prior, pick];
+    if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
+      return { activeAngle: { kind, picks } };
+    }
+    measurementCounter++;
+    return {
+      activeAngle: null,
+      angleMeasurements: [
+        ...state.angleMeasurements,
+        { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks },
+      ],
+    };
+  }),
+
+  cancelAngle: () => set({ activeAngle: null }),
+
+  deleteAngleMeasurement: (id) => set((state) => ({
+    angleMeasurements: state.angleMeasurements.filter((m) => m.id !== id),
+  })),
 
   startPolyline: (point) => set((state) => {
     if (state.activePolyline) return {}; // already accumulating — use addPolylinePoint
@@ -559,6 +623,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   resetMeasureGesture: () => set({
     activeMeasurement: null,
     activePolyline: null,
+    activeAngle: null,
     snapTarget: null,
     measurementConstraintEdge: null,
   }),
@@ -577,5 +642,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     measureMode: 'drag',
     activePolyline: null,
     polylineMeasurements: [],
+    angleKind: 'points',
+    activeAngle: null,
+    angleMeasurements: [],
   }),
 });

@@ -42,8 +42,11 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // gesture that adds a point, which is what makes the two modes unable to
   // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
   if (tool === 'measure') {
-    if (useViewerStore.getState().measureMode === 'polyline') {
+    const mode = useViewerStore.getState().measureMode;
+    if (mode === 'polyline') {
       handlePolylineClick(ctx, x, y);
+    } else if (mode === 'angle') {
+      handleAngleClick(ctx, x, y);
     }
     return;
   }
@@ -638,6 +641,35 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
   }
 
   state.addPolylinePoint(picked.point);
+}
+
+/**
+ * Click handler for angle mode (#2735).
+ *
+ * Deliberately thinner than {@link handlePolylineClick}: every angle kind has
+ * a FIXED pick count, so the store finishes the measurement itself on the last
+ * pick. There is no finish gesture, which means there is no double-click
+ * duplicate to defend against — the whole `isDuplicateClickPoint` /
+ * `fromDoubleClick` apparatus polyline needs has no analogue here, because a
+ * double-click in angle mode is simply two picks and the second lands where
+ * the maths already classifies coincident picks as degenerate.
+ *
+ * A miss is a no-op, matching polyline's contract.
+ *
+ * Only the `'points'` kind ships today; `'edges'` and `'faces'` are the later
+ * slices of #2735 and will need their own pick resolution (an edge run from
+ * `SnapTarget.metadata`, a camera-oriented face normal from the intersection),
+ * which is why the pick carries its `kind` rather than being a bare point.
+ */
+export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number): void {
+  const state = useViewerStore.getState();
+  if (state.angleKind !== 'points') return;
+
+  const picked = raycastForPolylinePoint(ctx, x, y);
+  if (!picked) return;
+
+  ctx.setSnapTarget(picked.snapTarget);
+  state.addAnglePick({ kind: 'points', point: picked.point });
 }
 
 /**

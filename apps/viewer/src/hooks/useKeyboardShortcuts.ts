@@ -61,6 +61,9 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
   // Polyline (multi-click) mode (#2199).
   const activePolyline = useViewerStore((s) => s.activePolyline);
   const cancelPolyline = useViewerStore((s) => s.cancelPolyline);
+  // Angle (fixed-count multi-click) mode (#2735).
+  const activeAngle = useViewerStore((s) => s.activeAngle);
+  const cancelAngle = useViewerStore((s) => s.cancelAngle);
   const finishPolyline = useViewerStore((s) => s.finishPolyline);
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -295,6 +298,16 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
         cancelPolyline();
         return;
       }
+      // Same for a part-finished angle sequence (#2735). Its own branch for
+      // the same reason: at most one of activeMeasurement / activePolyline /
+      // activeAngle is non-null at a time, and merging them would hide that.
+      // No Enter counterpart — an angle finishes itself on its last pick, so
+      // there is no "finish early" state to confirm.
+      if (key === 'escape' && activeAngle) {
+        e.preventDefault();
+        cancelAngle();
+        return;
+      }
       // Finish an in-progress polyline as OPEN with Enter (#2199) — reports
       // the sum-of-segments length, not a perimeter. Closing the loop is a
       // click gesture, not a keyboard one (see handlePolylineClick).
@@ -395,7 +408,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     clearMeasurements,
     toggleSnap,
     toggleEditEnabled,
-    activePolyline,
+    activePolyline, activeAngle, cancelAngle,
     cancelPolyline,
     finishPolyline,
   ]);

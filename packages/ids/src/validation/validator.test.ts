@@ -286,6 +286,67 @@ describe('validateIDS — optionality', () => {
     expect(reqResult.status).toBe('pass');
     expect(report.specificationResults[0].status).toBe('pass');
   });
+
+  it('optional property requirement passes when the entity has no pset at all (not merely the property)', async () => {
+    // PSET_MISSING means the entity carries zero property sets — a
+    // stronger "wholly absent" shape than PROPERTY_MISSING (pset
+    // present, named property missing). `optional` must pardon this,
+    // exactly like it pardons ATTRIBUTE_MISSING / PROPERTY_MISSING.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcWall' }, // no `properties` at all -> getPropertySets() === []
+    ]);
+
+    const spec = makeSpec({
+      requirements: [
+        {
+          id: 'req-0',
+          facet: {
+            type: 'property',
+            propertySet: sv('Pset_WallCommon'),
+            baseName: sv('FireRating'),
+          },
+          optionality: 'optional',
+        },
+      ],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
+    expect(reqResult.failure?.type).toBe('PSET_MISSING');
+    expect(reqResult.status).toBe('pass');
+    expect(report.specificationResults[0].status).toBe('pass');
+  });
+
+  it('optional partOf requirement passes when the entity has no parent relation at all', async () => {
+    // PARTOF_RELATION_MISSING means the entity has no parent under the
+    // requested relation whatsoever — the relation itself is absent,
+    // not merely pointing at the wrong entity. `optional` must pardon
+    // this "wholly absent" shape the same way it pardons the sibling
+    // *_MISSING failure types.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcWall' }, // no `parent` at all -> getParent() === undefined
+    ]);
+
+    const spec = makeSpec({
+      requirements: [
+        {
+          id: 'req-0',
+          facet: {
+            type: 'partOf',
+            relation: 'IfcRelContainedInSpatialStructure',
+            entity: { type: 'entity', name: sv('IFCBUILDINGSTOREY') },
+          },
+          optionality: 'optional',
+        },
+      ],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
+    expect(reqResult.failure?.type).toBe('PARTOF_RELATION_MISSING');
+    expect(reqResult.status).toBe('pass');
+    expect(report.specificationResults[0].status).toBe('pass');
+  });
 });
 
 // ============================================================================

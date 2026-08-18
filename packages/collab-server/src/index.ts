@@ -162,3 +162,4 @@ export {
   type LayerRegistryRouteOptions,
   type RegistryAuthorizeFn,
 } from './layer-registry-route.js';
+export * from './blob-gc.js';

@@ -137,13 +137,57 @@ describe('handleAngleClick wiring (#2735)', () => {
     assert.equal(useViewerStore.getState().angleMeasurements.length, 1);
   });
 
-  it('does not register picks when the tool is not in angle mode', () => {
-    useViewerStore.setState({ measureMode: 'drag' });
-    // The router gates on mode, but the handler is exported and a future
-    // caller could reach it directly; the store's own kind check is the
-    // backstop being pinned here.
-    useViewerStore.setState({ angleKind: 'edges' });
-    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+  it('rejects a pick whose kind disagrees with the active angle kind', () => {
+    // This used to assert that `angleKind: 'edges'` registered NOTHING, which
+    // pinned "edges is not implemented yet" rather than the backstop its own
+    // comment described. Edges ship now, so the placeholder assertion had to
+    // go; the backstop itself is real and is what is pinned here.
+    //
+    // The router gates on mode, but `addAnglePick` is reachable directly, and
+    // a mismatched pick landing in the store would measure an angle from the
+    // wrong sort of input, silently.
+    useViewerStore.setState({ angleKind: 'faces', activeAngle: null });
+    useViewerStore.getState().addAnglePick({
+      kind: 'points',
+      point: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 },
+    });
+    assert.equal(
+      useViewerStore.getState().activeAngle,
+      null,
+      'a points pick was accepted while the tool was measuring faces',
+    );
+  });
+
+  it('accumulates FOUR picks for an edge pair before finishing', () => {
+    // Two picks cannot identify two edges: snap metadata yields tessellation
+    // segments, not topological edges (#2199), so each edge is a point pair
+    // the user places explicitly.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'edges',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    // Well separated in SCREEN space as well as world space: this harness's
+    // camera projects (x,y,z) -> (x,y), and picks a pixel apart are swallowed
+    // by the double-click guard, which would look like the store refusing them.
+    const pts = [
+      { x: 0, y: 0, z: 0 },
+      { x: 100, y: 0, z: 0 },
+      { x: 0, y: 200, z: 0 },
+      { x: 0, y: 300, z: 0 },
+    ];
+    pts.forEach((p, i) => {
+      handleAngleClick(fakeCtx(p), i * 40, i * 40);
+      if (i < 3) {
+        assert.equal(
+          useViewerStore.getState().angleMeasurements.length,
+          0,
+          `finished after ${i + 1} picks, before both edges were placed`,
+        );
+      }
+    });
+    assert.equal(useViewerStore.getState().angleMeasurements.length, 1);
     assert.equal(useViewerStore.getState().activeAngle, null);
   });
 });

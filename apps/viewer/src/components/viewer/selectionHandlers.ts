@@ -681,18 +681,47 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
  */
 export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number): void {
   const state = useViewerStore.getState();
-  if (state.angleKind !== 'points') return;
+  const kind = state.angleKind;
+
+  // Faces need the surface normal, which only the raycast hit carries, so they
+  // take a different path from the two point-based kinds rather than sharing
+  // the snap-driven one. Snapping a face pick to a nearby VERTEX would move the
+  // point off the surface whose normal we just read.
+  if (kind === 'faces') {
+    const hit = ctx.renderer?.raycastScene(x, y, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+    });
+    const n = hit?.intersection?.normal;
+    const p = hit?.intersection?.point;
+    if (!n || !p) return;
+    state.addAnglePick({
+      kind: 'faces',
+      // screen coords are the click itself, which is what the overlay
+      // reprojects from; `updateMeasurementScreenCoords` refreshes them on
+      // camera move exactly as it does for the other kinds.
+      point: { x: p.x, y: p.y, z: p.z, screenX: x, screenY: y },
+      normal: { x: n.x, y: n.y, z: n.z },
+    });
+    return;
+  }
 
   const picked = raycastForPolylinePoint(ctx, x, y);
   if (!picked) return;
 
   // Drop the second half of a physical double-click (see the note above).
+  //
+  // For `edges` this is deliberately checked against the immediately preceding
+  // pick only, including across the boundary between the first and second edge:
+  // a double-click that ends one edge and starts the next would otherwise place
+  // a zero-length second edge, which reads as "Second pick too short" for
+  // something the user never did.
   const prior = state.activeAngle?.picks;
   const last = prior && prior.length > 0 ? prior[prior.length - 1].point : null;
   if (last && isDuplicateClickPoint(last, picked.point)) return;
 
   ctx.setSnapTarget(picked.snapTarget);
-  state.addAnglePick({ kind: 'points', point: picked.point });
+  state.addAnglePick({ kind, point: picked.point });
 }
 
 /**

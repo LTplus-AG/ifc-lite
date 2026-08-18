@@ -52,7 +52,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IfcParser } from '@ifc-lite/parser';
 import { parseIDS } from '../parser/xml-parser.js';
@@ -103,7 +103,14 @@ function collect(): CorpusCase[] {
       // not encode. Skipping it silently is how a case stops being run.
       expect(expectation, `unrecognised corpus prefix: ${name}`).not.toBeNull();
       cases.push({
-        id: `${dir.slice(CORPUS_ROOT.length + 1)}/${base}`,
+        // Separators normalised to `/` because the id is matched against
+        // `AUDIT_UNDETECTED` by string. Defensive rather than a live fix: the
+        // corpus is one directory deep, so the relative path is a single
+        // segment containing no separator at all and Windows produces the same
+        // id today. It stops mattering only while that stays true. The paths
+        // below keep platform-native separators, being handed to the
+        // filesystem.
+        id: `${relative(CORPUS_ROOT, dir).split(sep).join('/')}/${base}`,
         expectation: expectation as Expectation,
         idsPath: path,
         ifcPath: join(dir, `${base}.ifc`),
@@ -131,6 +138,18 @@ describe('buildingSMART IDS conformance corpus', () => {
     const counted = { pass: 0, fail: 0, invalid: 0 };
     for (const c of CASES) counted[c.expectation]++;
     expect(counted).toEqual(EXPECTED);
+  });
+
+  it('builds ids in the shape the allowlist is written in', () => {
+    // The allowlist is matched by string, so the id FORMAT is part of the
+    // contract rather than cosmetic. What this can actually catch is a corpus
+    // update that nests a directory or introduces a new prefix, either of
+    // which would make `AUDIT_UNDETECTED` entries miss silently. It does NOT
+    // pin the separator normalisation above: with a single-segment relative
+    // path there is no separator to normalise, so that line is a no-op on
+    // every platform today and no single-platform test can observe it.
+    const malformed = CASES.map((c) => c.id).filter((id) => !/^[a-z]+\/(pass|fail|invalid)-/.test(id));
+    expect(malformed).toEqual([]);
   });
 
   it('pairs every IDS with its IFC', () => {

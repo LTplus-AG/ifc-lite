@@ -73,6 +73,7 @@ import {
   seedFailureMessage,
   writeGeometrySeedMarker,
 } from '@/lib/collab/geometry-seed-signal';
+import { highestExpressId, raisedMaxExpressId } from '@/lib/collab/express-id-bounds';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import {
   attachAnnotationInbound,
@@ -776,10 +777,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
               // editable MutablePropertyView. idOffset 0 — mesh expressIds are
               // already in the reconstructed store's id space.
               modelCreated = true;
-              let maxExpressId = 0;
-              if (payload.idToPath) {
-                for (const id of payload.idToPath.keys()) if (id > maxExpressId) maxExpressId = id;
-              }
+              const maxExpressId = highestExpressId(payload.idToPath);
               get().upsertModel({
                 id: roomModelId,
                 name: 'Shared model',
@@ -799,6 +797,22 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
               // place (keeps the model id + activeModelId stable). setIfcDataStore
               // also updates the global store the outbound mirror reads.
               get().setIfcDataStore(payload.dataStore);
+              // ...but `setIfcDataStore` writes `{...model, ifcDataStore}` and
+              // leaves `maxExpressId` at whatever the FIRST reconstruct captured
+              // (#2719). The re-derive re-allocates dense ids from 1
+              // (`entity-extractor.ts`), so a peer's newly created entity lands
+              // ABOVE that frozen bound, and `globalId.ts` gates resolution on
+              // `localExpressId <= model.maxExpressId`. Everything a peer adds
+              // after the first reconstruct then stops resolving: no error, the
+              // entity is simply not found.
+              //
+              // Raised, never lowered. A delete shrinks the id space, but ids
+              // already handed out elsewhere (selection, annotations) must keep
+              // resolving, so the bound is a high-water mark rather than a
+              // current count.
+              const model = get().models.get(roomModelId);
+              const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
+              if (raised !== null) get().updateModel(roomModelId, { maxExpressId: raised });
             }
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {

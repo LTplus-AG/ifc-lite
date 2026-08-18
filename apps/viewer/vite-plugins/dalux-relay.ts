@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { Readable } from 'node:stream';
+import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import type { Plugin } from 'vite';
 import { createDaluxRelayHandler, loadDaluxRelayConfig } from '../../../server/sources/dalux-relay';
 
@@ -58,8 +60,15 @@ export function daluxRelayRoute(): Plugin {
             );
             res.statusCode = response.status;
             response.headers.forEach((value, key) => res.setHeader(key, value));
-            const body = response.body ? Buffer.from(await response.arrayBuffer()) : null;
-            res.end(body ?? undefined);
+            // STREAM rather than buffer. The proxy this replaces streamed, and
+            // the relay's biggest response by far is a revision's file content:
+            // buffering would materialise a whole IFC in the Vite process
+            // before sending a byte, while the browser-side client then
+            // materialises its own copy. Replacing a streaming path with a
+            // buffering one is a regression even in dev, where the models are
+            // the same size they are anywhere else.
+            if (response.body) Readable.fromWeb(response.body as WebReadableStream).pipe(res);
+            else res.end();
           } catch (err) {
             res.statusCode = 502;
             res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));

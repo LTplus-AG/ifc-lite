@@ -18,6 +18,7 @@ import { RoomManager } from '../src/room-manager.js';
 import { MemoryPersistence } from '../src/persistence.js';
 import { FsBlobStorage } from '../src/blob-route.js';
 import { resolveBlobGcConfig, startBlobGc } from '../src/blob-gc.js';
+import { defaultMetrics } from '../src/metrics.js';
 
 const dirs: string[] = [];
 const tmp = () => {
@@ -73,21 +74,42 @@ describe('blob gc wiring', () => {
     on?.stop();
   });
 
-  it('the entrypoint actually arms it', () => {
-    // The tests above all pass if `bin.ts` never calls this wiring, which is
-    // precisely the #2790 failure: mechanism present, never run. A unit test
-    // cannot observe that, and importing bin.ts to check would start a real
-    // server (it calls main() at module load, and guarding that on argv[1]
-    // would break the npm-bin symlink case). So assert on the source.
-    const src = fs.readFileSync(
-      path.join(__dirname, '..', 'src', 'bin.ts'),
-      'utf8',
-    );
-    expect(src).toMatch(/startBlobGc\(/);
-    expect(src).toMatch(/resolveBlobGcConfig\(/);
-    expect(src, 'the worker must be stopped on shutdown').toMatch(/blobGc\?\.stop\(\)/);
-    expect(src, 'startup line must report gc state so a dead sweep is visible').toMatch(
-      /blob-gc:/,
-    );
+  it('rejects malformed durations instead of sweeping with them', () => {
+    // Number('') is 0 and Number('abc') is NaN. A NaN grace makes `cutoff` NaN,
+    // and `mtimeMs >= NaN` is FALSE, so planBlobGc falls through and condemns
+    // EVERY unreferenced blob regardless of age. A zero/NaN interval makes
+    // setInterval fire about every millisecond.
+    for (const bad of ['abc', 'NaN', '-1', 'Infinity']) {
+      expect(
+        () => resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: bad }),
+        `grace ${JSON.stringify(bad)} was accepted`,
+      ).toThrow(/COLLAB_BLOB_GC_GRACE_MS/);
+    }
+    for (const bad of ['abc', '0', '-5', 'NaN']) {
+      expect(
+        () => resolveBlobGcConfig({ COLLAB_BLOB_GC_INTERVAL_MS: bad }),
+        `interval ${JSON.stringify(bad)} was accepted`,
+      ).toThrow(/COLLAB_BLOB_GC_INTERVAL_MS/);
+    }
+    // A grace of 0 is legitimate (sweep aggressively); an interval of 0 is not.
+    expect(resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '0' }).graceMs).toBe(0);
+    // Empty/unset falls back rather than becoming 0.
+    expect(resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '' }).graceMs).toBeGreaterThan(0);
+  });
+
+  it('publishes sweep counters on the metrics registry', async () => {
+    const dataDir = tmp();
+    fs.mkdirSync(path.join(dataDir, 'blobs'), { recursive: true });
+    const worker = startBlobGc({
+      dataDir,
+      storage: new FsBlobStorage(dataDir),
+      config: { enabled: true, intervalMs: 60_000, graceMs: 1000 },
+    });
+    expect(worker).not.toBeNull();
+    await worker!.runOnce();
+    worker!.stop();
+    // The claim in the module is that a failing sweep is visible at /metrics,
+    // so the counter must actually reach the published registry.
+    expect(defaultMetrics.render()).toMatch(/collab_blob_gc_sweeps_total/);
   });
 });

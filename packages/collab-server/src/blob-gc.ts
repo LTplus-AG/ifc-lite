@@ -54,6 +54,7 @@ import * as path from 'node:path';
 import * as Y from 'yjs';
 import { collectReferencedBlobHashes } from '@ifc-lite/collab';
 import { FilePersistence } from './persistence.js';
+import { defaultMetrics } from './metrics.js';
 import type { RoomManager } from './room-manager.js';
 
 /** Match exactly 32 lowercase hex chars (the client's `fnv128` output). */
@@ -330,7 +331,26 @@ export class BlobGcWorker {
       graceMs,
       now,
     });
-    const result = await applyBlobGc(this.opts.storage, plan, now - graceMs);
+    // Re-check live references immediately before deleting. Between the scan
+    // and this point a LOADED room can gain a reference to an already-old blob
+    // through an ordinary CRDT update, and the per-hash lock only serialises
+    // against PUTs, not against doc writes. Re-reading the in-memory rooms is
+    // cheap and closes that window for every room the server has loaded.
+    //
+    // It does NOT make the race impossible: a reference landing between this
+    // check and the unlink still loses. It is narrow in practice because the
+    // client always re-PUTs a blob before referencing it (`HttpBlobStore.put`
+    // has no dedupe), which refreshes mtime and takes the lock, and because a
+    // fork copies references out of a room that already holds them, so those
+    // blobs were never candidates.
+    const recheck = await collectLiveBlobRefs(this.opts.roomManager);
+    const safe = plan.deleteHashes.filter((h) => !recheck.has(h));
+    const skipped = plan.deleteHashes.length - safe.length;
+    if (skipped > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[blob-gc] ${skipped} blob(s) became referenced mid-sweep; keeping them`);
+    }
+    const result = await applyBlobGc(this.opts.storage, { ...plan, deleteHashes: safe }, now - graceMs);
 
     this.opts.counters?.sweep?.();
     if (result.deletedBlobs > 0) this.opts.counters?.deleted?.(result.deletedBlobs);
@@ -361,9 +381,30 @@ export function resolveBlobGcConfig(env: NodeJS.ProcessEnv = process.env): {
     // Default ON. Blobs are never otherwise deleted, so an operator who does
     // nothing must still be protected from the inode exhaustion in #2790.
     enabled: flag !== '0' && flag !== 'false',
-    intervalMs: Number(env.COLLAB_BLOB_GC_INTERVAL_MS ?? 6 * 60 * 60 * 1000),
-    graceMs: Number(env.COLLAB_BLOB_GC_GRACE_MS ?? DEFAULT_BLOB_GC_GRACE_MS),
+    intervalMs: duration(env.COLLAB_BLOB_GC_INTERVAL_MS, 6 * 60 * 60 * 1000, 'COLLAB_BLOB_GC_INTERVAL_MS', 1),
+    graceMs: duration(env.COLLAB_BLOB_GC_GRACE_MS, DEFAULT_BLOB_GC_GRACE_MS, 'COLLAB_BLOB_GC_GRACE_MS', 0),
   };
+}
+
+/**
+ * Parse a duration env var, rejecting anything not finite and in range.
+ *
+ * A bare `Number()` here is a data-loss bug, not a style issue: `Number('')`
+ * and `Number('abc')` give 0 and NaN. A NaN grace makes `cutoff` NaN, and
+ * `stat.mtimeMs >= NaN` is FALSE, so `planBlobGc` falls through and condemns
+ * EVERY unreferenced blob regardless of age, destroying the race protection.
+ * A NaN or zero interval makes `setInterval` fire about every millisecond.
+ * Fail loudly at startup instead: a misconfigured sweep must not run at all.
+ */
+function duration(raw: string | undefined, fallback: number, name: string, min: number): number {
+  if (raw === undefined || raw === '') return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < min) {
+    throw new Error(
+      `[blob-gc] ${name}=${JSON.stringify(raw)} is not a finite number >= ${min}; refusing to start`,
+    );
+  }
+  return n;
 }
 
 /** Arm the periodic blob sweep, or return null when disabled. */
@@ -372,14 +413,28 @@ export function startBlobGc(deps: {
   storage: GcBlobStorage;
   roomManager?: RoomManager;
   config: ReturnType<typeof resolveBlobGcConfig>;
+  /** Forwarded so a permanently failing sweep is visible on `/metrics`. */
+  counters?: BlobGcWorkerOptions['counters'];
 }): BlobGcWorker | null {
   if (!deps.config.enabled) return null;
+  // Default the counters onto the package metrics singleton, which is what
+  // `startCollabServer` publishes at `/metrics`. Without this the "a failing
+  // sweep is visible" claim above is false: `bin.ts` is the only production
+  // construction path and a failing sweep would produce console output only.
+  const sweeps = defaultMetrics.counter('collab_blob_gc_sweeps_total', 'Blob GC sweeps completed');
+  const failures = defaultMetrics.counter('collab_blob_gc_failures_total', 'Blob GC sweeps that threw');
+  const removed = defaultMetrics.counter('collab_blob_gc_deleted_total', 'Blobs deleted by GC');
   const worker = new BlobGcWorker({
     dataDir: deps.dataDir,
     storage: deps.storage,
     roomManager: deps.roomManager,
     intervalMs: deps.config.intervalMs,
     graceMs: deps.config.graceMs,
+    counters: deps.counters ?? {
+      sweep: () => sweeps.inc(),
+      failure: () => failures.inc(),
+      deleted: (n) => removed.inc(n),
+    },
   });
   worker.start();
   return worker;

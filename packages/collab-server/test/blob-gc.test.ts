@@ -18,6 +18,7 @@ import { FilePersistence } from '../src/persistence.js';
 import { FsBlobStorage } from '../src/blob-route.js';
 import {
   BlobGcWorker,
+  collectLiveBlobRefs,
   collectPersistedBlobRefs,
   planBlobGc,
 } from '../src/blob-gc.js';
@@ -224,5 +225,44 @@ describe('blob gc', () => {
     expect(sweeps).toBe(1);
     expect(fs.existsSync(path.join(blobsDir, A))).toBe(true);
     expect(fs.existsSync(path.join(blobsDir, B))).toBe(false);
+  });
+
+  it('keeps a blob that becomes referenced between the scan and the delete', async () => {
+    // The sweep collects live references, plans, then re-collects immediately
+    // before deleting. This stub reports NO references on the first call and
+    // the orphan's hash on every later call, which is exactly a loaded room
+    // gaining a reference mid-sweep through an ordinary CRDT update.
+    await writeRoom('room-1', [A]);
+    writeBlob(A, 3 * DAY);
+    writeBlob(B, 3 * DAY);
+
+    const docWithB = new Y.Doc();
+    docWithB.transact(() => {
+      geometryMap(docWithB).set('g0', new Y.Map<unknown>());
+      (geometryMap(docWithB).get('g0') as Y.Map<unknown>).set('blobHash', B);
+    });
+
+    let calls = 0;
+    const roomManager = {
+      list: () => {
+        calls += 1;
+        return calls === 1 ? [] : ['late'];
+      },
+      peek: () => Promise.resolve({ doc: docWithB }),
+    } as unknown as Parameters<typeof collectLiveBlobRefs>[0];
+
+    const worker = new BlobGcWorker({
+      dataDir,
+      storage: new FsBlobStorage(dataDir),
+      roomManager,
+      graceMs: DAY,
+    });
+    const result = await worker.runOnce();
+
+    expect(result.deletedBlobs).toBe(0);
+    expect(fs.existsSync(path.join(blobsDir, B)), 'B was referenced mid-sweep but still deleted').toBe(
+      true,
+    );
+    docWithB.destroy();
   });
 });

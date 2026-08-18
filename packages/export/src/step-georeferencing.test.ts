@@ -479,6 +479,45 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  it('writes an unquoted STEP real when setting a MapConversion field that was previously $ (#2724)', () => {
+    // OrthogonalHeight, XAxisAbscissa, XAxisOrdinate and Scale are all
+    // OPTIONAL in IFC4, so a real file can legally carry `$` there. The
+    // named-attribute rewrite path (`serializeNamedAttribute` ->
+    // `serializeAttributeValue`) infers REAL-vs-string formatting from the
+    // token being replaced; when that token is `$` there is no numeric
+    // token to key off, and the fallback must still emit an unquoted STEP
+    // real, not a quoted string.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+      // OrthogonalHeight is `$` in the source file — schema-legal, and the
+      // exact shape a real project's file has before anyone sets it.
+      [41, 'IFCMAPCONVERSION', '#41=IFCMAPCONVERSION(#20,#40,1.,2.,$,1.,0.,1.);'],
+    ]);
+
+    const exporter = new StepExporter(dataStore);
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        mapConversion: { orthogonalHeight: 12345 },
+      },
+    });
+
+    const content = decode(result.content);
+    const mcLine = content.match(/#41=IFCMAPCONVERSION\([^;]*\);/)?.[0] ?? '';
+    // An unquoted STEP real, not `'12345.'` / `'12345'` — IFC4
+    // OrthogonalHeight is IfcLengthMeasure, a REAL, not a string.
+    expect(mcLine).toBe('#41=IFCMAPCONVERSION(#20,#40,1.,2.,12345.,1.,0.,1.);');
+  });
+
   it('never points new georeferencing at a deleted context or length unit', () => {
     const dataStore = buildMockDataStore([
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20,#25),#30);"],
@@ -626,13 +665,53 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
     const store = await parseDeltaBase();
     const { view } = newSession(store);
 
+    // Every field the modify-existing-CRS branch can set, each a distinct
+    // non-interchangeable value so a positional swap would be observable.
     const result = new StepExporter(store, view).export({
       schema: 'IFC4',
-      georefMutations: { projectedCRS: { name: 'EPSG:2056' } },
+      georefMutations: {
+        projectedCRS: {
+          name: 'EPSG:2056',
+          description: 'LV95 Modified',
+          geodeticDatum: 'CH1903+',
+          verticalDatum: 'LN02',
+          mapProjection: 'Swiss Oblique Mercator 1995',
+          mapZone: '32N',
+        },
+      },
     });
     const text = new TextDecoder().decode(result.content);
 
-    expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
+    expect(text).toContain(
+      `#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056','LV95 Modified','CH1903+','LN02','Swiss Oblique Mercator 1995','32N',$);`,
+    );
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('a georeferencing edit to an existing IfcMapConversion still counts and still lands', async () => {
+    const store = await parseDeltaBase();
+    const { view } = newSession(store);
+
+    // Same shape as the CRS case above, for the sibling modify branch: every
+    // settable field, each a distinct value so a transposed pair would fail.
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      georefMutations: {
+        mapConversion: {
+          eastings: 2650000,
+          northings: 1250000,
+          orthogonalHeight: 555,
+          xAxisAbscissa: 0.1,
+          xAxisOrdinate: 0.2,
+          scale: 0.9999,
+        },
+      },
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(
+      `#${MAP_CONVERSION_ID}=IFCMAPCONVERSION($,#${CRS_ID},2650000.,1250000.,555.,0.1,0.2,0.9999);`,
+    );
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 });
@@ -670,6 +749,25 @@ describe('a georeferencing edit is the same site with the same signal', () => {
     const text = new TextDecoder().decode(result.content);
 
     expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('writing a DIFFERENT Eastings on IfcMapConversion still counts and still lands', async () => {
+    // The MapConversion branch queues into the same `modifiedAttributes` map
+    // as the CRS branch above and gates its nomination the same way
+    // (`hasEmittableHostBytes`) — this is that branch's own sibling case,
+    // parallel to the CRS one directly above it. Uses the delta corpus, which
+    // is the one of the two that carries an `IfcMapConversion` (#41).
+    const store = await parseDeltaBase();
+    const view = new MutablePropertyView(null, 'test-model');
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      georefMutations: { mapConversion: { eastings: 1500 } },
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(`#${MAP_CONVERSION_ID}=IFCMAPCONVERSION($,#${CRS_ID},1500.`);
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 });

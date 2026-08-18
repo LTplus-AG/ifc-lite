@@ -4218,6 +4218,11 @@
     "DALUX_MANIFEST: const",
     "DaluxBuildProvider: class"
   ],
+  "@ifc-lite/source-dropbox": [
+    "DROPBOX_MANIFEST: const",
+    "DropboxProvider: class",
+    "REDIRECT_PATH: const"
+  ],
   "@ifc-lite/source-msgraph": [
     "MSGRAPH_MANIFEST: const",
     "MsGraphProvider: class",

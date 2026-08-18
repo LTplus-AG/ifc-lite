@@ -1838,7 +1838,7 @@ export class StepExporter {
     let attributed = false;
     if (attributeMutations && attributeMutations.size > 0) {
       const beforeAttributes = text;
-      text = this.applyAttributeMutations(text, workingType, attributeMutations);
+      text = this.applyAttributeMutations(text, workingType, attributeMutations, sourceSchema);
       attributed = text !== beforeAttributes;
     }
 
@@ -1862,6 +1862,7 @@ export class StepExporter {
     entityText: string,
     entityType: string,
     attributeMutations: Map<string, string>,
+    schemaVersion: IfcSchemaVersion,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
@@ -1884,6 +1885,7 @@ export class StepExporter {
     // argument list here means the file speaks a different schema, and growing
     // a record we did not author would corrupt it.
     let changed = false;
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
 
     for (const [attrName, value] of attributeMutations) {
       const index = attrNames.indexOf(attrName);
@@ -1891,7 +1893,7 @@ export class StepExporter {
       // The source path shares every `$`-slot hole with the overlay-created
       // path, because a source record has plenty of `$` slots of its own. Both
       // go through the one helper below.
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
       changed = true;
     }
 
@@ -1913,15 +1915,31 @@ export class StepExporter {
    * with `$`. So the declared type decides first, and inference is the fallback
    * for slots the schema does not classify (references, SELECTs, numerics),
    * where reading the old token is exactly the right heuristic.
+   *
+   * Before this REAL check existed, "the declared type decides first" was true
+   * for enum/string slots only — a REAL-backed slot (`IfcMapConversion.
+   * OrthogonalHeight`, any other `IfcLengthMeasure`/`IfcReal`-typed attribute)
+   * fell straight to `serializeAttributeValue`'s token inference, which quotes
+   * anything it cannot recognize as numeric. A schema-legal `$` placeholder
+   * carries no digits to recognize, so setting such a field for the first time
+   * wrote `'12345'` in a slot ISO 10303-21 requires to be an unquoted REAL —
+   * silently invalid output (#2724, LTplus-AG/ifc-lite#2475).
    */
   private serializeNamedAttribute(
     entityType: string,
     index: number,
     value: string,
     currentToken: string,
+    realSlots: ReadonlySet<number>,
   ): string {
     if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
     if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
+    if (realSlots.has(index)) {
+      const trimmed = value.trim();
+      if (trimmed === '') return '$';
+      const numberValue = Number(trimmed);
+      if (Number.isFinite(numberValue)) return toStepReal(numberValue);
+    }
     return serializeAttributeValue(value, currentToken);
   }
 
@@ -1986,12 +2004,12 @@ export class StepExporter {
 
     // Every `named` index is < attrNames.length by construction, and padding
     // has taken args.length to at least that, so each one lands.
+    const realSlots = getRealTypedSlots(entityType, schemaVersion);
     for (const [index, value] of named) {
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index]);
+      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
     }
 
     if (positionalOverrides && positionalOverrides.size > 0) {
-      const realSlots = getRealTypedSlots(entityType, schemaVersion);
       for (const [index, value] of positionalOverrides) {
         if (index < 0 || index >= args.length) continue;
         args[index] = this.serializePositionalOverride(

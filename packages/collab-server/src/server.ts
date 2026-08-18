@@ -228,21 +228,39 @@ const KEEPALIVE_INTERVAL_MS = 15_000;
 const CLIENT_RECONNECT_TIMEOUT_MS = 30_000;
 
 /**
+ * Largest keepalive period that can actually keep a connection alive.
+ *
+ * Merely being under {@link CLIENT_RECONNECT_TIMEOUT_MS} is not enough. A
+ * period of 29_999ms against a 30_000ms watchdog leaves 1ms for timer
+ * scheduling, serialisation and network transit, so the frame routinely lands
+ * after the deadline and the client disconnects anyway. The margin below has
+ * to cover a slow hop and an event loop that is busy, or the keepalive is
+ * configured and still useless.
+ */
+const MAX_KEEPALIVE_INTERVAL_MS = 25_000;
+
+/**
  * Validate a configured keepalive period, rejecting values that would silently
  * defeat it in EITHER direction.
  *
  * Too small is the classic footgun: `setInterval` coerces 0, negative and
  * non-finite delays to about 1ms, so a typo turns the keepalive into a flood.
- * Too large is the subtler one and is specific to this feature: at or above
- * the client's 30s timeout the keepalive cannot refresh the watchdog in time,
- * so it would appear configured while the disconnect loop it prevents came
+ * Too large is the subtler one and is specific to this feature: a period that
+ * does not clear the client's watchdog with margin leaves the server looking
+ * correctly configured while the disconnect loop it exists to prevent comes
  * back. Both fail loudly instead.
  */
 function resolveKeepaliveMs(configured: number | undefined): number {
   if (configured === undefined) return KEEPALIVE_INTERVAL_MS;
-  if (!Number.isFinite(configured) || configured <= 0 || configured >= CLIENT_RECONNECT_TIMEOUT_MS) {
+  if (
+    !Number.isFinite(configured) ||
+    configured <= 0 ||
+    configured > MAX_KEEPALIVE_INTERVAL_MS
+  ) {
     throw new Error(
-      `[collab-server] keepaliveIntervalMs must be a finite number in (0, ${CLIENT_RECONNECT_TIMEOUT_MS}); got ${configured}`,
+      `[collab-server] keepaliveIntervalMs must be a finite number in (0, ${MAX_KEEPALIVE_INTERVAL_MS}]; ` +
+        `got ${configured}. The client closes after ${CLIENT_RECONNECT_TIMEOUT_MS}ms of silence, ` +
+        'so the period must clear that with margin for transit and scheduling.',
     );
   }
   return configured;

@@ -25,11 +25,40 @@
  * server's own state must not stop it forwarding real peers to each other.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { WebSocket } from 'ws';
 import { WebsocketProvider } from 'y-websocket';
 import { MemoryPersistence, startCollabServer } from '../src/server.js';
+
+// A failed assertion must not leak a listening server, an open socket or a
+// live interval into the rest of the file: the next test then races a stray
+// keepalive and fails for reasons that have nothing to do with it. Everything
+// created here is registered for teardown, so cleanup does not depend on the
+// happy path reaching the end of a test.
+const openProviders: WebsocketProvider[] = [];
+const openSockets: WebSocket[] = [];
+const openHandles: Array<{ stop: () => Promise<void> }> = [];
+
+afterEach(async () => {
+  for (const p of openProviders.splice(0)) {
+    try {
+      p.destroy();
+    } catch {
+      /* already torn down */
+    }
+  }
+  for (const w of openSockets.splice(0)) {
+    try {
+      w.close();
+    } catch {
+      /* already closed */
+    }
+  }
+  for (const h of openHandles.splice(0)) {
+    await h.stop().catch(() => undefined);
+  }
+});
 
 async function startServer(extra: { keepaliveIntervalMs?: number } = {}) {
   const handle = await startCollabServer({
@@ -39,6 +68,7 @@ async function startServer(extra: { keepaliveIntervalMs?: number } = {}) {
   });
   const address = handle.httpServer.address();
   const port = typeof address === 'object' && address ? address.port : 0;
+  openHandles.push(handle);
   return { handle, url: `ws://127.0.0.1:${port}` };
 }
 
@@ -48,6 +78,7 @@ function connect(url: string, room: string) {
     WebSocketPolyfill: WebSocket as never,
     disableBc: true,
   });
+  openProviders.push(provider);
   return { doc, provider };
 }
 
@@ -160,6 +191,7 @@ describe('server keepalive', () => {
   it('sends awareness keepalive frames to an idle peer', async () => {
     const { handle, url } = await startServer({ keepaliveIntervalMs: 120 });
     const raw = new WebSocket(`${url}/keepalive-room`);
+    openSockets.push(raw);
     await new Promise<void>((resolve, reject) => {
       raw.once('open', () => resolve());
       raw.once('error', reject);
@@ -210,7 +242,7 @@ describe('server keepalive', () => {
     // negative and non-finite delays to ~1ms (a flood); at or above the
     // client's own 30s timeout the keepalive can never refresh it in time, so
     // it would look configured while the disconnect loop returned.
-    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 30_000, 60_000]) {
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 25_001, 29_999, 30_000, 60_000]) {
       let handle: Awaited<ReturnType<typeof startCollabServer>> | null = null;
       let threw = false;
       try {
@@ -219,6 +251,7 @@ describe('server keepalive', () => {
           persistence: new MemoryPersistence(),
           keepaliveIntervalMs: bad,
         });
+        openHandles.push(handle);
         const address = handle.httpServer.address();
         const port = typeof address === 'object' && address ? address.port : 0;
         const { provider } = connect(`ws://127.0.0.1:${port}`, 'bad-keepalive');
@@ -235,7 +268,9 @@ describe('server keepalive', () => {
   }, 30_000);
 
   it('accepts a period that does feed the watchdog', async () => {
-    const { handle, url } = await startServer({ keepaliveIntervalMs: 29_999 });
+    // 25s against the client's 30s close leaves 5s for transit and scheduling.
+    // 29_999 is REJECTED above: it is under the timeout but cannot clear it.
+    const { handle, url } = await startServer({ keepaliveIntervalMs: 25_000 });
     const { provider } = connect(url, 'ok-keepalive');
     await synced(provider);
     expect(provider.wsconnected).toBe(true);

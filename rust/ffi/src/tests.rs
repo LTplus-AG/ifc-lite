@@ -120,12 +120,26 @@ fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
     assert_eq!(result.meshes[1].positions, original_positions_b);
 }
 
-/// Pin `LARGE_COORD_THRESHOLD` itself. The other two fixtures straddle it by
-/// two orders of magnitude (1.0 vs 123456.0), so any threshold anywhere in
-/// between would satisfy them both. Bracket the constant instead: a single
-/// axis just *above* 1 km must shift, the same axis just *below* must not.
+/// Pin the boundary's sharpness and per-axis semantics, *relative to
+/// whatever `LARGE_COORD_THRESHOLD` currently is*: a single axis just above
+/// the constant must shift, the same axis just below must not. The other two
+/// fixtures straddle it by two orders of magnitude (1.0 vs 123456.0), so any
+/// threshold anywhere in between would satisfy them both — this fixture
+/// closes that gap for the *boundary behavior*.
+///
+/// This does **not** pin the constant's *value*: every value used below is
+/// derived from `LARGE_COORD_THRESHOLD` itself, so the fixture is green for
+/// any value of the constant. The `assert_eq!` immediately below is what
+/// actually pins the documented 1 km contract (see `LARGE_COORD_THRESHOLD`'s
+/// doc comment on lib.rs) — mutate the constant and this assertion, not the
+/// bracketing below, is what fails.
 #[test]
 fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
+    assert_eq!(
+        LARGE_COORD_THRESHOLD, 1000.0,
+        "documented contract is 1 km; the bracketing below derives from this constant and would follow it to any value"
+    );
+
     for (translation, should_shift) in [
         ([LARGE_COORD_THRESHOLD + 0.5, 0.0, 0.0], true),
         ([LARGE_COORD_THRESHOLD - 0.5, 0.0, 0.0], false),

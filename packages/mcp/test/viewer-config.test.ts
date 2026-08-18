@@ -62,7 +62,7 @@ async function bootServer(config?: { autoOpenViewer?: boolean; viewerPort?: numb
   return server;
 }
 
-/** A port that is free right now — so the assertions below pin a port the
+/** A port that is free right now, so the assertions below pin a port the
  *  caller chose, not the `0` default that every other case in this file uses
  *  and that therefore cannot distinguish "config honoured" from "default". */
 async function freePort(): Promise<number> {
@@ -110,7 +110,7 @@ describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured',
   });
 
   // The cases above all pass `viewerPort: 0` / `port: 0`, which is ALSO the
-  // built-in default — so none of them can tell a honoured config port from
+  // built-in default, so none of them can tell a honoured config port from
   // the default. Confirmed by mutation: dropping `this.config.viewerPort` from
   // the resolution chain killed nothing. These two pin the port half.
   it('config.viewerPort is honoured (a non-default port reaches the viewer)', async () => {

@@ -17,7 +17,7 @@
  *  - `options.application` override of `preprocessorVersion` (~:352)
  *  - `authorization: sourceHeader?.authorization` (~:354)
  *  - `options.filename ?? 'export.ifc'` — the `options.filename` half (~:355-356)
- *  - `timeStamp: options.timeStamp` (~:454) — the eighth override, added
+ *  - `timeStamp: options.timeStamp` (~:454): the eighth override, added
  *    after the original sweep: mutating it to `undefined` still killed
  *    nothing once the seven above were covered.
  *

@@ -9,6 +9,7 @@ use super::*;
 // The exporters route through the quality-carrying entry point now, so the
 // plain one is named here rather than inherited from the parent module.
 use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::TessellationQuality;
 
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
 fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
@@ -164,6 +165,66 @@ fn with_index_glb_is_byte_identical() {
     let idx = Arc::new(crate::build_entity_index(&bytes));
     let (shared, _) = export_glb_with_stats_with_index(&bytes, &opts, idx);
     assert_eq!(plain, shared, "shared-index GLB must equal self-indexed GLB");
+}
+
+#[test]
+fn tessellation_quality_reaches_the_exporter_and_changes_the_mesh() {
+    // The feature this PR adds, pinned end to end rather than at the seam.
+    //
+    // `GltfOptions::default()` is Medium and is the golden-output identity, so
+    // a test that only exercises the default cannot tell whether the option is
+    // wired at all - it would pass identically against the old
+    // `process_geometry` call that ignored quality entirely. Coarse must
+    // therefore produce a DIFFERENT GLB, and the direction matters too: a
+    // coarser tessellation on a curve-bearing model emits fewer vertices, so
+    // asserting merely "not equal" would also pass if the option were routed
+    // to the wrong parameter and produced some other change.
+    // `fixture_opt`, not `fixture`: the house rule is to SKIP when the corpus
+    // is not fetched rather than throw. The eprintln keeps a zero-coverage run
+    // visible instead of masquerading as a pass (the Greptile #1511 lesson).
+    let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
+        eprintln!("skipping tessellation_quality_reaches_the_exporter: corpus not fetched");
+        return;
+    };
+
+    let (medium, medium_stats) = export_glb_with_stats(&bytes, &GltfOptions::default());
+    let (coarse, coarse_stats) = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { tessellation_quality: TessellationQuality::Low, ..Default::default() },
+    );
+
+    assert_ne!(
+        medium, coarse,
+        "Low tessellation must not produce the Medium GLB - the option is not reaching \
+         `process_geometry_filtered_with_quality` if these are equal"
+    );
+    assert!(
+        coarse.len() < medium.len(),
+        "coarser tessellation should emit a SMALLER GLB (medium {} bytes, coarse {} bytes); \
+         a difference in the other direction means the quality was routed somewhere unintended",
+        medium.len(),
+        coarse.len()
+    );
+    // Both must still be real exports: a quality value that broke meshing
+    // would also satisfy the two assertions above by emitting nothing.
+    assert!(medium_stats.meshes > 0, "medium export produced no meshes");
+    assert!(coarse_stats.meshes > 0, "coarse export produced no meshes");
+}
+
+#[test]
+fn default_tessellation_quality_is_the_golden_medium() {
+    // Guards the identity the rest of the golden tests rest on: adding the
+    // option must not have moved the default output.
+    let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
+        eprintln!("skipping default_tessellation_quality_is_the_golden_medium: corpus not fetched");
+        return;
+    };
+    let (implicit, _) = export_glb_with_stats(&bytes, &GltfOptions::default());
+    let (explicit, _) = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { tessellation_quality: TessellationQuality::Medium, ..Default::default() },
+    );
+    assert_eq!(implicit, explicit, "default must be byte-identical to explicit Medium");
 }
 
 // ── #1516: streaming shared-index + fail-fast size ────────────────────

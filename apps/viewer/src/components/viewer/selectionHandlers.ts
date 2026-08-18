@@ -695,12 +695,27 @@ export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number)
     const n = hit?.intersection?.normal;
     const p = hit?.intersection?.point;
     if (!n || !p) return;
+
+    // Faces need the SAME double-click guard as the point-based kinds, which
+    // this early-return path was skipping. A face pair needs exactly two picks,
+    // so a physical double-click on one face recorded both halves instantly and
+    // completed a bogus measurement reading "Parallel" - a plausible-looking
+    // number for two picks the user never made.
+    //
+    // There is no shape boundary to exempt here, unlike edges: both face picks
+    // belong to one measurement, and two clicks in the same spot are always the
+    // same face.
+    const facePrior = state.activeAngle?.picks ?? [];
+    const facePrev = facePrior.length > 0 ? facePrior[facePrior.length - 1].point : null;
+    const facePoint = { x: p.x, y: p.y, z: p.z, screenX: x, screenY: y };
+    if (facePrev && isDuplicateClickPoint(facePrev, facePoint)) return;
+
     state.addAnglePick({
       kind: 'faces',
       // screen coords are the click itself, which is what the overlay
       // reprojects from; `updateMeasurementScreenCoords` refreshes them on
       // camera move exactly as it does for the other kinds.
-      point: { x: p.x, y: p.y, z: p.z, screenX: x, screenY: y },
+      point: facePoint,
       normal: { x: n.x, y: n.y, z: n.z },
     });
     return;

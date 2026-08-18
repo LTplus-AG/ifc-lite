@@ -31,6 +31,20 @@ import {
 } from './tools/measure-modes/three-point-angle.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
+function fakeFaceCtx(
+  point: { x: number; y: number; z: number },
+  normal: { x: number; y: number; z: number },
+): MouseHandlerContext {
+  const base = fakeCtx(point) as unknown as Record<string, unknown>;
+  return {
+    ...base,
+    renderer: {
+      ...(base.renderer as Record<string, unknown>),
+      raycastScene: () => ({ intersection: { point, normal } }),
+    },
+  } as unknown as MouseHandlerContext;
+}
+
 function fakeCtx(hit: { x: number; y: number; z: number } | null): MouseHandlerContext {
   const canvas = document.createElement('canvas');
   return {
@@ -217,5 +231,28 @@ describe('handleAngleClick wiring (#2735)', () => {
       'the shared corner was swallowed as a double-click, so the measurement never finished',
     );
     assert.equal(useViewerStore.getState().activeAngle, null);
+  });
+
+  it('does not record both halves of a double-click on one face', () => {
+    // A face pair needs exactly TWO picks, so an unguarded double-click
+    // completes a whole measurement from one gesture - and the two picks share
+    // a normal, so it reads "Parallel": a plausible-looking answer to a
+    // question the user never asked.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'faces',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    const ctx = fakeFaceCtx({ x: 1, y: 2, z: 3 }, { x: 0, y: 1, z: 0 });
+    handleAngleClick(ctx, 100, 100);
+    handleAngleClick(ctx, 100, 100); // the second half of the double-click
+
+    assert.equal(
+      useViewerStore.getState().angleMeasurements.length,
+      0,
+      'a double-click on one face completed a measurement on its own',
+    );
+    assert.equal(useViewerStore.getState().activeAngle?.picks.length, 1);
   });
 });

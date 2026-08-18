@@ -18,7 +18,7 @@ import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
 import { formatDistance } from './formatDistance';
-import type { AngleKind, AngleMeasurement } from '@/store/types';
+import { ANGLE_REQUIRED_PICKS, type AngleKind, type AngleMeasurement } from '@/store/types';
 import { formatThreePointAngle, threePointAngle } from './measure-modes/three-point-angle';
 import { edgePairAngle, facePairAngle, formatAnglePair } from './measure-modes/edge-face-angle';
 
@@ -28,6 +28,34 @@ import { edgePairAngle, facePairAngle, formatAnglePair } from './measure-modes/e
  * the UI; the exhaustiveness that matters (how many picks each needs) already
  * lives on `ANGLE_REQUIRED_PICKS`.
  */
+/**
+ * What to click next, per kind and per pick already placed.
+ *
+ * Kept as one function rather than inline ternaries because the three kinds
+ * need DIFFERENT counts and different words: the panel previously showed
+ * "n/3 picks" and point-angle wording for every kind, so an edge pair read
+ * "3/3" with a fourth pick still required - a progress indicator that says the
+ * measurement is complete when it is not.
+ */
+function angleHint(kind: AngleKind, placed: number): string {
+  const cancel = ' · Esc to cancel';
+  if (kind === 'faces') {
+    return placed === 0 ? 'Click the first face' : 'Click the second face' + cancel;
+  }
+  if (kind === 'edges') {
+    // Two picks per edge; naming which edge AND which end is the difference
+    // between a hint and a hint that helps.
+    if (placed === 0) return 'Click the start of the first edge';
+    if (placed === 1) return 'Click the end of the first edge' + cancel;
+    if (placed === 2) return 'Click the start of the second edge' + cancel;
+    return 'Click the end of the second edge' + cancel;
+  }
+  if (placed === 0) return 'Click the apex of the angle';
+  return placed === 1
+    ? 'Click the first direction' + cancel
+    : 'Click the second direction' + cancel;
+}
+
 /**
  * Readout for a stored angle, derived on render and never persisted, so a
  * correction to the maths retroactively fixes every measurement already listed.
@@ -489,8 +517,14 @@ export function MeasureOverlay() {
               )}
               {activeAngle && (
                 <div className="mt-2 rounded bg-primary/10 px-2 py-0.5 text-xs text-muted-foreground">
-                  Angle in progress · {activeAngle.picks.length}/3 picks
-                  {activeAngle.picks.length === 1 ? ' · apex set' : ''}
+                  Angle in progress · {activeAngle.picks.length}/
+                  {ANGLE_REQUIRED_PICKS[activeAngle.kind]} picks
+                  {activeAngle.kind === 'points' && activeAngle.picks.length === 1
+                    ? ' · apex set'
+                    : ''}
+                  {activeAngle.kind === 'edges' && activeAngle.picks.length === 2
+                    ? ' · first edge set'
+                    : ''}
                 </div>
               )}
             </div>
@@ -524,11 +558,7 @@ export function MeasureOverlay() {
                 // branch below would permanently show "Drag to measure" in a
                 // mode that ignores drags entirely. The hint has to name the
                 // gesture that actually works, and which pick is next.
-                !activeAngle
-                ? 'Click the apex of the angle'
-                : activeAngle.picks.length === 1
-                  ? 'Click the first direction · Esc to cancel'
-                  : 'Click the second direction · Esc to cancel'
+                angleHint(angleKind, activeAngle?.picks.length ?? 0)
               : activeMeasurement
                 ? 'Release to complete'
                 : 'Drag to measure'}

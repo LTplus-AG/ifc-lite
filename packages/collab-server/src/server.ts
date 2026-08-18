@@ -220,6 +220,34 @@ const PING_INTERVAL_MS = 30_000;
  */
 const KEEPALIVE_INTERVAL_MS = 15_000;
 
+/**
+ * The watchdog this keepalive exists to feed. y-websocket closes a connection
+ * after this long with no inbound message, and it is a module-level const there
+ * with no per-provider override, so we cannot widen it.
+ */
+const CLIENT_RECONNECT_TIMEOUT_MS = 30_000;
+
+/**
+ * Validate a configured keepalive period, rejecting values that would silently
+ * defeat it in EITHER direction.
+ *
+ * Too small is the classic footgun: `setInterval` coerces 0, negative and
+ * non-finite delays to about 1ms, so a typo turns the keepalive into a flood.
+ * Too large is the subtler one and is specific to this feature: at or above
+ * the client's 30s timeout the keepalive cannot refresh the watchdog in time,
+ * so it would appear configured while the disconnect loop it prevents came
+ * back. Both fail loudly instead.
+ */
+function resolveKeepaliveMs(configured: number | undefined): number {
+  if (configured === undefined) return KEEPALIVE_INTERVAL_MS;
+  if (!Number.isFinite(configured) || configured <= 0 || configured >= CLIENT_RECONNECT_TIMEOUT_MS) {
+    throw new Error(
+      `[collab-server] keepaliveIntervalMs must be a finite number in (0, ${CLIENT_RECONNECT_TIMEOUT_MS}); got ${configured}`,
+    );
+  }
+  return configured;
+}
+
 export async function startCollabServer(
   opts: StartCollabServerOptions = {},
 ): Promise<CollabServerHandle> {
@@ -254,6 +282,10 @@ export async function startCollabServer(
     : opts.authorizeRegistry === null
       ? undefined
       : opts.authorizeRegistry ?? makeRegistryAuthorizer(authenticate);
+  // Validate at STARTUP, not per connection: a throw inside the connection
+  // handler is swallowed by its own .catch, so a misconfigured server would
+  // come up healthy and only misbehave once someone connected.
+  const keepaliveIntervalMs = resolveKeepaliveMs(opts.keepaliveIntervalMs);
   const metricsToken = opts.metricsToken ?? process.env.COLLAB_METRICS_TOKEN;
   const metrics = opts.metrics ?? defaultMetrics;
   const peersGauge = metrics.gauge(
@@ -407,7 +439,7 @@ export async function startCollabServer(
       handleConnection(ws, req, {
         roomManager,
         authenticate,
-        keepaliveIntervalMs: opts.keepaliveIntervalMs,
+        keepaliveIntervalMs,
       }).catch((err) => {
         // eslint-disable-next-line no-console
         console.error('[collab-server] connection setup failed:', err);

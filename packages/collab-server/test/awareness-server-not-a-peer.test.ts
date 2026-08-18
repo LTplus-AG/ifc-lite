@@ -204,4 +204,42 @@ describe('server keepalive', () => {
     provider.destroy();
     await handle.stop();
   }, 90_000);
+
+  it('rejects a keepalive period that cannot feed the watchdog', async () => {
+    // Both directions silently defeat the keepalive. setInterval coerces 0,
+    // negative and non-finite delays to ~1ms (a flood); at or above the
+    // client's own 30s timeout the keepalive can never refresh it in time, so
+    // it would look configured while the disconnect loop returned.
+    for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 30_000, 60_000]) {
+      let handle: Awaited<ReturnType<typeof startCollabServer>> | null = null;
+      let threw = false;
+      try {
+        handle = await startCollabServer({
+          port: 0,
+          persistence: new MemoryPersistence(),
+          keepaliveIntervalMs: bad,
+        });
+        const address = handle.httpServer.address();
+        const port = typeof address === 'object' && address ? address.port : 0;
+        const { provider } = connect(`ws://127.0.0.1:${port}`, 'bad-keepalive');
+        await synced(provider);
+        await new Promise((r) => setTimeout(r, 300));
+        provider.destroy();
+      } catch {
+        threw = true;
+      } finally {
+        await handle?.stop();
+      }
+      expect(threw, `keepaliveIntervalMs=${bad} was accepted`).toBe(true);
+    }
+  }, 30_000);
+
+  it('accepts a period that does feed the watchdog', async () => {
+    const { handle, url } = await startServer({ keepaliveIntervalMs: 29_999 });
+    const { provider } = connect(url, 'ok-keepalive');
+    await synced(provider);
+    expect(provider.wsconnected).toBe(true);
+    provider.destroy();
+    await handle.stop();
+  }, 15_000);
 });

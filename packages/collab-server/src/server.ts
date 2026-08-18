@@ -100,6 +100,12 @@ function applyCors(
 
 export interface StartCollabServerOptions {
   port?: number;
+  /**
+   * Application-level keepalive period in ms (default 15s). Exposed so tests
+   * can observe the keepalive without waiting on the real cadence; production
+   * callers should leave it alone. See `Room.sendKeepalive`.
+   */
+  keepaliveIntervalMs?: number;
   host?: string;
   persistence?: Persistence;
   authenticate?: AuthenticateFn;
@@ -206,6 +212,60 @@ export interface CollabServerHandle {
 
 const PING_INTERVAL_MS = 30_000;
 
+/**
+ * Application-level keepalive period. Must stay comfortably under
+ * y-websocket's hardcoded 30s `messageReconnectTimeout`; 15s matches the
+ * awareness renewal cadence the client's watchdog was written around.
+ * See `Room.sendKeepalive`.
+ */
+const KEEPALIVE_INTERVAL_MS = 15_000;
+
+/**
+ * The watchdog this keepalive exists to feed. y-websocket closes a connection
+ * after this long with no inbound message, and it is a module-level const there
+ * with no per-provider override, so we cannot widen it.
+ */
+const CLIENT_RECONNECT_TIMEOUT_MS = 30_000;
+
+/**
+ * Largest keepalive period that can actually keep a connection alive.
+ *
+ * Merely being under {@link CLIENT_RECONNECT_TIMEOUT_MS} is not enough. A
+ * period of 29_999ms against a 30_000ms watchdog leaves 1ms for timer
+ * scheduling, serialisation and network transit, so the frame routinely lands
+ * after the deadline and the client disconnects anyway. The margin below has
+ * to cover a slow hop and an event loop that is busy, or the keepalive is
+ * configured and still useless.
+ */
+const MAX_KEEPALIVE_INTERVAL_MS = 25_000;
+
+/**
+ * Validate a configured keepalive period, rejecting values that would silently
+ * defeat it in EITHER direction.
+ *
+ * Too small is the classic footgun: `setInterval` coerces 0, negative and
+ * non-finite delays to about 1ms, so a typo turns the keepalive into a flood.
+ * Too large is the subtler one and is specific to this feature: a period that
+ * does not clear the client's watchdog with margin leaves the server looking
+ * correctly configured while the disconnect loop it exists to prevent comes
+ * back. Both fail loudly instead.
+ */
+function resolveKeepaliveMs(configured: number | undefined): number {
+  if (configured === undefined) return KEEPALIVE_INTERVAL_MS;
+  if (
+    !Number.isFinite(configured) ||
+    configured <= 0 ||
+    configured > MAX_KEEPALIVE_INTERVAL_MS
+  ) {
+    throw new Error(
+      `[collab-server] keepaliveIntervalMs must be a finite number in (0, ${MAX_KEEPALIVE_INTERVAL_MS}]; ` +
+        `got ${configured}. The client closes after ${CLIENT_RECONNECT_TIMEOUT_MS}ms of silence, ` +
+        'so the period must clear that with margin for transit and scheduling.',
+    );
+  }
+  return configured;
+}
+
 export async function startCollabServer(
   opts: StartCollabServerOptions = {},
 ): Promise<CollabServerHandle> {
@@ -240,6 +300,10 @@ export async function startCollabServer(
     : opts.authorizeRegistry === null
       ? undefined
       : opts.authorizeRegistry ?? makeRegistryAuthorizer(authenticate);
+  // Validate at STARTUP, not per connection: a throw inside the connection
+  // handler is swallowed by its own .catch, so a misconfigured server would
+  // come up healthy and only misbehave once someone connected.
+  const keepaliveIntervalMs = resolveKeepaliveMs(opts.keepaliveIntervalMs);
   const metricsToken = opts.metricsToken ?? process.env.COLLAB_METRICS_TOKEN;
   const metrics = opts.metrics ?? defaultMetrics;
   const peersGauge = metrics.gauge(
@@ -390,7 +454,11 @@ export async function startCollabServer(
       // surfacing as a process-level unhandledRejection. Catch the error,
       // log it, and close the socket with a non-1000 code so the client
       // sees a deterministic shutdown.
-      handleConnection(ws, req, { roomManager, authenticate }).catch((err) => {
+      handleConnection(ws, req, {
+        roomManager,
+        authenticate,
+        keepaliveIntervalMs,
+      }).catch((err) => {
         // eslint-disable-next-line no-console
         console.error('[collab-server] connection setup failed:', err);
         try {
@@ -439,6 +507,8 @@ export async function startCollabServer(
 interface ConnectionContext {
   roomManager: RoomManager;
   authenticate: AuthenticateFn;
+  /** See `StartCollabServerOptions.keepaliveIntervalMs`. */
+  keepaliveIntervalMs?: number;
 }
 
 async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: ConnectionContext) {
@@ -475,6 +545,12 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: C
   };
   room.addConnection(conn);
 
+  // Application-level keepalive. Distinct from the protocol ping below: only
+  // a real message refreshes y-websocket's reconnect watchdog.
+  const keepalive = setInterval(() => {
+    room.sendKeepalive(conn);
+  }, ctx.keepaliveIntervalMs ?? KEEPALIVE_INTERVAL_MS);
+
   let alive = true;
   const ping = setInterval(() => {
     if (!alive) {
@@ -494,6 +570,7 @@ async function handleConnection(ws: WebSocket, req: http.IncomingMessage, ctx: C
 
   const cleanup = () => {
     clearInterval(ping);
+    clearInterval(keepalive);
     room.removeConnection(conn);
   };
   ws.on('close', cleanup);

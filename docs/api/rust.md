@@ -500,6 +500,13 @@ Domain-format exporters. Every exporter takes IFC bytes (or already-produced mes
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use gltf::{export_glb, export_glb_from_meshes, export_glb_with_stats,
                export_gltf_streaming, try_export_glb, GltfOptions, GltfStats /* ... */};
+// `GltfOptions::tessellation_quality` picks the curve tessellation density for
+// the glTF paths, re-exporting `TessellationQuality` so a caller does not need
+// a direct `ifc-lite-processing` dependency to name a level. The default is
+// `Medium`, which is the golden-output identity every byte-comparison test in
+// this crate rests on - coarser levels trade curve fidelity for vertex count
+// on tube-heavy models, and DO change the emitted bytes.
+pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};

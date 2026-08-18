@@ -86,6 +86,43 @@ function sampleResult(): ClashResult {
   };
 }
 
+/**
+ * A run whose cluster radius is observable AND whose exclusions bite: two
+ * IfcRail-vs-IfcCourse clashes 5m apart (so 1.5m vs 10m radius groups them
+ * differently) plus one IfcBeam-vs-IfcBeam clash for a rule to match.
+ *
+ * The beam clash is what the three settings-change tests below were missing.
+ * With NO rule in play, `clashRawResult` and `clashResult` are the SAME object
+ * — `applyClashExclusions` returns its input by reference when nothing is
+ * suppressed (exclusions.ts) — so the three `deriveGroups(state,
+ * state.clashRawResult, ...)` call sites in `setClashClusterEpsilon`,
+ * `resetClashSettings` and `applyClashFlavorConfig` could each be swapped to
+ * `state.clashResult` with every test still green. Under that swap the
+ * re-derivation runs against the already-filtered set, so `clashSuppressedCount`
+ * and every per-rule count collapse to zero the moment the user nudges the
+ * cluster radius with an exclusion active — the clash list stays right
+ * (re-filtering is idempotent), but the "· N hidden" badge and the per-rule
+ * reach silently vanish.
+ */
+function epsilonResult(): ClashResult {
+  const clashes = [
+    clashAt(rail1, ballast, [0, 0, 0]),
+    clashAt(rail2, ballast, [5, 0, 0]),
+    clashAt(beam1, beam2, [0, 0, 0]),
+  ];
+  return {
+    clashes,
+    summary: {
+      total: 3,
+      byRule: { 'all-clashes': 3 },
+      byTypePair: { 'IfcCourse vs IfcRail': 2, 'IfcBeam vs IfcBeam': 1 },
+      bySeverity: { critical: 0, major: 3, minor: 0, info: 0 },
+    },
+    rulesRun: [],
+    settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
+  };
+}
+
 /** Build a live slice whose actions see their own committed state. */
 function slice(): { get: () => ClashSlice; storage: MemoryStorage } {
   const storage = new MemoryStorage();
@@ -144,22 +181,13 @@ describe('user-defined clash exclusions (store)', () => {
     // never call it, so the control changed the persisted setting but the
     // Issues view never regrouped.
     const s = slice();
-    const clashes = [
-      clashAt(rail1, ballast, [0, 0, 0]),
-      clashAt(rail2, ballast, [5, 0, 0]),
-    ];
-    const result: ClashResult = {
-      clashes,
-      summary: {
-        total: 2,
-        byRule: { 'all-clashes': 2 },
-        byTypePair: { 'IfcCourse vs IfcRail': 2 },
-        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
-      },
-      rulesRun: [],
-      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
-    };
-    s.get().setClashResult(result);
+    s.get().setClashResult(epsilonResult());
+    // An exclusion that actually matches, so the re-derivation has to run
+    // against the RAW run rather than its own previous output.
+    const rule = typePairExclusion('IfcBeam', 'IfcBeam');
+    assert.deepStrictEqual(s.get().addClashExclusion(rule), { ok: true });
+    assert.strictEqual(s.get().clashSuppressedCount, 1, 'precondition: the beam pair is hidden');
+    assert.strictEqual(s.get().clashExclusionCounts.get(rule.id), 1);
     assert.strictEqual(s.get().clashClusterEpsilon, 1.5, 'default radius');
     assert.strictEqual(s.get().clashGroups?.length, 2, 'default 1.5m radius keeps the two clashes apart');
 
@@ -173,6 +201,17 @@ describe('user-defined clash exclusions (store)', () => {
     );
     // The filtered result itself must be untouched by a pure view-setting change.
     assert.strictEqual(s.get().clashResult?.clashes.length, 2);
+    assert.strictEqual(s.get().clashRawResult?.clashes.length, 3, 'the raw run is never re-filtered in place');
+    assert.strictEqual(
+      s.get().clashSuppressedCount,
+      1,
+      'the hidden-clash count must survive a radius change — re-deriving from the FILTERED result would zero it',
+    );
+    assert.strictEqual(
+      s.get().clashExclusionCounts.get(rule.id),
+      1,
+      "the rule's own reach must survive a radius change too",
+    );
   });
 
   it('resetClashSettings re-derives clashGroups with the default radius (#2535)', () => {
@@ -182,22 +221,9 @@ describe('user-defined clash exclusions (store)', () => {
     // Issues view kept the clusters computed at the old radius until the next
     // run.
     const s = slice();
-    const clashes = [
-      clashAt(rail1, ballast, [0, 0, 0]),
-      clashAt(rail2, ballast, [5, 0, 0]),
-    ];
-    const result: ClashResult = {
-      clashes,
-      summary: {
-        total: 2,
-        byRule: { 'all-clashes': 2 },
-        byTypePair: { 'IfcCourse vs IfcRail': 2 },
-        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
-      },
-      rulesRun: [],
-      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
-    };
-    s.get().setClashResult(result);
+    s.get().setClashResult(epsilonResult());
+    const rule = typePairExclusion('IfcBeam', 'IfcBeam');
+    assert.deepStrictEqual(s.get().addClashExclusion(rule), { ok: true });
     s.get().setClashClusterEpsilon(10);
     assert.strictEqual(s.get().clashGroups?.length, 1, 'precondition: 10m radius merges the 5m-apart pair');
 
@@ -209,26 +235,19 @@ describe('user-defined clash exclusions (store)', () => {
       2,
       'the derived grouping must follow the reset radius immediately, without a re-run',
     );
+    // Resetting the DETECTION settings must not silently reset the user's
+    // exclusion bookkeeping: the rules themselves are untouched, so their
+    // counts must be recomputed from the raw run, not from the filtered one.
+    assert.strictEqual(s.get().clashRawResult?.clashes.length, 3);
+    assert.strictEqual(s.get().clashSuppressedCount, 1);
+    assert.strictEqual(s.get().clashExclusionCounts.get(rule.id), 1);
   });
 
   it('applyClashFlavorConfig re-derives clashGroups with the flavor radius (#2535)', () => {
     const s = slice();
-    const clashes = [
-      clashAt(rail1, ballast, [0, 0, 0]),
-      clashAt(rail2, ballast, [5, 0, 0]),
-    ];
-    const result: ClashResult = {
-      clashes,
-      summary: {
-        total: 2,
-        byRule: { 'all-clashes': 2 },
-        byTypePair: { 'IfcCourse vs IfcRail': 2 },
-        bySeverity: { critical: 0, major: 2, minor: 0, info: 0 },
-      },
-      rulesRun: [],
-      settings: { tolerance: 0.002, excludeVoidsAndHosts: true },
-    };
-    s.get().setClashResult(result);
+    s.get().setClashResult(epsilonResult());
+    const rule = typePairExclusion('IfcBeam', 'IfcBeam');
+    assert.deepStrictEqual(s.get().addClashExclusion(rule), { ok: true });
     assert.strictEqual(s.get().clashGroups?.length, 2, 'precondition: default 1.5m radius keeps the pair apart');
 
     s.get().applyClashFlavorConfig({
@@ -242,6 +261,11 @@ describe('user-defined clash exclusions (store)', () => {
       1,
       'activating a flavor must regroup at its radius immediately, without a re-run',
     );
+    // A flavor carries detection settings, not exclusions — so the user's
+    // rules and their reported reach must come through the switch intact.
+    assert.strictEqual(s.get().clashRawResult?.clashes.length, 3);
+    assert.strictEqual(s.get().clashSuppressedCount, 1);
+    assert.strictEqual(s.get().clashExclusionCounts.get(rule.id), 1);
   });
 
   it('a settings change leaves a manual duplicate-scan grouping alone (#2535)', () => {

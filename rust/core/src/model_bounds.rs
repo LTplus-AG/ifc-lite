@@ -320,13 +320,13 @@ mod tests {
     #[test]
     fn test_large_coordinates_detection() {
         let mut bounds = ModelBounds::new();
+        // TWO distinct points: with a single sample min == max == centroid, so
+        // the assertion below cannot tell the bbox CENTRE from either corner.
         bounds.expand(2679012.0, 1247892.0, 432.0); // Swiss UTM coordinates
-
+        bounds.expand(2679112.0, 1248092.0, 632.0);
         assert!(bounds.has_large_coordinates());
-
-        let offset = bounds.rtc_offset();
-        assert_eq!(offset.0, 2679012.0);
-        assert_eq!(offset.1, 1247892.0);
+        // The RTC offset is the bbox centre, not a corner, on ALL THREE axes.
+        assert_eq!(bounds.rtc_offset(), (2679062.0, 1247992.0, 532.0));
     }
 
     #[test]
@@ -411,35 +411,34 @@ END-ISO-10303-21;
 
     #[test]
     fn test_precision_preserved_with_rtc() {
-        // Simulate what happens with and without RTC
-
-        // Large Swiss UTM coordinates
-        let x1 = 2679012.123456_f64;
-        let x2 = 2679012.223456_f64; // 0.1m apart
+        // The shift subtracted here is the PRODUCTION offset (`rtc_offset()` on a
+        // real `ModelBounds`), not an inline `(x1 + x2) / 2.0`. The earlier version
+        // called no production code at all, so it asserted only a property of
+        // IEEE-754 and stayed green even if the whole RTC feature were deleted.
+        let x1 = 2679012.123456_f64; // large Swiss UTM coordinates,
+        let x2 = 2679012.223456_f64; // 0.1 m apart
         let expected_diff = 0.1;
 
-        // WITHOUT RTC: Convert directly to f32 (loses precision)
-        let x1_f32_direct = x1 as f32;
-        let x2_f32_direct = x2 as f32;
-        let diff_direct = x2_f32_direct - x1_f32_direct;
-        let error_direct = (diff_direct as f64 - expected_diff).abs();
+        let mut bounds = ModelBounds::new();
+        bounds.expand(x1, 1247892.0, 432.0);
+        bounds.expand(x2, 1247892.5, 432.5);
+        assert!(bounds.has_large_coordinates(), "premise: large coords");
 
-        // WITH RTC: Subtract centroid first (in f64), then convert
-        let centroid = (x1 + x2) / 2.0;
-        let x1_shifted = (x1 - centroid) as f32;
-        let x2_shifted = (x2 - centroid) as f32;
-        let diff_rtc = x2_shifted - x1_shifted;
-        let error_rtc = (diff_rtc as f64 - expected_diff).abs();
+        // WITHOUT RTC: cast straight to f32. At ~2.7e6 the f32 ulp is 0.25 m, so
+        // this really does destroy the 0.1 m separation. Pinning that keeps the
+        // comparison below from passing on two equally-good numbers.
+        let diff_direct = ((x2 as f32) - (x1 as f32)) as f64;
+        let error_direct = (diff_direct - expected_diff).abs();
+        assert!(error_direct > 0.01, "premise: cast must lose 0.1 m");
 
-        println!("Without RTC: diff={}, error={}", diff_direct, error_direct);
-        println!("With RTC: diff={}, error={}", diff_rtc, error_rtc);
-
-        // RTC should give much better precision
-        // At ~2.7M magnitude, f32 has ~0.25m precision
-        // After shifting to small values, f32 has sub-mm precision
+        // WITH RTC: subtract the offset the pipeline applies (in f64), then cast.
+        let (offset_x, _, _) = bounds.rtc_offset();
+        let diff_rtc = (((x2 - offset_x) as f32) - ((x1 - offset_x) as f32)) as f64;
+        let error_rtc = (diff_rtc - expected_diff).abs();
         assert!(
-            error_rtc < error_direct * 0.1 || error_rtc < 0.0001,
-            "RTC should significantly improve precision"
+            error_rtc < 1.0e-6,
+            "RTC-shifted f32 must keep the 0.1 m separation (diff={diff_rtc}, err={error_rtc})"
         );
+        assert!(error_rtc < error_direct * 0.1, "RTC must improve precision");
     }
 }

@@ -150,6 +150,10 @@ function assertPresentationGone(where: string): void {
   assert.equal(s.ghostExceptEntities, null, `${where} must not leave the scene ghosted with nothing selected`);
 }
 
+// The seq assertions below are the PRODUCER half only: this file seeds a
+// resolved presentation with no hook and no kernel, so no compute is ever in
+// flight here. That the bump actually stops a landing compute is pinned
+// end-to-end in `hooks/useClash.solid-inflight-invalidation.test.tsx`.
 describe('model-lifecycle teardown drops the intersection-solid presentation (#2654 review)', () => {
   beforeEach(() => {
     seedResolvedSolidPresentation();
@@ -162,7 +166,7 @@ describe('model-lifecycle teardown drops the intersection-solid presentation (#2
     assertPresentationGone('opening another file (resetViewerState)');
     assert.ok(
       useViewerStore.getState().clashSolidRequestSeq > seq,
-      'resetViewerState must also invalidate an in-flight compute (seq bump)',
+      'resetViewerState must also bump clashSolidRequestSeq, the token a landing compute is checked against',
     );
   });
 
@@ -172,7 +176,7 @@ describe('model-lifecycle teardown drops the intersection-solid presentation (#2
     assertPresentationGone('clearAllModels');
     assert.ok(
       useViewerStore.getState().clashSolidRequestSeq > seq,
-      'clearAllModels must also invalidate an in-flight compute (seq bump)',
+      'clearAllModels must also bump clashSolidRequestSeq, the token a landing compute is checked against',
     );
   });
 
@@ -188,7 +192,7 @@ describe('model-lifecycle teardown drops the intersection-solid presentation (#2
     assertPaintChannelReleased('removeModel');
     assert.ok(
       useViewerStore.getState().clashSolidRequestSeq > seq,
-      'removeModel must also invalidate an in-flight compute (seq bump)',
+      'removeModel must also bump clashSolidRequestSeq, the token a landing compute is checked against',
     );
   });
 

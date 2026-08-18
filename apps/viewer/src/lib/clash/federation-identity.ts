@@ -166,3 +166,94 @@ export function clashFederationIsCurrent(
   }
   return true;
 }
+
+/**
+ * The identity a published result was computed on, bound to the RESULT OBJECT.
+ *
+ * Publish-time currency (above) only stops a run from landing after its
+ * federation is gone. It says nothing about a result already on screen, and
+ * that result can be superseded in place: a collab peer edit re-derives the
+ * model from the CRDT and calls `setIfcDataStore`, swapping the entity table
+ * under the same model id while `idOffset` and `maxExpressId` stay put. Every
+ * ref then still looks resolvable and resolves to the WRONG element — a row
+ * reading "Wall A vs Wall B" isolating and colouring two other walls (#2697).
+ * So the identity has to outlive the publish, and something has to be able to
+ * ask a result "do your refs still mean what you meant?".
+ *
+ * A WeakMap keyed on the result, rather than a field beside it in the store,
+ * because the two must not be able to disagree. A sibling field is written by
+ * one setter and read by another, and anything that puts a result into the
+ * store by a different route (a direct `setState`, a fixture) leaves the field
+ * describing a result that is no longer there — a stale identity refusing a
+ * perfectly good result. Bound to the object, an identity cannot be observed
+ * with anything but the result it was captured for, a result that never had one
+ * simply has none (read as "unknown", never refused), and nothing has to be
+ * cleared on teardown: the entry dies with the result.
+ */
+const identities = new WeakMap<object, ClashFederationIdentity>();
+
+/** Bind `identity` to the result it was computed on. Call at the publish site. */
+export function rememberFederationIdentity(
+  result: object,
+  identity: ClashFederationIdentity,
+): void {
+  identities.set(result, identity);
+}
+
+/**
+ * Does ONE model still hold the id space this result's refs into it were
+ * computed against?
+ *
+ * Deliberately per-model rather than the whole-federation
+ * {@link clashFederationIsCurrent}. The two answer different questions.
+ * Whole-federation is the right question at PUBLISH time — a result is written
+ * once, as a unit, and one missing model makes the write as a whole wrong. Per
+ * REF, the question is only ever "does this one number still mean what it meant
+ * in this one model", and answering it with the federation-wide verdict would
+ * disable rows that are perfectly sound: unload the second of two files and
+ * every row wholly inside the first would stop working, though nothing about
+ * its ids moved.
+ *
+ * `true` whenever the answer is not known to be `false`: a result with no
+ * recorded identity (hand-built fixture, or published before this existed), and
+ * a model the identity has no entry for (the run took no elements from it, so
+ * it holds no ref). Unknown must never refuse — a false refusal is the inert
+ * panel this whole PR exists to fix.
+ *
+ * A model that has LEFT `models` IS refused, and that is the one asymmetry
+ * with the paragraph above: absence is not the same kind of ignorance. A model
+ * the identity has no entry for is genuinely unknown to this result — the run
+ * took nothing from it, so no ref points into it and its state cannot make any
+ * number wrong. A model the identity NAMES and that is gone is known-gone: the
+ * result holds refs into an id space that is no longer loaded, and there is no
+ * honest answer for them.
+ *
+ * It used to return `true` here, on the reasoning that the two paths which drop
+ * a model unregister it from the federation registry in the same breath
+ * (`removeModel` → `unregisterModel`, `clearAllModels` → `clear()`), so the
+ * caller's fallback range search would simply find nothing. That holds only for
+ * a model the registry ever HELD. The collab room model is put into `models` by
+ * `collabSlice`'s `upsertModel({ id: 'room:<id>', idOffset: 0 })` and never goes
+ * through `registerModelOffset`, so `unregisterModel` is a no-op on it and there
+ * is nothing to forget — while a normally loaded file's registered range still
+ * covers the same low numbers. Leaving a room keeps the published result
+ * (`removeModel` ends the clash PRESENTATION, it does not clear the result), so
+ * the rows stayed clickable and range-searched into a different file, isolating
+ * and colouring two of ITS elements with no error at all (measured in review).
+ *
+ * So this catches two shapes, not one: the model still there under the same id
+ * holding a DIFFERENT id space, and the model that is no longer there at all.
+ */
+export function clashRefModelIsCurrent(
+  result: object | null | undefined,
+  modelId: string,
+  models: ReadonlyMap<string, FederationModelIdentity>,
+): boolean {
+  if (!result) return true;
+  const identity = identities.get(result);
+  if (!identity || !identity.has(modelId)) return true;
+  const current = models.get(modelId);
+  // Named by the identity and no longer loaded: known-gone, not unknown.
+  if (!current) return false;
+  return identityToken(current) === identity.get(modelId);
+}

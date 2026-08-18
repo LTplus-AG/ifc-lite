@@ -7,9 +7,17 @@
  * the wasm binding's own contract, `isSolid` / `degenerateReason` /
  * `thicknessM` / `requiredM`, is exactly what the viewer's fallback UI reads,
  * so a mocked kernel would test our own assumptions about the contract
- * instead of the contract). Two fixtures: a deep box overlap (must resolve a
- * solid with the right volume) and two disjoint boxes (must fall back
- * cleanly with `no-overlap` and zero geometry).
+ * instead of the contract). Four fixtures: a deep box overlap (must resolve a
+ * solid with the right volume), two disjoint boxes (`no-overlap`), an empty
+ * operand (`empty-operand`), and an operand whose index points past its own
+ * vertex list (`malformed-operand`).
+ *
+ * The DECLARATION-parity half — that `ClashSolidDegenerateReason` lists exactly
+ * the reasons `clash_solid.rs` can emit — is not here. It can only be made by
+ * reading both sources, which is a source-text assertion and banned in test
+ * files; it lives as a lint in
+ * `scripts/check-clash-degenerate-reason-parity.mjs`, with its own regression
+ * harness alongside it.
  */
 
 import { describe, it } from 'node:test';
@@ -137,5 +145,21 @@ describe('computeClashIntersectionSolid (real wasm)', () => {
     assert.equal(result.isSolid, false);
     if (result.isSolid) return;
     assert.equal(result.reason, 'empty-operand');
+  });
+
+  it('reports malformed-operand when an index points past its own operand', async (t) => {
+    if (!ensureWasm(t)) return;
+    const a = boxMesh([0, 0, 0], [2, 2, 2]);
+    const b = boxMesh([1, 1, 1], [3, 3, 3]);
+    // Deeply overlapping pair — so the ONLY thing that can make this degenerate
+    // is the malformation, not the geometry. Point one index past the end of
+    // B's own vertex list: the kernel's `mesh_from` rejects the whole operand
+    // rather than silently dropping the triangle.
+    const badIndices = Uint32Array.from(b.indices);
+    badIndices[0] = b.positions.length / 3;
+    const result = await computeClashIntersectionSolid(a.positions, a.indices, b.positions, badIndices);
+    assert.equal(result.isSolid, false);
+    if (result.isSolid) return;
+    assert.equal(result.reason, 'malformed-operand');
   });
 });

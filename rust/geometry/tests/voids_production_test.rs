@@ -19,6 +19,9 @@
 //!   - `tests/models/various/issue-604-door.ifc` (issue #604, PR #605 head)
 //!   - `tests/models/ara3d/AC-20-Smiley-West-10-Bldg.ifc` (issue #584)
 //!
+//! Only `issue-604-door.ifc` is in `tests/models/manifest.json`; the
+//! Smiley-West case is manual-only (see `issue_584_smiley_west_test.rs`).
+//!
 //! These tests are gated on the fixtures being present so CI without
 //! large model downloads does not flake. Preserves every assertion from
 //! the former `production_void_path_test.rs`.
@@ -153,7 +156,13 @@ fn production_fixture_walls_have_holes() {
 /// Sweep ALL host walls in Smiley-West and report how many fail the
 /// "wall has a hole" test. This is the production-coverage canary —
 /// PR #626's "0 fallbacks" claim should mean `failed == 0` here.
+///
+/// NOTE: `AC-20-Smiley-West-10-Bldg.ifc` is not in `tests/models/manifest.json`,
+/// so `pnpm fixtures` never supplies it and this test can only skip in CI. It is
+/// `#[ignore]` so that is explicit; source the fixture per the recipe in
+/// `issue_584_smiley_west_test.rs` and run with `-- --ignored`.
 #[test]
+#[ignore = "fixture AC-20-Smiley-West-10-Bldg.ifc is not in the manifest; source it manually (see issue_584_smiley_west_test.rs) and run with --ignored"]
 fn production_smiley_all_host_walls_have_holes() {
     let content = match load_fixture("tests/models/ara3d/AC-20-Smiley-West-10-Bldg.ifc") {
         Some(c) => c,

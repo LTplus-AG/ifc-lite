@@ -17,7 +17,12 @@
 //! The known-failing case asserts the CORRECT behaviour under
 //! `#[should_panic]`: when the gate learns the normal-projected band, the
 //! assertion stops panicking, the `should_panic` itself fails, and the
-//! attribute must be removed — the corpus cannot rot silently.
+//! attribute must be removed — the corpus cannot rot silently. The expectation
+//! string names the WITHHELD panic specifically (`world-frame corpus
+//! [withheld]`), so a partial fix that starts trusting the far solid but
+//! computes the wrong volume hits the textually distinct `[wrong-volume]`
+//! assertion and fails, instead of matching the attribute and still reading as
+//! the known failure.
 
 use super::{DegenerateReason, IntersectionSolid, intersection_solid};
 use crate::world_frame_fixture::{
@@ -89,20 +94,27 @@ fn counter_case_a_sub_band_overlap_at_the_origin_stays_withheld() {
 // stops panicking and the `should_panic` fails: remove the attribute (and
 // this comment) in that PR.
 #[test]
-#[should_panic(expected = "world-frame corpus")]
+// The expectation names the WITHHELD case specifically. The two panic sites in
+// this test say textually distinct things, so a partial fix that starts
+// trusting the solid but computes the WRONG volume fails loudly instead of
+// matching the `should_panic` and still reading as KNOWN-FAILING.
+#[should_panic(expected = "world-frame corpus [withheld]")]
 fn a_5mm_overlap_10km_out_in_x_must_still_be_a_solid() {
     let (a, b) = overlapping_pair(WorldFrameCase::FarBaked);
     let solid = intersection_solid(&a, &b);
     let volume = solid.volume_m3().unwrap_or_else(|| {
         panic!(
-            "world-frame corpus: the SAME genuine 5 mm overlap that is a Solid at the \
-             origin must be a Solid 10 km out in X (offset axis X, contact normal Z); \
-             got {solid:?}"
+            "world-frame corpus [withheld]: the SAME genuine 5 mm overlap that is a \
+             Solid at the origin must be a Solid 10 km out in X (offset axis X, \
+             contact normal Z); got {solid:?}"
         )
     });
     let expected = 1.0 * 1.0 * OVERLAP_M;
     assert!(
         (volume - expected).abs() < 1e-4,
-        "world-frame corpus: far-placement volume {volume} vs expected {expected}"
+        "world-frame corpus [wrong-volume]: the gate returned a Solid 10 km out, but \
+         its far-placement volume {volume} does not match the expected {expected} \
+         (this is NOT the known failure — the gate now trusts the solid and must \
+         compute it correctly)"
     );
 }

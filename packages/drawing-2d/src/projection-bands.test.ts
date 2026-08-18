@@ -62,6 +62,35 @@ describe('classifyDepthRange', () => {
     expect(classifyDepthRange(3, 5, bands)).toBe('overhead');
   });
 
+  // Every other `depths` fixture in this file is symmetric ({below: 3, above: 3},
+  // {below: 5, above: 5}, and the zero/epsilon pair), which makes `depths.below`
+  // and `depths.above` interchangeable: swapping the two field reads inside
+  // classifyDepthRange left this whole describe green. The asymmetric bands
+  // below pin each band against its OWN half-space.
+  describe('asymmetric bands (below ≠ above)', () => {
+    const bands = { below: 2, above: 6 };
+
+    it('a range inside the deep overhead band is overhead, not culled', () => {
+      // 4..5 sits above the cut and within above = 6, but well past below = 2.
+      // Reading `below` here instead of `above` would cull real overhead
+      // geometry — the roof/soffit case in a plan view with a tall storey.
+      expect(classifyDepthRange(4, 5, bands)).toBe('overhead');
+    });
+
+    it('a range past the shallow below band is culled, not made visible', () => {
+      // -5..-4 is below the cut but past below = 2. Reading `above` (6) here
+      // would keep a whole storey's worth of floor-below geometry visible.
+      expect(classifyDepthRange(-5, -4, bands)).toBe('cull');
+    });
+
+    it('the two bands stay independent for a range straddling the cut', () => {
+      // -1..5 is inside below = 2 on one side and inside above = 6 on the
+      // other, so it must span; with the fields swapped, -1 ≥ -6 still holds
+      // but 5 ≤ 2 does not, and it would degrade to 'visible'.
+      expect(classifyDepthRange(-1, 5, bands)).toBe('spanning');
+    });
+  });
+
   it('zero-width bands cull a near-plane element; the 1mm floor keeps it (R1)', () => {
     const dNearBelow = -0.0005; // just below the cut
     expect(classifyDepthRange(dNearBelow, dNearBelow, { below: 0, above: 0 })).toBe('cull');

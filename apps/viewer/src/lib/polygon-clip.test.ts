@@ -10,6 +10,16 @@ function approxEqual(a: number, b: number, tol = 1e-6) {
   return Math.abs(a - b) <= tol;
 }
 
+/** Absolute shoelace area — orientation-independent, like the clipper. */
+function polygonArea(p: Point2D[]): number {
+  let s = 0;
+  for (let i = 0; i < p.length; i++) {
+    const q = p[(i + 1) % p.length];
+    s += p[i][0] * q[1] - q[0] * p[i][1];
+  }
+  return Math.abs(s) / 2;
+}
+
 function polygonsApproxEqual(a: Point2D[], b: Point2D[]): boolean {
   if (a.length !== b.length) return false;
   // Polygons may start at different vertices but should be the
@@ -79,6 +89,54 @@ describe('polygon-clip', () => {
       // Each half is a triangle.
       assert.strictEqual(r.left.length, 3);
       assert.strictEqual(r.right.length, 3);
+    });
+
+    // The fixture above puts the apex at signed distance EXACTLY 0, and every
+    // other fixture in this file uses exact integers or 0.5 — so the smallest
+    // non-zero |d| the suite ever sees is large, and EPS was pinned only from
+    // below (it must be > 0). Anything up to ~0.4 passed, including values that
+    // silently swallow real vertices. These two cases bracket it from both
+    // sides. The cut line here is [1,2] → [1,-1], so signedDistance of a vertex
+    // is 3·(x − 1): the apex offsets below are 3e-12 and 0.15 in EPS units.
+    it('treats an apex a hair off the cut line as ON the line (EPS lower bound)', () => {
+      const tri: Point2D[] = [
+        [0, 0],
+        [2, 0],
+        [1 + 1e-12, 2],
+      ];
+      const r = clipPolygonByLine(tri, [1, 2], [1, -1]);
+      assert.ok(r.ok);
+      // Within EPS the apex belongs to BOTH halves, so each stays a clean
+      // triangle of area 1. With EPS too small (0, or any value under 3e-12)
+      // the apex is a hair to the right, and the left half picks up a fourth
+      // vertex — a zero-width sliver that a mesher will choke on.
+      assert.strictEqual(r.left.length, 3, `left: ${JSON.stringify(r.left)}`);
+      assert.strictEqual(r.right.length, 3, `right: ${JSON.stringify(r.right)}`);
+      assert.ok(approxEqual(polygonArea(r.left), 1, 1e-9));
+      assert.ok(approxEqual(polygonArea(r.right), 1, 1e-9));
+    });
+
+    it('keeps an apex genuinely off the cut line off it (EPS upper bound)', () => {
+      const tri: Point2D[] = [
+        [0, 0],
+        [2, 0],
+        [1.05, 2],
+      ];
+      const r = clipPolygonByLine(tri, [1, 2], [1, -1]);
+      assert.ok(r.ok);
+      // The apex is 0.05 to the right of the cut: the right-of-cut half is a
+      // QUADRILATERAL and must still contain the apex verbatim. An oversized
+      // EPS (anything from ~0.05 up) snaps the apex onto the line, drops it
+      // from the output, and the two halves then cover 2.005 rather than the
+      // triangle's true area of 2 — geometry invented out of a tolerance.
+      assert.strictEqual(r.left.length, 4, `left: ${JSON.stringify(r.left)}`);
+      assert.strictEqual(r.right.length, 3, `right: ${JSON.stringify(r.right)}`);
+      assert.ok(
+        r.left.some((p) => approxEqual(p[0], 1.05, 1e-12) && approxEqual(p[1], 2, 1e-12)),
+        `apex must survive the clip: ${JSON.stringify(r.left)}`,
+      );
+      const total = polygonArea(r.left) + polygonArea(r.right);
+      assert.ok(approxEqual(total, 2, 1e-9), `halves must partition the triangle, got ${total}`);
     });
 
     it('rejects a cut that misses the polygon', () => {

@@ -119,17 +119,25 @@ fn yup_frame_round_trips_and_restores_winding() {
         tri.swap(1, 2);
     }
     let normals_y = vec![0.0; positions_y.len()];
+    // A non-zero per-mesh origin with three distinct components, so the
+    // `yup_to_zup(rec.origin)` swap is observable: with `origin: [0; 3]`
+    // (or any origin whose components coincide) dropping the swap moves
+    // nothing, and `let origin = rec.origin;` passes unnoticed.
+    let origin_z = [1.0, 2.0, 3.0];
+    let origin_y = zup_to_yup(origin_z);
     let rec = SimplifyRecordInput {
         positions: &positions_y,
         normals: &normals_y,
         indices: &indices_y,
-        origin: [0.0; 3],
+        origin: origin_y,
         // Identity conjugates to identity.
         local_to_world: Some(IDENTITY),
     };
     let out = simplify_element(&[rec], 5, [0.0; 3], 1.0, true).unwrap();
 
-    // IFC-local output must be back in Z-up: extents match the Z-up box.
+    // IFC-local output must be back in Z-up: the Z-up box [0,2]x[0,3]x[0,4]
+    // offset by the Z-up origin (1,2,3) => [1,3]x[2,5]x[3,7]. Skipping the
+    // origin swap would place it at [1,3]x[3,6]x[2,6] instead.
     let (mut lmin, mut lmax) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
     for c in out.local_positions.chunks_exact(3) {
         for k in 0..3 {
@@ -137,12 +145,25 @@ fn yup_frame_round_trips_and_restores_winding() {
             lmax[k] = lmax[k].max(c[k]);
         }
     }
-    assert!((lmax[0] - 2.0).abs() < 1e-6);
-    assert!((lmax[1] - 3.0).abs() < 1e-6);
-    assert!((lmax[2] - 4.0).abs() < 1e-6);
+    let expect_lmin = [1.0, 2.0, 3.0];
+    let expect_lmax = [3.0, 5.0, 7.0];
+    for k in 0..3 {
+        assert!(
+            (lmin[k] - expect_lmin[k]).abs() < 1e-6,
+            "local min axis {k}: {} != {}",
+            lmin[k],
+            expect_lmin[k]
+        );
+        assert!(
+            (lmax[k] - expect_lmax[k]).abs() < 1e-6,
+            "local max axis {k}: {} != {}",
+            lmax[k],
+            expect_lmax[k]
+        );
+    }
 
-    // Render output stays in the caller's Y-up frame: the Z-up box
-    // [0,2]x[0,3]x[0,4] swaps to x[0,2], y[0,4], z[-3,0]; positions are
+    // Render output stays in the caller's Y-up frame: the Z-up world box
+    // [1,3]x[2,5]x[3,7] swaps to x[1,3], y[3,7], z[-5,-2]; positions are
     // relative to render_origin, so reconstruct world = origin + p.
     let (mut rmin, mut rmax) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
     for c in out.render_positions.chunks_exact(3) {
@@ -152,10 +173,22 @@ fn yup_frame_round_trips_and_restores_winding() {
             rmax[k] = rmax[k].max(w);
         }
     }
-    assert!((rmax[0] - 2.0).abs() < 1e-5);
-    assert!((rmax[1] - 4.0).abs() < 1e-5);
-    assert!((rmin[2] - -3.0).abs() < 1e-5);
-    assert!(rmax[2].abs() < 1e-5);
+    let expect_rmin = [1.0, 3.0, -5.0];
+    let expect_rmax = [3.0, 7.0, -2.0];
+    for k in 0..3 {
+        assert!(
+            (rmin[k] - expect_rmin[k]).abs() < 1e-5,
+            "render min axis {k}: {} != {}",
+            rmin[k],
+            expect_rmin[k]
+        );
+        assert!(
+            (rmax[k] - expect_rmax[k]).abs() < 1e-5,
+            "render max axis {k}: {} != {}",
+            rmax[k],
+            expect_rmax[k]
+        );
+    }
 }
 
 #[test]

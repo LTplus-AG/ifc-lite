@@ -97,7 +97,10 @@ export function buildEntityRefsFromIndex(
     let p = 0;
     while (p < limit && record[p] !== EQ) p++;
     p++;
-    while (p < limit && (record[p] === SPACE || record[p] === TAB)) p++;
+    while (
+      p < limit
+      && (record[p] === SPACE || record[p] === TAB || record[p] === LF || record[p] === CR)
+    ) p++;
     const typeStart = p;
     while (
       p < limit

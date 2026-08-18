@@ -98,6 +98,23 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     const refs = scanFast('#1=IFCWALL(1);\n#2=IFCWALL(1);');
     expect(refs.map((r) => r.type)).toEqual(['IFCWALL', 'IFCWALL']);
   });
+
+  // Coverage gap found while auditing whitespace-around-`=` handling
+  // elsewhere in the parser: nothing exercised the whitespace skip between
+  // the express-id digits and `=` (deleting that skip left all tests green).
+  // Both forms below are legal STEP and were already handled correctly by
+  // this scanner; these tests just make that fact falsifiable.
+  it('tolerates a space between the express-id digits and `=`', () => {
+    const refs = scanFast('#1 =IFCWALL($);');
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+    expect(refs.map((r) => r.type)).toEqual(['IFCWALL']);
+  });
+
+  it('tolerates a newline between the express-id digits and `=`', () => {
+    const refs = scanFast('#1\n=IFCWALL($);');
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+    expect(refs.map((r) => r.type)).toEqual(['IFCWALL']);
+  });
 });
 
 describe('StepTokenizer.scanEntities (paren-matching scan)', () => {

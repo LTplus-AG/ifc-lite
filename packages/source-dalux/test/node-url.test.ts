@@ -87,8 +87,19 @@ describe('node stamping is scoped to the relay', () => {
     await client.getBinary(signed);
     expect(seen[0]).toBe(signed);
 
+    // ...including forms that `new URL(x).toString()` would silently rewrite.
+    // A default port and a dot segment both normalise away, and a signature
+    // computed over the original string would no longer verify. Passing the
+    // ORIGINAL bytes through is the contract, not "an equivalent URL".
+    const normalisable = 'https://cdn.dalux.com:443/files/./abc?Signature=deadbeef';
+    expect(new URL(normalisable).toString(), 'fixture no longer demonstrates normalisation').not.toBe(
+      normalisable,
+    );
+    await client.getBinary(normalisable);
+    expect(seen[1]).toBe(normalisable);
+
     // ...while a relay-bound URL still gets the selector.
     await client.getBinary('https://node1.field.dalux.com/service/api/2.0/x/content');
-    expect(seen[1]).toContain('daluxNode=node2');
+    expect(seen[2]).toContain('daluxNode=node2');
   });
 });

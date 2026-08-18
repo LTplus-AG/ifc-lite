@@ -102,6 +102,21 @@ export class BrowserDaluxApiClient {
     url.searchParams.set('daluxNode', this.credentials.node);
   }
 
+  /**
+   * The stamped form of `rawUrl`, or undefined when nothing would be added.
+   *
+   * Returning undefined rather than the unchanged string is deliberate: it
+   * lets the caller pass the ORIGINAL bytes through instead of a re-serialised
+   * equivalent. See the note in `getBinary`.
+   */
+  private nodeSelectorFor(rawUrl: string): string | undefined {
+    if (!this.credentials.node) return undefined;
+    const parsed = new URL(rawUrl);
+    if (parsed.origin !== new URL(this.credentials.baseUrl).origin) return undefined;
+    parsed.searchParams.set('daluxNode', this.credentials.node);
+    return parsed.toString();
+  }
+
   debug(message: string, details?: Record<string, unknown>): void {
     this.ctx.log.debug(`Dalux ${message}`, details ?? {});
   }
@@ -156,9 +171,13 @@ export class BrowserDaluxApiClient {
     // Missing it here would send file downloads to the default node while
     // listings went to the user's own — the failure would look like "the file
     // is gone" rather than "wrong host".
-    const parsed = new URL(rawUrl);
-    this.stampNode(parsed);
-    const url = parsed.toString();
+    // Only re-serialise when we actually added the selector. `new URL(x)
+    // .toString()` is NOT identity: it strips a default port, normalises `.`
+    // and `..` path segments and can re-case percent escapes, any of which
+    // changes a URL whose signature was computed over the original string.
+    // Round-tripping unconditionally would have re-broken the exact links the
+    // stamping guard above exists to protect.
+    const url = this.nodeSelectorFor(rawUrl) ?? rawUrl;
     this.debug('binary GET request', { url });
     const response = await this.ctx.fetch(url, {
       headers: {

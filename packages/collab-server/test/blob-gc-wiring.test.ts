@@ -45,10 +45,10 @@ describe('blob gc wiring', () => {
   it('reads the interval and grace overrides', () => {
     const c = resolveBlobGcConfig({
       COLLAB_BLOB_GC_INTERVAL_MS: '1000',
-      COLLAB_BLOB_GC_GRACE_MS: '2000',
+      COLLAB_BLOB_GC_GRACE_MS: '120000',
     });
     expect(c.intervalMs).toBe(1000);
-    expect(c.graceMs).toBe(2000);
+    expect(c.graceMs).toBe(120_000);
   });
 
   it('startBlobGc arms a worker when enabled and none when disabled', () => {
@@ -93,8 +93,18 @@ describe('blob gc wiring', () => {
         `interval ${JSON.stringify(bad)} was accepted`,
       ).toThrow(/COLLAB_BLOB_GC_INTERVAL_MS/);
     }
-    // A grace of 0 is legitimate (sweep aggressively); an interval of 0 is not.
-    expect(resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '0' }).graceMs).toBe(0);
+    // A grace of 0 used to be accepted as "sweep aggressively". It is the
+    // DESTRUCTIVE value: cutoff becomes now, so every unreferenced blob is
+    // condemned regardless of age, including one uploaded milliseconds ago by
+    // an in-flight share. The bound belongs where the behaviour stops being
+    // safe, not where the type stops being valid.
+    expect(() => resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '0' })).toThrow(
+      /COLLAB_BLOB_GC_GRACE_MS/,
+    );
+    expect(() => resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '59999' })).toThrow(
+      /COLLAB_BLOB_GC_GRACE_MS/,
+    );
+    expect(resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '60000' }).graceMs).toBe(60_000);
     // Empty/unset falls back rather than becoming 0.
     expect(resolveBlobGcConfig({ COLLAB_BLOB_GC_GRACE_MS: '' }).graceMs).toBeGreaterThan(0);
   });
@@ -122,5 +132,39 @@ describe('blob gc wiring', () => {
     // the counter before runOnce executes, so a name check passes even if a
     // successful sweep never increments it. Measure the delta instead.
     expect(sweepCount()).toBeGreaterThan(before);
+  });
+
+  it('sweeps once at boot, not only after the first interval elapses', async () => {
+    // setInterval does not fire immediately, so with the 6h default a process
+    // restarting more often than that never completes a sweep: present in the
+    // code, absent in effect (#2804). Hosted deploys restart on redeploy, OOM
+    // and platform events, so this is the normal case.
+    const dataDir = tmp();
+    const blobsDir = path.join(dataDir, 'blobs');
+    fs.mkdirSync(blobsDir, { recursive: true });
+    fs.writeFileSync(path.join(dataDir, 'room.log'), Buffer.alloc(0));
+    const orphan = path.join(blobsDir, 'b'.repeat(32));
+    fs.writeFileSync(orphan, Buffer.from([1]));
+    const old = (Date.now() - 7 * 24 * 3600_000) / 1000;
+    fs.utimesSync(orphan, old, old);
+
+    // A deliberately huge interval: if the sweep only happened on the timer,
+    // nothing could have run by the time this test finishes.
+    const worker = startBlobGc({
+      dataDir,
+      storage: new FsBlobStorage(dataDir),
+      config: { enabled: true, intervalMs: 60 * 60 * 1000, graceMs: 60_000 },
+    });
+    expect(worker).not.toBeNull();
+
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline && fs.existsSync(orphan)) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    worker!.stop();
+    expect(
+      fs.existsSync(orphan),
+      'nothing was swept before the first interval elapsed, so a server restarting inside the interval never GCs',
+    ).toBe(false);
   });
 });

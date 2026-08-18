@@ -58,7 +58,7 @@ describe('blob gc entrypoint', () => {
     for (const h of [REFERENCED, ORPHAN]) {
       const f = path.join(blobsDir, h);
       fs.writeFileSync(f, Buffer.from([1, 2, 3]));
-      const old = (Date.now() - 60_000) / 1000;
+      const old = (Date.now() - 7 * 24 * 3600_000) / 1000;
       fs.utimesSync(f, old, old);
     }
 
@@ -75,7 +75,9 @@ describe('blob gc entrypoint', () => {
         COLLAB_PORT: '0',
         COLLAB_DATA_DIR: dataDir,
         COLLAB_BLOB_GC_INTERVAL_MS: '300',
-        COLLAB_BLOB_GC_GRACE_MS: '50',
+        // Must clear MIN_BLOB_GC_GRACE_MS: a zero/near-zero grace is the
+        // destructive value, so the entrypoint now refuses to start on one.
+        COLLAB_BLOB_GC_GRACE_MS: '60000',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
     });

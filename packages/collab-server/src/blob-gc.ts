@@ -84,6 +84,24 @@ export const DEFAULT_BLOB_GC_GRACE_MS = 24 * 60 * 60 * 1000;
  */
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
+/**
+ * Smallest grace window an operator may configure.
+ *
+ * Zero used to be legal, and zero is the destructive value: it makes `cutoff`
+ * equal to `now`, so EVERY unreferenced blob is condemned regardless of age,
+ * including one uploaded milliseconds earlier by an in-flight share whose doc
+ * reference has not landed yet. The grace window exists precisely to cover that
+ * PUT-then-reference gap, so allowing it to be switched off defeats the only
+ * protection the sweep has.
+ *
+ * A minute is far above the real race (a single HTTP round trip) while still
+ * letting an operator sweep aggressively. The bound belongs where the behaviour
+ * stops being safe, not where the type stops being valid; tests that need a
+ * tighter window pass `graceMs` to the worker directly rather than through the
+ * environment.
+ */
+const MIN_BLOB_GC_GRACE_MS = 60_000;
+
 export interface BlobGcPlan {
   /** Blob hashes safe to delete. */
   readonly deleteHashes: string[];
@@ -300,6 +318,20 @@ export class BlobGcWorker {
 
   start(): void {
     if (this.timer) return;
+    // Sweep once at boot, BEFORE arming the interval. `setInterval` does not
+    // fire immediately, so with the default 6h period a process that restarts
+    // more often than that never completes a sweep at all: the GC is present
+    // in the code and absent in effect, and the volume fills exactly as in
+    // #2790. Hosted deploys restart on redeploy, OOM and platform events, so
+    // this is the normal case rather than an edge one.
+    //
+    // It is deliberately not awaited: startup must not block on a disk scan,
+    // and a failure here is counted and logged like any other sweep.
+    void this.runOnce().catch((err) => {
+      this.opts.counters?.failure?.();
+      // eslint-disable-next-line no-console
+      console.error('[blob-gc] initial sweep failed:', err);
+    });
     this.timer = setInterval(
       () => {
         void this.runOnce().catch((err) => {
@@ -399,7 +431,12 @@ export function resolveBlobGcConfig(env: NodeJS.ProcessEnv = process.env): {
       1,
       MAX_TIMER_DELAY_MS,
     ),
-    graceMs: duration(env.COLLAB_BLOB_GC_GRACE_MS, DEFAULT_BLOB_GC_GRACE_MS, 'COLLAB_BLOB_GC_GRACE_MS', 0),
+    graceMs: duration(
+      env.COLLAB_BLOB_GC_GRACE_MS,
+      DEFAULT_BLOB_GC_GRACE_MS,
+      'COLLAB_BLOB_GC_GRACE_MS',
+      MIN_BLOB_GC_GRACE_MS,
+    ),
   };
 }
 

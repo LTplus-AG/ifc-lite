@@ -35,13 +35,15 @@ import {
   type ModificationLedger,
   type SourceLineDelivery,
 } from './delta-modification-ledger.js';
-import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
-import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
+import {
+  writeSourceEntityLines,
+  type SourceIterationContext,
+} from './step-source-iteration.js';
 import {
   buildRelDefinesByPropertiesIndex,
   collectPropertyAndQuantitySetMutations,
   generatePropertyAndQuantitySetEntities,
-  getPropertyIdsInSet,
   type OwnerHistoryCache,
   type PropertySetContext,
 } from './step-property-sets.js';
@@ -784,126 +786,10 @@ export class StepExporter {
       };
     }
 
-    // A modified pset is replaced wholesale, which skips ALL of its member atoms.
-    // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
-    // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
-    // shared atom would orphan every OTHER pset that still references it, leaving
-    // dangling refs and an invalid file. Keep any atom a surviving container needs.
-    this.retainSharedAtoms(pass.skipPropertySetIds, pass.allowedEntityIds);
-
-    // Export original entities from source buffer, SKIPPING modified property sets
-    if (!options.deltaOnly && this.dataStore.source) {
-      const source = this.dataStore.source;
-
-      // Extract existing entities from source. The effective index has already
-      // dropped everything the overlay tombstoned, so there is no separate
-      // deleted check to forget here.
-      for (const [expressId, entityRef] of pass.effective) {
-        // Skip overlay-only entities — emitted by the new-entities pass below.
-        // A ref this source cannot address is skipped by the same test rather
-        // than decoded: `decodeUtf8` clamps such a range and the empty string
-        // it returns used to be pushed into the file as a blank line, leaving
-        // every generated record that names the host dangling (#2491).
-        if (!pass.isReadableSourceRef(entityRef)) {
-          continue;
-        }
-
-        // Skip entities outside the visible closure
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip property sets/relationships that are being replaced
-        if (pass.skipPropertySetIds.has(expressId) || pass.skipRelationshipIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip type entities whose HasPropertySets attribute will be rewritten
-        if (pass.rewrittenEntityIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip if we're only doing geometry or specific types
-        const entityType = entityRef.type.toUpperCase();
-
-        // Skip geometry if not included
-        if (options.includeGeometry === false && this.isGeometryEntity(entityType)) {
-          continue;
-        }
-
-        // Get original entity text — decodeRange handles SAB-backed
-        // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
-        // SharedArrayBuffer-backed view; the parser deliberately keeps
-        // `source` zero-copy SAB-backed for worker sharing).
-        const entityText = decodeRange(
-          source,
-          entityRef.byteOffset,
-          entityRef.byteOffset + entityRef.byteLength
-        );
-        // Retype, named attribute edits and positional edits, in that order.
-        // Shared verbatim with the type-object `HasPropertySets` rewrite below,
-        // which writes the line this pass would otherwise have written.
-        const mutated = this.applySourceLineMutations(
-          expressId,
-          entityText,
-          entityRef.type,
-          pass.modifiedAttributes.get(expressId),
-          pass.sourceSchema,
-          pass.overlayActive,
-        );
-        let nextEntityText = mutated.text;
-
-        // A hidden PRODUCT's own line is already out of the export via
-        // `allowedEntityIds`, and a TOMBSTONED entity's via `effective` — this
-        // is the relationship that NAMED either one. `IFCREL*` is an
-        // unconditional root (see `getVisibleEntityIds`), so its bytes reach
-        // here unfiltered even when one of the ids they name was just
-        // excluded; left alone that ships a `#N` with no `#N=` line, whether
-        // the exclusion came from `visibleOnly` or from a plain deletion
-        // (#2398). Checked before the nomination below: a relationship this
-        // withholds must not also be counted as a delivered modification.
-        //
-        // Classified by the EFFECTIVE type (`effective.effectiveType`), not
-        // the authored `entityType` above: a retype can move a record across
-        // the `IFCREL*` boundary in either direction (`applySourceLineMutations`
-        // already rewrote `nextEntityText` to the new class), and this check
-        // has to agree with what actually got written, the same way
-        // `getVisibleEntityIds` already does for the visibility walk itself.
-        const effectiveRelType = pass.effective.effectiveType(expressId, entityRef.type).toUpperCase();
-        if (mayNameExcludedRefs && effectiveRelType.startsWith('IFCREL')) {
-          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, pass.isExcludedFromRelationshipRefs);
-          if (filtered === null) continue;
-          nextEntityText = filtered;
-        }
-
-        // A retype or a positional edit that CHANGED the line is what makes
-        // this entity count; a named attribute edit was already nominated by
-        // the collection pass. Both flags report effect, so retyping an entity
-        // to the class it already is — or writing a slot the token it already
-        // holds — no longer claims a modification over a line the export left
-        // byte-identical. This pass is full-export-only (`deltaOnly` skips it
-        // wholesale), so nomination IS emission here and the kinds only have to
-        // be right for the entity count — which is per entity, hence unchanged.
-        if (mutated.retyped || mutated.positional) pass.modifiedEntities.add(expressId);
-        if (mutated.retyped) pass.modifications.nominate(expressId, 'retype');
-        if (mutated.positional) pass.modifications.nominate(expressId, 'positional');
-        // The named-attribute kinds join them here rather than at their
-        // collection sites, for the same reason and on the same signal (#2483).
-        // This pass is full-export-only, so there is nothing to gate.
-        nominateDeliveredInPlaceEdits(pass.modifications, expressId, mutated, pass.inPlaceNominees);
-
-        // Apply schema conversion if exporting to a different schema version
-        if (pass.converting) {
-          const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom);
-          if (converted !== null) {
-            pass.entities.push(converted);
-          }
-          // null means entity should be skipped (no valid representation in target schema)
-        } else {
-          pass.entities.push(nextEntityText);
-        }
-      }
-    }
+    // Write every source-backed record this export keeps (#2475 step 2d),
+    // preceded — inside that call — by the shared-atom retention that decides
+    // which member atoms the skip sets may still drop.
+    writeSourceEntityLines(pass, options, mayNameExcludedRefs, this.sourceIterationContext());
 
     // Generated property/quantity sets and the type-object `HasPropertySets`
     // rewrite that resolves against them, in that one order (#2475 steps 2b
@@ -1427,11 +1313,13 @@ export class StepExporter {
    * `ownerHistory` is passed by reference — the object is this exporter's, and
    * `export()` resets it. `isReadableSourceRef` is the instance predicate, not
    * `pass.isReadableSourceRef`, because two consumers of that module
-   * (`buildRelDefinesByPropertiesIndex`, `retainSharedAtoms`) run with no pass
-   * in hand; both readers are built over the same source.
+   * (`buildRelDefinesByPropertiesIndex`, and `retainSharedAtoms` in
+   * `step-source-iteration.ts`) run with no pass in hand; both readers are
+   * built over the same source.
    *
    * Rebuilt per call, as `georefContext` is: every call site runs once per
-   * export bar `retainSharedAtoms`, which hoists it out of its loop.
+   * export bar `retainSharedAtoms`, which hoists it out of its loop — hence
+   * {@link sourceIterationContext} takes this as a thunk rather than a value.
    */
   private propertySetContext(): PropertySetContext {
     return {
@@ -1443,6 +1331,27 @@ export class StepExporter {
       ownerHistory: this.ownerHistory,
       applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive) =>
         this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive),
+    };
+  }
+
+  /**
+   * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
+   *
+   * No `allocateExpressId`: that phase never allocates an id, it only rewrites
+   * lines that already have one. `applySourceLineMutations` and
+   * `isGeometryEntity` are injected rather than moved because each has readers
+   * outside that phase — the mutation pipeline is shared with the type-object
+   * `HasPropertySets` rewrite (see {@link propertySetContext}) and with the
+   * overlay-created-entities block in `export()`; `isGeometryEntity` with the
+   * visible-only setup closure and that same block.
+   */
+  private sourceIterationContext(): SourceIterationContext {
+    return {
+      dataStore: this.dataStore,
+      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive) =>
+        this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive),
+      isGeometryEntity: (type) => this.isGeometryEntity(type),
+      propertySetContext: () => this.propertySetContext(),
     };
   }
 
@@ -1484,42 +1393,6 @@ export class StepExporter {
       'IFCCOLOURRGB',
     ]);
     return geometryTypes.has(type);
-  }
-
-  /**
-   * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
-   * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
-   * still references.
-   *
-   * When a property is edited, the modified pset is replaced and its member atoms
-   * are added to `skipIds` wholesale. Because exporters deduplicate shared
-   * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
-   * by many psets), that wholesale skip can drop an atom another pset still needs.
-   * This pass restores any such atom: the edited pset still emits its replacement
-   * with the new value, while the shared atom stays for the psets that keep their
-   * original value.
-   */
-  private retainSharedAtoms(skipIds: Set<number>, allowedEntityIds: Set<number> | null): void {
-    if (skipIds.size === 0) return;
-    // Built once for the whole sweep rather than per container: the readers in
-    // `step-property-sets.ts` take the context, and this loop calls one of them
-    // once per IfcPropertySet / IfcElementQuantity in the file.
-    const ctx = this.propertySetContext();
-    const byType = this.dataStore.entityIndex.byType;
-    const containerIds = [
-      ...(byType.get('IFCPROPERTYSET') ?? []),
-      ...(byType.get('IFCELEMENTQUANTITY') ?? []),
-    ];
-    for (const containerId of containerIds) {
-      // Skipped containers are being dropped/replaced — their atoms may go.
-      if (skipIds.has(containerId)) continue;
-      // Under visible-only export a container outside the closure is not emitted,
-      // so it cannot keep an atom alive.
-      if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
-      for (const atomId of getPropertyIdsInSet(ctx, containerId)) {
-        skipIds.delete(atomId);
-      }
-    }
   }
 
 }

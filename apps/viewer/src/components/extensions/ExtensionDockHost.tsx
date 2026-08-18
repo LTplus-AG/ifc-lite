@@ -96,7 +96,13 @@ export function ExtensionDockHost({ slot, className }: ExtensionDockHostProps) {
         })}
       </div>
       <ScrollArea className="flex-1">
-        <DockBody contribution={active} />
+        {/* Keyed on the tab identity (same composite as the tab button
+            above) so switching tabs remounts `DockBody` — and, inside
+            it, `WidgetErrorBoundary` — instead of reusing the previous
+            tab's component instance and its state. See
+            `WidgetErrorBoundary`'s doc comment for why an unkeyed reuse
+            here masks every later widget behind a stale crash. */}
+        <DockBody key={`${active.extensionId}:${active.payload.id}`} contribution={active} />
       </ScrollArea>
     </div>
   );
@@ -203,6 +209,11 @@ function DockBody({ contribution }: { contribution: SlotContribution<DockContrib
   return (
     <div className="p-3">
       <WidgetErrorBoundary
+        // Keyed on the same identity shown in the fallback label: the
+        // boundary never clears `state.error` itself (see its doc
+        // comment), so a `key` change is what forces React to discard
+        // a crashed instance and mount a fresh one for a new widget.
+        key={`${contribution.extensionId}/${contribution.payload.widget}`}
         label={`${contribution.extensionId}/${contribution.payload.widget}`}
       >
         <WidgetRenderer

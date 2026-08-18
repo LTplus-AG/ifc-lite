@@ -2,8 +2,9 @@
 '@ifc-lite/collab-server': patch
 ---
 
-The blob sweep now runs once at startup instead of only after the first interval
-elapses, and the configurable grace window has a floor.
+The blob sweep now runs once at startup IN ADDITION to the configured interval,
+and the configurable grace window has a floor. The periodic sweeps are unchanged;
+what was missing was the first one.
 
 `setInterval` does not fire immediately, so with the default six-hour period a
 server that restarts more often than that never completed a sweep at all: the GC

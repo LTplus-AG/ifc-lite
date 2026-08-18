@@ -46,6 +46,12 @@
  * 120 degree wall junction. Reporting one of them would be picking an answer
  * and hoping. Per #2735, "no format is offered for a measurement it does not
  * describe".
+ *
+ * The missing ingredient is specifically the SHARED EDGE, not the information
+ * in general: face picks already carry the hit point as well as the normal, so
+ * a later version that also captures which edge the two faces meet at has
+ * enough to resolve the interior. It is deliberately not collected yet, rather
+ * than unobtainable in principle.
  */
 
 import { angleBetweenDeg, cross, norm, normalize, sub, type Point3 } from './angle-vec';
@@ -83,7 +89,7 @@ const PARALLEL_SINE = 1e-6;
 
 /** What an edge-pair or face-pair measurement resolved to. */
 export type AnglePairOutcome =
-  | { kind: 'degenerate'; reason: 'first' | 'second' }
+  | { kind: 'degenerate'; reason: 'first' | 'second' | 'no-normal' }
   | { kind: 'parallel'; degrees: 0 }
   | { kind: 'angled'; degrees: number };
 
@@ -114,7 +120,15 @@ export function edgePairAngle(
  * The normals need not be unit length or consistently oriented; see the module
  * header on why the sign is discarded.
  */
-export function facePairAngle(na: Point3, nb: Point3): AnglePairOutcome {
+export function facePairAngle(
+  na: Point3 | undefined,
+  nb: Point3 | undefined,
+): AnglePairOutcome {
+  // A stored face pick with no normal is an upstream bug, not a user error.
+  // Substituting a zero vector here would classify it as `first`, which renders
+  // as "First pick too short" - a message describing something a face pick
+  // cannot even do, and one that makes a bug look like a measurement mistake.
+  if (!na || !nb) return { kind: 'degenerate', reason: 'no-normal' };
   if (norm(na) <= 0 || !Number.isFinite(norm(na))) return { kind: 'degenerate', reason: 'first' };
   if (norm(nb) <= 0 || !Number.isFinite(norm(nb))) return { kind: 'degenerate', reason: 'second' };
   return unsignedAngle(na, nb);
@@ -146,6 +160,7 @@ function unsignedAngle(a: Point3, b: Point3): AnglePairOutcome {
 export function formatAnglePair(outcome: AnglePairOutcome): string {
   switch (outcome.kind) {
     case 'degenerate':
+      if (outcome.reason === 'no-normal') return 'No surface at one pick';
       return outcome.reason === 'first' ? 'First pick too short' : 'Second pick too short';
     case 'parallel':
       return 'Parallel';

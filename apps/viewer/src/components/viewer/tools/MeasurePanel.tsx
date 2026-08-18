@@ -53,10 +53,10 @@ function formatAngleMeasurement(a: AngleMeasurement): string {
       );
     case 'faces':
       return formatAnglePair(
-        facePairAngle(
-          a.picks[0].normal ?? { x: 0, y: 0, z: 0 },
-          a.picks[1].normal ?? { x: 0, y: 0, z: 0 },
-        ),
+        // Pass the absence through rather than substituting a zero vector: a
+        // missing normal is an upstream bug and must not render as a
+        // measurement error the user could have caused.
+        facePairAngle(a.picks[0].normal, a.picks[1].normal),
       );
   }
 }

@@ -190,4 +190,32 @@ describe('handleAngleClick wiring (#2735)', () => {
     assert.equal(useViewerStore.getState().angleMeasurements.length, 1);
     assert.equal(useViewerStore.getState().activeAngle, null);
   });
+
+  it('completes when both edges share a corner picked twice', () => {
+    // The natural gesture for "angle between two edges": trace edge A INTO the
+    // corner, then edge B OUT of it. Picks 2 and 3 are the SAME corner, so the
+    // second lands within the double-click radius of the first.
+    //
+    // A shared vertex is not a degenerate edge: a zero-length second edge needs
+    // pick 4 to coincide with pick 3, which the within-edge guard catches. If
+    // the guard also spans the boundary, pick 3 is swallowed, the measurement
+    // never completes, and the user's only recourse is to click slightly off
+    // the corner - degrading the very direction being measured.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'edges',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    const corner = { x: 0, y: 0, z: 0 };
+    const seq = [{ x: 200, y: 0, z: 0 }, corner, corner, { x: 0, y: 200, z: 0 }];
+    seq.forEach((p) => handleAngleClick(fakeCtx(p), p.x, p.y));
+
+    assert.equal(
+      useViewerStore.getState().angleMeasurements.length,
+      1,
+      'the shared corner was swallowed as a double-click, so the measurement never finished',
+    );
+    assert.equal(useViewerStore.getState().activeAngle, null);
+  });
 });

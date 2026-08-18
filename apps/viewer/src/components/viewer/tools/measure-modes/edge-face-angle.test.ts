@@ -14,7 +14,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { edgePairAngle, facePairAngle } from './edge-face-angle';
+import { edgePairAngle, facePairAngle, formatAnglePair } from './edge-face-angle';
 
 const P = (x: number, y: number, z: number) => ({ x, y, z });
 const near = (a: number, b: number, tol = 1e-6) =>
@@ -132,6 +132,21 @@ describe('facePairAngle', () => {
     assert.deepEqual(facePairAngle(P(0, 0, 0), P(0, 1, 0)), { kind: 'degenerate', reason: 'first' });
     assert.deepEqual(facePairAngle(P(0, 1, 0), P(0, 0, 0)), { kind: 'degenerate', reason: 'second' });
     assert.deepEqual(facePairAngle(P(Number.NaN, 1, 0), P(0, 1, 0)), {
+      kind: 'degenerate',
+      reason: 'first',
+    });
+  });
+
+  it('distinguishes a missing normal from a too-short pick', () => {
+    // A face pick has no length, so "First pick too short" would describe
+    // something the user cannot do. A missing normal means a stored pick lost
+    // its normal upstream - a bug, not a measurement error.
+    const missing = facePairAngle(undefined, { x: 0, y: 1, z: 0 });
+    assert.deepEqual(missing, { kind: 'degenerate', reason: 'no-normal' });
+    assert.equal(formatAnglePair(missing), 'No surface at one pick');
+
+    // ...and a present-but-zero normal is still reported as such.
+    assert.deepEqual(facePairAngle({ x: 0, y: 0, z: 0 }, { x: 0, y: 1, z: 0 }), {
       kind: 'degenerate',
       reason: 'first',
     });

@@ -709,15 +709,22 @@ export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number)
   const picked = raycastForPolylinePoint(ctx, x, y);
   if (!picked) return;
 
-  // Drop the second half of a physical double-click (see the note above).
+  // Drop the second half of a physical double-click (see the note above), but
+  // only WITHIN a shape, never across the boundary between the two edges.
   //
-  // For `edges` this is deliberately checked against the immediately preceding
-  // pick only, including across the boundary between the first and second edge:
-  // a double-click that ends one edge and starts the next would otherwise place
-  // a zero-length second edge, which reads as "Second pick too short" for
-  // something the user never did.
-  const prior = state.activeAngle?.picks;
-  const last = prior && prior.length > 0 ? prior[prior.length - 1].point : null;
+  // The natural gesture for an edge pair is to trace edge A into a shared
+  // corner and edge B out of it, so picks 2 and 3 are the SAME point. Guarding
+  // across that boundary swallowed pick 3, the measurement never completed, and
+  // the only recourse was to click slightly off the corner - degrading the very
+  // direction being measured. Worse, the opposite pick order (corner first)
+  // survived, so the mode worked or did not depending on which end of edge A
+  // the user started from, which is not a distinction they can see.
+  //
+  // A shared vertex is NOT a degenerate edge: a zero-length second edge needs
+  // pick 4 to coincide with pick 3, and that is still caught below.
+  const prior = state.activeAngle?.picks ?? [];
+  const startsNewShape = kind === 'edges' && prior.length % 2 === 0;
+  const last = !startsNewShape && prior.length > 0 ? prior[prior.length - 1].point : null;
   if (last && isDuplicateClickPoint(last, picked.point)) return;
 
   ctx.setSnapTarget(picked.snapTarget);

@@ -210,6 +210,49 @@ describe('pickFitPolicy', () => {
       assert.ok(policy.distance < 1000 * 0.31, `distance ${policy.distance} should stay under 310`);
     });
 
+    // Every other linear fixture saturates one of the two clamps, so the
+    // expression they are clamping is unobservable: TARGET_FEATURE_PIXELS,
+    // `fovY`, `viewportShortPx` and the featureSize floor can all be changed
+    // (or the whole `distanceForFeature` term replaced by a constant) without
+    // reddening the suite. Example: bounds(0,0,0,1000,0.0001,1) at the default
+    // 640 px viewport solves to 483 and clamps DOWN to maxDistance 300; delete
+    // the term entirely and the same input clamps UP to minDistance 120.7 —
+    // both satisfy that test's `> 1 && < 310`. This fixture is the same bbox
+    // with a viewport small enough to land strictly between the two clamps.
+    it('solves the feature-pixel equation when neither clamp binds', () => {
+      const policy = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: FOV_45,
+        viewportShortPx: 200,
+      });
+      assert.strictEqual(policy.kind, 'linear');
+      // featureSize = max(0.0001, 1000 * 0.01) = 10 (the 1% floor).
+      // distance = featureSize * viewportPx / (2 * TARGET_FEATURE_PIXELS * tan(fovY/2))
+      //          = 10 * 200 / (2 * 16 * tan(22.5°)) = 150.888…
+      const expected = (10 * 200) / (2 * 16 * Math.tan(FOV_45 / 2));
+      assertCloseTo(policy.distance, expected, 6);
+      assertCloseTo(policy.distance, 150.8879, 3);
+      // Prove neither clamp is active, so the number above really is the
+      // solved distance and not a clamp in disguise.
+      const minDistance = (1000 * 0.05) / Math.max(Math.tan(FOV_45 / 2), 0.05);
+      assert.ok(policy.distance > minDistance, `expected > minDistance ${minDistance}`);
+      assert.ok(policy.distance < 1000 * 0.3, 'expected below maxDistance 300');
+
+      // And the equation's variables must each move the answer. Both extra
+      // probes stay inside the unclamped window (120.7, 300): a taller
+      // viewport scales the distance linearly, a wider FOV pulls the camera in.
+      const tallerViewport = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: FOV_45,
+        viewportShortPx: 300,
+      });
+      assertCloseTo(tallerViewport.distance, expected * 1.5, 6);
+      const wideFov = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: (90 * Math.PI) / 180,
+        viewportShortPx: 200,
+      });
+      assertCloseTo(wideFov.distance, (10 * 200) / (2 * 16 * Math.tan(Math.PI / 4)), 6);
+      assert.ok(wideFov.distance < policy.distance, 'a wider FOV must need less distance');
+    });
+
     it('caps the linear distance at 30% of the longest axis', () => {
       // For an "okay" feature size that solves to a huge distance, the
       // cap keeps us inside a usable slice of the alignment.

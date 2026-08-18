@@ -148,6 +148,33 @@ describe('sortClashes', () => {
     expect(sortClashes(list, 'distance').map((c) => c.id)).toEqual(['deep', 'touch', 'gap']);
   });
 
+  it('breaks a full tie by clash id, in every sort mode', () => {
+    // Every other fixture in this block has distinct primary keys, so the
+    // `|| cmpId(a, b)` fallback is never reached and deleting it from all three
+    // branches leaves the suite green. That fallback is not a rare edge: a
+    // clearance run reports positive distances, `penetrationDepth` returns 0 for
+    // ALL of them, and if the rule also fixes the severity then id decides the
+    // entire order of the panel (`ClashPanel.tsx` sorts thousands of rows).
+    //
+    // Input order is deliberately the reverse of id order. `Array.prototype.sort`
+    // is stable by specification, so an equal-comparing comparator would return
+    // the input untouched — only an id comparison can reorder it. Size is
+    // irrelevant here (unlike the >22-element TimSort fixture in
+    // duplicates.test.ts, which needs a run long enough for a comparator that
+    // answers NaN to corrupt the merge); this comparator stays a valid total
+    // order under the mutation, it just stops discriminating.
+    const clearance = (id: string) => clash(id, 0.5, 'major', 'clearance');
+    const gaps = [clearance('c'), clearance('b'), clearance('a')];
+    expect(sortClashes(gaps, 'severity').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(sortClashes(gaps, 'depth').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(sortClashes(gaps, 'distance').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+
+    // And for the severity branch specifically: equal severity AND equal depth,
+    // so both of its leading terms are exhausted before the id is consulted.
+    const hard = [clash('h2', -0.3, 'critical'), clash('h1', -0.3, 'critical')];
+    expect(sortClashes(hard, 'severity').map((c) => c.id)).toEqual(['h1', 'h2']);
+  });
+
   it('does not mutate the input', () => {
     const list = [clash('b', -0.1, 'info'), clash('a', -0.2, 'info')];
     const before = list.map((c) => c.id);

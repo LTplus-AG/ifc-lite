@@ -551,14 +551,9 @@ fn test_shell_based_surface_model_with_polyloop() {
 fn test_catia_surface_model_file() {
     use crate::router::GeometryRouter;
 
-    let path = "../../tests/models/various/2222.ifc";
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("Skipping test_catia_surface_model_file: {} not found", path);
-            return;
-        }
-    };
+    // The manifest ships this fixture as `issues/472_2222.ifc`; the old
+    // `various/2222.ifc` path matched nothing, so the test always skipped.
+    let Some(content) = read_fixture("issues/472_2222.ifc") else { return };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);

@@ -348,6 +348,30 @@ export class IfcCreator {
    */
   addIfcColumn(storeyId: number, params: ColumnParams): number {
     assertPositiveFinite({ Width: params.Width, Depth: params.Depth, Height: params.Height }, 'addIfcColumn');
+    return this.buildIfcColumn(storeyId, params);
+  }
+
+  /**
+   * Build a column WITHOUT validating dimensions.
+   *
+   * `IfcExtrudedAreaSolid.Depth` is typed `IfcPositiveLengthMeasure` in the
+   * IFC schema, so a zero (or negative) `Height` is spec-invalid — exactly
+   * what `addIfcColumn`'s guard exists to reject for ordinary callers.
+   *
+   * Corruption-injection tooling (tools/world-gym's `degenerate-geometry`
+   * defect) needs the opposite: it deliberately builds a spec-invalid,
+   * zero-height column to verify the geometry pipeline drops it (no mesh
+   * emitted) instead of crashing, and that requires a path that produces
+   * exactly the malformed entity it asks for. Routing that through the
+   * validated public constructor would make it impossible to construct the
+   * fixture it exists to test. This method is that deliberately-unvalidated
+   * seam — for adversarial test fixtures ONLY, never for application code.
+   */
+  addIfcColumnUnvalidated(storeyId: number, params: ColumnParams): number {
+    return this.buildIfcColumn(storeyId, params);
+  }
+
+  private buildIfcColumn(storeyId: number, params: ColumnParams): number {
     const placementId = this.addLocalPlacement(this.getStoreyPlacement(storeyId), {
       Location: params.Position,
     });

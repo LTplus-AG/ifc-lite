@@ -60,8 +60,9 @@ const DALUX_NODE_PATTERN = /^node[1-9][0-9]{0,2}$/;
  * Dalux assigns each customer a node and prints the base URL beside the API
  * key, so users paste the whole thing. Only the node name is kept, and only if
  * it is a real Dalux field node: everything else about the URL is ours to
- * decide, and forwarding a user-supplied origin to the relay would let it be
- * pointed at an arbitrary host carrying the caller's API key.
+ * decide: `/api/dalux` is unauthenticated and publicly reachable, so any host
+ * the relay can be aimed at becomes reachable by anyone through our egress
+ * IPs. Keeping the origin ours to build bounds that to Dalux.
  *
  * Returns undefined for blank input or the default node, so the common case
  * sends no parameter at all. Throws on input that looks like a deliberate

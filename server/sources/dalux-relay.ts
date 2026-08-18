@@ -56,10 +56,17 @@ export interface DaluxRelayConfig {
  * same-origin relay, and Dalux sends no CORS headers.
  *
  * The client sends the node NAME, never a URL, and the origin is assembled
- * here from {@link DALUX_NODE_PATTERN}. That is deliberate: accepting a
- * caller-supplied base URL would turn this relay into an open proxy that
- * forwards the caller's `X-API-KEY` to any host they name. The whole point of
- * pinning the origin is that the key cannot leave Dalux.
+ * here from {@link DALUX_NODE_PATTERN}.
+ *
+ * The origin stays ours to build for the reason in this file's header: the
+ * endpoint is unauthenticated, publicly reachable and holds no credential of
+ * its own, so whatever host it can be aimed at is reachable by ANY anonymous
+ * client through our egress IPs. Assembling the origin from a node name bounds
+ * that to Dalux; a caller-supplied base URL would widen it to arbitrary
+ * outbound requests from our infrastructure, including hosts not reachable
+ * from the internet at all, and third-party traffic attributed to and billed
+ * to us. The residual risk documented above is this one, already scoped to a
+ * single host.
  */
 export const DALUX_NODE_PARAM = 'daluxNode';
 

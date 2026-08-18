@@ -150,6 +150,36 @@ describe('validateIDS — optionality', () => {
     expect(reqResult.status).toBe('pass');
   });
 
+  it('optional requirement fails when facet is present but wrong (not merely absent)', async () => {
+    // `optional` pardons a wholly-absent facet, but must NOT pardon bad
+    // data: a present Description with the wrong value is an
+    // ATTRIBUTE_VALUE_MISMATCH, not an ATTRIBUTE_MISSING, so it must
+    // fail rather than be waved through by the missingFailures allowlist.
+    const accessor = createMockAccessor([
+      { expressId: 1, type: 'IfcWall', description: 'Wrong value' },
+    ]);
+
+    const spec = makeSpec({
+      requirements: [
+        {
+          id: 'req-0',
+          facet: {
+            type: 'attribute',
+            name: sv('Description'),
+            value: sv('Expected value'),
+          },
+          optionality: 'optional',
+        },
+      ],
+    });
+
+    const report = await validateIDS(makeDoc([spec]), accessor, modelInfo);
+    const reqResult = report.specificationResults[0].entityResults[0].requirementResults[0];
+    expect(reqResult.failure?.type).toBe('ATTRIBUTE_VALUE_MISMATCH');
+    expect(reqResult.status).toBe('fail');
+    expect(report.specificationResults[0].status).toBe('fail');
+  });
+
   it('prohibited requirements fail when facet passes', async () => {
     const accessor = createMockAccessor([
       { expressId: 1, type: 'IfcWall', description: 'Should not exist' },

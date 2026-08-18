@@ -54,6 +54,11 @@ export interface DropboxMockWorld {
 export interface DropboxMockOptions {
   /** Entries per response when the caller doesn't force a smaller `limit`. Default `200`. */
   readonly defaultPageSize?: number;
+  /** Called with the routed API path (e.g. `"files/get_metadata"`) on every
+   *  request this mock answers — lets a test count calls to a specific
+   *  endpoint (e.g. asserting a batched round trip isn't made once per
+   *  search match). */
+  readonly onRequest?: (path: string) => void;
 }
 
 interface MockResponseInit {
@@ -104,7 +109,7 @@ function itemJson(world: DropboxMockWorld, item: DropboxMockItem): Record<string
 
 /** Walks the mock world's `parentId` chain to build the same nested
  *  `path_lower` shape real Dropbox metadata carries — needed so
- *  `searchResultContainerId` (in `mapping.ts`) has a real parent path to
+ *  `searchResultParentPath` (in `mapping.ts`) has a real parent path to
  *  derive from, not just a bare filename. */
 function pathLowerOf(world: DropboxMockWorld, item: DropboxMockItem): string {
   const segments: string[] = [item.name.toLowerCase()];
@@ -120,6 +125,16 @@ function pathLowerOf(world: DropboxMockWorld, item: DropboxMockItem): string {
 
 function findItem(world: DropboxMockWorld, id: string): DropboxMockItem | undefined {
   return world.items.find((item) => item.id === id);
+}
+
+/** Looks up a mock item by its lower-cased path (`files/get_metadata`
+ *  accepts a `path_lower`/`path_display` just as readily as an `id` — see
+ *  `pathArgFor`'s doc comment in `mapping.ts`), used to resolve a search
+ *  result's parent-path lookup back to the folder that owns it. */
+function findItemByPath(world: DropboxMockWorld, path: string): DropboxMockItem | undefined {
+  if (!path) return undefined;
+  const lower = path.toLowerCase();
+  return world.items.find((item) => pathLowerOf(world, item) === lower);
 }
 
 function childrenOf(world: DropboxMockWorld, parentId: string | undefined): DropboxMockItem[] {
@@ -209,6 +224,16 @@ export function createDropboxApiMock(world: DropboxMockWorld, options: DropboxMo
     const href = typeof input === 'string' ? input : input.toString();
     const path = new URL(href).pathname.replace(/^\/2\//, '');
     const body = readJsonBody(init) as Record<string, unknown> | undefined;
+    options.onRequest?.(path);
+
+    if (path === 'files/get_metadata') {
+      const requestedPath = typeof body?.path === 'string' ? body.path : '';
+      const item = findItemByPath(world, requestedPath) ?? findItem(world, requestedPath);
+      if (!item || item.deleted) {
+        return Promise.resolve(mockResponse({ status: 409, body: 'path/not_found' }));
+      }
+      return Promise.resolve(mockResponse({ json: itemJson(world, item) }));
+    }
 
     if (path === 'users/get_current_account') {
       return Promise.resolve(

@@ -143,11 +143,68 @@ describe('DropboxProvider', () => {
   });
 
   describe('searchFiles', () => {
-    it("matches file names case-insensitively and reports the file's real parent folder as containerId", async () => {
+    // A search match's `containerId` must be the same *kind* of string
+    // `listContainers`/`listFiles` hand out (a real Dropbox `id:...`), not a
+    // raw parent path — the plugin contract has the host compare
+    // `SourceFile.containerId` against a browsed folder's `SourceContainer.id`
+    // by exact equality, so anything else can never match. `id:f-alpha` is
+    // `id:file-1`'s real parent folder in `WORLD` above.
+    it("matches file names case-insensitively and reports the file's real parent folder id as containerId", async () => {
       const ctx = createDropboxMockContext(WORLD);
       const page = await provider.searchFiles!(ctx, 'me', 'MODEL');
       expect(page.items.map((f) => f.id)).toEqual(['id:file-1']);
-      expect(page.items[0].containerId).toBe('/alpha');
+      expect(page.items[0].containerId).toBe('id:f-alpha');
+    });
+
+    // CodeRabbit's regression request: a search result nested more than one
+    // level deep must still resolve to its *immediate* parent folder's real
+    // id, not an ancestor's.
+    it('resolves a nested search result to its immediate parent folder id, not an ancestor', async () => {
+      const nestedWorld: DropboxMockWorld = {
+        ...WORLD,
+        items: [
+          ...WORLD.items,
+          { id: 'id:f-alpha-sub', name: 'Sub', parentId: 'id:f-alpha', kind: 'folder' },
+          { id: 'id:file-nested', name: 'model-nested.ifc', parentId: 'id:f-alpha-sub', kind: 'file', size: 5, content: 'NESTED' },
+        ],
+      };
+      const ctx = createDropboxMockContext(nestedWorld);
+      const page = await provider.searchFiles!(ctx, 'me', 'nested');
+      expect(page.items.map((f) => f.id)).toEqual(['id:file-nested']);
+      expect(page.items[0].containerId).toBe('id:f-alpha-sub');
+    });
+
+    // The parent-id lookup this fix adds (`files/get_metadata`, since
+    // Dropbox's search response carries no parent-id field the way Graph's
+    // `parentReference.id` does — see `searchResultParentPath`'s doc comment
+    // in `mapping.ts`) must be batched per distinct parent folder, not fired
+    // once per match: two results sharing a parent should cost exactly one
+    // extra round trip.
+    it('resolves each distinct parent folder once, not once per search match', async () => {
+      const requestedPaths: string[] = [];
+      const ctx = createDropboxMockContext(WORLD, { onRequest: (path) => requestedPaths.push(path) });
+      const page = await provider.searchFiles!(ctx, 'me', 'model');
+      // `WORLD`'s "model" matches ('model.ifc' only) all share one parent —
+      // extend the assertion if a future WORLD adds a second "model" match.
+      expect(page.items.map((f) => f.id)).toEqual(['id:file-1']);
+      expect(requestedPaths.filter((p) => p === 'files/get_metadata')).toHaveLength(1);
+    });
+
+    // A file sitting directly at the account root has no parent folder to
+    // look up — `searchResultParentPath` returns `undefined` for it, and the
+    // caller must map that straight to `ROOT_CONTAINER_ID` without spending a
+    // `files/get_metadata` call on it.
+    it('maps an account-root search result to ROOT_CONTAINER_ID without a lookup', async () => {
+      const rootWorld: DropboxMockWorld = {
+        ...WORLD,
+        items: [...WORLD.items, { id: 'id:file-root', name: 'model-root.ifc', kind: 'file', size: 1, content: 'ROOT' }],
+      };
+      const requestedPaths: string[] = [];
+      const ctx = createDropboxMockContext(rootWorld, { onRequest: (path) => requestedPaths.push(path) });
+      const page = await provider.searchFiles!(ctx, 'me', 'model-root');
+      expect(page.items.map((f) => f.id)).toEqual(['id:file-root']);
+      expect(page.items[0].containerId).toBe('root');
+      expect(requestedPaths.filter((p) => p === 'files/get_metadata')).toHaveLength(0);
     });
 
     // `SearchMatchV2.metadata` is the `MetadataV2` union — `{".tag":

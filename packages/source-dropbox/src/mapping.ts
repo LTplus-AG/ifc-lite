@@ -112,26 +112,35 @@ export function decodeFileRevisions(ctx: PluginContext, items: readonly unknown[
 }
 
 /**
- * Derives a `SourceFile.containerId` for a `searchFiles` match, which
- * (unlike `listFiles`, where the caller already supplies the container being
+ * Extracts the parent *path* of a `searchFiles` match, which (unlike
+ * `listFiles`, where the caller already supplies the container being
  * queried) can land anywhere in the account and carries no parent-id field
- * in Dropbox's own search response — only `path_lower`. Returns the parent
- * *path* rather than a real Dropbox `id`, which is fine: `pathArgFor` passes
- * an already-id-shaped or already-path-shaped string through unchanged, and
- * Dropbox's `path` argument accepts either form interchangeably, so a host
- * calling `listFiles`/`listContainers` again with this value gets a working
- * query even though it isn't the same *kind* of string `listContainers`
- * itself hands out.
+ * in Dropbox's own search response — only `path_lower`.
  *
- * Falls back to {@link ROOT_CONTAINER_ID} for a file with no path segments
- * above it (sitting directly at the account root) or, defensively, for the
- * rare match missing `path_lower` entirely — never an empty string, which
- * would otherwise become a `containerId` indistinguishable from "unknown".
+ * This is **not** a `SourceFile.containerId` by itself: a path and a real
+ * Dropbox opaque `id:...` are different *kinds* of string (`listContainers`/
+ * `listFiles` only ever hand out the latter), so a host comparing a search
+ * result's `containerId` against a browsed folder's `id` by exact equality —
+ * which is the plugin contract's documented behavior — would never find a
+ * match. The caller (`searchFiles` in `provider.ts`) resolves this path to
+ * the folder's real `id` via a `files/get_metadata` round trip (batched once
+ * per distinct parent path, not once per match) before assigning
+ * `SourceFile.containerId`. `source-msgraph`'s equivalent needs no such
+ * round trip: Graph's `driveItem` carries `parentReference.id` inline on
+ * every item, search results included (see `toSourceFile`'s caller in
+ * `source-msgraph/src/provider.ts`) — Dropbox's `FileMetadata` has no
+ * analogous field, only `path_lower`/`path_display`, so there is nothing to
+ * read off the existing search response itself.
+ *
+ * Returns `undefined` for a file with no path segments above it (sitting
+ * directly at the account root — the caller maps that to
+ * {@link ROOT_CONTAINER_ID} directly, with no round trip needed) or,
+ * defensively, for the rare match missing `path_lower` entirely.
  */
-export function searchResultContainerId(pathLower: string | undefined): string {
-  if (!pathLower) return ROOT_CONTAINER_ID;
+export function searchResultParentPath(pathLower: string | undefined): string | undefined {
+  if (!pathLower) return undefined;
   const lastSlash = pathLower.lastIndexOf('/');
-  if (lastSlash <= 0) return ROOT_CONTAINER_ID;
+  if (lastSlash <= 0) return undefined;
   return pathLower.slice(0, lastSlash);
 }
 

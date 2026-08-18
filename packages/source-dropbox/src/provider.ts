@@ -23,7 +23,7 @@ import type {
 
 import { createTokenManager, dropboxAuth, requireClientId } from './auth.js';
 import { BrowserDropboxApiClient, DropboxHttpError } from './http-client.js';
-import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult, decodeSearchResult } from './dropbox-types.js';
+import { decodeCurrentAccount, decodeListFolderResult, decodeListRevisionsResult, decodeMetadataEntry, decodeSearchResult } from './dropbox-types.js';
 import {
   clampPageSize,
   clampRevisionsPageSize,
@@ -31,7 +31,8 @@ import {
   decodeFileRevisions,
   decodeMetadataEntries,
   pathArgFor,
-  searchResultContainerId,
+  ROOT_CONTAINER_ID,
+  searchResultParentPath,
   toSourceContainer,
   toSourceFile,
   toSourceRevision,
@@ -133,14 +134,68 @@ export class DropboxProvider implements FileSourceProvider {
       ctx.log.warn('Dropbox: dropping invalid search match', { error: message }),
     );
 
-    let files = result.matches
-      .filter((match) => match.metadata['.tag'] === 'file')
-      .map((match) =>
-        toSourceFile(match.metadata as Extract<typeof match.metadata, { readonly ['.tag']: 'file' }>, searchResultContainerId(match.metadata.path_lower)),
-      );
+    const fileMatches = result.matches.filter(
+      (match): match is { metadata: Extract<typeof match.metadata, { readonly ['.tag']: 'file' }> } => match.metadata['.tag'] === 'file',
+    );
+
+    // Dropbox's search response carries no parent-id field (see
+    // `searchResultParentPath`'s doc comment in `mapping.ts`), so resolving
+    // a match's real container id needs a `files/get_metadata` round trip —
+    // one per *distinct* parent path across this page, not one per match, so
+    // ten results from the same folder cost one extra call, not ten.
+    const parentPaths = new Set(
+      fileMatches
+        .map((match) => searchResultParentPath(match.metadata.path_lower))
+        .filter((path): path is string => path !== undefined),
+    );
+    const containerIdByParentPath = await this.resolveContainerIdsByParentPath(client, ctx, parentPaths, options?.signal);
+
+    let files = fileMatches.map((match) => {
+      const parentPath = searchResultParentPath(match.metadata.path_lower);
+      const containerId = parentPath === undefined ? ROOT_CONTAINER_ID : (containerIdByParentPath.get(parentPath) ?? parentPath);
+      return toSourceFile(match.metadata, containerId);
+    });
     files = applyFileFilter(files, filter);
 
     return { items: files, cursor: result.has_more ? result.cursor : undefined };
+  }
+
+  /**
+   * Resolves each distinct search-result parent *path* to the real Dropbox
+   * folder `id` `listContainers`/`listFiles` would hand out for it, via
+   * `files/get_metadata` — one round trip per distinct path, run in
+   * parallel, never one per search match. A path that fails to resolve (a
+   * transient error, or — defensively — a `path` that turns out not to name
+   * a folder) is logged and simply left out of the returned map; the caller
+   * falls back to the raw path string for that one file rather than failing
+   * the whole search over one bad lookup.
+   */
+  private async resolveContainerIdsByParentPath(
+    client: BrowserDropboxApiClient,
+    ctx: PluginContext,
+    parentPaths: ReadonlySet<string>,
+    signal?: AbortSignal,
+  ): Promise<Map<string, string>> {
+    const resolved = new Map<string, string>();
+    await Promise.all(
+      [...parentPaths].map(async (parentPath) => {
+        try {
+          const raw = await client.rpc('/files/get_metadata', { path: parentPath }, signal);
+          const entry = decodeMetadataEntry(raw);
+          if (entry['.tag'] !== 'folder') {
+            ctx.log.warn('Dropbox: search result parent path did not resolve to a folder', { parentPath, tag: entry['.tag'] });
+            return;
+          }
+          resolved.set(parentPath, entry.id);
+        } catch (err) {
+          ctx.log.warn('Dropbox: failed to resolve search result parent folder id; falling back to its path', {
+            parentPath,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }),
+    );
+    return resolved;
   }
 
   /**

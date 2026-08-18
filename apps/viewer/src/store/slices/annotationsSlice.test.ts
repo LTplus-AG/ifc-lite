@@ -4,7 +4,17 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createAnnotationsSlice, type AnnotationsSlice } from './annotationsSlice.js';
+import { createAnnotationsSlice, type AnnotationsSlice, type Annotation } from './annotationsSlice.js';
+
+const STORAGE_KEY = 'ifc-lite:annotations:v1';
+
+/** Reads the persisted ids straight out of localStorage — not the in-memory map. */
+function persistedIds(): string[] {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  const parsed = JSON.parse(raw) as Array<{ id: string }>;
+  return parsed.map((a) => a.id);
+}
 
 // Stub localStorage so the slice can read/write without browser env.
 function installStubStorage(): { wipe: () => void } {
@@ -97,6 +107,60 @@ describe('AnnotationsSlice', () => {
       state.removeAnnotation(id);
       assert.strictEqual(state.annotations.size, 0);
       assert.strictEqual(state.selectedAnnotationId, null);
+    });
+
+    it('removes the entry from persisted storage, not just memory', () => {
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('to-delete')!;
+      assert.ok(persistedIds().includes(id), 'sanity: pin was persisted on commit');
+      state.removeAnnotation(id);
+      assert.strictEqual(state.annotations.has(id), false);
+      assert.ok(!persistedIds().includes(id), 'deleted pin must not resurrect from storage');
+    });
+  });
+
+  describe('removeRemoteAnnotation', () => {
+    it('persists the deletion of a peer-edit-of-OUR-pin (non-remote) — mirrors upsertRemoteAnnotation', () => {
+      // Create a local pin (persisted), then simulate a peer deleting it —
+      // this is the path collabSlice.ts's `removeRemote` bridge calls.
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('mine, deleted remotely')!;
+      assert.ok(persistedIds().includes(id), 'sanity: pin was persisted on commit');
+
+      state.removeRemoteAnnotation(id);
+
+      assert.strictEqual(state.annotations.has(id), false, 'removed from in-memory map');
+      assert.ok(
+        !persistedIds().includes(id),
+        'must also be removed from localStorage or it resurrects on reload',
+      );
+    });
+
+    it('does not add a storage entry when deleting a purely-remote pin', () => {
+      const remoteAnnotation: Annotation = {
+        id: 'ann_remote_1',
+        position: { x: 1, y: 1, z: 1 },
+        note: "peer's pin",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(remoteAnnotation);
+      assert.strictEqual(state.annotations.has('ann_remote_1'), true);
+      assert.ok(
+        !persistedIds().includes('ann_remote_1'),
+        'sanity: a purely-remote pin was never persisted',
+      );
+
+      state.removeRemoteAnnotation('ann_remote_1');
+
+      assert.strictEqual(state.annotations.has('ann_remote_1'), false);
+      assert.ok(
+        !persistedIds().includes('ann_remote_1'),
+        'deleting a pin we never persisted must not add a storage entry',
+      );
     });
   });
 

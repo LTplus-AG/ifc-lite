@@ -87,10 +87,14 @@ describe('DaluxBuildProvider', () => {
     });
   });
 
-  it('declares only the apiKey preference', () => {
+  it('declares apiKey as required and baseUrl as optional', () => {
+    // baseUrl was deliberately absent until #2792: Dalux assigns each customer
+    // a node and prints its base URL beside the API key, so everyone not on
+    // node1 was locked out of Dalux Box entirely. It stays OPTIONAL so the
+    // node1 majority is unaffected and sends no node parameter at all.
     const prefs = provider.manifest.preferences;
     expect(prefs.find((p) => p.name === 'apiKey')?.required).toBe(true);
-    expect(prefs.find((p) => p.name === 'baseUrl')).toBeUndefined();
+    expect(prefs.find((p) => p.name === 'baseUrl')?.required).toBe(false);
   });
 
   describe('listProjects', () => {

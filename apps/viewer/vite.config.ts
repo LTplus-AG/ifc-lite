@@ -9,6 +9,9 @@ import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
 import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
+// Same allowlist the production relay uses, so dev and prod cannot disagree
+// about which Dalux node a request reaches (#2792).
+import { DEFAULT_DALUX_RELAY_CONFIG, resolveDevProxy } from '../../server/sources/dalux-relay';
 
 // --- Build-time changelog parser ---
 
@@ -303,9 +306,16 @@ export default defineConfig({
         // Dalux Build's API sends no CORS headers, so browser requests must
         // go through this same-origin relay (mirrors /api/bsdd below, and
         // vercel.json's rewrite in production).
-        target: 'https://node1.field.dalux.com',
+        //
+        // Dalux assigns each customer a node (#2792), so the target cannot be
+        // fixed: a hardcoded node1 here would send a node2 developer's requests
+        // to node1 carrying an unused selector, and dev would silently disagree
+        // with production about which host it reached. `resolveDevProxy` is the
+        // production relay's own allowlist, so the two cannot drift.
+        target: DEFAULT_DALUX_RELAY_CONFIG.upstreamOrigin,
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api\/dalux/, '/service/api'),
+        router: (req) => resolveDevProxy(req.url).target,
+        rewrite: (p) => resolveDevProxy(p).path,
       },
       '/api/bsdd': {
         target: 'https://api.bsdd.buildingsmart.org',

@@ -7,6 +7,16 @@ import type { PluginContext } from '@ifc-lite/plugin-api';
 export interface DaluxCredentials {
   readonly baseUrl: string;
   readonly apiKey: string;
+  /**
+   * Dalux node name (`node2`, ...) when the user is not on the default node.
+   *
+   * Sent as a query parameter rather than baked into `baseUrl` on purpose:
+   * the host only rewrites a URL to the same-origin relay when it still
+   * matches the manifest's declared upstream, and Dalux serves no CORS
+   * headers, so changing the base URL here would bypass the relay and fail
+   * in the browser. The server resolves the name to an origin (#2792).
+   */
+  readonly node?: string;
 }
 
 interface DaluxPageLink {
@@ -77,6 +87,36 @@ export class BrowserDaluxApiClient {
     return this.credentials.baseUrl;
   }
 
+  /**
+   * Add the caller's node selector, but ONLY to URLs that go through our relay.
+   *
+   * Dalux also hands back opaque links (a file's `downloadLink`, `nextPage`
+   * hrefs) which can point at a different host such as a CDN and can carry a
+   * signature computed over the query string. Those are not routed through the
+   * node-aware relay, so adding a parameter would be useless at best and would
+   * invalidate a signed URL at worst. They must stay byte-for-byte intact.
+   */
+  private stampNode(url: URL): void {
+    if (!this.credentials.node) return;
+    if (url.origin !== new URL(this.credentials.baseUrl).origin) return;
+    url.searchParams.set('daluxNode', this.credentials.node);
+  }
+
+  /**
+   * The stamped form of `rawUrl`, or undefined when nothing would be added.
+   *
+   * Returning undefined rather than the unchanged string is deliberate: it
+   * lets the caller pass the ORIGINAL bytes through instead of a re-serialised
+   * equivalent. See the note in `getBinary`.
+   */
+  private nodeSelectorFor(rawUrl: string): string | undefined {
+    if (!this.credentials.node) return undefined;
+    const parsed = new URL(rawUrl);
+    if (parsed.origin !== new URL(this.credentials.baseUrl).origin) return undefined;
+    parsed.searchParams.set('daluxNode', this.credentials.node);
+    return parsed.toString();
+  }
+
   debug(message: string, details?: Record<string, unknown>): void {
     this.ctx.log.debug(`Dalux ${message}`, details ?? {});
   }
@@ -87,6 +127,7 @@ export class BrowserDaluxApiClient {
     signal?: AbortSignal,
   ): Promise<unknown> {
     const url = new URL(path.startsWith('/') ? `${this.credentials.baseUrl}${path}` : path);
+    this.stampNode(url);
     for (const [key, value] of Object.entries(params)) {
       if (value === undefined || value === null || value === '') continue;
       url.searchParams.set(key, String(value));
@@ -124,7 +165,19 @@ export class BrowserDaluxApiClient {
     return response.json() as Promise<unknown>;
   }
 
-  async getBinary(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  async getBinary(rawUrl: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+    // Binary downloads take a fully-built URL (revision content, and any
+    // `nextPage` link Dalux hands back), so they need the node selector too.
+    // Missing it here would send file downloads to the default node while
+    // listings went to the user's own — the failure would look like "the file
+    // is gone" rather than "wrong host".
+    // Only re-serialise when we actually added the selector. `new URL(x)
+    // .toString()` is NOT identity: it strips a default port, normalises `.`
+    // and `..` path segments and can re-case percent escapes, any of which
+    // changes a URL whose signature was computed over the original string.
+    // Round-tripping unconditionally would have re-broken the exact links the
+    // stamping guard above exists to protect.
+    const url = this.nodeSelectorFor(rawUrl) ?? rawUrl;
     this.debug('binary GET request', { url });
     const response = await this.ctx.fetch(url, {
       headers: {

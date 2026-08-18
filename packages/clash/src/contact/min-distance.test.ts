@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { minDistanceBetweenMeshes } from './min-distance.js';
+import { PairHeap, minDistanceBetweenMeshes } from './min-distance.js';
 import { triangleAt, triangleCount } from './triangle.js';
 import { triTriDistance } from '../math/triangle-distance.js';
 import type { Mesh } from './types.js';
@@ -176,3 +176,51 @@ describe('minDistanceBetweenMeshes', () => {
     expect(r?.distance).toBeLessThanOrEqual(0 + 1e-9);
   });
 });
+
+describe('PairHeap', () => {
+  // The traversal's result is INDEPENDENT of this order — a broken heap still
+  // finds the true minimum, just after visiting more pairs. So the distance
+  // tests above provably cannot catch an inverted sift (verified by mutation),
+  // and the heap needs its own contract test or it has none at all.
+  const entry = (lowerSq: number) => ({ na: null as never, nb: null as never, lowerSq });
+
+  it('pops in ascending order regardless of push order', () => {
+    const heap = new PairHeap();
+    const pushed = [7, 1, 9, 3, 3, 0, 12, 5, 2, 8, 4];
+    for (const v of pushed) heap.push(entry(v));
+    const popped: number[] = [];
+    for (;;) {
+      const e = heap.pop();
+      if (!e) break;
+      popped.push(e.lowerSq);
+    }
+    assert(popped, [...pushed].sort((a, b) => a - b));
+  });
+
+  it('is empty-safe and drains exactly what was pushed', () => {
+    const heap = new PairHeap();
+    expect(heap.pop()).toBeUndefined();
+    heap.push(entry(2));
+    expect(heap.pop()?.lowerSq).toBe(2);
+    expect(heap.pop()).toBeUndefined();
+  });
+
+  it('keeps popping the minimum while pushes are interleaved', () => {
+    // The traversal always pushes children while draining, so an order that
+    // only holds for push-then-drain would not be the property it relies on.
+    const heap = new PairHeap();
+    heap.push(entry(5));
+    heap.push(entry(9));
+    expect(heap.pop()?.lowerSq).toBe(5);
+    heap.push(entry(1));
+    heap.push(entry(7));
+    expect(heap.pop()?.lowerSq).toBe(1);
+    expect(heap.pop()?.lowerSq).toBe(7);
+    expect(heap.pop()?.lowerSq).toBe(9);
+  });
+});
+
+/** Local helper: vitest's deepEqual with a clearer failure for number lists. */
+function assert(actual: number[], expected: number[]): void {
+  expect(actual).toEqual(expected);
+}

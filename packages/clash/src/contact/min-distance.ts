@@ -71,6 +71,67 @@ function mutable(v: Vec3): [number, number, number] {
   return [v[0], v[1], v[2]];
 }
 
+/** A node pair waiting to be explored, with its lower bound on any pair beneath it. */
+export interface PairEntry {
+  na: BvhNode;
+  nb: BvhNode;
+  lowerSq: number;
+}
+
+/**
+ * Binary min-heap over `lowerSq`. Exported for its own tests but deliberately
+ * NOT re-exported from `contact/index.ts`, so it stays out of the package's
+ * public surface: it is an implementation detail of the traversal, and a
+ * hand-rolled sift is precisely the kind of code that needs a direct contract
+ * test rather than being covered incidentally.
+ *
+ * Note that a broken heap order does NOT break the RESULT — the traversal
+ * still visits every unpruned pair and still finds the true minimum, just
+ * slower. That is why the distance tests cannot catch an inverted comparison
+ * here, and why this class is tested on its own terms.
+ *
+ * Small and local on purpose: this is the only
+ * priority queue in the package, and pulling in a dependency (or a generic
+ * implementation) for one traversal would be more surface than the ~25 lines
+ * it replaces.
+ */
+export class PairHeap {
+  private readonly items: PairEntry[] = [];
+
+  push(entry: PairEntry): void {
+    const items = this.items;
+    items.push(entry);
+    let i = items.length - 1;
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (items[parent].lowerSq <= items[i].lowerSq) break;
+      [items[parent], items[i]] = [items[i], items[parent]];
+      i = parent;
+    }
+  }
+
+  pop(): PairEntry | undefined {
+    const items = this.items;
+    if (items.length === 0) return undefined;
+    const top = items[0];
+    const last = items.pop() as PairEntry;
+    if (items.length === 0) return top;
+    items[0] = last;
+    let i = 0;
+    for (;;) {
+      const l = 2 * i + 1;
+      const r = l + 1;
+      let smallest = i;
+      if (l < items.length && items[l].lowerSq < items[smallest].lowerSq) smallest = l;
+      if (r < items.length && items[r].lowerSq < items[smallest].lowerSq) smallest = r;
+      if (smallest === i) break;
+      [items[smallest], items[i]] = [items[i], items[smallest]];
+      i = smallest;
+    }
+    return top;
+  }
+}
+
 interface Best {
   distance: number;
   pointA: Vec3;
@@ -117,19 +178,21 @@ export function minDistanceBetweenBvhs(
     triangleB: -1,
   };
 
-  // Explicit stack of node pairs with their lower bound, processed
-  // best-first: a good bound found early prunes the most.
-  const stack: Array<{ na: BvhNode; nb: BvhNode; lowerSq: number }> = [
-    { na: rootA, nb: rootB, lowerSq: aabbDistSq(rootA.bounds, rootB.bounds) },
-  ];
+  // Frontier of node pairs, popped best-first: the tightest lower bound is
+  // explored first, so a good real distance is found early and prunes the most.
+  //
+  // A min-heap rather than a scan-and-splice over an array. Both are correct,
+  // but the frontier grows with the product of the two trees' widths, and a
+  // linear pick plus a splice is O(n) each, so the traversal degrades toward
+  // quadratic exactly on the large disjoint meshes this query exists for. The
+  // heap keeps it O(log n) per pop with the same visit order.
+  const frontier = new PairHeap();
+  frontier.push({ na: rootA, nb: rootB, lowerSq: aabbDistSq(rootA.bounds, rootB.bounds) });
 
-  while (stack.length > 0) {
-    // Pop the most promising pair rather than the last pushed.
-    let pick = 0;
-    for (let i = 1; i < stack.length; i++) {
-      if (stack[i].lowerSq < stack[pick].lowerSq) pick = i;
-    }
-    const { na, nb, lowerSq } = stack.splice(pick, 1)[0];
+  for (;;) {
+    const next = frontier.pop();
+    if (!next) break;
+    const { na, nb, lowerSq } = next;
 
     // The bound is a lower bound on every pair beneath this node pair, so
     // once it reaches the best distance found, nothing here can improve it.
@@ -175,7 +238,7 @@ export function minDistanceBetweenBvhs(
     }
     for (const c of children) {
       const lower = aabbDistSq(c.na.bounds, c.nb.bounds);
-      if (lower < best.distance * best.distance) stack.push({ ...c, lowerSq: lower });
+      if (lower < best.distance * best.distance) frontier.push({ ...c, lowerSq: lower });
     }
   }
 

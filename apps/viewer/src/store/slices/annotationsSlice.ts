@@ -306,9 +306,17 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
 
   removeRemoteAnnotation: (id) => {
     set((state) => {
-      if (!state.annotations.has(id)) return {};
+      const existing = state.annotations.get(id);
+      if (!existing) return {};
       const next = new Map(state.annotations);
       next.delete(id);
+      // Mirror upsertRemoteAnnotation's condition: a pin we did NOT mark
+      // `remote` is one of OURS (a peer's edit/delete of our own pin arrives
+      // as non-remote), so it was persisted to localStorage and the deletion
+      // must be too, or it resurrects on the next `loadFromStorage()`. A
+      // purely-remote pin (`existing.remote === true`) was never persisted,
+      // so there's nothing to write here.
+      if (!existing.remote) saveToStorage(next);
       return {
         annotations: next,
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,

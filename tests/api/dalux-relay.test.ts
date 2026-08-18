@@ -4,13 +4,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  createDaluxRelayHandler,
-  loadDaluxRelayConfig,
-  resolveUpstreamPath,
-  DEFAULT_DALUX_RELAY_CONFIG,
-  type DaluxRelayConfig,
-} from '../../server/sources/dalux-relay.js';
+import { createDaluxRelayHandler, loadDaluxRelayConfig, resolveUpstreamPath, DEFAULT_DALUX_RELAY_CONFIG, type DaluxRelayConfig, resolveDevProxy } from '../../server/sources/dalux-relay.js';
 
 const APP_ORIGIN = 'https://app.example';
 
@@ -262,4 +256,100 @@ test('loadDaluxRelayConfig parses a comma-separated origin list', () => {
 
   assert.deepEqual(config.allowedOrigins, ['https://a.example', 'https://b.example']);
   assert.equal(config.upstreamOrigin, 'https://node1.field.dalux.com');
+});
+
+// --- per-node routing (#2792) -------------------------------------------------
+// Dalux assigns each customer a node and shows the base URL beside the API key.
+// Before this, every user on node2+ was locked out of Dalux Box entirely.
+
+test('routes to the caller-selected node', async () => {
+  const { handler, captured } = createHandler();
+  const response = await handler(get('/api/dalux/5.1/projects?daluxNode=node2&limit=10'));
+
+  assert.equal(response.status, 200);
+  assert.equal(
+    captured[0].url,
+    'https://node2.field.dalux.com/service/api/5.1/projects?limit=10',
+  );
+});
+
+test('the node selector is never forwarded as a Dalux query param', async () => {
+  const { handler, captured } = createHandler();
+  await handler(get('/api/dalux/5.1/projects?daluxNode=node7'));
+
+  assert.equal(captured[0].url, 'https://node7.field.dalux.com/service/api/5.1/projects');
+  assert.ok(!captured[0].url.includes('daluxNode'), 'routing param leaked upstream');
+});
+
+test('falls back to the default node when none is given', async () => {
+  const { handler, captured } = createHandler();
+  await handler(get('/api/dalux/5.1/projects'));
+  assert.ok(captured[0].url.startsWith('https://node1.field.dalux.com'));
+});
+
+test('refuses a node that is not a Dalux field node', async () => {
+  // The relay forwards the caller's X-API-KEY. Accepting a caller-supplied
+  // host would make it an open proxy that leaks that key anywhere, so the
+  // origin is assembled here from a name and never taken from the request.
+  const hostile = [
+    'evil.com',
+    'node1.field.dalux.com.evil.com',
+    'node1.field.dalux.com/../..',
+    'node0',
+    'node',
+    'node01',
+    'NODE2',
+    'node2 ',
+    'node2/x',
+    'node2:8080',
+    'node2#',
+    'user@node2',
+    '../node2',
+    'node9999',
+    'https://node2.field.dalux.com',
+  ];
+  for (const node of hostile) {
+    const { handler, captured } = createHandler();
+    const response = await handler(
+      get(`/api/dalux/5.1/projects?daluxNode=${encodeURIComponent(node)}`),
+    );
+    assert.equal(response.status, 400, `${node} was not rejected`);
+    assert.equal(captured.length, 0, `${node} reached the network`);
+  }
+});
+
+test('accepts the full documented node range', async () => {
+  for (const node of ['node1', 'node2', 'node9', 'node10', 'node123']) {
+    const { handler, captured } = createHandler();
+    const response = await handler(get(`/api/dalux/5.1/projects?daluxNode=${node}`));
+    assert.equal(response.status, 200, `${node} was rejected`);
+    assert.equal(captured[0].url, `https://${node}.field.dalux.com/service/api/5.1/projects`);
+  }
+});
+
+// --- dev proxy parity (#2792) ------------------------------------------------
+// Vite's dev proxy resolves a target per request instead of going through the
+// handler, so it must reach the SAME node and strip the SAME routing param.
+// A hardcoded dev target would send a node2 developer to node1 silently.
+
+test('the dev proxy routes to the selected node and strips the selector', () => {
+  const node2 = resolveDevProxy('/api/dalux/5.1/projects?daluxNode=node2&limit=10');
+  assert.equal(node2.target, 'https://node2.field.dalux.com');
+  assert.equal(node2.path, '/service/api/5.1/projects?limit=10');
+  assert.ok(!node2.path.includes('daluxNode'), 'routing param leaked to dev upstream');
+});
+
+test('the dev proxy matches the handler for the default node', () => {
+  const plain = resolveDevProxy('/api/dalux/5.1/projects');
+  assert.equal(plain.target, DEFAULT_DALUX_RELAY_CONFIG.upstreamOrigin);
+  assert.equal(plain.path, '/service/api/5.1/projects');
+});
+
+test('the dev proxy never routes an unknown node somewhere unexpected', () => {
+  // A Vite `router` cannot answer 400, so it falls back to the default target
+  // instead of forwarding a caller-supplied host. The handler is what rejects.
+  for (const bad of ['evil.com', 'node0', 'https://node2.field.dalux.com', '../node2']) {
+    const resolved = resolveDevProxy(`/api/dalux/5.1/projects?daluxNode=${encodeURIComponent(bad)}`);
+    assert.equal(resolved.target, DEFAULT_DALUX_RELAY_CONFIG.upstreamOrigin, `${bad} changed the dev target`);
+  }
 });

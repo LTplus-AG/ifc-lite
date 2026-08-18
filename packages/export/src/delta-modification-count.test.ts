@@ -77,7 +77,7 @@ DATA;
 #51=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
 #52=IFCRELDEFINESBYPROPERTIES('0OSuGGYUFyIf0LtE29OSuR',$,$,$,(#8),#50);
 #40=IFCPROJECTEDCRS('EPSG:1000',$,$,$,$,$,$);
-#41=IFCMAPCONVERSION($,#40,1000.,2000.,0.,$,$,$);
+#41=IFCMAPCONVERSION($,#40,1000.,2000.,0.,0.,0.,0.);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -393,13 +393,53 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
     const store = await parseBase();
     const { view } = newSession(store);
 
+    // Every field the modify-existing-CRS branch can set, each a distinct
+    // non-interchangeable value so a positional swap would be observable.
     const result = new StepExporter(store, view).export({
       schema: 'IFC4',
-      georefMutations: { projectedCRS: { name: 'EPSG:2056' } },
+      georefMutations: {
+        projectedCRS: {
+          name: 'EPSG:2056',
+          description: 'LV95 Modified',
+          geodeticDatum: 'CH1903+',
+          verticalDatum: 'LN02',
+          mapProjection: 'Swiss Oblique Mercator 1995',
+          mapZone: '32N',
+        },
+      },
     });
     const text = new TextDecoder().decode(result.content);
 
-    expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
+    expect(text).toContain(
+      `#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056','LV95 Modified','CH1903+','LN02','Swiss Oblique Mercator 1995','32N',$);`,
+    );
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('a georeferencing edit to an existing IfcMapConversion still counts and still lands', async () => {
+    const store = await parseBase();
+    const { view } = newSession(store);
+
+    // Same shape as the CRS case above, for the sibling modify branch: every
+    // settable field, each a distinct value so a transposed pair would fail.
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      georefMutations: {
+        mapConversion: {
+          eastings: 2650000,
+          northings: 1250000,
+          orthogonalHeight: 555,
+          xAxisAbscissa: 0.1,
+          xAxisOrdinate: 0.2,
+          scale: 0.9999,
+        },
+      },
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(
+      `#${MAP_CONVERSION_ID}=IFCMAPCONVERSION($,#${CRS_ID},2650000.,1250000.,555.,0.1,0.2,0.9999);`,
+    );
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 

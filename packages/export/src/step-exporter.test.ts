@@ -257,7 +257,9 @@ describe('StepExporter', () => {
           name: 'EPSG:2056',
           description: 'CH1903+ / LV95',
           geodeticDatum: 'CH1903+',
+          verticalDatum: 'LN02',
           mapProjection: 'Swiss Oblique Mercator 1995',
+          mapZone: '32N',
           mapUnit: 'METRE',
         },
         mapConversion: {
@@ -272,7 +274,9 @@ describe('StepExporter', () => {
     });
 
     const content = decode(result.content);
-    expect(content).toContain("IFCPROJECTEDCRS('EPSG:2056','CH1903+ / LV95','CH1903+',$,'Swiss Oblique Mercator 1995',$,#");
+    expect(content).toContain(
+      "IFCPROJECTEDCRS('EPSG:2056','CH1903+ / LV95','CH1903+','LN02','Swiss Oblique Mercator 1995','32N',#",
+    );
     expect(content).toMatch(/IFCMAPCONVERSION\(#14,#\d+,2600000\.,1200000\.,500\.,0\.,1\.,1\.\);/);
     expect(content).toContain('IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)');
     // A surviving context means nothing was refused — no spurious warning.

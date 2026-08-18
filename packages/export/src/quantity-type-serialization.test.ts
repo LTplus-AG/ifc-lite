@@ -66,17 +66,25 @@ async function exportOneQuantity(kind: QuantityKind, name: string): Promise<stri
 }
 
 describe('every QuantityKind is exported as the IFC quantity entity it was authored as', () => {
-  /** The whole table. A kind missing from this list is a kind nothing pins. */
-  const CASES: Array<[kind: QuantityKind, token: string]> = [
-    ['LENGTH', 'IFCQUANTITYLENGTH'],
-    ['AREA', 'IFCQUANTITYAREA'],
-    ['VOLUME', 'IFCQUANTITYVOLUME'],
-    ['COUNT', 'IFCQUANTITYCOUNT'],
-    ['WEIGHT', 'IFCQUANTITYWEIGHT'],
-    ['TIME', 'IFCQUANTITYTIME'],
-  ];
+  /**
+   * The whole table, as a `Record` over the union rather than a list.
+   *
+   * A list would let a newly added `QuantityKind` go uncovered while this file
+   * still claimed to pin "every" one of them, which is the same
+   * comment-asserts-cover-it-does-not-have defect the rest of this PR is
+   * about. As a `Record`, adding a member to the union stops this file
+   * COMPILING until the member is given its token here.
+   */
+  const CASES: Record<QuantityKind, string> = {
+    LENGTH: 'IFCQUANTITYLENGTH',
+    AREA: 'IFCQUANTITYAREA',
+    VOLUME: 'IFCQUANTITYVOLUME',
+    COUNT: 'IFCQUANTITYCOUNT',
+    WEIGHT: 'IFCQUANTITYWEIGHT',
+    TIME: 'IFCQUANTITYTIME',
+  };
 
-  for (const [kind, token] of CASES) {
+  for (const [kind, token] of Object.entries(CASES) as Array<[QuantityKind, string]>) {
     it(`${kind} is written as ${token}`, async () => {
       const text = await exportOneQuantity(kind, 'Q');
       expect(text).toContain(`=${token}('Q',`);

@@ -42,9 +42,12 @@ function headerClaimedModifications(stepText: string): number | null {
 const WALL_ID = 8;
 const WALL_TYPE_ID = 5;
 const CRS_ID = 40;
+const MAP_CONVERSION_ID = 41;
 const WALL_NAME = 'Existing Wall';
 /** The `Name` an IfcProjectedCRS is already carrying in {@link BASE_IFC}. */
 const CRS_NAME = 'EPSG:1000';
+/** The `Eastings` an IfcMapConversion is already carrying in {@link BASE_IFC}. */
+const MAP_CONVERSION_EASTINGS = 1000;
 
 const BASE_IFC = `ISO-10303-21;
 HEADER;
@@ -59,6 +62,7 @@ DATA;
 #30=IFCPROPERTYSET('0OSuGGYUFyIf0LtE29OSuP',$,'Pset_TypeOwned',$,(#31));
 #31=IFCPROPERTYSINGLEVALUE('Foo',$,IFCTEXT('old'),$);
 #40=IFCPROJECTEDCRS('${CRS_NAME}',$,$,$,$,$,$);
+#41=IFCMAPCONVERSION($,#40,${MAP_CONVERSION_EASTINGS}.,2000.,0.,$,$,$);
 ENDSEC;
 END-ISO-10303-21;`;
 
@@ -166,6 +170,24 @@ describe('a georeferencing edit is the same site with the same signal', () => {
     const text = new TextDecoder().decode(result.content);
 
     expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
+    expect(result.stats.modifiedEntityCount).toBe(1);
+  });
+
+  it('writing a DIFFERENT Eastings on IfcMapConversion still counts and still lands', async () => {
+    // The MapConversion branch queues into the same `modifiedAttributes` map
+    // as the CRS branch above and gates its nomination the same way
+    // (`hasEmittableHostBytes`) — this is that branch's own sibling case,
+    // parallel to the CRS one directly above it.
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+
+    const result = new StepExporter(store, view).export({
+      schema: 'IFC4',
+      georefMutations: { mapConversion: { eastings: MAP_CONVERSION_EASTINGS + 500 } },
+    });
+    const text = new TextDecoder().decode(result.content);
+
+    expect(text).toContain(`#${MAP_CONVERSION_ID}=IFCMAPCONVERSION($,#${CRS_ID},1500.`);
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 });

@@ -492,6 +492,45 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  it('writes an unquoted STEP real when setting a MapConversion field that was previously $ (#2724)', () => {
+    // OrthogonalHeight, XAxisAbscissa, XAxisOrdinate and Scale are all
+    // OPTIONAL in IFC4, so a real file can legally carry `$` there. The
+    // named-attribute rewrite path (`serializeNamedAttribute` ->
+    // `serializeAttributeValue`) infers REAL-vs-string formatting from the
+    // token being replaced; when that token is `$` there is no numeric
+    // token to key off, and the fallback must still emit an unquoted STEP
+    // real, not a quoted string.
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20),#30);"],
+      [2, 'IFCSIUNIT', '#2=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);'],
+      [20, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#21,$);"],
+      [21, 'IFCAXIS2PLACEMENT3D', '#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);'],
+      [22, 'IFCCARTESIANPOINT', '#22=IFCCARTESIANPOINT((0.,0.,0.));'],
+      [23, 'IFCDIRECTION', '#23=IFCDIRECTION((0.,0.,1.));'],
+      [24, 'IFCDIRECTION', '#24=IFCDIRECTION((1.,0.,0.));'],
+      [30, 'IFCUNITASSIGNMENT', '#30=IFCUNITASSIGNMENT((#2));'],
+      [40, 'IFCPROJECTEDCRS', "#40=IFCPROJECTEDCRS('EPSG:2056',$,'CH1903+',$,$,$,#2);"],
+      // OrthogonalHeight is `$` in the source file — schema-legal, and the
+      // exact shape a real project's file has before anyone sets it.
+      [41, 'IFCMAPCONVERSION', '#41=IFCMAPCONVERSION(#20,#40,1.,2.,$,1.,0.,1.);'],
+    ]);
+
+    const exporter = new StepExporter(dataStore);
+    const result = exporter.export({
+      schema: 'IFC4',
+      applyMutations: true,
+      georefMutations: {
+        mapConversion: { orthogonalHeight: 12345 },
+      },
+    });
+
+    const content = decode(result.content);
+    const mcLine = content.match(/#41=IFCMAPCONVERSION\([^;]*\);/)?.[0] ?? '';
+    // An unquoted STEP real, not `'12345.'` / `'12345'` — IFC4
+    // OrthogonalHeight is IfcLengthMeasure, a REAL, not a string.
+    expect(mcLine).toBe('#41=IFCMAPCONVERSION(#20,#40,1.,2.,12345.,1.,0.,1.);');
+  });
+
   it('never points new georeferencing at a deleted context or length unit', () => {
     const dataStore = buildMockDataStore([
       [1, 'IFCPROJECT', "#1=IFCPROJECT('g',$,'Project',$,$,$,$,(#20,#25),#30);"],

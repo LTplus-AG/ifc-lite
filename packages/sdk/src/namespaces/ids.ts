@@ -95,9 +95,16 @@ export class IDSNamespace {
    */
   async validate(idsDocument: unknown, options: IDSValidateOptions): Promise<unknown> {
     const mod = await loadIDS();
+    // `ValidatorOptions` has no `locale` field — the validator only
+    // understands a `translator` (see @ifc-lite/ids `ValidatorOptions`).
+    // Build one from the requested locale so `locale` actually reaches
+    // the human-readable messages instead of being silently dropped.
+    const translator = options.locale
+      ? (mod.createTranslationService as AnyFn)(options.locale)
+      : undefined;
     return (mod.validateIDS as AnyFn)(idsDocument, options.accessor, options.modelInfo ?? {}, {
       onProgress: options.onProgress,
-      locale: options.locale,
+      translator,
       includePassingEntities: options.includePassingEntities,
     });
   }

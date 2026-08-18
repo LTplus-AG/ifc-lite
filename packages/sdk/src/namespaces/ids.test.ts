@@ -4,8 +4,90 @@
 
 import { describe, it, expect } from 'vitest';
 import { IDSNamespace } from './ids.js';
+import type {
+  IDSDocument,
+  IDSSimpleValue,
+  IDSModelInfo,
+  IFCDataAccessor,
+} from '@ifc-lite/ids';
 
 const ids = new IDSNamespace();
+
+const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
+
+/** Minimal IFCDataAccessor over a single entity missing its Name attribute. */
+function makeAccessor(): IFCDataAccessor {
+  return {
+    getEntityType: (id) => (id === 1 ? 'IfcWall' : undefined),
+    getEntityName: () => undefined,
+    getGlobalId: () => undefined,
+    getDescription: () => undefined,
+    getObjectType: () => undefined,
+    getEntitiesByType: (typeName) => (typeName.toUpperCase() === 'IFCWALL' ? [1] : []),
+    getAllEntityIds: () => [1],
+    getPropertyValue: () => undefined,
+    getPropertySets: () => [],
+    getClassifications: () => [],
+    getMaterials: () => [],
+    getParent: () => undefined,
+    getAttribute: () => undefined,
+  };
+}
+
+function makeDoc(): IDSDocument {
+  return {
+    info: { title: 'Locale test' },
+    specifications: [
+      {
+        id: 'spec-0',
+        name: 'Walls must have a name',
+        ifcVersions: ['IFC4'],
+        applicability: { facets: [{ type: 'entity', name: sv('IFCWALL') }] },
+        requirements: [
+          {
+            id: 'req-0',
+            facet: { type: 'attribute', name: sv('Name') },
+            optionality: 'required',
+          },
+        ],
+      },
+    ],
+  };
+}
+
+const modelInfo: IDSModelInfo = {
+  modelId: 'test-model',
+  schemaVersion: 'IFC4',
+  entityCount: 1,
+};
+
+describe('IDSNamespace.validate — locale', () => {
+  it('produces a German failure message when locale is "de"', async () => {
+    const reportEn = (await ids.validate(makeDoc(), {
+      accessor: makeAccessor(),
+      modelInfo,
+      locale: 'en',
+    })) as {
+      specificationResults: Array<{
+        entityResults: Array<{ requirementResults: Array<{ failureReason?: string }> }>;
+      }>;
+    };
+    const reportDe = (await ids.validate(makeDoc(), {
+      accessor: makeAccessor(),
+      modelInfo,
+      locale: 'de',
+    })) as typeof reportEn;
+
+    const enReason = reportEn.specificationResults[0].entityResults[0].requirementResults[0]
+      .failureReason;
+    const deReason = reportDe.specificationResults[0].entityResults[0].requirementResults[0]
+      .failureReason;
+
+    expect(enReason).toBeTruthy();
+    expect(deReason).toBeTruthy();
+    expect(deReason).not.toBe(enReason);
+  });
+});
 
 describe('IDSNamespace.summarize', () => {
   it('derives spec pass/fail from entity results when no status is present', () => {

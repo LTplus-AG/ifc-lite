@@ -171,7 +171,13 @@ export async function seedGeometryToRoom(
   //    "all but one". `maxFailures` then stops a store that is refusing
   //    everything, so the caller hears about it in seconds rather than after
   //    every mesh has been tried.
-  const concurrency = Math.max(1, Math.min(opts.concurrency ?? 16, jobs.length || 1));
+  // Guarded like the other numeric options: `Math.min(NaN, n)` is NaN, and
+  // `Array.from({length: NaN})` builds ZERO workers, so a NaN concurrency
+  // uploads nothing at all rather than uploading slowly.
+  const concurrency = Math.max(
+    1,
+    Math.min(uploadCountOption(opts.concurrency, 16) || 16, jobs.length || 1),
+  );
   const retries = uploadCountOption(opts.retries, DEFAULT_UPLOAD_RETRIES);
   const retryDelaysMs = opts.retryDelaysMs ?? DEFAULT_UPLOAD_RETRY_DELAYS_MS;
   const maxFailures = Math.max(1, uploadCountOption(opts.maxFailures, DEFAULT_UPLOAD_MAX_FAILURES));

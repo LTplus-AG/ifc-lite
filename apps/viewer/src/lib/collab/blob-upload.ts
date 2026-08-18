@@ -28,6 +28,26 @@ export function uploadCountOption(value: number | undefined, fallback: number): 
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : fallback;
 }
 
+/**
+ * A retry backoff that has to survive a hostile number.
+ *
+ * `setTimeout` clamps anything above 2^31-1 to ONE millisecond (measured:
+ * `setTimeout(fn, 2**31)` fires in 1ms with a TimeoutOverflowWarning), so an
+ * over-large backoff is the same instant-retry flood as a zero one, arriving
+ * from the opposite end. NaN and negatives collapse to no wait at all. Bound
+ * both ends rather than only the low one.
+ *
+ * The ceiling is 30s rather than the 2^31-1 the platform would allow: a
+ * per-blob retry that waits longer than that has already failed the person
+ * waiting on the share.
+ */
+export const MAX_RETRY_DELAY_MS = 30_000;
+
+export function boundedRetryDelayMs(value: number | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return 0;
+  return Math.min(value, MAX_RETRY_DELAY_MS);
+}
+
 const delay = (ms: number): Promise<void> =>
   ms > 0 ? new Promise((resolve) => setTimeout(resolve, ms)) : Promise.resolve();
 
@@ -47,7 +67,9 @@ export async function putBlobWithRetry(
       return await blobStore.put(bytes, 'application/octet-stream');
     } catch (err) {
       lastError = err;
-      if (attempt < retries) await delay(delaysMs[attempt] ?? delaysMs[delaysMs.length - 1] ?? 0);
+      if (attempt < retries) {
+        await delay(boundedRetryDelayMs(delaysMs[attempt] ?? delaysMs[delaysMs.length - 1]));
+      }
     }
   }
   throw lastError;

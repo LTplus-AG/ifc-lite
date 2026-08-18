@@ -20,6 +20,7 @@ import {
 import type { BlobMeta, BlobStore } from '@ifc-lite/collab';
 import type { MeshData } from '@ifc-lite/geometry';
 import { encodeMesh, decodeMesh } from './mesh-codec.js';
+import { MAX_RETRY_DELAY_MS, boundedRetryDelayMs } from './blob-upload.js';
 import {
   seedGeometryToRoom,
   hydrateGeometryFromRoom,
@@ -294,6 +295,20 @@ describe('geometry-sync seed resilience', () => {
     assert.ok(blobStore.attempts < 80, `bounded by the default ceiling, got ${blobStore.attempts} attempts`);
   });
 
+  it('still uploads when concurrency is configured with a NaN', async () => {
+    // `Math.min(NaN, n)` is NaN and `Array.from({length: NaN})` builds ZERO
+    // workers, so a NaN here uploads nothing while every other signal looks
+    // like a normal seed that simply found nothing.
+    const { session, pathFor } = docWithEntities(3);
+    const blobStore = new MemoryBlobStore();
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(3), pathFor, {
+      concurrency: Number.NaN,
+    });
+
+    assert.equal(seeded.seeded, 3);
+  });
+
   it('counts meshes whose CPU data was released, so the caller sees an empty seed', async () => {
     // Bounded-geometry mode on a large model: every mesh is present but has no
     // triangles. Nothing throws, nothing uploads, the room gets nothing, and
@@ -314,6 +329,26 @@ describe('geometry-sync seed resilience', () => {
     assert.equal(seeded.attempted, 0);
     assert.equal(seeded.seeded, 0);
     assert.equal(seeded.skipped.empty, 2);
+  });
+});
+
+describe('retry backoff bounds', () => {
+  it('clamps a backoff that setTimeout would turn into an instant retry', () => {
+    // Measured: `setTimeout(fn, 2 ** 31)` fires in 1ms. An over-large backoff
+    // is the same flood as a zero one, from the other end.
+    assert.equal(boundedRetryDelayMs(2 ** 31), MAX_RETRY_DELAY_MS);
+    assert.equal(boundedRetryDelayMs(Number.MAX_SAFE_INTEGER), MAX_RETRY_DELAY_MS);
+  });
+
+  it('treats a NaN, infinite or negative backoff as no wait', () => {
+    assert.equal(boundedRetryDelayMs(Number.NaN), 0);
+    assert.equal(boundedRetryDelayMs(Number.POSITIVE_INFINITY), 0);
+    assert.equal(boundedRetryDelayMs(-5), 0);
+    assert.equal(boundedRetryDelayMs(undefined), 0);
+  });
+
+  it('passes a sane backoff through untouched', () => {
+    assert.equal(boundedRetryDelayMs(150), 150);
   });
 });
 

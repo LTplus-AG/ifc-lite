@@ -73,6 +73,17 @@ const TMP_REGEX = /^[a-f0-9]{32}\.tmp-/;
  */
 export const DEFAULT_BLOB_GC_GRACE_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Largest delay `setInterval` accepts (2^31 - 1 ms, about 24.8 days).
+ *
+ * Node clamps anything ABOVE this to 1ms, exactly as it does for NaN and for
+ * values below 1. So an over-large interval is not "sweeps rarely", it is
+ * "sweeps a thousand times a second" - the same flood as a zero, reached from
+ * the opposite direction. Rejected rather than clamped, since a number that
+ * large is a mistake either way.
+ */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
 export interface BlobGcPlan {
   /** Blob hashes safe to delete. */
   readonly deleteHashes: string[];
@@ -381,7 +392,13 @@ export function resolveBlobGcConfig(env: NodeJS.ProcessEnv = process.env): {
     // Default ON. Blobs are never otherwise deleted, so an operator who does
     // nothing must still be protected from the inode exhaustion in #2790.
     enabled: flag !== '0' && flag !== 'false',
-    intervalMs: duration(env.COLLAB_BLOB_GC_INTERVAL_MS, 6 * 60 * 60 * 1000, 'COLLAB_BLOB_GC_INTERVAL_MS', 1),
+    intervalMs: duration(
+      env.COLLAB_BLOB_GC_INTERVAL_MS,
+      6 * 60 * 60 * 1000,
+      'COLLAB_BLOB_GC_INTERVAL_MS',
+      1,
+      MAX_TIMER_DELAY_MS,
+    ),
     graceMs: duration(env.COLLAB_BLOB_GC_GRACE_MS, DEFAULT_BLOB_GC_GRACE_MS, 'COLLAB_BLOB_GC_GRACE_MS', 0),
   };
 }
@@ -396,12 +413,18 @@ export function resolveBlobGcConfig(env: NodeJS.ProcessEnv = process.env): {
  * A NaN or zero interval makes `setInterval` fire about every millisecond.
  * Fail loudly at startup instead: a misconfigured sweep must not run at all.
  */
-function duration(raw: string | undefined, fallback: number, name: string, min: number): number {
+function duration(
+  raw: string | undefined,
+  fallback: number,
+  name: string,
+  min: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number {
   if (raw === undefined || raw === '') return fallback;
   const n = Number(raw);
-  if (!Number.isFinite(n) || n < min) {
+  if (!Number.isFinite(n) || n < min || n > max) {
     throw new Error(
-      `[blob-gc] ${name}=${JSON.stringify(raw)} is not a finite number >= ${min}; refusing to start`,
+      `[blob-gc] ${name}=${JSON.stringify(raw)} is not a finite number in [${min}, ${max}]; refusing to start`,
     );
   }
   return n;

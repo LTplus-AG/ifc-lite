@@ -85,7 +85,9 @@ describe('blob gc wiring', () => {
         `grace ${JSON.stringify(bad)} was accepted`,
       ).toThrow(/COLLAB_BLOB_GC_GRACE_MS/);
     }
-    for (const bad of ['abc', '0', '-5', 'NaN']) {
+    // 2^31 is ABOVE setInterval's ceiling, where Node clamps to 1ms - the same
+    // flood as 0, reached from the other end.
+    for (const bad of ['abc', '0', '-5', 'NaN', '2147483648', '1e30']) {
       expect(
         () => resolveBlobGcConfig({ COLLAB_BLOB_GC_INTERVAL_MS: bad }),
         `interval ${JSON.stringify(bad)} was accepted`,
@@ -100,6 +102,14 @@ describe('blob gc wiring', () => {
   it('publishes sweep counters on the metrics registry', async () => {
     const dataDir = tmp();
     fs.mkdirSync(path.join(dataDir, 'blobs'), { recursive: true });
+    const sweepCount = () =>
+      Number(
+        /^collab_blob_gc_sweeps_total(?:\{[^}]*\})? (\d+(?:\.\d+)?)$/m.exec(
+          defaultMetrics.render(),
+        )?.[1] ?? 0,
+      );
+    const before = sweepCount();
+
     const worker = startBlobGc({
       dataDir,
       storage: new FsBlobStorage(dataDir),
@@ -108,8 +118,9 @@ describe('blob gc wiring', () => {
     expect(worker).not.toBeNull();
     await worker!.runOnce();
     worker!.stop();
-    // The claim in the module is that a failing sweep is visible at /metrics,
-    // so the counter must actually reach the published registry.
-    expect(defaultMetrics.render()).toMatch(/collab_blob_gc_sweeps_total/);
+    // Asserting only that the NAME appears is not enough: startBlobGc registers
+    // the counter before runOnce executes, so a name check passes even if a
+    // successful sweep never increments it. Measure the delta instead.
+    expect(sweepCount()).toBeGreaterThan(before);
   });
 });

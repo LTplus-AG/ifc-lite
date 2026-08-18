@@ -186,3 +186,108 @@ describe('candidate already on the ref (published drafts re-merged into their ho
     expect(outcome.status).toBe('unrelated-base');
   });
 });
+
+describe('MergeInit.allowUnrelated (override the unrelated-base refusal)', () => {
+  /**
+   * A ref with an ours-only entity (wall-2, untouched by the candidate)
+   * and an entity the candidate also touches (wall-1, divergent value).
+   * The candidate's declared base matches no prefix of the ref.
+   */
+  function unrelatedSetup() {
+    const store = new MemoryStore();
+    const oursBase = publishable(
+      [{ path: 'wall-1', attributes: { [FIRE]: 'REI60' } }],
+      'OursBase',
+      null,
+    );
+    store.storeLayer(oursBase);
+    const oursOnly = publishable(
+      [{ path: 'wall-2', attributes: { [FIRE]: 'REI30' } }],
+      'OursOnly',
+      [oursBase.header.id],
+    );
+    store.storeLayer(oursOnly);
+    store.setRef('main', { layers: [oursBase.header.id, oursOnly.header.id] });
+
+    const foreignBase = publishable([], 'ForeignBase', null);
+    store.storeLayer(foreignBase);
+    const candidate = publishable(
+      [
+        // Overlaps ours' wall-1 with a divergent value.
+        { path: 'wall-1', attributes: { [FIRE]: 'REI999' } },
+        // An entity that exists only in the candidate's unrelated history.
+        { path: 'wall-3', attributes: { [FIRE]: 'REI45' } },
+      ],
+      'Candidate',
+      [foreignBase.header.id],
+    );
+    store.storeLayer(candidate);
+    return { store, candidate };
+  }
+
+  it('refuses without the flag, and is bypassed with it (same candidate, same ref)', () => {
+    const { store, candidate } = unrelatedSetup();
+
+    const refused = mergeIntoRef(store, { candidateId: candidate.header.id, into: 'main' });
+    expect(refused.status).toBe('unrelated-base');
+
+    // Non-preview execution is where the refusal actually bites (preview
+    // never refuses, flag or not — `!init.preview` already short-circuits
+    // it). Exercise the real bypass on the executing path.
+    const bypassed = mergeIntoRef(store, {
+      candidateId: candidate.header.id,
+      into: 'main',
+      allowUnrelated: true,
+      resolutions: [{ path: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'ours' }],
+    });
+    expect(bypassed.status).not.toBe('unrelated-base');
+    expect(bypassed.status).toBe('merged');
+  });
+
+  it('does not steamroll the ref: ours-only content survives, overlapping paths conflict instead of being overwritten', () => {
+    const { store, candidate } = unrelatedSetup();
+
+    const preview = mergeIntoRef(store, {
+      candidateId: candidate.header.id,
+      into: 'main',
+      preview: true,
+      allowUnrelated: true,
+    });
+    expect(preview.status).toBe('preview');
+    if (preview.status !== 'preview') return;
+    // The overlapping path surfaces as a conflict for a human to decide —
+    // planning against an empty ancestor must NOT read it as "theirs
+    // wholesale" and silently overwrite ours' value.
+    expect(preview.plan.conflicts).toHaveLength(1);
+    expect(preview.plan.conflicts[0]).toMatchObject({
+      kind: 'concurrent-edit',
+      path: 'wall-1',
+      componentKey: 'pset:Pset_FireSafety',
+    });
+    // wall-2 (ours-only, untouched by the candidate) is not itself a
+    // conflict and is not queued for any destructive op.
+    expect(preview.plan.conflicts.some((c) => c.path === 'wall-2')).toBe(false);
+    expect(
+      preview.plan.autoOps.some((op) => 'path' in op && op.path === 'wall-2' && op.op === 'tombstone-entity')
+    ).toBe(false);
+
+    const outcome = mergeIntoRef(store, {
+      candidateId: candidate.header.id,
+      into: 'main',
+      allowUnrelated: true,
+      resolutions: [{ path: 'wall-1', componentKey: 'pset:Pset_FireSafety', choice: 'ours' }],
+      created: '2026-07-11T02:00:00Z',
+    });
+    expect(outcome.status).toBe('merged');
+    if (outcome.status !== 'merged') return;
+
+    const state = extractStackState(outcome.refLayers.map((id) => store.loadLayer(id)));
+    // Ours' pre-existing, candidate-untouched entity survives verbatim.
+    expect(state.get('wall-2')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI30');
+    // The overlapping conflict resolved to ours, as instructed — not
+    // silently overwritten by treating the candidate's value as "new".
+    expect(state.get('wall-1')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI60');
+    // The candidate's genuinely new entity is added.
+    expect(state.get('wall-3')?.components.get('pset:Pset_FireSafety')?.[FIRE]).toBe('REI45');
+  });
+});

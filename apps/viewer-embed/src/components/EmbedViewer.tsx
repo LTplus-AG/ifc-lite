@@ -250,6 +250,22 @@ export function EmbedViewer() {
     });
   }, [cameraRotation]);
 
+  // Emit section-plane changes to parent. Mirrors the CAMERA_CHANGED effect
+  // above: the bridge's SET_SECTION handler (apps/viewer-embed/src/bridge/
+  // handler.ts) only mutates `sectionPlane` via the store's setters and never
+  // emits an event itself, so this reactive subscription is what turns those
+  // mutations (from SET_SECTION *or* any in-viewer section-tool interaction)
+  // into the outbound SECTION_CHANGED event -- same source of truth as
+  // ENTITY_SELECTED/CAMERA_CHANGED, not a handler.ts-local special case.
+  const sectionPlane = useViewerStore((s) => s.sectionPlane);
+  useEffect(() => {
+    emitEvent('SECTION_CHANGED', {
+      axis: sectionPlane.axis,
+      position: sectionPlane.position,
+      enabled: sectionPlane.enabled,
+    });
+  }, [sectionPlane]);
+
   // Multi-model: create mapping from modelId to modelIndex
   const modelIdToIndex = useMemo(() => {
     const map = new Map<string, number>();

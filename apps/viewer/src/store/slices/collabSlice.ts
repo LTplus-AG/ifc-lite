@@ -82,6 +82,41 @@ import { getEntityCenter } from '@/utils/viewportUtils';
  */
 export type CollabRole = 'viewer' | 'commenter' | 'editor' | 'admin';
 
+/**
+ * Highest expressId in a reconstructed id map, or 0 when there is none.
+ *
+ * One definition for both reconstruct branches: the first build and every
+ * re-derive have to agree on what the bound means, and computing it twice by
+ * hand is how they came to disagree (#2719).
+ */
+export function highestExpressId(idToPath: Map<number, string> | undefined): number {
+  let max = 0;
+  if (idToPath) {
+    for (const id of idToPath.keys()) if (id > max) max = id;
+  }
+  return max;
+}
+
+/**
+ * The new `maxExpressId` bound for a re-derived room model, or `null` when it
+ * must not move.
+ *
+ * RAISED, NEVER LOWERED. A peer deleting an entity shrinks the id space, but
+ * ids already handed out elsewhere (selection, annotations, a pending mesh)
+ * have to keep resolving through `globalId.ts`'s
+ * `localExpressId <= model.maxExpressId` gate, so the bound is a high-water
+ * mark rather than a current count. Lowering it would turn a delete into a
+ * silent unresolvable-selection bug, which is the same defect as the freeze,
+ * just triggered from the other direction.
+ */
+export function raisedMaxExpressId(
+  current: number,
+  idToPath: Map<number, string> | undefined,
+): number | null {
+  const seen = highestExpressId(idToPath);
+  return seen > current ? seen : null;
+}
+
 export type CollabStatus = 'disconnected' | WebSocketStatus | 'memory' | 'indexeddb';
 
 export interface StartCollabOptions {
@@ -704,10 +739,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
               // editable MutablePropertyView. idOffset 0 — mesh expressIds are
               // already in the reconstructed store's id space.
               modelCreated = true;
-              let maxExpressId = 0;
-              if (payload.idToPath) {
-                for (const id of payload.idToPath.keys()) if (id > maxExpressId) maxExpressId = id;
-              }
+              const maxExpressId = highestExpressId(payload.idToPath);
               get().upsertModel({
                 id: roomModelId,
                 name: 'Shared model',
@@ -727,6 +759,22 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
               // place (keeps the model id + activeModelId stable). setIfcDataStore
               // also updates the global store the outbound mirror reads.
               get().setIfcDataStore(payload.dataStore);
+              // ...but `setIfcDataStore` writes `{...model, ifcDataStore}` and
+              // leaves `maxExpressId` at whatever the FIRST reconstruct captured
+              // (#2719). The re-derive re-allocates dense ids from 1
+              // (`entity-extractor.ts`), so a peer's newly created entity lands
+              // ABOVE that frozen bound, and `globalId.ts` gates resolution on
+              // `localExpressId <= model.maxExpressId`. Everything a peer adds
+              // after the first reconstruct then stops resolving: no error, the
+              // entity is simply not found.
+              //
+              // Raised, never lowered. A delete shrinks the id space, but ids
+              // already handed out elsewhere (selection, annotations) must keep
+              // resolving, so the bound is a high-water mark rather than a
+              // current count.
+              const model = get().models.get(roomModelId);
+              const raised = model ? raisedMaxExpressId(model.maxExpressId, payload.idToPath) : null;
+              if (raised !== null) get().updateModel(roomModelId, { maxExpressId: raised });
             }
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {

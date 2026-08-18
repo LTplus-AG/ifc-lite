@@ -173,9 +173,12 @@ export function bcfTextFromChange(
   const typeLabel = row.ifcType.replace(/^Ifc/, '');
   const name = row.name || typeLabel;
   const title = `${typeLabel} "${name}" - ${changeLabel(row)}`;
-  const lines: string[] = [
+  // `null` marks a line to be OMITTED entirely (filtered out below); `''`
+  // is reserved for an intentional blank separator (e.g. before "Data
+  // changes:"). The two must not share a value - see the filter comment.
+  const lines: (string | null)[] = [
     `Detected in model comparison: ${changeLabel(row)}.`,
-    row.key.startsWith('missing:') ? '' : `GlobalId: ${row.key}`,
+    row.key.startsWith('missing:') ? null : `GlobalId: ${row.key}`,
   ];
   if (detail?.geometry) {
     if (detail.geometry.movedDistance > 0) lines.push(`Moved ${detail.geometry.movedDistance.toFixed(3)} m.`);
@@ -191,5 +194,8 @@ export function bcfTextFromChange(
     }
     if (detail.data.length > 20) lines.push(`- ... and ${detail.data.length - 20} more`);
   }
-  return { title, description: lines.filter((l, i) => l !== '' || i > 0).join('\n') };
+  // Only `null` lines (omitted rows, e.g. the missing-key GlobalId) are
+  // dropped here; a real `''` separator (see the "Data changes:" push
+  // above) survives so its blank line stays in the output.
+  return { title, description: lines.filter((l): l is string => l !== null).join('\n') };
 }

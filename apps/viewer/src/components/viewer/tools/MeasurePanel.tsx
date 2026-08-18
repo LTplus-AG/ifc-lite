@@ -18,6 +18,7 @@ import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
 import { formatDistance } from './formatDistance';
+import { formatThreePointAngle, threePointAngle } from './measure-modes/three-point-angle';
 import {
   distanceComponents,
   formatAxisDeltas,
@@ -68,6 +69,9 @@ export function MeasureOverlay() {
   const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
   // Multi-click polyline mode (#2199).
   const measureMode = useViewerStore((s) => s.measureMode);
+  const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
+  const activeAngle = useViewerStore((s) => s.activeAngle);
+  const deleteAngleMeasurement = useViewerStore((s) => s.deleteAngleMeasurement);
   const setMeasureMode = useViewerStore((s) => s.setMeasureMode);
   const activePolyline = useViewerStore((s) => s.activePolyline);
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
@@ -152,13 +156,27 @@ export function MeasureOverlay() {
     setActiveTool('select');
   }, [setActiveTool]);
 
+  // Cycles Distance -> Polyline -> Angle -> Distance. A cycle rather than three
+  // buttons keeps this control the same width it was, which matters because
+  // `measure-parity.test.tsx` pins that the mode control lives in the panel and
+  // not in either toolbar.
   const toggleMeasureMode = useCallback(() => {
-    setMeasureMode(measureMode === 'polyline' ? 'drag' : 'polyline');
+    const next: Record<typeof measureMode, typeof measureMode> = {
+      drag: 'polyline',
+      polyline: 'angle',
+      angle: 'drag',
+    };
+    setMeasureMode(next[measureMode]);
   }, [measureMode, setMeasureMode]);
+
+  const handleDeleteAngle = useCallback(
+    (id: string) => deleteAngleMeasurement(id),
+    [deleteAngleMeasurement],
+  );
 
   // Calculate total distance
   const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
-  const totalItemCount = measurements.length + polylineMeasurements.length;
+  const totalItemCount = measurements.length + polylineMeasurements.length + angleMeasurements.length;
 
   // Real-world XYZ readout. `anchor` is non-null only when the georef anchor
   // model carries a usable IfcMapConversion (projected CRS + offsets, not a
@@ -237,13 +255,13 @@ export function MeasureOverlay() {
           <button
             onClick={toggleMeasureMode}
             className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
-              measureMode === 'polyline'
+              measureMode !== 'drag'
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
             }`}
-            title="Toggle multi-click polyline mode — click to accumulate points, double-click or Enter to finish open, click near the start point to close the loop, Esc to cancel"
+            title="Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels)"
           >
-            {measureMode === 'polyline' ? 'Polyline' : 'Distance'}
+            {measureMode === 'polyline' ? 'Polyline' : measureMode === 'angle' ? 'Angle' : 'Distance'}
           </button>
           <button
             onClick={toggleSnap}
@@ -364,6 +382,43 @@ export function MeasureOverlay() {
                   ))}
                 </div>
               )}
+              {angleMeasurements.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {angleMeasurements.map((a, i) => (
+                    <div key={a.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground text-xs">Angle #{i + 1}</span>
+                        <span className="font-mono font-medium">
+                          {/* Derived on render, never stored: a correction to
+                              the maths retroactively fixes every measurement
+                              already listed. */}
+                          {formatThreePointAngle(
+                            threePointAngle(
+                              a.picks[0].point,
+                              a.picks[1].point,
+                              a.picks[2].point,
+                            ),
+                          )}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-4 w-4 hover:bg-destructive/20"
+                          onClick={() => handleDeleteAngle(a.id)}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activeAngle && (
+                <div className="mt-2 rounded bg-primary/10 px-2 py-0.5 text-xs text-muted-foreground">
+                  Angle in progress · {activeAngle.picks.length}/3 picks
+                  {activeAngle.picks.length === 1 ? ' · apex set' : ''}
+                </div>
+              )}
             </div>
           )}
           {section === 'point' && <MeasurePointReadout />}
@@ -389,9 +444,20 @@ export function MeasureOverlay() {
             ? activePolyline
               ? 'Click to add point · dbl-click/Enter to finish · click start to close · Esc to cancel'
               : 'Click to start polyline'
-            : activeMeasurement
-              ? 'Release to complete'
-              : 'Drag to measure'}
+            : measureMode === 'angle'
+              ? // In angle mode `activeMeasurement` is ALWAYS null - the drag
+                // gate refuses to start one - so falling through to the drag
+                // branch below would permanently show "Drag to measure" in a
+                // mode that ignores drags entirely. The hint has to name the
+                // gesture that actually works, and which pick is next.
+                !activeAngle
+                ? 'Click the apex of the angle'
+                : activeAngle.picks.length === 1
+                  ? 'Click the first direction · Esc to cancel'
+                  : 'Click the second direction · Esc to cancel'
+              : activeMeasurement
+                ? 'Release to complete'
+                : 'Drag to measure'}
         </span>
       </div>
 

@@ -13,7 +13,9 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
-import { raycastForPolylinePoint, isNearPolylineStart } from './measureHandlers.js';
+import { raycastForPolylinePoint, isNearPolylineStart,
+  isDuplicateClickPoint,
+} from './measureHandlers.js';
 
 /**
  * Handle click event for selection (single click and double click).
@@ -42,8 +44,11 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
   // gesture that adds a point, which is what makes the two modes unable to
   // corrupt each other's state (see `setMeasureMode` in measurementSlice.ts).
   if (tool === 'measure') {
-    if (useViewerStore.getState().measureMode === 'polyline') {
+    const mode = useViewerStore.getState().measureMode;
+    if (mode === 'polyline') {
       handlePolylineClick(ctx, x, y);
+    } else if (mode === 'angle') {
+      handleAngleClick(ctx, x, y);
     }
     return;
   }
@@ -638,6 +643,56 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
   }
 
   state.addPolylinePoint(picked.point);
+}
+
+/**
+ * Click handler for angle mode (#2735).
+ *
+ * There is no finish gesture - every angle kind has a FIXED pick count and the
+ * store finishes the measurement itself on the last pick - so polyline's
+ * `fromDoubleClick` apparatus has no analogue here.
+ *
+ * But the duplicate-click DEFENCE still does, and an earlier version of this
+ * comment claimed otherwise on false grounds. It argued a stray second click
+ * "lands where the maths already classifies coincident picks as degenerate".
+ * Only APEX-coincidence is degenerate. Browsers fire `click, click, dblclick`,
+ * so a habitual double-click produces three distinct failures here:
+ *
+ *   1. double-clicking a DIRECTION point makes picks 2 and 3 coincide - a
+ *      recorded "0.0°", rendered as a real answer rather than an em dash;
+ *   2. double-clicking the THIRD pick finishes on the first click and the
+ *      second click starts a stray new sequence, so "1/3 picks · apex set"
+ *      appears unbidden;
+ *   3. double-clicking the APEX puts picks 1 and 2 a pixel or two apart - a
+ *      ray whose direction is cursor noise, and pick 3 then yields a
+ *      confident, wrong `angled` number.
+ *
+ * So the same `isDuplicateClickPoint` guard polyline uses applies: a click
+ * within {@link DUPLICATE_POINT_SCREEN_RADIUS_PX} of the previous pick is the
+ * second half of one physical double-click and is dropped. Dropping is safe
+ * because a genuinely intended pick that close is unmeasurable anyway.
+ *
+ * A miss is a no-op, matching polyline's contract.
+ *
+ * Only the `'points'` kind ships today; `'edges'` and `'faces'` are the later
+ * slices of #2735 and will need their own pick resolution (an edge run from
+ * `SnapTarget.metadata`, a camera-oriented face normal from the intersection),
+ * which is why the pick carries its `kind` rather than being a bare point.
+ */
+export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number): void {
+  const state = useViewerStore.getState();
+  if (state.angleKind !== 'points') return;
+
+  const picked = raycastForPolylinePoint(ctx, x, y);
+  if (!picked) return;
+
+  // Drop the second half of a physical double-click (see the note above).
+  const prior = state.activeAngle?.picks;
+  const last = prior && prior.length > 0 ? prior[prior.length - 1].point : null;
+  if (last && isDuplicateClickPoint(last, picked.point)) return;
+
+  ctx.setSnapTarget(picked.snapTarget);
+  state.addAnglePick({ kind: 'points', point: picked.point });
 }
 
 /**

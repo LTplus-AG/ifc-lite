@@ -137,10 +137,16 @@ describe('packEnvironmentUniforms', () => {
     assert.strictEqual(buf.byteLength, ENVIRONMENT_UNIFORM_SIZE);
     assert.deepStrictEqual(Array.from(buf.slice(0, 4)), [1, 0, 0, Math.fround(0.6)]);
     assertClose(buf[4], 0.9);
+    assertClose(buf[5], 0.8);
+    assertClose(buf[6], 0.7);
     assertClose(buf[7], 0.3);
     assertClose(buf[8], 0.1);
+    assertClose(buf[9], 0.2);
+    assertClose(buf[10], 0.3);
     assertClose(buf[11], 1.0);
     assertClose(buf[12], 0.4);
+    assertClose(buf[13], 0.5);
+    assertClose(buf[14], 0.6);
     assertClose(buf[15], 0.11);
     assertClose(buf[16], 0.12);
     assertClose(buf[17], 0.42);

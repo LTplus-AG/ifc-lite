@@ -64,7 +64,7 @@ function fill(
     points: Float32Array.from(points),
     holesOffsets: Uint32Array.from(holesOffsets),
     worldY,
-    color: [1, 0, 0, 1],
+    color: [0.2, 0.5, 0.8, 1],
   };
 }
 
@@ -126,7 +126,10 @@ describe('SymbolicFillPipeline — IfcAnnotationFillArea holes (#2516)', () => {
     const stream = upload([fill([...SQUARE_4, ...HOLE_2], [4], 2.5)]);
     for (let v = 0; v < stream.length; v += FLOATS_PER_VERTEX) {
       assert.strictEqual(stream[v + 1], 2.5, 'worldY must be constant across the fill');
-      assert.deepStrictEqual(Array.from(stream.slice(v + 3, v + 7)), [1, 0, 0, 1]);
+      assert.deepStrictEqual(
+        Array.from(stream.slice(v + 3, v + 7)),
+        [0.2, 0.5, 0.8, 1].map(Math.fround),
+      );
     }
   });
 

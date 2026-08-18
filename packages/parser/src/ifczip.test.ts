@@ -78,6 +78,56 @@ describe('unwrapIfcZip', () => {
     await expect(unwrapIfcZip(zip)).rejects.toThrow(/expected exactly one/);
   });
 
+  // macOS Finder adds an AppleDouble sidecar per entry when compressing, and it
+  // keeps the original extension - so `__MACOSX/._model.ifc` counted as a second
+  // model and EVERY Mac-made archive was rejected as ambiguous (#2812, reported
+  // from production).
+  it('ignores the __MACOSX AppleDouble sidecar macOS adds when zipping', async () => {
+    const zip = await makeZip({
+      'model.ifc': STEP_HEADER,
+      '__MACOSX/._model.ifc': 'AppleDouble resource fork bytes',
+    });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('ignores a bare ._ sidecar left beside its original by a rezip', async () => {
+    // Several unzip/rezip round trips drop the __MACOSX/ directory but keep the
+    // `._` file next to the original, so the prefix alone is not enough.
+    const zip = await makeZip({
+      'model.ifc': STEP_HEADER,
+      '._model.ifc': 'AppleDouble resource fork bytes',
+    });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('ignores a sidecar in a nested folder', async () => {
+    const zip = await makeZip({
+      'project/model.ifc': STEP_HEADER,
+      'project/__MACOSX/._model.ifc': 'AppleDouble resource fork bytes',
+    });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
+  it('still rejects two GENUINE models, so the sidecar filter did not weaken the guard', async () => {
+    // The ambiguity error exists for a reason; skipping sidecars must not skip
+    // a real second model that happens to sit in a folder.
+    const zip = await makeZip({
+      'a.ifc': STEP_HEADER,
+      'nested/b.ifc': STEP_HEADER,
+    });
+    await expect(unwrapIfcZip(zip)).rejects.toThrow(/expected exactly one/);
+  });
+
+  it('still reports NO model when the archive holds only a sidecar', async () => {
+    // A sidecar is not a model, so this must be the "nothing to parse" error
+    // rather than silently unwrapping resource-fork bytes as a model.
+    const zip = await makeZip({ '__MACOSX/._model.ifc': 'AppleDouble bytes' });
+    await expect(unwrapIfcZip(zip)).rejects.toThrow(/no \.ifc\/\.ifcxml entry/);
+  });
+
   it('rejects a model entry whose declared uncompressed size exceeds the limit (zip-bomb guard)', async () => {
     const zip = await makeZip({ 'model.ifc': STEP_HEADER });
     // STEP_HEADER is ~60 bytes; a 10-byte limit forces the guard to fire

@@ -39,10 +39,10 @@ const PICK_RESOLUTION_M = 1 / 65536;
  * Below this a ray has no usable direction.
  *
  * Tied to pick resolution, NOT to an arbitrarily small epsilon. An earlier
- * version used 1e-9 m - 15,259x BELOW the snap floor - so no reachable input
- * could ever land in the band (0, 1e-9]: the guard classified nothing, and
- * the test that "pinned it from both sides" pinned a constant with no
- * behavioural consequence. A ray shorter than one pick resolution has a
+ * version used 1e-9 m, which is 15,259x BELOW the snap floor, so no
+ * reachable input could ever land in the band (0, 1e-9]: the guard
+ * classified nothing, and the test that "pinned it from both sides" pinned a
+ * constant with no behavioural consequence. A ray shorter than one pick resolution has a
  * direction made entirely of cursor noise, and that is what is worth
  * refusing to measure.
  */

@@ -148,8 +148,8 @@ export function getApproximateWorldPosition(
  * Whether a mousedown on the Measure tool should start the drag-to-measure
  * gesture (`handleMeasureDown`/`activeMeasurement`). `false` in two cases:
  * shift is held (the existing orbit-while-measuring escape hatch), or the
- * tool is in any CLICK-driven mode - polyline (#2199) or angle (#2735) -
- * where a click, not a drag, is the only gesture that places a point (see
+ * tool is in any CLICK-driven mode (polyline #2199, angle #2735), where a
+ * click rather than a drag is the only gesture that places a point (see
  * `handlePolylineClick` / `handleAngleClick` in selectionHandlers.ts).
  *
  * This is the single gate that keeps the modes' state machines from ever

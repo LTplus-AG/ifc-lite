@@ -3,6 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { parseIDS, IDSParseError } from './xml-parser.js';
+import { matchConstraint } from '../constraints/index.js';
+import type { IDSBoundsConstraint } from '../types.js';
 
 // ============================================================================
 // Valid IDS XML Parsing
@@ -529,3 +531,92 @@ describe('parseIDS — error handling', () => {
 });
 
 // ============================================================================
+
+// ============================================================================
+// Parser -> matcher wiring for the string-length facets (#2746 follow-up)
+// ============================================================================
+
+/**
+ * `constraints.test.ts` pins `matchBounds` against `IDSBoundsConstraint`
+ * objects built by hand, so it cannot see the parser at all. Measured: making
+ * the parser drop all three length facets
+ *
+ *   bounds.length    = readInt(facetEls.length)    -> undefined
+ *   bounds.minLength = readInt(facetEls.minLength) -> undefined
+ *   bounds.maxLength = readInt(facetEls.maxLength) -> undefined
+ *
+ * left the whole packages/ids suite green at 322/322. In user terms an IDS
+ * author writes `<xs:maxLength value="8"/>`, the restriction is silently
+ * dropped, and every element PASSES: a rule that stops restricting reports
+ * success. These cases assert the extracted facets and then drive the matcher
+ * with them, so the parse-to-match path has to survive as a whole.
+ */
+describe('parseIDS: xs:length / xs:minLength / xs:maxLength reach the matcher', () => {
+  const idsWith = (facets: string): string => `<ids xmlns="http://standards.buildingsmart.org/IDS"
+     xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <info><title>T</title></info>
+  <specifications>
+    <specification name="Test" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <attribute>
+          <name><simpleValue>Name</simpleValue></name>
+          <value>
+            <xs:restriction>
+${facets}
+            </xs:restriction>
+          </value>
+        </attribute>
+      </requirements>
+    </specification>
+  </specifications>
+</ids>`;
+
+  /** Asserts the facet type rather than guarding on it: a conditional would
+   *  skip its assertions silently if the shape ever changed. */
+  const boundsOf = (xml: string): IDSBoundsConstraint => {
+    const facet = parseIDS(xml).specifications[0].requirements[0].facet;
+    expect(facet.type).toBe('attribute');
+    const value = (facet as { value?: unknown }).value as IDSBoundsConstraint;
+    expect(value.type).toBe('bounds');
+    return value;
+  };
+
+  it('carries xs:length through the parser and enforces it in the matcher', () => {
+    const bounds = boundsOf(idsWith('              <xs:length value="5"/>'));
+    expect(bounds.length).toBe(5);
+
+    expect(matchConstraint(bounds, 'abcde')).toBe(true);
+    expect(matchConstraint(bounds, 'abcd')).toBe(false);
+    expect(matchConstraint(bounds, 'abcdef')).toBe(false);
+  });
+
+  it('carries xs:minLength through the parser and enforces it in the matcher', () => {
+    const bounds = boundsOf(idsWith('              <xs:minLength value="3"/>'));
+    expect(bounds.minLength).toBe(3);
+
+    expect(matchConstraint(bounds, 'abc')).toBe(true);
+    expect(matchConstraint(bounds, 'ab')).toBe(false);
+  });
+
+  it('carries xs:maxLength through the parser and enforces it in the matcher', () => {
+    const bounds = boundsOf(idsWith('              <xs:maxLength value="8"/>'));
+    expect(bounds.maxLength).toBe(8);
+
+    expect(matchConstraint(bounds, 'abcdefgh')).toBe(true);
+    expect(matchConstraint(bounds, 'abcdefghi')).toBe(false);
+  });
+
+  it('carries a combined minLength/maxLength range', () => {
+    const bounds = boundsOf(idsWith('              <xs:minLength value="2"/>\n              <xs:maxLength value="4"/>'));
+    expect(bounds.minLength).toBe(2);
+    expect(bounds.maxLength).toBe(4);
+
+    expect(matchConstraint(bounds, 'ab')).toBe(true);
+    expect(matchConstraint(bounds, 'abcd')).toBe(true);
+    expect(matchConstraint(bounds, 'a')).toBe(false);
+    expect(matchConstraint(bounds, 'abcde')).toBe(false);
+  });
+});

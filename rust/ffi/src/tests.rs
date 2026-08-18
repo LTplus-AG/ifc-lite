@@ -120,12 +120,13 @@ fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
     assert_eq!(result.meshes[1].positions, original_positions_b);
 }
 
-/// Pin the boundary's sharpness and per-axis semantics, *relative to
-/// whatever `LARGE_COORD_THRESHOLD` currently is*: a single axis just above
-/// the constant must shift, the same axis just below must not. The other two
-/// fixtures straddle it by two orders of magnitude (1.0 vs 123456.0), so any
-/// threshold anywhere in between would satisfy them both — this fixture
-/// closes that gap for the *boundary behavior*.
+/// Pin the boundary's sharpness on the x-axis, *relative to whatever
+/// `LARGE_COORD_THRESHOLD` currently is*: tx just above the constant must
+/// shift, tx just below must not (ty and tz are held at 0.0 and are not
+/// independently exercised here). The other two fixtures straddle it by
+/// roughly five orders of magnitude (1.0 vs 123456.0), so any threshold
+/// anywhere in between would satisfy them both — this fixture closes that
+/// gap for the *boundary behavior*.
 ///
 /// This does **not** pin the constant's *value*: every value used below is
 /// derived from `LARGE_COORD_THRESHOLD` itself, so the fixture is green for

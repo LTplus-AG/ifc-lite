@@ -87,9 +87,19 @@ export class BrowserDaluxApiClient {
     return this.credentials.baseUrl;
   }
 
-  /** Add the caller's node selector, if any, so the relay can resolve it. */
+  /**
+   * Add the caller's node selector, but ONLY to URLs that go through our relay.
+   *
+   * Dalux also hands back opaque links (a file's `downloadLink`, `nextPage`
+   * hrefs) which can point at a different host such as a CDN and can carry a
+   * signature computed over the query string. Those are not routed through the
+   * node-aware relay, so adding a parameter would be useless at best and would
+   * invalidate a signed URL at worst. They must stay byte-for-byte intact.
+   */
   private stampNode(url: URL): void {
-    if (this.credentials.node) url.searchParams.set('daluxNode', this.credentials.node);
+    if (!this.credentials.node) return;
+    if (url.origin !== new URL(this.credentials.baseUrl).origin) return;
+    url.searchParams.set('daluxNode', this.credentials.node);
   }
 
   debug(message: string, details?: Record<string, unknown>): void {

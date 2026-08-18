@@ -13,6 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { parseDaluxNode } from '../src/provider.js';
+import { BrowserDaluxApiClient } from '../src/http-client.js';
 
 describe('parseDaluxNode', () => {
   it('keeps the node from a pasted base URL', () => {
@@ -59,5 +60,35 @@ describe('parseDaluxNode', () => {
     // Falling back would present as "my API key does not work", which is what
     // sent the original reporter looking in the wrong place.
     expect(() => parseDaluxNode('https://nodeX.field.dalux.com')).toThrow(/Not a Dalux node URL/);
+  });
+});
+
+describe('node stamping is scoped to the relay', () => {
+  it('leaves an opaque Dalux download link byte-for-byte intact', async () => {
+    // Dalux returns `downloadLink` (and `nextPage`) values that can point at a
+    // different host and can carry a signature computed over the query string.
+    // Adding a parameter there is useless at best and breaks the signature at
+    // worst, and it is not routed through the node-aware relay anyway.
+    const seen: string[] = [];
+    const ctx = {
+      fetch: async (url: string) => {
+        seen.push(url);
+        return new Response(new ArrayBuffer(2), { status: 200 });
+      },
+      log: { debug() {}, error() {}, info() {}, warn() {} },
+    } as unknown as ConstructorParameters<typeof BrowserDaluxApiClient>[1];
+
+    const client = new BrowserDaluxApiClient(
+      { baseUrl: 'https://node1.field.dalux.com/service/api', apiKey: 'k', node: 'node2' },
+      ctx,
+    );
+
+    const signed = 'https://cdn.dalux.com/files/abc?Expires=1&Signature=deadbeef';
+    await client.getBinary(signed);
+    expect(seen[0]).toBe(signed);
+
+    // ...while a relay-bound URL still gets the selector.
+    await client.getBinary('https://node1.field.dalux.com/service/api/2.0/x/content');
+    expect(seen[1]).toContain('daluxNode=node2');
   });
 });

@@ -95,7 +95,7 @@ function buildParsedStore(entries: Array<[number, string, string]>): {
 /** Every `#N` referenced in the output that has no `#N=` defining line. */
 function findDanglingRefs(content: string): number[] {
   const defined = new Set<number>();
-  for (const m of content.matchAll(/(^|\n)#(\d+)=/g)) defined.add(+m[2]);
+  for (const m of content.matchAll(/(^|\n)#(\d+)\s*=/g)) defined.add(+m[2]);
   const dangling = new Set<number>();
   for (const m of content.matchAll(/#(\d+)/g)) {
     const id = +m[1];
@@ -247,6 +247,37 @@ describe('the relationship filter runs when geometry is excluded', () => {
     expect(result.stats.warnings).toHaveLength(0);
 
     // Not vacuous: the two non-geometry entities are still exported.
+    expect(content).toContain('#1=IFCSTRUCTURALCURVEMEMBER');
+    expect(content).toContain('#2=IFCSTRUCTURALPOINTCONNECTION');
+  });
+
+  it('rewrites ConditionCoordinateSystem to $ even when the source line has whitespace around "="', () => {
+    // The line regex (`^(#\d+\s*=\s*\w+\(...)`) accepts whitespace around
+    // `=` — legal STEP, and buildStructuralConnectionStore's own fixture text
+    // never exercises it. Reuses the exact same entities/ids as the sibling
+    // test above; the only difference is `#6 = IFCREL...` (space after `=`)
+    // instead of `#6=IFCREL...`.
+    const { store, byId } = buildParsedStore([
+      [1, 'IFCSTRUCTURALCURVEMEMBER', "#1=IFCSTRUCTURALCURVEMEMBER('0mem00000000000000000',$,'Beam',$,$,$,$,.RIGID_JOINED_MEMBER.,$);\n"],
+      [2, 'IFCSTRUCTURALPOINTCONNECTION', "#2=IFCSTRUCTURALPOINTCONNECTION('0con00000000000000000',$,'Node',$,$,$,$,$,$);\n"],
+      [4, 'IFCCARTESIANPOINT', '#4=IFCCARTESIANPOINT((0.,0.,0.));\n'],
+      [5, 'IFCAXIS2PLACEMENT3D', '#5=IFCAXIS2PLACEMENT3D(#4,$,$);\n'],
+      [6, 'IFCRELCONNECTSSTRUCTURALMEMBER', "#6 = IFCRELCONNECTSSTRUCTURALMEMBER('0rel00000000000000000',$,$,$,#1,#2,$,$,$,#5);\n"],
+    ]);
+    expectEveryRefReadable(store, byId);
+
+    const result = new StepExporter(store).export({ schema: 'IFC4', includeGeometry: false });
+    const content = decode(result.content);
+
+    expect(content).not.toContain('#5=IFCAXIS2PLACEMENT3D');
+    expect(findDanglingRefs(content)).toEqual([]);
+    // If entityType retained a leading space, isOptionalTrailingRef's `===`
+    // comparison would never match and the whole relationship would be
+    // withheld instead of rewritten — the exact defect under test.
+    expect(content).toMatch(
+      /#6\s*=\s*IFCRELCONNECTSSTRUCTURALMEMBER\('0rel00000000000000000',\$,\$,\$,#1,#2,\$,\$,\$,\$\);/,
+    );
+    expect(result.stats.warnings).toHaveLength(0);
     expect(content).toContain('#1=IFCSTRUCTURALCURVEMEMBER');
     expect(content).toContain('#2=IFCSTRUCTURALPOINTCONNECTION');
   });

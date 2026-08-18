@@ -635,7 +635,7 @@ export function filterHiddenRefsFromRelationshipLine(
   if (!match) return line;
   const [, prefix, argsText, suffix] = match;
   const attrs = splitTopLevelArgs(argsText);
-  const entityType = prefix.slice(prefix.indexOf('=') + 1, -1).toUpperCase();
+  const entityType = prefix.slice(prefix.indexOf('=') + 1, -1).trim().toUpperCase();
 
   let changed = false;
   const nextAttrs: string[] = [];

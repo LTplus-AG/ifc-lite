@@ -89,11 +89,13 @@ describe('DropboxProvider', () => {
   });
 
   describe('listContainers', () => {
-    it('returns the account root\'s folders with no parentId at the top level', async () => {
+    it('returns the account root\'s folders with no parentId at the top level, plus a selectable root-files container', async () => {
       const ctx = createDropboxMockContext(WORLD);
       const page = await provider.listContainers(ctx, 'me', undefined);
 
-      expect(page.items.map((c) => c.id).sort()).toEqual(['id:f-alpha', 'id:f-beta']);
+      // 'root' stands for the account root's own files (see ROOT_CONTAINER_ID)
+      // — always offered at the top level, alongside the real folders.
+      expect(page.items.map((c) => c.id).sort()).toEqual(['id:f-alpha', 'id:f-beta', 'root']);
       for (const container of page.items) expect(container.parentId).toBeUndefined();
     });
 
@@ -101,6 +103,58 @@ describe('DropboxProvider', () => {
       const ctx = createDropboxMockContext(WORLD);
       const page = await provider.listContainers(ctx, 'me', 'id:f-alpha');
       expect(page.items).toEqual([]); // f-alpha has only files as children in this world
+    });
+
+    // Repro for the unresolved review thread on provider.ts:85 (P2,
+    // chatgpt-codex-connector, 2026-08-17): `listContainers` used to return
+    // only real folders, and `SourceBrowser.tsx`'s `openFileArea` only calls
+    // `listFiles` after the host selects one of those. A file sitting
+    // directly at the account root therefore had no container to be
+    // selected through browsing — reachable only via `searchFiles`. This
+    // asserts the browse path can reach it too, via a selectable synthetic
+    // root container whose id is `ROOT_CONTAINER_ID` ('root').
+    it('exposes a selectable synthetic root container so root-level files are reachable by browsing, not just search', async () => {
+      const rootWorld: DropboxMockWorld = {
+        ...WORLD,
+        items: [...WORLD.items, { id: 'id:file-root', name: 'model-root.ifc', kind: 'file', size: 1, content: 'ROOT' }],
+      };
+      const ctx = createDropboxMockContext(rootWorld);
+
+      const containers = await provider.listContainers(ctx, 'me', undefined);
+      const rootContainer = containers.items.find((c) => c.id === 'root');
+      expect(rootContainer).toBeDefined();
+      expect(rootContainer?.parentId).toBeUndefined();
+
+      // Selecting it (the only thing a host can do with a SourceContainer)
+      // must actually surface the root-level file.
+      const files = await provider.listFiles(ctx, 'me', rootContainer!.id);
+      expect(files.items.map((f) => f.id)).toEqual(['id:file-root']);
+      expect(files.items[0].containerId).toBe('root');
+    });
+
+    // The container-id work already on this branch resolves a root-level
+    // search hit's `containerId` to `ROOT_CONTAINER_ID` (see the
+    // `searchFiles` describe block below). The synthetic container this
+    // fix adds must carry that exact id, or a search hit and a browse hit
+    // for the same root-level file would disagree on where it "lives".
+    it('agrees with search: the same root-level file resolves to the same containerId via both paths', async () => {
+      const rootWorld: DropboxMockWorld = {
+        ...WORLD,
+        items: [...WORLD.items, { id: 'id:file-root', name: 'model-root.ifc', kind: 'file', size: 1, content: 'ROOT' }],
+      };
+      const ctx = createDropboxMockContext(rootWorld);
+
+      const searchPage = await provider.searchFiles!(ctx, 'me', 'model-root');
+      const viaSearch = searchPage.items.find((f) => f.id === 'id:file-root');
+      expect(viaSearch).toBeDefined();
+
+      const containers = await provider.listContainers(ctx, 'me', undefined);
+      const rootContainer = containers.items.find((c) => c.id === 'root');
+      const browsePage = await provider.listFiles(ctx, 'me', rootContainer!.id);
+      const viaBrowse = browsePage.items.find((f) => f.id === 'id:file-root');
+      expect(viaBrowse).toBeDefined();
+
+      expect(viaBrowse!.containerId).toBe(viaSearch!.containerId);
     });
   });
 

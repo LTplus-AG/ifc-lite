@@ -21,9 +21,15 @@ import type { DropboxDecoder, DropboxFileMetadata, DropboxMetadataEntry } from '
  * what the real API actually mints, not a formally proven-impossible
  * collision.
  *
- * Never returned as a `SourceContainer.id` — `listContainers` with no
- * `parentId` returns the root's real child folders directly (each with
- * `parentId: undefined`), matching the plugin contract's "top level" shape.
+ * Also doubles as the id of the synthetic `SourceContainer` `listContainers`
+ * (in `provider.ts`) prepends on the first page of the top-level listing,
+ * standing for "the account root's own files" — real Dropbox folders have no
+ * container of their own for files sitting directly at the root, so without
+ * this a host could never browse to them (see that container's doc comment).
+ * `pathArgFor` above resolves it straight back to the account root, and
+ * `searchFiles` reports this same id as a root-level search hit's
+ * `containerId`, so browsing and searching to the same root-level file agree
+ * on where it "lives".
  */
 export const ROOT_CONTAINER_ID = 'root';
 

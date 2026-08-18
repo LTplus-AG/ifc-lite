@@ -17,15 +17,18 @@ section, checked 2026-08-15).
   browsing a specific team space is a natural follow-up, not implemented
   here. Mirrors `@ifc-lite/source-msgraph`'s single-project (`/me/drive`)
   scope for the same structural reason.
-- **Folder-organized files only.** `listContainers` returns the account
-  root's real child folders directly (`parentId: undefined` at the top
-  level), and folders nest the same way real Dropbox folders do. A file
-  sitting directly at the account root is not currently listable through
-  this provider — `listFiles` requires a `containerId` a host can only get
-  from `listContainers`, and there is no synthetic "root container" handed
-  out (see the doc comment on `ROOT_CONTAINER_ID` in `mapping.ts`). Known v1
-  gap, not a design dead end — a synthetic root-level container is the
-  natural extension, same as documented for `source-msgraph`.
+- **Folders, plus a synthetic root-files container.** `listContainers`
+  returns the account root's real child folders directly (`parentId:
+  undefined` at the top level), and folders nest the same way real Dropbox
+  folders do. A file sitting directly at the account root has no real
+  Dropbox folder to be addressed through, so `listContainers` also prepends
+  one synthetic container, id `'root'` (`ROOT_CONTAINER_ID` in
+  `mapping.ts`), standing for "the account root's own files" — selecting it
+  and calling `listFiles` surfaces them. That id is the same one
+  `searchFiles` already reports as `containerId` for a root-level search
+  hit, so browsing and searching to the same root-level file agree on where
+  it "lives". `source-msgraph` still has the equivalent gap open — its
+  `listContainers` has no such container yet (see its own README).
 - **Historical revisions are both listable and downloadable** — the one
   place this provider does *more* than `source-msgraph`: Dropbox's
   `files/download` accepts a `"rev:<rev-id>"` path directly (see "Downloading

@@ -76,6 +76,18 @@ export class DropboxProvider implements FileSourceProvider {
     parentId?: string,
     options?: ListOptions,
   ): Promise<Page<SourceContainer>> {
+    // The synthetic root container (below) stands only for the account
+    // root's *files* — it has no sub-containers of its own. Querying it as
+    // a `parentId` must not fall through to `listFolderPage`: `pathArgFor`
+    // resolves `ROOT_CONTAINER_ID` back to the account root path, which
+    // would re-list the very folders already returned at the top level and
+    // report them as this container's children (leaking siblings into a
+    // child level — caught by `source-fixture`'s `direct-children`
+    // conformance check).
+    if (parentId === ROOT_CONTAINER_ID) {
+      return { items: [], cursor: undefined };
+    }
+
     const client = await this.createClient(ctx);
     const page = await this.listFolderPage(client, parentId, options);
     const entries = decodeMetadataEntries(ctx, page.entries);
@@ -83,6 +95,37 @@ export class DropboxProvider implements FileSourceProvider {
     const containers = entries
       .filter((entry) => entry['.tag'] === 'folder')
       .map((entry) => toSourceContainer(entry, parentId));
+
+    // Root-level files (see `ROOT_CONTAINER_ID`'s doc comment in
+    // `mapping.ts`) have no real Dropbox folder to be addressed through —
+    // `files/list_folder` at the account root returns folders and files
+    // side by side, with no container node of its own for the files.
+    // `SourceBrowser.tsx`'s browse flow only calls `listFiles` after the
+    // host selects a `SourceContainer` returned here, so without an entry
+    // standing in for "the account root's own files", those files were
+    // reachable only via `searchFiles` (see the unresolved review thread on
+    // this line, chatgpt-codex-connector, 2026-08-17). Prepend that
+    // synthetic container on the very first page of the top-level listing
+    // only (`parentId` undefined, no cursor yet) so it is offered exactly
+    // once, never repeated across paginated pages. Its id is
+    // `ROOT_CONTAINER_ID`, the same sentinel `searchFiles` already reports
+    // as `containerId` for a root-level search hit (see
+    // `searchResultParentPath`), and `pathArgFor`/`listFolderPage` already
+    // resolve that id straight back to the account root — so a file found
+    // by search and the same file found by browsing agree on where it
+    // "lives".
+    if (!parentId && !options?.cursor) {
+      containers.unshift({
+        id: ROOT_CONTAINER_ID,
+        name: 'Files in Dropbox root',
+        parentId: undefined,
+        // Unlike a real folder's `hasChildren` (unknown — see
+        // `toSourceContainer`), this is knowably `false`: it never has
+        // sub-containers, only files (see the guard above).
+        hasChildren: false,
+        meta: { kind: 'root-files' },
+      });
+    }
 
     return { items: containers, cursor: page.has_more ? page.cursor : undefined };
   }

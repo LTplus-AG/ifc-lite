@@ -63,7 +63,15 @@ import {
   hydrateGeometryFromRoom,
   seedGeometryToRoom,
   type CollabGeomApi,
+  type SeedGeometryReport,
 } from '@/lib/collab/geometry-sync';
+import {
+  markerFromReport,
+  missingRoomGeometryMessage,
+  readGeometrySeedMarker,
+  seedFailureMessage,
+  writeGeometrySeedMarker,
+} from '@/lib/collab/geometry-seed-signal';
 import { createSharedBlobStore } from '@/lib/collab/blob-store';
 import {
   attachAnnotationInbound,
@@ -153,6 +161,20 @@ export interface CollabSlice {
   collabLastShareToken: string | null;
   /** Room workspace-panel visibility (single-tenant sidebar slot, see registry). */
   collabPanelVisible: boolean;
+  /**
+   * Why this room's geometry seed did not fully land, or null when it did (or
+   * when the model legitimately had no geometry to seed). Sticky for the life
+   * of the session so the Share dialog cannot hand out a link to a room it
+   * knows is missing its geometry and still call that success.
+   */
+  collabSeedFailure: string | null;
+  /**
+   * One-shot message for the toast channel: a joined room that hydrated with
+   * entities but no meshes, or a local edit whose mesh never reached the room.
+   * Consumed (and cleared) by the layout, so the store stays free of UI
+   * imports (slices set state, components toast).
+   */
+  collabGeometryNotice: string | null;
 
   // ── Actions ──────────────────────────────────────────────────────────────
   setCollabPanelVisible: (visible: boolean) => void;
@@ -166,6 +188,8 @@ export interface CollabSlice {
   resetCollabDraftBaseline: () => void;
   /** Record the latest minted share link token (for later revocation). */
   setCollabLastShareToken: (token: string | null) => void;
+  /** Take the pending geometry notice, clearing it (one delivery per message). */
+  consumeCollabGeometryNotice: () => string | null;
   /** Admin: invalidate the most recently minted share link. Returns success. */
   revokeCollabLink: () => Promise<boolean>;
   /** Admin: force-disconnect a peer by awareness clientId. Returns success. */
@@ -447,6 +471,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   collabSelfToken: null,
   collabLastShareToken: null,
   collabPanelVisible: false,
+  collabSeedFailure: null,
+  collabGeometryNotice: null,
 
   setCollabPanelVisible: (collabPanelVisible) => set({ collabPanelVisible }),
 
@@ -619,11 +645,17 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 }
                 return path;
               };
+              // `null` means no seed ran at all: the model had nothing to
+              // offer. That is a legitimate share (structure-only or empty
+              // model) and is NOT the same as a seed that ran and landed
+              // nothing, which is a broken share. Only here, on the owner, is
+              // that difference still knowable.
+              let report: SeedGeometryReport | null = null;
               if (seedData.isIfcx && store.source && store.source.length > 0) {
                 // IFCX geometry is explicit in the file: re-parse the source for
-                // COMPLETE meshes + the id→path map to key them. (The owner's
+                // COMPLETE meshes + the id->path map to key them. (The owner's
                 // render buffers may be memory-released for large models, so we
-                // never read those for seeding — plan Fix 2.)
+                // never read those for seeding, plan Fix 2.)
                 const { parseIfcxViewerModel } = await import('@/hooks/ingest/viewerModelIngest');
                 const parsed = await parseIfcxViewerModel(toArrayBuffer(store.source.materialize()), undefined, {
                   allowEmptyGeometry: true,
@@ -634,24 +666,44 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                 }
                 const meshes = parsed.geometryResult.meshes;
                 if (meshes.length > 0) {
-                  await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
+                  report = await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
                     stampBaseline(parsed.idToPath?.get(id) ?? null),
                   );
                 }
               } else {
                 const meshes = get().geometryResult?.meshes;
                 if (meshes && meshes.length > 0) {
-                  await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
+                  report = await seedGeometryToRoom(geomApi, session, blobStore, meshes, (id) =>
                     stampBaseline(pathForEntity(store, id)),
                   );
                 }
+              }
+              // Stamp intent vs outcome into the room. Without it a joiner sees
+              // the same empty `geometry` map either way and cannot tell a
+              // geometry-less model from a failed upload.
+              session.transact(() => {
+                writeGeometrySeedMarker(session.doc, markerFromReport(report, new Date().toISOString()));
+              });
+              const failure = seedFailureMessage(report);
+              if (failure) {
+                // eslint-disable-next-line no-console
+                console.error('[collab] geometry seed incomplete:', failure, report);
+                set({ collabSeedFailure: failure });
               }
             }
           }
         }
       } catch (err) {
+        // A throw here means the seed did not complete: the room may hold a
+        // partial model or none at all. Never let the Share dialog call that a
+        // success (this catch swallowing it is how a weeks-long geometry
+        // outage went unnoticed).
         // eslint-disable-next-line no-console
         console.error('[collab] model seeding failed:', err);
+        set({
+          collabSeedFailure:
+            'Sharing this model did not complete. People joining this link may see an incomplete model.',
+        });
       }
     } else {
       // Recipient (deep-link join, no local model): reconstruct the full model
@@ -671,6 +723,11 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
         const blobStore = await createSharedBlobStore(collabMod, collabServerUrl(), token);
         let lastGeomCount = -1;
         let reconstructing = false;
+        // The missing-geometry warning fires at most once per room: reconstruct
+        // re-runs on every peer edit, and a repeating alarm gets tuned out.
+        let warnedMissingGeometry = false;
+        /** Meshes the last hydrate produced (0 until one has run). */
+        let lastMeshCount = 0;
         // Decoded-mesh cache (geomId → mesh), persisted across re-reconstructs so
         // a later doc update only fetches the *new* blobs, not the whole model.
         const geomCache = new Map<string, MeshData>();
@@ -750,17 +807,32 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   },
                 },
               );
-              if (geomCount > 0 && meshes.length === 0) {
-                // eslint-disable-next-line no-console
-                console.warn(
-                  `[collab] recipient: room has ${geomCount} geometry record(s) but 0 meshes hydrated — ` +
-                    'blobs may still be syncing, or the owner seeded a room with no geometry.',
-                );
-              }
+              lastMeshCount = meshes.length;
               if (get().collabRoomId === roomId) {
                 get().setGeometryResult(
                   meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
                 );
+              }
+            }
+            // Warn about a room that rendered nothing. The old guard was
+            // `geomCount > 0`, which cannot fire in the case that actually
+            // breaks a room: a failed upload leaves no geometry records at all.
+            // The owner's seed marker is what separates that from a
+            // legitimately geometry-less model. Checked OUTSIDE the
+            // geometry-changed guard because the marker can land on its own,
+            // with no geometry record to change (that is precisely the failed
+            // seed), and would otherwise never be looked at.
+            if (!warnedMissingGeometry) {
+              const missing = missingRoomGeometryMessage({
+                marker: readGeometrySeedMarker(session.doc),
+                geometryRecords: geomCount,
+                hydratedMeshes: lastMeshCount,
+              });
+              if (missing) {
+                warnedMissingGeometry = true;
+                // eslint-disable-next-line no-console
+                console.warn(`[collab] recipient: ${missing}`);
+                set({ collabGeometryNotice: missing });
               }
             }
           } finally {
@@ -949,6 +1021,8 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       collabSelfToken: null,
       collabLastShareToken: null,
       collabPanelVisible: false,
+      collabSeedFailure: null,
+      collabGeometryNotice: null,
     });
   },
 
@@ -963,6 +1037,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
   },
 
   setCollabLastShareToken: (token) => set({ collabLastShareToken: token }),
+
+  consumeCollabGeometryNotice: () => {
+    const notice = get().collabGeometryNotice;
+    if (notice) set({ collabGeometryNotice: null });
+    return notice;
+  },
 
   revokeCollabLink: async () => {
     const shareToken = get().collabLastShareToken;
@@ -1148,10 +1228,16 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       void (async () => {
         try {
           cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-          await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path);
+          const report = await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path);
+          if (report.seeded === 0) {
+            // eslint-disable-next-line no-console
+            console.error('[collab] mirror create geometry failed:', report);
+            set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
+          }
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error('[collab] mirror create geometry failed:', err);
+          set({ collabGeometryNotice: 'The new element could not be shared with the room.' });
         }
       })();
     }
@@ -1174,10 +1260,18 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     void (async () => {
       try {
         cachedBlobStore = cachedBlobStore ?? (await makeBlobStore!());
-        await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path, { replace: true });
+        const report = await seedGeometryToRoom(geom, session, cachedBlobStore, [mesh], () => path, {
+          replace: true,
+        });
+        if (report.seeded === 0) {
+          // eslint-disable-next-line no-console
+          console.error('[collab] mirror resize geometry failed:', report);
+          set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });
+        }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error('[collab] mirror resize geometry failed:', err);
+        set({ collabGeometryNotice: 'The updated geometry could not be shared with the room.' });
       }
     })();
   },

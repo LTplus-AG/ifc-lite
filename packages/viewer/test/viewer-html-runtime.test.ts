@@ -1013,11 +1013,31 @@ describe('viewer blob — handleCommand: camera and flyto', () => {
   });
 
   it('flyto frames the centre of the matching type at a distance scaled to its size', () => {
-    const v = makeViewer([wall(1, 0), wall(2, 0, 'IfcSlab')]);
+    // Deliberately anisotropic AND off-origin. The old fixture was the unit
+    // cube `wall(1, 0)`, whose extents are (1, 1, 1) and whose centre is
+    // (0.5, 0.5, 0.5): `Math.max(...extents, 0.1) * 1.5` yields 1.5 there under
+    // max, min, first-axis or a hardcoded 1, and the centre survives any axis
+    // permutation. Extents (1, 3, 2) and centre (2.5, 0.5, 5) separate all of
+    // those.
+    const v = makeViewer([
+      [
+        1,
+        {
+          ifcType: 'IfcWall',
+          defaultColor: [0.8, 0.8, 0.8, 1],
+          boundsMin: [2, -1, 4],
+          boundsMax: [3, 2, 6],
+          segments: [{ vertexStart: 0, vertexCount: 1, indexStart: 0, indexCount: 3 }],
+        },
+      ],
+      wall(2, 0, 'IfcSlab'),
+    ]);
     v.run({ action: 'flyto', type: 'IfcWall' });
     assert.equal(v.flyToCalls.length, 1);
-    assert.deepEqual(v.flyToCalls[0].target, [0.5, 0.5, 0.5]);
-    assert.equal(v.flyToCalls[0].dist, 1.5, 'distance must scale with the largest dimension');
+    assert.deepEqual(v.flyToCalls[0].target, [2.5, 0.5, 5]);
+    // Extents are (1, 3, 2): the LARGEST, 3, times 1.5. The unmatched IfcSlab
+    // at the origin would drag both numbers if the type filter leaked.
+    assert.equal(v.flyToCalls[0].dist, 4.5, 'distance must scale with the largest dimension');
   });
 
   it('flyto by explicit ids overrides the type filter', () => {
@@ -1036,7 +1056,12 @@ describe('viewer blob — handleCommand: camera and flyto', () => {
     const v = makeViewer([[1, { ifcType: 'IfcWall', boundsMin: [3, 3, 3], boundsMax: [3, 3, 3] }]]);
     v.run({ action: 'flyto', type: 'IfcWall' });
     assert.deepEqual(v.flyToCalls[0].target, [3, 3, 3]);
-    assert.ok(v.flyToCalls[0].dist > 0, 'a point selection must not fly to distance 0');
+    // Pin the floor itself (0.1 * 1.5), not just "> 0": every extent here is 0,
+    // so `dist > 0` holds for any positive floor and the 0.1 constant is inert.
+    assert.ok(
+      Math.abs(v.flyToCalls[0].dist - 0.15) < 1e-12,
+      `a point selection must fall back to the 0.1 m floor, scaled by 1.5; got ${v.flyToCalls[0].dist}`
+    );
   });
 });
 

@@ -80,6 +80,7 @@ export function useIfcFederation(
     registerModelOffset,
     fromGlobalId,
     findModelForGlobalId,
+    resolveGlobalIdFromModels,
   } = useViewerStore(useShallow((s) => ({
     setLoading: s.setLoading,
     setError: s.setError,
@@ -94,6 +95,7 @@ export function useIfcFederation(
     registerModelOffset: s.registerModelOffset,
     fromGlobalId: s.fromGlobalId,
     findModelForGlobalId: s.findModelForGlobalId,
+    resolveGlobalIdFromModels: s.resolveGlobalIdFromModels,
   })));
 
   // Per-call ownership token. Each addModel() bumps this; state writes
@@ -638,22 +640,30 @@ export function useIfcFederation(
     await loadFederatedIfcxFromBuffers(allBuffers);
   }, [setError, loadFederatedIfcxFromBuffers]);
 
+  // Both resolvers below go through the store's canonical
+  // `resolveGlobalIdFromModels` first, falling back to the `federationRegistry`
+  // singleton only for a model that has left `state.models` but is still
+  // registered. Consulting the registry alone missed every model seeded
+  // without `registerModelOffset` — the collab room (`collabSlice.ts`) and the
+  // federated-IFCX composition just above both do exactly that. See
+  // `useZoneSelection.ts` for the same delegation, and PR #2697 for the clash
+  // path.
+
   /**
-   * Find which model contains a given globalId
-   * Uses FederationRegistry for O(log N) lookup - BULLETPROOF
-   * Returns the modelId or null if not found
+   * Find which model contains a given globalId.
+   * Returns the modelId, or null if no loaded or registered model owns it.
    */
   const findModelForEntity = useCallback((globalId: number): string | null => {
-    return findModelForGlobalId(globalId);
-  }, [findModelForGlobalId]);
+    return resolveGlobalIdFromModels(globalId)?.modelId ?? findModelForGlobalId(globalId);
+  }, [resolveGlobalIdFromModels, findModelForGlobalId]);
 
   /**
    * Convert a globalId back to the original (modelId, expressId) pair
    * Use this when you need to look up properties in the IfcDataStore
    */
   const resolveGlobalId = useCallback((globalId: number): { modelId: string; expressId: number } | null => {
-    return fromGlobalId(globalId);
-  }, [fromGlobalId]);
+    return resolveGlobalIdFromModels(globalId) ?? fromGlobalId(globalId);
+  }, [resolveGlobalIdFromModels, fromGlobalId]);
 
   return {
     addModel,

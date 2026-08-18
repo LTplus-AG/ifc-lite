@@ -121,6 +121,7 @@ jobs:
               - '.github/workflows/test.yml'
             geometry:
               - 'rust/geometry/**'
+              - 'rust/core/**'
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
@@ -417,6 +418,20 @@ jobs:
       # viewer's canonical load path, which fires on every IFC load.
       - name: Check WASM handle disposal
         run: node scripts/check-wasm-disposal.mjs
+      # `degenerateReason` crosses the wasm boundary as an untyped string and is
+      # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
+      # a union that has drifted from the kernel -- `'malformed-operand'` was
+      # missing exactly that way (#2717). Cross-language declaration parity can
+      # only be claimed by reading both SOURCES, which is banned in test files
+      # by the source-text gate above, so it is a lint here instead.
+      - name: Check clash degenerate-reason parity
+        run: node scripts/check-clash-degenerate-reason-parity.mjs
+      # Executable proof the parity gate cannot pass vacuously: two empty sets
+      # are "equal", so a broken extractor would otherwise turn it green. Each
+      # drift direction and each vacuity mode runs against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check clash degenerate-reason parity gate regressions
+        run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed
@@ -657,8 +672,24 @@ jobs:
   # so `cargo test --workspace` does not run it — without this job the suite
   # early-returns and its pinned baselines gate nothing.
   #
-  # `geometry`, not `rust`: only rust/geometry, rust/processing or the fixture
-  # manifest can move its numbers.
+  # `geometry`, not `rust`: the filter is scoped to what can actually move the
+  # numbers. That includes rust/core — `ifc-lite-core` is a direct, non-optional
+  # dependency of `ifc-lite-geometry`, and the census test itself imports
+  # `build_entity_index`, `EntityDecoder` and `EntityScanner` from it, so the
+  # whole IFC-bytes → entities → attributes path is in scope:
+  #   - `GeometryRouter::scan_unit_scale` (router/mod.rs) calls
+  #     `ifc_lite_core::extract_length_unit_scale` (core/src/units.rs) for the
+  #     global length scale; the census snaps positions to 1 mm, so any change
+  #     to unit-scale resolution shifts every coordinate and moves the baselines.
+  #   - `extract_coordinate_list_from_entity` / `parse_indices_direct`
+  #     (core/src/fast_parse.rs) are called from processors/tessellated/
+  #     {triangulated,polygonal}.rs — they *are* the triangle data for the
+  #     tessellation bucket.
+  #   - Float-parsing precision at the 1 mm snap boundary, and attribute
+  #     decoding deciding which hosts are found at all (MIN_MODELS /
+  #     MIN_VOID_HOSTS are the only floor).
+  # Still not `rust`: rust/clash, rust/export and the bindings crates are not on
+  # this test's path.
   geometry-census:
     name: Geometry watertightness census
     needs: changes

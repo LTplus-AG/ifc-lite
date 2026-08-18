@@ -34,6 +34,7 @@
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
+    "check:clash-degenerate-reason-parity": "node scripts/check-clash-degenerate-reason-parity.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",
     "check:git-lfs": "node scripts/check-git-lfs.mjs",
@@ -81,12 +82,12 @@
     "@changesets/cli": "^3.0.0",
     "@changesets/parse": "1.0.0",
     "@playwright/test": "^1.62.1",
-    "@posthog/cli": "0.9.4",
-    "@types/node": "^26.1.2",
-    "knip": "^6.29.0",
+    "@posthog/cli": "0.11.1",
+    "@types/node": "^26.2.0",
+    "knip": "^6.32.2",
     "oxlint": "^1.42.0",
-    "tsx": "^4.23.1",
-    "turbo": "^2.10.7",
+    "tsx": "^4.23.12",
+    "turbo": "^2.10.9",
     "typescript": "^6.0.3"
   },
   "engines": {
@@ -122,7 +123,8 @@
       "js-yaml@4": "^4.3.1",
       "read-yaml-file": "^2.1.0",
       "brace-expansion": "^5.0.9",
-      "minimatch": "^10.2.5"
+      "minimatch": "^10.2.5",
+      "@zip.js/zip.js": "2.8.26"
     },
     "patchedDependencies": {
       "vite-plugin-top-level-await@1.6.0": "patches/vite-plugin-top-level-await@1.6.0.patch",

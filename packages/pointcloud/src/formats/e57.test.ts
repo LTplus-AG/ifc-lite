@@ -776,6 +776,74 @@ describe('applyPoseInPlace', () => {
     applyPoseInPlace(b, 1, pose, undefined);
     expect(Array.from(a)).toEqual(Array.from(b));
   });
+
+  // Every other rotation fixture in this file is pure-Z or identity, i.e.
+  // x = y = 0. That leaves six of the nine matrix entries unconstrained:
+  // r02/r12/r20/r21 are all identically zero, and r00 = r11 = 1 - 2z². A sign
+  // flip in r02 or r20, an x/y swap in any term, or swapping r00 with r11 all
+  // stayed green. The two tests below pin the off-axis half of the matrix.
+
+  it('a 120° rotation about (1,1,1) cyclically permutes the axes (x→y→z→x)', () => {
+    // q = (0.5, 0.5, 0.5, 0.5) is the 120° rotation about the body diagonal.
+    // Its matrix is the cyclic permutation [[0,0,1],[1,0,0],[0,1,0]], which is
+    // asymmetric: it pins r02, r10 and r21 as the nonzero entries and every
+    // other entry as zero, so no transpose-like mutation of the off-diagonal
+    // terms survives. Chosen because the expected outputs are exact — the
+    // basis vectors map onto other basis vectors, with no rounding to hide in.
+    const positions = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    applyPoseInPlace(positions, 3, {
+      rotation: { w: 0.5, x: 0.5, y: 0.5, z: 0.5 },
+      translation: { x: 0, y: 0, z: 0 },
+    });
+    expect(Array.from(positions.subarray(0, 3))).toEqual([0, 1, 0]); // x → y
+    expect(Array.from(positions.subarray(3, 6))).toEqual([0, 0, 1]); // y → z
+    expect(Array.from(positions.subarray(6, 9))).toEqual([1, 0, 0]); // z → x
+  });
+
+  it('matches the quaternion sandwich product for a fully asymmetric rotation', () => {
+    // The cyclic case above still has w = x = y = z, so an x/y swap inside a
+    // term is invisible to it. This one uses a quaternion whose four
+    // components are all distinct, which makes all nine matrix entries
+    // distinct and nonzero, and checks against q ⊗ (0,v) ⊗ q* — an
+    // independent formulation (quaternion multiplication, no 3x3 matrix), so
+    // the reference cannot inherit a bug from the code under test.
+    const n = Math.hypot(1, 2, 3, 4);
+    const q = { w: 1 / n, x: 2 / n, y: 3 / n, z: 4 / n };
+
+    /** Rotate `v` by unit quaternion `q` via q ⊗ (0,v) ⊗ q⁻¹ (= q* for unit q). */
+    const sandwich = (v: readonly [number, number, number]): [number, number, number] => {
+      // t = q ⊗ (0, v)
+      const tw = -(q.x * v[0] + q.y * v[1] + q.z * v[2]);
+      const tx = q.w * v[0] + q.y * v[2] - q.z * v[1];
+      const ty = q.w * v[1] + q.z * v[0] - q.x * v[2];
+      const tz = q.w * v[2] + q.x * v[1] - q.y * v[0];
+      // t ⊗ q*  (conjugate: negate the vector part)
+      return [
+        tw * -q.x + tx * q.w + ty * -q.z - tz * -q.y,
+        tw * -q.y + ty * q.w + tz * -q.x - tx * -q.z,
+        tw * -q.z + tz * q.w + tx * -q.y - ty * -q.x,
+      ];
+    };
+
+    const samples: Array<[number, number, number]> = [
+      [1, 0, 0],
+      [0, 1, 0],
+      [0, 0, 1],
+      [1.5, -2.25, 3.75],
+    ];
+    const positions = new Float32Array(samples.flat());
+    applyPoseInPlace(positions, samples.length, {
+      rotation: q,
+      translation: { x: 0, y: 0, z: 0 },
+    });
+
+    samples.forEach((v, i) => {
+      const want = sandwich(v);
+      expect(positions[i * 3]).toBeCloseTo(want[0], 5);
+      expect(positions[i * 3 + 1]).toBeCloseTo(want[1], 5);
+      expect(positions[i * 3 + 2]).toBeCloseTo(want[2], 5);
+    });
+  });
 });
 
 describe('originOffset (extends #1804 to E57)', () => {

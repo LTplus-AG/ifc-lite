@@ -17,6 +17,9 @@
  *  - `options.application` override of `preprocessorVersion` (~:352)
  *  - `authorization: sourceHeader?.authorization` (~:354)
  *  - `options.filename ?? 'export.ifc'` — the `options.filename` half (~:355-356)
+ *  - `timeStamp: options.timeStamp` (~:454) — the eighth override, added
+ *    after the original sweep: mutating it to `undefined` still killed
+ *    nothing once the seven above were covered.
  *
  * Every fixture below gives the source header a value DIFFERENT from both
  * the caller override (where one applies) and the hardcoded default, so a
@@ -136,5 +139,31 @@ describe('StepExporter header overrides (options.* wins over source/default)', (
     expect(out.name).toBe('caller-override.ifc');
     expect(out.name).not.toBe('source-file.ifc');
     expect(out.name).not.toBe('export.ifc');
+  });
+
+  // The eighth override. Unlike the seven above, its default is not a constant
+  // but the wall clock, so "differs from the default" cannot be asserted by
+  // comparing against a fixed string. A timestamp in the past is distinct from
+  // both the source header's and any clock-derived default by construction.
+  it('options.timeStamp replaces the FILE_NAME timestamp slot (not the source or the wall clock)', async () => {
+    const store = await parse(SOURCE_MODEL);
+    const result = new StepExporter(store).export({
+      schema: store.schemaVersion,
+      timeStamp: '2011-11-11T11:11:11',
+    });
+    const out = exportedHeader(result.content);
+    expect(out.timeStamp).toBe('2011-11-11T11:11:11');
+    expect(out.timeStamp).not.toBe('2026-01-01T00:00:00');
+  });
+
+  // Control for the test above: with no override the slot must still be filled
+  // from the clock, so a mutation that drops the override entirely cannot be
+  // mistaken for "the field is simply never written".
+  it('without options.timeStamp the slot is still populated', async () => {
+    const store = await parse(SOURCE_MODEL);
+    const result = new StepExporter(store).export({ schema: store.schemaVersion });
+    const out = exportedHeader(result.content);
+    expect(out.timeStamp).toBeTruthy();
+    expect(out.timeStamp).not.toBe('2011-11-11T11:11:11');
   });
 });

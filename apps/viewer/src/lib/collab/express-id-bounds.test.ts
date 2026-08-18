@@ -22,7 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { highestExpressId, raisedMaxExpressId } from './collabSlice.js';
+import { highestExpressId, raisedMaxExpressId } from '@/lib/collab/express-id-bounds';
 
 const idMap = (...ids: number[]): Map<number, string> =>
   new Map(ids.map((id) => [id, `/GUID${id}`]));

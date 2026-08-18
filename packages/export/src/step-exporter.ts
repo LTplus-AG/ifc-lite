@@ -49,6 +49,7 @@ import { applyGeoreferencingMutations, type GeorefContext } from './step-georefe
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import {
+  toStepReal,
   serializeAttributeValue,
   serializeStepValue,
   tokenIsRealLiteral,

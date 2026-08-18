@@ -275,7 +275,12 @@ export function CesiumOverlay({
           try {
             const imagery = await Cesium.createWorldImageryAsync();
             if (!cancelled) viewer.imageryLayers.addImageryProvider(imagery);
-          } catch { /* imagery unavailable: buildings still render */ }
+          } catch (err) {
+            // Not fatal: the buildings layer still renders without imagery.
+            // Logged rather than swallowed so a failing imagery endpoint is
+            // diagnosable instead of presenting as an unexplained grey globe.
+            console.warn('[CesiumOverlay] world imagery unavailable, buildings still render', err);
+          }
         } else {
           // Photorealistic tiles bring their own ground; the globe would
           // z-fight underneath them.

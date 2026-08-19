@@ -50,6 +50,105 @@ function makeEngineWithProperty(values: Array<string | number | boolean | null>)
   return engine;
 }
 
+/**
+ * Build an engine with 6 entities spread across a small disjoint spatial
+ * hierarchy: sites 100/200, buildings 10/20 (one per site), storeys 1/2
+ * (one per building), and a space 500 nested inside storey 1.
+ *
+ *   site 100 -> building 10 -> storey 1 -> entities 1, 2 (entity 1 also in space 500)
+ *   site 200 -> building 20 -> storey 2 -> entities 3, 4
+ *   entities 5, 6 are not registered under any spatial container.
+ */
+function makeEngineWithSpatialHierarchy() {
+  const entities = makeEntities(6);
+  const view = new MutablePropertyView(null, 'model-1');
+  view.setOnDemandExtractor(() => []);
+
+  const spatialHierarchy = {
+    project: { expressId: 0, type: 0, name: 'Project', children: [], elements: [] },
+    byStorey: new Map([
+      [1, [1, 2]],
+      [2, [3, 4]],
+    ]),
+    byBuilding: new Map([
+      [10, [1, 2]],
+      [20, [3, 4]],
+    ]),
+    bySite: new Map([
+      [100, [1, 2]],
+      [200, [3, 4]],
+    ]),
+    bySpace: new Map([[500, [1]]]),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+  } as any;
+
+  return new BulkQueryEngine(entities, view, spatialHierarchy, null, null);
+}
+
+describe('BulkQueryEngine spatial filters', () => {
+  it('sites filters to entities contained in the given site IDs (disjoint sites)', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [100] });
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('sites with a second site ID includes both sites disjoint sets', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [100, 200] });
+    expect(ids).toEqual([1, 2, 3, 4]);
+  });
+
+  it('sites excludes entities outside the requested site (regression: previously ignored, returned everything)', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [200] });
+    expect(ids).not.toContain(1);
+    expect(ids).not.toContain(2);
+    expect(ids).toEqual([3, 4]);
+  });
+
+  it('an empty sites array is treated as no filter, matching the storeys/buildings/spaces sibling behavior', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [] });
+    expect(ids).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('a site ID absent from bySite matches nothing for that ID', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [999] });
+    expect(ids).toEqual([]);
+  });
+
+  it('sites combined with storeys intersects (not unions) the two criteria', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    // site 100 -> {1,2}; storey 2 -> {3,4}; intersection is empty.
+    const ids = engine.select({ sites: [100], storeys: [2] });
+    expect(ids).toEqual([]);
+    // site 100 -> {1,2}; storey 1 -> {1,2}; intersection is {1,2}.
+    const idsMatching = engine.select({ sites: [100], storeys: [1] });
+    expect(idsMatching).toEqual([1, 2]);
+  });
+
+  it('storeys filters to entities contained in the given storey IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ storeys: [1] });
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('buildings filters to entities contained in the given building IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ buildings: [20] });
+    expect(ids).toEqual([3, 4]);
+  });
+
+  it('spaces filters to entities contained in the given space IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ spaces: [500] });
+    expect(ids).toEqual([1]);
+  });
+});
+
 describe('BulkQueryEngine property filter operators', () => {
   describe('string operators', () => {
     const engine = makeEngineWithProperty(['Alpha', 'Beta', 'Gamma', null]);

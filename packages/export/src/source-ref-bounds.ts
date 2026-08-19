@@ -65,13 +65,31 @@
  * over a plain-`Map` index, which can hold one.
  *
  * The readers are therefore gated on this predicate too (`entityLineText` in
- * `step-exporter.ts`), which also makes them agree with the source-iteration
+ * `step-property-sets.ts`), which also makes them agree with the source-iteration
  * pass: that pass already skips a record whose ref fails this test, so an
  * exempt reader was answering questions about a record the same export had
  * decided not to write.
  */
 
+import { asSourceBytes, type IfcSourceBytes } from '@ifc-lite/parser';
 import type { ExportEntityRef } from './entity-iteration.js';
+
+/**
+ * UTF-8 decode of `[start, end)` of the source, accepting either the raw bytes
+ * or the {@link IfcSourceBytes} accessor (#2183). Replaces the direct
+ * `safeUtf8Decode(source, …)` calls the exporter used to make: `decodeUtf8` is
+ * SAB-safe in exactly the same way, and routing through the accessor is what
+ * lets `IfcDataStore.source` change shape without touching those reads.
+ *
+ * Lives beside {@link createSourceRefReader} because the two are always used
+ * together: the predicate decides whether a range may be read, this performs
+ * the read. Both `step-exporter.ts` and `step-property-sets.ts` need them, and
+ * one decode with one doc comment is what keeps the two files agreeing about
+ * what a clamped range means (#2475 step 2b).
+ */
+export function decodeRange(src: Uint8Array | IfcSourceBytes, start: number, end: number): string {
+  return asSourceBytes(src).decodeUtf8(start, end);
+}
 
 /** The half of a source this module needs: how many bytes it can serve. */
 interface SourceExtent {

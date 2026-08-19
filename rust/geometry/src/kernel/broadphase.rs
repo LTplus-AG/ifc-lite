@@ -11,6 +11,24 @@
 //! float SAH/centroid sort never decides topology — callers canonicalise the
 //! candidate pairs by exact `(i,j)` keys before processing, so the arrangement
 //! topology (and the pinned determinism manifests) are byte-identical.
+//!
+//! # What the `tests` module's "brute-force" checks can and cannot catch (#2830)
+//!
+//! `bvh_candidate_pairs_match_brute_force` and
+//! `ray_and_point_candidates_are_conservative_supersets` read as independent
+//! oracles, but their reference computations call the SAME predicate functions
+//! the production paths call: `Bvh::query` and the tests' own `brute()` both
+//! call `overlap()` (query at line ~175, brute at line ~262); `Bvh::ray_candidates`
+//! / `Bvh::point_candidates` and the superset test both call `seg_hits_aabb()` /
+//! `aabb_contains()`. These tests therefore validate the TREE — median-split
+//! construction, node-bounds unions, pruning/traversal — never dropping a
+//! candidate the shared predicate would accept; they cannot validate the
+//! predicates (`overlap`, `seg_hits_aabb`, `aabb_contains`) themselves. A sign
+//! or inequality-strictness bug in `overlap()` shifts both the BVH's own
+//! candidate set and the "brute-force" reference identically and both tests
+//! stay green (mutation-confirmed: changing `overlap()`'s `<=` to `<` leaves
+//! both tests passing). Predicate correctness needs its own fixture, derived
+//! independently of these functions.
 
 type Tri = [[f64; 3]; 3];
 type Aabb = ([f64; 3], [f64; 3]);

@@ -20,6 +20,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import {
+  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -135,11 +136,12 @@ export function addSpaceToStore(
     ? params.Position ?? [0, 0, 0]
     : params.Position;
 
-  if (params.Height <= 0) {
-    throw new Error('addSpaceToStore: Height must be positive');
-  }
-  if (!polygon && (params.Width <= 0 || params.Depth <= 0)) {
-    throw new Error('addSpaceToStore: Width and Depth must be positive');
+  assertPositiveFinite([params.Height], 'addSpaceToStore: Height must be positive');
+  if (!polygon) {
+    assertPositiveFinite(
+      [params.Width, params.Depth],
+      'addSpaceToStore: Width and Depth must be positive',
+    );
   }
 
   // Geometry coordinates must land in the file's native length unit —

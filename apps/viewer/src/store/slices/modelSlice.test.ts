@@ -544,6 +544,8 @@ describe('ModelSlice', () => {
         assert.strictEqual(after.isolatedEntitiesByModel.has('model-1'), false);
         assert.strictEqual(after.isolatedEntitiesByModel.has('model-2'), true);
       });
+    });
+
     it('purges the REMOVED model\'s refs from the pinboard basket and keeps every survivor', () => {
       // pinboardSlice's `pinboardEntities` / `hierarchyBasketSelection` are
       // Set<string> of entityRef strings ("modelId:expressId"), the exact

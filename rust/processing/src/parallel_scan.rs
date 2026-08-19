@@ -364,11 +364,19 @@ mod native {
         /// Fixture leg: byte-identical over real models when present. Sweeps chunk
         /// counts AND checks the public `build_entity_index_parallel` (thread-count
         /// driven) path. Skips (never fails) when fixtures are absent.
+        ///
+        /// `ara3d/AC-20-Smiley-West-10-Bldg.ifc` was the original third leg but is
+        /// not, and never was, in `tests/models/manifest.json` — `pnpm fixtures`
+        /// cannot fetch it, so this leg silently never ran. Swapped for
+        /// `ara3d/advanced_model.ifc` (35MB, in the manifest), which serves the
+        /// same role: a third large, structurally distinct real model. The test
+        /// is model-agnostic (byte-identical parallel-vs-serial STEP scan), so any
+        /// large real fixture exercises the same property.
         #[test]
         fn fixtures_byte_identical() {
             for rel in [
                 "ara3d/schependomlaan.ifc",
-                "ara3d/AC-20-Smiley-West-10-Bldg.ifc",
+                "ara3d/advanced_model.ifc",
                 "various/01_BIMcollab_Example_ARC.ifc",
             ] {
                 let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);

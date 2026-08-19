@@ -288,3 +288,49 @@ fn mapped_item_depth_cap_matches_the_geometry_router() {
         "must equal ifc_lite_geometry::router::processing::MAX_MAPPED_ITEM_DEPTH"
     );
 }
+
+/// An item shared between a DEEP branch (where the cap cuts its subtree before
+/// the styled leaf) and a SHORT one (where it resolves). A plain visited SET
+/// marks it on the deep visit and skips the short one, silently losing the
+/// colour — a WRONG VALUE rather than a crash, so nothing reports it
+/// (Codex, #2868 review; same shape here).
+#[test]
+fn a_shared_item_resolves_via_the_shallow_branch() {
+    let mut body = String::from(
+        "#200=IFCMAPPEDITEM(#201,$);\n\
+         #201=IFCREPRESENTATIONMAP($,#202);\n\
+         #202=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#300,#900));\n",
+    );
+    for i in 0..30u32 {
+        let (item, rm, sh) = (300 + i, 400 + i, 500 + i);
+        let inner = if i == 29 { 900 } else { 300 + i + 1 };
+        body.push_str(&format!("#{item}=IFCMAPPEDITEM(#{rm},$);\n"));
+        body.push_str(&format!("#{rm}=IFCREPRESENTATIONMAP($,#{sh});\n"));
+        body.push_str(&format!(
+            "#{sh}=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#{inner}));\n"
+        ));
+    }
+    body.push_str(
+        "#900=IFCMAPPEDITEM(#901,$);\n\
+         #901=IFCREPRESENTATIONMAP($,#902);\n\
+         #902=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#950));\n\
+         #950=IFCMAPPEDITEM(#951,$);\n\
+         #951=IFCREPRESENTATIONMAP($,#952);\n\
+         #952=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#999));\n",
+    );
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+         FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);\n{body}ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let green = [0.0, 0.8, 0.2, 1.0];
+    let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    styles.insert(999, GeometryStyleInfo::from_color(green));
+    let mut decoder = EntityDecoder::new(&ifc);
+    assert_eq!(
+        find_geometry_item_color(200, &styles, &mut decoder),
+        Some(green),
+        "the shallow branch reaches the styled leaf well inside the cap"
+    );
+}

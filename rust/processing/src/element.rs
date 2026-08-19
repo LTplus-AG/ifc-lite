@@ -807,16 +807,22 @@ pub(crate) fn find_geometry_item_color(
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let mut visited = FxHashSet::default();
+    let mut visited = FxHashMap::default();
     find_geometry_item_color_at(geometry_id, geometry_styles, decoder, 0, &mut visited)
 }
 
-/// The visited set is GLOBAL to one resolution, not path-scoped: the geometry
+/// The visited map is GLOBAL to one resolution, not path-scoped: the geometry
 /// router removes each id on the way out because it accumulates geometry per
-/// path, but a colour is a pure function of the item id and the style map, so
-/// an item that already resolved to `None` cannot resolve differently down a
-/// second branch. Keeping it bounds total decoder calls to the number of
-/// DISTINCT items reachable.
+/// path, whereas a colour is a pure function of the item id and the style map.
+///
+/// It records the DEPTH each item was explored at and permits a revisit from
+/// strictly nearer the root. A plain SET is wrong in combination with the cap:
+/// an item first reached near the limit is cut before its subtree is searched
+/// yet stays marked, so a later shorter branch that WOULD have resolved is
+/// skipped and the colour is silently lost — a wrong value rather than a
+/// crash, so nothing reports it (Codex, #2868 review). Work stays bounded: an
+/// item is re-explored only from closer to the root, at most
+/// `MAX_MAPPED_ITEM_DEPTH` times.
 ///
 /// That matters for more than tidiness. A depth cap alone bounds the chain but
 /// not the fan-out: a malformed representation holding `k` items that each
@@ -828,7 +834,7 @@ fn find_geometry_item_color_at(
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
     depth: u32,
-    visited: &mut FxHashSet<u32>,
+    visited: &mut FxHashMap<u32, u32>,
 ) -> Option<[f32; 4]> {
     // Direct style on this exact geometry item wins.
     if let Some(style) = geometry_styles.get(&geometry_id) {
@@ -839,9 +845,16 @@ fn find_geometry_item_color_at(
     // geometry and resolve there (recursing handles nested mapped items).
     // Refuse to go deeper than the cap: a cyclic mapping would otherwise
     // recurse until the stack overflows and the process aborts (#2863).
-    if depth >= MAX_MAPPED_ITEM_DEPTH || !visited.insert(geometry_id) {
+    if depth >= MAX_MAPPED_ITEM_DEPTH {
         return None;
     }
+    match visited.get(&geometry_id) {
+        // Explored from here or from CLOSER to the root already: that attempt
+        // had at least as much room under the cap, so it cannot find anything
+        // new. Skipping is safe, and it is what breaks cycles.
+        Some(&seen_at) if seen_at <= depth => return None,
+        _ => visited.insert(geometry_id, depth),
+    };
     let geom = decoder.decode_by_id(geometry_id).ok()?;
     if geom.ifc_type != IfcType::IfcMappedItem {
         return None;

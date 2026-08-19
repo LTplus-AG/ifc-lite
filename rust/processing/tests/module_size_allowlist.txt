@@ -230,8 +230,11 @@
 # same chain: the cap alone bounds the chain's LENGTH but not its BREADTH, and
 # k items looping back cost O(k^depth) decodes — an abort traded for a hang.
 # 4 lines of guard and a wrapper; the rest is the why, including why the
-# visited set is global here and path-scoped in the router.
-     948 rust/processing/src/element.rs
+# visited set is global here and path-scoped in the router, and why it records
+# the DEPTH of each visit: a plain set combined with the cap silently LOSES a
+# colour, because an item first reached near the limit is cut before its
+# subtree is searched yet stays marked, so a later shorter branch is skipped.
+     961 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.

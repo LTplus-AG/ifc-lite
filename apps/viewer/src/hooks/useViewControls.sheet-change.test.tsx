@@ -176,6 +176,87 @@ describe('useViewControls sheet-swap cache invalidation', () => {
     }
   });
 
+  it('clears the cache on a PAPER-SIZE-ONLY change (setPaperSize with viewport/scale untouched)', async () => {
+    // Isolates the `paper.widthMm`/`heightMm` term of `sheetGeometryKey`.
+    // The `sheet()` fixture DERIVES `viewportBounds.width` from `widthMm`
+    // (`width: widthMm - 20`), so simply calling `sheet('sheet-a', f, 841)`
+    // for `after` would move paper size AND viewportBounds together and
+    // could not tell which term the assertion actually depends on (PR #2853
+    // review — mutating either term alone left the previous single
+    // "paper AND scale" test green). Build `after` by overriding ONLY
+    // `paper`, holding `before`'s `viewportBounds` literally.
+    const cacheRef: React.MutableRefObject<CachedTransform> = { current: null };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let root: Root | null = null;
+    try {
+      const before = sheet('sheet-a', 50, 420);
+      await act(async () => {
+        root = createRoot(container);
+        root.render(<Harness activeSheet={before} cacheRef={cacheRef} />);
+      });
+
+      cacheRef.current = SENTINEL;
+
+      // SAME id, viewportBounds and scale; ONLY the paper size changes.
+      const after: DrawingSheet = {
+        ...before,
+        paper: { ...before.paper, widthMm: 841, heightMm: 594 } as DrawingSheet['paper'],
+      };
+      await act(async () => {
+        root!.render(<Harness activeSheet={after} cacheRef={cacheRef} />);
+      });
+
+      assert.equal(
+        cacheRef.current,
+        null,
+        `cached transform must not survive a paper-size-only change; got ${JSON.stringify(cacheRef.current)}`,
+      );
+    } finally {
+      if (root) await act(async () => { root!.unmount(); });
+      container.remove();
+    }
+  });
+
+  it('clears the cache on a VIEWPORT-BOUNDS-ONLY change (updateFrameMargins with paper/scale untouched)', async () => {
+    // Isolates the `viewportBounds` term of `sheetGeometryKey` — the
+    // `updateFrameMargins` path recomputes `viewportBounds` without
+    // touching `paper` or `scale` at all, so a key that dropped this term
+    // would leave the cache stale through a margin change with nothing
+    // above catching it (PR #2853 review).
+    const cacheRef: React.MutableRefObject<CachedTransform> = { current: null };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let root: Root | null = null;
+    try {
+      const before = sheet('sheet-a', 50, 420);
+      await act(async () => {
+        root = createRoot(container);
+        root.render(<Harness activeSheet={before} cacheRef={cacheRef} />);
+      });
+
+      cacheRef.current = SENTINEL;
+
+      // SAME id, paper and scale; ONLY the viewport bounds change.
+      const after: DrawingSheet = {
+        ...before,
+        viewportBounds: { ...before.viewportBounds, x: 20, y: 20 },
+      };
+      await act(async () => {
+        root!.render(<Harness activeSheet={after} cacheRef={cacheRef} />);
+      });
+
+      assert.equal(
+        cacheRef.current,
+        null,
+        `cached transform must not survive a viewport-bounds-only change; got ${JSON.stringify(cacheRef.current)}`,
+      );
+    } finally {
+      if (root) await act(async () => { root!.unmount(); });
+      container.remove();
+    }
+  });
+
   it('negative control: keeps the cached transform across a re-render of the SAME sheet', async () => {
     const cacheRef: React.MutableRefObject<CachedTransform> = { current: null };
     const container = document.createElement('div');

@@ -158,14 +158,14 @@ describe('reconstruct-side placement sweep', () => {
     createEntity(doc, WALL_PATH, { ifcClass: 'IfcWall' });
     setEntityPlacement(doc, WALL_PATH, IDENTITY);
     setPlacementBaseline(doc, WALL_PATH, IDENTITY);
-    const seeded = await seedGeometryToRoom(
+    const report = await seedGeometryToRoom(
       geomApi,
       session,
       blobStore,
       [bakedMesh(WALL_ID)],
       (id) => (id === WALL_ID ? WALL_PATH : null),
     );
-    assert.equal(seeded, 1, 'the fixture must actually seed a blob');
+    assert.equal(report.seeded, 1, 'the fixture must actually seed a blob');
   }
 
   beforeEach(() => {

@@ -172,7 +172,7 @@ describe('lensSlice - plain UI setters', () => {
 
   it('setLensAutoColorLegend replaces the legend array', () => {
     const slice = makeSlice();
-    const legend = [{ value: 'a', color: '#fff', count: 1 }];
+    const legend = [{ id: 'a', name: 'a', color: '#fff', count: 1 }];
     slice.get().setLensAutoColorLegend(legend);
     assert.strictEqual(slice.get().lensAutoColorLegend, legend);
   });

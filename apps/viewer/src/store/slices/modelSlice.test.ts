@@ -76,7 +76,22 @@ describe('ModelSlice', () => {
       getState as Parameters<typeof createModelSlice>[1],
       undefined as unknown as Parameters<typeof createModelSlice>[2],
     );
-    state = { ...slice, ifcDataStore: null, geometryResult: null };
+    state = {
+      ...slice,
+      ifcDataStore: null,
+      geometryResult: null,
+      addElementModelId: null,
+      addElementStoreyId: null,
+      selectedEntityId: null,
+      selectedEntityIds: new Set(),
+      selectedStoreys: new Set(),
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+      classFilter: null,
+      hiddenEntitiesByModel: new Map(),
+      isolatedEntitiesByModel: new Map(),
+    };
   });
 
   describe('initial state', () => {
@@ -389,6 +404,137 @@ describe('ModelSlice', () => {
       state.removeModel('model-2');
       assert.strictEqual(state.activeModelId, 'model-1');
     });
+
+    it('clears the AddElement panel pin when it names the removed model', () => {
+      // addElementSlice's `addElementModelId` / `addElementStoreyId` name a
+      // specific federated model the panel is pinned to (set via its Model
+      // dropdown). Nothing else clears it, so a stale pin survives removal
+      // and the panel keeps naming a model no longer in `models` — the same
+      // shape as the selection-purge tests above, on a different slice.
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      Object.assign(state, { addElementModelId: 'model-1', addElementStoreyId: 42 });
+
+      state.removeModel('model-1');
+
+      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
+      assert.strictEqual(after.addElementModelId, null);
+      assert.strictEqual(after.addElementStoreyId, null);
+    });
+
+    it('leaves the AddElement panel pin untouched when it names a surviving model', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      Object.assign(state, { addElementModelId: 'model-2', addElementStoreyId: 7 });
+
+      state.removeModel('model-1');
+
+      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
+      assert.strictEqual(after.addElementModelId, 'model-2');
+      assert.strictEqual(after.addElementStoreyId, 7);
+    });
+
+    describe('global-id state (selection sets / hidden / isolated / ghost / class filter)', () => {
+      // `syncSourceModel.ts`'s `purgeStaleEntityState` already purges these
+      // exact fields on the same-modelId resync path (comment above this
+      // block's parent `describe`). `removeModel` never got the same
+      // treatment for anything past the EntityRef-shaped selection fields —
+      // these are keyed by bare `globalId`, not `{modelId, expressId}`, so a
+      // stale entry can't be spotted by comparing `.modelId`; it has to be
+      // resolved against which surviving model's parse/overlay range owns it.
+      function federatedModel(id: string, idOffset: number): FederatedModel {
+        const m = createMockModel(id, id);
+        m.idOffset = idOffset;
+        m.maxExpressId = 100;
+        return m;
+      }
+
+      it('clears isolatedEntities to null when every isolated id belonged to the removed model', () => {
+        state.addModel(federatedModel('model-1', 0));
+        state.addModel(federatedModel('model-2', 1000));
+        Object.assign(state, { isolatedEntities: new Set([5, 7]) });
+
+        state.removeModel('model-1');
+
+        // A non-null empty Set would still read as "isolation active,
+        // nothing matches" and hide every surviving entity — worse than the
+        // dangling ids it replaces. Must be null, not an empty Set.
+        assert.strictEqual((state as unknown as { isolatedEntities: unknown }).isolatedEntities, null);
+      });
+
+      it('keeps the surviving id and drops only the removed model\'s id from a mixed isolatedEntities set', () => {
+        state.addModel(federatedModel('model-1', 0));
+        state.addModel(federatedModel('model-2', 1000));
+        // 5 belongs to model-1 (offset 0), 1005 belongs to model-2 (offset 1000).
+        Object.assign(state, { isolatedEntities: new Set([5, 1005]) });
+
+        state.removeModel('model-1');
+
+        const after = state as unknown as { isolatedEntities: Set<number> | null };
+        assert.deepStrictEqual(after.isolatedEntities, new Set([1005]));
+      });
+
+      it('leaves isolatedEntities untouched when it names no id from the removed model', () => {
+        state.addModel(federatedModel('model-1', 0));
+        state.addModel(federatedModel('model-2', 1000));
+        Object.assign(state, { isolatedEntities: new Set([1005]) });
+
+        state.removeModel('model-1');
+
+        const after = state as unknown as { isolatedEntities: Set<number> | null };
+        assert.deepStrictEqual(after.isolatedEntities, new Set([1005]));
+      });
+
+      it('purges ghostExceptEntities, hiddenEntities, selectedEntityIds, selectedStoreys and classFilter the same way', () => {
+        state.addModel(federatedModel('model-1', 0));
+        state.addModel(federatedModel('model-2', 1000));
+        Object.assign(state, {
+          ghostExceptEntities: new Set([5, 1005]),
+          hiddenEntities: new Set([6, 1006]),
+          selectedEntityIds: new Set([7, 1007]),
+          selectedStoreys: new Set([8, 1008]),
+          selectedEntityId: 9,
+          classFilter: { ids: new Set([10, 1010]), label: 'Walls' },
+        });
+
+        state.removeModel('model-1');
+
+        const after = state as unknown as {
+          ghostExceptEntities: Set<number> | null;
+          hiddenEntities: Set<number>;
+          selectedEntityIds: Set<number>;
+          selectedStoreys: Set<number>;
+          selectedEntityId: number | null;
+          classFilter: { ids: Set<number>; label: string } | null;
+        };
+        assert.deepStrictEqual(after.ghostExceptEntities, new Set([1005]));
+        assert.deepStrictEqual(after.hiddenEntities, new Set([1006]));
+        assert.deepStrictEqual(after.selectedEntityIds, new Set([1007]));
+        assert.deepStrictEqual(after.selectedStoreys, new Set([1008]));
+        assert.strictEqual(after.selectedEntityId, null, 'id 9 belonged only to the removed model');
+        assert.deepStrictEqual(after.classFilter, { ids: new Set([1010]), label: 'Walls' });
+      });
+
+      it('drops the removed model\'s key from hiddenEntitiesByModel / isolatedEntitiesByModel', () => {
+        state.addModel(federatedModel('model-1', 0));
+        state.addModel(federatedModel('model-2', 1000));
+        Object.assign(state, {
+          hiddenEntitiesByModel: new Map([['model-1', new Set([1])], ['model-2', new Set([2])]]),
+          isolatedEntitiesByModel: new Map([['model-1', new Set([3])], ['model-2', new Set([4])]]),
+        });
+
+        state.removeModel('model-1');
+
+        const after = state as unknown as {
+          hiddenEntitiesByModel: Map<string, Set<number>>;
+          isolatedEntitiesByModel: Map<string, Set<number>>;
+        };
+        assert.strictEqual(after.hiddenEntitiesByModel.has('model-1'), false);
+        assert.strictEqual(after.hiddenEntitiesByModel.has('model-2'), true);
+        assert.strictEqual(after.isolatedEntitiesByModel.has('model-1'), false);
+        assert.strictEqual(after.isolatedEntitiesByModel.has('model-2'), true);
+      });
+    });
   });
 
   describe('clearAllModels', () => {
@@ -400,6 +546,55 @@ describe('ModelSlice', () => {
 
       assert.strictEqual(state.models.size, 0);
       assert.strictEqual(state.activeModelId, null);
+    });
+
+    it('clears the AddElement panel pin along with every model', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      Object.assign(state, { addElementModelId: 'model-1', addElementStoreyId: 5 });
+
+      state.clearAllModels();
+
+      const after = state as unknown as { addElementModelId: string | null; addElementStoreyId: number | null };
+      assert.strictEqual(after.addElementModelId, null);
+      assert.strictEqual(after.addElementStoreyId, null);
+    });
+
+    it('clears every global-id set (isolate/ghost/hidden/selection/class filter) unconditionally', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      Object.assign(state, {
+        isolatedEntities: new Set([1]),
+        ghostExceptEntities: new Set([2]),
+        hiddenEntities: new Set([3]),
+        selectedEntityIds: new Set([4]),
+        selectedStoreys: new Set([5]),
+        selectedEntityId: 6,
+        classFilter: { ids: new Set([7]), label: 'Doors' },
+        hiddenEntitiesByModel: new Map([['model-1', new Set([8])]]),
+        isolatedEntitiesByModel: new Map([['model-1', new Set([9])]]),
+      });
+
+      state.clearAllModels();
+
+      const after = state as unknown as {
+        isolatedEntities: unknown;
+        ghostExceptEntities: unknown;
+        hiddenEntities: Set<number>;
+        selectedEntityIds: Set<number>;
+        selectedStoreys: Set<number>;
+        selectedEntityId: number | null;
+        classFilter: unknown;
+        hiddenEntitiesByModel: Map<string, Set<number>>;
+        isolatedEntitiesByModel: Map<string, Set<number>>;
+      };
+      assert.strictEqual(after.isolatedEntities, null);
+      assert.strictEqual(after.ghostExceptEntities, null);
+      assert.strictEqual(after.hiddenEntities.size, 0);
+      assert.strictEqual(after.selectedEntityIds.size, 0);
+      assert.strictEqual(after.selectedStoreys.size, 0);
+      assert.strictEqual(after.selectedEntityId, null);
+      assert.strictEqual(after.classFilter, null);
+      assert.strictEqual(after.hiddenEntitiesByModel.size, 0);
+      assert.strictEqual(after.isolatedEntitiesByModel.size, 0);
     });
   });
 

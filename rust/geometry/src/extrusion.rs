@@ -445,12 +445,13 @@ fn create_lofted_side_walls(
         // Outward normal from the actual 3D quad. `edge_a × edge_b` is outward
         // for a CCW loop; `winding_sign` corrects CW loops — and per
         // `Profile2D::add_hole`'s contract holes are already authored CW, so
-        // this alone already leaves hole walls facing into the void, exactly
-        // matching `create_side_walls`' convention (see
+        // this alone already leaves hole walls facing into the solid (away
+        // from the loop's own interior, i.e. the void), exactly matching
+        // `create_side_walls`' convention (see
         // `extrusion_generic::create_side_walls`, which applies `winding_sign`
         // ONLY, with no separate hole flip). A second `is_hole` flip here
-        // used to double-flip the sign back to facing OUT of the void —
-        // confirmed by `probe_lofted_hole_normal_vs_uniform_hole_normal`,
+        // used to double-flip the sign back to facing OUT of the solid, into
+        // the void — confirmed by `probe_lofted_hole_normal_vs_uniform_hole_normal`,
         // which compares this path against the uniform-extrusion path in the
         // untapered limit (they must agree; they didn't).
         let edge_a = v1 - v0;

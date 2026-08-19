@@ -116,7 +116,13 @@ export function useIfcServer() {
   const loadFromServer = useCallback(async (
     file: File,
     buffer: ArrayBuffer,
-    /** Optional staleness check — returns true if this load has been superseded. */
+    /**
+     * Optional staleness check — returns true if this load has been
+     * superseded. Same contract as `loadFromCache`'s (useIfcCache.ts:194):
+     * re-checked before every write into the active model slot, including
+     * inside the streaming batch callback below — a stale batch (or a stale
+     * post-stream/post-parse result) writes nothing.
+     */
     isStale?: () => boolean,
   ): Promise<boolean> => {
     const { setProgress, setIfcDataStore, setGeometryResult } = useViewerStore.getState();
@@ -167,6 +173,14 @@ export function useIfcServer() {
 
         // Use streaming endpoint with batch callback
         const streamResult = await client.parseParquetStream(file, (batch: ParquetBatch) => {
+          // Re-check on every batch: `onBatch` fires once per batch of ONE
+          // long-running awaited stream, so a newer load can own the active
+          // slot by the time any batch after the first arrives. Same
+          // contract, same reason, as useIfcCache.ts's per-chunk guard in its
+          // streaming loop — without it a superseded load's later batches
+          // keep painting into the model the user just opened.
+          if (isStale?.()) return;
+
           batchCount++;
 
           // Convert batch meshes to viewer format (snake_case to camelCase, number[] to TypedArray)
@@ -222,6 +236,13 @@ export function useIfcServer() {
           }
         });
 
+        // Re-check after the stream's single big await resolves: supersession
+        // can land at any point during it, including after the LAST batch's
+        // onBatch call returns. Without this the "final geometry set with
+        // complete bounds" write below still lands in the active slot for a
+        // load nobody owns any more.
+        if (isStale?.()) return false;
+
         cacheKey = streamResult.cache_key;
         streamMetadata = streamResult.metadata;
         streamStats = streamResult.stats;
@@ -272,6 +293,10 @@ export function useIfcServer() {
         // NON-STREAMING PATH - for smaller files, use batch request (with cache check)
         // Use Parquet endpoint - much smaller payload (~15x compression)
         const parquetResult = await client.parseParquet(file);
+        // Re-check right after this await, before the first write below —
+        // same reason as the streaming re-check above: a non-streaming parse
+        // is still one awaited network round trip a newer load can outrun.
+        if (isStale?.()) return false;
         result = parquetResult;
 
         setProgress({ phase: 'Converting meshes', percent: 70 });
@@ -281,6 +306,7 @@ export function useIfcServer() {
       } else {
         // Fallback to JSON endpoint
         result = await client.parse(file);
+        if (isStale?.()) return false;
 
         setProgress({ phase: 'Converting meshes', percent: 70 });
 

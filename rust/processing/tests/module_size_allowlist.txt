@@ -123,6 +123,9 @@
 # comments saved. There is no honest seam here -- the budget is a field on this
 # struct read by two methods on this struct -- so the budget is raised instead,
 # and most of what it buys is the explanation of why 50 alone was not enough.
+# The cohort also includes the 4-line `#[cfg(test)] #[path] mod
+# curve_fanout_tests;` registration, so the number accounts for that too; the
+# tests themselves live in the sibling file and are exempt.
      954 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.

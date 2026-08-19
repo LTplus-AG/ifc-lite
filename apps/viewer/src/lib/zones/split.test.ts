@@ -197,6 +197,34 @@ describe('flatNormals', () => {
     assert.deepEqual([...normals], [0, 0, 1, 0, 0, 1, 0, 0, 1]);
   });
 
+  it('gives a fully tilted triangle its exact normal on all three axes', () => {
+    // The unit-triangle fixture above lies flat in z = 0, so both edge vectors
+    // have uz = vz = 0. Every product that those two components appear in is
+    // therefore zero regardless of what it computes, and a sign error or a
+    // swapped factor in the nx (uy*vz - uz*vy) or ny (uz*vx - ux*vz) terms
+    // survives it silently.
+    //
+    // A merely "tilted" triangle is not enough either: with u = (1,2,0) the
+    // uz*vy half of nx is still zeroed. This fixture gives BOTH edge vectors a
+    // non-zero component on all three axes, so all six products in the cross
+    // product contribute:
+    //   u = (1,2,3), v = (4,5,7)
+    //   nx = 2*7 - 3*5 = -1,  ny = 3*4 - 1*7 = 5,  nz = 1*5 - 2*4 = -3
+    // Negating or transposing any single factor changes the result.
+    const positions = new Float32Array([0, 0, 0, 1, 2, 3, 4, 5, 7]);
+    const normals = flatNormals(positions, new Uint32Array([0, 1, 2]));
+    const len = Math.hypot(-1, 5, -3);
+    const expected = [-1 / len, 5 / len, -3 / len];
+    for (let v = 0; v < 3; v++) {
+      for (let k = 0; k < 3; k++) {
+        assert.ok(
+          Math.abs(normals[v * 3 + k] - expected[k]) < 1e-6,
+          `vertex ${v} axis ${k}: ${normals[v * 3 + k]} != ${expected[k]}`,
+        );
+      }
+    }
+  });
+
   it('falls back rather than emitting NaN for a degenerate triangle', () => {
     // A zero-area triangle has no normal. NaN would propagate into the GLB and
     // render as a black hole rather than as nothing.

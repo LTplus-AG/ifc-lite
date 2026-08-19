@@ -28,7 +28,7 @@ describe('buildScheduleExtraction — hierarchy', () => {
       row({ sourceId: 'c', name: 'C', outlineLevel: 2 }),
       row({ sourceId: 'd', name: 'D', outlineLevel: 1 }),
     ];
-    const { extraction } = buildScheduleExtraction(source(rows), { seed: 'seed-1' });
+    const { extraction, warnings } = buildScheduleExtraction(source(rows), { seed: 'seed-1' });
     const byName = new Map(extraction.tasks.map(t => [t.name, t]));
     const a = byName.get('A')!;
     const b = byName.get('B')!;
@@ -42,6 +42,19 @@ describe('buildScheduleExtraction — hierarchy', () => {
 
     assert.deepStrictEqual(a.childGlobalIds.sort(), [b.globalId, c.globalId].sort());
     assert.deepStrictEqual(d.childGlobalIds, []);
+
+    // Every step here is a normal, non-jumping outline level (1 -> 2 is
+    // exactly one deeper than the open parent, and 2 -> 1 is a dedent, not a
+    // jump). `resolveHierarchy`'s clamp guard (`level > maxAllowed`) must not
+    // fire on the ordinary case: `level > maxAllowed` mutated to
+    // `level >= maxAllowed` still resolves every parent/child link above
+    // correctly (level stays clamped to itself, a no-op) but spuriously warns
+    // on every row whose level equals the max reachable depth -- i.e. on
+    // every normally-nested row in real files. Nothing above catches that.
+    assert.ok(
+      !warnings.some(w => w.code === 'outline-level-jump'),
+      'ordinary 1,2,2,1 nesting must not report an outline-level-jump warning',
+    );
   });
 
   it('clamps an outline-level jump (1 -> 3) and warns', () => {

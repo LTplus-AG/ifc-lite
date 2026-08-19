@@ -23,12 +23,20 @@
  *
  * Three things are required, and ORDER is one of them:
  *
- *   1. the geometry branch calls `clearAppliedPlacements(...)` BEFORE
- *      `hydrateGeometryFromRoom(...)`. The fresh meshes are back at the bake,
- *      so a surviving applied entry makes the sweep a no-op and *pins* the
- *      revert. Clearing after the sweep would be worse than not clearing.
- *   2. `sweepPlacements(...)` runs AFTER the hydrate, so it reconciles the
- *      meshes that were just rebuilt rather than the ones they replaced.
+ *   1. `sweepPlacements(...)` runs AFTER `hydrateGeometryFromRoom(...)`, so it
+ *      reconciles the meshes that were just rebuilt rather than the ones they
+ *      replaced.
+ *   2. `clearAppliedPlacements(...)` runs AFTER `hydrateGeometryFromRoom(...)`
+ *      too — and specifically AFTER the `await`, not before it. The fresh
+ *      meshes are back at the bake, so a surviving applied entry makes the
+ *      sweep a no-op and *pins* the revert, which is why the clear has to
+ *      happen at all. But clearing BEFORE the await opens a window: a remote
+ *      placement event landing during `hydrateGeometryFromRoom`'s await calls
+ *      `reconcilePlacementMesh` and re-stamps `applied` for a mesh this
+ *      replacement is about to discard, and the post-hydrate sweep then reads
+ *      "already applied" and skips it — reverting a move it should have kept.
+ *      Clearing after the await, in the same synchronous turn as the sweep
+ *      (no `await` between the two), closes that window instead of moving it.
  *   3. the sweep is inside the reconstruct, not merely imported.
  *
  * WHAT THIS DOES NOT PROVE: it matches source text in one region of one file,
@@ -112,12 +120,19 @@ if (clearIdx === -1) {
       `  stale bookkeeping makes the sweep a no-op — so a peer's ordinary create or delete\n` +
       `  reverts every applied move, permanently and silently.`,
   );
-} else if (hydrateIdx !== -1 && clearIdx > hydrateIdx) {
+} else if (hydrateIdx !== -1 && clearIdx < hydrateIdx) {
+  failures.push(
+    `${SLICE}:${lineOf(source, startIdx + clearIdx)}: \`clearAppliedPlacements(\` runs BEFORE\n` +
+      `  \`hydrateGeometryFromRoom(\`, i.e. before its \`await\`. A remote placement event landing\n` +
+      `  during that await re-stamps the applied bookkeeping for a mesh this hydrate is about to\n` +
+      `  discard, and the sweep that follows then reads "already applied" and skips it. Move the\n` +
+      `  clear to after the hydrate, in the same synchronous turn as the sweep.`,
+  );
+} else if (clearIdx !== -1 && sweepIdx !== -1 && clearIdx > sweepIdx) {
   failures.push(
     `${SLICE}:${lineOf(source, startIdx + clearIdx)}: \`clearAppliedPlacements(\` runs AFTER\n` +
-      `  \`hydrateGeometryFromRoom(\`. It has to precede the re-hydrate, so the sweep that follows\n` +
-      `  sees the drift instead of reading "already applied" off bookkeeping for meshes that\n` +
-      `  were just thrown away.`,
+      `  \`sweepPlacements(\`. The clear has to precede the sweep, so the sweep sees the drift\n` +
+      `  instead of reading "already applied" off bookkeeping for meshes that were just replaced.`,
   );
 }
 
@@ -132,6 +147,6 @@ if (failures.length > 0) {
 }
 
 console.log(
-  'check-collab-placement-sweep: OK (reconstruct clears applied placements before re-hydrating, ' +
-    'and sweeps the doc after)',
+  'check-collab-placement-sweep: OK (reconstruct hydrates, then clears applied placements, ' +
+    'then sweeps the doc — in that order, in one synchronous turn)',
 );

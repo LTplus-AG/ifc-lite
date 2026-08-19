@@ -80,7 +80,27 @@ export type SeedOutcome =
 export function classifySeed(report: SeedGeometryReport | null | undefined): SeedOutcome {
   if (!report || report.offered === 0) return 'nothing-to-seed';
   if (report.seeded === 0) return 'failed';
-  if (report.failed > 0 || report.seeded < report.attempted || report.skipped.empty > 0) {
+  // `seeded < attempted` is deliberately NOT tested here: it is implied.
+  //
+  // Every job that runs either records a ref (`seeded`) or increments `failed`,
+  // and the breaker can leave later jobs unprocessed, so the invariant is
+  // `seeded + failed <= attempted` (equality only when nothing was abandoned).
+  // Not `===`: an earlier version of this comment said so and was wrong in
+  // exactly the abandoned case it went on to mention.
+  //
+  // The conclusion survives the correction, in both directions:
+  //   failed > 0  -> seeded <= attempted - failed < attempted.
+  //   failed == 0 -> nothing was abandoned (the breaker only fires once
+  //                  `failed` reaches `maxFailures`, which is >= 1), so every
+  //                  job ran and seeded === attempted.
+  // So `seeded < attempted` holds exactly when `failed > 0` does.
+  //
+  // It used to be here as a third term, and mutation testing is what exposed
+  // it: dropping EITHER `failed > 0` or `seeded < attempted` left the suite
+  // green, because each stood in for the other and the one test covering them
+  // varied both at once. Two terms that always agree cannot be told apart by a
+  // fixture that moves them together - so one of them was never doing anything.
+  if (report.failed > 0 || report.skipped.empty > 0) {
     return 'partial';
   }
   return 'seeded';

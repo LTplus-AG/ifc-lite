@@ -229,6 +229,45 @@ describe('sort ordering', () => {
 });
 
 // ============================================================================
+// Boolean-like case-insensitive condition matching (isBooleanLike)
+// ============================================================================
+
+describe('boolean-like condition matching includes IfcLogical "Unknown"', () => {
+  // `isBooleanLike` treats 'true' / 'false' / 'unknown' (any case) as
+  // boolean-like so `equals`/`notEquals` compare them case-insensitively.
+  // engine.test.ts's boolean-case suite only exercises IFCBOOLEAN's
+  // '.T.'/'.F.' -> "True"/"False"; IFCLOGICAL's third state '.U.' ->
+  // "Unknown" was structurally unreachable from that fixture (no property
+  // there resolves to "Unknown"), so the 'unknown' branch of
+  // `isBooleanLike` had no test: deleting it left the full suite green.
+  const withLogical = new Map<number, EntitySpec>([
+    [1, { name: 'A', type: 'IfcWall', psets: [{ name: 'Pset_X', globalId: 'ps', properties: [{ name: 'Flag', type: 'logical', value: ['IFCLOGICAL', '.U.'] }] }] }],
+    [2, { name: 'B', type: 'IfcWall', psets: [{ name: 'Pset_X', globalId: 'ps', properties: [{ name: 'Flag', type: 'logical', value: ['IFCLOGICAL', '.T.'] }] }] }],
+  ]);
+  const condDef = (value: string, operator: 'equals' | 'notEquals') => def({
+    conditions: [{ source: 'property', psetName: 'Pset_X', propertyName: 'Flag', operator, value }],
+    columns: [{ id: 'name', source: 'attribute', propertyName: 'Name' }],
+  });
+
+  it('matches "unknown" (lowercase) against a displayed "Unknown" value', () => {
+    const result = executeList(condDef('unknown', 'equals'), providerOver(withLogical));
+    expect(names(result.rows)).toEqual(['A']);
+  });
+
+  it('matches "UNKNOWN" (uppercase) against a displayed "Unknown" value', () => {
+    const result = executeList(condDef('UNKNOWN', 'equals'), providerOver(withLogical));
+    expect(names(result.rows)).toEqual(['A']);
+  });
+
+  // Bounding control: a genuinely different boolean-like value must still
+  // not match, proving this isn't "match everything boolean-like".
+  it('does not match "unknown" against a displayed "True" value', () => {
+    const result = executeList(condDef('unknown', 'notEquals'), providerOver(withLogical));
+    expect(names(result.rows)).toEqual(['B']);
+  });
+});
+
+// ============================================================================
 // Material / classification condition operators
 // ============================================================================
 

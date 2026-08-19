@@ -22,6 +22,23 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 const POINT_EPSILON = 1e-6;
 
 /**
+ * Guard for element-builder dimension params (Width, Depth, Height,
+ * Thickness, FrameThickness, ...). A bare `value <= 0` check is `false`
+ * for both `NaN` and `Infinity`, so those values sail past validation
+ * and land as the literal strings `"NaN"`/`"Infinity"` in the emitted
+ * `IfcExtrudedAreaSolid`/profile attributes — invalid IFC written with
+ * no error. `column.ts` picked this up while closing the merge-roundtrip
+ * gap from LTplus-AG/ifc-lite#592; every other builder needs the same
+ * `Number.isFinite` guard, so it lives here once instead of as N copies
+ * that can individually go stale.
+ */
+export function assertPositiveFinite(values: readonly number[], message: string): void {
+  if (values.some((v) => !Number.isFinite(v) || v <= 0)) {
+    throw new Error(message);
+  }
+}
+
+/**
  * Emit an IfcLocalPlacement chained to a parent. Wraps the cartesian
  * point + axis-placement bookkeeping. Pass `Axis` and/or `RefDirection`
  * as `[x, y, z]` to override defaults (otherwise IFC fills them with

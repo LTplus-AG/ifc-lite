@@ -446,6 +446,7 @@ function composePlacement(
  * spelling of a value that is provably the same, and a second thing a future
  * call site could get wrong.
  */
+
 function reconcilePlacementMesh(
   get: () => ViewerState,
   store: IfcDataStore,
@@ -648,7 +649,24 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] failed to start session:', err);
-      set({ collabConnecting: false, collabStatus: 'disconnected' });
+      // `collabRoomId` / `collabRole` / `collabSelfToken` were set synchronously
+      // above, before any session existed, so a UI reading "collabRoomId is set"
+      // as "still in the room" (the toolbar indicator, ShareDialog) — and
+      // canCollabEdit()/canCollabComment(), which mutationSlice gates every
+      // write on — must not keep applying a room/role that never actually
+      // started. Guarded on collabRoomId still matching this attempt so a
+      // newer start/stop that ran while we awaited isn't clobbered here.
+      if (get().collabRoomId === roomId) {
+        set({
+          collabConnecting: false,
+          collabStatus: 'disconnected',
+          collabRoomId: null,
+          collabRole: null,
+          collabSelfToken: null,
+        });
+      } else {
+        set({ collabConnecting: false, collabStatus: 'disconnected' });
+      }
       return;
     }
 
@@ -921,13 +939,6 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             const geomCount = session.doc.getMap('geometry').size;
             if (geomCount !== lastGeomCount) {
               lastGeomCount = geomCount;
-              // Every mesh below is rebuilt from its baked blob, i.e. back at
-              // `meta.placementBaseline`. The applied-placement bookkeeping
-              // describes the meshes being replaced, so it is now false — and
-              // false in the one direction that silently pins the damage: the
-              // sweep at the end of this reconstruct would read "already
-              // applied" and leave the entity reverted. Forget it first.
-              clearAppliedPlacements(placementAppliedLoc, placementAppliedYaw);
               // Re-key meshes into the reconstructed id space (pathToId) so 3D
               // selection resolves to the right inspector entry. Blobs are
               // fetched in parallel (cached by geomId) and rendered incrementally
@@ -955,6 +966,31 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   geometryResult:
                     meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
                 });
+                // The meshes just installed are BAKED, i.e. back at
+                // `meta.placementBaseline` (hydrate now copies the vertex arrays
+                // per consumer, so a re-hydrate returns the original geometry
+                // rather than a copy the renderer had already translated in
+                // place). The applied-placement bookkeeping describes the
+                // meshes just replaced, so it is now false — and false in the
+                // one direction that silently pins the damage: the sweep below
+                // would read "already applied" and leave the entity reverted.
+                // Forget it here, NOT before the `await hydrateGeometryFromRoom`
+                // above: a remote placement event landing during that await
+                // would call `reconcilePlacementMesh` and re-stamp `applied` for
+                // a mesh that is discarded by this replacement, and clearing
+                // beforehand would let that stale stamp survive into the sweep.
+                //
+                // SAFE FOR A NON-OBVIOUS REASON: `placementAppliedLoc` /
+                // `placementAppliedYaw` are module-scoped and shared with the
+                // live placement-event path, so a clear here is only correct if
+                // nothing can observe it mid-way. Nothing can — there is no
+                // `await` between this clear and the `sweepPlacements` call
+                // below (`collectPlacementDrift` reads the doc synchronously),
+                // so the clear-then-sweep pair is one uninterruptible turn of
+                // the event loop. Inserting an `await` anywhere in that span
+                // (e.g. chunking the sweep for a large model) reopens the
+                // window this comment closes.
+                clearAppliedPlacements(placementAppliedLoc, placementAppliedYaw);
               }
             }
             // Placement is NOT carried by the blobs: a hydrated mesh sits at the
@@ -963,7 +999,10 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
             // joiner (which receives no such event at all), for an event dropped
             // before this model existed, and for the meshes just re-hydrated
             // above. Idempotent: `sweepPlacements` skips anything already
-            // applied, so this is a no-op on a room where nothing has moved.
+            // applied, so this is a no-op on a room where nothing has moved,
+            // and it is the ONLY placement-replay mechanism in this file — see
+            // `clearAppliedPlacements` above for why it is safe to reach here
+            // synchronously off the geometry-changed branch too.
             if (get().collabRoomId === roomId) {
               sweepPlacements(
                 sweepApi,

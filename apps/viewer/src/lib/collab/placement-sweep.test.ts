@@ -50,7 +50,7 @@ import {
   setGeometryRef,
   setPlacementBaseline,
 } from '@ifc-lite/collab';
-import type { CollabSession, LocalPlacement } from '@ifc-lite/collab';
+import type { BlobStore, CollabSession, LocalPlacement } from '@ifc-lite/collab';
 import type { MeshData } from '@ifc-lite/geometry';
 import {
   hydrateGeometryFromRoom,
@@ -323,5 +323,158 @@ describe('reconstruct-side placement sweep', () => {
     setEntityPlacement(doc, WALL_PATH, MOVED);
     assert.equal(collectPlacementDrift(sweepApi, doc, pathToId, null, null).length, 1);
     clearAppliedPlacements(null, null);
+  });
+});
+
+/**
+ * Regression: `collabSlice`'s `reconstruct` used to call
+ * `clearAppliedPlacements` BEFORE `await hydrateGeometryFromRoom(...)`
+ * (`check-collab-placement-sweep.mjs`'s original ordering rule). A remote
+ * placement event landing during that `await` — a peer's own `onPlacement`,
+ * synchronous on the doc — reconciles against the just-cleared maps and
+ * stamps `applied === target` for a mesh this hydrate is about to replace.
+ * The post-hydrate sweep then reads "already applied" and skips the entity,
+ * so the peer's move never reaches the fresh mesh: it is stuck at its bake.
+ *
+ * The next `geomCount` change (any peer create/delete) repeats exactly the
+ * same sequence against a *new* target, so the gap between "what the doc
+ * says" and "what is rendered" grows by one full move every cycle — it does
+ * not resolve itself, and nothing in the old ordering ever closes it.
+ *
+ * These tests drive `hydrateGeometryFromRoom` for real, through a `BlobStore`
+ * whose `get()` only resolves when the test says so — the same interleaving
+ * hazard a real network fetch creates, made deterministic — and measure the
+ * gap directly rather than asserting a single before/after snapshot, because
+ * a single reconciliation cannot show compounding.
+ */
+describe('reconstruct-side placement sweep — clear/hydrate/sweep ordering', () => {
+  let doc: ReturnType<typeof createCollabDoc>;
+  let session: CollabSession;
+  let pathToId: Map<string, number>;
+  let appliedLoc: Map<number, [number, number, number]>;
+  let appliedYaw: Map<number, number>;
+  let cache: Map<string, MeshData>;
+
+  beforeEach(() => {
+    doc = createCollabDoc();
+    session = fakeSession(doc);
+    pathToId = new Map([[WALL_PATH, WALL_ID]]);
+    appliedLoc = new Map();
+    appliedYaw = new Map();
+    cache = new Map();
+  });
+
+  /** A `BlobStore` whose `get()` stays pending until `release()` is called. */
+  function gatedBlobStore(inner: BlobStore): { store: BlobStore; release: () => void } {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const store: BlobStore = {
+      ...inner,
+      get: async (hash) => {
+        await gate;
+        return inner.get(hash);
+      },
+    };
+    return { store, release };
+  }
+
+  /**
+   * Simulates `collabSlice`'s recipient `reconstruct` for one geometry-changed
+   * cycle, in either ordering. `interleave` runs synchronously after the
+   * hydrate fetch is released but before this function's own post-hydrate
+   * work — i.e. inside the real `await`'s resolution turn, standing in for a
+   * remote `onPlacement` landing while the network fetch was in flight.
+   */
+  async function reconstructCycle(
+    blobStore: BlobStore,
+    order: 'clear-before-hydrate' | 'clear-after-hydrate',
+    interleave: () => void,
+  ): Promise<void> {
+    if (order === 'clear-before-hydrate') {
+      clearAppliedPlacements(appliedLoc, appliedYaw);
+    }
+    const hydrated = hydrateGeometryFromRoom(geomApi, session, blobStore, pathToId, { cache });
+    interleave();
+    await hydrated;
+    // The fresh meshes this hydrate just produced replace whatever was on
+    // screen — baked, per `bakedMesh`/`seedGeometryToRoom`, at the origin.
+    r.rehydrated(WALL_ID);
+    if (order === 'clear-after-hydrate') {
+      clearAppliedPlacements(appliedLoc, appliedYaw);
+    }
+    sweepPlacements(sweepApi, doc, pathToId, appliedLoc, appliedYaw, r.reconcile);
+  }
+
+  let r: ReturnType<typeof makeReconciler>;
+
+  async function seedRoom(blobStore: BlobStore): Promise<void> {
+    createEntity(doc, WALL_PATH, { ifcClass: 'IfcWall' });
+    setEntityPlacement(doc, WALL_PATH, IDENTITY);
+    setPlacementBaseline(doc, WALL_PATH, IDENTITY);
+    const report = await seedGeometryToRoom(
+      geomApi,
+      session,
+      blobStore,
+      [bakedMesh(WALL_ID)],
+      (id) => (id === WALL_ID ? WALL_PATH : null),
+    );
+    assert.equal(report.seeded, 1, 'the fixture must actually seed a blob');
+  }
+
+  it('RED on the old ordering: an interleaved remote move compounds, cycle after cycle', async () => {
+    const real = new MemoryBlobStore();
+    await seedRoom(real);
+    r = makeReconciler(doc, appliedLoc, appliedYaw);
+
+    const CYCLES = 4;
+    const drifts: number[] = [];
+    for (let cycle = 1; cycle <= CYCLES; cycle++) {
+      const target: LocalPlacement = { location: [10 * cycle, 0, 0], axis: [0, 0, 1], refDirection: [1, 0, 0] };
+      const { store, release } = gatedBlobStore(real);
+      await reconstructCycle(store, 'clear-before-hydrate', () => {
+        // The peer's move for THIS cycle lands, and is handled live, while
+        // the blob fetch above is still in flight.
+        setEntityPlacement(doc, WALL_PATH, target);
+        r.reconcile(WALL_ID, target);
+        release();
+      });
+      const drift = Math.abs(target.location[0] - r.positionOf(WALL_ID)[0]);
+      drifts.push(drift);
+    }
+
+    // Every cycle's live event is discarded by the next hydrate and never
+    // recovered by the sweep that follows it (the sweep sees `applied ===
+    // target` — stamped by the discarded live event — so it finds no drift).
+    // The gap between the doc's placement and the rendered mesh therefore
+    // grows by a fixed increment every cycle instead of resolving.
+    assert.deepEqual(drifts, [10, 20, 30, 40], `drift must grow linearly cycle over cycle, got ${drifts.join(', ')}`);
+    assert.ok(drifts[CYCLES - 1] > drifts[0], 'unbounded: the last cycle is worse than the first');
+  });
+
+  it('GREEN on the fixed ordering: the same interleaving reconciles cleanly, cycle after cycle', async () => {
+    const real = new MemoryBlobStore();
+    await seedRoom(real);
+    r = makeReconciler(doc, appliedLoc, appliedYaw);
+
+    const CYCLES = 4;
+    const drifts: number[] = [];
+    for (let cycle = 1; cycle <= CYCLES; cycle++) {
+      const target: LocalPlacement = { location: [10 * cycle, 0, 0], axis: [0, 0, 1], refDirection: [1, 0, 0] };
+      const { store, release } = gatedBlobStore(real);
+      await reconstructCycle(store, 'clear-after-hydrate', () => {
+        setEntityPlacement(doc, WALL_PATH, target);
+        r.reconcile(WALL_ID, target);
+        release();
+      });
+      const drift = Math.abs(target.location[0] - r.positionOf(WALL_ID)[0]);
+      drifts.push(drift);
+    }
+
+    // Clearing AFTER the hydrate, synchronously before the sweep, forgets the
+    // live event's stale stamp before the sweep runs — so the sweep re-derives
+    // the target from the doc every time, and the render never falls behind.
+    assert.deepEqual(drifts, [0, 0, 0, 0], `drift must stay at zero every cycle, got ${drifts.join(', ')}`);
   });
 });

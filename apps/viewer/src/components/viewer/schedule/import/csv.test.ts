@@ -217,6 +217,19 @@ describe('parseCsvPredecessors', () => {
     assert.deepStrictEqual(deps, [{ predecessorSourceId: '14', type: 'START_START', lagSeconds: -86_400 }]);
   });
 
+  it('parses "12FF+3 days"', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12FF+3 days', warnings, 1, NO_KNOWN_IDS);
+    assert.strictEqual(warnings.length, 0);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'FINISH_FINISH', lagSeconds: 3 * 86_400 }]);
+  });
+
+  it('parses "12SF-1 day" preserving the negative lag', () => {
+    const warnings: ScheduleImportWarning[] = [];
+    const deps = parseCsvPredecessors('12SF-1 day', warnings, 1, NO_KNOWN_IDS);
+    assert.deepStrictEqual(deps, [{ predecessorSourceId: '12', type: 'START_FINISH', lagSeconds: -86_400 }]);
+  });
+
   it('defaults a bare id to FINISH_START with no lag', () => {
     const warnings: ScheduleImportWarning[] = [];
     const deps = parseCsvPredecessors('7', warnings, 1, NO_KNOWN_IDS);

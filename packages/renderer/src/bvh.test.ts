@@ -14,6 +14,20 @@ import type { MeshData } from '@ifc-lite/geometry';
  * (that would make picking/snapping miss real geometry). These tests pin that
  * "no false negatives" invariant against a brute-force reference, plus the
  * degenerate cases (small scene, unbuilt, empty mesh).
+ *
+ * Scope note (#2830): `rayHitsAabb` below is a hand-typed COPY of `BVH`'s
+ * private `rayIntersectsAABB` slab test, not an import, so it genuinely does
+ * catch bugs in the tree itself — construction, node-bounds unions, pruning
+ * (mutation-confirmed: dropping the `t0 > t1` swap in `bvh.ts` fails 4 of the
+ * 8 subtests here). What it cannot catch is a bug in the slab test's own
+ * policy choices, because both copies were written to the same design and
+ * encode them identically — e.g. the `tmax >= 0` front-of-ray tie-break at
+ * `bvh.ts`'s `rayIntersectsAABB` return, duplicated verbatim in `rayHitsAabb`
+ * above. Weakening that one line to `tmax > 0` in `bvh.ts` alone (test file
+ * untouched) leaves all 8 subtests green — mutation-confirmed. Any future
+ * ground truth meant to audit that tie-break needs to derive it independently
+ * (e.g. from an explicit corner/plane check) rather than mirror the slab
+ * algorithm.
  */
 
 interface AABBLike {

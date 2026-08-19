@@ -19,7 +19,10 @@ import {
   QuantityType,
   type IfcStoreBase,
   type IfcEntity,
+  type SpatialHierarchy,
+  type SpatialNode,
 } from '@ifc-lite/data';
+import type { SpatialIndex } from '@ifc-lite/spatial';
 
 export {
   IfcTypeEnum,
@@ -62,11 +65,75 @@ export interface MockRelationship {
   relId: number;
 }
 
+/**
+ * Minimal spatial hierarchy descriptor for mocking `IfcDataStore.spatialHierarchy`.
+ * `byStorey` may contain keys with no corresponding `storeyElevations` entry
+ * (elevation then defaults to 0) — useful for onStorey() fixtures that need
+ * an extra, unrelated map entry to make a wrong-key lookup observable.
+ */
+export interface MockSpatialHierarchyOptions {
+  projectId: number;
+  projectName?: string;
+  /** storeyId -> element expressIds, inserted in the given key order. */
+  byStorey: Array<[number, number[]]>;
+  /** storeyId -> elevation (z), inserted in the given order (need not match `byStorey`'s order). */
+  storeyElevations: Array<[number, number]>;
+}
+
+/** Minimal spatial index descriptor for mocking `IfcDataStore.spatialIndex`. */
+export interface MockSpatialIndexOptions {
+  queryAABBResult?: number[];
+  raycastResult?: number[];
+}
+
 export interface MockStoreOptions {
   entities?: MockEntity[];
   properties?: MockProperty[];
   quantities?: MockQuantity[];
   relationships?: MockRelationship[];
+  /** Omitted by default so existing "not available" throw-branch tests keep passing. */
+  spatialHierarchy?: MockSpatialHierarchyOptions;
+  /** Omitted by default so existing "not available" throw-branch tests keep passing. */
+  spatialIndex?: MockSpatialIndexOptions;
+}
+
+function buildMockSpatialHierarchy(
+  opts: MockSpatialHierarchyOptions,
+  entities: MockEntity[],
+): SpatialHierarchy {
+  const projectEntity = entities.find(e => e.expressId === opts.projectId);
+  const project: SpatialNode = {
+    expressId: opts.projectId,
+    type: IfcTypeEnum.IfcProject,
+    name: opts.projectName ?? projectEntity?.name ?? '',
+    children: [],
+    elements: [],
+  };
+  const byStorey = new Map<number, number[]>(opts.byStorey);
+  const storeyElevations = new Map<number, number>(opts.storeyElevations);
+
+  return {
+    project,
+    byStorey,
+    byBuilding: new Map(),
+    bySite: new Map(),
+    bySpace: new Map(),
+    storeyElevations,
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+    getStoreyElements: (storeyId: number) => byStorey.get(storeyId) ?? [],
+    getStoreyByElevation: () => null,
+    getContainingSpace: () => null,
+    getPath: () => [project],
+  };
+}
+
+function buildMockSpatialIndex(opts: MockSpatialIndexOptions): SpatialIndex {
+  return {
+    queryAABB: () => opts.queryAABBResult ?? [],
+    raycast: () => opts.raycastResult ?? [],
+    queryFrustum: () => [],
+  };
 }
 
 /**
@@ -178,9 +245,12 @@ export function createMockStore(opts: MockStoreOptions = {}): IfcStoreBase {
     getProperties: (expressId: number) => properties.getForEntity(expressId),
     getQuantities: (expressId: number) => quantities.getForEntity(expressId),
 
-    // These are optional on IfcDataStore and can be undefined for mock
-    spatialHierarchy: undefined,
-    spatialIndex: undefined,
+    // Optional on IfcDataStore; undefined unless the caller opts in, so the
+    // "not available" throw-branch tests keep exercising the real absent case.
+    spatialHierarchy: opts.spatialHierarchy
+      ? buildMockSpatialHierarchy(opts.spatialHierarchy, opts.entities ?? [])
+      : undefined,
+    spatialIndex: opts.spatialIndex ? buildMockSpatialIndex(opts.spatialIndex) : undefined,
     onDemandPropertyMap: undefined,
     onDemandQuantityMap: undefined,
     onDemandClassificationMap: undefined,

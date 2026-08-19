@@ -790,14 +790,51 @@ fn build_mesh_data(
     mesh_data
 }
 
+/// Longest `IfcMappedItem → IfcRepresentationMap → MappedRepresentation`
+/// chain the colour chase will follow, matching the geometry router's limit
+/// of the same name (`ifc_lite_geometry::router::processing`). The two walk
+/// the SAME chain, so a colour cap below the router's would leave a 17-to-32
+/// link chain rendering its geometry while silently losing the authored style
+/// on its leaf.
+const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
+
 /// Resolve a geometry item's authored colour: direct style on the item, else
 /// chase `IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items`
 /// recursively (#913 §2.7 — mapped sub-geometry inherits its underlying
-/// item's style).
+/// item's style), to at most `MAX_MAPPED_ITEM_DEPTH` hops.
 pub(crate) fn find_geometry_item_color(
     geometry_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    let mut visited = FxHashMap::default();
+    find_geometry_item_color_at(geometry_id, geometry_styles, decoder, 0, &mut visited)
+}
+
+/// The visited map is GLOBAL to one resolution, not path-scoped: the geometry
+/// router removes each id on the way out because it accumulates geometry per
+/// path, whereas a colour is a pure function of the item id and the style map.
+///
+/// It records the DEPTH each item was explored at and permits a revisit from
+/// strictly nearer the root. A plain SET is wrong in combination with the cap:
+/// an item first reached near the limit is cut before its subtree is searched
+/// yet stays marked, so a later shorter branch that WOULD have resolved is
+/// skipped and the colour is silently lost — a wrong value rather than a
+/// crash, so nothing reports it (Codex, #2868 review). Work stays bounded: an
+/// item is re-explored only from closer to the root, at most
+/// `MAX_MAPPED_ITEM_DEPTH` times.
+///
+/// That matters for more than tidiness. A depth cap alone bounds the chain but
+/// not the fan-out: a malformed representation holding `k` items that each
+/// lead back into the cycle costs `O(k^depth)` decodes, so four self-references
+/// at depth 32 is ~2^64 calls — no stack overflow, just a worker pinned
+/// forever. Trading an abort for a hang would not have been a fix (#2863).
+fn find_geometry_item_color_at(
+    geometry_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+    depth: u32,
+    visited: &mut FxHashMap<u32, u32>,
 ) -> Option<[f32; 4]> {
     // Direct style on this exact geometry item wins.
     if let Some(style) = geometry_styles.get(&geometry_id) {
@@ -806,6 +843,18 @@ pub(crate) fn find_geometry_item_color(
 
     // Otherwise, if it's a mapped item, chase the mapping to the underlying
     // geometry and resolve there (recursing handles nested mapped items).
+    // Refuse to go deeper than the cap: a cyclic mapping would otherwise
+    // recurse until the stack overflows and the process aborts (#2863).
+    if depth >= MAX_MAPPED_ITEM_DEPTH {
+        return None;
+    }
+    match visited.get(&geometry_id) {
+        // Explored from here or from CLOSER to the root already: that attempt
+        // had at least as much room under the cap, so it cannot find anything
+        // new. Skipping is safe, and it is what breaks cycles.
+        Some(&seen_at) if seen_at <= depth => return None,
+        _ => visited.insert(geometry_id, depth),
+    };
     let geom = decoder.decode_by_id(geometry_id).ok()?;
     if geom.ifc_type != IfcType::IfcMappedItem {
         return None;
@@ -819,7 +868,9 @@ pub(crate) fn find_geometry_item_color(
     // IfcShapeRepresentation.Items (attr 3).
     let items = get_refs_from_list(&mapped_representation, 3)?;
     for underlying in items {
-        if let Some(color) = find_geometry_item_color(underlying, geometry_styles, decoder) {
+        if let Some(color) =
+            find_geometry_item_color_at(underlying, geometry_styles, decoder, depth + 1, visited)
+        {
             return Some(color);
         }
     }

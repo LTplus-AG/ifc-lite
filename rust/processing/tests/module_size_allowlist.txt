@@ -221,7 +221,20 @@
 # +18: #1891 follow-on — ProducedElementMeshes.geometry_aabb (the world box from the SAME hashing pass) plus the emit-together match that keeps it index-parallel with geometry_hash at the FFI boundary.
 # +35: #1891 closedness — ProducedElementMeshes.geometry_volume + .geometry_closure (the volume and the four-clause verdict that gates it), the widened emit-together match, and threading orient_mesh_outward_verdict's per-mesh verdict from BOTH orient call sites into the hasher. The verdict has to be taken exactly where the orienter already runs and handed to the hasher segment it describes, so it cannot move out of this decision tree; the gate's own 190 lines of rationale live in rust/geometry/src/geom_closure.rs (new, sub-400) rather than here.
 # -22: #1891 review (PR #1993) — the f32-collapse degenerate backstop (env switch, the drop, the per-element tally) moved to the child module element_degenerate.rs (new, 72), which is where the ordering story now belongs: the tally stopped being a diagnostic and became the input to the closure retraction. Budget refreshed downward; the retraction call site itself costs 7 lines here.
-     910 rust/processing/src/element.rs
+# +38: #2863 — bound the IfcMappedItem colour chase. The chain is built from
+# file references, so a cyclic one recursed until the stack overflowed and the
+# process ABORTED (no catchable panic, no error to the caller). The bound has
+# to sit inside find_geometry_item_color, not at a call site: the type-geometry
+# path reaches the same recursion through resolve_color_for_representation_map.
+# Depth cap AND a visited set, matching router/processing.rs which walks the
+# same chain: the cap alone bounds the chain's LENGTH but not its BREADTH, and
+# k items looping back cost O(k^depth) decodes — an abort traded for a hang.
+# 4 lines of guard and a wrapper; the rest is the why, including why the
+# visited set is global here and path-scoped in the router, and why it records
+# the DEPTH of each visit: a plain set combined with the cap silently LOSES a
+# colour, because an item first reached near the limit is cut before its
+# subtree is searched yet stays marked, so a later shorter branch is skipped.
+     961 rust/processing/src/element.rs
 # +9: #2019 — canonicalise each host's opening order so the world geometry
 # hash stops depending on IFCRELVOIDSELEMENT statement order (sequential void
 # cuts are not associative). Three lines of code plus the why.

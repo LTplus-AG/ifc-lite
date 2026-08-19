@@ -152,17 +152,19 @@ pub(crate) async fn extract_file(
 /// Mac-made archive was rejected as ambiguous (#2812, reported from
 /// production).
 ///
-/// The bare `._` check is not redundant: several unzip/rezip round trips drop
-/// the `__MACOSX/` directory but keep the sidecar next to its original.
+/// The test is the BASENAME, not the directory. `._` is what makes a file a
+/// sidecar; `__MACOSX/` is merely where macOS puts them, so matching on it is
+/// redundant (every entry inside is already `._`-prefixed) and wrong for a user
+/// whose archive genuinely contains a folder of that name. The basename form
+/// also covers a sidecar left beside its original by a rezip that flattens the
+/// directory away.
 ///
 /// Mirrors `APPLE_DOUBLE_RE` in `packages/parser/src/ifczip.ts`. The two must
 /// agree, or an archive the browser accepts is rejected by the server.
 fn is_apple_double(name: &str) -> bool {
-    name.split('/').any(|segment| segment == "__MACOSX")
-        || name
-            .rsplit('/')
-            .next()
-            .is_some_and(|base| base.starts_with("._"))
+    name.rsplit('/')
+        .next()
+        .is_some_and(|base| base.starts_with("._"))
 }
 
 fn unwrap_ifczip(
@@ -368,6 +370,9 @@ mod apple_double_tests {
         assert!(!is_apple_double("nested/b.ifc"));
         // A file NAMED after the marker is still content.
         assert!(!is_apple_double("__MACOSX_backup.ifc"));
+        // ...and so is a real model inside a folder called `__MACOSX`. The
+        // sidecar test is the basename; matching the directory would drop it.
+        assert!(!is_apple_double("__MACOSX/model.ifc"));
         // ...and `._` INSIDE a name is not a sidecar prefix: only a basename
         // that STARTS with it is.
         assert!(!is_apple_double("v1._final.ifc"));

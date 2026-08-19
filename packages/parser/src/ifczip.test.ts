@@ -111,6 +111,16 @@ describe('unwrapIfcZip', () => {
     expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
   });
 
+  it('finds a genuine model inside a folder that happens to be named __MACOSX', async () => {
+    // The sidecar test is the BASENAME, not the directory. Matching the folder
+    // name would drop a real model for anyone whose archive contains a folder
+    // called that - a silent data loss traded for a redundant check, since
+    // every real sidecar is already `._`-prefixed.
+    const zip = await makeZip({ '__MACOSX/model.ifc': STEP_HEADER });
+    const result = await unwrapIfcZip(zip);
+    expect(new TextDecoder().decode(result)).toBe(STEP_HEADER);
+  });
+
   it('still rejects two GENUINE models, so the sidecar filter did not weaken the guard', async () => {
     // The ambiguity error exists for a reason; skipping sidecars must not skip
     // a real second model that happens to sit in a folder.

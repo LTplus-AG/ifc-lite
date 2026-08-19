@@ -54,12 +54,16 @@ const MODEL_ENTRY_RE = /\.(ifc|ifcxml)$/i;
  * {@link MODEL_ENTRY_RE} and every Mac-made .ifczip was rejected as containing
  * two models — the error this fixes, reported from production.
  *
- * Both halves are needed. The directory prefix is the normal case, and the
- * bare `._` prefix catches an archive repacked so the sidecar sits beside its
- * original rather than under `__MACOSX/`, which is what several unzip/rezip
- * round trips produce.
+ * The test is the BASENAME, not the directory. `._` is what makes a file a
+ * sidecar; `__MACOSX/` is merely where macOS happens to put them, and matching
+ * on it is both redundant (every entry inside is already `._`-prefixed) and
+ * WRONG for a user whose archive genuinely contains a folder of that name — it
+ * would drop a real model.
+ *
+ * The basename form also covers the sidecar left beside its original by an
+ * unzip/rezip round trip that flattens the `__MACOSX/` directory away.
  */
-const APPLE_DOUBLE_RE = /(^|\/)__MACOSX\/|(^|\/)\._[^/]*$/;
+const APPLE_DOUBLE_RE = /(^|\/)\._[^/]*$/;
 
 /** Whether an archive entry is a real model rather than a macOS sidecar. */
 function isModelEntry(name: string): boolean {

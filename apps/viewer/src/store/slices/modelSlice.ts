@@ -30,6 +30,11 @@ import {
 export interface ModelCrossSliceState {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
+  /** Pinboard/basket state (pinboardSlice) `removeModel`/`clearAllModels`
+   *  purge of refs the removed model(s) owned — same entityRef-string
+   *  keying as `selectedEntitiesSet`. See `removeModel`'s comment for why. */
+  pinboardEntities: Set<string>;
+  hierarchyBasketSelection: Set<string>;
 }
 
 export interface ModelSlice {
@@ -347,6 +352,8 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         selectedEntities: EntityRef[];
         selectedEntitiesSet: Set<string>;
         selectedModelId: string | null;
+        pinboardEntities: Set<string>;
+        hierarchyBasketSelection: Set<string>;
       }>;
       const priorEntities = sel.selectedEntities ?? [];
       const priorSet = sel.selectedEntitiesSet ?? new Set<string>();
@@ -355,6 +362,30 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         sel.selectedEntity?.modelId === modelId ||
         sel.activeStorey?.modelId === modelId ||
         keptEntities.length !== priorEntities.length;
+
+      // Pinboard/basket state (pinboardSlice) is keyed the same way as
+      // `selectedEntitiesSet` above -- Set<string> of "modelId:expressId"
+      // entityRef strings -- but was never purged here. `pinboardEntities`
+      // is documented in pinboardSlice.ts as the basket's SOURCE OF TRUTH:
+      // every basket edit (`addToBasket`/`removeFromBasket`/`showPinboard`)
+      // re-derives `isolatedEntities` from it via `toGlobalIdForRef`, and
+      // `toGlobalIdFromModels` falls back to the RAW, un-offset expressId
+      // when a ref's modelId is no longer in `models`. A stale ref surviving
+      // removal therefore doesn't just dangle inertly: the next basket
+      // operation resolves it to a bare, unscaled global id that can collide
+      // with a real entity in any surviving model whose own offset range
+      // covers that raw number (any model with idOffset 0, notably) --
+      // silently co-isolating or co-hiding an entity the user never touched.
+      const priorPinboard = sel.pinboardEntities ?? new Set<string>();
+      const priorHierarchyBasket = sel.hierarchyBasketSelection ?? new Set<string>();
+      const keptPinboard = new Set(
+        [...priorPinboard].filter((k) => stringToEntityRef(k).modelId !== modelId)
+      );
+      const keptHierarchyBasket = new Set(
+        [...priorHierarchyBasket].filter((k) => stringToEntityRef(k).modelId !== modelId)
+      );
+      const pinboardTouchedRemoved =
+        keptPinboard.size !== priorPinboard.size || keptHierarchyBasket.size !== priorHierarchyBasket.size;
 
       return {
         models: newModels,
@@ -380,6 +411,9 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
               ),
               selectedModelId: sel.selectedModelId === modelId ? null : (sel.selectedModelId ?? null),
             }
+          : {}),
+        ...(pinboardTouchedRemoved
+          ? { pinboardEntities: keptPinboard, hierarchyBasketSelection: keptHierarchyBasket }
           : {}),
       };
     });
@@ -414,6 +448,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       activeModelId: null,
       ifcDataStore: null,
       geometryResult: null,
+      // Same dangling-ref shape as `removeModel`'s pinboard purge above, for
+      // the full-teardown path: with every model gone, every basket ref is
+      // stale by definition.
+      pinboardEntities: new Set(),
+      hierarchyBasketSelection: new Set(),
     });
   },
 

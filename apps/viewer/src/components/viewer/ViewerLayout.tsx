@@ -24,6 +24,7 @@ import { ExtensionDockHost } from '@/components/extensions/ExtensionDockHost';
 import { useIfc } from '@/hooks/useIfc';
 import { useViewerStore } from '@/store';
 import { isCollabEnabled } from '@/lib/collab/config';
+import { toast } from '@/components/ui/toast';
 import { parseRoleFromToken } from '@/lib/collab/share-link';
 import { EntityContextMenu } from './EntityContextMenu';
 import { useDuplicateShortcut } from './useDuplicateShortcut';
@@ -148,6 +149,18 @@ export function ViewerLayout() {
       console.error('[collab] deep-link join failed:', err);
     }
   }, []);
+
+  // Surface a room whose geometry never arrived. The joiner sets this on the
+  // store (slices hold no UI imports); this is the one place it becomes
+  // visible, so a shared room that renders an empty scene says why instead of
+  // leaving the recipient to assume they misconfigured something.
+  const collabGeometryNotice = useViewerStore((s) => s.collabGeometryNotice);
+  useEffect(() => {
+    // Consume first: StrictMode's double-invoke then finds it already taken and
+    // cannot toast the same message twice.
+    const notice = useViewerStore.getState().consumeCollabGeometryNotice();
+    if (notice) toast.error(notice);
+  }, [collabGeometryNotice]);
 
   // Command palette state
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);

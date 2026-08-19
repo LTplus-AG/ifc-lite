@@ -85,6 +85,23 @@ describe('buildSpatialIndex', () => {
     expect(bvh.queryAABB(box(1000, 1000, 1000, 1001, 1001, 1001))).toEqual([]);
   });
 
+  it('gives an empty mesh a degenerate box at the mesh origin when one is set', () => {
+    // Same shape as above, but with a non-zero per-mesh origin. The empty-mesh
+    // early return must apply the same origin lift as the populated-mesh path,
+    // not silently place the mesh at world [0,0,0].
+    const empty: MeshData = {
+      expressId: 9,
+      positions: new Float32Array(0),
+      normals: new Float32Array(0),
+      indices: new Uint32Array(0),
+      color: [1, 1, 1, 1],
+      origin: [500, 500, 500],
+    };
+    const bvh = buildSpatialIndex([empty]);
+    expect(bvh.queryAABB(box(500, 500, 500, 500, 500, 500))).toEqual([9]);
+    expect(bvh.queryAABB(box(0, 0, 0, 0, 0, 0))).toEqual([]);
+  });
+
   it('returns a queryable empty index for no meshes', () => {
     expect(buildSpatialIndex([]).queryAABB(box(-1e9, -1e9, -1e9, 1e9, 1e9, 1e9))).toEqual([]);
   });

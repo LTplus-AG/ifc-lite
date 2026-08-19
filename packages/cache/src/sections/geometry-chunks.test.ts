@@ -340,4 +340,47 @@ describe('decodeGeometryChunk length verification', () => {
     const decoded = await decodeGeometryChunk(stored, realInfo, 13);
     expectMeshesEqual(decoded, meshes);
   });
+
+  // Mutation testing showed the sibling `reader.position !== raw.byteLength`
+  // guard's reject path was also unasserted: deleting it left the full suite
+  // green. Unlike the case above, meshCount and uncompressedLength are BOTH
+  // truthful here — the corruption lives one level deeper, inside the mesh
+  // record itself. A record's own vertexCount field can disagree with the
+  // number of vertices actually written for it (truncation/corruption mid
+  // record) without moving the chunk's overall decoded length or its
+  // declared mesh count, so readMeshRecord under-reads and leaves the reader
+  // short of the chunk's end. Only this guard — not the uncompressedLength
+  // check above — can catch that.
+  it('throws when a mesh record under-consumes the declared chunk length (meshCount and uncompressedLength are both truthful)', async () => {
+    const meshes = [mesh(1, [0, 0, 0])];
+    const section = await buildGeometrySectionV13(meshes, coordInfo(), { compress: false });
+    const open = openGeometryChunksV13(section, 0, 13);
+    const realInfo = open.chunks[0];
+    expect(realInfo.flags & GeometryChunkFlags.DeflateRaw).toBe(0); // uncompressed: raw === stored
+    expect(realInfo.meshCount).toBe(1);
+
+    const bytes = new Uint8Array(section);
+    const stored = bytes.subarray(realInfo.byteOffset, realInfo.byteOffset + realInfo.byteLength);
+
+    // Corrupt the lone mesh record's own vertexCount field (record offset 4,
+    // right after the 4-byte expressId) so it under-reports 2 vertices
+    // instead of the real 3. `realInfo` (meshCount, uncompressedLength) is
+    // passed through unmodified: the directory-level checks earlier in
+    // decodeGeometryChunk see a fully consistent chunk and pass, so this
+    // fixture reaches the consumed-bytes guard rather than one of them.
+    const dv = new DataView(stored.buffer, stored.byteOffset, stored.byteLength);
+    const realVertexCount = dv.getUint32(4, true);
+    expect(realVertexCount).toBe(3);
+    dv.setUint32(4, realVertexCount - 1, true);
+
+    await expect(decodeGeometryChunk(stored, realInfo, 13)).rejects.toThrow(
+      /Invalid cache: chunk claims \d+ mesh record\(s\) but consumed \d+ of \d+ bytes/,
+    );
+
+    // Control: restoring the true vertexCount round-trips fine — the throw
+    // above is caused by the corruption, not some unrelated fixture bug.
+    dv.setUint32(4, realVertexCount, true);
+    const decoded = await decodeGeometryChunk(stored, realInfo, 13);
+    expectMeshesEqual(decoded, meshes);
+  });
 });

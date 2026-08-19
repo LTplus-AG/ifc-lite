@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Copy, Link2, Users } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Link2, Users } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import type { CollabRole } from '@/store/slices/collabSlice';
 import { buildShareUrl, mintRoomId, mintRoomToken, parseRoleFromToken } from '@/lib/collab/share-link';
 import { buildStepSeedSource } from '@/lib/collab/step-seed';
@@ -47,6 +48,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
   const collabPeers = useViewerStore((s) => s.collabPeers);
   const collabIdentity = useViewerStore((s) => s.collabIdentity);
   const startCollab = useViewerStore((s) => s.startCollab);
+  // Set when the room did not get the model's geometry. A link to a room the
+  // viewer KNOWS is missing its geometry must not be presented as a plain
+  // success: the recipient would open it and see an empty scene.
+  const seedFailure = useViewerStore((s) => s.collabSeedFailure);
 
   const [role, setRole] = useState<CollabRole>('editor');
   const [link, setLink] = useState<string>('');
@@ -169,6 +174,10 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
     };
   }, [open, hasModel, role, collabRoomId, collabRole, startCollab, ifcDataStore, modelName, fallbackShareLink]);
 
+  useEffect(() => {
+    if (open && seedFailure) toast.error(seedFailure);
+  }, [open, seedFailure]);
+
   const handleCopy = useCallback(async () => {
     if (!link) return;
     try {
@@ -240,6 +249,15 @@ export function ShareDialog({ open, onOpenChange }: ShareDialogProps) {
               </Button>
             </div>
             {notice && <p className="text-xs text-muted-foreground">{notice}</p>}
+            {seedFailure && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                <span>{seedFailure}</span>
+              </div>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <Label className="flex items-center gap-1.5">

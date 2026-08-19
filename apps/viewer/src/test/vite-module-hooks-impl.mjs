@@ -18,6 +18,26 @@ const RAW_SUFFIX = '?raw';
 /** Absolute URL of the stub every `~icons/*` specifier collapses onto. */
 const ICON_STUB = new URL('./icon-stub.tsx', import.meta.url).href;
 
+/**
+ * Absolute URL of the module the bare `cesium` specifier collapses onto. It
+ * re-exports the real package and shadows only `Viewer` (which needs WebGL)
+ * and the two providers a test has to be able to settle by hand — see that
+ * file's header. The redirect is skipped for the stub's own
+ * `import … from 'cesium'`, which is how it reaches the real package.
+ */
+const CESIUM_STUB = new URL('./cesium-stub.ts', import.meta.url).href;
+
+/**
+ * Vite resolves a `.css` import to a side-effecting module that injects the
+ * stylesheet; Node cannot parse the file at all. `loadCesium()` imports
+ * `cesium/Build/Cesium/Widgets/widgets.css` alongside the engine, so without
+ * this the whole world-view module graph is unimportable under `tsx --test`
+ * for a reason that has nothing to do with what any test is checking.
+ * Stylesheets have no observable behaviour in a DOM-only test, so the faithful
+ * Node analogue is an empty module.
+ */
+const CSS_STUB = new URL('./css-stub.mjs', import.meta.url).href;
+
 /** Only rewrite files inside this repo — never node_modules, never Node internals. */
 const REPO_ROOT = new URL('../../../../', import.meta.url).href;
 
@@ -34,6 +54,12 @@ export async function resolve(specifier, context, nextResolve) {
     // Every icon renders the same stub. Tests that care about WHICH icon
     // should assert on an accessible name, not on the glyph.
     return { url: ICON_STUB, shortCircuit: true, format: 'module' };
+  }
+  if (specifier === 'cesium' && context.parentURL !== CESIUM_STUB) {
+    return { url: CESIUM_STUB, shortCircuit: true, format: 'module' };
+  }
+  if (specifier.endsWith('.css') || specifier.endsWith('.css?inline')) {
+    return { url: CSS_STUB, shortCircuit: true, format: 'module' };
   }
   if (specifier.endsWith(RAW_SUFFIX)) {
     // Keep the marker on the URL so `load` below can see it: tsx strips the

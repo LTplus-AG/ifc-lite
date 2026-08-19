@@ -113,14 +113,20 @@ export interface StepExportOptions {
    * Seeded randomness for the GlobalIds this exporter SYNTHESIZES:
    * the `IfcPropertySet` / `IfcElementQuantity` roots regenerated for
    * mutated (or overlay-created) property and quantity sets, their
-   * `IfcRelDefinesByProperties` links, and any `IFCPROXY` placeholder minted
-   * by schema conversion. Without it those come from the platform CSPRNG, so
-   * two exports of the same model differ in exactly those bytes - which
-   * breaks byte-reproducibility for in-store builds that call
+   * `IfcRelDefinesByProperties` links. Without it those come from the platform
+   * CSPRNG, so two exports of the same model differ in exactly those bytes -
+   * which breaks byte-reproducibility for in-store builds that call
    * `addPropertySet` / `addQuantitySet` (the sets themselves live in the
    * mutation overlay and only become IFC roots here). Pass the same seeded
    * source used for `SpatialAnchor.guidRandom` to close that gap. Default
-   * (omitted) behaviour is unchanged: random.
+   * (omitted) behaviour for THESE ids is unchanged: random.
+   *
+   * NOT the `IFCPROXY` placeholders any more (#2733). Those used to be minted
+   * from this source too, so an omitted `guidRandom` made every downgraded
+   * IFC4X3 entity differ on re-export. They are now derived from the source
+   * line when this is omitted, and only fall back to this source when it is
+   * supplied - so passing a seeded source still pins them, but NOT passing one
+   * no longer makes them random. See `convertStepLine`.
    */
   guidRandom?: RandomSource;
   /**
@@ -851,6 +857,11 @@ export class StepExporter {
           pass.modifiedAttributes.get(expressId),
           pass.sourceSchema,
           pass.overlayActive,
+          (attr, value) =>
+            pass.warnings.push(
+              `entity #${expressId}: attribute ${attr} not written - ` +
+                `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+            ),
         );
         let nextEntityText = mutated.text;
 
@@ -1007,6 +1018,15 @@ export class StepExporter {
             attributeOverrides,
             positionalOverrides,
             pass.sourceSchema,
+            // Overlay-created entities report a rejected REAL edit exactly as
+            // source-backed ones do. Without this the slot was kept and NOTHING
+            // was said - the silent discard this whole change exists to
+            // prevent, surviving in the one path that had no test.
+            (attr, value) =>
+              pass.warnings.push(
+                `entity #${entity.expressId}: attribute ${attr} not written - ` +
+                  `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+              ),
           );
         }
         let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
@@ -1141,6 +1161,7 @@ export class StepExporter {
     attributeMutations: Map<string, string> | undefined,
     sourceSchema: IfcSchemaVersion,
     overlayActive: boolean,
+    onRejected?: (attrName: string, value: string) => void,
   ): SourceLineMutations {
     let text = entityText;
     let workingType = recordType.toUpperCase();
@@ -1171,7 +1192,13 @@ export class StepExporter {
     let attributed = false;
     if (attributeMutations && attributeMutations.size > 0) {
       const beforeAttributes = text;
-      text = this.applyAttributeMutations(text, workingType, attributeMutations, sourceSchema);
+      text = this.applyAttributeMutations(
+        text,
+        workingType,
+        attributeMutations,
+        sourceSchema,
+        onRejected,
+      );
       attributed = text !== beforeAttributes;
     }
 
@@ -1196,6 +1223,7 @@ export class StepExporter {
     entityType: string,
     attributeMutations: Map<string, string>,
     schemaVersion: IfcSchemaVersion,
+    onRejected?: (attrName: string, value: string) => void,
   ): string {
     const openParen = entityText.indexOf('(');
     const closeParen = entityText.lastIndexOf(');');
@@ -1226,7 +1254,20 @@ export class StepExporter {
       // The source path shares every `$`-slot hole with the overlay-created
       // path, because a source record has plenty of `$` slots of its own. Both
       // go through the one helper below.
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
+      const serialized = this.serializeNamedAttribute(
+        entityType,
+        index,
+        value,
+        args[index],
+        realSlots,
+      );
+      if (serialized === null) {
+        // Slot untouched AND reported. Not counted as a change: claiming a
+        // modification we did not make is the failure this avoids.
+        onRejected?.(attrName, value);
+        continue;
+      }
+      args[index] = serialized;
       changed = true;
     }
 
@@ -1264,7 +1305,7 @@ export class StepExporter {
     value: string,
     currentToken: string,
     realSlots: ReadonlySet<number>,
-  ): string {
+  ): string | null {
     if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
     if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
     if (realSlots.has(index)) {
@@ -1272,6 +1313,19 @@ export class StepExporter {
       if (trimmed === '') return '$';
       const numberValue = Number(trimmed);
       if (Number.isFinite(numberValue)) return toStepReal(numberValue);
+      // A non-numeric value in a REAL slot used to fall through and be QUOTED,
+      // producing the same ISO 10303-21 violation #2725 exists to prevent
+      // (#2741). `StoreEditor.setAttribute` takes a string, so any UI text
+      // field bound to a georeferencing REAL can deliver one; it does not need
+      // a corrupt file.
+      //
+      // `null` means "leave the slot as the file had it". Simply returning
+      // `currentToken` here would stop the invalid output but SILENTLY DISCARD
+      // the edit - the exporter would then claim a modification it did not
+      // carry, which is the exact misreport #2723/#2724/#2726 were written to
+      // pin. The caller turns this into a warning, so a dropped edit is visible
+      // rather than inferred from absence.
+      return null;
     }
     return serializeAttributeValue(value, currentToken);
   }
@@ -1303,6 +1357,7 @@ export class StepExporter {
     attributeOverrides: Map<string, string> | null,
     positionalOverrides: Map<number, IfcAttributeValue> | null,
     schemaVersion: IfcSchemaVersion,
+    onRejected?: (attrName: string, value: string) => void,
   ): string {
     const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
     const attrNames = getAttributeNamesAcrossSchemas(entityType);
@@ -1339,7 +1394,21 @@ export class StepExporter {
     // has taken args.length to at least that, so each one lands.
     const realSlots = getRealTypedSlots(entityType, schemaVersion);
     for (const [index, value] of named) {
-      args[index] = this.serializeNamedAttribute(entityType, index, value, args[index], realSlots);
+      const serialized = this.serializeNamedAttribute(
+        entityType,
+        index,
+        value,
+        args[index],
+        realSlots,
+      );
+      // Overlay-created entities take the same rejection: a non-numeric REAL is
+      // invalid STEP whoever authored the record. The slot keeps the `$` this
+      // path padded it with, rather than gaining a quoted string.
+      if (serialized === null) {
+        onRejected?.(attrNames[index] ?? `#${index}`, value);
+        continue;
+      }
+      args[index] = serialized;
     }
 
     if (positionalOverrides && positionalOverrides.size > 0) {
@@ -1460,8 +1529,8 @@ export class StepExporter {
       isReadableSourceRef: this.isReadableSourceRef,
       allocateExpressId: () => this.nextExpressId++,
       ownerHistory: this.ownerHistory,
-      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive) =>
-        this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive),
+      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
+        this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
     };
   }
 

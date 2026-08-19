@@ -23,7 +23,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecCross, vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -79,9 +79,7 @@ export function addBeamToStore(
   if (beamLen <= 0) {
     throw new Error('addBeamToStore: Start and End must be distinct points');
   }
-  if (params.Width <= 0 || params.Height <= 0) {
-    throw new Error('addBeamToStore: Width and Height must be positive');
-  }
+  assertPositiveFinite([params.Width, params.Height], 'addBeamToStore: Width and Height must be positive');
   const dir: Point3D = vecNorm([dx, dy, dz]);
   const refDir = computeRefDirection(dir);
 

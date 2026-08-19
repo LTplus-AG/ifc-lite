@@ -8,6 +8,20 @@
  * so any divergence is in the geometry kernel. We assert identical clash sets
  * (by id), status and severity, with distances and points within epsilon
  * (f64 summation order can differ by ~1e-12 across the two implementations).
+ *
+ * SCOPE (#2830): "both run through the identical orchestrator" above is a
+ * limitation, not just an explanation. `engine-wasm/index.ts` calls the same
+ * `runClash` (`engine-ts/orchestrator.ts`) that `engine-ts/index.ts` uses, so
+ * selection (`selectors.ts`), severity (`disciplines.ts`), exclusions
+ * (`exclude.ts`), identity/dedup/sort and the summary (`analysis.ts`) are
+ * SHARED CODE on both sides of this comparison — a bug there produces the
+ * same wrong answer on both backends and this suite stays green. Only the
+ * kernel call (broad + narrow phase geometry) genuinely differs between the
+ * two paths, so that is the only thing this suite actually audits. Verified:
+ * constant-folding `inferClashSeverity` to always return `'info'` leaves
+ * every test below passing. Shared orchestration has its own direct cover in
+ * `engine-ts/orchestrator.test.ts` and `analysis.test.ts` — don't rely on
+ * this file for it.
  */
 
 import { readFileSync } from 'node:fs';

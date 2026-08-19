@@ -100,6 +100,10 @@ describe('seed outcome: nothing-to-seed vs failed', () => {
   });
 
   it('reports a partial share when some uploads failed', () => {
+    // `seeded` and `failed` move together by construction (every attempted job
+    // does exactly one of them), which is why the classifier needs only one of
+    // the two terms - see the note on `classifySeed`. A fixture varying both
+    // cannot distinguish them, so it is not asked to.
     const partial = report({ offered: 10, attempted: 10, seeded: 7, failed: 3 });
     assert.equal(classifySeed(partial), 'partial');
     assert.ok(seedFailureMessage(partial));

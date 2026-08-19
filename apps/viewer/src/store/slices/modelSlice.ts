@@ -48,6 +48,11 @@ export interface ModelCrossSliceState {
   classFilter: { ids: Set<number>; label: string } | null;
   hiddenEntitiesByModel: Map<string, Set<number>>;
   isolatedEntitiesByModel: Map<string, Set<number>>;
+  /** Pinboard/basket state (pinboardSlice) `removeModel`/`clearAllModels`
+   *  purge of refs the removed model(s) owned — same entityRef-string
+   *  keying as `selectedEntitiesSet`. See `removeModel`'s comment for why. */
+  pinboardEntities: Set<string>;
+  hierarchyBasketSelection: Set<string>;
 }
 
 export interface ModelSlice {
@@ -255,6 +260,8 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
+      pointCloudDeviationComputed?: boolean;
+      setPointCloudDeviationComputed?: (computed: boolean) => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
@@ -262,6 +269,17 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // sources UI stops offering "Sync from source" for a model that no
     // longer exists and the tag map cannot grow without bound.
     cross.removeSourceTag?.(modelId);
+    // A computed BIM<->scan deviation heatmap (`DeviationPanel`) is built from
+    // a BVH over EVERY triangle in the scene (`DeviationComputer.compute`,
+    // packages/renderer) -- not scoped to this model -- so removing any
+    // federated model invalidates it exactly like the clash focus and IDS
+    // report above. `pointCloudDeviationComputed` gates the panel's own
+    // auto-recompute effect, so leaving it `true` here would leave the
+    // slider/legend presenting a heatmap computed against a triangle set that
+    // no longer exists, with nothing left to trigger a rebuild.
+    if (cross.pointCloudDeviationComputed) {
+      cross.setPointCloudDeviationComputed?.(false);
+    }
 
     // Drop the focused-clash PRESENTATION — the A/B pair tint, the contact
     // marker (lines + AABB box) and the on-demand intersection solid, all of
@@ -324,6 +342,29 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       cross.clearIdsValidationReport?.();
     }
 
+    // A published compare result (compareSlice) names its base/head models by
+    // id and its `excludedHiddenIds` / `diff` entries carry federation GLOBAL
+    // ids computed against those two models' offsets. If the removed model
+    // was either side of that comparison, the result no longer describes a
+    // pairing that exists — same dangling-reference shape as the IDS report
+    // above, one slice over. Left alone it merely dangles here (removeModel
+    // never resets `federationRegistry`'s offset counter, so no later model
+    // can be re-assigned these same ids) but `clearAllModels` below does not
+    // have that guarantee, so this call site exists for symmetry and so a
+    // partial federation edit (remove one side of a compare, add a
+    // replacement) can't leave a comparison silently describing the old
+    // pairing while a new one of the same shape loads.
+    const compareCross = get() as unknown as {
+      compareResult?: { baseModelId: string; headModelId: string } | null;
+      clearCompare?: () => void;
+    };
+    if (
+      compareCross.compareResult &&
+      (compareCross.compareResult.baseModelId === modelId || compareCross.compareResult.headModelId === modelId)
+    ) {
+      compareCross.clearCompare?.();
+    }
+
     set((state) => {
       const newModels = new Map(state.models);
       newModels.delete(modelId);
@@ -377,6 +418,8 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         hiddenEntitiesByModel: Map<string, Set<number>>;
         isolatedEntitiesByModel: Map<string, Set<number>>;
         mutationViews: Map<string, { getNewEntity: (id: number) => unknown }>;
+        pinboardEntities: Set<string>;
+        hierarchyBasketSelection: Set<string>;
       }>;
       const priorEntities = sel.selectedEntities ?? [];
       const priorSet = sel.selectedEntitiesSet ?? new Set<string>();
@@ -442,6 +485,30 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       // `selectedEntities` above only drops entries that belong to the
       // removed model.
       const addElementTouchedRemoved = sel.addElementModelId === modelId;
+
+      // Pinboard/basket state (pinboardSlice) is keyed the same way as
+      // `selectedEntitiesSet` above -- Set<string> of "modelId:expressId"
+      // entityRef strings -- but was never purged here. `pinboardEntities`
+      // is documented in pinboardSlice.ts as the basket's SOURCE OF TRUTH:
+      // every basket edit (`addToBasket`/`removeFromBasket`/`showPinboard`)
+      // re-derives `isolatedEntities` from it via `toGlobalIdForRef`, and
+      // `toGlobalIdFromModels` falls back to the RAW, un-offset expressId
+      // when a ref's modelId is no longer in `models`. A stale ref surviving
+      // removal therefore doesn't just dangle inertly: the next basket
+      // operation resolves it to a bare, unscaled global id that can collide
+      // with a real entity in any surviving model whose own offset range
+      // covers that raw number (any model with idOffset 0, notably) --
+      // silently co-isolating or co-hiding an entity the user never touched.
+      const priorPinboard = sel.pinboardEntities ?? new Set<string>();
+      const priorHierarchyBasket = sel.hierarchyBasketSelection ?? new Set<string>();
+      const keptPinboard = new Set(
+        [...priorPinboard].filter((k) => stringToEntityRef(k).modelId !== modelId)
+      );
+      const keptHierarchyBasket = new Set(
+        [...priorHierarchyBasket].filter((k) => stringToEntityRef(k).modelId !== modelId)
+      );
+      const pinboardTouchedRemoved =
+        keptPinboard.size !== priorPinboard.size || keptHierarchyBasket.size !== priorHierarchyBasket.size;
 
       return {
         models: newModels,
@@ -522,6 +589,9 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
                 : sel.isolatedEntitiesByModel,
             }
           : {}),
+        ...(pinboardTouchedRemoved
+          ? { pinboardEntities: keptPinboard, hierarchyBasketSelection: keptHierarchyBasket }
+          : {}),
       };
     });
   },
@@ -533,9 +603,15 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
+      pointCloudDeviationComputed?: boolean;
+      setPointCloudDeviationComputed?: (computed: boolean) => void;
     };
     crossClear.clearIdsValidationReport?.();
     crossClear.clearSourceTags?.();
+    // Same staleness as `removeModel` above, for the full-teardown path.
+    if (crossClear.pointCloudDeviationComputed) {
+      crossClear.setPointCloudDeviationComputed?.(false);
+    }
     // A clash run describes pairs of elements in models that are all about to
     // be gone, and the on-demand intersection SOLID is a mesh drawn into the
     // live scene — `Viewport`'s draw gate reads `clashSelectedId` +
@@ -561,6 +637,56 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // answer. `isolatedEntities`/`ghostExceptEntities` clear to `null` (not an
     // empty `Set`) for the same reason `removeModel` does — an empty-but-set
     // isolate would hide the very next model loaded, until it does.
+    // `federationRegistry.clear()` above resets the offset counter to 0, so
+    // the very next model registered can be handed the exact offsets any
+    // surviving compare result's `excludedHiddenIds` / `diff` global ids
+    // describe (see `removeModel-compare-stale.test.ts`: a georef-triggered
+    // reload calls `clearAllModels()` then reloads every model, and the
+    // first one back gets offset 0 again). Unconditional, unlike
+    // `removeModel`'s guarded version above — with every model gone there is
+    // no pairing left for a compare result to describe either way, and here
+    // the offset-reuse hazard makes leaving it behind actively dangerous
+    // rather than merely stale.
+    (get() as unknown as { clearCompare?: () => void }).clearCompare?.();
+    // Same offset-reuse hazard, on the lens channel: `useLens.ts`'s effect
+    // deps are `[activeLensId, activeLens]`, NOT `models` — a model
+    // add/remove never re-evaluates the active lens, so `lensColorMap`,
+    // `lensHiddenIds`, `lensAppliedColors`, `lensRuleCounts` and
+    // `lensRuleEntityIds` keep naming whatever global ids they were last
+    // computed against. `resetViewerState` (store/index.ts) already
+    // deactivates the lens and clears these on every ordinary file load; the
+    // gap is the same one `compareResult` had above — the georef-reload path
+    // (`GeoreferencingPanel.tsx`'s `reloadModelsForAlignment`) calls only
+    // `clearAllModels()`, never `resetViewerState()`, and the reload that
+    // follows can hand the first model back offset 0. A lens still "active"
+    // across that reload would then apply its stale hide/colour ids to
+    // whatever entities the new federation assigned those same global ids —
+    // hiding or tinting elements the user never touched. Guarded on
+    // `activeLensId` so a clear with no lens ever active is a no-op, same
+    // shape as `removeModel`'s `compareCross` guard above.
+    const lensCross = get() as unknown as {
+      activeLensId?: string | null;
+      setActiveLens?: (id: string | null) => void;
+      setLensColorMap?: (m: Map<number, string>) => void;
+      setLensAppliedColors?: (m: Map<number, [number, number, number, number]> | null) => void;
+      setLensHiddenIds?: (s: Set<number>) => void;
+      setLensAppliedHiddenIds?: (ids: number[]) => void;
+      setLensRuleIsolation?: (v: { ruleId: string; entityIds: number[] } | null) => void;
+      setLensRuleCounts?: (m: Map<string, number>) => void;
+      setLensRuleEntityIds?: (m: Map<string, number[]>) => void;
+      setLensAutoColorLegend?: (legend: unknown[]) => void;
+    };
+    if (lensCross.activeLensId != null) {
+      lensCross.setActiveLens?.(null);
+      lensCross.setLensColorMap?.(new Map());
+      lensCross.setLensAppliedColors?.(null);
+      lensCross.setLensHiddenIds?.(new Set());
+      lensCross.setLensAppliedHiddenIds?.([]);
+      lensCross.setLensRuleIsolation?.(null);
+      lensCross.setLensRuleCounts?.(new Map());
+      lensCross.setLensRuleEntityIds?.(new Map());
+      lensCross.setLensAutoColorLegend?.([]);
+    }
     return set({
       models: new Map(),
       activeModelId: null,
@@ -577,6 +703,11 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       classFilter: null,
       hiddenEntitiesByModel: new Map(),
       isolatedEntitiesByModel: new Map(),
+      // Same dangling-ref shape as `removeModel`'s pinboard purge above, for
+      // the full-teardown path: with every model gone, every basket ref is
+      // stale by definition.
+      pinboardEntities: new Set(),
+      hierarchyBasketSelection: new Set(),
     });
   },
 

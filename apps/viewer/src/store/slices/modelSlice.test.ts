@@ -21,6 +21,14 @@ interface SelectionFields {
   selectedModelId: string | null;
 }
 
+/** The pinboard/basket fields `removeModel` purges (pinboardSlice). Same
+ *  entityRef-string keying as `selectedEntitiesSet` above, reached the same
+ *  way — through a cast, since the fields live on another slice. */
+interface PinboardFields {
+  pinboardEntities: Set<string>;
+  hierarchyBasketSelection: Set<string>;
+}
+
 // Typed setter / getter shim that mirrors zustand's StateCreator
 // signature without the broader middleware machinery the test doesn't
 // need. Using StateCreator's exact types here would pull in the whole
@@ -91,6 +99,8 @@ describe('ModelSlice', () => {
       classFilter: null,
       hiddenEntitiesByModel: new Map(),
       isolatedEntitiesByModel: new Map(),
+      pinboardEntities: new Set<string>(),
+      hierarchyBasketSelection: new Set<string>(),
     };
   });
 
@@ -534,6 +544,52 @@ describe('ModelSlice', () => {
         assert.strictEqual(after.isolatedEntitiesByModel.has('model-1'), false);
         assert.strictEqual(after.isolatedEntitiesByModel.has('model-2'), true);
       });
+    it('purges the REMOVED model\'s refs from the pinboard basket and keeps every survivor', () => {
+      // pinboardSlice's `pinboardEntities` / `hierarchyBasketSelection` are
+      // Set<string> of entityRef strings ("modelId:expressId"), the exact
+      // same shape `selectedEntitiesSet` already gets purged above. Nothing
+      // purged these: `pinboardEntities` is the documented "source of truth"
+      // basket set (see pinboardSlice.ts's cross-slice-state comment) that
+      // `addToBasket`/`removeFromBasket`/`showPinboard` re-derive
+      // `isolatedEntities` from via `toGlobalIdForRef` on every subsequent
+      // basket edit — and `toGlobalIdFromModels` falls back to the RAW,
+      // un-offset expressId when the ref's modelId is no longer in `models`.
+      // A stale "model-1:42" surviving removal therefore doesn't just dangle:
+      // the next basket operation resolves it to bare global id 42, which can
+      // collide with a real entity in a model whose own offset range covers
+      // 42 (e.g. any model with idOffset 0), silently co-isolating/hiding an
+      // entity the user never selected.
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      Object.assign(state, {
+        pinboardEntities: new Set(['model-1:42', 'model-2:7']),
+        hierarchyBasketSelection: new Set(['model-1:1', 'model-2:2']),
+      });
+
+      state.removeModel('model-1');
+
+      const after = state as unknown as PinboardFields;
+      assert.deepStrictEqual([...after.pinboardEntities], ['model-2:7'], 'the survivor stays in the basket');
+      assert.deepStrictEqual(
+        [...after.hierarchyBasketSelection],
+        ['model-2:2'],
+        'the survivor stays in the hierarchy-derived basket source',
+      );
+    });
+
+    it('leaves the pinboard basket untouched when it names no ref from the removed model', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      Object.assign(state, {
+        pinboardEntities: new Set(['model-2:7']),
+        hierarchyBasketSelection: new Set(['model-2:2']),
+      });
+
+      state.removeModel('model-1');
+
+      const after = state as unknown as PinboardFields;
+      assert.deepStrictEqual([...after.pinboardEntities], ['model-2:7']);
+      assert.deepStrictEqual([...after.hierarchyBasketSelection], ['model-2:2']);
     });
   });
 
@@ -595,6 +651,20 @@ describe('ModelSlice', () => {
       assert.strictEqual(after.classFilter, null);
       assert.strictEqual(after.hiddenEntitiesByModel.size, 0);
       assert.strictEqual(after.isolatedEntitiesByModel.size, 0);
+    });
+
+    it('clears the pinboard basket along with every model', () => {
+      state.addModel(createMockModel('model-1', 'First'));
+      Object.assign(state, {
+        pinboardEntities: new Set(['model-1:42']),
+        hierarchyBasketSelection: new Set(['model-1:1']),
+      });
+
+      state.clearAllModels();
+
+      const after = state as unknown as PinboardFields;
+      assert.strictEqual(after.pinboardEntities.size, 0);
+      assert.strictEqual(after.hierarchyBasketSelection.size, 0);
     });
   });
 

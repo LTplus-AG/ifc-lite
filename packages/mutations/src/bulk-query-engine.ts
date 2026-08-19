@@ -202,6 +202,21 @@ export class BulkQueryEngine {
       candidates = candidates.filter((id) => buildingElements.has(id));
     }
 
+    // Filter by sites
+    if (criteria.sites && criteria.sites.length > 0 && this.spatialHierarchy) {
+      const siteSet = new Set(criteria.sites);
+      const siteElements = new Set<number>();
+      for (const siteId of siteSet) {
+        const elements = this.spatialHierarchy.bySite.get(siteId);
+        if (elements) {
+          for (const el of elements) {
+            siteElements.add(el);
+          }
+        }
+      }
+      candidates = candidates.filter((id) => siteElements.has(id));
+    }
+
     // Filter by spaces
     if (criteria.spaces && criteria.spaces.length > 0 && this.spatialHierarchy) {
       const spaceSet = new Set(criteria.spaces);

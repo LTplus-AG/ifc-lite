@@ -202,6 +202,13 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
+// BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
+// `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
+// collapsed, the value must have length >= 1. A value that is present but
+// consists entirely of XML whitespace collapses to nothing and is therefore
+// as invalid as an absent one.
+const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
+
 function writeMarkupFile(
   folder: JSZip,
   topic: BCFTopic,
@@ -216,13 +223,13 @@ function writeMarkupFile(
   // would assert a topic status the user never chose; instead we fail the
   // write so the caller supplies one.
   if (version === '3.0') {
-    if (!topic.topicType) {
+    if (!topic.topicType || XML_WHITESPACE_ONLY.test(topic.topicType)) {
       throw new Error(
         `BCF 3.0 requires Topic/@TopicType (topic "${topic.guid}" has none). ` +
           `Set topic.topicType before writing a 3.0 file.`
       );
     }
-    if (!topic.topicStatus) {
+    if (!topic.topicStatus || XML_WHITESPACE_ONLY.test(topic.topicStatus)) {
       throw new Error(
         `BCF 3.0 requires Topic/@TopicStatus (topic "${topic.guid}" has none). ` +
           `Set topic.topicStatus before writing a 3.0 file.`

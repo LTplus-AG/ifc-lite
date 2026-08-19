@@ -1148,4 +1148,23 @@ describe('BCF Writer', () => {
     expect(readTopic.topicType).toBe('Issue');
     expect(readTopic.topicStatus).toBe('Open');
   });
+
+  it('refuses a BCF 3.0 topic whose TopicType or TopicStatus is XML-whitespace-only', async () => {
+    // `NonEmptyOrBlankString` collapses XML whitespace (#x9, #xA, #xD, #x20)
+    // before checking length >= 1, so a value like '   ' or '\t' is truthy in
+    // JS (passing a bare `!value` check) but schema-invalid once written.
+    const whitespaceType = baseTopic({ topicType: '   ', topicStatus: 'Open' });
+    const projectType: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceType.guid, whitespaceType]]),
+    };
+    await expect(writeBCF(projectType)).rejects.toThrow(/TopicType/);
+
+    const whitespaceStatus = baseTopic({ topicType: 'Issue', topicStatus: '\t' });
+    const projectStatus: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceStatus.guid, whitespaceStatus]]),
+    };
+    await expect(writeBCF(projectStatus)).rejects.toThrow(/TopicStatus/);
+  });
 });

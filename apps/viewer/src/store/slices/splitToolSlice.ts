@@ -111,20 +111,32 @@ export const createSplitToolSlice: StateCreator<SplitToolSlice, [], [], SplitToo
   slabCutStoreyElevation: null,
 
   setSplitTarget: (modelId, expressId) =>
-    set((s) => ({
-      splitTargetModelId: modelId,
-      splitTargetExpressId: expressId,
-      // Entering / leaving a target without a hover yet means we're
-      // back to 'idle' (unless we're mid-slab-cut, in which case
-      // we preserve the latched anchor — the user might re-enter
-      // the slab from outside).
-      splitMode: s.splitMode === 'first-anchor' ? 'first-anchor' : 'idle',
-      splitHoverPoint: null,
-      splitHoverDistance: null,
-      splitHoverLength: null,
-      splitHoverCutPoint: null,
-      splitHoverAxisDirection: null,
-    })),
+    set((s) => {
+      // Mid-slab-cut ('first-anchor'), we preserve the latched anchor only
+      // when the retarget is a no-op re-entry of the SAME element (the user
+      // re-triggering Split on the slab they're already cutting). A retarget
+      // to a genuinely different element — e.g. the Command Palette's
+      // "Split selected entity" firing after the user picked a different
+      // row in the Hierarchy panel while mid-anchor — must drop the stale
+      // anchor/footprint: they belong to the OLD target's coordinate space,
+      // and committing them against the new target would cut it along a
+      // meaningless line (#2802).
+      const sameTarget = s.splitTargetModelId === modelId && s.splitTargetExpressId === expressId;
+      const preserveAnchor = sameTarget && s.splitMode === 'first-anchor';
+      return {
+        splitTargetModelId: modelId,
+        splitTargetExpressId: expressId,
+        splitMode: preserveAnchor ? 'first-anchor' : 'idle',
+        splitHoverPoint: null,
+        splitHoverDistance: null,
+        splitHoverLength: null,
+        splitHoverCutPoint: null,
+        splitHoverAxisDirection: null,
+        ...(preserveAnchor
+          ? {}
+          : { slabCutAnchor: null, slabCutFootprint: null, slabCutStoreyElevation: null }),
+      };
+    }),
   setSplitHover: (hoverPoint, distance, length, cutPoint, axisDirection) =>
     set((s) => ({
       splitHoverPoint: hoverPoint,

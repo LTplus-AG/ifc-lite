@@ -234,6 +234,44 @@ describe('effective georeferencing', () => {
     it('leaves siteLocation georef untouched', () => {
       assert.strictEqual(resolveEpsetMapUnitScale('siteLocation', undefined, 0.001), undefined);
     });
+
+    /**
+     * `getEffectiveGeoreference` calls `mergeProjectedCRS` then
+     * `resolveEpsetMapUnitScale` in sequence (this file's `getEffectiveGeoreference`,
+     * around the `resolveEpsetMapUnitScale(original?.source, ...)` call). Every
+     * consumer that builds its CRS this way -- ViewportContainer, BasepointOverlay,
+     * FederationAlignmentControls, federationAlign.ts, useAnchorGeoreference.ts --
+     * gets the corrected scale.
+     *
+     * `GeoreferencingPanel.tsx` used to call `mergeProjectedCRS` ALONE (its
+     * `georef` prop comes from `ModelMetadataPanel.tsx`'s own
+     * `extractGeoreferencingOnDemand` call, not `getEffectiveGeoreference`), so
+     * for an ePSet_MapConversion IFC2x3 file with no explicit ePset MapUnit its
+     * `mergedCRS.mapUnitScale` stayed `undefined` -- which
+     * `resolveMapUnitToMetreScale` reads as "treat offsets as metres" (scale 1)
+     * instead of the project length-unit scale. For a millimetre project that
+     * fed `detectDoubleGeoreference` an easting/northing 1000x too large.
+     * Pinning the two-step composition here so a regression in either function
+     * -- or a caller that goes back to calling `mergeProjectedCRS` alone --
+     * shows up.
+     */
+    it('mergeProjectedCRS + resolveEpsetMapUnitScale composition matches getEffectiveGeoreference (GeoreferencingPanel parity)', () => {
+      const original: ProjectedCRS = {
+        id: 1,
+        name: 'RD_New',
+        mapUnit: undefined,
+        mapUnitScale: undefined,
+      };
+      const lengthUnitScale = 0.001; // millimetre project
+
+      const merged = mergeProjectedCRS(original, undefined, lengthUnitScale);
+      const scaleWithoutFix = resolveMapUnitToMetreScale(merged?.mapUnitScale, lengthUnitScale);
+      assert.strictEqual(scaleWithoutFix, 1, 'sanity: mergeProjectedCRS alone leaves the ePSet gap open');
+
+      const correctedMapUnitScale = resolveEpsetMapUnitScale('ePSetMapConversion', merged?.mapUnitScale, lengthUnitScale);
+      const scaleWithFix = resolveMapUnitToMetreScale(correctedMapUnitScale, lengthUnitScale);
+      assert.strictEqual(scaleWithFix, lengthUnitScale, 'the composed scale must match every other consumer');
+    });
   });
 
   it('infers common IFC map unit names', () => {

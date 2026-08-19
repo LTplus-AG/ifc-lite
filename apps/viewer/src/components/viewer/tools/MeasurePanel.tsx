@@ -18,7 +18,86 @@ import { MeasurementOverlays } from './MeasurementVisuals';
 import { MeasurePointReadout } from './MeasurePointReadout';
 import { MeasureQuantities } from './MeasureQuantities';
 import { formatDistance } from './formatDistance';
+import { ANGLE_REQUIRED_PICKS, type AngleKind, type AngleMeasurement } from '@/store/types';
 import { formatThreePointAngle, threePointAngle } from './measure-modes/three-point-angle';
+import { edgePairAngle, facePairAngle, formatAnglePair } from './measure-modes/edge-face-angle';
+
+/**
+ * The three angle kinds, their button text and what each one asks the user to
+ * click. `Record<AngleKind, ...>` is not used here because the ORDER is part of
+ * the UI; the exhaustiveness that matters (how many picks each needs) already
+ * lives on `ANGLE_REQUIRED_PICKS`.
+ */
+/**
+ * What to click next, per kind and per pick already placed.
+ *
+ * Kept as one function rather than inline ternaries because the three kinds
+ * need DIFFERENT counts and different words: the panel previously showed
+ * "n/3 picks" and point-angle wording for every kind, so an edge pair read
+ * "3/3" with a fourth pick still required - a progress indicator that says the
+ * measurement is complete when it is not.
+ */
+function angleHint(kind: AngleKind, placed: number): string {
+  const cancel = ' · Esc to cancel';
+  if (kind === 'faces') {
+    return placed === 0 ? 'Click the first face' : 'Click the second face' + cancel;
+  }
+  if (kind === 'edges') {
+    // Two picks per edge; naming which edge AND which end is the difference
+    // between a hint and a hint that helps.
+    if (placed === 0) return 'Click the start of the first edge';
+    if (placed === 1) return 'Click the end of the first edge' + cancel;
+    if (placed === 2) return 'Click the start of the second edge' + cancel;
+    return 'Click the end of the second edge' + cancel;
+  }
+  if (placed === 0) return 'Click the apex of the angle';
+  return placed === 1
+    ? 'Click the first direction' + cancel
+    : 'Click the second direction' + cancel;
+}
+
+/**
+ * Readout for a stored angle, derived on render and never persisted, so a
+ * correction to the maths retroactively fixes every measurement already listed.
+ *
+ * Switching on `kind` rather than on pick COUNT: three-point and face pairs
+ * would both be distinguishable by count today, but edges take four picks and a
+ * future kind could collide, and the kind is the thing that is actually true.
+ */
+function formatAngleMeasurement(a: AngleMeasurement): string {
+  switch (a.kind) {
+    case 'points':
+      return formatThreePointAngle(
+        threePointAngle(a.picks[0].point, a.picks[1].point, a.picks[2].point),
+      );
+    case 'edges':
+      return formatAnglePair(
+        edgePairAngle(
+          a.picks[0].point,
+          a.picks[1].point,
+          a.picks[2].point,
+          a.picks[3].point,
+        ),
+      );
+    case 'faces':
+      return formatAnglePair(
+        // Pass the absence through rather than substituting a zero vector: a
+        // missing normal is an upstream bug and must not render as a
+        // measurement error the user could have caused.
+        facePairAngle(a.picks[0].normal, a.picks[1].normal),
+      );
+  }
+}
+
+const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, string, string]> = [
+  ['points', '3-Point', 'Angle at an apex: click the corner first, then the two directions'],
+  [
+    'edges',
+    'Edges',
+    'Angle between two lines: click two points on the first, then two on the second. Four clicks, because snap metadata yields tessellation segments rather than whole edges',
+  ],
+  ['faces', 'Faces', 'Angle between two planes: click one face, then the other'],
+];
 import {
   distanceComponents,
   formatAxisDeltas,
@@ -71,6 +150,9 @@ export function MeasureOverlay() {
   const measureMode = useViewerStore((s) => s.measureMode);
   const angleMeasurements = useViewerStore((s) => s.angleMeasurements);
   const activeAngle = useViewerStore((s) => s.activeAngle);
+  const angleKind = useViewerStore((s) => s.angleKind);
+  const setAngleKind = useViewerStore((s) => s.setAngleKind);
+  const cancelAngle = useViewerStore((s) => s.cancelAngle);
   const deleteAngleMeasurement = useViewerStore((s) => s.deleteAngleMeasurement);
   const setMeasureMode = useViewerStore((s) => s.setMeasureMode);
   const activePolyline = useViewerStore((s) => s.activePolyline);
@@ -263,6 +345,32 @@ export function MeasureOverlay() {
           >
             {measureMode === 'polyline' ? 'Polyline' : measureMode === 'angle' ? 'Angle' : 'Distance'}
           </button>
+          {measureMode === 'angle' && (
+            <>
+              {ANGLE_KIND_LABELS.map(([kind, label, hint]) => (
+                <button
+                  key={kind}
+                  onClick={() => {
+                    // Discard any half-placed sequence: its picks belong to the
+                    // OLD kind and need a different count, so carrying them over
+                    // would finish the new measurement early with the wrong
+                    // inputs. The store rejects a mismatched pick, so without
+                    // this the tool would look frozen instead.
+                    cancelAngle();
+                    setAngleKind(kind);
+                  }}
+                  className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
+                    angleKind === kind
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
+                  }`}
+                  title={hint}
+                >
+                  {label}
+                </button>
+              ))}
+            </>
+          )}
           <button
             onClick={toggleSnap}
             className={`px-2 py-1 font-mono text-[10px] uppercase tracking-wider border-2 transition-colors ${
@@ -392,13 +500,7 @@ export function MeasureOverlay() {
                           {/* Derived on render, never stored: a correction to
                               the maths retroactively fixes every measurement
                               already listed. */}
-                          {formatThreePointAngle(
-                            threePointAngle(
-                              a.picks[0].point,
-                              a.picks[1].point,
-                              a.picks[2].point,
-                            ),
-                          )}
+                          {formatAngleMeasurement(a)}
                         </span>
                         <Button
                           variant="ghost"
@@ -415,8 +517,14 @@ export function MeasureOverlay() {
               )}
               {activeAngle && (
                 <div className="mt-2 rounded bg-primary/10 px-2 py-0.5 text-xs text-muted-foreground">
-                  Angle in progress · {activeAngle.picks.length}/3 picks
-                  {activeAngle.picks.length === 1 ? ' · apex set' : ''}
+                  Angle in progress · {activeAngle.picks.length}/
+                  {ANGLE_REQUIRED_PICKS[activeAngle.kind]} picks
+                  {activeAngle.kind === 'points' && activeAngle.picks.length === 1
+                    ? ' · apex set'
+                    : ''}
+                  {activeAngle.kind === 'edges' && activeAngle.picks.length === 2
+                    ? ' · first edge set'
+                    : ''}
                 </div>
               )}
             </div>
@@ -450,11 +558,7 @@ export function MeasureOverlay() {
                 // branch below would permanently show "Drag to measure" in a
                 // mode that ignores drags entirely. The hint has to name the
                 // gesture that actually works, and which pick is next.
-                !activeAngle
-                ? 'Click the apex of the angle'
-                : activeAngle.picks.length === 1
-                  ? 'Click the first direction · Esc to cancel'
-                  : 'Click the second direction · Esc to cancel'
+                angleHint(angleKind, activeAngle?.picks.length ?? 0)
               : activeMeasurement
                 ? 'Release to complete'
                 : 'Drag to measure'}

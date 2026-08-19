@@ -165,7 +165,6 @@ export class DoorSymbolGenerator {
     const arcLines = this.generateArc(
       hingePoint,
       width,
-      wallDir,
       swingDir,
       hingeSide === 'left' ? 1 : -1,
       swingAngleRad
@@ -181,7 +180,6 @@ export class DoorSymbolGenerator {
       const oppositeArcLines = this.generateArc(
         hingePoint,
         width,
-        wallDir,
         oppositeSwingDir,
         hingeSide === 'left' ? -1 : 1,
         swingAngleRad
@@ -206,7 +204,13 @@ export class DoorSymbolGenerator {
         parameters: params,
       },
       lines,
-      arcPath: this.generateArcSVGPath(hingePoint, width, wallDir, swingDir, swingAngleRad),
+      arcPath: this.generateArcSVGPath(
+        hingePoint,
+        width,
+        swingDir,
+        hingeSide === 'left' ? 1 : -1,
+        swingAngleRad
+      ),
     };
   }
 
@@ -247,7 +251,7 @@ export class DoorSymbolGenerator {
         },
       });
     }
-    lines.push(...this.generateArc(leftHinge, leafWidth, wallDir, swingDir, 1, swingAngleRad));
+    lines.push(...this.generateArc(leftHinge, leafWidth, swingDir, 1, swingAngleRad));
 
     // Right door leaf and arc
     if (this.config.showLeaf) {
@@ -259,7 +263,7 @@ export class DoorSymbolGenerator {
         },
       });
     }
-    lines.push(...this.generateArc(rightHinge, leafWidth, wallDir, swingDir, -1, swingAngleRad));
+    lines.push(...this.generateArc(rightHinge, leafWidth, swingDir, -1, swingAngleRad));
 
     const params: DoorSwingParameters = {
       width,
@@ -494,7 +498,6 @@ export class DoorSymbolGenerator {
   private generateArc(
     center: Point2D,
     radius: number,
-    wallDir: Point2D,
     swingDir: Point2D,
     direction: 1 | -1,
     angleRad: number
@@ -502,8 +505,12 @@ export class DoorSymbolGenerator {
     const lines: Line2D[] = [];
     const segments = this.config.arcSegments;
 
-    // Start angle is along wall direction (door closed)
-    const startAngle = Math.atan2(wallDir.y, wallDir.x) + (direction > 0 ? Math.PI : 0);
+    // The arc must terminate at the leaf's open-position tip (center + swingDir * radius) —
+    // that point is the door's free edge, and the leaf line is drawn from the same swingDir.
+    // Sweep backward from there by angleRad (in the same rotational sense as `direction`) to
+    // find the closed-position start angle, which lands along the wall as expected.
+    const swingAngle = Math.atan2(swingDir.y, swingDir.x);
+    const startAngle = swingAngle - direction * angleRad;
 
     for (let i = 0; i < segments; i++) {
       const t1 = i / segments;
@@ -532,12 +539,14 @@ export class DoorSymbolGenerator {
   private generateArcSVGPath(
     center: Point2D,
     radius: number,
-    wallDir: Point2D,
     swingDir: Point2D,
+    direction: 1 | -1,
     angleRad: number
   ): string {
-    const startAngle = Math.atan2(wallDir.y, wallDir.x);
-    const endAngle = startAngle + angleRad;
+    // Same convention as generateArc: the arc must end at the leaf's open tip
+    // (center + swingDir * radius), swept back by angleRad in `direction`'s sense.
+    const endAngle = Math.atan2(swingDir.y, swingDir.x);
+    const startAngle = endAngle - direction * angleRad;
 
     const startX = center.x + Math.cos(startAngle) * radius;
     const startY = center.y + Math.sin(startAngle) * radius;
@@ -545,7 +554,7 @@ export class DoorSymbolGenerator {
     const endY = center.y + Math.sin(endAngle) * radius;
 
     const largeArc = angleRad > Math.PI ? 1 : 0;
-    const sweep = 1;
+    const sweep = direction > 0 ? 1 : 0;
 
     return `M ${startX} ${startY} A ${radius} ${radius} 0 ${largeArc} ${sweep} ${endX} ${endY}`;
   }

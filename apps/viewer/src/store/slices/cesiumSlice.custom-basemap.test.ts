@@ -58,6 +58,11 @@ type SliceState = Record<string, unknown> & {
   cesiumCustomBasemap: CustomBasemap | null;
   setCesiumCustomBasemap: (basemap: CustomBasemap | null) => void;
   setCesiumDataSource: (source: string) => void;
+  setCesiumIonToken: (token: string) => void;
+  cesiumTerrainHeight: number | null;
+  cesiumTerrainSource: string | null;
+  cesiumTerrainSaveHeight: number | null;
+  cesiumTerrainClipY: number | null;
 };
 
 async function buildSlice(): Promise<{ readonly state: SliceState }> {
@@ -222,5 +227,55 @@ describe('CesiumSlice — custom basemap persistence (issue #2685)', () => {
         assert.strictEqual(slice.state.cesiumDataSource, 'google-photorealistic');
       });
     }
+  });
+});
+
+/**
+ * github.com/LTplus-AG/ifc-lite/issues/2765: dropping the four
+ * `cesiumTerrain*: null` resets from `setCesiumIonToken` left 33 tests green.
+ *
+ * The structural twin, `setCesiumDataSource`, has this reset pinned (it was a
+ * review finding on #2698) and the token setter did not. Every terrain value
+ * is resolved THROUGH the ion token, so keeping them across a token change
+ * leaves heights sampled from the previous account's terrain displayed as if
+ * they belonged to the new one.
+ *
+ * Not covered here: the `clearTerrainElevationCache()` call in the same
+ * action. The cache is a module-level Map with no read accessor, so a test
+ * cannot observe it without adding a production seam for the test's benefit.
+ * Named rather than implied, so nobody reads the block below as covering it.
+ */
+describe('CesiumSlice - changing the ion token invalidates resolved terrain', () => {
+  beforeEach(() => { installLocalStorage(); });
+  afterEach(() => { uninstallLocalStorage(); });
+
+  it('clears every terrain value resolved under the previous token', async () => {
+    const slice = await buildSlice();
+    Object.assign(slice.state, {
+      cesiumTerrainHeight: 412.5,
+      cesiumTerrainSource: 'cesium-world-terrain',
+      cesiumTerrainSaveHeight: 410,
+      cesiumTerrainClipY: -3.25,
+    });
+
+    slice.state.setCesiumIonToken('a-different-account-token');
+
+    assert.deepStrictEqual(
+      {
+        height: slice.state.cesiumTerrainHeight,
+        source: slice.state.cesiumTerrainSource,
+        saveHeight: slice.state.cesiumTerrainSaveHeight,
+        clipY: slice.state.cesiumTerrainClipY,
+      },
+      { height: null, source: null, saveHeight: null, clipY: null },
+    );
+  });
+
+  it('still applies the new token', async () => {
+    // The bounding control: an action that only nulled the terrain fields and
+    // never stored the token would satisfy the assertion above.
+    const slice = await buildSlice();
+    slice.state.setCesiumIonToken('a-different-account-token');
+    assert.strictEqual(slice.state.cesiumIonToken, 'a-different-account-token');
   });
 });

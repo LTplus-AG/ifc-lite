@@ -203,6 +203,20 @@ export enum RelationshipType {
   FillsElement = 41,
   VoidsElement = 42,
   ConnectsElements = 43,
+  /**
+   * `IfcRelConnectsPortToElement` — a port belongs to the element it sits on.
+   * Forward runs port → element, matching the EXPRESS attribute order
+   * (RelatingPort, RelatedElement).
+   */
+  ConnectsPortToElement = 44,
+  /**
+   * `IfcRelConnectsPorts` — one port joined to another. Together with
+   * {@link ConnectsPortToElement} this is what makes plant topology
+   * traversable: element → its ports → the ports they connect to → those
+   * ports' elements. Without both, a distribution system in a model is a set
+   * of unrelated parts.
+   */
+  ConnectsPorts = 45,
   SpaceBoundary = 50,
   AssignsToGroup = 60,
   AssignsToProduct = 61,

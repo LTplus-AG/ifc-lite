@@ -33,8 +33,9 @@ use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
 use ifc_lite_processing::{
-    process_geometry, process_geometry_streaming_filtered_with_options, process_geometry_with_index,
-    build_entity_index_parallel, MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
+    build_entity_index_parallel, process_geometry_filtered_with_quality,
+    process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
+    ProcessingResult, StreamingOptions, TessellationQuality,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -48,6 +49,20 @@ pub use from_meshes::{export_glb_from_meshes, try_export_glb_from_meshes};
 use matrix::{affine_inverse, compose_world_meta, occurrence_node_matrix};
 
 /// Options for glTF/GLB export.
+///
+/// ```
+/// # use ifc_lite_export::{GltfOptions, TessellationQuality};
+/// let opts = GltfOptions::default().with_tessellation_quality(TessellationQuality::Low);
+/// ```
+///
+/// `#[non_exhaustive]` plus builders, for the reason [`ModelOptions`] gives:
+/// this will grow, and `non_exhaustive` forbids EVERY struct expression from
+/// outside this crate, `..Default::default()` included. Builders are the shape
+/// that keeps an external caller compiling when a field is added. The fields
+/// stay public, so reading one or assigning to one still works.
+///
+/// [`ModelOptions`]: crate::ModelOptions
+#[non_exhaustive]
 pub struct GltfOptions {
     /// Attach `asset.extras` (counts) and per-node `extras.expressId`.
     pub include_metadata: bool,
@@ -81,6 +96,9 @@ pub struct GltfOptions {
     /// `GLTFLoader` decodes it natively, but a loader without the extension cannot open
     /// the file (it is `extensionsRequired`), so only enable when the consumer supports it.
     pub quantize: bool,
+    /// Tessellation density. `Medium` is the golden-output identity; coarser
+    /// levels trade curve fidelity for vertex count on tube-heavy models.
+    pub tessellation_quality: TessellationQuality,
 }
 
 impl Default for GltfOptions {
@@ -94,7 +112,73 @@ impl Default for GltfOptions {
             emissive: false,
             model_id: None,
             quantize: false,
+            tessellation_quality: TessellationQuality::Medium,
         }
+    }
+}
+
+impl GltfOptions {
+    /// See [`GltfOptions::include_metadata`].
+    #[must_use]
+    pub fn with_include_metadata(mut self, yes: bool) -> Self {
+        self.include_metadata = yes;
+        self
+    }
+
+    /// See [`GltfOptions::isolated`].
+    #[must_use]
+    pub fn with_isolated(mut self, ids: Vec<u32>) -> Self {
+        self.isolated = ids;
+        self
+    }
+
+    /// See [`GltfOptions::hidden`].
+    #[must_use]
+    pub fn with_hidden(mut self, ids: Vec<u32>) -> Self {
+        self.hidden = ids;
+        self
+    }
+
+    /// See [`GltfOptions::hidden_types`].
+    #[must_use]
+    pub fn with_hidden_types(mut self, types: Vec<String>) -> Self {
+        self.hidden_types = types;
+        self
+    }
+
+    /// See [`GltfOptions::lit`].
+    #[must_use]
+    pub fn with_lit(mut self, yes: bool) -> Self {
+        self.lit = yes;
+        self
+    }
+
+    /// See [`GltfOptions::emissive`].
+    #[must_use]
+    pub fn with_emissive(mut self, yes: bool) -> Self {
+        self.emissive = yes;
+        self
+    }
+
+    /// See [`GltfOptions::model_id`].
+    #[must_use]
+    pub fn with_model_id(mut self, id: Option<String>) -> Self {
+        self.model_id = id;
+        self
+    }
+
+    /// See [`GltfOptions::quantize`].
+    #[must_use]
+    pub fn with_quantize(mut self, yes: bool) -> Self {
+        self.quantize = yes;
+        self
+    }
+
+    /// See [`GltfOptions::tessellation_quality`].
+    #[must_use]
+    pub fn with_tessellation_quality(mut self, quality: TessellationQuality) -> Self {
+        self.tessellation_quality = quality;
+        self
     }
 }
 
@@ -1352,7 +1436,14 @@ pub fn export_glb_with_stats(content: &[u8], opts: &GltfOptions) -> (Vec<u8>, Gl
     if content.len() >= glb_stream_threshold_bytes() {
         return export_glb_streaming_bounded(content, opts);
     }
-    export_glb_from_result(process_geometry(content), opts)
+    export_glb_from_result(
+        process_geometry_filtered_with_quality(
+            content,
+            OpeningFilterMode::Default,
+            opts.tessellation_quality,
+        ),
+        opts,
+    )
 }
 
 /// Fail-closed [`export_glb`]: an empty visible mesh set is an error, not a valid
@@ -1387,7 +1478,14 @@ pub fn try_export_glb_with_stats(
     let (glb, stats) = if content.len() >= glb_stream_threshold_bytes() {
         try_export_glb_streaming_bounded(content, opts)?
     } else {
-        export_glb_from_result(process_geometry(content), opts)
+        export_glb_from_result(
+            process_geometry_filtered_with_quality(
+                content,
+                OpeningFilterMode::Default,
+                opts.tessellation_quality,
+            ),
+            opts,
+        )
     };
     if stats.meshes == 0 {
         return Err(ExportError::NoRenderGeometry);
@@ -1408,7 +1506,23 @@ pub fn export_glb_with_stats_with_index(
     opts: &GltfOptions,
     index: Arc<EntityIndex>,
 ) -> (Vec<u8>, GltfStats) {
-    export_glb_from_result(process_geometry_with_index(content, index), opts)
+    export_glb_from_result(
+        process_geometry_streaming_filtered_with_options(
+            content,
+            OpeningFilterMode::Default,
+            StreamingOptions {
+                initial_batch_size: usize::MAX,
+                throughput_batch_size: usize::MAX,
+                entity_index: Some(index),
+                tessellation_quality: opts.tessellation_quality,
+                ..StreamingOptions::default()
+            },
+            |_, _, _| {},
+            |_| {},
+            |_| {},
+        ),
+        opts,
+    )
 }
 
 /// Build the Y-up `MeshView`s + RTC offset from a `ProcessingResult` and run `f` over
@@ -1541,6 +1655,7 @@ fn export_gltf_streaming_impl(
     let stream_opts = || StreamingOptions {
         retain_emitted_meshes: false,
         entity_index: index.clone(),
+        tessellation_quality: opts.tessellation_quality,
         ..StreamingOptions::default()
     };
     let filter = VisibilityFilter::new(opts);
@@ -1999,6 +2114,7 @@ fn plan_bounded_glb(
     let stream_opts = || StreamingOptions {
         retain_emitted_meshes: false,
         entity_index: index.clone(),
+        tessellation_quality: opts.tessellation_quality,
         ..StreamingOptions::default()
     };
 
@@ -2431,6 +2547,7 @@ fn write_bounded_glb(
     let stream_opts = || StreamingOptions {
         retain_emitted_meshes: false,
         entity_index: index.clone(),
+        tessellation_quality: opts.tessellation_quality,
         ..StreamingOptions::default()
     };
     let BoundedGlbPlan { metas, json, pos_len, norm_len, bin_total, total, stats } = plan;

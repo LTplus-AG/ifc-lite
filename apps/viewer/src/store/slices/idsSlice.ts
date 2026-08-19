@@ -219,7 +219,12 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     set({
       idsDocument,
       // Loading a new document invalidates any previous audit/validation
-      // results — they were tied to a specific document instance.
+      // results — they were tied to a specific document instance. That
+      // includes `idsIsolateMode`: it drives the isolate-button "pressed"
+      // state and the 3D isolation built from the now-discarded report, so
+      // it must be cleared here exactly like `clearIdsValidationReport`
+      // clears it — otherwise the panel keeps showing an isolate mode as
+      // active for a report that no longer exists.
       idsAuditReport: null,
       idsValidationReport: null,
       idsActiveSpecificationId: null,
@@ -227,6 +232,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsError: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
+      idsIsolationScope: 'ids',
+      idsIsolateMode: null,
     }),
 
   clearIdsDocument: () =>
@@ -239,6 +246,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsError: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
+      idsIsolationScope: 'ids',
+      idsIsolateMode: null,
     }),
 
   // Audit actions

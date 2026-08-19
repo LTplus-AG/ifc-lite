@@ -55,6 +55,23 @@ export function extractRelFast(
         const [relating, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related.length === 0) return null;
         return { relatingObject: relating, relatedObjects: related };
+    } else if (typeUpper === 'IFCRELCONNECTSPORTTOELEMENT' || typeUpper === 'IFCRELCONNECTSPORTS') {
+        // attr[4]=RelatingPort, attr[5]=RelatedElement / RelatedPort — both
+        // SINGLE references, and both at the front of the attribute list.
+        //
+        // Neither existing branch fits: the default one reads attr[5] as a
+        // LIST, and the ConnectsElements branch skips one attribute first
+        // because that entity carries an optional ConnectionGeometry at [4].
+        // These two carry the port straight away. (`IfcRelConnectsPorts` also
+        // has an optional RealizingElement at [6] — the element that realises
+        // the connection, e.g. a piece of duct. Not read: it is a third party
+        // to the connection, not one of its two ends, and an edge has two.)
+        const [relating, rp] = readRefId(buffer, pos, end);
+        if (relating < 0) return null;
+        pos = skipCommas(buffer, rp, end, 1);
+        const [related, _] = readRefId(buffer, pos, end);
+        if (related < 0) return null;
+        return { relatingObject: relating, relatedObjects: [related] };
     } else if (typeUpper === 'IFCRELCONNECTSELEMENTS' || typeUpper === 'IFCRELCONNECTSPATHELEMENTS') {
         pos = skipCommas(buffer, pos, end, 1);
         const [relating, rp2] = readRefId(buffer, pos, end);

@@ -4,7 +4,17 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import { createAnnotationsSlice, type AnnotationsSlice } from './annotationsSlice.js';
+import { createAnnotationsSlice, type AnnotationsSlice, type Annotation } from './annotationsSlice.js';
+
+const STORAGE_KEY = 'ifc-lite:annotations:v1';
+
+/** Reads the persisted ids straight out of localStorage — not the in-memory map. */
+function persistedIds(): string[] {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return [];
+  const parsed = JSON.parse(raw) as Array<{ id: string }>;
+  return parsed.map((a) => a.id);
+}
 
 // Stub localStorage so the slice can read/write without browser env.
 function installStubStorage(): { wipe: () => void } {
@@ -97,6 +107,165 @@ describe('AnnotationsSlice', () => {
       state.removeAnnotation(id);
       assert.strictEqual(state.annotations.size, 0);
       assert.strictEqual(state.selectedAnnotationId, null);
+    });
+
+    it('removes the entry from persisted storage, not just memory', () => {
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('to-delete')!;
+      assert.ok(persistedIds().includes(id), 'sanity: pin was persisted on commit');
+      state.removeAnnotation(id);
+      assert.strictEqual(state.annotations.has(id), false);
+      assert.ok(!persistedIds().includes(id), 'deleted pin must not resurrect from storage');
+    });
+  });
+
+  describe('removeRemoteAnnotation', () => {
+    it('persists the deletion of a peer-edit-of-OUR-pin (non-remote) — mirrors upsertRemoteAnnotation', () => {
+      // Create a local pin (persisted), then simulate a peer deleting it —
+      // this is the path collabSlice.ts's `removeRemote` bridge calls.
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('mine, deleted remotely')!;
+      assert.ok(persistedIds().includes(id), 'sanity: pin was persisted on commit');
+
+      state.removeRemoteAnnotation(id);
+
+      assert.strictEqual(state.annotations.has(id), false, 'removed from in-memory map');
+      assert.ok(
+        !persistedIds().includes(id),
+        'must also be removed from localStorage or it resurrects on reload',
+      );
+    });
+
+    it('does not add a storage entry when deleting a purely-remote pin', () => {
+      const remoteAnnotation: Annotation = {
+        id: 'ann_remote_1',
+        position: { x: 1, y: 1, z: 1 },
+        note: "peer's pin",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(remoteAnnotation);
+      assert.strictEqual(state.annotations.has('ann_remote_1'), true);
+      assert.ok(
+        !persistedIds().includes('ann_remote_1'),
+        'sanity: a purely-remote pin was never persisted',
+      );
+
+      state.removeRemoteAnnotation('ann_remote_1');
+
+      assert.strictEqual(state.annotations.has('ann_remote_1'), false);
+      assert.ok(
+        !persistedIds().includes('ann_remote_1'),
+        'deleting a pin we never persisted must not add a storage entry',
+      );
+    });
+  });
+
+  describe('upsertRemoteAnnotation — persistence symmetry', () => {
+    it('persists an upsert whose incoming annotation is not flagged remote (peer edit of our own pin)', () => {
+      const ann: Annotation = {
+        id: 'ann_ours_edited_by_peer',
+        position: { x: 0, y: 0, z: 0 },
+        note: 'edited remotely but attributed to us',
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        // remote intentionally omitted — this is how a peer's edit of OUR pin arrives.
+      };
+      state.upsertRemoteAnnotation(ann);
+      assert.strictEqual(state.annotations.get(ann.id)?.note, ann.note);
+      assert.ok(persistedIds().includes(ann.id), 'non-remote-flagged upsert must be persisted');
+    });
+
+    it('does not persist an upsert whose incoming annotation is flagged remote (a peer-owned pin)', () => {
+      const ann: Annotation = {
+        id: 'ann_peers_pin',
+        position: { x: 0, y: 0, z: 0 },
+        note: "peer's own pin",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(ann);
+      assert.strictEqual(state.annotations.get(ann.id)?.note, ann.note);
+      assert.ok(!persistedIds().includes(ann.id), 'remote-flagged upsert must not be persisted');
+    });
+
+    it('removes the stale storage entry when a previously-local pin flips to remote via upsert', () => {
+      // A pin we authored locally (persisted)...
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('local original')!;
+      assert.ok(persistedIds().includes(id), 'sanity: persisted while local');
+      const current = state.annotations.get(id)!;
+
+      // ...then the sync bridge delivers an upsert for the SAME id now flagged
+      // remote (e.g. authorship/ownership resolved differently on replay/reconnect).
+      state.upsertRemoteAnnotation({ ...current, note: 'now owned remotely', remote: true });
+
+      assert.strictEqual(state.annotations.get(id)?.remote, true, 'in-memory reflects the new remote flag');
+      assert.ok(
+        !persistedIds().includes(id),
+        'a pin now flagged remote must not remain in localStorage as a stale local entry',
+      );
+    });
+
+    it('last upsert wins for a shared id regardless of updatedAt (no timestamp-based conflict resolution)', () => {
+      const base = {
+        id: 'ann_shared',
+        position: { x: 0, y: 0, z: 0 },
+        entityExpressId: null,
+        modelId: null,
+        remote: true as const,
+      };
+      // Peer A's update carries a NEWER updatedAt...
+      state.upsertRemoteAnnotation({ ...base, note: 'from peer A (newer timestamp)', createdAt: 100, updatedAt: 9999 });
+      // ...but peer B's arrives second, with an OLDER updatedAt.
+      state.upsertRemoteAnnotation({ ...base, note: 'from peer B (older timestamp)', createdAt: 100, updatedAt: 1 });
+
+      assert.strictEqual(
+        state.annotations.get('ann_shared')?.note,
+        'from peer B (older timestamp)',
+        'the slice applies upserts in call order, not by comparing updatedAt',
+      );
+    });
+  });
+
+  describe('removeRemoteAnnotation — stale selection', () => {
+    it('clears the local selection when a peer removes the pin we currently have selected', () => {
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('mine, selected, then removed remotely')!;
+      state.selectAnnotation(id);
+      assert.strictEqual(state.selectedAnnotationId, id);
+
+      state.removeRemoteAnnotation(id);
+
+      assert.strictEqual(state.selectedAnnotationId, null, 'stale selection must be cleared on peer removal');
+    });
+
+    it('clears the local selection when a peer removes a purely-remote pin we have selected', () => {
+      const remoteAnnotation: Annotation = {
+        id: 'ann_remote_selected',
+        position: { x: 1, y: 1, z: 1 },
+        note: "peer's pin, selected locally",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(remoteAnnotation);
+      state.selectAnnotation(remoteAnnotation.id);
+      assert.strictEqual(state.selectedAnnotationId, remoteAnnotation.id);
+
+      state.removeRemoteAnnotation(remoteAnnotation.id);
+
+      assert.strictEqual(state.selectedAnnotationId, null, 'stale selection must be cleared on peer removal');
     });
   });
 

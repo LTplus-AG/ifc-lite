@@ -7,9 +7,9 @@
  *
  * Builds an `IFCDataAccessor` (the abstract interface the IDS validator
  * consumes) from an `IfcDataStore` produced by `@ifc-lite/parser`. This
- * is the single canonical translation — viewer, MCP server, and the
- * corpus-parity harness all consume it instead of re-implementing the
- * same projection.
+ * is the single canonical translation: viewer, MCP server, and the
+ * buildingSMART corpus harness (`src/__corpus__/corpus.test.ts`) all
+ * consume it instead of re-implementing the same projection.
  *
  * Mirrors upstream `IfcOpenShell/ifctester` semantics: classification
  * sub-reference walking, IfcExternalReferenceRelationship for

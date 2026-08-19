@@ -295,20 +295,33 @@ export const createAnnotationsSlice: StateCreator<AnnotationsSlice, [], [], Anno
   upsertRemoteAnnotation: (annotation) => {
     set((state) => {
       const next = new Map(state.annotations);
-      // Trust the caller's `remote` flag (set by authorship in the sync bridge):
-      // peers' pins are session-only; a peer's edit to one of OUR pins arrives
-      // as non-remote, so persist it to localStorage like any local edit.
       next.set(annotation.id, annotation);
-      if (!annotation.remote) saveToStorage(next);
+      // Always persist: saveToStorage itself filters to non-remote entries, so
+      // this both (a) writes a non-remote upsert (a peer's edit to one of OUR
+      // pins arrives as non-remote) and (b) cleans up any stale storage entry
+      // left over from a previously-local pin whose id now flips to remote —
+      // skipping the write on `annotation.remote` would leave that old local
+      // version resurrecting on the next `loadFromStorage()`.
+      saveToStorage(next);
       return { annotations: next };
     });
   },
 
   removeRemoteAnnotation: (id) => {
     set((state) => {
-      if (!state.annotations.has(id)) return {};
+      const existing = state.annotations.get(id);
+      if (!existing) return {};
       const next = new Map(state.annotations);
       next.delete(id);
+      // Always persist: saveToStorage filters to non-remote entries itself, so
+      // this both (a) removes a non-remote pin's storage entry (a peer's
+      // edit/delete of one of OUR pins arrives as non-remote, and it was
+      // persisted, so the deletion must be too, or it resurrects on the next
+      // `loadFromStorage()`) and (b) cleans up any stale storage entry left
+      // over from before this id's `remote` flag flipped to true — a guard on
+      // `existing.remote` here would skip that cleanup. A pin that was never
+      // persisted (never non-remote) is simply a no-op write.
+      saveToStorage(next);
       return {
         annotations: next,
         selectedAnnotationId: state.selectedAnnotationId === id ? null : state.selectedAnnotationId,

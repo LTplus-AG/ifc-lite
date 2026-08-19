@@ -681,18 +681,69 @@ export function handlePolylineClick(ctx: MouseHandlerContext, x: number, y: numb
  */
 export function handleAngleClick(ctx: MouseHandlerContext, x: number, y: number): void {
   const state = useViewerStore.getState();
-  if (state.angleKind !== 'points') return;
+  const kind = state.angleKind;
+
+  // Faces need the surface normal, which only the raycast hit carries, so they
+  // take a different path from the two point-based kinds rather than sharing
+  // the snap-driven one. Snapping a face pick to a nearby VERTEX would move the
+  // point off the surface whose normal we just read.
+  if (kind === 'faces') {
+    const hit = ctx.renderer?.raycastScene(x, y, {
+      hiddenIds: ctx.hiddenEntitiesRef.current,
+      isolatedIds: ctx.isolatedEntitiesRef.current,
+    });
+    const n = hit?.intersection?.normal;
+    const p = hit?.intersection?.point;
+    if (!n || !p) return;
+
+    // Faces need the SAME double-click guard as the point-based kinds, which
+    // this early-return path was skipping. A face pair needs exactly two picks,
+    // so a physical double-click on one face recorded both halves instantly and
+    // completed a bogus measurement reading "Parallel" - a plausible-looking
+    // number for two picks the user never made.
+    //
+    // There is no shape boundary to exempt here, unlike edges: both face picks
+    // belong to one measurement, and two clicks in the same spot are always the
+    // same face.
+    const facePrior = state.activeAngle?.picks ?? [];
+    const facePrev = facePrior.length > 0 ? facePrior[facePrior.length - 1].point : null;
+    const facePoint = { x: p.x, y: p.y, z: p.z, screenX: x, screenY: y };
+    if (facePrev && isDuplicateClickPoint(facePrev, facePoint)) return;
+
+    state.addAnglePick({
+      kind: 'faces',
+      // screen coords are the click itself, which is what the overlay
+      // reprojects from; `updateMeasurementScreenCoords` refreshes them on
+      // camera move exactly as it does for the other kinds.
+      point: facePoint,
+      normal: { x: n.x, y: n.y, z: n.z },
+    });
+    return;
+  }
 
   const picked = raycastForPolylinePoint(ctx, x, y);
   if (!picked) return;
 
-  // Drop the second half of a physical double-click (see the note above).
-  const prior = state.activeAngle?.picks;
-  const last = prior && prior.length > 0 ? prior[prior.length - 1].point : null;
+  // Drop the second half of a physical double-click (see the note above), but
+  // only WITHIN a shape, never across the boundary between the two edges.
+  //
+  // The natural gesture for an edge pair is to trace edge A into a shared
+  // corner and edge B out of it, so picks 2 and 3 are the SAME point. Guarding
+  // across that boundary swallowed pick 3, the measurement never completed, and
+  // the only recourse was to click slightly off the corner - degrading the very
+  // direction being measured. Worse, the opposite pick order (corner first)
+  // survived, so the mode worked or did not depending on which end of edge A
+  // the user started from, which is not a distinction they can see.
+  //
+  // A shared vertex is NOT a degenerate edge: a zero-length second edge needs
+  // pick 4 to coincide with pick 3, and that is still caught below.
+  const prior = state.activeAngle?.picks ?? [];
+  const startsNewShape = kind === 'edges' && prior.length % 2 === 0;
+  const last = !startsNewShape && prior.length > 0 ? prior[prior.length - 1].point : null;
   if (last && isDuplicateClickPoint(last, picked.point)) return;
 
   ctx.setSnapTarget(picked.snapTarget);
-  state.addAnglePick({ kind: 'points', point: picked.point });
+  state.addAnglePick({ kind, point: picked.point });
 }
 
 /**

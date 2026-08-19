@@ -79,7 +79,13 @@ export type AngleKind = 'points' | 'edges' | 'faces';
 /** How many picks each kind needs before the measurement finishes itself. */
 export const ANGLE_REQUIRED_PICKS: Record<AngleKind, number> = {
   points: 3,
-  edges: 2,
+  // FOUR, not two. `SnapTarget.metadata.vertices` yields tessellation
+  // segments rather than topological edges - one straight 2.000 m slab edge
+  // reported as four collinear pieces on #2199 - so two picks cannot identify
+  // two edges. #2735 sanctions the alternative directly: "scope itself to
+  // explicitly-picked point pairs". Each edge is two picks the user places,
+  // so the direction measured is the one they chose.
+  edges: 4,
   faces: 2,
 };
 
@@ -87,6 +93,14 @@ export const ANGLE_REQUIRED_PICKS: Record<AngleKind, number> = {
 export interface AnglePick {
   kind: AngleKind;
   point: MeasurePoint;
+  /**
+   * Surface normal at the pick, for `'faces'` only.
+   *
+   * Carried on the pick rather than derived later because it is only knowable
+   * at pick time: it comes from the raycast hit, and the stored point alone
+   * cannot recover which face was under the cursor.
+   */
+  normal?: { x: number; y: number; z: number };
 }
 
 /** A fixed-length sequence in progress, not yet complete or cancelled. */

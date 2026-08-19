@@ -17,6 +17,9 @@ import assert from 'node:assert';
 import { createMutationSlice, type MutationSlice } from './mutationSlice.js';
 import type { ViewerState } from '../index.js';
 
+/** Records the first argument every `mirror*` call was handed. */
+type MirrorCall = { name: string; modelId: unknown };
+
 /** Minimal MutablePropertyView double that records writes. */
 function makeViewSpy() {
   const calls: string[] = [];
@@ -38,21 +41,32 @@ function makeViewSpy() {
  * Build the mutation slice on a mock combined state with an injectable
  * collab role. Mirrors the buildSlice pattern in uiSlice.edit-mode.test.ts.
  */
-function buildSlice(canEdit: boolean) {
+function buildSlice(canEdit: boolean, editedModelId = 'm1') {
   const spy = makeViewSpy();
+  const mirrors: MirrorCall[] = [];
   let state: Record<string, unknown> = {
     models: new Map(),
-    activeModelId: 'm1',
-    mutationViews: new Map([['m1', spy.view]]),
+    // Deliberately NOT the edited model in the wiring tests below: a room's
+    // mirror gates on the modelId it is handed, so handing it the active model
+    // instead of the edited one re-opens the corruption.
+    activeModelId: 'active-not-edited',
+    mutationViews: new Map([[editedModelId, spy.view]]),
     undoStacks: new Map(),
     redoStacks: new Map(),
     dirtyModels: new Set(),
     mutationVersion: 0,
     canCollabEdit: () => canEdit,
-    // Mirrors are cross-slice; the gate under test runs before they would.
-    mirrorPropertyEdit: () => {},
-    mirrorPropertyDelete: () => {},
-    mirrorAttributeEdit: () => {},
+    // Mirrors are cross-slice; the role gate under test runs before they would.
+    // Each records the modelId it was handed — see the wiring suite below.
+    mirrorPropertyEdit: (modelId: unknown) => {
+      mirrors.push({ name: 'mirrorPropertyEdit', modelId });
+    },
+    mirrorPropertyDelete: (modelId: unknown) => {
+      mirrors.push({ name: 'mirrorPropertyDelete', modelId });
+    },
+    mirrorAttributeEdit: (modelId: unknown) => {
+      mirrors.push({ name: 'mirrorAttributeEdit', modelId });
+    },
   };
   const setState = (partial: unknown) => {
     const updates =
@@ -68,7 +82,7 @@ function buildSlice(canEdit: boolean) {
     {} as never,
   ) as MutationSlice;
   state = { ...slice, ...state };
-  return { spy, state: () => state as unknown as ViewerState & MutationSlice };
+  return { spy, mirrors, state: () => state as unknown as ViewerState & MutationSlice };
 }
 
 describe('mutationSlice — collab role gate on property mutations', () => {
@@ -91,6 +105,115 @@ describe('mutationSlice — collab role gate on property mutations', () => {
     assert.notStrictEqual(s.setAttribute('m1', 1, 'Name', 'x'), null);
     assert.deepStrictEqual(spy.calls, ['setProperty', 'setAttribute']);
     assert.ok((state() as unknown as { dirtyModels: Set<string> }).dirtyModels.has('m1'));
+  });
+
+  it('editor/admin: a DELETE commits too, not just the gate letting it past', () => {
+    // github.com/LTplus-AG/ifc-lite/issues/2765: making `deleteProperty` a
+    // no-op immediately AFTER the gate left 4 tests green. Every assertion on
+    // it was in the viewer-role case, where `null` is the CORRECT answer, so
+    // "the gate rejects it" and "the action does nothing at all" produced the
+    // same observable result and only one of them is right.
+    const { spy, state } = buildSlice(true);
+    const s = state();
+
+    assert.notStrictEqual(s.deleteProperty('m1', 1, 'Pset_Test', 'P'), null);
+
+    assert.deepStrictEqual(spy.calls, ['deleteProperty'], 'the delete reaches the local view');
+    assert.ok(
+      (state() as unknown as { dirtyModels: Set<string> }).dirtyModels.has('m1'),
+      'a delete dirties the model like any other edit',
+    );
+    assert.ok(
+      ((state() as unknown as { undoStacks: Map<string, unknown[]> }).undoStacks.get('m1') ?? []).length > 0,
+      'a delete is undoable',
+    );
+  });
+});
+
+/**
+ * The room gate lives inside each `mirror*` action, keyed on the modelId it is
+ * handed (`roomStoreFor`, lib/collab/room-model-target.ts). That makes the call
+ * site's one remaining job load-bearing: it must pass the model the edit was
+ * made ON. Passing the ACTIVE model instead is the corruption this PR fixes,
+ * re-introduced one level up — a user who joins a room and then loads and
+ * selects their own file has a different model active, and the gate would then
+ * approve mirroring their private edit into the shared room.
+ *
+ * So `activeModelId` here is deliberately NOT the edited model: any call site
+ * that reaches for it turns these red.
+ */
+describe('mutationSlice — mirrors are handed the EDITED model, not the active one', () => {
+  it('setProperty / deleteProperty / setAttribute each forward their own modelId', () => {
+    const { mirrors, state } = buildSlice(true, 'edited');
+    const s = state();
+
+    s.setProperty('edited', 1, 'Pset_Test', 'P', 'v');
+    s.deleteProperty('edited', 1, 'Pset_Test', 'P');
+    s.setAttribute('edited', 1, 'Name', 'x');
+
+    assert.deepStrictEqual(
+      mirrors,
+      [
+        { name: 'mirrorPropertyEdit', modelId: 'edited' },
+        { name: 'mirrorPropertyDelete', modelId: 'edited' },
+        { name: 'mirrorAttributeEdit', modelId: 'edited' },
+      ],
+      'each mirror must receive the model the edit was made on',
+    );
+    // Stated separately so a future call site that reads `activeModelId`
+    // fails on the reason rather than on a diff of two lists.
+    for (const call of mirrors) {
+      assert.notStrictEqual(
+        call.modelId,
+        'active-not-edited',
+        `${call.name} was handed the ACTIVE model — that is the corruption path`,
+      );
+    }
+  });
+
+  /**
+   * The mirrors are called unconditionally now (the gate moved into them), so
+   * a read-only role must still be stopped by the role gate before any of them
+   * is reached — otherwise moving the room gate would have quietly widened the
+   * role gate's hole.
+   */
+  it('viewer role: no mirror is reached at all', () => {
+    const { mirrors, state } = buildSlice(false, 'edited');
+    const s = state();
+    s.setProperty('edited', 1, 'Pset_Test', 'P', 'v');
+    s.deleteProperty('edited', 1, 'Pset_Test', 'P');
+    s.setAttribute('edited', 1, 'Name', 'x');
+    assert.deepStrictEqual(mirrors, []);
+  });
+
+  /**
+   * `readCollabPlacement` is the placement half of the same rule, and the one
+   * that was ungated when this PR was first pushed. `readEntityPosition` is the
+   * GizmoOverlay's "is this entity movable?" gate and `readEntityRotation` the
+   * rotate card's, so handing either the ACTIVE model would put the move gizmo
+   * on a PRIVATE model's entities — and dragging it runs the write.
+   *
+   * Both reach the collab fallback here because the model has no registered
+   * `ifcDataStore`, which is the real "no STEP chain" branch: with no store
+   * there is nothing for `resolvePlacementChain` to walk.
+   */
+  it('readEntityPosition / readEntityRotation forward their own modelId to readCollabPlacement', () => {
+    const seen: unknown[] = [];
+    const { state } = buildSlice(true, 'edited');
+    (state() as unknown as Record<string, unknown>).readCollabPlacement = (modelId: unknown) => {
+      seen.push(modelId);
+      return null;
+    };
+    const s = state();
+
+    s.readEntityPosition('edited', 1);
+    s.readEntityRotation('edited', 1);
+
+    assert.deepStrictEqual(
+      seen,
+      ['edited', 'edited'],
+      'the placement read must name the model the entity id came from',
+    );
   });
 });
 

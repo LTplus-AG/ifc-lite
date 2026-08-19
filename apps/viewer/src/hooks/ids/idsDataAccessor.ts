@@ -6,8 +6,9 @@
  * IDS Data Accessor — thin wrapper around the canonical bridge.
  *
  * The actual `IfcDataStore → IFCDataAccessor` translation lives in
- * `@ifc-lite/ids/bridge` so the viewer, the corpus-parity harness,
- * and the MCP server share one implementation. Keeping this file as
+ * `@ifc-lite/ids/bridge` so the viewer, the buildingSMART corpus harness
+ * (`packages/ids/src/__corpus__/corpus.test.ts`) and the MCP server share
+ * one implementation. Keeping this file as
  * a re-export preserves the existing import path for callers that
  * pass through `_modelId` (currently unused but preserved for API
  * stability — the validator already takes a `modelInfo` separately).

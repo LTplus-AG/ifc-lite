@@ -496,9 +496,14 @@ describe('StepExporter', () => {
   // Maintainer-found defect on this PR (predicate asymmetry): the closure's
   // bridge check treats a referenced id that never existed in the file the
   // same as one that was excluded (`excludeIds.has(id) || !entityIndex.has(id)`
-  // in `isBridgeTargetExcluded`), while emission's own predicate
-  // (`isExcludedFromRelationshipRefs`) only excludes a HIDDEN product or a
-  // TOMBSTONED id — never "never existed". A relationship whose OwnerHistory
+  // in `isBridgeTargetExcluded`), while the predicate `StepExporter` shares
+  // with it (`isRefExcludedDuringClosureWalk`) only excludes a HIDDEN product
+  // or a TOMBSTONED id — never "never existed". The same holds of the OUTPUT
+  // filter's `isOmittedFromOutput`: its `effective.has(id) || isDeleted(id)`
+  // qualifier exists precisely to keep "never existed" out of scope, so this
+  // test's position is unchanged by that predicate split — a pre-existing
+  // dangling ref is somebody else's bug and ships as it arrived.
+  // A relationship whose OwnerHistory
   // slot already names a dangling `#999` (a pre-existing corrupt/truncated
   // source, not something this export pass created) therefore blocks the
   // closure from bridging into the SAME relationship's RelatingPropertyDefinition

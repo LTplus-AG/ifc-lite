@@ -6,6 +6,10 @@
 //! the module have to live beside it rather than inside it.
 
 use super::*;
+// The exporters route through the quality-carrying entry point now, so the
+// plain one is named here rather than inherited from the parent module.
+use ifc_lite_processing::process_geometry;
+use ifc_lite_processing::TessellationQuality;
 
 /// Parse a GLB and return (json: Value, bin: Vec<u8>).
 fn parse_glb(glb: &[u8]) -> (Value, Vec<u8>) {
@@ -161,6 +165,66 @@ fn with_index_glb_is_byte_identical() {
     let idx = Arc::new(crate::build_entity_index(&bytes));
     let (shared, _) = export_glb_with_stats_with_index(&bytes, &opts, idx);
     assert_eq!(plain, shared, "shared-index GLB must equal self-indexed GLB");
+}
+
+#[test]
+fn tessellation_quality_reaches_the_exporter_and_changes_the_mesh() {
+    // The feature this PR adds, pinned end to end rather than at the seam.
+    //
+    // `GltfOptions::default()` is Medium and is the golden-output identity, so
+    // a test that only exercises the default cannot tell whether the option is
+    // wired at all - it would pass identically against the old
+    // `process_geometry` call that ignored quality entirely. Coarse must
+    // therefore produce a DIFFERENT GLB, and the direction matters too: a
+    // coarser tessellation on a curve-bearing model emits fewer vertices, so
+    // asserting merely "not equal" would also pass if the option were routed
+    // to the wrong parameter and produced some other change.
+    // `fixture_opt`, not `fixture`: the house rule is to SKIP when the corpus
+    // is not fetched rather than throw. The eprintln keeps a zero-coverage run
+    // visible instead of masquerading as a pass (the Greptile #1511 lesson).
+    let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
+        eprintln!("skipping tessellation_quality_reaches_the_exporter: corpus not fetched");
+        return;
+    };
+
+    let (medium, medium_stats) = export_glb_with_stats(&bytes, &GltfOptions::default());
+    let (coarse, coarse_stats) = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { tessellation_quality: TessellationQuality::Low, ..Default::default() },
+    );
+
+    assert_ne!(
+        medium, coarse,
+        "Low tessellation must not produce the Medium GLB - the option is not reaching \
+         `process_geometry_filtered_with_quality` if these are equal"
+    );
+    assert!(
+        coarse.len() < medium.len(),
+        "coarser tessellation should emit a SMALLER GLB (medium {} bytes, coarse {} bytes); \
+         a difference in the other direction means the quality was routed somewhere unintended",
+        medium.len(),
+        coarse.len()
+    );
+    // Both must still be real exports: a quality value that broke meshing
+    // would also satisfy the two assertions above by emitting nothing.
+    assert!(medium_stats.meshes > 0, "medium export produced no meshes");
+    assert!(coarse_stats.meshes > 0, "coarse export produced no meshes");
+}
+
+#[test]
+fn default_tessellation_quality_is_the_golden_medium() {
+    // Guards the identity the rest of the golden tests rest on: adding the
+    // option must not have moved the default output.
+    let Some(bytes) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else {
+        eprintln!("skipping default_tessellation_quality_is_the_golden_medium: corpus not fetched");
+        return;
+    };
+    let (implicit, _) = export_glb_with_stats(&bytes, &GltfOptions::default());
+    let (explicit, _) = export_glb_with_stats(
+        &bytes,
+        &GltfOptions { tessellation_quality: TessellationQuality::Medium, ..Default::default() },
+    );
+    assert_eq!(implicit, explicit, "default must be byte-identical to explicit Medium");
 }
 
 // ── #1516: streaming shared-index + fail-fast size ────────────────────
@@ -1509,4 +1573,214 @@ fn streaming_bounded_matches_in_memory_on_empty_model() {
     let (streamed, stats) = export_glb_streaming_bounded(empty, &opts);
     assert_eq!(stats.meshes, 0);
     assert_eq!(in_memory, streamed, "empty-model GLB must be byte-identical");
+}
+
+// ── glTF quantized index componentType: u16 / u32 threshold (issue #2802) ──
+//
+// `push_mesh_quantized` (gltf.rs, in-memory quantized assembler) and the
+// bounded streaming assembler's two independent copies of the same
+// expression (one deciding the accessor's declared `componentType`, one
+// deciding the actual byte width the second pass writes) all switch on
+// `nverts <= u16::MAX as u32 + 1` (i.e. `nverts <= 65536`). No existing
+// fixture straddled that boundary, so an off-by-one there would silently
+// truncate index 65536 into a `u16` (wraps to 0 -- `65536 % 65536 == 0`)
+// while every other assertion in the 228-test suite stayed green.
+//
+// These pin BOTH sides with a REAL round trip: the primitive's index buffer
+// bytes are decoded per the accessor's DECLARED componentType and checked
+// against the untruncated original values, not just the type tag.
+
+/// A single-face `IfcFacetedBrep` with exactly `n` loop points, arranged as a
+/// (very slightly non-planar-safe) convex polygon. `triangulate_face`
+/// (gltf.rs's neighbour in `brep/faceted.rs`) emits EXACTLY one output
+/// vertex per input loop point -- unlike `IfcTriangulatedFaceSet` /
+/// `IfcPolygonalFaceSet`, which flat-shade (duplicate 3 vertices per
+/// triangle, forcing the output vertex count to always be a multiple of 3).
+/// That's the only geometry type in the pipeline that lets a test land on an
+/// EXACT vertex count -- needed here because 65536 and 65537 are not
+/// multiples of any small tessellation quantum.
+fn faceted_brep_fixture(n: u32) -> String {
+    assert!(n >= 3);
+    let mut points = String::with_capacity(n as usize * 40);
+    let mut refs = String::with_capacity(n as usize * 8);
+    for i in 0..n {
+        let id = 1000 + i;
+        // Points on a slowly-growing-radius circle: convex (fast, robust
+        // earcut) and no three points exactly collinear.
+        let angle = std::f64::consts::TAU * (i as f64) / (n as f64);
+        let r = 1000.0 + (i as f64) * 1e-6;
+        let x = r * angle.cos();
+        let y = r * angle.sin();
+        points.push_str(&format!("#{id}=IFCCARTESIANPOINT(({x:.9},{y:.9},0.));\n"));
+        refs.push_str(&format!("#{id},"));
+    }
+    refs.pop(); // trailing comma
+    let loop_id = 1000 + n;
+    let ob_id = loop_id + 1;
+    let face_id = loop_id + 2;
+    let shell_id = loop_id + 3;
+    let brep_id = loop_id + 4;
+    format!(
+        "ISO-10303-21;\n\
+HEADER;\n\
+FILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\n\
+DATA;\n\
+#1=IFCPROJECT('0project00000000000001',$,'P',$,$,$,$,(#20),#30);\n\
+#30=IFCUNITASSIGNMENT((#31));\n\
+#31=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n\
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);\n\
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);\n\
+#22=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#40=IFCLOCALPLACEMENT($,#21);\n\
+#50=IFCBUILDINGELEMENTPROXY('0elem00000000000000001',$,'E',$,$,#40,#60,$,$);\n\
+#60=IFCPRODUCTDEFINITIONSHAPE($,$,(#61));\n\
+#61=IFCSHAPEREPRESENTATION(#20,'Body','Brep',(#{brep_id}));\n\
+{points}\
+#{loop_id}=IFCPOLYLOOP(({refs}));\n\
+#{ob_id}=IFCFACEOUTERBOUND(#{loop_id},.T.);\n\
+#{face_id}=IFCFACE((#{ob_id}));\n\
+#{shell_id}=IFCCLOSEDSHELL((#{face_id}));\n\
+#{brep_id}=IFCFACETEDBREP(#{shell_id});\n\
+ENDSEC;\n\
+END-ISO-10303-21;\n"
+    )
+}
+
+/// Decode a SCALAR index accessor per its DECLARED `componentType` (5123 =
+/// `UNSIGNED_SHORT`, 5125 = `UNSIGNED_INT`) -- proves the type tag and the
+/// actual byte width written agree, rather than trusting one alone.
+fn decode_indices(json: &Value, bin: &[u8], acc_idx: usize) -> Vec<u64> {
+    let acc = &json["accessors"][acc_idx];
+    let ct = acc["componentType"].as_u64().unwrap();
+    let count = acc["count"].as_u64().unwrap() as usize;
+    let bv_idx = acc["bufferView"].as_u64().unwrap() as usize;
+    let bv = &json["bufferViews"][bv_idx];
+    let base = bv["byteOffset"].as_u64().unwrap_or(0) as usize
+        + acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+    // Cross-check the DECLARED componentType against the bufferView's actual
+    // byteLength: a byte-width mismatch between "what pass 1 declared" and
+    // "what pass 2 actually wrote" (the two-pass streaming path's two
+    // SEPARATE copies of the `small` expression disagreeing) would otherwise
+    // go undetected here -- reading a stream of real u32s as u16s still
+    // happens to surface the expected values at SOME offset (each u32's low
+    // half is its low 16 bits), so a membership check on the decoded values
+    // alone is not sufficient evidence.
+    let width = match ct {
+        5123 => 2u64,
+        5125 => 4u64,
+        other => panic!("unexpected index componentType {other}"),
+    };
+    let declared_len = (count as u64 * width).div_ceil(4) * 4;
+    let actual_len = bv["byteLength"].as_u64().unwrap();
+    assert_eq!(
+        actual_len, declared_len,
+        "index bufferView byteLength ({actual_len}) doesn't match count*declared-width \
+         ({declared_len}) -- the declared componentType disagrees with the bytes actually written"
+    );
+    (0..count)
+        .map(|i| match ct {
+            5123 => {
+                let o = base + i * 2;
+                u16::from_le_bytes(bin[o..o + 2].try_into().unwrap()) as u64
+            }
+            5125 => {
+                let o = base + i * 4;
+                u32::from_le_bytes(bin[o..o + 4].try_into().unwrap()) as u64
+            }
+            other => panic!("unexpected index componentType {other}"),
+        })
+        .collect()
+}
+
+/// The single element's mesh's index accessor id, plus its declared vertex count.
+fn index_acc_and_nverts(json: &Value) -> (usize, u64) {
+    let prim = &json["meshes"][0]["primitives"][0];
+    let idx_acc = prim["indices"].as_u64().expect("indices accessor") as usize;
+    let pos_acc = prim["attributes"]["POSITION"].as_u64().expect("position accessor") as usize;
+    (idx_acc, json["accessors"][pos_acc]["count"].as_u64().unwrap())
+}
+
+/// nverts == u16::MAX + 1 (65536): the LARGEST vertex count that still fits a
+/// `u16` index (max index = nverts - 1 = 65535 = u16::MAX exactly). Through
+/// the IN-MEMORY quantized assembler -- reaches `push_mesh_quantized`'s
+/// threshold (gltf.rs, `let small = nverts <= u16::MAX as u32 + 1`, near
+/// line 805). Runs unconditionally: the fixture is synthetic STEP text, no
+/// downloaded fixture involved.
+#[test]
+fn index_u16_boundary_in_memory() {
+    let content = faceted_brep_fixture(65536);
+    let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+    let (glb, _) = export_glb_from_result(process_geometry(content.as_bytes()), &opts);
+    let (json, bin) = parse_glb(&glb);
+    let (idx_acc, nverts) = index_acc_and_nverts(&json);
+    assert_eq!(nverts, 65536, "fixture must actually reach the boundary vertex count");
+    assert_eq!(
+        json["accessors"][idx_acc]["componentType"], 5123,
+        "65536 verts must still fit UNSIGNED_SHORT (5123)"
+    );
+    let idx = decode_indices(&json, &bin, idx_acc);
+    assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
+    assert!(idx.contains(&65535), "the max index (65535) must round-trip untruncated: {idx:?}");
+}
+
+/// nverts == u16::MAX + 2 (65537): ONE past the boundary -- max index =
+/// 65536, which does NOT fit a `u16` (65536 % 65536 == 0 is exactly the
+/// silent-wrap failure mode an off-by-one comparison would produce). Same
+/// site as above.
+#[test]
+fn index_u32_promote_in_memory() {
+    let content = faceted_brep_fixture(65537);
+    let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+    let (glb, _) = export_glb_from_result(process_geometry(content.as_bytes()), &opts);
+    let (json, bin) = parse_glb(&glb);
+    let (idx_acc, nverts) = index_acc_and_nverts(&json);
+    assert_eq!(nverts, 65537, "fixture must actually reach one past the boundary");
+    assert_eq!(
+        json["accessors"][idx_acc]["componentType"], 5125,
+        "65537 verts must promote to UNSIGNED_INT (5125)"
+    );
+    let idx = decode_indices(&json, &bin, idx_acc);
+    assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
+    assert!(
+        idx.contains(&65536),
+        "the max index (65536) must survive as 65536, not wrap to 0: {idx:?}"
+    );
+}
+
+/// Same boundary through the BOUNDED TWO-PASS streaming assembler: pass 1
+/// declares the accessor's `componentType` (gltf.rs, near line 2295), pass 2
+/// writes the actual index bytes using a SEPARATELY re-evaluated copy of the
+/// same expression stashed on `StreamedWrite.quant` (near line 2367,
+/// consumed near line 2618). Both duplicated copies have to agree with pass
+/// 1 AND with the untruncated value for this to pass.
+#[test]
+fn index_u16_boundary_streaming_bounded() {
+    let content = faceted_brep_fixture(65536);
+    let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+    let (glb, _) = export_glb_streaming_bounded(content.as_bytes(), &opts);
+    let (json, bin) = parse_glb(&glb);
+    let (idx_acc, nverts) = index_acc_and_nverts(&json);
+    assert_eq!(nverts, 65536);
+    assert_eq!(json["accessors"][idx_acc]["componentType"], 5123);
+    let idx = decode_indices(&json, &bin, idx_acc);
+    assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
+    assert!(idx.contains(&65535), "{idx:?}");
+}
+
+/// See [`index_u16_boundary_streaming_bounded`]; the promote side.
+#[test]
+fn index_u32_promote_streaming_bounded() {
+    let content = faceted_brep_fixture(65537);
+    let opts = GltfOptions { quantize: true, ..GltfOptions::default() };
+    let (glb, _) = export_glb_streaming_bounded(content.as_bytes(), &opts);
+    let (json, bin) = parse_glb(&glb);
+    let (idx_acc, nverts) = index_acc_and_nverts(&json);
+    assert_eq!(nverts, 65537);
+    assert_eq!(json["accessors"][idx_acc]["componentType"], 5125);
+    let idx = decode_indices(&json, &bin, idx_acc);
+    assert!(idx.iter().min() == Some(&0), "index 0 must be present: {idx:?}");
+    assert!(idx.contains(&65536), "{idx:?}");
 }

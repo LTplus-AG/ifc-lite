@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { startCollabServer } from '../src/server.js';
 import { MemoryPersistence } from '../src/persistence.js';
@@ -105,6 +105,65 @@ describe('path-locks', () => {
     expect(rejects.some((e) => String((e.detail as { reason?: string } | undefined)?.reason).startsWith('locked:'))).toBe(true);
 
     prov.destroy();
+    await handle.stop();
+  }, 10_000);
+
+  // The reject-path test above only proves the verifier can say no. It
+  // does not prove an allowed write actually reaches other peers — that
+  // is a separate, unverified claim about how `handleMessage` dispatches
+  // an `{ ok: true }` decision. In the sibling replay-protector verifier,
+  // the accept path was silently broken (the transformed `payload` it
+  // returned was never dispatched, so every accepted edit vanished)
+  // while its own reject-path test stayed green (fixed in #2846). This
+  // test drives two real peers through a real `startCollabServer` with
+  // `verifyAgainstPathLocks` installed and asserts the downstream
+  // effect — peer 2 observing peer 1's write to an *unlocked* path —
+  // not just the verifier's return value.
+  it('accepts writes to unlocked prefixes and propagates them to other peers via verifyAgainstPathLocks', async () => {
+    const reg = createPathLockRegistry();
+    reg.add({ prefix: 'entities/locked', label: 'frozen' });
+    const audit = new MemoryAuditSink();
+
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      auditSink: audit,
+      verifyMessage: verifyAgainstPathLocks(reg),
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    const url = `ws://127.0.0.1:${port}`;
+
+    const doc1 = new Y.Doc();
+    const prov1 = new WebsocketProvider(url, 'project/main', doc1, {
+      WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
+    });
+    const doc2 = new Y.Doc();
+    const prov2 = new WebsocketProvider(url, 'project/main', doc2, {
+      WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
+    });
+    await Promise.all([
+      new Promise<void>((res) => (prov1.synced ? res() : prov1.once('sync', () => res()))),
+      new Promise<void>((res) => (prov2.synced ? res() : prov2.once('sync', () => res()))),
+    ]);
+
+    // Write to an UNLOCKED path from peer 1.
+    const ents1 = doc1.getMap('entities');
+    doc1.transact(() => {
+      const wall = new Y.Map<unknown>();
+      wall.set('kind', 'wall');
+      ents1.set('open-wall', wall);
+    });
+
+    // Assert the downstream effect on peer 2, not the verifier's decision.
+    await vi.waitFor(() => {
+      const ents2 = doc2.getMap('entities');
+      expect(ents2.has('open-wall')).toBe(true);
+    }, { timeout: 5_000, interval: 25 });
+
+    prov1.destroy();
+    prov2.destroy();
     await handle.stop();
   }, 10_000);
 });

@@ -42,11 +42,13 @@ import {
   IfcParser,
   CompactEntityIndexBuilder,
   EMPTY_SOURCE_BYTES,
+  asSourceBytes,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { MutablePropertyView } from '@ifc-lite/mutations';
+import { MutablePropertyView, StoreEditor, OVERLAY_BYTE_OFFSET } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { createSourceRefReader } from './source-ref-bounds.js';
+import { getEffectiveEntityIndex } from './effective-index.js';
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
@@ -210,5 +212,101 @@ describe('the exporter never writes a reference to a line it could not emit', ()
     const defined = new Set(lines.map((l) => Number(/^#(\d+)/.exec(l)![1])));
 
     expect(lines.flatMap(referencedIds).filter((id) => !defined.has(id))).toEqual([]);
+  });
+});
+
+/**
+ * Pins the exemption `source-ref-bounds.ts` grants the incidental readers
+ * (`getPropertySetName`, `getElementQuantityName`, `getRelatedEntities`, …),
+ * which decode a range and pattern-match in it rather than gating on
+ * `createSourceRefReader`.
+ *
+ * The doc used to justify that with "a clamped, empty decode already yields no
+ * match, which is the same answer". Measured below, that reason is wrong: a
+ * clamped decode is only EMPTY when the range ends at or before byte 0. A
+ * NEGATIVE offset with a positive length clamps its start up to 0 and decodes
+ * the beginning of the file — a confidently wrong answer, not a null.
+ *
+ * The exemption is still correct, for a different and stronger reason, pinned
+ * here so a future producer cannot quietly invalidate it: no negative offset
+ * reaches those readers at all.
+ */
+describe('the incidental readers are exempt by construction, not by clamping', () => {
+  it('a negative offset with a positive length decodes the WRONG line, not the empty string', () => {
+    // The mechanism, isolated: `clampRange` floors the start at 0.
+    const text = '#1=IFCPROPERTYSET(\'g1\',$,\'FirstName\',$,());\n#2=IFCPROPERTYSET(\'g2\',$,\'SecondName\',$,());\n';
+    const bytes = asSourceBytes(new TextEncoder().encode(text));
+    const secondOffset = text.indexOf('#2=');
+
+    // The zero-length marker every real negative-offset producer writes: the
+    // range ends at or before 0, so the decode really is empty and "no match"
+    // really is the outcome the doc described.
+    expect(bytes.decodeUtf8(-1, -1 + 0)).toBe('');
+
+    // A negative offset with real length is a different animal. Asking for
+    // `#2`'s line two bytes early does not fail — it returns `#1`'s.
+    const wrong = bytes.decodeUtf8(-2, -2 + secondOffset);
+    expect(wrong).not.toBe('');
+    expect(wrong.match(/IFCPROPERTYSET\s*\([^,]*,[^,]*,'([^']*)'/i)![1]).toBe('FirstName');
+  });
+
+  it('every negative-offset producer pairs it with a zero byteLength', async () => {
+    // `OVERLAY_BYTE_OFFSET` is the only negative offset in the repo. All three
+    // sites that write it — `store-editor.ts` `addEntity`, and
+    // `effective-index.ts` `get` / `[Symbol.iterator]` — pair it with
+    // `byteLength: 0`, which is the case the clamp really does answer as empty.
+    // All three are asserted here: the safety argument for the incidental
+    // readers rests on the whole set, so pinning one and leaving the other two
+    // to prose is how a future edit at an unpinned site goes unnoticed.
+    expect(OVERLAY_BYTE_OFFSET).toBeLessThan(0);
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+    const created = new StoreEditor(store, view)
+      .addEntity('IFCWALL', [null, null, null, null, null, null, null, null]);
+
+    // 1. `store-editor.ts` `addEntity`, the ref it hands back to its caller.
+    expect(created.byteOffset).toBe(OVERLAY_BYTE_OFFSET);
+    expect(created.byteLength).toBe(0);
+
+    // The overlay is non-empty, so this is the `OverlayIndex` branch — the only
+    // one of the two `getEffectiveEntityIndex` returns that synthesises a ref
+    // for an overlay-created id at all.
+    const effective = getEffectiveEntityIndex(store, view, true);
+
+    // 2. `effective-index.ts` `get`.
+    const fromGet = effective.get(created.expressId);
+    expect(fromGet).toBeDefined();
+    expect(fromGet!.byteOffset).toBe(OVERLAY_BYTE_OFFSET);
+    expect(fromGet!.byteLength).toBe(0);
+
+    // 3. `effective-index.ts` `[Symbol.iterator]`, which builds its own ref
+    // object rather than delegating to `get` — so `get` passing says nothing
+    // about it.
+    const iterated = [...effective].find(([id]) => id === created.expressId);
+    expect(iterated).toBeDefined();
+    expect(iterated![1].byteOffset).toBe(OVERLAY_BYTE_OFFSET);
+    expect(iterated![1].byteLength).toBe(0);
+
+    // And nothing else the iterator yields breaks the pairing either, which is
+    // the invariant in the form the incidental readers actually depend on.
+    for (const [, ref] of effective) {
+      if (ref.byteOffset < 0) expect(ref.byteLength).toBe(0);
+    }
+  });
+
+  it('an overlay-created ref never enters the index those readers consult', async () => {
+    // The second, independent reason. `getPropertySetName` and its siblings
+    // read `dataStore.entityIndex.byId` — the PARSED index. The overlay's
+    // negative offset lives only in the EFFECTIVE index, which synthesises it
+    // on read and never writes it back.
+    const store = await parseBase();
+    const view = new MutablePropertyView(null, 'test-model');
+    const created = new StoreEditor(store, view)
+      .addEntity('IFCWALL', [null, null, null, null, null, null, null, null]);
+
+    expect(store.entityIndex.byId.get(created.expressId)).toBeUndefined();
+    for (const [, ref] of store.entityIndex.byId) {
+      expect(ref.byteOffset).toBeGreaterThanOrEqual(0);
+    }
   });
 });

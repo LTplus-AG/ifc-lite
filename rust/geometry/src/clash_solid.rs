@@ -18,7 +18,7 @@
 //!
 //! The exact CSG kernel snaps every input coordinate to
 //! [`SNAP_GRID`](crate::kernel::mesh_bridge) = `2^-16 m ≈ 15.26 µm` and treats
-//! faces within [`near_band_from_extent`] of each other as coplanar. Inside that
+//! faces within [`NearBand`]'s band of each other as coplanar. Inside that
 //! band a thin overlap is not a thin solid — it is a *coplanar contact*, and the
 //! arrangement returns a wedge rather than the slab. Measured on the analytic
 //! box oracle (`tests/clash_intersection_oracle.rs`), a slab overlap reports:
@@ -52,7 +52,7 @@
 use crate::clash_contact_axes::{dot3, gate_axes};
 use crate::kernel::arrangement::Tri;
 use crate::kernel::mesh_bridge::intersection_tris;
-use crate::kernel::near_band::near_band_from_extent;
+use crate::kernel::near_band::NearBand;
 use crate::mesh::Mesh;
 
 /// Multiple of the kernel's near-coplanar band above which the intersection
@@ -251,21 +251,48 @@ fn component_groups(tris: &[Tri]) -> Vec<Vec<usize>> {
     groups.into_values().collect()
 }
 
-/// Largest coordinate magnitude across both operands — the `extent` the kernel's
-/// own near-coplanar band is sized from, so the gate widens with world distance
-/// exactly as the kernel's own tolerance does.
-fn operand_extent(a: &Mesh, b: &Mesh) -> f64 {
-    a.positions
-        .iter()
-        .chain(b.positions.iter())
-        .fold(0.0f64, |m, &c| {
-            let c = c as f64;
-            if c.is_finite() {
-                m.max(c.abs())
+/// Per-axis coordinate extents across both operands, for sizing the trust
+/// gate's band PROJECTED onto whichever candidate axis the thickness below is
+/// measured along.
+///
+/// Until the world-frame fix this used a single scalar (max |coordinate| over
+/// ALL THREE axes of both operands), which sizes the band from whichever axis
+/// happens to carry the largest world offset — including one the measured
+/// thickness never touches. A pair 10 km out in X but overlapping along Z
+/// then got a band derived entirely from the irrelevant X magnitude,
+/// ballooning the required thickness to ~9.5 mm and withholding a genuine
+/// 5 mm Z overlap that is a `Solid` at the origin
+/// (`clash_solid_world_frame_tests.rs`). [`NearBand::scaled_band2`] keeps the
+/// extents PER AXIS so the caller can project onto the SAME axis the
+/// thickness itself is measured along — exactly the fix `near_band.rs`
+/// applied to the kernel's own near-coplanar reconciliation.
+fn operand_near_band(a: &Mesh, b: &Mesh) -> NearBand {
+    let mut band = NearBand::default();
+    for chunk in a
+        .positions
+        .chunks_exact(3)
+        .chain(b.positions.chunks_exact(3))
+    {
+        let p = [
+            if chunk[0].is_finite() {
+                chunk[0] as f64
             } else {
-                m
-            }
-        })
+                0.0
+            },
+            if chunk[1].is_finite() {
+                chunk[1] as f64
+            } else {
+                0.0
+            },
+            if chunk[2].is_finite() {
+                chunk[2] as f64
+            } else {
+                0.0
+            },
+        ];
+        band.observe_point(&p);
+    }
+    band
 }
 
 /// The intersection solid of two world-space meshes, or an honest reason there
@@ -340,8 +367,24 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     // extent; the reported `thickness` is the worst (thinnest) extent found
     // in ANY single component along ANY candidate axis, so one bad component
     // still withholds the whole pair rather than being averaged away.
+    //
+    // The `required` band paired with that thickness must be measured along
+    // the SAME axis, not collapsed to one world-distance-derived scalar: a
+    // scalar sized from the max |coordinate| over every axis of both
+    // operands inflates whenever EITHER operand sits far from the origin on
+    // ANY axis, including one the measured thickness never touches (a pair
+    // 10 km out in X but overlapping along Z got a ~9.5 mm required band
+    // driven entirely by the irrelevant X offset — see
+    // `clash_solid_world_frame_tests.rs`). `NearBand::scaled_band2` instead
+    // projects the operands' PER-AXIS extents onto the candidate axis itself,
+    // so an offset on an axis orthogonal to the one being tested contributes
+    // nothing — exactly the fix `near_band.rs` already applies to the
+    // kernel's own near-coplanar reconciliation. `axis` is one of
+    // `gate_axes`'s unit vectors, so `nn = 1.0`.
     let axes = gate_axes(a, b);
+    let band = operand_near_band(a, b);
     let mut thickness = f64::INFINITY;
+    let mut required = 0.0;
     for group in component_groups(&tris) {
         for axis in &axes {
             let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -352,10 +395,13 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
                     hi = hi.max(p);
                 }
             }
-            thickness = thickness.min(hi - lo);
+            let t = hi - lo;
+            if t < thickness {
+                thickness = t;
+                required = TRUST_BAND_MULTIPLE * band.scaled_band2(*axis, 1.0).sqrt();
+            }
         }
     }
-    let required = TRUST_BAND_MULTIPLE * near_band_from_extent(operand_extent(a, b));
     if thickness < required {
         return IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution {
             thickness_m: thickness,

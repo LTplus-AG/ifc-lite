@@ -5,6 +5,7 @@
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
+use super::item_walk::{extract_symbolic_item_at, ItemWalk};
 use super::fill::extract_annotation_fill_area;
 use super::primitives::{SymbolicCircle, SymbolicData, SymbolicPolyline};
 use super::text::extract_text_literal;
@@ -20,7 +21,7 @@ use super::trimmed_curve::extract_trimmed_curve;
 // ────────────────────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn extract_symbolic_item(
+pub(super) fn extract_symbolic_item_inner(
     item: &DecodedEntity,
     decoder: &mut EntityDecoder,
     express_id: u32,
@@ -32,13 +33,15 @@ pub(super) fn extract_symbolic_item(
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicData,
+    depth: u32,
+    walk: &mut ItemWalk,
 ) {
     match item.ifc_type {
         IfcType::IfcGeometricSet | IfcType::IfcGeometricCurveSet => {
             if let Some(elements_attr) = item.get(0) {
                 if let Ok(elements) = decoder.resolve_ref_list(elements_attr) {
                     for element in elements {
-                        extract_symbolic_item(
+                        extract_symbolic_item_at(
                             &element,
                             decoder,
                             express_id,
@@ -50,6 +53,8 @@ pub(super) fn extract_symbolic_item(
                             rtc_z,
                             styled_items,
                             out,
+                            depth + 1,
+                            walk,
                         );
                     }
                 }
@@ -106,7 +111,7 @@ pub(super) fn extract_symbolic_item(
                     if let Some(items_attr) = mapped_rep.get(3) {
                         if let Ok(items) = decoder.resolve_ref_list(items_attr) {
                             for sub_item in items {
-                                extract_symbolic_item(
+                                extract_symbolic_item_at(
                                     &sub_item,
                                     decoder,
                                     express_id,
@@ -118,6 +123,8 @@ pub(super) fn extract_symbolic_item(
                                     rtc_z,
                                     styled_items,
                                     out,
+                                    depth + 1,
+                                    walk,
                                 );
                             }
                         }
@@ -281,7 +288,7 @@ pub(super) fn extract_symbolic_item(
                     for segment in segments {
                         if let Some(curve_ref) = segment.get_ref(2) {
                             if let Ok(parent_curve) = decoder.decode_by_id(curve_ref) {
-                                extract_symbolic_item(
+                                extract_symbolic_item_at(
                                     &parent_curve,
                                     decoder,
                                     express_id,
@@ -293,6 +300,8 @@ pub(super) fn extract_symbolic_item(
                                     rtc_z,
                                     styled_items,
                                     out,
+                                    depth + 1,
+                                    walk,
                                 );
                             }
                         }

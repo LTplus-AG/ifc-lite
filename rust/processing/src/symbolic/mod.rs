@@ -66,7 +66,10 @@ use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 mod color;
 mod fill;
 mod grid;
+mod item_walk;
 mod items;
+#[cfg(test)]
+mod items_cycle_tests;
 mod primitives;
 mod text;
 mod transform;
@@ -78,7 +81,7 @@ pub use primitives::{
 
 use color::build_styled_item_index;
 use grid::extract_grid;
-use items::extract_symbolic_item;
+use item_walk::extract_symbolic_item;
 use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────

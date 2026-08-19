@@ -469,23 +469,28 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       // A newer `runValidation()` call may have started (and even already
       // published) while this one awaited the worker/main-thread validation
-      // above — discard rather than overwrite it (#2802).
-      if (stillWantedValidation(myEpoch)) {
-        setIdsValidationReport(validationReport);
+      // above — discard rather than overwrite it (#2802). The RETURN value
+      // has to agree with that decision too (PR #2837 review): `runValidation`
+      // is public `UseIDSResult` API, and a caller that awaits a superseded
+      // call must see the same "this call lost" signal the catch path already
+      // gives it (`return null`) — not the report that was deliberately never
+      // published to the store.
+      if (!stillWantedValidation(myEpoch)) return null;
 
-        posthog.capture('ids_validation_completed', {
-          total_specifications: validationReport.summary.totalSpecifications,
-          passed_specifications: validationReport.summary.passedSpecifications,
-          failed_specifications: validationReport.summary.failedSpecifications,
-          total_entities_checked: validationReport.summary.totalEntitiesChecked,
-          overall_pass_rate: validationReport.summary.overallPassRate,
-        });
+      setIdsValidationReport(validationReport);
 
-        console.info(
-          `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
-          `${validationReport.summary.totalEntitiesPassed}/${validationReport.summary.totalEntitiesChecked} entities (${validationReport.summary.overallPassRate}%)`
-        );
-      }
+      posthog.capture('ids_validation_completed', {
+        total_specifications: validationReport.summary.totalSpecifications,
+        passed_specifications: validationReport.summary.passedSpecifications,
+        failed_specifications: validationReport.summary.failedSpecifications,
+        total_entities_checked: validationReport.summary.totalEntitiesChecked,
+        overall_pass_rate: validationReport.summary.overallPassRate,
+      });
+
+      console.info(
+        `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
+        `${validationReport.summary.totalEntitiesPassed}/${validationReport.summary.totalEntitiesChecked} entities (${validationReport.summary.overallPassRate}%)`
+      );
 
       return validationReport;
     } catch (err) {

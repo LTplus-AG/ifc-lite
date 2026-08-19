@@ -140,9 +140,9 @@ describe('collabSlice: mirrors are inert in a single-user store', () => {
     assert.equal(st.collabSession, null, 'precondition: no session');
     // The assertion that carries weight is `calls` staying empty below: it
     // proves nothing reached another slice, whichever guard did the stopping.
-    st.mirrorPropertyEdit(1, 'Pset_Test', 'P', 'v', 0 as never);
-    st.mirrorPropertyDelete(1, 'Pset_Test', 'P');
-    st.mirrorAttributeEdit(1, 'Name', 'x');
+    st.mirrorPropertyEdit('model-1', 1, 'Pset_Test', 'P', 'v', 0 as never);
+    st.mirrorPropertyDelete('model-1', 1, 'Pset_Test', 'P');
+    st.mirrorAttributeEdit('model-1', 1, 'Name', 'x');
     st.mirrorAnnotationUpsert({ id: 'a1' } as never);
     st.mirrorAnnotationDelete('a1');
     // Nothing reached the other slices, and nothing threw.

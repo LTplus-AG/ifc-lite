@@ -349,14 +349,21 @@ export function useClash() {
       // (`Scene.getAllInstancedMeshData`) and appends real triangles, not an
       // approximation — no separate AABB-only code path, so a clash reported
       // off an instanced entity is exactly as exact as one reported off a flat
-      // one. `idOffset === 0` is that helper's own "primary model" gate
-      // (instanced shard ids live in the primary model's id space only; every
-      // export call site already gates on it identically) — a federated model
-      // past the first keeps its flat meshes only, same as before this fix.
-      // Returns the SAME object back when there is nothing to add (no
-      // renderer mounted, nothing instanced, or a non-primary model), so this
-      // is a no-op for every case this bug did not touch.
-      const meshes = withInstancedMeshes(geometryResult, (model.idOffset ?? 0) === 0).meshes;
+      // one. GPU instancing stopped being primary-only on 2026-08-06 (#2255) —
+      // federated models get instanced shards too, re-homed onto their own
+      // global id space at drain — so every model in this loop can have
+      // instanced entities, not just the one at idOffset 0 (#2865/#2878
+      // follow-up). `{ idOffset, maxExpressId }` scopes the (unfiltered,
+      // all-models) scene data down to THIS model's global-id bracket, so a
+      // federation of N models does not count each instanced entity N times
+      // over as this loop visits every model. Returns the SAME object back
+      // when there is nothing to add (no renderer mounted, or nothing
+      // instanced for this model), so this is a no-op for every case this bug
+      // did not touch.
+      const meshes = withInstancedMeshes(geometryResult, {
+        idOffset: model.idOffset ?? 0,
+        maxExpressId: model.maxExpressId ?? 0,
+      }).meshes;
       if (meshes.length === 0) continue;
       // `useIfcLoader` shifts every `mesh.expressId` into the GLOBAL id space by
       // this model's `idOffset` while `ifcDataStore` stays LOCAL, so the adapter

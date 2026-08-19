@@ -9,20 +9,56 @@
  * materializes the instanced occurrences from the live renderer scene and appends
  * them to a copy of the geometryResult at export time only (transient — not retained).
  *
- * Instancing applies to the PRIMARY model only (shard entity ids are in the primary
- * model's id space, idOffset 0), so callers pass `isPrimary` and we no-op for
- * federated models.
+ * Instancing used to apply to the PRIMARY model only (shard entity ids lived in the
+ * primary model's id space, idOffset 0) — true when this helper was written (#1238,
+ * 2026-06-21), which is why it used to take a bare `isPrimary` boolean and no-op for
+ * every federated model.
+ *
+ * That stopped being true on 2026-08-06 (#2255, "deliver GPU instancing to federated
+ * models"): `useIfcLoader` now enables instancing for every load, primary and
+ * federated, and `useGeometryStreaming` re-homes a federated shard's occurrence ids
+ * onto that model's GLOBAL id space by `idOffset` before upload — the SAME shift
+ * `finalizeModel` applies to that model's flat meshes. `Scene.getAllInstancedMeshData()`
+ * already returns every loaded model's occurrences, unfiltered, already in the global
+ * id space and the same world-space frame flat meshes use — so a federated model's
+ * instanced entities are present and correctly keyed, they just never reached callers
+ * that gated on `isPrimary` (#2865/#2878 follow-up).
+ *
+ * `getAllInstancedMeshData()` itself is not scoped to one model, though — a caller
+ * building a SINGLE model's export (or a single model's clash element set) must not
+ * splice in every OTHER loaded model's instanced occurrences too, or a federation of
+ * N models would count each instanced entity N times over. `modelRange` is that scope:
+ * pass this model's `{ idOffset, maxExpressId }` (both already on `FederatedModel`,
+ * the same bracket `FederationRegistry.isInModel` uses) to restrict the appended set to
+ * ids `idOffset+1 .. idOffset+maxExpressId`. Pass `null` only when the caller's
+ * `geometryResult` already spans every loaded model (e.g. the merged Cesium world
+ * view) or when there is provably only one model loaded, so there is nothing else to
+ * wrongly include.
  */
 import { getGlobalRenderer } from '../hooks/useBCF.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 
+/** This model's global-id bracket, for scoping `getAllInstancedMeshData()`'s
+ *  unfiltered (all-models) output down to just this model's occurrences. */
+export interface InstancedModelRange {
+  /** `FederatedModel.idOffset` — global ids for this model start at `idOffset + 1`. */
+  idOffset: number;
+  /** `FederatedModel.maxExpressId` — the highest LOCAL id in this model, so the
+   *  global-id upper bound is `idOffset + maxExpressId`. */
+  maxExpressId: number;
+}
+
 export function withInstancedMeshes(
   geometryResult: GeometryResult,
-  isPrimary: boolean,
+  modelRange: InstancedModelRange | null,
 ): GeometryResult {
-  if (!isPrimary) return geometryResult;
   const scene = getGlobalRenderer()?.getScene();
-  const instanced = scene?.getAllInstancedMeshData() ?? [];
+  const all = scene?.getAllInstancedMeshData() ?? [];
+  const instanced = modelRange
+    ? all.filter(
+        (m) => m.expressId > modelRange.idOffset && m.expressId <= modelRange.idOffset + modelRange.maxExpressId,
+      )
+    : all;
   if (instanced.length === 0) return geometryResult;
 
   let totalTriangles = geometryResult.totalTriangles;

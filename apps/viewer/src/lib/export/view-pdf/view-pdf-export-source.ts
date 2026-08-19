@@ -33,7 +33,7 @@ import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { getGlobalCanvas, getGlobalRenderer } from '@/hooks/useBCF';
 import { selectModelMeshes } from '@/lib/type-view-visibility';
 import { computeIsolationFilterSet } from '@/store/basketVisibleSet';
-import { withInstancedMeshes } from '@/utils/instancedExport';
+import { withInstancedMeshes, type InstancedModelRange } from '@/utils/instancedExport';
 import type { useViewerStore } from '@/store';
 import type { ViewMeshInput } from './collect-view-meshes';
 import type { ViewCameraSnapshot } from './generate-view-pdf';
@@ -93,25 +93,33 @@ export function readViewPdfSource(state: ViewerState): ViewPdfSource {
  * library (#2058).
  */
 function gatherDrawnMeshes(state: ViewerState): MeshData[] {
-  const results: { geometry: GeometryResult; isPrimary: boolean }[] = [];
+  const results: { geometry: GeometryResult; instancedModelRange: InstancedModelRange | null }[] = [];
 
   if (state.models.size > 0) {
     for (const model of state.models.values()) {
       if (!model.visible || !model.geometryResult) continue;
-      results.push({ geometry: model.geometryResult, isPrimary: (model.idOffset ?? 0) === 0 });
+      // Every model can carry GPU-instanced occurrences since #2255
+      // (2026-08-06) — scope `withInstancedMeshes` to THIS model's bracket so
+      // a federation of N models doesn't splice every other model's instanced
+      // entities into this one's drawn set (#2865/#2878 follow-up).
+      results.push({
+        geometry: model.geometryResult,
+        instancedModelRange: { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 },
+      });
     }
   } else if (state.geometryResult) {
-    // The legacy single-model slot is always the primary model (idOffset 0).
-    results.push({ geometry: state.geometryResult, isPrimary: true });
+    // The legacy single-model slot is provably the sole model loaded — nothing
+    // else to wrongly include, so `null` (no filter) is correct.
+    results.push({ geometry: state.geometryResult, instancedModelRange: null });
   }
 
   const meshes: MeshData[] = [];
-  for (const { geometry, isPrimary } of results) {
+  for (const { geometry, instancedModelRange } of results) {
     // Appended one at a time, NOT `push(...meshes)`: the argument count would
     // be one model's whole mesh list, which on a large federated model can
     // exceed the engine's maximum argument count and throw a RangeError. Same
     // failure mode as `clipMeshesToHalfSpace` in packages/drawing-2d.
-    for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, isPrimary).meshes)) {
+    for (const mesh of selectModelMeshes(withInstancedMeshes(geometry, instancedModelRange).meshes)) {
       meshes.push(mesh);
     }
   }

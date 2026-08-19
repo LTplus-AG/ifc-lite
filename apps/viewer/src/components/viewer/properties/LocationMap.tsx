@@ -575,7 +575,14 @@ export function LocationMap({
         // from the exported file (#2577). The Location panel only ever shows
         // the primary model's georeference.
         geometryResult,
-        isPrimaryModel: true,
+        // This panel only ever shows the primary model's georeference (no
+        // per-model selector), and receives its `geometryResult` as a prop with
+        // no accompanying idOffset/maxExpressId — `null` (no filter) mirrors the
+        // pre-#2255 "isPrimary" behavior for this always-single-model view. A
+        // multi-model federation could in principle leak another model's
+        // instanced occurrences in here; a precise fix needs the primary
+        // model's `{ idOffset, maxExpressId }` threaded in as a prop.
+        instancedModelRange: null,
         name: 'IFC Model',
       }, createKmzProcessor);
       if (typeof kmz === 'string') {

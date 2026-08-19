@@ -44,24 +44,51 @@ describe('withInstancedMeshes', () => {
     setGlobalRendererRef({ current: null } as RefObject<Renderer | null>);
   });
 
-  it('returns the geometryResult unchanged for a non-primary (federated) model', () => {
+  // CALIBRATION (#2865/#2878 follow-up): proves the id-range filter actually
+  // excludes another loaded model's instanced occurrences — not that the gate
+  // was simply removed. `mesh(2, ...)`'s global id (2) falls OUTSIDE this
+  // model's declared bracket (idOffset 100, so ids 101..150), the way a
+  // DIFFERENT federated model's occurrence would.
+  it('excludes an instanced occurrence outside this model\'s id-range bracket', () => {
     const geom = baseGeometry();
-    // Even with instanced data present, a federated model must not adopt the
-    // primary model's shard occurrences (they're in the primary id space).
     setRenderer([mesh(2, 3, 1)]);
-    assert.equal(withInstancedMeshes(geom, false), geom);
+    assert.equal(withInstancedMeshes(geom, { idOffset: 100, maxExpressId: 50 }), geom);
+  });
+
+  // The federated-gap counterpart: an occurrence INSIDE this model's own
+  // bracket IS adopted — the id-range filter is a scope, not a second
+  // primary-only gate in disguise.
+  it('appends an instanced occurrence inside this model\'s id-range bracket', () => {
+    const geom = baseGeometry();
+    setRenderer([mesh(107, 4, 2)]);
+    const out = withInstancedMeshes(geom, { idOffset: 100, maxExpressId: 50 });
+    assert.deepEqual(out.meshes.map((m) => m.expressId), [1, 107]);
   });
 
   it('returns the geometryResult unchanged when the scene has no instanced meshes', () => {
     const geom = baseGeometry();
     setRenderer([]);
-    assert.equal(withInstancedMeshes(geom, true), geom);
+    assert.equal(withInstancedMeshes(geom, null), geom);
   });
 
-  it('appends instanced occurrences and recomputes totals for the primary model', () => {
+  it('appends instanced occurrences and recomputes totals, unfiltered when modelRange is null', () => {
     const geom = baseGeometry();
     setRenderer([mesh(2, 4, 2), mesh(3, 5, 3)]);
-    const out = withInstancedMeshes(geom, true);
+    const out = withInstancedMeshes(geom, null);
+
+    assert.notEqual(out, geom); // a copy, not mutated in place
+    assert.equal(geom.meshes.length, 1); // original untouched
+    assert.equal(out.meshes.length, 3);
+    assert.deepEqual(out.meshes.map((m) => m.expressId), [1, 2, 3]);
+    // 1 (base) + 2 + 3 instanced triangles; 3 + 4 + 5 vertices.
+    assert.equal(out.totalTriangles, 6);
+    assert.equal(out.totalVertices, 12);
+  });
+
+  it('appends instanced occurrences and recomputes totals, filtered to a model-id-range bracket', () => {
+    const geom = baseGeometry();
+    setRenderer([mesh(2, 4, 2), mesh(3, 5, 3)]);
+    const out = withInstancedMeshes(geom, { idOffset: 0, maxExpressId: 10 });
 
     assert.notEqual(out, geom); // a copy, not mutated in place
     assert.equal(geom.meshes.length, 1); // original untouched
@@ -75,6 +102,6 @@ describe('withInstancedMeshes', () => {
   it('is a no-op when the renderer scene is unavailable', () => {
     const geom = baseGeometry();
     setRenderer(null);
-    assert.equal(withInstancedMeshes(geom, true), geom);
+    assert.equal(withInstancedMeshes(geom, null), geom);
   });
 });

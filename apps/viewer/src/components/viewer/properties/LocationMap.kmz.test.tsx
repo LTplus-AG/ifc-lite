@@ -220,7 +220,7 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       coordinateInfo: MAP_ABSOLUTE_COORDINATE_INFO,
       lengthUnitScale: 1,
       geometryResult: GEOMETRY_RESULT,
-      isPrimaryModel: true,
+      instancedModelRange: null,
       name: 'IFC Model',
     }, () => gp);
     assert.ok(out instanceof Uint8Array);

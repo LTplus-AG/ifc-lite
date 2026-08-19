@@ -57,6 +57,14 @@ ENDSEC;
 END-ISO-10303-21;
 "#;
 
+fn wrap(data: &str) -> String {
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n{data}ENDSEC;\nEND-ISO-10303-21;\n"
+    )
+}
+
 fn sample(content: &str, id: u32) -> Vec<Point3<f64>> {
     let mut decoder = EntityDecoder::new(content);
     let curve = decoder.decode_by_id(id).expect("decode curve");
@@ -81,4 +89,24 @@ fn a_legitimate_nested_trim_still_samples() {
         "nested-but-acyclic trimming must still yield a polyline, got {} points",
         pts.len()
     );
+}
+
+/// A long ACYCLIC chain: `#1` trims `#2` trims `#3`, every id distinct, so
+/// every `visited.insert` succeeds and the set never fires. Before the depth
+/// cap this consumed one stack frame per entity and aborted the process — the
+/// same crash as the cyclic case, on a file containing no cycle at all
+/// (Codex, #2871 review). A chain is as easy to author as a loop.
+#[test]
+fn a_long_acyclic_basis_chain_terminates() {
+    let n: u32 = 5_000;
+    let mut data = String::new();
+    for i in 1..n {
+        data.push_str(&format!(
+            "#{}=IFCTRIMMEDCURVE(#{},(IFCPARAMETERVALUE(0.)),(IFCPARAMETERVALUE(1.)),.T.,.PARAMETER.);\n",
+            i,
+            i + 1
+        ));
+    }
+    data.push_str(&format!("#{n}=IFCCARTESIANPOINT((0.,0.,0.));\n"));
+    assert!(sample(&wrap(&data), 1).is_empty());
 }

@@ -21,8 +21,21 @@ pub(super) fn sample_curve_polyline(
     quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
     let mut visited = std::collections::HashSet::new();
-    sample_curve_polyline_guarded(curve, decoder, quality, &mut visited)
+    sample_curve_polyline_guarded(curve, decoder, quality, 0, &mut visited)
 }
+
+/// Longest `IfcTrimmedCurve.BasisCurve` chain the sampler will follow.
+///
+/// The visited set below stops CYCLES; this stops LENGTH. They are not
+/// interchangeable: a chain of 200k distinct trimmed curves makes every
+/// `visited.insert` succeed, so the set never fires and the recursion consumes
+/// one stack frame per file-supplied entity until the process aborts. A file
+/// with no cycle at all reaches the same crash, and a chain is as easy to
+/// author as a loop.
+///
+/// 32 matches the mapped-item bound used elsewhere for file-driven chains.
+/// Real trimming nests one or two levels.
+const MAX_BASIS_CURVE_DEPTH: u32 = 32;
 
 /// `IfcTrimmedCurve.BasisCurve` may itself be an `IfcTrimmedCurve`, and the
 /// reference comes from the file, so `#10=IFCTRIMMEDCURVE(#10,...)` — a single
@@ -31,13 +44,10 @@ pub(super) fn sample_curve_polyline(
 /// into a load error, and this is reached by any `IfcAdvancedBrep` with a
 /// composite edge curve (#2866).
 ///
-/// A visited set rather than a depth cap. The delegation below is currently
-/// the ONLY recursive call here and it is a tail call, so there is no fan-out
-/// and a cap would be sufficient today — but "there is no fan-out" is a
-/// property of the current branch set, not of the traversal, and it is exactly
-/// the property a later edit invalidates without touching this comment. The
-/// set costs one small allocation on a path that already builds a `Vec` of
-/// points per curve.
+/// Both a visited set and a depth cap, because they bound different things:
+/// the set stops cycles (and any future fan-out, which the single tail call
+/// here does not have today but which nothing enforces), the cap stops a long
+/// ACYCLIC chain, where every insert succeeds and the set never fires.
 ///
 /// It is global to one top-level sample, not path-scoped: the result is a pure
 /// function of (curve, quality), so a curve already being sampled cannot yield
@@ -47,9 +57,10 @@ fn sample_curve_polyline_guarded(
     curve: &DecodedEntity,
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
+    depth: u32,
     visited: &mut std::collections::HashSet<u32>,
 ) -> Vec<Point3<f64>> {
-    if !visited.insert(curve.id) {
+    if depth >= MAX_BASIS_CURVE_DEPTH || !visited.insert(curve.id) {
         return Vec::new();
     }
     use std::f64::consts::TAU;
@@ -280,7 +291,7 @@ fn sample_curve_polyline_guarded(
                 };
             }
         }
-        return sample_curve_polyline_guarded(&basis, decoder, quality, visited);
+        return sample_curve_polyline_guarded(&basis, decoder, quality, depth + 1, visited);
     }
     Vec::new()
 }

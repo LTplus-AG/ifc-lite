@@ -45,6 +45,25 @@ export interface EnvironmentSlice {
   /** Whether the Sun & Sky panel is open. */
   envPanelOpen: boolean;
 
+  /**
+   * Sun cast shadows (#2670). Off by default — an extra depth pre-pass, so it
+   * is opt-in until a device is known to handle it. Persisted per device.
+   */
+  envShadowsEnabled: boolean;
+  /**
+   * Sun angular size in degrees — the physical control on shadow-edge softness
+   * (Blender's Sun lamp `Angle`, ~0.53° for a clear sky). Larger = wider
+   * penumbra / softer shadows. Describes the LIGHT, so it persists with the
+   * lighting choices. Clamped to [0.1, 5].
+   */
+  envSunAngle: number;
+  /**
+   * Shadow-map resolution (square side, texels). A pure cost-vs-fidelity dial
+   * (the machine, not the light), so it lives here as a Quality control and
+   * persists per device. One of 1024 / 2048 / 4096.
+   */
+  envShadowResolution: number;
+
   setEnvPreset: (preset: LightingPresetId) => void;
   setEnvSkyEnabled: (enabled: boolean) => void;
   setEnvExposure: (exposure: number) => void;
@@ -52,6 +71,9 @@ export interface EnvironmentSlice {
   setEnvSoftness: (softness: number) => void;
   setEnvPanelOpen: (open: boolean) => void;
   toggleEnvPanel: () => void;
+  setEnvShadowsEnabled: (enabled: boolean) => void;
+  setEnvSunAngle: (deg: number) => void;
+  setEnvShadowResolution: (resolution: number) => void;
 }
 
 const STORAGE_KEY = 'ifc-lite:environment';
@@ -62,6 +84,9 @@ interface PersistedEnvironment {
   exposure?: number;
   hardness?: number;
   softness?: number;
+  shadowsEnabled?: boolean;
+  sunAngle?: number;
+  shadowResolution?: number;
 }
 
 function loadPersisted(): PersistedEnvironment {
@@ -75,7 +100,7 @@ function loadPersisted(): PersistedEnvironment {
   }
 }
 
-function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure' | 'envHardness' | 'envSoftness'>): void {
+function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure' | 'envHardness' | 'envSoftness' | 'envShadowsEnabled' | 'envSunAngle' | 'envShadowResolution'>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       preset: state.envPreset,
@@ -83,6 +108,9 @@ function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | '
       exposure: state.envExposure,
       hardness: state.envHardness,
       softness: state.envSoftness,
+      shadowsEnabled: state.envShadowsEnabled,
+      sunAngle: state.envSunAngle,
+      shadowResolution: state.envShadowResolution,
     } satisfies PersistedEnvironment));
   } catch { /* storage unavailable */ }
 }
@@ -102,6 +130,18 @@ function clampSoftness(value: number): number {
   return Math.min(2, Math.max(0, value));
 }
 
+function clampSunAngle(value: number): number {
+  if (!Number.isFinite(value)) return 0.53;
+  return Math.min(5, Math.max(0.1, value));
+}
+
+/** Snap to one of the supported shadow-map sizes. */
+function clampShadowResolution(value: number): number {
+  const allowed = [1024, 2048, 4096];
+  if (!Number.isFinite(value)) return 2048;
+  return allowed.includes(value) ? value : 2048;
+}
+
 export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], EnvironmentSlice> = (set, get) => {
   const stored = loadPersisted();
   const initial = {
@@ -110,6 +150,9 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     envExposure: clampExposure(stored.exposure ?? 1),
     envHardness: clampHardness(stored.hardness ?? 1),
     envSoftness: clampSoftness(stored.softness ?? 1),
+    envShadowsEnabled: stored.shadowsEnabled === true,
+    envSunAngle: clampSunAngle(stored.sunAngle ?? 0.53),
+    envShadowResolution: clampShadowResolution(stored.shadowResolution ?? 2048),
   };
 
   const update = (patch: Partial<EnvironmentSlice>) => {
@@ -129,5 +172,8 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     setEnvSoftness: (softness) => update({ envSoftness: clampSoftness(softness) }),
     setEnvPanelOpen: (open) => set({ envPanelOpen: open }),
     toggleEnvPanel: () => set((s) => ({ envPanelOpen: !s.envPanelOpen })),
+    setEnvShadowsEnabled: (enabled) => update({ envShadowsEnabled: enabled }),
+    setEnvSunAngle: (deg) => update({ envSunAngle: clampSunAngle(deg) }),
+    setEnvShadowResolution: (resolution) => update({ envShadowResolution: clampShadowResolution(resolution) }),
   };
 };

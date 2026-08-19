@@ -28,6 +28,7 @@ import { CustomBasemapEditor } from './CustomBasemapEditor';
 import type { SolarSweepMode } from '@/store/slices/solarSlice';
 import { LIGHTING_PRESETS, LIGHTING_PRESET_ORDER, isLightingPresetId } from '@/lib/lighting-presets';
 import { LightingTrimControls } from './LightingTrimControls';
+import { ShadowControls } from './ShadowControls';
 import { posthog } from '@/lib/analytics';
 import {
   solarDisplayOffsetMinutes,
@@ -185,6 +186,10 @@ export function SunSkyPanel() {
           {/* WebGPU shading trims (exposure + light hardness + terminator
               softness) — hidden in world-context mode, where Cesium lights. */}
           {!cesiumEnabled && <LightingTrimControls />}
+
+          {/* Sun cast shadows (#2670) — standalone WebGPU only; Cesium casts
+              its own in world-context. */}
+          {!cesiumEnabled && <ShadowControls />}
 
           {/* Sun study — needs a georeferenced model for the real sun */}
           {cesiumAvailable && (

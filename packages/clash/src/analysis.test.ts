@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { classifyRuleCoverage, isTouching, penetrationDepth, ruleHadNoMatch, sortClashes, TOUCHING_EPSILON } from './analysis.js';
+import { classifyRuleCoverage, isTouching, penetrationDepth, ruleHadNoMatch, sortClashes, summarizeClashes, TOUCHING_EPSILON } from './analysis.js';
 import type { AABB, Clash, ClashElementRef, ClashRuleCoverage, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
 function ref(key: string, tag: string): ClashElementRef {
@@ -21,6 +21,28 @@ function clash(id: string, distance: number, severity: ClashSeverity, status: Cl
     rule: 'r',
     status,
     distance,
+    point: POINT,
+    bounds: BOUNDS,
+    severity,
+  };
+}
+
+/** Like {@link clash}, but with independently controllable rule and type tags —
+ * for exercising `summarizeClashes`'s `byRule`/`byTypePair` tallies directly. */
+function clashOf(
+  id: string,
+  rule: string,
+  tagA: string,
+  tagB: string,
+  severity: ClashSeverity,
+): Clash {
+  return {
+    id,
+    a: ref(`${id}a`, tagA),
+    b: ref(`${id}b`, tagB),
+    rule,
+    status: 'hard',
+    distance: -0.1,
     point: POINT,
     bounds: BOUNDS,
     severity,
@@ -220,5 +242,56 @@ describe('classifyRuleCoverage', () => {
 
   it('is "partial" when some rules matched and others did not', () => {
     expect(classifyRuleCoverage({ ruleCoverage: [covered(3, 4), covered(0, 4)] })).toBe('partial');
+  });
+});
+
+describe('summarizeClashes', () => {
+  it('totals the clash count', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+    ]);
+    expect(summary.total).toBe(2);
+  });
+
+  it('tallies byRule per rule id', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+      clashOf('3', 'r2', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+    ]);
+    expect(summary.byRule).toEqual({ r1: 2, r2: 1 });
+  });
+
+  it('tallies byTypePair keyed by the two element tags, sorted so order does not matter', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      // Same pair, tags reversed — must land in the SAME bucket as above.
+      clashOf('2', 'r1', 'IfcBeam', 'IfcPipeSegment', 'critical'),
+      clashOf('3', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+    ]);
+    expect(summary.byTypePair).toEqual({
+      'IfcBeam vs IfcPipeSegment': 2,
+      'IfcDuctSegment vs IfcWall': 1,
+    });
+  });
+
+  it('tallies bySeverity across all four severities, including zero counts', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('3', 'r1', 'IfcPipeSegment', 'IfcBeam', 'minor'),
+    ]);
+    expect(summary.bySeverity).toEqual({ critical: 2, major: 0, minor: 1, info: 0 });
+  });
+
+  it('is all-zero for an empty clash list', () => {
+    const summary = summarizeClashes([]);
+    expect(summary).toEqual({
+      total: 0,
+      byRule: {},
+      byTypePair: {},
+      bySeverity: { critical: 0, major: 0, minor: 0, info: 0 },
+    });
   });
 });

@@ -68,6 +68,8 @@ pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
 // can interpret them: those values are in the file's own units, unlike the
 // geometry exporters' output, which is normalised to metres.
 pub use ifc_lite_processing::prepass::UnitScales;
+// Named so a caller can pick a `GltfOptions::tessellation_quality`.
+pub use ifc_lite_processing::TessellationQuality;
 pub use ifc5::{export_ifc5, Ifc5Options};
 // Spatial and type relationships, which `EntityRow` cannot carry because IFC
 // models them as separate entities that are not products.

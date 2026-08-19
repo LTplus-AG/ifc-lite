@@ -4,8 +4,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import type { ContentMatch, ContentMatchKind, DiffCounts } from '@ifc-lite/diff';
-import { contentMatchRows, hasReportableChanges } from './changeRow.js';
+import type { ContentMatch, ContentMatchKind, DiffCounts, DiffEntry } from '@ifc-lite/diff';
+import {
+  bcfTextFromChange,
+  changeLabel,
+  changedTypeCounts,
+  contentMatchRows,
+  hasReportableChanges,
+  type CompareRow,
+} from './changeRow.js';
 import type { CompareRef } from '@/lib/compare/buildFingerprints';
 
 const fp = (modelId: string, globalId: number, ifcType = 'IfcWall') => ({
@@ -112,5 +119,111 @@ describe('hasReportableChanges (#1891 review)', () => {
     assert.strictEqual(hasReportableChanges(counts(1, 0, 0), []), true);
     assert.strictEqual(hasReportableChanges(counts(0, 1, 0), []), true);
     assert.strictEqual(hasReportableChanges(counts(0, 0, 1), []), true);
+  });
+});
+
+const row = (over: Partial<CompareRow> = {}): CompareRow => ({
+  key: '2O2Fr$t4X7Zf8NOew3FLOH',
+  ifcType: 'IfcWall',
+  name: 'W1',
+  state: 'modified',
+  changeKinds: ['geometry'],
+  ref: { modelId: 'a', localId: 1, globalId: 1 },
+  ...over,
+});
+
+describe('bcfTextFromChange (#1199)', () => {
+  it('omits the GlobalId line for a synthetic `missing:` key without leaving a blank line behind', () => {
+    // `missing:` keys are synthesized for a compare row that has no real
+    // GlobalId (see CompareRow.key doc) - the line must be dropped, not
+    // blanked, so no stray empty line sits where it would have been.
+    const { description } = bcfTextFromChange(
+      row({ key: 'missing:foo', state: 'deleted', changeKinds: [] }),
+      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, dataOnlyGeometric: false },
+    );
+    assert.strictEqual(description, 'Detected in model comparison: deleted.\nMoved 1.234 m.');
+  });
+
+  it('keeps the GlobalId line for a normal key', () => {
+    const { description } = bcfTextFromChange(
+      row(),
+      { data: [], geometry: { movedDistance: 1.234, reshaped: false, delta: { x: 0, y: 0, z: 1.234 }, sizeDelta: { x: 0, y: 0, z: 0 } }, dataOnlyGeometric: false },
+    );
+    assert.strictEqual(
+      description,
+      'Detected in model comparison: geometry.\nGlobalId: 2O2Fr$t4X7Zf8NOew3FLOH\nMoved 1.234 m.',
+    );
+  });
+
+  it('keeps the intentional blank separator before "Data changes:" for a normal key', () => {
+    const { description } = bcfTextFromChange(
+      row({ changeKinds: ['data'] }),
+      {
+        data: [{ category: 'property', group: 'Pset_WallCommon', name: 'FireRating', before: 'A', after: 'B', kind: 'changed' }],
+        geometry: null,
+        dataOnlyGeometric: false,
+      },
+    );
+    assert.strictEqual(
+      description,
+      'Detected in model comparison: data.\nGlobalId: 2O2Fr$t4X7Zf8NOew3FLOH\n\nData changes:\n- Pset_WallCommon / FireRating: A -> B',
+    );
+  });
+
+  it('keeps the intentional blank separator AND omits the GlobalId line together for a missing: key', () => {
+    // The case a careless single-sentinel fix breaks: the omitted GlobalId
+    // line must vanish while the deliberate blank before "Data changes:"
+    // survives - exactly one blank line, not zero and not two.
+    const { description } = bcfTextFromChange(
+      row({ key: 'missing:foo', state: 'deleted', changeKinds: [] }),
+      {
+        data: [{ category: 'property', group: 'Pset_WallCommon', name: 'FireRating', before: undefined, after: undefined, kind: 'removed' }],
+        geometry: null,
+        dataOnlyGeometric: false,
+      },
+    );
+    assert.strictEqual(
+      description,
+      'Detected in model comparison: deleted.\n\nData changes:\n- Pset_WallCommon / FireRating: removed',
+    );
+  });
+});
+
+describe('changedTypeCounts (#1470)', () => {
+  const entry = (over: Partial<DiffEntry<CompareRef>>): DiffEntry<CompareRef> => ({
+    key: 'k',
+    state: 'modified',
+    changeKinds: [],
+    head: { key: 'k', ifcType: 'IfcWall', dataHash: 'd', ref: { modelId: 'b', localId: 1, globalId: 1 } },
+    base: { key: 'k', ifcType: 'IfcWall', dataHash: 'd', ref: { modelId: 'a', localId: 1, globalId: 1 } },
+    ...over,
+  });
+
+  it('tallies changed entries by type, most-changed first, excluding unchanged', () => {
+    const entries = [
+      entry({ key: 'w1', head: { key: 'w1', ifcType: 'IfcWall', dataHash: 'd', ref: { modelId: 'b', localId: 1, globalId: 1 } } }),
+      entry({ key: 'w2', head: { key: 'w2', ifcType: 'IfcWall', dataHash: 'd', ref: { modelId: 'b', localId: 2, globalId: 2 } } }),
+      entry({
+        key: 'd1',
+        head: { key: 'd1', ifcType: 'IfcDoor', dataHash: 'd', ref: { modelId: 'b', localId: 3, globalId: 3 } },
+      }),
+      entry({ key: 'u1', state: 'unchanged' }),
+    ];
+    assert.deepStrictEqual(changedTypeCounts(entries), [
+      { type: 'IfcWall', count: 2 },
+      { type: 'IfcDoor', count: 1 },
+    ]);
+  });
+});
+
+describe('changeLabel', () => {
+  it('reads added/deleted straight off the state', () => {
+    assert.strictEqual(changeLabel(row({ state: 'added', changeKinds: [] })), 'added');
+    assert.strictEqual(changeLabel(row({ state: 'deleted', changeKinds: [] })), 'deleted');
+  });
+
+  it('joins change kinds for a modified row, falling back to "changed" when empty', () => {
+    assert.strictEqual(changeLabel(row({ state: 'modified', changeKinds: ['geometry', 'data'] })), 'geometry + data');
+    assert.strictEqual(changeLabel(row({ state: 'modified', changeKinds: [] })), 'changed');
   });
 });

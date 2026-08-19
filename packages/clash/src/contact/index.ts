@@ -31,6 +31,26 @@ export type { SharedFaceCluster, SharedFaceOptions } from './shared-faces.js';
 export type { TrianglePair, NarrowPhaseOptions } from './narrow-phase.js';
 export { narrowPhase, clusterSharedFaces };
 
+/**
+ * Minimum-distance query, exposed here rather than left package-private
+ * because every consumer that wants it lives outside this package. The
+ * viewer's measure tool needs the exact surface-to-surface distance, and
+ * before this it could not reach any of the machinery: `triTriDistance` sits
+ * under `math/`, which has no export subpath, so a deep import is hard-blocked
+ * by `ERR_PACKAGE_PATH_NOT_EXPORTED`.
+ *
+ * `buildMeshBvh` / `queryMeshCross` come with it: a caller measuring one
+ * element against several should build each tree once rather than pay for it
+ * per query.
+ */
+export {
+  minDistanceBetweenMeshes,
+  minDistanceBetweenBvhs,
+  type MeshDistance,
+  type MinDistanceOptions,
+} from './min-distance.js';
+export { buildMeshBvh, queryMeshCross, type MeshBvh } from './mesh-bvh.js';
+
 export interface ContactOptions extends NarrowPhaseOptions, SharedFaceOptions {}
 
 /**

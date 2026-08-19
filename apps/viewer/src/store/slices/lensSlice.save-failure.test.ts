@@ -53,6 +53,42 @@ function makeSlice(): { get: () => LensSlice } {
   return { get: () => state };
 }
 
+/**
+ * github.com/LTplus-AG/ifc-lite/issues/2765: making `deleteLens` never clear
+ * `activeLensId` left 12 tests green. The deletion tests asserted only that the
+ * lens left `savedLenses`, so a dangling active id pointing at a lens that no
+ * longer exists had nothing to disagree with it.
+ */
+describe('lensSlice deletion clears the active pointer', () => {
+  beforeEach(() => { installStubStorage(false); });
+
+  it('deleting the ACTIVE lens deselects it rather than leaving a dangling id', () => {
+    const slice = makeSlice();
+    slice.get().createLens(LENS);
+    slice.get().setActiveLens(LENS.id);
+    assert.equal(slice.get().activeLensId, LENS.id, 'precondition: it is the active lens');
+
+    slice.get().deleteLens(LENS.id);
+
+    assert.equal(slice.get().activeLensId, null);
+    assert.ok(!slice.get().savedLenses.some((l) => l.id === LENS.id));
+  });
+
+  it('deleting a DIFFERENT lens leaves the active one selected', () => {
+    // The bounding control: clearing unconditionally would also satisfy the
+    // assertion above while deselecting the user's lens on every delete.
+    const slice = makeSlice();
+    const other: Lens = { ...LENS, id: 'lens-test-2', name: 'Other' };
+    slice.get().createLens(LENS);
+    slice.get().createLens(other);
+    slice.get().setActiveLens(LENS.id);
+
+    slice.get().deleteLens(other.id);
+
+    assert.equal(slice.get().activeLensId, LENS.id);
+  });
+});
+
 describe('lensSlice persistence failures', () => {
   describe('when the storage write fails', () => {
     beforeEach(() => { installStubStorage(true); });

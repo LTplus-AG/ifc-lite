@@ -39,11 +39,12 @@ export interface ActiveMeasurement {
 /**
  * Which gesture the Measure tool is currently listening for. `'drag'` is the
  * original mousedown→mouseup distance measurement (unchanged by this mode).
- * `'polyline'` accumulates points via successive clicks instead; the two are
- * mutually exclusive so a sequence started in one can never leak state into
- * the other (see `setMeasureMode` in measurementSlice.ts).
+ * `'polyline'` accumulates points via successive clicks instead; `'angle'`
+ * (#2735) accumulates a FIXED number of clicks and finishes itself. All three
+ * are mutually exclusive so a sequence started in one can never leak state
+ * into another (see `setMeasureMode` in measurementSlice.ts).
  */
-export type MeasureMode = 'drag' | 'polyline';
+export type MeasureMode = 'drag' | 'polyline' | 'angle';
 
 /** A multi-click sequence in progress, not yet finished or cancelled. */
 export interface ActivePolyline {
@@ -62,6 +63,66 @@ export interface PolylineMeasurement {
   points: MeasurePoint[];
   closed: boolean;
   length: number;
+}
+
+// ============================================================================
+// Angle Measurement Types (issue #2735, split from #2199 §4)
+// ============================================================================
+
+/**
+ * Which angle the tool is measuring. Only `'points'` ships today; the edge and
+ * face kinds are the later slices of #2735 and are named here so the store
+ * shape does not have to change when they land.
+ */
+export type AngleKind = 'points' | 'edges' | 'faces';
+
+/** How many picks each kind needs before the measurement finishes itself. */
+export const ANGLE_REQUIRED_PICKS: Record<AngleKind, number> = {
+  points: 3,
+  // FOUR, not two. `SnapTarget.metadata.vertices` yields tessellation
+  // segments rather than topological edges - one straight 2.000 m slab edge
+  // reported as four collinear pieces on #2199 - so two picks cannot identify
+  // two edges. #2735 sanctions the alternative directly: "scope itself to
+  // explicitly-picked point pairs". Each edge is two picks the user places,
+  // so the direction measured is the one they chose.
+  edges: 4,
+  faces: 2,
+};
+
+/** One pick in an angle sequence. */
+export interface AnglePick {
+  kind: AngleKind;
+  point: MeasurePoint;
+  /**
+   * Surface normal at the pick, for `'faces'` only.
+   *
+   * Carried on the pick rather than derived later because it is only knowable
+   * at pick time: it comes from the raycast hit, and the stored point alone
+   * cannot recover which face was under the cursor.
+   */
+  normal?: { x: number; y: number; z: number };
+}
+
+/** A fixed-length sequence in progress, not yet complete or cancelled. */
+export interface ActiveAngle {
+  kind: AngleKind;
+  picks: AnglePick[];
+}
+
+/**
+ * A finished angle measurement.
+ *
+ * Only the PICKS are stored, never the resulting degrees - the readout is
+ * derived on render by `threePointAngle`. That follows `inclination.ts` rather
+ * than `PolylineMeasurement` (which does store its `length`): an angle's value
+ * is pure maths over its picks, so deriving it means a correction to the maths
+ * retroactively fixes every measurement already on screen, and there is no
+ * second copy of the answer to fall out of step with the picks.
+ */
+export interface AngleMeasurement {
+  id: string;
+  kind: AngleKind;
+  picks: AnglePick[];
 }
 
 /** Orthogonal constraint axis type */

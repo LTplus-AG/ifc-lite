@@ -236,6 +236,29 @@ milestone called out in §19.
 > any `BlobStore` implementing the optional `stat()` method. Still
 > pending: parametric → mesh kernel hookup, viewer-side conflict badge,
 > and the determinism CI matrix.
+>
+> `BlobStore.put` takes an optional third argument carrying an
+> `AbortSignal`, so an upload can be given a per-attempt deadline:
+>
+> ```ts
+> const controller = new AbortController();
+> const timer = setTimeout(() => controller.abort(), 30_000);
+> try {
+>   await store.put(bytes, 'application/octet-stream', { signal: controller.signal });
+> } finally {
+>   clearTimeout(timer);
+> }
+> ```
+>
+> This exists because a HUNG upload is worse than a failed one. A
+> rejection is counted, retried and can trip a caller's failure ceiling;
+> a request that never settles produces no failure at all, so nothing
+> retries, no ceiling trips, and a geometry seed never resolves while the
+> UI still reports work in progress. `HttpBlobStore` forwards the signal
+> to `fetch`, and `LayeredBlobStore` forwards it to both halves — its
+> `Promise.all` cannot settle while the remote hangs, and the `.catch`
+> that swallows remote failures never runs when nothing rejects.
+> Implementations that cannot abort may ignore the option.
 
 **Goal:** Geometric edits (parametric and mesh) sync correctly without
 inflating Y.Doc memory or requiring central authority.

@@ -134,6 +134,7 @@ export interface PropertySetContext {
     attributeMutations: Map<string, string> | undefined,
     sourceSchema: IfcSchemaVersion,
     overlayActive: boolean,
+    onRejected?: (attrName: string, value: string) => void,
   ) => SourceLineMutations;
 }
 
@@ -963,6 +964,11 @@ export function generatePropertyAndQuantitySetEntities(
         pass.modifiedAttributes.get(entityId),
         pass.sourceSchema,
         pass.overlayActive,
+        (attr, value) =>
+          pass.warnings.push(
+            `entity #${entityId}: attribute ${attr} not written - ` +
+              `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+          ),
       );
     }
     if (mutated === null) {

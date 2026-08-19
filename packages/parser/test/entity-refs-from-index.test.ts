@@ -85,6 +85,33 @@ describe('buildEntityRefsFromIndex', () => {
     expect(refs[0].type).toBe('IFCWALL');
   });
 
+  it('tolerates a newline (LF) between `=` and the type token', () => {
+    // Legal STEP: a newline directly after `#id=` is ordinary and appears in
+    // real fixtures (see multiline-entity-records.test.ts / schependomlaan).
+    // scanEntitiesFast / scanEntities already handle it; this fast path,
+    // taken when the streaming geometry pre-pass has already built the
+    // entity index, did not.
+    const padded = new TextEncoder().encode('#1=\nIFCWALL($);');
+    const refs = buildEntityRefsFromIndex(
+      padded,
+      Uint32Array.of(1),
+      Uint32Array.of(0),
+      Uint32Array.of(padded.length),
+    );
+    expect(refs[0].type).toBe('IFCWALL');
+  });
+
+  it('tolerates a CRLF between `=` and the type token', () => {
+    const padded = new TextEncoder().encode('#1=\r\nIFCWALL($);');
+    const refs = buildEntityRefsFromIndex(
+      padded,
+      Uint32Array.of(1),
+      Uint32Array.of(0),
+      Uint32Array.of(padded.length),
+    );
+    expect(refs[0].type).toBe('IFCWALL');
+  });
+
   it('throws when the `lengths` column is shorter than the `ids` column', () => {
     // Each column is checked independently; a guard that only validates
     // `starts` lets a truncated `lengths` column through as undefined spans.

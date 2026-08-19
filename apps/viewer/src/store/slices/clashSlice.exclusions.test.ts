@@ -151,6 +151,27 @@ describe('user-defined clash exclusions (store)', () => {
     assert.strictEqual(s.get().clashExclusions.length, 0);
   });
 
+  it('clearClash empties the per-rule suppressed counts with the result', () => {
+    // github.com/LTplus-AG/ifc-lite/issues/2765: removing the
+    // `clashExclusionCounts` reset from `clearClash` left 23 tests green. The
+    // counts are per-RUN tallies displayed next to each rule, so keeping them
+    // after the run is cleared shows a rule suppressing clashes that no longer
+    // exist, and the tally is then wrong for the next run too.
+    const s = slice();
+    s.get().setClashResult(sampleResult());
+    const rule = typePairExclusion('IfcRail', 'IfcCourse');
+    s.get().addClashExclusion(rule);
+    assert.strictEqual(s.get().clashExclusionCounts.get(rule.id), 2, 'precondition: a count to clear');
+
+    s.get().clearClash();
+
+    assert.strictEqual(s.get().clashExclusionCounts.size, 0, 'no run, no per-rule tally');
+    assert.strictEqual(s.get().clashSuppressedCount, 0);
+    assert.strictEqual(s.get().clashResult, null);
+    // The RULE itself is a workspace preference and survives, like the presets.
+    assert.strictEqual(s.get().clashExclusions.length, 1);
+  });
+
   it('a type-pair exclusion hides every clash of that pair and reports the count', () => {
     const s = slice();
     s.get().setClashResult(sampleResult());

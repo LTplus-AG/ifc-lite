@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.packages.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@ifc-lite/plugin-api": ["../plugin-api/src"],
+      "@ifc-lite/oauth-pkce": ["../oauth-pkce/src"],
+      "@ifc-lite/source-fixture/conformance": ["../source-fixture/src/conformance/index.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

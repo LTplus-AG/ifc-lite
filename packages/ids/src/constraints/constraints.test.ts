@@ -341,6 +341,83 @@ describe('matchConstraint — bounds', () => {
 });
 
 // ============================================================================
+// matchConstraint — bounds (string-length facets: xs:length / xs:minLength /
+// xs:maxLength)
+// ============================================================================
+
+describe('matchConstraint — bounds (length facets)', () => {
+  const bounds = (
+    opts: Partial<IDSBoundsConstraint>
+  ): IDSBoundsConstraint => ({
+    type: 'bounds',
+    ...opts,
+  });
+
+  describe('length (exact)', () => {
+    const c = bounds({ length: 4 });
+
+    it('passes when the string length exactly matches', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+
+    it('fails when the string is one character shorter', () => {
+      expect(matchConstraint(c, 'abc')).toBe(false);
+    });
+
+    it('fails when the string is one character longer', () => {
+      expect(matchConstraint(c, 'abcde')).toBe(false);
+    });
+  });
+
+  describe('minLength', () => {
+    const c = bounds({ minLength: 3 });
+
+    it('passes exactly at the boundary', () => {
+      expect(matchConstraint(c, 'abc')).toBe(true);
+    });
+
+    it('fails one character below the boundary', () => {
+      expect(matchConstraint(c, 'ab')).toBe(false);
+    });
+
+    it('passes above the boundary', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+  });
+
+  describe('maxLength', () => {
+    const c = bounds({ maxLength: 5 });
+
+    it('passes exactly at the boundary', () => {
+      expect(matchConstraint(c, 'abcde')).toBe(true);
+    });
+
+    it('fails one character above the boundary', () => {
+      expect(matchConstraint(c, 'abcdef')).toBe(false);
+    });
+
+    it('passes below the boundary', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+  });
+
+  it('minLength and maxLength combined form a range', () => {
+    const c = bounds({ minLength: 2, maxLength: 3 });
+    expect(matchConstraint(c, 'a')).toBe(false);
+    expect(matchConstraint(c, 'ab')).toBe(true);
+    expect(matchConstraint(c, 'abc')).toBe(true);
+    expect(matchConstraint(c, 'abcd')).toBe(false);
+  });
+
+  it('length is evaluated against the string form of a numeric value', () => {
+    // actualValue may arrive as a number (e.g. a numeric IFC attribute);
+    // the length facets still operate on its textual representation.
+    expect(matchConstraint(bounds({ length: 3 }), 123)).toBe(true);
+    expect(matchConstraint(bounds({ length: 3 }), 12)).toBe(false);
+  });
+});
+
+// ============================================================================
 // matchConstraint — unknown type
 // ============================================================================
 

@@ -76,6 +76,7 @@ export interface SourceIterationContext {
     attributeMutations: Map<string, string> | undefined,
     sourceSchema: IfcSchemaVersion,
     overlayActive: boolean,
+    onRejected?: (attrName: string, value: string) => void,
   ) => SourceLineMutations;
   /** `StepExporter.isGeometryEntity`, also read by the setup closure and by
    *  the overlay-created-entities block. */
@@ -212,6 +213,11 @@ export function writeSourceEntityLines(
         pass.modifiedAttributes.get(expressId),
         pass.sourceSchema,
         pass.overlayActive,
+        (attr, value) =>
+          pass.warnings.push(
+            `entity #${expressId}: attribute ${attr} not written - ` +
+              `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
+          ),
       );
       let nextEntityText = mutated.text;
 

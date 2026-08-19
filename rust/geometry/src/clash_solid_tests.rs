@@ -7,6 +7,7 @@
 //! module-size rule.
 
 use super::*;
+use crate::kernel::arrangement::Tri;
 
 /// PR #2573 review finding, pinned as a KNOWN LIMITATION rather than fixed —
 /// see `component_groups`'s doc comment for the full reasoning. Two triangles

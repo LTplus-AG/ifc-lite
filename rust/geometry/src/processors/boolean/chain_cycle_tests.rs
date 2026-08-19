@@ -632,3 +632,86 @@ fn full_process_terminates_on_cyclic_boolean() {
     assert!(outcome.is_ok(), "full process() hung on a cyclic boolean chain");
     let _ = handle.join();
 }
+
+/// `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult`, whose
+/// operands may in turn be `IfcCsgSolid` — so the two are mutually recursive
+/// over file-supplied references. `CsgSolidProcessor::process` built a FRESH
+/// `BooleanClippingProcessor`, resetting both `depth` and the cycle guard, so
+/// three entities recursed forever with depth never passing 1 (#2866).
+///
+/// `csg_primitive.rs` already rejected `IfcCsgSolid -> IfcCsgSolid` explicitly,
+/// "so a malformed (or adversarial) file with a self-reference can't blow the
+/// stack". That guard is one hop wide. This is the two-hop cycle it cannot see.
+const CSG_BOOLEAN_CYCLE: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCBOOLEANRESULT(.DIFFERENCE.,#20,#30);
+#20=IFCCSGSOLID(#10);
+#30=IFCBLOCK($,1.,1.,1.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn boolean_csg_mutual_recursion_terminates() {
+    // Worker thread + timeout, matching the test above: a regression that
+    // loops without growing the stack shows up as a timeout rather than
+    // hanging the suite. (A regression that DOES grow the stack aborts the
+    // whole binary — no harness can catch that one, so it is named here
+    // rather than implied.)
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let content = CSG_BOOLEAN_CYCLE.to_string();
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(10).expect("decode #10");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()));
+    });
+
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
+    assert!(
+        outcome.is_ok(),
+        "Boolean/CSG mutual recursion did not terminate"
+    );
+    let _ = handle.join();
+
+    // The cycle is reported, not silently swallowed: an operand that cannot be
+    // resolved must surface as an error so the router drops the element rather
+    // than rendering a half-built solid as if it were complete.
+    let err = outcome.unwrap().expect_err("a cyclic operand must be an error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Cyclic boolean/CSG operand reference"),
+        "expected the cycle to be named, got: {msg}"
+    );
+}
+
+/// Entering through `CsgSolidProcessor` rather than the boolean side must be
+/// guarded too — the router registers it directly, so that is the path a real
+/// file takes when the element's Body item IS the `IfcCsgSolid`.
+#[test]
+fn csg_entry_point_is_guarded_too() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let content = CSG_BOOLEAN_CYCLE.to_string();
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(20).expect("decode #20");
+        let processor = crate::processors::CsgSolidProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()));
+    });
+
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
+    assert!(outcome.is_ok(), "CsgSolid entry point did not terminate");
+    let _ = handle.join();
+    outcome
+        .unwrap()
+        .expect_err("a cyclic operand must be an error from this entry point too");
+}

@@ -121,13 +121,43 @@ impl Default for CsgSolidProcessor {
     }
 }
 
-impl GeometryProcessor for CsgSolidProcessor {
-    fn process(
+impl CsgSolidProcessor {
+    /// Like [`GeometryProcessor::process`], but carrying the caller's boolean
+    /// recursion depth and path-scoped visited set across the hop.
+    ///
+    /// `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult` whose
+    /// operands may be `IfcCsgSolid`, so the two are mutually recursive over
+    /// file-supplied references. Entering through `process()` built a FRESH
+    /// `BooleanClippingProcessor`, resetting both, so three entities recursed
+    /// forever with depth never passing 1 — and a stack overflow ABORTS in
+    /// Rust, so nothing could turn it into a load error (#2866).
+    ///
+    /// This does not insert `entity.id` itself: every cycle must pass through
+    /// an `IfcBooleanResult` (`IfcCsgSolid -> IfcCsgSolid` is rejected below),
+    /// so the insert in `process_with_depth` breaks all of them. A second one
+    /// here was written first and removed once mutation testing showed that
+    /// with both present, deleting EITHER left every test green.
+    pub(crate) fn process_with_boolean_cycle_guard(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        depth: u32,
         quality: TessellationQuality,
+        visited: &mut std::collections::HashSet<u32>,
+    ) -> Result<Mesh> {
+        self.resolve_tree_root(entity, decoder, schema, depth, quality, visited)
+    }
+
+    /// Shared body of `process` and `process_with_boolean_cycle_guard`.
+    fn resolve_tree_root(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut std::collections::HashSet<u32>,
     ) -> Result<Mesh> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
@@ -140,11 +170,13 @@ impl GeometryProcessor for CsgSolidProcessor {
         // an `IfcBooleanResult` or an `IfcCsgPrimitive3D`, NEVER another
         // `IfcCsgSolid`. Reject that case explicitly so a malformed (or
         // adversarial) file with a self-reference can't blow the stack on
-        // unbounded recursion.
+        // unbounded recursion. That guard is one hop wide; the visited set
+        // threaded through the boolean side closes the two-hop
+        // CSG -> Boolean -> CSG cycle it cannot see (#2866).
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)
-                    .process(&root, decoder, schema, quality)
+                    .process_with_depth(&root, decoder, schema, depth, quality, visited)
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
             IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),
@@ -158,6 +190,21 @@ impl GeometryProcessor for CsgSolidProcessor {
                 other
             ))),
         }
+    }
+}
+
+impl GeometryProcessor for CsgSolidProcessor {
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        // Top-level entry (the router registers this processor directly, so
+        // this is the path a file whose Body item IS the IfcCsgSolid takes).
+        let mut visited = std::collections::HashSet::new();
+        self.resolve_tree_root(entity, decoder, schema, 0, quality, &mut visited)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {

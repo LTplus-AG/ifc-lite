@@ -15,6 +15,7 @@
 
 import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import { formatHourOfDay, SUN_DAY_START, SUN_DAY_END } from '@/lib/sun-time-of-day';
 
 export function SunTimeControls() {
@@ -30,24 +31,11 @@ export function SunTimeControls() {
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           Time of day
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
+        <Switch
+          checked={enabled}
+          onCheckedChange={setEnabled}
           aria-label="Toggle manual time-of-day sun"
-          onClick={() => setEnabled(!enabled)}
-          className={cn(
-            'relative h-4 w-7 rounded-full transition-colors',
-            enabled ? 'bg-teal-600' : 'bg-muted-foreground/40',
-          )}
-        >
-          <span
-            className={cn(
-              'absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform',
-              enabled ? 'translate-x-3.5' : 'translate-x-0.5',
-            )}
-          />
-        </button>
+        />
       </div>
 
       {enabled && (

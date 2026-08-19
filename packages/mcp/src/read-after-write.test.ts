@@ -32,6 +32,7 @@ import { validationTools } from './tools/validation.js';
 import { findByGlobalId, resolveGlobalIds } from './tools/util.js';
 import { buildDefaultResourceRegistry } from './resources/index.js';
 import { diffTools } from './tools/diff.js';
+import { geometryTools } from './tools/geometry.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {
@@ -124,7 +125,7 @@ interface CountShape {
 let tmp: string;
 let ctx: ToolContext;
 
-const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools, ...validationTools, ...diffTools];
+const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools, ...validationTools, ...diffTools, ...geometryTools];
 
 function tool(name: string) {
   const found = ALL_TOOLS.find((t) => t.name === name);
@@ -696,6 +697,42 @@ describe('one GlobalId resolves to one entity, whichever tool asks', () => {
       expect(findByGlobalId(model, gid), gid).toBe(resolveGlobalIds(model, [gid]).get(gid)?.[0] ?? null);
     }
     expect(resolveGlobalIds(model, [guid('WALA')]).get(guid('WALA'))).toEqual([twin, 72]);
+  }, 30_000);
+});
+
+describe('geometry tools resolve GlobalId the same way get_entity does', () => {
+  it('finds a created entity by GlobalId, instead of reporting no selector matched', async () => {
+    await session();
+    await call('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALC')}'`, null, "'Wall C'", null, null, '#40', null, "'tagC'", null],
+    });
+    const entity = await structured<EntityShape & { ref: { expressId: number } }>('get_entity', {
+      global_id: guid('WALC'),
+    });
+
+    // Before the fix, geometry_bbox's GlobalId resolution scanned the parsed
+    // store directly and never consulted the overlay, so a GlobalId
+    // get_entity had just found came back "no entity matched the selector"
+    // here — the two tools disagreed about the same session.
+    const bbox = await structured<{ boxes: Array<{ expressId: number }> }>('geometry_bbox', {
+      global_id: guid('WALC'),
+    });
+    expect(bbox.boxes).toHaveLength(1);
+    expect(bbox.boxes[0].expressId).toBe(entity.ref.expressId);
+  }, 30_000);
+
+  it('stops matching a deleted entity\'s GlobalId, as get_entity does', async () => {
+    await session();
+    await call('entity_delete', { global_id: guid('WALB') });
+
+    await expect(async () => tool('get_entity').handler({ global_id: guid('WALB') }, ctx))
+      .rejects.toThrow(/No entity with GlobalId/);
+
+    // Same GlobalId, same session: geometry_bbox's own selector-resolution
+    // must reach the same "gone" answer, not the raw (undeleted) store entry.
+    await expect(async () => tool('geometry_bbox').handler({ global_id: guid('WALB') }, ctx))
+      .rejects.toThrow(/Provide an entity selector/);
   }, 30_000);
 });
 

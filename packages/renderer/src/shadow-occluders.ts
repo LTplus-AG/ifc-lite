@@ -39,6 +39,28 @@ export interface ShadowVisibility {
   isolatedIds?: ReadonlySet<number>;
 }
 
+/** Tuning for {@link collectShadowOccluders}. */
+export interface ShadowOccluderOptions {
+  /**
+   * Material-alpha floor for casting: geometry whose base colour alpha is below
+   * this does NOT cast a shadow, so light passes through it (#2670). This is
+   * how glass windows let daylight through their opening — the wall mesh keeps
+   * the void, the transparent glass filling it simply stops occluding — and it
+   * also spares the virtual transparent volumes (IfcSpace, IfcOpeningElement)
+   * from throwing solid shadows. Uses the MATERIAL alpha (`color[3]`), not the
+   * X-ray/ghost view overrides, so ghosting the model does not delete its
+   * shadows. Default {@link DEFAULT_MIN_CAST_ALPHA}.
+   */
+  minCastAlpha?: number;
+}
+
+/**
+ * Below this material alpha a surface is treated as glass-like and stops
+ * casting. Solid materials are 1.0; IFC glass / spaces / openings render well
+ * under it, while a lightly tinted-but-solid material (>= 0.9) still casts.
+ */
+export const DEFAULT_MIN_CAST_ALPHA = 0.9;
+
 /**
  * Column-major model matrix for a per-batch/per-mesh local frame: identity
  * rotation with the origin in the translation column, matching how the main
@@ -77,22 +99,28 @@ function anyVisible(ids: readonly number[], vis: ShadowVisibility | undefined): 
 /**
  * Collect every occluder draw for the shadow depth pass.
  *
- * A batch casts if it is GPU-resident and has at least one visible element (a
- * partially-hidden batch still casts from its whole geometry — hiding the
- * shadow of individually-hidden elements within a shared batch is a Phase-2b
- * refinement). Instanced templates cast every occurrence; the per-occurrence
- * HIDDEN flag is not yet honoured for shadows (also 2b). Textured meshes are
- * filtered per element like the main textured sub-pass.
+ * A batch casts if it is GPU-resident, opaque enough (material alpha >=
+ * `minCastAlpha` — transparent glass lets light through, see
+ * {@link ShadowOccluderOptions.minCastAlpha}) and has at least one visible
+ * element (a partially-hidden batch still casts from its whole geometry —
+ * hiding the shadow of individually-hidden elements within a shared batch is a
+ * Phase-2b refinement). Instanced templates cast every occurrence; the
+ * per-occurrence HIDDEN flag and per-occurrence transparency are not yet
+ * honoured for shadows (also 2b). Textured meshes are filtered per element like
+ * the main textured sub-pass.
  */
 export function collectShadowOccluders(
   sources: ShadowOccluderSources,
   visibility?: ShadowVisibility,
+  options?: ShadowOccluderOptions,
 ): ShadowOccluderDraw[] {
   const draws: ShadowOccluderDraw[] = [];
+  const minCastAlpha = options?.minCastAlpha ?? DEFAULT_MIN_CAST_ALPHA;
 
   for (const batch of sources.batches) {
     if (batch.gpuResident === false) continue;
     if (!batch.vertexBuffer || !batch.indexBuffer || batch.indexCount <= 0) continue;
+    if (batch.color[3] < minCastAlpha) continue; // transparent (glass) → light through
     if (!anyVisible(batch.expressIds, visibility)) continue;
     const q = batch.quantized;
     draws.push({
@@ -119,6 +147,7 @@ export function collectShadowOccluders(
 
   for (const tm of sources.textured) {
     if (!tm.vertexBuffer || !tm.indexBuffer || tm.indexCount <= 0) continue;
+    if (tm.color[3] < minCastAlpha) continue; // transparent → light through
     if (!anyVisible([tm.expressId], visibility)) continue;
     draws.push({
       kind: 'textured',

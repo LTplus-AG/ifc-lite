@@ -25,7 +25,11 @@ All four geometry paths — flat, lattice-quantized, GPU-instanced and
 surface-textured — both cast (`collectShadowOccluders`) and receive (the shared
 shader / textured derivation), so no part of the model silently stops
 shadowing; a test drives the real `ShadowPass.render` and asserts each path
-issues a depth draw through its own pipeline.
+issues a depth draw through its own pipeline. Transparent geometry (glass
+windows, and the virtual IfcSpace / IfcOpeningElement volumes) is excluded from
+casting by its material alpha, so daylight passes through windows and openings
+instead of the glass throwing a solid shadow into the void the wall already
+carries.
 
 The shadow map rides the existing environment bind group (group 1), so no
 pipeline-layout churn. Additive and off by default: `RenderOptions.sunShadows`

@@ -118,6 +118,34 @@ describe('collectShadowOccluders', () => {
     assert.deepEqual(kinds, ['instanced']);
   });
 
+  it('lets a transparent (glass) batch pass light — it does not cast', () => {
+    const glass: BatchedMesh = { ...flatBatch(1), color: [0.6, 0.8, 1, 0.3] };
+    const draws = collectShadowOccluders({ batches: [glass], instanced: [], textured: [] });
+    assert.equal(draws.length, 0, 'glass should not cast a shadow');
+  });
+
+  it('still casts a near-opaque (>= threshold) batch', () => {
+    const tinted: BatchedMesh = { ...flatBatch(1), color: [1, 1, 1, 0.95] };
+    const draws = collectShadowOccluders({ batches: [tinted], instanced: [], textured: [] });
+    assert.equal(draws.length, 1);
+  });
+
+  it('skips a transparent textured mesh', () => {
+    const glassTex = { ...texturedMesh(), color: [1, 1, 1, 0.2] as [number, number, number, number] };
+    const draws = collectShadowOccluders({ batches: [], instanced: [], textured: [glassTex] });
+    assert.equal(draws.length, 0);
+  });
+
+  it('honours a custom minCastAlpha', () => {
+    const semi: BatchedMesh = { ...flatBatch(1), color: [1, 1, 1, 0.6] };
+    assert.equal(collectShadowOccluders({ batches: [semi], instanced: [], textured: [] }).length, 0);
+    assert.equal(
+      collectShadowOccluders({ batches: [semi], instanced: [], textured: [] }, undefined, { minCastAlpha: 0.5 }).length,
+      1,
+      'a lower floor lets the semi-transparent batch cast',
+    );
+  });
+
   it('builds an origin-translation model matrix', () => {
     const m = originModelMatrix([7, 8, 9]);
     assert.equal(m[12], 7);

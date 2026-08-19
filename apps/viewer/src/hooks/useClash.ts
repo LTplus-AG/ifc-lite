@@ -36,6 +36,7 @@ import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { withInstancedMeshes } from '@/utils/instancedExport';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import {
   elementPairExclusion,
@@ -336,8 +337,27 @@ export function useClash() {
 
     for (const [modelId, model] of state.models) {
       const store = model.ifcDataStore;
-      const meshes = model.geometryResult?.meshes;
-      if (!store || !meshes || meshes.length === 0) continue;
+      const geometryResult = model.geometryResult;
+      if (!store || !geometryResult) continue;
+      // Every entity whose geometry went fully GPU-instanced (8+ repeats,
+      // `INSTANCE_MIN_OCCURRENCES` in the wasm mesher) is ABSENT from
+      // `geometryResult.meshes` — doors, windows, columns, sprinklers, the
+      // exact repeated components a clash run exists to catch (#2865).
+      // `withInstancedMeshes` is the SAME helper the glTF/IFC5 export path
+      // (#2558/#2576) uses to restore them: it materializes every occurrence
+      // from the live renderer scene's GPU instance buffers
+      // (`Scene.getAllInstancedMeshData`) and appends real triangles, not an
+      // approximation — no separate AABB-only code path, so a clash reported
+      // off an instanced entity is exactly as exact as one reported off a flat
+      // one. `idOffset === 0` is that helper's own "primary model" gate
+      // (instanced shard ids live in the primary model's id space only; every
+      // export call site already gates on it identically) — a federated model
+      // past the first keeps its flat meshes only, same as before this fix.
+      // Returns the SAME object back when there is nothing to add (no
+      // renderer mounted, nothing instanced, or a non-primary model), so this
+      // is a no-op for every case this bug did not touch.
+      const meshes = withInstancedMeshes(geometryResult, (model.idOffset ?? 0) === 0).meshes;
+      if (meshes.length === 0) continue;
       // `useIfcLoader` shifts every `mesh.expressId` into the GLOBAL id space by
       // this model's `idOffset` while `ifcDataStore` stays LOCAL, so the adapter
       // has to be told the offset or it addresses the store with ids that are

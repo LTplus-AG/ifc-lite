@@ -64,6 +64,16 @@ export interface EnvironmentSlice {
    */
   envShadowResolution: number;
 
+  /**
+   * Manual "time of day" sun (#2670). For models WITHOUT georeference, this
+   * drives the sun along a plausible east→west arc so shadows can be swept
+   * without a real site. A georeferenced solar study, when active, overrides
+   * it. Persisted with the lighting choices.
+   */
+  envSunTimeEnabled: boolean;
+  /** Time of day in hours (6..18), driving the manual sun arc. */
+  envSunTime: number;
+
   setEnvPreset: (preset: LightingPresetId) => void;
   setEnvSkyEnabled: (enabled: boolean) => void;
   setEnvExposure: (exposure: number) => void;
@@ -74,6 +84,8 @@ export interface EnvironmentSlice {
   setEnvShadowsEnabled: (enabled: boolean) => void;
   setEnvSunAngle: (deg: number) => void;
   setEnvShadowResolution: (resolution: number) => void;
+  setEnvSunTimeEnabled: (enabled: boolean) => void;
+  setEnvSunTime: (hours: number) => void;
 }
 
 const STORAGE_KEY = 'ifc-lite:environment';
@@ -87,6 +99,8 @@ interface PersistedEnvironment {
   shadowsEnabled?: boolean;
   sunAngle?: number;
   shadowResolution?: number;
+  sunTimeEnabled?: boolean;
+  sunTime?: number;
 }
 
 function loadPersisted(): PersistedEnvironment {
@@ -100,7 +114,7 @@ function loadPersisted(): PersistedEnvironment {
   }
 }
 
-function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure' | 'envHardness' | 'envSoftness' | 'envShadowsEnabled' | 'envSunAngle' | 'envShadowResolution'>): void {
+function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | 'envExposure' | 'envHardness' | 'envSoftness' | 'envShadowsEnabled' | 'envSunAngle' | 'envShadowResolution' | 'envSunTimeEnabled' | 'envSunTime'>): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       preset: state.envPreset,
@@ -111,6 +125,8 @@ function persist(state: Pick<EnvironmentSlice, 'envPreset' | 'envSkyEnabled' | '
       shadowsEnabled: state.envShadowsEnabled,
       sunAngle: state.envSunAngle,
       shadowResolution: state.envShadowResolution,
+      sunTimeEnabled: state.envSunTimeEnabled,
+      sunTime: state.envSunTime,
     } satisfies PersistedEnvironment));
   } catch { /* storage unavailable */ }
 }
@@ -142,6 +158,12 @@ function clampShadowResolution(value: number): number {
   return allowed.includes(value) ? value : 2048;
 }
 
+/** Clamp time of day to the sun-arc day window. */
+function clampSunTime(value: number): number {
+  if (!Number.isFinite(value)) return 13;
+  return Math.min(18, Math.max(6, value));
+}
+
 export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], EnvironmentSlice> = (set, get) => {
   const stored = loadPersisted();
   const initial = {
@@ -153,6 +175,8 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     envShadowsEnabled: stored.shadowsEnabled === true,
     envSunAngle: clampSunAngle(stored.sunAngle ?? 0.53),
     envShadowResolution: clampShadowResolution(stored.shadowResolution ?? 2048),
+    envSunTimeEnabled: stored.sunTimeEnabled === true,
+    envSunTime: clampSunTime(stored.sunTime ?? 13),
   };
 
   const update = (patch: Partial<EnvironmentSlice>) => {
@@ -175,5 +199,7 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     setEnvShadowsEnabled: (enabled) => update({ envShadowsEnabled: enabled }),
     setEnvSunAngle: (deg) => update({ envSunAngle: clampSunAngle(deg) }),
     setEnvShadowResolution: (resolution) => update({ envShadowResolution: clampShadowResolution(resolution) }),
+    setEnvSunTimeEnabled: (enabled) => update({ envSunTimeEnabled: enabled }),
+    setEnvSunTime: (hours) => update({ envSunTime: clampSunTime(hours) }),
   };
 };

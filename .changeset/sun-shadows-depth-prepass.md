@@ -14,8 +14,9 @@ shadow mapping end to end:
   cascade; view-frustum fitting for site-scale models is a documented
   follow-up);
 - the shared main-family fragment shader samples it with a 3×3 PCF kernel and a
-  **normal-offset bias** (reusing the face normal, so no acne/peter-panning
-  trade), occluding only the direct sun term — ambient/fill/rim stay lit;
+  slope-scaled bias (normal-offset plus a grazing-angle depth term, so a flat
+  ground under a low sun does not ring with acne), occluding only the direct
+  sun term — ambient/fill/rim stay lit;
 - the penumbra width follows the sun's angular size (physical, ~0.53° like
   Blender's Sun lamp Angle), exposed as `sunShadows.sunAngleDeg`.
 
@@ -29,6 +30,8 @@ The shadow map rides the existing environment bind group (group 1), so no
 pipeline-layout churn. Additive and off by default: `RenderOptions.sunShadows`
 (`{ enabled, resolution?, sunAngleDeg? }`) — absent/`enabled: false` skips the
 pass entirely and the shader's `enabled` gate returns fully lit, so the hot
-path pays only a boolean check. A Sun & Sky UI panel and the end-to-end perf
-verdict are still to come.
+path pays only a boolean check. The viewer drives it from a Sun & Sky panel
+section (cast-shadows toggle, sun-angle softness, resolution, and a manual
+time-of-day sun for models without georeference); the end-to-end perf verdict
+is still to come.
 

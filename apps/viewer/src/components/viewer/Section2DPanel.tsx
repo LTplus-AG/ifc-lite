@@ -43,6 +43,7 @@ import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -200,7 +201,7 @@ export function Section2DPanel({
   // Track resize event handlers for cleanup
   const resizeHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
   // Cache sheet drawing transform when pinned (to keep model fixed in place)
-  const cachedSheetTransformRef = useRef<{ translateX: number; translateY: number; scaleFactor: number } | null>(null);
+  const cachedSheetTransformRef = useRef<CachedSheetTransform | null>(null);
 
   // Track panel width for responsive header
   useEffect(() => {

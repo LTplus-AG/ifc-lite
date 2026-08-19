@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
+import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
 interface UseViewControlsParams {
   drawing: Drawing2D | null;
@@ -14,11 +15,7 @@ interface UseViewControlsParams {
   sheetEnabled: boolean;
   activeSheet: DrawingSheet | null;
   isPinned: boolean;
-  cachedSheetTransformRef: React.MutableRefObject<{
-    translateX: number;
-    translateY: number;
-    scaleFactor: number;
-  } | null>;
+  cachedSheetTransformRef: React.MutableRefObject<CachedSheetTransform | null>;
 }
 
 interface UseViewControlsResult {
@@ -202,9 +199,18 @@ function useViewControls({
   // sheet's transform (position/scale computed for its old paper/viewport)
   // applied to the new content until the user flipped sheet mode off and
   // back on, or changed the section axis.
-  const sheetGeometryKey = activeSheet
-    ? `${activeSheet.id}|${activeSheet.paper.widthMm}x${activeSheet.paper.heightMm}|${activeSheet.viewportBounds.x},${activeSheet.viewportBounds.y},${activeSheet.viewportBounds.width},${activeSheet.viewportBounds.height}|${activeSheet.scale.factor}`
-    : null;
+  //
+  // This effect-driven clear is a best-effort SECOND line of defense, not the
+  // correctness guarantee: `Drawing2DCanvas` is the CHILD of whichever
+  // component calls this hook, and React commits child effects before parent
+  // effects on the same update — so on the very render `sheetGeometryKey`
+  // changes, the canvas's drawing effect can still read the STALE cached
+  // transform (this effect hasn't nulled it yet), draw one frame with it, and
+  // then never redraw again since nothing else changed (PR #2853 review). The
+  // actual guarantee is `Drawing2DCanvas` validating the cached entry's own
+  // `key` against the CURRENT `sheetGeometryKeyOf(activeSheet)` at the READ
+  // site, before ever reusing it — see the module doc there.
+  const sheetGeometryKey = sheetGeometryKeyOf(activeSheet);
   const prevSheetGeometryKeyRef = useRef(sheetGeometryKey);
   useEffect(() => {
     if (sheetGeometryKey !== prevSheetGeometryKeyRef.current) {

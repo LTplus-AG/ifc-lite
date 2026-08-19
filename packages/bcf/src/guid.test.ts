@@ -15,9 +15,26 @@ import {
 describe('IFC GUID utilities', () => {
   describe('uuidToIfcGuid', () => {
     it('should convert a known UUID to correct IFC GUID', () => {
-      // Test case from buildingSMART documentation
+      // UUID from buildingSMART documentation. The previous version of this
+      // test only checked length and first-character range, which a wrong
+      // (but internally self-consistent) IFC_GUID_CHARS alphabet also
+      // satisfies - see packages/encoding/src/guid.test.ts for the mutation
+      // evidence. The expected value below is derived independently, via
+      // IfcOpenShell's `legacy_compress` algorithm (identical to its
+      // current `ifcopenshell.guid.compress`), taken verbatim from
+      // https://github.com/IfcOpenShell/IfcOpenShell/blob/v0.9.0/src/ifcopenshell-python/test/test_guid.py
+      // and hand-executed for this UUID (not via this repo's own encoder):
+      //
+      //   chars = string.digits + string.ascii_uppercase + string.ascii_lowercase + "_$"
+      //   def legacy_compress(g):
+      //       bs = [int(g[i:i+2], 16) for i in range(0, len(g), 2)]
+      //       def b64(v, l=4):
+      //           return "".join([chars[(v // (64 ** i)) % 64] for i in range(l)][::-1])
+      //       return "".join([b64(bs[0], 2)] + [b64((bs[i] << 16) + (bs[i+1] << 8) + bs[i+2]) for i in range(1, 16, 3)])
+      //   legacy_compress("3d2b2fa43b2f11e0b7a700163e7a5e00")  # => "0zAo_aEoyHuBUd01O_Ubu0"
       const uuid = '3d2b2fa4-3b2f-11e0-b7a7-00163e7a5e00';
       const ifcGuid = uuidToIfcGuid(uuid);
+      expect(ifcGuid).toBe('0zAo_aEoyHuBUd01O_Ubu0');
       // IFC GUIDs are 22 characters
       expect(ifcGuid.length).toBe(22);
       // First character should be 0-3 (only 2 bits used)

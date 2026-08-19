@@ -21,6 +21,7 @@
  */
 
 import { generateIfcGuid, type RandomSource } from '@ifc-lite/encoding';
+import { deterministicGlobalId } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 
 export type IfcSchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -365,7 +366,32 @@ export function convertStepLine(
   // Replace entities that have no valid representation in the target schema
   // with IFCPROXY placeholders to preserve EXPRESS IDs and prevent dangling references
   if (shouldSkipEntity(newType, toSchema)) {
-    return `${prefix}IFCPROXY('${generateIfcGuid(random)}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
+    // Derive the placeholder's GlobalId from the source line rather than
+    // minting a random one (#2733). Every downgraded entity used to get a
+    // FRESH id on every export, so exporting an unchanged IFC4X3 model twice
+    // never produced the same bytes: 116 differing lines, 58 of them IFCPROXY,
+    // at identical byte size, which is the signature of
+    // same-shape-different-identifier.
+    //
+    // Reusing the SOURCE entity's own GlobalId looks like the obvious fix and
+    // is wrong. `merged-exporter.test.ts` pins the case: two federated models
+    // legitimately carry the same alignment GlobalId, and a fresh id per
+    // occurrence is what stops them being unified into one. Copying the source
+    // id would silently collapse two alignments into one.
+    //
+    // Seeding from the whole line satisfies both. Re-exporting an unchanged
+    // model reproduces the line and so the id; two federated occurrences differ
+    // because the merged exporter offsets each model's express ids, so their
+    // `prefix` differs. Same primitive and same reasoning as `mintUniqueGuid`
+    // in merged-exporter.ts, which seeds from the original id plus the model's
+    // stable id.
+    //
+    // A caller-supplied seeded source still wins, so an export that already
+    // pins its randomness keeps its existing behaviour.
+    const guid = random
+      ? generateIfcGuid(random)
+      : deterministicGlobalId(`ifcproxy:${prefix}${entityType}(${attrsRaw})`);
+    return `${prefix}IFCPROXY('${guid}',$,'${entityType}',$,$,$,$,.NOTDEFINED.,$);`;
   }
 
   // Adjust attribute count if downgrading to IFC2X3

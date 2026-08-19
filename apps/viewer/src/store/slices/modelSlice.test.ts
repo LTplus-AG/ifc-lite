@@ -11,6 +11,16 @@ import type { FederatedModel } from '../types.js';
 
 type ModelTestState = ModelSlice & ModelCrossSliceState;
 
+/** The selection fields `removeModel` purges. They belong to another slice, so
+ *  the slice under test reads them through a cast and so does this file. */
+interface SelectionFields {
+  selectedEntity: { modelId: string; expressId: number } | null;
+  activeStorey: { modelId: string; expressId: number } | null;
+  selectedEntities: Array<{ modelId: string; expressId: number }>;
+  selectedEntitiesSet: Set<string>;
+  selectedModelId: string | null;
+}
+
 // Typed setter / getter shim that mirrors zustand's StateCreator
 // signature without the broader middleware machinery the test doesn't
 // need. Using StateCreator's exact types here would pull in the whole
@@ -315,6 +325,58 @@ describe('ModelSlice', () => {
       state.addModel(model);
       state.removeModel('model-1');
       assert.strictEqual(state.activeModelId, null);
+    });
+
+    it('purges the REMOVED model from the selection and keeps every survivor', () => {
+      // github.com/LTplus-AG/ifc-lite/issues/2765: inverting this filter to
+      // `===` left 37 tests green. It is the exact inversion that keeps
+      // selection pointing at entities of a model that is gone while dropping
+      // the selection of every model still loaded, and no assertion anywhere
+      // looked at which entities survived.
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      const gone = { modelId: 'model-1', expressId: 11 };
+      const kept = { modelId: 'model-2', expressId: 22 };
+      Object.assign(state, {
+        selectedEntity: gone,
+        activeStorey: gone,
+        selectedModelId: 'model-1',
+        selectedEntities: [gone, kept],
+        selectedEntitiesSet: new Set(['model-1:11', 'model-2:22']),
+      });
+
+      state.removeModel('model-1');
+
+      // The slice reaches across to the selection fields through a cast (they
+      // live in another slice), so the test reads them the same way.
+      const after = state as unknown as SelectionFields;
+      assert.deepStrictEqual(after.selectedEntities, [kept], 'the survivor stays selected');
+      assert.deepStrictEqual([...(after.selectedEntitiesSet ?? [])], ['model-2:22']);
+      assert.strictEqual(after.selectedEntity, null, 'the removed model cannot stay the selection');
+      assert.strictEqual(after.activeStorey, null);
+      assert.strictEqual(after.selectedModelId, null);
+    });
+
+    it('leaves the selection untouched when the removed model owned none of it', () => {
+      // The bounding control: a purge that fires on every removal would also
+      // pass the assertions above if it simply cleared everything.
+      state.addModel(createMockModel('model-1', 'First'));
+      state.addModel(createMockModel('model-2', 'Second'));
+      const kept = { modelId: 'model-2', expressId: 22 };
+      Object.assign(state, {
+        selectedEntity: kept,
+        activeStorey: kept,
+        selectedModelId: 'model-2',
+        selectedEntities: [kept],
+        selectedEntitiesSet: new Set(['model-2:22']),
+      });
+
+      state.removeModel('model-1');
+
+      const after = state as unknown as SelectionFields;
+      assert.deepStrictEqual(after.selectedEntities, [kept]);
+      assert.strictEqual(after.selectedEntity, kept);
+      assert.strictEqual(after.selectedModelId, 'model-2');
     });
 
     it('should not affect activeModelId if removed model was not active', () => {

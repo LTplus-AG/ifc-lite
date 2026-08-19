@@ -124,6 +124,50 @@ describe('SectionSlice', () => {
     });
   });
 
+  describe('setSectionPlanePosition in custom (face-picked) mode', () => {
+    /** A picked plane at distance 2 along +Z, with the slider at 40%. */
+    function pickedPlane(): CustomSectionPlane {
+      return {
+        normal: [0, 0, 1],
+        distance: 2,
+        pickedAt: [0, 0, 0],
+        tangent: [1, 0, 0],
+        bitangent: [0, 1, 0],
+      };
+    }
+
+    it('shifts the picked distance ALONG the normal as the slider rises', () => {
+      // github.com/LTplus-AG/ifc-lite/issues/2765: flipping this formula's sign
+      // left 73 tests green. The only custom-mode test asserted what got
+      // persisted to localStorage, never the number the formula produces, so a
+      // slider that cut the model backwards had nothing to disagree with it.
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+
+      state.setSectionPlanePosition(60);
+
+      // +20% of a 10-unit fallback span = +2 world units along the normal.
+      assert.strictEqual(state.sectionPlane.custom?.distance, 4);
+    });
+
+    it('shifts it the other way as the slider falls', () => {
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+
+      state.setSectionPlanePosition(20);
+
+      assert.strictEqual(state.sectionPlane.custom?.distance, 0);
+    });
+
+    it('keeps the pick anchor so later deltas stay relative to the picked face', () => {
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+      state.setSectionPlanePosition(60);
+      state.setSectionPlanePosition(80);
+      // Two +20% steps compose: the anchor is the running distance, not a
+      // re-derivation from the slider's absolute value.
+      assert.strictEqual(state.sectionPlane.custom?.distance, 6);
+      assert.deepStrictEqual(state.sectionPlane.custom?.pickedAt, [0, 0, 0]);
+    });
+  });
+
   describe('setSectionPlanePosition', () => {
     it('should update the position', () => {
       state.setSectionPlanePosition(75);

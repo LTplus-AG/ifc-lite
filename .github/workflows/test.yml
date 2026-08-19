@@ -103,6 +103,14 @@ jobs:
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
+              # The relay handlers and their tests. `pnpm test:api` runs in this
+              # job, so without these a PR touching ONLY the relay skips the one
+              # lane that exercises its allowlists - the guard would exist and
+              # never fire, which is the failure this filter block already warns
+              # about twice above.
+              - 'server/**'
+              - 'api/**'
+              - 'tests/api/**'
               # The lint CONFIG, so a PR that only edits it cannot skip the
               # Lint job that reads it. Absent CI reads as green here, and a
               # guard cannot fire in a job that never runs.
@@ -495,6 +503,14 @@ jobs:
       # through a pipe and asserts the bytes that arrive.
       - name: Check lint gate survives a piped stdout
         run: node --test scripts/check-lint-ran.test.mjs
+      # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
+      # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
+      # returned twenty lines of prose and the tar two lines down exited 2,
+      # surfacing as a bare `status: 2` that reads like a corrupt download.
+      # That script is the only route to a WASM bundle on a machine without a
+      # Rust toolchain, so the failure blocked the whole viewer build.
+      - name: Check npm pack output is read machine-readably
+        run: node --test scripts/lib/npm-pack-output.test.mjs
       # The Release workflow runs ONLY on main, and only on an actual publish,
       # so nothing on a PR ever read release-crates.mjs's publish ORDER. #2574
       # added a versioned dev-dependency (ifc-lite-clash) to rust/geometry and
@@ -552,6 +568,14 @@ jobs:
         # silently consume the whole job budget.
         timeout-minutes: 5
         run: pnpm test:integration
+      - name: API route tests (relay handlers)
+        # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
+        # so the Dalux relay's path allowlist and node allowlist - the guards
+        # that stop an unauthenticated public endpoint becoming an open proxy -
+        # existed in the repo but never in the pipeline. A guard no lane invokes
+        # is not a gate.
+        timeout-minutes: 5
+        run: pnpm test:api
       - name: WASM contract tests (real processGeometryBatch boundary)
         run: pnpm test:wasm-contract
       # The snap cache reconstructs model edges from the mesher's per-triangle

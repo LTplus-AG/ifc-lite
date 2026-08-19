@@ -1,0 +1,258 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * WIRING tests for angle mode (#2735) - click -> store -> readout.
+ *
+ * These exist because an adversarial review found the pure layer was
+ * mutation-hardened while the layer that CONNECTS it was covered by nothing.
+ * Two mutations survived the entire 5001-test viewer suite:
+ *
+ *   1. `handleAngleClick`'s body replaced with a bare `return` - the tool is
+ *      completely dead, no pick ever registers, every test still passes.
+ *   2. the panel feeding `picks[1]` as the apex instead of `picks[0]` - every
+ *      displayed angle is wrong (the 3-4-5 fixture's 90 degrees renders 36.9).
+ *
+ * Both are invisible to tests of pure functions and of the store in isolation,
+ * because neither layer is wrong: the wiring between them is. The readout test
+ * below therefore asserts the NUMBER A USER WOULD SEE, computed the way the
+ * panel computes it, rather than asserting that the store holds three picks.
+ */
+
+import '@/test/setup-dom.js';
+import { describe, it, beforeEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { useViewerStore } from '@/store';
+import { handleAngleClick } from './selectionHandlers.js';
+import {
+  formatThreePointAngle,
+  threePointAngle,
+} from './tools/measure-modes/three-point-angle.js';
+import type { MouseHandlerContext } from './mouseHandlerTypes.js';
+
+function fakeFaceCtx(
+  point: { x: number; y: number; z: number },
+  normal: { x: number; y: number; z: number },
+): MouseHandlerContext {
+  const base = fakeCtx(point) as unknown as Record<string, unknown>;
+  return {
+    ...base,
+    renderer: {
+      ...(base.renderer as Record<string, unknown>),
+      raycastScene: () => ({ intersection: { point, normal } }),
+    },
+  } as unknown as MouseHandlerContext;
+}
+
+function fakeCtx(hit: { x: number; y: number; z: number } | null): MouseHandlerContext {
+  const canvas = document.createElement('canvas');
+  return {
+    canvas,
+    camera: {
+      projectToScreen: (p: { x: number; y: number; z: number }) => ({ x: p.x, y: p.y }),
+      getPosition: () => ({ x: 0, y: 0, z: 0 }),
+      getRotation: () => ({ azimuth: 0, elevation: 0 }),
+      getDistance: () => 10,
+    },
+    renderer: {
+      raycastSceneMagnetic: () => ({
+        intersection: hit ? { point: hit } : null,
+        snapTarget: null,
+        edgeLock: { edge: null, meshExpressId: null, edgeT: 0, shouldLock: false, shouldRelease: true, isCorner: false, cornerValence: 0 },
+      }),
+    },
+    mouseState: { isDragging: false, isPanning: false, lastX: 0, lastY: 0, button: 0, startX: 0, startY: 0, didDrag: false },
+    activeToolRef: { current: 'measure' },
+    snapEnabledRef: { current: true },
+    edgeLockStateRef: { current: { edge: null, meshExpressId: null, edgeT: 0, lockStrength: 0, isCorner: false, cornerValence: 0 } },
+    hiddenEntitiesRef: { current: new Set() },
+    isolatedEntitiesRef: { current: null },
+    setSnapTarget: () => {},
+  } as unknown as MouseHandlerContext;
+}
+
+/** Exactly what `MeasurePanel` renders for a finished angle. */
+function readoutOf(m: { picks: { point: { x: number; y: number; z: number } }[] }): string {
+  return formatThreePointAngle(
+    threePointAngle(m.picks[0].point, m.picks[1].point, m.picks[2].point),
+  );
+}
+
+describe('handleAngleClick wiring (#2735)', () => {
+  beforeEach(() => {
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'points',
+      activeAngle: null,
+      angleMeasurements: [],
+      activeMeasurement: null,
+    });
+  });
+
+  it('a miss is a no-op, matching polyline', () => {
+    handleAngleClick(fakeCtx(null), 10, 10);
+    assert.equal(useViewerStore.getState().activeAngle, null);
+    assert.equal(useViewerStore.getState().angleMeasurements.length, 0);
+  });
+
+  it('a click registers a pick - the tool is not dead', () => {
+    // Kills the "replace the handler body with `return`" mutation.
+    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+    assert.equal(useViewerStore.getState().activeAngle?.picks.length, 1);
+  });
+
+  it('three clicks produce the angle a user would READ, apex first', () => {
+    // Kills the "panel feeds the wrong pick as apex" mutation. The fixture is
+    // the 3-4-5 right triangle with the apex at its RIGHT angle, so measuring
+    // at either other vertex yields 36.9 or 53.1 - all three distinguishable.
+    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+    handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0);
+    handleAngleClick(fakeCtx({ x: 0, y: 3, z: 0 }), 0, 3);
+
+    const finished = useViewerStore.getState().angleMeasurements;
+    assert.equal(finished.length, 1, 'the third click must finish the measurement');
+    assert.equal(useViewerStore.getState().activeAngle, null);
+    assert.equal(readoutOf(finished[0]), '90.0°', 'the FIRST pick is the apex');
+  });
+
+  it('clicks in a different order measure a different corner', () => {
+    // Guards the guard above: if the readout ignored pick order entirely, the
+    // previous test could pass for the wrong reason. Same three points, apex
+    // moved to the end of the long leg -> atan(3/4) = 36.9.
+    handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0);
+    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+    handleAngleClick(fakeCtx({ x: 0, y: 3, z: 0 }), 0, 3);
+    assert.equal(readoutOf(useViewerStore.getState().angleMeasurements[0]), '36.9°');
+  });
+
+  it('drops the second half of a physical double-click', () => {
+    // Browsers fire click, click, dblclick. Without this guard a habitual
+    // double-click on a DIRECTION point makes picks 2 and 3 coincide and
+    // records a confident "0.0°" - a junk measurement rendered as a real
+    // answer, not an em dash. An earlier version of the handler argued the
+    // maths already covered this; it does not, because only APEX-coincidence
+    // is degenerate.
+    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+    handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0);
+    handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0); // the double-click's twin
+    const st = useViewerStore.getState();
+    assert.equal(st.angleMeasurements.length, 0, 'the duplicate must not finish a measurement');
+    assert.equal(st.activeAngle?.picks.length, 2, 'and must not be recorded as a third pick');
+  });
+
+  it('still accepts a genuinely distinct pick near, but not within, the duplicate radius', () => {
+    // Guards the guard: a radius that swallowed real picks would be worse than
+    // the junk it prevents. DUPLICATE_POINT_SCREEN_RADIUS_PX is 2, so 5 px is
+    // a real pick.
+    handleAngleClick(fakeCtx({ x: 0, y: 0, z: 0 }), 0, 0);
+    handleAngleClick(fakeCtx({ x: 4, y: 0, z: 0 }), 4, 0);
+    handleAngleClick(fakeCtx({ x: 4, y: 5, z: 0 }), 4, 5);
+    assert.equal(useViewerStore.getState().angleMeasurements.length, 1);
+  });
+
+  it('rejects a pick whose kind disagrees with the active angle kind', () => {
+    // This used to assert that `angleKind: 'edges'` registered NOTHING, which
+    // pinned "edges is not implemented yet" rather than the backstop its own
+    // comment described. Edges ship now, so the placeholder assertion had to
+    // go; the backstop itself is real and is what is pinned here.
+    //
+    // The router gates on mode, but `addAnglePick` is reachable directly, and
+    // a mismatched pick landing in the store would measure an angle from the
+    // wrong sort of input, silently.
+    useViewerStore.setState({ angleKind: 'faces', activeAngle: null });
+    useViewerStore.getState().addAnglePick({
+      kind: 'points',
+      point: { x: 0, y: 0, z: 0, screenX: 0, screenY: 0 },
+    });
+    assert.equal(
+      useViewerStore.getState().activeAngle,
+      null,
+      'a points pick was accepted while the tool was measuring faces',
+    );
+  });
+
+  it('accumulates FOUR picks for an edge pair before finishing', () => {
+    // Two picks cannot identify two edges: snap metadata yields tessellation
+    // segments, not topological edges (#2199), so each edge is a point pair
+    // the user places explicitly.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'edges',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    // Well separated in SCREEN space as well as world space: this harness's
+    // camera projects (x,y,z) -> (x,y), and picks a pixel apart are swallowed
+    // by the double-click guard, which would look like the store refusing them.
+    const pts = [
+      { x: 0, y: 0, z: 0 },
+      { x: 100, y: 0, z: 0 },
+      { x: 0, y: 200, z: 0 },
+      { x: 0, y: 300, z: 0 },
+    ];
+    pts.forEach((p, i) => {
+      handleAngleClick(fakeCtx(p), i * 40, i * 40);
+      if (i < 3) {
+        assert.equal(
+          useViewerStore.getState().angleMeasurements.length,
+          0,
+          `finished after ${i + 1} picks, before both edges were placed`,
+        );
+      }
+    });
+    assert.equal(useViewerStore.getState().angleMeasurements.length, 1);
+    assert.equal(useViewerStore.getState().activeAngle, null);
+  });
+
+  it('completes when both edges share a corner picked twice', () => {
+    // The natural gesture for "angle between two edges": trace edge A INTO the
+    // corner, then edge B OUT of it. Picks 2 and 3 are the SAME corner, so the
+    // second lands within the double-click radius of the first.
+    //
+    // A shared vertex is not a degenerate edge: a zero-length second edge needs
+    // pick 4 to coincide with pick 3, which the within-edge guard catches. If
+    // the guard also spans the boundary, pick 3 is swallowed, the measurement
+    // never completes, and the user's only recourse is to click slightly off
+    // the corner - degrading the very direction being measured.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'edges',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    const corner = { x: 0, y: 0, z: 0 };
+    const seq = [{ x: 200, y: 0, z: 0 }, corner, corner, { x: 0, y: 200, z: 0 }];
+    seq.forEach((p) => handleAngleClick(fakeCtx(p), p.x, p.y));
+
+    assert.equal(
+      useViewerStore.getState().angleMeasurements.length,
+      1,
+      'the shared corner was swallowed as a double-click, so the measurement never finished',
+    );
+    assert.equal(useViewerStore.getState().activeAngle, null);
+  });
+
+  it('does not record both halves of a double-click on one face', () => {
+    // A face pair needs exactly TWO picks, so an unguarded double-click
+    // completes a whole measurement from one gesture - and the two picks share
+    // a normal, so it reads "Parallel": a plausible-looking answer to a
+    // question the user never asked.
+    useViewerStore.setState({
+      measureMode: 'angle',
+      angleKind: 'faces',
+      activeAngle: null,
+      angleMeasurements: [],
+    });
+    const ctx = fakeFaceCtx({ x: 1, y: 2, z: 3 }, { x: 0, y: 1, z: 0 });
+    handleAngleClick(ctx, 100, 100);
+    handleAngleClick(ctx, 100, 100); // the second half of the double-click
+
+    assert.equal(
+      useViewerStore.getState().angleMeasurements.length,
+      0,
+      'a double-click on one face completed a measurement on its own',
+    );
+    assert.equal(useViewerStore.getState().activeAngle?.picks.length, 1);
+  });
+});

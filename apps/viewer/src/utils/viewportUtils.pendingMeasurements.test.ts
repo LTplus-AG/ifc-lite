@@ -26,6 +26,8 @@ function base(): PendingMeasurementState {
     activeMeasurement: null,
     activePolyline: null,
     polylineMeasurements: { length: 0 },
+    activeAngle: null,
+    angleMeasurements: { length: 0 },
   };
 }
 
@@ -48,5 +50,26 @@ describe('hasPendingMeasurementState — animation-loop reprojection gate', () =
 
   it('is true for a FINISHED polyline with nothing else pending', () => {
     assert.equal(hasPendingMeasurementState({ ...base(), polylineMeasurements: { length: 1 } }), true);
+  });
+});
+
+describe('hasPendingMeasurementState - angle state (#2735)', () => {
+  it('an in-progress angle sequence keeps the reprojection pass running', () => {
+    // This gate and `updateMeasurementScreenCoords` are a pair: reprojection
+    // written there without an arm here is dead code, and the symptom is
+    // identical to having written none - placed picks freeze at their
+    // click-time pixel while the model orbits. That is #2641's defect, and
+    // this is its third occurrence.
+    assert.equal(
+      hasPendingMeasurementState({ ...base(), activeAngle: { kind: 'points', picks: [] } }),
+      true,
+    );
+  });
+
+  it('a finished angle measurement keeps it running too', () => {
+    assert.equal(
+      hasPendingMeasurementState({ ...base(), angleMeasurements: { length: 1 } }),
+      true,
+    );
   });
 });

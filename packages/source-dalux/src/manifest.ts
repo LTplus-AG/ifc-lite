@@ -26,6 +26,15 @@ export const DALUX_MANIFEST: PluginManifest = {
       type: 'password',
       required: true,
     },
+    {
+      name: 'baseUrl',
+      title: 'API base URL',
+      description:
+        'Shown next to your API key in Dalux, e.g. https://node2.field.dalux.com/service/api. ' +
+        'Leave blank for node1.',
+      type: 'textfield',
+      required: false,
+    },
   ],
   capabilities: {
     // Dalux has no per-folder listing endpoint: `folders` returns every

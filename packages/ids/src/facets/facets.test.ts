@@ -1013,5 +1013,47 @@ describe('checkPartOfFacet', () => {
     const result = checkPartOfFacet(facet, 5, accessor);
     expect(result.passed).toBe(true);
   });
+
+  it('prefers a specific failure over a generic entity mismatch across multiple ancestors', () => {
+    // Two ancestors, neither passing, so the loop never returns early —
+    // it must run the full tie-break. The nearer ancestor (100) is the
+    // wrong entity type entirely (generic PARTOF_ENTITY_MISMATCH); the
+    // further one (200) is the right entity type but the wrong
+    // predefinedType (more specific PARTOF_PREDEFINED_TYPE_MISMATCH).
+    // The reported failure must be the specific one, not whichever
+    // ancestor happened to be checked first.
+    const multiAncestorAccessor = {
+      ...accessor,
+      getAncestors(
+        expressId: number,
+        relationType: string
+      ) {
+        if (expressId !== 6 || relationType !== 'IfcRelContainedInSpatialStructure') {
+          return [];
+        }
+        return [
+          { expressId: 100, entityType: 'IfcSpace' }, // generic entity mismatch
+          {
+            expressId: 200,
+            entityType: 'IfcBuildingStorey',
+            predefinedType: 'GROUND_FLOOR',
+          }, // right entity, wrong predefinedType
+        ];
+      },
+    } as typeof accessor;
+
+    const facet: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelContainedInSpatialStructure',
+      entity: {
+        type: 'entity',
+        name: sv('IfcBuildingStorey'),
+        predefinedType: sv('BASEMENT'),
+      },
+    };
+    const result = checkPartOfFacet(facet, 6, multiAncestorAccessor);
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISMATCH');
+  });
 });
 

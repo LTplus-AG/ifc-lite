@@ -602,6 +602,33 @@ describe('matchesCriteria — classification', () => {
     expect(matchesCriteria(c, 1, provider)).toBe(true);
   });
 
+  it('should not match when system matches but code does not', () => {
+    const c: LensCriteria = {
+      type: 'classification',
+      classificationSystem: 'uniclass',
+      classificationCode: 'Pr_99_99_99',
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(false);
+  });
+
+  it('should not match when code matches but system does not', () => {
+    const c: LensCriteria = {
+      type: 'classification',
+      classificationSystem: 'Omniclass',
+      classificationCode: 'Pr_60_10_32',
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(false);
+  });
+
+  it('should not match when neither system nor code matches', () => {
+    const c: LensCriteria = {
+      type: 'classification',
+      classificationSystem: 'Omniclass',
+      classificationCode: 'Pr_99_99_99',
+    };
+    expect(matchesCriteria(c, 1, provider)).toBe(false);
+  });
+
   it('should return false when neither system nor code specified', () => {
     expect(matchesCriteria({ type: 'classification' }, 1, provider)).toBe(false);
   });

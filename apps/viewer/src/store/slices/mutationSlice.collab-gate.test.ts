@@ -106,6 +106,28 @@ describe('mutationSlice — collab role gate on property mutations', () => {
     assert.deepStrictEqual(spy.calls, ['setProperty', 'setAttribute']);
     assert.ok((state() as unknown as { dirtyModels: Set<string> }).dirtyModels.has('m1'));
   });
+
+  it('editor/admin: a DELETE commits too, not just the gate letting it past', () => {
+    // github.com/LTplus-AG/ifc-lite/issues/2765: making `deleteProperty` a
+    // no-op immediately AFTER the gate left 4 tests green. Every assertion on
+    // it was in the viewer-role case, where `null` is the CORRECT answer, so
+    // "the gate rejects it" and "the action does nothing at all" produced the
+    // same observable result and only one of them is right.
+    const { spy, state } = buildSlice(true);
+    const s = state();
+
+    assert.notStrictEqual(s.deleteProperty('m1', 1, 'Pset_Test', 'P'), null);
+
+    assert.deepStrictEqual(spy.calls, ['deleteProperty'], 'the delete reaches the local view');
+    assert.ok(
+      (state() as unknown as { dirtyModels: Set<string> }).dirtyModels.has('m1'),
+      'a delete dirties the model like any other edit',
+    );
+    assert.ok(
+      ((state() as unknown as { undoStacks: Map<string, unknown[]> }).undoStacks.get('m1') ?? []).length > 0,
+      'a delete is undoable',
+    );
+  });
 });
 
 /**

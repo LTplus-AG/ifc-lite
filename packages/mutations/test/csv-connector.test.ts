@@ -228,6 +228,54 @@ describe('CsvConnector.generateMutations', () => {
   });
 });
 
+/**
+ * github.com/LTplus-AG/ifc-lite/issues/2765: replacing the Boolean/Logical
+ * parse branch with `return false` left 172 tests green. Every truthy spelling
+ * a checkbox column can carry silently became false, and the only production
+ * caller is an untested UI component, so a CSV import of a checkbox column had
+ * no assertion anywhere. The accepted spellings ARE the contract here: a
+ * `Yes`/`1` column is what a spreadsheet exports, not an exotic input.
+ */
+describe('CsvConnector.generateMutations: boolean columns', () => {
+  /** Import one cell into a Boolean/Logical property and read the value back. */
+  function importCell(raw: string, valueType: PropertyValueType): unknown {
+    const { connector } = makeConnector([{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }]);
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'LoadBearing',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'LoadBearing',
+          valueType,
+        },
+      ],
+    };
+    const rows = connector.parse(`GlobalId,LoadBearing\nguid-a,${raw}`);
+    const matches = connector.match(rows, mapping);
+    return connector.generateMutations(matches, mapping)[0]?.newValue;
+  }
+
+  for (const raw of ['true', 'TRUE', 'True', 'yes', 'YES', '1']) {
+    it(`reads ${raw} as true`, () => {
+      expect(importCell(raw, PropertyValueType.Boolean)).toBe(true);
+    });
+  }
+
+  for (const raw of ['false', 'FALSE', 'no', '0', 'maybe']) {
+    it(`reads ${raw} as false`, () => {
+      expect(importCell(raw, PropertyValueType.Boolean)).toBe(false);
+    });
+  }
+
+  it('parses a Logical column through the same branch as a Boolean one', () => {
+    // Logical shares the Boolean case by fallthrough, so it has to be asserted
+    // separately: a change that splits them would leave Logical unpinned.
+    expect(importCell('yes', PropertyValueType.Logical)).toBe(true);
+    expect(importCell('no', PropertyValueType.Logical)).toBe(false);
+  });
+});
+
 describe('CsvConnector.import', () => {
   it('imports a batch by GlobalId, reporting matched/unmatched stats and applying mutations', () => {
     const { connector, view } = makeConnector([

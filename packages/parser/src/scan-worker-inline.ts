@@ -273,8 +273,15 @@ export function scanEntitiesInWorker(
   buffer: ArrayBuffer | SharedArrayBuffer,
 ): Promise<EntityRefWorkerResult[]> {
   return new Promise((resolve, reject) => {
+    // Declared outside the try so the catch block below can still reach it:
+    // `new Worker(...)` can succeed and a later step in this same try (e.g.
+    // `postMessage` on an already-detached buffer, or under memory pressure
+    // while cloning a large one) can still throw. A `worker` scoped to the
+    // try block would be unreachable from `catch`, leaking the spawned
+    // worker — construct-then-fail with no handle to dispose it.
+    let worker: Worker | undefined;
     try {
-      const worker = new Worker(getWorkerBlobUrl());
+      worker = new Worker(getWorkerBlobUrl());
 
       worker.onmessage = (e: MessageEvent) => {
         const { ids, offsets, lengths, lines, types, count } = e.data;
@@ -307,6 +314,7 @@ export function scanEntitiesInWorker(
       // Do NOT transfer: caller needs the original buffer for columnar parsing.
       worker.postMessage(buffer);
     } catch (err) {
+      worker?.terminate();
       reject(err);
     }
   });

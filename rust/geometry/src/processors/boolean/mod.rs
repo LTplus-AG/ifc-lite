@@ -40,6 +40,17 @@ const MAX_BOOLEAN_DEPTH: u32 = 10;
 
 /// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
 /// stack where `MAX_BOOLEAN_DEPTH` cannot: see `process_with_depth`.
+///
+/// Counted from the visited set, which holds BOOLEAN ids only -- CSG nodes are
+/// not inserted. That still bounds the true frame count, but only because
+/// `CsgSolidProcessor` rejects `IfcCsgSolid -> IfcCsgSolid` outright as a spec
+/// violation: no path can chain CSG nodes, so every one is followed by a
+/// boolean or terminates at a primitive, and `#CSG <= #Boolean + 1`. The real
+/// cap is therefore ~2x this number of frames.
+///
+/// That is a load-bearing dependency on a guard in another file, written down
+/// here because nothing else links them. If that rejection is ever relaxed,
+/// this bound has to start counting CSG ids too (CodeRabbit, #2870 review).
 const MAX_OPERAND_PATH_NODES: usize = 64;
 
 /// BooleanResult processor

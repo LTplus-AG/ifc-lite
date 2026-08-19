@@ -114,8 +114,11 @@
 # Boolean -> Csg -> Boolean chain never advances MAX_BOOLEAN_DEPTH and every
 # visited.insert succeeds -- 4,000 links aborted the process. The set is
 # path-scoped, so its LENGTH is the current depth and the bound costs no extra
-# parameter.
-     985 rust/geometry/src/processors/boolean/mod.rs
+# parameter. The set holds BOOLEAN ids only, which still bounds the frame count
+# because csg_primitive.rs rejects IfcCsgSolid -> IfcCsgSolid, so #CSG <=
+# #Boolean + 1 -- a load-bearing dependency on a guard in another file, written
+# down at the constant because nothing else links them.
+     996 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
 # +47: #2866 — the CSG half of the same fix. `process` splits into a shared
 # `resolve_tree_root` plus `process_with_boolean_cycle_guard`, the entry that

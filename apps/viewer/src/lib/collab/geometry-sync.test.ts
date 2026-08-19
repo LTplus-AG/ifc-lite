@@ -17,8 +17,10 @@ import {
   guidToPath,
   MemoryBlobStore,
 } from '@ifc-lite/collab';
+import type { BlobMeta, BlobStore } from '@ifc-lite/collab';
 import type { MeshData } from '@ifc-lite/geometry';
 import { encodeMesh, decodeMesh } from './mesh-codec.js';
+import { MAX_RETRY_DELAY_MS, boundedRetryDelayMs } from './blob-upload.js';
 import {
   seedGeometryToRoom,
   hydrateGeometryFromRoom,
@@ -93,7 +95,7 @@ describe('geometry-sync seed → hydrate', () => {
       meshes,
       (id) => expressToGuid.get(id) ?? null,
     );
-    assert.equal(seeded, 2);
+    assert.equal(seeded.seeded, 2);
 
     const hydrated = await hydrateGeometryFromRoom(api, session, blobStore);
     assert.equal(hydrated.length, 2);
@@ -123,7 +125,7 @@ describe('geometry-sync seed → hydrate', () => {
     }));
 
     const seeded = await seedGeometryToRoom(api, session, blobStore, meshes, () => guidToPath(guid));
-    assert.equal(seeded, 3);
+    assert.equal(seeded.seeded, 3);
 
     const hydrated = await hydrateGeometryFromRoom(api, session, blobStore);
     assert.equal(hydrated.length, 3, 'all 3 meshes recovered despite the shared entity path');
@@ -162,6 +164,191 @@ describe('geometry-sync seed → hydrate', () => {
       [100, 200],
       'expressIds are re-keyed into the recipient id space',
     );
+  });
+});
+
+/**
+ * A blob store that fails on demand, so a seed can be driven through the two
+ * failure shapes production produced: one blob rejecting (a corrupt/oversized
+ * upload) and every blob rejecting (the server volume out of inodes).
+ */
+class FlakyBlobStore implements BlobStore {
+  readonly inner = new MemoryBlobStore();
+  /** put() calls made, including the ones that threw. */
+  attempts = 0;
+  constructor(private readonly failOn: (attempt: number) => boolean) {}
+  async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
+    this.attempts++;
+    if (this.failOn(this.attempts)) throw new Error('HTTP 500: ENOSPC');
+    return this.inner.put(bytes, contentType);
+  }
+  get(hash: string) {
+    return this.inner.get(hash);
+  }
+  has(hash: string) {
+    return this.inner.has(hash);
+  }
+  delete(hash: string) {
+    return this.inner.delete(hash);
+  }
+  list() {
+    return this.inner.list();
+  }
+}
+
+/** `count` entities in a doc, plus the expressId -> path map for them. */
+function docWithEntities(count: number): {
+  doc: ReturnType<typeof createCollabDoc>;
+  session: never;
+  pathFor: (id: number) => string | null;
+} {
+  const doc = createCollabDoc();
+  const guidFor = (i: number) => `0aBcDeFgHiJkLmNoP${String(i).padStart(4, 'q')}`;
+  seedFromStep(doc, {
+    entities: Array.from({ length: count }, (_, i) => ({ guid: guidFor(i), ifcClass: 'IfcWall' })),
+  });
+  return {
+    doc,
+    session: { doc, transact: (fn: () => void) => doc.transact(fn) } as never,
+    pathFor: (id) => (id >= 0 && id < count ? guidToPath(guidFor(id)) : null),
+  };
+}
+
+/** Distinct meshes, so content-addressing cannot dedupe them into one blob. */
+function distinctMeshes(count: number): MeshData[] {
+  return Array.from({ length: count }, (_, i) => ({
+    ...sampleMesh(i),
+    positions: new Float32Array([0, 0, i, 1, 0, i, 0, 1, i]),
+  }));
+}
+
+describe('geometry-sync seed resilience', () => {
+  it('keeps the meshes that uploaded when one blob fails', async () => {
+    // The failure used to reject the enclosing Promise.all, so step 3 never
+    // ran and the room ended up with NO geometry at all rather than "all but
+    // the one that failed".
+    const { session, pathFor } = docWithEntities(3);
+    const blobStore = new FlakyBlobStore((attempt) => attempt === 2);
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(3), pathFor, {
+      concurrency: 1,
+      // Retries off: this is about isolating a blob that stays broken, not
+      // about recovering a transient one (the next test covers that).
+      retries: 0,
+    });
+
+    assert.equal(seeded.seeded, 2, 'the two blobs that uploaded are in the room');
+    assert.equal(seeded.failed, 1);
+    assert.equal(seeded.offered, 3);
+    const hydrated = await hydrateGeometryFromRoom(api, session, blobStore);
+    assert.equal(hydrated.length, 2, 'a joiner gets the meshes that survived');
+  });
+
+  it('retries a transient upload failure instead of losing the mesh', async () => {
+    const { session, pathFor } = docWithEntities(1);
+    const blobStore = new FlakyBlobStore((attempt) => attempt === 1);
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(1), pathFor, {
+      concurrency: 1,
+      retryDelaysMs: [0, 0],
+    });
+
+    assert.equal(seeded.seeded, 1, 'the second attempt landed the mesh');
+    assert.equal(seeded.failed, 0);
+    assert.equal(blobStore.attempts, 2);
+  });
+
+  it('stops uploading once the store is refusing everything', async () => {
+    // Inode exhaustion failed every PUT. Retrying all of them would issue
+    // meshes x (1 + retries) doomed requests, and the user waits through all
+    // of it before being told anything.
+    const { session, pathFor } = docWithEntities(40);
+    const blobStore = new FlakyBlobStore(() => true);
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(40), pathFor, {
+      concurrency: 1,
+      retries: 1,
+      retryDelaysMs: [0],
+      maxFailures: 5,
+    });
+
+    assert.equal(seeded.abandoned, true, 'a systemic upload failure is reported as such');
+    assert.equal(seeded.seeded, 0);
+    assert.equal(seeded.failed, 5);
+    assert.equal(blobStore.attempts, 10, '5 failures x 2 attempts, not 40 meshes x 2');
+  });
+
+  it('keeps the failure ceiling when it is configured with a NaN', async () => {
+    // `failures >= NaN` is false forever: a NaN override would silently remove
+    // the ceiling rather than widen it, which is the worst of both.
+    const { session, pathFor } = docWithEntities(40);
+    const blobStore = new FlakyBlobStore(() => true);
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(40), pathFor, {
+      concurrency: 1,
+      retries: 1,
+      retryDelaysMs: [0],
+      maxFailures: Number.NaN,
+    });
+
+    assert.equal(seeded.abandoned, true);
+    assert.ok(blobStore.attempts < 80, `bounded by the default ceiling, got ${blobStore.attempts} attempts`);
+  });
+
+  it('still uploads when concurrency is configured with a NaN', async () => {
+    // `Math.min(NaN, n)` is NaN and `Array.from({length: NaN})` builds ZERO
+    // workers, so a NaN here uploads nothing while every other signal looks
+    // like a normal seed that simply found nothing.
+    const { session, pathFor } = docWithEntities(3);
+    const blobStore = new MemoryBlobStore();
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, distinctMeshes(3), pathFor, {
+      concurrency: Number.NaN,
+    });
+
+    assert.equal(seeded.seeded, 3);
+  });
+
+  it('counts meshes whose CPU data was released, so the caller sees an empty seed', async () => {
+    // Bounded-geometry mode on a large model: every mesh is present but has no
+    // triangles. Nothing throws, nothing uploads, the room gets nothing, and
+    // the owner's own viewport still renders from its GPU copy.
+    const { session, pathFor } = docWithEntities(2);
+    const blobStore = new MemoryBlobStore();
+    const released = distinctMeshes(2).map((m) => ({
+      ...m,
+      positions: new Float32Array(0),
+      indices: new Uint32Array(0),
+    }));
+
+    const seeded = await seedGeometryToRoom(api, session, blobStore, released, pathFor, {
+      concurrency: 1,
+    });
+
+    assert.equal(seeded.offered, 2);
+    assert.equal(seeded.attempted, 0);
+    assert.equal(seeded.seeded, 0);
+    assert.equal(seeded.skipped.empty, 2);
+  });
+});
+
+describe('retry backoff bounds', () => {
+  it('clamps a backoff that setTimeout would turn into an instant retry', () => {
+    // Measured: `setTimeout(fn, 2 ** 31)` fires in 1ms. An over-large backoff
+    // is the same flood as a zero one, from the other end.
+    assert.equal(boundedRetryDelayMs(2 ** 31), MAX_RETRY_DELAY_MS);
+    assert.equal(boundedRetryDelayMs(Number.MAX_SAFE_INTEGER), MAX_RETRY_DELAY_MS);
+  });
+
+  it('treats a NaN, infinite or negative backoff as no wait', () => {
+    assert.equal(boundedRetryDelayMs(Number.NaN), 0);
+    assert.equal(boundedRetryDelayMs(Number.POSITIVE_INFINITY), 0);
+    assert.equal(boundedRetryDelayMs(-5), 0);
+    assert.equal(boundedRetryDelayMs(undefined), 0);
+  });
+
+  it('passes a sane backoff through untouched', () => {
+    assert.equal(boundedRetryDelayMs(150), 150);
   });
 });
 

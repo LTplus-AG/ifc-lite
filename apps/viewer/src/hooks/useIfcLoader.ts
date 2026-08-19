@@ -493,6 +493,14 @@ export function useIfcLoader() {
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
         patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
+        // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
+        // closed over: the WASM streaming section's `allInstancedShards` is
+        // declared ~800 lines below this closure, so a plain closure read would
+        // hit its TDZ on every non-WASM format (GLB/IFCX/point-cloud), whose
+        // finalizeModel calls all happen before that declaration executes.
+        // Those formats have no instancing concept, so the correct value on
+        // their path is simply "none" — the default below.
+        instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
@@ -629,8 +637,8 @@ export function useIfcLoader() {
           // renderer-side modelId → modelIndex / idOffset lookups
           // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
           // this model when the drain effect runs.
-          if (allInstancedShards.length > 0) {
-            appendInstancedShards(modelId, allInstancedShards);
+          if (instancedShards.length > 0) {
+            appendInstancedShards(modelId, instancedShards);
           }
           return;
         }
@@ -1882,7 +1890,7 @@ export function useIfcLoader() {
                   };
                   await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
                     loadState: 'complete',
-                  });
+                  }, allInstancedShards);
                   return;
                 }
 
@@ -1891,7 +1899,7 @@ export function useIfcLoader() {
                   // Only show "writing" when this file will actually be cached
                   // under the current plan (respects the size bands + kill switch).
                   cacheState: cachePlan.shouldCache ? 'writing' : 'none',
-                });
+                }, allInstancedShards);
                 // Build spatial index from meshes in time-sliced chunks (non-blocking).
                 // Previously this was synchronous inside requestIdleCallback, blocking
                 // the main thread for seconds on 200K+ mesh models (190M+ float reads

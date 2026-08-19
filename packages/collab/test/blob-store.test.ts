@@ -123,3 +123,62 @@ describe('blob store', () => {
     expect(await http.get(meta.hash)).toBeNull();
   });
 });
+
+// ─── put() abort support (#2798) ───────────────────────────────────────────
+// A HUNG upload is worse than a failed one. A rejection is counted, retried,
+// and can trip a caller's failure ceiling; a request that never settles
+// produces no failure at all, so nothing retries, no ceiling trips, and a
+// geometry seed simply never resolves while the UI reports work in progress.
+
+describe('HttpBlobStore.put honours an AbortSignal', () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+
+  it('passes the signal through to fetch', async () => {
+    let seen: AbortSignal | undefined;
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: (async (_u: string, init?: RequestInit) => {
+        seen = init?.signal ?? undefined;
+        return new Response(null, { status: 201 });
+      }) as unknown as typeof fetch,
+    });
+
+    const ac = new AbortController();
+    await store.put(bytes, 'application/octet-stream', { signal: ac.signal });
+    expect(seen, 'signal never reached fetch').toBe(ac.signal);
+  });
+
+  it('a put that never settles rejects once aborted', async () => {
+    // The whole point: without this the promise below is still pending after
+    // the timeout and the caller has nothing to count.
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: ((_u: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        })) as unknown as typeof fetch,
+    });
+
+    const ac = new AbortController();
+    const pending = store.put(bytes, undefined, { signal: ac.signal });
+    ac.abort();
+    await expect(pending).rejects.toThrow(/abort/i);
+  });
+
+  it('omits the signal entirely when none is given', async () => {
+    // Passing `signal: undefined` is not the same as omitting it for every
+    // fetch implementation, so the option must not appear at all.
+    let had = true;
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: (async (_u: string, init?: RequestInit) => {
+        had = init !== undefined && 'signal' in init;
+        return new Response(null, { status: 201 });
+      }) as unknown as typeof fetch,
+    });
+    await store.put(bytes);
+    expect(had).toBe(false);
+  });
+});

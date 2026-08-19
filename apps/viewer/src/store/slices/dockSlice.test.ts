@@ -22,6 +22,26 @@ describe('dockSlice (#1201)', () => {
     assert.strictEqual(s.getState().floatingPanels.filter((p) => p.id === 'compare').length, 1);
   });
 
+  it('keeps a re-floated panel exactly where the user left it', () => {
+    // github.com/LTplus-AG/ifc-lite/issues/2765: re-floating an already-open
+    // panel raises it and MUST NOT reset its geometry. The order assertion
+    // above passes either way, so resetting x/y/w/h/snap on every raise (which
+    // happens on pointer-down) went unnoticed: the panel would jump back to
+    // its default position whenever it was clicked.
+    const s = makeStore();
+    s.getState().floatPanel('compare');
+    s.getState().setFloatingPanelRect('compare', { x: 120, y: 340, w: 500, h: 410 });
+    s.getState().snapFloatingPanel('compare', 'left');
+
+    s.getState().floatPanel('compare');
+
+    const p = s.getState().floatingPanels.find((panel) => panel.id === 'compare');
+    assert.deepStrictEqual(
+      { x: p?.x, y: p?.y, w: p?.w, h: p?.h, snap: p?.snap },
+      { x: 120, y: 340, w: 500, h: 410, snap: 'left' },
+    );
+  });
+
   it('gives a new float sane default geometry (free, sized)', () => {
     const s = makeStore();
     s.getState().floatPanel('bcf');

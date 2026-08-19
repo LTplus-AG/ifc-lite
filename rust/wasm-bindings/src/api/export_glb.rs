@@ -60,21 +60,25 @@ impl IfcAPI {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let opts = ifc_lite_export::GltfOptions {
-            include_metadata,
-            hidden: hidden.to_vec(),
-            isolated: isolated.to_vec(),
-            hidden_types,
-            lit: lit.unwrap_or(true),
-            emissive: emissive.unwrap_or(false),
+        let opts = ifc_lite_export::GltfOptions::default()
+            .with_include_metadata(include_metadata)
+            .with_hidden(hidden.to_vec())
+            .with_isolated(isolated.to_vec())
+            .with_hidden_types(hidden_types)
+            .with_lit(lit.unwrap_or(true))
+            .with_emissive(emissive.unwrap_or(false))
             // Federation (modelId stamping) is a server-side concern; the viewer's
             // wasm export path is single-model. Add a parameter here if/when the
             // browser needs to federate.
-            model_id: None,
+            .with_model_id(None)
             // The viewer loads the GLB directly; quantization is a server/export-pipeline
             // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
-            quantize: false,
-        };
+            .with_quantize(false)
+            // Stated rather than inherited from `setTessellationQuality`, so this
+            // export keeps emitting exactly what it emitted before. Whether an
+            // export should follow the density the viewer is displaying at is a
+            // separate question from whether a caller can name one.
+            .with_tessellation_quality(ifc_lite_export::TessellationQuality::Medium);
         ifc_lite_export::try_export_glb(content, &opts)
             .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }

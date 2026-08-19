@@ -15,6 +15,10 @@
  * reported case read `"Re-exported by ifc-lite, 1 modification"` over a DATA
  * section with zero entity lines.
  *
+ * The two georeferencing cases moved to `step-georeferencing.test.ts` with the
+ * phase that produces them (#2475 step 2a); the corpus below still carries the
+ * `#40` / `#41` pair they used.
+ *
  * Every assertion below reads the emitted file TEXT and checks that the
  * HEADER and the BODY agree — a header claim is only ever verified against the
  * entity lines actually present, never against a counter alone. The
@@ -52,8 +56,6 @@ function dataEntityLines(stepText: string): string[] {
 
 const WALL_ID = 8;
 const WALL_TYPE_ID = 5;
-const CRS_ID = 40;
-const MAP_CONVERSION_ID = 41;
 /** `Name` on IfcWall: GlobalId, OwnerHistory, Name. */
 const WALL_NAME_SLOT = 2;
 /** #8's line in {@link BASE_IFC}, verbatim — the no-op cases must not touch it. */
@@ -108,47 +110,6 @@ describe('deltaOnly modification count vs what the delta contains', () => {
     // ...and the drop is reported rather than silent.
     expect(result.stats.warnings.join('\n')).toContain(`#${WALL_ID}`);
     expect(result.stats.warnings.join('\n')).toMatch(/deltaOnly/);
-  });
-
-  it('a georeferencing edit to an EXISTING IfcProjectedCRS claims nothing either', async () => {
-    const store = await parseBase();
-    const { view } = newSession(store);
-
-    // Queued as attribute edits against #40, which only the skipped
-    // source-iteration pass would write.
-    const result = new StepExporter(store, view).export({
-      schema: 'IFC4',
-      deltaOnly: true,
-      georefMutations: { projectedCRS: { name: 'EPSG:2056' } },
-    });
-    const text = new TextDecoder().decode(result.content);
-
-    expect(dataEntityLines(text)).toEqual([]);
-    expect(headerClaimedModifications(text)).toBeNull();
-    expect(result.stats.modifiedEntityCount).toBe(0);
-    expect(result.stats.warnings.join('\n')).toContain(`#${CRS_ID}`);
-    expect(result.stats.warnings.join('\n')).toContain('georeferencing edits');
-  });
-
-  it('a georeferencing edit to an EXISTING IfcMapConversion claims nothing either', async () => {
-    const store = await parseBase();
-    const { view } = newSession(store);
-
-    // The map-conversion branch is a SECOND nomination site with the same
-    // shape, and nothing pinned it: deleted, a delta claimed a modification for
-    // #41 over an empty DATA section again, with the suite green.
-    const result = new StepExporter(store, view).export({
-      schema: 'IFC4',
-      deltaOnly: true,
-      georefMutations: { mapConversion: { eastings: 12345, northings: 67890 } },
-    });
-    const text = new TextDecoder().decode(result.content);
-
-    expect(dataEntityLines(text)).toEqual([]);
-    expect(headerClaimedModifications(text)).toBeNull();
-    expect(result.stats.modifiedEntityCount).toBe(0);
-    expect(result.stats.warnings.join('\n')).toContain(`#${MAP_CONVERSION_ID}`);
-    expect(result.stats.warnings.join('\n')).toContain('georeferencing edits');
   });
 
   it('a property-set DELETION claims nothing: a delta has no replacement content to carry', async () => {
@@ -387,20 +348,6 @@ describe('full (non-delta) export is unchanged by the delta fix', () => {
       result.stats.newEntityCount + result.stats.modifiedEntityCount,
     );
     expect(result.stats.warnings).toEqual([]);
-  });
-
-  it('a georeferencing edit to an existing CRS still counts and still lands', async () => {
-    const store = await parseBase();
-    const { view } = newSession(store);
-
-    const result = new StepExporter(store, view).export({
-      schema: 'IFC4',
-      georefMutations: { projectedCRS: { name: 'EPSG:2056' } },
-    });
-    const text = new TextDecoder().decode(result.content);
-
-    expect(text).toContain(`#${CRS_ID}=IFCPROJECTEDCRS('EPSG:2056'`);
-    expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
   it('a retype-only session still counts one modification and rewrites the class', async () => {

@@ -109,6 +109,43 @@ function isTextLike(name: string, mimeType: string): boolean {
   return ext === 'ifc' || ext === 'ids' || ext === 'csv' || ext === 'tsv' || ext === 'xml' || ext === 'json' || ext === 'txt' || ext === 'md';
 }
 
+/** Merge newly-attached names into a pending list, deduping by name. A
+ *  caller (the chat panel) tracks WHICH names are pending as a chat turn's
+ *  attachments; it must never track a second copy of the file contents,
+ *  because `UploadStore.add` above already collapses same-name uploads to
+ *  one entry (last-wins) — keeping only names here makes it structurally
+ *  impossible for the pending list to disagree with the store about how
+ *  many distinct files are attached (#mcp-attach-dupes). */
+export function mergeAttachmentNames(prev: readonly string[], added: readonly string[]): string[] {
+  const seen = new Set(prev);
+  const next = [...prev];
+  for (const name of added) {
+    if (!seen.has(name)) {
+      seen.add(name);
+      next.push(name);
+    }
+  }
+  return next;
+}
+
+/** Project a pending-name list through the store's CURRENT contents, so the
+ *  rendered chip for a name always shows whatever the store actually holds
+ *  for it (i.e. the last file attached under that basename). A name whose
+ *  upload was removed, or never landed, drops out rather than rendering a
+ *  stale or undefined entry. */
+export function resolveAttachments(
+  uploads: readonly UploadedFile[],
+  names: readonly string[],
+): UploadedFile[] {
+  const byName = new Map(uploads.map((u) => [u.name, u] as const));
+  const out: UploadedFile[] = [];
+  for (const name of names) {
+    const u = byName.get(name);
+    if (u) out.push(u);
+  }
+  return out;
+}
+
 function guessMimeType(name: string): string {
   const ext = name.toLowerCase().split('.').pop() ?? '';
   switch (ext) {

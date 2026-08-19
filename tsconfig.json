@@ -124,6 +124,12 @@
       "@ifc-lite/oauth-pkce/*": [
         "packages/oauth-pkce/dist/*"
       ],
+      "@ifc-lite/source-dropbox": [
+        "packages/source-dropbox/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-dropbox/*": [
+        "packages/source-dropbox/dist/*"
+      ],
       "@ifc-lite/source-msgraph": [
         "packages/source-msgraph/dist/index.d.ts"
       ],

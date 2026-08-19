@@ -5,7 +5,9 @@
 /**
  * Build the data accessor `@ifc-lite/ids` validators consume. Delegates
  * to the shared `@ifc-lite/ids/bridge` so the MCP server, the viewer,
- * and the corpus-parity harness all run the same translation logic.
+ * and the buildingSMART corpus harness
+ * (`packages/ids/src/__corpus__/corpus.test.ts`) all run the same
+ * translation logic.
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';

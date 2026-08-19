@@ -212,6 +212,64 @@ describe('elementsFromIfcx', () => {
     expect(withExclusions.clashes.length).toBe(1);
   });
 
+  it('offsets each submesh\'s indices by the running vertex count when merging WallC\'s Body+Axis', async () => {
+    // Pins the vertex-index offset applied inside the adapter's internal
+    // `mergeMeshes` (not exported; reached here through the public
+    // `elementsFromIfcx` result, whose `ClashElement.indices` is exactly
+    // `mergeMeshes`'s output). WallC owns two disjoint 8-vertex/36-index cube
+    // submeshes — Body at world x in [10,11] and Axis at world x in [12,13]
+    // (see `buildIfcxFile()` above) — so the merged buffer's second submesh
+    // block must have its indices shifted by the first submesh's vertex
+    // count (8) to address the right half of the concatenated position
+    // array. `bounds` and `isDegenerate` (used by the other tests in this
+    // file) are blind to this: they derive purely from `positions`, which is
+    // never mis-offset, only `indices` is. Coverage gap and mutation
+    // verification are documented in the PR for this test.
+    const { elements } = await elementsFromIfcx({
+      buffer: ifcxBuffer(),
+      modelId: 'ifcx-model',
+    });
+    const wallC = elements.find((e) => e.key === 'Project/WallC');
+    expect(wallC).toBeDefined();
+
+    // Two 8-vertex / 36-index cubes concatenated.
+    expect(wallC!.positions.length).toBe(8 * 3 * 2);
+    expect(wallC!.indices.length).toBe(36 * 2);
+
+    const FACE = cubeMesh(0, 0, 0, 1).faceVertexIndices; // same triangulation pattern for both cubes
+
+    const firstBlock = Array.from(wallC!.indices.slice(0, 36));
+    const secondBlock = Array.from(wallC!.indices.slice(36));
+
+    // The first submesh's vertexBase is always 0, so its indices are the
+    // untouched 0..7 pattern.
+    expect(firstBlock).toEqual(FACE);
+    // The second submesh must be shifted into the 8..15 range — the offset
+    // under test. Dropping `+ vertexBase` in `mergeMeshes` would leave this
+    // identical to `firstBlock`, aliasing the second submesh's triangles
+    // back onto the first submesh's vertices.
+    expect(secondBlock).toEqual(FACE.map((i) => i + 8));
+
+    // Tie the offset to real geometry, not just index numbers: resolve every
+    // index through `positions` and confirm it lands in the right cube's
+    // x-range. World x is preserved by the IFCX Z-up -> Y-up conversion (only
+    // y/z are remapped), so Body's vertices are x in [10,11] and Axis's are
+    // x in [12,13], independent of which submesh the extractor visits first.
+    const xRangeOf = (idx: number) => wallC!.positions[idx * 3];
+    const firstBlockXs = firstBlock.map(xRangeOf);
+    const secondBlockXs = secondBlock.map(xRangeOf);
+    const inBodyRange = (x: number) => x >= 10 && x <= 11;
+    const inAxisRange = (x: number) => x >= 12 && x <= 13;
+    const firstIsBody = firstBlockXs.every(inBodyRange);
+    const firstIsAxis = firstBlockXs.every(inAxisRange);
+    expect(firstIsBody || firstIsAxis).toBe(true);
+    if (firstIsBody) {
+      expect(secondBlockXs.every(inAxisRange)).toBe(true);
+    } else {
+      expect(secondBlockXs.every(inBodyRange)).toBe(true);
+    }
+  });
+
   it('excludes composition parent/child pairs but keeps the set otherwise', async () => {
     const { elements, exclusions } = await elementsFromIfcx({
       buffer: ifcxBuffer(),

@@ -144,3 +144,26 @@ describe('isNearPolylineStart', () => {
     assert.equal(isNearPolylineStart(candidate, first, 60), true);
   });
 });
+
+describe('shouldStartDragMeasurement - angle mode (#2735)', () => {
+  it('never starts a drag in angle mode', () => {
+    // The single gate that stops two mode state machines running at once.
+    // Angle mode places points by click, so a drag starting underneath it
+    // would leave `activeMeasurement` non-null while a pick sequence is in
+    // progress - the exact corruption `setMeasureMode` exists to prevent.
+    assert.equal(shouldStartDragMeasurement('angle', false), false);
+  });
+
+  it('is an ALLOW-list, so a future mode is click-driven by default', () => {
+    // Written as `mode === 'drag'`, not `mode !== 'polyline'`. The exclusion
+    // form is a deny-list: every new click-driven mode must remember to add
+    // itself, and forgetting means the drag gesture silently runs underneath
+    // it. This pins the safe direction rather than the current mode list, so
+    // it keeps biting when a fourth mode lands.
+    assert.equal(shouldStartDragMeasurement('drag', false), true);
+    assert.equal(shouldStartDragMeasurement('drag', true), false, 'shift still escapes to orbit');
+    for (const mode of ['polyline', 'angle'] as const) {
+      assert.equal(shouldStartDragMeasurement(mode, false), false, `${mode} must not drag`);
+    }
+  });
+});

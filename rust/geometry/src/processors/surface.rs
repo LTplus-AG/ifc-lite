@@ -139,6 +139,15 @@ impl SurfaceOfLinearExtrusionProcessor {
         profile_id: u32,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Point2<f64>>> {
+        let mut visited = std::collections::HashSet::new();
+        Self::profile_curve_points_guarded(profile_id, decoder, &mut visited)
+    }
+
+    fn profile_curve_points_guarded(
+        profile_id: u32,
+        decoder: &mut EntityDecoder,
+        visited: &mut std::collections::HashSet<u32>,
+    ) -> Result<Vec<Point2<f64>>> {
         let profile = decoder.decode_by_id(profile_id)?;
 
         // IfcArbitraryOpenProfileDef: 0=ProfileType, 1=ProfileName, 2=Curve
@@ -150,6 +159,35 @@ impl SurfaceOfLinearExtrusionProcessor {
         let curve_id = curve_attr
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for curve".to_string()))?;
+
+        Self::curve_points_guarded(curve_id, decoder, visited)
+    }
+
+    /// Sample a CURVE (not a profile) into 2D points.
+    ///
+    /// Split out of `get_profile_curve_points` because
+    /// `extract_composite_curve_points` was calling that function with a
+    /// segment's `ParentCurve` id — a curve where a profile was expected. It
+    /// read attribute 2 of the curve as "the profile's curve", and an
+    /// `IfcPolyline` has no attribute 2, so every composite-curve profile
+    /// errored on each segment, had the error swallowed by the caller's
+    /// `if let Ok(..)`, and returned `Ok(vec![])`. Silently: no points, no
+    /// error, indistinguishable from a legitimately empty profile.
+    ///
+    /// `visited` bounds the `profile -> composite curve -> segment ->
+    /// ParentCurve -> profile` cycle, which is file-supplied and aborts the
+    /// process on a stack overflow (#2866). A set rather than a depth cap
+    /// because `extract_composite_curve_points` loops over segments: `k`
+    /// segments each leading back cost `O(k^depth)`, so a cap alone would
+    /// trade the abort for a hang.
+    fn curve_points_guarded(
+        curve_id: u32,
+        decoder: &mut EntityDecoder,
+        visited: &mut std::collections::HashSet<u32>,
+    ) -> Result<Vec<Point2<f64>>> {
+        if !visited.insert(curve_id) {
+            return Ok(Vec::new());
+        }
 
         // Get curve entity to determine type
         let curve = decoder.decode_by_id(curve_id)?;
@@ -171,7 +209,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             }
             IfcType::IfcCompositeCurve => {
                 // Handle composite curves by extracting segments
-                Self::extract_composite_curve_points(curve_id, decoder)
+                Self::extract_composite_curve_points(curve_id, decoder, visited)
             }
             _ => {
                 // Fallback: try to get points directly
@@ -194,6 +232,7 @@ impl SurfaceOfLinearExtrusionProcessor {
     fn extract_composite_curve_points(
         curve_id: u32,
         decoder: &mut EntityDecoder,
+        visited: &mut std::collections::HashSet<u32>,
     ) -> Result<Vec<Point2<f64>>> {
         let curve = decoder.decode_by_id(curve_id)?;
 
@@ -225,7 +264,12 @@ impl SurfaceOfLinearExtrusionProcessor {
             })?;
 
             // Recursively get points from the parent curve
-            if let Ok(segment_points) = Self::get_profile_curve_points(parent_curve_id, decoder) {
+            // The ParentCurve is a CURVE, not a profile. Routing it through the
+            // profile entry point read its attribute 2 as "the curve" and
+            // dropped every segment (#2866).
+            if let Ok(segment_points) =
+                Self::curve_points_guarded(parent_curve_id, decoder, visited)
+            {
                 // Skip first point if we already have points (to avoid duplicates at joints)
                 let start_idx = if all_points.is_empty() { 0 } else { 1 };
                 all_points.extend(segment_points.into_iter().skip(start_idx));
@@ -241,3 +285,7 @@ impl Default for SurfaceOfLinearExtrusionProcessor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "surface_cycle_tests.rs"]
+mod surface_cycle_tests;

@@ -80,7 +80,19 @@ export type SeedOutcome =
 export function classifySeed(report: SeedGeometryReport | null | undefined): SeedOutcome {
   if (!report || report.offered === 0) return 'nothing-to-seed';
   if (report.seeded === 0) return 'failed';
-  if (report.failed > 0 || report.seeded < report.attempted || report.skipped.empty > 0) {
+  // `seeded < attempted` is deliberately NOT tested here: it is implied.
+  // Every attempted job either records a ref (`seeded`) or increments `failed`,
+  // so `seeded + failed === attempted`, and the abandoned case leaves jobs
+  // unattempted only after `failed` has already reached `maxFailures` (>= 1).
+  // So `seeded < attempted` holds exactly when `failed > 0` does, on every
+  // reachable input.
+  //
+  // It used to be here as a third term, and mutation testing is what exposed
+  // it: dropping EITHER `failed > 0` or `seeded < attempted` left the suite
+  // green, because each stood in for the other and the one test covering them
+  // varied both at once. Two terms that always agree cannot be told apart by a
+  // fixture that moves them together - so one of them was never doing anything.
+  if (report.failed > 0 || report.skipped.empty > 0) {
     return 'partial';
   }
   return 'seeded';

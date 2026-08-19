@@ -28,6 +28,7 @@
 import { buildMeshBvh, type MeshBvh } from './mesh-bvh.js';
 import { triangleAt } from './triangle.js';
 import { triTriDistance } from '../math/triangle-distance.js';
+import { triTriIntersect } from '../math/triangle-intersect.js';
 import type { BvhNode } from './bvh.js';
 import type { AABB, Mesh, Vec3 } from './types.js';
 
@@ -204,12 +205,41 @@ export function minDistanceBetweenBvhs(
     if (leafA && leafB) {
       for (const ia of na.items ?? []) {
         const triA = triangleAt(a.mesh, Number(a.bvh.items[ia].id));
+        const va0 = mutable(triA.v0);
+        const va1 = mutable(triA.v1);
+        const va2 = mutable(triA.v2);
         for (const ib of nb.items ?? []) {
           const triB = triangleAt(b.mesh, Number(b.bvh.items[ib].id));
-          const r = triTriDistance(
-            mutable(triA.v0), mutable(triA.v1), mutable(triA.v2),
-            mutable(triB.v0), mutable(triB.v1), mutable(triB.v2),
-          );
+          const vb0 = mutable(triB.v0);
+          const vb1 = mutable(triB.v1);
+          const vb2 = mutable(triB.v2);
+
+          // triTriDistance's own contract (../math/triangle-distance.ts) is
+          // "only invoked for non-intersecting pairs" — intersecting ones
+          // must be gated separately with triTriIntersect, the same order
+          // engine-ts/narrow.ts already uses for its per-pair test. Skipping
+          // this gate is exactly the bug this fix closes: an intersecting
+          // pair fed to triTriDistance reports a nonzero gap for surfaces
+          // that actually overlap.
+          if (triTriIntersect(va0, va1, va2, vb0, vb1, vb2)) {
+            // 0 is the smallest distance this query can ever report, so once
+            // found nothing left in the frontier — pruned or not — can beat
+            // it. Return immediately rather than continuing to search.
+            const p: Vec3 = [
+              (triA.v0[0] + triA.v1[0] + triA.v2[0] + triB.v0[0] + triB.v1[0] + triB.v2[0]) / 6,
+              (triA.v0[1] + triA.v1[1] + triA.v2[1] + triB.v0[1] + triB.v1[1] + triB.v2[1]) / 6,
+              (triA.v0[2] + triA.v1[2] + triA.v2[2] + triB.v0[2] + triB.v1[2] + triB.v2[2]) / 6,
+            ];
+            return {
+              distance: 0,
+              pointA: p,
+              pointB: p,
+              triangleA: Number(a.bvh.items[ia].id),
+              triangleB: Number(b.bvh.items[ib].id),
+            };
+          }
+
+          const r = triTriDistance(va0, va1, va2, vb0, vb1, vb2);
           if (r.dist < best.distance) {
             best.distance = r.dist;
             best.pointA = r.pA;

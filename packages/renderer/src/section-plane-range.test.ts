@@ -163,6 +163,19 @@ describe('the storey override keeps its axis-aligned units (#2447)', () => {
         assert.strictEqual(mid.sectionPlaneData?.distance, 5);
     });
 
+    // `axisComponent` (render-section-plane.ts) picks which normal component
+    // the override-units check reads: 0 for 'side', 1 for 'down', 2 for
+    // 'front'. Every prior test in this describe block used 'down' — the
+    // 'front' branch of that ternary was never independently exercised, so a
+    // mutation that folds 'front' onto the same component as 'down' left the
+    // whole suite green.
+    it('still honours a valid override on an unrotated front cut', () => {
+        const r = resolve({ axis: 'front', position: 0, min: 3, max: 7 });
+        assert.strictEqual(r.sectionPlaneData?.distance, 3);
+        const mid = resolve({ axis: 'front', position: 50, min: 3, max: 7 });
+        assert.strictEqual(mid.sectionPlaneData?.distance, 5);
+    });
+
     it('honours it for a horizontal cut even when the building is rotated', () => {
         // `axis: 'down'` keeps normal [0,1,0] under a Y rotation, so a
         // storey elevation IS the plane distance and the override is meaningful.

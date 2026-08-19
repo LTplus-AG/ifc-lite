@@ -382,6 +382,11 @@ fn overlap_exactly_at_the_precision_floor_is_touch_not_hard() {
 
     let floor = 64.0f64 / 4_194_304.0;
     assert_eq!(floor, 0.0000152587890625, "sanity: the derived floor value");
+    assert_eq!(
+        a.2[5] - b.2[2],
+        floor as f32,
+        "sanity: the generated f32 AABB overlap is exactly the precision floor"
+    );
 
     let session = session_of(&[a, b]);
     let hard_only = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);

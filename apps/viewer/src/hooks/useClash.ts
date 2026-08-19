@@ -255,9 +255,18 @@ export function useClash() {
   const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
   const clear = useViewerStore((s) => s.clearClash);
 
-  // Geometry of the last-gathered clash elements, keyed by federated ref, so a
-  // focused clash can compute its real contact interface for that one pair.
-  const elementsByRef = useRef(new Map<number, ClashElement>());
+  // Geometry of the last-gathered clash elements, keyed by (model, key) IDENTITY —
+  // not by `ref` — so a focused clash can compute its real contact interface for
+  // that one pair. `ref` is derived from the bare expressId (see step.ts) and is
+  // deliberately SHARED across every occurrence of a GPU-instanced entity, while
+  // `key` folds in `mesh.occurrenceKey` to stay distinct per physical occurrence
+  // (#2865). Keying this cache by `ref` collapsed multiple occurrences onto one
+  // map entry (last-write-wins), so `focusClash` below could build the contact
+  // interface / intersection solid from the WRONG occurrence's geometry whenever
+  // two instanced copies of one element actually clashed.
+  const elementsByIdentity = useRef(new Map<string, ClashElement>());
+  const elementIdentity = (element: Pick<ClashElement, 'model' | 'key'>): string =>
+    JSON.stringify([element.model, element.key]);
 
   // The intersection-solid staleness guard that used to live here (a
   // `createLatestWinsGuard()` ref) is gone: it was private to one `useClash()`
@@ -490,8 +499,8 @@ export function useClash() {
           state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
-        // Keep per-ref geometry so focusClash can build the contact interface.
-        elementsByRef.current = new Map(elements.map((e) => [e.ref, e]));
+        // Keep per-occurrence geometry so focusClash can build the contact interface.
+        elementsByIdentity.current = new Map(elements.map((e) => [elementIdentity(e), e]));
         const engine = createClashEngine({ backend: 'ts' });
         const res = await engine.run(elements, rules, {
           exclusions,
@@ -832,8 +841,8 @@ export function useClash() {
       // REAL contact interface (shared-face polygon / intersection line) computed
       // for this one pair; fall back to the AABB box if it can't be built.
       let contactDrawn = false;
-      const elA = elementsByRef.current.get(clash.a.ref);
-      const elB = elementsByRef.current.get(clash.b.ref);
+      const elA = elementsByIdentity.current.get(elementIdentity(clash.a));
+      const elB = elementsByIdentity.current.get(elementIdentity(clash.b));
       if (elA && elB) {
         try {
           const clusters = contactClusters(

@@ -148,93 +148,38 @@ fn find_color_in_representation(
     None
 }
 
-/// Longest `IfcMappedItem -> IfcRepresentationMap -> MappedRepresentation`
-/// chain this chase will follow. Must match `element::MAX_MAPPED_ITEM_DEPTH`
-/// and the geometry router's `MAX_MAPPED_ITEM_DEPTH`
-/// (`ifc_lite_geometry::router::processing`) — all three walk the SAME
-/// chain, so a value below the others here would leave a chain shorter than
-/// the router's but longer than this resolver's rendering its geometry while
-/// silently losing the authored style on its leaf (#2873).
-const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
-
-/// Find color in a shape representation: a direct style on one of its items
-/// wins, else chase a nested `IfcMappedItem -> IfcRepresentationMap ->
-/// MappedRepresentation` recursively — mirrors
-/// `element::find_geometry_item_color`'s traversal (#913 §2.7) so this
-/// fallback path (used to populate `EntityJob::element_color` before the
-/// per-element producer runs) agrees with it on how many mapped-item hops a
-/// styled leaf can sit behind. Previously this bottomed out after exactly
-/// one hop, so a doubly (or deeper) mapped styled item was silently
-/// invisible to this resolver while the canonical per-element path found it;
-/// then made unbounded to match, that recursion is itself the shape #2863
-/// showed aborts the process on a cyclic `IfcMappedItem` chain (a Rust stack
-/// overflow is an abort, not a catchable panic — no error returned). Bounded
-/// to at most `MAX_MAPPED_ITEM_DEPTH` hops, with a depth-recording visited
-/// map (not a plain set) for the same reason `element.rs` uses one: a plain
-/// set would mark an item visited on a deep, cap-cut branch and then skip a
-/// later, shorter branch that would have resolved, silently losing a colour
-/// rather than crashing.
+/// Find color in a shape representation: delegates each item to
+/// `element::find_geometry_item_color`, the canonical per-element resolver
+/// (#913 §2.7), instead of re-walking the `IfcMappedItem ->
+/// IfcRepresentationMap -> MappedRepresentation` chain here.
+///
+/// This used to duplicate that walk inline, one hop deep, so a styled leaf
+/// sitting two or more mapped-item hops down resolved through the canonical
+/// path but not through this prepass fallback (the asymmetry this function
+/// exists to fix). Widening the local walk to match — instead of delegating
+/// — reintroduced the walk's own unbounded recursion here a second time:
+/// `element::find_geometry_item_color` had already been bounded by
+/// `MAX_MAPPED_ITEM_DEPTH` plus a depth-recording visited map after a cyclic
+/// `IfcMappedItem` chain was found to abort the process through it (#2863,
+/// #2864 — a Rust stack overflow is an abort, not a catchable panic, so
+/// nothing short of a bound stops it). A second, separately bounded copy of
+/// the same traversal here would only defer the next divergence: the two caps
+/// would need to be kept in step by hand instead of not existing. Calling the
+/// guarded resolver directly means there is one traversal and one bound, and
+/// the asymmetry cannot reopen.
 fn find_color_in_shape_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let mut visited = FxHashMap::default();
-    find_color_in_shape_representation_at(repr_id, geometry_styles, decoder, 0, &mut visited)
-}
-
-fn find_color_in_shape_representation_at(
-    repr_id: u32,
-    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
-    decoder: &mut EntityDecoder,
-    depth: u32,
-    visited: &mut FxHashMap<u32, u32>,
-) -> Option<[f32; 4]> {
-    match visited.get(&repr_id) {
-        // Already explored from here or from closer to the root: that
-        // attempt had at least as much room under the cap, so revisiting
-        // cannot find anything new. Skipping breaks cycles.
-        Some(&seen_at) if seen_at <= depth => return None,
-        _ => visited.insert(repr_id, depth),
-    };
-
     let repr = decoder.decode_by_id(repr_id).ok()?;
     let items = get_refs_from_list(&repr, 3)?;
 
     for item_id in items {
-        if let Some(style) = geometry_styles.get(&item_id) {
-            return Some(style.color);
-        }
-
-        // A direct style on THIS representation's own items is always
-        // checked (above) regardless of depth — the cap only stops further
-        // descent through another mapped-item hop, mirroring
-        // `element::find_geometry_item_color_at`, which checks a node's own
-        // style before consulting the depth cap.
-        if depth >= MAX_MAPPED_ITEM_DEPTH {
-            continue;
-        }
-
-        // Check mapped items — recurse into the mapped representation so
-        // deep mapping chains resolve, not just one level, bounded by the cap.
-        if let Ok(item) = decoder.decode_by_id(item_id) {
-            if item.ifc_type == IfcType::IfcMappedItem {
-                if let Some(source_id) = item.get_ref(0) {
-                    if let Ok(source) = decoder.decode_by_id(source_id) {
-                        if let Some(mapped_repr_id) = source.get_ref(1) {
-                            if let Some(color) = find_color_in_shape_representation_at(
-                                mapped_repr_id,
-                                geometry_styles,
-                                decoder,
-                                depth + 1,
-                                visited,
-                            ) {
-                                return Some(color);
-                            }
-                        }
-                    }
-                }
-            }
+        if let Some(color) =
+            crate::element::find_geometry_item_color(item_id, geometry_styles, decoder)
+        {
+            return Some(color);
         }
     }
 
@@ -352,7 +297,7 @@ mod tests {
                 material_name: None,
             },
         );
-        let content = nested_mapped_chain(MAX_MAPPED_ITEM_DEPTH);
+        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH);
         let index = build_entity_index(&content);
         let mut decoder = EntityDecoder::with_index(&content, index);
         assert_eq!(
@@ -374,27 +319,13 @@ mod tests {
                 material_name: None,
             },
         );
-        let content = nested_mapped_chain(MAX_MAPPED_ITEM_DEPTH + 1);
+        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH + 1);
         let index = build_entity_index(&content);
         let mut decoder = EntityDecoder::with_index(&content, index);
         assert_eq!(
             find_color_in_representation(10, &styles, &mut decoder),
             None,
             "one hop past the cap the chase gives up rather than recursing on"
-        );
-    }
-
-    /// This resolver's cap must match its siblings — `element.rs`'s own
-    /// `MAX_MAPPED_ITEM_DEPTH` and the geometry router's — or a chain longer
-    /// than this one but shorter than theirs renders its geometry while
-    /// silently losing the authored style on its leaf (#2873's lesson: a
-    /// 16-vs-32 mismatch between two siblings did exactly this, silently).
-    #[test]
-    fn mapped_item_depth_cap_matches_its_siblings() {
-        assert_eq!(
-            MAX_MAPPED_ITEM_DEPTH, 32,
-            "must equal element::MAX_MAPPED_ITEM_DEPTH and the geometry \
-             router's MAX_MAPPED_ITEM_DEPTH"
         );
     }
 }

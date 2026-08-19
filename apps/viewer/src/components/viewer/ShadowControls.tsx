@@ -45,11 +45,11 @@ export function ShadowControls() {
         <>
           <label className="flex flex-col gap-0.5">
             <span className="flex justify-between text-[9px] uppercase tracking-wider text-muted-foreground">
-              <span>Sun angle</span>
+              <span>Softness</span>
               <button
                 type="button"
                 onClick={() => setSunAngle(0.53)}
-                title="Reset sun angle — the sun's angular size sets shadow softness (~0.53° clear sky)"
+                title="Reset shadow softness — the sun's angular size (degrees). Larger = softer, blurrier shadow edges (crisp ~0.53° clear sky). It does NOT move the sun; use Time of day for that."
                 className={cn('tabular-nums transition-colors', Math.abs(sunAngle - 0.53) > 1e-3 && 'text-foreground hover:text-teal-600')}
               >
                 {sunAngle.toFixed(2)}°

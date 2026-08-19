@@ -237,6 +237,8 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       idsValidationReport?: { modelInfo: { modelId: string } } | null;
       clearIdsValidationReport?: () => void;
       removeSourceTag?: (id: string) => void;
+      pointCloudDeviationComputed?: boolean;
+      setPointCloudDeviationComputed?: (computed: boolean) => void;
     };
     cross.clearMutations?.(modelId);
     cross.clearMutationView?.(modelId);
@@ -244,6 +246,17 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // sources UI stops offering "Sync from source" for a model that no
     // longer exists and the tag map cannot grow without bound.
     cross.removeSourceTag?.(modelId);
+    // A computed BIM<->scan deviation heatmap (`DeviationPanel`) is built from
+    // a BVH over EVERY triangle in the scene (`DeviationComputer.compute`,
+    // packages/renderer) -- not scoped to this model -- so removing any
+    // federated model invalidates it exactly like the clash focus and IDS
+    // report above. `pointCloudDeviationComputed` gates the panel's own
+    // auto-recompute effect, so leaving it `true` here would leave the
+    // slider/legend presenting a heatmap computed against a triangle set that
+    // no longer exists, with nothing left to trigger a rebuild.
+    if (cross.pointCloudDeviationComputed) {
+      cross.setPointCloudDeviationComputed?.(false);
+    }
 
     // Drop the focused-clash PRESENTATION — the A/B pair tint, the contact
     // marker (lines + AABB box) and the on-demand intersection solid, all of
@@ -392,9 +405,15 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     const crossClear = get() as unknown as {
       clearIdsValidationReport?: () => void;
       clearSourceTags?: () => void;
+      pointCloudDeviationComputed?: boolean;
+      setPointCloudDeviationComputed?: (computed: boolean) => void;
     };
     crossClear.clearIdsValidationReport?.();
     crossClear.clearSourceTags?.();
+    // Same staleness as `removeModel` above, for the full-teardown path.
+    if (crossClear.pointCloudDeviationComputed) {
+      crossClear.setPointCloudDeviationComputed?.(false);
+    }
     // A clash run describes pairs of elements in models that are all about to
     // be gone, and the on-demand intersection SOLID is a mesh drawn into the
     // live scene — `Viewport`'s draw gate reads `clashSelectedId` +

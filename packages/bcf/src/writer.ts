@@ -208,6 +208,28 @@ function writeMarkupFile(
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
 ): void {
+  // BCF 3.0's markup.xsd tightens `Topic/@TopicType` and `Topic/@TopicStatus`
+  // from optional (2.1) to `use="required"`. Omitting the attribute -
+  // which is what 2.1 output does when the value is unset - produces
+  // markup.bcf that fails 3.0 schema validation in every downstream tool.
+  // We refuse to invent a value (e.g. defaulting to "Open") because that
+  // would assert a topic status the user never chose; instead we fail the
+  // write so the caller supplies one.
+  if (version === '3.0') {
+    if (!topic.topicType) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicType (topic "${topic.guid}" has none). ` +
+          `Set topic.topicType before writing a 3.0 file.`
+      );
+    }
+    if (!topic.topicStatus) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicStatus (topic "${topic.guid}" has none). ` +
+          `Set topic.topicStatus before writing a 3.0 file.`
+      );
+    }
+  }
+
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
 

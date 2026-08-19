@@ -61,12 +61,22 @@ export const mainShaderSource = `
         @binding(3) @group(1) var<uniform> shadowU: Shadow;
 
         // Fraction of the sun reaching this surface point (1 = lit, 0 = fully
-        // shadowed). Normal-offset bias (maintainer #2) moves the sample along
-        // the face normal to defeat shadow acne without the peter-panning of a
-        // pure depth bias; a 3×3 PCF kernel whose spread scales with the sun's
-        // angular size softens the penumbra. textureSampleCompareLevel is used
-        // (not ...Compare) so it is legal in this non-uniform control flow.
-        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>) -> f32 {
+        // shadowed). Normal-offset + slope-scaled bias defeats acne without
+        // peter-panning; the penumbra is sampled with a 12-tap Poisson disk
+        // ROTATED per pixel (interleaved gradient noise). A fixed grid kernel
+        // undersamples a wide penumbra and breaks into discrete bands (the
+        // "tripled shadow" at high softness); a rotated disk turns that banding
+        // into fine dither that reads as smooth at any softness.
+        // textureSampleCompareLevel is used (not ...Compare) so it is legal in
+        // this non-uniform control flow.
+        const SHADOW_POISSON = array<vec2<f32>, 12>(
+          vec2<f32>(-0.326, -0.406), vec2<f32>(-0.840, -0.074), vec2<f32>(-0.696,  0.457),
+          vec2<f32>(-0.203,  0.621), vec2<f32>( 0.962, -0.195), vec2<f32>( 0.473, -0.480),
+          vec2<f32>( 0.519,  0.767), vec2<f32>( 0.185, -0.893), vec2<f32>( 0.507,  0.064),
+          vec2<f32>( 0.896,  0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598),
+        );
+
+        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
           if (shadowU.params.y < 0.5) { return 1.0; }
           let biased = worldPos + N * shadowU.params.z;
           let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
@@ -75,23 +85,28 @@ export const mainShaderSource = `
           let inBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && ndc.z > 0.0;
           if (!inBounds) { return 1.0; }
           // Slope-scaled depth bias: at a grazing sun the receiver's light-space
-          // depth changes fast across the PCF kernel, so a constant bias can't
-          // clear the whole footprint and the surface rings with moiré. Grow the
-          // bias as the surface tilts away from the sun (NdotL → 0) and with the
+          // depth changes fast across the kernel, so a constant bias can't clear
+          // the whole footprint and the surface rings with moiré. Grow the bias
+          // as the surface tilts away from the sun (NdotL → 0) and with the
           // kernel width. The hardware slope bias in the depth pass covers the
           // occluder side; this covers the receiver side.
           let NdotL = max(dot(N, normalize(env.sunDirection)), 0.0);
           let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.1), 1.0, 12.0);
           let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w);
-          let pcfStep = shadowU.params.x * shadowU.params.w;
+          let radius = shadowU.params.x * shadowU.params.w;  // penumbra, uv units
+          // Per-pixel rotation (interleaved gradient noise) dithers the disk so
+          // the discrete taps never line up into bands.
+          let ign = fract(52.9829189 * fract(dot(fragCoord, vec2<f32>(0.06711056, 0.00583715))));
+          let ang = ign * 6.2831853;
+          let cr = cos(ang);
+          let sr = sin(ang);
           var sum = 0.0;
-          for (var dy = -1; dy <= 1; dy = dy + 1) {
-            for (var dx = -1; dx <= 1; dx = dx + 1) {
-              let off = vec2<f32>(f32(dx), f32(dy)) * pcfStep;
-              sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
-            }
+          for (var i = 0; i < 12; i = i + 1) {
+            let p = SHADOW_POISSON[i];
+            let off = vec2<f32>(p.x * cr - p.y * sr, p.x * sr + p.y * cr) * radius;
+            sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
           }
-          return sum / 9.0;
+          return sum / 12.0;
         }
 
         struct VertexInput {
@@ -441,7 +456,7 @@ export const mainShaderSource = `
 
           // Combine all lighting. Only the DIRECT sun term is occluded by cast
           // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
-          let sunShadow = sunShadowFactor(input.worldPos, N);
+          let sunShadow = sunShadowFactor(input.worldPos, N, input.position.xy);
           let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
           var color = baseColor * lightTerm;
 

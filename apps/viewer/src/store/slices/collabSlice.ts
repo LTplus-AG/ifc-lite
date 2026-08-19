@@ -467,6 +467,40 @@ function composePlacement(
  * spelling of a value that is provably the same, and a second thing a future
  * call site could get wrong.
  */
+/**
+ * Re-apply every recorded placement after the recipient's geometry has been
+ * replaced wholesale.
+ *
+ * Only correct to call when the meshes are known to be BAKED (a fresh hydrate),
+ * because it resets the applied-delta trackers to zero first: from a baked
+ * mesh, the whole delta has to be applied, not an increment.
+ *
+ * Narrow on purpose. #2708 is the general "re-derive placement from the doc at
+ * hydrate time rather than only from events" change; this is the part that
+ * keeps THIS file self-consistent after the vertex-copy fix, and it should fold
+ * into that work rather than compete with it.
+ */
+function reapplyPlacementsAfterRehydrate(
+  get: () => ViewerState,
+  api: CollabGeomApi,
+  doc: CollabSession['doc'],
+  store: IfcDataStore,
+  pathToId: Map<string, number> | undefined,
+): void {
+  if (!placementApi || !placementAppliedLoc || !placementAppliedYaw || !pathToId) return;
+  // Fresh meshes carry no applied delta. Clearing BEFORE re-applying is what
+  // makes each call compute the full offset rather than an increment.
+  placementAppliedLoc.clear();
+  placementAppliedYaw.clear();
+  for (const [path] of api.iterEntities(doc)) {
+    const placement = placementApi.getEntityPlacement(doc, path);
+    if (!placement) continue;
+    const entityId = pathToId.get(path);
+    if (entityId === undefined) continue;
+    reconcilePlacementMesh(get, store, doc, entityId, placement);
+  }
+}
+
 function reconcilePlacementMesh(
   get: () => ViewerState,
   store: IfcDataStore,
@@ -963,6 +997,34 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   geometryResult:
                     meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
                 });
+                // The meshes just installed are BAKED: hydrate now copies the
+                // vertex arrays per consumer, so a re-hydrate returns the
+                // original geometry rather than a copy the renderer had already
+                // translated in place.
+                //
+                // That makes the applied-delta trackers stale. `reconcilePlacementMesh`
+                // moves a mesh by `target - applied`, so an entity a peer had
+                // moved would sit at its baked position with `applied` still
+                // claiming the move had been made, and only FUTURE increments
+                // would ever be applied - a permanent offset.
+                //
+                // Before the copy fix this was masked: the cached arrays had
+                // been mutated in place, so a re-hydrate handed back
+                // already-moved geometry and the stale tracker happened to
+                // agree with it. An accidental consistency, resting on the
+                // aliasing defect.
+                //
+                // So the trackers are cleared and every placed entity is
+                // re-applied from the doc against the fresh meshes. (Doing this
+                // only on a WHOLESALE replace: the incremental event path is
+                // unaffected and must keep its deltas.)
+                reapplyPlacementsAfterRehydrate(
+                  get,
+                  geomApi,
+                  session.doc,
+                  payload.dataStore,
+                  payload.pathToId,
+                );
               }
             }
             // Warn about a room that rendered nothing. The old guard was

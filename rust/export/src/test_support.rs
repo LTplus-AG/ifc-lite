@@ -14,6 +14,20 @@
 //! behaviours shipped side by side in the same file.
 //!
 //! This is the one place that decides. Use [`fixture_or_skip!`] from a test.
+//!
+//! A skip here is a real `eprintln!`, but `cargo test` captures stdout/stderr
+//! for a test that passes and only releases the buffer on failure -- so on a
+//! plain `cargo test` (no `--nocapture`) the skip message is written and then
+//! thrown away, and the only trace of it is the test showing `ok` like every
+//! other one. That is issue #2802: a passing `fixture_or_skip!` test looks
+//! identical, in the only output anyone reads, to one that actually asserted
+//! something. `IFC_LITE_REQUIRE_FIXTURES=1` closes that for CI: with it set,
+//! a missing fixture is a hard `panic!` (a real failure, never captured away)
+//! instead of a skip. CI already runs `pnpm fixtures` before `cargo test`, so
+//! setting this var there costs nothing on a correct run and turns fixture
+//! drift into a loud failure instead of a quietly-smaller test suite. Unset
+//! (the default), behavior is unchanged: a fixture-less local `cargo test` is
+//! still a legitimate, silently-skipping workflow.
 
 /// Bytes of the catalogued fixture at `rel` (relative to `tests/models/`), or
 /// `None` when it has not been fetched.
@@ -23,11 +37,19 @@
 /// fixture setup, not an unfetched fixture, and it panics: treating those as
 /// absence would let a whole crate's tests skip while CI reported green, which
 /// is the exact failure mode this module exists to remove.
+///
+/// When `IFC_LITE_REQUIRE_FIXTURES=1` is set, a missing fixture panics too --
+/// see the module doc. Any other value (including unset) keeps the skip.
 pub(crate) fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
     let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
     match std::fs::read(&path) {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if std::env::var("IFC_LITE_REQUIRE_FIXTURES").as_deref() == Ok("1") {
+                panic!(
+                    "fixture {rel} not present and IFC_LITE_REQUIRE_FIXTURES=1 — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+                );
+            }
             eprintln!(
                 "skipping: fixture {rel} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
             );

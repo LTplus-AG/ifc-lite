@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch"
   },
   "devDependencies": {
     "typescript": "^6.0.3"

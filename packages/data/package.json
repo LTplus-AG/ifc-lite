@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run",
     "generate:epsg-index": "tsx ../../scripts/generate-epsg-index.ts",
     "augment:epsg-proj4": "tsx ../../scripts/augment-epsg-proj4.ts",

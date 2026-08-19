@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run"
   },
   "devDependencies": {

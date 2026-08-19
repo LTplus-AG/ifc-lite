@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))}\"",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc && node -e \"const fs=require('fs');for(const f of ['dist/index.js','dist/geometry-parallel.js']){if(!fs.existsSync(f))continue;fs.writeFileSync(f,fs.readFileSync(f,'utf8').replace(/geometry\\.worker\\.ts/g,'geometry.worker.js'))}\"",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run"
   },
   "dependencies": {

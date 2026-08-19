@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/create",
   "version": "1.16.2",
-  "description": "IFC creation from scratch — walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
+  "description": "IFC creation from scratch \u2014 walls, slabs, beams, columns, stairs, roofs with geometry, properties and quantities",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run"
   },
   "dependencies": {

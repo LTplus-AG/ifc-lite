@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/mcp",
   "version": "0.7.0",
-  "description": "Model Context Protocol server for ifc-lite — agent-native BIM via MCP (stdio + Streamable HTTP)",
+  "description": "Model Context Protocol server for ifc-lite \u2014 agent-native BIM via MCP (stdio + Streamable HTTP)",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,8 +28,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "start": "node dist/cli.js",
     "test": "vitest run"
   },

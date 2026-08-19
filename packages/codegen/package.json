@@ -11,8 +11,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run",
     "generate": "node dist/cli.js",
     "generate:ifc4": "node dist/cli.js schemas/IFC4_ADD2_TC1.exp -o generated/ifc4",

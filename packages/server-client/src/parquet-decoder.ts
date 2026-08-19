@@ -15,91 +15,48 @@ import type { MeshData } from './types.js';
 
 // WASM initialization state
 let parquetInitialized = false;
-let parquetModule: typeof import('parquet-wasm/esm/arrow2.js') | null = null;
+
+type ParquetWasmModule = {
+  default: (moduleOrPath?: string | URL | Request | Response) => Promise<unknown>;
+  readParquet: (data: Uint8Array) => { intoIPCStream(): Uint8Array };
+};
+
+let parquetModule: ParquetWasmModule | null = null;
 
 /**
  * Ensure parquet-wasm WASM module is initialized.
  * This MUST be called before using any parquet functions.
- * 
+ *
+ * parquet-wasm >=0.6 dropped the legacy `esm/arrow2.js` entry — use `esm/parquet_wasm.js`.
+ *
  * @returns Initialized parquet-wasm module
  */
-export async function ensureParquetInit() {
+export async function ensureParquetInit(): Promise<ParquetWasmModule> {
   if (parquetInitialized && parquetModule) {
     return parquetModule;
   }
 
   console.log('[parquet-decoder] Starting WASM initialization...');
 
-  let parquet: typeof import('parquet-wasm/esm/arrow2.js') | undefined;
+  const parquet = (await import('parquet-wasm/esm/parquet_wasm.js')) as ParquetWasmModule;
 
-  // Strategy 1: Try ESM build with explicit WASM URL (works with Vite)
-  try {
-    parquet = await import('parquet-wasm/esm/arrow2.js');
-    console.log('[parquet-decoder] Imported ESM build');
-
-    // ESM build requires calling init (default export) to load WASM
-    if (typeof parquet.default === 'function') {
-      console.log('[parquet-decoder] Calling ESM init to load WASM...');
-
-      // Get the WASM file URL - Vite handles this with ?url suffix
-      const wasmModule = await import('parquet-wasm/esm/arrow2_bg.wasm?url');
-      const wasmUrl = wasmModule.default;
-      console.log('[parquet-decoder] Loading WASM from:', wasmUrl);
-
-      // Pass the URL to init so it can fetch the WASM correctly
-      await parquet.default(wasmUrl);
-      console.log('[parquet-decoder] ESM WASM initialized');
-    }
-
-    if (typeof parquet.readParquet === 'function') {
-      parquetModule = parquet;
-      parquetInitialized = true;
-      console.log('[parquet-decoder] ESM build ready with readParquet');
-      return parquet;
-    } else {
-      console.warn('[parquet-decoder] ESM build initialized but readParquet not found');
-    }
-  } catch (e) {
-    console.warn('[parquet-decoder] ESM import failed:', e);
+  if (typeof parquet.default !== 'function') {
+    throw new Error('parquet-wasm: default init export missing on esm/parquet_wasm.js');
   }
 
-  // Strategy 2: Try web build with fetch (alternative for browsers)
-  try {
-    parquet = await import('parquet-wasm/esm/arrow2.js');
+  const wasmModule = await import('parquet-wasm/esm/parquet_wasm_bg.wasm?url');
+  const wasmUrl = wasmModule.default;
+  console.log('[parquet-decoder] Loading WASM from:', wasmUrl);
+  await parquet.default(wasmUrl);
 
-    if (typeof parquet.default === 'function') {
-      console.log('[parquet-decoder] Trying web init with node_modules path...');
-
-      // Try common paths where WASM might be served
-      const wasmPaths = [
-        '/node_modules/parquet-wasm/esm/arrow2_bg.wasm',
-        './node_modules/parquet-wasm/esm/arrow2_bg.wasm',
-      ];
-
-      for (const wasmPath of wasmPaths) {
-        try {
-          const response = await fetch(wasmPath);
-          if (response.ok) {
-            console.log('[parquet-decoder] Found WASM at:', wasmPath);
-            await parquet.default(response);
-
-            if (typeof parquet.readParquet === 'function') {
-              parquetModule = parquet;
-              parquetInitialized = true;
-              console.log('[parquet-decoder] Web init successful');
-              return parquet;
-            }
-          }
-        } catch {
-          // Try next path
-        }
-      }
-    }
-  } catch (e2) {
-    console.warn('[parquet-decoder] Web init failed:', e2);
+  if (typeof parquet.readParquet !== 'function') {
+    throw new Error('parquet-wasm: readParquet missing after WASM init');
   }
 
-  throw new Error('parquet-wasm: Could not load WASM module. Ensure parquet-wasm is installed and WASM files are accessible.');
+  parquetModule = parquet;
+  parquetInitialized = true;
+  console.log('[parquet-decoder] parquet-wasm ready');
+  return parquet;
 }
 
 /**

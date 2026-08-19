@@ -11,14 +11,12 @@
 
 // ── parquet-wasm ──
 
-declare module 'parquet-wasm/esm/arrow2.js' {
-  /** Initialize WASM module. Pass a URL or Response to load from. */
-  export default function init(wasmUrlOrResponse?: string | Response): Promise<void>;
-  /** Read a Parquet buffer and return an Arrow IPC-compatible table. */
+declare module 'parquet-wasm/esm/parquet_wasm.js' {
+  export default function init(wasmUrlOrResponse?: string | URL | Request | Response): Promise<void>;
   export function readParquet(data: Uint8Array): ParquetTable;
 }
 
-declare module 'parquet-wasm/esm/arrow2_bg.wasm?url' {
+declare module 'parquet-wasm/esm/parquet_wasm_bg.wasm?url' {
   const url: string;
   export default url;
 }

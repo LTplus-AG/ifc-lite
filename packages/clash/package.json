@@ -1,7 +1,7 @@
 {
   "name": "@ifc-lite/clash",
   "version": "1.6.0",
-  "description": "Clash detection for IFC-Lite — representation-agnostic core engine + source adapters",
+  "description": "Clash detection for IFC-Lite \u2014 representation-agnostic core engine + source adapters",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -33,8 +33,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run"
   },
   "dependencies": {

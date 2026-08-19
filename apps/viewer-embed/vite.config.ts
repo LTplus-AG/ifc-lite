@@ -23,6 +23,15 @@ export default defineConfig({
   },
   resolve: {
     alias: {
+      // parquet-wasm >=0.6 renamed arrow2 → parquet_wasm; keep legacy import paths working.
+      'parquet-wasm/esm/arrow2.js': path.resolve(
+        __dirname,
+        '../../packages/server-client/node_modules/parquet-wasm/esm/parquet_wasm.js',
+      ),
+      'parquet-wasm/esm/arrow2_bg.wasm': path.resolve(
+        __dirname,
+        '../../packages/server-client/node_modules/parquet-wasm/esm/parquet_wasm_bg.wasm',
+      ),
       // Point @ to the main viewer's src so Viewport, hooks, and store resolve correctly
       '@': path.resolve(__dirname, '../viewer/src'),
       '@ifc-lite/parser': path.resolve(__dirname, '../../packages/parser/src'),

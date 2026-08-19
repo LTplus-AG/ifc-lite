@@ -13,8 +13,8 @@
     }
   },
   "scripts": {
-    "build": "pnpm exec tsc && node -e \"const f='dist/streaming/worker-client.js';require('fs').writeFileSync(f,require('fs').readFileSync(f,'utf8').replace(/decode-worker\\.ts/g,'decode-worker.js'))\" && node scripts/build-worker-bundle.mjs",
-    "dev": "pnpm exec tsc --watch",
+    "build": "bun run --no-install tsc && node -e \"const f='dist/streaming/worker-client.js';require('fs').writeFileSync(f,require('fs').readFileSync(f,'utf8').replace(/decode-worker\\.ts/g,'decode-worker.js'))\" && node scripts/build-worker-bundle.mjs",
+    "dev": "bun run --no-install tsc --watch",
     "test": "vitest run"
   },
   "dependencies": {

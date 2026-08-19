@@ -762,6 +762,46 @@
         assert!((inner - 8.75).abs() < 1e-6, "the split edge keeps its wall thickness: {inner}");
     }
 
+    #[test]
+    fn net_outline_uses_each_edges_own_thickness_not_a_neighbours() {
+        // Every prior net_outline fixture uses a UNIFORM half_thickness on all four
+        // edges, so a bug that reads the wrong edge's half_thickness (e.g. cycle[i]
+        // vs cycle[(i+1)%n], an off-by-one into the neighbouring edge) is invisible:
+        // the offset applied is the same number either way. Give each of the four
+        // edges of a 4x3 room a DISTINCT thickness so only the correctly-indexed
+        // half_thickness reproduces the expected area.
+        //
+        // loop_segments(&rect(0,0,4,3)) edges, in order: bottom (0,0)->(4,0),
+        // right (4,0)->(4,3), top (4,3)->(0,3), left (0,3)->(0,0).
+        let corners = rect(0.0, 0.0, 4.0, 3.0);
+        let n = corners.len();
+        let halves = [0.1_f64, 0.2, 0.3, 0.4]; // bottom, right, top, left
+        let segs: Vec<InputSegment> = (0..n)
+            .map(|i| {
+                InputSegment::new(corners[i], corners[(i + 1) % n], Some(100 + i as u32))
+                    .with_half_thickness(halves[i])
+            })
+            .collect();
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+
+        // Axis-aligned rectangle, so each side's inset is exactly its own edge's
+        // half-thickness: width shrinks by (left + right), height by (bottom + top).
+        let expected_inner = (4.0 - halves[3] - halves[1]) * (3.0 - halves[0] - halves[2]);
+        let inner = polygon_area(&plate.net_outline(room, true)).abs();
+        assert!(
+            (inner - expected_inner).abs() < 1e-6,
+            "net inset with distinct per-edge thickness: expected {expected_inner}, got {inner}"
+        );
+
+        let expected_outer = (4.0 + halves[3] + halves[1]) * (3.0 + halves[0] + halves[2]);
+        let outer = polygon_area(&plate.net_outline(room, false)).abs();
+        assert!(
+            (outer - expected_outer).abs() < 1e-6,
+            "net outset with distinct per-edge thickness: expected {expected_outer}, got {outer}"
+        );
+    }
+
     // Test-only helper.
     impl SpacePlate {
         fn find_vertex(&self, pt: [f64; 2]) -> VertexId {

@@ -9,7 +9,7 @@
  * column discovery, filtering, presets, and CSV export.
  */
 
-import type { ColumnDefinition } from '@ifc-lite/lists';
+import type { ColumnDefinition, PropertyCondition } from '@ifc-lite/lists';
 
 // ============================================================================
 // Types
@@ -89,6 +89,46 @@ function toLibraryColumn(col: ListColumn, index: number): ColumnDefinition {
   return { id, source: 'attribute', propertyName: col.source, label };
 }
 
+/**
+ * Map the SDK's `'=' | '!=' | '>' | '<' | '>=' | '<='` operator spelling to
+ * the library's `'equals' | 'notEquals' | 'gt' | 'lt' | 'gte' | 'lte'`.
+ * `'contains'` and `'exists'` are spelled the same in both and pass through
+ * the fallback unchanged.
+ */
+const CONDITION_OPERATOR_MAP: Record<string, PropertyCondition['operator']> = {
+  '=': 'equals',
+  '!=': 'notEquals',
+  '>': 'gt',
+  '<': 'lt',
+  '>=': 'gte',
+  '<=': 'lte',
+};
+
+/**
+ * Translate the SDK's flat `{ psetName, propName, operator, value }`
+ * `ListCondition` into the library's `PropertyCondition`
+ * (`{ source: <enum>, psetName?, propertyName, operator, value }`).
+ *
+ * Without this, `execute()` passed SDK-shaped conditions straight through
+ * (PR #2841 review): `PropertyCondition.source` is required and SDK
+ * conditions carry none, so `getConditionValue` fell through to
+ * `default: return null` for every condition, and a `null` actual value
+ * makes `matchesCondition` return `false` unconditionally — every entity
+ * fails every condition, so a filtered `bim.list.execute()` call silently
+ * came back with an EMPTY table rather than an error or a table of nulls.
+ * Same `Qto_` convention as `toLibraryColumn` and `bim.bsdd` to choose
+ * between the library's `'property'` and `'quantity'` sources.
+ */
+function toLibraryCondition(condition: ListCondition): PropertyCondition {
+  return {
+    source: condition.psetName.startsWith('Qto_') ? 'quantity' : 'property',
+    psetName: condition.psetName,
+    propertyName: condition.propName,
+    operator: CONDITION_OPERATOR_MAP[condition.operator] ?? (condition.operator as PropertyCondition['operator']),
+    value: condition.value ?? '',
+  };
+}
+
 // ============================================================================
 // ListNamespace
 // ============================================================================
@@ -143,8 +183,11 @@ export class ListNamespace {
       // ListDefinition; the SDK documents it as optional, and
       // resolveSourceSet() does `conditions.length` unconditionally, so
       // omitting it threw "Cannot read properties of undefined" instead of
-      // running unfiltered.
-      conditions: definition.conditions ?? [],
+      // running unfiltered. Each supplied condition is also translated
+      // (toLibraryCondition) — passed through raw, an SDK-shaped condition
+      // matched none of the library's sources and silently emptied the
+      // result instead of filtering it (PR #2841 review).
+      conditions: (definition.conditions ?? []).map(toLibraryCondition),
       columns: definition.columns.map(toLibraryColumn),
     };
     return (mod.executeList as AnyFn)(libraryDef, provider, modelId ?? 'default');

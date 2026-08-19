@@ -138,3 +138,56 @@ fn depth_cap_agrees_with_the_other_two_copies() {
          ifc_lite_processing::element MAX_MAPPED_ITEM_DEPTH"
     );
 }
+
+/// An item shared between a DEEP branch (where the cap cuts its subtree before
+/// the styled leaf) and a SHORT one (where it resolves). A plain visited SET
+/// marks it on the deep visit and skips the short one, silently losing the
+/// colour: measured `Some(green)` -> `None` before the map recorded depths
+/// (Codex, #2868 review).
+///
+/// This is the failure mode that produces a WRONG VALUE rather than a crash,
+/// so nothing reports it — which is why it is asserted on the colour and not
+/// on termination.
+#[test]
+fn a_shared_item_resolves_via_the_shallow_branch() {
+    let mut s = String::from(
+        "#200=IFCMAPPEDITEM(#201,$);\n\
+         #201=IFCREPRESENTATIONMAP($,#202);\n\
+         #202=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#300,#900));\n",
+    );
+    for i in 0..30u32 {
+        let (item, rm, sh) = (300 + i, 400 + i, 500 + i);
+        let inner = if i == 29 { 900 } else { 300 + i + 1 };
+        s.push_str(&format!("#{item}=IFCMAPPEDITEM(#{rm},$);\n"));
+        s.push_str(&format!("#{rm}=IFCREPRESENTATIONMAP($,#{sh});\n"));
+        s.push_str(&format!(
+            "#{sh}=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#{inner}));\n"
+        ));
+    }
+    // X (#900) needs TWO more hops to reach the styled leaf, so arriving at
+    // depth 31 leaves #950 cut by the cap at 32 while #900 is already marked
+    // visited.
+    s.push_str(
+        "#900=IFCMAPPEDITEM(#901,$);\n\
+         #901=IFCREPRESENTATIONMAP($,#902);\n\
+         #902=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#950));\n\
+         #950=IFCMAPPEDITEM(#951,$);\n\
+         #951=IFCREPRESENTATIONMAP($,#952);\n\
+         #952=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#999));\n",
+    );
+    let ifc = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Test'),'2;1');\n\
+         FILE_NAME('test','2026-05-27',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);\n{s}ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let mut decoder = decoder_for(&ifc);
+    let mut styles: FxHashMap<u32, [f32; 4]> = FxHashMap::default();
+    styles.insert(999, [0.0, 0.8, 0.2, 1.0]);
+    assert_eq!(
+        find_color_for_geometry(200, &styles, &mut decoder),
+        Some([0.0, 0.8, 0.2, 1.0]),
+        "the shallow branch reaches the styled leaf well inside the cap; \
+         marking the item on the deep branch must not hide it"
+    );
+}

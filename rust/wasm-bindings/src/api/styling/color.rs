@@ -23,7 +23,7 @@ pub(crate) fn find_color_for_geometry(
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
-    let mut visited = rustc_hash::FxHashSet::default();
+    let mut visited = rustc_hash::FxHashMap::default();
     find_color_for_geometry_at(geom_id, geometry_styles, decoder, 0, &mut visited)
 }
 
@@ -40,18 +40,27 @@ pub(crate) fn find_color_for_geometry(
 ///   7.21s. That is an abort traded for a hang, which in a browser worker is
 ///   the worse of the two because it reads as a slow file (#2864).
 ///
-/// The visited set is GLOBAL to one resolution, not path-scoped. The geometry
+/// The visited map is GLOBAL to one resolution, not path-scoped: the geometry
 /// router removes each id on the way out because it accumulates geometry per
-/// path; a colour is a pure function of the item id and the style map, so an
-/// item that already resolved to `None` cannot resolve differently down a
-/// second branch. Keeping it bounds total decodes to the number of DISTINCT
-/// reachable items, which eliminates the fan-out rather than bounding it.
+/// path, whereas a colour is a pure function of the item id and the style map.
+///
+/// It records the DEPTH each item was explored at, and permits a revisit from
+/// a shallower one. A plain set is wrong in combination with the cap: an item
+/// first reached near the limit is cut before its subtree is searched, yet
+/// stays marked, so a later shorter branch that WOULD have resolved is skipped
+/// and the colour is silently lost. Measured on a 30-link branch sharing an
+/// item with a direct one: `Some(green)` became `None` (Codex, #2868 review).
+/// Two individually correct guards whose naive combination produces a wrong
+/// value rather than a crash, so nothing reports it.
+///
+/// Work stays bounded: an item is re-explored only from strictly nearer the
+/// root, so at most `MAX_MAPPED_ITEM_DEPTH` times.
 fn find_color_for_geometry_at(
     geom_id: u32,
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
     depth: u32,
-    visited: &mut rustc_hash::FxHashSet<u32>,
+    visited: &mut rustc_hash::FxHashMap<u32, u32>,
 ) -> Option<[f32; 4]> {
     use ifc_lite_core::IfcType;
 
@@ -60,11 +69,18 @@ fn find_color_for_geometry_at(
         return Some(color);
     }
 
-    // Refuse to go deeper, and refuse to revisit: see this function's doc for
-    // why both are needed and why the set is global.
-    if depth >= MAX_MAPPED_ITEM_DEPTH || !visited.insert(geom_id) {
+    // Refuse to go deeper, and refuse to REDO work that cannot produce a new
+    // answer. See this function's doc for why both are needed.
+    if depth >= MAX_MAPPED_ITEM_DEPTH {
         return None;
     }
+    match visited.get(&geom_id) {
+        // Already explored from here or from CLOSER to the root: the cap left
+        // that attempt at least as much room as this one has, so it cannot
+        // find anything new. Skipping is safe and breaks cycles.
+        Some(&seen_at) if seen_at <= depth => return None,
+        _ => visited.insert(geom_id, depth),
+    };
 
     // If not, check if it's an IfcMappedItem and follow the reference
     let geom = decoder.decode_by_id(geom_id).ok()?;

@@ -700,6 +700,11 @@ jobs:
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
+        # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
+        # so a missing one here is fixture drift, not a legitimate local skip
+        # (rust/export/src/test_support.rs) — make that a hard failure.
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test --workspace
 
   # Geometry watertightness / triangulation-invariance census.

@@ -28,6 +28,35 @@
 //! drift into a loud failure instead of a quietly-smaller test suite. Unset
 //! (the default), behavior is unchanged: a fixture-less local `cargo test` is
 //! still a legitimate, silently-skipping workflow.
+//!
+//! The value is parsed strictly (see [`require_fixtures`]): only `"1"` turns
+//! the gate on and only unset/empty/`"0"` leave it off. An unrecognised value
+//! -- `true`, `yes`, `TRUE` -- panics instead of being treated as either,
+//! because falling through to "off" for a typo would recreate exactly the
+//! silent-pass problem this module exists to close.
+
+/// Parse `IFC_LITE_REQUIRE_FIXTURES`, failing closed on the config itself.
+///
+/// Unset, empty, or `"0"` means "off" (the historical default: skip). `"1"`
+/// means "on". Anything else -- `true`, `yes`, `TRUE`, a typo -- panics rather
+/// than being treated as either value. A `== Ok("1")` check that let
+/// unrecognised strings fall through to "off" would land the misconfiguration
+/// on the permissive side: `IFC_LITE_REQUIRE_FIXTURES=true` in a workflow file
+/// would read as "gate enabled" while actually leaving every fixture test free
+/// to skip, silently and indistinguishably from the gate working -- exactly
+/// the failure mode this module exists to remove. Guessing "off" for an
+/// unrecognised value would reproduce that; refusing to guess does not.
+fn require_fixtures() -> bool {
+    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
+        Err(_) => false,
+        Ok(v) if v.is_empty() || v == "0" => false,
+        Ok(v) if v == "1" => true,
+        Ok(v) => panic!(
+            "IFC_LITE_REQUIRE_FIXTURES={v:?} is not recognised (use \"1\" or \"0\") — \
+             refusing to guess, because guessing \"off\" would silently disable the gate"
+        ),
+    }
+}
 
 /// Bytes of the catalogued fixture at `rel` (relative to `tests/models/`), or
 /// `None` when it has not been fetched.
@@ -39,13 +68,15 @@
 /// is the exact failure mode this module exists to remove.
 ///
 /// When `IFC_LITE_REQUIRE_FIXTURES=1` is set, a missing fixture panics too --
-/// see the module doc. Any other value (including unset) keeps the skip.
+/// see the module doc. Unset, empty, or `"0"` keeps the skip. Any other value
+/// (e.g. `true`, `yes`, a typo) is itself a hard error -- see
+/// [`require_fixtures`].
 pub(crate) fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
     let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
     match std::fs::read(&path) {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if std::env::var("IFC_LITE_REQUIRE_FIXTURES").as_deref() == Ok("1") {
+            if require_fixtures() {
                 panic!(
                     "fixture {rel} not present and IFC_LITE_REQUIRE_FIXTURES=1 — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
                 );

@@ -112,6 +112,7 @@ import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils, viewBasis } from './math.js';
+import type { Vec3 as Vec3Type } from './types.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -2019,28 +2020,32 @@ export class Renderer {
                     }
                     const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
                     const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
-                    // Fit the shadow ortho box LATERALLY to the camera frustum
-                    // clipped to the model (maintainer #1): on a site-scale model
-                    // (small building on a large terrain) this stops the distant
-                    // terrain from stealing all the shadow-map resolution and
-                    // leaving the visible shadows blocky. Depth still spans the
-                    // whole model (fitSunLightMatrix), so occluders up-sun of the
-                    // view keep casting into it. Falls back to a whole-bounds fit
-                    // when the view doesn't intersect the model.
-                    const camEye = this.camera.getPosition();
-                    const camBasisFit = viewBasis(camEye, this.camera.getTarget(), this.camera.getUp());
-                    const focusCorners = cameraFrustumFocusCorners({
-                        eye: camEye,
-                        forward: camBasisFit.forward,
-                        right: camBasisFit.right,
-                        up: camBasisFit.up,
-                        fovY: this.camera.getFOV(),
-                        aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
-                        ortho: this.camera.getProjectionMode() === 'orthographic',
-                        orthoHalfHeight: this.camera.getOrthoSize(),
-                        boundsMin,
-                        boundsMax,
-                    }) ?? undefined;
+                    // Lateral shadow fit. AT REST: fit to the camera frustum
+                    // clipped to the model (maintainer #1) so a small building on
+                    // a large site keeps sharp shadows instead of spending the
+                    // map on distant terrain. DURING INTERACTION: fall back to a
+                    // whole-bounds fit — it is camera-INDEPENDENT, so orbiting or
+                    // scroll-zooming can't make the focus box breathe and drop
+                    // receivers off the map edge (which read as chunks of shadow
+                    // vanishing, #2670 follow-up). Depth always spans the whole
+                    // model so up-sun occluders keep casting.
+                    let focusCorners: readonly Vec3Type[] | undefined;
+                    if (!interacting) {
+                        const camEye = this.camera.getPosition();
+                        const camBasisFit = viewBasis(camEye, this.camera.getTarget(), this.camera.getUp());
+                        focusCorners = cameraFrustumFocusCorners({
+                            eye: camEye,
+                            forward: camBasisFit.forward,
+                            right: camBasisFit.right,
+                            up: camBasisFit.up,
+                            fovY: this.camera.getFOV(),
+                            aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                            ortho: this.camera.getProjectionMode() === 'orthographic',
+                            orthoHalfHeight: this.camera.getOrthoSize(),
+                            boundsMin,
+                            boundsMax,
+                        }) ?? undefined;
+                    }
                     const sun = resolveEnvironment(options.environment).sunDirection;
                     const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
                     const occluders = collectShadowOccluders(

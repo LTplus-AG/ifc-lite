@@ -53,7 +53,7 @@ import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOve
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
-import { useAnimationLoop } from './useAnimationLoop.js';
+import { useAnimationLoop, type SunShadowSettings } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
@@ -454,6 +454,21 @@ export function Viewport({
   useEffect(() => {
     rendererRef.current?.requestRender();
   }, [environment]);
+
+  // Sun cast shadows (#2670) — driven by the Sun & Sky panel. Standalone
+  // WebGPU only: in world-context Cesium casts its own shadows, so pass null
+  // (the renderer then skips the depth pre-pass entirely).
+  const shadowsEnabled = useViewerStore((s) => s.envShadowsEnabled);
+  const shadowSunAngle = useViewerStore((s) => s.envSunAngle);
+  const shadowResolution = useViewerStore((s) => s.envShadowResolution);
+  const sunShadows = useMemo<SunShadowSettings | null>(() => {
+    if (cesiumActive || !shadowsEnabled) return null;
+    return { enabled: true, resolution: shadowResolution, sunAngleDeg: shadowSunAngle };
+  }, [cesiumActive, shadowsEnabled, shadowResolution, shadowSunAngle]);
+  const sunShadowsRef = useLatestRef(sunShadows);
+  useEffect(() => {
+    rendererRef.current?.requestRender();
+  }, [sunShadows]);
 
   // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
   // instanced pass in the Types view mode, where the flat path renders the
@@ -1675,6 +1690,7 @@ export function Viewport({
     modelBoundsRef,
     visualEnhancementRef,
     environmentRef,
+    sunShadowsRef,
     selectedEntityIdsRef,
     clashHighlightColorsRef,
     coordinateInfoRef,

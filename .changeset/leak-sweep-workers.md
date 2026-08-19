@@ -9,7 +9,7 @@ leaks: a `Worker` is spawned, a fallible step runs right after it (a
 worker it had already created.
 
 `packages/geometry/src/geometry-parallel.ts`: the process-worker pool's
-init loop (spawn, then `postMessage({type:'init', ...})` and four more
+init loop (spawn, then `postMessage({type:'init', ...})` and five more
 `set-*` messages per worker) ran before the function's own try/finally, so
 a `postMessage` throw partway through the loop (a `wasmModule`
 structured-clone failure is the realistic trigger — the same class of

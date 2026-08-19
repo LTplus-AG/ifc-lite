@@ -28,7 +28,16 @@ describe('scanEntitiesInWorker terminates the worker when postMessage throws', (
   afterEach(() => {
     (globalThis as Record<string, unknown>).Worker = originalWorker;
     (globalThis as Record<string, unknown>).Blob = originalBlob;
-    if (originalURL) (globalThis as Record<string, unknown>).URL = originalURL;
+    // Restore, or DELETE if `URL` was absent before this test installed its
+    // fake — `if (originalURL) ...` left the fake `URL` (with the fake
+    // `createObjectURL`) permanently on `globalThis` for every later test in
+    // this environment when `originalURL` was falsy/undefined (PR #2822
+    // review).
+    if (originalURL === undefined) {
+      delete (globalThis as Record<string, unknown>).URL;
+    } else {
+      (globalThis as Record<string, unknown>).URL = originalURL;
+    }
   });
 
   it('calls terminate() on the constructed worker before rejecting', async () => {

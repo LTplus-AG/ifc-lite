@@ -123,7 +123,7 @@ END-ISO-10303-21;
  * to genuinely overlap in volume. `unitBoxMesh` above is a single coplanar quad
  * and never produces a penetration.
  */
-function solidBoxMesh(expressId: number, ox: number): MeshData {
+function solidBoxMesh(expressId: number, ox: number, occurrenceKey?: string): MeshData {
   const c = [
     [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
     [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
@@ -144,6 +144,7 @@ function solidBoxMesh(expressId: number, ox: number): MeshData {
     normals: new Float32Array(positions.length),
     indices,
     color: [0.5, 0.5, 0.5, 1],
+    ...(occurrenceKey ? { occurrenceKey } : {}),
   };
 }
 
@@ -717,6 +718,86 @@ describe('elementsFromStep - coalesces multiple meshes per entity (parity with e
     // The void/host exclusion between the wall and its door must still apply
     // to the door's MERGED geometry, not just whichever mesh happened to
     // overwrite `byExpressId` last.
+    expect(result.clashes).toHaveLength(0);
+  });
+});
+
+describe('elementsFromStep - keeps GPU-instanced occurrences distinct (PR #2819 review)', () => {
+  it('two meshes sharing one expressId but different occurrenceKey become TWO ClashElements, not one merged element', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(MINIMAL_IFC).buffer as ArrayBuffer,
+    );
+    const wallIds = store.entityIndex.byType.get('IFCWALL') ?? [];
+    const expressId = wallIds[0];
+
+    // Two DISTINCT physical occurrences of the same GPU-instanced entity, far
+    // apart in world space — exactly what `withInstancedMeshes` materializes
+    // from the renderer scene for an entity repeated 8+ times (occurrenceKey
+    // present, unlike the Body/Axis-representation case above).
+    const { elements } = elementsFromStep({
+      store,
+      meshes: [
+        solidBoxMesh(expressId, 0, `${expressId}:inst:0:0`),
+        solidBoxMesh(expressId, 100, `${expressId}:inst:0:1`),
+      ],
+      modelId: 'model-1',
+    });
+
+    // Coalescing by bare expressId would merge these into ONE element with a
+    // bounding box spanning x=[0,101] — false clashes against anything in
+    // between, and the two real, physically distinct occurrences erased from
+    // the result set.
+    expect(elements).toHaveLength(2);
+    const byOx = [...elements].sort((a, b) => a.bounds.min[0] - b.bounds.min[0]);
+    expect(byOx[0].bounds.min).toEqual([0, 0, 0]);
+    expect(byOx[0].bounds.max).toEqual([1, 1, 1]);
+    expect(byOx[1].bounds.min).toEqual([100, 0, 0]);
+    expect(byOx[1].bounds.max).toEqual([101, 1, 1]);
+
+    // Each occurrence keeps a DISTINCT key (occurrenceKey folded in) so a
+    // review/exclusion decision on one cannot silently cover the other.
+    expect(byOx[0].key).not.toBe(byOx[1].key);
+    expect(new Set(elements.map((e) => e.key)).size).toBe(2);
+
+    // `ref` (the renderer/selection id) is deliberately SHARED across
+    // occurrences of one entity — that is the existing, documented contract,
+    // not part of this bug.
+    expect(byOx[0].ref).toBe(byOx[1].ref);
+  });
+
+  it('a void/host exclusion on an instanced expressId fans out to every occurrence', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+
+    // The door is GPU-instanced: two occurrences share `doorId`, each
+    // overlapping the SAME wall at a different point along it.
+    const { elements, exclusions } = elementsFromStep({
+      store,
+      meshes: [
+        solidBoxMesh(wallId, 0),
+        solidBoxMesh(doorId, 0.5, `${doorId}:inst:0:0`),
+        solidBoxMesh(doorId, 20.5, `${doorId}:inst:0:1`),
+      ],
+      modelId: 'model-1',
+    });
+
+    // Wall + two distinct door occurrences (opening dropped by the #1464 filter).
+    expect(elements).toHaveLength(3);
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      elements,
+      [{ id: 'r', name: 'all', a: '*', mode: 'hard' }],
+      { exclusions },
+    );
+
+    // Both door occurrences physically overlap the wall (each box spans a
+    // full unit past the wall's face), but the void/host exclusion between
+    // wallId and doorId must cover EACH occurrence, not just whichever one
+    // happened to be bucketed first.
     expect(result.clashes).toHaveLength(0);
   });
 });

@@ -181,19 +181,34 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
   } = options;
 
   const elements: ClashElement[] = [];
-  const byExpressId = new Map<number, ClashElement>();
+  // One expressId can back MULTIPLE elements: a GPU-instanced entity is fed
+  // in as one `MeshData` per occurrence, all sharing one `expressId` but
+  // holding distinct world-space positions and a distinct `occurrenceKey`
+  // (see `MeshData.occurrenceKey` doc, `packages/geometry/src/types.ts`).
+  // `byExpressId` fans relationship exclusions (below, `buildStepExclusions`)
+  // out across every occurrence at each side of a relationship, so a host's
+  // void/assembly exclusions cover every physical placement of the
+  // filler/sibling, not just whichever occurrence happened to be built last
+  // (same remedy as #1405 / #2865).
+  const byExpressId = new Map<number, ClashElement[]>();
   /** Elements whose GlobalId lookup came back empty — see the check below. */
   let missingGlobalIds = 0;
 
-  // Pass 1: group every mesh by its OWNING entity (store-local expressId),
-  // filtering non-clashable tags and empty geometry up front, and folding
-  // each mesh's own origin into world-frame positions as it is collected. An
-  // entity with several mesh representations (Body + Axis, several
+  // Pass 1: group every mesh by its OWNING OCCURRENCE — `occurrenceKey` when
+  // present (a GPU-instanced entity's individual placement), else the bare
+  // expressId (every other mesh: at most one MeshData per expressId, so the
+  // expressId alone already identifies the occurrence) — filtering
+  // non-clashable tags and empty geometry up front, and folding each mesh's
+  // own origin into world-frame positions as it is collected. An entity with
+  // several mesh representations of the SAME occurrence (Body + Axis, several
   // sub-meshes, ...) must become exactly ONE `ClashElement`, never one per
   // mesh — see `./shared.ts`'s `mergeMeshes` doc for why, and `ifcx.ts` for
-  // the sibling adapter this mirrors.
-  const groups = new Map<number, Array<{ positions: Float32Array; indices: Uint32Array }>>();
-  const groupMeta = new Map<number, { tag: string }>();
+  // the sibling adapter this mirrors. Grouping by the bare expressId alone
+  // (dropping `occurrenceKey`) would instead coalesce DISTINCT physical
+  // occurrences that merely share one expressId into one element, merging
+  // their geometry (and bounds) across unrelated world-space locations.
+  const groups = new Map<string, Array<{ positions: Float32Array; indices: Uint32Array }>>();
+  const groupMeta = new Map<string, { tag: string; expressId: number; occurrenceKey?: string }>();
 
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length === 0) continue;
@@ -236,20 +251,21 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       ? worldFramePositions(mesh.positions, o)
       : mesh.positions;
 
-    const group = groups.get(expressId);
+    const occurrenceId = mesh.occurrenceKey ?? String(expressId);
+    const group = groups.get(occurrenceId);
     if (group) {
       group.push({ positions, indices: mesh.indices });
     } else {
-      groups.set(expressId, [{ positions, indices: mesh.indices }]);
-      groupMeta.set(expressId, { tag });
+      groups.set(occurrenceId, [{ positions, indices: mesh.indices }]);
+      groupMeta.set(occurrenceId, { tag, expressId, occurrenceKey: mesh.occurrenceKey });
     }
   }
 
-  // Pass 2: one ClashElement per entity, geometry merged across every mesh
-  // that survived the filter above.
-  for (const [expressId, meshGroup] of groups) {
+  // Pass 2: one ClashElement per OCCURRENCE, geometry merged across every
+  // mesh of that same occurrence that survived the filter above.
+  for (const [occurrenceId, meshGroup] of groups) {
+    const { tag, expressId, occurrenceKey } = groupMeta.get(occurrenceId)!;
     const node = new EntityNode(store, expressId);
-    const { tag } = groupMeta.get(expressId)!;
     const merged = mergeMeshes(meshGroup);
 
     // Read stored (table-backed) values directly. `node.globalId` / `node.name`
@@ -266,7 +282,12 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // Fall back to a MODEL-SCOPED synthetic key rather than dropping geometry:
     // malformed IFC roots, and whole GLB-sourced models, still participate in
     // clashes. See {@link syntheticKey} for why the model id belongs in it.
-    const key = storedGlobalId || syntheticKey(modelId, expressId);
+    const baseKey = storedGlobalId || syntheticKey(modelId, expressId);
+    // A GPU-instanced occurrence carries `mesh.occurrenceKey`; fold it into the
+    // identity so distinct physical occurrences of one expressId don't collapse
+    // onto one review/exclusion key. Flat meshes are unaffected (occurrenceKey
+    // absent, one bucket per expressId as before).
+    const key = occurrenceKey ? `${baseKey}:${occurrenceKey}` : baseKey;
     if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
@@ -276,6 +297,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       // this mesh — i.e. `mesh.expressId` again, whenever `meshIdOffset` and
       // the federation agree (they are both read off the same `model.idOffset`
       // in the viewer). See the federated round-trip test in `step.test.ts`.
+      // Deliberately shared across every occurrence of one expressId — the
+      // renderer/selection channel addresses instanced occurrences by their
+      // shared source entity id, not a per-occurrence one.
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
       tag,
@@ -288,7 +312,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     };
 
     elements.push(element);
-    byExpressId.set(expressId, element);
+    const bucket = byExpressId.get(expressId);
+    if (bucket) bucket.push(element);
+    else byExpressId.set(expressId, [element]);
   }
 
   // A wrong `meshIdOffset` — above all a FORGOTTEN one — leaves ids that are
@@ -345,24 +371,33 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
  */
 export function buildStepExclusions(
   store: IfcDataStore,
-  byExpressId: Map<number, ClashElement>,
+  byExpressId: Map<number, ClashElement[]>,
 ): ExclusionSet {
   const pairs: Array<[string, string]> = [];
 
-  for (const [expressId, element] of byExpressId) {
+  for (const [expressId, elementsAtId] of byExpressId) {
     const node = new EntityNode(store, expressId);
-    const ek = qualifiedKey(element.model, element.key);
+
+    // A relationship is stated between EXPRESS ids, not occurrences: fan it
+    // out across every occurrence bucketed at each side (usually one element
+    // each; more than one only for a GPU-instanced expressId), so a host's
+    // void/assembly exclusions cover every physical placement of the
+    // filler/sibling, not just whichever occurrence happened to be built last.
+    const pairAll = (otherId: number): void => {
+      const others = byExpressId.get(otherId);
+      if (!others) return;
+      for (const a of elementsAtId) {
+        const ek = qualifiedKey(a.model, a.key);
+        for (const b of others) {
+          pairs.push([ek, qualifiedKey(b.model, b.key)]);
+        }
+      }
+    };
 
     for (const opening of node.voids()) {
-      const openingElement = byExpressId.get(opening.expressId);
-      if (openingElement) {
-        pairs.push([ek, qualifiedKey(openingElement.model, openingElement.key)]);
-      }
+      pairAll(opening.expressId);
       for (const filler of opening.filledBy()) {
-        const fillerElement = byExpressId.get(filler.expressId);
-        if (fillerElement) {
-          pairs.push([ek, qualifiedKey(fillerElement.model, fillerElement.key)]);
-        }
+        pairAll(filler.expressId);
       }
     }
 
@@ -370,10 +405,7 @@ export function buildStepExclusions(
     if (parent) {
       for (const sibling of parent.decomposes()) {
         if (sibling.expressId === expressId) continue;
-        const siblingElement = byExpressId.get(sibling.expressId);
-        if (siblingElement) {
-          pairs.push([ek, qualifiedKey(siblingElement.model, siblingElement.key)]);
-        }
+        pairAll(sibling.expressId);
       }
     }
   }

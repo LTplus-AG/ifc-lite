@@ -239,3 +239,52 @@ END-ISO-10303-21;
         None
     );
 }
+
+/// A depth cap alone bounds the chain LENGTH but not its BREADTH. This
+/// representation holds four items that each lead back into the cycle, so a
+/// depth-only guard explores `4^MAX_MAPPED_ITEM_DEPTH` paths — no stack
+/// overflow, just a worker pinned forever. Trading the abort for a hang would
+/// not have been a fix.
+///
+/// The assertion is on the returned colour, as everywhere else here. Its
+/// failure mode without the visited set is a hang rather than a wrong value,
+/// which CI reports as a lane timeout; that is stated plainly rather than
+/// dressed up as a fast assertion, because there is no way to assert "this
+/// returned before the heat death of the universe" that is not a timing test.
+#[test]
+fn find_geometry_item_color_bounds_cyclic_fan_out_not_just_depth() {
+    const IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
+#100=IFCMAPPEDITEM(#101,$);
+#101=IFCREPRESENTATIONMAP($,#103);
+#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#110,#111,#112,#113));
+#110=IFCMAPPEDITEM(#101,$);
+#111=IFCMAPPEDITEM(#101,$);
+#112=IFCMAPPEDITEM(#101,$);
+#113=IFCMAPPEDITEM(#101,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    let mut decoder = EntityDecoder::new(IFC);
+    assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), None);
+}
+
+/// The cap is not a free parameter: it must match the geometry router's
+/// `MAX_MAPPED_ITEM_DEPTH`, or a chain longer than this one but shorter than
+/// the router's renders its geometry and silently loses its leaf's style.
+/// The boundary tests above derive their fixtures FROM this constant, so they
+/// follow it anywhere; this pins the value itself.
+#[test]
+fn mapped_item_depth_cap_matches_the_geometry_router() {
+    assert_eq!(
+        MAX_MAPPED_ITEM_DEPTH, 32,
+        "must equal ifc_lite_geometry::router::processing::MAX_MAPPED_ITEM_DEPTH"
+    );
+}

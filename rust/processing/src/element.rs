@@ -791,14 +791,12 @@ fn build_mesh_data(
 }
 
 /// Longest `IfcMappedItem → IfcRepresentationMap → MappedRepresentation`
-/// chain the colour chase will follow. The chain is built entirely from file
-/// references, so a cyclic one (an item whose mapped representation lists the
-/// item itself) recurses forever without this — and a Rust stack overflow
-/// aborts the process rather than raising a catchable panic, so there is no
-/// caller that could turn it back into a load error (#2863). Real mapped
-/// nesting is a handful of levels deep; 16 matches `MAX_UNIT_RESOLVE_DEPTH`,
-/// the repo's other file-driven recursion bound.
-const MAX_MAPPED_ITEM_DEPTH: u32 = 16;
+/// chain the colour chase will follow, matching the geometry router's limit
+/// of the same name (`ifc_lite_geometry::router::processing`). The two walk
+/// the SAME chain, so a colour cap below the router's would leave a 17-to-32
+/// link chain rendering its geometry while silently losing the authored style
+/// on its leaf.
+const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
 
 /// Resolve a geometry item's authored colour: direct style on the item, else
 /// chase `IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items`
@@ -809,14 +807,28 @@ pub(crate) fn find_geometry_item_color(
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
 ) -> Option<[f32; 4]> {
-    find_geometry_item_color_at(geometry_id, geometry_styles, decoder, 0)
+    let mut visited = FxHashSet::default();
+    find_geometry_item_color_at(geometry_id, geometry_styles, decoder, 0, &mut visited)
 }
 
+/// The visited set is GLOBAL to one resolution, not path-scoped: the geometry
+/// router removes each id on the way out because it accumulates geometry per
+/// path, but a colour is a pure function of the item id and the style map, so
+/// an item that already resolved to `None` cannot resolve differently down a
+/// second branch. Keeping it bounds total decoder calls to the number of
+/// DISTINCT items reachable.
+///
+/// That matters for more than tidiness. A depth cap alone bounds the chain but
+/// not the fan-out: a malformed representation holding `k` items that each
+/// lead back into the cycle costs `O(k^depth)` decodes, so four self-references
+/// at depth 32 is ~2^64 calls — no stack overflow, just a worker pinned
+/// forever. Trading an abort for a hang would not have been a fix (#2863).
 fn find_geometry_item_color_at(
     geometry_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
     depth: u32,
+    visited: &mut FxHashSet<u32>,
 ) -> Option<[f32; 4]> {
     // Direct style on this exact geometry item wins.
     if let Some(style) = geometry_styles.get(&geometry_id) {
@@ -827,7 +839,7 @@ fn find_geometry_item_color_at(
     // geometry and resolve there (recursing handles nested mapped items).
     // Refuse to go deeper than the cap: a cyclic mapping would otherwise
     // recurse until the stack overflows and the process aborts (#2863).
-    if depth >= MAX_MAPPED_ITEM_DEPTH {
+    if depth >= MAX_MAPPED_ITEM_DEPTH || !visited.insert(geometry_id) {
         return None;
     }
     let geom = decoder.decode_by_id(geometry_id).ok()?;
@@ -844,7 +856,7 @@ fn find_geometry_item_color_at(
     let items = get_refs_from_list(&mapped_representation, 3)?;
     for underlying in items {
         if let Some(color) =
-            find_geometry_item_color_at(underlying, geometry_styles, decoder, depth + 1)
+            find_geometry_item_color_at(underlying, geometry_styles, decoder, depth + 1, visited)
         {
             return Some(color);
         }

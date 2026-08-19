@@ -48,8 +48,31 @@ export interface ShadowOccluderDraw {
   instanceCount?: number;
 }
 
+/**
+ * The clip this frame, mirrored from the colour pass so clipped-away geometry
+ * stops casting (a sectioned-off roof must not keep shadowing the floor).
+ * `null`/all-absent members mean "no clipping" and keep the fragment-less
+ * depth-only pipelines.
+ */
+export interface ShadowClip {
+  /** World-space plane; fragments on its + side are cut (see `flipped`). */
+  section?: {
+    normal: readonly [number, number, number];
+    distance: number;
+    flipped?: boolean;
+  } | null;
+  /** World-space crop box; fragments outside it are cut. */
+  box?: {
+    min: readonly [number, number, number];
+    max: readonly [number, number, number];
+  } | null;
+}
+
 /** Bytes of the per-draw uniform: mat4 model (64) + vec4 quantParams (16). */
 const PER_DRAW_BYTES = 80;
+
+/** Bytes of the clip uniform: sectionPlane + boxMin + boxMax + flags (4 vec4). */
+const CLIP_BYTES = 64;
 
 /** Depth format for the shadow map — sampleable and comparison-filterable. */
 const SHADOW_DEPTH_FORMAT: GPUTextureFormat = 'depth32float';
@@ -63,9 +86,22 @@ export class ShadowPass {
 
   private bindGroupLayout: GPUBindGroupLayout;
   private pipelines: Record<ShadowDrawKind, GPURenderPipeline>;
+  /**
+   * Clipping twins of {@link pipelines} — same state plus the discarding
+   * fragment stage. Built on the first clipped frame only, so a session that
+   * never sections anything never pays for the extra pipelines.
+   */
+  private clipPipelines: Record<ShadowDrawKind, GPURenderPipeline> | null = null;
+  private shaderModule: GPUShaderModule;
+  private pipelineLayout: GPUPipelineLayout;
 
   private lightBuffer: GPUBuffer;
   private lightScratch = new Float32Array(16);
+
+  /** Clip uniform (floats 0..11) with the flag word aliased as u32 (word 12). */
+  private clipBuffer: GPUBuffer;
+  private clipScratch = new Float32Array(CLIP_BYTES / 4);
+  private clipFlags = new Uint32Array(this.clipScratch.buffer);
 
   /** Grow-only ring for per-draw uniforms, bound with a dynamic offset. */
   private drawBuffer: GPUBuffer;
@@ -94,6 +130,12 @@ export class ShadowPass {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
+    this.clipBuffer = device.createBuffer({
+      label: 'shadow-clip-uniform',
+      size: CLIP_BYTES,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+
     this.bindGroupLayout = device.createBindGroupLayout({
       label: 'shadow-bgl',
       entries: [
@@ -103,6 +145,9 @@ export class ShadowPass {
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: 'uniform', hasDynamicOffset: true, minBindingSize: PER_DRAW_BYTES },
         },
+        // Read only by the clipping fragment stage; the depth-only pipelines
+        // simply leave this entry unused.
+        { binding: 2, visibility: GPUShaderStage.FRAGMENT, buffer: { type: 'uniform' } },
       ],
     });
 
@@ -111,16 +156,23 @@ export class ShadowPass {
     this.drawScratch = new Float32Array((this.drawStride / 4) * this.drawBufferSlots);
     this.drawBindGroup = this.createDrawBindGroup();
 
-    const module = device.createShaderModule({ label: 'shadow-shader', code: shadowShaderSource });
-    const layout = device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] });
-    this.pipelines = {
-      flat: this.createPipeline(module, layout, 'vs_shadow_flat', [this.posBuffer(28)]),
-      textured: this.createPipeline(module, layout, 'vs_shadow_textured', [this.posBuffer(36)]),
-      quantized: this.createPipeline(module, layout, 'vs_shadow_quantized', [this.quantBuffer()]),
-      instanced: this.createPipeline(module, layout, 'vs_shadow_instanced', [
-        this.posBuffer(28),
-        this.instanceBuffer(),
-      ]),
+    this.shaderModule = device.createShaderModule({
+      label: 'shadow-shader',
+      code: shadowShaderSource,
+    });
+    this.pipelineLayout = device.createPipelineLayout({ bindGroupLayouts: [this.bindGroupLayout] });
+    this.pipelines = this.createPipelineSet(false);
+  }
+
+  /** One pipeline per geometry path, with or without the clipping fragment stage. */
+  private createPipelineSet(clipped: boolean): Record<ShadowDrawKind, GPURenderPipeline> {
+    const make = (entryPoint: string, buffers: GPUVertexBufferLayout[]) =>
+      this.createPipeline(this.shaderModule, this.pipelineLayout, entryPoint, buffers, clipped);
+    return {
+      flat: make('vs_shadow_flat', [this.posBuffer(28)]),
+      textured: make('vs_shadow_textured', [this.posBuffer(36)]),
+      quantized: make('vs_shadow_quantized', [this.quantBuffer()]),
+      instanced: make('vs_shadow_instanced', [this.posBuffer(28), this.instanceBuffer()]),
     };
   }
 
@@ -146,17 +198,26 @@ export class ShadowPass {
   /**
    * Record the depth pre-pass: rasterise every occluder from the sun. Writes
    * all uniforms (queue ops, before the pass begins), then draws.
+   *
+   * `clip` mirrors the colour pass's section plane / clip box; when it cuts
+   * anything the draws go through the clipping pipelines so removed geometry
+   * casts nothing.
    */
   render(
     encoder: GPUCommandEncoder,
     lightViewProj: Mat4,
     draws: readonly ShadowOccluderDraw[],
+    clip?: ShadowClip | null,
   ): void {
     if (this.destroyed) return;
 
     // Shared light matrix — one write per frame.
     this.lightScratch.set(lightViewProj.m);
     this.device.queue.writeBuffer(this.lightBuffer, 0, this.lightScratch);
+
+    const clipping = this.writeClipUniform(clip);
+    if (clipping && !this.clipPipelines) this.clipPipelines = this.createPipelineSet(true);
+    const pipelines = clipping && this.clipPipelines ? this.clipPipelines : this.pipelines;
 
     // Grow the per-draw ring if this frame needs more slots than it holds.
     if (draws.length > this.drawBufferSlots) {
@@ -206,7 +267,7 @@ export class ShadowPass {
 
     for (let i = 0; i < draws.length; i++) {
       const d = draws[i];
-      pass.setPipeline(this.pipelines[d.kind]);
+      pass.setPipeline(pipelines[d.kind]);
       pass.setBindGroup(0, this.drawBindGroup, [i * this.drawStride]);
       pass.setVertexBuffer(0, d.vertexBuffer);
       pass.setIndexBuffer(d.indexBuffer, 'uint32');
@@ -228,6 +289,40 @@ export class ShadowPass {
     this.depthTexture.destroy();
     this.lightBuffer.destroy();
     this.drawBuffer.destroy();
+    this.clipBuffer.destroy();
+  }
+
+  /**
+   * Pack this frame's clip into the uniform, laid out (and flag-packed) exactly
+   * like the colour pass's. Returns whether anything is actually being cut —
+   * the caller uses that to pick the clipping pipelines. Writes only when
+   * clipping: with nothing cut the uniform is never read.
+   */
+  private writeClipUniform(clip: ShadowClip | null | undefined): boolean {
+    const section = clip?.section;
+    const box = clip?.box;
+    if (!section && !box) return false;
+
+    const s = this.clipScratch;
+    s.fill(0);
+    if (section) {
+      s[0] = section.normal[0];
+      s[1] = section.normal[1];
+      s[2] = section.normal[2];
+      s[3] = section.distance;
+    }
+    if (box) {
+      s[4] = box.min[0];
+      s[5] = box.min[1];
+      s[6] = box.min[2];
+      s[8] = box.max[0];
+      s[9] = box.max[1];
+      s[10] = box.max[2];
+    }
+    // flags.x — bit 0 section enabled, bit 1 flipped, bit 2 clip box enabled.
+    this.clipFlags[12] = (section ? 1 : 0) | (section?.flipped ? 2 : 0) | (box ? 4 : 0);
+    this.device.queue.writeBuffer(this.clipBuffer, 0, s);
+    return true;
   }
 
   private createDepthTexture(resolution: number): GPUTexture {
@@ -254,6 +349,7 @@ export class ShadowPass {
       entries: [
         { binding: 0, resource: { buffer: this.lightBuffer } },
         { binding: 1, resource: { buffer: this.drawBuffer, size: PER_DRAW_BYTES } },
+        { binding: 2, resource: { buffer: this.clipBuffer } },
       ],
     });
   }
@@ -290,12 +386,18 @@ export class ShadowPass {
     layout: GPUPipelineLayout,
     entryPoint: string,
     buffers: GPUVertexBufferLayout[],
+    clipped: boolean,
   ): GPURenderPipeline {
     return this.device.createRenderPipeline({
-      label: `shadow-pipeline-${entryPoint}`,
+      label: `shadow-pipeline-${entryPoint}${clipped ? '-clipped' : ''}`,
       layout,
       vertex: { module, entryPoint, buffers },
-      // No fragment stage: depth-only.
+      // Depth-only unless a clip is active, in which case a fragment stage
+      // with no colour targets discards the cut-away fragments before they
+      // write depth.
+      ...(clipped
+        ? { fragment: { module, entryPoint: 'fs_shadow_clip', targets: [] } }
+        : {}),
       primitive: { topology: 'triangle-list', cullMode: 'none' },
       depthStencil: {
         format: SHADOW_DEPTH_FORMAT,

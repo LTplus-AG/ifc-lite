@@ -5,11 +5,11 @@
 /**
  * Sun shadow-map depth pre-pass shaders (issue #2670, Phase 2).
  *
- * Depth-only (no fragment stage): each entry point transforms a vertex to the
- * sun's light clip space and lets the depth test record the closest occluder.
- * There is ONE entry point per geometry path, and each MUST reproduce the
- * world-space position its main-shader counterpart computes, or that path
- * silently stops casting (the divergence class #2670's acceptance test guards):
+ * Depth-only: each entry point transforms a vertex to the sun's light clip
+ * space and lets the depth test record the closest occluder. There is ONE
+ * entry point per geometry path, and each MUST reproduce the world-space
+ * position its main-shader counterpart computes, or that path silently stops
+ * casting (the divergence class #2670's acceptance test guards):
  *
  *   • vs_shadow_flat       ← vs_main            worldPos = model * position
  *   • vs_shadow_quantized  ← vs_main_quantized  worldPos = model * dequant(q)
@@ -21,6 +21,15 @@
  * per-occurrence matrix arrives on vertex slot 1). The anti-z-fighting depth
  * nudge from the main shaders is deliberately omitted — it perturbs camera
  * clip depth for coplanar-face separation and has no meaning in light space.
+ *
+ * CLIPPING. Every entry point also passes world position to `fs_shadow_clip`,
+ * which re-applies the section plane and clip box exactly as `fs_main` does,
+ * so geometry a section cut removed from view stops casting too (otherwise the
+ * cut-away roof keeps shadowing the floor it no longer covers). The fragment
+ * stage is only attached when a clip is actually active — with no clipping the
+ * pipelines stay fragment-less, keeping the double-speed depth-only path — and
+ * the unused `worldPos` output on those pipelines costs an interpolator, not a
+ * shader stage.
  */
 export const shadowShaderSource = `
         struct Light {
@@ -35,6 +44,17 @@ export const shadowShaderSource = `
           quantParams: vec4<f32>,
         }
         @binding(1) @group(0) var<uniform> draw: Draw;
+
+        struct Clip {
+          // xyz = plane normal, w = plane distance (world space).
+          sectionPlane: vec4<f32>,
+          clipBoxMin: vec4<f32>,
+          clipBoxMax: vec4<f32>,
+          // x packs: bit 0 = section enabled, bit 1 = section flipped,
+          //          bit 2 = clip box enabled. Mirrors main.wgsl's flags.y.
+          flags: vec4<u32>,
+        }
+        @binding(2) @group(0) var<uniform> clip: Clip;
 
         struct FlatIn {
           @location(0) position: vec3<f32>,
@@ -51,30 +71,57 @@ export const shadowShaderSource = `
           @location(6) m3: vec4<f32>,
         }
 
-        @vertex
-        fn vs_shadow_flat(input: FlatIn) -> @builtin(position) vec4<f32> {
-          let worldPos = draw.model * vec4<f32>(input.position, 1.0);
-          return light.lightViewProj * worldPos;
+        struct ShadowOut {
+          @builtin(position) position: vec4<f32>,
+          @location(0) worldPos: vec3<f32>,
+        }
+
+        fn emit(worldPos: vec4<f32>) -> ShadowOut {
+          var out: ShadowOut;
+          out.position = light.lightViewProj * worldPos;
+          out.worldPos = worldPos.xyz;
+          return out;
         }
 
         @vertex
-        fn vs_shadow_quantized(input: QuantIn) -> @builtin(position) vec4<f32> {
+        fn vs_shadow_flat(input: FlatIn) -> ShadowOut {
+          return emit(draw.model * vec4<f32>(input.position, 1.0));
+        }
+
+        @vertex
+        fn vs_shadow_quantized(input: QuantIn) -> ShadowOut {
           let p = draw.quantParams.xyz
             + vec3<f32>(f32(input.q.x), f32(input.q.y), f32(input.q.z)) * draw.quantParams.w;
-          let worldPos = draw.model * vec4<f32>(p, 1.0);
-          return light.lightViewProj * worldPos;
+          return emit(draw.model * vec4<f32>(p, 1.0));
         }
 
         @vertex
-        fn vs_shadow_instanced(input: FlatIn, inst: InstanceIn) -> @builtin(position) vec4<f32> {
+        fn vs_shadow_instanced(input: FlatIn, inst: InstanceIn) -> ShadowOut {
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
-          let worldPos = instMat * vec4<f32>(input.position, 1.0);
-          return light.lightViewProj * worldPos;
+          return emit(instMat * vec4<f32>(input.position, 1.0));
         }
 
         @vertex
-        fn vs_shadow_textured(input: FlatIn) -> @builtin(position) vec4<f32> {
-          let worldPos = draw.model * vec4<f32>(input.position, 1.0);
-          return light.lightViewProj * worldPos;
+        fn vs_shadow_textured(input: FlatIn) -> ShadowOut {
+          return emit(draw.model * vec4<f32>(input.position, 1.0));
+        }
+
+        // Clipped variant: discard before the depth write, so a clipped-away
+        // occluder leaves the shadow map untouched. Kept byte-for-byte in step
+        // with the fs_main section/clip-box branches.
+        @fragment
+        fn fs_shadow_clip(@location(0) worldPos: vec3<f32>) {
+          if ((clip.flags.x & 1u) == 1u) {
+            let side = select(1.0, -1.0, (clip.flags.x & 2u) == 2u);
+            let distToPlane = (dot(worldPos, clip.sectionPlane.xyz) - clip.sectionPlane.w) * side;
+            if (distToPlane > 0.0) {
+              discard;
+            }
+          }
+          if ((clip.flags.x & 4u) != 0u) {
+            if (any(worldPos < clip.clipBoxMin.xyz) || any(worldPos > clip.clipBoxMax.xyz)) {
+              discard;
+            }
+          }
         }
 `;

@@ -170,8 +170,23 @@ interface MockRecord {
   dynamicOffsets: number[];
 }
 
-function mockShadowDevice(): GPUDevice {
-  const queue = { writeBuffer() { /* no-op */ } };
+/** What a device saw built/written, for the clipping assertions. */
+interface DeviceRecord {
+  pipelines: { label: string; hasFragment: boolean }[];
+  /** Last data written to the buffer labelled 'shadow-clip-uniform'. */
+  clipWrite: Float32Array | null;
+}
+
+function mockShadowDevice(rec?: DeviceRecord): GPUDevice {
+  const queue = {
+    writeBuffer(buffer: { label?: string }, _offset: number, data: ArrayBufferView) {
+      if (rec && buffer?.label === 'shadow-clip-uniform') {
+        rec.clipWrite = new Float32Array(
+          (data as Float32Array).slice() as unknown as ArrayLike<number>,
+        );
+      }
+    },
+  };
 
   return new Proxy({} as Record<string | symbol, unknown>, {
     get(_t, prop) {
@@ -181,7 +196,7 @@ function mockShadowDevice(): GPUDevice {
         case 'queue':
           return queue;
         case 'createBuffer':
-          return () => ({ destroy() { /* no-op */ } });
+          return (d: { label?: string }) => ({ label: d?.label, destroy() { /* no-op */ } });
         case 'createTexture':
           return () => ({ createView: () => ({}), destroy() { /* no-op */ } });
         case 'createSampler':
@@ -195,7 +210,10 @@ function mockShadowDevice(): GPUDevice {
         case 'createPipelineLayout':
           return () => ({});
         case 'createRenderPipeline':
-          return (d: { label?: string }) => ({ label: d?.label });
+          return (d: { label?: string; fragment?: unknown }) => {
+            rec?.pipelines.push({ label: d?.label ?? '', hasFragment: d?.fragment != null });
+            return { label: d?.label };
+          };
         default:
           return () => undefined;
       }
@@ -203,34 +221,42 @@ function mockShadowDevice(): GPUDevice {
   }) as unknown as GPUDevice;
 }
 
+function mockEncoder(rec: MockRecord): GPUCommandEncoder {
+  return {
+    beginRenderPass: () => {
+      rec.passesBegun++;
+      return new Proxy({} as Record<string | symbol, unknown>, {
+        get(_t, prop) {
+          switch (prop) {
+            case 'setPipeline':
+              return (p: { label?: string }) => { (rec as unknown as { _cur: string })._cur = p?.label ?? ''; };
+            case 'drawIndexed':
+              return () => { rec.drawPipelines.push((rec as unknown as { _cur: string })._cur); };
+            case 'setBindGroup':
+              return (_i: number, _bg: unknown, offsets?: number[]) => {
+                if (offsets) rec.dynamicOffsets.push(...offsets);
+              };
+            default:
+              return () => undefined;
+          }
+        },
+      });
+    },
+  } as unknown as GPUCommandEncoder;
+}
+
+function emptyRecord(): MockRecord {
+  return { drawPipelines: [], passesBegun: 0, dynamicOffsets: [] };
+}
+
 describe('ShadowPass.render', () => {
   it('draws every geometry path through its own depth pipeline', () => {
-    const rec: MockRecord = { drawPipelines: [], passesBegun: 0, dynamicOffsets: [] };
+    const rec = emptyRecord();
     const device = mockShadowDevice();
     const pass = new ShadowPass(device, 1024);
 
     const draws = collectShadowOccluders(allFourPaths());
-    const encoder = {
-      beginRenderPass: () => {
-        rec.passesBegun++;
-        return new Proxy({} as Record<string | symbol, unknown>, {
-          get(_t, prop) {
-            switch (prop) {
-              case 'setPipeline':
-                return (p: { label?: string }) => { (rec as unknown as { _cur: string })._cur = p?.label ?? ''; };
-              case 'drawIndexed':
-                return () => { rec.drawPipelines.push((rec as unknown as { _cur: string })._cur); };
-              case 'setBindGroup':
-                return (_i: number, _bg: unknown, offsets?: number[]) => {
-                  if (offsets) rec.dynamicOffsets.push(...offsets);
-                };
-              default:
-                return () => undefined;
-            }
-          },
-        });
-      },
-    } as unknown as GPUCommandEncoder;
+    const encoder = mockEncoder(rec);
 
     pass.render(encoder, { m: new Float32Array(16) }, draws);
 
@@ -245,5 +271,84 @@ describe('ShadowPass.render', () => {
     ]);
     // Each draw binds a distinct 256-aligned dynamic offset.
     assert.deepEqual(rec.dynamicOffsets, [0, 256, 512, 768]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clipping: the colour pass discards section/crop-clipped fragments, so the
+// shadow pass must cut the same geometry — otherwise a sliced-off roof keeps
+// shadowing the floor it no longer covers (greptile review, #2670).
+// ---------------------------------------------------------------------------
+
+describe('ShadowPass clipping', () => {
+  const draws = () => collectShadowOccluders(allFourPaths());
+  const section = { normal: [0, 0, 1] as const, distance: 12.5 };
+  const box = { min: [-1, -2, -3] as const, max: [4, 5, 6] as const };
+
+  it('stays fragment-less (depth-only) when nothing is clipped', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const rec = emptyRecord();
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws(), null);
+
+    assert.equal(dev.pipelines.length, 4, 'only the four depth-only pipelines');
+    assert.ok(dev.pipelines.every((p) => !p.hasFragment), 'no fragment stage without a clip');
+    assert.ok(rec.drawPipelines.every((l) => !l.endsWith('-clipped')));
+    assert.equal(dev.clipWrite, null, 'clip uniform untouched when nothing is cut');
+  });
+
+  it('routes every path through a clipping pipeline when a section plane is on', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const rec = emptyRecord();
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    pass.render(mockEncoder(rec), { m: new Float32Array(16) }, draws(), { section });
+
+    assert.equal(rec.drawPipelines.length, 4, 'one draw per path, still');
+    assert.deepEqual(rec.drawPipelines.slice().sort(), [
+      'shadow-pipeline-vs_shadow_flat-clipped',
+      'shadow-pipeline-vs_shadow_instanced-clipped',
+      'shadow-pipeline-vs_shadow_quantized-clipped',
+      'shadow-pipeline-vs_shadow_textured-clipped',
+    ]);
+    const clipped = dev.pipelines.filter((p) => p.label.endsWith('-clipped'));
+    assert.equal(clipped.length, 4);
+    assert.ok(clipped.every((p) => p.hasFragment), 'clipping pipelines discard in a fragment stage');
+  });
+
+  it('packs the section plane and its flipped bit like the colour pass', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { section });
+
+    const w = dev.clipWrite!;
+    assert.deepEqual(Array.from(w.slice(0, 4)), [0, 0, 1, 12.5]);
+    assert.equal(new Uint32Array(w.buffer)[12], 1, 'bit 0 = section enabled');
+
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), {
+      section: { ...section, flipped: true },
+    });
+    assert.equal(new Uint32Array(dev.clipWrite!.buffer)[12], 1 | 2, 'bit 1 = flipped');
+  });
+
+  it('packs the clip box bounds and enable bit', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { box });
+
+    const w = dev.clipWrite!;
+    assert.deepEqual(Array.from(w.slice(4, 7)), [-1, -2, -3]);
+    assert.deepEqual(Array.from(w.slice(8, 11)), [4, 5, 6]);
+    assert.equal(new Uint32Array(w.buffer)[12], 4, 'bit 2 = clip box enabled');
+  });
+
+  it('builds the clipping pipelines once, on the first clipped frame', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    const pass = new ShadowPass(mockShadowDevice(dev), 1024);
+    assert.equal(dev.pipelines.length, 4, 'construction builds only the depth-only set');
+
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { box });
+    assert.equal(dev.pipelines.length, 8, 'first clipped frame adds the clipping set');
+    pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { box });
+    assert.equal(dev.pipelines.length, 8, 'later frames reuse them');
   });
 });

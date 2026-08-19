@@ -2056,7 +2056,23 @@ export class Renderer {
                         },
                         { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds ?? undefined },
                     );
-                    this.shadowPass.render(encoder, fit.lightViewProj, occluders);
+                    // Cast the same cut the colour pass draws: geometry a
+                    // section plane / crop box removed from view must stop
+                    // casting too, or the sliced-off roof keeps shadowing the
+                    // floor it no longer covers. `sectionPlaneData` already
+                    // folds in the terrain clip, so that is covered as well.
+                    this.shadowPass.render(encoder, fit.lightViewProj, occluders, {
+                        section: sectionPlaneData?.enabled
+                            ? {
+                                normal: sectionPlaneData.normal,
+                                distance: sectionPlaneData.distance,
+                                flipped: options.sectionPlane?.flipped === true,
+                            }
+                            : null,
+                        box: options.clipBox?.enabled
+                            ? { min: options.clipBox.min, max: options.clipBox.max }
+                            : null,
+                    });
 
                     // Shadow uniform: light matrix + sampling params. The kernel
                     // width follows the sun's angular size (physical, ~0.53°

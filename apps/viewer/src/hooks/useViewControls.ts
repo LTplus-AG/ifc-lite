@@ -191,6 +191,28 @@ function useViewControls({
     }
   }, [sheetEnabled, status, drawing, fitToView]);
 
+  // Track everything the cached transform is actually derived FROM
+  // (`calculateDrawingTransform(drawingBounds, viewport, activeSheet.scale)`
+  // in Drawing2DCanvas.tsx) rather than the sheet's id: `setPaperSize`,
+  // `setFrameStyle`/`updateFrameMargins` (both recompute `viewportBounds`)
+  // and `setDrawingScale` all mutate the SAME `activeSheet.id` in place
+  // (sheetSlice.ts), while `loadTemplate` swaps in a different id entirely.
+  // Any of these must invalidate the cache even though `sheetEnabled` never
+  // toggles across the change. Without this, a pinned view kept the OLD
+  // sheet's transform (position/scale computed for its old paper/viewport)
+  // applied to the new content until the user flipped sheet mode off and
+  // back on, or changed the section axis.
+  const sheetGeometryKey = activeSheet
+    ? `${activeSheet.id}|${activeSheet.paper.widthMm}x${activeSheet.paper.heightMm}|${activeSheet.viewportBounds.x},${activeSheet.viewportBounds.y},${activeSheet.viewportBounds.width},${activeSheet.viewportBounds.height}|${activeSheet.scale.factor}`
+    : null;
+  const prevSheetGeometryKeyRef = useRef(sheetGeometryKey);
+  useEffect(() => {
+    if (sheetGeometryKey !== prevSheetGeometryKeyRef.current) {
+      prevSheetGeometryKeyRef.current = sheetGeometryKey;
+      cachedSheetTransformRef.current = null;
+    }
+  }, [sheetGeometryKey, cachedSheetTransformRef]);
+
   // Auto-fit when: (1) needsFit is true (first open or axis change), or (2) not pinned after regenerate
   // ALWAYS fit when axis changed, regardless of pin state
   // Also re-run when panelVisible changes so we fit when panel opens with existing drawing

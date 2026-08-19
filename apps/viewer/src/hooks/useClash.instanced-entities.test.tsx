@@ -36,7 +36,7 @@ import assert from 'node:assert/strict';
 import type { RefObject } from 'react';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { createSyntheticDataStore, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import type { ClashRule } from '@ifc-lite/clash';
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { Renderer } from '@ifc-lite/renderer';

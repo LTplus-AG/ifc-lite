@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { fitSunLightMatrix } from './shadow-light-matrix.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import type { Mat4, Vec3 } from './types.js';
 
 /** Transform a world point by a column-major Mat4, returning clip-space xyzw. */
@@ -119,6 +119,53 @@ describe('fitSunLightMatrix', () => {
       topOccluder.z >= -0.0001 && topOccluder.z <= 1.0001,
       `far occluder z ${topOccluder.z} left the depth range`,
     );
+  });
+});
+
+describe('cameraFrustumFocusCorners', () => {
+  const bigSite = {
+    boundsMin: [-100, -1, -100] as [number, number, number],
+    boundsMax: [100, 20, 100] as [number, number, number],
+  };
+  // A camera near the origin looking down -Z at the site centre.
+  const cam = {
+    eye: { x: 0, y: 10, z: 60 } as Vec3,
+    forward: { x: 0, y: 0, z: -1 } as Vec3,
+    right: { x: 1, y: 0, z: 0 } as Vec3,
+    up: { x: 0, y: 1, z: 0 } as Vec3,
+    fovY: (45 * Math.PI) / 180,
+    aspect: 1.6,
+    ortho: false,
+    orthoHalfHeight: 10,
+    ...bigSite,
+  };
+
+  it('returns eight corners clipped inside the model bounds', () => {
+    const corners = cameraFrustumFocusCorners(cam);
+    assert.ok(corners, 'expected a focus');
+    assert.equal(corners!.length, 8);
+    for (const c of corners!) {
+      assert.ok(c.x >= bigSite.boundsMin[0] - 1e-6 && c.x <= bigSite.boundsMax[0] + 1e-6, `x ${c.x} out of bounds`);
+      assert.ok(c.y >= bigSite.boundsMin[1] - 1e-6 && c.y <= bigSite.boundsMax[1] + 1e-6, `y ${c.y} out of bounds`);
+      assert.ok(c.z >= bigSite.boundsMin[2] - 1e-6 && c.z <= bigSite.boundsMax[2] + 1e-6, `z ${c.z} out of bounds`);
+    }
+  });
+
+  it('fits a tighter lateral box than whole bounds when zoomed in on a site', () => {
+    // A narrow FOV close to the centre sees only a small patch of the site.
+    const zoomed = { ...cam, eye: { x: 0, y: 5, z: 20 } as Vec3, fovY: (20 * Math.PI) / 180 };
+    const focus = cameraFrustumFocusCorners(zoomed);
+    const wide = fitSunLightMatrix({ sunDirection: [0.3, 1, 0.2], ...bigSite });
+    const focused = fitSunLightMatrix({ sunDirection: [0.3, 1, 0.2], ...bigSite, focusCorners: focus ?? undefined });
+    assert.ok(
+      focused.orthoHalfWidth < wide.orthoHalfWidth * 0.8,
+      `focused ${focused.orthoHalfWidth} not tighter than bounds ${wide.orthoHalfWidth}`,
+    );
+  });
+
+  it('returns null when the model is entirely behind the camera', () => {
+    const away = { ...cam, forward: { x: 0, y: 0, z: 1 } as Vec3, eye: { x: 0, y: 10, z: 300 } as Vec3 };
+    assert.equal(cameraFrustumFocusCorners(away), null);
   });
 });
 

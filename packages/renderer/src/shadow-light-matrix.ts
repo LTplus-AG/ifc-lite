@@ -205,3 +205,77 @@ export function fitSunLightMatrix(params: SunLightFitParams): SunLightFit {
   };
 }
 
+export interface CameraFrustumParams {
+  /** Camera eye (world). */
+  eye: Vec3;
+  /** Unit view direction (eye → target). */
+  forward: Vec3;
+  /** Unit screen-right. */
+  right: Vec3;
+  /** Unit screen-up. */
+  up: Vec3;
+  /** Vertical FOV in radians (perspective). */
+  fovY: number;
+  /** Viewport width / height. */
+  aspect: number;
+  /** Orthographic projection? Then `orthoHalfHeight` sizes the frustum. */
+  ortho: boolean;
+  /** Half-height of the ortho view volume, world units (ortho only). */
+  orthoHalfHeight: number;
+  boundsMin: readonly [number, number, number];
+  boundsMax: readonly [number, number, number];
+  /** Lateral expansion so a caster just off-screen still reaches the map. */
+  margin?: number;
+}
+
+/**
+ * Eight corners of the camera frustum, clipped to the model AABB — the region
+ * the camera can actually see (maintainer constraint #1 on #2670). Passing
+ * these to {@link fitSunLightMatrix} as `focusCorners` concentrates the shadow
+ * map on visible geometry instead of a site-scale model's whole footprint,
+ * which is what makes distant terrain steal all the resolution.
+ *
+ * Unlike unprojecting the clip cube, this builds the frustum from the camera
+ * BASIS at finite near/far distances derived from where the model sits along
+ * the view axis, so it never depends on a reverse-Z / infinite-far plane.
+ * Returns `null` when the model is entirely behind the camera (no usable
+ * focus — the caller falls back to a whole-bounds fit).
+ */
+export function cameraFrustumFocusCorners(p: CameraFrustumParams): Vec3[] | null {
+  const corners = aabbCorners(p.boundsMin, p.boundsMax);
+  // Depth span of the model along the view axis, relative to the eye.
+  let nearD = Infinity;
+  let farD = -Infinity;
+  for (const c of corners) {
+    const d = (c.x - p.eye.x) * p.forward.x + (c.y - p.eye.y) * p.forward.y + (c.z - p.eye.z) * p.forward.z;
+    if (d < nearD) nearD = d;
+    if (d > farD) farD = d;
+  }
+  if (!(farD > 1e-3)) return null; // model behind the camera
+  nearD = Math.max(nearD, 0.01);
+
+  const margin = Math.min(Math.max(p.margin ?? 0.15, 0), 2);
+  const half = (d: number): { w: number; h: number } => {
+    const h = (p.ortho ? p.orthoHalfHeight : d * Math.tan(p.fovY / 2)) * (1 + margin);
+    return { w: h * p.aspect, h };
+  };
+
+  const out: Vec3[] = [];
+  for (const d of [nearD, farD]) {
+    const { w, h } = half(d);
+    for (const sx of [-1, 1]) {
+      for (const sy of [-1, 1]) {
+        const x = p.eye.x + p.forward.x * d + p.right.x * (sx * w) + p.up.x * (sy * h);
+        const y = p.eye.y + p.forward.y * d + p.right.y * (sx * w) + p.up.y * (sy * h);
+        const z = p.eye.z + p.forward.z * d + p.right.z * (sx * w) + p.up.z * (sy * h);
+        out.push({
+          x: Math.min(Math.max(x, p.boundsMin[0]), p.boundsMax[0]),
+          y: Math.min(Math.max(y, p.boundsMin[1]), p.boundsMax[1]),
+          z: Math.min(Math.max(z, p.boundsMin[2]), p.boundsMax[2]),
+        });
+      }
+    }
+  }
+  return out;
+}
+

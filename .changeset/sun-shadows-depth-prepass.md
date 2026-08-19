@@ -10,9 +10,10 @@ shadow mapping end to end:
 
 - a depth pre-pass (`ShadowPass`) renders every occluder from the sun into a
   shadow map, fitted with an orthographic light-view-projection
-  (`fitSunLightMatrix`) sized to the model bounds (a single well-conditioned
-  cascade; view-frustum fitting for site-scale models is a documented
-  follow-up);
+  (`fitSunLightMatrix`) whose lateral extent tracks the camera frustum clipped
+  to the model (`cameraFrustumFocusCorners`) while the depth range spans the
+  whole model, so a small building on a large site keeps sharp shadows instead
+  of spending the whole map on distant terrain;
 - the shared main-family fragment shader samples it with a 3×3 PCF kernel and a
   slope-scaled bias (normal-offset plus a grazing-angle depth term, so a flat
   ground under a low sun does not ring with acne), occluding only the direct

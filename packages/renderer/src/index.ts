@@ -149,7 +149,7 @@ import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { ShadowPass } from './shadow-pass.js';
-import { fitSunLightMatrix } from './shadow-light-matrix.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
@@ -2019,14 +2019,30 @@ export class Renderer {
                     }
                     const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
                     const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
-                    // Single-cascade fit to the whole model bounds — well
-                    // conditioned at building scale. Fitting the ortho box to the
-                    // camera frustum (maintainer #1, to save resolution on
-                    // site-scale models) needs a proper cascade and is a
-                    // documented Phase-2b follow-up; a naive unprojection of a
-                    // reverse-Z/infinite-far frustum collapses the box to a point.
+                    // Fit the shadow ortho box LATERALLY to the camera frustum
+                    // clipped to the model (maintainer #1): on a site-scale model
+                    // (small building on a large terrain) this stops the distant
+                    // terrain from stealing all the shadow-map resolution and
+                    // leaving the visible shadows blocky. Depth still spans the
+                    // whole model (fitSunLightMatrix), so occluders up-sun of the
+                    // view keep casting into it. Falls back to a whole-bounds fit
+                    // when the view doesn't intersect the model.
+                    const camEye = this.camera.getPosition();
+                    const camBasisFit = viewBasis(camEye, this.camera.getTarget(), this.camera.getUp());
+                    const focusCorners = cameraFrustumFocusCorners({
+                        eye: camEye,
+                        forward: camBasisFit.forward,
+                        right: camBasisFit.right,
+                        up: camBasisFit.up,
+                        fovY: this.camera.getFOV(),
+                        aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                        ortho: this.camera.getProjectionMode() === 'orthographic',
+                        orthoHalfHeight: this.camera.getOrthoSize(),
+                        boundsMin,
+                        boundsMax,
+                    }) ?? undefined;
                     const sun = resolveEnvironment(options.environment).sunDirection;
-                    const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax });
+                    const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
                     const occluders = collectShadowOccluders(
                         {
                             batches: this.scene.getBatchedMeshes(),

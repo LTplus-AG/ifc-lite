@@ -490,6 +490,22 @@ function reapplyPlacementsAfterRehydrate(
   if (!placementApi || !placementAppliedLoc || !placementAppliedYaw || !pathToId) return;
   // Fresh meshes carry no applied delta. Clearing BEFORE re-applying is what
   // makes each call compute the full offset rather than an increment.
+  //
+  // SAFE FOR A NON-OBVIOUS REASON, written down because the obvious reading is
+  // that it is not: these trackers are MODULE-scoped and shared with the live
+  // placement-event path, so an inbound event observing a cleared tracker
+  // would re-apply a delta already baked into the mesh.
+  //
+  // It cannot interleave today because this whole function is synchronous -
+  // no `await` between the clears and the loop, and none inside
+  // `reconcilePlacementMesh` either - so clear-then-reapply occupies one
+  // uninterruptible turn of the event loop.
+  //
+  // The constraint, stated at the state it protects rather than in the caller:
+  // if this loop or `reconcilePlacementMesh` ever gains an `await`, an inbound
+  // placement arriving in that window sees zeroed trackers and double-applies.
+  // Chunking this loop for a large model is the obvious future change and is
+  // exactly the one that opens the window.
   placementAppliedLoc.clear();
   placementAppliedYaw.clear();
   for (const [path] of api.iterEntities(doc)) {

@@ -30,10 +30,15 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import type { DrawingSheet } from '@ifc-lite/drawing-2d';
 import { useViewControls } from './useViewControls.js';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
-type CachedTransform = { translateX: number; translateY: number; scaleFactor: number } | null;
+type CachedTransform = CachedSheetTransform | null;
 
-function sheet(id: string, scale: number, widthMm: number): DrawingSheet {
+/** `factor` is the sheet's actual scale factor (`activeSheet.scale.factor`,
+ *  the field `sheetGeometryKey` reads) — a real `DrawingSheet['scale']`
+ *  object, not a bare number cast past the type, so the fixture's `factor`
+ *  is never `undefined` (PR #2853 review). */
+function sheet(id: string, factor: number, widthMm: number): DrawingSheet {
   return {
     id,
     name: id,
@@ -41,7 +46,7 @@ function sheet(id: string, scale: number, widthMm: number): DrawingSheet {
     frame: {} as unknown as DrawingSheet['frame'],
     titleBlock: { fields: [], position: 'bottom-right', heightMm: 30 } as unknown as DrawingSheet['titleBlock'],
     scaleBar: {} as unknown as DrawingSheet['scaleBar'],
-    scale: scale as unknown as DrawingSheet['scale'],
+    scale: { name: 'test', factor, useCase: '' },
     northArrow: {} as unknown as DrawingSheet['northArrow'],
     viewportBounds: { x: 10, y: 10, width: widthMm - 20, height: 260 },
     revisions: [],
@@ -68,7 +73,7 @@ function Harness({ activeSheet, cacheRef }: HarnessProps): null {
   return null;
 }
 
-const SENTINEL: CachedTransform = { translateX: 1, translateY: 2, scaleFactor: 3 };
+const SENTINEL: CachedTransform = { key: 'sentinel', translateX: 1, translateY: 2, scaleFactor: 3 };
 
 describe('useViewControls sheet-swap cache invalidation', () => {
   it('clears the cached pinned transform when a different sheet replaces activeSheet', async () => {
@@ -129,6 +134,41 @@ describe('useViewControls sheet-swap cache invalidation', () => {
         cacheRef.current,
         null,
         `cached transform must not survive a paper/scale change on the same sheet id; got ${JSON.stringify(cacheRef.current)}`,
+      );
+    } finally {
+      if (root) await act(async () => { root!.unmount(); });
+      container.remove();
+    }
+  });
+
+  it('clears the cache on a SCALE-ONLY change (setDrawingScale with paper untouched)', async () => {
+    // Isolates the `scale.factor` term of `sheetGeometryKey` from the paper
+    // width — the previous test's fixture also changed paper width in the
+    // same rerender, so it could pass even if the scale factor were dropped
+    // from the key entirely (PR #2853 review).
+    const cacheRef: React.MutableRefObject<CachedTransform> = { current: null };
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    let root: Root | null = null;
+    try {
+      const before = sheet('sheet-a', 50, 420);
+      await act(async () => {
+        root = createRoot(container);
+        root.render(<Harness activeSheet={before} cacheRef={cacheRef} />);
+      });
+
+      cacheRef.current = SENTINEL;
+
+      // SAME id and paper, ONLY the scale factor changes.
+      const after: DrawingSheet = { ...before, scale: { name: 'x', factor: 100, useCase: '' } };
+      await act(async () => {
+        root!.render(<Harness activeSheet={after} cacheRef={cacheRef} />);
+      });
+
+      assert.equal(
+        cacheRef.current,
+        null,
+        `cached transform must not survive a scale-only change; got ${JSON.stringify(cacheRef.current)}`,
       );
     } finally {
       if (root) await act(async () => { root!.unmount(); });

@@ -1126,3 +1126,45 @@ describe('pendingMutations rides on every payload that folds', () => {
     }
   }, 30_000);
 });
+
+/**
+ * `mutation_batch` re-validates each op's `args` with `validateInput` (the
+ * same call `MCPServer` makes before a direct, non-batched dispatch) but must
+ * then hand the *validated* value — the one with schema defaults filled in —
+ * to the sub-tool's handler, not the raw `args` it was given. A single-call
+ * `entity_set_property` already gets `validation.value`, via `server.ts`; a
+ * batched one must see the same value or the two dispatch paths silently
+ * disagree about what an omitted, defaulted field means.
+ *
+ * `entity_set_property`'s schema declares no default today, so this test
+ * grafts one on temporarily (restored in `finally`) to observe the
+ * dispatch path itself, independent of which tool happens to ship a
+ * `default` on a given day.
+ */
+describe('mutation_batch forwards validated (default-filled) args to its sub-tool', () => {
+  it('a defaulted field omitted from the op reaches the handler with its default, not undefined', async () => {
+    await session();
+    const setProperty = mutationTools.find((t) => t.name === 'entity_set_property');
+    if (!setProperty) throw new Error('entity_set_property not registered');
+    const valueSchema = (setProperty.inputSchema.properties as Record<string, { default?: unknown }>).value;
+    const hadDefault = 'default' in valueSchema;
+    const previousDefault = valueSchema.default;
+    valueSchema.default = 'grafted-default';
+    try {
+      const batch = await structured<{ results: Array<{ ok: boolean; result?: { mutation?: { value?: unknown } } }> }>(
+        'mutation_batch',
+        {
+          operations: [
+            // `value` is intentionally omitted so only the schema default can supply it.
+            { tool: 'entity_set_property', args: { global_id: guid('WALA'), pset: 'Pset_WallCommon', name: 'GraftedProp' } },
+          ],
+        },
+      );
+      expect(batch.results[0].ok).toBe(true);
+      expect(batch.results[0].result?.mutation?.value).toBe('grafted-default');
+    } finally {
+      if (hadDefault) valueSchema.default = previousDefault;
+      else delete valueSchema.default;
+    }
+  }, 30_000);
+});

@@ -276,7 +276,7 @@ const mutationBatch: Tool = {
           });
           continue;
         }
-        const out = await tool.handler(subArgs, ctx);
+        const out = await tool.handler(validation.value as Record<string, unknown>, ctx);
         if (out.isError) results.push({ tool: op.tool, ok: false, error: (out.structuredContent?.message as string) ?? 'failed' });
         else results.push({ tool: op.tool, ok: true, result: out.structuredContent });
       } catch (err) {

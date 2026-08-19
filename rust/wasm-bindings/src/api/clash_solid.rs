@@ -319,6 +319,30 @@ mod tests {
         assert_eq!(result.volume_m3(), 0.0);
     }
 
+    /// Boundary case for the same guard: `pos_b` has exactly 8 vertices, so
+    /// its valid index range is `0..=7` and `vertex_count == 8` is the first
+    /// value one past the end. The far-out-of-range probes above (99, 1000)
+    /// cannot tell `i >= vertex_count` apart from the weaker `i > vertex_count`
+    /// — both reject 99 and 1000 identically — so they leave the off-by-one
+    /// at the boundary itself unpinned. Confirmed by mutation: flipping
+    /// `mesh_from`'s guard from `>=` to `>` in
+    /// `rust/wasm-bindings/src/api/clash_solid.rs` left every existing test
+    /// in this module green.
+    #[test]
+    fn an_index_exactly_at_its_own_operands_vertex_count_is_reported_malformed() {
+        let (pos_a, idx_a) = box_positions_indices([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);
+        let (pos_b, mut idx_b) = box_positions_indices([0.5, 0.5, 0.5], [1.5, 1.5, 1.5]);
+        let vertex_count = (pos_b.len() / 3) as u32;
+        let last = idx_b.len() - 1;
+        idx_b[last] = vertex_count; // one past the last valid index (7), not merely "large"
+
+        let result = clash_intersection_solid(&pos_a, &idx_a, &pos_b, &idx_b);
+
+        assert!(!result.is_solid());
+        assert_eq!(result.degenerate_reason(), "malformed-operand");
+        assert_eq!(result.volume_m3(), 0.0);
+    }
+
     #[test]
     fn an_out_of_range_index_on_operand_a_is_also_caught() {
         let (pos_a, mut idx_a) = box_positions_indices([0.0, 0.0, 0.0], [1.0, 1.0, 1.0]);

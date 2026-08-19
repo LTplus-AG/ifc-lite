@@ -306,6 +306,29 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       cross.clearIdsValidationReport?.();
     }
 
+    // A published compare result (compareSlice) names its base/head models by
+    // id and its `excludedHiddenIds` / `diff` entries carry federation GLOBAL
+    // ids computed against those two models' offsets. If the removed model
+    // was either side of that comparison, the result no longer describes a
+    // pairing that exists — same dangling-reference shape as the IDS report
+    // above, one slice over. Left alone it merely dangles here (removeModel
+    // never resets `federationRegistry`'s offset counter, so no later model
+    // can be re-assigned these same ids) but `clearAllModels` below does not
+    // have that guarantee, so this call site exists for symmetry and so a
+    // partial federation edit (remove one side of a compare, add a
+    // replacement) can't leave a comparison silently describing the old
+    // pairing while a new one of the same shape loads.
+    const compareCross = get() as unknown as {
+      compareResult?: { baseModelId: string; headModelId: string } | null;
+      clearCompare?: () => void;
+    };
+    if (
+      compareCross.compareResult &&
+      (compareCross.compareResult.baseModelId === modelId || compareCross.compareResult.headModelId === modelId)
+    ) {
+      compareCross.clearCompare?.();
+    }
+
     set((state) => {
       const newModels = new Map(state.models);
       newModels.delete(modelId);
@@ -409,6 +432,56 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
     // Clear the federation registry
     federationRegistry.clear();
+    // `federationRegistry.clear()` above resets the offset counter to 0, so
+    // the very next model registered can be handed the exact offsets any
+    // surviving compare result's `excludedHiddenIds` / `diff` global ids
+    // describe (see `removeModel-compare-stale.test.ts`: a georef-triggered
+    // reload calls `clearAllModels()` then reloads every model, and the
+    // first one back gets offset 0 again). Unconditional, unlike
+    // `removeModel`'s guarded version above — with every model gone there is
+    // no pairing left for a compare result to describe either way, and here
+    // the offset-reuse hazard makes leaving it behind actively dangerous
+    // rather than merely stale.
+    (get() as unknown as { clearCompare?: () => void }).clearCompare?.();
+    // Same offset-reuse hazard, on the lens channel: `useLens.ts`'s effect
+    // deps are `[activeLensId, activeLens]`, NOT `models` — a model
+    // add/remove never re-evaluates the active lens, so `lensColorMap`,
+    // `lensHiddenIds`, `lensAppliedColors`, `lensRuleCounts` and
+    // `lensRuleEntityIds` keep naming whatever global ids they were last
+    // computed against. `resetViewerState` (store/index.ts) already
+    // deactivates the lens and clears these on every ordinary file load; the
+    // gap is the same one `compareResult` had above — the georef-reload path
+    // (`GeoreferencingPanel.tsx`'s `reloadModelsForAlignment`) calls only
+    // `clearAllModels()`, never `resetViewerState()`, and the reload that
+    // follows can hand the first model back offset 0. A lens still "active"
+    // across that reload would then apply its stale hide/colour ids to
+    // whatever entities the new federation assigned those same global ids —
+    // hiding or tinting elements the user never touched. Guarded on
+    // `activeLensId` so a clear with no lens ever active is a no-op, same
+    // shape as `removeModel`'s `compareCross` guard above.
+    const lensCross = get() as unknown as {
+      activeLensId?: string | null;
+      setActiveLens?: (id: string | null) => void;
+      setLensColorMap?: (m: Map<number, string>) => void;
+      setLensAppliedColors?: (m: Map<number, [number, number, number, number]> | null) => void;
+      setLensHiddenIds?: (s: Set<number>) => void;
+      setLensAppliedHiddenIds?: (ids: number[]) => void;
+      setLensRuleIsolation?: (v: { ruleId: string; entityIds: number[] } | null) => void;
+      setLensRuleCounts?: (m: Map<string, number>) => void;
+      setLensRuleEntityIds?: (m: Map<string, number[]>) => void;
+      setLensAutoColorLegend?: (legend: unknown[]) => void;
+    };
+    if (lensCross.activeLensId != null) {
+      lensCross.setActiveLens?.(null);
+      lensCross.setLensColorMap?.(new Map());
+      lensCross.setLensAppliedColors?.(null);
+      lensCross.setLensHiddenIds?.(new Set());
+      lensCross.setLensAppliedHiddenIds?.([]);
+      lensCross.setLensRuleIsolation?.(null);
+      lensCross.setLensRuleCounts?.(new Map());
+      lensCross.setLensRuleEntityIds?.(new Map());
+      lensCross.setLensAutoColorLegend?.([]);
+    }
     return set({
       models: new Map(),
       activeModelId: null,

@@ -27,7 +27,7 @@
 
 import { buildMeshBvh, type MeshBvh } from './mesh-bvh.js';
 import { triangleAt } from './triangle.js';
-import { triTriDistance } from '../math/triangle-distance.js';
+import { closestPtPointTriangle, triTriDistance } from '../math/triangle-distance.js';
 import { triTriIntersect } from '../math/triangle-intersect.js';
 import type { BvhNode } from './bvh.js';
 import type { AABB, Mesh, Vec3 } from './types.js';
@@ -225,15 +225,37 @@ export function minDistanceBetweenBvhs(
             // 0 is the smallest distance this query can ever report, so once
             // found nothing left in the frontier — pruned or not — can beat
             // it. Return immediately rather than continuing to search.
-            const p: Vec3 = [
-              (triA.v0[0] + triA.v1[0] + triA.v2[0] + triB.v0[0] + triB.v1[0] + triB.v2[0]) / 6,
-              (triA.v0[1] + triA.v1[1] + triA.v2[1] + triB.v0[1] + triB.v1[1] + triB.v2[1]) / 6,
-              (triA.v0[2] + triA.v1[2] + triA.v2[2] + triB.v0[2] + triB.v1[2] + triB.v2[2]) / 6,
+            //
+            // Each `MeshDistance.pointA`/`pointB` is documented as "witness
+            // point on mesh A"/"on mesh B" — a point that actually lies ON
+            // that triangle. The 6-vertex centroid of BOTH triangles combined
+            // (the pre-fix value here) generally lies on neither: it is the
+            // mean of six points spread across two different planes, not a
+            // point constrained to either surface (PR #2815 review).
+            //
+            // Two rounds of closest-point projection give a pair of points
+            // that DO satisfy that contract exactly, by construction of
+            // `closestPtPointTriangle`: project the midpoint of both
+            // triangles' centroids onto A, then project THAT point onto B, so
+            // `pointB` answers "where does B actually sit relative to A's own
+            // witness" rather than an independent, uncorrelated projection.
+            // For a genuinely overlapping pair this converges into the
+            // overlap region in practice; it is not a claim of the exact
+            // deepest-penetration point (computing the true triangle-triangle
+            // intersection segment/polygon is a separate, larger fix), but it
+            // is always a real point on its own reported triangle, which is
+            // the property callers of this witness point can rely on.
+            const midCentroid: [number, number, number] = [
+              (va0[0] + va1[0] + va2[0] + vb0[0] + vb1[0] + vb2[0]) / 6,
+              (va0[1] + va1[1] + va2[1] + vb0[1] + vb1[1] + vb2[1]) / 6,
+              (va0[2] + va1[2] + va2[2] + vb0[2] + vb1[2] + vb2[2]) / 6,
             ];
+            const pA = closestPtPointTriangle(midCentroid, va0, va1, va2);
+            const pB = closestPtPointTriangle(pA, vb0, vb1, vb2);
             return {
               distance: 0,
-              pointA: p,
-              pointB: p,
+              pointA: pA,
+              pointB: pB,
               triangleA: Number(a.bvh.items[ia].id),
               triangleB: Number(b.bvh.items[ib].id),
             };

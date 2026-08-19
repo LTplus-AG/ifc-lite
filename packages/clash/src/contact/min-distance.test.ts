@@ -117,6 +117,72 @@ describe('minDistanceBetweenMeshes', () => {
     expect(minDistanceBetweenMeshes(b, a)?.distance).toBe(0);
   });
 
+  /** How far `p` sits off the plane of triangle (a,b,c) AND outside its
+   *  boundary — 0 exactly when `p` lies on the (possibly degenerate)
+   *  triangle. Barycentric via the standard edge-function / area-ratio
+   *  construction (Ericson, Real-Time Collision Detection §3.4). */
+  function distanceOffTriangle(
+    p: [number, number, number],
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+  ): number {
+    const sub = (u: typeof a, v: typeof a): typeof a => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
+    const cross = (u: typeof a, v: typeof a): typeof a => [
+      u[1] * v[2] - u[2] * v[1],
+      u[2] * v[0] - u[0] * v[2],
+      u[0] * v[1] - u[1] * v[0],
+    ];
+    const dot = (u: typeof a, v: typeof a): number => u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
+    const len = (u: typeof a): number => Math.hypot(u[0], u[1], u[2]);
+
+    const ab = sub(b, a);
+    const ac = sub(c, a);
+    const n = cross(ab, ac);
+    const nLen = len(n) || 1;
+    const ap = sub(p, a);
+    const offPlane = Math.abs(dot(ap, n)) / nLen;
+
+    // Barycentric coordinates via signed sub-triangle areas over the total
+    // triangle normal (works for any orientation, not just axis-aligned).
+    const areaFull = len(n);
+    if (areaFull < 1e-12) return offPlane; // degenerate triangle: plane distance is all that's checkable
+    const u = dot(cross(sub(b, p), sub(c, p)), n) / (areaFull * areaFull);
+    const v = dot(cross(sub(c, p), sub(a, p)), n) / (areaFull * areaFull);
+    const w = 1 - u - v;
+    const outside = Math.max(0, -u, 0, -v, 0, -w);
+    return offPlane + outside * len(ab); // scale the barycentric slack into a length
+  }
+
+  it('the witness points of an intersecting pair actually lie on their reported triangles (PR #2815 review)', () => {
+    // Same fixture as the non-axis-aligned intersection test above: a tilted
+    // triangle pierced through another's face interior, no shared vertex or
+    // edge-edge touch, so there is no boundary coincidence to hide a wrong
+    // witness point. The pre-fix code returned the SAME six-vertex centroid
+    // for both pointA and pointB — a point that lies on neither triangle in
+    // general.
+    const a: Mesh = {
+      id: 'a',
+      positions: new Float64Array([0, 0, 0, 10, 0, 2, 0, 10, 3]),
+      indices: new Uint32Array([0, 1, 2]),
+    };
+    const b: Mesh = {
+      id: 'b',
+      positions: new Float64Array([2, 2, -5, 3, 3, 5, 5, 1, 5]),
+      indices: new Uint32Array([0, 1, 2]),
+    };
+    const r = minDistanceBetweenMeshes(a, b);
+    expect(r).not.toBeNull();
+    expect(r!.distance).toBe(0);
+
+    const triA = triangleAt(a, r!.triangleA);
+    const triB = triangleAt(b, r!.triangleB);
+    const offA = distanceOffTriangle(r!.pointA, [...triA.v0], [...triA.v1], [...triA.v2]);
+    const offB = distanceOffTriangle(r!.pointB, [...triB.v0], [...triB.v1], [...triB.v2]);
+    expect(offA, `pointA ${JSON.stringify(r!.pointA)} must lie on triangle A`).toBeLessThan(1e-9);
+    expect(offB, `pointB ${JSON.stringify(r!.pointB)} must lie on triangle B`).toBeLessThan(1e-9);
+  });
+
   it('reports witness points that are actually that far apart', () => {
     // A distance without witness points that agree with it is a number the
     // caller cannot draw. The measure tool needs the segment, not the scalar.

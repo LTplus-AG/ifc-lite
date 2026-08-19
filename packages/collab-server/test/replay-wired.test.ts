@@ -41,22 +41,27 @@ describe('replay protector wired into the room', () => {
 
     // Open a raw websocket and send an unsigned MESSAGE_SYNC frame.
     const ws = new WebSocket(`ws://127.0.0.1:${port}/room`);
-    await new Promise<void>((res, rej) => {
-      ws.once('open', () => res());
-      ws.once('error', rej);
-    });
-    // sync-step1 minimal frame: outer 0 + inner 0 + 0 (state vector
-    // length) — y-protocols' wire format. We don't care if the doc
-    // accepts it; we just want the verifier to reject as 'unsigned'.
-    const unsigned = new Uint8Array([0, 0, 0]);
-    ws.send(unsigned);
+    try {
+      await new Promise<void>((res, rej) => {
+        ws.once('open', () => res());
+        ws.once('error', rej);
+      });
+      // sync-step1 minimal frame: outer 0 + inner 0 + 0 (state vector
+      // length) — y-protocols' wire format. We don't care if the doc
+      // accepts it; we just want the verifier to reject as 'unsigned'.
+      const unsigned = new Uint8Array([0, 0, 0]);
+      ws.send(unsigned);
 
-    await new Promise((r) => setTimeout(r, 100));
-    const rejects = audit.entries.filter((e) => e.opType === 'reject');
-    expect(rejects.some((e) => (e.detail as { reason?: string } | undefined)?.reason === 'unsigned')).toBe(true);
-
-    ws.close();
-    await handle.stop();
+      await new Promise((r) => setTimeout(r, 100));
+      const rejects = audit.entries.filter((e) => e.opType === 'reject');
+      expect(rejects.some((e) => (e.detail as { reason?: string } | undefined)?.reason === 'unsigned')).toBe(true);
+    } finally {
+      // Close the socket and stop the server even if the assertion above
+      // throws — otherwise a failing run leaks an open listening server and
+      // socket into the rest of the suite (PR #2846 review).
+      ws.close();
+      await handle.stop();
+    }
   }, 10_000);
 
   it('accepts a properly-signed frame and tracks the clock', () => {
@@ -112,17 +117,22 @@ describe('replay protector wired into the room', () => {
     const signedFrame = encodeSignedFrame({ clientId: 1, clock: 1, payload: innerFrame, hmac });
 
     const ws = new WebSocket(`ws://127.0.0.1:${port}/signed-e2e-room`);
-    await new Promise<void>((res, rej) => {
-      ws.once('open', () => res());
-      ws.once('error', rej);
-    });
-    ws.send(signedFrame);
-    await new Promise((r) => setTimeout(r, 300));
+    try {
+      await new Promise<void>((res, rej) => {
+        ws.once('open', () => res());
+        ws.once('error', rej);
+      });
+      ws.send(signedFrame);
+      await new Promise((r) => setTimeout(r, 300));
 
-    const room = await handle.roomManager.getOrCreate('signed-e2e-room');
-    expect(room.doc.getMap('test').get('foo')).toBe('from-signed-replay');
-
-    ws.close();
-    await handle.stop();
+      const room = await handle.roomManager.getOrCreate('signed-e2e-room');
+      expect(room.doc.getMap('test').get('foo')).toBe('from-signed-replay');
+    } finally {
+      // Close the socket and stop the server even if the assertion above
+      // throws — otherwise a failing run leaks an open listening server and
+      // socket into the rest of the suite (PR #2846 review).
+      ws.close();
+      await handle.stop();
+    }
   }, 10_000);
 });

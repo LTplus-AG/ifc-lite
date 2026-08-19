@@ -148,6 +148,9 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
+import { ShadowPass } from './shadow-pass.js';
+import { fitSunLightMatrix } from './shadow-light-matrix.js';
+import { collectShadowOccluders } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
@@ -254,6 +257,14 @@ export class Renderer {
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
     private skyPass: SkyPass | null = null;
+    // Sun shadow-map depth pre-pass (#2670, Phase 2) — created lazily on the
+    // first frame that enables `RenderOptions.sunShadows`. Off by default.
+    private shadowPass: ShadowPass | null = null;
+    // Whether the shadow map was wired into the environment bind group last
+    // frame — lets a toggle-off write `enabled = 0` and drop the depth view
+    // exactly once instead of every frame.
+    private shadowsWired = false;
+    private shadowScratch = new Float32Array(24); // lightViewProj(16) + params(4) + params2(4)
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
         enabled: false,
         strength: 1,
@@ -1987,6 +1998,75 @@ export class Renderer {
             // Now record draw commands
             const encoder = device.createCommandEncoder();
 
+            // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
+            // in; when off the hot path pays only this check and (once) an
+            // enabled=0 reset on toggle-off. Runs BEFORE the colour pass (its
+            // own complete depth-only sub-pass on the same encoder); the colour
+            // pass then samples the map via the environment bind group. Every
+            // geometry path both casts (collectShadowOccluders) and receives
+            // (the shared main-family shader), so no part of the model silently
+            // stops shadowing.
+            const shadowOpts = options.sunShadows;
+            let shadowsThisFrame = false;
+            if (shadowOpts?.enabled) {
+                const bounds = this.getModelBounds();
+                if (bounds) {
+                    const resolution = shadowOpts.resolution ?? 2048;
+                    if (!this.shadowPass) {
+                        this.shadowPass = new ShadowPass(device, resolution);
+                    } else {
+                        this.shadowPass.setResolution(resolution);
+                    }
+                    const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
+                    const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    // Single-cascade fit to the whole model bounds — well
+                    // conditioned at building scale. Fitting the ortho box to the
+                    // camera frustum (maintainer #1, to save resolution on
+                    // site-scale models) needs a proper cascade and is a
+                    // documented Phase-2b follow-up; a naive unprojection of a
+                    // reverse-Z/infinite-far frustum collapses the box to a point.
+                    const sun = resolveEnvironment(options.environment).sunDirection;
+                    const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax });
+                    const occluders = collectShadowOccluders(
+                        {
+                            batches: this.scene.getBatchedMeshes(),
+                            instanced: this.scene.getInstancedTemplates(),
+                            textured: this.scene.getTexturedMeshes(),
+                        },
+                        { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds ?? undefined },
+                    );
+                    this.shadowPass.render(encoder, fit.lightViewProj, occluders);
+
+                    // Shadow uniform: light matrix + sampling params. The kernel
+                    // width follows the sun's angular size (physical, ~0.53°
+                    // like Blender's Sun lamp), and the normal-offset bias scales
+                    // with the shadow texel's world size (maintainer #2).
+                    const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
+                    const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
+                    const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
+                    const normalBias = 2.0 * texelWorld;
+                    const s = this.shadowScratch;
+                    s.set(fit.lightViewProj.m, 0);
+                    s[16] = 1 / resolution;  // texelSize
+                    s[17] = 1;               // enabled
+                    s[18] = normalBias;
+                    s[19] = pcfRadius;
+                    s[20] = 0.0008;          // depthBias (reverse-Z clip units)
+                    s[21] = 0; s[22] = 0; s[23] = 0;
+                    this.pipeline.updateShadowUniform(s);
+                    this.pipeline.setShadowDepthView(this.shadowPass.getDepthTextureView());
+                    this.shadowsWired = true;
+                    shadowsThisFrame = true;
+                }
+            }
+            if (!shadowsThisFrame && this.shadowsWired) {
+                // Toggle-off: disable sampling and release the depth view once.
+                this.shadowScratch[17] = 0;
+                this.pipeline.updateShadowUniform(this.shadowScratch);
+                this.pipeline.setShadowDepthView(null);
+                this.shadowsWired = false;
+            }
+
             // Set up MSAA rendering if enabled
             const msaaView = this.pipeline.getMultisampleTextureView();
             const useMSAA = msaaView !== null && this.pipeline.getSampleCount() > 1;
@@ -3512,6 +3592,8 @@ export class Renderer {
         this.edlPass = null;
         this.skyPass?.destroy();
         this.skyPass = null;
+        this.shadowPass?.destroy();
+        this.shadowPass = null;
 
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().

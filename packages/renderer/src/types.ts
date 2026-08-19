@@ -325,6 +325,18 @@ export interface RenderOptions {
    * detail. Absent or `screenPx <= 0` = always full detail.
    */
   lod?: { screenPx: number };
+  /**
+   * Sun cast shadows (issue #2670, Phase 2). When `enabled`, the renderer runs
+   * a depth pre-pass from the sun before the colour pass, rasterising every
+   * geometry path (flat / quantized / instanced / textured) into a shadow map.
+   * Absent or `enabled: false` (the default) skips the pass entirely, so the
+   * hot path pays only a boolean check. `resolution` sets the square shadow-map
+   * side in texels (default 2048); it is a device/Quality dial, clamped to a
+   * minimum of 256. Phase 2a wires the pre-pass and proves every path casts;
+   * the colour pass does not yet SAMPLE the map (Phase 2b adds PCF sampling,
+   * the sun-angle softness control and the perf verdict).
+   */
+  sunShadows?: { enabled: boolean; resolution?: number; sunAngleDeg?: number };
 }
 
 /**

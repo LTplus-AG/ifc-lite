@@ -44,6 +44,48 @@ export const mainShaderSource = `
         }
         @binding(0) @group(1) var<uniform> env: Environment;
 
+        // Sun shadow map (#2670, Phase 2b) at group(1). The depth map, a
+        // comparison sampler, and the light matrix + params. Bound on every
+        // main-family pipeline; sampling is gated by shadowU.params.y (enabled),
+        // so when shadows are off this reads the 1×1 dummy and returns 1.0.
+        @binding(1) @group(1) var shadowMap: texture_depth_2d;
+        @binding(2) @group(1) var shadowCmp: sampler_comparison;
+        struct Shadow {
+          lightViewProj: mat4x4<f32>,
+          // x = texelSize (1/resolution), y = enabled (0/1),
+          // z = normalBias (world units), w = pcfRadius (texels).
+          params: vec4<f32>,
+          // x = depthBias (reverse-Z clip units, nudges toward lit).
+          params2: vec4<f32>,
+        }
+        @binding(3) @group(1) var<uniform> shadowU: Shadow;
+
+        // Fraction of the sun reaching this surface point (1 = lit, 0 = fully
+        // shadowed). Normal-offset bias (maintainer #2) moves the sample along
+        // the face normal to defeat shadow acne without the peter-panning of a
+        // pure depth bias; a 3×3 PCF kernel whose spread scales with the sun's
+        // angular size softens the penumbra. textureSampleCompareLevel is used
+        // (not ...Compare) so it is legal in this non-uniform control flow.
+        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>) -> f32 {
+          if (shadowU.params.y < 0.5) { return 1.0; }
+          let biased = worldPos + N * shadowU.params.z;
+          let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
+          let ndc = clip.xyz / clip.w;
+          let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
+          let inBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && ndc.z > 0.0;
+          if (!inBounds) { return 1.0; }
+          let refDepth = ndc.z + shadowU.params2.x;
+          let pcfStep = shadowU.params.x * shadowU.params.w;
+          var sum = 0.0;
+          for (var dy = -1; dy <= 1; dy = dy + 1) {
+            for (var dx = -1; dx <= 1; dx = dx + 1) {
+              let off = vec2<f32>(f32(dx), f32(dy)) * pcfStep;
+              sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
+            }
+          }
+          return sum / 9.0;
+        }
+
         struct VertexInput {
           @location(0) position: vec3<f32>,
           @location(1) normal: vec3<f32>,
@@ -389,10 +431,10 @@ export const mainShaderSource = `
           // Darken whites/grays more to reduce washed-out appearance
           baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
 
-          // Combine all lighting. Keep the lighting term separate so the
-          // selection highlight can reuse it (re-light a blue albedo) without
-          // the base material colour bleeding through.
-          let lightTerm = ambient + env.sunColor * diffuseSun + vec3<f32>(diffuseFill + rim);
+          // Combine all lighting. Only the DIRECT sun term is occluded by cast
+          // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
+          let sunShadow = sunShadowFactor(input.worldPos, N);
+          let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
           var color = baseColor * lightTerm;
 
           // flags.x is a bitfield:

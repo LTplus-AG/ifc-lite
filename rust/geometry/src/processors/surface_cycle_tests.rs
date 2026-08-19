@@ -118,3 +118,30 @@ fn parent_curve_pointing_at_a_profile_terminates() {
 #21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#10);\n";
     assert!(profile_points(data, 10).is_empty());
 }
+
+/// A long ACYCLIC nesting chain: each composite curve's segment parents the
+/// NEXT composite curve, every id distinct, so every `visited.insert` succeeds
+/// and the set never fires. Before the depth cap this aborted the process on
+/// stack depth alone, with no cycle in the file (Codex, #2871/#2872 review).
+#[test]
+fn a_long_acyclic_curve_chain_terminates() {
+    let n: u32 = 3_000;
+    let mut data = String::from("#1=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#100);\n");
+    for i in 0..n {
+        let cc = 100 + i * 2;
+        let seg = 101 + i * 2;
+        let next = if i + 1 == n { 90000 } else { 100 + (i + 1) * 2 };
+        data.push_str(&format!("#{cc}=IFCCOMPOSITECURVE((#{seg}),.F.);\n"));
+        data.push_str(&format!(
+            "#{seg}=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#{next});\n"
+        ));
+    }
+    data.push_str("#90000=IFCPOLYLINE((#90001,#90002));\n");
+    data.push_str("#90001=IFCCARTESIANPOINT((0.,0.));\n");
+    data.push_str("#90002=IFCCARTESIANPOINT((1.,0.));\n");
+    // Asserting the RESULT, not merely that it returned: the polyline sits
+    // 3,000 links down, well past the cap, so nothing survives from beyond it.
+    // "it did not crash" would also be satisfied by a guard that broke the
+    // well-formed case, which the tests above cover in the other direction.
+    assert!(profile_points(&data, 1).is_empty());
+}

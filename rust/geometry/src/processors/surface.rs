@@ -135,6 +135,10 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
 
 impl SurfaceOfLinearExtrusionProcessor {
     /// Extract curve points from a profile definition
+    /// Longest nested-curve chain the profile sampler will follow. See
+    /// `curve_points_guarded` for why this sits alongside the visited set.
+    const MAX_CURVE_NESTING_DEPTH: u32 = 32;
+
     fn get_profile_curve_points(
         profile_id: u32,
         decoder: &mut EntityDecoder,
@@ -160,7 +164,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for curve".to_string()))?;
 
-        Self::curve_points_guarded(curve_id, decoder, visited)
+        Self::curve_points_guarded(curve_id, decoder, 0, visited)
     }
 
     /// Sample a CURVE (not a profile) into 2D points.
@@ -174,18 +178,21 @@ impl SurfaceOfLinearExtrusionProcessor {
     /// `if let Ok(..)`, and returned `Ok(vec![])`. Silently: no points, no
     /// error, indistinguishable from a legitimately empty profile.
     ///
-    /// `visited` bounds the `profile -> composite curve -> segment ->
-    /// ParentCurve -> profile` cycle, which is file-supplied and aborts the
-    /// process on a stack overflow (#2866). A set rather than a depth cap
-    /// because `extract_composite_curve_points` loops over segments: `k`
-    /// segments each leading back cost `O(k^depth)`, so a cap alone would
-    /// trade the abort for a hang.
+    /// Guarded by BOTH a visited set and a depth cap, because they bound
+    /// different things. The set stops cycles and fan-out --
+    /// `extract_composite_curve_points` loops over segments, so `k` segments
+    /// each leading back cost `O(k^depth)` and a cap alone would trade the
+    /// abort for a hang. The cap stops a long ACYCLIC chain, where every
+    /// insert succeeds, the set never fires, and the recursion aborts on stack
+    /// depth alone (Codex, #2871/#2872 review). Neither substitutes for the
+    /// other (#2866).
     fn curve_points_guarded(
         curve_id: u32,
         decoder: &mut EntityDecoder,
+        depth: u32,
         visited: &mut std::collections::HashSet<u32>,
     ) -> Result<Vec<Point2<f64>>> {
-        if !visited.insert(curve_id) {
+        if depth >= Self::MAX_CURVE_NESTING_DEPTH || !visited.insert(curve_id) {
             return Ok(Vec::new());
         }
 
@@ -209,7 +216,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             }
             IfcType::IfcCompositeCurve => {
                 // Handle composite curves by extracting segments
-                Self::extract_composite_curve_points(curve_id, decoder, visited)
+                Self::extract_composite_curve_points(curve_id, decoder, depth, visited)
             }
             _ => {
                 // Fallback: try to get points directly
@@ -232,6 +239,7 @@ impl SurfaceOfLinearExtrusionProcessor {
     fn extract_composite_curve_points(
         curve_id: u32,
         decoder: &mut EntityDecoder,
+        depth: u32,
         visited: &mut std::collections::HashSet<u32>,
     ) -> Result<Vec<Point2<f64>>> {
         let curve = decoder.decode_by_id(curve_id)?;
@@ -268,7 +276,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             // profile entry point read its attribute 2 as "the curve" and
             // dropped every segment (#2866).
             if let Ok(segment_points) =
-                Self::curve_points_guarded(parent_curve_id, decoder, visited)
+                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, visited)
             {
                 // Skip first point if we already have points (to avoid duplicates at joints)
                 let start_idx = if all_points.is_empty() { 0 } else { 1 };

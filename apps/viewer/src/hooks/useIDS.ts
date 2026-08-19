@@ -264,6 +264,33 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Ref to store original colors before IDS color overrides
   const originalColorsRef = useRef<Map<number, ColorTuple>>(new Map());
 
+  /**
+   * Per-call supersession guard for `runValidation()` (#2802).
+   *
+   * `runValidation` resolved its target model once at the top of the call,
+   * awaited the (potentially long, worker-or-main-thread) validation, and
+   * then wrote `setIdsValidationReport(...)` unconditionally — with NO check
+   * of any kind for whether a newer `runValidation()` call (a different
+   * target model, or a re-run) had started in the meantime. Two validations
+   * issued back to back — the second, quicker one starting while the first
+   * is still going — raced, and whichever finished LAST won the store,
+   * regardless of which the user actually issued last.
+   *
+   * Each `runValidation()` invocation captures the epoch bumped here as its
+   * own, and `stillWanted` is re-checked synchronously immediately before
+   * every store write that follows an `await`: the progress updates, the
+   * published report, the caught-exception error, and the `finally` that
+   * flips `idsLoading` back off. The `finally` check matters as much as the
+   * report write: without it, an older call's `finally` running after a
+   * newer one has already started reports "not loading" while the newer
+   * validation is still genuinely in flight.
+   */
+  const validationEpochRef = useRef(0);
+  const stillWantedValidation = useCallback(
+    (epoch: number): boolean => validationEpochRef.current === epoch,
+    [],
+  );
+
   const toViewerGlobalId = useCallback((modelId: string, expressId: number): number | undefined => {
     if (
       modelId === '__legacy__'
@@ -314,6 +341,10 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   }, [loadIDS, setIdsLoading, setIdsError]);
 
   const clearIDS = useCallback(() => {
+    // A `runValidation()` still in flight when the document is cleared must
+    // not be able to resurrect a report for a document the user just
+    // discarded once it lands (#2802).
+    validationEpochRef.current += 1;
     clearIdsDocument();
   }, [clearIdsDocument]);
 
@@ -343,6 +374,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       return null;
     }
     const { modelId, dataStore } = target;
+
+    // Captured before anything else so a call issued while this one is
+    // already in flight (a re-run, or a different target model picked from
+    // the federation dropdown) makes every write below — including this
+    // call's own error/finally, once superseded — a no-op instead of
+    // clobbering the newer call (#2802).
+    const myEpoch = ++validationEpochRef.current;
 
     try {
       setIdsLoading(true);
@@ -381,6 +419,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       // and always pass the terminal event.
       let lastProgressUpdate = 0;
       const onProgress = (p: ValidationProgress) => {
+        if (!stillWantedValidation(myEpoch)) return;
         const now = performance.now();
         if (p.phase === 'complete' || now - lastProgressUpdate >= 120) {
           lastProgressUpdate = now;
@@ -428,30 +467,39 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         });
       }
 
-      setIdsValidationReport(validationReport);
+      // A newer `runValidation()` call may have started (and even already
+      // published) while this one awaited the worker/main-thread validation
+      // above — discard rather than overwrite it (#2802).
+      if (stillWantedValidation(myEpoch)) {
+        setIdsValidationReport(validationReport);
 
-      posthog.capture('ids_validation_completed', {
-        total_specifications: validationReport.summary.totalSpecifications,
-        passed_specifications: validationReport.summary.passedSpecifications,
-        failed_specifications: validationReport.summary.failedSpecifications,
-        total_entities_checked: validationReport.summary.totalEntitiesChecked,
-        overall_pass_rate: validationReport.summary.overallPassRate,
-      });
+        posthog.capture('ids_validation_completed', {
+          total_specifications: validationReport.summary.totalSpecifications,
+          passed_specifications: validationReport.summary.passedSpecifications,
+          failed_specifications: validationReport.summary.failedSpecifications,
+          total_entities_checked: validationReport.summary.totalEntitiesChecked,
+          overall_pass_rate: validationReport.summary.overallPassRate,
+        });
 
-      console.info(
-        `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
-        `${validationReport.summary.totalEntitiesPassed}/${validationReport.summary.totalEntitiesChecked} entities (${validationReport.summary.overallPassRate}%)`
-      );
+        console.info(
+          `[IDS] Validation: ${validationReport.summary.passedSpecifications}/${validationReport.summary.totalSpecifications} specs, ` +
+          `${validationReport.summary.totalEntitiesPassed}/${validationReport.summary.totalEntitiesChecked} entities (${validationReport.summary.overallPassRate}%)`
+        );
+      }
 
       return validationReport;
     } catch (err) {
+      if (!stillWantedValidation(myEpoch)) return null;
       const message = err instanceof Error ? err.message : 'Validation failed';
       setIdsError(message);
       posthog.captureException(err, { context: 'ids_validation', ...errorCaptureProps(err) });
       console.error('[IDS] Validation error:', err);
       return null;
     } finally {
-      setIdsLoading(false);
+      // A superseded call must not report itself as no-longer-loading: the
+      // call that superseded it is the one actually in flight, and this
+      // would flip `idsLoading` off underneath it (#2802).
+      if (stillWantedValidation(myEpoch)) setIdsLoading(false);
     }
   }, [
     document,
@@ -464,9 +512,13 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setIdsError,
     setIdsProgress,
     setIdsValidationReport,
+    stillWantedValidation,
   ]);
 
   const clearValidation = useCallback(() => {
+    // Same reasoning as `clearIDS` above: a run in flight must not
+    // resurrect the report the user just cleared (#2802).
+    validationEpochRef.current += 1;
     clearIdsValidationReport();
   }, [clearIdsValidationReport]);
 

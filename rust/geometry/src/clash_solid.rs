@@ -49,13 +49,13 @@
 //! quantization floor rather than a physical graze. Do not state a real-world
 //! graze distance here without a reproducible per-pair measurement behind it.
 
-use crate::clash_contact_axes::{dot3, gate_axes};
+use crate::clash_contact_axes::gate_axes;
 use crate::kernel::mesh_bridge::intersection_tris;
 use crate::mesh::Mesh;
 
 #[path = "clash_solid_geom.rs"]
 mod clash_solid_geom;
-use clash_solid_geom::{component_groups, operand_near_band, tri_volume};
+use clash_solid_geom::{operand_near_band, tri_volume, trust_gate_reason};
 
 /// Multiple of the kernel's near-coplanar band above which the intersection
 /// volume was measured to be exactly analytic.
@@ -224,28 +224,18 @@ pub fn intersection_solid(a: &Mesh, b: &Mesh) -> IntersectionSolid {
     // nothing — exactly the fix `near_band.rs` already applies to the
     // kernel's own near-coplanar reconciliation. `axis` is one of
     // `gate_axes`'s unit vectors, so `nn = 1.0`.
+    // `trust_gate_reason` withholds the pair the moment ANY (component, axis)
+    // extent sits inside that axis's OWN band — not only the axis with the
+    // globally smallest extent. An earlier form tracked a single argmin
+    // `(thickness, required)` pair and checked only that one axis, which let
+    // an axis whose own extent was below its own band go unchecked whenever
+    // some OTHER axis happened to be thinner still (PR #2923 review). See
+    // `trust_gate_reason`'s doc for the concrete counter-example.
     let axes = gate_axes(a, b);
     let band = operand_near_band(a, b);
-    let mut thickness = f64::INFINITY;
-    let mut required = 0.0;
-    for group in component_groups(&tris) {
-        for axis in &axes {
-            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
-            for &i in &group {
-                for v in &tris[i] {
-                    let p = dot3(*v, *axis);
-                    lo = lo.min(p);
-                    hi = hi.max(p);
-                }
-            }
-            let t = hi - lo;
-            if t < thickness {
-                thickness = t;
-                required = TRUST_BAND_MULTIPLE * band.scaled_band2(*axis, 1.0).sqrt();
-            }
-        }
-    }
-    if thickness < required {
+    if let Some((thickness, required)) =
+        trust_gate_reason(&tris, &axes, &band, TRUST_BAND_MULTIPLE)
+    {
         return IntersectionSolid::Degenerate(DegenerateReason::BelowKernelResolution {
             thickness_m: thickness,
             required_m: required,

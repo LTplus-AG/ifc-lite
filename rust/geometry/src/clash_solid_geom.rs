@@ -9,6 +9,7 @@
 //! module-size rule; `intersection_solid` itself, and the reasoning for HOW
 //! these are used, stays there.
 
+use crate::clash_contact_axes::dot3;
 use crate::kernel::arrangement::Tri;
 use crate::kernel::near_band::NearBand;
 use crate::mesh::Mesh;
@@ -143,6 +144,66 @@ pub(super) fn component_groups(tris: &[Tri]) -> Vec<Vec<usize>> {
 /// extents PER AXIS so the caller can project onto the SAME axis the
 /// thickness itself is measured along — exactly the fix `near_band.rs`
 /// applied to the kernel's own near-coplanar reconciliation.
+/// Runs the intersection-solid trust gate over `tris`, split into its
+/// disjoint [`component_groups`] and measured along every axis in `axes`.
+///
+/// `Some((thickness, required))` when ANY (component, axis) extent sits
+/// inside that axis's OWN `TRUST_BAND_MULTIPLE`-scaled band projected via
+/// `band.scaled_band2` — the pair must be withheld. `None` when every single
+/// one of them clears its own band — the pair can be trusted. The returned
+/// pair is the (component, axis) with the SMALLEST extent, kept only for
+/// `DegenerateReason::BelowKernelResolution`'s report; it does not select
+/// which band was consulted (see below).
+///
+/// PR #2923 review finding, fixed here: the previous form tracked a single
+/// global argmin-thickness `(thickness, required)` pair and compared ONLY
+/// that axis's own extent against ONLY that axis's own band
+/// (`if t < thickness { thickness = t; required = ...axis...; }`, then one
+/// `thickness < required` check outside the loop). `required` ended up being
+/// the band of whichever axis happened to have the smallest extent overall —
+/// so an axis whose OWN extent sat inside its OWN band stopped being gated
+/// the moment some other axis happened to be even thinner. Concretely: two
+/// axis-aligned boxes 10 km out in X with a genuine 3-axis overlap of
+/// X = 2 mm, Y = 1 m, Z = 0.6 mm picked Z as the argmin (0.6 mm) and checked
+/// only `required_Z` (~0.49 mm, so 0.6 mm passed) — while X (2 mm) was never
+/// checked against `required_X` (~9.5 mm, since the X-normal faces at 10 km
+/// sit inside a ~2.4 mm near band), and X is precisely the axis the kernel
+/// already collapsed. `untrusted` now accumulates `t < required` across
+/// EVERY (component, axis) pair independently, so no axis's own violation
+/// can be shadowed by another axis being thinner still.
+pub(super) fn trust_gate_reason(
+    tris: &[Tri],
+    axes: &[[f64; 3]],
+    band: &NearBand,
+    trust_band_multiple: f64,
+) -> Option<(f64, f64)> {
+    let mut thickness = f64::INFINITY;
+    let mut required = 0.0;
+    let mut untrusted = false;
+    for group in component_groups(tris) {
+        for axis in axes {
+            let (mut lo, mut hi) = (f64::INFINITY, f64::NEG_INFINITY);
+            for &i in &group {
+                for v in &tris[i] {
+                    let p = dot3(*v, *axis);
+                    lo = lo.min(p);
+                    hi = hi.max(p);
+                }
+            }
+            let t = hi - lo;
+            let req = trust_band_multiple * band.scaled_band2(*axis, 1.0).sqrt();
+            if t < req {
+                untrusted = true;
+            }
+            if t < thickness {
+                thickness = t;
+                required = req;
+            }
+        }
+    }
+    if untrusted { Some((thickness, required)) } else { None }
+}
+
 pub(super) fn operand_near_band(a: &Mesh, b: &Mesh) -> NearBand {
     let mut band = NearBand::default();
     for chunk in a

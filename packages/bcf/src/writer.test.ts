@@ -1107,4 +1107,38 @@ describe('BCF Writer', () => {
       url: 'https://example.com/spec.pdf',
     });
   });
+
+  it('writes <Topic> children in schema order: Priority, Index, Labels before CreationDate; Description right before BimSnippet', async () => {
+    // buildingSMART/BCF-XML markup.xsd's Topic xs:sequence (identical in
+    // release_2_1 and release_3_0) is: Title, Priority, Index, Labels,
+    // CreationDate, CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate,
+    // AssignedTo, Stage, Description, BimSnippet, ... -- confirmed against
+    // release_3_0's own conformance fixture (Test Cases/v3.0/Visualization/
+    // Perspective camera/markup.bcf), whose <Topic> reads ModifiedAuthor
+    // then Description then DocumentReferences. A prior writer emitted
+    // Description right after Title (long before Priority/Index/Labels/
+    // Creation*/Modified*/Stage) and Labels after Stage (long after
+    // Priority/Index) -- both schema-invalid regardless of content, since
+    // xs:sequence enforces element order.
+    const topic = baseTopic({
+      description: 'desc',
+      priority: 'High',
+      index: 3,
+      labels: ['l1', 'l2'],
+      stage: 'Design',
+    });
+
+    for (const version of ['2.1', '3.0'] as const) {
+      const markup = await markupFor(topic, version);
+      const positions = ['Priority', 'Index', 'Labels', 'CreationDate', 'Stage', 'Description'].map(
+        (tag) => markup.indexOf(`<${tag}>`),
+      );
+      for (const p of positions) expect(p).toBeGreaterThan(-1);
+      const [priority, index, labels, creationDate, stage, description] = positions;
+      expect(priority).toBeLessThan(index);
+      expect(index).toBeLessThan(labels);
+      expect(labels).toBeLessThan(creationDate);
+      expect(stage).toBeLessThan(description);
+    }
+  });
 });

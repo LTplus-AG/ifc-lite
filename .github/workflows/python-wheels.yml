@@ -13,6 +13,7 @@ on:
       - "rust/geometry/**"
       - "rust/export/**"
       - "rust/core/**"
+      - "rust-toolchain.toml"
       - ".github/workflows/python-wheels.yml"
   workflow_dispatch:
 

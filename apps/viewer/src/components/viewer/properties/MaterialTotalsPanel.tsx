@@ -52,12 +52,13 @@ interface MaterialTotals {
 
 /**
  * Pick a quantity value by candidate names (case-insensitive), else by type:
- * when nothing matches a candidate but the map is non-empty, fall back to the
- * alphabetically-first name. That fallback exists for vendor-specific
- * quantity names (e.g. "PerimeterArea", "TopArea") that carry a real value of
- * the right type but never match the IFC-standard candidate list — without
- * it, such an element contributes nothing to the total and its row is
- * dropped from the panel even though the quantity was there all along.
+ * when nothing matches a candidate but the map (minus `deny`) is non-empty,
+ * fall back to the alphabetically-first remaining name. That fallback exists
+ * for vendor-specific quantity names (e.g. "PerimeterArea", "TopArea") that
+ * carry a real value of the right type but never match the IFC-standard
+ * candidate list — without it, such an element contributes nothing to the
+ * total and its row is dropped from the panel even though the quantity was
+ * there all along.
  *
  * The tiebreak is alphabetical rather than "whichever the map saw first":
  * map insertion order mirrors the order qsets/quantities were encountered
@@ -65,21 +66,38 @@ interface MaterialTotals {
  * type-fallback ordering, see the qsets selection above) — a happenstance of
  * traversal, not a meaningful choice. Sorting by name at least makes the
  * fallback reproducible independent of that traversal order.
+ *
+ * `deny` excludes names that are the right IFC *type* (e.g. `IfcQuantityArea`)
+ * but not the right *kind* of value — `CrossSectionArea` is a section
+ * property (profile area), not a surface extent, yet it type-checks as an
+ * area and sorts alphabetically before every real surface-area name a beam
+ * or column carries (`GrossSurfaceArea`, `NetSurfaceArea`, `OuterSurfaceArea`).
+ * A name-blind alphabetical fallback would silently select it and report a
+ * value up to two orders of magnitude too small. Skipping a denied name
+ * still degrades to "no value" rather than a wrong one when it is the only
+ * candidate present — the honest outcome PR #2777 traded away.
  */
 function pickQuantity(
   byName: Map<string, number>,
   candidates: string[],
+  deny: ReadonlySet<string> = EMPTY_DENY,
 ): number | undefined {
   for (const c of candidates) {
     const v = byName.get(c);
     if (v !== undefined) return v;
   }
-  if (byName.size === 0) return undefined;
-  const firstName = [...byName.keys()].sort()[0];
-  return byName.get(firstName);
+  const fallbackNames = [...byName.keys()].filter((n) => !deny.has(n)).sort();
+  if (fallbackNames.length === 0) return undefined;
+  return byName.get(fallbackNames[0]);
 }
 
+const EMPTY_DENY: ReadonlySet<string> = new Set();
+
 const VOLUME_CANDIDATES = ['netvolume', 'grossvolume', 'volume'];
+// Most-specific first: the true extents (net/gross *surface* area) are tried
+// before the generic "area" name, so a beam/column/member carrying a
+// standard `NetSurfaceArea`/`OuterSurfaceArea` quantity resolves BY NAME and
+// never reaches the by-type fallback at all (louistrue, PR #2777 review 2).
 const AREA_CANDIDATES = [
   'netarea',
   'grossarea',
@@ -87,8 +105,16 @@ const AREA_CANDIDATES = [
   'grosssidearea',
   'netfloorarea',
   'grossfloorarea',
+  'netsurfacearea',
+  'grosssurfacearea',
+  'outersurfacearea',
   'area',
 ];
+// `CrossSectionArea` (IfcBeam/IfcColumn/IfcMember/IfcFooting/IfcPile/duct
+// and pipe segments' Qto_*BaseQuantities) is an `IfcQuantityArea` but a
+// section/profile property, not an extent — the by-type fallback must never
+// select it. See `pickQuantity`'s docstring.
+const AREA_TYPE_FALLBACK_DENY: ReadonlySet<string> = new Set(['crosssectionarea']);
 const WEIGHT_CANDIDATES = ['netweight', 'grossweight', 'weight'];
 
 /**
@@ -115,7 +141,7 @@ export function aggregateQuantitiesFromQsets(
   }
   return {
     volume: pickQuantity(volByName, VOLUME_CANDIDATES),
-    area: pickQuantity(areaByName, AREA_CANDIDATES),
+    area: pickQuantity(areaByName, AREA_CANDIDATES, AREA_TYPE_FALLBACK_DENY),
     weight: pickQuantity(weightByName, WEIGHT_CANDIDATES),
   };
 }

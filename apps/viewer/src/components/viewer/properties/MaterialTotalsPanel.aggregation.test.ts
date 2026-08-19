@@ -17,6 +17,27 @@
  * from the three call sites so the "match a candidate name, else by type"
  * rule is applied identically to volume, area and weight instead of three
  * copies that can silently drift apart.
+ *
+ * PR #2777 review 1 (louistrue): proved on the app's own shipped sample
+ * (`apps/viewer/public/samples/infra-bridge.ifc`) that the alphabetical
+ * by-type fallback picks a beam's `CrossSectionArea` — a section property,
+ * not a surface extent — as its Area, because no candidate name matched and
+ * `crosssectionarea` sorts before the beam's other (non-candidate) area
+ * names. Review 2: the fix is `AREA_CANDIDATES` recognising the standard
+ * surface-area names by NAME (so beams/columns/members resolve without ever
+ * reaching the fallback) plus `AREA_TYPE_FALLBACK_DENY` excluding
+ * `crosssectionarea` from the fallback itself, so it can never be selected
+ * even as a last resort.
+ *
+ * Review 1's MAJOR finding: every fixture in the original suite held exactly
+ * one quantity of the kind under test, so the candidate-match path and the
+ * type-fallback path returned the same value — deleting the candidate
+ * matching entirely (`for (const c of candidates) ...` -> `void candidates;`)
+ * left all 10 tests green. The "candidate wins over fallback" and
+ * "case-insensitive match" tests below use TWO quantities per fixture, one
+ * that only the candidate-priority / case-insensitive path picks correctly
+ * and one that the (deny-filtered) alphabetical fallback would pick instead
+ * if matching were skipped — see the mutation notes on each test.
  */
 
 import { describe, it } from 'node:test';
@@ -113,5 +134,89 @@ describe('aggregateQuantitiesFromQsets', () => {
       ]),
     );
     assert.equal(r.area, 11);
+  });
+
+  describe('CrossSectionArea must never be reported as a surface Area (PR #2777 review 1)', () => {
+    it('is undefined when the only area quantity is CrossSectionArea (infra-bridge.ifc beam shape)', () => {
+      // Real shape of apps/viewer/public/samples/infra-bridge.ifc's
+      // Qto_BeamBaseQuantities (#385/#442/#493): NetVolume, Length,
+      // CrossSectionArea — no surface-area quantity at all. Before this
+      // fix, the alphabetical fallback had exactly one Area-typed name to
+      // choose from and picked it, reporting 0.12 m2 (the beam's profile
+      // area) as the material's surface area. Absence is the honest result.
+      const r = aggregateQuantitiesFromQsets(
+        qsets([
+          { name: 'NetVolume', type: QuantityType.Volume, value: 0.48 },
+          { name: 'Length', type: QuantityType.Length, value: 4000 },
+          { name: 'CrossSectionArea', type: QuantityType.Area, value: 0.12 },
+        ]),
+      );
+      assert.equal(r.area, undefined);
+    });
+
+    it('picks a real surface-area quantity over CrossSectionArea by name (the requested beam fixture)', () => {
+      // The exact fixture louistrue's second review asked for: "a beam
+      // carrying CrossSectionArea AND OuterSurfaceArea, asserting the
+      // surface area is chosen." outersurfacearea is now in
+      // AREA_CANDIDATES, so this resolves by name and never reaches the
+      // fallback at all.
+      const r = aggregateQuantitiesFromQsets(
+        qsets([
+          { name: 'CrossSectionArea', type: QuantityType.Area, value: 0.06 },
+          { name: 'OuterSurfaceArea', type: QuantityType.Area, value: 11.9 },
+        ]),
+      );
+      assert.equal(r.area, 11.9);
+    });
+
+    it('excludes CrossSectionArea from the by-type fallback even when a non-candidate name is also present', () => {
+      // Neither name matches AREA_CANDIDATES, so this exercises the
+      // fallback path (not name matching). MUTATION: delete
+      // AREA_TYPE_FALLBACK_DENY (or stop passing it to pickQuantity) and
+      // this goes RED — alphabetical sort puts 'crosssectionarea' before
+      // 'vendorsurfacearea', returning 0.06 instead of 11.9.
+      const r = aggregateQuantitiesFromQsets(
+        qsets([
+          { name: 'CrossSectionArea', type: QuantityType.Area, value: 0.06 },
+          { name: 'VendorSurfaceArea', type: QuantityType.Area, value: 11.9 },
+        ]),
+      );
+      assert.equal(r.area, 11.9);
+    });
+  });
+
+  describe('candidate priority is load-bearing, not incidental (PR #2777 review 1 MAJOR finding)', () => {
+    it('prefers Net over Gross even though Gross sorts first alphabetically', () => {
+      // MUTATION: delete the candidate-matching loop in pickQuantity
+      // (`for (const c of candidates) ...` -> `void candidates;`) and this
+      // goes RED — with matching skipped, both fixtures fall straight to
+      // the alphabetical fallback, which prefers 'grossarea' (13) over
+      // 'netarea' (7) purely by spelling. Every fixture in the original
+      // suite held one quantity per kind, so this priority was unguarded:
+      // the candidate path and the fallback path always agreed.
+      const r = aggregateQuantitiesFromQsets(
+        qsets([
+          { name: 'GrossArea', type: QuantityType.Area, value: 13 },
+          { name: 'NetArea', type: QuantityType.Area, value: 7 },
+        ]),
+      );
+      assert.equal(r.area, 7);
+    });
+
+    it('matches candidate names case-insensitively even when a differently-cased fallback name would sort first', () => {
+      // MUTATION: change `q.name.toLowerCase()` to `q.name` in
+      // aggregateQuantitiesFromQsets and this goes RED — the map key stays
+      // 'NETAREA' (uppercase), which no longer matches the lowercase
+      // candidate 'netarea', so it falls to the alphabetical fallback.
+      // Case-sensitive sort puts 'AVendorArea' (5000) before 'NETAREA'
+      // (10), returning the wrong value.
+      const r = aggregateQuantitiesFromQsets(
+        qsets([
+          { name: 'NETAREA', type: QuantityType.Area, value: 10 },
+          { name: 'AVendorArea', type: QuantityType.Area, value: 5000 },
+        ]),
+      );
+      assert.equal(r.area, 10);
+    });
   });
 });

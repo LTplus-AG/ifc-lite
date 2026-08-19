@@ -55,6 +55,38 @@ async function loadLists(): Promise<Record<string, unknown>> {
 
 type AnyFn = (...args: unknown[]) => unknown;
 
+/**
+ * Translate the SDK's flat `{ header, source }` column shape into the
+ * library's structured `ColumnDefinition` (`{ id, source: <enum>, psetName?,
+ * propertyName, label? }`). Without this the two never lined up: the library
+ * switches on `source` against its own enum ('attribute' | 'property' | ...)
+ * and SDK columns carried 'name' / 'type' / 'globalId' / 'Pset.Prop' strings
+ * that matched none of those cases, so `executeList` fell through to its
+ * `default: values[i] = null` branch for every column, every row.
+ */
+function toLibraryColumn(col: ListColumn, index: number): Record<string, unknown> {
+  const id = `col_${index}`;
+  const label = col.header;
+  if (col.source === 'name') return { id, source: 'attribute', propertyName: 'Name', label };
+  if (col.source === 'type') return { id, source: 'attribute', propertyName: 'Class', label };
+  if (col.source === 'globalId') return { id, source: 'attribute', propertyName: 'GlobalId', label };
+
+  const dotIdx = col.source.indexOf('.');
+  if (dotIdx > 0) {
+    const setName = col.source.slice(0, dotIdx);
+    const propertyName = col.source.slice(dotIdx + 1);
+    // Same Qto_ convention bim.bsdd uses to split property sets from
+    // quantity sets: the library has no single "try property, then
+    // quantity" column source, so a definitive choice is required.
+    const source = setName.startsWith('Qto_') ? 'quantity' : 'property';
+    return { id, source, psetName: setName, propertyName, label };
+  }
+
+  // Unrecognized shape (not one of the three special names, no dot path) —
+  // pass through as a raw attribute name rather than silently dropping it.
+  return { id, source: 'attribute', propertyName: col.source, label };
+}
+
 // ============================================================================
 // ListNamespace
 // ============================================================================
@@ -105,6 +137,13 @@ export class ListNamespace {
     const libraryDef = {
       ...definition,
       entityTypes: (definition.types ?? []).map(t => convert(t)),
+      // `conditions` is required (non-optional) on the library's
+      // ListDefinition; the SDK documents it as optional, and
+      // resolveSourceSet() does `conditions.length` unconditionally, so
+      // omitting it threw "Cannot read properties of undefined" instead of
+      // running unfiltered.
+      conditions: definition.conditions ?? [],
+      columns: definition.columns.map(toLibraryColumn),
     };
     return (mod.executeList as AnyFn)(libraryDef, provider, modelId ?? 'default');
   }

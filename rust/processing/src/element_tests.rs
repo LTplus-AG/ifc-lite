@@ -110,3 +110,132 @@ fn infer_opening_material_names_glass_vs_frame() {
     let none = infer_opening_subpart_material_name(&IfcType::IfcWall, [1.0; 4], 1);
     assert!(none.is_none(), "only windows/doors get inferred part names");
 }
+
+#[test]
+fn find_geometry_item_color_terminates_on_cyclic_mapping() {
+    // #100's mapped representation lists #100 itself as an item, so the
+    // chase re-enters where it started. The chain is entirely file-supplied,
+    // so a malformed or hostile file controls the recursion depth.
+    const IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
+#100=IFCMAPPEDITEM(#101,$);
+#101=IFCREPRESENTATIONMAP($,#103);
+#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#100));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    let mut decoder = EntityDecoder::new(IFC);
+    assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), None);
+}
+
+/// Build a chain of `hops` nested `IfcMappedItem`s whose innermost mapped
+/// representation lists the styled leaf `#999`. Entry point is `#200`.
+fn nested_mapped_chain(hops: u32) -> String {
+    let mut s = String::from(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+         FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');\n\
+         FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+         #2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);\n",
+    );
+    for i in 0..hops {
+        let map_item = 200 + i;
+        let rep_map = 1000 + i;
+        let shape = 2000 + i;
+        // The last hop's representation holds the styled leaf; the others
+        // hold the next mapped item down.
+        let inner = if i + 1 == hops { 999 } else { 200 + i + 1 };
+        s.push_str(&format!("#{map_item}=IFCMAPPEDITEM(#{rep_map},$);\n"));
+        s.push_str(&format!("#{rep_map}=IFCREPRESENTATIONMAP($,#{shape});\n"));
+        s.push_str(&format!(
+            "#{shape}=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#{inner}));\n"
+        ));
+    }
+    s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    s
+}
+
+#[test]
+fn find_geometry_item_color_resolves_exactly_at_the_depth_cap() {
+    let green = [0.0, 0.8, 0.2, 1.0];
+    let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    styles.insert(999, GeometryStyleInfo::from_color(green));
+
+    let ifc = nested_mapped_chain(MAX_MAPPED_ITEM_DEPTH);
+    let mut decoder = EntityDecoder::new(&ifc);
+    assert_eq!(
+        find_geometry_item_color(200, &styles, &mut decoder),
+        Some(green),
+        "a chain exactly MAX_MAPPED_ITEM_DEPTH hops deep must still resolve"
+    );
+}
+
+#[test]
+fn find_geometry_item_color_stops_one_hop_past_the_depth_cap() {
+    let green = [0.0, 0.8, 0.2, 1.0];
+    let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    styles.insert(999, GeometryStyleInfo::from_color(green));
+
+    let ifc = nested_mapped_chain(MAX_MAPPED_ITEM_DEPTH + 1);
+    let mut decoder = EntityDecoder::new(&ifc);
+    assert_eq!(
+        find_geometry_item_color(200, &styles, &mut decoder),
+        None,
+        "one hop past the cap the chase gives up rather than recursing on"
+    );
+}
+
+/// The two boundary tests above build their chains *from*
+/// `MAX_MAPPED_ITEM_DEPTH`, so they follow the constant wherever it moves and
+/// stay green even if it is tuned down to 1 — they pin the boundary's shape,
+/// not its position. This one uses a literal depth: nesting this shallow is
+/// ordinary in real assemblies (a mapped item inside a mapped type inside an
+/// aggregate), and colour must survive it whatever the cap is set to.
+#[test]
+fn find_geometry_item_color_resolves_ordinary_nesting_depth() {
+    let green = [0.0, 0.8, 0.2, 1.0];
+    let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    styles.insert(999, GeometryStyleInfo::from_color(green));
+
+    let ifc = nested_mapped_chain(8);
+    let mut decoder = EntityDecoder::new(&ifc);
+    assert_eq!(
+        find_geometry_item_color(200, &styles, &mut decoder),
+        Some(green),
+        "8 mapped-item hops is ordinary nesting; the cap must not swallow it"
+    );
+}
+
+/// `resolve_color_for_representation_map` (#957, the type-geometry path) is a
+/// second entry point into the same chase, reaching it from a rep map rather
+/// than from a mapped item. The cap lives inside `find_geometry_item_color`
+/// so it covers both; a guard at either call site would not have.
+#[test]
+fn resolve_color_for_representation_map_terminates_on_cyclic_mapping() {
+    const IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m.ifc','2026-06-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,$,$);
+#100=IFCMAPPEDITEM(#101,$);
+#101=IFCREPRESENTATIONMAP($,#103);
+#103=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#100));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+    let mut decoder = EntityDecoder::new(IFC);
+    assert_eq!(
+        resolve_color_for_representation_map(101, &styles, &mut decoder),
+        None
+    );
+}

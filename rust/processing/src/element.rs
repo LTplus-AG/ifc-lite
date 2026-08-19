@@ -790,14 +790,33 @@ fn build_mesh_data(
     mesh_data
 }
 
+/// Longest `IfcMappedItem → IfcRepresentationMap → MappedRepresentation`
+/// chain the colour chase will follow. The chain is built entirely from file
+/// references, so a cyclic one (an item whose mapped representation lists the
+/// item itself) recurses forever without this — and a Rust stack overflow
+/// aborts the process rather than raising a catchable panic, so there is no
+/// caller that could turn it back into a load error (#2863). Real mapped
+/// nesting is a handful of levels deep; 16 matches `MAX_UNIT_RESOLVE_DEPTH`,
+/// the repo's other file-driven recursion bound.
+const MAX_MAPPED_ITEM_DEPTH: u32 = 16;
+
 /// Resolve a geometry item's authored colour: direct style on the item, else
 /// chase `IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items`
 /// recursively (#913 §2.7 — mapped sub-geometry inherits its underlying
-/// item's style).
+/// item's style), to at most `MAX_MAPPED_ITEM_DEPTH` hops.
 pub(crate) fn find_geometry_item_color(
     geometry_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     decoder: &mut EntityDecoder,
+) -> Option<[f32; 4]> {
+    find_geometry_item_color_at(geometry_id, geometry_styles, decoder, 0)
+}
+
+fn find_geometry_item_color_at(
+    geometry_id: u32,
+    geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
+    decoder: &mut EntityDecoder,
+    depth: u32,
 ) -> Option<[f32; 4]> {
     // Direct style on this exact geometry item wins.
     if let Some(style) = geometry_styles.get(&geometry_id) {
@@ -806,6 +825,11 @@ pub(crate) fn find_geometry_item_color(
 
     // Otherwise, if it's a mapped item, chase the mapping to the underlying
     // geometry and resolve there (recursing handles nested mapped items).
+    // Refuse to go deeper than the cap: a cyclic mapping would otherwise
+    // recurse until the stack overflows and the process aborts (#2863).
+    if depth >= MAX_MAPPED_ITEM_DEPTH {
+        return None;
+    }
     let geom = decoder.decode_by_id(geometry_id).ok()?;
     if geom.ifc_type != IfcType::IfcMappedItem {
         return None;
@@ -819,7 +843,9 @@ pub(crate) fn find_geometry_item_color(
     // IfcShapeRepresentation.Items (attr 3).
     let items = get_refs_from_list(&mapped_representation, 3)?;
     for underlying in items {
-        if let Some(color) = find_geometry_item_color(underlying, geometry_styles, decoder) {
+        if let Some(color) =
+            find_geometry_item_color_at(underlying, geometry_styles, decoder, depth + 1)
+        {
             return Some(color);
         }
     }

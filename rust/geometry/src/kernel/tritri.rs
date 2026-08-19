@@ -290,6 +290,29 @@ mod tests {
 
     const ZPLANE: [[f64; 3]; 3] = [[0., 0., 0.], [2., 0., 0.], [0., 2., 0.]]; // z = 0
 
+    /// Approximate f64 coordinates of an [`ImplicitPoint`], for asserting WHERE
+    /// a segment endpoint actually lands (not just that it is on-plane) — the
+    /// on-plane-only checks below cannot distinguish the true overlap interval
+    /// from e.g. an accidentally inverted lo/hi selection, since a wrong-but-
+    /// still-on-both-planes point passes them just as well.
+    fn approx(p: &ImplicitPoint) -> [f64; 3] {
+        match p {
+            ImplicitPoint::Explicit(c) => *c,
+            ImplicitPoint::Lpi(l) => {
+                let sub = |a: [f64; 3], b: [f64; 3]| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+                let cross = |a: [f64; 3], b: [f64; 3]| {
+                    [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
+                };
+                let dot = |a: [f64; 3], b: [f64; 3]| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+                let n = cross(sub(l.s, l.r), sub(l.t, l.r));
+                let d = sub(l.q, l.p);
+                let t = dot(n, sub(l.r, l.p)) / dot(n, d);
+                [l.p[0] + t * d[0], l.p[1] + t * d[1], l.p[2] + t * d[2]]
+            }
+            ImplicitPoint::Tpi(_) => panic!("unexpected Tpi in a triangle-triangle segment endpoint"),
+        }
+    }
+
     #[test]
     fn edge_crossing_lpi_lies_exactly_on_the_plane() {
         // The defining property: orient3d(LPI, plane[0], plane[1], plane[2]) == 0
@@ -335,6 +358,26 @@ mod tests {
                         Sign::Zero,
                         "segment endpoint off t2's plane"
                     );
+                }
+                // L = plane(y=0) ∩ plane(x=1) = the line {x=1, y=0, z free}.
+                // t1's chord on L spans z ∈ [-1, 0.5] (edges AB and BC);
+                // t2's chord on L spans z ∈ [-2.2, 1] (edges DE and DF).
+                // Overlap is z ∈ [-1, 0.5] — the ACTUAL interval, not just "some
+                // pair of on-plane points". A lo/hi selection bug (e.g. picking
+                // the union's outer bound instead of the overlap's inner bound)
+                // still produces two distinct, on-both-planes points and would
+                // pass every assertion above while landing at the wrong z.
+                let mut zs = [approx(&a)[2], approx(&b)[2]];
+                zs.sort_by(|x, y| x.partial_cmp(y).unwrap());
+                assert!(
+                    (zs[0] - (-1.0)).abs() < 1e-9 && (zs[1] - 0.5).abs() < 1e-9,
+                    "expected overlap interval z ∈ [-1, 0.5], got z ∈ [{}, {}]",
+                    zs[0],
+                    zs[1]
+                );
+                for ep in [&a, &b] {
+                    let p = approx(ep);
+                    assert!((p[0] - 1.0).abs() < 1e-9 && p[1].abs() < 1e-9, "endpoint off L: {p:?}");
                 }
             }
             other => panic!("expected a segment, got {other:?}"),

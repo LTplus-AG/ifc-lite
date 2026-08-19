@@ -81,6 +81,25 @@ describe('PropertyTable', () => {
 
   // ── Multiple psets per entity ─────────────────────────────────
 
+  // getProperty stopped at the FIRST same-named pset and returned null even
+  // when the property lived in a later same-named pset (findEntities, right
+  // below, already scans every same-named pset for this exact shape).
+  it('should find a property in a later same-named pset when an earlier one lacks it', () => {
+    const table = makeTable();
+    table.addPropertySet(100, makePropSet('Pset_WallCommon', new Map([
+      ['IsExternal', { type: 'boolean', value: true }],
+    ])));
+    table.addPropertySet(101, makePropSet('Pset_WallCommon', new Map([
+      ['FireRating', { type: 'string', value: '2HR' }],
+    ])));
+    table.associatePropertySet(1, 100);
+    table.associatePropertySet(1, 101);
+
+    const result = table.getProperty(1, 'Pset_WallCommon', 'FireRating');
+    expect(result).not.toBeNull();
+    expect(result!.value).toBe('2HR');
+  });
+
   it('should support multiple property sets on a single entity', () => {
     const table = makeTable();
 

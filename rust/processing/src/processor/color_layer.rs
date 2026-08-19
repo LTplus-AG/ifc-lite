@@ -124,7 +124,8 @@ fn resolve_presentation_layer_name(
     resolved
 }
 
-/// Find a color in a representation by traversing its items.
+/// Find a color in a representation (`IfcProductDefinitionShape`) by
+/// traversing each of its `IfcShapeRepresentation`s.
 fn find_color_in_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
@@ -137,42 +138,26 @@ fn find_color_in_representation(
     let repr_list = get_refs_from_list(&repr, 2)?;
 
     for shape_repr_id in repr_list {
-        if let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) {
-            // Attribute 3: Items (list of IfcRepresentationItem)
-            if let Some(items) = get_refs_from_list(&shape_repr, 3) {
-                for item_id in items {
-                    // Check direct style
-                    if let Some(style) = geometry_styles.get(&item_id) {
-                        return Some(style.color);
-                    }
-
-                    // Check mapped items
-                    if let Ok(item) = decoder.decode_by_id(item_id) {
-                        if item.ifc_type == IfcType::IfcMappedItem {
-                            if let Some(source_id) = item.get_ref(0) {
-                                if let Ok(source) = decoder.decode_by_id(source_id) {
-                                    if let Some(mapped_repr_id) = source.get_ref(1) {
-                                        if let Some(color) = find_color_in_shape_representation(
-                                            mapped_repr_id,
-                                            geometry_styles,
-                                            decoder,
-                                        ) {
-                                            return Some(color);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if let Some(color) =
+            find_color_in_shape_representation(shape_repr_id, geometry_styles, decoder)
+        {
+            return Some(color);
         }
     }
 
     None
 }
 
-/// Find color in a shape representation.
+/// Find color in a shape representation: a direct style on one of its items
+/// wins, else chase a nested `IfcMappedItem -> IfcRepresentationMap ->
+/// MappedRepresentation` recursively — mirrors
+/// `element::find_geometry_item_color`'s unbounded-depth traversal (#913
+/// §2.7) so this fallback path (used to populate `EntityJob::element_color`
+/// before the per-element producer runs) agrees with it on how many mapped-
+/// item hops a styled leaf can sit behind. Previously this bottomed out
+/// after exactly one hop, so a doubly (or deeper) mapped styled item was
+/// silently invisible to this resolver while the canonical per-element path
+/// found it.
 fn find_color_in_shape_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
@@ -185,7 +170,81 @@ fn find_color_in_shape_representation(
         if let Some(style) = geometry_styles.get(&item_id) {
             return Some(style.color);
         }
+
+        // Check mapped items — recurse into the mapped representation so
+        // arbitrarily deep mapping chains resolve, not just one level.
+        if let Ok(item) = decoder.decode_by_id(item_id) {
+            if item.ifc_type == IfcType::IfcMappedItem {
+                if let Some(source_id) = item.get_ref(0) {
+                    if let Ok(source) = decoder.decode_by_id(source_id) {
+                        if let Some(mapped_repr_id) = source.get_ref(1) {
+                            if let Some(color) = find_color_in_shape_representation(
+                                mapped_repr_id,
+                                geometry_styles,
+                                decoder,
+                            ) {
+                                return Some(color);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ifc_lite_core::{build_entity_index, EntityDecoder};
+
+    /// `find_color_in_representation` used to bottom out after ONE level of
+    /// `IfcMappedItem` indirection: `find_color_in_shape_representation`
+    /// checked each item's own direct style but never chased a nested
+    /// `IfcMappedItem` inside a mapped representation's items, unlike the
+    /// canonical per-element resolver `element::find_geometry_item_color`
+    /// (#913 §2.7), which recurses to arbitrary depth.
+    ///
+    /// This fixture nests the styled geometry TWO mapped-item hops deep:
+    /// `#10 PDS -> #20 ShapeRepr -> #30 MappedItem -> #40 RepMap -> #50
+    /// ShapeRepr -> #60 MappedItem -> #70 RepMap -> #80 ShapeRepr -> #90
+    /// (styled leaf item)`.
+    #[test]
+    fn find_color_in_representation_follows_nested_mapped_items() {
+        let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n\
+            #20=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
+            #30=IFCMAPPEDITEM(#40,$);\n\
+            #40=IFCREPRESENTATIONMAP($,#50);\n\
+            #50=IFCSHAPEREPRESENTATION($,$,$,(#60));\n\
+            #60=IFCMAPPEDITEM(#70,$);\n\
+            #70=IFCREPRESENTATIONMAP($,#80);\n\
+            #80=IFCSHAPEREPRESENTATION($,$,$,(#90));\n\
+            #90=IFCEXTRUDEDAREASOLID($,$,$,$);\n\
+            ENDSEC;\nEND-ISO-10303-21;\n";
+        let index = build_entity_index(content);
+        let mut decoder = EntityDecoder::with_index(content, index);
+
+        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        styles.insert(
+            90,
+            GeometryStyleInfo {
+                color: [1.0, 0.0, 0.0, 1.0],
+                shading_color: None,
+                material_name: None,
+            },
+        );
+
+        let color = find_color_in_representation(10, &styles, &mut decoder);
+        assert_eq!(
+            color,
+            Some([1.0, 0.0, 0.0, 1.0]),
+            "a styled leaf item two IfcMappedItem hops deep must still resolve — \
+             find_color_in_shape_representation must chase nested IfcMappedItem \
+             the same way find_color_in_representation's own first hop does, \
+             mirroring element::find_geometry_item_color's unbounded recursion"
+        );
+    }
 }

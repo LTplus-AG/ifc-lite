@@ -215,6 +215,39 @@ export function useCompare() {
   // change is a cheap re-diff rather than a full re-extraction.
   const builtRef = useRef<BuiltPair | null>(null);
 
+  /**
+   * Supersession epoch for `runComparison()` itself (#2802 sweep).
+   *
+   * `isCurrentFor` / `buildAtCurrentVersion` protect the fingerprint CACHE
+   * against a federation re-alignment; they say nothing about whether THIS
+   * `runComparison()` call is still the one whose answer the user wants. Two
+   * gaps that check cannot see:
+   *
+   * - A newer `runComparison()` call (same pair or a different one, started
+   *   after the user changed the selection) must win over an older one still
+   *   finishing its extraction, regardless of which resolves first.
+   * - An explicit `clearCompare()` mid-flight must stick - a run that was
+   *   already in the air when the user cleared must not resurrect the result
+   *   they just dismissed.
+   *
+   * Bumped at the start of every `runComparison()` call and by `clearCompare`
+   * below (the ONLY two events that make an in-flight run's eventual answer
+   * unwanted). Each run captures the epoch value once, and every place that
+   * writes to the store re-checks it immediately before writing - never
+   * earlier, so nothing can supersede between the check and the write.
+   */
+  const epochRef = useRef(0);
+
+  /** Bump the epoch and clear, so an in-flight run's `then`/`catch` cannot
+   *  write the result the user just dismissed back into the store. Routes
+   *  through here rather than the raw store action for every caller in this
+   *  file and in `ComparePanel` - a `clearCompare()` invoked directly on the
+   *  store instead of through this wrapper would not be seen. */
+  const clearCompare = useCallback(() => {
+    epochRef.current += 1;
+    useViewerStore.getState().clearCompare();
+  }, []);
+
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
     const baseId = store.compareBaseModelId;
@@ -246,6 +279,23 @@ export function useCompare() {
     const baseGeometry = baseModel.geometryResult;
     const headStore = headModel.ifcDataStore;
     const headGeometry = headModel.geometryResult;
+
+    // Supersedes any run already in flight (same pair or not) - see the epoch
+    // doc comment above. Captured once; re-checked at every write below.
+    const myEpoch = ++epochRef.current;
+
+    /** Is THIS run still the one whose answer the user is waiting on? Both
+     *  conjuncts matter and neither alone is enough: the epoch alone misses a
+     *  selection change that never triggers a second `runComparison()` call
+     *  (scenario 3 - #2802), and the pair-match alone misses a `clearCompare()`
+     *  that leaves the pair untouched (scenario 2 - #2802, `clearCompare`
+     *  "keeps the A/B + scope choices" by design). Read fresh, never cached -
+     *  the whole point is to observe the store as it is right now. */
+    const stillWanted = (): boolean => {
+      if (epochRef.current !== myEpoch) return false;
+      const live = useViewerStore.getState();
+      return live.compareBaseModelId === baseId && live.compareHeadModelId === headId;
+    };
 
     store.setCompareError(null);
     store.setCompareRunning(true);
@@ -300,12 +350,26 @@ export function useCompare() {
       });
       if (!built) {
         // Never silently: `finally` clears the running flag, so returning with
-        // no message would leave the panel blank after the user pressed Run.
-        store.setCompareError(
-          'The model geometry kept changing while comparing. Run the comparison again.',
-        );
+        // no message would leave the panel blank after the user pressed Run -
+        // but only when this run is still the one the user is waiting on; a
+        // superseded run reporting its own failure into a newer run's state
+        // is the scenario-5 clobber (#2802).
+        if (stillWanted()) {
+          store.setCompareError(
+            'The model geometry kept changing while comparing. Run the comparison again.',
+          );
+        }
         return;
       }
+
+      // Re-checked immediately before every write below, synchronously with no
+      // `await` in between - see the epoch doc comment above. A run that lost
+      // the race (a newer run started, the pair changed, or the user cleared)
+      // must publish nothing: not the result, not its cache entry either,
+      // since a stale cache entry for a pair that is no longer selected would
+      // silently defeat the reconciliation effect's `isCurrentFor` check on
+      // the NEXT option change (see that effect's comment).
+      if (!stillWanted()) return;
       builtRef.current = built;
 
       // The diff options are read inside `publishCompareResult`, AFTER every
@@ -345,10 +409,21 @@ export function useCompare() {
       });
     } catch (err) {
       console.error('[compare] comparison failed', err);
-      store.setCompareError((err as Error).message ?? 'Comparison failed.');
-      store.setCompareResult(null);
+      // Same guard as above: a superseded run's own failure must set an error
+      // state for a run nobody is waiting on, not clobber whatever a newer
+      // run already published (#2802 scenario 5).
+      if (stillWanted()) {
+        store.setCompareError((err as Error).message ?? 'Comparison failed.');
+        store.setCompareResult(null);
+      }
     } finally {
-      store.setCompareRunning(false);
+      // A superseded run's `finally` must not flip `compareRunning` back to
+      // false out from under a newer run that owns it now (or that
+      // `clearCompare` already set it false for) - whichever run IS still
+      // wanted controls the flag via its own `finally`.
+      if (epochRef.current === myEpoch) {
+        store.setCompareRunning(false);
+      }
     }
   }, []);
 
@@ -370,8 +445,8 @@ export function useCompare() {
     if (lastContentVersionRef.current === geometryContentVersion) return;
     lastContentVersionRef.current = geometryContentVersion;
     builtRef.current = null;
-    useViewerStore.getState().clearCompare();
-  }, [geometryContentVersion]);
+    clearCompare();
+  }, [geometryContentVersion, clearCompare]);
 
   // Scope, blacklist OR content-matching change with an existing result for the
   // same pair -> re-diff from the cached fingerprints (instant). No-op when
@@ -403,5 +478,5 @@ export function useCompare() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, excludedTypes, matchByContent]);
 
-  return { baseModelId, headModelId, scope, running, result, error, runComparison };
+  return { baseModelId, headModelId, scope, running, result, error, runComparison, clearCompare };
 }

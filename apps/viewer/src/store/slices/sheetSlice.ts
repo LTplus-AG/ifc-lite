@@ -177,7 +177,13 @@ export const createSheetSlice: StateCreator<SheetSlice, [], [], SheetSlice> = (
     set({ activeSheet: { ...current, ...updates } });
   },
 
-  clearSheet: () => set(getDefaultState()),
+  // `clearSheet` resets the *active* sheet/panel state, not the user's
+  // saved template library. `getDefaultState()` also seeds the store's
+  // initial state (which correctly starts with no templates), so it can't
+  // be reused verbatim here without wiping `savedSheetTemplates` on every
+  // "clear" click.
+  clearSheet: () =>
+    set((s) => ({ ...getDefaultState(), savedSheetTemplates: s.savedSheetTemplates })),
 
   setSheetEnabled: (enabled) => {
     if (enabled && !get().activeSheet) {

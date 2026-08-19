@@ -245,6 +245,36 @@ describe('ids_validate summary', () => {
   });
 });
 
+describe('ids_validate locale', () => {
+  it('translates failureReason text into the requested locale, instead of ignoring the field', async () => {
+    // `unnamed.ifc` has one wall with no Name, so this spec fails for it and
+    // produces a failureReason string — the thing a translator rewrites.
+    const en = (await run('unnamed.ifc', 'ids_validate', {
+      ids_xml: IDS_MATCHING_WALLS, locale: 'en',
+    })).structuredContent as unknown as IdsShape & {
+      report: { specificationResults: Array<{ entityResults: Array<{ requirementResults?: Array<{ failureReason?: string }> }> }> };
+    };
+    const de = (await run('unnamed.ifc', 'ids_validate', {
+      ids_xml: IDS_MATCHING_WALLS, locale: 'de',
+    })).structuredContent as unknown as typeof en;
+
+    const enReasons = en.report.specificationResults[0].entityResults
+      .flatMap((e) => e.requirementResults ?? [])
+      .map((r) => r.failureReason)
+      .filter((r): r is string => r !== undefined);
+    const deReasons = de.report.specificationResults[0].entityResults
+      .flatMap((e) => e.requirementResults ?? [])
+      .map((r) => r.failureReason)
+      .filter((r): r is string => r !== undefined);
+
+    expect(enReasons.length).toBeGreaterThan(0);
+    // Before the fix, `locale` was read into a variable and immediately
+    // discarded (`void input.locale`) — no translator was ever built, so
+    // every locale produced byte-identical English text.
+    expect(deReasons).not.toEqual(enReasons);
+  });
+});
+
 describe('ids source resolution', () => {
   it('rejects a call that supplies neither ids_xml nor ids_path', async () => {
     await expect(run('warning-only.ifc', 'ids_validate', {})).rejects.toThrow(/ids_xml or ids_path/);

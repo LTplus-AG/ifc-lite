@@ -983,8 +983,9 @@ export class MergedExporter {
    *
    * Also returns `hiddenProductIds` (`null` alongside a `null` `included`):
    * `renderEntity` needs it to withhold-or-narrow a relationship's own OUTPUT
-   * line the same way `StepExporter` does (`isExcludedFromRelationshipRefs` /
-   * `step-exporter.ts:1181`,`:1486`) — `collectReferencedEntityIds` already
+   * line the same way `StepExporter` does (`isOmittedFromOutput`, consumed at
+   * its two `filterHiddenRefsFromRelationshipLine` call sites in
+   * `step-exporter.ts`) — `collectReferencedEntityIds` already
    * refuses to WALK INTO a relationship whose sole subject is hidden (#2548),
    * but that only keeps the closure from growing past it; a root's own bytes
    * are still copied to the output verbatim unless something narrows them
@@ -1131,7 +1132,12 @@ export class MergedExporter {
 
     // A `visibleOnly` export must narrow — or entirely withhold — a
     // relationship's own OUTPUT line the same way `StepExporter` does
-    // (`isExcludedFromRelationshipRefs`, `step-exporter.ts:1181`/`:1486`).
+    // (`isOmittedFromOutput`, consumed at its two
+    // `filterHiddenRefsFromRelationshipLine` call sites — named rather than
+    // cited by line number, which went stale the first time either file moved).
+    // NOTE the predicates are not identical: `StepExporter`'s also answers for
+    // an unreadable source ref and a geometry exclusion, which this one — a
+    // hidden product or an id absent from the complete index — does not.
     // `collectReferencedEntityIds` already refuses to WALK INTO a relationship
     // whose sole subject is hidden (#2548), but a root's own bytes are still
     // copied to the output verbatim unless narrowed here too — without this,

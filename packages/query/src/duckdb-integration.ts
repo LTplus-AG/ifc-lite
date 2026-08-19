@@ -257,14 +257,13 @@ export class DuckDBIntegration {
         const propName = escapeSQL(strings.get(properties.propName[j]));
         const propType = propTypeNames[properties.propType[j]] || 'Unknown';
 
-        const valueStringIdx = properties.valueString[j];
-        const valueString = valueStringIdx >= 0 ? escapeSQL(strings.get(valueStringIdx)) : '';
+        const valueStringLiteral = resolveDuckDBStringLiteral(properties.valueString[j], strings);
         const valueReal = isNaN(properties.valueReal[j]) ? 'NULL' : properties.valueReal[j];
         const valueInt = properties.valueInt[j];
         const valueBoolRaw = properties.valueBool[j];
         const valueBool = valueBoolRaw === 255 ? 'NULL' : valueBoolRaw === 1 ? 'true' : 'false';
 
-        values.push(`(${entityId}, '${psetName}', '${psetGlobalId}', '${propName}', '${propType}', '${valueString}', ${valueReal}, ${valueInt}, ${valueBool})`);
+        values.push(`(${entityId}, '${psetName}', '${psetGlobalId}', '${propName}', '${propType}', ${valueStringLiteral}, ${valueReal}, ${valueInt}, ${valueBool})`);
       }
 
       if (values.length > 0) {
@@ -496,12 +495,41 @@ export class DuckDBIntegration {
 }
 
 /**
- * Escape a string for SQL (prevent SQL injection)
+ * Escape a string for SQL (prevent SQL injection).
+ *
+ * Exported for direct unit testing: the surrounding INSERT-building logic
+ * requires a live DuckDB-WASM connection, so exercising this string-escaping
+ * logic through that path is impractical in a unit test.
  */
-function escapeSQL(value: string | null | undefined): string {
+export function escapeSQL(value: string | null | undefined): string {
   if (value === null || value === undefined) {
     return '';
   }
   // Replace single quotes with two single quotes (SQL escape)
   return value.replace(/'/g, "''");
+}
+
+/**
+ * Resolve a `PropertyTable.valueString` cell to a SQL literal fragment
+ * ready to splice into an INSERT (either `'escaped text'` or the bare
+ * keyword `NULL`).
+ *
+ * `idx` is read from a `Uint32Array`, so the NULL sentinel written by
+ * `StringTable.intern(null)` (-1) wraps to 4294967295 rather than going
+ * negative — an `idx >= 0` guard is therefore always true and never
+ * catches it; only an in-range check (`idx < strings.count`) does. Without
+ * it, a NULL string-typed property value round-tripped through this table
+ * as `''`, indistinguishable from a genuine empty-string property.
+ *
+ * Mirrors the entities table's `containedInStorey`/`definedByType` NULL
+ * handling a few lines above (same file) and `getPropertyValue`'s String
+ * branch in `@ifc-lite/data`'s `property-table.ts` / its cache-restored
+ * twin in `@ifc-lite/cache`'s `properties.ts` — same column family, same
+ * sentinel, now the same guard in all four places.
+ */
+export function resolveDuckDBStringLiteral(
+  idx: number,
+  strings: { get(i: number): string; readonly count: number },
+): string {
+  return idx < strings.count ? `'${escapeSQL(strings.get(idx))}'` : 'NULL';
 }

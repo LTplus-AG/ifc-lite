@@ -253,3 +253,60 @@ fn a_wide_acyclic_dag_is_bounded_by_the_node_budget() {
         "the node budget must be what stops it, got: {err}"
     );
 }
+
+/// The budget's boundary, both sides. `budget == 0` is true after the last
+/// PERMITTED visit as well as after a refused one, so re-raising on it would
+/// fail a traversal that used exactly `MAX_CURVE_NODES` visits and exceeded
+/// nothing. `exhausted` is set only by an attempted charge with nothing left.
+/// (CodeRabbit, #2874 review — a valid-but-boundary false positive.)
+#[test]
+fn exactly_max_curve_nodes_visits_is_not_exhaustion() {
+    let mut walk = CurveWalk::new();
+    for i in 0..MAX_CURVE_NODES {
+        walk.spend()
+            .unwrap_or_else(|e| panic!("visit {i} of {MAX_CURVE_NODES} must be permitted: {e}"));
+    }
+    assert_eq!(walk.budget, 0, "the budget is spent to the last unit");
+    assert!(
+        !walk.exhausted,
+        "spending the budget exactly is not exhaustion"
+    );
+
+    // One past is.
+    assert!(walk.spend().is_err(), "the next visit must be refused");
+    assert!(walk.exhausted, "and it must record that it refused one");
+}
+
+/// The same boundary through the CALLER, which is where the off-by-one lived.
+/// One composite curve plus `MAX_CURVE_NODES - 1` segments all parenting the
+/// same polyline is exactly `MAX_CURVE_NODES` visits: the budget lands on zero
+/// having refused nothing, so the profile must come back complete.
+///
+/// The unit test above cannot catch this — it pins `spend`, and the defect was
+/// the caller re-raising on `budget == 0` rather than on a refusal.
+#[test]
+fn a_traversal_of_exactly_the_budget_still_returns_its_profile() {
+    let segs = MAX_CURVE_NODES - 1;
+    let mut d = String::with_capacity(segs as usize * 60);
+    // Segment ids start well above the polyline's, or they collide: at
+    // 1000 + i, segment 8000 would BE #9000.
+    let refs: Vec<String> = (0..segs).map(|i| format!("#{}", 500_000 + i)).collect();
+    d.push_str("#1=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#10);\n");
+    d.push_str(&format!("#10=IFCCOMPOSITECURVE(({}),.F.);\n", refs.join(",")));
+    for i in 0..segs {
+        d.push_str(&format!(
+            "#{}=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#9000);\n",
+            500_000 + i
+        ));
+    }
+    d.push_str("#9000=IFCPOLYLINE((#9001,#9002));\n");
+    d.push_str("#9001=IFCCARTESIANPOINT((0.,0.));\n");
+    d.push_str("#9002=IFCCARTESIANPOINT((1.,0.));\n");
+
+    let content = wrap(&d);
+    let mut decoder = EntityDecoder::new(&content);
+    let item = decoder.decode_by_id(1).expect("decode profile");
+    let pts = SurfaceOfLinearExtrusionProcessor::get_profile_curve_points(item.id, &mut decoder)
+        .expect("a traversal that spends the budget exactly must not be refused");
+    assert!(!pts.is_empty(), "and it must return its points");
+}

@@ -15,51 +15,9 @@ use crate::router::GeometryProcessor;
 /// Handles IfcSurfaceOfLinearExtrusion - surface created by sweeping a curve along a direction
 pub struct SurfaceOfLinearExtrusionProcessor;
 
-/// Two consecutive composite-curve segment endpoints closer than this are the
-/// same joint, so the repeat is dropped. Wider than float noise and far below
-/// any real modelling distance in either mm or m.
-const SEAM_EPS: f64 = 1e-9;
-
-/// Total nested curve visits allowed per profile sample. See [`CurveWalk`].
-const MAX_CURVE_NODES: u32 = 100_000;
-
-/// The two bounds on one composite-curve traversal, carried together because
-/// each is blind to what the other catches.
-///
-/// `seen` is PATH-scoped and stops cycles. The depth cap stops a long acyclic
-/// CHAIN, where every insert succeeds so `seen` never fires. And `budget` stops
-/// an acyclic DAG, where two segments per level double the work: nothing is
-/// cyclic, so `seen` is silent, and every level is inside the depth cap, so
-/// that is silent too. Measured before the budget at 2^levels points --
-/// levels=16 gave 131,072 points -- with nothing malformed in the file at all.
-struct CurveWalk {
-    seen: std::collections::HashSet<u32>,
-    budget: u32,
-}
-
-impl CurveWalk {
-    fn new() -> Self {
-        Self {
-            seen: std::collections::HashSet::new(),
-            budget: MAX_CURVE_NODES,
-        }
-    }
-
-    /// Charge one visit. Exhaustion is an ERROR rather than a truncation: a
-    /// short point list returned as if complete is a wrong profile, and the
-    /// caller dropping the element is the honest outcome.
-    fn spend(&mut self) -> Result<()> {
-        match self.budget.checked_sub(1) {
-            Some(left) => {
-                self.budget = left;
-                Ok(())
-            }
-            None => Err(Error::geometry(format!(
-                "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
-            ))),
-        }
-    }
-}
+#[path = "curve_walk.rs"]
+mod curve_walk;
+use curve_walk::{CurveWalk, MAX_CURVE_NODES, SEAM_EPS};
 
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
@@ -376,7 +334,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             // truncated profile as if it were complete. That is the silent
             // wrong answer this guard exists to avoid, so exhaustion is
             // re-raised here where the tolerance cannot hide it.
-            if walk.budget == 0 {
+            if walk.exhausted {
                 return Err(Error::geometry(format!(
                     "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
                 )));

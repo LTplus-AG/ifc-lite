@@ -2,6 +2,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+/// Longest `IfcMappedItem -> IfcRepresentationMap -> MappedRepresentation`
+/// chain the colour chase will follow.
+///
+/// This is the THIRD copy of this constant. `ifc_lite_geometry`'s
+/// `router::processing` and `ifc_lite_processing`'s `element` both define
+/// `MAX_MAPPED_ITEM_DEPTH = 32` for the same traversal; all three must agree,
+/// or a chain longer than the smallest cap renders its geometry through the
+/// router while silently losing the authored style on its leaf. They are not
+/// deduplicated because the router's is private and the three crates do not
+/// share a home for it — collapsing them is worth doing and is a bigger change
+/// than this fix (#2866).
+const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
+
 /// Find color for a geometry item, following MappedItem references if needed.
 /// This handles the case where IfcStyledItem points to geometry inside a MappedRepresentation,
 /// not to the MappedItem itself.
@@ -10,11 +23,47 @@ pub(crate) fn find_color_for_geometry(
     geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
     decoder: &mut ifc_lite_core::EntityDecoder,
 ) -> Option<[f32; 4]> {
+    let mut visited = rustc_hash::FxHashSet::default();
+    find_color_for_geometry_at(geom_id, geometry_styles, decoder, 0, &mut visited)
+}
+
+/// The chain is built entirely from file references, so a malformed file
+/// controls both its depth and its branching factor. Both have to be bounded:
+///
+/// * **Depth** — a cyclic chain (an item whose mapped representation lists that
+///   item) recursed until the stack overflowed, and a Rust stack overflow
+///   ABORTS the process rather than raising a catchable panic, so no caller
+///   could turn it back into a load error. Three entities were enough (#2866).
+/// * **Breadth** — a cap alone bounds the chain's length, not its fan-out: `k`
+///   items each leading back into the cycle cost `O(k^depth)` decodes. Measured
+///   on the sibling resolver at cap 16: 1 item 211us, 2 items 21.4ms, 3 items
+///   7.21s. That is an abort traded for a hang, which in a browser worker is
+///   the worse of the two because it reads as a slow file (#2864).
+///
+/// The visited set is GLOBAL to one resolution, not path-scoped. The geometry
+/// router removes each id on the way out because it accumulates geometry per
+/// path; a colour is a pure function of the item id and the style map, so an
+/// item that already resolved to `None` cannot resolve differently down a
+/// second branch. Keeping it bounds total decodes to the number of DISTINCT
+/// reachable items, which eliminates the fan-out rather than bounding it.
+fn find_color_for_geometry_at(
+    geom_id: u32,
+    geometry_styles: &rustc_hash::FxHashMap<u32, [f32; 4]>,
+    decoder: &mut ifc_lite_core::EntityDecoder,
+    depth: u32,
+    visited: &mut rustc_hash::FxHashSet<u32>,
+) -> Option<[f32; 4]> {
     use ifc_lite_core::IfcType;
 
     // First check if this geometry ID directly has a color
     if let Some(&color) = geometry_styles.get(&geom_id) {
         return Some(color);
+    }
+
+    // Refuse to go deeper, and refuse to revisit: see this function's doc for
+    // why both are needed and why the set is global.
+    if depth >= MAX_MAPPED_ITEM_DEPTH || !visited.insert(geom_id) {
+        return None;
     }
 
     // If not, check if it's an IfcMappedItem and follow the reference
@@ -42,9 +91,13 @@ pub(crate) fn find_color_for_geometry(
         for item in items_list {
             if let Some(underlying_geom_id) = item.as_entity_ref() {
                 // Recursively find color (handles nested MappedItems)
-                if let Some(color) =
-                    find_color_for_geometry(underlying_geom_id, geometry_styles, decoder)
-                {
+                if let Some(color) = find_color_for_geometry_at(
+                    underlying_geom_id,
+                    geometry_styles,
+                    decoder,
+                    depth + 1,
+                    visited,
+                ) {
                     return Some(color);
                 }
             }
@@ -241,3 +294,7 @@ END-ISO-10303-21;
         assert_eq!(resolve_element_color(&wall, &styles, &mut decoder), None);
     }
 }
+
+#[cfg(test)]
+#[path = "color_cycle_tests.rs"]
+mod find_color_for_geometry_cycle_tests;

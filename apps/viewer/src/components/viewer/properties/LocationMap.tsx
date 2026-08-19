@@ -26,6 +26,7 @@ import { downloadBlob } from '@/lib/export/download';
 import { reprojectToLatLon, reprojectFromLatLon, queryTerrainElevation, computeFootprintGeoJSON, type LatLon } from '@/lib/geo/reproject';
 import { buildKmzForResolvedGeoref } from '@/lib/geo/kmz-export';
 import type { KmzProcessor } from '@/lib/geo/kmz-exporter';
+import type { InstancedModelRange } from '@/utils/instancedExport';
 import {
   probeMapWebglSupport, markMapWebglUnsupported, takeMapWebglReportSlot,
   getMapWebglVerdict, describeMapInitFailure, watchContextCreationStatus,
@@ -51,6 +52,17 @@ export interface LocationMapProps {
   coordinateInfo?: CoordinateInfo;
   /** Geometry result for KMZ export (optional — KMZ button hidden if not provided) */
   geometryResult?: GeometryResult | null;
+  /**
+   * This model's global-id bracket (`{ idOffset, maxExpressId }`), scoping the KMZ
+   * export's `withInstancedMeshes` restoration of GPU-instanced occurrences to just
+   * this model. `null` mirrors the pre-#2255 "isPrimary" behavior (no filter, take
+   * every loaded model's instanced occurrences) — correct only when this panel's
+   * model IS the sole model loaded. In a multi-model federation, passing `null`
+   * leaks every OTHER loaded model's instanced geometry into this one export.
+   * Callers with more than one model loaded must pass the displayed model's own
+   * range instead.
+   */
+  instancedModelRange?: InstancedModelRange | null;
   /** IFC project length unit → metres (e.g. 0.001 for mm models). Default 1 (metres). */
   lengthUnitScale?: number;
   /** Whether the map is in edit mode (allows repositioning) */
@@ -86,6 +98,7 @@ type MapUnavailableReason = MapWebglFailureReason | 'map_load_failed';
 export function LocationMap({
   mapConversion, projectedCRS, coordinateInfo, geometryResult,
   lengthUnitScale = 1, editable, onApplyPosition, createKmzProcessor,
+  instancedModelRange = null,
 }: LocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<InstanceType<typeof import('maplibre-gl').Map> | null>(null);
@@ -575,14 +588,13 @@ export function LocationMap({
         // from the exported file (#2577). The Location panel only ever shows
         // the primary model's georeference.
         geometryResult,
-        // This panel only ever shows the primary model's georeference (no
-        // per-model selector), and receives its `geometryResult` as a prop with
-        // no accompanying idOffset/maxExpressId — `null` (no filter) mirrors the
-        // pre-#2255 "isPrimary" behavior for this always-single-model view. A
-        // multi-model federation could in principle leak another model's
-        // instanced occurrences in here; a precise fix needs the primary
-        // model's `{ idOffset, maxExpressId }` threaded in as a prop.
-        instancedModelRange: null,
+        // Scopes the instanced-occurrence restoration to THIS model's global-id
+        // bracket (see `instancedModelRange` prop doc). Callers with only one
+        // model loaded may still pass `null`; a multi-model federation must pass
+        // the displayed model's own `{ idOffset, maxExpressId }` or every other
+        // loaded model's instanced occurrences leak into this one export (PR
+        // #2878 review).
+        instancedModelRange,
         name: 'IFC Model',
       }, createKmzProcessor);
       if (typeof kmz === 'string') {
@@ -593,7 +605,7 @@ export function LocationMap({
     } catch (err) {
       console.error('KMZ export failed:', err);
     }
-  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor]);
+  }, [latLon, geometryResult, mapConversion, projectedCRS, coordinateInfo, lengthUnitScale, createKmzProcessor, instancedModelRange]);
 
   const isDarkRef = useRef(false);
 

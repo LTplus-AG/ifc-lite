@@ -356,6 +356,16 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
   const { addModel, clearAllModels } = useIfc();
+  // This model's global-id bracket, scoping `LocationMap`'s KMZ export
+  // (`withInstancedMeshes`) to just its own GPU-instanced occurrences — without
+  // it, a federation of more than one loaded model leaks every OTHER model's
+  // instanced geometry into this model's export (PR #2878 review). `null` when
+  // the panel's model id is unknown or no longer loaded — `LocationMap` treats
+  // that as "no filter", correct for the pre-existing single-model case.
+  const instancedModelRange = useMemo(() => {
+    const model = modelId ? models.get(modelId) : undefined;
+    return model ? { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 } : null;
+  }, [modelId, models]);
   // Only show terrain actions when this panel's model is the one backing the Cesium overlay
   const isActiveCesiumModel = !!modelId && modelId === cesiumSourceModelId;
   const [crsOpen, setCrsOpen] = useState(false);
@@ -931,6 +941,7 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}
         geometryResult={geometryResult}
+        instancedModelRange={instancedModelRange}
         lengthUnitScale={lengthUnitScale}
         editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined}

@@ -41,7 +41,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// FNV-1a over the sorted rows rather than `DefaultHasher`, whose output is
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
-const ALLOWLIST_DIGEST: u64 = 18355130832265857600;
+const ALLOWLIST_DIGEST: u64 = 14083366379525509263;
 
 /// Repo root = first ancestor holding both `rust/` and `apps/`. `None` in a
 /// packaged/standalone context (the test then skips, like `styling_parity`).

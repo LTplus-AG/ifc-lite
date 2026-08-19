@@ -38,6 +38,10 @@ use halfspace_cap::force_cdt_fail_on_ring_for_test;
 /// significant stack space for CSG operations.
 const MAX_BOOLEAN_DEPTH: u32 = 10;
 
+/// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
+/// stack where `MAX_BOOLEAN_DEPTH` cannot: see `process_with_depth`.
+const MAX_OPERAND_PATH_NODES: usize = 64;
+
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
 ///
@@ -614,6 +618,25 @@ impl BooleanClippingProcessor {
         // choice `router/processing.rs` makes, and the opposite of the colour
         // resolvers, where the result is a pure function of the id so a global
         // set is both safe and stronger (#2864).
+        // The set is path-scoped, so its LENGTH is the current operand-nesting
+        // depth -- a chain bound for free, and one that covers the CSG hop.
+        // It is needed because that hop passes `depth` UNCHANGED (a CsgSolid
+        // is not itself a boolean nesting level), so a long ACYCLIC
+        // `Boolean -> Csg -> Boolean` chain never advances MAX_BOOLEAN_DEPTH,
+        // every `visited.insert` succeeds, and the recursion aborts on stack
+        // depth alone. Measured: 4,000 links, SIGABRT (Codex, #2871/#2872
+        // review; the same gap in this file).
+        //
+        // 64 sits well clear of MAX_BOOLEAN_DEPTH (10) so it cannot make that
+        // cap's job harder, and clear of the 42-node Revit chains from #960,
+        // which are FirstOperand SPINE nodes walked iteratively and never
+        // reach here.
+        if visited.len() >= MAX_OPERAND_PATH_NODES {
+            return Err(Error::geometry(format!(
+                "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}",
+                entity.id
+            )));
+        }
         if !visited.insert(entity.id) {
             return Err(Error::geometry(format!(
                 "Cyclic boolean/CSG operand reference at #{}",

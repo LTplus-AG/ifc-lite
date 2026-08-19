@@ -109,8 +109,13 @@
 # branches must be processed twice. A lower depth cap was rejected -- #960 made
 # the FirstOperand spine iterative precisely so Revit's 42-node DIFFERENCE
 # chains clear MAX_BOOLEAN_DEPTH=10, and a cap tight enough to stop this cycle
-# would drop those elements' geometry.
-     962 rust/geometry/src/processors/boolean/mod.rs
+# would drop those elements' geometry. A SECOND bound, MAX_OPERAND_PATH_NODES,
+# caps the path length: the CSG hop passes `depth` unchanged, so a long ACYCLIC
+# Boolean -> Csg -> Boolean chain never advances MAX_BOOLEAN_DEPTH and every
+# visited.insert succeeds -- 4,000 links aborted the process. The set is
+# path-scoped, so its LENGTH is the current depth and the bound costs no extra
+# parameter.
+     985 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
 # +47: #2866 — the CSG half of the same fix. `process` splits into a shared
 # `resolve_tree_root` plus `process_with_boolean_cycle_guard`, the entry that

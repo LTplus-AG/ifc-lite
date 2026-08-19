@@ -715,3 +715,36 @@ fn csg_entry_point_is_guarded_too() {
         .unwrap()
         .expect_err("a cyclic operand must be an error from this entry point too");
 }
+
+/// A long ACYCLIC `Boolean -> Csg -> Boolean` chain, every id distinct. The
+/// CSG hop passes `depth` unchanged (a CsgSolid is not a boolean nesting
+/// level), so `MAX_BOOLEAN_DEPTH` never advances and every `visited.insert`
+/// succeeds — the set never fires either. Before `MAX_OPERAND_PATH_NODES` this
+/// aborted the process on stack depth alone, with no cycle in the file
+/// (Codex, #2871/#2872 review; the same gap here).
+#[test]
+fn a_long_acyclic_boolean_csg_chain_terminates() {
+    let n: u32 = 4_000;
+    let mut data = String::new();
+    for i in 0..n {
+        let b = 1 + i * 2;
+        let c = 2 + i * 2;
+        let next_b = if i + 1 == n { 90000 } else { 1 + (i + 1) * 2 };
+        data.push_str(&format!("#{b}=IFCBOOLEANRESULT(.DIFFERENCE.,#{c},#90001);\n"));
+        data.push_str(&format!("#{c}=IFCCSGSOLID(#{next_b});\n"));
+    }
+    data.push_str("#90000=IFCBLOCK($,1.,1.,1.);\n#90001=IFCBLOCK($,1.,1.,1.);\n");
+
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(1).expect("decode #1");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let err = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect_err("an over-long operand chain must be reported, not rendered half-built");
+    assert!(
+        err.to_string().contains("operand chain exceeds"),
+        "expected the chain bound to be named, got: {err}"
+    );
+}

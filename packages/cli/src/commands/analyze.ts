@@ -17,7 +17,7 @@
 
 import { readFile } from 'node:fs/promises';
 import { createStreamingContext } from '../loader.js';
-import { fatal, getFlag, hasFlag, printJson, validateViewerPort } from '../output.js';
+import { fatal, getFlag, hasFlag, printJson, validateViewerPort, writeOutput } from '../output.js';
 import type { BimContext, EntityRef, EntityData } from '@ifc-lite/sdk';
 
 interface AnalyzeRule {
@@ -276,12 +276,13 @@ async function runRule(
 export async function analyzeCommand(args: string[]): Promise<void> {
   const viewerPortStr = getFlag(args, '--viewer');
   if (!viewerPortStr) {
-    fatal('Usage: ifc-lite analyze <file.ifc> --viewer <port> [options]\n\n--viewer is required to push results to the 3D viewer.');
+    fatal('Usage: ifc-lite analyze <file.ifc> --viewer <port> [--out file] [options]\n\n--viewer is required to push results to the 3D viewer.');
   }
   const viewerPort = validateViewerPort(viewerPortStr)!;
 
   const rulesFile = getFlag(args, '--rules');
   const jsonOutput = hasFlag(args, '--json');
+  const outPath = getFlag(args, '--out');
 
   // Find the IFC file
   const positional = args.filter(
@@ -334,7 +335,13 @@ export async function analyzeCommand(args: string[]): Promise<void> {
     }
   }
 
-  if (jsonOutput) {
+  if (outPath) {
+    // --out was previously excluded from positional-arg detection (so its
+    // value was never mistaken for the input file) but never actually
+    // written — a silent no-op. Route the results there, mirroring the
+    // writeOutput convention used by every other file-producing command.
+    await writeOutput(JSON.stringify(results, null, 2) + '\n', outPath);
+  } else if (jsonOutput) {
     printJson(results);
   } else {
     // Summary line

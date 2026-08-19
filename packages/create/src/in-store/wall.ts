@@ -22,7 +22,7 @@ import type { StoreEditor } from '@ifc-lite/mutations';
 import { vecNorm } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
 
 export interface WallInStoreParams {
   /** Start of the wall axis, in storey-local coordinates (metres). */
@@ -56,9 +56,10 @@ export function addWallToStore(
 ): WallBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
-  if (params.Thickness <= 0 || params.Height <= 0) {
-    throw new Error('addWallToStore: Thickness and Height must be positive');
-  }
+  assertPositiveFinite(
+    [params.Thickness, params.Height],
+    'addWallToStore: Thickness and Height must be positive',
+  );
   // Params are metres; convert dimensioned fields to the file's native
   // length unit so the emitted STEP coordinates are correctly scaled
   // (see SpatialAnchor.lengthUnitScale). Directions normalise the scale

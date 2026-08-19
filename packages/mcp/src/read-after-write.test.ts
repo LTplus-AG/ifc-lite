@@ -32,6 +32,7 @@ import { validationTools } from './tools/validation.js';
 import { findByGlobalId, resolveGlobalIds } from './tools/util.js';
 import { buildDefaultResourceRegistry } from './resources/index.js';
 import { diffTools } from './tools/diff.js';
+import { geometryTools } from './tools/geometry.js';
 
 /** A 22-character IFC GlobalId from a short mnemonic. */
 function guid(mnemonic: string): string {
@@ -124,7 +125,7 @@ interface CountShape {
 let tmp: string;
 let ctx: ToolContext;
 
-const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools, ...validationTools, ...diffTools];
+const ALL_TOOLS = [...discoveryTools, ...queryTools, ...mutationTools, ...validationTools, ...diffTools, ...geometryTools];
 
 function tool(name: string) {
   const found = ALL_TOOLS.find((t) => t.name === name);
@@ -699,6 +700,42 @@ describe('one GlobalId resolves to one entity, whichever tool asks', () => {
   }, 30_000);
 });
 
+describe('geometry tools resolve GlobalId the same way get_entity does', () => {
+  it('finds a created entity by GlobalId, instead of reporting no selector matched', async () => {
+    await session();
+    await call('entity_create', {
+      type: 'IfcWall',
+      attributes: [`'${guid('WALC')}'`, null, "'Wall C'", null, null, '#40', null, "'tagC'", null],
+    });
+    const entity = await structured<EntityShape & { ref: { expressId: number } }>('get_entity', {
+      global_id: guid('WALC'),
+    });
+
+    // Before the fix, geometry_bbox's GlobalId resolution scanned the parsed
+    // store directly and never consulted the overlay, so a GlobalId
+    // get_entity had just found came back "no entity matched the selector"
+    // here — the two tools disagreed about the same session.
+    const bbox = await structured<{ boxes: Array<{ expressId: number }> }>('geometry_bbox', {
+      global_id: guid('WALC'),
+    });
+    expect(bbox.boxes).toHaveLength(1);
+    expect(bbox.boxes[0].expressId).toBe(entity.ref.expressId);
+  }, 30_000);
+
+  it('stops matching a deleted entity\'s GlobalId, as get_entity does', async () => {
+    await session();
+    await call('entity_delete', { global_id: guid('WALB') });
+
+    await expect(async () => tool('get_entity').handler({ global_id: guid('WALB') }, ctx))
+      .rejects.toThrow(/No entity with GlobalId/);
+
+    // Same GlobalId, same session: geometry_bbox's own selector-resolution
+    // must reach the same "gone" answer, not the raw (undeleted) store entry.
+    await expect(async () => tool('geometry_bbox').handler({ global_id: guid('WALB') }, ctx))
+      .rejects.toThrow(/Provide an entity selector/);
+  }, 30_000);
+});
+
 describe('created attributes are named in the model\'s schema', () => {
   it('uses the IFC2X3 spelling for a class IFC4 renamed a slot on', async () => {
     // `IfcRelCoversSpaces` slot 4 is `RelatedSpace` in IFC2X3 and
@@ -1123,6 +1160,48 @@ describe('pendingMutations rides on every payload that folds', () => {
     for (const [name, args] of NOT_FOLDING) {
       const out = await structured<Record<string, unknown>>(name, args);
       expect(out, name).not.toHaveProperty('pendingMutations');
+    }
+  }, 30_000);
+});
+
+/**
+ * `mutation_batch` re-validates each op's `args` with `validateInput` (the
+ * same call `MCPServer` makes before a direct, non-batched dispatch) but must
+ * then hand the *validated* value — the one with schema defaults filled in —
+ * to the sub-tool's handler, not the raw `args` it was given. A single-call
+ * `entity_set_property` already gets `validation.value`, via `server.ts`; a
+ * batched one must see the same value or the two dispatch paths silently
+ * disagree about what an omitted, defaulted field means.
+ *
+ * `entity_set_property`'s schema declares no default today, so this test
+ * grafts one on temporarily (restored in `finally`) to observe the
+ * dispatch path itself, independent of which tool happens to ship a
+ * `default` on a given day.
+ */
+describe('mutation_batch forwards validated (default-filled) args to its sub-tool', () => {
+  it('a defaulted field omitted from the op reaches the handler with its default, not undefined', async () => {
+    await session();
+    const setProperty = mutationTools.find((t) => t.name === 'entity_set_property');
+    if (!setProperty) throw new Error('entity_set_property not registered');
+    const valueSchema = (setProperty.inputSchema.properties as Record<string, { default?: unknown }>).value;
+    const hadDefault = 'default' in valueSchema;
+    const previousDefault = valueSchema.default;
+    valueSchema.default = 'grafted-default';
+    try {
+      const batch = await structured<{ results: Array<{ ok: boolean; result?: { mutation?: { value?: unknown } } }> }>(
+        'mutation_batch',
+        {
+          operations: [
+            // `value` is intentionally omitted so only the schema default can supply it.
+            { tool: 'entity_set_property', args: { global_id: guid('WALA'), pset: 'Pset_WallCommon', name: 'GraftedProp' } },
+          ],
+        },
+      );
+      expect(batch.results[0].ok).toBe(true);
+      expect(batch.results[0].result?.mutation?.value).toBe('grafted-default');
+    } finally {
+      if (hadDefault) valueSchema.default = previousDefault;
+      else delete valueSchema.default;
     }
   }, 30_000);
 });

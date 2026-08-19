@@ -164,6 +164,111 @@ describe('AnnotationsSlice', () => {
     });
   });
 
+  describe('upsertRemoteAnnotation — persistence symmetry', () => {
+    it('persists an upsert whose incoming annotation is not flagged remote (peer edit of our own pin)', () => {
+      const ann: Annotation = {
+        id: 'ann_ours_edited_by_peer',
+        position: { x: 0, y: 0, z: 0 },
+        note: 'edited remotely but attributed to us',
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        // remote intentionally omitted — this is how a peer's edit of OUR pin arrives.
+      };
+      state.upsertRemoteAnnotation(ann);
+      assert.strictEqual(state.annotations.get(ann.id)?.note, ann.note);
+      assert.ok(persistedIds().includes(ann.id), 'non-remote-flagged upsert must be persisted');
+    });
+
+    it('does not persist an upsert whose incoming annotation is flagged remote (a peer-owned pin)', () => {
+      const ann: Annotation = {
+        id: 'ann_peers_pin',
+        position: { x: 0, y: 0, z: 0 },
+        note: "peer's own pin",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(ann);
+      assert.strictEqual(state.annotations.get(ann.id)?.note, ann.note);
+      assert.ok(!persistedIds().includes(ann.id), 'remote-flagged upsert must not be persisted');
+    });
+
+    it('removes the stale storage entry when a previously-local pin flips to remote via upsert', () => {
+      // A pin we authored locally (persisted)...
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('local original')!;
+      assert.ok(persistedIds().includes(id), 'sanity: persisted while local');
+      const current = state.annotations.get(id)!;
+
+      // ...then the sync bridge delivers an upsert for the SAME id now flagged
+      // remote (e.g. authorship/ownership resolved differently on replay/reconnect).
+      state.upsertRemoteAnnotation({ ...current, note: 'now owned remotely', remote: true });
+
+      assert.strictEqual(state.annotations.get(id)?.remote, true, 'in-memory reflects the new remote flag');
+      assert.ok(
+        !persistedIds().includes(id),
+        'a pin now flagged remote must not remain in localStorage as a stale local entry',
+      );
+    });
+
+    it('last upsert wins for a shared id regardless of updatedAt (no timestamp-based conflict resolution)', () => {
+      const base = {
+        id: 'ann_shared',
+        position: { x: 0, y: 0, z: 0 },
+        entityExpressId: null,
+        modelId: null,
+        remote: true as const,
+      };
+      // Peer A's update carries a NEWER updatedAt...
+      state.upsertRemoteAnnotation({ ...base, note: 'from peer A (newer timestamp)', createdAt: 100, updatedAt: 9999 });
+      // ...but peer B's arrives second, with an OLDER updatedAt.
+      state.upsertRemoteAnnotation({ ...base, note: 'from peer B (older timestamp)', createdAt: 100, updatedAt: 1 });
+
+      assert.strictEqual(
+        state.annotations.get('ann_shared')?.note,
+        'from peer B (older timestamp)',
+        'the slice applies upserts in call order, not by comparing updatedAt',
+      );
+    });
+  });
+
+  describe('removeRemoteAnnotation — stale selection', () => {
+    it('clears the local selection when a peer removes the pin we currently have selected', () => {
+      state.beginDraft({ x: 0, y: 0, z: 0 }, null, null);
+      const id = state.commitDraft('mine, selected, then removed remotely')!;
+      state.selectAnnotation(id);
+      assert.strictEqual(state.selectedAnnotationId, id);
+
+      state.removeRemoteAnnotation(id);
+
+      assert.strictEqual(state.selectedAnnotationId, null, 'stale selection must be cleared on peer removal');
+    });
+
+    it('clears the local selection when a peer removes a purely-remote pin we have selected', () => {
+      const remoteAnnotation: Annotation = {
+        id: 'ann_remote_selected',
+        position: { x: 1, y: 1, z: 1 },
+        note: "peer's pin, selected locally",
+        entityExpressId: null,
+        modelId: null,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        remote: true,
+      };
+      state.upsertRemoteAnnotation(remoteAnnotation);
+      state.selectAnnotation(remoteAnnotation.id);
+      assert.strictEqual(state.selectedAnnotationId, remoteAnnotation.id);
+
+      state.removeRemoteAnnotation(remoteAnnotation.id);
+
+      assert.strictEqual(state.selectedAnnotationId, null, 'stale selection must be cleared on peer removal');
+    });
+  });
+
   describe('persistence', () => {
     it('survives a fresh slice instantiation by round-tripping localStorage', () => {
       state.beginDraft({ x: 7, y: 8, z: 9 }, 1, 'm1');

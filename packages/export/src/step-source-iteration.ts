@@ -84,6 +84,11 @@ export interface SourceIterationContext {
   /** `StepExporter.propertySetContext`, for the byte readers
    *  {@link retainSharedAtoms} reaches through `getPropertyIdsInSet`. */
   readonly propertySetContext: () => PropertySetContext;
+  /** The `relationshipWithheldWarning` message builder (`step-exporter.ts`):
+   *  a pure string formatter with no pass dependency, but a second reader —
+   *  the still-inline overlay-created-entities / type-rewrite block — so it
+   *  is injected here rather than duplicated or moved. */
+  readonly relationshipWithheldWarning: (expressId: number, type: string) => string;
 }
 
 /**
@@ -133,16 +138,19 @@ function retainSharedAtoms(
  * output at a distance — the assembly step reads `pass.entities`, `settle()`
  * reads `pass.modifications`, and the header count reads both.
  *
- * `mayNameExcludedRefs` is passed rather than read off the pass because it is
+ * `mayNameOmittedRefs` is passed rather than read off the pass because it is
  * deliberately not a pass member: it folds in `hiddenProductIds`, which the
  * visible-only closure walk only assigns after the pass is constructed, so
  * hoisting it would change what it computes rather than where it is named. The
- * overlay-created-entities block reads the same local.
+ * overlay-created-entities block reads the same local. `isOmittedFromOutput`
+ * is passed alongside it for the same reason — it closes over `pass` but is
+ * built once by the caller (`step-exporter.ts`), not re-derived here.
  */
 export function writeSourceEntityLines(
   pass: ExportPass,
   options: StepExportOptions,
-  mayNameExcludedRefs: boolean,
+  mayNameOmittedRefs: boolean,
+  isOmittedFromOutput: (id: number) => boolean,
   ctx: SourceIterationContext,
 ): void {
   // A modified pset is replaced wholesale, which skips ALL of its member atoms.
@@ -238,9 +246,12 @@ export function writeSourceEntityLines(
       // has to agree with what actually got written, the same way
       // `getVisibleEntityIds` already does for the visibility walk itself.
       const effectiveRelType = pass.effective.effectiveType(expressId, entityRef.type).toUpperCase();
-      if (mayNameExcludedRefs && effectiveRelType.startsWith('IFCREL')) {
-        const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, pass.isExcludedFromRelationshipRefs);
-        if (filtered === null) continue;
+      if (mayNameOmittedRefs && effectiveRelType.startsWith('IFCREL')) {
+        const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
+        if (filtered === null) {
+          pass.warnings.push(ctx.relationshipWithheldWarning(expressId, effectiveRelType));
+          continue;
+        }
         nextEntityText = filtered;
       }
 

@@ -2,9 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
-import { MemoryPersistence, type Persistence } from '../src/persistence.js';
+import * as Y from 'yjs';
+import { FilePersistence, MemoryPersistence, type Persistence } from '../src/persistence.js';
 import { RoomManager } from '../src/room-manager.js';
 
 /**
@@ -68,6 +72,60 @@ describe('RoomManager reject paths', () => {
       await mgr.unloadAll();
     } finally {
       errSpy.mockRestore();
+    }
+  });
+
+  it('does not compact away persisted data when loadFromDisk() fails transiently (#2821)', async () => {
+    // Real FilePersistence writing to a real temp dir, not the stub above:
+    // the danger this pins down is bytes-on-disk, and a stub `compact()`
+    // that discards its argument (as the stub in the previous test's
+    // `Persistence` does) can never observe it.
+    const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'room-lifecycle-emfile-'));
+    const persistence = new FilePersistence({ dataDir });
+    const roomId = 'money-room';
+    const logFile = path.join(dataDir, `${encodeURIComponent(roomId)}.log`);
+
+    const seedDoc = new Y.Doc();
+    seedDoc.getText('t').insert(0, 'user-data-worth-money');
+    await persistence.append(roomId, Y.encodeStateAsUpdate(seedDoc));
+    const before = fs.readFileSync(logFile);
+    expect(before.byteLength).toBeGreaterThan(0);
+
+    // Simulate the failure mode the maintainer specified: a TRANSIENT
+    // EMFILE. `load()` throws once (fds exhausted at that instant) and the
+    // condition has cleared by the time anything else touches the
+    // filesystem -- i.e. compact() itself, if reached, would succeed.
+    const realLoad = persistence.load.bind(persistence);
+    let failNext = true;
+    persistence.load = async (id: string) => {
+      if (failNext) {
+        failNext = false;
+        const err = new Error('EMFILE: too many open files, open ' + logFile) as NodeJS.ErrnoException;
+        err.code = 'EMFILE';
+        throw err;
+      }
+      return realLoad(id);
+    };
+
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const mgr = new RoomManager({ persistence });
+      await expect(mgr.getOrCreate(roomId)).rejects.toThrow(/EMFILE/);
+
+      // The reject-path cleanup must not have written anything: it must not
+      // have called compact() against the empty/partial doc that never
+      // finished loading.
+      const after = fs.readFileSync(logFile);
+      expect(after.equals(before)).toBe(true);
+
+      // And the room loads normally once the transient condition clears.
+      const room = await mgr.getOrCreate(roomId);
+      expect(room.doc.getText('t').toString()).toBe('user-data-worth-money');
+
+      await mgr.unloadAll();
+    } finally {
+      errSpy.mockRestore();
+      fs.rmSync(dataDir, { recursive: true, force: true });
     }
   });
 

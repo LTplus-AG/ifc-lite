@@ -310,7 +310,7 @@ export class ShadowPass {
         // Reverse-Z inverts the sign: negative pushes the stored occluder depth
         // AWAY from the light, so a co-planar receiver passes `greater-equal`.
         depthBias: -2,
-        depthBiasSlopeScale: -3,
+        depthBiasSlopeScale: -4,
         depthBiasClamp: 0,
       },
     });

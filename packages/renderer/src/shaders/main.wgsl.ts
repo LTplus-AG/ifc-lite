@@ -81,8 +81,8 @@ export const mainShaderSource = `
           // kernel width. The hardware slope bias in the depth pass covers the
           // occluder side; this covers the receiver side.
           let NdotL = max(dot(N, normalize(env.sunDirection)), 0.0);
-          let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.12), 1.0, 8.0);
-          let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w * 0.5);
+          let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.1), 1.0, 12.0);
+          let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w);
           let pcfStep = shadowU.params.x * shadowU.params.w;
           var sum = 0.0;
           for (var dy = -1; dy <= 1; dy = dy + 1) {

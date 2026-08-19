@@ -2046,14 +2046,14 @@ export class Renderer {
                     const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
                     const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
                     const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
-                    const normalBias = texelWorld * (1.5 + pcfRadius);
+                    const normalBias = texelWorld * (2.0 + pcfRadius);
                     const s = this.shadowScratch;
                     s.set(fit.lightViewProj.m, 0);
                     s[16] = 1 / resolution;  // texelSize
                     s[17] = 1;               // enabled
                     s[18] = normalBias;
                     s[19] = pcfRadius;
-                    s[20] = 0.0004;          // depthBias (reverse-Z clip units)
+                    s[20] = 0.0006;          // depthBias (reverse-Z clip units)
                     s[21] = 0; s[22] = 0; s[23] = 0;
                     this.pipeline.updateShadowUniform(s);
                     this.pipeline.setShadowDepthView(this.shadowPass.getDepthTextureView());

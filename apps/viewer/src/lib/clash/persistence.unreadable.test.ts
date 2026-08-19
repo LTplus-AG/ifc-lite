@@ -12,9 +12,12 @@ import {
   saveReviews,
   loadSettings,
   saveSettings,
+  loadExclusions,
+  saveExclusions,
   DEFAULT_CLASH_SETTINGS,
   type ClashPreset,
 } from './persistence.js';
+import type { ClashExclusionRule } from './exclusions.js';
 
 class MemoryStorage {
   readonly store = new Map<string, string>();
@@ -27,11 +30,13 @@ const g = globalThis as { localStorage?: unknown };
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
+const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
 
 /** Truncated JSON — the shape a half-written or externally mangled entry has. */
 const CORRUPT_PRESETS = '{"schemaVersion":1,"presets":[{"id":"custom-1","name":"My rule"';
 const CORRUPT_REVIEWS = '{"schemaVersion":1,"reviews":{"rule-a G1 G2":{"status":"resol';
 const CORRUPT_SETTINGS = '{"schemaVersion":1,"settings":{"mode":"hard","tolerance":0.5';
+const CORRUPT_EXCLUSIONS = '{"schemaVersion":1,"exclusions":[{"id":"excl-1","kind":"typePair"';
 
 /** True when `raw` is still somewhere in storage (original key or a backup). */
 function survives(ls: MemoryStorage, raw: string): boolean {
@@ -49,6 +54,16 @@ const customPreset: ClashPreset = {
   builtin: false,
 };
 
+const customExclusion: ClashExclusionRule = {
+  id: 'excl-new',
+  kind: 'typePair',
+  a: 'IfcPipeSegment',
+  b: 'IfcDuctSegment',
+  label: 'IfcPipeSegment × IfcDuctSegment',
+  enabled: true,
+  createdAt: 1_700_000_000_000,
+};
+
 describe('clash persistence: an unreadable entry is never overwritten', () => {
   let ls: MemoryStorage;
   beforeEach(() => {
@@ -58,6 +73,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     buildInitialPresets();
     loadReviews();
     loadSettings();
+    loadExclusions();
   });
 
   after(() => {
@@ -75,6 +91,7 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     buildInitialPresets();
     loadReviews();
     loadSettings();
+    loadExclusions();
   });
 
   it('preserves unreadable presets across the save that follows the failed read', () => {
@@ -98,6 +115,18 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.deepStrictEqual(saveReviews(map), { ok: true });
 
     assert.ok(survives(ls, CORRUPT_REVIEWS), 'the unreadable reviews blob was destroyed by the save');
+  });
+
+  it('preserves unreadable exclusions across the save that follows the failed read', () => {
+    ls.setItem(EXCLUSIONS_KEY, CORRUPT_EXCLUSIONS);
+
+    // The read degrades to empty — the user's stored rules are not visible.
+    assert.deepStrictEqual(loadExclusions(), []);
+
+    // ...and the very next edit persists that degraded (empty) list.
+    assert.deepStrictEqual(saveExclusions([customExclusion]), { ok: true });
+
+    assert.ok(survives(ls, CORRUPT_EXCLUSIONS), 'the unreadable exclusions blob was destroyed by the save');
   });
 
   it('preserves unreadable settings across the save that follows the failed read', () => {
@@ -146,6 +175,63 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
     const persisted = JSON.parse(ls.getItem(SETTINGS_KEY)!) as { settings: typeof DEFAULT_CLASH_SETTINGS };
     assert.strictEqual(persisted.settings.tolerance, 0.01);
+  });
+
+  // The presets and reviews loaders guard the same `raw === null` distinction
+  // as settings (see the comment above) — pinned here so the three loaders
+  // that share the guard stay provably in sync, not just settings.
+  it('treats an empty stored string as a read failure for presets, not "no entry"', () => {
+    ls.setItem(PRESETS_KEY, '');
+
+    const presets = buildInitialPresets();
+    assert.ok(presets.every((p) => p.builtin), 'expected only built-ins after a failed read');
+    assert.ok(
+      ls.store.has(`${PRESETS_KEY}:unreadable`),
+      'an empty stored string must be preserved as an unreadable entry, not treated as if nothing was ever stored',
+    );
+
+    assert.deepStrictEqual(savePresets([...presets, customPreset]), { ok: true });
+    assert.deepStrictEqual(
+      buildInitialPresets().filter((p) => !p.builtin).map((p) => p.id),
+      ['custom-new'],
+    );
+  });
+
+  it('treats an empty stored string as a read failure for reviews, not "no entry"', () => {
+    ls.setItem(REVIEWS_KEY, '');
+
+    assert.strictEqual(loadReviews().size, 0);
+    assert.ok(
+      ls.store.has(`${REVIEWS_KEY}:unreadable`),
+      'an empty stored string must be preserved as an unreadable entry, not treated as if nothing was ever stored',
+    );
+
+    const map = new Map<string, ClashReview>([['k', { status: 'resolved' }]]);
+    assert.deepStrictEqual(saveReviews(map), { ok: true });
+    assert.strictEqual(loadReviews().get('k')?.status, 'resolved');
+  });
+
+  // UNLIKE its three siblings, `loadExclusions` guards on `if (!raw)` rather
+  // than `if (raw === null)` (persistence.ts, `loadExclusions`) — so an empty
+  // stored string is indistinguishable from a genuinely absent key: it is
+  // treated as "no entry", never backed up, and never latches the key
+  // unwritable. This test pins that ACTUAL (divergent) behavior rather than
+  // forcing the symmetry the other three loaders have; whether that divergence
+  // is intentional is a question for whoever owns `loadExclusions`, not
+  // something this suite should paper over.
+  it('an empty stored string for exclusions is treated as "no entry", unlike its three siblings', () => {
+    ls.setItem(EXCLUSIONS_KEY, '');
+
+    const loaded = loadExclusions();
+    assert.deepStrictEqual(loaded, []);
+    assert.ok(
+      !ls.store.has(`${EXCLUSIONS_KEY}:unreadable`),
+      'loadExclusions currently does NOT preserve an empty string as unreadable — unlike presets/reviews/settings',
+    );
+
+    // Because the key was never latched, a save right after goes through
+    // normally (there is nothing to protect: the "corrupt" bytes were empty).
+    assert.deepStrictEqual(saveExclusions([customExclusion]), { ok: true });
   });
 
   // Bounding control: a genuinely absent key is not a read failure. Without
@@ -212,6 +298,105 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     assert.ok(survives(ls, CORRUPT_REVIEWS));
   });
 
+  it('keeps saving exclusions after an unreadable read, and honours a clearing edit', () => {
+    ls.setItem(EXCLUSIONS_KEY, CORRUPT_EXCLUSIONS);
+    loadExclusions();
+
+    saveExclusions([customExclusion]);
+    assert.deepStrictEqual(loadExclusions().map((r) => r.id), ['excl-new']);
+
+    saveExclusions([]);
+    assert.deepStrictEqual(loadExclusions(), []);
+    assert.ok(survives(ls, CORRUPT_EXCLUSIONS));
+  });
+
+  // The doc comment on `unwritableKeys` (persistence.ts) promises entries are
+  // "cleared by a later clean read" — pinned directly here rather than only
+  // relying on the cross-file proof the `after` hook above describes (every
+  // other test file in this one `tsx --test` process would otherwise start
+  // latched too). Confirmed by mutation: deleting any one loader's
+  // `unwritableKeys.delete(...)` guard killed nothing in this suite until
+  // these four tests existed — each is the ONLY thing pinning its loader's
+  // guard.
+  it('a later clean read clears the presets latch', () => {
+    const full = new (class extends MemoryStorage {
+      override setItem(key: string, value: string): void {
+        if (key.includes(':unreadable')) throw new DOMException('quota', 'QuotaExceededError');
+        super.setItem(key, value);
+      }
+    })();
+    full.setItem(PRESETS_KEY, CORRUPT_PRESETS);
+    g.localStorage = full;
+    buildInitialPresets();
+
+    const blocked = savePresets([customPreset]);
+    assert.strictEqual(blocked.ok === false && blocked.reason, 'unreadable');
+
+    g.localStorage = new MemoryStorage();
+    buildInitialPresets();
+    assert.deepStrictEqual(savePresets([customPreset]), { ok: true });
+  });
+
+  it('a later clean read clears the reviews latch', () => {
+    const full = new (class extends MemoryStorage {
+      override setItem(key: string, value: string): void {
+        if (key.includes(':unreadable')) throw new DOMException('quota', 'QuotaExceededError');
+        super.setItem(key, value);
+      }
+    })();
+    full.setItem(REVIEWS_KEY, CORRUPT_REVIEWS);
+    g.localStorage = full;
+    loadReviews();
+
+    const blocked = saveReviews(new Map<string, ClashReview>([['k', { status: 'resolved' }]]));
+    assert.strictEqual(blocked.ok === false && blocked.reason, 'unreadable');
+
+    g.localStorage = new MemoryStorage();
+    loadReviews();
+    assert.deepStrictEqual(saveReviews(new Map<string, ClashReview>([['k', { status: 'resolved' }]])), { ok: true });
+  });
+
+  it('a later clean read clears the settings latch', () => {
+    const full = new (class extends MemoryStorage {
+      override setItem(key: string, value: string): void {
+        if (key.includes(':unreadable')) throw new DOMException('quota', 'QuotaExceededError');
+        super.setItem(key, value);
+      }
+    })();
+    full.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
+    g.localStorage = full;
+    loadSettings();
+
+    const blocked = saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 });
+    assert.strictEqual(blocked.ok === false && blocked.reason, 'unreadable');
+
+    g.localStorage = new MemoryStorage();
+    loadSettings();
+    assert.deepStrictEqual(saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 }), { ok: true });
+  });
+
+  it('a later clean read clears the exclusions latch', () => {
+    const full = new (class extends MemoryStorage {
+      override setItem(key: string, value: string): void {
+        if (key.includes(':unreadable')) throw new DOMException('quota', 'QuotaExceededError');
+        super.setItem(key, value);
+      }
+    })();
+    full.setItem(EXCLUSIONS_KEY, CORRUPT_EXCLUSIONS);
+    g.localStorage = full;
+    loadExclusions();
+
+    // Latched: the backup write failed, so a save must refuse.
+    const blocked = saveExclusions([customExclusion]);
+    assert.strictEqual(blocked.ok === false && blocked.reason, 'unreadable');
+
+    // A later clean read (ordinary storage, no corrupt entry) must clear the
+    // latch — the guard this whole suite is named for.
+    g.localStorage = new MemoryStorage();
+    loadExclusions();
+    assert.deepStrictEqual(saveExclusions([customExclusion]), { ok: true });
+  });
+
   it('refuses to save when the unreadable value could not even be backed up', () => {
     // Quota is exhausted, so the value cannot be moved aside — writes must stop
     // rather than destroy it.
@@ -226,11 +411,13 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     full.setItem(PRESETS_KEY, CORRUPT_PRESETS);
     full.setItem(REVIEWS_KEY, CORRUPT_REVIEWS);
     full.setItem(SETTINGS_KEY, CORRUPT_SETTINGS);
+    full.setItem(EXCLUSIONS_KEY, CORRUPT_EXCLUSIONS);
     g.localStorage = full;
 
     buildInitialPresets();
     loadReviews();
     loadSettings();
+    loadExclusions();
 
     const presetResult = savePresets([customPreset]);
     assert.strictEqual(presetResult.ok === false && presetResult.reason, 'unreadable');
@@ -243,5 +430,9 @@ describe('clash persistence: an unreadable entry is never overwritten', () => {
     const settingsResult = saveSettings({ ...DEFAULT_CLASH_SETTINGS, tolerance: 0.01 });
     assert.strictEqual(settingsResult.ok === false && settingsResult.reason, 'unreadable');
     assert.strictEqual(full.getItem(SETTINGS_KEY), CORRUPT_SETTINGS);
+
+    const exclusionsResult = saveExclusions([customExclusion]);
+    assert.strictEqual(exclusionsResult.ok === false && exclusionsResult.reason, 'unreadable');
+    assert.strictEqual(full.getItem(EXCLUSIONS_KEY), CORRUPT_EXCLUSIONS);
   });
 });

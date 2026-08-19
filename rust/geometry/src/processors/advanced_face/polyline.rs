@@ -20,6 +20,38 @@ pub(super) fn sample_curve_polyline(
     decoder: &mut EntityDecoder,
     quality: TessellationQuality,
 ) -> Vec<Point3<f64>> {
+    let mut visited = std::collections::HashSet::new();
+    sample_curve_polyline_guarded(curve, decoder, quality, &mut visited)
+}
+
+/// `IfcTrimmedCurve.BasisCurve` may itself be an `IfcTrimmedCurve`, and the
+/// reference comes from the file, so `#10=IFCTRIMMEDCURVE(#10,...)` — a single
+/// self-referential entity — recursed forever. A Rust stack overflow ABORTS
+/// rather than raising a catchable panic, so nothing downstream could turn it
+/// into a load error, and this is reached by any `IfcAdvancedBrep` with a
+/// composite edge curve (#2866).
+///
+/// A visited set rather than a depth cap. The delegation below is currently
+/// the ONLY recursive call here and it is a tail call, so there is no fan-out
+/// and a cap would be sufficient today — but "there is no fan-out" is a
+/// property of the current branch set, not of the traversal, and it is exactly
+/// the property a later edit invalidates without touching this comment. The
+/// set costs one small allocation on a path that already builds a `Vec` of
+/// points per curve.
+///
+/// It is global to one top-level sample, not path-scoped: the result is a pure
+/// function of (curve, quality), so a curve already being sampled cannot yield
+/// a different polyline further down, and the delegation returns rather than
+/// accumulating.
+fn sample_curve_polyline_guarded(
+    curve: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    quality: TessellationQuality,
+    visited: &mut std::collections::HashSet<u32>,
+) -> Vec<Point3<f64>> {
+    if !visited.insert(curve.id) {
+        return Vec::new();
+    }
     use std::f64::consts::TAU;
     let kind = curve.ifc_type.as_str().to_uppercase();
     // The rational variant shares attributes 0-7 with the plain one; sampling
@@ -248,7 +280,11 @@ pub(super) fn sample_curve_polyline(
                 };
             }
         }
-        return sample_curve_polyline(&basis, decoder, quality);
+        return sample_curve_polyline_guarded(&basis, decoder, quality, visited);
     }
     Vec::new()
 }
+
+#[cfg(test)]
+#[path = "polyline_cycle_tests.rs"]
+mod polyline_cycle_tests;

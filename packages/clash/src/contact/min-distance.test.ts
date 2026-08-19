@@ -122,13 +122,17 @@ describe('minDistanceBetweenMeshes', () => {
    *  triangle. Barycentric via the standard edge-function / area-ratio
    *  construction (Ericson, Real-Time Collision Detection §3.4). */
   function distanceOffTriangle(
-    p: [number, number, number],
-    a: [number, number, number],
-    b: [number, number, number],
-    c: [number, number, number],
+    p: readonly [number, number, number],
+    a: readonly [number, number, number],
+    b: readonly [number, number, number],
+    c: readonly [number, number, number],
   ): number {
-    const sub = (u: typeof a, v: typeof a): typeof a => [u[0] - v[0], u[1] - v[1], u[2] - v[2]];
-    const cross = (u: typeof a, v: typeof a): typeof a => [
+    const sub = (u: typeof a, v: typeof a): [number, number, number] => [
+      u[0] - v[0],
+      u[1] - v[1],
+      u[2] - v[2],
+    ];
+    const cross = (u: typeof a, v: typeof a): [number, number, number] => [
       u[1] * v[2] - u[2] * v[1],
       u[2] * v[0] - u[0] * v[2],
       u[0] * v[1] - u[1] * v[0],

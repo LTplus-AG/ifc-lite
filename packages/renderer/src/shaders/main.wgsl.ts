@@ -74,7 +74,15 @@ export const mainShaderSource = `
           let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
           let inBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && ndc.z > 0.0;
           if (!inBounds) { return 1.0; }
-          let refDepth = ndc.z + shadowU.params2.x;
+          // Slope-scaled depth bias: at a grazing sun the receiver's light-space
+          // depth changes fast across the PCF kernel, so a constant bias can't
+          // clear the whole footprint and the surface rings with moiré. Grow the
+          // bias as the surface tilts away from the sun (NdotL → 0) and with the
+          // kernel width. The hardware slope bias in the depth pass covers the
+          // occluder side; this covers the receiver side.
+          let NdotL = max(dot(N, normalize(env.sunDirection)), 0.0);
+          let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.12), 1.0, 8.0);
+          let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w * 0.5);
           let pcfStep = shadowU.params.x * shadowU.params.w;
           var sum = 0.0;
           for (var dy = -1; dy <= 1; dy = dy + 1) {

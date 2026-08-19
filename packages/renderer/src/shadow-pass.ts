@@ -302,6 +302,16 @@ export class ShadowPass {
         depthWriteEnabled: true,
         // Reverse-Z: keep the fragment CLOSEST to the light (largest depth).
         depthCompare: 'greater-equal',
+        // Slope-scaled depth bias — the canonical fix for shadow acne on large
+        // flat receivers at a grazing sun, where a normal-offset bias is
+        // ineffective (the offset is nearly perpendicular to the light). The
+        // slope term grows the push with the polygon's tilt to the light, so a
+        // ground plane under an evening sun stops self-shadowing into moiré.
+        // Reverse-Z inverts the sign: negative pushes the stored occluder depth
+        // AWAY from the light, so a co-planar receiver passes `greater-equal`.
+        depthBias: -2,
+        depthBiasSlopeScale: -3,
+        depthBiasClamp: 0,
       },
     });
   }

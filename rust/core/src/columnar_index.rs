@@ -358,6 +358,27 @@ mod columnar_index_tests {
     }
 
     #[test]
+    fn adjacent_duplicate_ids_do_not_take_the_sorted_fast_path() {
+        // `is_strictly_ascending` gates `from_columns`'s fast path (adopt the
+        // columns as-is, no dedup) vs the slow path (`from_unsorted`, which
+        // collapses duplicates last-wins). Ids that are non-decreasing but NOT
+        // strictly increasing (an adjacent duplicate, e.g. two entities sharing
+        // an express id back-to-back) must still take the slow path: `< ` not
+        // `<=` in the ascending check. A `<=` mutation here survives every
+        // other fixture in this module because none of them puts a duplicate
+        // id in an ALREADY-SORTED, ADJACENT position.
+        let ids = [1u32, 1, 5];
+        let starts = [10u32, 20, 30];
+        let lengths = [1u32, 2, 3];
+        let idx = ColumnarEntityIndex::from_columns(&ids, &starts, &lengths);
+        assert_eq!(idx.len(), 2, "adjacent duplicate id must be deduped, not adopted as-is");
+        // Last-in-input-order wins, matching the hashmap/`from_unsorted` contract.
+        assert_eq!(idx.lookup(1), Some((20, 22)));
+        assert_eq!(idx.lookup(5), Some((30, 33)));
+        assert_eq!(idx.ids(), &[1, 5]);
+    }
+
+    #[test]
     fn empty_and_mismatched_columns_are_empty() {
         assert!(ColumnarEntityIndex::from_columns(&[], &[], &[]).is_empty());
         assert!(ColumnarEntityIndex::from_columns(&[1, 2], &[0], &[0, 0]).is_empty());
@@ -365,19 +386,35 @@ mod columnar_index_tests {
 
     #[test]
     fn from_hashmap_matches_lookup() {
+        // #1 is redefined later (duplicate express id): both the hashmap path
+        // (`HashMap::insert` overwrite) and the scan path (`from_unsorted`'s
+        // last-in-file-order-wins) must resolve it to the SECOND span, not the
+        // first — otherwise this fixture couldn't tell the two dedup
+        // mechanisms apart (see `duplicate_id_last_wins`, which pins
+        // `from_unsorted` alone but not its agreement with the hashmap path).
         let content = "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
             #1=IFCCARTESIANPOINT((0.,0.,0.));\n\
             #7=IFCCARTESIANPOINT((1.,2.,3.));\n\
+            #1=IFCCARTESIANPOINT((9.,9.,9.));\n\
             ENDSEC;\nEND-ISO-10303-21;\n";
         let map = crate::build_entity_index(content);
         let col = ColumnarEntityIndex::from_hashmap(&map);
+        assert_eq!(col.len(), 2, "duplicate #1 must collapse to one entry");
         assert_eq!(col.len(), map.len());
         for (&id, &(s, e)) in map.iter() {
             assert_eq!(col.lookup(id), Some((s, e)));
         }
+        // Pin the actual resolution, not just cross-path agreement: both paths
+        // agreeing on the WRONG (first) span would still pass a mere equality
+        // check between them.
+        let (start_1, end_1) = col.lookup(1).unwrap();
+        assert_eq!(&content.as_bytes()[start_1..end_1], b"#1=IFCCARTESIANPOINT((9.,9.,9.));");
+
         // A scan-built index must agree byte-for-byte with the hashmap one.
         let scanned = ColumnarEntityIndex::from_scan(content);
         assert_eq!(scanned.ids(), col.ids());
+        assert_eq!(scanned.starts(), col.starts());
+        assert_eq!(scanned.lengths(), col.lengths());
         for &id in col.ids() {
             assert_eq!(scanned.lookup(id), col.lookup(id));
         }

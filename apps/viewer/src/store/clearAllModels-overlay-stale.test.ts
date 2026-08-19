@@ -62,7 +62,7 @@ function seedPausedAnimationLayer(): OverlayLayer {
 }
 
 describe('overlaySlice.overlayLayers survives clearAllModels as a dangling — and, after a georef reload, misresolvable — reference', () => {
-  it('clearAllModels leaves the animation layer registered with its pre-clear global ids (RED before the fix)', () => {
+  it('clearAllModels drops the animation layer instead of leaving it registered with pre-clear global ids', () => {
     federationRegistry.clear();
     federationRegistry.registerModel('A', 100);
     federationRegistry.registerModel('B', 100);

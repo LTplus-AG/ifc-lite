@@ -68,6 +68,15 @@ export interface VerifyDecision {
   ok: boolean;
   /** Audit-friendly reason string when ok=false. */
   reason?: string;
+  /**
+   * Optional replacement payload to dispatch instead of the raw wire
+   * message — e.g. the anti-replay protector unwraps its signed envelope
+   * (tag + clientId + clock + hmac + inner frame) down to the inner
+   * y-protocol frame here. Without this, the envelope bytes themselves
+   * would be handed to `dispatchMessage`, which doesn't recognise them as
+   * a sync/awareness frame and silently drops them in its `default` case.
+   */
+  payload?: Uint8Array;
 }
 
 export type VerifyMessageFn = (msg: Uint8Array, conn: PeerConnection) => VerifyDecision;
@@ -288,6 +297,7 @@ export class Room {
     // 'viewer' could force unbounded full-Y.Doc parses by flooding
     // write-tagged frames (asymmetric CPU/GC DoS). Cheap peeks only here.
     if (!this.preCheckWriteFrame(conn, msg)) return;
+    let dispatchable = msg;
     if (this.verifyMessage) {
       const decision = this.verifyMessage(msg, conn);
       if (!decision.ok) {
@@ -296,9 +306,14 @@ export class Room {
         this.counters.reject?.(reason);
         return;
       }
+      // A verifier that unwraps an outer envelope (e.g. the anti-replay
+      // protector's signed frame) hands back the inner y-protocol frame
+      // here; dispatch THAT, not the raw envelope bytes — the envelope
+      // isn't itself a valid sync/awareness frame.
+      if (decision.payload) dispatchable = decision.payload;
     }
     try {
-      this.dispatchMessage(conn, msg);
+      this.dispatchMessage(conn, dispatchable);
     } catch {
       // Malformed/truncated frame from a peer. lib0 decoding throws
       // (errorUnexpectedEndOfArray / RangeError) on short or oversized

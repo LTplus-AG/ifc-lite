@@ -8,6 +8,9 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import * as syncProtocol from 'y-protocols/sync';
+import * as encoding from 'lib0/encoding';
 import { startCollabServer } from '../src/server.js';
 import { MemoryPersistence } from '../src/persistence.js';
 import { MemoryAuditSink } from '../src/audit-log.js';
@@ -31,7 +34,7 @@ describe('replay protector wired into the room', () => {
       auditSink: audit,
       verifyMessage: (msg) => {
         const r = verify(msg);
-        return { ok: r.ok, reason: r.reason };
+        return { ok: r.ok, reason: r.reason, payload: r.payload };
       },
     });
     const port = (handle.httpServer.address() as { port: number }).port;
@@ -72,4 +75,54 @@ describe('replay protector wired into the room', () => {
     expect(replay.ok).toBe(false);
     expect(replay.reason).toBe('replay');
   });
+
+  it('applies a properly-signed frame to the room doc, not just to the verifier', async () => {
+    // The `verify()`-level test above only proves the pure verifier accepts
+    // the envelope and returns the unwrapped payload — it never proves the
+    // room actually *applies* that payload. Drive it end to end: build a
+    // real Y sync-update frame, wrap it in a signed envelope the way the
+    // module docs instruct deployers to, and check the server's
+    // authoritative Y.Doc for the mutation.
+    const SECRET = 'topsecret';
+    const audit = new MemoryAuditSink();
+    const protector = createReplayProtector({ secret: SECRET });
+    const verify = verifyWithReplayProtector(protector, { requireSigned: true });
+
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      auditSink: audit,
+      verifyMessage: (msg) => {
+        const r = verify(msg);
+        return { ok: r.ok, reason: r.reason, payload: r.payload };
+      },
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+
+    // Build a real inner sync-update frame (what a legitimate client sends).
+    const sourceDoc = new Y.Doc();
+    sourceDoc.getMap('test').set('foo', 'from-signed-replay');
+    const update = Y.encodeStateAsUpdate(sourceDoc);
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, 0 /* MESSAGE_SYNC */);
+    syncProtocol.writeUpdate(enc, update);
+    const innerFrame = encoding.toUint8Array(enc);
+
+    const hmac = computeHmac(Buffer.from(SECRET, 'utf8'), 1, 1, innerFrame);
+    const signedFrame = encodeSignedFrame({ clientId: 1, clock: 1, payload: innerFrame, hmac });
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/signed-e2e-room`);
+    await new Promise<void>((res, rej) => {
+      ws.once('open', () => res());
+      ws.once('error', rej);
+    });
+    ws.send(signedFrame);
+    await new Promise((r) => setTimeout(r, 300));
+
+    const room = await handle.roomManager.getOrCreate('signed-e2e-room');
+    expect(room.doc.getMap('test').get('foo')).toBe('from-signed-replay');
+
+    ws.close();
+    await handle.stop();
+  }, 10_000);
 });

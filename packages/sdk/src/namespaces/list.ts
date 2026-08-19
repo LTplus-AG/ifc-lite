@@ -9,6 +9,8 @@
  * column discovery, filtering, presets, and CSV export.
  */
 
+import type { ColumnDefinition } from '@ifc-lite/lists';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -64,7 +66,7 @@ type AnyFn = (...args: unknown[]) => unknown;
  * that matched none of those cases, so `executeList` fell through to its
  * `default: values[i] = null` branch for every column, every row.
  */
-function toLibraryColumn(col: ListColumn, index: number): Record<string, unknown> {
+function toLibraryColumn(col: ListColumn, index: number): ColumnDefinition {
   const id = `col_${index}`;
   const label = col.header;
   if (col.source === 'name') return { id, source: 'attribute', propertyName: 'Name', label };

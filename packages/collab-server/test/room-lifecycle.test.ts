@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from 'vitest';
+import { Awareness } from 'y-protocols/awareness';
 import { MemoryPersistence, type Persistence } from '../src/persistence.js';
 import { RoomManager } from '../src/room-manager.js';
 
@@ -27,10 +28,21 @@ describe('RoomManager reject paths', () => {
     try {
       const mgr = new RoomManager({ persistence });
 
+      // The half-built Room's constructor already starts y-protocols'
+      // Awareness renewal timer before loadFromDisk() throws. Nothing but
+      // this closure ever holds a reference to that Room, so the reject path
+      // has to dispose it explicitly or the timer leaks for the life of the
+      // process. Spy on `Awareness.prototype.destroy` rather than diffing
+      // `process.getActiveResourcesInfo()`'s PROCESS-WIDE timer count: that
+      // count can be nudged by any other timer created or released while
+      // `getOrCreate('broken')` awaits (test-runner internals included),
+      // which can hide a real leak here or fail this test for a reason that
+      // has nothing to do with it (PR #2821 review).
+      const destroySpy = vi.spyOn(Awareness.prototype, 'destroy');
+
       // The caller must see the failure — a room whose durable log cannot be
       // read must not come back as a silently empty doc that then compacts
       // its emptiness over the real state.
-      const beforeTimers = process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
       await expect(mgr.getOrCreate('broken')).rejects.toThrow(/corrupt log/);
 
       // ...and the poisoned entry must not stay cached, or the room is
@@ -38,13 +50,14 @@ describe('RoomManager reject paths', () => {
       expect(mgr.list()).not.toContain('broken');
       expect(await mgr.stats()).toEqual([]);
 
-      // The half-built Room's constructor already started y-protocols'
-      // Awareness renewal timer before loadFromDisk() threw. Nothing but
-      // this closure ever held a reference to that Room, so if the reject
-      // path doesn't dispose it explicitly, the timer leaks for the life
-      // of the process (never observable via list()/stats() above).
-      const afterTimers = process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
-      expect(afterTimers).toBe(beforeTimers);
+      // Called twice per y-protocols' own wiring, not this code's doing:
+      // `Room.destroy()` disposes `awareness` explicitly and then
+      // `doc.destroy()`, and y-protocols registers `doc.on('destroy', ...)`
+      // to self-destroy its Awareness too (awareness.js) — so asserting an
+      // exact count here would pin an implementation detail of a dependency
+      // rather than the property under test: that disposal happened at all.
+      expect(destroySpy).toHaveBeenCalled();
+      destroySpy.mockRestore();
 
       // Once the underlying fault clears, the same id loads normally.
       failing.fail = false;

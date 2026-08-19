@@ -719,7 +719,24 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] failed to start session:', err);
-      set({ collabConnecting: false, collabStatus: 'disconnected' });
+      // `collabRoomId` / `collabRole` / `collabSelfToken` were set synchronously
+      // above, before any session existed, so a UI reading "collabRoomId is set"
+      // as "still in the room" (the toolbar indicator, ShareDialog) — and
+      // canCollabEdit()/canCollabComment(), which mutationSlice gates every
+      // write on — must not keep applying a room/role that never actually
+      // started. Guarded on collabRoomId still matching this attempt so a
+      // newer start/stop that ran while we awaited isn't clobbered here.
+      if (get().collabRoomId === roomId) {
+        set({
+          collabConnecting: false,
+          collabStatus: 'disconnected',
+          collabRoomId: null,
+          collabRole: null,
+          collabSelfToken: null,
+        });
+      } else {
+        set({ collabConnecting: false, collabStatus: 'disconnected' });
+      }
       return;
     }
 

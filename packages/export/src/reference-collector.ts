@@ -314,23 +314,46 @@ export function collectRefsInByteRange(
  *   target into the closure — those are never themselves in `excludeIds` (not
  *   products) — so the target shipped as an orphan line nothing in the output
  *   names (#2548).
- * @param isRefExcluded - The caller's OWN "is this id excluded from what a
- *   relationship names" predicate — the exact one it will use to filter that
- *   relationship's OUTPUT line (`isExcludedFromRelationshipRefs` in
- *   `step-exporter.ts`). When supplied, the bridge decision above uses THIS
- *   predicate instead of inventing `excludeIds.has(id) || !entityIndex.has(id)`
- *   as a proxy for it. The proxy and a caller's real predicate can disagree on
- *   an id that never existed in the file at all (not hidden, not deleted —
- *   just absent, e.g. a pre-existing dangling ref in a truncated source): the
- *   proxy treats "not in the index" as excluded, blocking the bridge, while a
- *   caller whose predicate only excludes a hidden PRODUCT or a TOMBSTONED id
- *   does not, and still emits the relationship's line naming it. Left to
- *   disagree, that combination drops a VISIBLE sibling's pset from the
- *   closure while the unfiltered output line still names it — a dangling ref
- *   the emission pass did not intend to create. Callers with no caller-side
- *   emission predicate to share (`demesh-prune.ts`, `merged-exporter.ts`,
- *   whose own `IFCREL*` output-line filter already reduces to the same
- *   `!entityIndex.has` proxy) omit this and keep the previous behaviour.
+ * @param isRefExcluded - The caller's own "is this id excluded from what a
+ *   relationship names" predicate for the BRIDGE decision. When supplied, the
+ *   bridge uses THIS predicate instead of inventing
+ *   `excludeIds.has(id) || !entityIndex.has(id)` as a proxy for it. The proxy
+ *   and a caller's real predicate can disagree on an id that never existed in
+ *   the file at all (not hidden, not deleted — just absent, e.g. a
+ *   pre-existing dangling ref in a truncated source): the proxy treats "not in
+ *   the index" as excluded, blocking the bridge, while a caller whose
+ *   predicate only excludes a hidden PRODUCT or a TOMBSTONED id does not, and
+ *   still emits the relationship's line naming it. Left to disagree, that
+ *   combination drops a VISIBLE sibling's pset from the closure while the
+ *   unfiltered output line still names it — a dangling ref the emission pass
+ *   did not intend to create. Callers with no caller-side predicate to share
+ *   (`demesh-prune.ts`, `merged-exporter.ts`, whose own `IFCREL*` output-line
+ *   filter already reduces to the same `!entityIndex.has` proxy) omit this and
+ *   keep the previous behaviour.
+ *
+ *   NOT NECESSARILY THE CALLER'S OUTPUT PREDICATE. #2637's remedy was worded
+ *   as "the same function call, not two expressions that happened to agree",
+ *   and `StepExporter` did pass its single output predicate here. It no longer
+ *   can: its output filter is now `isOmittedFromOutput`, built on
+ *   `willBeEmitted`, whose first
+ *   act is to consult the very `allowedEntityIds` set THIS call produces, so
+ *   wiring it in is circular (measured: `ReferenceError: Cannot access
+ *   'willBeEmitted' before initialization`; hoisting past the TDZ only trades
+ *   the throw for a predicate whose answer changes as the set fills).
+ *   `StepExporter` therefore passes the narrower
+ *   `isRefExcludedDuringClosureWalk` — hidden product or tombstone — while its
+ *   output filter also answers for the closure, an unreadable source ref and a
+ *   geometry exclusion.
+ *
+ *   The two are ORDERED, not merely different: every id the walk predicate
+ *   excludes, the output predicate excludes too. So a relationship the walk
+ *   refuses to bridge is also one the output withholds, and the #2548 orphan
+ *   this parameter exists to prevent cannot come back that way. The reverse
+ *   gap is open and observable: for an id the walk admits and the output
+ *   omits, the walk bridges through a relationship the output then withholds,
+ *   leaving its target in the closure with nothing naming it. Pinned by
+ *   `unreadable-ref-dangling.test.ts` ("walk and output predicates diverge"),
+ *   and an open design question rather than a settled contract.
  *
  * Performance: O(total bytes of included entities). Each entity visited once.
  * Uses byte-level scanning — no TextDecoder, no regex, no string allocation —
@@ -612,10 +635,12 @@ export function filterHiddenRefsFromRelationshipLine(
   if (!match) return line;
   const [, prefix, argsText, suffix] = match;
   const attrs = splitTopLevelArgs(argsText);
+  const entityType = prefix.slice(prefix.indexOf('=') + 1, -1).trim().toUpperCase();
 
   let changed = false;
   const nextAttrs: string[] = [];
-  for (const attr of attrs) {
+  for (let index = 0; index < attrs.length; index++) {
+    const attr = attrs[index];
     if (attr.length >= 2 && attr.charCodeAt(0) === 0x28 /* '(' */ && attr.charCodeAt(attr.length - 1) === 0x29 /* ')' */) {
       const inner = attr.slice(1, -1);
       const items = inner.trim() === '' ? [] : splitTopLevelArgs(inner);
@@ -634,12 +659,59 @@ export function filterHiddenRefsFromRelationshipLine(
     }
 
     const refMatch = attr.match(/^#(\d+)$/);
-    if (refMatch && isExcluded(Number(refMatch[1]))) return null;
+    if (refMatch && isExcluded(Number(refMatch[1]))) {
+      if (isOptionalTrailingRef(entityType, attrs.length, index)) {
+        changed = true;
+        nextAttrs.push('$');
+        continue;
+      }
+      return null;
+    }
     nextAttrs.push(attr);
   }
 
   if (!changed) return line;
   return `${prefix}${nextAttrs.join(',')}${suffix}`;
+}
+
+/**
+ * The ONE named exception to "a single-valued STEP attribute has no spelling
+ * for omitted": `IfcRelConnectsStructuralMember.ConditionCoordinateSystem`
+ * (position 10 of 10 — `GlobalId, OwnerHistory, Name, Description,
+ * RelatingStructuralMember, RelatedStructuralConnection, AppliedCondition,
+ * AdditionalConditions, SupportedLength, ConditionCoordinateSystem`) is
+ * declared `OPTIONAL IfcAxis2Placement3D` in both IFC4 (`IFC4_ADD2_TC1.exp`
+ * line 8523) and IFC4X3 (`IFC4X3.exp` line 9774), and `IFCAXIS2PLACEMENT3D`
+ * is the one entry in {@link StepExporter.isGeometryEntity}'s allowlist an
+ * `IFCREL*` line can name in a single-valued slot — re-derived by scanning
+ * every `IFCREL*` attribute in both schema files against that allowlist
+ * (`scripts/` has no permanent copy of this scan; it was run ad hoc against
+ * `packages/codegen/schemas/*.exp` and found exactly this one hit).
+ *
+ * `$` here loses nothing IFC4/IFC4X3 requires: the attribute is optional by
+ * schema, so a reader must already accept it absent. Withholding the whole
+ * relationship instead — the general rule below, correct for every OTHER
+ * `IFCREL*` bare-scalar slot, none of which this scan found to be optional —
+ * would delete the member-to-connection association over one dispensable
+ * coordinate system, under `includeGeometry: false` alone, with no
+ * `visibleOnly` and no deletion involved.
+ *
+ * Deliberately narrow rather than a general schema-optionality table: the
+ * scan that justifies it is exact for the schemas this repo ships (IFC2X3,
+ * IFC4, IFC4X3) and covers a single position of a single entity type, so a
+ * position-indexed special case is bounded and checkable; a general table
+ * would need every `IFCREL*` attribute's optionality across three schemas
+ * and would change output for classes this scan proved unaffected. Matched
+ * on the exact type token and attribute COUNT (10) rather than just position
+ * 10, so `IFCRELCONNECTSWITHECCENTRICITY` — the one subtype, which appends
+ * `ConnectionConstraint` as an 11th, MANDATORY attribute and pushes
+ * `ConditionCoordinateSystem` to position 9 of 11 — is excluded from this
+ * arm and falls through to the general withhold rule; that mandatory 11th
+ * attribute cannot itself be `$`, and a rewrite that only spelled position 9
+ * regardless of type would be wrong for that subtype's own dangling case.
+ */
+function isOptionalTrailingRef(entityType: string, attrCount: number, index: number): boolean {
+  return entityType === 'IFCRELCONNECTSSTRUCTURALMEMBER' && attrCount === 10 && index === 9;
 }
 
 /**

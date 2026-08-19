@@ -137,6 +137,49 @@ fn deduplicates_shared_vertices() {
 }
 
 #[test]
+fn to_zup_preserves_negation_and_swap_with_nonzero_z() {
+    // Every OTHER fixture in this file feeds z == 0 into `to_zup`, so `[x, -z,
+    // y]` could drop its negation (or swap y and z) with the whole suite still
+    // green (issue #2802). Every vertex here has z != 0 AND y != z, so both
+    // the negation and the axis swap are independently observable.
+    //
+    // Positions are chosen so the (min+max)/2 midpoint of X, and of -Z (== the
+    // Z-up Y, the OTHER horizontal axis), are each exactly zero across the 3
+    // vertices: the exporter re-centers on the horizontal (X, Y) AABB MIDPOINT
+    // after conversion, and a zero-midpoint choice keeps the expected output
+    // values exact instead of also having to model that
+    // (irrelevant-to-this-gap) centering offset.
+    //
+    // Every vertex ALSO gets its own distinct X, not just distinct Z: with a
+    // repeated X (e.g. two vertices sharing X = -10, one at z = 4 and the
+    // other at z = -4), dropping the negation just swaps which of those two
+    // vertices carries Y = -4 vs Y = 4 -- the *set* of emitted (x, y, z)
+    // triples is unchanged, so a set-membership assertion can't see the bug.
+    let positions = vec![
+        -10.0, 5.0, 4.0, // Y-up (x, y, z)
+        0.0, 5.0, -4.0, //
+        10.0, 5.0, 0.0, //
+    ];
+    let normals: Vec<f32> = std::iter::repeat_n([0.0f32, 1.0, 0.0], 3).flatten().collect();
+    let xml = String::from_utf8(export_collada_from_meshes(
+        &positions, &normals, &[0, 1, 2], &[3], &[3], &[1.0, 0.0, 0.0, 1.0], &[0.0, 0.0, 0.0],
+    ))
+    .unwrap();
+    let verts = parse_positions(&xml);
+    assert_eq!(verts.len(), 3, "no accidental dedup across 3 distinct vertices");
+    // Expected Z-up `[x, -z, y]` for each Y-up input above.
+    let want = [[-10.0f32, -4.0, 5.0], [0.0, 4.0, 5.0], [10.0, 0.0, 5.0]];
+    for w in want {
+        assert!(
+            verts.iter().any(|v| {
+                (v[0] - w[0]).abs() < 1e-3 && (v[1] - w[1]).abs() < 1e-3 && (v[2] - w[2]).abs() < 1e-3
+            }),
+            "expected z-up vertex {w:?} not found in {verts:?}"
+        );
+    }
+}
+
+#[test]
 fn large_model_is_chunked_into_small_text_nodes() {
     // >MAX_VERTS unique vertices must split into multiple <geometry> chunks so no
     // single <float_array> is a huge XML text node. Strict XML parsers (libxml2 and

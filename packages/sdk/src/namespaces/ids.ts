@@ -38,8 +38,15 @@ export interface IDSValidationProgress {
 export interface IDSValidateOptions {
   /** IFC data accessor — maps IFC model data for validation */
   accessor: unknown;
-  /** Model info (schema version, name, etc.) for spec applicability checks */
-  modelInfo?: { schemaVersion?: string; name?: string; [key: string]: unknown };
+  /**
+   * Model info for spec applicability checks. Mirrors the shape
+   * `@ifc-lite/ids`'s `IDSModelInfo` expects (`modelId`, `schemaVersion`,
+   * `entityCount`) without importing that type, keeping this namespace
+   * decoupled from `@ifc-lite/ids` at compile time (see the summary type
+   * above). All fields are optional here — the validator is called with
+   * `options.modelInfo ?? {}`, so a caller may supply only what it knows.
+   */
+  modelInfo?: { modelId?: string; schemaVersion?: string; entityCount?: number };
   /** Progress callback */
   onProgress?: (progress: IDSValidationProgress) => void;
   /** Locale for human-readable messages */
@@ -95,9 +102,16 @@ export class IDSNamespace {
    */
   async validate(idsDocument: unknown, options: IDSValidateOptions): Promise<unknown> {
     const mod = await loadIDS();
+    // `ValidatorOptions` has no `locale` field — the validator only
+    // understands a `translator` (see @ifc-lite/ids `ValidatorOptions`).
+    // Build one from the requested locale so `locale` actually reaches
+    // the human-readable messages instead of being silently dropped.
+    const translator = options.locale
+      ? (mod.createTranslationService as AnyFn)(options.locale)
+      : undefined;
     return (mod.validateIDS as AnyFn)(idsDocument, options.accessor, options.modelInfo ?? {}, {
       onProgress: options.onProgress,
-      locale: options.locale,
+      translator,
       includePassingEntities: options.includePassingEntities,
     });
   }

@@ -30,12 +30,21 @@ describe('RoomManager reject paths', () => {
       // The caller must see the failure — a room whose durable log cannot be
       // read must not come back as a silently empty doc that then compacts
       // its emptiness over the real state.
+      const beforeTimers = process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
       await expect(mgr.getOrCreate('broken')).rejects.toThrow(/corrupt log/);
 
       // ...and the poisoned entry must not stay cached, or the room is
       // bricked for the process lifetime and keeps occupying a maxRooms slot.
       expect(mgr.list()).not.toContain('broken');
       expect(await mgr.stats()).toEqual([]);
+
+      // The half-built Room's constructor already started y-protocols'
+      // Awareness renewal timer before loadFromDisk() threw. Nothing but
+      // this closure ever held a reference to that Room, so if the reject
+      // path doesn't dispose it explicitly, the timer leaks for the life
+      // of the process (never observable via list()/stats() above).
+      const afterTimers = process.getActiveResourcesInfo().filter((r) => r === 'Timeout').length;
+      expect(afterTimers).toBe(beforeTimers);
 
       // Once the underlying fault clears, the same id loads normally.
       failing.fail = false;

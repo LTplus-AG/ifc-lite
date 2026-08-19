@@ -2,6 +2,10 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+//! Regression tests for #2866 (unbounded file-driven recursion), specifically
+//! the fan-out half: #2876 established by measurement that `MAX_CURVE_DEPTH`
+//! bounds one path's LENGTH and nothing about the NUMBER of paths.
+
 use super::*;
 use ifc_lite_core::{EntityDecoder, IfcSchema};
 
@@ -92,7 +96,7 @@ fn a_modest_acyclic_dag_still_resolves_completely() {
     assert_eq!(sample_dag(8).expect("8 levels must resolve").len(), 257);
 }
 
-/// The bound. Under a depth cap alone this is `2^30` curve visits and a
+/// #2866/#2876. The bound. Under a depth cap alone this is `2^30` curve visits and a
 /// `Vec<Point3>` to match — measured before the budget at 2^levels points
 /// exactly (levels=20: 1,048,577 points, 473ms; every +4 levels 16x). The cap
 /// of 50 does not see it: depth 30 is inside the cap, nothing is cyclic, and
@@ -105,7 +109,9 @@ fn a_modest_acyclic_dag_still_resolves_completely() {
 fn a_wide_acyclic_dag_is_bounded_by_the_node_budget() {
     let err = sample_dag(30).expect_err("a 2^30 traversal must be refused, not attempted");
     assert!(
-        err.to_string().contains("exceeded"),
-        "the node budget must be what stops it, got: {err}"
+        err.to_string().contains("Curve traversal exceeded"),
+        "the CURVE-VISIT budget must be what stops it -- `contains(\"exceeded\")` \
+         alone would also pass on any other limit's message (CodeRabbit, #2876 \
+         review). Got: {err}"
     );
 }

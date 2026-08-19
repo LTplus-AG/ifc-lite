@@ -342,6 +342,66 @@ fn genuine_small_overlap_above_the_precision_floor_stays_hard() {
 }
 
 #[test]
+fn overlap_exactly_at_the_precision_floor_is_touch_not_hard() {
+    // `depth.rs:207` gates on `floor_depth <= precision_floor(...)`, but no
+    // existing fixture strikes that boundary bit-exactly: the two sibling
+    // tests above sit a decade below and ~7x above it. This one is solved
+    // algebraically to land the z-axis MTD exactly ON `precision_floor`'s
+    // returned value, so `<=` and a mutated `<` disagree on this fixture and
+    // only this fixture (a "close enough" gap would pass under both).
+    //
+    // Same crossing-bars shape as the two sibling fixtures above (needed so
+    // the pair takes the genuine-triangle-crossing path into
+    // `depth_clash_result` — two boxes merely STACKED with identical x/y
+    // footprints have parallel, non-crossing side faces and fall through a
+    // completely different branch of `narrow.rs` that never calls
+    // `precision_floor` at all when the overlap is this far under the
+    // 1 mm tolerance): A is a bar long in x, B a bar long in y, crossing at
+    // right angles over their shared x/y footprint, thin (half 0.25) and
+    // separated by a tiny gap on z.
+    //
+    // Derivation: `precision_floor` returns `extent * F32_ULP_SCALE` where
+    // `extent` is the max abs coordinate over both AABBs and
+    // `F32_ULP_SCALE = 2^-22`. Pin `extent` to a power of two via A's x-axis
+    // (A spans x = [32, 64], the dominant coordinate over both boxes since B
+    // is thin in x and short in z):
+    //   floor = 64.0 * 2^-22 = 2^-16 = 0.0000152587890625
+    // Both bars are 0.5 thick on z with A centred at z=60.0; B is shifted so
+    // the z overlap (A.max_z - B.min_z — the SAT minimum axis, since the x/y
+    // overlaps are 16.25 each, far larger) equals `floor` exactly:
+    //   B.center_z = A.center_z + 2*half_z - floor
+    //              = 60.0 + 0.5 - 0.0000152587890625 = 60.4999847412109375
+    // This literal is exactly representable in f32 (60.5 minus an exact
+    // multiple — 4 — of f32's ULP at that magnitude, 2^-18), so the f32
+    // round-trip through `box_mesh`'s vertex/AABB buffers introduces no
+    // further rounding: computed here in f64 and verified independently
+    // against Rust's own f32 arithmetic (and against the crate's own SAT
+    // formula, `r_a + r_b - dist`) before trusting this fixture.
+    let a = box_mesh([48.0, 0.0, 60.0], [16.0, 0.25, 0.25]);
+    let b = box_mesh([48.0, 0.0, 60.499_984_741_210_938], [0.25, 16.0, 0.25]);
+
+    let floor = 64.0f64 / 4_194_304.0;
+    assert_eq!(floor, 0.0000152587890625, "sanity: the derived floor value");
+
+    let session = session_of(&[a, b]);
+    let hard_only = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, false);
+    assert!(
+        hard_only.records.is_empty(),
+        "an overlap exactly AT the precision floor must not report as a hard clash, got {:?}",
+        hard_only
+            .records
+            .iter()
+            .map(|r| (r.status, r.distance))
+            .collect::<Vec<_>>()
+    );
+
+    let with_touch = session.run_rule(&[0, 1], &[], HARD, 0.001, 0.0, true);
+    assert_eq!(with_touch.records.len(), 1, "the boundary touch itself is real information and must still report");
+    assert_eq!(with_touch.records[0].status, ClashStatus::Touch);
+    assert_eq!(with_touch.records[0].distance, 0.0);
+}
+
+#[test]
 fn exact_touch_is_caught_at_tolerance_zero() {
     // The touch band is documented as `<=` precisely so an EXACT face contact at
     // tolerance 0 still reports. Every existing touch test uses a 1 mm tolerance,

@@ -99,6 +99,36 @@ END-ISO-10303-21;
     assert!((a.si_scale - 0.0174532925199433).abs() < 1e-15);
 }
 
+/// `IFCCONVERSIONBASEDUNIT.ConversionFactor` (`IFCMEASUREWITHUNIT`) can express
+/// its ValueComponent against a *prefixed* SI unit, not just the bare SI base
+/// (e.g. a real-world file defining INCH as `25.4` millimetres rather than
+/// `0.0254` metres). `conversion_factor_scale` must fold that prefix in, or
+/// the resolved si_scale is silently off by the prefix factor (1000x here).
+#[test]
+fn conversion_based_unit_folds_prefixed_component_scale() {
+    let ifc = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('guid',$,'Test',$,$,$,$,(#2),#3);
+#3=IFCUNITASSIGNMENT((#10));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#9=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(25.4),#8);
+#10=IFCCONVERSIONBASEDUNIT(#11,.LENGTHUNIT.,'INCH',#9);
+#11=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let units = units_of(ifc);
+    let len = units.unit_for_measure("IfcLengthMeasure").unwrap();
+    assert_eq!(len.symbol, "in");
+    // 25.4 stated in millimetres -> 0.0254 m, NOT 25.4 m (dropped prefix).
+    assert!((len.si_scale - 0.0254).abs() < 1e-12, "expected 0.0254, got {}", len.si_scale);
+}
+
 #[test]
 fn kilogram_mass_unit() {
     let ifc = r#"ISO-10303-21;

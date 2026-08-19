@@ -204,3 +204,52 @@ fn a_discontinuous_joint_keeps_both_endpoints() {
     assert_eq!(pts.len(), 4, "the joint does not coincide, so no point is dropped");
     assert_eq!(pts[2], Point2::new(5.0, 5.0));
 }
+
+/// Build an ACYCLIC composite-curve DAG: two segments per level, both pointing
+/// at the next level, terminating in a real polyline. Nothing is cyclic and
+/// nothing fails, so neither the path-scoped `seen` set nor the depth cap can
+/// see it — and the work doubles per level.
+fn dag_data(levels: u32) -> String {
+    let mut d = String::from("#1=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#10);\n");
+    for i in 0..levels {
+        let cc = 10 + i;
+        let next = if i + 1 == levels { 9000 } else { 10 + i + 1 };
+        let (s1, s2) = (1000 + i * 2, 1001 + i * 2);
+        d.push_str(&format!("#{cc}=IFCCOMPOSITECURVE((#{s1},#{s2}),.F.);\n"));
+        d.push_str(&format!("#{s1}=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#{next});\n"));
+        d.push_str(&format!("#{s2}=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#{next});\n"));
+    }
+    d.push_str("#9000=IFCPOLYLINE((#9001,#9002));\n");
+    d.push_str("#9001=IFCCARTESIANPOINT((0.,0.));\n");
+    d.push_str("#9002=IFCCARTESIANPOINT((1.,0.));\n");
+    d
+}
+
+/// Positive control: a modest DAG must still resolve completely, or the budget
+/// is just breaking valid files.
+#[test]
+fn a_modest_acyclic_dag_still_resolves_completely() {
+    let content = wrap(&dag_data(8));
+    let mut decoder = EntityDecoder::new(&content);
+    let item = decoder.decode_by_id(1).expect("decode profile");
+    let pts = SurfaceOfLinearExtrusionProcessor::get_profile_curve_points(item.id, &mut decoder)
+        .expect("8 levels must resolve");
+    assert!(pts.len() > 100, "expected the full expansion, got {}", pts.len());
+}
+
+/// The bound. 30 levels is 2^30 curve visits under a depth cap alone —
+/// measured before the budget at 2^levels points (levels=16 gave 131,072).
+/// Asserted on the ERROR, not on elapsed time: a timing assertion after the
+/// call cannot fire when the call does not return.
+#[test]
+fn a_wide_acyclic_dag_is_bounded_by_the_node_budget() {
+    let content = wrap(&dag_data(30));
+    let mut decoder = EntityDecoder::new(&content);
+    let item = decoder.decode_by_id(1).expect("decode profile");
+    let err = SurfaceOfLinearExtrusionProcessor::get_profile_curve_points(item.id, &mut decoder)
+        .expect_err("a 2^30 traversal must be refused, not attempted");
+    assert!(
+        err.to_string().contains("exceeded"),
+        "the node budget must be what stops it, got: {err}"
+    );
+}

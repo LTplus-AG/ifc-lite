@@ -20,6 +20,47 @@ pub struct SurfaceOfLinearExtrusionProcessor;
 /// any real modelling distance in either mm or m.
 const SEAM_EPS: f64 = 1e-9;
 
+/// Total nested curve visits allowed per profile sample. See [`CurveWalk`].
+const MAX_CURVE_NODES: u32 = 100_000;
+
+/// The two bounds on one composite-curve traversal, carried together because
+/// each is blind to what the other catches.
+///
+/// `seen` is PATH-scoped and stops cycles. The depth cap stops a long acyclic
+/// CHAIN, where every insert succeeds so `seen` never fires. And `budget` stops
+/// an acyclic DAG, where two segments per level double the work: nothing is
+/// cyclic, so `seen` is silent, and every level is inside the depth cap, so
+/// that is silent too. Measured before the budget at 2^levels points --
+/// levels=16 gave 131,072 points -- with nothing malformed in the file at all.
+struct CurveWalk {
+    seen: std::collections::HashSet<u32>,
+    budget: u32,
+}
+
+impl CurveWalk {
+    fn new() -> Self {
+        Self {
+            seen: std::collections::HashSet::new(),
+            budget: MAX_CURVE_NODES,
+        }
+    }
+
+    /// Charge one visit. Exhaustion is an ERROR rather than a truncation: a
+    /// short point list returned as if complete is a wrong profile, and the
+    /// caller dropping the element is the honest outcome.
+    fn spend(&mut self) -> Result<()> {
+        match self.budget.checked_sub(1) {
+            Some(left) => {
+                self.budget = left;
+                Ok(())
+            }
+            None => Err(Error::geometry(format!(
+                "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
+            ))),
+        }
+    }
+}
+
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
         Self
@@ -148,14 +189,14 @@ impl SurfaceOfLinearExtrusionProcessor {
         profile_id: u32,
         decoder: &mut EntityDecoder,
     ) -> Result<Vec<Point2<f64>>> {
-        let mut visited = std::collections::HashSet::new();
-        Self::profile_curve_points_guarded(profile_id, decoder, &mut visited)
+        let mut walk = CurveWalk::new();
+        Self::profile_curve_points_guarded(profile_id, decoder, &mut walk)
     }
 
     fn profile_curve_points_guarded(
         profile_id: u32,
         decoder: &mut EntityDecoder,
-        visited: &mut std::collections::HashSet<u32>,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
         let profile = decoder.decode_by_id(profile_id)?;
 
@@ -169,7 +210,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for curve".to_string()))?;
 
-        Self::curve_points_guarded(curve_id, decoder, 0, visited)
+        Self::curve_points_guarded(curve_id, decoder, 0, walk)
     }
 
     /// Sample a CURVE (not a profile) into 2D points.
@@ -195,18 +236,19 @@ impl SurfaceOfLinearExtrusionProcessor {
         curve_id: u32,
         decoder: &mut EntityDecoder,
         depth: u32,
-        visited: &mut std::collections::HashSet<u32>,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
-        if depth >= Self::MAX_CURVE_NESTING_DEPTH || !visited.insert(curve_id) {
+        if depth >= Self::MAX_CURVE_NESTING_DEPTH || !walk.seen.insert(curve_id) {
             return Ok(Vec::new());
         }
-        let out = Self::curve_points_inner(curve_id, decoder, depth, visited);
+        walk.spend()?;
+        let out = Self::curve_points_inner(curve_id, decoder, depth, walk);
         // PATH-scoped: removed on the way out. A global set would be a memo
         // that returns the WRONG value -- it hands back an empty vec rather
         // than the points it computed the first time -- and the caller
         // ACCUMULATES, so a ParentCurve legitimately reused by two segments
         // would contribute once and silently shorten the profile.
-        visited.remove(&curve_id);
+        walk.seen.remove(&curve_id);
         out
     }
 
@@ -214,7 +256,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         curve_id: u32,
         decoder: &mut EntityDecoder,
         depth: u32,
-        visited: &mut std::collections::HashSet<u32>,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
 
         // Get curve entity to determine type
@@ -237,7 +279,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             }
             IfcType::IfcCompositeCurve => {
                 // Handle composite curves by extracting segments
-                Self::extract_composite_curve_points(curve_id, decoder, depth, visited)
+                Self::extract_composite_curve_points(curve_id, decoder, depth, walk)
             }
             _ => {
                 // Fallback: try to get points directly
@@ -261,7 +303,7 @@ impl SurfaceOfLinearExtrusionProcessor {
         curve_id: u32,
         decoder: &mut EntityDecoder,
         depth: u32,
-        visited: &mut std::collections::HashSet<u32>,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
         let curve = decoder.decode_by_id(curve_id)?;
 
@@ -309,7 +351,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             // profile entry point read its attribute 2 as "the curve" and
             // dropped every segment (#2866).
             if let Ok(mut segment_points) =
-                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, visited)
+                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, walk)
             {
                 if !same_sense {
                     segment_points.reverse();
@@ -326,6 +368,18 @@ impl SurfaceOfLinearExtrusionProcessor {
                 };
                 let start_idx = usize::from(drop_seam);
                 all_points.extend(segment_points.into_iter().skip(start_idx));
+            }
+
+            // The `if let Ok(..)` above deliberately tolerates ONE malformed
+            // segment rather than losing the whole profile -- but it must not
+            // swallow budget exhaustion, or the loop keeps going and returns a
+            // truncated profile as if it were complete. That is the silent
+            // wrong answer this guard exists to avoid, so exhaustion is
+            // re-raised here where the tolerance cannot hide it.
+            if walk.budget == 0 {
+                return Err(Error::geometry(format!(
+                    "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
+                )));
             }
         }
 

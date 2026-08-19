@@ -656,6 +656,35 @@ async function parseViewpoints(
     });
   }
 
+  // BCF 3.0 nests viewpoint entries inside <Topic>, wrapped in a plural
+  // <Viewpoints> container that (unlike 2.1's) carries no Guid itself; each
+  // entry is a singular <ViewPoint Guid="..."> -- capital P, distinct from
+  // the lowercase-p <Viewpoint Guid="..."/> a Comment uses to reference a
+  // viewpoint -- per buildingSMART/BCF-XML markup.xsd (release_3_0, Topic's
+  // Viewpoints element wraps `ViewPoint` entries) and confirmed against the
+  // buildingSMART/BCF-XML Test Cases/v3.0/Visualization/Perspective camera
+  // fixture, whose markup.bcf reads
+  // `<Viewpoints><ViewPoint Guid="f99eb1ed-...">`. The plural-with-Guid regex
+  // above can never match this shape (the wrapper has no Guid attribute), so
+  // without this pass every 3.0 file's markup-declared snapshot filename was
+  // silently dropped and resolution fell through to guessing our own
+  // Snapshot_<guid> naming convention -- which a third-party 3.0 file has no
+  // reason to follow.
+  const viewPointElementRegex = /<ViewPoint\b([^>]*)>([\s\S]*?)<\/ViewPoint>/g;
+  for (const match of markupContent.matchAll(viewPointElementRegex)) {
+    const guid = extractAttr(match[1], 'Guid');
+    if (!guid || viewpointInfoMap.has(guid)) continue;
+    const content = match[2];
+
+    const viewpointFileMatch = content.match(/<Viewpoint>([^<]+)<\/Viewpoint>/);
+    const snapshotFileMatch = content.match(/<Snapshot>([^<]+)<\/Snapshot>/);
+
+    viewpointInfoMap.set(guid, {
+      viewpointFile: viewpointFileMatch?.[1],
+      snapshotFile: snapshotFileMatch?.[1],
+    });
+  }
+
   // Also match self-closing viewpoint references
   const simpleViewpointRefs = markupContent.matchAll(/<Viewpoints\b([^>]*)\/>/g);
   for (const match of simpleViewpointRefs) {

@@ -284,44 +284,81 @@ function writeMarkupFile(
     }
   }
 
-  content += `\n  </Topic>`;
+  // Render each <Comment Guid="..."> wrapper. Shared by both versions --
+  // the wrapper's own shape doesn't change, only where it's placed (see
+  // below).
+  const commentXml = (indent: string) =>
+    topic.comments
+      .map((comment) => {
+        let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
+        c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`;
+        c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
+        c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        if (comment.viewpointGuid) {
+          c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+        }
+        if (comment.modifiedDate) {
+          c += `\n${indent}  <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
+        }
+        if (comment.modifiedAuthor) {
+          c += `\n${indent}  <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
+        }
+        c += `\n${indent}</Comment>`;
+        return c;
+      })
+      .join('');
 
-  // Write viewpoint references
-  for (let i = 0; i < topic.viewpoints.length; i++) {
-    const viewpoint = topic.viewpoints[i];
-    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
-    // but the file name component is the sanitized base name (zip-slip
-    // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
-    // so the markup reference and the archive agree. The real GUID is still
-    // written verbatim as the Guid attribute below.
-    const baseName = viewpointBaseNames[i];
-    const filename = `Viewpoint_${baseName}.bcfv`;
-    const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
+  // Render each viewpoint reference. BCF 2.1 names the per-entry element
+  // <Viewpoints Guid="..."> (the wrapper IS the entry, repeated); BCF 3.0
+  // renamed the entry to singular <ViewPoint Guid="..."> (capital P) nested
+  // inside one shared <Viewpoints> wrapper (buildingSMART/BCF-XML
+  // markup.xsd, release_3_0 Topic.Viewpoints/ViewPoint -- confirmed against
+  // Test Cases/v3.0/Visualization/Perspective camera/unzipped/.../markup.bcf,
+  // which reads `<Viewpoints><ViewPoint Guid="f99eb1ed-...">`).
+  const viewpointEntryTag = version === '3.0' ? 'ViewPoint' : 'Viewpoints';
+  const viewpointXml = (indent: string) =>
+    topic.viewpoints
+      .map((viewpoint, i) => {
+        // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
+        // but the file name component is the sanitized base name (zip-slip
+        // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
+        // so the markup reference and the archive agree. The real GUID is still
+        // written verbatim as the Guid attribute below.
+        const baseName = viewpointBaseNames[i];
+        const filename = `Viewpoint_${baseName}.bcfv`;
+        const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
-    content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
-    content += `\n    <Viewpoint>${filename}</Viewpoint>`;
-    if (viewpoint.snapshot || viewpoint.snapshotData) {
-      content += `\n    <Snapshot>${snapshotName}</Snapshot>`;
-    }
-    content += `\n  </Viewpoints>`;
-  }
+        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
+        v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
+        if (viewpoint.snapshot || viewpoint.snapshotData) {
+          v += `\n${indent}  <Snapshot>${snapshotName}</Snapshot>`;
+        }
+        v += `\n${indent}</${viewpointEntryTag}>`;
+        return v;
+      })
+      .join('');
 
-  // Write comments
-  for (const comment of topic.comments) {
-    content += `\n  <Comment Guid="${escapeXml(comment.guid)}">`;
-    content += `\n    <Date>${escapeXml(comment.date)}</Date>`;
-    content += `\n    <Author>${escapeXml(comment.author)}</Author>`;
-    content += `\n    <Comment>${escapeXml(comment.comment)}</Comment>`;
-    if (comment.viewpointGuid) {
-      content += `\n    <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+  if (version === '3.0') {
+    // BCF 3.0's markup.xsd moves Comments and Viewpoints INSIDE <Topic>
+    // (wrapped in their own plural containers), after RelatedTopics -- unlike
+    // 2.1, where they are top-level <Markup> siblings following </Topic>.
+    // Writing them as 2.1-shaped top-level siblings at version 3.0 produces
+    // markup a strict 3.0 consumer rejects outright (Comments/Viewpoints
+    // would not even be children of Topic, let alone in schema order).
+    if (topic.comments.length > 0) {
+      content += `\n    <Comments>${commentXml('      ')}\n    </Comments>`;
     }
-    if (comment.modifiedDate) {
-      content += `\n    <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
+    if (topic.viewpoints.length > 0) {
+      content += `\n    <Viewpoints>${viewpointXml('      ')}\n    </Viewpoints>`;
     }
-    if (comment.modifiedAuthor) {
-      content += `\n    <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
-    }
-    content += `\n  </Comment>`;
+    content += `\n  </Topic>`;
+  } else {
+    content += `\n  </Topic>`;
+    // 2.1's Markup sequence is Header, Topic, Comment*, Viewpoints*
+    // (buildingSMART/BCF-XML release_2_1 markup.xsd) -- Comment precedes
+    // Viewpoints, the reverse of the order written here previously.
+    content += commentXml('  ');
+    content += viewpointXml('  ');
   }
 
   content += `\n</Markup>`;

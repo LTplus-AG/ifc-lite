@@ -1107,4 +1107,66 @@ describe('BCF Writer', () => {
       url: 'https://example.com/spec.pdf',
     });
   });
+
+  it('nests Comments and Viewpoints INSIDE <Topic> for BCF 3.0, using singular <ViewPoint>', async () => {
+    // BCF 3.0's markup.xsd moves Comments and Viewpoints inside <Topic>
+    // (each wrapped in its own plural container), after RelatedTopics; 2.1
+    // keeps them as top-level <Markup> siblings after </Topic>, using
+    // <Viewpoints Guid="..."> itself as the per-entry element. Confirmed
+    // against buildingSMART/BCF-XML's own release_3_0 conformance fixture
+    // (Test Cases/v3.0/Visualization/Perspective camera/unzipped/.../markup.bcf),
+    // whose markup reads:
+    //   <Topic ...>
+    //     ...
+    //     <Comments> <Comment Guid="...">...</Comment> </Comments>
+    //     <Viewpoints> <ViewPoint Guid="...">...</ViewPoint> </Viewpoints>
+    //   </Topic>
+    // A prior writer emitted the 2.1-shaped flat siblings unconditionally
+    // (Viewpoints then Comment, both after </Topic>) regardless of version --
+    // schema-invalid at 3.0, and undetected because our own reader was
+    // equally unconditional about the flat shape, so a self round-trip
+    // could never see the mismatch against a real 3.0 consumer.
+    const topic = baseTopic({
+      comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
+      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+
+    // Comments/Viewpoints must sit between </RelatedTopics-or-whatever-comes-
+    // last> and </Topic>, not after it.
+    const topicMatch = markup30.match(/<Topic\b[^>]*>([\s\S]*)<\/Topic>/);
+    expect(topicMatch).not.toBeNull();
+    const topicBody = topicMatch![1];
+    expect(topicBody).toContain('<Comments>');
+    expect(topicBody).toContain('Guid="c-1"');
+    expect(topicBody).toContain('<Viewpoints>');
+    expect(topicBody).toContain('<ViewPoint Guid="vp-1">');
+    expect(topicBody).not.toContain('<Viewpoints Guid="vp-1">');
+
+    // Nothing pointing to Comments/Viewpoints should remain outside </Topic>.
+    const afterTopic = markup30.slice(markup30.indexOf('</Topic>'));
+    expect(afterTopic).not.toContain('<Comment ');
+    expect(afterTopic).not.toContain('<Viewpoints');
+
+    // Control: 2.1 keeps the old flat shape, but Comment must now precede
+    // Viewpoints per its own schema sequence (Header, Topic, Comment*,
+    // Viewpoints*) -- the reverse of what a prior writer emitted.
+    const markup21 = await markupFor(topic, '2.1');
+    expect(markup21.indexOf('<Comment Guid="c-1">')).toBeLessThan(
+      markup21.indexOf('<Viewpoints Guid="vp-1">'),
+    );
+    expect(markup21).not.toContain('<ViewPoint ');
+
+    // And it must still round-trip through our own reader for both versions.
+    for (const version of ['2.1', '3.0'] as const) {
+      const project: BCFProject = { version, topics: new Map([[topic.guid, topic]]) };
+      const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+        .topics.get(topic.guid)!;
+      expect(readTopic.comments).toHaveLength(1);
+      expect(readTopic.comments[0].guid).toBe('c-1');
+      expect(readTopic.viewpoints).toHaveLength(1);
+      expect(readTopic.viewpoints[0].guid).toBe('vp-1');
+    }
+  });
 });

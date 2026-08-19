@@ -145,3 +145,62 @@ fn a_long_acyclic_curve_chain_terminates() {
     // well-formed case, which the tests above cover in the other direction.
     assert!(profile_points(&data, 1).is_empty());
 }
+
+/// A ParentCurve legitimately REUSED by two segments must be sampled both
+/// times. A global visited set makes the second occurrence return empty —
+/// which is not "already computed", it is the wrong value, and the caller
+/// accumulates, so the profile silently comes up short. (Codex + CodeRabbit,
+/// #2874 review.)
+#[test]
+fn a_reused_parent_curve_contributes_to_every_segment() {
+    let data = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20);\n\
+#20=IFCCOMPOSITECURVE((#21,#31),.F.);\n\
+#21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#22);\n\
+#31=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#22);\n\
+#22=IFCPOLYLINE((#23,#24,#25));\n\
+#23=IFCCARTESIANPOINT((0.,0.));\n\
+#24=IFCCARTESIANPOINT((1.,0.));\n\
+#25=IFCCARTESIANPOINT((1.,1.));\n";
+    // Both occurrences sample; the seam between them does NOT coincide
+    // ((1,1) then (0,0)), so nothing is dropped: 3 + 3 = 6.
+    assert_eq!(profile_points(data, 10).len(), 6);
+}
+
+/// `SameSense = .F.` means the segment traverses its ParentCurve BACKWARDS.
+/// Nothing applied it before, because no segment ever produced points to
+/// orient — every one came back empty, so a reversed segment and a forward one
+/// were indistinguishable. (Codex, #2874 review.)
+#[test]
+fn same_sense_false_reverses_the_segment() {
+    let data = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20);\n\
+#20=IFCCOMPOSITECURVE((#21),.F.);\n\
+#21=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.F.,#22);\n\
+#22=IFCPOLYLINE((#23,#24,#25));\n\
+#23=IFCCARTESIANPOINT((0.,0.));\n\
+#24=IFCCARTESIANPOINT((1.,0.));\n\
+#25=IFCCARTESIANPOINT((1.,1.));\n";
+    let pts = profile_points(data, 10);
+    assert_eq!(pts.len(), 3);
+    assert_eq!(pts[0], Point2::new(1.0, 1.0), "reversed: last authored point first");
+    assert_eq!(pts[2], Point2::new(0.0, 0.0));
+}
+
+/// The seam point is dropped only when it actually duplicates. Two segments
+/// that do NOT meet — a gap, or a `.DISCONTINUOUS.` transition — must keep
+/// every point; an unconditional skip ate one. (Codex, #2874 review.)
+#[test]
+fn a_discontinuous_joint_keeps_both_endpoints() {
+    let data = "#10=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#20);\n\
+#20=IFCCOMPOSITECURVE((#21,#31),.F.);\n\
+#21=IFCCOMPOSITECURVESEGMENT(.DISCONTINUOUS.,.T.,#22);\n\
+#22=IFCPOLYLINE((#23,#24));\n\
+#23=IFCCARTESIANPOINT((0.,0.));\n\
+#24=IFCCARTESIANPOINT((1.,0.));\n\
+#31=IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#32);\n\
+#32=IFCPOLYLINE((#33,#34));\n\
+#33=IFCCARTESIANPOINT((5.,5.));\n\
+#34=IFCCARTESIANPOINT((6.,5.));\n";
+    let pts = profile_points(data, 10);
+    assert_eq!(pts.len(), 4, "the joint does not coincide, so no point is dropped");
+    assert_eq!(pts[2], Point2::new(5.0, 5.0));
+}

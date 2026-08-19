@@ -15,6 +15,11 @@ use crate::router::GeometryProcessor;
 /// Handles IfcSurfaceOfLinearExtrusion - surface created by sweeping a curve along a direction
 pub struct SurfaceOfLinearExtrusionProcessor;
 
+/// Two consecutive composite-curve segment endpoints closer than this are the
+/// same joint, so the repeat is dropped. Wider than float noise and far below
+/// any real modelling distance in either mm or m.
+const SEAM_EPS: f64 = 1e-9;
+
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
         Self
@@ -195,6 +200,22 @@ impl SurfaceOfLinearExtrusionProcessor {
         if depth >= Self::MAX_CURVE_NESTING_DEPTH || !visited.insert(curve_id) {
             return Ok(Vec::new());
         }
+        let out = Self::curve_points_inner(curve_id, decoder, depth, visited);
+        // PATH-scoped: removed on the way out. A global set would be a memo
+        // that returns the WRONG value -- it hands back an empty vec rather
+        // than the points it computed the first time -- and the caller
+        // ACCUMULATES, so a ParentCurve legitimately reused by two segments
+        // would contribute once and silently shorten the profile.
+        visited.remove(&curve_id);
+        out
+    }
+
+    fn curve_points_inner(
+        curve_id: u32,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+        visited: &mut std::collections::HashSet<u32>,
+    ) -> Result<Vec<Point2<f64>>> {
 
         // Get curve entity to determine type
         let curve = decoder.decode_by_id(curve_id)?;
@@ -253,7 +274,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             .as_list()
             .ok_or_else(|| Error::geometry("Expected segment list".to_string()))?;
 
-        let mut all_points = Vec::new();
+        let mut all_points: Vec<Point2<f64>> = Vec::new();
 
         for seg_ref in segment_refs {
             let seg_id = seg_ref.as_entity_ref().ok_or_else(|| {
@@ -271,15 +292,39 @@ impl SurfaceOfLinearExtrusionProcessor {
                 Error::geometry("Expected entity reference for parent curve".to_string())
             })?;
 
-            // Recursively get points from the parent curve
+            // IfcCompositeCurveSegment.SameSense (attribute 1): when false the
+            // segment traverses its ParentCurve BACKWARDS. Nothing applied it
+            // before because no segment ever produced points to orient -- the
+            // dispatch bug above meant every one came back empty, so a
+            // reversed segment and a forward one were indistinguishable.
+            let same_sense = segment
+                .get(1)
+                .map(|v| match v {
+                    ifc_lite_core::AttributeValue::Enum(e) => e != "F" && e != ".F.",
+                    _ => true,
+                })
+                .unwrap_or(true);
+
             // The ParentCurve is a CURVE, not a profile. Routing it through the
             // profile entry point read its attribute 2 as "the curve" and
             // dropped every segment (#2866).
-            if let Ok(segment_points) =
+            if let Ok(mut segment_points) =
                 Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, visited)
             {
-                // Skip first point if we already have points (to avoid duplicates at joints)
-                let start_idx = if all_points.is_empty() { 0 } else { 1 };
+                if !same_sense {
+                    segment_points.reverse();
+                }
+                // Drop the seam point only when it ACTUALLY duplicates the
+                // previous segment's end. A `.DISCONTINUOUS.` transition, or a
+                // gap from a malformed file, leaves a real point that an
+                // unconditional skip would eat.
+                let drop_seam = match (all_points.last(), segment_points.first()) {
+                    (Some(prev), Some(next)) => {
+                        (prev.x - next.x).abs() < SEAM_EPS && (prev.y - next.y).abs() < SEAM_EPS
+                    }
+                    _ => false,
+                };
+                let start_idx = usize::from(drop_seam);
                 all_points.extend(segment_points.into_iter().skip(start_idx));
             }
         }

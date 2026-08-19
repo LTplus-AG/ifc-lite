@@ -409,6 +409,35 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
     // Clear the federation registry
     federationRegistry.clear();
+    // `federationRegistry.clear()` above resets the offset counter to 0, so
+    // the very next model registered can be handed the exact global ids a
+    // still-registered overlay layer's `hiddenIds`/`colorOverrides` name.
+    // `overlaySlice.overlayLayers` stores each layer's contribution as
+    // already-translated GLOBAL ids — `useConstructionSequence.ts` converts
+    // via `toGlobalIdFromModels` at REGISTRATION time, not at read time
+    // (store/globalId.ts) — so a layer registered before this clear keeps
+    // naming those exact numbers afterward. That hook's registration effect
+    // deps (`[animationEnabled, playbackTime, scheduleData,
+    // activeWorkScheduleId, animationSettings]`) exclude `models`, and
+    // `scheduleData` is untouched by `clearAllModels`, so a PAUSED animation
+    // (no `playbackTime` advance to re-trigger the effect) leaves the
+    // 'animation' layer registered with its pre-clear ids indefinitely.
+    // `useOverlayCompositor.ts` applies `computeCompositeOverlay()`'s output
+    // straight to `hideEntities`/`setPendingColorUpdates` by global id with
+    // no re-resolution, so a recycled offset lands the stale hide/colour on
+    // whatever live entity the reloaded federation assigns that number to —
+    // same offset-reuse-misresolution shape as `compareResult` / the lens
+    // (#2854). Unconditional, like those: with every model gone there is no
+    // federation left for any layer to describe correctly either way.
+    //
+    // `removeModel` deliberately does NOT get the equivalent guarded call:
+    // `unregisterModel` BURNS the freed offset range instead of reclaiming
+    // it (`federation-registry.ts`), so a layer left registered after a
+    // partial removal cannot ever be handed to a new model — it dangles
+    // harmlessly, same as the `compareResult` non-participant case in
+    // `removeModel-compare-stale.test.ts`, and the same reasoning
+    // `clearAllModels-overlay-stale.test.ts`'s negative control proves.
+    (get() as unknown as { clearOverlayLayers?: () => void }).clearOverlayLayers?.();
     return set({
       models: new Map(),
       activeModelId: null,

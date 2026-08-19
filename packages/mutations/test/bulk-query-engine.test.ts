@@ -267,4 +267,41 @@ describe('BulkQueryEngine property filter operators', () => {
       ).toEqual([2]);
     });
   });
+
+  describe('multiple propertyFilters compose as AND', () => {
+    // Two independent properties per entity so a fixture with only one
+    // filter can't observe whether later filters actually narrow the
+    // candidate set or silently replace it (`select()` applies each
+    // filter in `criteria.propertyFilters` in sequence over the same
+    // `candidates` array — a bug that used only the LAST filter would
+    // pass every single-filter test above unnoticed).
+    function makeEngineWithTwoProperties(rows: Array<[string, number]>) {
+      const entities = makeEntities(rows.length);
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor(() => []);
+      rows.forEach(([category, qty], i) => {
+        const entityId = i + 1;
+        view.setProperty(entityId, 'Pset_Test', 'Category', category, PropertyValueType.Label);
+        view.setProperty(entityId, 'Pset_Test', 'Qty', qty, PropertyValueType.Real);
+      });
+      return new BulkQueryEngine(entities, view, null, null, null);
+    }
+
+    it('narrows on both conditions, not just the last one in the array', () => {
+      const engine = makeEngineWithTwoProperties([
+        ['A', 5], // entity 1: matches Category, fails Qty
+        ['A', 15], // entity 2: matches both
+        ['B', 15], // entity 3: fails Category, matches Qty
+      ]);
+
+      const ids = engine.select({
+        propertyFilters: [
+          { psetName: 'Pset_Test', propName: 'Category', operator: '=', value: 'A' },
+          { psetName: 'Pset_Test', propName: 'Qty', operator: '>', value: 10 },
+        ],
+      });
+
+      expect(ids).toEqual([2]);
+    });
+  });
 });

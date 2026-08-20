@@ -10,41 +10,8 @@
 //! spatial unification by name/elevation are the P2 follow-on.
 
 use crate::step_text::{detect_schema, escape};
-use ifc_lite_core::EntityScanner;
+use ifc_lite_core::{EntityScanner, IfcType};
 use std::collections::HashSet;
-
-/// Non-`IfcRoot` entity types whose first attribute is (or can be) a quoted
-/// Name/Identifier string that could coincidentally be 22 charset characters
-/// long. Ported from `NON_ROOTED_STRING_TYPES` in
-/// `packages/export/src/merged-exporter.ts` (kept in sync there) -- without
-/// this denylist, GlobalId reconciliation could mistake a `Name`/`Identifier`
-/// for a GlobalId and corrupt it by "reconciling" a coincidental collision.
-/// A miss in the other direction (treating a real root as non-rooted) only
-/// skips one reconciliation, which is safe.
-const NON_ROOTED_STRING_TYPES: &[&str] = &[
-    // IfcSimpleProperty / IfcComplexProperty (IfcPropertyAbstraction — not rooted)
-    "IFCPROPERTYSINGLEVALUE", "IFCPROPERTYENUMERATEDVALUE", "IFCPROPERTYLISTVALUE",
-    "IFCPROPERTYBOUNDEDVALUE", "IFCPROPERTYTABLEVALUE", "IFCPROPERTYREFERENCEVALUE",
-    "IFCCOMPLEXPROPERTY",
-    // IfcPhysicalQuantity (not rooted)
-    "IFCQUANTITYLENGTH", "IFCQUANTITYAREA", "IFCQUANTITYVOLUME", "IFCQUANTITYCOUNT",
-    "IFCQUANTITYWEIGHT", "IFCQUANTITYTIME", "IFCQUANTITYNUMBER", "IFCPHYSICALCOMPLEXQUANTITY",
-    // Materials & their constituents (IfcMaterialDefinition — not rooted; lead with a Name)
-    "IFCMATERIAL", "IFCMATERIALPROFILE", "IFCMATERIALPROFILESET",
-    "IFCMATERIALCONSTITUENT", "IFCMATERIALCONSTITUENTSET",
-    // Classification, library & document refs (IfcExternalInformation/Reference)
-    "IFCCLASSIFICATION", "IFCCLASSIFICATIONREFERENCE",
-    "IFCLIBRARYINFORMATION", "IFCLIBRARYREFERENCE", "IFCEXTERNALREFERENCE",
-    "IFCDOCUMENTINFORMATION", "IFCDOCUMENTREFERENCE",
-    // Constraints & approvals (lead with a Name/Identifier)
-    "IFCMETRIC", "IFCOBJECTIVE", "IFCAPPROVAL", "IFCTABLE",
-    // Actors (IfcPerson/IfcOrganization lead with an Identification string)
-    "IFCPERSON", "IFCORGANIZATION",
-    // Presentation layers, styles & text literals (lead with a Name/Literal string)
-    "IFCPRESENTATIONLAYERASSIGNMENT", "IFCPRESENTATIONLAYERWITHSTYLE",
-    "IFCSURFACESTYLE", "IFCCURVESTYLE", "IFCTEXTSTYLE", "IFCFILLAREASTYLE",
-    "IFCTEXTLITERAL", "IFCTEXTLITERALWITHEXTENT",
-];
 
 const GLOBAL_ID_CHARS: &[u8; 64] =
     b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -55,22 +22,44 @@ fn is_global_id_shaped(s: &str) -> bool {
     s.len() == 22 && s.bytes().all(|b| GLOBAL_ID_CHARS.contains(&b))
 }
 
-/// Read the first quoted attribute of a STEP entity line (the GlobalId
-/// position for an `IfcRoot` subtype), if it is 22-char GlobalId-shaped and
-/// the entity's type is not in the non-rooted denylist above. Mirrors
-/// `extractGlobalIdFast`/`readLeadingGuid` in `merged-exporter.ts`, working
-/// off raw bytes the same way `rewrite_refs` does (a GlobalId's charset
-/// excludes `'`, so a naive first-quote-pair scan is safe -- it never needs
-/// the doubled-apostrophe in/out-of-string toggle `rewrite_refs` uses for
-/// arbitrary string content).
+/// Read the entity's **first attribute** (the GlobalId position for an
+/// `IfcRoot` subtype), if it is 22-char GlobalId-shaped and the entity's
+/// type actually derives from `IfcRoot`.
+///
+/// Two things distinguish this from a plain "first quoted string on the
+/// line" scan, and both matter: (1) the quote must be the FIRST thing after
+/// `(` (only whitespace allowed in between) -- a non-rooted entity whose
+/// first attribute is a number/enum/reference and whose Name/Identifier
+/// happens to be a 22-char quoted string LATER on the line must not be
+/// mistaken for a rooted entity's GlobalId; (2) `type_name` is checked
+/// against the generated schema's `IfcRoot` subtype table via
+/// [`IfcType::is_subtype_of`] rather than an entity-type denylist -- a
+/// denylist can only ever be as complete as whoever last audited the
+/// schema for non-rooted resource types that lead with a string, while this
+/// positive allowlist is derived from the schema itself and can't drift out
+/// of sync with it. Mirrors `extractGlobalIdFast` in
+/// `packages/export/src/merged-exporter.ts`, which is likewise positional
+/// (skips only whitespace after `(`) though it still uses the denylist —
+/// `rust-core`'s generated schema has no JS-side equivalent to allowlist
+/// from.
+///
+/// Works off raw bytes the same way `rewrite_refs` does (a GlobalId's
+/// charset excludes `'`, so a naive first-quote-pair scan of the attribute
+/// content is safe -- it never needs the doubled-apostrophe in/out-of-string
+/// toggle `rewrite_refs` uses for arbitrary string content).
 fn leading_guid(line: &[u8], type_name: &str) -> Option<String> {
-    if NON_ROOTED_STRING_TYPES.contains(&type_name) {
+    if !IfcType::from_str(type_name).is_subtype_of(IfcType::IfcRoot) {
         return None;
     }
     let open = line.iter().position(|&b| b == b'(')?;
-    let rest = &line[open + 1..];
-    let q1 = rest.iter().position(|&b| b == b'\'')?;
-    let after_q1 = &rest[q1 + 1..];
+    let mut i = open + 1;
+    while i < line.len() && line[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if line.get(i) != Some(&b'\'') {
+        return None;
+    }
+    let after_q1 = &line[i + 1..];
     let q2 = after_q1.iter().position(|&b| b == b'\'')?;
     let raw = &after_q1[..q2];
     let s = std::str::from_utf8(raw).ok()?;

@@ -25,10 +25,9 @@ import {
   collectReferencedEntityIds,
   getVisibleEntityIds,
   collectStyleEntities,
-  filterHiddenRefsFromRelationshipLine,
 } from './reference-collector.js';
-import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
-import { retypeStepLine, retypeArgTokens } from './retype.js';
+import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
+import { retypeStepLine } from './retype.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   createModificationLedger,
@@ -41,6 +40,10 @@ import {
   type SourceIterationContext,
 } from './step-source-iteration.js';
 import {
+  writeOverlayCreatedEntities,
+  type OverlayEntitiesContext,
+} from './step-overlay-entities.js';
+import {
   buildRelDefinesByPropertiesIndex,
   collectPropertyAndQuantitySetMutations,
   generatePropertyAndQuantitySetEntities,
@@ -49,7 +52,6 @@ import {
 } from './step-property-sets.js';
 import { applyGeoreferencingMutations, type GeorefContext } from './step-georeferencing.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
 import {
   toStepReal,
   serializeAttributeValue,
@@ -58,7 +60,7 @@ import {
 } from './step-serialization.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
 import { assembleStepBytes } from './step-file-assembly.js';
-import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
+import { getRealTypedSlots, isTypedMarker } from './attribute-real-slots.js';
 import {
   getEnumTypedSlots,
   getStringTypedSlots,
@@ -1109,133 +1111,17 @@ export class StepExporter {
       pass.entities.push(line);
     }
 
-    // Add overlay-created entities (store.addEntity / mutationView.createEntity).
-    // Apply the same filters as the source-iteration pass so newly-created
-    // beams/slabs don't smuggle their geometry helpers (IfcCartesianPoint,
-    // IfcExtrudedAreaSolid, etc.) past `includeGeometry:false` /
-    // `exportPropertiesOnly()` modes.
-    if (
-      this.mutationView
-      && applyMutations
-      && typeof this.mutationView.getNewEntities === 'function'
-    ) {
-      const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
-        ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
-        : null;
-      for (const entity of this.mutationView.getNewEntities()) {
-        // A retyped overlay entity keeps its AUTHORED type on `entity.type`
-        // (the overlay typeMutation is the source of truth for the effective
-        // class). Resolve the effective class, then re-lay-out the authored
-        // attributes from the authored layout up to it.
-        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
-        const effectiveType = typeMut?.newType ?? entity.type;
-        // STEP requires UPPERCASE entity type tokens; the upper-case happens
-        // here at the file-format boundary.
-        const upperType = effectiveType.toUpperCase();
-        if (excludeGeometry && this.isGeometryEntity(upperType)) {
-          continue;
-        }
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(entity.expressId)) {
-          continue;
-        }
-        // Re-lay-out by name against the effective class (identity for
-        // compatible layouts). Runs whenever a retype intent exists — even a
-        // same-class retype, which carries a PredefinedType override
-        // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
-        let argsText: string;
-        if (typeMut) {
-          // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
-          // then re-lays the tokens out by name up to the effective class.
-          const srcTokens = entity.attributes.map(
-            (value, i) => serializeAttributeSlot(entity.type, i, value, pass.sourceSchema),
-          );
-          const { tokens } = retypeArgTokens(
-            srcTokens,
-            entity.type,
-            effectiveType,
-            typeMut.predefinedType ?? null,
-            pass.sourceSchema,
-          );
-          argsText = tokens.join(',');
-        } else {
-          argsText = serializeEntityArgs(entity.type, entity.attributes, pass.sourceSchema);
-        }
-        // Edits made AFTER the create live in the overlay, never in the
-        // authored payload (#2006). The source-iteration pass applies them to
-        // source records via applyAttributeMutations / applyPositionalMutations;
-        // an overlay-created entity has no source record, so without this it was
-        // written from its creation payload alone and every later
-        // `setAttribute` / `setPositionalAttribute` was silently dropped on
-        // save — data loss with no error and no warning.
-        //
-        // Order mirrors the source pass: retype (above) -> named attributes ->
-        // positional overrides, all resolved against the EFFECTIVE class.
-        const attributeOverrides = pass.modifiedAttributes.get(entity.expressId) ?? null;
-        const queuedPositional = typeof this.mutationView.getPositionalMutationsForEntity === 'function'
-          ? this.mutationView.getPositionalMutationsForEntity(entity.expressId)
-          : null;
-        // A created TYPE object owns its psets through HasPropertySets, and the
-        // ids of the psets this export generated are only known now — so they
-        // arrive as one more slot override rather than through the overlay.
-        // `has`, not `??`, for the same reason `overlaySlotValue` gives: the
-        // stored value is deliberately null when the resolved list is empty.
-        const positionalOverrides = pass.overlayTypeOwnedPsets.has(entity.expressId)
-          ? new Map(queuedPositional).set(
-              HAS_PROPERTY_SETS_SLOT,
-              pass.overlayTypeOwnedPsets.get(entity.expressId) ?? null,
-            )
-          : queuedPositional;
-        if (
-          (attributeOverrides && attributeOverrides.size > 0)
-          || (positionalOverrides && positionalOverrides.size > 0)
-        ) {
-          argsText = this.applyOverlayEntityOverrides(
-            argsText,
-            upperType,
-            attributeOverrides,
-            positionalOverrides,
-            pass.sourceSchema,
-            // Overlay-created entities report a rejected REAL edit exactly as
-            // source-backed ones do. Without this the slot was kept and NOTHING
-            // was said - the silent discard this whole change exists to
-            // prevent, surviving in the one path that had no test.
-            (attr, value) =>
-              pass.warnings.push(
-                `entity #${entity.expressId}: attribute ${attr} not written - ` +
-                  `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
-              ),
-          );
-        }
-        let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
-        // Same gap as the source-iteration pass, for an overlay-authored
-        // relationship instead of a parsed one (#2398).
-        //
-        // `mayNameOmittedRefs` is provably TRUE wherever this line executes:
-        // the block enclosing this pass requires `this.mutationView` and
-        // `applyMutations`, which is `pass.overlayActive`, which is one of the
-        // gate's own disjuncts. Spelled out anyway so both filter sites read the
-        // same — the previous gate's failure was one site's condition drifting
-        // from what the filter needed, and a pass reachable without an overlay
-        // would otherwise silently need the gate re-derived here.
-        if (mayNameOmittedRefs && upperType.startsWith('IFCREL')) {
-          line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
-          if (line === null) {
-            pass.warnings.push(relationshipWithheldWarning(entity.expressId, upperType));
-            continue;
-          }
-        }
-        if (pass.converting) {
-          const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom);
-          if (converted !== null) {
-            pass.entities.push(converted);
-            pass.newEntityCount++;
-          }
-        } else {
-          pass.entities.push(line);
-          pass.newEntityCount++;
-        }
-      }
-    }
+    // Add overlay-created entities (store.addEntity / mutationView.createEntity),
+    // applying the same filters as the source-iteration pass (#2475 step 2e).
+    writeOverlayCreatedEntities(
+      pass,
+      options,
+      excludeGeometry,
+      applyMutations,
+      mayNameOmittedRefs,
+      isOmittedFromOutput,
+      this.overlayEntitiesContext(),
+    );
 
     // Settle the count against what the passes above actually wrote, and say
     // out loud every KIND of edit a delta could not carry, per host. Silence
@@ -1742,6 +1628,25 @@ export class StepExporter {
         this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
       isGeometryEntity: (type) => this.isGeometryEntity(type),
       propertySetContext: () => this.propertySetContext(),
+      relationshipWithheldWarning,
+    };
+  }
+
+  /**
+   * The state `step-overlay-entities.ts` cannot read off the pass (#2475
+   * step 2e). `applyOverlayEntityOverrides` stays a bound callback rather
+   * than moving, since it calls the private `serializeNamedAttribute` /
+   * `serializePositionalOverride` helpers; `isGeometryEntity` and
+   * `relationshipWithheldWarning` are the same shared readers
+   * {@link sourceIterationContext} already injects into the other output
+   * pass.
+   */
+  private overlayEntitiesContext(): OverlayEntitiesContext {
+    return {
+      mutationView: this.mutationView,
+      applyOverlayEntityOverrides: (argsText, entityType, attributeOverrides, positionalOverrides, schemaVersion, onRejected) =>
+        this.applyOverlayEntityOverrides(argsText, entityType, attributeOverrides, positionalOverrides, schemaVersion, onRejected),
+      isGeometryEntity: (type) => this.isGeometryEntity(type),
       relationshipWithheldWarning,
     };
   }

@@ -859,12 +859,37 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       if (!settingsResult.ok) {
         // Put the previous rule set back so storage matches the store we are
         // about to leave untouched. This rewrites a payload that fit a moment
-        // ago, in place of the one that just replaced it, so it should land; if
-        // it does not there is no further recovery, and the caller still reports
-        // the original failure.
+        // ago, in place of the one that just replaced it, so it should land.
         const undo = savePresets(previousPresets);
         if (!undo.ok) {
-          console.warn('[clash] flavor apply: could not restore the previous rule set:', undo.message);
+          // The rollback failed too — realistic, since genuine quota exhaustion
+          // (as opposed to one blocked key) leaves the disk full for the next
+          // write as well. The store is still correct: nothing below this
+          // branch runs, so the in-memory flavor never moved. But storage now
+          // holds the NEW presets next to the OLD settings, a hybrid the user
+          // never chose, and that pair rehydrates as-is on the next reload.
+          //
+          // There is no third write to retry and no snapshot beyond the one
+          // that just failed to fall back to, so a bigger recovery mechanism
+          // (re-reading storage back into the store, or a latch that refuses
+          // further applies) would be reacting to a failure mode this rare —
+          // a full quota surviving two consecutive writes — with a permanent
+          // behavior change. What the caller (`ExtensionHostService`, see
+          // `host.ts`) already does with a failed `SaveResult` is console.warn
+          // it, matching every other refused write in this slice; enrich the
+          // message so that warning names the real severity instead of
+          // reading like an ordinary "settings not saved" refusal.
+          console.warn(
+            '[clash] flavor apply: could not restore the previous rule set after a refused settings write — storage now holds the new rule set with the previous settings:',
+            undo.message,
+          );
+          return {
+            ok: false,
+            reason: settingsResult.reason,
+            message:
+              `${settingsResult.message} The previous rule set could also not be restored ` +
+              `(${undo.message}), so saved data may no longer match what is shown.`,
+          };
         }
         return settingsResult;
       }

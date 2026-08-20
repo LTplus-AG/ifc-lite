@@ -35,6 +35,14 @@ class MemoryStorage {
   private store = new Map<string, string>();
   /** Key whose `setItem` throws, mimicking a quota / blocked-storage refusal. */
   failKey: string | null = null;
+  /**
+   * Once this many writes have landed, EVERY subsequent `setItem` throws,
+   * regardless of key — genuine quota exhaustion (the disk is full), as
+   * opposed to `failKey`'s "this one key is blocked". A rollback write is a
+   * write like any other, so this is what makes a failed rollback reachable:
+   * `failKey` alone can never fail a write to a *different* key.
+   */
+  failAfterWrites: number | null = null;
   /** Every successful write, in order (lets a test prove nothing was persisted). */
   writes: string[] = [];
   getItem(key: string): string | null {
@@ -42,6 +50,9 @@ class MemoryStorage {
   }
   setItem(key: string, value: string): void {
     if (key === this.failKey) throw new DOMException('quota', 'QuotaExceededError');
+    if (this.failAfterWrites !== null && this.writes.length >= this.failAfterWrites) {
+      throw new DOMException('quota', 'QuotaExceededError');
+    }
     this.store.set(key, value);
     this.writes.push(key);
   }
@@ -180,6 +191,57 @@ describe('applyClashFlavorConfig - only commit a config that actually persisted'
       storage.writes,
       [PRESETS_KEY, PRESETS_KEY],
       'the presets write and its rollback, and no settings write',
+    );
+  });
+
+  // ── genuine quota exhaustion: the rollback itself also fails ───────────────
+
+  it('reports the mismatch when the rollback also fails, and never claims the flavor applied', () => {
+    // The presets write is the very first write attempted here (the seed above
+    // resets `writes` to empty), so allowing exactly one write lets it land and
+    // then fails everything after — the settings write AND the rollback's
+    // presets write. A single blocked key (`failKey`) cannot reach this: the
+    // rollback writes to the SAME key that just succeeded, so a per-key stub
+    // would let it through and hide this exact defect.
+    storage.failAfterWrites = 1;
+
+    const result = state.applyClashFlavorConfig({
+      presets: FLAVOR_PRESETS,
+      settings: FLAVOR_SETTINGS,
+    });
+
+    assert.strictEqual(result.ok, false, 'a refused settings write must be reported');
+    assert.ok(
+      !result.ok && /previous rule set could also not be restored/.test(result.message),
+      'the message must name the rollback failure, not read like an ordinary settings refusal',
+    );
+
+    // What the user sees: the store never moved off the previous flavor.
+    assert.ok(
+      state.clashPresets.some((p) => p.id === OLD_CUSTOM_ID),
+      'the previous flavor rule set must still be listed',
+    );
+    assert.ok(!state.clashPresets.some((p) => p.id === FLAVOR_CUSTOM_ID));
+    assert.strictEqual(state.clashTolerance, OLD_SETTINGS.tolerance);
+
+    // What is actually on disk: the hybrid the user never chose. This is the
+    // residual defect — the store is correct, but storage now holds the NEW
+    // presets next to the OLD settings, and that mismatched pair is exactly
+    // what a reload would rehydrate.
+    assert.deepStrictEqual(
+      storedCustomIds(storage),
+      [FLAVOR_CUSTOM_ID],
+      'the presets write landed and the rollback could not undo it',
+    );
+    assert.strictEqual(
+      storedTolerance(storage),
+      OLD_SETTINGS.tolerance,
+      'the settings write never landed at all',
+    );
+    assert.deepStrictEqual(
+      storage.writes,
+      [PRESETS_KEY],
+      'only the original presets write landed; the settings write and the rollback both threw',
     );
   });
 

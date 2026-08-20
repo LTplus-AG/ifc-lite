@@ -1118,27 +1118,67 @@ describe('BCF Writer', () => {
     // then Description then DocumentReferences. A prior writer emitted
     // Description right after Title (long before Priority/Index/Labels/
     // Creation*/Modified*/Stage) and Labels after Stage (long after
-    // Priority/Index) -- both schema-invalid regardless of content, since
-    // xs:sequence enforces element order.
+    // Priority/Index) -- both schema-invalid whenever those elements were
+    // actually present, since xs:sequence enforces element order.
     const topic = baseTopic({
       description: 'desc',
       priority: 'High',
       index: 3,
       labels: ['l1', 'l2'],
       stage: 'Design',
+      // A valid BimSnippet (ReferenceSchema present -- see the "omits an
+      // incomplete BimSnippet" test above) so the sequence's LAST affected
+      // element, Description-right-before-BimSnippet, is exercised too. A
+      // fixture without one would let this test pass even if BimSnippet
+      // moved ahead of Description, since there would be nothing to compare.
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'https://example.com/snippet.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
     });
 
     for (const version of ['2.1', '3.0'] as const) {
       const markup = await markupFor(topic, version);
-      const positions = ['Priority', 'Index', 'Labels', 'CreationDate', 'Stage', 'Description'].map(
-        (tag) => markup.indexOf(`<${tag}>`),
-      );
-      for (const p of positions) expect(p).toBeGreaterThan(-1);
-      const [priority, index, labels, creationDate, stage, description] = positions;
+
+      // `topic.labels` has TWO entries, so `<Labels>` appears twice. Checking
+      // only the first occurrence's position (`indexOf`) would miss a second
+      // label written in the wrong place -- e.g. after CreationDate -- since
+      // the first one alone can still land correctly. Collect every
+      // occurrence and require ALL of them to sit before CreationDate.
+      const allIndicesOf = (tag: string): number[] => {
+        const indices: number[] = [];
+        let from = 0;
+        for (;;) {
+          const i = markup.indexOf(`<${tag}>`, from);
+          if (i === -1) break;
+          indices.push(i);
+          from = i + 1;
+        }
+        return indices;
+      };
+
+      const priority = markup.indexOf('<Priority>');
+      const index = markup.indexOf('<Index>');
+      const labelPositions = allIndicesOf('Labels');
+      const creationDate = markup.indexOf('<CreationDate>');
+      const stage = markup.indexOf('<Stage>');
+      const description = markup.indexOf('<Description>');
+      const bimSnippet = markup.indexOf('<BimSnippet');
+
+      for (const p of [priority, index, creationDate, stage, description, bimSnippet]) {
+        expect(p).toBeGreaterThan(-1);
+      }
+      expect(labelPositions).toHaveLength(2);
+
       expect(priority).toBeLessThan(index);
-      expect(index).toBeLessThan(labels);
-      expect(labels).toBeLessThan(creationDate);
+      expect(index).toBeLessThan(Math.min(...labelPositions));
+      for (const labelPos of labelPositions) {
+        expect(labelPos).toBeLessThan(creationDate);
+      }
       expect(stage).toBeLessThan(description);
+      expect(description).toBeLessThan(bimSnippet);
     }
   });
 });

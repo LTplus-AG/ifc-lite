@@ -19,14 +19,20 @@
  *
  * `calculateDrawingTransform` itself always derives `translateY` assuming
  * the caller flips Y (see its "Flip Y" comment) — it is only correct as-is
- * for axes that actually do. `calculateDrawingTransformForAxis` wraps it
- * with the correction for axes that don't (plan/'down' sections). Both
+ * for axes that actually do. It also always derives `translateX` assuming
+ * the caller does NOT flip X — the opposite default from Y — so it is only
+ * correct as-is for axes that don't. `calculateDrawingTransformForAxis`
+ * wraps it with the correction for whichever axis the caller's `flipY` /
+ * `flipX` say is wrong (Y: plan/'down' sections; X: 'side' sections). Both
  * `Drawing2DCanvas.tsx` (preview) and `useDrawingExport.ts`'s
  * `generateSheetSVG` (print/export) now call `calculateDrawingTransformForAxis`
- * with the SAME `flipY` so they can never again disagree on where the
- * drawing lands on the sheet — see the second `describe` block below, and
- * issue #2940 (print showed different, wrongly-centered extents than the
- * preview for a plan section whose bounds were not symmetric about Y=0).
+ * with the SAME `flipY`/`flipX` so they can never again disagree on where
+ * the drawing lands on the sheet — see the second `describe` block below,
+ * and issue #2940 (print showed different, wrongly-centered extents than
+ * the preview: first for a plan section whose bounds were not symmetric
+ * about Y=0, and — the X-axis half of the same defect class, fixed
+ * separately — for a 'side' section whose bounds were not symmetric about
+ * X=0).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -155,6 +161,70 @@ describe('calculateDrawingTransformForAxis', () => {
     // viewport's bottom edge on the printed sheet.
     expect(Math.abs(rawCentroidY - viewportCenterY)).toBeCloseTo(120, 6);
     expect(Math.abs(rawCentroidY - viewportCenterY)).toBeGreaterThan(viewport.height * 0.4);
+  });
+
+  // X-axis half of the same defect class, for 'side' sections (flipX).
+  // Reuses the same X-asymmetric bounds (minX=2, maxX=12 — NOT symmetric
+  // about X=0, so a mirror bug cannot hide behind a zero correction term),
+  // a non-square viewport (190mm wide x 277mm tall, so an X/Y mix-up in the
+  // fix would show up), and a non-1:1 scale (1:100).
+  it("flipX=false (default/'down'/'front' axes): translateX matches calculateDrawingTransform exactly (no X correction applied)", () => {
+    const base = calculateDrawingTransform(bounds, viewport, scale100);
+    const forAxisNoFlipXArg = calculateDrawingTransformForAxis(bounds, viewport, scale100, true);
+    const forAxisExplicitFalse = calculateDrawingTransformForAxis(bounds, viewport, scale100, true, false);
+    expect(forAxisNoFlipXArg.translateX).toBeCloseTo(base.translateX, 6);
+    expect(forAxisExplicitFalse.translateX).toBeCloseTo(base.translateX, 6);
+  });
+
+  it("flipX=true ('side' axis): centers the drawing's X-centroid in the viewport, not the raw unflipped translateX", () => {
+    const forAxis = calculateDrawingTransformForAxis(bounds, viewport, scale100, true, true);
+    const centroidX = (bounds.minX + bounds.maxX) / 2; // 7
+    // Flipped mapping is `-x * scaleFactor + translateX` — the drawing's
+    // X-centroid must land on the viewport's horizontal center.
+    const paperCentroidX = -centroidX * forAxis.scaleFactor + forAxis.translateX;
+    const viewportCenterX = viewport.x + viewport.width / 2;
+    expect(paperCentroidX).toBeCloseTo(viewportCenterX, 6);
+    // Distinct expected numeric centroid, non-round: scaleFactor is 10
+    // (10m drawing width fits the 190mm viewport with room to spare, so
+    // fitScale clamps to 1 and scaleFactor stays at the nominal 1000/100).
+    expect(forAxis.translateX).toBeCloseTo(175, 6); // 35 + (2 + 12) * 10
+  });
+
+  it("REGRESSION (X-axis half of #2940): reusing the unflipped translateX for a flipX='side' axis puts the drawing off-center by (minX + maxX) * scaleFactor", () => {
+    // This is what the print/export and preview paths did before this fix:
+    // pass the base (always-no-X-flip-assuming) translateX straight through
+    // for a 'side' section that flips X. Pin the divergence itself, not
+    // just the corrected value, so a regression that drops the flipX
+    // correction is caught even if `calculateDrawingTransformForAxis`
+    // otherwise still "looks" fixed for Y.
+    const base = calculateDrawingTransform(bounds, viewport, scale100);
+    const forAxis = calculateDrawingTransformForAxis(bounds, viewport, scale100, true, true);
+    const centroidX = (bounds.minX + bounds.maxX) / 2;
+    const viewportCenterX = viewport.x + viewport.width / 2;
+
+    const rawCentroidX = -centroidX * base.scaleFactor + base.translateX;
+    const correctedCentroidX = -centroidX * forAxis.scaleFactor + forAxis.translateX;
+
+    expect(correctedCentroidX).toBeCloseTo(viewportCenterX, 6);
+    // The raw (uncorrected) value is off by exactly (minX + maxX) *
+    // scaleFactor = (2 + 12) * 10 = 140mm — on a 190mm-wide viewport that
+    // shifts the drawing's centroid by roughly 74% of the viewport width,
+    // moving a 'side' section that the preview should show centered well
+    // past the viewport's left edge.
+    expect(Math.abs(rawCentroidX - viewportCenterX)).toBeCloseTo(140, 6);
+    expect(Math.abs(rawCentroidX - viewportCenterX)).toBeGreaterThan(viewport.width * 0.7);
+  });
+
+  it('flipY and flipX are independent: a flipY=true, flipX=true axis (front-and-side-like) corrects only X, matching the flipY=true/flipX=false case on translateY', () => {
+    const flipYOnly = calculateDrawingTransformForAxis(bounds, viewport, scale100, true, false);
+    const flipBoth = calculateDrawingTransformForAxis(bounds, viewport, scale100, true, true);
+    // translateY is identical (flipY handling does not depend on flipX)...
+    expect(flipBoth.translateY).toBeCloseTo(flipYOnly.translateY, 6);
+    // ...but translateX differs by exactly the X correction term.
+    expect(flipBoth.translateX - flipYOnly.translateX).toBeCloseTo(
+      (bounds.minX + bounds.maxX) * flipBoth.scaleFactor,
+      6
+    );
   });
 });
 

@@ -641,7 +641,8 @@ function useDrawingExport({
       { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
       viewport,
       activeSheet.scale,
-      flipY
+      flipY,
+      flipX
     );
 
     const { translateX, translateY, scaleFactor } = drawingTransform;

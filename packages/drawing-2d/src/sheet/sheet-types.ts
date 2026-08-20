@@ -193,21 +193,39 @@ export function calculateDrawingTransform(
  * axis's flip behavior is known, so every sheet consumer (screen preview,
  * print, SVG/PDF export) computes the identical, correctly-centered
  * transform from one place.
+ *
+ * `translateX` needs the mirror-image correction, but gated the OPPOSITE
+ * way from `translateY`: `calculateDrawingTransform`'s `translateX` bakes
+ * in the assumption that the caller maps model X to paper X with NO sign
+ * flip (`adjustedX = x`) — unlike `translateY`, which bakes in a flip. So
+ * `translateX` is only wrong when `flipX` is actually true (`adjustedX =
+ * -x`, used for 'side' sections to view from the conventional direction,
+ * see `Drawing2DCanvas.tsx` / `useDrawingExport.ts`'s `flipX = sectionAxis
+ * === 'side'`): flipping negates and reverses the drawing's X extent to
+ * `[-maxX, -minX]`, so the base translate (keyed off `-minX`) shifts the
+ * centered box by `(minX + maxX) * scaleFactor` — the drawing lands off
+ * the left/right edge of the sheet, worse the further the section's bounds
+ * sit from being symmetric about X=0. Confirmed unfixed prior to this
+ * change (issue #2940's X-axis half): a 'side' section with bounds minX=2,
+ * maxX=12 on a 190mm-wide viewport landed 140mm off-center.
  */
 export function calculateDrawingTransformForAxis(
   drawingBounds: { minX: number; minY: number; maxX: number; maxY: number },
   viewportBounds: ViewportBounds,
   scale: DrawingScale,
-  flipY: boolean
+  flipY: boolean,
+  flipX = false
 ): {
   translateX: number;
   translateY: number;
   scaleFactor: number;
 } {
   const base = calculateDrawingTransform(drawingBounds, viewportBounds, scale);
-  if (flipY) return base;
-  return {
-    ...base,
-    translateY: base.translateY - (drawingBounds.maxY + drawingBounds.minY) * base.scaleFactor,
-  };
+  const translateY = flipY
+    ? base.translateY
+    : base.translateY - (drawingBounds.maxY + drawingBounds.minY) * base.scaleFactor;
+  const translateX = flipX
+    ? base.translateX + (drawingBounds.minX + drawingBounds.maxX) * base.scaleFactor
+    : base.translateX;
+  return { ...base, translateX, translateY };
 }

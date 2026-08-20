@@ -757,7 +757,7 @@ export function Drawing2DCanvas({
         // Calculate new transform, corrected for this axis's flip behavior
         // (shared with the print/export path via `generateSheetSVG` — see
         // `calculateDrawingTransformForAxis`'s doc comment, issue #2940).
-        drawingTransform = calculateDrawingTransformForAxis(drawingBounds, viewport, activeSheet.scale, flipY);
+        drawingTransform = calculateDrawingTransformForAxis(drawingBounds, viewport, activeSheet.scale, flipY, flipX);
 
         // Cache the transform for pinned mode, tagged with the geometry it
         // was computed for (see the validation above).

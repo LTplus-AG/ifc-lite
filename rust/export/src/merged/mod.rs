@@ -160,5 +160,4 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
 }
 
 #[cfg(test)]
-#[path = "merged_tests.rs"]
 mod tests;

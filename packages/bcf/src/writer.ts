@@ -249,16 +249,33 @@ function writeMarkupFile(
   <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
-  if (topic.description) {
-    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
-  }
-
+  // Order below (Title, Priority, Index, Labels, CreationDate,
+  // CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate, AssignedTo,
+  // Stage, Description, BimSnippet, ...) follows the Topic xs:sequence in
+  // BOTH buildingSMART/BCF-XML markup.xsd release_2_1 and release_3_0 --
+  // confirmed identical there and against release_3_0's own conformance
+  // fixture (Test Cases/v3.0/Visualization/Perspective camera/markup.bcf,
+  // which reads ModifiedAuthor then Description then DocumentReferences).
+  // Description and Labels were previously written out of this order
+  // (Description right after Title; Labels after Stage). Both Priority,
+  // Index, Labels, and Stage are optional and can be omitted, but
+  // CreationDate/CreationAuthor below are always emitted, so xs:sequence
+  // made the output schema-invalid whenever topic.description was set or
+  // topic.labels was non-empty -- not "regardless of content": an absent
+  // Description or empty Labels never appeared at all, so there was nothing
+  // to be out of order.
   if (topic.priority) {
     content += `\n    <Priority>${escapeXml(topic.priority)}</Priority>`;
   }
 
   if (topic.index !== undefined) {
     content += `\n    <Index>${topic.index}</Index>`;
+  }
+
+  if (topic.labels && topic.labels.length > 0) {
+    for (const label of topic.labels) {
+      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+    }
   }
 
   content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
@@ -283,10 +300,8 @@ function writeMarkupFile(
     content += `\n    <Stage>${escapeXml(topic.stage)}</Stage>`;
   }
 
-  if (topic.labels && topic.labels.length > 0) {
-    for (const label of topic.labels) {
-      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
-    }
+  if (topic.description) {
+    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
   }
 
   // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the

@@ -98,9 +98,38 @@
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
     1529 rust/geometry/src/mesh.rs
-     919 rust/geometry/src/processors/boolean/mod.rs
+# +86: #2866 — Boolean and CSG are mutually recursive over file references
+# (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
+# IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
+# resetting depth and the cycle guard, so three entities aborted the process.
+# The guard must sit INSIDE the recursion, so this is a visited set threaded
+# through the five functions on the operand path plus a path-scoped
+# insert/remove around process_with_depth. Path-scoped, not global: a boolean
+# tree is a DAG and geometry ACCUMULATES, so an operand referenced down two
+# branches must be processed twice. A lower depth cap was rejected -- #960 made
+# the FirstOperand spine iterative precisely so Revit's 42-node DIFFERENCE
+# chains clear MAX_BOOLEAN_DEPTH=10, and a cap tight enough to stop this cycle
+# would drop those elements' geometry. A SECOND bound, MAX_OPERAND_PATH_NODES,
+# caps the path length: the CSG hop passes `depth` unchanged, so a long ACYCLIC
+# Boolean -> Csg -> Boolean chain never advances MAX_BOOLEAN_DEPTH and every
+# visited.insert succeeds -- 4,000 links aborted the process. The set is
+# path-scoped, so its LENGTH is the current depth and the bound costs no extra
+# parameter. BOTH boolean and CSG ids go in, so len() is an honest frame count
+# (see the +2 note below).
+# +9: #2866 review — the CSG id now goes into the path set too, so
+# MAX_OPERAND_PATH_NODES counts every frame instead of half of them and no
+# longer leans on a rejection in another file. Seven of the nine are the note
+# at the CSG hop recording why `depth` RESTARTS there: carrying it across
+# silently tightened MAX_BOOLEAN_DEPTH, which #960 calibrated against a
+# per-processor reset, and a valid 8-CsgSolid-8 chain that resolves on main
+# would have been dropped with "depth 11 exceeds limit 10". Caught in review,
+# so the note is the record of a regression avoided rather than commentary.
+    1005 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
-     402 rust/geometry/src/processors/csg_primitive.rs
+# +20: #2866 — the Boolean<->CSG cycle guard, with the module's tests moved to a
+# sibling csg_primitive_tests.rs (402 -> 422). The guard costs more than the
+# test split paid back, so this is a LOOSENING and is recorded as one.
+     422 rust/geometry/src/processors/csg_primitive.rs
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
@@ -131,7 +160,19 @@
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
      586 rust/geometry/src/router/diagnostics.rs
-     659 rust/geometry/src/router/layers.rs
+# +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
+# a file-supplied reference, so one self-referential entity aborted the process
+# (stack overflow = abort in Rust, not a catchable panic). The walk is now
+# ITERATIVE with a visited-id set, matching collect_polygonal_chain in
+# processors/boolean/mod.rs. Iterating is what makes the set sufficient on its
+# own: it breaks on the first repeat, and with no stack to consume there is
+# nothing left for a length cap to protect. A cap would be actively wrong here
+# — #960 records Revit chains 42 DIFFERENCE nodes deep, and bailing on one
+# returns false, silently dropping layer slicing on a file that renders today.
+# A repeat returns false, which is this function's existing "anything exotic
+# bails safely" contract rather than a new special case. Tests are in a sibling
+# layers_cycle_tests.rs.
+     685 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.

@@ -120,13 +120,15 @@ fn raw_ifc_with_near_origin_site_translation_is_left_untouched() {
     assert_eq!(result.meshes[1].positions, original_positions_b);
 }
 
-/// Pin the boundary's sharpness on the x-axis, *relative to whatever
-/// `LARGE_COORD_THRESHOLD` currently is*: tx just above the constant must
-/// shift, tx just below must not (ty and tz are held at 0.0 and are not
-/// independently exercised here). The other two fixtures straddle it by
-/// roughly five orders of magnitude (1.0 vs 123456.0), so any threshold
-/// anywhere in between would satisfy them both — this fixture closes that
-/// gap for the *boundary behavior*.
+/// Pin the boundary's sharpness on EACH axis independently, *relative to
+/// whatever `LARGE_COORD_THRESHOLD` currently is*: a translation just above
+/// the constant on any one axis must shift, just below must not. The guard is
+/// a three-way conjunction, so one axis proves nothing about the other two.
+/// With only the x cases present, the `ty` and `tz` conjuncts could each be
+/// deleted outright and all 11 tests still passed (#2936). The other two
+/// fixtures straddle it by roughly five orders of magnitude (1.0 vs
+/// 123456.0), so any threshold anywhere in between would satisfy them both —
+/// this fixture closes that gap for the *boundary behavior*.
 ///
 /// This does **not** pin the constant's *value*: every value used below is
 /// derived from `LARGE_COORD_THRESHOLD` itself, so the fixture is green for
@@ -151,6 +153,14 @@ fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
         // tell `<` from `<=` apart — both compile and pass identically
         // either way. This closes that gap.
         ([LARGE_COORD_THRESHOLD, 0.0, 0.0], true),
+        // The same three brackets on y and on z: the guard ANDs the three
+        // axes, so each conjunct needs its own boundary.
+        ([0.0, LARGE_COORD_THRESHOLD + 0.5, 0.0], true),
+        ([0.0, LARGE_COORD_THRESHOLD - 0.5, 0.0], false),
+        ([0.0, LARGE_COORD_THRESHOLD, 0.0], true),
+        ([0.0, 0.0, LARGE_COORD_THRESHOLD + 0.5], true),
+        ([0.0, 0.0, LARGE_COORD_THRESHOLD - 0.5], false),
+        ([0.0, 0.0, LARGE_COORD_THRESHOLD], true),
     ] {
         let [tx, ty, tz] = translation;
         let original = processing_result(
@@ -166,7 +176,7 @@ fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
             assert_eq!(
                 result.mesh_coordinate_space.as_deref(),
                 Some(SITE_LOCAL_MESH_COORDINATE_SPACE),
-                "tx={tx} is past the threshold and must be shifted"
+                "({tx}, {ty}, {tz}) is at or past the threshold and must be shifted"
             );
             let expected_a: Vec<f32> = original_positions_a
                 .chunks_exact(3)
@@ -183,7 +193,7 @@ fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
             assert_eq!(
                 result.mesh_coordinate_space.as_deref(),
                 Some(RAW_IFC_MESH_COORDINATE_SPACE),
-                "tx={tx} is inside the threshold and must be left alone"
+                "({tx}, {ty}, {tz}) is inside the threshold and must be left alone"
             );
             assert_eq!(result.meshes[0].positions, original_positions_a);
         }

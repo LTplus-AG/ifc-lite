@@ -632,3 +632,238 @@ fn full_process_terminates_on_cyclic_boolean() {
     assert!(outcome.is_ok(), "full process() hung on a cyclic boolean chain");
     let _ = handle.join();
 }
+
+/// `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult`, whose
+/// operands may in turn be `IfcCsgSolid` — so the two are mutually recursive
+/// over file-supplied references. `CsgSolidProcessor::process` built a FRESH
+/// `BooleanClippingProcessor`, resetting both `depth` and the cycle guard, so
+/// three entities recursed forever with depth never passing 1 (#2866).
+///
+/// `csg_primitive.rs` already rejected `IfcCsgSolid -> IfcCsgSolid` explicitly,
+/// "so a malformed (or adversarial) file with a self-reference can't blow the
+/// stack". That guard is one hop wide. This is the two-hop cycle it cannot see.
+const CSG_BOOLEAN_CYCLE: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#10=IFCBOOLEANRESULT(.DIFFERENCE.,#20,#30);
+#20=IFCCSGSOLID(#10);
+#30=IFCBLOCK($,1.,1.,1.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn boolean_csg_mutual_recursion_terminates() {
+    // Worker thread + timeout, matching the test above: a regression that
+    // loops without growing the stack shows up as a timeout rather than
+    // hanging the suite. (A regression that DOES grow the stack aborts the
+    // whole binary — no harness can catch that one, so it is named here
+    // rather than implied.)
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let content = CSG_BOOLEAN_CYCLE.to_string();
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(10).expect("decode #10");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()));
+    });
+
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
+    assert!(
+        outcome.is_ok(),
+        "Boolean/CSG mutual recursion did not terminate"
+    );
+    let _ = handle.join();
+
+    // The cycle is reported, not silently swallowed: an operand that cannot be
+    // resolved must surface as an error so the router drops the element rather
+    // than rendering a half-built solid as if it were complete.
+    let err = outcome.unwrap().expect_err("a cyclic operand must be an error");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("Cyclic boolean/CSG operand reference"),
+        "expected the cycle to be named, got: {msg}"
+    );
+}
+
+/// Entering through `CsgSolidProcessor` rather than the boolean side must be
+/// guarded too — the router registers it directly, so that is the path a real
+/// file takes when the element's Body item IS the `IfcCsgSolid`.
+#[test]
+fn csg_entry_point_is_guarded_too() {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let content = CSG_BOOLEAN_CYCLE.to_string();
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(20).expect("decode #20");
+        let processor = crate::processors::CsgSolidProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()));
+    });
+
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
+    assert!(outcome.is_ok(), "CsgSolid entry point did not terminate");
+    let _ = handle.join();
+    outcome
+        .unwrap()
+        .expect_err("a cyclic operand must be an error from this entry point too");
+}
+
+/// A long ACYCLIC `Boolean -> Csg -> Boolean` chain, every id distinct. The
+/// CSG hop passes `depth` unchanged (a CsgSolid is not a boolean nesting
+/// level), so `MAX_BOOLEAN_DEPTH` never advances and every `visited.insert`
+/// succeeds — the set never fires either. Before `MAX_OPERAND_PATH_NODES` this
+/// aborted the process on stack depth alone, with no cycle in the file
+/// (Codex, #2871/#2872 review; the same gap here).
+#[test]
+fn a_long_acyclic_boolean_csg_chain_terminates() {
+    let n: u32 = 4_000;
+    let mut data = String::new();
+    for i in 0..n {
+        let b = 1 + i * 2;
+        let c = 2 + i * 2;
+        let next_b = if i + 1 == n { 90000 } else { 1 + (i + 1) * 2 };
+        data.push_str(&format!("#{b}=IFCBOOLEANRESULT(.DIFFERENCE.,#{c},#90001);\n"));
+        data.push_str(&format!("#{c}=IFCCSGSOLID(#{next_b});\n"));
+    }
+    data.push_str("#90000=IFCBLOCK($,1.,1.,1.);\n#90001=IFCBLOCK($,1.,1.,1.);\n");
+
+    // On a worker thread like its siblings: if the bound regresses, this
+    // overflows the stack, and a stack overflow ABORTS the whole test binary --
+    // taking ~690 unrelated tests with it and burying whichever test reported
+    // the regression cleanly. Cargo still exits non-zero, so it is not a false
+    // green, but the diagnostic is unreadable.
+    let content = wrap_ifc(&data);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(1).expect("decode #1");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()).map_err(|e| e.to_string()));
+    });
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(20));
+    assert!(outcome.is_ok(), "the operand chain bound did not terminate");
+    let _ = handle.join();
+    let err = outcome
+        .unwrap()
+        .expect_err("an over-long operand chain must be reported, not rendered half-built");
+    assert!(
+        err.contains("operand chain exceeds"),
+        "expected the chain bound to be named, got: {err}"
+    );
+}
+
+/// `IfcCsgSolid.TreeRootExpression` may not be another `IfcCsgSolid` (IFC 4.3
+/// `IfcCsgSelect`), and `CsgSolidProcessor` rejects it. Nothing asserted that
+/// anywhere, which mattered while the path bound counted boolean ids only and
+/// leaned on this rejection to keep the frame count bounded. The bound now
+/// counts CSG ids too, so this is a plain spec check again — but a "be lenient
+/// about nested CsgSolid" change is a plausible bad-exporter fix, and it should
+/// fail here rather than in whatever it silently un-bounds.
+#[test]
+fn a_csg_solid_rooted_in_another_csg_solid_is_rejected() {
+    let content = wrap_ifc(
+        "#10=IFCCSGSOLID(#20);\n\
+         #20=IFCCSGSOLID(#30);\n\
+         #30=IFCBLOCK($,1.,1.,1.);\n",
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(10).expect("decode #10");
+    let processor = crate::processors::CsgSolidProcessor::new();
+    let schema = IfcSchema::new();
+    let err = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect_err("IfcCsgSolid -> IfcCsgSolid is a spec violation and must be refused");
+    assert!(
+        err.to_string().contains("not another IfcCsgSolid"),
+        "the rejection must name what it rejected, got: {err}"
+    );
+}
+
+/// Pins that the path bound counts EVERY frame, not just the boolean ones.
+///
+/// An alternating `Boolean -> Csg -> Boolean` chain puts two entities on the
+/// stack per level. Counting booleans only, 50 levels reads as 50 against a
+/// bound of 64 and is accepted while actually standing 100 frames deep — the
+/// bound silently means twice its own number. Counting both, the same chain
+/// crosses 64 and is refused.
+///
+/// This is the assertion that was missing when an earlier revision dropped the
+/// CSG-side insert: at the time, removing it changed no test, which read as
+/// "redundant" and was really "unpinned".
+#[test]
+fn the_path_bound_counts_csg_frames_too_not_only_booleans() {
+    let n: u32 = 50;
+    let mut data = String::new();
+    for i in 0..n {
+        let b = 1 + i * 2;
+        let c = 2 + i * 2;
+        let next_b = if i + 1 == n { 90000 } else { 1 + (i + 1) * 2 };
+        data.push_str(&format!("#{b}=IFCBOOLEANRESULT(.DIFFERENCE.,#{c},#90001);\n"));
+        data.push_str(&format!("#{c}=IFCCSGSOLID(#{next_b});\n"));
+    }
+    data.push_str("#90000=IFCBLOCK($,1.,1.,1.);\n#90001=IFCBLOCK($,1.,1.,1.);\n");
+
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(1).expect("decode #1");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let err = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect_err("100 stack frames must cross a 64-frame bound");
+    assert!(
+        err.to_string().contains("operand chain exceeds"),
+        "the path bound must be what stops it, got: {err}"
+    );
+}
+
+/// Pins the path-scoped `remove` on BOTH sides. Deleting either one leaves the
+/// set accumulate-only, which turns a legitimately SHARED operand into a
+/// reported cycle: `#10` below is reached from two different branches of an
+/// acyclic tree, not twice down one path.
+///
+/// Without the removes this returns `Err("Cyclic boolean/CSG operand
+/// reference at #10")` and the router drops the whole element. Every other
+/// test in this file stayed green with them deleted -- the same
+/// unpinned-not-redundant trap this file already records for the CSG insert,
+/// one step over.
+#[test]
+fn an_operand_shared_between_two_branches_is_not_a_cycle() {
+    for (label, shared) in [
+        ("boolean", "#10=IFCBOOLEANRESULT(.UNION.,#900,#901);\n"),
+        ("csg", "#10=IFCCSGSOLID(#11);\n#11=IFCBOOLEANRESULT(.UNION.,#900,#901);\n"),
+    ] {
+        let data = format!(
+            "#1=IFCBOOLEANRESULT(.UNION.,#2,#3);\n\
+             #2=IFCBOOLEANRESULT(.UNION.,#900,#10);\n\
+             #3=IFCBOOLEANRESULT(.UNION.,#900,#10);\n\
+             {shared}\
+             #900=IFCBLOCK($,1.,1.,1.);\n\
+             #901=IFCBLOCK($,1.,1.,1.);\n"
+        );
+        let content = wrap_ifc(&data);
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(1).expect("decode #1");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let mesh = processor
+            .process(&entity, &mut decoder, &schema, Default::default())
+            .unwrap_or_else(|e| {
+                panic!("{label}: an operand shared across two BRANCHES is not a cycle: {e}")
+            });
+        assert!(
+            !mesh.positions.is_empty(),
+            "{label}: the shared operand must contribute geometry"
+        );
+    }
+}

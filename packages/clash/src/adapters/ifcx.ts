@@ -30,14 +30,24 @@
  * builds from the USD `children` structure). This is the IFCX analogue of the
  * STEP void/host/assembly exclusions; it fabricates no relationships.
  *
- * This module is reached via the `@ifc-lite/clash/ifcx` subpath so the core
- * stays representation- and parser-neutral.
+ * Non-clashable classes (openings, spaces, grids, materials, type objects,
+ * spatial containers) are dropped before they become candidates, and every
+ * mesh belonging to one durable prim path is coalesced into a single
+ * `ClashElement` — both via `./shared.ts`, so this adapter and `step.ts`
+ * agree on the same predicate/merge instead of maintaining separate copies.
+ * See `shared.ts`'s doc comment for the full rationale, including why it
+ * imports `@ifc-lite/parser` for the spatial-container schema walk.
+ *
+ * This module is reached via the `@ifc-lite/clash/ifcx` subpath so the CORE
+ * clash engine (`engine.ts`/`types.ts`) stays representation-neutral — this
+ * adapter itself is not required to avoid every non-core dependency.
  */
 
 import { parseIfcx, type MeshData } from '@ifc-lite/ifcx';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet } from '../types.js';
+import { isNonClashableTag, mergeMeshes } from './shared.js';
 
 /**
  * Minimal structural view of `@ifc-lite/data`'s `RelationshipGraph`. We type it
@@ -111,13 +121,22 @@ export async function elementsFromIfcx(options: IfcxAdapterOptions): Promise<Ifc
     // (It was present at grouping time; re-check to narrow without a cast.)
     const key = idToPath.get(expressId);
     if (!key) continue;
+
+    // Drop non-physical / container classes before they become clash
+    // candidates — the IFCX analogue of `step.ts`'s #1464 filter. `tag` here
+    // is the real IFC class code (see `resolveTag` below), spelled
+    // identically to STEP's `node.type`, so the SAME shared predicate applies
+    // verbatim. (#1464)
+    const tag = resolveTag(group[0], entities, expressId);
+    if (isNonClashableTag(tag)) continue;
+
     const merged = mergeMeshes(group);
 
     const element: ClashElement = {
       key,
       ref: refFromPath(key),
       model: modelId,
-      tag: resolveTag(group[0], entities, expressId),
+      tag,
       name: resolveName(entities, expressId),
       bounds: fromPositions(merged.positions),
       positions: merged.positions,
@@ -192,42 +211,7 @@ function resolveName(
   return name && name.length > 0 ? name : undefined;
 }
 
-/**
- * Concatenate a group of meshes (all belonging to the same entity) into a
- * single position/index buffer. Each subsequent mesh's indices are offset by
- * the running vertex count so the merged index buffer addresses the combined
- * vertex array. A single mesh is returned as-is (no copy) for the common case.
- */
-function mergeMeshes(group: MeshData[]): { positions: Float32Array; indices: Uint32Array } {
-  if (group.length === 1) {
-    return { positions: group[0].positions, indices: group[0].indices };
-  }
-
-  let totalPositions = 0;
-  let totalIndices = 0;
-  for (const mesh of group) {
-    totalPositions += mesh.positions.length;
-    totalIndices += mesh.indices.length;
-  }
-
-  const positions = new Float32Array(totalPositions);
-  const indices = new Uint32Array(totalIndices);
-  let positionOffset = 0;
-  let indexOffset = 0;
-  let vertexBase = 0;
-  for (const mesh of group) {
-    positions.set(mesh.positions, positionOffset);
-    for (let i = 0; i < mesh.indices.length; i++) {
-      indices[indexOffset + i] = mesh.indices[i] + vertexBase;
-    }
-    positionOffset += mesh.positions.length;
-    indexOffset += mesh.indices.length;
-    // 3 floats per vertex; the next mesh's indices start after these vertices.
-    vertexBase += mesh.positions.length / 3;
-  }
-
-  return { positions, indices };
-}
+// `mergeMeshes` now lives in `./shared.ts`, shared verbatim with `step.ts`.
 
 /**
  * Deterministic non-negative 31-bit ref derived purely from the prim path via

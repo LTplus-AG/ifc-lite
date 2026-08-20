@@ -13,8 +13,9 @@ report.
 
 The chase is bounded in both dimensions, because a depth cap alone only trades
 the abort for a hang — `k` items each leading back into the cycle cost
-`O(k^depth)` decodes. It now stops at 32 hops (matching the two sibling
-traversals in `ifc-lite-processing`) and records the depth each item was
+`O(k^depth)` decodes. It now stops at 32 hops (matching the sibling
+traversals in `ifc-lite-geometry`'s `router::processing` and
+`ifc-lite-processing`'s `element`) and records the depth each item was
 explored at, so a cycle is broken while an item legitimately reached again from
 a shorter branch is still resolved — a plain visited set silently lost that
 item's authored colour.

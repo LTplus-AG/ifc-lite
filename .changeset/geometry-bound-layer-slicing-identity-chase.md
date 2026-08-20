@@ -20,4 +20,8 @@ Note what happens at the guard, because nothing catchable surfaces. On a
 repeat the probe returns `false`, so `element_is_single_unshifted_item` returns
 `false` and the element renders as a single un-sliced mesh with one material
 instead of per-layer sub-meshes. That is a visible loss of layer materials for
-the offending element, reported nowhere; the rest of the file loads normally.
+the offending element. It is not unreported: the router records a
+`skip:not-single-unshifted-item` diagnostic, which the viewer's batch path
+drains into a `console.warn` naming the element id and that reason. But a
+console warning is not an error a caller can handle, so no downstream code can
+react to it. The rest of the file loads normally.

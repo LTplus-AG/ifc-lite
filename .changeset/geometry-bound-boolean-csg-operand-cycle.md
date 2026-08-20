@@ -17,8 +17,10 @@ A path-scoped visited set is now threaded through the whole operand path,
 inserted on the way in and removed on the way out, so an operand legitimately
 reached from two branches of an acyclic tree is still processed both times.
 Its length is the current nesting depth, which also bounds chain length:
-`MAX_OPERAND_PATH_NODES = 64`, well clear of the 42-node chains real exporters
-produce.
+`MAX_OPERAND_PATH_NODES = 64`. That sits well clear of `MAX_BOOLEAN_DEPTH`
+(10), so it cannot make that cap's job harder. The 42-node `DIFFERENCE` chains
+real exporters produce are FirstOperand spine nodes, walked iteratively, and
+never reach this guard.
 
 Unlike the sibling fixes in this series, this one reports: hitting either bound
 returns a catchable geometry error naming the entity — `Cyclic boolean/CSG

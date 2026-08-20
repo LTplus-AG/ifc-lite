@@ -122,14 +122,19 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
-  // Collab role gate, injected straight into BulkQueryEngine's constructor (see
-  // mutation-guard.ts): bulk edits reach the mutation view's setProperty/
-  // setEntityType directly via applyAction, bypassing the store's own
-  // setProperty action (and its canCollabEdit() check) entirely. Passing the
-  // predicate at construction means the engine itself refuses a write for a
-  // viewer/commenter role, rather than relying on this component remembering
-  // to check first.
+  // Collab role gate, two layers deep. (1) canCollabEdit is injected straight into
+  // BulkQueryEngine's constructor (see mutation-guard.ts): bulk edits reach the
+  // mutation view's setProperty/setEntityType directly via applyAction, bypassing
+  // the store's own setProperty action (and its canCollabEdit() check) entirely, so
+  // the engine itself refuses a write for a viewer/commenter role as containment.
+  // (2) canEditInSession mirrors that same role check here in the component, the
+  // same way MainToolbar/AuthorTab gate Edit mode, so the Execute button is disabled
+  // and never gets clicked in the first place. null role = single-user, always
+  // editable.
   const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
+  const collabEditRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession =
+    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -566,7 +571,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
-    if (!queryEngine || liveMatchCount === 0) return;
+    if (!queryEngine || liveMatchCount === 0 || !canEditInSession) return;
 
     setIsExecuting(true);
     setExecuteResult(null);
@@ -631,7 +636,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, currentCriteria, buildAction, bumpMutationVersion]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, bumpMutationVersion]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -1039,7 +1044,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               </Button>
               <Button
                 onClick={handleExecute}
-                disabled={liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                disabled={!canEditInSession || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                title={canEditInSession ? undefined : 'Editing requires editor access in this shared session'}
               >
                 <Play className="h-4 w-4 mr-2" />
                 Apply to {liveMatchCount} entities

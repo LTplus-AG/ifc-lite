@@ -467,6 +467,23 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # Every SDK namespace loads its implementation with a dynamic import(),
+      # so the first test to touch one pays the cold import inside its own
+      # 5000ms budget -- 2002ms measured, which crosses the limit under CI
+      # load. It took main red on 19 of 20 runs (#2935), after being patched
+      # one test file at a time three times before that. vitest.setup.ts warms
+      # them all, but its list is maintained by hand against the source and an
+      # un-warmed package is indistinguishable from a warmed one until it
+      # flakes months later. Reading both sources is banned in test files by
+      # the source-text gate above, so it is a lint here.
+      - name: Check SDK lazy-import warm-up is in sync
+        run: node scripts/check-sdk-lazy-import-warmup.mjs
+      # Executable proof that gate cannot pass vacuously: if the loader idiom
+      # is refactored away, both sides become empty sets and "agree". Each
+      # drift direction and the vacuity mode runs against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check SDK lazy-import warm-up gate regressions
+        run: node --test scripts/check-sdk-lazy-import-warmup.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

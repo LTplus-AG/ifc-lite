@@ -354,7 +354,7 @@ export class ColumnarParser {
         const associationTargetIds = new Set<number>();
         for (const ref of associationRelRefs) {
             const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
-            if (result) associationTargetIds.add(result.relatingDef);
+            if (result) for (const id of result.relatingDefs) associationTargetIds.add(id);
         }
 
         // Collect EntityRefs for association targets that aren't already categorised.
@@ -641,23 +641,29 @@ export class ColumnarParser {
             const ref = propertyRelRefs[pi];
             const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
             if (result) {
-                const { relatedObjects, relatingDef } = result;
+                const { relatedObjects, relatingDefs } = result;
                 totalPropRelObjects += relatedObjects.length;
 
-                for (const objId of relatedObjects) {
-                    relationshipGraphBuilder.addEdge(relatingDef, objId, RelationshipType.DefinesByProperties, ref.expressId);
-                }
-
-                // Build on-demand property/quantity maps using pre-built Sets (O(1) vs binary search)
-                const isPropSet = propertySetIds.has(relatingDef);
-                const isQtySet = !isPropSet && quantitySetIds.has(relatingDef);
-
-                if (isPropSet || isQtySet) {
-                    const targetMap = isPropSet ? onDemandPropertyMap : onDemandQuantityMap;
+                // RelatingPropertyDefinition is IfcPropertySetDefinitionSelect, whose
+                // second alternative (IfcPropertySetDefinitionSet) is a SET of pset/
+                // qset definitions — `relatingDefs` has more than one entry for that
+                // case. Every entry in the group applies to every related object.
+                for (const relatingDef of relatingDefs) {
                     for (const objId of relatedObjects) {
-                        let list = targetMap.get(objId);
-                        if (!list) { list = []; targetMap.set(objId, list); }
-                        list.push(relatingDef);
+                        relationshipGraphBuilder.addEdge(relatingDef, objId, RelationshipType.DefinesByProperties, ref.expressId);
+                    }
+
+                    // Build on-demand property/quantity maps using pre-built Sets (O(1) vs binary search)
+                    const isPropSet = propertySetIds.has(relatingDef);
+                    const isQtySet = !isPropSet && quantitySetIds.has(relatingDef);
+
+                    if (isPropSet || isQtySet) {
+                        const targetMap = isPropSet ? onDemandPropertyMap : onDemandQuantityMap;
+                        for (const objId of relatedObjects) {
+                            let list = targetMap.get(objId);
+                            if (!list) { list = []; targetMap.set(objId, list); }
+                            list.push(relatingDef);
+                        }
                     }
                 }
             }
@@ -683,7 +689,12 @@ export class ColumnarParser {
             const ref = associationRelRefs[i];
             const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
             if (result) {
-                const { relatedObjects, relatingDef: relatingRef } = result;
+                // IfcRelAssociates{Material,Classification,Document}'s Relating*
+                // selects are always single refs (unlike RelatingPropertyDefinition
+                // above, none of IfcMaterialSelect/IfcClassificationSelect/
+                // IfcDocumentSelect admit a SET alternative) — take the one entry.
+                const { relatedObjects, relatingDefs } = result;
+                const relatingRef = relatingDefs[0];
                 const typeUpper = getTypeUpper(ref.type);
 
                 if (typeUpper === 'IFCRELASSOCIATESCLASSIFICATION') {

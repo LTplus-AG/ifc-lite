@@ -260,6 +260,27 @@ describe('PickingManager', () => {
       assert.equal(h.selectRectCalls, 0, 'small model should use the GPU path, not the CPU fallback');
     });
 
+    // The `existingMeshes` harness knob above was declared but never exercised
+    // by any test in this file, so the "assume existing pieces correspond to
+    // the first N pieces in stable order" dedup (picking-manager.ts, the
+    // `ordinal < baselineExisting` skip) had no coverage: a multi-piece entity
+    // that was already partially hydrated (e.g. from an earlier pick()) would
+    // silently re-create pieces it already had, duplicating GPU mesh buffers.
+    it('does not re-hydrate a piece that already exists for a multi-piece entity', async () => {
+      const wallPieces = [{ expressId: WALL }, { expressId: WALL }];
+      const h = harness({
+        existingMeshes: [{ expressId: WALL }],
+        pieces: (id) => (id === WALL ? wallPieces : undefined),
+      });
+
+      await h.manager.pickRect(0, 0, 100, 100);
+
+      assert.equal(
+        h.createdMeshes.length, 2,
+        'the already-existing piece must not be re-created; only the missing second piece should be hydrated',
+      );
+    });
+
     it('falls back to Scene.selectRect once geometry data is released', async () => {
       const h = harness({ released: true });
 

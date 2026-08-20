@@ -93,14 +93,29 @@ export function extractRelFast(
 }
 
 /**
- * Extract property rel data: attr[4]=relatedObjects, attr[5]=relatingDef.
+ * Extract property rel data: attr[4]=relatedObjects, attr[5]=relatingDef(s).
  * Numbers only, no TextDecoder.
+ *
+ * attr[5] is read as a ref LIST, not a single ref: it is reused for both
+ * `IfcRelDefinesByProperties.RelatingPropertyDefinition` (typed
+ * `IfcPropertySetDefinitionSelect`, whose second alternative
+ * `IfcPropertySetDefinitionSet` is a `SET [1:?] OF IfcPropertySetDefinition`
+ * and is written as a parenthesised list, e.g. `(#20,#21)`, not `#20`) and
+ * the single-ref `IfcRelAssociates*` selects (`IfcMaterialSelect` /
+ * `IfcClassificationSelect` / `IfcDocumentSelect`, always one ref).
+ * `readRefList` already accepts both a bare `#id` and a `(...)` list, so one
+ * call handles both callers; the single-ref case is a length-1 list. A prior
+ * version used `readRefId` here, which only recognises a bare `#id` — for a
+ * schema-legal grouped `IfcPropertySetDefinitionSet` (`(#20,#21)`) it saw the
+ * list's opening `(` instead of `#`, returned -1, and this function returned
+ * null, silently dropping the WHOLE `IfcRelDefinesByProperties` relationship:
+ * every related object lost all properties/quantities from that pset group.
  */
 export function extractPropertyRelFast(
     buffer: Uint8Array,
     byteOffset: number,
     byteLength: number,
-): { relatedObjects: number[]; relatingDef: number } | null {
+): { relatedObjects: number[]; relatingDefs: number[] } | null {
     const end = byteOffset + byteLength;
     let pos = byteOffset;
 
@@ -115,7 +130,7 @@ export function extractPropertyRelFast(
     while (pos < end && buffer[pos] !== 0x2C) pos++;
     pos++;
 
-    const [relatingDef, _] = readRefId(buffer, pos, end);
-    if (relatingDef < 0 || relatedObjects.length === 0) return null;
-    return { relatedObjects, relatingDef };
+    const [relatingDefs, _] = readRefList(buffer, pos, end);
+    if (relatingDefs.length === 0 || relatedObjects.length === 0) return null;
+    return { relatedObjects, relatingDefs };
 }

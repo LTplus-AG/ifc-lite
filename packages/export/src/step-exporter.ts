@@ -12,7 +12,6 @@
 import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import {
   EntityExtractor,
-  generateHeader,
   parseSourceHeader,
   type MapConversion,
   type ProjectedCRS,
@@ -44,7 +43,7 @@ import {
 import { type GeorefContext } from './step-georeferencing.js';
 import { collectModifications, type CollectionContext } from './step-collection.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { assembleStepBytes } from './step-file-assembly.js';
+import { buildStepHeader, assembleExportResult } from './step-header.js';
 import {
   applySourceLineMutations,
   applyOverlayEntityOverrides,
@@ -413,38 +412,12 @@ export class StepExporter {
 
       // Built once entity counts are known, so the provenance item can report the
       // actual modification count. See the two call sites (empty delta + final).
-      buildHeader: (modifications: number): string => {
-        // FILE_DESCRIPTION items: an explicit option wins, else the source items
-        // verbatim, else the generic default.
-        const description: string[] =
-          options.description !== undefined
-            ? [options.description]
-            : sourceHeader && sourceHeader.description.length > 0
-              ? [...sourceHeader.description]
-              : ['Exported from ifc-lite'];
-        // Honest provenance: never claim untouched source output. Append (never
-        // overwrite) one item when ifc-lite actually changed the file.
-        if (modifications > 0) {
-          description.push(
-            `Re-exported by ifc-lite, ${modifications} modification${modifications === 1 ? '' : 's'}`,
-          );
-        }
-        return generateHeader({
-          schema: schemaToken,
-          description,
-          implementationLevel: sourceHeader?.implementationLevel,
-          author: options.author ?? sourceHeader?.author,
-          organization: options.organization ?? sourceHeader?.organization,
-          // preprocessor_version = the tool that WROTE this file (ifc-lite);
-          // originating_system keeps the source authoring tool so it isn't erased.
-          preprocessorVersion: options.application ?? 'ifc-lite',
-          originatingSystem: sourceHeader?.originatingSystem,
-          authorization: sourceHeader?.authorization,
-          application: options.application ?? 'ifc-lite',
-          filename: options.filename ?? 'export.ifc',
-          timeStamp: options.timeStamp,
-        });
-      },
+      // Body lives in `step-header.ts` (#2475 header/assembly tail): the
+      // closure still has to be built here, because it closes over this
+      // call's own `options`/`sourceHeader`/`schemaToken`, and both call
+      // sites still read it as `pass.buildHeader`.
+      buildHeader: (modifications: number): string =>
+        buildStepHeader(options, sourceHeader, schemaToken, modifications),
 
       // The one authority for exists / class / deleted, overlay first and source
       // buffer second. Every pass below asks this instead of `this.dataStore`,
@@ -977,29 +950,9 @@ export class StepExporter {
       this.overlayEntitiesContext(),
     );
 
-    // Settle the count against what the passes above actually wrote, and say
-    // out loud every KIND of edit a delta could not carry, per host. Silence
-    // was the other half of #2462: `deltaOnly` skips the source-iteration pass,
-    // so an in-place edit to a source entity is not in the file and never was —
-    // the header merely used to claim otherwise.
-    const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
-    pass.warnings.push(...deltaWarnings);
-
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
-    // The header is built last so its provenance item reflects the real count.
-    const header = pass.buildHeader(pass.newEntityCount + modifiedEntityCount);
-    const content = assembleStepBytes(header, pass.entities);
-
-    return {
-      content,
-      stats: {
-        entityCount: pass.entities.length,
-        newEntityCount: pass.newEntityCount,
-        modifiedEntityCount,
-        fileSize: content.byteLength,
-        warnings: pass.warnings,
-      },
-    };
+    // Settle the ledger, build the header, assemble the finished bytes —
+    // `step-header.ts` (#2475 header/assembly tail).
+    return assembleExportResult(pass);
   }
 
   /**

@@ -91,7 +91,7 @@ export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
 // `decideTimingMode` for choosing GPU queries vs. the CPU fallback vs. off.
 export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
 export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
-export { computeDurationStats, nsToMs } from './frame-timing-stats.js';
+export { computeDurationStats, nsToMs, isNegativeDelta } from './frame-timing-stats.js';
 export type { DurationStats } from './frame-timing-stats.js';
 export { GpuFrameTimingRecorder, hasTimestampQueryFeature } from './frame-timing-gpu.js';
 export { createCpuFrameTicker } from './frame-timing-cpu.js';

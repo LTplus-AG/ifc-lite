@@ -15,7 +15,7 @@
  * statistics a caller reads. None of that requires a live device.
  */
 
-import { computeDurationStats, nsToMs, type DurationStats } from './frame-timing-stats.js';
+import { computeDurationStats, nsToMs, isNegativeDelta, type DurationStats } from './frame-timing-stats.js';
 
 /**
  * How frame timing is actually running, after feature detection:
@@ -108,6 +108,18 @@ export interface FrameTimingReport {
   frame: DurationStats;
   /** Statistics over each pass label's per-frame duration, keyed by label. A label absent from a given frame simply contributes no sample to its stats that frame — it is not treated as a 0ms sample. */
   passes: Record<string, DurationStats>;
+  /**
+   * Count of raw `(startNs, endNs)` pairs across every frame/pass where
+   * `endNs < startNs` — a GPU clock non-monotonicity (see `nsToMs`'s doc).
+   * Each such sample is clamped to a 0ms contribution in `frame`/`passes`
+   * above rather than dragging `min`/`mean` negative, but a clamped 0 reads
+   * identically to a genuine zero-duration pass unless this count is
+   * checked — surfaced explicitly here for the same reason `DurationStats`
+   * gives empty samples their own explicit shape instead of a silent `0`:
+   * this API does not report a number it cannot stand behind without also
+   * saying when it had to make one up.
+   */
+  invalidSampleCount: number;
 }
 
 /**
@@ -124,12 +136,16 @@ export function aggregateFrameTimings(
   const frameDurations = frames.map((f) => frameTotalMs(f));
 
   const perLabelDurations = new Map<string, number[]>();
+  let invalidSampleCount = 0;
   for (const frame of frames) {
     const perLabel = passDurationsMs(frame);
     for (const [label, ms] of Object.entries(perLabel)) {
       const list = perLabelDurations.get(label);
       if (list) list.push(ms);
       else perLabelDurations.set(label, [ms]);
+    }
+    for (const sample of frame) {
+      if (isNegativeDelta(sample.startNs, sample.endNs)) invalidSampleCount++;
     }
   }
 
@@ -142,5 +158,6 @@ export function aggregateFrameTimings(
     mode,
     frame: computeDurationStats(frameDurations),
     passes,
+    invalidSampleCount,
   };
 }

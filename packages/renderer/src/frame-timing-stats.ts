@@ -64,10 +64,47 @@ const EMPTY_STATS: DurationStats = {
  * The subtraction happens in `bigint` space and only the final, small
  * (sub-second, in practice sub-100ms) millisecond duration is converted to
  * `number`.
+ *
+ * Clamps a negative delta (`endNs < startNs`) to `0` rather than returning
+ * a physically impossible negative duration. This is reachable: GPU
+ * timestamps are not guaranteed monotonic across a device reset (see this
+ * module's own doc above). `0` is the honest floor — a duration cannot be
+ * negative, and unlike a raw negative number it cannot silently drag a
+ * `min`/`mean` computed downstream into nonsense. This is the guard's one
+ * choke point: `frameTotalMs`/`passDurationsMs` (`frame-timing.ts`) sum
+ * this function's output directly, without ever routing it through
+ * `computeDurationStats`, so a guard placed only in `computeDurationStats`
+ * would miss that summation entirely. Use `isNegativeDelta` alongside this
+ * function where the caller wants to know a clamp happened.
  */
 export function nsToMs(startNs: bigint, endNs: bigint): number {
   const deltaNs = endNs - startNs;
+  if (deltaNs < 0n) return 0;
   return Number(deltaNs) / 1_000_000;
+}
+
+/**
+ * Reports whether `(startNs, endNs)` is a monotonicity violation (`endNs <
+ * startNs`) — the only case the module's own doc calls out as reachable:
+ * GPU timestamps "are not guaranteed monotonic across a device reset".
+ *
+ * This is the guard's true origin point: `nsToMs` alone cannot both return a
+ * single honest millisecond number for every downstream summation (see
+ * `frameTotalMs`/`passDurationsMs` in `frame-timing.ts`, which add its
+ * output directly into a running total and never pass through
+ * `computeDurationStats`) AND separately expose "this one was bad" — a
+ * plain `number` return has no second channel for that. Callers that want
+ * to surface an invalid-sample count (rather than let a clamped-to-0 value
+ * pass as an unremarkable real zero) call this predicate on the same raw
+ * pair alongside `nsToMs`. `computeDurationStats` is deliberately NOT where
+ * this lives: by the time a caller has an array of plain millisecond
+ * numbers, it has no way to tell a clamped GPU-reset zero apart from a
+ * genuine fast pass or a CPU-fallback delta (which is never negative — it
+ * comes from `performance.now()`, spec-guaranteed non-decreasing) — see
+ * that function's doc.
+ */
+export function isNegativeDelta(startNs: bigint, endNs: bigint): boolean {
+  return endNs - startNs < 0n;
 }
 
 /**

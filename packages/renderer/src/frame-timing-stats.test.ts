@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { nsToMs, computeDurationStats } from './frame-timing-stats.js';
+import { nsToMs, isNegativeDelta, computeDurationStats } from './frame-timing-stats.js';
 
 describe('nsToMs', () => {
   it('converts an exact 1ms span', () => {
@@ -26,6 +26,29 @@ describe('nsToMs', () => {
     const start = 500_000_000_000_000n;
     const end = start + 3_500_000n;
     assert.strictEqual(nsToMs(start, end), 3.5);
+  });
+
+  it('clamps a negative delta to 0 instead of returning a physically impossible negative duration', () => {
+    // The module's own doc notes GPU timestamps "are not guaranteed
+    // monotonic across a device reset" — end < start is reachable. A
+    // negative duration must never leak downstream (it would poison
+    // frameTotalMs's raw summation before computeDurationStats ever sees
+    // it), so this is the one choke point where the clamp belongs.
+    assert.strictEqual(nsToMs(1_000_000n, 500_000n), 0);
+  });
+
+  it('clamps a large negative delta (asymmetric, non-round) to exactly 0, not a scaled-down negative', () => {
+    assert.strictEqual(nsToMs(9_876_543_210n, 1_234_567n), 0);
+  });
+
+  it('treats a zero delta as a legitimate, unclamped 0 — a pass can measure zero', () => {
+    assert.strictEqual(nsToMs(42n, 42n), 0);
+  });
+
+  it('reports whether a (startNs, endNs) pair is a monotonicity violation', () => {
+    assert.strictEqual(isNegativeDelta(1_000_000n, 500_000n), true);
+    assert.strictEqual(isNegativeDelta(42n, 42n), false);
+    assert.strictEqual(isNegativeDelta(500_000n, 1_000_000n), false);
   });
 });
 

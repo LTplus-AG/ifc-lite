@@ -51,6 +51,58 @@ export function hasTimestampQueryFeature(features: { has(name: string): boolean 
 const BYTES_PER_TIMESTAMP = 8; // GPUQuerySet resolves each timestamp query to one 64-bit (BigInt64) value.
 
 /**
+ * Byte size of the resolve/readback buffers needed for `passCount` passes —
+ * 2 timestamp queries (begin + end) per pass, `BYTES_PER_TIMESTAMP` each.
+ * Pure arithmetic, decidable without a device: extracted out of `create()`
+ * so the sizing formula itself is unit-tested rather than only ever
+ * exercised as a side effect of a real `device.createBuffer` call.
+ */
+export function queryBufferSizeBytes(passCount: number): number {
+  return passCount * 2 * BYTES_PER_TIMESTAMP;
+}
+
+/**
+ * Allocates the next pair of query-set write indices for one pass, or
+ * `null` if `maxPasses` passes have already been begun this frame. Pure:
+ * given the current cursor and the frame's pass budget, the next
+ * (begin, end, cursor) triple — or exhaustion — is fully determined; no
+ * `GPUQuerySet` is touched to decide it. Extracted out of
+ * `GpuFrameTimingRecorder.beginPass` so this index bookkeeping (the part
+ * most likely to hide an off-by-one — see the exhaustion boundary test) is
+ * checked with synthetic cursor/maxPasses values instead of only ever
+ * running inside a live recording session.
+ */
+export function allocatePassQueryIndices(
+  nextQueryIndex: number,
+  maxPasses: number,
+): { beginningOfPassWriteIndex: number; endOfPassWriteIndex: number; nextQueryIndex: number } | null {
+  if (nextQueryIndex + 1 >= maxPasses * 2) return null;
+  return {
+    beginningOfPassWriteIndex: nextQueryIndex,
+    endOfPassWriteIndex: nextQueryIndex + 1,
+    nextQueryIndex: nextQueryIndex + 2,
+  };
+}
+
+/**
+ * Pairs each recorded pass `label` (in recording order) with its
+ * (start, end) nanosecond timestamps at `timestamps[i*2]` /
+ * `timestamps[i*2+1]` — the layout `GpuFrameTimingRecorder` writes via
+ * `timestampWrites`. Pure: given a labels array and a `BigInt64Array`, the
+ * resulting `PassTimingSample[]` is fully determined; no `GPUBuffer`
+ * mapping is involved. Extracted out of `readback()` so this pairing
+ * arithmetic — the part that would silently mis-attribute a duration to
+ * the wrong label on an off-by-one — is checked directly.
+ */
+export function pairTimestampsWithLabels(labels: readonly string[], timestamps: BigInt64Array): PassTimingSample[] {
+  const samples: PassTimingSample[] = [];
+  for (let i = 0; i < labels.length; i++) {
+    samples.push({ label: labels[i], startNs: timestamps[i * 2], endNs: timestamps[i * 2 + 1] });
+  }
+  return samples;
+}
+
+/**
  * Records GPU timestamp queries for the passes of one frame and resolves
  * them into `PassTimingSample[]` (nanosecond pairs; see `frame-timing.ts`
  * for what happens to them next). One instance is good for one frame's
@@ -88,12 +140,12 @@ export class GpuFrameTimingRecorder {
 
     const querySet = device.createQuerySet({ type: 'timestamp', count: maxPasses * 2, label: 'frame-timing-queries' });
     const resolveBuffer = device.createBuffer({
-      size: maxPasses * 2 * BYTES_PER_TIMESTAMP,
+      size: queryBufferSizeBytes(maxPasses),
       usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC,
       label: 'frame-timing-resolve',
     });
     const readbackBuffer = device.createBuffer({
-      size: maxPasses * 2 * BYTES_PER_TIMESTAMP,
+      size: queryBufferSizeBytes(maxPasses),
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
       label: 'frame-timing-readback',
     });
@@ -107,12 +159,15 @@ export class GpuFrameTimingRecorder {
    * that hits this should raise `maxPasses` at construction, not retry.
    */
   beginPass(label: string): GPURenderPassTimestampWrites | null {
-    if (this.nextQueryIndex + 1 >= this.maxPasses * 2) return null;
-    const beginningOfPassWriteIndex = this.nextQueryIndex;
-    const endOfPassWriteIndex = this.nextQueryIndex + 1;
-    this.nextQueryIndex += 2;
+    const allocation = allocatePassQueryIndices(this.nextQueryIndex, this.maxPasses);
+    if (allocation === null) return null;
+    this.nextQueryIndex = allocation.nextQueryIndex;
     this.labels.push(label);
-    return { querySet: this.querySet, beginningOfPassWriteIndex, endOfPassWriteIndex };
+    return {
+      querySet: this.querySet,
+      beginningOfPassWriteIndex: allocation.beginningOfPassWriteIndex,
+      endOfPassWriteIndex: allocation.endOfPassWriteIndex,
+    };
   }
 
   /** Resolves every query written this frame into the readback buffer. Call once, after every pass has been `.end()`-ed, before `queue.submit`. */
@@ -138,11 +193,7 @@ export class GpuFrameTimingRecorder {
     const timestamps = new BigInt64Array(raw.slice(0)); // copy out before unmap invalidates the ArrayBuffer
     this.readbackBuffer.unmap();
 
-    const samples: PassTimingSample[] = [];
-    for (let i = 0; i < this.labels.length; i++) {
-      samples.push({ label: this.labels[i], startNs: timestamps[i * 2], endNs: timestamps[i * 2 + 1] });
-    }
-    return samples;
+    return pairTimestampsWithLabels(this.labels, timestamps);
   }
 
   /** Resets for the next frame's recording. Does not reallocate the query set or buffers — they are sized once at `create()` and reused. */

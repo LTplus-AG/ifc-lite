@@ -83,6 +83,21 @@ describe('frameTotalMs', () => {
   it('is 0 for a frame with zero recorded passes (not an empty-sample marker — a real frame that measured nothing)', () => {
     assert.strictEqual(frameTotalMs([]), 0);
   });
+
+  it('a non-monotonic (end < start) pass contributes 0, not a negative amount, to the frame total', () => {
+    // A GPU clock reset (see nsToMs's doc) can produce end < start for one
+    // pass among otherwise-valid ones. frameTotalMs sums nsToMs's raw
+    // output directly (it never routes through computeDurationStats), so
+    // this is the exact path that a guard placed only in
+    // computeDurationStats would miss.
+    const samples: PassTimingSample[] = [
+      { label: 'shadow', startNs: 0n, endNs: 2_100_000n }, // 2.1ms
+      { label: 'main', startNs: 9_800_000n, endNs: 3_400_000n }, // corrupted: end < start
+      { label: 'sky', startNs: 9_800_000n, endNs: 10_050_000n }, // 0.25ms
+    ];
+    // 2.1 + 0 (clamped) + 0.25, not 2.1 + (-6.4) + 0.25
+    assert.strictEqual(frameTotalMs(samples), 2.35);
+  });
 });
 
 describe('aggregateFrameTimings — feature-absent / disabled path', () => {
@@ -139,5 +154,59 @@ describe('aggregateFrameTimings — multiple frames', () => {
 
     assert.strictEqual(report.passes.main.count, 3);
     assert.strictEqual(report.passes.main.max, 12.5);
+    // No monotonicity violations anywhere in this fixture.
+    assert.strictEqual(report.invalidSampleCount, 0);
+  });
+});
+
+describe('aggregateFrameTimings — invalidSampleCount (non-monotonic GPU timestamp pairs)', () => {
+  it('counts a single negative-delta sample among otherwise-valid frames, and still clamps its contribution to 0 rather than poisoning min/mean', () => {
+    const frames: PassTimingSample[][] = [
+      [
+        { label: 'shadow', startNs: 0n, endNs: 2_000_000n }, // 2ms, valid
+        { label: 'main', startNs: 8_000_000n, endNs: 1_500_000n }, // corrupted: end < start
+      ],
+      [{ label: 'shadow', startNs: 0n, endNs: 3_150_000n }], // 3.15ms, valid
+    ];
+    const report = aggregateFrameTimings('gpu-queries', frames);
+
+    assert.strictEqual(report.invalidSampleCount, 1);
+    // frame totals: (2 + 0 clamped) = 2, and 3.15 — never a negative min.
+    assert.strictEqual(report.frame.min, 2);
+    assert.strictEqual(report.frame.max, 3.15);
+    assert.ok((report.frame.mean ?? NaN) >= 0);
+  });
+
+  it('counts every sample when all are non-monotonic, and reports clamped-0 stats rather than a fabricated negative verdict', () => {
+    const frames: PassTimingSample[][] = [
+      [{ label: 'main', startNs: 5_000_000n, endNs: 1_000_000n }], // corrupted
+      [{ label: 'main', startNs: 9_876_543n, endNs: 1_234_567n }], // corrupted, non-round
+    ];
+    const report = aggregateFrameTimings('gpu-queries', frames);
+
+    assert.strictEqual(report.invalidSampleCount, 2);
+    assert.strictEqual(report.frame.min, 0);
+    assert.strictEqual(report.frame.max, 0);
+    assert.strictEqual(report.frame.mean, 0);
+  });
+
+  it('a legitimate zero-delta pass is not counted as invalid', () => {
+    const frames: PassTimingSample[][] = [[{ label: 'main', startNs: 42n, endNs: 42n }]];
+    const report = aggregateFrameTimings('gpu-queries', frames);
+    assert.strictEqual(report.invalidSampleCount, 0);
+    assert.strictEqual(report.frame.min, 0);
+  });
+
+  it('the empty-history case is unaffected: invalidSampleCount is 0 and stats stay the explicit EMPTY_STATS shape', () => {
+    const report = aggregateFrameTimings('disabled', []);
+    assert.strictEqual(report.invalidSampleCount, 0);
+    assert.deepStrictEqual(report.frame, {
+      count: 0,
+      min: null,
+      median: null,
+      p95: null,
+      max: null,
+      mean: null,
+    });
   });
 });

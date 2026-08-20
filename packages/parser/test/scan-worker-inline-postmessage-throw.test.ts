@@ -17,7 +17,7 @@
  * never RETAINS) a handle to what it already holds.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { scanEntitiesInWorker } from '../src/scan-worker-inline.js';
 
 describe('scanEntitiesInWorker terminates the worker when postMessage throws', () => {

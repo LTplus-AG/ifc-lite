@@ -53,6 +53,7 @@ import {
   DEFAULT_NORTH_ARROW,
   calculateViewportBounds,
   calculateOptimalScaleBarLength,
+  calculateDrawingTransformForAxis,
   type Drawing2D,
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
@@ -144,6 +145,49 @@ function buildDrawing(): Drawing2D {
     cutPolygons: [],
     projectionPolygons: [],
     bounds: { min: { x: 0, y: 0 }, max: { x: 4, y: 0 } },
+    stats: {
+      cutLineCount: 0,
+      projectionLineCount: 1,
+      hiddenLineCount: 0,
+      silhouetteLineCount: 0,
+      polygonCount: 0,
+      totalTriangles: 0,
+      processingTimeMs: 0,
+    },
+  };
+}
+
+/** A 10m x 6m plan ('down') section whose Y bounds are NOT symmetric about
+ *  zero (y: 2..8, matching the #2940 report of a 10x6m plan section landing
+ *  120mm off-centre) — the case `calculateDrawingTransformForAxis`'s
+ *  unflipped correction exists for. `buildDrawing()` above is deliberately
+ *  degenerate on Y (a single y=0 line) and cannot exercise this: the
+ *  correction term `(maxY + minY) * scaleFactor` is zero whenever minY ===
+ *  maxY, so a composition bug that dropped the correction would still pass
+ *  every existing assertion in this file. */
+function buildPlanDrawing(): Drawing2D {
+  return {
+    config: {
+      plane: { axis: 'y', position: 0, flipped: false },
+      projectionDepth: 10,
+      includeHiddenLines: true,
+      creaseAngle: 30,
+      scale: 100,
+    },
+    lines: [
+      {
+        line: { start: { x: 0, y: 2 }, end: { x: 10, y: 8 } },
+        category: 'projection',
+        visibility: 'visible',
+        entityId: 1,
+        ifcType: 'IfcWall',
+        modelIndex: 0,
+        depth: 0,
+      },
+    ],
+    cutPolygons: [],
+    projectionPolygons: [],
+    bounds: { min: { x: 0, y: 2 }, max: { x: 10, y: 8 } },
     stats: {
       cutLineCount: 0,
       projectionLineCount: 1,
@@ -249,7 +293,7 @@ function stubRasterization(): {
   };
 }
 
-async function exportPdfForSheet(sheet: DrawingSheet): Promise<{
+async function exportPdfForSheet(sheet: DrawingSheet, drawing: Drawing2D = buildDrawing()): Promise<{
   addImageArgs: unknown[];
   svg: string;
 }> {
@@ -286,7 +330,7 @@ async function exportPdfForSheet(sheet: DrawingSheet): Promise<{
       root.render(
         <Harness
           activeSheet={sheet}
-          drawing={buildDrawing()}
+          drawing={drawing}
           onReady={(fn) => {
             exportFn = fn;
           }}
@@ -320,6 +364,15 @@ function measureLineSpanMm(svg: string): number {
   assert.ok(match, `expected a <line> element in the exported sheet svg; got:\n${svg.slice(0, 2000)}`);
   const [, x1, y1, x2, y2] = match.map(Number) as unknown as [never, number, number, number, number];
   return Math.hypot(x2 - x1, y2 - y1);
+}
+
+/** Parse the first `<line x1="..." y1="..." x2="..." y2="...">` inside the
+ *  exported sheet svg and return its endpoints in paper mm. */
+function parseLineEndpoints(svg: string): { x1: number; y1: number; x2: number; y2: number } {
+  const match = svg.match(/<line x1="([-\d.]+)" y1="([-\d.]+)" x2="([-\d.]+)" y2="([-\d.]+)"/);
+  assert.ok(match, `expected a <line> element in the exported sheet svg; got:\n${svg.slice(0, 2000)}`);
+  const [, x1, y1, x2, y2] = match.map(Number) as unknown as [never, number, number, number, number];
+  return { x1, y1, x2, y2 };
 }
 
 describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
@@ -362,5 +415,49 @@ describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
     // scale" — i.e. the export doesn't move at all when the sheet's scale
     // changes. Assert the two measured spans actually differ.
     assert.notEqual(spanA, spanB, 'changing the sheet scale must change the on-paper span — it must not be stuck at one value');
+  });
+
+  it('centers a plan-axis (down) drawing using the corrected, unflipped transform — the #2940 fix composed with #2941/#2942', async () => {
+    // The PDF path (`handleExportPDF`) delegates to `generateSheetSVG`,
+    // which the #2940 fix rewrote to call `calculateDrawingTransformForAxis`
+    // with `flipY = (axis !== 'down')` instead of the raw, always-flipped
+    // `calculateDrawingTransform`. For a 'down' (plan) section whose Y
+    // bounds are not symmetric about zero, that changes where the drawing
+    // lands on paper. This test proves the PDF export actually inherits
+    // that correction, not just the SVG/print path #2940 shipped with.
+    const sheet = buildSheet('A3_LANDSCAPE', 100, '1:100');
+    const drawing = buildPlanDrawing();
+    const { svg } = await exportPdfForSheet(sheet, drawing);
+    const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+
+    // Expected transform: same building blocks `generateSheetSVG` uses
+    // (sheet.viewportBounds, sheet.scale), with flipY=false for the 'down'
+    // axis — mirroring useDrawingExport.ts's own
+    // `flipY = currentAxis !== 'down'`.
+    const expected = calculateDrawingTransformForAxis(
+      { minX: drawing.bounds.min.x, minY: drawing.bounds.min.y, maxX: drawing.bounds.max.x, maxY: drawing.bounds.max.y },
+      sheet.viewportBounds,
+      sheet.scale,
+      false
+    );
+    const expectedX1 = drawing.bounds.min.x * expected.scaleFactor + expected.translateX;
+    const expectedY1 = drawing.bounds.min.y * expected.scaleFactor + expected.translateY;
+    const expectedX2 = drawing.bounds.max.x * expected.scaleFactor + expected.translateX;
+    const expectedY2 = drawing.bounds.max.y * expected.scaleFactor + expected.translateY;
+
+    assert.ok(Math.abs(x1 - expectedX1) < 0.01, `x1: expected ${expectedX1}, got ${x1}`);
+    assert.ok(Math.abs(y1 - expectedY1) < 0.01, `y1: expected ${expectedY1}, got ${y1}`);
+    assert.ok(Math.abs(x2 - expectedX2) < 0.01, `x2: expected ${expectedX2}, got ${x2}`);
+    assert.ok(Math.abs(y2 - expectedY2) < 0.01, `y2: expected ${expectedY2}, got ${y2}`);
+
+    // Sanity: prove this fixture actually distinguishes the corrected
+    // transform from the uncorrected one (else the assertions above could
+    // pass by coincidence). The uncorrected translateY differs by
+    // (maxY + minY) * scaleFactor = (8 + 2) * scaleFactor != 0.
+    const uncorrectedTranslateYDelta = (drawing.bounds.max.y + drawing.bounds.min.y) * expected.scaleFactor;
+    assert.ok(
+      Math.abs(uncorrectedTranslateYDelta) > 1,
+      `fixture does not distinguish corrected vs. uncorrected transform (delta ${uncorrectedTranslateYDelta}mm) — strengthen it`
+    );
   });
 });

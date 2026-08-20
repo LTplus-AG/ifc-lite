@@ -17,6 +17,7 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotati
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
+import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -363,7 +364,7 @@ interface Drawing2DCanvasProps {
   sectionAxis: 'down' | 'front' | 'side';
   // Pinned mode - keep model fixed in place on sheet
   isPinned?: boolean;
-  cachedSheetTransformRef?: React.MutableRefObject<{ translateX: number; translateY: number; scaleFactor: number } | null>;
+  cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
   // Annotation props
   annotation2DActiveTool?: Annotation2DTool;
   annotation2DCursorPos?: Point2D | null;
@@ -739,7 +740,17 @@ export function Drawing2DCanvas({
       // Use cached transform when pinned, otherwise calculate new one
       let drawingTransform: { translateX: number; translateY: number; scaleFactor: number };
 
-      if (isPinned && cachedSheetTransformRef?.current) {
+      // Validated against the CURRENT sheet's own geometry key, not just
+      // trusted because it's present: `useViewControls`'s effect that nulls
+      // this ref on a geometry change runs in the SAME commit as this
+      // drawing effect, but as the PARENT hook its effect commits AFTER this
+      // (child) effect — so on the very render the sheet's geometry changes,
+      // a stale (still non-null) cached entry would otherwise be reused for
+      // one frame, and nothing forces a second draw to correct it (PR #2853
+      // review). Comparing `key` here makes this effect correct on its own,
+      // independent of that ordering.
+      const currentSheetGeometryKey = sheetGeometryKeyOf(activeSheet);
+      if (isPinned && cachedSheetTransformRef?.current && cachedSheetTransformRef.current.key === currentSheetGeometryKey) {
         // Use cached transform to keep model fixed in place
         drawingTransform = cachedSheetTransformRef.current;
       } else {
@@ -755,9 +766,10 @@ export function Drawing2DCanvas({
             : baseTransform.translateY - (drawingBounds.maxY + drawingBounds.minY) * baseTransform.scaleFactor,
         };
 
-        // Cache the transform for pinned mode
+        // Cache the transform for pinned mode, tagged with the geometry it
+        // was computed for (see the validation above).
         if (cachedSheetTransformRef) {
-          cachedSheetTransformRef.current = drawingTransform;
+          cachedSheetTransformRef.current = { ...drawingTransform, key: currentSheetGeometryKey };
         }
       }
 

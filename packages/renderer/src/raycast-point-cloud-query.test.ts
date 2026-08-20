@@ -385,6 +385,36 @@ describe('queryPointClouds with an aligned point cloud', () => {
     assert.deepStrictEqual(identity!.position, bare!.position);
     assert.strictEqual(identity!.distance, bare!.distance);
   });
+
+  it('falls back to the RAW (untransformed) query for a singular matrix, rather than throwing', () => {
+    // A finite, non-identity matrix whose linear part has a collapsed
+    // column (zero z-axis) is singular: MathUtils.invert returns null.
+    // toLocalFrameRay's contract is to treat that exactly like "no
+    // transform needed" (comment above `toLocalFrameRay`: "a safe
+    // fallback for a degenerate matrix") — not to crash on `inv.m`.
+    const singular = new Float32Array([
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 0,
+      5, 0, 0, 1,
+    ]);
+    const index = indexWithPointAt(0, 0, -10);
+    const bare = queryPointClouds(() => sourceWith(index, undefined), rayToward(0, 0), CAMERA, 100);
+    const withSingularModel = queryPointClouds(
+      () => sourceWith(index, singular),
+      rayToward(0, 0),
+      CAMERA,
+      100,
+    );
+    assert.ok(bare, 'sanity: the raw point is reachable at all');
+    assert.ok(withSingularModel, 'a singular alignment matrix must not suppress the raw-index hit');
+    assert.deepStrictEqual(
+      withSingularModel!.position,
+      bare!.position,
+      'singular matrix must fall back to the RAW query, exactly like an absent/identity matrix',
+    );
+    assert.strictEqual(withSingularModel!.distance, bare!.distance);
+  });
 });
 
 /**

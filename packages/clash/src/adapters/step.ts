@@ -231,7 +231,15 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
   } = options;
 
   const elements: ClashElement[] = [];
-  const byExpressId = new Map<number, ClashElement>();
+  // One expressId can now back MULTIPLE elements: a GPU-instanced entity
+  // (#2865) is fed in as one `MeshData` per occurrence, all sharing one
+  // `expressId` but holding distinct world-space positions and a distinct
+  // `occurrenceKey` (see `MeshData.occurrenceKey` doc, `packages/geometry/src/types.ts`).
+  // A `Map<number, ClashElement>` would let the LAST occurrence silently win
+  // both the identity (`key`) and the relationship exclusions computed below
+  // — the same collapse #1405 fixed in `SnapDetector`. Every occurrence is
+  // kept, so relationship exclusions (voids/assembly) fan out to all of them.
+  const byExpressId = new Map<number, ClashElement[]>();
   /** Elements whose GlobalId lookup came back empty — see the check below. */
   let missingGlobalIds = 0;
 
@@ -294,7 +302,12 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // Fall back to a MODEL-SCOPED synthetic key rather than dropping geometry:
     // malformed IFC roots, and whole GLB-sourced models, still participate in
     // clashes. See {@link syntheticKey} for why the model id belongs in it.
-    const key = storedGlobalId || syntheticKey(modelId, expressId);
+    const baseKey = storedGlobalId || syntheticKey(modelId, expressId);
+    // A GPU-instanced occurrence carries `mesh.occurrenceKey`; fold it into the
+    // identity so distinct physical occurrences of one expressId don't collapse
+    // onto one review/exclusion key (#2865, same remedy as #1405). Flat meshes
+    // are unaffected — one MeshData per expressId, `occurrenceKey` absent.
+    const key = mesh.occurrenceKey ? `${baseKey}:${mesh.occurrenceKey}` : baseKey;
     if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
@@ -316,7 +329,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     };
 
     elements.push(element);
-    byExpressId.set(expressId, element);
+    const bucket = byExpressId.get(expressId);
+    if (bucket) bucket.push(element);
+    else byExpressId.set(expressId, [element]);
   }
 
   // A wrong `meshIdOffset` — above all a FORGOTTEN one — leaves ids that are
@@ -373,24 +388,33 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
  */
 export function buildStepExclusions(
   store: IfcDataStore,
-  byExpressId: Map<number, ClashElement>,
+  byExpressId: Map<number, ClashElement[]>,
 ): ExclusionSet {
   const pairs: Array<[string, string]> = [];
 
-  for (const [expressId, element] of byExpressId) {
+  for (const [expressId, elementsAtId] of byExpressId) {
     const node = new EntityNode(store, expressId);
-    const ek = qualifiedKey(element.model, element.key);
+
+    // A relationship is stated between EXPRESS ids, not occurrences: fan it
+    // out across every occurrence bucketed at each side (usually one element
+    // each; more than one only for a GPU-instanced expressId, #2865), so a
+    // host's void/assembly exclusions cover every physical placement of the
+    // filler/sibling, not just whichever occurrence happened to be built last.
+    const pairAll = (otherId: number): void => {
+      const others = byExpressId.get(otherId);
+      if (!others) return;
+      for (const a of elementsAtId) {
+        const ek = qualifiedKey(a.model, a.key);
+        for (const b of others) {
+          pairs.push([ek, qualifiedKey(b.model, b.key)]);
+        }
+      }
+    };
 
     for (const opening of node.voids()) {
-      const openingElement = byExpressId.get(opening.expressId);
-      if (openingElement) {
-        pairs.push([ek, qualifiedKey(openingElement.model, openingElement.key)]);
-      }
+      pairAll(opening.expressId);
       for (const filler of opening.filledBy()) {
-        const fillerElement = byExpressId.get(filler.expressId);
-        if (fillerElement) {
-          pairs.push([ek, qualifiedKey(fillerElement.model, fillerElement.key)]);
-        }
+        pairAll(filler.expressId);
       }
     }
 
@@ -398,10 +422,7 @@ export function buildStepExclusions(
     if (parent) {
       for (const sibling of parent.decomposes()) {
         if (sibling.expressId === expressId) continue;
-        const siblingElement = byExpressId.get(sibling.expressId);
-        if (siblingElement) {
-          pairs.push([ek, qualifiedKey(siblingElement.model, siblingElement.key)]);
-        }
+        pairAll(sibling.expressId);
       }
     }
   }

@@ -95,6 +95,22 @@ describe('addWallToStore', () => {
     )).toThrow(/positive/);
   });
 
+  it.each([
+    ['NaN Start[0]', [Number.NaN, 0, 0] as const, [5, 0, 0] as const],
+    ['Infinity Start[1]', [0, Number.POSITIVE_INFINITY, 0] as const, [5, 0, 0] as const],
+    ['NaN End[2]', [0, 0, 0] as const, [5, 0, Number.NaN] as const],
+    ['-Infinity End[0]', [0, 0, 0] as const, [Number.NEGATIVE_INFINITY, 0, 0] as const],
+  ])('rejects non-finite coordinates (%s)', (_label, Start, End) => {
+    const store = makeStore(50);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+    expect(() => addWallToStore(
+      editor,
+      { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 },
+      { Start: [...Start], End: [...End], Thickness: 0.2, Height: 3 },
+    )).toThrow(/finite/);
+  });
+
   it('rejects a sloped (non-coplanar) Start/End', () => {
     const store = makeStore(50);
     const view = new MutablePropertyView(null, 'm1');

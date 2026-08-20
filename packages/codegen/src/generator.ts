@@ -249,7 +249,7 @@ export function generateAll(
 ): void {
   const schemas = [
     { name: 'IFC4', file: 'IFC4_ADD2_TC1.exp', dir: 'ifc4' },
-    { name: 'IFC4X3', file: 'IFC4X3_ADD2.exp', dir: 'ifc4x3' },
+    { name: 'IFC4X3', file: 'IFC4X3.exp', dir: 'ifc4x3' },
   ];
 
   for (const schema of schemas) {

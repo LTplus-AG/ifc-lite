@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * `StepExporter.entityLineText` — the byte range the incidental line readers
- * (`getPropertySetName`, `getPropertyIdsInSet`, …) decode.
+ * `step-property-sets.ts:entityLineText` — the byte range the incidental line
+ * readers (`getPropertySetName`, `getPropertyIdsInSet`, …) decode.
  *
  * Two things were unpinned here, and they are different failures:
  *
@@ -33,12 +33,18 @@ import {
   CompactEntityIndexBuilder,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import { StepExporter } from './step-exporter.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
+import {
+  entityLineText,
+  getPropertyIdsInSet,
+  getPropertySetName,
+  type PropertySetContext,
+} from './step-property-sets.js';
 
 /**
- * The private line readers, named. These are the unit under test: no PUBLIC
- * path is sensitive to the range's start (that is finding 1 above), so a
- * behavioural test alone cannot pin it.
+ * The line readers, named. These are the unit under test: no PUBLIC path is
+ * sensitive to the range's start (that is finding 1 above), so a behavioural
+ * test alone cannot pin it.
  */
 type LineReaders = {
   entityLineText(entityId: number): string | null;
@@ -90,8 +96,28 @@ function storeOf(ranges?: Map<number, [number, number]>): IfcDataStore {
   } as unknown as IfcDataStore;
 }
 
+/**
+ * The readers take a {@link PropertySetContext} rather than an exporter. Only
+ * the two fields the byte path reads are real; the rest would be a defect in
+ * the reader if it were touched, so they throw rather than answer.
+ */
 function readersOf(ranges?: Map<number, [number, number]>): LineReaders {
-  return new StepExporter(storeOf(ranges)) as unknown as LineReaders;
+  const dataStore = storeOf(ranges);
+  const unused = (): never => { throw new Error('not reachable from a line reader'); };
+  const ctx: PropertySetContext = {
+    dataStore,
+    entityExtractor: null,
+    mutationView: null,
+    isReadableSourceRef: createSourceRefReader(dataStore.source),
+    allocateExpressId: unused,
+    ownerHistory: { fallbackRef: undefined, byEntity: new Map() },
+    applySourceLineMutations: unused,
+  };
+  return {
+    entityLineText: (entityId) => entityLineText(ctx, entityId),
+    getPropertySetName: (psetId) => getPropertySetName(ctx, psetId),
+    getPropertyIdsInSet: (psetId) => getPropertyIdsInSet(ctx, psetId),
+  };
 }
 
 describe('entityLineText byte range', () => {

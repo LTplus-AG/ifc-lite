@@ -34,6 +34,9 @@ import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import { toast } from '@/components/ui/toast';
 import { buildKmzForModel, kmzSuggestsAbsoluteAltitude, type KmzBuildError } from '@/lib/geo/kmz-export';
+import type { InstancedModelRange } from '@/utils/instancedExport';
+import type { GeometryResult } from '@ifc-lite/geometry';
+import type { IfcDataStore } from '@ifc-lite/parser';
 import type { KmzAltitudeMode } from '@/lib/geo/kmz-exporter';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
 
@@ -68,12 +71,35 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
   // time so we don't scan every store on every render). Falls back to the legacy
   // single-model slot when no federated model is registered (mirrors GLBExportDialog).
   const modelList = useMemo(() => {
-    const list = Array.from(models.values())
+    const list: {
+      id: string;
+      name: string;
+      geometryResult: GeometryResult;
+      dataStore: IfcDataStore;
+      instancedModelRange: InstancedModelRange | null;
+    }[] = Array.from(models.values())
       .filter((m) => m.geometryResult && m.ifcDataStore)
-      .map((m) => ({ id: m.id, name: m.name, geometryResult: m.geometryResult!, dataStore: m.ifcDataStore!, isPrimary: (m.idOffset ?? 0) === 0 }));
+      .map((m) => ({
+        id: m.id,
+        name: m.name,
+        geometryResult: m.geometryResult!,
+        dataStore: m.ifcDataStore!,
+        // Every model can carry GPU-instanced occurrences since #2255
+        // (2026-08-06) — scope `withInstancedMeshes` to THIS model's bracket so
+        // a federation of N models doesn't splice every other model's instanced
+        // entities into this one's KMZ (#2865/#2878 follow-up).
+        instancedModelRange: { idOffset: m.idOffset ?? 0, maxExpressId: m.maxExpressId ?? 0 },
+      }));
     if (list.length === 0 && legacyGeometryResult && legacyDataStore) {
-      // The legacy single-model slot is always the primary model (idOffset 0).
-      list.push({ id: '__legacy__', name: 'Current Model', geometryResult: legacyGeometryResult, dataStore: legacyDataStore, isPrimary: true });
+      // The legacy single-model slot is provably the sole model loaded — nothing
+      // else to wrongly include, so `null` (no filter) is correct.
+      list.push({
+        id: '__legacy__',
+        name: 'Current Model',
+        geometryResult: legacyGeometryResult,
+        dataStore: legacyDataStore,
+        instancedModelRange: null,
+      });
     }
     return list;
   }, [models, legacyGeometryResult, legacyDataStore]);
@@ -122,7 +148,7 @@ export function KmzExportDialog({ trigger }: KmzExportDialogProps) {
       const baseName = sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' });
       const result = await buildKmzForModel({
         geometryResult: selectedModel.geometryResult,
-        isPrimaryModel: selectedModel.isPrimary,
+        instancedModelRange: selectedModel.instancedModelRange,
         dataStore: selectedModel.dataStore,
         mutations: selectedModelId === '__legacy__' ? undefined : georefMutations.get(selectedModelId),
         name: baseName,

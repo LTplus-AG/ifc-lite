@@ -84,6 +84,15 @@ import {
   roomStoreFor,
 } from '@/lib/collab/room-model-target';
 import {
+  PLACEMENT_EPS,
+  YAW_EPS,
+  clearAppliedPlacements,
+  rendererDeltaForPlacement,
+  sweepPlacements,
+  yawOf,
+  type PlacementSweepApi,
+} from '@/lib/collab/placement-sweep';
+import {
   attachAnnotationInbound,
   annotationToCrdtFields,
   type AnnotationDocApi,
@@ -392,41 +401,11 @@ let placementAppliedLoc: Map<number, [number, number, number]> | null = null;
 // baked into each entity's live mesh, relative to its baked baseline.
 let placementAppliedYaw: Map<number, number> | null = null;
 
-const PLACEMENT_EPS = 1e-6;
-const YAW_EPS = 1e-4;
-
-/** Yaw (radians, about Z) encoded by a placement's refDirection (local +X). */
-function yawOf(placement: LocalPlacement | null): number {
-  const ref = placement?.refDirection ?? [1, 0, 0];
-  return Math.atan2(ref[1], ref[0]);
-}
-
 /** Normalize a builder's STEP-uppercase type ('IFCWALL') to IFC case ('IfcWall'). */
 function normalizeIfcClass(stepType: string): string {
   if (!stepType.toUpperCase().startsWith('IFC')) return stepType;
   const rest = stepType.slice(3);
   return `Ifc${rest.charAt(0).toUpperCase()}${rest.slice(1).toLowerCase()}`;
-}
-
-/**
- * Renderer-frame (Y-up) translation that positions an entity's mesh per
- * `placement`, measured from its baked `baseline`. The mesh is baked at the
- * baseline, so only the difference is applied. IFC is Z-up storey-local; the
- * renderer is Y-up: (x, y, z) → (x, z, -y). (This matches the owner's existing
- * `translateEntity` mapping, and shares its "parent placement is unrotated"
- * simplification — fine for storey-local edits.)
- */
-function rendererDeltaForPlacement(
-  baseline: LocalPlacement | null,
-  placement: LocalPlacement,
-): [number, number, number] {
-  const bx = baseline?.location[0] ?? 0;
-  const by = baseline?.location[1] ?? 0;
-  const bz = baseline?.location[2] ?? 0;
-  const dx = placement.location[0] - bx;
-  const dy = placement.location[1] - by;
-  const dz = placement.location[2] - bz;
-  return [dx, dz, -dy];
 }
 
 /**
@@ -467,6 +446,7 @@ function composePlacement(
  * spelling of a value that is provably the same, and a second thing a future
  * call site could get wrong.
  */
+
 function reconcilePlacementMesh(
   get: () => ViewerState,
   store: IfcDataStore,
@@ -669,7 +649,24 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[collab] failed to start session:', err);
-      set({ collabConnecting: false, collabStatus: 'disconnected' });
+      // `collabRoomId` / `collabRole` / `collabSelfToken` were set synchronously
+      // above, before any session existed, so a UI reading "collabRoomId is set"
+      // as "still in the room" (the toolbar indicator, ShareDialog) — and
+      // canCollabEdit()/canCollabComment(), which mutationSlice gates every
+      // write on — must not keep applying a room/role that never actually
+      // started. Guarded on collabRoomId still matching this attempt so a
+      // newer start/stop that ran while we awaited isn't clobbered here.
+      if (get().collabRoomId === roomId) {
+        set({
+          collabConnecting: false,
+          collabStatus: 'disconnected',
+          collabRoomId: null,
+          collabRole: null,
+          collabSelfToken: null,
+        });
+      } else {
+        set({ collabConnecting: false, collabStatus: 'disconnected' });
+      }
       return;
     }
 
@@ -704,6 +701,12 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       getGeometryRef: (doc, path) => collabMod.getGeometryRef(doc, path),
       getGeometry: (doc, geomId) => collabMod.getGeometry(doc, geomId),
       iterEntities: (doc) => collabMod.iterEntities(doc),
+    };
+    // Doc reads for the reconstruct-side placement sweep (placement-sweep.ts).
+    const sweepApi: PlacementSweepApi = {
+      iterEntities: (doc) => collabMod.iterEntities(doc),
+      getEntityPlacement: (doc, path) => collabMod.getEntityPlacement(doc, path),
+      getPlacementBaseline: (doc, path) => collabMod.getPlacementBaseline(doc, path),
     };
     // Expose the geometry API + a blob-store factory so a local create can push
     // the new mesh blob into the room later (not just at seed).
@@ -963,7 +966,54 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
                   geometryResult:
                     meshes.length > 0 ? buildGeometryResultFromMeshes(meshes) : payload.geometryResult,
                 });
+                // The meshes just installed are BAKED, i.e. back at
+                // `meta.placementBaseline` (hydrate now copies the vertex arrays
+                // per consumer, so a re-hydrate returns the original geometry
+                // rather than a copy the renderer had already translated in
+                // place). The applied-placement bookkeeping describes the
+                // meshes just replaced, so it is now false — and false in the
+                // one direction that silently pins the damage: the sweep below
+                // would read "already applied" and leave the entity reverted.
+                // Forget it here, NOT before the `await hydrateGeometryFromRoom`
+                // above: a remote placement event landing during that await
+                // would call `reconcilePlacementMesh` and re-stamp `applied` for
+                // a mesh that is discarded by this replacement, and clearing
+                // beforehand would let that stale stamp survive into the sweep.
+                //
+                // SAFE FOR A NON-OBVIOUS REASON: `placementAppliedLoc` /
+                // `placementAppliedYaw` are module-scoped and shared with the
+                // live placement-event path, so a clear here is only correct if
+                // nothing can observe it mid-way. Nothing can — there is no
+                // `await` between this clear and the `sweepPlacements` call
+                // below (`collectPlacementDrift` reads the doc synchronously),
+                // so the clear-then-sweep pair is one uninterruptible turn of
+                // the event loop. Inserting an `await` anywhere in that span
+                // (e.g. chunking the sweep for a large model) reopens the
+                // window this comment closes.
+                clearAppliedPlacements(placementAppliedLoc, placementAppliedYaw);
               }
+            }
+            // Placement is NOT carried by the blobs: a hydrated mesh sits at the
+            // `usd::xformop` it was baked at, and only a live placement *event*
+            // ever moved it. So re-derive it from the doc here — for a late
+            // joiner (which receives no such event at all), for an event dropped
+            // before this model existed, and for the meshes just re-hydrated
+            // above. Idempotent: `sweepPlacements` skips anything already
+            // applied, so this is a no-op on a room where nothing has moved,
+            // and it is the ONLY placement-replay mechanism in this file — see
+            // `clearAppliedPlacements` above for why it is safe to reach here
+            // synchronously off the geometry-changed branch too.
+            if (get().collabRoomId === roomId) {
+              sweepPlacements(
+                sweepApi,
+                session.doc,
+                payload.pathToId,
+                placementAppliedLoc,
+                placementAppliedYaw,
+                (entityId, placement) => {
+                  reconcilePlacementMesh(get, payload.dataStore, session.doc, entityId, placement);
+                },
+              );
             }
             // Warn about a room that rendered nothing. The old guard was
             // `geomCount > 0`, which cannot fire in the case that actually

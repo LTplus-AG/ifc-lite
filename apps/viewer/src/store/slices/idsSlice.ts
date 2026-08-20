@@ -219,7 +219,12 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
     set({
       idsDocument,
       // Loading a new document invalidates any previous audit/validation
-      // results — they were tied to a specific document instance.
+      // results — they were tied to a specific document instance. That
+      // includes `idsIsolateMode`: it drives the isolate-button "pressed"
+      // state and the 3D isolation built from the now-discarded report, so
+      // it must be cleared here exactly like `clearIdsValidationReport`
+      // clears it — otherwise the panel keeps showing an isolate mode as
+      // active for a report that no longer exists.
       idsAuditReport: null,
       idsValidationReport: null,
       idsActiveSpecificationId: null,
@@ -227,9 +232,19 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsError: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
+      idsIsolationScope: 'ids',
+      idsIsolateMode: null,
     }),
 
   clearIdsDocument: () =>
+    // `useIDS.clearIDS` bumps `validationEpochRef` right before calling this,
+    // so a `runValidation()` still in flight sees `stillWantedValidation` go
+    // false and skips its OWN `finally` reset of `idsLoading`/`idsProgress`
+    // (by design — that call is no longer the current one and must not flip
+    // busy state out from under whatever superseded it). Nothing else then
+    // ever turns them off, so the clear itself has to (PR #2837 review):
+    // without this, a clear that lands mid-run leaves the UI showing a
+    // validation spinner that never resolves.
     set({
       idsDocument: null,
       idsAuditReport: null,
@@ -239,6 +254,10 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsError: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
+      idsLoading: false,
+      idsProgress: null,
+      idsIsolationScope: 'ids',
+      idsIsolateMode: null,
     }),
 
   // Audit actions
@@ -259,6 +278,11 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
   },
 
   clearIdsValidationReport: () =>
+    // Same reasoning as `clearIdsDocument` above: `useIDS.clearValidation`
+    // bumps the epoch first, which makes a still-in-flight `runValidation()`
+    // skip its own `idsLoading`/`idsProgress` reset on purpose — this is the
+    // only remaining writer for those fields once that happens (PR #2837
+    // review).
     set({
       idsValidationReport: null,
       idsActiveSpecificationId: null,
@@ -267,6 +291,8 @@ export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, ge
       idsIsolateMode: null,
       idsFailedEntityIds: new Set(),
       idsPassedEntityIds: new Set(),
+      idsLoading: false,
+      idsProgress: null,
     }),
 
   setIdsProgress: (idsProgress) => set({ idsProgress }),

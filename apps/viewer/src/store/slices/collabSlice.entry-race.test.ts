@@ -90,6 +90,19 @@ describe('collabSlice.startCollab — entry race (model removed before the call)
       // (role: 'admin'), but it must exist to type-check the call site.
       setEditEnabled: () => {},
       mutationViews: new Map(),
+      addElementModelId: null,
+      addElementStoreyId: null,
+      selectedEntityId: null,
+      selectedEntityIds: new Set(),
+      selectedStoreys: new Set(),
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+      classFilter: null,
+      hiddenEntitiesByModel: new Map(),
+      isolatedEntitiesByModel: new Map(),
+      pinboardEntities: new Set(),
+      hierarchyBasketSelection: new Set(),
     } as TestState;
 
     // The precondition: no model was ever loaded, or the last one was removed

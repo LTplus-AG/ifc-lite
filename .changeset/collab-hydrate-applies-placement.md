@@ -1,0 +1,5 @@
+---
+"@ifc-lite/viewer": patch
+---
+
+Keep moved elements where they were moved to when joining or working in a shared room. Geometry reaches a collaborator as mesh blobs baked at the position they had when they were shared, and the viewer only ever re-positioned them in response to a live "someone moved this" message — it never re-derived position from the shared document at load time. So a person joining a room after an element had been moved got it back at its original position, with no message coming to correct it, and the model simply looked wrong. Worse, whenever anyone in the room added or deleted an element, every mesh was rebuilt from its baked blob and all previously applied moves snapped back — permanently, and with no indication anything had happened, in the ordinary course of two people working together. The recipient now compares each element's current placement in the document against the position its geometry was baked at, and re-applies the difference after every rebuild.

@@ -110,17 +110,25 @@ struct MutationsJson {
 /// `MutablePropertyView` diff). `mutations_json` shape:
 /// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
 /// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
-/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). Empty/invalid JSON ⇒ no mutations.
+/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). An empty string means "no mutations" —
+/// a legitimate, common case (plain re-export). A non-empty string that fails to
+/// parse is a caller bug (a malformed payload, a version mismatch across the wasm
+/// boundary) and must not be treated the same way: silently falling back to "no
+/// mutations" would export a file that LOOKS like a successful re-export of the
+/// user's edits but silently contains none of them. Callers get an `Err` instead,
+/// matching `exportGlb`'s and `exportMerged`'s fail-closed contract at this same
+/// wasm boundary.
 pub fn export_step_json(
     content: &[u8],
     schema: Option<String>,
     included: Option<Vec<u32>>,
     mutations_json: &str,
-) -> String {
+) -> Result<String, String> {
     let muts: MutationsJson = if mutations_json.trim().is_empty() {
         MutationsJson::default()
     } else {
-        serde_json::from_str(mutations_json).unwrap_or_default()
+        serde_json::from_str(mutations_json)
+            .map_err(|e| format!("invalid mutations_json: {e}"))?
     };
     let opts = StepOptions {
         schema,
@@ -142,7 +150,7 @@ pub fn export_step_json(
             .collect(),
         ..StepOptions::default()
     };
-    export_step(content, &opts)
+    Ok(export_step(content, &opts))
 }
 
 /// Export the parsed model in `content` as a STEP/IFC string.
@@ -462,5 +470,32 @@ mod tests {
         assert_eq!(schema, "IFC4");
         // The converted file must still re-parse as a coherent entity set.
         assert!(step.lines().filter(|l| l.starts_with('#')).count() == stats.written);
+    }
+
+    #[test]
+    fn empty_mutations_json_is_ok_and_applies_nothing() {
+        // The legitimate "no mutations" case must keep working exactly as before.
+        let src = fixture_or_skip!("ara3d/duplex.ifc");
+        let step = export_step_json(&src, None, None, "").expect("empty payload is valid");
+        let (reparsed, _ids, _schema) = parse_back(&step);
+        let mut sc = EntityScanner::new(&src[..]);
+        let mut total = 0usize;
+        while sc.next_entity().is_some() {
+            total += 1;
+        }
+        assert_eq!(reparsed, total, "no entities dropped with no mutations");
+    }
+
+    #[test]
+    fn malformed_mutations_json_is_an_error_not_a_silent_no_op() {
+        // Before this fix, a malformed payload fell back to `MutationsJson::default()`
+        // via `unwrap_or_default()` — the caller's edits vanished and the function
+        // still returned a normal-looking, fully re-parseable STEP file, so a bug on
+        // the JS side of the wasm boundary (or a version-mismatched payload) came out
+        // indistinguishable from "the user genuinely made no edits". Confirm it is
+        // rejected instead of silently discarded. The parse happens before `content`
+        // is touched, so no fixture is needed here — this must not skip in CI.
+        let result = export_step_json(&[], None, None, "{not valid json");
+        assert!(result.is_err(), "malformed mutations_json must be reported, not swallowed");
     }
 }

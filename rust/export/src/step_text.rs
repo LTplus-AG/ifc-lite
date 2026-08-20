@@ -9,9 +9,17 @@
 //! orchestration that stays in `step.rs`.
 
 /// Escape a STEP string literal body: double the apostrophe and reverse
-/// solidus, and map every ASCII control character (the C0 range plus DEL) to
-/// a space, since ISO 10303-21 restricts a literal's plain-text bytes to the
-/// basic graphic range 32-126.
+/// solidus, map every ASCII control character (the C0 range plus DEL) to a
+/// space, and encode any character outside the basic graphic range as its
+/// `\X2\`/`\X4\` control directive — never a raw byte — since ISO 10303-21
+/// 6.3.3.4 restricts a literal's plain-text bytes to 32-126. buildingSMART's
+/// IFC string-encoding guidance states the same for IFC2X3/IFC4/IFC4X3: a
+/// character outside decimal 32-126 "has to be encoded" (e.g. 'Ä' as
+/// `\X2\00C4\X0\`). A reader that treats the file's bytes as ISO-8859-1 — the
+/// byte encoding the base standard and most real consumers assume — turns a
+/// raw UTF-8 multi-byte sequence into mojibake or a broken parse; this exact
+/// writer shape is a reported, reproduced defect in real IFC tooling
+/// (IfcOpenShell#699/#1016; files rejected by Solibri).
 pub(crate) fn escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -22,7 +30,15 @@ pub(crate) fn escape(s: &str) -> String {
             '\'' => out.push_str("''"),
             '\\' => out.push_str("\\\\"),
             '\0'..='\u{1F}' | '\u{7F}' => out.push(' '),
-            _ => out.push(c),
+            '\u{20}'..='\u{7E}' => out.push(c),
+            _ => {
+                let cp = c as u32;
+                if cp <= 0xFFFF {
+                    out.push_str(&format!("\\X2\\{cp:04X}\\X0\\"));
+                } else {
+                    out.push_str(&format!("\\X4\\{cp:08X}\\X0\\"));
+                }
+            }
         }
     }
     out

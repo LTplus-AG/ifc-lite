@@ -798,8 +798,6 @@ mod tests {
         }
         let u = radial_sign_at(&uniform, -50.0, -50.0).expect("uniform hole vertex");
         let l = radial_sign_at(&lofted, -50.0, -50.0).expect("lofted hole vertex");
-        eprintln!("uniform hole normal at (-50,-50): {:?}", u);
-        eprintln!("lofted  hole normal at (-50,-50): {:?}", l);
         // Same physical construction (untapered loft == uniform extrusion), so
         // the two independently-computed normals must point the same way: a
         // positive dot product, not merely matching per-component signs (which

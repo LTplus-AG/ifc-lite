@@ -23,19 +23,38 @@ import { expect, it } from 'vitest';
  * inline matches resolved paths too, which is the same trap as `external`.
  *
  * Asserted on the shape of the module namespace rather than on a timing, which
- * would be flaky by construction. A natively-imported ES module namespace is
- * sealed; one built by vite's SSR transform is an ordinary object.
+ * would be flaky by construction. Under today's vite, a natively imported ES
+ * module namespace is sealed and one built by the SSR transform is not; every
+ * other distinguishing bit is identical (`proto === null`,
+ * `Symbol.toStringTag === 'Module'` in both). That makes sealed-ness the best
+ * cheap discriminator available rather than a definition -- if vite ever seals
+ * its namespaces this goes green while inlining, so the per-package coverage
+ * below is the real belt.
+ *
+ * Every heavy sibling is checked, not a sample. An earlier version asserted
+ * only `@ifc-lite/lists`, which is the SMALLEST of the eight packages
+ * externalised here at 168K; the cost is `@ifc-lite/data` at 9.8M and
+ * `@ifc-lite/parser` at 5.5M. Inlining just those two -- precisely the "later
+ * inline rule added for an unrelated reason" named above -- left the guard
+ * green while suite transform went 120ms to 944ms. The safety net had a hole
+ * in the exact shape of the threat it documents.
  */
-it('imports sibling workspace packages natively, not through vite (#2935)', async () => {
-  const namespace = await import('@ifc-lite/lists');
+it.each([
+  '@ifc-lite/data',
+  '@ifc-lite/parser',
+  '@ifc-lite/lists',
+  '@ifc-lite/clash',
+  '@ifc-lite/ids',
+])('imports %s natively, not through vite (#2935)', async (specifier) => {
+  const namespace: Record<string, unknown> = await import(/* @vite-ignore */ specifier);
   const someExport = Object.keys(namespace)[0];
-  expect(someExport, 'the module must export something to inspect').toBeTruthy();
+  expect(someExport, `${specifier} must export something to inspect`).toBeTruthy();
 
   const descriptor = Object.getOwnPropertyDescriptor(namespace, someExport);
   expect(
     { configurable: descriptor?.configurable, extensible: Object.isExtensible(namespace) },
-    'a vite-transformed namespace is configurable and extensible; a native ESM one is ' +
-      'neither. Both true means server.deps.external in vitest.config.ts stopped ' +
-      'applying, and the cold-transform flake is back',
+    `${specifier} came through vite's transform: its namespace is configurable and ` +
+      'extensible, where a native ESM one is neither. server.deps.external in ' +
+      'vitest.config.ts stopped applying to it, and the cold-transform flake is back',
   ).toEqual({ configurable: false, extensible: false });
 });

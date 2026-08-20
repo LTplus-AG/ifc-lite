@@ -5,7 +5,10 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
-const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
+// Normalised to forward slashes: on win32 `fileURLToPath` yields `C:\repo\`,
+// while the pattern tail and the ids vitest tests against both use `/`, so the
+// regex would never match and externalisation would silently vanish.
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url)).replaceAll('\\', '/');
 
 /**
  * Sibling workspace packages, matched by their BUILT output.
@@ -16,7 +19,10 @@ const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
  * beneath some other `packages/<x>/dist/` directory -- and then it matches
  * this package's own `src/*.ts` too, which Node cannot execute.
  *
- * `pkg` as well as `dist`, because `@ifc-lite/wasm` builds to
+ * `pkg` as well as `dist` is UNTESTED insurance, stated plainly: instrumenting
+ * the pattern over the full suite shows eight ids submitted, every one of them
+ * a `packages/<name>/dist/index.js`, and none under `pkg`. It is here because
+ * `@ifc-lite/wasm` builds to
  * `packages/wasm/pkg/ifc-lite.js` (turbo's build outputs are
  * `["dist/**", "pkg/**"]`). It is reachable from here through
  * `@ifc-lite/clash/wasm`, and it is a large generated bundle -- exactly the

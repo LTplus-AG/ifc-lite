@@ -210,6 +210,30 @@ fn a_cycle_must_not_starve_the_geometry_that_follows_it() {
     );
 }
 
+/// The same starvation, on the route the REPRESENTATION guard does not cover.
+///
+/// `IfcGeometricCurveSet.Elements` closes its cycle through items alone, with
+/// no mapped item and no representation, so only the item path guard can cut
+/// it. Without that guard the 8-way self-reference is merely bounded by the
+/// depth cap and pays a revisit charge at every level, draining the budget the
+/// shared geometry after it needs. This is the test whose absence let the item
+/// path guard be deleted with the whole file still green.
+#[test]
+fn a_set_cycle_must_not_starve_the_geometry_that_follows_it() {
+    let shared = "#70=IFCMAPPEDITEM(#72,$);\n        #71=IFCMAPPEDITEM(#72,$);\n        #72=IFCREPRESENTATIONMAP($,#73);\n        #73=IFCSHAPEREPRESENTATION($,$,$,(#50));\n        #50=IFCPOLYLINE((#60,#61));\n        #60=IFCCARTESIANPOINT((0.,0.));\n        #61=IFCCARTESIANPOINT((1.,1.));\n";
+    let cycle = "#20=IFCGEOMETRICCURVESET((#21,#22,#23,#24,#25,#26,#27,#28));\n        #21=IFCGEOMETRICCURVESET((#20));\n#22=IFCGEOMETRICCURVESET((#20));\n        #23=IFCGEOMETRICCURVESET((#20));\n#24=IFCGEOMETRICCURVESET((#20));\n        #25=IFCGEOMETRICCURVESET((#20));\n#26=IFCGEOMETRICCURVESET((#20));\n        #27=IFCGEOMETRICCURVESET((#20));\n#28=IFCGEOMETRICCURVESET((#20));\n";
+
+    let body = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{shared}");
+    let out = run_with_timeout(wrap(&body), 10, 60);
+    assert_eq!(
+        out.polylines.len(),
+        2,
+        "a set cycle must not consume the budget the shared geometry after it \
+         needs; got {} polylines instead of 2",
+        out.polylines.len()
+    );
+}
+
 /// A long ACYCLIC chain: every id distinct, so a visited set never fires.
 /// This is the input a set alone cannot stop — one stack frame per
 /// file-supplied entity. Only a chain-length bound catches it.

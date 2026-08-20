@@ -202,12 +202,41 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
+// BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
+// `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
+// collapsed, the value must have length >= 1. A value that is present but
+// consists entirely of XML whitespace collapses to nothing and is therefore
+// as invalid as an absent one.
+const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
+
 function writeMarkupFile(
   folder: JSZip,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
 ): void {
+  // BCF 3.0's markup.xsd tightens `Topic/@TopicType` and `Topic/@TopicStatus`
+  // from optional (2.1) to `use="required"`. Omitting the attribute -
+  // which is what 2.1 output does when the value is unset - produces
+  // markup.bcf that fails 3.0 schema validation in every downstream tool.
+  // We refuse to invent a value (e.g. defaulting to "Open") because that
+  // would assert a topic status the user never chose; instead we fail the
+  // write so the caller supplies one.
+  if (version === '3.0') {
+    if (!topic.topicType || XML_WHITESPACE_ONLY.test(topic.topicType)) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicType (topic "${topic.guid}" has none). ` +
+          `Set topic.topicType before writing a 3.0 file.`
+      );
+    }
+    if (!topic.topicStatus || XML_WHITESPACE_ONLY.test(topic.topicStatus)) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicStatus (topic "${topic.guid}" has none). ` +
+          `Set topic.topicStatus before writing a 3.0 file.`
+      );
+    }
+  }
+
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
 
@@ -220,16 +249,33 @@ function writeMarkupFile(
   <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
-  if (topic.description) {
-    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
-  }
-
+  // Order below (Title, Priority, Index, Labels, CreationDate,
+  // CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate, AssignedTo,
+  // Stage, Description, BimSnippet, ...) follows the Topic xs:sequence in
+  // BOTH buildingSMART/BCF-XML markup.xsd release_2_1 and release_3_0 --
+  // confirmed identical there and against release_3_0's own conformance
+  // fixture (Test Cases/v3.0/Visualization/Perspective camera/markup.bcf,
+  // which reads ModifiedAuthor then Description then DocumentReferences).
+  // Description and Labels were previously written out of this order
+  // (Description right after Title; Labels after Stage). Both Priority,
+  // Index, Labels, and Stage are optional and can be omitted, but
+  // CreationDate/CreationAuthor below are always emitted, so xs:sequence
+  // made the output schema-invalid whenever topic.description was set or
+  // topic.labels was non-empty -- not "regardless of content": an absent
+  // Description or empty Labels never appeared at all, so there was nothing
+  // to be out of order.
   if (topic.priority) {
     content += `\n    <Priority>${escapeXml(topic.priority)}</Priority>`;
   }
 
   if (topic.index !== undefined) {
     content += `\n    <Index>${topic.index}</Index>`;
+  }
+
+  if (topic.labels && topic.labels.length > 0) {
+    for (const label of topic.labels) {
+      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+    }
   }
 
   content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
@@ -254,10 +300,8 @@ function writeMarkupFile(
     content += `\n    <Stage>${escapeXml(topic.stage)}</Stage>`;
   }
 
-  if (topic.labels && topic.labels.length > 0) {
-    for (const label of topic.labels) {
-      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
-    }
+  if (topic.description) {
+    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
   }
 
   // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the

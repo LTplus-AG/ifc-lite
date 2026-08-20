@@ -158,4 +158,20 @@ describe('WebGPUDevice adapter-info snapshot (#2624)', () => {
     assert.equal(snapshot.vendor, undefined, 'a non-string vendor is omitted');
     assert.equal(snapshot.architecture, 'testarch', 'while the valid field survives');
   });
+
+  // The vendor and architecture checks are two separate `typeof === 'string'`
+  // guards. The case above only exercises the vendor one (architecture was
+  // always a valid string alongside it) — this flips which field is bad, so
+  // the architecture guard is independently observed rather than assumed
+  // symmetric with vendor's.
+  it('drops a non-string architecture even when vendor is valid', async () => {
+    installNavigator(makeAdapter({ vendor: 'testvendor', architecture: 99 }));
+
+    const device = new WebGPUDevice();
+    await device.init(makeCanvas());
+    const snapshot = device.getAdapterInfo();
+    assert.ok(snapshot);
+    assert.equal(snapshot.vendor, 'testvendor', 'the valid field survives');
+    assert.equal(snapshot.architecture, undefined, 'a non-string architecture is omitted');
+  });
 });

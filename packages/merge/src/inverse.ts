@@ -13,7 +13,12 @@ import type { IfcxFile, ProvenanceAuthor } from '@ifc-lite/ifcx';
 import { computeLayerId, createProvenanceManifest, setProvenance } from '@ifc-lite/ifcx';
 import type { ComponentAttributes, MergeOp } from './types.js';
 import type { StackState } from './component-state.js';
-import { componentEntries, extractStackState, snapshotOf } from './component-state.js';
+import {
+  attributesContentEqual,
+  componentEntries,
+  extractStackState,
+  snapshotOf,
+} from './component-state.js';
 import { opsForComponentChange } from './three-way.js';
 import { opsToNodes } from './merge-layer.js';
 
@@ -60,7 +65,10 @@ export function buildInverseOps(before: StackState, after: StackState): MergeOp[
       const afterAttrs = afterComponents.get(key);
       const beforeHash = beforeAttrs ? snapshotOf(beforeAttrs).hash : undefined;
       const afterHash = afterAttrs ? snapshotOf(afterAttrs).hash : undefined;
-      if (beforeHash === afterHash) continue;
+      // A `stableHash` collision here would skip reverting a component that
+      // actually changed; verify with an exact content check once the
+      // hashes already agree (see `attributesContentEqual`).
+      if (beforeHash === afterHash && attributesContentEqual(beforeAttrs, afterAttrs)) continue;
       ops.push(...opsForComponentChange(path, key, afterAttrs, beforeAttrs));
     }
   }

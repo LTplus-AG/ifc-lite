@@ -270,9 +270,22 @@ export function GLBExportDialog({ trigger }: GLBExportDialogProps) {
           gp.dispose();
         }
       } else {
+        // GPU instancing stopped being primary-only on 2026-08-06 (#2255) — a
+        // federated model can carry instanced occurrences too, re-homed onto
+        // its own global id space at drain. `getAllInstancedMeshData()`
+        // returns every loaded model's occurrences unfiltered, so scope it to
+        // THIS model's `{ idOffset, maxExpressId }` bracket (both on
+        // `FederatedModel`) rather than the old primary-only gate, or a
+        // federation of N models would splice every other model's instanced
+        // entities into this one's export too. `federatedModel` is undefined
+        // only for the legacy `__legacy__` slot, which is provably the sole
+        // model loaded — nothing else to wrongly include, so `null` (no
+        // filter) is correct there (#2865/#2878 follow-up).
         const exportGeometry = withInstancedMeshes(
           selectedModel.geometryResult,
-          idOffset === 0,
+          federatedModel
+            ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+            : null,
         );
         const globalHidden = visibleOnly ? getGlobalHiddenIds(selectedModelId) : undefined;
         const globalIsolated = visibleOnly ? getGlobalIsolatedIds(selectedModelId) : undefined;

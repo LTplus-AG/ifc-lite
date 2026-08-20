@@ -314,6 +314,36 @@ describe('foldOccurrenceWorldBox — template cull metadata', () => {
     assert.deepStrictEqual(meta.bounds, { min: [-5, 0, 0], max: [2, 2, 2] });
   });
 
+  it('grows the union bounds independently on each of the six min/max faces', () => {
+    // The prior "grows the union after" test only ever moves the min-X face
+    // (the second box's minY/minZ/maxY/maxZ all equal the seed box's), so a
+    // copy-paste bug in any of the OTHER five branches — e.g. `maxY` writing
+    // into `tb.max[0]` instead of `tb.max[1]` — is invisible to it. Exercise
+    // each of the six comparisons with a box that extends the union on
+    // exactly one face and leaves the other five untouched, so a
+    // wrong-axis write is caught on the specific face it corrupts.
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 10, 10, 10)); // seed union
+
+    foldOccurrenceWorldBox(meta, box(-1, 4, 4, 5, 5, 5)); // extends min-X only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, 0, 0], max: [10, 10, 10] }, 'min-X');
+
+    foldOccurrenceWorldBox(meta, box(4, -2, 4, 5, 5, 5)); // extends min-Y only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, 0], max: [10, 10, 10] }, 'min-Y');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, -3, 5, 5, 5)); // extends min-Z only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [10, 10, 10] }, 'min-Z');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 11, 5, 5)); // extends max-X only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 10, 10] }, 'max-X');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 5, 12, 5)); // extends max-Y only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 12, 10] }, 'max-Y');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 5, 5, 13)); // extends max-Z only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 12, 13] }, 'max-Z');
+  });
+
   it('maxOccRadius tracks the LARGEST single occurrence, not the union diagonal', () => {
     const meta = freshMeta();
     foldOccurrenceWorldBox(meta, box(0, 0, 0, 1, 1, 1));       // r = sqrt(3)/2

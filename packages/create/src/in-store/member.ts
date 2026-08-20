@@ -12,7 +12,7 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
@@ -60,6 +60,11 @@ export function addMemberToStore(
   anchor: SpatialAnchor,
   params: MemberInStoreParams,
 ): MemberBuildResult {
+  // A non-finite Start/End coordinate makes the derived memberLen NaN, and
+  // `NaN <= 0` is false, so the distinct-points check below never fires.
+  // Validate the source coordinates instead of trusting the derived value.
+  assertFinitePoint3({ Start: params.Start, End: params.End }, 'addMemberToStore');
+
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
   params = {

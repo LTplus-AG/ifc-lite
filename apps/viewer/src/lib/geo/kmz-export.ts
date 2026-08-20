@@ -12,7 +12,7 @@ import { extractGeoreferencingOnDemand, extractLengthUnitScale, type IfcDataStor
 import type { CoordinateInfo, GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { getMapUnitScale } from './cesium-placement';
-import { mergeMapConversion, mergeProjectedCRS } from './effective-georef';
+import { mergeMapConversion, mergeProjectedCRS, resolveEpsetMapUnitScale } from './effective-georef';
 import { resolveMapUnitToMetreScale } from './geo-scale';
 import { withInstancedMeshes, type InstancedModelRange } from '../../utils/instancedExport.js';
 import { effectiveMapConversionForGeometry } from './map-absolute';
@@ -81,6 +81,15 @@ export function kmzSuggestsAbsoluteAltitude(
   const scale = extractLengthUnitScale(input.dataStore.source, input.dataStore.entityIndex) ?? 1;
   const conversion = mergeMapConversion(info?.mapConversion, input.mutations?.mapConversion);
   const crs = mergeProjectedCRS(info?.projectedCRS, input.mutations?.projectedCRS, scale);
+  // `mergeProjectedCRS` alone doesn't know the georeference's `source`, so an
+  // IFC2x3 `ePSet_MapConversion` file with no explicit ePset MapUnit leaves
+  // `mapUnitScale` undefined here -- which `resolveMapUnitToMetreScale`
+  // (inside `suggestAbsoluteAltitudeForKmz`) then reads as "treat offsets as
+  // metres" instead of the buildingSMART convention (project length unit).
+  // `getEffectiveGeoreference` applies this same correction; this function
+  // built its own merge via `extractGeoreferencingOnDemand` and previously
+  // didn't (matches the #2859 fix applied to `GeoreferencingPanel.tsx`).
+  if (crs) crs.mapUnitScale = resolveEpsetMapUnitScale(info?.source, crs.mapUnitScale, scale);
   return suggestAbsoluteAltitudeForKmz(input.geometryResult.coordinateInfo, conversion, crs, scale);
 }
 
@@ -219,6 +228,13 @@ export async function buildKmzForModel(
   const conversion = mergeMapConversion(info?.mapConversion, input.mutations?.mapConversion);
   const crs = mergeProjectedCRS(info?.projectedCRS, input.mutations?.projectedCRS, scale);
   if (!conversion || !crs) return 'not-georeferenced';
+  // Same ePset MapUnit correction `getEffectiveGeoreference` applies (see
+  // `kmzSuggestsAbsoluteAltitude` above) -- without it, a millimetre IFC2x3
+  // project whose only georeference is `ePset_MapConversion` (no explicit
+  // MapUnit) exports every eastings/northings/orthogonalHeight value scaled
+  // by 1 instead of 0.001: the reprojected pin lands ~1000x away from the
+  // model, and `computeKmzAltitude`'s altitude is 1000x too high.
+  crs.mapUnitScale = resolveEpsetMapUnitScale(info?.source, crs.mapUnitScale, scale);
   return buildKmzForResolvedGeoref({
     conversion,
     crs,

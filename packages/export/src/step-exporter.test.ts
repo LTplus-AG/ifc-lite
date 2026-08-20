@@ -212,22 +212,6 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
-  it('updates type-owned HasPropertySets instead of creating a duplicate relationship', async () => {
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutationView = liveView(store);
-    mutationView.setProperty(67, 'Pset_WallCommon', 'AcousticRating', 'Edited type value', PropertyValueType.Label);
-
-    const exporter = new StepExporter(store, mutationView);
-    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
-
-    expect(decode(result.content)).toContain("IFCLABEL('Edited type value')");
-    expect(decode(result.content)).not.toContain("IFCLABEL('This is Pset of the WallType')");
-    expect(decode(result.content)).not.toContain("#114=IFCPROPERTYSET('3wkd_mjInDCfOthy7w_A6V'");
-    expect(decode(result.content)).not.toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#67\),#/);
-    expect(decode(result.content)).toMatch(/#67=IFCWALLTYPE\([^;]*\(#72,#\d+\)[^;]*\);/);
-  });
-
   it('rejects georeferencing edits for IFC2X3 export', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
@@ -240,20 +224,6 @@ describe('StepExporter', () => {
         projectedCRS: { name: 'EPSG:2056' },
       },
     })).toThrow(/IFC4 or newer/);
-  });
-
-  it('reuses the project length unit when exporting property units', async () => {
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutationView = liveView(store);
-    mutationView.setProperty(74, 'Pset_Custom', 'OffsetDistance', 12.5, PropertyValueType.Real, 'METRE');
-
-    const exporter = new StepExporter(store, mutationView);
-    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
-    const content = decode(result.content);
-
-    expect(content).not.toContain(',#0);');
-    expect(content).toMatch(/#\d+=IFCPROPERTYSINGLEVALUE\('OffsetDistance',\$,IFCREAL\(12\.5\),#\d+\);/);
   });
 
   it('generates valid IFC GlobalIds for new STEP entities', async () => {

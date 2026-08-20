@@ -107,10 +107,15 @@ function materializeNode(node: ComposedNode): IfcxNode {
 }
 
 function dedupeImports(layers: IfcxFile[]): ImportNode[] {
+  // `layers` is weakest-first, strongest-last (see bakeLayers' doc comment).
+  // Later occurrences must win so a stronger layer's import metadata (e.g.
+  // a pinned `integrity` hash) overrides a weaker layer's for the same
+  // URI, matching mergeSchemas' Object.assign (later-wins) below and
+  // composeIfcx's layer semantics generally.
   const byUri = new Map<string, ImportNode>();
   for (const layer of layers) {
     for (const imp of layer.imports) {
-      if (!byUri.has(imp.uri)) byUri.set(imp.uri, imp);
+      byUri.set(imp.uri, imp);
     }
   }
   return [...byUri.values()];

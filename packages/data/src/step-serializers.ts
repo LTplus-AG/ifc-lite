@@ -337,7 +337,22 @@ export function parseStepValue(str: string): StepValue {
 }
 
 /**
- * Parse a STEP list
+ * Parse a STEP list.
+ *
+ * Splits at top-level commas, tracking both paren/bracket nesting AND
+ * single-quoted string state (with `''` escapes). Without quote-tracking, a
+ * string member containing a literal comma — e.g. `('a,b','c')`, which any
+ * IfcLabel/IfcText value is free to contain — split mid-string: `'a,b'`
+ * became the two malformed tokens `'a` and `b'` instead of the one string
+ * `a,b`. Parens/brackets *inside* a quoted string (also legal STEP content)
+ * must likewise not perturb `depth`, hence checking `inString` first.
+ *
+ * Mirrors `splitTopLevel` in `@ifc-lite/parser`'s `source-header.ts`, which
+ * already had to solve this same problem for header fields and documented
+ * why: "FILE_DESCRIPTION items ... routinely contain commas ... inside
+ * quoted strings ... which a splitter that ignores quote state would
+ * mis-split." That reasoning applies equally to any STEP list, not just
+ * header fields — this generic parser had the same gap.
  */
 function parseStepList(str: string): StepValue[] {
   // Remove outer parentheses
@@ -348,12 +363,29 @@ function parseStepList(str: string): StepValue[] {
 
   const values: StepValue[] = [];
   let depth = 0;
+  let inString = false;
   let current = '';
 
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
 
-    if (char === '(' || char === '[') {
+    if (inString) {
+      current += char;
+      if (char === "'") {
+        if (inner[i + 1] === "'") {
+          current += "'";
+          i++;
+        } else {
+          inString = false;
+        }
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      inString = true;
+      current += char;
+    } else if (char === '(' || char === '[') {
       depth++;
       current += char;
     } else if (char === ')' || char === ']') {

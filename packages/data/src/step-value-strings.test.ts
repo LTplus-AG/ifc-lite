@@ -27,7 +27,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseStepValue } from './step-serializers.js';
+import { parseStepValue, serializeValue } from './step-serializers.js';
 import { generateHeader } from './step-serializers.js';
 
 /** Strip the outer quotes the way `parseStepValue` is handed a literal. */
@@ -64,6 +64,36 @@ describe('parseStepValue decodes STEP directives, not just the doublings', () =>
     // `parseStepList` recurses into `parseStepValue`, so the list path had the
     // same gap and is the only in-repo caller.
     expect(parseStepValue("('\\X2\\00FC\\X0\\','plain')")).toEqual(['ü', 'plain']);
+  });
+});
+
+describe('parseStepList respects quote state, not just paren/bracket depth', () => {
+  // `parseStepList` split on every top-level comma without tracking whether
+  // it was inside a single-quoted string. A list member that is itself a
+  // string containing a literal comma — legal STEP content, and exactly what
+  // an IfcLabel/IfcText value like a description or address routinely is —
+  // split mid-string: `('a,b','c')` came back as `["'a", "b'", "c"]` instead
+  // of `['a,b', 'c']`. `@ifc-lite/parser`'s `source-header.ts` already solved
+  // this same problem for header fields with a quote-aware `splitTopLevel`
+  // and documented exactly why a quote-blind splitter mis-splits; this
+  // generic list parser — the one two other packages re-export as their
+  // public `parseStepValue` — had the same gap.
+  it('keeps a comma inside a quoted list member intact', () => {
+    expect(parseStepValue("('a,b','c')")).toEqual(['a,b', 'c']);
+  });
+
+  it('round-trips a value produced by serializeValue through this module', () => {
+    const serialized = serializeValue(['a,b', 'c']);
+    expect(serialized).toBe("('a,b','c')");
+    expect(parseStepValue(serialized)).toEqual(['a,b', 'c']);
+  });
+
+  it('does not let a paren/bracket inside a quoted string perturb nesting depth', () => {
+    expect(parseStepValue("('(a,b)','c')")).toEqual(['(a,b)', 'c']);
+  });
+
+  it('still tracks the doubled-quote escape while inside a string', () => {
+    expect(parseStepValue("('it''s, ok','c')")).toEqual(["it's, ok", 'c']);
   });
 });
 

@@ -34,6 +34,38 @@ pub struct PropMutation {
     pub value: String,
 }
 
+/// Replace one attribute of a record that other records share, by copying the
+/// record and repointing a single referrer at the copy.
+///
+/// The reason this is a writer job rather than a caller one is the id. A copy
+/// needs a number no record holds, and the writer is what knows `max_id`; a
+/// caller that allocates its own has to agree with `PropMutation`'s synthesis
+/// about which numbers are free, and two allocators sharing one space is a
+/// collision waiting for the first export that uses both.
+///
+/// Doing it here also keeps the copy inside the emit path, so it is counted in
+/// [`StepStats::written`] and converted when the export targets another schema.
+/// A record spliced into the output afterwards is neither.
+///
+/// Property sets are the case this exists for. IFC exporters routinely give
+/// each element its own `IfcPropertySet` and point them all at one
+/// `IfcPropertySingleValue` per distinct value, so editing that value in place
+/// changes it for every element sharing it. Copying first changes one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyOnWriteMutation {
+    /// The record to copy.
+    pub express_id: u32,
+    /// Which attribute of the copy to replace, zero-based.
+    pub index: usize,
+    /// The replacement, STEP-serialized, e.g. `IFCLABEL('2HR')`.
+    pub value: String,
+    /// The record that should point at the copy instead of the original.
+    pub referrer_id: u32,
+    /// Which attribute of the referrer holds that reference. A list attribute
+    /// is rewritten with the one reference substituted and the rest untouched.
+    pub referrer_index: usize,
+}
+
 /// Options for STEP export.
 pub struct StepOptions {
     /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
@@ -46,6 +78,8 @@ pub struct StepOptions {
     pub attribute_mutations: Vec<AttrMutation>,
     /// Property create/update edits — synthesized as new pset entities appended to DATA.
     pub property_mutations: Vec<PropMutation>,
+    /// Copy-then-edit mutations for records other records share.
+    pub copy_on_write: Vec<CopyOnWriteMutation>,
     pub description: String,
     pub author: String,
     pub organization: String,
@@ -59,6 +93,7 @@ impl Default for StepOptions {
             included: None,
             attribute_mutations: Vec::new(),
             property_mutations: Vec::new(),
+            copy_on_write: Vec::new(),
             description: "ViewDefinition [CoordinationView]".to_string(),
             author: "".to_string(),
             organization: "".to_string(),
@@ -75,7 +110,10 @@ pub struct StepStats {
     pub written: usize,
 }
 
-use crate::step_text::{apply_attr_mutations, detect_schema, escape, refs_in_line};
+use crate::step_text::{
+    apply_attr_mutations, attribute_of, detect_schema, escape, refs_in_line, renumber,
+    substitute_ref_in_attr,
+};
 
 // ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
 
@@ -204,6 +242,59 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         muts_by_id.entry(m.express_id).or_default().push((m.index, m.value.clone()));
     }
 
+    // Copy-on-write, resolved before the emit loop so the copies and the
+    // repointed referrers both go through it.
+    //
+    // Allocated from a counter `PropMutation` synthesis continues from, so the
+    // two cannot hand out the same id. `saturating_add` because this now runs
+    // on every export: a file holding `u32::MAX` used to reach it only when
+    // property mutations were present.
+    let mut next_id = max_id.saturating_add(1);
+    let mut copies: Vec<(u32, u32, usize, String)> = Vec::new();
+    // Folded per (referrer, attribute). Two copies repointed through the same
+    // attribute each produced a rewrite of the whole attribute computed from
+    // the untouched original, and the second overwrote the first: one copy was
+    // orphaned and the referrer still pointed at the record it was supposed to
+    // stop sharing. Two properties on one element is the ordinary case, so the
+    // substitutions are applied in sequence to one accumulating value.
+    let mut referrer_edits: HashMap<(u32, usize), String> = HashMap::new();
+    for cow in &opts.copy_on_write {
+        if !line_of.contains_key(&cow.express_id) || !included.contains(&cow.referrer_id) {
+            continue;
+        }
+        let Some(&(rs, re)) = line_of.get(&cow.referrer_id) else {
+            continue;
+        };
+        let copy_id = next_id;
+
+        // Computed against what the attribute holds now, which is the previous
+        // substitution's output when there was one.
+        let current = match referrer_edits.get(&(cow.referrer_id, cow.referrer_index)) {
+            Some(edited) => edited.clone(),
+            None => {
+                let raw = String::from_utf8_lossy(&content[rs..re]);
+                match attribute_of(&raw, cow.referrer_index) {
+                    Some(attr) => attr,
+                    None => continue,
+                }
+            }
+        };
+        let Some(rewritten) = substitute_ref_in_attr(&current, cow.express_id, copy_id) else {
+            // The referrer does not hold that reference, so there is nothing to
+            // repoint. Emitting the copy anyway would leave a record nothing
+            // points at, and one that may reference records the export filtered
+            // out. Skipped rather than half-applied.
+            continue;
+        };
+
+        next_id += 1;
+        copies.push((copy_id, cow.express_id, cow.index, cow.value.clone()));
+        referrer_edits.insert((cow.referrer_id, cow.referrer_index), rewritten);
+    }
+    for ((referrer_id, index), value) in referrer_edits {
+        muts_by_id.entry(referrer_id).or_default().push((index, value));
+    }
+
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
@@ -243,6 +334,28 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         }
     }
 
+    // The copies, emitted rather than appended: counted in `written` and put
+    // through `convert_step_line` like every other record.
+    for (copy_id, source_id, index, value) in &copies {
+        if let Some(&(s0, e0)) = line_of.get(source_id) {
+            let raw = String::from_utf8_lossy(&content[s0..e0]);
+            let edited = apply_attr_mutations(&raw, &[(*index, value.clone())]);
+            let renumbered = renumber(&edited, *copy_id);
+            if converting {
+                out.push_str(&crate::schema_convert::convert_step_line(
+                    &renumbered,
+                    &source_schema,
+                    &schema,
+                    *copy_id,
+                ));
+            } else {
+                out.push_str(&renumbered);
+            }
+            out.push('\n');
+            written += 1;
+        }
+    }
+
     // 4. Synthesize new property sets from property mutations (fresh ids past max_id).
     if !opts.property_mutations.is_empty() {
         // Group props by (entity, pset) preserving first-seen order.
@@ -261,7 +374,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
         }
 
-        let mut next = max_id + 1;
+        let mut next = next_id;
         for ((express_id, pset_name), props) in &groups {
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {
@@ -300,167 +413,5 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Count `#id=` entity lines in a STEP DATA section + grab the FILE_SCHEMA label.
-    fn parse_back(step: &str) -> (usize, HashSet<u32>, String) {
-        let bytes = step.as_bytes();
-        let mut ids = HashSet::new();
-        let mut scanner = EntityScanner::new(bytes);
-        while let Some((id, _t, _s, _e)) = scanner.next_entity() {
-            ids.insert(id);
-        }
-        let schema = detect_schema(bytes);
-        (ids.len(), ids, schema)
-    }
-
-    #[test]
-    fn full_roundtrip_preserves_all_entities() {
-        let src = fixture_or_skip!("ara3d/duplex.ifc");
-        let (step, stats) = export_step_with_stats(&src, &StepOptions::default());
-
-        // Source entity count == written count == re-parsed count.
-        let (reparsed, _ids, schema) = parse_back(&step);
-        assert_eq!(stats.written, stats.total, "wrote every entity");
-        assert_eq!(reparsed, stats.total, "re-parse recovers every entity");
-        assert!(step.starts_with("ISO-10303-21;"));
-        assert!(step.trim_end().ends_with("END-ISO-10303-21;"));
-        assert_eq!(schema, "IFC2X3", "preserved source schema label");
-    }
-
-    #[test]
-    fn subset_export_is_reference_closed() {
-        let src = fixture_or_skip!("ara3d/duplex.ifc");
-        // Pick a real wall id from the model.
-        let mut scanner = EntityScanner::new(&src[..]);
-        let mut wall_id = None;
-        while let Some((id, t, _s, _e)) = scanner.next_entity() {
-            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") || t.eq_ignore_ascii_case("IFCWALL") {
-                wall_id = Some(id);
-                break;
-            }
-        }
-        let wall_id = wall_id.expect("a wall in duplex");
-
-        let (step, stats) = export_step_with_stats(
-            &src,
-            &StepOptions { included: Some(vec![wall_id]), ..StepOptions::default() },
-        );
-        let (_n, ids, _schema) = parse_back(&step);
-
-        assert!(ids.contains(&wall_id), "the requested wall is present");
-        assert!(stats.written < stats.total, "subset is smaller than the whole model");
-
-        // Reference-closed: every #ref emitted must itself be present (no dangling refs).
-        for line in step.lines().filter(|l| l.starts_with('#')) {
-            let mut refs = Vec::new();
-            refs_in_line(line.as_bytes(), &mut refs);
-            for r in refs {
-                assert!(ids.contains(&r), "dangling reference #{r} in subset export");
-            }
-        }
-    }
-
-    #[test]
-    fn attribute_mutation_renames_entity() {
-        let src = fixture_or_skip!("ara3d/duplex.ifc");
-        // Find a wall to rename (attribute index 2 = Name on IfcRoot products).
-        let mut scanner = EntityScanner::new(&src[..]);
-        let mut wall_id = None;
-        while let Some((id, t, _s, _e)) = scanner.next_entity() {
-            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") {
-                wall_id = Some(id);
-                break;
-            }
-        }
-        let wall_id = wall_id.expect("a wall");
-
-        let step = export_step(
-            &src,
-            &StepOptions {
-                attribute_mutations: vec![AttrMutation {
-                    express_id: wall_id,
-                    index: 2,
-                    value: "'RENAMED_BY_TEST'".to_string(),
-                }],
-                ..StepOptions::default()
-            },
-        );
-        // The mutated wall line carries the new name; the model still re-parses fully.
-        let line = step
-            .lines()
-            .find(|l| l.starts_with(&format!("#{wall_id}=")))
-            .expect("wall line present");
-        assert!(line.contains("'RENAMED_BY_TEST'"), "name replaced: {line}");
-        let (reparsed, _ids, _schema) = parse_back(&step);
-        let mut sc = EntityScanner::new(&src[..]);
-        let mut total = 0usize;
-        while sc.next_entity().is_some() {
-            total += 1;
-        }
-        assert_eq!(reparsed, total, "no entities dropped by the edit");
-    }
-
-    #[test]
-    fn property_synthesis_attaches_new_pset() {
-        let src = fixture_or_skip!("ara3d/duplex.ifc");
-        let mut scanner = EntityScanner::new(&src[..]);
-        let mut wall = None;
-        while let Some((id, t, _s, _e)) = scanner.next_entity() {
-            if t.eq_ignore_ascii_case("IFCWALLSTANDARDCASE") {
-                wall = Some(id);
-                break;
-            }
-        }
-        let wall = wall.expect("a wall");
-
-        let (step, stats) = export_step_with_stats(
-            &src,
-            &StepOptions {
-                property_mutations: vec![PropMutation {
-                    express_id: wall,
-                    pset_name: "Pset_Test".to_string(),
-                    prop_name: "MyProp".to_string(),
-                    value: "IFCLABEL('hello')".to_string(),
-                }],
-                ..StepOptions::default()
-            },
-        );
-
-        // The three synthesized entities are present.
-        assert!(
-            step.contains("=IFCPROPERTYSINGLEVALUE('MyProp',$,IFCLABEL('hello'),$);"),
-            "single value synthesized"
-        );
-        assert!(step.contains("'Pset_Test'"), "pset name present");
-        // The synthesized rel ($-owner/name/desc) relates the wall to the new pset —
-        // distinct from duplex's original rels which carry a real OwnerHistory ref.
-        let synth_rel = format!(",$,$,$,(#{wall}),#");
-        assert!(
-            step.lines().any(|l| l.contains("=IFCRELDEFINESBYPROPERTIES(") && l.contains(&synth_rel)),
-            "synthesized rel targeting the wall not found"
-        );
-
-        // Re-parses, and the synthesized entities are counted (written = original + 3).
-        let (reparsed, _ids, _schema) = parse_back(&step);
-        assert_eq!(reparsed, stats.written, "every written entity re-parses");
-        assert_eq!(stats.written, stats.total + 3, "added 1 prop + 1 pset + 1 rel");
-    }
-
-    #[test]
-    fn schema_conversion_to_ifc4_keeps_model_parseable() {
-        let src = fixture_or_skip!("ara3d/duplex.ifc");
-        let (step, stats) = export_step_with_stats(
-            &src,
-            &StepOptions { schema: Some("IFC4".to_string()), ..StepOptions::default() },
-        );
-        assert!(step.contains("FILE_SCHEMA(('IFC4'))"));
-        // Conversion preserves every express id (renames type, never drops entities).
-        let (reparsed, _ids, schema) = parse_back(&step);
-        assert_eq!(reparsed, stats.total, "no entities lost in conversion");
-        assert_eq!(schema, "IFC4");
-        // The converted file must still re-parse as a coherent entity set.
-        assert!(step.lines().filter(|l| l.starts_with('#')).count() == stats.written);
-    }
-}
+#[path = "step_tests.rs"]
+mod tests;

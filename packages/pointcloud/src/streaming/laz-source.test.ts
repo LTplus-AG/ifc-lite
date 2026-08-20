@@ -43,7 +43,13 @@ function stubLazPerfModule(): LazPerfModule {
   class StubLasZip implements LasZipInstance {
     open(): void { /* no-op — the stub never decompresses */ }
     getPoint(): void { /* no-op */ }
-    getCount(): number { return 0; }
+    // Real laz-perf reports the compressed stream's own record count here;
+    // `LazStreamingSource.open()` cross-checks it against the plain LAS
+    // header's `pointCount` and rejects a mismatch (truncated/corrupt
+    // file). This stub doesn't model a specific file's record count, so
+    // report a value that never trips that check — the mismatch path has
+    // its own dedicated test below with a stub that DOES model it.
+    getCount(): number { return Number.MAX_SAFE_INTEGER; }
     getPointLength(): number { return RECORD_LEN; }
     getPointFormat(): number { return 0; }
     delete(): void { /* no-op */ }
@@ -78,7 +84,7 @@ function stubLazPerfModuleWithCounter(): LazPerfModule {
       view.setInt32(dest, callIndex, true);
       callIndex++;
     }
-    getCount(): number { return 0; }
+    getCount(): number { return Number.MAX_SAFE_INTEGER; }
     getPointLength(): number { return RECORD_LEN; }
     getPointFormat(): number { return 0; }
     delete(): void { /* no-op */ }
@@ -244,5 +250,96 @@ describe('LazStreamingSource wasm loading', () => {
     await new LazStreamingSource(buildLazFile(1)).open();
     await new LazStreamingSource(buildLazFile(1)).open();
     expect(calls).toBe(1);
+  });
+});
+
+/**
+ * `header.pointCount` (the plain-text LAS public header field) and
+ * `laszip.getCount()` (the wasm decoder's own record count, parsed from
+ * the LAZ special VLR) normally agree — both come from the same encoder
+ * run. A truncated download or a corrupt/malicious file can make them
+ * disagree. Before this test, `LazStreamingSource` never called
+ * `getCount()` at all: `next()` (and the RGB probe in `open()`) loop
+ * `header.pointCount` times calling `laszip.getPoint()` — past the
+ * decoder's real count that's an out-of-bounds read at the wasm
+ * boundary, not a checked error.
+ */
+function stubLazPerfModuleWithFixedCount(compressedCount: number): { module: LazPerfModule } {
+  const heap = new Uint8Array(1 << 16);
+  let next = 8;
+  class StubLasZip implements LasZipInstance {
+    open(): void { /* no-op — the stub never decompresses */ }
+    getPoint(): void { /* no-op */ }
+    getCount(): number { return compressedCount; }
+    getPointLength(): number { return RECORD_LEN; }
+    getPointFormat(): number { return 0; }
+    delete(): void { /* no-op */ }
+  }
+  const module: LazPerfModule = {
+    LASZip: StubLasZip,
+    HEAPU8: heap,
+    _malloc: (size: number) => {
+      const ptr = next;
+      next += size;
+      return ptr;
+    },
+    _free: () => { /* no-op */ },
+  };
+  return { module };
+}
+
+describe('LazStreamingSource — header/compressed-stream point count mismatch', () => {
+  let restore: (() => void) | null = null;
+
+  afterEach(() => {
+    restore?.();
+    restore = null;
+  });
+
+  it('rejects open() when the header claims more points than the compressed stream holds', async () => {
+    const { module } = stubLazPerfModuleWithFixedCount(2);
+    restore = setLazPerfLoaderForTesting(async () => module);
+
+    // Header declares 10 points; the (stub) compressed stream only has 2.
+    await expect(new LazStreamingSource(buildLazFile(10)).open())
+      .rejects.toThrow(/header declares 10 points but the compressed stream only holds 2/);
+  });
+
+  it('frees the wasm allocations it made before rejecting on a count mismatch', async () => {
+    const freed: number[] = [];
+    const deletedCalls: number[] = [0];
+    const heap = new Uint8Array(1 << 16);
+    let next = 8;
+    class StubLasZip implements LasZipInstance {
+      open(): void { /* no-op */ }
+      getPoint(): void { /* no-op */ }
+      getCount(): number { return 0; }
+      getPointLength(): number { return RECORD_LEN; }
+      getPointFormat(): number { return 0; }
+      delete(): void { deletedCalls[0]++; }
+    }
+    const module: LazPerfModule = {
+      LASZip: StubLasZip,
+      HEAPU8: heap,
+      _malloc: (size: number) => { const ptr = next; next += size; return ptr; },
+      _free: (ptr: number) => { freed.push(ptr); },
+    };
+    restore = setLazPerfLoaderForTesting(async () => module);
+
+    await expect(new LazStreamingSource(buildLazFile(5)).open()).rejects.toThrow();
+
+    // The `filePtr` malloc from before `laszip.open()` must be freed by
+    // the catch block's cleanup — same lifecycle contract as any other
+    // failure path in `open()` (abort, parse error, wasm load failure).
+    expect(freed.length).toBeGreaterThan(0);
+    expect(deletedCalls[0]).toBe(1);
+  });
+
+  it('accepts open() when the compressed stream holds AT LEAST as many points as the header declares', async () => {
+    const { module } = stubLazPerfModuleWithFixedCount(10);
+    restore = setLazPerfLoaderForTesting(async () => module);
+
+    const info = await new LazStreamingSource(buildLazFile(10)).open();
+    expect(info.totalPointCount).toBe(10);
   });
 });

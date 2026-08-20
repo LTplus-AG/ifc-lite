@@ -211,6 +211,25 @@ export class LazStreamingSource implements StreamingPointSource {
       laszip = new mod.LASZip();
       laszip.open(filePtr, bytes.byteLength);
 
+      // `header.pointCount` comes from the plain-text LAS public header —
+      // a field a truncated download or a corrupt/malicious producer can
+      // set arbitrarily high, independent of what the LAZ compressed
+      // stream actually holds. `laszip.getCount()` reports the wasm
+      // decoder's own record count, decoded from the LAZ special VLR.
+      // Every `next()` / RGB-probe loop below bounds itself by
+      // `header.pointCount`, and calls `laszip.getPoint()` that many
+      // times — past the decoder's real count that's an out-of-bounds
+      // read at the wasm boundary (undefined behaviour, not a checked
+      // error). Fail loudly here instead, matching the sibling truncation
+      // check in `las-source.ts`'s strided branch.
+      const compressedCount = laszip.getCount();
+      if (compressedCount < header.pointCount) {
+        throw new Error(
+          `LAZ: header declares ${header.pointCount} points but the compressed ` +
+          `stream only holds ${compressedCount} — file truncated or corrupt?`,
+        );
+      }
+
       const pointSize = laszip.getPointLength();
       pointPtr = mod._malloc(pointSize);
       const pointBuffer = new Uint8Array(pointSize);

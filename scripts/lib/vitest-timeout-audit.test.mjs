@@ -25,9 +25,11 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   auditFile,
   auditSource,
@@ -450,6 +452,61 @@ test('auditFile: a second sibling test file in the same subdirectory also resolv
     const [r2] = auditFile(secondFile, "it('second sibling', () => { doWork(); });\n");
     assert.equal(r2.protectedBy, 'config');
     assert.equal(r2.value, 30000);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+// ── Standalone CLI: it must not report a vacuous pass ────────────────────────
+//
+// The summary line is four counts. When every one of them is zero the run
+// LOOKS like a clean report, and before the guard below the process still
+// exited 0 — a tool that read nothing and said so in the same shape it uses
+// to say "all good". Same failure class as `check-tla-chunk-await.mjs`
+// printing `0 chunks…` against an unbuilt dist. These tests drive the real
+// script as a subprocess (the guard lives in its `import.meta.url ===
+// argv[1]` block, so importing the module cannot reach it) and, in keeping
+// with this file's rule, hand it SYNTHETIC files only.
+
+const SCRIPT = fileURLToPath(new URL('./vitest-timeout-audit.mjs', import.meta.url));
+
+function runCli(args) {
+  return spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8' });
+}
+
+test('CLI: no file arguments exits non-zero instead of printing an all-zero summary', () => {
+  const run = runCli([]);
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /refusing a vacuous pass/);
+  assert.match(run.stderr, /no file arguments/);
+  // The zero summary must not be printed at all — its absence is the point.
+  assert.doesNotMatch(run.stdout, /summary:/);
+});
+
+test('CLI: files that hold no it/test call site exit non-zero rather than summarising zero of everything', () => {
+  const root = makeSyntheticPackage({
+    'not-a-test.ts': 'export const value = 1;\n',
+  });
+  try {
+    const run = runCli([join(root, 'not-a-test.ts')]);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /refusing a vacuous pass/);
+    assert.doesNotMatch(run.stdout, /summary:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CLI: a file with at least one call site still exits 0 and summarises it (the guard does not over-fire)', () => {
+  const root = makeSyntheticPackage({
+    'one.test.ts': "it('audited', () => { doWork(); }, 60_000);\n",
+  });
+  try {
+    const run = runCli([join(root, 'one.test.ts')]);
+    assert.equal(run.status, 0);
+    assert.match(run.stdout, /summary: 1 protected \(own call\/describe\)/);
+    assert.equal(run.stderr, '');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

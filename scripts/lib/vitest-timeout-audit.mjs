@@ -81,6 +81,12 @@
  * substitution `check-source-text-assertions.mjs` exists to block) in
  * `vitest-timeout-audit.test.mjs`.
  *
+ * Standalone exit codes: 0 once it has audited at least one `it`/`test`
+ * call site; 1 if it was given no file arguments, or if none of the files
+ * it was given held a single call site. An audit of nothing prints a
+ * summary of all zeros, which reads like a clean report — see the guard at
+ * the bottom of this file.
+ *
  * CONFIG-LEVEL PROTECTION (the blind spot fixed after #2948 shipped): a
  * package's `vitest.config.ts` can set `test.testTimeout`, which is vitest's
  * DEFAULT for every `it`/`test` in that package that does not carry its own
@@ -643,12 +649,37 @@ export function auditFile(filePath, source) {
   return results;
 }
 
+/**
+ * Refuse a vacuous run: a summary of all zeros reads exactly like a clean
+ * pass, so an invocation that audited nothing must exit non-zero and say
+ * what it expected instead. Two ways to audit nothing:
+ *   - no file arguments at all (e.g. a caller whose target list expanded to
+ *     nothing, or a future CI wiring with no default targets);
+ *   - files were named, but none of them contained a single `it`/`test`
+ *     call site, so there was nothing to classify.
+ * Both print to stderr and exit 1. This is the same shape as
+ * `check-tla-chunk-await.mjs` refusing to run against a missing dist and
+ * `scripts/lib/server-bin-targets-parse.mjs`'s `refusing a vacuous pass`.
+ */
 if (import.meta.url === `file://${process.argv[1]}`) {
+  const targets = process.argv.slice(2);
+  if (targets.length === 0) {
+    console.error(
+      'vitest-timeout-audit: ERROR: no file arguments; refusing a vacuous pass.\n\n' +
+      'This tool audits the files it is given -- it has no default target list,\n' +
+      'so with no arguments it would print a summary of all zeros and exit 0,\n' +
+      'which is indistinguishable from a clean report. Pass the test files to\n' +
+      'audit:\n\n' +
+      '    node scripts/lib/vitest-timeout-audit.mjs <file...>\n',
+    );
+    process.exit(1);
+  }
+
   let protectedCount = 0;
   let configProtectedCount = 0;
   let configUnknownCount = 0;
   let unprotectedCount = 0;
-  for (const file of process.argv.slice(2)) {
+  for (const file of targets) {
     const source = readFileSync(file, 'utf8');
     for (const r of auditFile(file, source)) {
       const shown = r.value ?? r.valueRef ?? '?';
@@ -669,6 +700,18 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`${file}:${r.line}: ${r.keyword}('${r.name}') — ${status}`);
     }
   }
+  const total = protectedCount + configProtectedCount + configUnknownCount + unprotectedCount;
+  if (total === 0) {
+    console.error(
+      `vitest-timeout-audit: ERROR: ${targets.length} file(s) named, but not one `
+      + `\`it\`/\`test\` call site was found in any of them; refusing a vacuous pass.\n\n`
+      + 'A summary of all zeros here means the audit classified nothing, not that\n'
+      + 'every test carries a timeout. Check that the paths point at vitest test\n'
+      + 'files.\n',
+    );
+    process.exit(1);
+  }
+
   console.log(
     `\nsummary: ${protectedCount} protected (own call/describe), `
     + `${configProtectedCount} config-protected, ${configUnknownCount} config-unknown, `

@@ -73,6 +73,28 @@ describe('MutablePropertyView', () => {
     expect(fresh.getForEntity(9)).toEqual([]);
   });
 
+  it('treats a null/unset property already present in BASE data as present, not absent (issue #1107, base-table shape)', () => {
+    // Same #1107 hazard as above, but the unset property comes from the
+    // *source IFC file* itself (an unset Boolean parsed with value null),
+    // not from a same-session `setProperty` call. `getPropertyValue()`
+    // still returns null for it before any edit, so the CREATE/UPDATE
+    // classification cannot rely on `oldValue !== null` alone — it must
+    // also check the base pset's property list directly, the same way
+    // `deleteProperty`'s `propExistsInBase` check already does.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 9 ? [{
+      name: 'Pset_WallCommon',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'Combustible', type: PropertyValueType.Boolean, value: null },
+      ],
+    }] : []);
+
+    const edited = view.setProperty(9, 'Pset_WallCommon', 'Combustible', true, PropertyValueType.Boolean);
+    expect(edited.type).toBe('UPDATE_PROPERTY');
+    expect(edited.oldValue).toBeNull();
+  });
+
   describe('setQuantity oldValue/type on a base quantity (undo correctness, #2297 shape)', () => {
     it('carries the base value as oldValue on the first edit of an existing quantity', () => {
       // `apps/viewer`'s undo handler only replays `mutation.oldValue` for

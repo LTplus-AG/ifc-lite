@@ -106,7 +106,27 @@
      598 rust/geometry/src/profiles/curves_2d.rs
      709 rust/geometry/src/profiles/curves_3d.rs
 # +1: `mod steel_shapes;` for the shapes.rs split, which removed the 594-line shapes.rs row (net down).
-     899 rust/geometry/src/profiles/mod.rs
+# +55: #2866 follow-up — MAX_CURVE_DEPTH = 50 WAS the weakest bound in the tree,
+# exactly as suspected. It caps one PATH's length and says nothing about the
+# NUMBER of paths: an acyclic composite-curve DAG with two segments per level,
+# every branch valid and nothing failing, costs 2^depth. Measured at 2^levels
+# points exactly -- levels=20 gave 1,048,577 points in 473ms, each +4 levels
+# 16x -- so at the cap a file reaches 2^50, in time AND in the Vec<Point3> it
+# materialises. No cycle guard sees it (acyclic) and the `?` propagation in the
+# segment loops never fires (nothing errors).
+#
+# Fixed with MAX_CURVE_NODES, a per-entry-call visit budget on a Cell, matching
+# the existing active_quality pattern so no signature changes. The lines are
+# the constant's rationale, the field, and one `spend_curve_node` helper.
+# Splitting was tried first per the rule: the two inline checks collapsed into
+# the helper and saved 2 lines, because the helper's doc costs what the inline
+# comments saved. There is no honest seam here -- the budget is a field on this
+# struct read by two methods on this struct -- so the budget is raised instead,
+# and most of what it buys is the explanation of why 50 alone was not enough.
+# The cohort also includes the 4-line `#[cfg(test)] #[path] mod
+# curve_fanout_tests;` registration, so the number accounts for that too; the
+# tests themselves live in the sibling file and are exempt.
+     954 rust/geometry/src/profiles/mod.rs
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs

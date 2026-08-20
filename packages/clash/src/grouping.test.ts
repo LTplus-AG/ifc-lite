@@ -221,6 +221,29 @@ describe('groupClashes — aggregates', () => {
     expect(group.bounds.max[0]).toBeCloseTo(1.1, 6);
   });
 
+  /**
+   * Every other bounds/mean fixture in this file offsets members only along
+   * X, leaving Y and Z at 0 with an identical half-extent on every axis — a
+   * per-axis component swap (e.g. `unionBounds`/`meanPoint` reading `a.min[2]`
+   * where it means `a.min[1]`) is invisible there because both axes carry the
+   * same value in every fixture. Giving each member a distinct, non-zero
+   * value on X, Y, *and* Z makes every axis independently checkable.
+   */
+  it('bounds union and mean point are correct per-axis, not just on X', () => {
+    const clashes = [
+      clash({ id: 'c1', a: PIPE, b: BEAM, rule: 'R', point: [0, 2, 10] }),
+      clash({ id: 'c2', a: PIPE, b: BEAM, rule: 'R', point: [4, 6, 30] }),
+    ];
+    const [group] = groupClashes(makeResult(clashes), { by: 'cluster', epsilon: 100 });
+    expect(group.members).toHaveLength(2);
+    expect(group.representativePoint[0]).toBeCloseTo(2, 6);
+    expect(group.representativePoint[1]).toBeCloseTo(4, 6);
+    expect(group.representativePoint[2]).toBeCloseTo(20, 6);
+    // bounds half-size 0.1 around each point.
+    expect(group.bounds.min).toEqual([-0.1, 1.9, 9.9]);
+    expect(group.bounds.max).toEqual([4.1, 6.1, 30.1]);
+  });
+
   it('sorts groups by severity then member count desc', () => {
     const clashes = [
       // major group with 1 member

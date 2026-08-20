@@ -98,7 +98,7 @@
 # new row: adds from_spans (build the index from pre-collected IfcRelAssociatesMaterial spans, no re-walk) + the MaterialLayerFlat wire codec (to_flat/from_flat) + round-trip tests, so the streaming pre-pass ships the index to workers once instead of each worker re-scanning the file (perf/single-scan #563).
      563 rust/geometry/src/material_layer_index.rs
     1529 rust/geometry/src/mesh.rs
-# +43: #2866 — Boolean and CSG are mutually recursive over file references
+# +86: #2866 — Boolean and CSG are mutually recursive over file references
 # (IfcBooleanResult operand -> IfcCsgSolid -> TreeRootExpression -> that same
 # IfcBooleanResult). CsgSolidProcessor built a FRESH BooleanClippingProcessor,
 # resetting depth and the cycle guard, so three entities aborted the process.
@@ -126,9 +126,9 @@
 # so the note is the record of a regression avoided rather than commentary.
     1005 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
-# -27: #2866 — the Boolean<->CSG cycle guard, with the module's tests moved to a
-# sibling csg_primitive_tests.rs. Budget refreshed DOWNWARD: the split more than
-# paid for the guard.
+# +20: #2866 — the Boolean<->CSG cycle guard, with the module's tests moved to a
+# sibling csg_primitive_tests.rs (402 -> 422). The guard costs more than the
+# test split paid back, so this is a LOOSENING and is recorded as one.
      422 rust/geometry/src/processors/csg_primitive.rs
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs

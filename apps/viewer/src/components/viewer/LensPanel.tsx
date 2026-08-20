@@ -187,7 +187,17 @@ const AutoColorRow = memo(function AutoColorRow({
         className="w-3 h-3 rounded-sm flex-shrink-0 ring-1 ring-black/10 dark:ring-white/20"
         style={{ backgroundColor: entry.color }}
       />
-      <span className="flex-1 truncate font-medium text-zinc-900 dark:text-zinc-50">
+      <span
+        className={cn(
+          'flex-1 truncate font-medium text-zinc-900 dark:text-zinc-50',
+          // Absence buckets ("No classification", "Not in this system") are
+          // synthetic - not a value read off the model - so they're set in
+          // italics to read as a category rather than a classification code,
+          // while staying otherwise identical (same swatch shape, same
+          // clickable/isolate behavior) so they don't look broken or special.
+          entry.isAbsent && 'italic text-zinc-600 dark:text-zinc-300',
+        )}
+      >
         {entry.name}
       </span>
       {isIsolated && (
@@ -868,7 +878,7 @@ function LensEditor({
 
 // ─── Auto-color lens editor ─────────────────────────────────────────────────
 
-function AutoColorEditor({
+export function AutoColorEditor({
   initial,
   onSave,
   onCancel,
@@ -885,6 +895,13 @@ function AutoColorEditor({
   const [source, setSource] = useState<AutoColorSpec['source']>(initial.autoColor.source);
   const [psetName, setPsetName] = useState(initial.autoColor.psetName ?? '');
   const [propertyName, setPropertyName] = useState(initial.autoColor.propertyName ?? '');
+  // Opt-in "unclassified bucket" toggle (#unclassified-bucket) - meaningless
+  // outside `source: 'classification'`, so it's only rendered there. Not
+  // reset on source change like psetName/propertyName: if the user flips
+  // away from classification and back, restoring their choice is friendlier
+  // than silently discarding it, and the flag is dropped from the saved
+  // spec entirely when the source isn't classification (see handleSave).
+  const [includeUnclassified, setIncludeUnclassified] = useState(initial.autoColor.includeUnclassified ?? false);
 
   const needsPset = source === 'property' || source === 'quantity' || source === 'classification';
   const needsPropertyName = source === 'attribute' || source === 'property' || source === 'quantity';
@@ -926,6 +943,11 @@ function AutoColorEditor({
     const autoColor: AutoColorSpec = { source };
     if (needsPset) autoColor.psetName = psetName.trim();
     if (needsPropertyName) autoColor.propertyName = propertyName.trim();
+    // Only emitted when true, on a classification source: unset/false must
+    // reproduce the pre-existing ghosting behaviour exactly (see
+    // AutoColorSpec.includeUnclassified in @ifc-lite/lens), and the flag is
+    // meaningless on any other source.
+    if (source === 'classification' && includeUnclassified) autoColor.includeUnclassified = true;
 
     onSave(buildAutoColorLensToSave(
       initial,
@@ -1017,6 +1039,18 @@ function AutoColorEditor({
               />
             )}
           </div>
+        )}
+
+        {source === 'classification' && (
+          <label className="flex items-center justify-between gap-2 cursor-pointer pt-0.5">
+            <span className="text-[10px] uppercase tracking-wider text-zinc-500">Show unclassified</span>
+            <input
+              type="checkbox"
+              checked={includeUnclassified}
+              onChange={(e) => setIncludeUnclassified(e.target.checked)}
+              className="accent-primary"
+            />
+          </label>
         )}
       </div>
 

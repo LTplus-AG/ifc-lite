@@ -547,6 +547,19 @@ export function useIfcLoader() {
             setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
             preAlignment = capturePreAlignment(geometryResult);
             const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
+            // Stale-guard-after-await sweep: `alignGeometryToReference` is real
+            // reprojection work — the only await in the federated branch (every
+            // write below it, registerModelOffset/addModel/buildSpatialIndex-
+            // ForModel/appendInstancedShards/relabelPointCloudAsset, is
+            // synchronous, so one check here covers the whole branch). Nothing
+            // has been acquired yet at this point — no offset registered, no
+            // model added, no spatial index built, no renderer asset relabeled
+            // — so, exactly like the IFCX branch above, there is nothing to
+            // unwind: write nothing and return.
+            if (loadSessionRef.current !== currentSession) {
+              console.warn(`[useIfc] federated finalize ABORTED after alignment: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — alignment result discarded`);
+              return;
+            }
             federationAlignmentStatus = status;
             if (status === 'reprojected') {
               toast.info(
@@ -928,6 +941,19 @@ export function useIfcLoader() {
 
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
+          // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
+          // (client-side) parse — the only await in this branch — and a
+          // newer load (or model removal) may have superseded this one while
+          // it ran. The point-cloud branch immediately above unwinds
+          // cleanly on the same check (renderer asset removed, counts
+          // cleared); IFCX acquires no renderer/registry resource before
+          // this point, so there is nothing to unwind — write nothing,
+          // exactly like the cache branch's `if (cacheOutcome === 'stale')
+          // return;`.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] IFCX finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — result discarded`);
+            return;
+          }
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
             setIfcDataStore(result.dataStore);
@@ -939,6 +965,13 @@ export function useIfcLoader() {
           setLoading(false);
           return;
         } catch (err: unknown) {
+          // Same guard on the error path (#stale-guard sweep): a superseded
+          // load's OWN parse failure must not clobber the newer load's model
+          // record with an `error` state it never had.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] IFCX parse failed on an already-stale session (mine=${currentSession}, current=${loadSessionRef.current}) — error discarded:`, err);
+            return;
+          }
           if (err instanceof Error && err.message === 'overlay-only-ifcx') {
             console.warn(`[useIfc] IFCX file "${file.name}" has no geometry - this appears to be an overlay file that adds properties to a base model.`);
             console.warn('[useIfc] To use this file, load it together with a base IFCX file (select both files at once).');

@@ -1124,6 +1124,21 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       }
     }
 
+    // The seed/reconstruct branches above re-check `collabRoomId === roomId`
+    // after each of their own awaits, but nothing after them did: a
+    // `stopCollab()` landing anywhere in the awaits above (e.g. RoomPanel's
+    // "Leave" button, reachable the moment `collabRoomId` is set — before
+    // this join has finished) left `collabRoomId`/`collabSession` cleared,
+    // and this function then sailed on regardless, wiring up
+    // `remoteApplyTeardown` for a session nothing still tracks and ending
+    // with a `set({ collabSession: session, ... })` that revived a session
+    // the user had explicitly left. Same guard as the six checks above,
+    // moved to cover the one block that had none.
+    if (get().collabRoomId !== roomId) {
+      session.dispose();
+      return;
+    }
+
     // Remote → local apply (plan §7.5): replay peers' property/attribute edits
     // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
     //

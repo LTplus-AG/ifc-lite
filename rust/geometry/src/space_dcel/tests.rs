@@ -788,10 +788,47 @@
         // Axis-aligned rectangle, so each side's inset is exactly its own edge's
         // half-thickness: width shrinks by (left + right), height by (bottom + top).
         let expected_inner = (4.0 - halves[3] - halves[1]) * (3.0 - halves[0] - halves[2]);
-        let inner = polygon_area(&plate.net_outline(room, true)).abs();
+        let ring = plate.net_outline(room, true);
+        let inner = polygon_area(&ring).abs();
         assert!(
             (inner - expected_inner).abs() < 1e-6,
             "net inset with distinct per-edge thickness: expected {expected_inner}, got {inner}"
+        );
+
+        // Area alone cannot see an OPPOSITE-edge swap (bottom↔top, left↔right):
+        // it only reads the sums (bottom + top) and (left + right), which such a
+        // swap leaves unchanged for any thickness values. Pin each side's inset
+        // POSITION as well — that is what distinguishes an edge from the one
+        // across the room. Each bound is the corresponding edge's own half-
+        // thickness by construction, so this reads as the property, not as magic
+        // numbers.
+        let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+        let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in &ring {
+            min_x = min_x.min(p[0]);
+            min_y = min_y.min(p[1]);
+            max_x = max_x.max(p[0]);
+            max_y = max_y.max(p[1]);
+        }
+        assert!(
+            (min_x - halves[3]).abs() < 1e-6,
+            "left inset must use the LEFT edge's thickness: expected {}, got {min_x}",
+            halves[3]
+        );
+        assert!(
+            (min_y - halves[0]).abs() < 1e-6,
+            "bottom inset must use the BOTTOM edge's thickness: expected {}, got {min_y}",
+            halves[0]
+        );
+        assert!(
+            (max_x - (4.0 - halves[1])).abs() < 1e-6,
+            "right inset must use the RIGHT edge's thickness: expected {}, got {max_x}",
+            4.0 - halves[1]
+        );
+        assert!(
+            (max_y - (3.0 - halves[2])).abs() < 1e-6,
+            "top inset must use the TOP edge's thickness: expected {}, got {max_y}",
+            3.0 - halves[2]
         );
 
         let expected_outer = (4.0 + halves[3] + halves[1]) * (3.0 + halves[0] + halves[2]);

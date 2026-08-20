@@ -35,7 +35,9 @@ import {
   auditSource,
   classifyExplicitTimeout,
   findPackageConfigTimeout,
+  findUnparsedCallSites,
   hasExplicitTimeout,
+  hasTestKeywordToken,
   resolveConfigTimeout,
   stripNoise,
 } from './vitest-timeout-audit.mjs';
@@ -484,7 +486,7 @@ test('CLI: no file arguments exits non-zero instead of printing an all-zero summ
   assert.doesNotMatch(run.stdout, /summary:/);
 });
 
-test('CLI: files that hold no it/test call site exit non-zero rather than summarising zero of everything', () => {
+test('CLI: a file holding no describe/it/test token at all exits non-zero rather than summarising zero of everything', () => {
   const root = makeSyntheticPackage({
     'not-a-test.ts': 'export const value = 1;\n',
   });
@@ -507,6 +509,171 @@ test('CLI: a file with at least one call site still exits 0 and summarises it (t
     assert.equal(run.status, 0);
     assert.match(run.stdout, /summary: 1 protected \(own call\/describe\)/);
     assert.equal(run.stderr, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+// -- Regex literals must not swallow the file --------------------------------
+//
+// `stripNoise` blanks strings so their contents cannot be mistaken for
+// structure. A regex literal is NOT blanked (it can sit right against real
+// call syntax), so it has to be stepped over as one token instead - before
+// that, an apostrophe inside a pattern opened a phantom string that ran to
+// the end of the file, `findMatchingParen` then failed, and EVERY call site
+// in the file disappeared, including the ones written BEFORE the regex.
+
+test('a regex containing an apostrophe does not swallow the rest of the file', () => {
+  const src = [
+    "const LEADING_QUOTE = /^'/;",
+    "it('first', () => { doWork(); });",
+    "it('second', () => { doWork(); });",
+  ].join('\n');
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['first', 'second']);
+});
+
+test('call sites written AFTER an apostrophe-bearing regex are still found', () => {
+  const src = [
+    "it('before', () => { expect(cell).toMatch(/^'/); });",
+    "it('after', () => { doWork(); }, 60_000);",
+  ].join('\n');
+  assert.deepEqual(unprotectedNames(src), ['before']);
+  assert.deepEqual(protectedNames(src), ['after']);
+});
+
+test('a regex containing a backtick or a quote is equally opaque', () => {
+  const src = [
+    "it('backtick', () => { expect(s).toMatch(/^`/); });",
+    "it('quote', () => { expect(s).toMatch(/^\"/); });",
+  ].join('\n');
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['backtick', 'quote']);
+});
+
+test('a regex containing an unbalanced paren still does not corrupt the call it sits in', () => {
+  const src = "it('paren', () => { expect(s).toMatch(/^\\)'/); }, 60_000);\nit('next', () => { doWork(); });";
+  assert.deepEqual(protectedNames(src), ['paren']);
+  assert.deepEqual(unprotectedNames(src), ['next']);
+});
+
+test('a slash that is division after a string literal is not read as a regex opening', () => {
+  // A blanked string is indistinguishable from whitespace, so without
+  // tracking where the literal ended the `=` before it would make this `/`
+  // look like a regex start and the `'` on the next line would open a
+  // phantom string.
+  const src = [
+    "const ratio = 'ab'.length / 2;",
+    "const label = 'plain';",
+    "it('after division', () => { doWork(); });",
+  ].join('\n');
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['after division']);
+});
+
+test('stripNoise leaves a regex literal in place and keeps offsets stable', () => {
+  const src = "const re = /a'b/;\nit('x', () => {});\n";
+  const clean = stripNoise(src);
+  assert.equal(clean.length, src.length);
+  assert.match(clean, /\/a'b\//);
+  // The string in `it('x', ...)` is still blanked - only the regex survives.
+  assert.match(clean, /it\( {3},/);
+});
+
+// -- TypeScript type-argument lists on the call or its modifier --------------
+//
+// `it.each([...])` was recognised; `it.each<[Role, boolean]>([...])` was not,
+// because the `<...>` sits between the modifier name and its argument list, so
+// the parser never found the `(` it was looking for and dropped the call.
+
+test('typed it.each is recognised (the untyped form already was)', () => {
+  const untyped = "it.each([['a', true]])('role=%s', (r, w) => { doWork(); });";
+  const typed = "it.each<[Role, boolean]>([['a', true]])('role=%s', (r, w) => { doWork(); });";
+  assert.deepEqual(auditSource(untyped).map((r) => r.name), ['role=%s']);
+  assert.deepEqual(auditSource(typed).map((r) => r.name), ['role=%s']);
+});
+
+test('a typed it.each still has its timeout classified, not just its name', () => {
+  const src = "it.each<[Role, boolean]>([['a', true]])('role=%s', (r, w) => { doWork(); }, 60_000);";
+  const [r] = auditSource(src);
+  assert.equal(r.form, 'trailing');
+  assert.equal(r.value, 60000);
+});
+
+test('a type-argument list holding a function type does not close early', () => {
+  const src = "describe.each<(a: string) => void>([fn])('suite', () => { it('x', () => {}); });";
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['x']);
+});
+
+test('a type-argument list on the call itself is stepped over', () => {
+  const src = "test<MyCtx>('typed call', () => { doWork(); }, 60_000);";
+  assert.deepEqual(protectedNames(src), ['typed call']);
+});
+
+test('a less-than that is a comparison, not a type-argument list, is not read as a call', () => {
+  const src = "if (it < 3) { doWork(); }\nit('real', () => { doWork(); });";
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['real']);
+});
+
+// -- The immediately-invoked parenthesized form ------------------------------
+
+test('(cond ? it : it.skip)(...) is counted exactly once', () => {
+  const src = "(hasBuild ? it : it.skip)('conditional', () => { doWork(); }, 60_000);";
+  assert.deepEqual(protectedNames(src), ['conditional']);
+  assert.equal(auditSource(src).length, 1);
+});
+
+// -- Files with no literal call site of their own ----------------------------
+
+test('hasTestKeywordToken separates a describe-only suite runner from a non-test file', () => {
+  const runner = "import { describe } from 'vitest';\ndescribe('X conformance', () => runConformanceSuite(fixtures));\n";
+  assert.equal(hasTestKeywordToken(runner), true);
+  assert.deepEqual(auditSource(runner), []);
+  assert.equal(hasTestKeywordToken('export const value = 1;\n'), false);
+  // A keyword appearing only inside a comment or a string does not count.
+  assert.equal(hasTestKeywordToken("// describe it test\nconst s = 'it';\n"), false);
+});
+
+test('findUnparsedCallSites reports a call site it could not parse, and nothing otherwise', () => {
+  assert.deepEqual(findUnparsedCallSites("it('fine', () => { doWork(); });\n"), []);
+  const broken = "it('unterminated', () => { doWork(); };\n";
+  const unparsed = findUnparsedCallSites(broken);
+  assert.equal(unparsed.length, 1);
+  assert.equal(unparsed[0].keyword, 'it');
+  assert.equal(unparsed[0].line, 1);
+});
+
+test('CLI: a describe-only shared-suite runner exits 0 with an all-zero summary, not an error', () => {
+  // The regression this pins: the vacuous-run guard used to fail any file
+  // holding zero literal `it`/`test` call sites, which failed seven real
+  // vitest test files in this repo. A `describe` that delegates to a shared
+  // suite declares its tests at run time; refusing it is a false positive,
+  // and narrowing the guard to "no describe/it/test token at all" keeps a
+  // genuinely wrong path failing (see the test above) while letting this
+  // legitimate shape through.
+  const root = makeSyntheticPackage({
+    'conformance.test.ts': "import { describe } from 'vitest';\ndescribe('X conformance', () => runConformanceSuite(fixtures));\n",
+  });
+  try {
+    const run = runCli([join(root, 'conformance.test.ts')]);
+    assert.equal(run.status, 0);
+    assert.match(run.stdout, /summary: 0 protected \(own call\/describe\)/);
+    assert.equal(run.stderr, '');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CLI: an unparseable call site fails with its own message, not "check your paths"', () => {
+  const root = makeSyntheticPackage({
+    'broken.test.ts': "it('unterminated', () => { doWork(); };\n",
+  });
+  try {
+    const run = runCli([join(root, 'broken.test.ts')]);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /could not be\s+parsed/);
+    assert.match(run.stderr, /blind spot in this module's parser/);
+    // The wrong-paths message would send the reader hunting the wrong thing.
+    assert.doesNotMatch(run.stderr, /Check that the paths point at vitest test/);
+    assert.doesNotMatch(run.stdout, /summary:/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

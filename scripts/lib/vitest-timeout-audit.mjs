@@ -63,12 +63,31 @@
  *   - template-literal interpolations (`` `${…}` ``) are treated as opaque
  *     text, not parsed — a call inside `${…}` would not be found. Not used
  *     anywhere in this repo's `it`/`test`/`describe` argument lists.
- *   - `/regex/` literals are recognised well enough to not corrupt paren
- *     depth for the common cases (after `(`, `,`, `=`, `:`, `[`, `!`, `&`,
- *     `|`, `?`, `{`, `;`, `return`, or start-of-file), covering every shape
- *     actually seen in this codebase's test bodies; an exotic regex placed
- *     right after an operator not in that list could still be misread as
- *     division. Pinned by `vitest-timeout-audit.test.mjs`.
+ *   - `/regex/` literals are recognised by the standard prev-token
+ *     heuristic: a `/` starts a regex when the last significant token
+ *     before it is an operator, punctuator, or one of the keywords in
+ *     `REGEX_PRECEDING_RE` (`(`, `,`, `=`, `:`, `[`, `!`, `&`, `|`, `?`,
+ *     `{`, `;`, `return`, `typeof`, … or start-of-file), and is division
+ *     otherwise — including right after a string or template literal,
+ *     which `stripNoise` tracks separately because a blanked literal is
+ *     indistinguishable from whitespace. This covers every shape actually
+ *     seen in this codebase. NOT handled: a regex after an operator absent
+ *     from that list; a regex spanning a line break (bailed on, and the `/`
+ *     is then read as ordinary); a `/` immediately after `}` where the `}`
+ *     closed a block rather than an object literal (read as division).
+ *     `stripNoise` MUST step over regex literals — before it did, a regex
+ *     containing an apostrophe (`toMatch(/^'/)`) opened a phantom string
+ *     that swallowed the rest of the file and dropped EVERY call site in
+ *     it, including ones before the regex. Pinned by
+ *     `vitest-timeout-audit.test.mjs`.
+ *   - a `describe`/`it`/`test` reached through a value rather than named
+ *     directly — `const t = it; t('name', fn)`, or a `.each` table built by
+ *     a helper — is not found. The one indirection that IS handled is the
+ *     immediately-invoked parenthesized form `(cond ? it : it.skip)('name',
+ *     fn)`, which this repo uses.
+ *   - TypeScript type-argument lists on the call or its modifier
+ *     (`it.each<[Role, boolean]>([...])`) are stepped over; see
+ *     `skipTypeArguments` for what that scan does not cover.
  *
  * Run standalone: `node scripts/lib/vitest-timeout-audit.mjs <file...>`
  * prints one line per `it`/`test` call — deliberately a reporting tool a
@@ -81,11 +100,14 @@
  * substitution `check-source-text-assertions.mjs` exists to block) in
  * `vitest-timeout-audit.test.mjs`.
  *
- * Standalone exit codes: 0 once it has audited at least one `it`/`test`
- * call site; 1 if it was given no file arguments, or if none of the files
- * it was given held a single call site. An audit of nothing prints a
- * summary of all zeros, which reads like a clean report — see the guard at
- * the bottom of this file.
+ * Standalone exit codes: 0 once every file it was given is a vitest test
+ * file whose call sites it could parse — INCLUDING a `describe`-wrapped
+ * shared-suite runner with zero literal `it`/`test` call sites of its own.
+ * 1 if it was given no file arguments, if none of the named files holds a
+ * `describe`/`it`/`test` token (wrong paths), or if a call site was found
+ * but could not be parsed (a parser blind spot, reported as such). An audit
+ * of nothing prints a summary of all zeros, which reads like a clean report
+ * — see the guard at the bottom of this file.
  *
  * CONFIG-LEVEL PROTECTION (the blind spot fixed after #2948 shipped): a
  * package's `vitest.config.ts` can set `test.testTimeout`, which is vitest's
@@ -159,6 +181,12 @@ export function stripNoise(source) {
   const out = Array.from(source);
   const n = out.length;
   let i = 0;
+  // Index just past the most recently blanked string/template literal.
+  // After blanking, a literal is indistinguishable from whitespace, so
+  // `isRegexStart` would look straight PAST it to whatever preceded the
+  // literal and could call a `/` that is plainly division (`'ab' / 2`) a
+  // regex. Remembering where the literal ended keeps that one case right.
+  let lastLiteralEnd = -1;
   while (i < n) {
     const c = out[i];
     const c2 = i + 1 < n ? out[i + 1] : '';
@@ -175,6 +203,17 @@ export function stripNoise(source) {
       if (i < n) { out[i] = ' '; out[i + 1] = ' '; i += 2; }
       continue;
     }
+    // A `/…/` regex literal stays in place (see the doc comment above), but
+    // it MUST be stepped over as one token here rather than scanned
+    // character by character: an apostrophe or a backtick inside the
+    // pattern — `expect(x).toMatch(/^'/)` — otherwise opens a "string" that
+    // swallows the rest of the file, after which `findMatchingParen` fails
+    // and EVERY call site in the file disappears, including the ones before
+    // the regex. That was silently under-counting protection repo-wide.
+    if (c === '/' && lastSignificant(out, i) >= lastLiteralEnd && isRegexStart(out, i)) {
+      const after = skipRegexLiteral(out, i);
+      if (after !== -1) { i = after; continue; }
+    }
     if (c === "'" || c === '"') {
       const quote = c;
       out[i] = ' '; i += 1;
@@ -184,6 +223,7 @@ export function stripNoise(source) {
         i += 1;
       }
       if (i < n) { out[i] = ' '; i += 1; }
+      lastLiteralEnd = i;
       continue;
     }
     if (c === '`') {
@@ -194,6 +234,7 @@ export function stripNoise(source) {
         i += 1;
       }
       if (i < n) { out[i] = ' '; i += 1; }
+      lastLiteralEnd = i;
       continue;
     }
     i += 1;
@@ -201,11 +242,21 @@ export function stripNoise(source) {
   return out.join('');
 }
 
-/** Index (into `clean`) of the last non-whitespace character before `pos`, or -1. */
+/**
+ * Index (into `clean`) of the last non-whitespace character before `pos`,
+ * or -1. `clean` may be a string or the char ARRAY `stripNoise` is building
+ * (both index by number and expose `.length`), so the regex heuristics
+ * below can run mid-strip as well as over a finished `clean`.
+ */
 function lastSignificant(clean, pos) {
   let j = pos - 1;
   while (j >= 0 && /\s/.test(clean[j])) j -= 1;
   return j;
+}
+
+/** `slice(...).join('')` for a char array, plain `slice` for a string. */
+function sliceText(clean, start, end) {
+  return Array.isArray(clean) ? clean.slice(start, end).join('') : clean.slice(start, end);
 }
 
 /**
@@ -221,24 +272,31 @@ function isRegexStart(clean, pos) {
   if (/[\w$]/.test(clean[end])) {
     while (start >= 0 && /[\w$]/.test(clean[start])) start -= 1;
     start += 1;
-    return REGEX_PRECEDING_RE.test(clean.slice(start, end + 1));
+    return REGEX_PRECEDING_RE.test(sliceText(clean, start, end + 1));
   }
   return REGEX_PRECEDING_RE.test(clean[end]);
 }
 
-/** Advance past a `/…/flags` regex literal starting at `pos`; returns the index just after it. */
+/**
+ * Advance past a `/…/flags` regex literal starting at `pos`; returns the
+ * index just after it, or -1 if what starts at `pos` is not a terminated
+ * single-line regex literal (so the caller treats the `/` as an ordinary
+ * character rather than swallowing the rest of the line).
+ */
 function skipRegexLiteral(clean, pos) {
   let i = pos + 1;
   let inClass = false;
+  let closed = false;
   while (i < clean.length) {
     const c = clean[i];
     if (c === '\\') { i += 2; continue; }
     if (c === '[') inClass = true;
     else if (c === ']') inClass = false;
-    else if (c === '/' && !inClass) { i += 1; break; }
+    else if (c === '/' && !inClass) { i += 1; closed = true; break; }
     else if (c === '\n') break; // malformed / not actually a regex — bail, caller treats '/' as ordinary
     i += 1;
   }
+  if (!closed) return -1;
   while (i < clean.length && /[a-z]/i.test(clean[i])) i += 1;
   return i;
 }
@@ -253,7 +311,10 @@ function findMatchingParen(clean, openIdx) {
   let i = openIdx;
   while (i < clean.length) {
     const c = clean[i];
-    if (c === '/' && isRegexStart(clean, i)) { i = skipRegexLiteral(clean, i); continue; }
+    if (c === '/' && isRegexStart(clean, i)) {
+      const after = skipRegexLiteral(clean, i);
+      if (after !== -1) { i = after; continue; }
+    }
     if (c === '(') depth += 1;
     else if (c === ')') {
       depth -= 1;
@@ -276,7 +337,10 @@ function splitTopLevelByComma(original, clean, start, end) {
   let i = start;
   while (i < end) {
     const c = clean[i];
-    if (c === '/' && isRegexStart(clean, i)) { i = skipRegexLiteral(clean, i); continue; }
+    if (c === '/' && isRegexStart(clean, i)) {
+      const after = skipRegexLiteral(clean, i);
+      if (after !== -1) { i = after; continue; }
+    }
     if (c === '(' || c === '{' || c === '[') depth += 1;
     else if (c === ')' || c === '}' || c === ']') depth -= 1;
     else if (c === ',' && depth === 0) {
@@ -363,7 +427,10 @@ function extractAssignedValue(clean, colonIdx) {
   let depth = 0;
   while (i < clean.length) {
     const c = clean[i];
-    if (c === '/' && isRegexStart(clean, i)) { i = skipRegexLiteral(clean, i); continue; }
+    if (c === '/' && isRegexStart(clean, i)) {
+      const after = skipRegexLiteral(clean, i);
+      if (after !== -1) { i = after; continue; }
+    }
     if (c === '(' || c === '{' || c === '[') { depth += 1; i += 1; continue; }
     if (c === ')' || c === '}' || c === ']') {
       if (depth === 0) break;
@@ -485,6 +552,35 @@ function lineOf(source, index) {
 }
 
 /**
+ * Index just past the `>` closing a TypeScript type-argument list opening at
+ * `pos` (`it.each<[Role, boolean]>([...])`, `test<Ctx>(...)`), or -1 if the
+ * `<` at `pos` does not open a balanced one. Depth is counted on `<`/`>`
+ * with `=>` stepped over so a function type inside the list
+ * (`<(a: string) => void>`) does not close it early. Strings and comments
+ * are already blanked in `clean`, so nothing inside one can be miscounted.
+ * NOT handled: a `>` inside a nested regex or a `>>` shift inside a type-level
+ * expression, neither of which occurs in a vitest type-argument list; a `<`
+ * that is really a less-than comparison bails out via the -1 return because
+ * an unmatched `>` will not be found before the scan cap.
+ */
+function skipTypeArguments(clean, pos) {
+  let depth = 0;
+  let i = pos;
+  const limit = Math.min(clean.length, pos + 2000);
+  while (i < limit) {
+    const c = clean[i];
+    if (c === '=' && clean[i + 1] === '>') { i += 2; continue; }
+    if (c === '<') depth += 1;
+    else if (c === '>') {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    } else if (c === ';' || c === '}') return -1; // ran past the end of an expression
+    i += 1;
+  }
+  return -1;
+}
+
+/**
  * Scan `source` for `describe`/`it`/`test` calls (including modifier chains
  * like `.skipIf(...)`, `.only`, `.each(...)`), matching parens via `clean`,
  * and skipping any parenthesized modifier argument (`.each([...])`,
@@ -494,6 +590,8 @@ function lineOf(source, index) {
 function findCalls(source) {
   const clean = stripNoise(source);
   const calls = [];
+  const unparsed = [];
+  const seenOpenParen = new Set();
   CALL_KEYWORD_RE.lastIndex = 0;
   let m;
   while ((m = CALL_KEYWORD_RE.exec(clean)) !== null) {
@@ -508,6 +606,17 @@ function findCalls(source) {
         while (pos < clean.length && /[\w$]/.test(clean[pos])) pos += 1;
         const modifierName = clean.slice(nameStart, pos);
         while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+        // `it.each<[Role, boolean]>([...])` — the TS type-argument list sits
+        // between the modifier name and its argument list. Without stepping
+        // over it the `(` check below fails and the whole call is dropped;
+        // the untyped spelling was recognised, so only typed call sites went
+        // missing.
+        if (clean[pos] === '<') {
+          const afterTypeArgs = skipTypeArguments(clean, pos);
+          if (afterTypeArgs === -1) { ok = false; break; }
+          pos = afterTypeArgs;
+          while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+        }
         if (clean[pos] === '(' && PARAMETERIZED_MODIFIERS.has(modifierName)) {
           const close = findMatchingParen(clean, pos);
           if (close === -1) { ok = false; break; }
@@ -517,12 +626,30 @@ function findCalls(source) {
       }
       break;
     }
-    if (!ok) continue;
+    if (!ok) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
     while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+    // Same for a type-argument list on the call itself: `test<Ctx>(...)`.
+    if (clean[pos] === '<') {
+      const afterTypeArgs = skipTypeArguments(clean, pos);
+      if (afterTypeArgs === -1) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
+      pos = afterTypeArgs;
+      while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+    }
+    // `(hasBuild ? it : it.skip)('name', fn)` — the keyword sits inside a
+    // parenthesized expression that is then invoked, so the call's own `(`
+    // comes after one or more closing parens. Both `it` occurrences in that
+    // ternary resolve to the SAME opening paren; `seenOpenParen` below keeps
+    // that from being counted twice.
+    while (clean[pos] === ')') {
+      pos += 1;
+      while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+    }
     if (clean[pos] !== '(') continue; // not actually a call (e.g. bare identifier use)
     const openParen = pos;
+    if (seenOpenParen.has(openParen)) continue;
+    seenOpenParen.add(openParen);
     const close = findMatchingParen(clean, openParen);
-    if (close === -1) continue;
+    if (close === -1) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
     const argsStart = openParen + 1;
     const argsEnd = close - 1;
     const argTexts = splitTopLevelByComma(source, clean, argsStart, argsEnd);
@@ -535,7 +662,32 @@ function findCalls(source) {
       name: argTexts.length > 0 ? argTexts[0].trim().replace(/^['"`]|['"`]$/g, '') : null,
     });
   }
-  return calls;
+  return { calls, unparsed };
+}
+
+/**
+ * Call sites this module recognised as a `describe`/`it`/`test` invocation
+ * but could NOT parse (unbalanced parens, or a `<…>` that did not close).
+ * Reported separately from "no call sites here" so a file the parser choked
+ * on is never mistaken for a file that legitimately declares no tests —
+ * that distinction is what the standalone guard at the bottom rests on.
+ */
+export function findUnparsedCallSites(source) {
+  return findCalls(source).unparsed;
+}
+
+/**
+ * True iff `source` contains a bare `describe`/`it`/`test` token outside
+ * every comment, string, and template literal — i.e. it is plausibly a
+ * vitest test file, even if it declares no `it`/`test` of its own (a
+ * `describe`-wrapped shared-suite runner such as
+ * `describe('X', () => runConformanceSuite(...))` is a real test file with
+ * zero literal call sites).
+ */
+export function hasTestKeywordToken(source) {
+  const clean = stripNoise(source);
+  CALL_KEYWORD_RE.lastIndex = 0;
+  return CALL_KEYWORD_RE.test(clean);
 }
 
 /**
@@ -545,7 +697,7 @@ function findCalls(source) {
  * syntactically valid nesting.
  */
 export function auditSource(source) {
-  const calls = findCalls(source);
+  const { calls } = findCalls(source);
   const describes = calls.filter((c) => c.keyword === 'describe');
   const results = [];
   for (const call of calls) {
@@ -652,13 +804,27 @@ export function auditFile(filePath, source) {
 /**
  * Refuse a vacuous run: a summary of all zeros reads exactly like a clean
  * pass, so an invocation that audited nothing must exit non-zero and say
- * what it expected instead. Two ways to audit nothing:
+ * what it expected instead. Three ways to audit nothing, each with its own
+ * message because the remedy differs:
  *   - no file arguments at all (e.g. a caller whose target list expanded to
  *     nothing, or a future CI wiring with no default targets);
- *   - files were named, but none of them contained a single `it`/`test`
- *     call site, so there was nothing to classify.
- * Both print to stderr and exit 1. This is the same shape as
- * `check-tla-chunk-await.mjs` refusing to run against a missing dist and
+ *   - files were named, but not one of them holds a bare
+ *     `describe`/`it`/`test` token — they are not vitest test files, so the
+ *     paths are wrong;
+ *   - a file DOES hold call sites, but this module could not parse them.
+ *     That is a bug in this parser, not in the caller's paths, and saying
+ *     "check your paths" there would send the reader hunting the wrong
+ *     thing. Zero such files exist in this repo today (verified by running
+ *     `findUnparsedCallSites` over all 1285 test files); the check exists so
+ *     a future parser blind spot surfaces as a loud failure instead of a
+ *     silently lower count.
+ * ZERO `it`/`test` call sites is NOT by itself an error, and must not be:
+ * a `describe`-wrapped shared-suite runner
+ * (`describe('X conformance', () => runConformanceSuite(fixtures))`) is a
+ * legitimate test file with no literal call site of its own, and this repo
+ * has four of them. An earlier version of this guard failed exactly those
+ * files. This is the same shape as `check-tla-chunk-await.mjs` refusing to
+ * run against a missing dist and
  * `scripts/lib/server-bin-targets-parse.mjs`'s `refusing a vacuous pass`.
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -679,8 +845,12 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let configProtectedCount = 0;
   let configUnknownCount = 0;
   let unprotectedCount = 0;
+  let keywordFiles = 0;
+  const unparsedSites = [];
   for (const file of targets) {
     const source = readFileSync(file, 'utf8');
+    if (hasTestKeywordToken(source)) keywordFiles += 1;
+    for (const u of findUnparsedCallSites(source)) unparsedSites.push(`${file}:${u.line}: ${u.keyword}`);
     for (const r of auditFile(file, source)) {
       const shown = r.value ?? r.valueRef ?? '?';
       let status;
@@ -700,11 +870,22 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`${file}:${r.line}: ${r.keyword}('${r.name}') — ${status}`);
     }
   }
-  const total = protectedCount + configProtectedCount + configUnknownCount + unprotectedCount;
-  if (total === 0) {
+  if (unparsedSites.length > 0) {
     console.error(
-      `vitest-timeout-audit: ERROR: ${targets.length} file(s) named, but not one `
-      + `\`it\`/\`test\` call site was found in any of them; refusing a vacuous pass.\n\n`
+      `vitest-timeout-audit: ERROR: ${unparsedSites.length} call site(s) could not be `
+      + 'parsed, so their timeout status is unknown and this run under-reports:\n\n'
+      + unparsedSites.map((s) => `    ${s}`).join('\n')
+      + '\n\nThe paths are fine -- this is a blind spot in this module\'s parser.\n'
+      + 'Fix the parser (see the LIMITATIONS list at the top of this file) rather\n'
+      + 'than the invocation.\n',
+    );
+    process.exit(1);
+  }
+
+  if (keywordFiles === 0) {
+    console.error(
+      `vitest-timeout-audit: ERROR: ${targets.length} file(s) named, but not one holds a `
+      + '`describe`/`it`/`test` token; refusing a vacuous pass.\n\n'
       + 'A summary of all zeros here means the audit classified nothing, not that\n'
       + 'every test carries a timeout. Check that the paths point at vitest test\n'
       + 'files.\n',

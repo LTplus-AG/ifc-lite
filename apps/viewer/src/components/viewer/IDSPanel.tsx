@@ -73,6 +73,11 @@ import type {
   IDSEntityResult,
   IDSRequirementResult,
 } from '@ifc-lite/ids';
+import {
+  groupRequirementResults,
+  computeCheckStats,
+  type RequirementGroup,
+} from '@/hooks/ids/idsRequirementGrouping';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
@@ -169,6 +174,27 @@ function SpecificationCard({
     );
   }, [result.entityResults, filterMode]);
 
+  // Regroup this specification's entity results by requirement ("check")
+  // rather than by entity. A specification can carry several requirements
+  // (fire rating, certificate ref, width, ...) — grouping first (before any
+  // status filtering) keeps the per-requirement counts aligned across
+  // entities; see idsRequirementGrouping.ts for why that ordering matters.
+  const requirementGroups = useMemo(
+    () => groupRequirementResults(result.entityResults),
+    [result.entityResults]
+  );
+  const checkStats = useMemo(
+    () => computeCheckStats(result.entityResults),
+    [result.entityResults]
+  );
+  const filteredRequirementGroups = useMemo(() => {
+    if (filterMode === 'all') return requirementGroups;
+    return requirementGroups.filter((g) =>
+      filterMode === 'failed' ? g.failedCount > 0 : g.passedCount > 0
+    );
+  }, [requirementGroups, filterMode]);
+  const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
@@ -212,14 +238,41 @@ function SpecificationCard({
                 <div className="mt-2">
                   <PassRateBar passRate={result.passRate} />
                 </div>
+                {/* Check-level rate: one entity can fail several requirements
+                    at once, so this legitimately differs from (and is <=) the
+                    entity-level rate above — both matter and are shown
+                    separately rather than picking one. */}
+                {applicableChecks > 0 && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {checkStats.passedChecks}/{applicableChecks} checks passed ({checkStats.checkPassRate}%)
+                    {requirementGroups.length > 1 && ` across ${requirementGroups.length} requirements`}
+                  </div>
+                )}
               </div>
             </div>
           </button>
         </CollapsibleTrigger>
 
+        {/* Requirement Breakdown */}
+        <CollapsibleContent>
+          <Separator />
+          <div className="p-2 space-y-1">
+            {filteredRequirementGroups.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground text-center">
+                No {filterMode === 'failed' ? 'failed' : filterMode === 'passed' ? 'passed' : ''} requirements
+              </div>
+            ) : (
+              filteredRequirementGroups.map((group) => (
+                <RequirementGroupRow key={group.key} group={group} onEntityClick={onEntityClick} />
+              ))
+            )}
+          </div>
+        </CollapsibleContent>
+
         {/* Entity Results */}
         <CollapsibleContent>
           <Separator />
+          <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">By entity</div>
           <div className="max-h-64 overflow-auto">
             {filteredEntities.length === 0 ? (
               <div className="p-3 text-sm text-muted-foreground text-center">
@@ -336,6 +389,77 @@ function RequirementResultRow({ result }: RequirementResultRowProps) {
           <div className="text-red-600 mt-0.5">{result.failureReason}</div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Requirement Group Row Component
+// ============================================================================
+
+interface RequirementGroupRowProps {
+  group: RequirementGroup;
+  onEntityClick: (modelId: string, expressId: number) => void;
+}
+
+function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRowProps) {
+  const [showFailures, setShowFailures] = useState(false);
+  const hasFailures = group.failingEntities.length > 0;
+  const status: 'pass' | 'fail' | 'not_applicable' =
+    group.failedCount > 0 ? 'fail' : group.passedCount > 0 ? 'pass' : 'not_applicable';
+
+  return (
+    <div className="rounded-md border border-border/60">
+      <button
+        type="button"
+        className="w-full p-2 text-left flex items-start gap-2 hover:bg-muted/50 rounded-md disabled:hover:bg-transparent"
+        onClick={() => hasFailures && setShowFailures((v) => !v)}
+        disabled={!hasFailures}
+        aria-expanded={hasFailures ? showFailures : undefined}
+      >
+        <StatusIcon status={status} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="text-[10px] uppercase">{group.facetType}</Badge>
+            <span className="text-xs truncate">{group.checkedDescription}</span>
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="text-green-600">{group.passedCount} passed</span>
+            {' · '}
+            <span className="text-red-600">{group.failedCount} failed</span>
+            {group.notApplicableCount > 0 && (
+              <>
+                {' · '}
+                <span>{group.notApplicableCount} n/a</span>
+              </>
+            )}
+          </div>
+        </div>
+        {hasFailures && (
+          showFailures ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />
+        )}
+      </button>
+      {showFailures && hasFailures && (
+        <div className="pl-6 pr-2 pb-2 space-y-1">
+          {group.failingEntities.map((entity) => (
+            <button
+              key={`${entity.modelId}:${entity.expressId}`}
+              type="button"
+              className="w-full text-left text-xs p-1.5 rounded hover:bg-muted/50 flex flex-col gap-0.5"
+              onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+            >
+              <span className="truncate">
+                {entity.entityType}
+                {entity.entityName ? ` · ${entity.entityName}` : ''}
+                {entity.globalId ? ` · ${entity.globalId}` : ''}
+              </span>
+              {entity.failureReason && (
+                <span className="text-red-600">{entity.failureReason}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

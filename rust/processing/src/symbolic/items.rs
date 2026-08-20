@@ -106,38 +106,39 @@ pub(super) fn extract_symbolic_item_inner(
                 compose_transforms(&mapping_target_transform, &mapping_origin_transform);
             let composed_transform = compose_transforms(transform, &origin_with_target);
 
-            // The representation goes on the path before its items do: this
-            // chain re-enters the walk through something that is not an item,
-            // so the item path guard cannot see the cycle it closes.
-            if let Some(mapped_rep_id) = rep_map.get_ref(1) {
-                if !walk.enter_representation(mapped_rep_id) {
-                    return;
-                }
-                if let Ok(mapped_rep) = decoder.decode_by_id(mapped_rep_id) {
-                    if let Some(items_attr) = mapped_rep.get(3) {
-                        if let Ok(items) = decoder.resolve_ref_list(items_attr) {
-                            for sub_item in items {
-                                extract_symbolic_item_at(
-                                    &sub_item,
-                                    decoder,
-                                    express_id,
-                                    ifc_type,
-                                    rep_identifier,
-                                    unit_scale,
-                                    &composed_transform,
-                                    rtc_x,
-                                    rtc_z,
-                                    styled_items,
-                                    out,
-                                    depth + 1,
-                                    walk,
-                                );
-                            }
-                        }
-                    }
-                }
-                walk.exit_representation(mapped_rep_id);
+            // Everything that can fail is resolved BEFORE the node goes on
+            // the path, so there is no early return between enter and exit --
+            // a leaked id would silently skip every later occurrence of this
+            // representation for the rest of the walk.
+            let Some(mapped_rep_id) = rep_map.get_ref(1) else { return };
+            let Ok(mapped_rep) = decoder.decode_by_id(mapped_rep_id) else { return };
+            let Some(items_attr) = mapped_rep.get(3) else { return };
+            let Ok(items) = decoder.resolve_ref_list(items_attr) else { return };
+
+            // The representation itself is a node on the path: this chain
+            // re-enters the walk through something that is not an item, so the
+            // item ids alone cannot see the cycle it closes.
+            if !walk.enter_node(mapped_rep_id) {
+                return;
             }
+            for sub_item in items {
+                extract_symbolic_item_at(
+                    &sub_item,
+                    decoder,
+                    express_id,
+                    ifc_type,
+                    rep_identifier,
+                    unit_scale,
+                    &composed_transform,
+                    rtc_x,
+                    rtc_z,
+                    styled_items,
+                    out,
+                    depth + 1,
+                    walk,
+                );
+            }
+            walk.exit_node(mapped_rep_id);
         }
         IfcType::IfcPolyline => {
             if let Some(points_attr) = item.get(0) {

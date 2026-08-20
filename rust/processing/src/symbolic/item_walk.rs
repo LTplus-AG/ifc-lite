@@ -29,7 +29,7 @@ use std::collections::HashMap;
 ///
 /// Kept in step with `MAX_MAPPED_ITEM_DEPTH` in `element.rs` and in
 /// `geometry/src/router/processing.rs`, which walk the same mapped-item chain.
-const MAX_ITEM_DEPTH: u32 = 32;
+pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 
 /// Number of times this extraction may re-enter an id it has already visited.
 ///
@@ -51,7 +51,20 @@ const MAX_ITEM_REVISITS: u32 = 200_000;
 /// State threaded through the walk: the ancestors on the current path, and the
 /// remaining emit budget.
 pub(super) struct ItemWalk {
-    /// Ancestors on the CURRENT path -- inserted on entry, removed on exit.
+    /// Every node on the CURRENT path -- inserted on entry, removed on exit.
+    ///
+    /// Holds items AND the non-item nodes the walk re-enters through. Express
+    /// ids are unique per file, so one set needs no separation between them,
+    /// and that matters: the `IfcMappedItem -> IfcRepresentationMap ->
+    /// IfcShapeRepresentation.Items` chain re-enters through the
+    /// REPRESENTATION, which is not an item. A representation whose own items
+    /// map back to it is therefore a cycle an item-only path cannot see -- it
+    /// presents as an innocent k-way fan-out that only the revisit budget
+    /// stops, at `O(k^depth)` charges taken from a budget the rest of the file
+    /// still needs. `a_cycle_must_not_starve_the_geometry_that_follows_it`
+    /// pins that route; `a_set_cycle_must_not_starve_the_geometry_that_follows_it`
+    /// pins the item-only route (`IfcGeometricCurveSet.Elements` back to
+    /// itself), which no other bound covers.
     ///
     /// Deliberately path-scoped rather than global, unlike `element.rs`'s
     /// colour resolver. A colour is a pure function of (item id, style map), so
@@ -66,44 +79,34 @@ pub(super) struct ItemWalk {
     path: FxHashSet<u32>,
     /// Every id this extraction has entered, ever -- never removed.
     ///
-    /// Only used to tell a FIRST visit from a REVISIT. A first visit is
-    /// bounded by the file: an entity has to exist to be reached, so a flat
-    /// `IfcGeometricCurveSet` with 200k children costs 200k first visits and
-    /// nothing can make that exponential. Revisits are the whole danger --
-    /// an acyclic DAG reaches the same node down 2^levels distinct paths.
+    /// Only used to tell a FIRST visit from a REVISIT. See
+    /// [`MAX_ITEM_REVISITS`] for why that distinction is what makes the budget
+    /// safe to have at all.
     seen: FxHashSet<u32>,
     /// Charged on REVISITS only. See [`MAX_ITEM_REVISITS`].
     revisit_budget: u32,
-    /// Representations being expanded on the CURRENT path -- the other way a
-    /// mapped-item chain closes a cycle.
-    ///
-    /// `IfcMappedItem -> IfcRepresentationMap -> IfcShapeRepresentation.Items`
-    /// re-enters the walk through the representation, which is NOT an item and
-    /// so never appears in `path`. A representation whose own items map back to
-    /// it is therefore a cycle the item path guard cannot see: it presents as a
-    /// k-way fan-out that only the revisit budget stops, and stopping it there
-    /// costs `O(k^depth)` charges taken from a budget the rest of the file
-    /// still needs. `a_cycle_must_not_starve_the_geometry_that_follows_it` pins
-    /// the consequence -- an 8-way self-referential map ahead of ordinary
-    /// shared geometry drained the budget and dropped the geometry.
-    ///
-    /// Push/pop like `path`, not global, for the same reason: one
-    /// representation reached through two different mapped items is two real
-    /// pieces of geometry at two different positions.
-    rep_path: FxHashSet<u32>,
 }
 
 impl ItemWalk {
-    /// Begin expanding a mapped representation. `false` means it is already
-    /// being expanded higher up this path -- a cycle -- and must be skipped.
+    /// Put a node on the current path. `false` means it is already being
+    /// expanded higher up this path -- a cycle -- and must not be re-entered.
     ///
-    /// Every caller must pair a `true` with [`ItemWalk::exit_representation`].
-    pub(super) fn enter_representation(&mut self, rep_id: u32) -> bool {
-        self.rep_path.insert(rep_id)
+    /// Node-general on purpose: the walk re-enters through nodes that are not
+    /// representation items, and a seam named for one IFC type would leave the
+    /// next such edge to hand-roll its own guard. Nothing here knows an IFC
+    /// type; `items.rs` decides which ids are nodes.
+    ///
+    /// Every caller must pair a `true` with [`ItemWalk::exit_node`] and must
+    /// not return in between. A leaked id stays on the path for the rest of
+    /// this top-level item's walk, silently skipping every later occurrence of
+    /// that node -- missing geometry with no error, which is the failure this
+    /// module argues is worse than the cycle it guards against.
+    pub(super) fn enter_node(&mut self, id: u32) -> bool {
+        self.path.insert(id)
     }
 
-    pub(super) fn exit_representation(&mut self, rep_id: u32) {
-        self.rep_path.remove(&rep_id);
+    pub(super) fn exit_node(&mut self, id: u32) {
+        self.path.remove(&id);
     }
 }
 
@@ -125,7 +128,6 @@ pub(super) fn extract_symbolic_item(
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
         revisit_budget: MAX_ITEM_REVISITS,
-        rep_path: FxHashSet::default(),
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
@@ -161,13 +163,13 @@ pub(super) fn extract_symbolic_item_at(
             None => return,
         }
     }
-    if !walk.path.insert(item.id) {
+    if !walk.enter_node(item.id) {
         return;
     }
     extract_symbolic_item_inner(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
         styled_items, out, depth, walk,
     );
-    walk.path.remove(&item.id);
+    walk.exit_node(item.id);
 }
 

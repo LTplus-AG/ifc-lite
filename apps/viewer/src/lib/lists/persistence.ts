@@ -15,7 +15,13 @@ export function loadListDefinitions(): ListDefinition[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
-    return JSON.parse(raw) as ListDefinition[];
+    const parsed: unknown = JSON.parse(raw);
+    // A hand-edited or half-written entry can be valid JSON that isn't an
+    // array (an object, a stray number, `null`...). `listSlice` spreads this
+    // result (`[...listDefinitions, def]`) on the very first list the user
+    // creates, so anything non-array here throws "is not iterable" and
+    // bricks the List panel at boot instead of just starting empty.
+    return Array.isArray(parsed) ? (parsed as ListDefinition[]) : [];
   } catch {
     return [];
   }

@@ -12,17 +12,25 @@
  * computes `fitScale = min(scaleX, scaleY, 1)` and silently SHRINKS the
  * effective scale (never enlarges past 1:1 of the nominal scale) when the
  * drawing does not fit the viewport at the nominal scale. That is correct
- * for an on-screen sheet preview (consumed identically by
- * `Drawing2DCanvas.tsx` and `useDrawingExport.ts`'s `generateSheetSVG`,
- * both via `x * scaleFactor + translateX` / `y * scaleFactor + translateY`)
- * but would be WRONG for a document meant to be measured at an exact scale
- * — which is exactly why `pdf-scale.ts` (#2042) does not reuse this
- * function. These tests pin both branches: no-shrink-needed, and the
- * shrink actually firing.
+ * for an on-screen sheet preview but would be WRONG for a document meant to
+ * be measured at an exact scale — which is exactly why `pdf-scale.ts`
+ * (#2042) does not reuse this function. These tests pin both branches:
+ * no-shrink-needed, and the shrink actually firing.
+ *
+ * `calculateDrawingTransform` itself always derives `translateY` assuming
+ * the caller flips Y (see its "Flip Y" comment) — it is only correct as-is
+ * for axes that actually do. `calculateDrawingTransformForAxis` wraps it
+ * with the correction for axes that don't (plan/'down' sections). Both
+ * `Drawing2DCanvas.tsx` (preview) and `useDrawingExport.ts`'s
+ * `generateSheetSVG` (print/export) now call `calculateDrawingTransformForAxis`
+ * with the SAME `flipY` so they can never again disagree on where the
+ * drawing lands on the sheet — see the second `describe` block below, and
+ * issue #2940 (print showed different, wrongly-centered extents than the
+ * preview for a plan section whose bounds were not symmetric about Y=0).
  */
 
 import { describe, expect, it } from 'vitest';
-import { calculateDrawingTransform, calculateViewportBounds } from './sheet-types.js';
+import { calculateDrawingTransform, calculateDrawingTransformForAxis, calculateViewportBounds } from './sheet-types.js';
 import { COMMON_SCALES } from '../styles.js';
 import type { PaperSizeDefinition } from './paper-sizes.js';
 import type { DrawingFrame } from './frame-types.js';
@@ -96,6 +104,57 @@ describe('calculateDrawingTransform', () => {
       scale1
     );
     expect(scaleFactor).toBeCloseTo(1000, 6);
+  });
+});
+
+describe('calculateDrawingTransformForAxis', () => {
+  // Off-center 'down' (plan) section: a 10m x 6m room sitting at
+  // Y in [3, 9] — NOT symmetric about Y=0, which is exactly the case the raw
+  // `calculateDrawingTransform` gets wrong for an unflipped axis. A model
+  // whose bounds happen to be symmetric about zero cannot observe this bug,
+  // since the flip correction term `(minY + maxY) * scaleFactor` is zero.
+  const bounds = { minX: 2, minY: 3, maxX: 12, maxY: 9 };
+  const viewport = { x: 10, y: 10, width: 190, height: 277 };
+
+  it('flipY=true (front/side axes): matches calculateDrawingTransform exactly', () => {
+    const base = calculateDrawingTransform(bounds, viewport, scale100);
+    const forAxis = calculateDrawingTransformForAxis(bounds, viewport, scale100, true);
+    expect(forAxis).toEqual(base);
+  });
+
+  it("flipY=false ('down'/plan axis): centers the drawing's Y in the viewport, not the raw flipped translateY", () => {
+    const forAxis = calculateDrawingTransformForAxis(bounds, viewport, scale100, false);
+    const centroidY = (bounds.minY + bounds.maxY) / 2; // 6
+    // Unflipped mapping is `y * scaleFactor + translateY` (no sign flip) —
+    // the drawing's Y-centroid must land on the viewport's vertical center.
+    const paperCentroidY = centroidY * forAxis.scaleFactor + forAxis.translateY;
+    const viewportCenterY = viewport.y + viewport.height / 2;
+    expect(paperCentroidY).toBeCloseTo(viewportCenterY, 6);
+  });
+
+  it("REGRESSION (#2940): reusing calculateDrawingTransform's raw translateY for an unflipped axis puts the drawing far outside the viewport", () => {
+    // This is what the print/export path did before the fix: pass the base
+    // (always-Y-flip-assuming) transform straight through for a 'down'
+    // section. Pin the divergence itself, not just the corrected value, so
+    // a regression that reintroduces the raw pass-through is caught even if
+    // someone "fixes" calculateDrawingTransformForAxis by deleting the
+    // correction rather than by reverting to calculateDrawingTransform.
+    const base = calculateDrawingTransform(bounds, viewport, scale100);
+    const forAxis = calculateDrawingTransformForAxis(bounds, viewport, scale100, false);
+    const centroidY = (bounds.minY + bounds.maxY) / 2;
+    const viewportCenterY = viewport.y + viewport.height / 2;
+
+    const rawCentroidY = centroidY * base.scaleFactor + base.translateY;
+    const correctedCentroidY = centroidY * forAxis.scaleFactor + forAxis.translateY;
+
+    expect(correctedCentroidY).toBeCloseTo(viewportCenterY, 6);
+    // The raw (pre-fix) value is off by exactly (minY + maxY) * scaleFactor
+    // = (3 + 9) * 10 = 120mm — on a 277mm-tall viewport that shifts the
+    // drawing's centroid by roughly 43% of the viewport height, moving a
+    // room that the preview shows centered well toward (or past) the
+    // viewport's bottom edge on the printed sheet.
+    expect(Math.abs(rawCentroidY - viewportCenterY)).toBeCloseTo(120, 6);
+    expect(Math.abs(rawCentroidY - viewportCenterY)).toBeGreaterThan(viewport.height * 0.4);
   });
 });
 

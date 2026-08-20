@@ -10,7 +10,7 @@ import {
   GraphicOverrideEngine,
   renderFrame,
   renderTitleBlock,
-  calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
   exportToDXF,
   formatScaleFactorLabel,
   type Drawing2D,
@@ -569,15 +569,6 @@ function useDrawingExport({
     const paperHeight = activeSheet.paper.heightMm;
     const viewport = activeSheet.viewportBounds;
 
-    // Calculate transform to fit drawing into viewport
-    const drawingTransform = calculateDrawingTransform(
-      { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
-      viewport,
-      activeSheet.scale
-    );
-
-    const { translateX, translateY, scaleFactor } = drawingTransform;
-
     // Axis-specific flipping (matching canvas rendering)
     // - 'down' (plan view): DON'T flip Y so north (Z+) is up
     // - 'front' and 'side': flip Y so height (Y+) is up
@@ -585,6 +576,22 @@ function useDrawingExport({
     const currentAxis = sectionPlane.axis;
     const flipY = currentAxis !== 'down';
     const flipX = currentAxis === 'side';
+
+    // Calculate transform to fit drawing into viewport, corrected for this
+    // axis's flip behavior — shared with the preview canvas
+    // (`Drawing2DCanvas.tsx`) via `calculateDrawingTransformForAxis` so print
+    // and export can never again drift from what the preview shows (#2940:
+    // print used the raw, always-Y-flip-assuming transform, which only
+    // matched the preview for axes that flip Y and left plan ('down')
+    // sections off-center on paper).
+    const drawingTransform = calculateDrawingTransformForAxis(
+      { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
+      viewport,
+      activeSheet.scale,
+      flipY
+    );
+
+    const { translateX, translateY, scaleFactor } = drawingTransform;
 
     // Helper: convert model coordinates to paper mm (matching canvas rendering exactly)
     const modelToPaper = (x: number, y: number): { x: number; y: number } => {

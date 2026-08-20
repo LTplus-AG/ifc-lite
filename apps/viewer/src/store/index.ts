@@ -18,7 +18,7 @@ import { createVisibilitySlice, type VisibilitySlice } from './slices/visibility
 import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
-import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
+import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -275,6 +275,13 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   resetViewerState: () => {
     invalidateVisibleBasketCache();
     const [set, get] = args;
+    // Drop the persisted "last section mode" (localStorage, survives closing
+    // the browser) together with the in-memory sectionPlane reset below —
+    // its 'cardinal' axis/position is geometry, meaningful only relative to
+    // the model that was loaded when it was saved. Leaving it in localStorage
+    // past this reset let a NEW model inherit the OLD model's cut position
+    // the next time the section tool was opened (#2939).
+    clearLastSectionMode();
     // Measurements (#2641 review): the slice owns the full list of its own
     // fields to clear on a model switch — see resetAllMeasurementState's doc
     // comment (measurementSlice.ts) for why this must not be a field list

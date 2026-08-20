@@ -170,3 +170,44 @@ export function calculateDrawingTransform(
 
   return { translateX, translateY, scaleFactor };
 }
+
+/**
+ * `calculateDrawingTransform` always derives `translateY` assuming the
+ * caller will map model Y to paper Y with a sign flip (`adjustedY = -y`,
+ * matching a plan view drawn with north/Y+ up on paper) — it centers using
+ * `drawingBounds.maxY` for exactly that reason (see the "Flip Y" comment
+ * above).
+ *
+ * Plan ('down') sections do NOT flip Y (see `Drawing2DCanvas.tsx`'s
+ * `flipY = sectionAxis !== 'down'`): they map `adjustedY = y` directly, so
+ * north stays up without a sign flip. Reusing the flipped `translateY`
+ * unmodified in that case still centers the WIDTH but shifts the centered Y
+ * off by `(minY + maxY) * scaleFactor` — the drawing lands off-center on the
+ * sheet, worse the further the section's bounds sit from being symmetric
+ * about Y=0. This offset was found diverging between the sheet PREVIEW
+ * (`Drawing2DCanvas.tsx`, which already carried this correction) and the
+ * sheet PRINT/EXPORT path (`useDrawingExport.ts`'s `generateSheetSVG`, which
+ * did not) — issue #2940.
+ *
+ * Call this instead of `calculateDrawingTransform` directly wherever the
+ * axis's flip behavior is known, so every sheet consumer (screen preview,
+ * print, SVG/PDF export) computes the identical, correctly-centered
+ * transform from one place.
+ */
+export function calculateDrawingTransformForAxis(
+  drawingBounds: { minX: number; minY: number; maxX: number; maxY: number },
+  viewportBounds: ViewportBounds,
+  scale: DrawingScale,
+  flipY: boolean
+): {
+  translateX: number;
+  translateY: number;
+  scaleFactor: number;
+} {
+  const base = calculateDrawingTransform(drawingBounds, viewportBounds, scale);
+  if (flipY) return base;
+  return {
+    ...base,
+    translateY: base.translateY - (drawingBounds.maxY + drawingBounds.minY) * base.scaleFactor,
+  };
+}

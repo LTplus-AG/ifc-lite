@@ -5,7 +5,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   GraphicOverrideEngine,
-  calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
   type Drawing2D,
   type ElementData,
 } from '@ifc-lite/drawing-2d';
@@ -754,17 +754,10 @@ export function Drawing2DCanvas({
         // Use cached transform to keep model fixed in place
         drawingTransform = cachedSheetTransformRef.current;
       } else {
-        // Calculate new transform
-        const baseTransform = calculateDrawingTransform(drawingBounds, viewport, activeSheet.scale);
-
-        // Adjust for axis-specific flipping
-        // calculateDrawingTransform assumes Y-flip (uses maxY), but for 'down' view we don't flip Y
-        drawingTransform = {
-          ...baseTransform,
-          translateY: flipY
-            ? baseTransform.translateY
-            : baseTransform.translateY - (drawingBounds.maxY + drawingBounds.minY) * baseTransform.scaleFactor,
-        };
+        // Calculate new transform, corrected for this axis's flip behavior
+        // (shared with the print/export path via `generateSheetSVG` — see
+        // `calculateDrawingTransformForAxis`'s doc comment, issue #2940).
+        drawingTransform = calculateDrawingTransformForAxis(drawingBounds, viewport, activeSheet.scale, flipY);
 
         // Cache the transform for pinned mode, tagged with the geometry it
         // was computed for (see the validation above).

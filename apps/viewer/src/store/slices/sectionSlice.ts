@@ -42,10 +42,9 @@ export function customPlaneCenter(plane: CustomSectionPlane): [number, number, n
 // ─── Persistence ─────────────────────────────────────────────────────────
 // Cap appearance (hatch pattern, colours, spacing, angle, whether the cap is
 // shown at all) persists across reloads via localStorage, so the user's
-// preferred cut surface survives closing and re-opening the app. Axis and
-// position are session-scoped because they only make sense relative to a
-// loaded model. See chatSlice.ts for the same direct-localStorage pattern
-// used elsewhere in the store.
+// preferred cut surface survives closing and re-opening the app — it is
+// pure display style, not tied to any model's geometry. See chatSlice.ts
+// for the same direct-localStorage pattern used elsewhere in the store.
 const CAP_STYLE_STORAGE_KEY     = 'ifc-lite:section-cap-style';
 const CAP_SHOW_STORAGE_KEY      = 'ifc-lite:section-cap-show';
 const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
@@ -60,6 +59,19 @@ const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
 // loaded model's world coordinates and would land somewhere meaningless
 // on a different model. Re-arming pick mode lets the user re-cut the
 // equivalent face on the new model with one click.
+//
+// 'cardinal' IS geometry — its `position` is only meaningful relative to
+// the bounding box of whatever model is loaded — but it round-trips
+// through localStorage (survives closing the browser), not just the
+// in-memory store (which `resetViewerState` already clears on every file
+// load). Without an explicit clear, a browser-session reload that opens a
+// DIFFERENT model would read yesterday's cardinal position from
+// localStorage and immediately apply it to today's model — the tool
+// looked like it "pre-chose" a cut instead of arming pick mode (#2939).
+// `resetViewerState()` (store/index.ts) calls `clearLastSectionMode()`
+// below on every primary file load for exactly this reason: it is the
+// same reset that already zeroes the in-memory axis/position/flipped
+// fields, so both copies of this state are dropped together.
 const SECTION_MODE_STORAGE_KEY  = 'ifc-lite:section-last-mode';
 
 export type LastSectionMode =
@@ -109,7 +121,7 @@ function saveLastSectionMode(mode: LastSectionMode): void {
   }
 }
 
-function clearLastSectionMode(): void {
+export function clearLastSectionMode(): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(SECTION_MODE_STORAGE_KEY);

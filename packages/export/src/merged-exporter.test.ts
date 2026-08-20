@@ -882,6 +882,46 @@ describe('MergedExporter', () => {
       expect(findDanglingRefs(content)).toEqual([]);
     });
 
+    // Regression: NON_ROOTED_STRING_TYPES is a hand-maintained denylist of
+    // non-rooted types whose first attribute is a string. IfcMaterialProfileWithOffsets
+    // (IfcMaterialDefinition subtype — NOT an IfcRoot) leads with an optional
+    // `Name: IfcLabel` and was missing from the list, so a 22-char Name was
+    // misread as a GlobalId. A GENUINE GlobalId collision between two rooted
+    // IfcWall entities lives in the SAME fixture and must still be reconciled
+    // (kept once) — the fix must not break that feature while closing the hole.
+    it('does not mistake a 22-char material Name for a GlobalId, while still reconciling a real rooted collision', () => {
+      const matName = guid('MatProfName'); // 22 chars, valid GlobalId charset, NOT a GlobalId
+      const wallShared = guid('wallShared'); // genuine GlobalId shared by two ROOTED entities
+      const a = buildModel('a', 'Arch', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projA')}',$,'A',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${wallShared}',$,'WA',$,$,$,$,$);`],
+        [3, 'IFCMATERIALPROFILEWITHOFFSETS', `#3=IFCMATERIALPROFILEWITHOFFSETS('${matName}',$,$,#1,$,$,(10.));`],
+        [4, 'IFCCOLUMN', `#4=IFCCOLUMN('${guid('colA')}',$,'CA',$,$,$,$,$);`],
+      ]);
+      const b = buildModel('b', 'Struct', [
+        [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('projB')}',$,'B',$,$,$,$,$,$);`],
+        [2, 'IFCWALL', `#2=IFCWALL('${wallShared}',$,'WB',$,$,$,$,$);`],
+        [3, 'IFCMATERIALPROFILEWITHOFFSETS', `#3=IFCMATERIALPROFILEWITHOFFSETS('${matName}',$,$,#1,$,$,(20.,30.));`],
+      ]);
+
+      const content = decode(new MergedExporter([a, b]).export({ schema: 'IFC4' }).content);
+
+      // Both material entities survive as distinct instances (their
+      // OffsetValues differ) — the Name is coincidence, not identity.
+      expect(content.match(/=IFCMATERIALPROFILEWITHOFFSETS\(/g)?.length).toBe(2);
+      expect(content).toContain('(10.)');
+      expect(content).toContain('(20.,30.)');
+      expect(content.match(new RegExp(matName, 'g'))?.length).toBe(2);
+
+      // The genuine rooted collision (two real IfcWall GlobalIds, same unit)
+      // is still reconciled: unified to a single instance, distinct from the
+      // material's surviving count (2) above so neither assertion can pass by
+      // coincidence.
+      expect(content.match(/=IFCWALL\(/g)?.length).toBe(1); // unified to one instance
+      expect(content.match(new RegExp(wallShared, 'g'))?.length).toBe(1);
+      expect(findDanglingRefs(content)).toEqual([]);
+    });
+
     // Regression (review of #1332): in a 3+ model merge, a unit-compatible model
     // must not be unified onto an entity emitted by a FEDERATED (different-unit)
     // model just because the GlobalId matches — that would reintroduce the

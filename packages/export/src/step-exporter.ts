@@ -20,11 +20,6 @@ import {
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
-import {
-  collectReferencedEntityIds,
-  getVisibleEntityIds,
-  collectStyleEntities,
-} from './reference-collector.js';
 import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
@@ -42,13 +37,12 @@ import {
   type OverlayEntitiesContext,
 } from './step-overlay-entities.js';
 import {
-  buildRelDefinesByPropertiesIndex,
-  collectPropertyAndQuantitySetMutations,
   generatePropertyAndQuantitySetEntities,
   type OwnerHistoryCache,
   type PropertySetContext,
 } from './step-property-sets.js';
-import { applyGeoreferencingMutations, type GeorefContext } from './step-georeferencing.js';
+import { type GeorefContext } from './step-georeferencing.js';
+import { collectModifications, type CollectionContext } from './step-collection.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
 import { assembleStepBytes } from './step-file-assembly.js';
 import {
@@ -684,30 +678,12 @@ export class StepExporter {
       warnings: [],
     };
 
-    if (options.visibleOnly && this.dataStore.source) {
-      const visible = getVisibleEntityIds(
-        this.dataStore,
-        options.hiddenEntityIds ?? new Set(),
-        options.isolatedEntityIds ?? null,
-        pass.effective,
-      );
-      pass.hiddenProductIds = visible.hiddenProductIds;
-      pass.allowedEntityIds = collectReferencedEntityIds(
-        visible.roots,
-        this.dataStore.source,
-        pass.effective,
-        visible.hiddenProductIds,
-        pass.isRefExcludedDuringClosureWalk,
-      );
-      // Second pass: collect IFCSTYLEDITEM entities that reference included
-      // geometry. Styled items reference geometry items but nothing references
-      // them back, so the forward closure misses them.
-      collectStyleEntities(
-        pass.allowedEntityIds,
-        this.dataStore.source,
-        { byId: pass.effective, byType: pass.effective.byType },
-      );
-    }
+    // Visible-only closure, overlay mutation grouping, and georeferencing
+    // edits — everything `pass` needs before the output passes below can run
+    // (#2475, the collection block). See `step-collection.ts` for why
+    // `hasAnyUnreadableSourceRef` and the predicates just past it stay here
+    // instead of moving with it.
+    collectModifications(pass, options, applyMutations, this.collectionContext());
 
     /**
      * "Does this model hold a record whose bytes this export cannot read?" —
@@ -772,115 +748,6 @@ export class StepExporter {
       }
       return false;
     };
-
-
-    // Process mutations if we have a mutation view
-    if (this.mutationView && applyMutations) {
-      const mutations = this.mutationView.getMutations();
-
-      // Attribute values come from the *overlay*, never from the mutation
-      // history. The history is append-only and undo writes its reverse edit
-      // with `skipHistory: true`, so a superseded UPDATE_ATTRIBUTE record keeps
-      // its stale `newValue` forever — replaying it resurrects edits the user
-      // undid (#1957). The overlay is what the editor shows, and it is already
-      // the source for psets, quantities, positional attributes and retypes
-      // below, so attributes were the sole outlier.
-      for (const [entityId, attrs] of this.mutationView.getAttributeMutationsByEntity()) {
-        pass.modifiedEntities.add(entityId);
-        let target = pass.modifiedAttributes.get(entityId);
-        if (!target) {
-          target = new Map();
-          pass.modifiedAttributes.set(entityId, target);
-        }
-        for (const [name, value] of attrs) target.set(name, value);
-      }
-
-      // Group mutations by entity, separating property vs quantity mutations
-      const entityPropMutations = new Map<number, Set<string>>();
-      const entityQuantMutations = new Map<number, Set<string>>();
-      for (const mutation of mutations) {
-        // Handled above, off the overlay. Skipped explicitly because an
-        // UPDATE_ATTRIBUTE record can also carry a `psetName` (georef fields
-        // encode their target entity there) and must not be mistaken for a
-        // property-set edit.
-        if (mutation.type === 'UPDATE_ATTRIBUTE') continue;
-
-        if (!mutation.psetName) continue;
-
-        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY'
-          || mutation.type === 'DELETE_QUANTITY' || mutation.type === 'DELETE_QUANTITY_SET';
-        const targetMap = isQuantity ? entityQuantMutations : entityPropMutations;
-
-        if (!targetMap.has(mutation.entityId)) {
-          targetMap.set(mutation.entityId, new Set());
-        }
-        targetMap.get(mutation.entityId)!.add(mutation.psetName);
-      }
-
-      // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
-      // pairs keyed on each related entity. The two property/quantity loops
-      // below previously walked every entity in `entityIndex.byId` per
-      // modified entity (O(E·N)); the index keeps the per-entity step
-      // O(K) where K is the number of rels referencing that entity.
-      const { byEntity: relDefinesByEntity, relatedByRel } = buildRelDefinesByPropertiesIndex(this.propertySetContext());
-
-      // A source IfcRelDefinesByProperties whose EVERY related object the
-      // session deleted has nothing left to relate, and emitting it leaves a
-      // `#id` pointing at a record the export skipped. Dropped only when all of
-      // them are gone: a rel that still names a live entity is that entity's
-      // only link to its psets, and nothing here rewrites a RelatedObjects list.
-      for (const [relId, related] of relatedByRel) {
-        if (related.length > 0 && related.every((id) => pass.effective.isDeleted(id))) {
-          pass.skipRelationshipIds.add(relId);
-        }
-      }
-
-      collectPropertyAndQuantitySetMutations(
-        pass,
-        options,
-        { entityPropMutations, entityQuantMutations, relDefinesByEntity },
-        this.propertySetContext(),
-      );
-
-      for (const [entityId] of pass.modifiedAttributes) {
-        // An overlay-CREATED entity carrying attribute edits is emitted once,
-        // by the new-entities pass, and already counted in `newEntityCount`.
-        // Counting it here too made the header claim two affected entities for
-        // one created-then-renamed wall.
-        if (pass.isOverlayCreated(entityId)) continue;
-        // A source entity with no bytes never gets its line rewritten (the
-        // source-iteration pass skips it), so an attribute edit against it
-        // must not inflate the count either.
-        if (!pass.hasEmittableHostBytes(entityId)) continue;
-        // Under `deltaOnly` this only NOMINATES the host's ATTRIBUTE edits:
-        // nothing writes an in-place attribute edit into a delta except the
-        // type-object line rewrite, so the ledger drops it at settle time
-        // unless that pass reports having carried it (#2462). That nomination
-        // is deliberately made at INTENT: the per-kind warning exists to NAME
-        // an edit the delta could not carry, and an undeliverable edit is
-        // exactly the one that must still be named.
-        //
-        // A FULL export has no such warning, so an edit that resolved to
-        // nothing has nothing to say and nothing to claim — it waits for the
-        // rewrite instead. `setAttribute` to the value already in the slot, and
-        // `setAttribute` naming a slot the class does not declare, both leave
-        // the line byte-identical and used to count anyway (#2483).
-        //
-        // Recorded unconditionally. It used to be skipped for a host that also
-        // had a pset or qset edit, because the count was per entity and the
-        // other loop had already nominated it — which is exactly what let a
-        // pset emission mark the rename delivered and suppress its warning. The
-        // ledger de-duplicates the COUNT per entity now, so the two edits can
-        // and must be nominated separately.
-        pass.inPlaceNominees.attribute.add(entityId);
-        if (options.deltaOnly === true) pass.modifications.nominate(entityId, 'attribute');
-      }
-    }
-
-    // Process georeferencing mutations (only when applyMutations is enabled)
-    if (applyMutations && options.georefMutations) {
-      applyGeoreferencingMutations(pass, options.georefMutations, this.georefContext(options.deltaOnly === true));
-    }
 
     // If delta only, only export modified entities. Overlay-created entities
     // also count — without this, `createEntity()`-only edits would silently
@@ -1225,6 +1092,23 @@ export class StepExporter {
       ownerHistory: this.ownerHistory,
       applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
         applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
+    };
+  }
+
+  /**
+   * The state `step-collection.ts` cannot read off the pass (#2475, the
+   * collection block). `propertySetContext` and `georefContext` are handed
+   * over as the SAME thunks {@link propertySetContext} and
+   * {@link georefContext} already are — this phase calls the first twice per
+   * export and the second once, and nothing here should change how often
+   * either is rebuilt.
+   */
+  private collectionContext(): CollectionContext {
+    return {
+      dataStore: this.dataStore,
+      mutationView: this.mutationView,
+      propertySetContext: () => this.propertySetContext(),
+      georefContext: (deltaOnly) => this.georefContext(deltaOnly),
     };
   }
 

@@ -74,3 +74,28 @@ export function withInstancedMeshes(
     totalVertices,
   };
 }
+
+/** Resolves a single panel's `InstancedModelRange` (see the module doc above)
+ *  from its own `modelId` plus the currently loaded models, AND whether an
+ *  instanced-geometry export may proceed at all.
+ *
+ * `null` is the correct, unfiltered range ONLY when the model id resolved to
+ * nothing because this is provably the sole loaded model. An unresolved
+ * `modelId` while `models.size > 1` (e.g. no entity selected in a
+ * federation, or a stale id after a model was removed) must NOT fall through
+ * to `null` — `withInstancedMeshes(geometryResult, null)` then splices every
+ * OTHER loaded model's instanced occurrences into this model's export. Such
+ * a leak was `GeoreferencingPanel`'s KMZ export before this helper existed
+ * (PR #2878 review): `canExport: false` tells the caller to withhold the
+ * export instead of falling through to that unfiltered case. */
+export function resolveInstancedExportGate(
+  modelId: string | undefined,
+  models: ReadonlyMap<string, { idOffset?: number; maxExpressId?: number }>,
+): { instancedModelRange: InstancedModelRange | null; canExport: boolean } {
+  const model = modelId ? models.get(modelId) : undefined;
+  const instancedModelRange: InstancedModelRange | null = model
+    ? { idOffset: model.idOffset ?? 0, maxExpressId: model.maxExpressId ?? 0 }
+    : null;
+  const canExport = models.size <= 1 || instancedModelRange !== null;
+  return { instancedModelRange, canExport };
+}

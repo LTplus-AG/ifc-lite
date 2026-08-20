@@ -8,7 +8,7 @@ import type { RefObject } from 'react';
 import type { Renderer } from '@ifc-lite/renderer';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { setGlobalRendererRef } from '../hooks/useBCF.js';
-import { withInstancedMeshes } from './instancedExport.js';
+import { resolveInstancedExportGate, withInstancedMeshes } from './instancedExport.js';
 
 function mesh(expressId: number, verts: number, tris: number): MeshData {
   return {
@@ -103,5 +103,58 @@ describe('withInstancedMeshes', () => {
     const geom = baseGeometry();
     setRenderer(null);
     assert.equal(withInstancedMeshes(geom, null), geom);
+  });
+});
+
+describe('resolveInstancedExportGate', () => {
+  // CALIBRATION (PR #2878 review): before this helper existed,
+  // `GeoreferencingPanel` fell through to `instancedModelRange: null` (no
+  // filter) whenever its own `modelId` didn't resolve — INCLUDING while a
+  // federation of other models was loaded. Pin the leaky case: an unresolved
+  // model id with more than one model loaded must withhold the export, not
+  // return `null`.
+  it('withholds the export when the model id is unresolved and other models are loaded', () => {
+    const models = new Map([
+      ['a', { idOffset: 0, maxExpressId: 50 }],
+      ['b', { idOffset: 50, maxExpressId: 30 }],
+    ]);
+    const result = resolveInstancedExportGate(undefined, models);
+    assert.equal(result.canExport, false);
+    assert.equal(result.instancedModelRange, null);
+  });
+
+  it('withholds the export when the model id no longer matches a loaded model, federated', () => {
+    const models = new Map([
+      ['a', { idOffset: 0, maxExpressId: 50 }],
+      ['b', { idOffset: 50, maxExpressId: 30 }],
+    ]);
+    const result = resolveInstancedExportGate('stale-id', models);
+    assert.equal(result.canExport, false);
+    assert.equal(result.instancedModelRange, null);
+  });
+
+  it('resolves the model\'s own bracket and allows the export when the id matches', () => {
+    const models = new Map([
+      ['a', { idOffset: 0, maxExpressId: 50 }],
+      ['b', { idOffset: 50, maxExpressId: 30 }],
+    ]);
+    const result = resolveInstancedExportGate('b', models);
+    assert.equal(result.canExport, true);
+    assert.deepEqual(result.instancedModelRange, { idOffset: 50, maxExpressId: 30 });
+  });
+
+  // `null` (no filter) is safe ONLY when this is provably the sole loaded
+  // model — an unresolved id here has nothing else to wrongly include.
+  it('allows an unfiltered export when the unresolved model is provably the only one loaded', () => {
+    const models = new Map([['__legacy__', { idOffset: 0, maxExpressId: 50 }]]);
+    const result = resolveInstancedExportGate(undefined, models);
+    assert.equal(result.canExport, true);
+    assert.equal(result.instancedModelRange, null);
+  });
+
+  it('allows an unfiltered export when zero models are loaded', () => {
+    const result = resolveInstancedExportGate(undefined, new Map());
+    assert.equal(result.canExport, true);
+    assert.equal(result.instancedModelRange, null);
   });
 });

@@ -359,7 +359,9 @@ function parseProperties(): Record<IfcVersion, PsetInfo[]> {
   for (const v of ['Ifc2x3', 'Ifc4', 'Ifc4x3'] as IfcVersion[]) {
     const startMarker = `GetPropertiesIFC${v.slice(3)}`;
     const startIdx = src.indexOf(startMarker);
-    if (startIdx === -1) continue;
+    if (startIdx === -1) {
+      throw new Error(`Could not find ${startMarker} in Properties.g.cs`);
+    }
     let endIdx: number;
     if (v === 'Ifc2x3') endIdx = src.indexOf('GetPropertiesIFC4', startIdx + 5);
     else if (v === 'Ifc4') endIdx = src.indexOf('GetPropertiesIFC4x3', startIdx + 5);
@@ -563,7 +565,11 @@ function parsePartOfRelations(): Record<IfcVersion, PartOfRelation[]> {
       i + 1 < sections.length
         ? src.indexOf(sections[i + 1].marker)
         : src.length;
-    if (start === -1) continue;
+    if (start === -1) {
+      throw new Error(
+        `Could not find ${sections[i].marker} in PartOfRelations.g.cs`
+      );
+    }
     const slice = src.slice(start, end);
     const callRx = /new PartOfRelationInformation\("([^"]+)",\s*"([^"]+)",\s*"([^"]+)"\)/g;
     let m: RegExpExecArray | null;
@@ -705,7 +711,11 @@ function parseAttributes(): Record<IfcVersion, AttrRow[]> {
   ];
   for (let s = 0; s < sections.length; s++) {
     const start = src.indexOf(sections[s].marker);
-    if (start === -1) continue;
+    if (start === -1) {
+      throw new Error(
+        `Could not find ${sections[s].marker} in Attributes.g.cs`
+      );
+    }
     let end = src.length;
     for (let t = s + 1; t < sections.length; t++) {
       const e = src.indexOf(sections[t].marker, start + 5);
@@ -862,6 +872,10 @@ function parseObjectTypes(): Record<IfcVersion, [string, string][]> {
     Ifc4: [],
     Ifc4x3: [],
   };
+  // Unlike the other SchemaInfo.*.g.cs sources, the upstream ObjectTypes
+  // file has no `GetRelationTypesIFC2x3` method at all — IFC2X3 genuinely
+  // contributes 0 obj→type pairs, so a missing marker here is expected
+  // and must not throw the way it does in the sibling parsers below.
   const sections: { version: IfcVersion; marker: string }[] = [
     { version: 'Ifc2x3', marker: 'GetRelationTypesIFC2x3' },
     { version: 'Ifc4', marker: 'GetRelationTypesIFC4' },

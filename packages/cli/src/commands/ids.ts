@@ -67,6 +67,12 @@ export async function idsCommand(args: string[]): Promise<void> {
     // Keep the established machine-readable summary shape.
     const summary = bim.ids.summarize(report);
     printJson({ summary, report });
+    // Mirror the human-readable path's exit-code contract: a CI pipeline
+    // driving this command with --json (the shape any script would pick)
+    // must see a non-zero exit on a genuine IDS failure. Without this the
+    // JSON path always exited 0 -- a validation failure printed to stdout
+    // but reported as success to the shell.
+    process.exitCode = summary.failedSpecifications > 0 ? 1 : 0;
     return;
   }
 

@@ -316,6 +316,22 @@ describe('TsKernel cancellation (#2419)', () => {
   // 24 walls x 24 ducts = 576 candidate pairs: checkpoints at 0, 256 and 512,
   // so a run spans several yields however fast it executes.
   const elements = overlappingBoxes(48);
+
+  /**
+   * #2948: only the two tests below that actually run all 576 pairs to
+   * completion pay this — the narrow-phase triangle work itself is trivial
+   * (12-triangle boxes), the cost is the three REAL `setTimeout(resolve, 0)`
+   * yields to the event loop at each checkpoint (`yieldMs: 0` in `detect`
+   * below means "yield at every checkpoint"). A real yield is the point:
+   * these tests exist to prove `signal.aborted` is observed from an actual
+   * event-loop turn, so a fake timer would test nothing. Measured on a green
+   * CI run: 3332ms and 2747ms — both dominated by macrotask scheduling under
+   * load, which is far noisier than CPU-bound work (this file's other tests
+   * finish in low single-digit ms). Sized with wide margin over that CI
+   * ceiling rather than "CI value + 50%", since the mechanism (OS/Node timer
+   * scheduling under contention) can vary by more than a fixed percentage.
+   */
+  const YIELD_HEAVY_TIMEOUT_MS = 20_000;
   const evens = elements.map((_, i) => i).filter((i) => i % 2 === 0);
   const odds = elements.map((_, i) => i).filter((i) => i % 2 === 1);
 
@@ -380,7 +396,7 @@ describe('TsKernel cancellation (#2419)', () => {
     await expectAbortError(
       detect(controller.signal, Infinity, (done) => { if (done === 512) controller.abort(); }),
     );
-  });
+  }, YIELD_HEAVY_TIMEOUT_MS);
 
   it('lets a cancellation beat the maxCandidatePairs cap', async () => {
     // The cap bites on the first iteration (`maxPairs` 0), and the periodic
@@ -404,7 +420,7 @@ describe('TsKernel cancellation (#2419)', () => {
     expect(detection.candidatesProcessed).toBe(576);
     expect(detection.records.length).toBeGreaterThan(0);
     expect(controller.signal.aborted).toBe(false);
-  });
+  }, YIELD_HEAVY_TIMEOUT_MS);
 });
 
 describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', () => {

@@ -139,6 +139,35 @@ describe('buildElementMesh: axis-aligned boxes (column / door / window)', () => 
   });
 });
 
+describe('buildElementMesh: box side-face normals point outward', () => {
+  // A box's outward normal on any side face must point AWAY from the box
+  // centre. If it points inward, every dot(normal, cameraDir) lighting
+  // calculation for that face is backwards.
+  it('every triangle normal points away from the box centre (renderer frame)', () => {
+    const position: [number, number, number] = [0, 1, 0];
+    const height = 2;
+    const mesh = buildElementMesh(
+      ctx({ type: 'column', params: { Width: 2, Depth: 2, Height: height }, position }),
+    );
+    assert.ok(mesh);
+    // Renderer frame: X<-IFC X, Y<-IFC Z(+elevation)+Height/2 for the centre, Z<- -IFC Y.
+    const centre = [position[0], position[2] + height / 2, -position[1]];
+    for (let v = 0; v < mesh.positions.length / 3; v++) {
+      const px = mesh.positions[v * 3] - centre[0];
+      const py = mesh.positions[v * 3 + 1] - centre[1];
+      const pz = mesh.positions[v * 3 + 2] - centre[2];
+      const nx = mesh.normals[v * 3];
+      const ny = mesh.normals[v * 3 + 1];
+      const nz = mesh.normals[v * 3 + 2];
+      const dot = px * nx + py * ny + pz * nz;
+      assert.ok(
+        dot > 0,
+        `vertex ${v} normal (${nx},${ny},${nz}) points toward centre from offset (${px},${py},${pz}); dot=${dot}`,
+      );
+    }
+  });
+});
+
 describe('buildElementMesh: polygon extrusion (slab / roof / plate / space)', () => {
   const square: [number, number, number][] = [
     [0, 0, 0],

@@ -306,10 +306,21 @@ function buildBoxFromIfcCorners(
   const faces: Array<{ corners: number[]; normal: Vec3 }> = [
     { corners: [0, 1, 2, 3], normal: [0, 0, -1] }, // bottom (IFC -Z)
     { corners: [4, 7, 6, 5], normal: [0, 0, 1] },  // top (IFC +Z)
-    { corners: [0, 4, 5, 1], normal: faceNormal(ifcCorners, 0, 4, 1) },
-    { corners: [1, 5, 6, 2], normal: faceNormal(ifcCorners, 1, 5, 2) },
-    { corners: [2, 6, 7, 3], normal: faceNormal(ifcCorners, 2, 6, 3) },
-    { corners: [3, 7, 4, 0], normal: faceNormal(ifcCorners, 3, 7, 0) },
+    // Side faces: faceNormal(corners, a, b, c) returns
+    // cross(corners[b]-corners[a], corners[c]-corners[a]). It used to be
+    // called as faceNormal(a, b, d) — the quad's 1st, 2nd, and 4th listed
+    // corners, e.g. faceNormal(ifcCorners, 0, 4, 1) for quad [0, 4, 5, 1] —
+    // which computed cross(corners[4]-corners[0], corners[1]-corners[0]).
+    // That pointed INWARD on all 4 side faces (verified by hand and by a
+    // failing test); every side face on a wall/beam/column/door/window
+    // preview lit backwards. Swapping the last two arguments to
+    // faceNormal(a, d, b) negates the cross product (cross(v,u) =
+    // -cross(u,v)) and gives the correct outward normal. Vertex order/
+    // winding used for triangulation (the `corners:` arrays) is untouched.
+    { corners: [0, 4, 5, 1], normal: faceNormal(ifcCorners, 0, 1, 4) },
+    { corners: [1, 5, 6, 2], normal: faceNormal(ifcCorners, 1, 2, 5) },
+    { corners: [2, 6, 7, 3], normal: faceNormal(ifcCorners, 2, 3, 6) },
+    { corners: [3, 7, 4, 0], normal: faceNormal(ifcCorners, 3, 0, 7) },
   ];
   const positions = new Float32Array(24 * 3);
   const normals = new Float32Array(24 * 3);

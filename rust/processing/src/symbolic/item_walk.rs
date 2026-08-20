@@ -74,6 +74,37 @@ pub(super) struct ItemWalk {
     seen: FxHashSet<u32>,
     /// Charged on REVISITS only. See [`MAX_ITEM_REVISITS`].
     revisit_budget: u32,
+    /// Representations being expanded on the CURRENT path -- the other way a
+    /// mapped-item chain closes a cycle.
+    ///
+    /// `IfcMappedItem -> IfcRepresentationMap -> IfcShapeRepresentation.Items`
+    /// re-enters the walk through the representation, which is NOT an item and
+    /// so never appears in `path`. A representation whose own items map back to
+    /// it is therefore a cycle the item path guard cannot see: it presents as a
+    /// k-way fan-out that only the revisit budget stops, and stopping it there
+    /// costs `O(k^depth)` charges taken from a budget the rest of the file
+    /// still needs. `a_cycle_must_not_starve_the_geometry_that_follows_it` pins
+    /// the consequence -- an 8-way self-referential map ahead of ordinary
+    /// shared geometry drained the budget and dropped the geometry.
+    ///
+    /// Push/pop like `path`, not global, for the same reason: one
+    /// representation reached through two different mapped items is two real
+    /// pieces of geometry at two different positions.
+    rep_path: FxHashSet<u32>,
+}
+
+impl ItemWalk {
+    /// Begin expanding a mapped representation. `false` means it is already
+    /// being expanded higher up this path -- a cycle -- and must be skipped.
+    ///
+    /// Every caller must pair a `true` with [`ItemWalk::exit_representation`].
+    pub(super) fn enter_representation(&mut self, rep_id: u32) -> bool {
+        self.rep_path.insert(rep_id)
+    }
+
+    pub(super) fn exit_representation(&mut self, rep_id: u32) {
+        self.rep_path.remove(&rep_id);
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -94,6 +125,7 @@ pub(super) fn extract_symbolic_item(
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
         revisit_budget: MAX_ITEM_REVISITS,
+        rep_path: FxHashSet::default(),
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,

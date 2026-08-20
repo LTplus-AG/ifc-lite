@@ -106,7 +106,13 @@ pub(super) fn extract_symbolic_item_inner(
                 compose_transforms(&mapping_target_transform, &mapping_origin_transform);
             let composed_transform = compose_transforms(transform, &origin_with_target);
 
+            // The representation goes on the path before its items do: this
+            // chain re-enters the walk through something that is not an item,
+            // so the item path guard cannot see the cycle it closes.
             if let Some(mapped_rep_id) = rep_map.get_ref(1) {
+                if !walk.enter_representation(mapped_rep_id) {
+                    return;
+                }
                 if let Ok(mapped_rep) = decoder.decode_by_id(mapped_rep_id) {
                     if let Some(items_attr) = mapped_rep.get(3) {
                         if let Ok(items) = decoder.resolve_ref_list(items_attr) {
@@ -130,6 +136,7 @@ pub(super) fn extract_symbolic_item_inner(
                         }
                     }
                 }
+                walk.exit_representation(mapped_rep_id);
             }
         }
         IfcType::IfcPolyline => {

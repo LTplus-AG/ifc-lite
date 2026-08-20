@@ -177,23 +177,36 @@ fn depth_cap_stops_a_chain_longer_than_the_cap() {
 /// second visit instead of spending the budget getting there.
 #[test]
 fn a_cycle_must_not_starve_the_geometry_that_follows_it() {
-    let body = "#10=IFCGEOMETRICCURVESET((#20,#50));\n\
-        #20=IFCMAPPEDITEM(#30,$);\n\
-        #30=IFCREPRESENTATIONMAP($,#40);\n\
-        #40=IFCSHAPEREPRESENTATION($,$,$,(#21,#22,#23,#24,#25,#26,#27,#28));\n\
-        #21=IFCMAPPEDITEM(#30,$);\n#22=IFCMAPPEDITEM(#30,$);\n\
-        #23=IFCMAPPEDITEM(#30,$);\n#24=IFCMAPPEDITEM(#30,$);\n\
-        #25=IFCMAPPEDITEM(#30,$);\n#26=IFCMAPPEDITEM(#30,$);\n\
-        #27=IFCMAPPEDITEM(#30,$);\n#28=IFCMAPPEDITEM(#30,$);\n\
-        #50=IFCPOLYLINE((#60,#61));\n\
-        #60=IFCCARTESIANPOINT((0.,0.));\n\
-        #61=IFCCARTESIANPOINT((1.,1.));\n";
-    let out = run(&wrap(body), 10);
+    // The geometry after the cycle must be reached by a REVISIT, because only
+    // revisits are charged. An earlier version of this test asserted on a
+    // polyline reached by a FIRST visit, which is never charged -- so it
+    // passed even with the budget set to zero and pinned nothing.
+    //
+    // #70 and #71 are two mapped items sharing one representation, so the
+    // polyline inside it is emitted twice: once on the first visit, once on a
+    // revisit. The 8-way self-referential cycle in #20 must not consume the
+    // budget that second emission needs.
+    let shared = "#70=IFCMAPPEDITEM(#72,$);\n        #71=IFCMAPPEDITEM(#72,$);\n        #72=IFCREPRESENTATIONMAP($,#73);\n        #73=IFCSHAPEREPRESENTATION($,$,$,(#50));\n        #50=IFCPOLYLINE((#60,#61));\n        #60=IFCCARTESIANPOINT((0.,0.));\n        #61=IFCCARTESIANPOINT((1.,1.));\n";
+    let cycle = "#20=IFCMAPPEDITEM(#30,$);\n        #30=IFCREPRESENTATIONMAP($,#40);\n        #40=IFCSHAPEREPRESENTATION($,$,$,(#21,#22,#23,#24,#25,#26,#27,#28));\n        #21=IFCMAPPEDITEM(#30,$);\n#22=IFCMAPPEDITEM(#30,$);\n        #23=IFCMAPPEDITEM(#30,$);\n#24=IFCMAPPEDITEM(#30,$);\n        #25=IFCMAPPEDITEM(#30,$);\n#26=IFCMAPPEDITEM(#30,$);\n        #27=IFCMAPPEDITEM(#30,$);\n#28=IFCMAPPEDITEM(#30,$);\n";
+
+    // Control: the same shared geometry with NO cycle ahead of it emits twice.
+    let control = format!("#10=IFCGEOMETRICCURVESET((#70,#71));\n{shared}");
+    let baseline = run(&wrap(&control), 10);
+    assert_eq!(
+        baseline.polylines.len(),
+        2,
+        "control: a representation shared by two mapped items emits twice"
+    );
+
+    // Same file with the cycle in front of it must still emit twice.
+    let with_cycle = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{shared}");
+    let out = run_with_timeout(wrap(&with_cycle), 10, 60);
     assert_eq!(
         out.polylines.len(),
-        1,
-        "the polyline after the cycle must still be emitted; without the path guard the \
-         cycle consumes MAX_ITEM_BUDGET and starves it"
+        2,
+        "a cycle must not consume the budget that legitimate shared geometry \
+         after it needs; got {} polylines instead of 2",
+        out.polylines.len()
     );
 }
 

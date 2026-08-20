@@ -186,4 +186,24 @@ describe('runValidationInWorker', () => {
     };
     await assert.rejects(runValidationInWorker(baseArgs()), /Failed to spawn IDS worker/);
   });
+
+  it('terminates the worker when postMessage itself throws (DataCloneError)', async () => {
+    // The worker is spawned and its handlers attached BEFORE postMessage runs
+    // (the last statement in the executor). If postMessage throws — a real
+    // failure mode: structured-clone rejects an unsupported value — the
+    // executor's synchronous throw auto-rejects the returned promise, but
+    // nothing on that path calls settle()/terminate(). Same
+    // acquire-then-fallible-step-throws-before-teardown shape as
+    // createCollabSession: the spawned worker thread is never torn down.
+    class ThrowingPostWorker extends FakeWorker {
+      override postMessage(): void {
+        throw new Error('could not be cloned');
+      }
+    }
+    (globalThis as { Worker?: unknown }).Worker = ThrowingPostWorker;
+    const promise = runValidationInWorker(baseArgs());
+    const worker = instances[0];
+    await assert.rejects(promise, /could not be cloned/);
+    assert.equal(worker.terminated, 1, 'a postMessage throw must still terminate the worker');
+  });
 });

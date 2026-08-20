@@ -29,6 +29,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
     let mut out = SymbolicData::default();
+    let mut budget = MAX_ITEM_REVISITS;
     extract_symbolic_item(
         &item,
         &mut decoder,
@@ -41,6 +42,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         0.0,
         &styled,
         &mut out,
+        &mut budget,
     );
     out
 }

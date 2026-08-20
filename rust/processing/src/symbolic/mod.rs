@@ -70,6 +70,10 @@ mod item_walk;
 mod items;
 #[cfg(test)]
 mod items_cycle_tests;
+#[cfg(test)]
+mod item_walk_truncation_tests;
+#[cfg(test)]
+mod extraction_budget_tests;
 mod primitives;
 mod text;
 mod transform;
@@ -81,7 +85,7 @@ pub use primitives::{
 
 use color::build_styled_item_index;
 use grid::extract_grid;
-use item_walk::extract_symbolic_item;
+use item_walk::{extract_symbolic_item, MAX_ITEM_REVISITS};
 use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_placement, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -95,6 +99,22 @@ use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_pla
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
 pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    extract_symbolic_data_with_revisit_budget(content, MAX_ITEM_REVISITS)
+}
+
+/// Same extraction with a caller-chosen initial revisit budget, so a test can
+/// pin the "the budget is shared across top-level items, not reset per item"
+/// property against a budget of 10 instead of building a fixture that spends
+/// the real `MAX_ITEM_REVISITS` (200,000) to prove it -- same rationale as
+/// `extract_symbolic_item_with_revisit_budget` in `item_walk.rs`.
+#[cfg_attr(not(test), allow(dead_code))]
+pub(super) fn extract_symbolic_data_with_revisit_budget<T>(
+    content: &T,
+    initial_revisit_budget: u32,
+) -> SymbolicData
 where
     T: AsRef<[u8]> + ?Sized,
 {
@@ -126,6 +146,14 @@ where
 
     let mut out = SymbolicData::default();
     let mut scanner = EntityScanner::new(content);
+    // Issue #2937: one revisit budget for the WHOLE extraction, not one per
+    // top-level item. Before this, a file with N top-level items got N
+    // independent `MAX_ITEM_REVISITS` budgets, so a crafted DAG shared by
+    // enough annotations amplified memory linearly with no cap on the file
+    // as a whole (measured: 2.73 GB RSS from a 59 KB upload). `path` and
+    // `seen` stay fresh per top-level item (see `extract_symbolic_item`'s
+    // doc comment) -- only this counter is threaded across items.
+    let mut revisit_budget = initial_revisit_budget;
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         let is_grid = type_name == "IFCGRID";
@@ -247,7 +275,8 @@ where
                 continue;
             };
             for item in items {
-                extract_symbolic_item(
+                let item_id = item.id;
+                let truncated = extract_symbolic_item(
                     &item,
                     &mut decoder,
                     id,
@@ -259,7 +288,28 @@ where
                     rtc_z,
                     &styled_items,
                     &mut out,
+                    &mut revisit_budget,
                 );
+                // Bring this walk in line with `router/processing.rs:338`,
+                // which raises an error at the same MappedItem-nesting bound
+                // instead of returning silently. `extract_symbolic_data` has
+                // no per-item error channel (its return type is a bare
+                // `SymbolicData`, consumed as such by the HTTP server and
+                // both wasm-binding paths -- see issue #2938's cost estimate
+                // for what a diagnostics field on `SymbolicData` would take),
+                // so a `tracing::warn!` is the minimal way to make "this
+                // item's geometry is partial" observable without a wire-
+                // format change. The extracted geometry itself is unchanged.
+                if let Some(reason) = truncated {
+                    tracing::warn!(
+                        product_id = id,
+                        item_id,
+                        representation = %rep_identifier,
+                        reason = ?reason,
+                        "symbolic extraction hit a walk bound; geometry for this \
+                         representation item is truncated, not complete"
+                    );
+                }
             }
         }
     }

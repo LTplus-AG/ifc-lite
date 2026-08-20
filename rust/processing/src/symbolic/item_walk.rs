@@ -85,6 +85,30 @@ pub(super) struct ItemWalk {
     seen: FxHashSet<u32>,
     /// Charged on REVISITS only. See [`MAX_ITEM_REVISITS`].
     revisit_budget: u32,
+    /// Set the first time a bound below fires. `extract_symbolic_item`
+    /// returns this so the caller can tell "this item's geometry is complete"
+    /// from "this item's geometry was cut off" -- see [`TruncationReason`].
+    /// Deliberately sticky: only the FIRST cause is kept, since it is the one
+    /// that mattered (a depth cut short-circuits before any revisit could
+    /// even be charged).
+    truncated: Option<TruncationReason>,
+}
+
+/// Which bound stopped the walk short of the file's actual geometry.
+///
+/// Confined to this module: nothing here is serialized or crosses the
+/// `SymbolicData` boundary (see #2938's cost estimate for what that would
+/// take). This exists only so the caller in `mod.rs` can log a warning
+/// instead of the walk returning partial output with no signal at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum TruncationReason {
+    /// `MAX_ITEM_DEPTH` nesting levels were exceeded.
+    MaxDepth,
+    /// `MAX_ITEM_REVISITS` total re-entries were spent.
+    RevisitBudgetExhausted,
+    /// The walk re-entered a node already being expanded higher on the
+    /// current path -- a genuine cycle, not a budget.
+    Cycle,
 }
 
 impl ItemWalk {
@@ -110,6 +134,25 @@ impl ItemWalk {
     }
 }
 
+/// Extract one TOP-LEVEL representation item, charging revisits against a
+/// budget the caller owns and threads across every top-level item in the
+/// extraction (issue #2937).
+///
+/// `path` and `seen` are still fresh per call -- deliberately NOT shared. An
+/// ordinary `IfcMappedItem` reused by a second product (or a second item of
+/// the same product) is a legitimate FIRST visit from that item's own path;
+/// sharing `seen` across items would charge it as a revisit instead and
+/// truncate a well-formed file that merely reuses geometry, which is exactly
+/// the failure #2938 exists to make observable rather than trade for. Only
+/// `revisit_budget` -- the thing that actually bounds total work -- crosses
+/// the call boundary, via `revisit_budget` in and out.
+///
+/// Before this, every top-level item got its own fresh
+/// [`MAX_ITEM_REVISITS`], so a file with N top-level items got N times the
+/// intended budget: 300 annotations sharing one crafted 24-level fan-out
+/// measured 2.73 GB RSS from a 59 KB upload. One shared counter, threaded
+/// from `extract_symbolic_data`, bounds the whole extraction instead of one
+/// item at a time.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn extract_symbolic_item(
     item: &DecodedEntity,
@@ -123,16 +166,20 @@ pub(super) fn extract_symbolic_item(
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicData,
-) {
+    revisit_budget: &mut u32,
+) -> Option<TruncationReason> {
     let mut walk = ItemWalk {
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
-        revisit_budget: MAX_ITEM_REVISITS,
+        revisit_budget: *revisit_budget,
+        truncated: None,
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
         styled_items, out, 0, &mut walk,
     );
+    *revisit_budget = walk.revisit_budget;
+    walk.truncated
 }
 
 /// Same walk with a caller-chosen revisit budget, so a test can pin the
@@ -155,16 +202,18 @@ pub(super) fn extract_symbolic_item_with_revisit_budget(
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicData,
     revisit_budget: u32,
-) {
+) -> Option<TruncationReason> {
     let mut walk = ItemWalk {
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
         revisit_budget,
+        truncated: None,
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
         styled_items, out, 0, &mut walk,
     );
+    walk.truncated
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -184,6 +233,7 @@ pub(super) fn extract_symbolic_item_at(
     walk: &mut ItemWalk,
 ) {
     if depth >= MAX_ITEM_DEPTH {
+        walk.truncated.get_or_insert(TruncationReason::MaxDepth);
         return;
     }
     // A first visit is free: their number is bounded by the file. Only a
@@ -192,10 +242,15 @@ pub(super) fn extract_symbolic_item_at(
     if !walk.seen.insert(item.id) {
         match walk.revisit_budget.checked_sub(1) {
             Some(left) => walk.revisit_budget = left,
-            None => return,
+            None => {
+                walk.truncated
+                    .get_or_insert(TruncationReason::RevisitBudgetExhausted);
+                return;
+            }
         }
     }
     if !walk.enter_node(item.id) {
+        walk.truncated.get_or_insert(TruncationReason::Cycle);
         return;
     }
     extract_symbolic_item_inner(

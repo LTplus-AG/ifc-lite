@@ -247,6 +247,15 @@ export interface StepExportInvocation {
 export interface IfcxExportInvocation {
   geometryResult: GeometryResult | null;
   idOffset: number;
+  /**
+   * This model's `FederatedModel.maxExpressId`, so `exportIfcx` can scope
+   * `withInstancedMeshes` to `{ idOffset, maxExpressId }` rather than every
+   * loaded model's instanced occurrences (#2865/#2878 follow-up — GPU
+   * instancing stopped being primary-only on 2026-08-06, #2255). `undefined`
+   * only for the legacy single-model slot, which is provably the sole model
+   * loaded — nothing else to wrongly include.
+   */
+  maxExpressId?: number;
 }
 
 export interface BuildArtifactsDeps {
@@ -369,6 +378,7 @@ export async function buildChangedArtifacts(
         artifact = await deps.exportIfcx(entry.id, dataStore, view, {
           geometryResult,
           idOffset: model?.idOffset ?? 0,
+          maxExpressId: model?.maxExpressId,
         });
       } else {
         const dataStore = await deps.resolveStepDataStore(entry.id);

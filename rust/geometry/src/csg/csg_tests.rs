@@ -346,6 +346,34 @@ fn plane_eps_is_invariant_under_negating_the_normal() {
     }
 }
 
+/// `difference_result_looks_degenerate`'s "wrong piece" bbox check must use
+/// PER-AXIS slack (1 % of each axis's own host span), not a single scalar
+/// derived from the host's longest dimension — see the doc comment on
+/// `ClippingProcessor::difference_result_looks_degenerate` (CodeRabbit review
+/// on PR #861, house.ifc wall #3448).
+///
+/// Fixture: a thin wall, 5 m (X) x 0.4 m (Y) x 7 m (Z). A malformed-cutter
+/// "wrong piece" result pokes 1 cm past the wall's 0.4 m Y face — a real
+/// wrong-piece defect on the wall's thin axis. Per-axis Y slack is 1 % of
+/// 0.4 m = 4 mm, so a 1 cm overshoot must be flagged. A tolerance instead
+/// derived from the LONGEST axis (Z, 7 m -> 7 cm slack) would let that same
+/// 1 cm overshoot through unflagged, because 1 cm < 7 cm.
+#[test]
+fn difference_result_wrong_piece_check_is_per_axis_not_longest_dimension() {
+    let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(5.0, 0.4, 7.0));
+    // Same shape as the host, but overshoots the host's Y max by 1 cm —
+    // 1 % of the 5 m X span is 5 cm and 1 % of the 7 m Z span is 7 cm, so
+    // this result sits well within tolerance on BOTH the longest dimension
+    // and X; only the thin Y axis's own 4 mm slack can catch it.
+    let result = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(5.0, 0.41, 7.0));
+
+    assert!(
+        ClippingProcessor::difference_result_looks_degenerate(&host, &result),
+        "a result overshooting the host's thin Y face by 1 cm (4 mm per-axis \
+         slack on that axis) must be flagged as a wrong-piece degenerate result"
+    );
+}
+
 // World-frame corpus tests: a sibling test file, attached here rather than
 // from `mod.rs` because that allowlisted production module is at its
 // module-size-ratchet budget and test files are exempt. The file itself

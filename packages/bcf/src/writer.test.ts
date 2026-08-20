@@ -492,6 +492,8 @@ describe('BCF Writer', () => {
         creationAuthor: 'test@example.com',
         viewpoints: [],
         comments: [],
+        topicType: 'Issue',
+        topicStatus: 'Open',
         header: [
           {
             ifcProject: '0YvCT2_$X3_xJG3rzD8L_8',
@@ -725,6 +727,12 @@ describe('BCF Writer', () => {
       creationAuthor: 'creator@example.com',
       viewpoints: [],
       comments: [],
+      // TopicType/TopicStatus are required by BCF 3.0's markup.xsd (see the
+      // "refuses to write a BCF 3.0 topic missing TopicType or TopicStatus"
+      // test below), so the shared base fixture carries values valid at both
+      // versions; tests targeting the missing-field case override them away.
+      topicType: 'Issue',
+      topicStatus: 'Open',
       ...overrides,
     };
   }
@@ -1106,5 +1114,131 @@ describe('BCF Writer', () => {
       guid: 'dr-2',
       url: 'https://example.com/spec.pdf',
     });
+  });
+
+  it('writes <Topic> children in schema order: Priority, Index, Labels before CreationDate; Description right before BimSnippet', async () => {
+    // buildingSMART/BCF-XML markup.xsd's Topic xs:sequence (identical in
+    // release_2_1 and release_3_0) is: Title, Priority, Index, Labels,
+    // CreationDate, CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate,
+    // AssignedTo, Stage, Description, BimSnippet, ... -- confirmed against
+    // release_3_0's own conformance fixture (Test Cases/v3.0/Visualization/
+    // Perspective camera/markup.bcf), whose <Topic> reads ModifiedAuthor
+    // then Description then DocumentReferences. A prior writer emitted
+    // Description right after Title (long before Priority/Index/Labels/
+    // Creation*/Modified*/Stage) and Labels after Stage (long after
+    // Priority/Index) -- both schema-invalid whenever those elements were
+    // actually present, since xs:sequence enforces element order.
+    const topic = baseTopic({
+      description: 'desc',
+      priority: 'High',
+      index: 3,
+      labels: ['l1', 'l2'],
+      stage: 'Design',
+      // A valid BimSnippet (ReferenceSchema present -- see the "omits an
+      // incomplete BimSnippet" test above) so the sequence's LAST affected
+      // element, Description-right-before-BimSnippet, is exercised too. A
+      // fixture without one would let this test pass even if BimSnippet
+      // moved ahead of Description, since there would be nothing to compare.
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'https://example.com/snippet.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
+    });
+
+    for (const version of ['2.1', '3.0'] as const) {
+      const markup = await markupFor(topic, version);
+
+      // `topic.labels` has TWO entries, so `<Labels>` appears twice. Checking
+      // only the first occurrence's position (`indexOf`) would miss a second
+      // label written in the wrong place -- e.g. after CreationDate -- since
+      // the first one alone can still land correctly. Collect every
+      // occurrence and require ALL of them to sit before CreationDate.
+      const allIndicesOf = (tag: string): number[] => {
+        const indices: number[] = [];
+        let from = 0;
+        for (;;) {
+          const i = markup.indexOf(`<${tag}>`, from);
+          if (i === -1) break;
+          indices.push(i);
+          from = i + 1;
+        }
+        return indices;
+      };
+
+      const priority = markup.indexOf('<Priority>');
+      const index = markup.indexOf('<Index>');
+      const labelPositions = allIndicesOf('Labels');
+      const creationDate = markup.indexOf('<CreationDate>');
+      const stage = markup.indexOf('<Stage>');
+      const description = markup.indexOf('<Description>');
+      const bimSnippet = markup.indexOf('<BimSnippet');
+
+      for (const p of [priority, index, creationDate, stage, description, bimSnippet]) {
+        expect(p).toBeGreaterThan(-1);
+      }
+      expect(labelPositions).toHaveLength(2);
+
+      expect(priority).toBeLessThan(index);
+      expect(index).toBeLessThan(Math.min(...labelPositions));
+      for (const labelPos of labelPositions) {
+        expect(labelPos).toBeLessThan(creationDate);
+      }
+      expect(stage).toBeLessThan(description);
+      expect(description).toBeLessThan(bimSnippet);
+    }
+  });
+
+  it('refuses to write a BCF 3.0 topic missing TopicType or TopicStatus rather than emitting invalid markup', async () => {
+    // buildingSMART/BCF-XML markup.xsd (release_3_0) tightens both attributes
+    // from optional (2.1) to `use="required"`:
+    //   <xs:attribute name="TopicType" type="NonEmptyOrBlankString" use="required"/>
+    //   <xs:attribute name="TopicStatus" type="NonEmptyOrBlankString" use="required"/>
+    // The old behaviour silently omitted the attribute when unset, producing
+    // markup.bcf that fails 3.0 schema validation in every downstream tool.
+    // We fail the write instead of inventing a status/type the user never chose.
+    const missingType = baseTopic({ topicType: undefined, topicStatus: 'Open' });
+    const project1: BCFProject = { version: '3.0', topics: new Map([[missingType.guid, missingType]]) };
+    await expect(writeBCF(project1)).rejects.toThrow(/TopicType/);
+
+    const missingStatus = baseTopic({ topicType: 'Issue', topicStatus: undefined });
+    const project2: BCFProject = { version: '3.0', topics: new Map([[missingStatus.guid, missingStatus]]) };
+    await expect(writeBCF(project2)).rejects.toThrow(/TopicStatus/);
+
+    // The same topic shape is legal at 2.1, where both attributes stay optional.
+    const markup21 = await markupFor(
+      baseTopic({ topicType: undefined, topicStatus: undefined }),
+      '2.1'
+    );
+    expect(markup21).not.toContain('TopicType=');
+    expect(markup21).not.toContain('TopicStatus=');
+
+    // With both fields present, 3.0 writes succeed and round-trip.
+    const complete = baseTopic({ topicType: 'Issue', topicStatus: 'Open' });
+    const project3: BCFProject = { version: '3.0', topics: new Map([[complete.guid, complete]]) };
+    const readTopic = (await readBCF(await (await writeBCF(project3)).arrayBuffer()))
+      .topics.get(complete.guid)!;
+    expect(readTopic.topicType).toBe('Issue');
+    expect(readTopic.topicStatus).toBe('Open');
+  });
+
+  it('refuses a BCF 3.0 topic whose TopicType or TopicStatus is XML-whitespace-only', async () => {
+    // `NonEmptyOrBlankString` collapses XML whitespace (#x9, #xA, #xD, #x20)
+    // before checking length >= 1, so a value like '   ' or '\t' is truthy in
+    // JS (passing a bare `!value` check) but schema-invalid once written.
+    const whitespaceType = baseTopic({ topicType: '   ', topicStatus: 'Open' });
+    const projectType: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceType.guid, whitespaceType]]),
+    };
+    await expect(writeBCF(projectType)).rejects.toThrow(/TopicType/);
+
+    const whitespaceStatus = baseTopic({ topicType: 'Issue', topicStatus: '\t' });
+    const projectStatus: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceStatus.guid, whitespaceStatus]]),
+    };
+    await expect(writeBCF(projectStatus)).rejects.toThrow(/TopicStatus/);
   });
 });

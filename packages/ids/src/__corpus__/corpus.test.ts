@@ -68,7 +68,7 @@ const CORPUS_ROOT = join(dirname(fileURLToPath(import.meta.url)), 'buildingsmart
  * exactly the same green as one that checked all 318. Empty input must not
  * score perfect.
  */
-const EXPECTED = { pass: 179, fail: 112, invalid: 27 } as const;
+const EXPECTED = { pass: 187, fail: 120, invalid: 27 } as const;
 const EXPECTED_SPECS_PER_FILE = 1;
 
 type Expectation = keyof typeof EXPECTED;

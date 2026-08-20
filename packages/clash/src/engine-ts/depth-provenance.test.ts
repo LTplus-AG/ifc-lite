@@ -577,6 +577,62 @@ describe('hard-clash distance provenance', () => {
     expect(res.distance).toBe(0);
   });
 
+  it('reports touch, not hard, for a crossing whose MTD lands exactly ON the f32 precision floor (depth.ts:195)', () => {
+    // `depthClashResult` gates on `floorDepth <= precisionFloor(...)`, but no
+    // existing fixture strikes that boundary bit-exactly: the touch/hard
+    // pair above sit a decade below and (via the "genuine crossing" pin in
+    // the paired hard-clash tests) well above it. This one is solved
+    // algebraically to land the z-axis MTD exactly ON `precisionFloor`'s
+    // returned value, so `<=` and a mutated `<` disagree on this fixture and
+    // only this fixture (a "close enough" gap would pass under both). Ported
+    // 1:1 from the Rust pin (`rust/clash/src/kernel_tests.rs`,
+    // `overlap_exactly_at_the_precision_floor_is_touch_not_hard`) so both
+    // kernels carry the same boundary.
+    //
+    // Two boxes crossing at right angles (A long in x, B long in y — a
+    // genuine transversal crossing of their side faces, unlike two boxes
+    // merely STACKED with identical x/y footprints, whose side faces are
+    // parallel and never register as a triangle "crossing" at all, routing
+    // the pair through a branch that never calls `precisionFloor`), thin
+    // (half 0.25) and separated by a tiny gap on z.
+    //
+    // Derivation: `precisionFloor` returns `extent * F32_ULP_SCALE` where
+    // `extent` is the max abs coordinate over both elements' bounds and
+    // `F32_ULP_SCALE = 2^-22`. Pin `extent` to a power of two via A's x-axis
+    // (A spans x = [32, 64], the dominant coordinate over both boxes since B
+    // is thin in x and short in z):
+    //   floor = 64.0 * 2^-22 = 2^-16 = 0.0000152587890625
+    // Both bars are 0.5 thick on z with A centred at z=60.0; B is shifted so
+    // the z overlap (A.max_z - B.min_z — the SAT minimum axis, since the x/y
+    // overlaps are 16.25 each, far larger) equals `floor` exactly:
+    //   B.center_z = A.center_z + 2*halfZ - floor
+    //              = 60.0 + 0.5 - 0.0000152587890625 = 60.4999847412109375
+    // This literal is exactly representable in f32 (60.5 minus an exact
+    // multiple — 4 — of f32's ULP at that magnitude, 2^-18): `boxEl` stores
+    // vertex positions in a `Float32Array`, so it round-trips bit-for-bit,
+    // and `bounds` is passed as the same literal directly (no arithmetic),
+    // matching the Rust fixture's AABB exactly. Verified independently
+    // against JS's own f32 rounding (`Math.fround`) and against the SAT
+    // formula (`rA + rB - dist`) before trusting this fixture.
+    const bZ = 60.499_984_741_210_938; // = Math.fround(60.5 - 2 ** -16), bit-exact
+    expect(Math.fround(bZ)).toBe(bZ);
+    const floor = 64.0 / 4_194_304; // extent(64) * F32_ULP_SCALE
+    expect(floor).toBe(0.0000152587890625);
+    expect(60.25 - (bZ - 0.25)).toBe(floor); // A.max_z - B.min_z === floor, bit-exact
+
+    const a = boxEl('A', 'IfcBeam', [32, -0.25, 59.75], [64, 0.25, 60.25]);
+    const b = boxEl('B', 'IfcBeam', [47.75, -16, bZ - 0.25], [48.25, 16, bZ + 0.25]);
+    const hardOnly: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard' };
+    const hardRes = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), hardOnly, 0.001);
+    expect(hardRes).toBeNull();
+
+    const touchRule: ClashRule = { id: 'r', name: 'r', a: '*', b: '*', mode: 'hard', reportTouch: true };
+    const touchRes = testPair(a, new TriMesh(a.positions!, a.indices!), b, new TriMesh(b.positions!, b.indices!), touchRule, 0.001);
+    if (!touchRes) throw new Error('expected the boundary touch to report');
+    expect(touchRes.status).toBe('touch');
+    expect(touchRes.distance).toBe(0);
+  });
+
   it('reports touch for a CONTAINED non-box pair whose crossing is flush at f32 noise scale, even though its AABB estimate is above the floor', () => {
     // The eight Infra-Bridge pairs (#2536 rebase decision — THE FLOOR WINS):
     // an element authored FLUSH against a surface inside another element's

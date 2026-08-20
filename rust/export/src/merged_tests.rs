@@ -304,3 +304,87 @@ fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
     // compounding.
     assert_eq!(schema_line, "FILE_SCHEMA(('IFC\\\\4'));");
 }
+
+/// Reproduces the issue's headline defect: two federated models that share a
+/// GlobalId (a linked/shared element loaded into both models -- the common
+/// "same file merged twice" and "shared grid" cases) must not emit that
+/// GlobalId twice into the output STEP text. Distinct groups with distinct
+/// counts so nothing passes by coincidence:
+///   - 3 entities whose GlobalId is IDENTICAL across both models (shared
+///     grid axes -- same real-world element, referenced from both models).
+///   - 2 entities per model (4 total) whose GlobalId is genuinely UNIQUE to
+///     that model (ordinary walls/spaces -- no collision).
+///
+/// Assertion is against the emitted STEP text itself (`.matches(guid).count()`),
+/// not an intermediate map -- this is the shape a reader/writer round-trip
+/// through our own tooling could not catch (both sides would agree on the
+/// same misreading of an intermediate structure).
+#[test]
+fn merge_two_models_never_emit_a_shared_globalid_twice_in_the_output_text() {
+    // 22-char buildingSMART-alphabet GlobalIds, distinguishable by name.
+    let shared_grid_a = "00000000000000000000A1";
+    let shared_grid_b = "00000000000000000000B2";
+    let shared_grid_c = "00000000000000000000C3";
+    let model1_wall = "11111111111111111111W1";
+    let model1_space = "11111111111111111111S1";
+    let model2_wall = "22222222222222222222W2";
+    let model2_space = "22222222222222222222S2";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCGRIDAXIS('{shared_grid_a}',$,$,$,$);\n\
+#3=IFCGRIDAXIS('{shared_grid_b}',$,$,$,$);\n\
+#4=IFCGRIDAXIS('{shared_grid_c}',$,$,$,$);\n\
+#5=IFCWALL('{model1_wall}',$,$,$,$,$,$,$,$);\n\
+#6=IFCSPACE('{model1_space}',$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCGRIDAXIS('{shared_grid_a}',$,$,$,$);\n\
+#3=IFCGRIDAXIS('{shared_grid_b}',$,$,$,$);\n\
+#4=IFCGRIDAXIS('{shared_grid_c}',$,$,$,$);\n\
+#5=IFCWALL('{model2_wall}',$,$,$,$,$,$,$,$);\n\
+#6=IFCSPACE('{model2_space}',$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &MergedOptions::default());
+
+    // The 3 shared-grid GlobalIds must appear exactly once each in the
+    // output text -- not twice, even though both source models carried them.
+    for guid in [shared_grid_a, shared_grid_b, shared_grid_c] {
+        assert_eq!(
+            merged.matches(guid).count(),
+            1,
+            "shared GlobalId {guid} must be emitted exactly once, not duplicated across federated models"
+        );
+    }
+
+    // The 4 legitimately-distinct GlobalIds (2 per model) must each survive
+    // unchanged -- exactly one occurrence, no collision to reconcile.
+    for guid in [model1_wall, model1_space, model2_wall, model2_space] {
+        assert_eq!(
+            merged.matches(guid).count(),
+            1,
+            "non-colliding GlobalId {guid} must survive unchanged"
+        );
+    }
+
+    // Overall: 7 distinct GlobalIds (3 shared + 4 unique) must appear in the
+    // output -- one occurrence each, 7 total occurrences of *some* 22-char
+    // GlobalId-shaped token from our fixture set. This distinct count check
+    // (7, not 10) is what would fail if collisions were silently duplicated
+    // instead of reconciled.
+    let total_occurrences: usize = [
+        shared_grid_a, shared_grid_b, shared_grid_c,
+        model1_wall, model1_space, model2_wall, model2_space,
+    ]
+    .iter()
+    .map(|g| merged.matches(*g).count())
+    .sum();
+    assert_eq!(total_occurrences, 7, "7 distinct GlobalIds, one occurrence each");
+}

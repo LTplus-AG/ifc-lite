@@ -773,18 +773,28 @@ describe('elementsFromStep - keeps GPU-instanced occurrences distinct (PR #2819 
     const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
 
     // The door is GPU-instanced: two occurrences share `doorId`, each
-    // overlapping the SAME wall at a different point along it.
+    // overlapping the SAME wall at a different point along it. The wall
+    // itself gets a SECOND mesh representation at x=20 (no occurrenceKey, so
+    // it merges into the same wall element per `mergeMeshes`) so its bounds
+    // span both door occurrences — otherwise the second door (x=[20.5,21.5])
+    // would never physically overlap a wall confined to x=[0,1], and the
+    // exclusion fan-out this test exists to verify would go unexercised for
+    // that occurrence: the test could pass with no clashes simply because
+    // there was never a candidate pair there, not because the exclusion
+    // fanned out correctly.
     const { elements, exclusions } = elementsFromStep({
       store,
       meshes: [
         solidBoxMesh(wallId, 0),
+        solidBoxMesh(wallId, 20),
         solidBoxMesh(doorId, 0.5, `${doorId}:inst:0:0`),
         solidBoxMesh(doorId, 20.5, `${doorId}:inst:0:1`),
       ],
       modelId: 'model-1',
     });
 
-    // Wall + two distinct door occurrences (opening dropped by the #1464 filter).
+    // Wall (its two mesh representations merged into one element) + two
+    // distinct door occurrences (opening dropped by the #1464 filter).
     expect(elements).toHaveLength(3);
 
     const engine = createClashEngine({ backend: 'ts' });

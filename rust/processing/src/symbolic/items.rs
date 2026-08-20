@@ -5,6 +5,7 @@
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
+use super::item_walk::{extract_symbolic_item_at, ItemWalk};
 use super::fill::extract_annotation_fill_area;
 use super::primitives::{SymbolicCircle, SymbolicData, SymbolicPolyline};
 use super::text::extract_text_literal;
@@ -20,7 +21,7 @@ use super::trimmed_curve::extract_trimmed_curve;
 // ────────────────────────────────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn extract_symbolic_item(
+pub(super) fn extract_symbolic_item_inner(
     item: &DecodedEntity,
     decoder: &mut EntityDecoder,
     express_id: u32,
@@ -32,13 +33,15 @@ pub(super) fn extract_symbolic_item(
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
     out: &mut SymbolicData,
+    depth: u32,
+    walk: &mut ItemWalk,
 ) {
     match item.ifc_type {
         IfcType::IfcGeometricSet | IfcType::IfcGeometricCurveSet => {
             if let Some(elements_attr) = item.get(0) {
                 if let Ok(elements) = decoder.resolve_ref_list(elements_attr) {
                     for element in elements {
-                        extract_symbolic_item(
+                        extract_symbolic_item_at(
                             &element,
                             decoder,
                             express_id,
@@ -50,6 +53,8 @@ pub(super) fn extract_symbolic_item(
                             rtc_z,
                             styled_items,
                             out,
+                            depth + 1,
+                            walk,
                         );
                     }
                 }
@@ -101,29 +106,39 @@ pub(super) fn extract_symbolic_item(
                 compose_transforms(&mapping_target_transform, &mapping_origin_transform);
             let composed_transform = compose_transforms(transform, &origin_with_target);
 
-            if let Some(mapped_rep_id) = rep_map.get_ref(1) {
-                if let Ok(mapped_rep) = decoder.decode_by_id(mapped_rep_id) {
-                    if let Some(items_attr) = mapped_rep.get(3) {
-                        if let Ok(items) = decoder.resolve_ref_list(items_attr) {
-                            for sub_item in items {
-                                extract_symbolic_item(
-                                    &sub_item,
-                                    decoder,
-                                    express_id,
-                                    ifc_type,
-                                    rep_identifier,
-                                    unit_scale,
-                                    &composed_transform,
-                                    rtc_x,
-                                    rtc_z,
-                                    styled_items,
-                                    out,
-                                );
-                            }
-                        }
-                    }
-                }
+            // Everything that can fail is resolved BEFORE the node goes on
+            // the path, so there is no early return between enter and exit --
+            // a leaked id would silently skip every later occurrence of this
+            // representation for the rest of the walk.
+            let Some(mapped_rep_id) = rep_map.get_ref(1) else { return };
+            let Ok(mapped_rep) = decoder.decode_by_id(mapped_rep_id) else { return };
+            let Some(items_attr) = mapped_rep.get(3) else { return };
+            let Ok(items) = decoder.resolve_ref_list(items_attr) else { return };
+
+            // The representation itself is a node on the path: this chain
+            // re-enters the walk through something that is not an item, so the
+            // item ids alone cannot see the cycle it closes.
+            if !walk.enter_node(mapped_rep_id) {
+                return;
             }
+            for sub_item in items {
+                extract_symbolic_item_at(
+                    &sub_item,
+                    decoder,
+                    express_id,
+                    ifc_type,
+                    rep_identifier,
+                    unit_scale,
+                    &composed_transform,
+                    rtc_x,
+                    rtc_z,
+                    styled_items,
+                    out,
+                    depth + 1,
+                    walk,
+                );
+            }
+            walk.exit_node(mapped_rep_id);
         }
         IfcType::IfcPolyline => {
             if let Some(points_attr) = item.get(0) {
@@ -281,7 +296,7 @@ pub(super) fn extract_symbolic_item(
                     for segment in segments {
                         if let Some(curve_ref) = segment.get_ref(2) {
                             if let Ok(parent_curve) = decoder.decode_by_id(curve_ref) {
-                                extract_symbolic_item(
+                                extract_symbolic_item_at(
                                     &parent_curve,
                                     decoder,
                                     express_id,
@@ -293,6 +308,8 @@ pub(super) fn extract_symbolic_item(
                                     rtc_z,
                                     styled_items,
                                     out,
+                                    depth + 1,
+                                    walk,
                                 );
                             }
                         }

@@ -21,7 +21,7 @@
 import { describe, it, expect } from 'vitest';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, IFC_DATA_TYPES } from '@ifc-lite/data';
 import { SCHEMA_REGISTRY, getEntityMetadata } from '../src/generated/schema-registry.js';
-import { isKnownType, normalizeIfcTypeName } from '../src/ifc-schema.js';
+import { isKnownType, normalizeIfcTypeName, getInheritanceChain } from '../src/ifc-schema.js';
 
 /**
  * The six EXPRESS TYPEs the IDS-derived `IFC_DATA_TYPES` table omits but the
@@ -249,5 +249,17 @@ describe('normalizeIfcTypeName across the bundled schema union (#2003)', () => {
     for (const type of ['IfcSolidStratum', 'IfcVoidStratum', 'IfcWaterStratum']) {
       expect(normalizeIfcTypeName(type), type).toBe(type);
     }
+  });
+
+  it('resolves the IFC2X3 leaves rust/core/src/legacy_entities.rs maps but no bundled TS schema carries', () => {
+    // `IfcElectricalDistributionPoint` is real, deprecated IFC2X3 syntax with
+    // no IFC4x3 equivalent in ENTITIES_IFC2X3/IFC4/IFC4X3. The Rust core's
+    // `legacy_entities.rs` resolves it to `IfcDistributionElement` (comment:
+    // "IFC2x3 names that have no IFC4x3 enum variant"). The TS
+    // `ENTITY_NAME_ALIASES` table in `ifc-schema.ts` claims to mirror that
+    // file "so the two sides stay in lockstep", but only carries the three
+    // IFC4.3 stratum leaves -- this class is silently unknown here while the
+    // Rust parser resolves it with geometry.
+    expect(getInheritanceChain('IfcElectricalDistributionPoint')).toContain('IfcDistributionElement');
   });
 });

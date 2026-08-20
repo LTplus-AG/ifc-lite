@@ -443,17 +443,23 @@ fn create_lofted_side_walls(
         let v2 = Point3::new(q1.x, q1.y, depth);
         let v3 = Point3::new(q0.x, q0.y, depth);
         // Outward normal from the actual 3D quad. `edge_a × edge_b` is outward
-        // for a CCW loop; `winding_sign` corrects CW loops. Holes then flip to
-        // face into the void.
+        // for a CCW loop; `winding_sign` corrects CW loops — and per
+        // `Profile2D::add_hole`'s contract holes are already authored CW, so
+        // this alone already leaves hole walls facing into the solid (away
+        // from the loop's own interior, i.e. the void), exactly matching
+        // `create_side_walls`' convention (see
+        // `extrusion_generic::create_side_walls`, which applies `winding_sign`
+        // ONLY, with no separate hole flip). A second `is_hole` flip here
+        // used to double-flip the sign back to facing OUT of the solid, into
+        // the void — confirmed by `probe_lofted_hole_normal_vs_uniform_hole_normal`,
+        // which compares this path against the uniform-extrusion path in the
+        // untapered limit (they must agree; they didn't).
         let edge_a = v1 - v0;
         let edge_b = v3 - v0;
-        let mut normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
+        let normal = match edge_a.cross(&edge_b).try_normalize(1e-10) {
             Some(n) => n * winding_sign,
             None => continue,
         };
-        if is_hole {
-            normal = -normal;
-        }
         let idx = base_index + (quad_count * 4);
         mesh.add_vertex(v0, normal);
         mesh.add_vertex(v1, normal);
@@ -756,6 +762,52 @@ mod tests {
         let end = create_rectangle(10.0, 20.0);
         assert!(extrude_profile_lofted(&start, &end, 0.0, None).is_err());
         assert!(extrude_profile_lofted(&start, &end, -1.0, None).is_err());
+    }
+
+    #[test]
+    fn probe_lofted_hole_normal_vs_uniform_hole_normal() {
+        // Untapered loft (start == end) with a hole must agree with uniform
+        // extrusion's hole side-wall normal direction (into the void).
+        let mut outer = create_rectangle(200.0, 200.0);
+        let mut hole = vec![
+            Point2::new(-50.0, -50.0),
+            Point2::new(-50.0, 50.0),
+            Point2::new(50.0, 50.0),
+            Point2::new(50.0, -50.0),
+        ];
+        hole.reverse(); // CW per Profile2D::add_hole contract
+        outer.add_hole(hole.clone());
+
+        let uniform = extrude_profile(&outer, 1000.0, None).unwrap();
+        let lofted = extrude_profile_lofted(&outer, &outer, 1000.0, None).unwrap();
+
+        fn radial_sign_at(mesh: &Mesh, x: f32, y: f32) -> Option<(f32, f32)> {
+            for i in 0..mesh.vertex_count() {
+                let px = mesh.positions[i * 3];
+                let py = mesh.positions[i * 3 + 1];
+                let pz = mesh.positions[i * 3 + 2];
+                if (px - x).abs() < 0.5 && (py - y).abs() < 0.5 && pz < 0.5 {
+                    let nx = mesh.normals[i * 3];
+                    let ny = mesh.normals[i * 3 + 1];
+                    if nx.abs() > 0.1 || ny.abs() > 0.1 {
+                        return Some((nx, ny));
+                    }
+                }
+            }
+            None
+        }
+        let u = radial_sign_at(&uniform, -50.0, -50.0).expect("uniform hole vertex");
+        let l = radial_sign_at(&lofted, -50.0, -50.0).expect("lofted hole vertex");
+        // Same physical construction (untapered loft == uniform extrusion), so
+        // the two independently-computed normals must point the same way: a
+        // positive dot product, not merely matching per-component signs (which
+        // a harmless +0.0/-0.0 pair can fail spuriously).
+        let dot = u.0 * l.0 + u.1 * l.1;
+        assert!(
+            dot > 0.0,
+            "lofted hole normal {:?} disagrees with uniform hole normal {:?} (dot={dot})",
+            l, u
+        );
     }
 
     #[test]

@@ -193,11 +193,16 @@ export function writeSourceEntityLines(
         continue;
       }
 
-      // Skip if we're only doing geometry or specific types
-      const entityType = entityRef.type.toUpperCase();
-
-      // Skip geometry if not included
-      if (options.includeGeometry === false && ctx.isGeometryEntity(entityType)) {
+      // Skip geometry if not included. Classified via `isGeometryExcluded`
+      // (which reads the EFFECTIVE type, `effective.effectiveType`) rather
+      // than `entityRef.type` directly: a retype can move a record across
+      // the geometry boundary in either direction, and this check has to
+      // agree with `hasEmittableHostBytes`/`willBeEmitted`'s use of the
+      // same predicate — otherwise a wall retyped to `IfcCartesianPoint`
+      // still ships its (rewritten) geometry line under
+      // `includeGeometry: false`, the exact "predicate must agree" failure
+      // this file already guards for the non-retyped case (#2414).
+      if (pass.isGeometryExcluded(expressId, entityRef.type)) {
         continue;
       }
 
@@ -240,7 +245,7 @@ export function writeSourceEntityLines(
       // withholds must not also be counted as a delivered modification.
       //
       // Classified by the EFFECTIVE type (`effective.effectiveType`), not
-      // the authored `entityType` above: a retype can move a record across
+      // the source's authored type: a retype can move a record across
       // the `IFCREL*` boundary in either direction (`applySourceLineMutations`
       // already rewrote `nextEntityText` to the new class), and this check
       // has to agree with what actually got written, the same way

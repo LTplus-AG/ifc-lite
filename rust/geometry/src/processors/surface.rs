@@ -15,6 +15,10 @@ use crate::router::GeometryProcessor;
 /// Handles IfcSurfaceOfLinearExtrusion - surface created by sweeping a curve along a direction
 pub struct SurfaceOfLinearExtrusionProcessor;
 
+#[path = "curve_walk.rs"]
+mod curve_walk;
+use curve_walk::{CurveWalk, MAX_CURVE_NODES, SEAM_EPS};
+
 impl SurfaceOfLinearExtrusionProcessor {
     pub fn new() -> Self {
         Self
@@ -135,9 +139,22 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
 
 impl SurfaceOfLinearExtrusionProcessor {
     /// Extract curve points from a profile definition
+    /// Longest nested-curve chain the profile sampler will follow. See
+    /// `curve_points_guarded` for why this sits alongside the visited set.
+    const MAX_CURVE_NESTING_DEPTH: u32 = 32;
+
     fn get_profile_curve_points(
         profile_id: u32,
         decoder: &mut EntityDecoder,
+    ) -> Result<Vec<Point2<f64>>> {
+        let mut walk = CurveWalk::new();
+        Self::profile_curve_points_guarded(profile_id, decoder, &mut walk)
+    }
+
+    fn profile_curve_points_guarded(
+        profile_id: u32,
+        decoder: &mut EntityDecoder,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
         let profile = decoder.decode_by_id(profile_id)?;
 
@@ -150,6 +167,55 @@ impl SurfaceOfLinearExtrusionProcessor {
         let curve_id = curve_attr
             .as_entity_ref()
             .ok_or_else(|| Error::geometry("Expected entity reference for curve".to_string()))?;
+
+        Self::curve_points_guarded(curve_id, decoder, 0, walk)
+    }
+
+    /// Sample a CURVE (not a profile) into 2D points.
+    ///
+    /// Split out of `get_profile_curve_points` because
+    /// `extract_composite_curve_points` was calling that function with a
+    /// segment's `ParentCurve` id — a curve where a profile was expected. It
+    /// read attribute 2 of the curve as "the profile's curve", and an
+    /// `IfcPolyline` has no attribute 2, so every composite-curve profile
+    /// errored on each segment, had the error swallowed by the caller's
+    /// `if let Ok(..)`, and returned `Ok(vec![])`. Silently: no points, no
+    /// error, indistinguishable from a legitimately empty profile.
+    ///
+    /// Guarded by BOTH a visited set and a depth cap, because they bound
+    /// different things. The set stops cycles and fan-out --
+    /// `extract_composite_curve_points` loops over segments, so `k` segments
+    /// each leading back cost `O(k^depth)` and a cap alone would trade the
+    /// abort for a hang. The cap stops a long ACYCLIC chain, where every
+    /// insert succeeds, the set never fires, and the recursion aborts on stack
+    /// depth alone (Codex, #2871/#2872 review). Neither substitutes for the
+    /// other (#2866).
+    fn curve_points_guarded(
+        curve_id: u32,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+        walk: &mut CurveWalk,
+    ) -> Result<Vec<Point2<f64>>> {
+        if depth >= Self::MAX_CURVE_NESTING_DEPTH || !walk.seen.insert(curve_id) {
+            return Ok(Vec::new());
+        }
+        walk.spend()?;
+        let out = Self::curve_points_inner(curve_id, decoder, depth, walk);
+        // PATH-scoped: removed on the way out. A global set would be a memo
+        // that returns the WRONG value -- it hands back an empty vec rather
+        // than the points it computed the first time -- and the caller
+        // ACCUMULATES, so a ParentCurve legitimately reused by two segments
+        // would contribute once and silently shorten the profile.
+        walk.seen.remove(&curve_id);
+        out
+    }
+
+    fn curve_points_inner(
+        curve_id: u32,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+        walk: &mut CurveWalk,
+    ) -> Result<Vec<Point2<f64>>> {
 
         // Get curve entity to determine type
         let curve = decoder.decode_by_id(curve_id)?;
@@ -171,7 +237,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             }
             IfcType::IfcCompositeCurve => {
                 // Handle composite curves by extracting segments
-                Self::extract_composite_curve_points(curve_id, decoder)
+                Self::extract_composite_curve_points(curve_id, decoder, depth, walk)
             }
             _ => {
                 // Fallback: try to get points directly
@@ -194,6 +260,8 @@ impl SurfaceOfLinearExtrusionProcessor {
     fn extract_composite_curve_points(
         curve_id: u32,
         decoder: &mut EntityDecoder,
+        depth: u32,
+        walk: &mut CurveWalk,
     ) -> Result<Vec<Point2<f64>>> {
         let curve = decoder.decode_by_id(curve_id)?;
 
@@ -206,7 +274,7 @@ impl SurfaceOfLinearExtrusionProcessor {
             .as_list()
             .ok_or_else(|| Error::geometry("Expected segment list".to_string()))?;
 
-        let mut all_points = Vec::new();
+        let mut all_points: Vec<Point2<f64>> = Vec::new();
 
         for seg_ref in segment_refs {
             let seg_id = seg_ref.as_entity_ref().ok_or_else(|| {
@@ -224,11 +292,52 @@ impl SurfaceOfLinearExtrusionProcessor {
                 Error::geometry("Expected entity reference for parent curve".to_string())
             })?;
 
-            // Recursively get points from the parent curve
-            if let Ok(segment_points) = Self::get_profile_curve_points(parent_curve_id, decoder) {
-                // Skip first point if we already have points (to avoid duplicates at joints)
-                let start_idx = if all_points.is_empty() { 0 } else { 1 };
+            // IfcCompositeCurveSegment.SameSense (attribute 1): when false the
+            // segment traverses its ParentCurve BACKWARDS. Nothing applied it
+            // before because no segment ever produced points to orient -- the
+            // dispatch bug above meant every one came back empty, so a
+            // reversed segment and a forward one were indistinguishable.
+            let same_sense = segment
+                .get(1)
+                .map(|v| match v {
+                    ifc_lite_core::AttributeValue::Enum(e) => e != "F" && e != ".F.",
+                    _ => true,
+                })
+                .unwrap_or(true);
+
+            // The ParentCurve is a CURVE, not a profile. Routing it through the
+            // profile entry point read its attribute 2 as "the curve" and
+            // dropped every segment (#2866).
+            if let Ok(mut segment_points) =
+                Self::curve_points_guarded(parent_curve_id, decoder, depth + 1, walk)
+            {
+                if !same_sense {
+                    segment_points.reverse();
+                }
+                // Drop the seam point only when it ACTUALLY duplicates the
+                // previous segment's end. A `.DISCONTINUOUS.` transition, or a
+                // gap from a malformed file, leaves a real point that an
+                // unconditional skip would eat.
+                let drop_seam = match (all_points.last(), segment_points.first()) {
+                    (Some(prev), Some(next)) => {
+                        (prev.x - next.x).abs() < SEAM_EPS && (prev.y - next.y).abs() < SEAM_EPS
+                    }
+                    _ => false,
+                };
+                let start_idx = usize::from(drop_seam);
                 all_points.extend(segment_points.into_iter().skip(start_idx));
+            }
+
+            // The `if let Ok(..)` above deliberately tolerates ONE malformed
+            // segment rather than losing the whole profile -- but it must not
+            // swallow budget exhaustion, or the loop keeps going and returns a
+            // truncated profile as if it were complete. That is the silent
+            // wrong answer this guard exists to avoid, so exhaustion is
+            // re-raised here where the tolerance cannot hide it.
+            if walk.exhausted {
+                return Err(Error::geometry(format!(
+                    "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
+                )));
             }
         }
 
@@ -241,3 +350,7 @@ impl Default for SurfaceOfLinearExtrusionProcessor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+#[path = "surface_cycle_tests.rs"]
+mod surface_cycle_tests;

@@ -24,11 +24,13 @@ import {
   detectScaleUnitMismatch,
   mergeMapConversion,
   mergeProjectedCRS,
+  resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
 import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from '@/lib/geo/double-georeference';
 import { useIfc } from '@/hooks/useIfc';
 import { toast } from '@/components/ui/toast';
+import { resolveInstancedExportGate } from '@/utils/instancedExport';
 
 // ── Field-specific assistance data ─────────────────────────────────────
 
@@ -355,6 +357,18 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const models = useViewerStore(s => s.models);
   const loading = useViewerStore(s => s.loading);
   const { addModel, clearAllModels } = useIfc();
+  // This model's global-id bracket, scoping `LocationMap`'s KMZ export
+  // (`withInstancedMeshes`) to just its own GPU-instanced occurrences — without
+  // it, a federation of more than one loaded model leaks every OTHER model's
+  // instanced geometry into this model's export (PR #2878 review). See
+  // `resolveInstancedExportGate`'s doc for why `canExportKmz` must withhold
+  // the export, rather than fall through to `instancedModelRange: null`
+  // (no filter), when this panel's model id didn't resolve and more than
+  // one model is loaded.
+  const { instancedModelRange, canExport: canExportKmz } = useMemo(
+    () => resolveInstancedExportGate(modelId, models),
+    [modelId, models],
+  );
   // Only show terrain actions when this panel's model is the one backing the Cesium overlay
   const isActiveCesiumModel = !!modelId && modelId === cesiumSourceModelId;
   const [crsOpen, setCrsOpen] = useState(false);
@@ -368,8 +382,22 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const canUseStandardGeoreferencing = supportsStandardGeoreferencing(schemaVersion, georef);
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
-    return mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
-  }, [georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale]);
+    const merged = mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
+    if (!merged) return merged;
+    // `mergeProjectedCRS` alone doesn't know the georeference's `source`, so an
+    // IFC2x3 `ePSet_MapConversion` file with no explicit ePset MapUnit leaves
+    // `mapUnitScale` undefined here -- which `resolveMapUnitToMetreScale` then
+    // reads as "treat offsets as metres" instead of the buildingSMART
+    // convention (project length unit). Every other consumer routes through
+    // `getEffectiveGeoreference`, which applies this same correction; this
+    // panel built its own `georef` via `extractGeoreferencingOnDemand` and
+    // never did, so `detectDoubleGeoreference` below was scaling a millimetre
+    // project's eastings/northings by 1 instead of 0.001 -- 1000x off.
+    return {
+      ...merged,
+      mapUnitScale: resolveEpsetMapUnitScale(georef?.source, merged.mapUnitScale, lengthUnitScale ?? 1),
+    };
+  }, [georef?.projectedCRS, georef?.source, mutations?.projectedCRS, lengthUnitScale]);
 
   const mergedConversion = useMemo((): MapConversion | undefined => {
     return mergeMapConversion(georef?.mapConversion, mutations?.mapConversion);
@@ -915,7 +943,11 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
         mapConversion={mergedConversion}
         projectedCRS={mergedCRS}
         coordinateInfo={coordinateInfo}
-        geometryResult={geometryResult}
+        // Withhold geometry (rather than fall through to an unfiltered,
+        // leaky export) when this panel's model id hasn't resolved and more
+        // than one model is loaded — see `canExportKmz` above.
+        geometryResult={canExportKmz ? geometryResult : null}
+        instancedModelRange={instancedModelRange}
         lengthUnitScale={lengthUnitScale}
         editable={editable}
         onApplyPosition={editable ? handleApplyPosition : undefined}

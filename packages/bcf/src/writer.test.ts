@@ -492,6 +492,8 @@ describe('BCF Writer', () => {
         creationAuthor: 'test@example.com',
         viewpoints: [],
         comments: [],
+        topicType: 'Issue',
+        topicStatus: 'Open',
         header: [
           {
             ifcProject: '0YvCT2_$X3_xJG3rzD8L_8',
@@ -725,6 +727,12 @@ describe('BCF Writer', () => {
       creationAuthor: 'creator@example.com',
       viewpoints: [],
       comments: [],
+      // TopicType/TopicStatus are required by BCF 3.0's markup.xsd (see the
+      // "refuses to write a BCF 3.0 topic missing TopicType or TopicStatus"
+      // test below), so the shared base fixture carries values valid at both
+      // versions; tests targeting the missing-field case override them away.
+      topicType: 'Issue',
+      topicStatus: 'Open',
       ...overrides,
     };
   }
@@ -1106,5 +1114,57 @@ describe('BCF Writer', () => {
       guid: 'dr-2',
       url: 'https://example.com/spec.pdf',
     });
+  });
+
+  it('refuses to write a BCF 3.0 topic missing TopicType or TopicStatus rather than emitting invalid markup', async () => {
+    // buildingSMART/BCF-XML markup.xsd (release_3_0) tightens both attributes
+    // from optional (2.1) to `use="required"`:
+    //   <xs:attribute name="TopicType" type="NonEmptyOrBlankString" use="required"/>
+    //   <xs:attribute name="TopicStatus" type="NonEmptyOrBlankString" use="required"/>
+    // The old behaviour silently omitted the attribute when unset, producing
+    // markup.bcf that fails 3.0 schema validation in every downstream tool.
+    // We fail the write instead of inventing a status/type the user never chose.
+    const missingType = baseTopic({ topicType: undefined, topicStatus: 'Open' });
+    const project1: BCFProject = { version: '3.0', topics: new Map([[missingType.guid, missingType]]) };
+    await expect(writeBCF(project1)).rejects.toThrow(/TopicType/);
+
+    const missingStatus = baseTopic({ topicType: 'Issue', topicStatus: undefined });
+    const project2: BCFProject = { version: '3.0', topics: new Map([[missingStatus.guid, missingStatus]]) };
+    await expect(writeBCF(project2)).rejects.toThrow(/TopicStatus/);
+
+    // The same topic shape is legal at 2.1, where both attributes stay optional.
+    const markup21 = await markupFor(
+      baseTopic({ topicType: undefined, topicStatus: undefined }),
+      '2.1'
+    );
+    expect(markup21).not.toContain('TopicType=');
+    expect(markup21).not.toContain('TopicStatus=');
+
+    // With both fields present, 3.0 writes succeed and round-trip.
+    const complete = baseTopic({ topicType: 'Issue', topicStatus: 'Open' });
+    const project3: BCFProject = { version: '3.0', topics: new Map([[complete.guid, complete]]) };
+    const readTopic = (await readBCF(await (await writeBCF(project3)).arrayBuffer()))
+      .topics.get(complete.guid)!;
+    expect(readTopic.topicType).toBe('Issue');
+    expect(readTopic.topicStatus).toBe('Open');
+  });
+
+  it('refuses a BCF 3.0 topic whose TopicType or TopicStatus is XML-whitespace-only', async () => {
+    // `NonEmptyOrBlankString` collapses XML whitespace (#x9, #xA, #xD, #x20)
+    // before checking length >= 1, so a value like '   ' or '\t' is truthy in
+    // JS (passing a bare `!value` check) but schema-invalid once written.
+    const whitespaceType = baseTopic({ topicType: '   ', topicStatus: 'Open' });
+    const projectType: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceType.guid, whitespaceType]]),
+    };
+    await expect(writeBCF(projectType)).rejects.toThrow(/TopicType/);
+
+    const whitespaceStatus = baseTopic({ topicType: 'Issue', topicStatus: '\t' });
+    const projectStatus: BCFProject = {
+      version: '3.0',
+      topics: new Map([[whitespaceStatus.guid, whitespaceStatus]]),
+    };
+    await expect(writeBCF(projectStatus)).rejects.toThrow(/TopicStatus/);
   });
 });

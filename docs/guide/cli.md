@@ -143,6 +143,7 @@ Supports property filters (`--where`), missing-property checks (`--missing`), he
 | `--flyto` | Fly camera to results |
 | `--rules <file>` | Batch rules from JSON |
 | `--json` | Machine-readable output |
+| `--out <file>` | Write match results as JSON to a file instead of stdout |
 
 ---
 

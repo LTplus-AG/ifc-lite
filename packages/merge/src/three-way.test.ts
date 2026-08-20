@@ -136,7 +136,15 @@ describe('three-way decision matrix', () => {
     });
     expect(plan.autoOps).toEqual([]);
     expect(plan.conflicts).toHaveLength(1);
-    expect(plan.conflicts[0].kind).toBe('delete-vs-modify');
+    const conflict = plan.conflicts[0];
+    expect(conflict.kind).toBe('delete-vs-modify');
+    expect(conflict.path).toBe('wall-1');
+    // The conflict must record theirs' actual edit and ours' pre-tombstone
+    // state on the correct sides — swapping them would be unobservable if
+    // only `kind` were asserted.
+    expect(conflict.theirs?.attributes?.['pset:Pset_FireSafety']).toEqual({ [FIRE]: 'REI90' });
+    expect(conflict.ours?.attributes?.['pset:Pset_FireSafety']).toEqual({ [FIRE]: 'REI60' });
+    expect(conflict.base?.attributes?.['pset:Pset_FireSafety']).toEqual({ [FIRE]: 'REI60' });
   });
 
   it('changed vs tombstoned → conflict: modify-vs-delete', () => {
@@ -146,7 +154,14 @@ describe('three-way decision matrix', () => {
       theirs: [base, layer([{ path: 'wall-1', attributes: { [IFCLITE_ATTR.DELETED]: true } }], 'theirs')],
     });
     expect(plan.conflicts).toHaveLength(1);
-    expect(plan.conflicts[0].kind).toBe('modify-vs-delete');
+    const conflict = plan.conflicts[0];
+    expect(conflict.kind).toBe('modify-vs-delete');
+    expect(conflict.path).toBe('wall-1');
+    // Ours carries the actual edit, not the ancestor's stale value —
+    // swapping ours/base here would be unobservable if only `kind` were
+    // asserted.
+    expect(conflict.ours?.attributes?.['pset:Pset_FireSafety']).toEqual({ [FIRE]: 'REI90' });
+    expect(conflict.base?.attributes?.['pset:Pset_FireSafety']).toEqual({ [FIRE]: 'REI60' });
   });
 
   it('tombstoned vs tombstoned → fold (auto)', () => {

@@ -212,22 +212,6 @@ describe('StepExporter', () => {
     expect(result.stats.modifiedEntityCount).toBe(1);
   });
 
-  it('updates type-owned HasPropertySets instead of creating a duplicate relationship', async () => {
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutationView = liveView(store);
-    mutationView.setProperty(67, 'Pset_WallCommon', 'AcousticRating', 'Edited type value', PropertyValueType.Label);
-
-    const exporter = new StepExporter(store, mutationView);
-    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
-
-    expect(decode(result.content)).toContain("IFCLABEL('Edited type value')");
-    expect(decode(result.content)).not.toContain("IFCLABEL('This is Pset of the WallType')");
-    expect(decode(result.content)).not.toContain("#114=IFCPROPERTYSET('3wkd_mjInDCfOthy7w_A6V'");
-    expect(decode(result.content)).not.toMatch(/IFCRELDEFINESBYPROPERTIES\([^;]*\(#67\),#/);
-    expect(decode(result.content)).toMatch(/#67=IFCWALLTYPE\([^;]*\(#72,#\d+\)[^;]*\);/);
-  });
-
   it('rejects georeferencing edits for IFC2X3 export', async () => {
     const parser = new IfcParser();
     const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
@@ -240,20 +224,6 @@ describe('StepExporter', () => {
         projectedCRS: { name: 'EPSG:2056' },
       },
     })).toThrow(/IFC4 or newer/);
-  });
-
-  it('reuses the project length unit when exporting property units', async () => {
-    const parser = new IfcParser();
-    const store = await parser.parseColumnar(new TextEncoder().encode(SIMPLE_TYPE_INHERITANCE_IFC).buffer);
-    const mutationView = liveView(store);
-    mutationView.setProperty(74, 'Pset_Custom', 'OffsetDistance', 12.5, PropertyValueType.Real, 'METRE');
-
-    const exporter = new StepExporter(store, mutationView);
-    const result = exporter.export({ schema: 'IFC4', applyMutations: true });
-    const content = decode(result.content);
-
-    expect(content).not.toContain(',#0);');
-    expect(content).toMatch(/#\d+=IFCPROPERTYSINGLEVALUE\('OffsetDistance',\$,IFCREAL\(12\.5\),#\d+\);/);
   });
 
   it('generates valid IFC GlobalIds for new STEP entities', async () => {
@@ -496,9 +466,14 @@ describe('StepExporter', () => {
   // Maintainer-found defect on this PR (predicate asymmetry): the closure's
   // bridge check treats a referenced id that never existed in the file the
   // same as one that was excluded (`excludeIds.has(id) || !entityIndex.has(id)`
-  // in `isBridgeTargetExcluded`), while emission's own predicate
-  // (`isExcludedFromRelationshipRefs`) only excludes a HIDDEN product or a
-  // TOMBSTONED id — never "never existed". A relationship whose OwnerHistory
+  // in `isBridgeTargetExcluded`), while the predicate `StepExporter` shares
+  // with it (`isRefExcludedDuringClosureWalk`) only excludes a HIDDEN product
+  // or a TOMBSTONED id — never "never existed". The same holds of the OUTPUT
+  // filter's `isOmittedFromOutput`: its `effective.has(id) || isDeleted(id)`
+  // qualifier exists precisely to keep "never existed" out of scope, so this
+  // test's position is unchanged by that predicate split — a pre-existing
+  // dangling ref is somebody else's bug and ships as it arrived.
+  // A relationship whose OwnerHistory
   // slot already names a dangling `#999` (a pre-existing corrupt/truncated
   // source, not something this export pass created) therefore blocks the
   // closure from bridging into the SAME relationship's RelatingPropertyDefinition

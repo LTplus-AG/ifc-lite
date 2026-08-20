@@ -12,7 +12,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { parseIDS, validateIDS, type IFCDataAccessor } from '@ifc-lite/ids';
+import { parseIDS, validateIDS, createTranslationService, type IFCDataAccessor, type SupportedLocale } from '@ifc-lite/ids';
 import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
 import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
@@ -45,17 +45,18 @@ const idsValidate: Tool = {
 
     const idsDoc = parseIDS(xml);
     const accessor = buildIdsAccessor(m.store) as IFCDataAccessor;
+    const locale = (input.locale as SupportedLocale | undefined) ?? 'en';
     const report = await validateIDS(
       idsDoc,
       accessor,
       { modelId: m.id, schemaVersion: m.store.schemaVersion, entityCount: m.store.entityCount },
       {
+        translator: createTranslationService(locale),
         onProgress: (p) => {
           ctx.progress.report(p.percentage / 100, `Validating ${p.phase} (${p.specificationIndex + 1}/${p.totalSpecifications})`, 100);
         },
       },
     );
-    void input.locale;
 
     const summary = summarizeIdsReport(report);
     return okResult(

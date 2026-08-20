@@ -114,4 +114,17 @@ describe('addMemberToStore', () => {
       Start: [0, 0, 0], End: [0, 0, 0], Width: 0.1, Height: 0.1,
     })).toThrow(/distinct/);
   });
+
+  it.each([
+    ['NaN Start[0]', [Number.NaN, 0, 0] as const, [5, 0, 0] as const],
+    ['Infinity Start[2]', [0, 0, Number.POSITIVE_INFINITY] as const, [5, 0, 0] as const],
+    ['NaN End[1]', [0, 0, 0] as const, [5, Number.NaN, 0] as const],
+    ['-Infinity End[2]', [0, 0, 0] as const, [5, 0, Number.NEGATIVE_INFINITY] as const],
+  ])('rejects non-finite coordinates (%s)', (_label, Start, End) => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(50), view);
+    expect(() => addMemberToStore(editor, ANCHOR, {
+      Start: [...Start], End: [...End], Width: 0.1, Height: 0.1,
+    })).toThrow(/finite/);
+  });
 });

@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { testPair } from './narrow.js';
 import { TriMesh } from './tri-mesh.js';
-import { detectObb, obbPenetrationDepth, type Obb } from './obb.js';
+import { detectObb, isThroughPenetration, obbPenetrationDepth, AXIS_NOISE_ULPS, OBB_EPS, type Obb } from './obb.js';
 import { cross, dot } from '../math/vec3.js';
 import { createClashEngine } from '../engine.js';
 import { WasmClashEngine, initClashWasm } from '../engine-wasm/index.js';
@@ -368,6 +368,89 @@ describe('analytic oracle: detectObb / obbPenetrationDepth unit behaviour', () =
     expect(obbA).not.toBeNull();
     expect(obbB).not.toBeNull();
     expect(obbPenetrationDepth(obbA!, obbB!)).toBeNull();
+  });
+});
+
+/**
+ * Boundary-pinning tests found by mutation testing: flipping the operator at
+ * each of these three sites kills zero tests in the suite above. Each test
+ * below sits EXACTLY on its boundary — a fixture merely near it passes under
+ * both operators and pins nothing.
+ */
+describe('boundary pinning: exact thresholds in detectObb / obbPenetrationDepth / isThroughPenetration', () => {
+  it('declines a box whose thickness is inside the OBB_EPS band (obb.ts:148, half[i] > OBB_EPS)', () => {
+    // The existing "open shell" fixture above has EXACTLY zero extent on the
+    // degenerate axis, so it survives a mutated `half[i] > 0` just as well
+    // as the real `half[i] > OBB_EPS` check — it doesn't distinguish them.
+    // This fixture is a genuine closed box (6 faces, so the "2 offset
+    // planes per axis" check passes cleanly) whose z-thickness is exactly
+    // OBB_EPS, i.e. half[2] = OBB_EPS/2 — strictly between 0 and OBB_EPS.
+    // `half[i] > OBB_EPS` correctly still rejects it (a wafer this thin is
+    // not a certifiable box); a mutated `half[i] > 0` would accept it.
+    //
+    // x/y are 1e6 (not 1) so the SIDE faces' triangle normals stay well
+    // clear of `normalize()`'s own `len > OBB_EPS` guard (a face's normal
+    // magnitude before normalisation is ~ the product of its two edge
+    // lengths, here ~1e6 * OBB_EPS = 1, comfortably above OBB_EPS) — with a
+    // 1x1 footprint that cross product is itself ~OBB_EPS, so those faces
+    // get discarded as "degenerate" before this line is ever reached and
+    // the box is rejected for an unrelated reason (only 1 face-normal
+    // family survives), which was verified to happen and pin nothing.
+    expect(OBB_EPS / 2).toBeGreaterThan(0);
+    expect(OBB_EPS / 2).toBeLessThan(OBB_EPS);
+    const el = subdividedBox('A', 'X', [0, 0, 0], [1e6, 1e6, OBB_EPS], 1);
+    const mesh = new TriMesh(el.positions!, el.indices!);
+    expect(detectObb(mesh)).toBeNull();
+  });
+
+  it('skips a candidate axis whose overlap sits exactly at the noise bound (obb.ts:250, Math.abs(overlap) <= noise)', () => {
+    // Construct two axis-aligned boxes so the x-face candidate's overlap is
+    // an EXACT float equality with its own noise bound (not merely close):
+    // solved algebraically from the production formula
+    // `noise = extentSum * AXIS_NOISE_ULPS * EPSILON` with dist = 0, so
+    // `overlap = rA + rB` and `extentSum = rA + rB + 2*hy + 2*hz`, giving
+    // `S := rA + rB = (2*hy + 2*hz) * K / (1 - K)`, `K = AXIS_NOISE_ULPS *
+    // EPSILON` — verified by direct computation to satisfy `overlap ===
+    // noise` bit-for-bit (not just approximately).
+    //
+    // Under the real `<=` check this axis (and its duplicates reached via
+    // the 9 cross-product candidates) is skipped as inconclusive, so the
+    // reported depth comes only from the y/z face axes, each with overlap
+    // 2. A mutated `<` would instead treat the boundary axis as a genuine,
+    // vastly smaller separating-axis candidate (overlap ~= S, ~7e-15),
+    // collapsing the reported depth from 2 to ~7e-15 — an unmistakable,
+    // exactly-assertable difference.
+    const hy = 1;
+    const hz = 1;
+    const K = AXIS_NOISE_ULPS * Number.EPSILON;
+    const S = ((2 * hy + 2 * hz) * K) / (1 - K);
+    const IDENTITY: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const a: Obb = { center: [0, 0, 0], axes: IDENTITY, half: [0, hy, hz] };
+    const b: Obb = { center: [0, 0, 0], axes: IDENTITY, half: [S, hy, hz] };
+    // Sanity check the algebra actually lands exactly on the boundary
+    // before trusting the depth assertion below.
+    const extentSum = 0 + hy + hz + S + hy + hz;
+    const noise = extentSum * K;
+    expect(S).toBe(noise);
+    expect(obbPenetrationDepth(a, b)).toBe(2);
+  });
+
+  it('does not report a through-penetration when the far side lands exactly flush (obb.ts:325, p.half[k] > rQk + |offK| + margin(rQk))', () => {
+    // A thin "duct" (p) whose cross-section fits inside a "wall" (q) and
+    // whose length is constructed to be EXACTLY flush with the wall's far
+    // face — not past it. `half[0]` is built from the identical expression
+    // `piercesAlong` itself evaluates (rQk + |offK| + margin(rQk)), so the
+    // comparison is a bit-exact tie, not an approximation.
+    const rQk = 0.1; // wall half-thickness
+    const offK = 0.05; // duct center offset from wall center, along the pierce axis
+    const margin = OBB_EPS * Math.max(1, rQk);
+    const halfK = rQk + Math.abs(offK) + margin;
+    const IDENTITY: [Vec3, Vec3, Vec3] = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    const duct: Obb = { center: [0, 0, 0], axes: IDENTITY, half: [halfK, 0.05, 0.05] };
+    const wall: Obb = { center: [offK, 0, 0], axes: IDENTITY, half: [rQk, 5, 5] };
+    // `>` (strictly past the far face) correctly reports no through-
+    // penetration at exact flushness; a mutated `>=` would report one.
+    expect(isThroughPenetration(duct, wall)).toBe(false);
   });
 });
 

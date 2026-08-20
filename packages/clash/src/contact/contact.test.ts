@@ -41,6 +41,28 @@ describe('contactClusters (contact interface geometry)', () => {
     for (const c of surfaces) expect(c.boundary.length).toBeGreaterThanOrEqual(3);
   });
 
+  it('classifies a small coplanar overlap as surface, not line, and keeps length_m at 0', () => {
+    // A and B share full y,z extent but overlap only a 0.005 x-slice; the
+    // coincident y=0/y=1 side faces produce a coplanar patch of area
+    // 0.005 x 1 = 0.005 m^2 -- between the default pointAreaM2 (0.001) and
+    // surfaceAreaM2 (0.01) thresholds. This is a coplanar/surface contact
+    // (built by buildSurfaceCluster, which always sets length_m: 0), not a
+    // line contact, so it must be classified "surface" -- not relabeled
+    // "line" while keeping a zero length, which would contradict the
+    // documented invariant on `length_m` (line only -- 0 otherwise).
+    const a = box('A', [0, 0, 0], [1, 1, 1]);
+    const b = box('B', [1 - 0.005, 0, 0], [2 - 0.005, 1, 1]);
+    const clusters = contactClusters(a, b);
+    const smallBandClusters = clusters.filter(
+      (c) => c.area_m2 > 0 && c.area_m2 < 0.01 && c.area_m2 >= 0.001,
+    );
+    expect(smallBandClusters.length).toBeGreaterThan(0);
+    for (const c of smallBandClusters) {
+      expect(c.kind).toBe('surface');
+      expect(c.length_m).toBe(0);
+    }
+  });
+
   it('returns no contact for clearly separated boxes', () => {
     const a = box('A', [0, 0, 0], [1, 1, 1]);
     const b = box('B', [5, 5, 5], [6, 6, 6]);

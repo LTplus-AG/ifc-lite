@@ -33,7 +33,9 @@ fn is_global_id_shaped(s: &str) -> bool {
 /// happens to be a 22-char quoted string LATER on the line must not be
 /// mistaken for a rooted entity's GlobalId; (2) `type_name` is checked
 /// against the generated schema's `IfcRoot` subtype table via
-/// [`IfcType::is_subtype_of`] rather than an entity-type denylist -- a
+/// [`IfcType::is_subtype_of`] (plus [`is_legacy_rooted_type`] for the
+/// handful of IFC2X3/IFC4-only rooted types that table doesn't know, since
+/// it's generated from IFC4X3 alone) rather than an entity-type denylist -- a
 /// denylist can only ever be as complete as whoever last audited the
 /// schema for non-rooted resource types that lead with a string, while this
 /// positive allowlist is derived from the schema itself and can't drift out
@@ -48,7 +50,11 @@ fn is_global_id_shaped(s: &str) -> bool {
 /// content is safe -- it never needs the doubled-apostrophe in/out-of-string
 /// toggle `rewrite_refs` uses for arbitrary string content).
 fn leading_guid(line: &[u8], type_name: &str) -> Option<String> {
-    if !IfcType::from_str(type_name).is_subtype_of(IfcType::IfcRoot) {
+    let ifc_type = IfcType::from_str(type_name);
+    let rooted = ifc_type.is_subtype_of(IfcType::IfcRoot)
+        || (matches!(ifc_type, IfcType::Unknown(_))
+            && is_legacy_rooted_type(&type_name.to_ascii_uppercase()));
+    if !rooted {
         return None;
     }
     let open = line.iter().position(|&b| b == b'(')?;
@@ -64,6 +70,45 @@ fn leading_guid(line: &[u8], type_name: &str) -> Option<String> {
     let raw = &after_q1[..q2];
     let s = std::str::from_utf8(raw).ok()?;
     is_global_id_shaped(s).then(|| s.to_string())
+}
+
+/// Rooted entity types that exist in IFC2X3 and/or IFC4 but were dropped or
+/// renamed by IFC4X3 -- the only schema `rust-core`'s generated `IfcType`
+/// table is derived from (`rust/core/src/generated/schema.rs`). For these,
+/// `IfcType::from_str` resolves to `Unknown`, which `is_subtype_of(IfcRoot)`
+/// correctly refuses -- an *unrecognised* type must never be assumed rooted,
+/// that is the exact corruption this file's type check exists to prevent.
+/// This closes the resulting gap for the entities that genuinely ARE rooted
+/// in the older schemas real IFC2X3/IFC4 files still use, so their GlobalIds
+/// keep getting deduplicated across a merge instead of silently duplicating.
+///
+/// Derived by diffing `@ifc-lite/data`'s IFC2X3/IFC4/IFC4X3 entity tables
+/// (`packages/data/src/ifc-schema/generated/entities-*.ts`) against this
+/// crate's IFC4X3-only schema and keeping only the entries whose parent
+/// chain in the older schema reaches `IfcRoot`. Update by re-running that
+/// diff, not by ad hoc inspection.
+fn is_legacy_rooted_type(upper: &str) -> bool {
+    matches!(
+        upper,
+        "IFCBEAMSTANDARDCASE" | "IFCBUILDINGELEMENT" | "IFCBUILDINGELEMENTCOMPONENT"
+        | "IFCBUILDINGELEMENTTYPE" | "IFCCHAMFEREDGEFEATURE" | "IFCCOLUMNSTANDARDCASE"
+        | "IFCCONDITION" | "IFCCONDITIONCRITERION" | "IFCDOORSTANDARDCASE" | "IFCDOORSTYLE"
+        | "IFCEDGEFEATURE" | "IFCELECTRICDISTRIBUTIONPOINT" | "IFCELECTRICHEATERTYPE"
+        | "IFCELECTRICALBASEPROPERTIES" | "IFCELECTRICALCIRCUIT" | "IFCELECTRICALELEMENT"
+        | "IFCENERGYPROPERTIES" | "IFCEQUIPMENTELEMENT" | "IFCEQUIPMENTSTANDARD"
+        | "IFCFLUIDFLOWPROPERTIES" | "IFCFURNITURESTANDARD" | "IFCGASTERMINALTYPE"
+        | "IFCMEMBERSTANDARDCASE" | "IFCMOVE" | "IFCOPENINGSTANDARDCASE" | "IFCORDERACTION"
+        | "IFCPLATESTANDARDCASE" | "IFCPROJECTORDERRECORD" | "IFCPROXY" | "IFCRELASSIGNSTASKS"
+        | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELASSOCIATESAPPLIEDVALUE"
+        | "IFCRELASSOCIATESPROFILEPROPERTIES" | "IFCRELCONNECTSSTRUCTURALELEMENT"
+        | "IFCRELINTERACTIONREQUIREMENTS" | "IFCRELOCCUPIESSPACES" | "IFCRELOVERRIDESPROPERTIES"
+        | "IFCRELSCHEDULESCOSTITEMS" | "IFCROUNDEDEDGEFEATURE" | "IFCSCHEDULETIMECONTROL"
+        | "IFCSERVICELIFE" | "IFCSERVICELIFEFACTOR" | "IFCSLABELEMENTEDCASE"
+        | "IFCSLABSTANDARDCASE" | "IFCSOUNDPROPERTIES" | "IFCSOUNDVALUE" | "IFCSPACEPROGRAM"
+        | "IFCSPACETHERMALLOADPROPERTIES" | "IFCSTRUCTURALLINEARACTIONVARYING"
+        | "IFCSTRUCTURALPLANARACTIONVARYING" | "IFCTIMESERIESSCHEDULE" | "IFCWALLELEMENTEDCASE"
+        | "IFCWINDOWSTANDARDCASE" | "IFCWINDOWSTYLE"
+    )
 }
 
 /// Replace a line's first quoted attribute (the GlobalId) with `new_guid`.

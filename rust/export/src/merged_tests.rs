@@ -500,3 +500,40 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         );
     }
 }
+
+/// `IfcDoorStyle` is a genuine `IfcRoot` subtype in IFC2X3 (its first
+/// attribute IS the GlobalId) but the entity was dropped in IFC4X3, whose
+/// entity table is the only one `rust/core`'s generated `IfcType` schema is
+/// derived from. `IfcType::from_str("IFCDOORSTYLE")` therefore resolves to
+/// `Unknown`, which is never a subtype of anything -- so an unpatched
+/// `leading_guid` treats it as non-rooted and never reconciles its GlobalId.
+/// Two IFC2X3 models sharing an `IFCDOORSTYLE` (a shared door-type/style
+/// definition, the common "same catalog type in both files" case) must still
+/// collapse to one occurrence in the merged output, exactly like the
+/// IFC4 `IFCDOOR` case above.
+#[test]
+fn merge_reconciles_a_shared_globalid_on_an_ifc2x3_only_rooted_type() {
+    let shared_style = "00000000000000000000D1";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOORSTYLE('{shared_style}',$,$,$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOORSTYLE('{shared_style}',$,$,$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(
+        merged.matches(shared_style).count(),
+        1,
+        "shared IFC2X3-only-rooted GlobalId {shared_style} must be emitted exactly once, not duplicated across federated models -- got:\n{merged}"
+    );
+}

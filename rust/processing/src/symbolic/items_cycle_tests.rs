@@ -374,11 +374,21 @@ fn an_acyclic_dag_is_bounded_by_total_work_not_by_depth() {
     // first reaches the leaf through a REVISIT, so the budget is the ceiling.
     // A raised budget moves this bound with it instead of leaving a literal
     // that quietly stops binding.
+    // Two assertions, because the derived one alone cannot fail. The ceiling
+    // follows the constant so a raised budget does not silently un-pin it; the
+    // absolute bound pins the CONSEQUENCE, since the walk actually emits
+    // 66,675 here and a tripling would still sit under the 200,000 ceiling
+    // while the derived assertion reported success.
+    let emitted = out.polylines.len();
     assert!(
-        out.polylines.len() <= MAX_ITEM_REVISITS as usize,
-        "an acyclic DAG must be bounded by MAX_ITEM_REVISITS ({}), got {} polylines",
-        MAX_ITEM_REVISITS,
-        out.polylines.len()
+        emitted <= MAX_ITEM_REVISITS as usize,
+        "an acyclic DAG must be bounded by MAX_ITEM_REVISITS ({MAX_ITEM_REVISITS}), \
+         got {emitted} polylines"
+    );
+    assert!(
+        emitted < 100_000,
+        "2^24 paths must collapse to the measured ~66,675, not merely to something \
+         under the budget; got {emitted}"
     );
 }
 
@@ -423,15 +433,26 @@ fn a_large_flat_set_is_not_truncated() {
     );
 }
 
-/// The depth cap is the fourth copy of one policy (`element.rs`,
-/// `router/processing.rs`, `wasm-bindings/.../color.rs`). Those three hold each
-/// other in step with an agreement assertion; this pins the fourth, so moving
-/// the family's value fails here instead of leaving this site silently short.
-/// A shorter cap here renders the geometry but drops its symbolic annotation.
+/// Pins the depth cap to the mapped-item family's VALUE (`element.rs`,
+/// `router/processing.rs`, `wasm-bindings/.../color.rs` all use 32), so moving
+/// the family fails here instead of leaving this site silently behind.
+///
+/// It pins the number and nothing more, deliberately: this cap does NOT count
+/// the same thing the family counts. The others charge one level per
+/// mapped-item hop; this walk also charges `depth + 1` for `IfcGeometricSet`
+/// elements (`items.rs:56`) and `IfcCompositeCurve` segments (`items.rs:311`).
+/// So a mapped chain whose levels each pass through a set or a composite curve
+/// exhausts this cap in roughly half as many hops as the router's, and the
+/// asymmetry is one-directional: this walk is never more permissive, so the
+/// failure is a dropped symbolic annotation on geometry that still renders,
+/// never the reverse. Equalising the numbers does not equalise the semantics,
+/// and no assertion here can catch that -- it is recorded rather than tested.
 #[test]
-fn depth_cap_matches_the_mapped_item_family() {
+fn depth_cap_matches_the_mapped_item_family_value() {
     assert_eq!(
         MAX_ITEM_DEPTH, 32,
-        "must equal MAX_MAPPED_ITEM_DEPTH in element.rs, router/processing.rs and color.rs"
+        "must equal MAX_MAPPED_ITEM_DEPTH in element.rs, router/processing.rs and color.rs; \
+         note this cap charges set elements and curve segments too, so equal values do not \
+         mean equal reach"
     );
 }

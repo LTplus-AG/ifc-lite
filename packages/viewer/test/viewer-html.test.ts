@@ -102,3 +102,24 @@ describe('getViewerHtml — model name escaping', () => {
     assert.doesNotMatch(html, /<link[^>]+href=["']https?:/i);
   });
 });
+
+describe('getViewerHtml — pick-info rendering does not use unescaped innerHTML', () => {
+  // showPickInfo renders `info.ifcType`, a value read from the streamed mesh
+  // data the viewer receives at runtime (from a loaded IFC file or a
+  // /api/create call). Every other dynamic value in this file is written via
+  // `.textContent`; this function alone used to build markup by
+  // string-concatenating into `.innerHTML`, which parses `<`/`&` in the
+  // interpolated value as markup instead of text. Pin the safer sibling
+  // pattern here since showPickInfo touches `document` and so falls outside
+  // the browser-free blob-extraction harness in viewer-html-runtime.test.ts.
+  it('does not assign to innerHTML anywhere in showPickInfo', () => {
+    const html = getViewerHtml('m.ifc');
+    const m = html.match(/function showPickInfo\(eid\) \{[\s\S]*?\n\}/);
+    assert.ok(m, 'showPickInfo not found in the viewer script');
+    assert.doesNotMatch(
+      m[0],
+      /\.innerHTML\s*=/,
+      'showPickInfo must build the pick-info panel without innerHTML string concatenation',
+    );
+  });
+});

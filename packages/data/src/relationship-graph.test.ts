@@ -66,6 +66,8 @@ describe('RelationshipGraph', () => {
       [RelationshipType.FillsElement]: 'IfcRelFillsElement',
       [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
       [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
+      [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
+      [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
       [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
       [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
       [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',

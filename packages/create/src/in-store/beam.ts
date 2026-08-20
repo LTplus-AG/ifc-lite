@@ -20,10 +20,10 @@
 
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
 
 export interface BeamInStoreParams {
   Start: [number, number, number];
@@ -63,6 +63,11 @@ export function addBeamToStore(
 ): BeamBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
+  // A non-finite Start/End coordinate makes the derived beamLen NaN, and
+  // `NaN <= 0` is false, so the distinct-points check below never fires.
+  // Validate the source coordinates instead of trusting the derived value.
+  assertFinitePoint3({ Start: params.Start, End: params.End }, 'addBeamToStore');
+
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
   params = {
@@ -79,9 +84,7 @@ export function addBeamToStore(
   if (beamLen <= 0) {
     throw new Error('addBeamToStore: Start and End must be distinct points');
   }
-  if (params.Width <= 0 || params.Height <= 0) {
-    throw new Error('addBeamToStore: Width and Height must be positive');
-  }
+  assertPositiveFinite([params.Width, params.Height], 'addBeamToStore: Width and Height must be positive');
   const dir: Point3D = vecNorm([dx, dy, dz]);
   const refDir = computeRefDirection(dir);
 

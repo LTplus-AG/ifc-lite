@@ -52,6 +52,41 @@ export function vecNorm(v: Point3D): Point3D {
   return [v[0] / len, v[1] / len, v[2] / len];
 }
 
+/**
+ * Assert that every named dimension is a positive finite number.
+ *
+ * A bare `value <= 0` check is `false` for both `NaN` and `Infinity`, so
+ * those values silently pass validation and are emitted into the STEP
+ * file as the literal strings `"NaN"` / `"Infinity"` — not valid STEP
+ * REAL tokens. Reject them the same way a non-positive value is
+ * rejected, with the same message shape callers already throw
+ * (`<context>: <name> must be a positive finite number`).
+ */
+export function assertPositiveFinite(values: Record<string, number>, context: string): void {
+  for (const [name, value] of Object.entries(values)) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`${context}: ${name} must be a positive finite number`);
+    }
+  }
+}
+
+/**
+ * Assert that every named 3D point has finite coordinates.
+ *
+ * Guards `Start`/`End`/`Position`-style inputs before they feed a
+ * derived length (e.g. `beamLen = sqrt(dx*dx + dy*dy + dz*dz)`). A
+ * `NaN` or `Infinity` component makes the derived length `NaN`, and
+ * `NaN <= 0` is `false`, so a bare "must be distinct points" check
+ * downstream never fires — the point must be validated at the source.
+ */
+export function assertFinitePoint3(points: Record<string, Point3D>, context: string): void {
+  for (const [name, point] of Object.entries(points)) {
+    if (!point.every(Number.isFinite)) {
+      throw new Error(`${context}: ${name} must have finite coordinates`);
+    }
+  }
+}
+
 /** Cross product */
 export function vecCross(a: Point3D, b: Point3D): Point3D {
   return [

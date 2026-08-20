@@ -1001,7 +1001,29 @@ describe('groupDuplicateSets', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].members).toHaveLength(3);
     expect(groups[0].title).toContain('3 coincident');
+    // Exact title, not just a `toContain` on the count: a mutation that drops
+    // the tag word entirely (e.g. always uses '' instead of `${tag} `) would
+    // still pass a `toContain('3 coincident')` check, since that substring
+    // survives either way. Pin the full string so the tag word is actually
+    // observed.
+    expect(groups[0].title).toBe('3 coincident IfcWall objects');
     expect(groups[0].id).toMatch(/^grp-[0-9a-f]{8}$/);
+  });
+
+  it('drops the type word when a set mixes IFC types (single-tag branch is not the only branch)', () => {
+    // Two IfcWall boxes plus one IfcColumn box, all coincident: the set spans
+    // more than one IFC type, so the title must read "N objects", not claim a
+    // single type. Every other title test in this suite uses same-tag
+    // fixtures (all IfcWall), so the `comp.tags.size === 1 ? tag : ''` branch
+    // that actually produces '' was previously never exercised.
+    const res = findDuplicates([
+      box('a', [0, 0, 0], 0.5, 12, 'IfcWall'),
+      box('b', [0, 0, 0], 0.5, 12, 'IfcWall'),
+      box('c', [0, 0, 0], 0.5, 12, 'IfcColumn'),
+    ]);
+    const groups = groupDuplicateSets(res);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('3 coincident objects');
   });
 
   it('keeps two duplicate sets that stand close together as TWO findings', () => {

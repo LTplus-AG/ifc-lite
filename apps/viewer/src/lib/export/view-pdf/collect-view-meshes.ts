@@ -14,7 +14,7 @@
  * looking like a successful export. So this function does not accept "the
  * meshes" as one list it might quietly under-fill: `instancedMeshes` is a
  * REQUIRED field, materialized by the caller through
- * `withInstancedMeshes(geometryResult, isPrimary)`, and it is appended before
+ * `withInstancedMeshes(geometryResult, instancedModelRange)`, and it is appended before
  * any filtering so the instanced half answers every visibility channel the
  * flat half does.
  *
@@ -53,7 +53,7 @@ export interface ViewMeshInput {
   meshes: readonly MeshData[];
   /**
    * GPU-instanced occurrences, materialized by the caller from the live
-   * renderer scene via `withInstancedMeshes(geometryResult, isPrimary)`.
+   * renderer scene via `withInstancedMeshes(geometryResult, instancedModelRange)`.
    *
    * Required, not optional, and not defaulted: an omitted-by-accident
    * instanced half is precisely the #2558 defect, and a required field turns

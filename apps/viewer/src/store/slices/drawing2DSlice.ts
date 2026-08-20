@@ -438,7 +438,19 @@ export const createDrawing2DSlice: StateCreator<Drawing2DSlice, [], [], Drawing2
     drawing2DDisplayOptions: { ...state.drawing2DDisplayOptions, ...options },
   })),
 
-  clearDrawing2D: () => set(getDefaultState()),
+  // Only the drawing-generation fields, NOT the whole slice: this is called
+  // by "View 2D" (SectionPanel.tsx) purely to force regeneration with
+  // current settings, so it must leave graphic overrides, DXF underlays,
+  // and all annotation/measurement state (which `getDefaultState()` would
+  // wipe) untouched.
+  clearDrawing2D: () => set({
+    drawing2D: null,
+    drawing2DStatus: 'idle',
+    drawing2DProgress: 0,
+    drawing2DPhase: '',
+    drawing2DError: null,
+    drawing2DSvgContent: null,
+  }),
 
   // Graphic Override Actions
   setActivePreset: (presetId) => set({ activePresetId: presetId }),

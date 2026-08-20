@@ -722,6 +722,80 @@ describe('elementsFromStep - coalesces multiple meshes per entity (parity with e
   });
 });
 
+/**
+ * GPU-instanced occurrences (#2865). The renderer's `Scene.getInstancedMeshDataPieces`
+ * materializes one `MeshData` PER PHYSICAL OCCURRENCE for an entity whose whole
+ * mesh set was fully instanced — all of them stamped with the SAME `expressId`,
+ * distinguished only by `occurrenceKey` (see `MeshData.occurrenceKey`, issue
+ * #1405). `elementsFromStep` is the only place that turns those pieces into
+ * `ClashElement`s, so it is the one place that can silently collapse them.
+ *
+ * Before this fix, `byExpressId` was a `Map<number, ClashElement>`: the SECOND
+ * occurrence pushed under one expressId overwrote the first. `key` was built
+ * from the GlobalId alone, with no `occurrenceKey` folded in, so two physically
+ * distinct occurrences minted the IDENTICAL durable key — one review status /
+ * exclusion for two different objects. And `buildStepExclusions` walked
+ * relationships off `byExpressId`, so a void/host exclusion reached only
+ * whichever occurrence happened to be built last, leaving every earlier
+ * occurrence to clash against its own host as a false positive.
+ */
+describe('elementsFromStep - GPU-instanced occurrences of one expressId (#2865)', () => {
+  it('mints a DIFFERENT key per occurrence, so review status cannot collapse across them', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+
+    const occA: MeshData = { ...solidBoxMesh(doorId, 5), occurrenceKey: `${doorId}:inst:0:0` };
+    const occB: MeshData = { ...solidBoxMesh(doorId, 8), occurrenceKey: `${doorId}:inst:0:64` };
+
+    const { elements } = elementsFromStep({ store, meshes: [occA, occB], modelId: 'm' });
+
+    expect(elements).toHaveLength(2);
+    expect(elements[0].key).not.toBe(elements[1].key);
+    expect(elements[0].key.startsWith(FED_DOOR_GUID)).toBe(true);
+    expect(elements[1].key.startsWith(FED_DOOR_GUID)).toBe(true);
+
+    const reviewKeys = new Set([
+      clashReviewKey({ rule: 'r', a: elements[0], b: elements[0] }),
+      clashReviewKey({ rule: 'r', a: elements[1], b: elements[1] }),
+    ]);
+    expect(reviewKeys.size).toBe(2);
+  });
+
+  it('fans a void/host exclusion out to EVERY occurrence of the filler, not just the last one built', async () => {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(FEDERATED_IFC).buffer as ArrayBuffer,
+    );
+    const wallId = (store.entityIndex.byType.get('IFCWALL') ?? [])[0];
+    const doorId = (store.entityIndex.byType.get('IFCDOOR') ?? [])[0];
+
+    // Both door occurrences deliberately overlap the wall (`[0, 1]` on x) in
+    // space — without the relationship exclusion reaching BOTH, at least one
+    // is a hard clash. Positioned clear of EACH OTHER (`[-0.5, 0.5]` and
+    // `[0.6, 1.6]` don't overlap) so the only intersections in play are each
+    // occurrence against the wall, not the two occurrences against each other.
+    const occA: MeshData = { ...solidBoxMesh(doorId, -0.5), occurrenceKey: `${doorId}:inst:0:0` };
+    const occB: MeshData = { ...solidBoxMesh(doorId, 0.6), occurrenceKey: `${doorId}:inst:0:64` };
+
+    const { elements, exclusions } = elementsFromStep({
+      store,
+      meshes: [solidBoxMesh(wallId, 0), occA, occB],
+      modelId: 'm',
+    });
+    expect(elements).toHaveLength(3);
+
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(
+      elements,
+      [{ id: 'r', name: 'all', a: '*', mode: 'hard' }],
+      { exclusions },
+    );
+
+    expect(result.clashes).toHaveLength(0);
+  });
+});
+
 describe('elementsFromStep - keeps GPU-instanced occurrences distinct (PR #2819 review)', () => {
   it('two meshes sharing one expressId but different occurrenceKey become TWO ClashElements, not one merged element', async () => {
     const store = await new IfcParser().parseColumnar(

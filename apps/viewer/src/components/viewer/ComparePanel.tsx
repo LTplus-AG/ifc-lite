@@ -60,10 +60,13 @@ export function ComparePanel({ onClose }: ComparePanelProps) {
   const addExcludedType = useViewerStore((s) => s.addCompareExcludedType);
   const removeExcludedType = useViewerStore((s) => s.removeCompareExcludedType);
   const clearExcludedTypes = useViewerStore((s) => s.clearCompareExcludedTypes);
-  const clearCompare = useViewerStore((s) => s.clearCompare);
   const bcfAuthor = useViewerStore((s) => s.bcfAuthor);
 
-  const { running, result, error, runComparison } = useCompare();
+  // `clearCompare` comes from the hook, not the raw store action (#2802): an
+  // in-flight `runComparison()` only learns "the user cleared" by watching
+  // THIS wrapper get called, so every clear in this panel must go through it
+  // or a stale result can resurrect itself once the run resolves.
+  const { running, result, error, runComparison, clearCompare } = useCompare();
 
   const modelList = useMemo(() => Array.from(models.values()), [models]);
 

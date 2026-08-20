@@ -34,6 +34,8 @@
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
+    "check:collab-placement-sweep": "node scripts/check-collab-placement-sweep.mjs",
+    "check:collab-room-model-target": "node scripts/check-collab-room-model-target.mjs",
     "check:clash-degenerate-reason-parity": "node scripts/check-clash-degenerate-reason-parity.mjs",
     "check:api-surface": "node scripts/check-api-surface.mjs",
     "api-surface:update": "node scripts/check-api-surface.mjs --update",

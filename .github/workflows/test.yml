@@ -426,6 +426,33 @@ jobs:
       # viewer's canonical load path, which fires on every IFC load.
       - name: Check WASM handle disposal
         run: node scripts/check-wasm-disposal.mjs
+      # A collab recipient's meshes are hydrated from blobs baked at
+      # `meta.placementBaseline`, so placement has to be re-derived from the doc
+      # after every reconstruct -- otherwise a late joiner renders moved
+      # elements at the wrong place, and a peer's create/delete silently reverts
+      # every applied move. `placement-sweep.ts` is unit-tested; its CALL SITES
+      # are what this pins, because `startCollab`'s recipient branch needs
+      # jsdom, IndexedDB, `import.meta.env` and a websocket and cannot be driven
+      # under `tsx --test`.
+      - name: Check collab placement sweep
+        run: node scripts/check-collab-placement-sweep.mjs
+      # The collab recipient re-derives the shared model from the CRDT on every
+      # peer edit; writing that through `setIfcDataStore` / `setGeometryResult`
+      # targets `activeModelId`, so a recipient with their own file active lost
+      # that file's store and meshes (#2705). `applyRoomModelData` fixes it and
+      # is unit-tested -- but the CALL SITES are what was wrong, and reverting
+      # all three leaves `tsc --noEmit` clean and the viewer suite green: the
+      # path needs jsdom, IndexedDB, `import.meta.env` and a websocket, so it
+      # cannot be driven under `tsx --test`. The wiring is pinned here instead.
+      - name: Check collab room-model targeting
+        run: node scripts/check-collab-room-model-target.mjs
+      # Executable proof the guard above cannot be evaded: a template literal
+      # spelling the required call with the real call deleted (a hole a
+      # CodeRabbit CLI run found in `blankNoise`) and a banned member hidden
+      # inside a `${...}` interpolation both run against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check collab room-model targeting gate regressions
+        run: node --test scripts/check-collab-room-model-target.test.mjs
       # `degenerateReason` crosses the wasm boundary as an untyped string and is
       # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
       # a union that has drifted from the kernel -- `'malformed-operand'` was

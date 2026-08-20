@@ -344,7 +344,16 @@ function classify(
 ): SharedFaceCluster {
   if (base.area_m2 >= surfaceAreaM2) return { ...base, kind: "surface" };
   if (base.length_m >= lineLengthM) return { ...base, kind: "line" };
-  if (base.area_m2 >= pointAreaM2) return { ...base, kind: "line" };
+  // A cluster below the surface-area threshold but still above the point
+  // floor is a small coplanar/surface contact (buildSurfaceCluster always
+  // sets length_m: 0 -- see the field docs above), not a line: it has no
+  // shared-line length to report, only a small real area and a polygon
+  // boundary. Labeling it "line" here would contradict the length_m
+  // invariant ("line only -- 0 otherwise") and mislead consumers such as
+  // the viewer's contact overlay, which renders "line" clusters as a single
+  // 2-point segment (`boundary[0]`/`boundary[1]`) rather than the polygon
+  // outline a surface cluster actually has.
+  if (base.area_m2 >= pointAreaM2) return { ...base, kind: "surface" };
   return { ...base, kind: "point" };
 }
 

@@ -279,9 +279,19 @@ export interface RemoteApplyHandlers {
 export function attachRemoteApply(
   api: CollabDocApi,
   session: CollabSession,
-  store: IfcDataStore,
+  /**
+   * The store a remote path is resolved against — the ROOM's model, not
+   * whatever is active. Pass a resolver (not a value) when it can change or
+   * does not exist yet: a recipient's room model is registered by the first
+   * reconstruct, which can land after this observer is attached, and a
+   * captured store would keep resolving room paths against a stale — possibly
+   * entirely unrelated — model. A resolver returning `null` drops the event.
+   */
+  storeOrResolver: IfcDataStore | (() => IfcDataStore | null),
   handlers: RemoteApplyHandlers,
 ): () => void {
+  const resolveStore = (): IfcDataStore | null =>
+    typeof storeOrResolver === 'function' ? storeOrResolver() : storeOrResolver;
   // `entities` is inferred as Y.Map<unknown>; deriving the observer type from
   // its method signature avoids importing yjs (not a direct viewer dep).
   const entities = session.doc.getMap('entities');
@@ -289,6 +299,8 @@ export function attachRemoteApply(
 
   const observer: DeepObserver = (events, txn) => {
     if (txn.local) return; // ignore our own writes (seed + outbound mirror)
+    const store = resolveStore();
+    if (!store) return;
     for (const ev of events) {
       const path = ev.path;
       // Top-level entity add/remove on the `entities` map root (path === []).

@@ -33,6 +33,7 @@ mod openings;
 #[cfg(feature = "parquet-bos")]
 mod parquet_bos;
 mod rooms;
+mod rooted_type;
 mod schema_convert;
 mod shades;
 mod step;

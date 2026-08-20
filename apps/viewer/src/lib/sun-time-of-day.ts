@@ -57,7 +57,12 @@ export function sunDirectionForTimeOfDay(hours: number): SunTimeResult {
 
 /** Format a fractional hour as HH:MM for the slider readout. */
 export function formatHourOfDay(hours: number): string {
-  const h = Math.min(23, Math.max(0, Math.floor(hours)));
-  const m = Math.min(59, Math.max(0, Math.round((hours - Math.floor(hours)) * 60)));
+  // Normalize to a whole minute FIRST so a value that rounds to 60 minutes rolls
+  // into the next hour (12.999 → 13:00, not 12:59) instead of clamping. Clamp to
+  // the displayable day and treat non-finite input as 00:00.
+  const bounded = Number.isFinite(hours) ? Math.min(24, Math.max(0, hours)) : 0;
+  const totalMinutes = Math.min(24 * 60 - 1, Math.round(bounded * 60));
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }

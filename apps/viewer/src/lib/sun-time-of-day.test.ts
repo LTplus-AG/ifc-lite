@@ -56,4 +56,16 @@ describe('formatHourOfDay', () => {
     assert.equal(formatHourOfDay(13.5), '13:30');
     assert.equal(formatHourOfDay(9.25), '09:15');
   });
+
+  it('rolls a minute that rounds up to 60 into the next hour', () => {
+    assert.equal(formatHourOfDay(12.999), '13:00');
+    assert.equal(formatHourOfDay(8.9999), '09:00');
+  });
+
+  it('handles non-finite and out-of-range input without NaN', () => {
+    assert.equal(formatHourOfDay(NaN), '00:00');
+    assert.equal(formatHourOfDay(Infinity), '00:00');
+    assert.equal(formatHourOfDay(-5), '00:00');
+    assert.equal(formatHourOfDay(100), '23:59');
+  });
 });

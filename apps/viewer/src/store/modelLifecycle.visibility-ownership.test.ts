@@ -17,14 +17,32 @@
  *
  * `purgeStaleEntityState` deliberately KEEPS the part of the user's X-ray /
  * isolation that still belongs to a surviving model and drops only the ids
- * burned with the replaced one. An unconditional clear inside `removeModel`
- * makes that filter dead code on its only production path, and "Sync from
- * source" silently wipes the user's X-ray.
- *
- * So the teardown is scoped by clash's OWN ownership record,
+ * burned with the replaced one. An unconditional CLEAR (nulling the channel
+ * outright) inside `removeModel` would make that filter dead code on its only
+ * production path, and "Sync from source" would silently wipe the user's
+ * X-ray. So the teardown is scoped by clash's OWN ownership record,
  * `clashVisibilityOwned` (clash slice), content-matched against the live
  * channel by `releaseOwnedClashVisibility` — the same predicate, on the same
  * record, that `useClash`'s run-start release uses.
+ *
+ * That is only half of `removeModel`'s job on the SAME channels, though.
+ * `purgeStaleEntityState` is chained after `removeModel` on exactly one
+ * caller — `syncSourceModel`'s reload path (syncSourceModel.ts:188-189). The
+ * two direct callers, `HierarchyPanel`'s delete button and the collab room
+ * teardown (`collabSlice.ts`), call `removeModel` alone: nothing downstream
+ * ever purges the ids the deleted model owned. Left unfiltered, a stale id
+ * dangles in the channel forever (`removeModel`, unlike `clearAllModels`,
+ * never resets `federationRegistry`'s offset counter, so the id can never be
+ * reassigned to a later model either) — and if EVERY id in an isolate/ghost
+ * set belonged to the removed model, the channel stays non-null while
+ * matching nothing in the survivors, hiding the entire remaining scene (the
+ * same "empty set is worse than stale" hazard `purgeStaleEntityState`'s own
+ * comment calls out). #2832 gave `removeModel` that filtering directly,
+ * mirroring `purgeStaleEntityState`'s survivor-range check. It runs AFTER the
+ * ownership-scoped release above (so a clash-owned channel is already gone or
+ * already left alone by the time it sees the channel) and only ever DROPS ids
+ * no surviving model can own — it does not blanket-clear, so it does not
+ * reopen the hazard the ownership scoping exists to prevent.
  *
  * The previous revision inferred ownership from `clashSelectedId` instead, and
  * that inference is wrong in both directions; the running reproductions live in
@@ -87,8 +105,12 @@ function installClashOwned(channel: 'ghost' | 'isolate', ids: number[]): void {
 }
 
 describe('removeModel leaves visibility state it does not own (#2654 second review)', () => {
-  it('KEEPS a user X-ray when no clash is focused — syncSourceModel purges it afterwards', () => {
-    // 12 belongs to modelA (removed), 10_012 to the surviving modelB.
+  it('PRUNES the id the removed model owned but KEEPS the id a surviving model owns', () => {
+    // 12 belongs to modelA (removed), 10_012 to the surviving modelB. No
+    // downstream purge follows a bare `removeModel` call (only the
+    // syncSourceModel reload path chains `purgeStaleEntityState` after it),
+    // so removeModel must do this filtering itself — a deleted-model id left
+    // unfiltered here never gets cleaned up.
     const ghost = new Set<number>([12, 10_012]);
     useViewerStore.setState({ ghostExceptEntities: ghost });
 
@@ -97,12 +119,12 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
     assert.notEqual(
       useViewerStore.getState().ghostExceptEntities,
       null,
-      'removeModel must not wipe a ghost it does not own — purgeStaleEntityState (syncSourceModel.ts:267-271) filters it to the non-stale part, and an unconditional clear one line earlier makes that dead code',
+      'removeModel must not wipe a ghost it does not own — the surviving id keeps the channel alive',
     );
     assert.deepEqual(
       [...(useViewerStore.getState().ghostExceptEntities ?? new Set())].sort((a, b) => a - b),
-      [12, 10_012].sort((a, b) => a - b),
-      'removeModel itself does no id filtering — that is the resync purge\'s job',
+      [10_012],
+      'removeModel prunes the id the removed model owned and keeps the id modelB still owns',
     );
   });
 
@@ -116,20 +138,29 @@ describe('removeModel leaves visibility state it does not own (#2654 second revi
     );
   });
 
-  it('KEEPS a ghost another owner installed even while a clash is SELECTED', () => {
+  it('KEEPS a ghost another owner installed even while a clash is SELECTED, pruned to the surviving id', () => {
     // The divergence the previous revision's gate could not see: a
     // highlight-mode focus leaves `clashSelectedId` set while owning neither
-    // channel, so the next owner's ghost is not clash's to clear.
+    // channel, so the next owner's ghost is not clash's to clear. 12 belongs
+    // to modelA (removed) and 10_034 to the surviving modelB, so the
+    // ownership-scoped release must leave the channel alone (proving a mere
+    // selection isn't treated as a claim) while the id-staleness prune still
+    // drops the id modelA owned.
     useViewerStore.setState({
       clashSelectedId: 'rule-1 modelA:12 modelB:34',
       clashVisibilityOwned: null,
-      ghostExceptEntities: new Set<number>([12, 34]),
+      ghostExceptEntities: new Set<number>([12, 10_034]),
     });
     useViewerStore.getState().removeModel('modelA');
     assert.notEqual(
       useViewerStore.getState().ghostExceptEntities,
       null,
       'a selection is not an ownership claim — clash disowns both channels in highlight mode',
+    );
+    assert.deepEqual(
+      [...(useViewerStore.getState().ghostExceptEntities ?? new Set())],
+      [10_034],
+      'the surviving id is kept; only the id the removed model owned is pruned',
     );
   });
 

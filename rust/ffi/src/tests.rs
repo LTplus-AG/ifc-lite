@@ -144,6 +144,13 @@ fn the_large_coordinate_threshold_is_bracketed_on_both_sides() {
     for (translation, should_shift) in [
         ([LARGE_COORD_THRESHOLD + 0.5, 0.0, 0.0], true),
         ([LARGE_COORD_THRESHOLD - 0.5, 0.0, 0.0], false),
+        // The "untouched" guard is strictly `<`: a translation sitting
+        // exactly on the threshold is NOT `< THRESHOLD`, so it falls through
+        // and shifts, same as anything past it. The two brackets above sit
+        // half a unit off the boundary in either direction, so neither can
+        // tell `<` from `<=` apart — both compile and pass identically
+        // either way. This closes that gap.
+        ([LARGE_COORD_THRESHOLD, 0.0, 0.0], true),
     ] {
         let [tx, ty, tz] = translation;
         let original = processing_result(

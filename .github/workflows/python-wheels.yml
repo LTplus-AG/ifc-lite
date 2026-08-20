@@ -13,6 +13,7 @@ on:
       - "rust/geometry/**"
       - "rust/export/**"
       - "rust/core/**"
+      - "rust-toolchain.toml"
       - ".github/workflows/python-wheels.yml"
   workflow_dispatch:
 
@@ -40,6 +41,17 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: "3.9"
+      # Install the pinned toolchain the way rustup honours rust-toolchain.toml's
+      # `components` list. maturin-action installs it with `rustup update
+      # <name>`, i.e. BY NAME, and a named install does not read the file's
+      # components -- so rust-src is absent and build-std fails with
+      # "lib/rustlib/src/rust/library/Cargo.lock does not exist". A file-based
+      # selection (`rustup show` inside the repo) installs the components.
+      # `before-script-linux` below only covers the manylinux container, and
+      # build-std runs on every platform.
+      - name: Setup Rust (pinned by rust-toolchain.toml, with components)
+        run: rustup show
+
       - name: Build wheel
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
         env:

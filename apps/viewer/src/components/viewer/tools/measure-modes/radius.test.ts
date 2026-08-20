@@ -236,3 +236,54 @@ describe('fitRadius — insufficient input', () => {
     assert.ok(MIN_RADIUS_POINTS === 3);
   });
 });
+
+describe('fitRadius — coincident points', () => {
+  // Three (or near-three) identical picks -- the real-world shape of a user
+  // clicking the same snap point twice by accident. `sagitta()` puts both of
+  // its span endpoints at the same point when every point is identical, so
+  // the chord has zero length and every point's distance from it is exactly
+  // 0 -- this is caught by the SAGITTA floor, the same "no-curvature" gate
+  // the collinear-run tests above exercise, well before the fit ever builds
+  // the Kasa normal-equation matrix. It is not the determinant-degeneracy
+  // guard (`Math.abs(det) < 1e-15`) that fires here: mutating that guard's
+  // threshold to `1e15` (so it refuses almost everything) leaves this
+  // exact-coincident case unchanged -- still refused via `no-curvature` with
+  // `sagittaM: 0` -- while it does turn the module's own "genuine arc" tests
+  // red, which confirms the determinant guard is real and reachable, just
+  // not on this input. See the RED/GREEN notes in the PR/commit for the
+  // verification.
+  const CENTER: Point3 = { x: 104.25, y: -18.7, z: 6.4 };
+
+  it('refuses three exactly-coincident points as having no curvature, not a fit error or a crash', () => {
+    const pts: Point3[] = [CENTER, CENTER, CENTER];
+    const r = fitRadius(pts);
+    assert.equal(r.kind, 'refused');
+    if (r.kind === 'refused') {
+      assert.equal(r.reason, 'no-curvature');
+      assert.equal(r.sagittaM, 0);
+    }
+    assert.ok(!('radiusM' in r));
+  });
+
+  it('refuses near-coincident points (float noise around one snap point) the same way', () => {
+    // The reachable real-world case: a user clicking twice on the same snap
+    // point, landing within float noise rather than exactly on it.
+    const jitter = 1e-9;
+    const pts: Point3[] = [
+      CENTER,
+      { x: CENTER.x + jitter, y: CENTER.y, z: CENTER.z },
+      { x: CENTER.x, y: CENTER.y + jitter, z: CENTER.z - jitter },
+    ];
+    const r = fitRadius(pts);
+    assert.equal(r.kind, 'refused');
+    if (r.kind === 'refused') {
+      assert.equal(r.reason, 'no-curvature');
+      assert.ok(r.sagittaM < SAGITTA_FLOOR_M, `sagitta ${r.sagittaM} should be under the floor`);
+    }
+  });
+
+  it('formats a coincident-points refusal as a stated non-measurement, not a number', () => {
+    const label = formatRadius(fitRadius([CENTER, CENTER, CENTER]));
+    assert.equal(label, 'Not circular (straight)');
+  });
+});

@@ -14,11 +14,12 @@
  *
  *   - a literal from a REAL FILE now decodes its directives (the first block);
  *   - a value written by this module's own `escapeStepString` still comes back
- *     byte-identical (the second block). That writer emits non-ASCII RAW and
- *     never emits a directive, so every `\\` it produces really is a doubled
- *     reverse solidus — and giving directives precedence in the scan is exactly
- *     what keeps `\\X2\\…` reading as the LITERAL text `\X2\…` rather than
- *     decoding to the character it would have meant unescaped.
+ *     byte-identical (the second block), including a value that merely LOOKS
+ *     like a directive: `escapeStepString` doubles every reverse solidus in
+ *     the caller's text, so `\X2\00FC\X0\` typed by a user becomes
+ *     `\\X2\\00FC\\X0\\` on disk, and giving directives precedence in the
+ *     scan is exactly what keeps that doubled form reading back as the
+ *     LITERAL text `\X2\00FC\X0\` rather than decoding to `ü`.
  *
  * Note how the fixtures are built. A source literal is spelled with explicit
  * `\\` in the TS string so the file says what bytes are on disk; the expected
@@ -91,9 +92,11 @@ describe('the escapeStepString / parseStepValue pair stays closed', () => {
     expect(roundTrip("it's")).toBe("it's");
   });
 
-  it('a non-ASCII value survives - the writer emits it RAW', () => {
-    // No directive is written, so nothing for the reader to decode; the point
-    // is that the reader must not invent one.
+  it('a non-ASCII value survives - the writer emits an \\X2\\ directive, not raw UTF-8', () => {
+    // ISO 10303-21 6.3.3.4 / buildingSMART's IFC string-encoding guidance:
+    // bytes outside decimal 32-126 must be a control directive, never a raw
+    // byte. `escapeStepString` now emits one; this checks the writer and
+    // reader still agree once it does.
     expect(roundTrip('Trümpler')).toBe('Trümpler');
   });
 

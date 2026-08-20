@@ -89,3 +89,16 @@ describe('generateHeader control-char handling', () => {
     expect(fileNameLine).not.toContain('Line2\n');
   });
 });
+
+describe('generateHeader non-ASCII encoding (ISO 10303-21 6.3.3.4)', () => {
+  // Same spec clause / buildingSMART guidance as the export package's
+  // `escapeStepString` test: a string literal's plain-text bytes are
+  // restricted to decimal 32-126; a byte outside that range must be a
+  // `\X2\`/`\X4\` control directive, never emitted raw.
+  it('encodes a BMP character in FILE_NAME as \\X2\\HHHH\\X0\\, not raw UTF-8', () => {
+    const header = generateHeader({ schema: 'IFC4', author: ['Trümpler'] });
+    const fileNameLine = header.split('\n').find((l) => l.startsWith('FILE_NAME'));
+    expect(fileNameLine).toContain('Tr\\X2\\00FC\\X0\\mpler');
+    expect(fileNameLine).not.toContain('Trümpler');
+  });
+});

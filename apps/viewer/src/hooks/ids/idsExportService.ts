@@ -244,7 +244,11 @@ function buildFailingElementsHTML(elements: FailingElement[], esc: typeof escape
 /** Render one requirement block: facet, description, pass/fail counts, and failing elements. */
 function buildRequirementGroupHTML(group: RequirementGroup, esc: typeof escapeHtml): string {
   const totalChecked = group.passed + group.failed;
-  const passRate = totalChecked > 0 ? Math.round((group.passed / totalChecked) * 100) : 100;
+  // Floor, not round, and deliberately: the validator floors every rate it
+  // publishes (validator.ts calculateSummary), and the in-app panel matches.
+  // Rounding here would also let 99.6% render as "100%" while elements are
+  // still failing, which is the one thing a compliance report must not do.
+  const passRate = totalChecked > 0 ? Math.floor((group.passed / totalChecked) * 100) : 100;
   const status = group.failed > 0 ? 'fail' : 'pass';
 
   return `<div class="req-group req-group-${status}">
@@ -333,13 +337,13 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
   }
   const totalChecksAtCheckLevel = checkPassed + checkFailed;
   const checkLevelPassRate =
-    totalChecksAtCheckLevel > 0 ? Math.round((checkPassed / totalChecksAtCheckLevel) * 100) : 100;
+    totalChecksAtCheckLevel > 0 ? Math.floor((checkPassed / totalChecksAtCheckLevel) * 100) : 100;
 
   const entityLevelPassRate = report.summary.overallPassRate;
 
   const specLevelPassRate =
     report.summary.totalSpecifications > 0
-      ? Math.round((report.summary.passedSpecifications / report.summary.totalSpecifications) * 100)
+      ? Math.floor((report.summary.passedSpecifications / report.summary.totalSpecifications) * 100)
       : 100;
 
   return `<!DOCTYPE html>
@@ -600,7 +604,7 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
       const reqGroups = requirementGroupsBySpec[i];
       const specCheckPassed = reqGroups.reduce((s, g) => s + g.passed, 0);
       const specCheckTotal = reqGroups.reduce((s, g) => s + g.passed + g.failed, 0);
-      const specCheckRate = specCheckTotal > 0 ? Math.round((specCheckPassed / specCheckTotal) * 100) : 100;
+      const specCheckRate = specCheckTotal > 0 ? Math.floor((specCheckPassed / specCheckTotal) * 100) : 100;
       return `
     <div class="spec ${spec.status === 'fail' ? 'open' : ''}" id="spec-${i}">
       <div class="spec-header" onclick="toggleSpec(${i})">

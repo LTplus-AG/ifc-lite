@@ -108,7 +108,9 @@ function makeReport(specResults: IDSSpecificationResult[]): IDSValidationReport 
       totalEntitiesChecked,
       totalEntitiesPassed,
       totalEntitiesFailed,
-      overallPassRate: totalEntitiesChecked > 0 ? Math.round((totalEntitiesPassed / totalEntitiesChecked) * 100) : 100,
+      // Mirrors validator.ts calculateSummary, which floors. Rounding here
+      // would make the fixture disagree with the thing it stands in for.
+      overallPassRate: totalEntitiesChecked > 0 ? Math.floor((totalEntitiesPassed / totalEntitiesChecked) * 100) : 100,
     },
     specificationResults: specResults,
   };
@@ -171,6 +173,25 @@ describe('buildReportHTML — requirement-level grouping', () => {
     assert.notEqual(checkRate, entityRate, 'check and entity rates must be shown independently, not conflated');
     assert.notEqual(entityRate, specRate, 'entity and specification rates must be shown independently, not conflated');
     assert.notEqual(checkRate, specRate, 'check and specification rates must be shown independently, not conflated');
+  });
+
+  it('floors every published rate, so a partly-failing model never reads as 100%', () => {
+    // 2 of 3 entities pass one requirement: 66.66..%. Math.round publishes 67.
+    // Every rate the validator publishes is floored (validator.ts
+    // calculateSummary), the in-app panel floors, and this export used to
+    // round -- a real divergence that shipped because no test here ever
+    // exercised a fractional rate; every other case is a clean 0% or 100%.
+    const req = makeRequirement('req-0', 'Wall must carry a Name');
+    const spec = makeSpecification('spec-0', 'Named walls', [req]);
+    const entities = [
+      makeEntity(1, [makeReqResult(req, 'pass')]),
+      makeEntity(2, [makeReqResult(req, 'pass')]),
+      makeEntity(3, [makeReqResult(req, 'fail', { failureReason: 'Name is not set' })]),
+    ];
+    const html = buildReportHTML(makeReport([makeSpecResult(spec, entities)]), 'en');
+
+    assert.equal(extractRate(html, 'Check pass rate'), 66, 'check rate rounded up');
+    assert.equal(extractRate(html, 'Entity pass rate'), 66, 'entity rate rounded up');
   });
 
   it('does not count a not_applicable requirement result as a pass', () => {

@@ -366,8 +366,12 @@ export interface ClashSlice {
   /**
    * Replace the entire clash config (presets + detection settings) and persist.
    * Used when activating a flavor/profile so each one carries its own rule-set.
+   *
+   * All-or-nothing: the two writes go to two independent localStorage keys, so
+   * a refused write (quota, or storage blocked entirely) is undone and nothing
+   * is committed to the store. Callers report `result.message`.
    */
-  applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
+  applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => SaveResult;
   clearClash: () => void;
 }
 
@@ -837,6 +841,34 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       }),
 
     applyClashFlavorConfig: ({ presets, settings }) => {
+      // Persist FIRST, commit only if both writes landed: a flavor whose config
+      // is shown as applied but was refused by storage silently reverts to the
+      // previous flavor's rules on the next reload.
+      //
+      // The two halves live under two independent localStorage keys and there is
+      // no transaction across them, so a half-landed apply (new rule set, old
+      // tolerances) is reachable. That state is not one the user can reason
+      // about or even see is wrong, so it is undone rather than committed.
+      // Presets go first because `savePresets` rejects an over-cap rule set
+      // before it touches storage, which makes the common failure a clean no-op.
+      const previousPresets = get().clashPresets;
+      const presetsResult = savePresets(presets);
+      if (!presetsResult.ok) return presetsResult; // nothing written, nothing to undo
+
+      const settingsResult = saveSettings(settings);
+      if (!settingsResult.ok) {
+        // Put the previous rule set back so storage matches the store we are
+        // about to leave untouched. This rewrites a payload that fit a moment
+        // ago, in place of the one that just replaced it, so it should land; if
+        // it does not there is no further recovery, and the caller still reports
+        // the original failure.
+        const undo = savePresets(previousPresets);
+        if (!undo.ok) {
+          console.warn('[clash] flavor apply: could not restore the previous rule set:', undo.message);
+        }
+        return settingsResult;
+      }
+
       const state = get();
       set({
         clashPresets: presets,
@@ -858,9 +890,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
           false,
         ),
       });
-      // Persist so the activated flavor's config becomes the working set on reload.
-      savePresets(presets);
-      saveSettings(settings);
+      return { ok: true };
     },
 
     clearClash: () =>

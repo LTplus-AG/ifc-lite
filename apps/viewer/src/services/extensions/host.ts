@@ -484,7 +484,16 @@ export class ExtensionHostService {
       const config = deserializeClashConfig((target.settings as Record<string, unknown> | undefined)?.clash);
       if (config) {
         const { useViewerStore } = await import('@/store');
-        useViewerStore.getState().applyClashFlavorConfig(config);
+        const applied = useViewerStore.getState().applyClashFlavorConfig(config);
+        // The slice leaves the previous clash config in place when the write is
+        // refused, so there is nothing to undo here — only a reason to report.
+        // This service is deliberately free of UI deps (see the late imports
+        // above), and throwing would abort the sidebar restore below and mark
+        // the whole switch as failed, which it was not; a warning is what is
+        // available at this layer.
+        if (!applied.ok) {
+          console.warn('[ext-host] clash config was not persisted on switch:', applied.message);
+        }
       }
     } catch (err) {
       console.warn('[ext-host] clash restore on switch failed:', err);

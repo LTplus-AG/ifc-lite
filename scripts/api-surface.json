@@ -1303,6 +1303,7 @@
     "buildColorRaster: function",
     "buildOpeningRelationships: function",
     "calculateDrawingTransform: function",
+    "calculateDrawingTransformForAxis: function",
     "calculateOptimalDivisions: function",
     "calculateOptimalScaleBarLength: function",
     "calculateViewportBounds: function",

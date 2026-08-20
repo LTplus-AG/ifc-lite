@@ -132,3 +132,16 @@ describe('wrapEntrySource — entryFnName validation', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('wrapEntrySource — nested banned constructs', () => {
+  it('rejects dynamic import() hidden inside a function body', () => {
+    const r = wrapEntrySource(
+      'function activate(ctx) { import("node:fs").then(fs => console.log(fs)); }',
+      { entryFnName: 'activate' },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.some((e) => e.message.toLowerCase().includes('import'))).toBe(true);
+    }
+  });
+});

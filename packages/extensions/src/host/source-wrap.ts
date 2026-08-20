@@ -40,6 +40,7 @@
  */
 
 import * as acorn from 'acorn';
+import * as walk from 'acorn-walk';
 import type { ValidationError, ValidationResult } from '../types.js';
 
 export interface SourceWrapOptions {
@@ -139,43 +140,61 @@ if (typeof ${entryFn} === 'function') {
 })()`;
 }
 
-interface MaybeNode {
-  type: string;
-  body?: MaybeNode[];
-  source?: { value: unknown };
-}
-
 /**
- * Walk the top-level program body looking for constructs we do not
- * support in v1. Returns one ValidationError per offending node.
+ * Walk the *entire* AST — including nested function bodies, arrow
+ * bodies, class methods, and blocks — looking for constructs we do
+ * not support in v1. Returns one ValidationError per offending node.
+ *
+ * Static `import`/`export` declarations are only legal at the top
+ * level of a module per the ECMAScript grammar, so acorn can never
+ * produce them elsewhere; they're included here via the same walk
+ * for a single code path rather than because nesting is possible.
+ * Dynamic `import(...)`, in contrast, is an expression and CAN appear
+ * anywhere an expression can — nested inside a function body, an
+ * arrow, a class method, etc. — which is exactly the gap this walk
+ * closes: the previous top-level-only scan missed it entirely.
  */
 function checkBannedConstructs(ast: acorn.Node): ValidationError[] {
   const errors: ValidationError[] = [];
-  const body = (ast as MaybeNode).body ?? [];
-  for (const node of body) {
-    if (!node || typeof node !== 'object') continue;
-    switch (node.type) {
-      case 'ImportDeclaration':
-        errors.push({
-          path: '',
-          code: 'invalid_value',
-          message: 'Top-level `import` statements are not supported in extension entry scripts.',
-          hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
-        });
-        break;
-      case 'ExportNamedDeclaration':
-      case 'ExportDefaultDeclaration':
-      case 'ExportAllDeclaration':
-        errors.push({
-          path: '',
-          code: 'invalid_value',
-          message: 'Top-level `export` statements are not supported in extension entry scripts.',
-          hint: 'Define the entry function as a top-level declaration (e.g. `async function activate(ctx) {…}`) without `export`.',
-        });
-        break;
-    }
-  }
+
+  walk.simple(ast, {
+    ImportDeclaration() {
+      errors.push({
+        path: '',
+        code: 'invalid_value',
+        message: '`import` statements are not supported in extension entry scripts.',
+        hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
+      });
+    },
+    ExportNamedDeclaration() {
+      errors.push(exportError());
+    },
+    ExportDefaultDeclaration() {
+      errors.push(exportError());
+    },
+    ExportAllDeclaration() {
+      errors.push(exportError());
+    },
+    ImportExpression() {
+      errors.push({
+        path: '',
+        code: 'invalid_value',
+        message: 'Dynamic `import(...)` is not supported in extension entry scripts.',
+        hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
+      });
+    },
+  });
+
   return errors;
+}
+
+function exportError(): ValidationError {
+  return {
+    path: '',
+    code: 'invalid_value',
+    message: '`export` statements are not supported in extension entry scripts.',
+    hint: 'Define the entry function as a top-level declaration (e.g. `async function activate(ctx) {…}`) without `export`.',
+  };
 }
 
 function fail(

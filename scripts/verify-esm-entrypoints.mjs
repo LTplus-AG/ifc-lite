@@ -99,6 +99,7 @@ function discoverPublishablePackages() {
         name: pkg.name,
         dir,
         skip: `entry missing on disk: ${entry} (did you run \`pnpm build\` first?)`,
+        unbuilt: true,
       });
       continue;
     }
@@ -232,6 +233,23 @@ function main() {
   console.log(
     `${testable.length - failures.length} passed, ${failures.length} failed, ${skipped.length} skipped`
   );
+
+  // An "entry missing on disk" skip means the package was never built, not
+  // that its ESM entry point is fine — this script's whole purpose is to
+  // load the BUILT artifact through Node's resolver. Treating a wholesale
+  // unbuilt tree as "skipped" let a bypass-turbo/pre-build run print "0
+  // failed" and exit 0 without importing a single package: absence
+  // misread as success (see AGENTS.md, unbuilt/stale workspace sibling).
+  // Fail closed instead, the same way `pnpm build` is a hard precondition
+  // for this script's one caller (`pnpm release`).
+  const unbuilt = skipped.filter((p) => p.unbuilt);
+  if (unbuilt.length) {
+    console.error(
+      `\n${unbuilt.length} package(s) were skipped only because they are unbuilt, not because ` +
+        'their ESM entry is verified fine. Run `pnpm build` first, then re-run `pnpm test:esm`.\n'
+    );
+    process.exit(1);
+  }
 
   if (failures.length) {
     console.error('\nESM smoke test failed. Most likely cause: a relative import in one');

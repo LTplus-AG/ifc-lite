@@ -266,6 +266,14 @@ describe('applyClashFlavorConfig - only commit a config that actually persisted'
     assert.strictEqual(recovered.ok, false);
     // Pin the premise: this really is the consistent outcome.
     assert.deepStrictEqual(storedCustomIds(storage), [OLD_CUSTOM_ID]);
+    // Pin this half too: "not the stranded reason" would also hold if the
+    // recovered case started reporting some third value, which would be its
+    // own lie. It is an ordinary refused settings write and says so.
+    assert.strictEqual(
+      !recovered.ok && recovered.reason,
+      'quota',
+      'a recovered rollback is just a refused settings write: it carries that write reason',
+    );
 
     // Scenario B: the disk is full, so the settings write AND the rollback both
     // throw and storage is left holding the hybrid. Rebuild from scratch so
@@ -312,6 +320,65 @@ describe('applyClashFlavorConfig - only commit a config that actually persisted'
     // replace the enriched message the console warning relies on.
     assert.ok(
       !stranded.ok && /previous rule set could also not be restored/.test(stranded.message),
+    );
+  });
+
+  /**
+   * ...and the mirror of that: `rollback_failed` must not be raised when
+   * storage is provably intact.
+   *
+   * A flavor can carry a rule set that serializes to exactly what is already
+   * stored while differing only in its tolerances — flavors that share a rule
+   * set and tune the thresholds around it. Then the "presets write" that lands
+   * rewrites the same bytes, so when the settings write and the rollback both
+   * fail there is nothing stranded: both keys still hold what they held before
+   * the apply. Inferring inconsistency from the undo write throwing, without
+   * asking whether the first write changed anything, reports the strongest
+   * "saved data may no longer match" signal over untouched storage.
+   */
+  it('does not claim a failed rollback stranded anything when the rule set never changed', () => {
+    // The rule set the flavor carries is the one already in storage; only the
+    // settings differ. `savePresets` will rewrite byte-for-byte what is there.
+    const sameRuleSet = [customPreset(OLD_CUSTOM_ID, 'Rule from the previous flavor')];
+    const presetsBefore = storage.getItem(PRESETS_KEY);
+    const settingsBefore = storage.getItem(SETTINGS_KEY);
+
+    // Genuine quota exhaustion: the presets write lands, then the settings
+    // write and the rollback's presets write both throw.
+    storage.failAfterWrites = 1;
+
+    const result = state.applyClashFlavorConfig({
+      presets: sameRuleSet,
+      settings: FLAVOR_SETTINGS,
+    });
+
+    assert.strictEqual(result.ok, false, 'the settings write was still refused');
+    // Pin the premise on BOTH keys: storage is byte-identical to before the
+    // apply, so there is no hybrid to warn about. Comparing raw bytes, not
+    // parsed shapes, because bytes are what a reload rehydrates.
+    assert.strictEqual(
+      storage.getItem(PRESETS_KEY),
+      presetsBefore,
+      'the rule set on disk must be untouched — the write that landed rewrote it identically',
+    );
+    assert.strictEqual(
+      storage.getItem(SETTINGS_KEY),
+      settingsBefore,
+      'the settings write never landed, so that key must be untouched too',
+    );
+    // ...and the store never moved either.
+    assert.ok(state.clashPresets.some((p) => p.id === OLD_CUSTOM_ID));
+    assert.strictEqual(state.clashTolerance, OLD_SETTINGS.tolerance);
+
+    assert.notStrictEqual(
+      !result.ok && result.reason,
+      'rollback_failed',
+      'storage is intact on both keys, so the "storage may be inconsistent" reason is a lie',
+    );
+    assert.strictEqual(
+      !result.ok && result.reason,
+      'quota',
+      'this is an ordinary refused settings write: the reason is the settings write reason',
     );
   });
 

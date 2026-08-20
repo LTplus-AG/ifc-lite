@@ -66,6 +66,11 @@ export interface ClashGlobalSettings {
  * changed"; this one means storage is now holding a mix the user never chose,
  * so it is the one value a caller must be able to tell apart without reading
  * the message.
+ *
+ * A failed undo is necessary but not sufficient: if the write being undone
+ * rewrote the bytes that were already there, nothing was stranded and the
+ * caller reports the refused write's own reason instead. See
+ * `presetsStoreIdentically`.
  */
 export type ClashSaveFailureReason =
   | 'quota'
@@ -259,6 +264,36 @@ export function presetsToStore(presets: ClashPreset[]): ClashPreset[] {
   ];
 }
 
+/**
+ * The exact string `savePresets` hands to `localStorage.setItem`, or null if
+ * the rule set cannot be serialized. The single source of those bytes, so a
+ * caller comparing two rule sets compares what would actually be written.
+ */
+function presetsPayload(presets: ClashPreset[]): string | null {
+  try {
+    return JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: presetsToStore(presets) });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether storing `a` and storing `b` would write the same bytes under the
+ * presets key — i.e. whether replacing `a` with `b` is a no-op on disk.
+ *
+ * Built through `presetsPayload`, the same function `savePresets` writes from,
+ * so this cannot drift from the real payload the way a structural or reference
+ * comparison could: `presetsToStore` drops built-ins that match their default,
+ * so two rule sets that differ as arrays can still store identically.
+ *
+ * A rule set that fails to serialize is reported as differing from everything,
+ * including itself: nothing can be concluded about bytes that cannot be built.
+ */
+export function presetsStoreIdentically(a: ClashPreset[], b: ClashPreset[]): boolean {
+  const payloadA = presetsPayload(a);
+  return payloadA !== null && payloadA === presetsPayload(b);
+}
+
 /** Persist only custom presets + modified built-ins (quota-safe). */
 export function savePresets(presets: ClashPreset[]): SaveResult {
   if (unwritableKeys.has(PRESETS_KEY)) return refuseOverwrite('clash rules');
@@ -266,11 +301,8 @@ export function savePresets(presets: ClashPreset[]): SaveResult {
   if (custom.length > MAX_PRESETS) {
     return { ok: false, reason: 'too_many', message: `Too many custom rules (max ${MAX_PRESETS}).` };
   }
-  const toStore = presetsToStore(presets);
-  let payload: string;
-  try {
-    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: toStore });
-  } catch {
+  const payload = presetsPayload(presets);
+  if (payload === null) {
     return { ok: false, reason: 'serialize', message: 'Could not serialize clash rules.' };
   }
   try {

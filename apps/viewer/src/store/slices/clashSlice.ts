@@ -50,6 +50,7 @@ import {
   loadReviews,
   loadSettings,
   saveExclusions,
+  presetsStoreIdentically,
   savePresets,
   saveReviews,
   saveSettings,
@@ -861,7 +862,16 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         // about to leave untouched. This rewrites a payload that fit a moment
         // ago, in place of the one that just replaced it, so it should land.
         const undo = savePresets(previousPresets);
-        if (!undo.ok) {
+        // A failed undo only strands something if the write it was undoing
+        // actually changed the stored bytes. A flavor can carry the rule set
+        // that is already stored and differ only in its tolerances, and then
+        // the presets write rewrote the same payload: storage still holds the
+        // previous rule set beside the previous settings, which is exactly
+        // what the store holds, so this is an ordinary refused settings write.
+        // `presetsStoreIdentically` compares the payloads `savePresets` itself
+        // builds, not the arrays, because `presetsToStore` drops unmodified
+        // built-ins — two rule sets that differ as arrays can store the same.
+        if (!undo.ok && !presetsStoreIdentically(previousPresets, presets)) {
           // The rollback failed too — realistic, since genuine quota exhaustion
           // (as opposed to one blocked key) leaves the disk full for the next
           // write as well. The store is still correct: nothing below this

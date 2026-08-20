@@ -141,6 +141,59 @@ function buildScanSectionSvg(
   return svg;
 }
 
+/**
+ * Rasterize an SVG string to a PNG data URL at `dpi`, sized to exactly
+ * `widthMm` x `heightMm` on paper (issues #2941/#2942). The sheet frame,
+ * title block and scale bar only exist inside `generateSheetSVG` — SVG,
+ * Print and the DXF-underlay path all render that exact string and the
+ * reporter confirmed those are correct. Rather than re-deriving a second,
+ * independent sheet layout for jsPDF's vector primitives (the "v1" PDF path
+ * below did exactly that and dropped the frame/scale bar entirely, and used
+ * `displayOptions.scale` instead of the sheet's own scale), rasterize the
+ * SAME svg the working exporters use so the PDF cannot drift from them.
+ */
+function rasterizeSvgToPngDataUrl(
+  svgString: string,
+  widthMm: number,
+  heightMm: number,
+  dpi = 300,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const pxPerMm = dpi / 25.4;
+    const widthPx = Math.max(1, Math.round(widthMm * pxPerMm));
+    const heightPx = Math.max(1, Math.round(heightMm * pxPerMm));
+
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = widthPx;
+        canvas.height = heightPx;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('Canvas 2D context unavailable');
+        // The sheet SVG already paints its own white background rect, but a
+        // canvas starts transparent — belt-and-braces against a transparent
+        // PDF page if that rect is ever clipped away.
+        ctx.fillStyle = '#FFFFFF';
+        ctx.fillRect(0, 0, widthPx, heightPx);
+        ctx.drawImage(img, 0, 0, widthPx, heightPx);
+        resolve(canvas.toDataURL('image/png'));
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Failed to rasterize sheet SVG'));
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Failed to load sheet SVG for PDF export'));
+    };
+    img.src = url;
+  });
+}
+
 interface UseDrawingExportParams {
   drawing: Drawing2D | null;
   displayOptions: {
@@ -895,6 +948,50 @@ function useDrawingExport({
   // see the PR description.
   const handleExportPDF = useCallback((scaleFactor?: number) => {
     if (!drawing) return;
+
+    // Drawing Sheet mode (#2941: frame/title block/scale bar missing from
+    // the PDF; #2942: nothing in the PDF is to scale). Root cause for both:
+    // this handler never checked `sheetEnabled`/`activeSheet` at all — it
+    // always ran the raw-drawing "v1" path below, which lays the cut
+    // geometry onto a page sized by `computePdfSectionLayout` (fit-to-page)
+    // at `displayOptions.scale` (the on-screen "as displayed" scale), never
+    // the sheet's own paper size (activeSheet.paper, see
+    // generateSheetSVG at line ~567) or its own scale
+    // (activeSheet.scale.factor, generateSheetSVG line ~576). SVG/DXF/Print
+    // all branch on `sheetEnabled && activeSheet` (e.g. handleExportSVG
+    // above); PDF alone didn't. Reuse the already-correct sheet SVG instead
+    // of re-deriving a second sheet layout for jsPDF's vector primitives.
+    if (sheetEnabled && activeSheet) {
+      const svg = generateSheetSVG();
+      if (!svg) return;
+      const { widthMm, heightMm } = activeSheet.paper;
+      void (async () => {
+        try {
+          const { jsPDF } = await import('jspdf');
+          const pngDataUrl = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
+          const doc = new jsPDF({
+            unit: 'mm',
+            format: [widthMm, heightMm],
+            orientation: widthMm >= heightMm ? 'landscape' : 'portrait',
+          });
+          doc.addImage(pngDataUrl, 'PNG', 0, 0, widthMm, heightMm);
+
+          const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
+          downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
+          posthog.capture('drawing_exported', {
+            format: 'pdf',
+            axis: sectionPlane.axis,
+            scale_factor: activeSheet.scale.factor,
+            sheet_enabled: true,
+          });
+        } catch (err) {
+          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; this hook has no toast wiring.
+          alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
+        }
+      })();
+      return;
+    }
+
     const effectiveScale = scaleFactor ?? displayOptions.scale ?? 100;
 
     // Axis-specific flipping, matching the SVG "as displayed" export above.
@@ -1004,7 +1101,7 @@ function useDrawingExport({
         alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
       }
     })();
-  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane]);
+  }, [drawing, displayOptions.scale, displayOptions.showHiddenLines, sectionPlane, sheetEnabled, activeSheet, generateSheetSVG]);
 
   // Print handler
   const handlePrint = useCallback(() => {

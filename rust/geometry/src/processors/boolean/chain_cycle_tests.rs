@@ -748,3 +748,68 @@ fn a_long_acyclic_boolean_csg_chain_terminates() {
         "expected the chain bound to be named, got: {err}"
     );
 }
+
+/// `IfcCsgSolid.TreeRootExpression` may not be another `IfcCsgSolid` (IFC 4.3
+/// `IfcCsgSelect`), and `CsgSolidProcessor` rejects it. Nothing asserted that
+/// anywhere, which mattered while the path bound counted boolean ids only and
+/// leaned on this rejection to keep the frame count bounded. The bound now
+/// counts CSG ids too, so this is a plain spec check again — but a "be lenient
+/// about nested CsgSolid" change is a plausible bad-exporter fix, and it should
+/// fail here rather than in whatever it silently un-bounds.
+#[test]
+fn a_csg_solid_rooted_in_another_csg_solid_is_rejected() {
+    let content = wrap_ifc(
+        "#10=IFCCSGSOLID(#20);\n\
+         #20=IFCCSGSOLID(#30);\n\
+         #30=IFCBLOCK($,1.,1.,1.);\n",
+    );
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(10).expect("decode #10");
+    let processor = crate::processors::CsgSolidProcessor::new();
+    let schema = IfcSchema::new();
+    let err = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect_err("IfcCsgSolid -> IfcCsgSolid is a spec violation and must be refused");
+    assert!(
+        err.to_string().contains("not another IfcCsgSolid"),
+        "the rejection must name what it rejected, got: {err}"
+    );
+}
+
+/// Pins that the path bound counts EVERY frame, not just the boolean ones.
+///
+/// An alternating `Boolean -> Csg -> Boolean` chain puts two entities on the
+/// stack per level. Counting booleans only, 50 levels reads as 50 against a
+/// bound of 64 and is accepted while actually standing 100 frames deep — the
+/// bound silently means twice its own number. Counting both, the same chain
+/// crosses 64 and is refused.
+///
+/// This is the assertion that was missing when an earlier revision dropped the
+/// CSG-side insert: at the time, removing it changed no test, which read as
+/// "redundant" and was really "unpinned".
+#[test]
+fn the_path_bound_counts_csg_frames_too_not_only_booleans() {
+    let n: u32 = 50;
+    let mut data = String::new();
+    for i in 0..n {
+        let b = 1 + i * 2;
+        let c = 2 + i * 2;
+        let next_b = if i + 1 == n { 90000 } else { 1 + (i + 1) * 2 };
+        data.push_str(&format!("#{b}=IFCBOOLEANRESULT(.DIFFERENCE.,#{c},#90001);\n"));
+        data.push_str(&format!("#{c}=IFCCSGSOLID(#{next_b});\n"));
+    }
+    data.push_str("#90000=IFCBLOCK($,1.,1.,1.);\n#90001=IFCBLOCK($,1.,1.,1.);\n");
+
+    let content = wrap_ifc(&data);
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(1).expect("decode #1");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let err = processor
+        .process(&entity, &mut decoder, &schema, Default::default())
+        .expect_err("100 stack frames must cross a 64-frame bound");
+    assert!(
+        err.to_string().contains("operand chain exceeds"),
+        "the path bound must be what stops it, got: {err}"
+    );
+}

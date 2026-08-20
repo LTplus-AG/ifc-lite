@@ -41,17 +41,19 @@ const MAX_BOOLEAN_DEPTH: u32 = 10;
 /// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
 /// stack where `MAX_BOOLEAN_DEPTH` cannot: see `process_with_depth`.
 ///
-/// Counted from the visited set, which holds BOOLEAN ids only -- CSG nodes are
-/// not inserted. That still bounds the true frame count, but only because
-/// `CsgSolidProcessor` rejects `IfcCsgSolid -> IfcCsgSolid` outright as a spec
-/// violation: no path can chain CSG nodes, so every one is followed by a
-/// boolean or terminates at a primitive, and `#CSG <= #Boolean + 1`. The real
-/// cap is therefore ~2x this number of frames.
-///
-/// That is a load-bearing dependency on a guard in another file, written down
-/// here because nothing else links them. If that rejection is ever relaxed,
-/// this bound has to start counting CSG ids too (CodeRabbit, #2870 review).
+/// Both boolean AND CSG nodes go into the set, so `len()` is an honest count of
+/// recursion frames on the current path and this number means what it says. An
+/// earlier revision counted booleans only and leaned on `IfcCsgSolid ->
+/// IfcCsgSolid` being rejected elsewhere to keep the ratio bounded; see
+/// `CsgSolidProcessor::process_with_boolean_cycle_guard` for why that was the
+/// wrong trade.
 const MAX_OPERAND_PATH_NODES: usize = 64;
+
+/// Entity ids on the CURRENT operand path — inserted on the way in, removed on
+/// the way out, so `len()` is live recursion depth. The two accumulate-only
+/// sets in this file (`collect_polygonal_chain`'s, and the spine walk's
+/// `spine_seen`) are NOT frame counts and must not be compared to the bound.
+pub(crate) type OperandPath = rustc_hash::FxHashSet<u32>;
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
@@ -155,7 +157,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         match operand.ifc_type {
             IfcType::IfcExtrudedAreaSolid => {
@@ -410,7 +412,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Option<Mesh>> {
         let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
         if cutters.len() < 2 {
@@ -620,7 +622,7 @@ impl BooleanClippingProcessor {
         schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         // PATH-scoped, not global: a boolean tree is a DAG and geometry
         // ACCUMULATES, so one operand legitimately referenced down two
@@ -666,7 +668,7 @@ impl BooleanClippingProcessor {
         _schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         // Depth limit to prevent stack overflow from nested boolean operands
         if depth > MAX_BOOLEAN_DEPTH {
@@ -776,7 +778,7 @@ impl BooleanClippingProcessor {
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         let operator = Self::boolean_operator(entity);
 
@@ -974,7 +976,7 @@ impl GeometryProcessor for BooleanClippingProcessor {
         schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let mut visited = std::collections::HashSet::new();
+        let mut visited = OperandPath::default();
         self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
     }
 

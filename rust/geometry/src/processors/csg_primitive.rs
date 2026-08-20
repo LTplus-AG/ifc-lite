@@ -10,6 +10,7 @@
 //! (`IfcRectangularPyramid`, `IfcRightCircularCone`, `IfcRightCircularCylinder`)
 //! are not yet implemented.
 
+use super::boolean::OperandPath;
 use crate::extrusion::apply_transform;
 use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -132,11 +133,13 @@ impl CsgSolidProcessor {
     /// forever with depth never passing 1 — and a stack overflow ABORTS in
     /// Rust, so nothing could turn it into a load error (#2866).
     ///
-    /// This does not insert `entity.id` itself: every cycle must pass through
-    /// an `IfcBooleanResult` (`IfcCsgSolid -> IfcCsgSolid` is rejected below),
-    /// so the insert in `process_with_depth` breaks all of them. A second one
-    /// here was written first and removed once mutation testing showed that
-    /// with both present, deleting EITHER left every test green.
+    /// The CSG id is inserted too, path-scoped like the boolean side, so
+    /// `visited.len()` is an honest frame count. An earlier revision omitted
+    /// it because deleting either insert left every test green — which meant
+    /// neither was PINNED, not that one was redundant
+    /// (`the_path_bound_counts_csg_frames_too_not_only_booleans` now pins it).
+    /// Omitting it also made the `IfcCsgSolid -> IfcCsgSolid` rejection below
+    /// load-bearing for stack safety instead of a spec check.
     pub(crate) fn process_with_boolean_cycle_guard(
         &self,
         entity: &DecodedEntity,
@@ -144,9 +147,17 @@ impl CsgSolidProcessor {
         schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
-        self.resolve_tree_root(entity, decoder, schema, depth, quality, visited)
+        if !visited.insert(entity.id) {
+            return Err(Error::geometry(format!(
+                "Cyclic boolean/CSG operand reference at #{}",
+                entity.id
+            )));
+        }
+        let out = self.resolve_tree_root(entity, decoder, schema, depth, quality, visited);
+        visited.remove(&entity.id);
+        out
     }
 
     /// Shared body of `process` and `process_with_boolean_cycle_guard`.
@@ -157,7 +168,7 @@ impl CsgSolidProcessor {
         schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
-        visited: &mut std::collections::HashSet<u32>,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
@@ -203,7 +214,7 @@ impl GeometryProcessor for CsgSolidProcessor {
     ) -> Result<Mesh> {
         // Top-level entry (the router registers this processor directly, so
         // this is the path a file whose Body item IS the IfcCsgSolid takes).
-        let mut visited = std::collections::HashSet::new();
+        let mut visited = OperandPath::default();
         self.resolve_tree_root(entity, decoder, schema, 0, quality, &mut visited)
     }
 
@@ -407,43 +418,5 @@ fn build_axis_aligned_box(x: f64, y: f64, z: f64) -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn axis_aligned_box_is_closed_and_has_outward_normals() {
-        let mesh = build_axis_aligned_box(2.0, 3.0, 4.0);
-        assert_eq!(mesh.positions.len() / 3, 24);
-        assert_eq!(mesh.indices.len() / 3, 12);
-
-        let mut min = [f32::INFINITY; 3];
-        let mut max = [f32::NEG_INFINITY; 3];
-        for chunk in mesh.positions.chunks_exact(3) {
-            for i in 0..3 {
-                min[i] = min[i].min(chunk[i]);
-                max[i] = max[i].max(chunk[i]);
-            }
-        }
-        assert_eq!(min, [0.0, 0.0, 0.0]);
-        assert_eq!(max, [2.0, 3.0, 4.0]);
-
-        // Each face's normal should match its outward axis.
-        let mut faces_seen = [false; 6];
-        for chunk in mesh.normals.chunks_exact(12) {
-            let nx = chunk[0];
-            let ny = chunk[1];
-            let nz = chunk[2];
-            let label = match (nx, ny, nz) {
-                (x, _, _) if x > 0.5 => 0,
-                (x, _, _) if x < -0.5 => 1,
-                (_, y, _) if y > 0.5 => 2,
-                (_, y, _) if y < -0.5 => 3,
-                (_, _, z) if z > 0.5 => 4,
-                (_, _, z) if z < -0.5 => 5,
-                _ => panic!("non-axial normal"),
-            };
-            faces_seen[label] = true;
-        }
-        assert!(faces_seen.iter().all(|&seen| seen), "missing a face");
-    }
-}
+#[path = "csg_primitive_tests.rs"]
+mod tests;

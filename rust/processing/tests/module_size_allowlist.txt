@@ -118,15 +118,15 @@
 # because csg_primitive.rs rejects IfcCsgSolid -> IfcCsgSolid, so #CSG <=
 # #Boolean + 1 -- a load-bearing dependency on a guard in another file, written
 # down at the constant because nothing else links them.
-     996 rust/geometry/src/processors/boolean/mod.rs
+# +2: #2866 review — the CSG id now goes into the path set too, so
+# MAX_OPERAND_PATH_NODES counts every frame instead of half of them and no
+# longer leans on a rejection in another file.
+     998 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
-# +47: #2866 — the CSG half of the same fix. `process` splits into a shared
-# `resolve_tree_root` plus `process_with_boolean_cycle_guard`, the entry that
-# carries the caller's depth and visited set across the hop instead of starting
-# a fresh processor. The existing IfcCsgSolid -> IfcCsgSolid rejection here was
-# written against exactly this attack and is one hop wide; the comment now says
-# so, next to the guard it does not cover.
-     449 rust/geometry/src/processors/csg_primitive.rs
+# -27: #2866 — the Boolean<->CSG cycle guard, with the module's tests moved to a
+# sibling csg_primitive_tests.rs. Budget refreshed DOWNWARD: the split more than
+# paid for the guard.
+     422 rust/geometry/src/processors/csg_primitive.rs
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs

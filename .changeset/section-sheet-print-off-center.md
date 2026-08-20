@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/drawing-2d": patch
+"@ifc-lite/drawing-2d": minor
 ---
 
 Fix a 2D-Section drawing sheet's print/export showing the drawing at a different, wrongly-centered position than the on-screen preview.

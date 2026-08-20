@@ -36,6 +36,15 @@ import type {
   DxfUnderlayText,
 } from './types.js';
 
+/**
+ * US Survey Foot, defined exactly as 1200/3937 m (≈ 0.3048006096012192 m).
+ * This is ~2ppm larger than the international foot (0.3048 m exactly) —
+ * the entire reason it is a distinct $INSUNITS code. Survey inch/yard/mile
+ * below are derived from this constant, not from the international foot,
+ * so that distinction isn't silently thrown away.
+ */
+const US_SURVEY_FOOT_METRES = 1200 / 3937;
+
 /** $INSUNITS → metres. Unknown codes fall back to 1 with a warning. */
 const INSUNITS_TO_METRES: Record<number, number> = {
   0: 1, // unitless: assume metres (adjustable via placement scale)
@@ -55,6 +64,14 @@ const INSUNITS_TO_METRES: Record<number, number> = {
   14: 0.1, // decimetres
   15: 10, // decametres
   16: 100, // hectometres
+  17: 1e9, // gigametres
+  18: 1.495978707e11, // astronomical units (IAU 2012 exact definition)
+  19: 9.4607304725808e15, // light years (Julian light year, exact)
+  20: 3.0856775814913673e16, // parsecs (IAU 2015 exact definition)
+  21: US_SURVEY_FOOT_METRES, // US Survey Feet
+  22: US_SURVEY_FOOT_METRES / 12, // US Survey Inch
+  23: US_SURVEY_FOOT_METRES * 3, // US Survey Yard
+  24: US_SURVEY_FOOT_METRES * 5280, // US Survey Mile
 };
 
 /** Recursion guard for nested INSERTs. */

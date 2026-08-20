@@ -100,6 +100,14 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
+  // Collab role gate: CSV import writes straight to the mutation view (via
+  // csvConnector.importAsync), bypassing the store's own setProperty action
+  // (and its canCollabEdit() check) entirely — same gap as BulkPropertyEditor,
+  // and the same fix: gate this component itself the way MainToolbar/AuthorTab
+  // gate Edit mode. null role = single-user, always editable.
+  const collabEditRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession =
+    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -434,7 +442,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   // Import using CsvConnector.importAsync for non-blocking progress
   const handleImport = useCallback(async () => {
-    if (!csvConnector || !csvContent) return;
+    if (!csvConnector || !csvContent || !canEditInSession) return;
 
     setIsProcessing(true);
     setImportStats(null);
@@ -468,7 +476,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [csvConnector, csvContent, buildDataMapping]);
+  }, [csvConnector, csvContent, canEditInSession, buildDataMapping]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -1014,6 +1022,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
           <Button
             onClick={handleImport}
             disabled={
+              !canEditInSession ||
               !csvConnector ||
               !csvContent ||
               !matchColumn ||
@@ -1021,6 +1030,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
               isProcessing ||
               !importDirty
             }
+            title={canEditInSession ? undefined : 'Editing requires editor access in this shared session'}
           >
             {isProcessing && importProgress ? (
               <>

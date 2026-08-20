@@ -122,6 +122,14 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
+  // Collab role gate: bulk edits reach the mutation view's setProperty/deleteProperty
+  // directly via BulkQueryEngine.applyAction, bypassing the store's own setProperty
+  // action (and its canCollabEdit() check) entirely — so this component must gate
+  // itself, the same way MainToolbar/AuthorTab gate Edit mode. null role = single-user,
+  // always editable.
+  const collabEditRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession =
+    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -557,7 +565,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
-    if (!queryEngine || liveMatchCount === 0) return;
+    if (!queryEngine || liveMatchCount === 0 || !canEditInSession) return;
 
     setIsExecuting(true);
     setExecuteResult(null);
@@ -622,7 +630,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, currentCriteria, buildAction, bumpMutationVersion]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, bumpMutationVersion]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -1030,7 +1038,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               </Button>
               <Button
                 onClick={handleExecute}
-                disabled={liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                disabled={!canEditInSession || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                title={canEditInSession ? undefined : 'Editing requires editor access in this shared session'}
               >
                 <Play className="h-4 w-4 mr-2" />
                 Apply to {liveMatchCount} entities

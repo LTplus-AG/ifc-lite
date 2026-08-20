@@ -195,8 +195,10 @@ const addRegularMesh = addRegularQuad;
 
 /** Registers a quad reachable ONLY via the batched path: `meshDataMap` has
  *  the CPU geometry (as any real batch does) but the mesh never goes through
- *  `addMesh`, and a fake `BatchedMesh` carrying its expressId is pushed into
- *  the scene's private `batchedMeshes` array — the same array `getBatchedMeshes()`
+ *  `addMesh`, and a fake `BatchedMesh` carrying its expressId AND modelIndex
+ *  (parallel arrays, matching `Scene.createBatchedMesh`'s real output) is
+ *  pushed into the scene's private `batchedMeshes` array — the same array
+ *  `getBatchedMeshes()`
  *  returns. Building a REAL GPU-backed batch would exercise the color-bucket
  *  pipeline, which is irrelevant to picking correctness (picking reads
  *  `meshDataMap` regardless of flat/batched origin); reaching into the
@@ -214,6 +216,7 @@ function addBatchedQuad(scene: Scene, quad: MeshData, batchId: number): void {
     indexCount: quad.indices.length,
     color: quad.color,
     expressIds: [quad.expressId],
+    modelIndices: [quad.modelIndex],
   };
   (scene as unknown as { batchedMeshes: BatchedMesh[] }).batchedMeshes.push(batch);
 }
@@ -478,12 +481,15 @@ describe('RaycastEngine.raycastScene', () => {
       assert.ok(hit!.intersection.distance < 35, `expected the near (model 0) piece, got distance ${hit!.intersection.distance}`);
     });
 
-    it('BATCHED path: two models sharing an expressId are NOT scoped by modelIndex — the far, off-ray model 0 piece is reachable through the near model 1 batch entry', () => {
-      // Reproduces the asymmetry: collectVisibleMeshData's batched branch
-      // calls pushVisiblePieces(expressId) with NO modelIndex (raycast-engine.ts,
-      // batched-mesh loop), so scene.getMeshDataPieces(expressId) returns
-      // EVERY model's pieces for that id — including one whose own batch
-      // entry never appears near this ray at all.
+    it('BATCHED path: two models sharing an expressId are scoped by modelIndex — the far, off-ray model 0 piece is NOT reachable through the near model 1 batch entry', () => {
+      // Batches group by colour, not by model (Scene.bucketBaseKey), so two
+      // federated models sharing an expressId AND colour can be co-batched.
+      // collectVisibleMeshData's batched branch must scope each batch ENTRY
+      // by its OWN modelIndex (BatchedMesh.modelIndices, parallel to
+      // expressIds) rather than calling pushVisiblePieces(expressId) with no
+      // modelIndex, which would let scene.getMeshDataPieces(expressId)
+      // return EVERY model's pieces for that id — including one whose own
+      // batch entry never appears near this ray at all.
       const scene = new Scene();
       // Model 0's own geometry for expressId 99 is far away and would MISS
       // this ray on its own.
@@ -494,34 +500,22 @@ describe('RaycastEngine.raycastScene', () => {
       const engine = engineFor(scene, orthoCameraLookingDownZ([0, 0, 0], 50));
       const hit = engine.raycastScene(400, 300);
 
-      // What SHOULD happen if the batched path were scoped like the regular
-      // path: only model 1's near piece is candidate geometry, so this hits
-      // at distance ~40 (camera at z=50, quad at z=10).
+      // Scoped correctly: only model 1's near piece is candidate geometry,
+      // so this hits at distance ~40 (camera at z=50, quad at z=10).
       assert.ok(hit, 'expected a hit through the near, on-ray batch entry');
       assert.equal(hit!.intersection.expressId, 99);
       assert.ok(
         hit!.intersection.distance < 100,
-        `VERDICT: batched-path modelIndex scoping holds in this construction — ` +
-        `only the near piece (distance ~40) was reachable, got ${hit!.intersection.distance}. ` +
-        `getMeshDataPieces(99) returned model 0's far piece too, but the BVH/raycaster ` +
-        `correctly preferred the nearer model-1 hit because BOTH pieces were candidates ` +
-        `and normal nearest-hit comparison picked the right one — cross-model bleed is ` +
-        `PRESENT (both pieces are in the candidate set) but not OBSERVABLE as a wrong pick ` +
-        `here, because the wrong-model piece also happens to be farther away.`,
+        `expected the near, on-ray piece (distance ~40), got ${hit!.intersection.distance}`,
       );
 
-      // The decisive check: does the candidate set itself contain model 0's
-      // far piece, independent of which one wins nearest-hit? Call the
-      // private collector directly (through raycastScene's own machinery is
-      // indirect for this) is not exposed, so instead prove it by moving
-      // model 0's piece to be NEARER than model 1's: if scoping held, model
-      // 1's batch entry (the only one enumerated via the batched-mesh loop's
-      // expressId) would still be the SOLE source of candidates and the pick
-      // would only ever be able to return model 1's geometry. If scoping is
-      // broken, model 0's now-nearer piece — reachable purely because
-      // getMeshDataPieces(99) with no modelIndex arg returns BOTH models'
-      // pieces — will win instead, even though model 0's OWN batch/mesh
-      // entry was never iterated for this ray at all.
+      // The decisive check: does the candidate set contain model 0's far
+      // piece at all? Prove it by moving model 0's piece to be NEARER than
+      // model 1's: with scoping fixed, model 1's batch entry (the only one
+      // enumerated via the batched-mesh loop's expressId+modelIndex pair) is
+      // the SOLE source of candidates, so the pick can only ever return
+      // model 1's geometry — even though model 0's now-nearer piece would
+      // win nearest-hit comparison if it were (wrongly) a candidate.
       const scene2 = new Scene();
       scene2.addMeshData(makeQuad({ expressId: 99, modelIndex: 0, translate: [0, 0, 20] })); // nearer to camera (z=50) than model 1 below
       addBatchedQuad(scene2, makeQuad({ expressId: 99, modelIndex: 1, translate: [0, 0, 10] }), 1);
@@ -529,20 +523,16 @@ describe('RaycastEngine.raycastScene', () => {
       const engine2 = engineFor(scene2, orthoCameraLookingDownZ([0, 0, 0], 50));
       const hit2 = engine2.raycastScene(400, 300);
       assert.ok(hit2, 'expected a hit');
-      // distance to z=20 piece is 30, to z=10 piece is 40. If model 0's
-      // z=20 piece (added via addMeshData ONLY, never through addMesh or a
-      // batch whose expressIds include it) is reachable and wins, that is
-      // direct, executed proof of the cross-model bleed: geometry that
-      // belongs to NO enumerated mesh or batch entry for this scene was
-      // still selected.
+      // distance to z=20 piece is 30, to z=10 piece is 40. Model 0's z=20
+      // piece was registered ONLY via addMeshData — never through addMesh
+      // nor through any batch.expressIds/modelIndices entry — so a correctly
+      // scoped batched path must never surface it as a candidate, and the
+      // pick must resolve to model 1's piece at distance ~40, NOT model 0's
+      // nearer-but-out-of-scope piece at distance ~30.
       assert.ok(
-        hit2!.intersection.distance < 35,
-        `cross-model bleed CONFIRMED: model 0's piece (registered only via addMeshData, ` +
-        `reachable through NO addMesh() and NO batch.expressIds entry) was selected ` +
-        `(distance ${hit2!.intersection.distance}). The batched-mesh loop in ` +
-        `collectVisibleMeshData calls pushVisiblePieces(expressId) with no modelIndex, ` +
-        `so getMeshDataPieces(99) returned pieces from BOTH models even though only ` +
-        `model 1 has an entry in batch.expressIds.`,
+        hit2!.intersection.distance > 35,
+        `cross-model bleed: model 0's out-of-scope piece (distance ~30) was selected ` +
+        `instead of model 1's own batch entry (distance ~40); got ${hit2!.intersection.distance}`,
       );
     });
   });

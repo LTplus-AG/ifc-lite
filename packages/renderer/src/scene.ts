@@ -2584,6 +2584,11 @@ export class Scene {
       this.sharedFrameOrigin = merged.origin;
     }
     const expressIds = meshDataArray.map(m => m.expressId);
+    // Parallel to `expressIds` (same index = same source piece) so picking
+    // can scope each batch ENTRY to its own model — batches group by colour,
+    // not by model, so distinct models sharing an expressId+colour can be
+    // co-batched (see BatchedMesh.modelIndices doc).
+    const modelIndices = meshDataArray.map(m => m.modelIndex);
 
     // Create vertex buffer (interleaved positions + normals)
     // Use mappedAtCreation to avoid a separate writeBuffer IPC round-trip
@@ -2688,6 +2693,7 @@ export class Scene {
       bindGroup,
       uniformBuffer,
       bounds: merged.bounds,
+      modelIndices,
       // Per-batch local frame: positions are stored relative to this; the draw
       // loop applies model = translate(origin) so they land in world space.
       origin: merged.origin,

@@ -72,6 +72,14 @@ export interface BatchedMesh {
   indexCount: number;
   color: [number, number, number, number];
   expressIds: number[];  // For picking - all expressIds in this batch
+  /** Per-entry modelIndex, parallel to `expressIds` (same index = same source
+   *  piece): batches group by colour (see Scene.bucketBaseKey), NOT by model,
+   *  so two federated models sharing an expressId AND colour can land in the
+   *  SAME batch as distinct entries. Picking must scope each entry by its own
+   *  modelIndex here rather than treating the batch as single-model. Absent
+   *  entries (or `undefined` values) mean "unscoped" for that entry — legacy
+   *  batches built before this field existed, or single-model scenes. */
+  modelIndices?: (number | undefined)[];
   bindGroup?: GPUBindGroup;
   uniformBuffer?: GPUBuffer;
   // Bounding box for frustum culling (optional) — WORLD space.

@@ -29,11 +29,22 @@
  * moves the cost outside the budget instead, so the tight 5000ms default keeps
  * doing its job.
  *
+ * The price, stated because it is not free: every test file now pays this,
+ * including the ten that touch none of these packages. Measured --
+ * `src/types.test.ts` goes 76ms -> 680ms, and the full suite at
+ * `--maxWorkers=2` (closer to a CI runner than a 12-core laptop) goes 1.61s ->
+ * 2.26s. Sub-second at CI-like concurrency, against a failure mode that took
+ * main red for an hour, so the trade is worth making -- but it is a trade.
+ *
  * `allSettled`, not `all`: `@ifc-lite/sandbox` is deliberately NOT a dependency
- * of the SDK, so its import rejects here exactly as it does for a consumer who
- * has not installed it. A namespace that cannot be warmed must not take the
- * suite down -- the warm-up is an optimisation, and every test still passes
- * without it, just closer to the timeout.
+ * of the SDK and never can be -- it depends on `@ifc-lite/sdk`, so adding it
+ * would be a cycle. Its import therefore rejects here permanently, exactly as
+ * it does for a consumer who has not installed it. It stays in the list so the
+ * drift test below keeps covering `sandbox.ts`, and so nobody "fixes" the
+ * omission later; it is inert by construction, not by accident. More generally,
+ * a namespace that cannot be warmed must not take the suite down -- the warm-up
+ * is an optimisation, and every test still passes without it, just closer to
+ * the timeout.
  */
 const LAZY_NAMESPACE_PACKAGES = [
   '@ifc-lite/ids',

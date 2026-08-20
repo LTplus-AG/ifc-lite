@@ -13,8 +13,10 @@ import type {
 
 const ids = new IDSNamespace();
 
-// `@ifc-lite/ids` is imported lazily by `loadIDS`; it is warmed for the whole
-// package in `vitest.setup.ts`, so no test here pays for it.
+// `@ifc-lite/ids` is imported lazily by `loadIDS`. It used to be warmed here
+// so the locale test below did not pay the cold import inside its own budget;
+// that cost was vite re-transforming built sibling output, and it is gone --
+// see `vitest.config.ts`.
 
 const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
 

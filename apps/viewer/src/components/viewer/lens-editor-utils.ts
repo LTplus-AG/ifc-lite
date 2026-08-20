@@ -283,6 +283,11 @@ function isImportableAutoColor(item: unknown): item is AutoColorSpec {
     || !(AUTO_COLOR_SOURCES as readonly string[]).includes(item.source)) return false;
   if (item.psetName !== undefined && typeof item.psetName !== 'string') return false;
   if (item.propertyName !== undefined && typeof item.propertyName !== 'string') return false;
+  // `includeUnclassified` (classification "unclassified bucket" opt-in) must
+  // be a boolean if present. A malformed value (string "true", 1, ...) fails
+  // the whole spec closed rather than being coerced — same discipline as the
+  // other fields above.
+  if (item.includeUnclassified !== undefined && typeof item.includeUnclassified !== 'boolean') return false;
   return true;
 }
 

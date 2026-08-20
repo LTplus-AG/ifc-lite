@@ -539,6 +539,96 @@ describe('evaluateAutoColorLens', () => {
     expect(result.colorMap.get(3)).toEqual(GHOST_COLOR);
   });
 
+  it('gives unclassified entities real legend entries, split into two buckets, when includeUnclassified opts in', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall' },
+      { id: 2, type: 'IfcWall' },
+      { id: 3, type: 'IfcWall' },
+      { id: 4, type: 'IfcWall' },
+      { id: 5, type: 'IfcDoor' },
+      { id: 6, type: 'IfcDoor' },
+      { id: 7, type: 'IfcDoor' },
+      { id: 8, type: 'IfcColumn' },
+      { id: 9, type: 'IfcColumn' },
+    ];
+    const provider = createMockProvider(entities);
+    // 4 entities properly classified under the selected system (NL-SfB tabel 1).
+    // 3 entities classified, but only in an unrelated system (CCI Construction) —
+    // "not in this system". 2 entities carry no classification at all — "no
+    // classification". Three distinct counts (4 / 3 / 2) so no bucket can pass
+    // by coincidentally matching another's size.
+    provider.getClassifications = (id: number) => {
+      if (id >= 1 && id <= 4) return [{ system: 'NL-SfB tabel 1', identification: '22.11', name: 'Walls' }];
+      if (id >= 5 && id <= 7) return [{ system: 'CCI Construction', identification: 'L-AD', name: 'Wall construction' }];
+      return [];
+    };
+
+    const spec: AutoColorSpec = { source: 'classification', psetName: 'NL-SfB tabel 1', includeUnclassified: true };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    // One real value group + two absence buckets = 3 legend entries.
+    expect(result.legend.length).toBe(3);
+
+    const realGroup = result.legend.find((e) => !e.isAbsent);
+    expect(realGroup?.name).toBe('NL-SfB tabel 1: 22.11 (Walls)');
+    expect(realGroup?.count).toBe(4);
+
+    const notInSystem = result.legend.find((e) => e.id === 'auto-absent-not-in-system');
+    expect(notInSystem).toBeDefined();
+    expect(notInSystem!.name).toBe('Not in this system');
+    expect(notInSystem!.count).toBe(3);
+    expect(notInSystem!.isAbsent).toBe(true);
+
+    const noClassification = result.legend.find((e) => e.id === 'auto-absent-no-classification');
+    expect(noClassification).toBeDefined();
+    expect(noClassification!.name).toBe('No classification');
+    expect(noClassification!.count).toBe(2);
+    expect(noClassification!.isAbsent).toBe(true);
+
+    // Every formerly-ghosted entity now has a real, non-ghost color and is
+    // reachable through ruleEntityIds (i.e. clickable/isolatable).
+    for (const id of [5, 6, 7, 8, 9]) {
+      const color = result.colorMap.get(id);
+      expect(color).toBeDefined();
+      expect(color).not.toEqual(GHOST_COLOR);
+    }
+    expect(result.ruleEntityIds.get('auto-absent-not-in-system')?.sort()).toEqual([5, 6, 7]);
+    expect(result.ruleEntityIds.get('auto-absent-no-classification')?.sort()).toEqual([8, 9]);
+
+    // Absence buckets get reserved neutral colors, not palette-ranked ones —
+    // they must not collide with the real group's rank-assigned color.
+    expect(notInSystem!.color).toBe('#bdbdbd');
+    expect(noClassification!.color).toBe('#8a8a8a');
+    expect(realGroup?.color).not.toBe(notInSystem!.color);
+    expect(realGroup?.color).not.toBe(noClassification!.color);
+  });
+
+  it('collapses to a single "No classification" bucket when includeUnclassified is on but no system (psetName) is named', () => {
+    const entities = [
+      { id: 1, type: 'IfcWall' },
+      { id: 2, type: 'IfcDoor' },
+      { id: 3, type: 'IfcColumn' },
+    ];
+    const provider = createMockProvider(entities);
+    // Entity 1 is classified (any system counts, since none is named).
+    // Entities 2 and 3 have none.
+    provider.getClassifications = (id: number) => {
+      if (id === 1) return [{ system: 'Uniclass', identification: 'EF_25_10', name: 'Walls' }];
+      return [];
+    };
+
+    // No psetName -> there is no specific system to be "not in", so only one
+    // absence bucket can ever mean anything.
+    const spec: AutoColorSpec = { source: 'classification', includeUnclassified: true };
+    const result = evaluateAutoColorLens(spec, provider);
+
+    const absentEntries = result.legend.filter((e) => e.isAbsent);
+    expect(absentEntries.length).toBe(1);
+    expect(absentEntries[0].id).toBe('auto-absent-no-classification');
+    expect(absentEntries[0].name).toBe('No classification');
+    expect(absentEntries[0].count).toBe(2);
+  });
+
   it('should auto-color by material when provider supports getMaterialName', () => {
     const entities = [
       { id: 1, type: 'IfcWall' },

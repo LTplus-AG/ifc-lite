@@ -408,3 +408,82 @@ fn an_exhausted_id_space_emits_no_copy() {
     ids.dedup();
     assert_eq!(ids.len(), before, "an id was handed out twice");
 }
+
+/// An attribute index past the end of the record. `apply_attr_mutations`
+/// ignores it, so the copy would be a byte-identical twin and the referrer
+/// would be repointed at a record that changed nothing.
+#[test]
+fn a_copy_with_an_out_of_range_attribute_is_not_made() {
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n",
+        "FILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#41=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('s'),$);\n",
+        "#9=IFCPROPERTYSET('g',$,'P',$,(#41));\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let (out, stats) = export_step_with_stats(
+        src.as_bytes(),
+        &StepOptions {
+            copy_on_write: vec![CopyOnWriteMutation {
+                express_id: 41,
+                // IfcPropertySingleValue has four attributes; this is past them.
+                index: 9,
+                value: "IFCLABEL('e')".to_string(),
+                referrer_id: 9,
+                referrer_index: 4,
+            }],
+            ..StepOptions::default()
+        },
+    );
+    assert_eq!(stats.written, stats.total, "no copy should be emitted");
+    assert!(
+        out.contains("#9=IFCPROPERTYSET('g',$,'P',$,(#41));"),
+        "{out}"
+    );
+}
+
+/// A synthesized property set costs one id per property plus two. Checking that
+/// a single id remained let a group start near the ceiling and wrap part way
+/// through, emitting ids that already belong to real records.
+#[test]
+fn a_property_group_that_does_not_fit_the_id_space_is_skipped_whole() {
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n",
+        "FILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#1=IFCWALL('g',$,'W',$,$,$,$,$,$);\n",
+        "#4294967293=IFCPROPERTYSINGLEVALUE('Z',$,IFCLABEL('z'),$);\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let (out, stats) = export_step_with_stats(
+        src.as_bytes(),
+        &StepOptions {
+            property_mutations: vec![
+                PropMutation {
+                    express_id: 1,
+                    pset_name: "New".to_string(),
+                    prop_name: "A".to_string(),
+                    value: "IFCLABEL('a')".to_string(),
+                },
+                PropMutation {
+                    express_id: 1,
+                    pset_name: "New".to_string(),
+                    prop_name: "B".to_string(),
+                    value: "IFCLABEL('b')".to_string(),
+                },
+            ],
+            ..StepOptions::default()
+        },
+    );
+    // Two properties plus a set plus a relationship is four ids, and only two
+    // remain, so the group is not written at all.
+    assert_eq!(stats.written, stats.total, "nothing should be synthesized");
+    let mut ids: Vec<&str> = out
+        .lines()
+        .filter_map(|l| l.strip_prefix('#'))
+        .filter_map(|l| l.split('=').next())
+        .collect();
+    let before = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), before, "an id was handed out twice");
+}

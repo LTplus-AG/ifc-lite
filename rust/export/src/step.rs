@@ -264,7 +264,18 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     // substitutions are applied in sequence to one accumulating value.
     let mut referrer_edits: HashMap<(u32, usize), String> = HashMap::new();
     for cow in &opts.copy_on_write {
-        if !line_of.contains_key(&cow.express_id) || !included.contains(&cow.referrer_id) {
+        let Some(&(source_start, source_end)) = line_of.get(&cow.express_id) else {
+            continue;
+        };
+        if !included.contains(&cow.referrer_id) {
+            continue;
+        }
+        // The attribute has to exist before an id is spent on the copy.
+        // `apply_attr_mutations` ignores an index past the end, so without this
+        // the copy comes out identical to the record it copied and the referrer
+        // is repointed at a duplicate that changed nothing.
+        let source_line = String::from_utf8_lossy(&content[source_start..source_end]);
+        if attribute_of(&source_line, cow.index).is_none() {
             continue;
         }
         let Some(&(rs, re)) = line_of.get(&cow.referrer_id) else {
@@ -382,14 +393,24 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
         }
 
-        // Same exhaustion, same answer: a synthesized property set needs three
-        // fresh ids, and inventing them on a full file would duplicate real
-        // records.
+        // Same exhaustion, same answer: inventing ids on a full file would
+        // duplicate real records.
         let Some(mut next) = next_id else {
             out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
             return (out, StepStats { total: order.len(), written });
         };
         for ((express_id, pset_name), props) in &groups {
+            // One property set costs one id per property plus one for the set
+            // and one for the relationship. Checking that a single id is left
+            // is not enough: a group that starts near the ceiling used to run
+            // off it part way through and wrap, emitting ids that already
+            // belong to real records. A group that does not fit is skipped
+            // whole, so nothing half-written reaches the file.
+            let needed = u32::try_from(props.len()).ok().and_then(|n| n.checked_add(2));
+            match needed.and_then(|n| u32::MAX.checked_sub(n).map(|limit| next <= limit)) {
+                Some(true) => {}
+                _ => continue,
+            }
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {
                 out.push_str(&format!(

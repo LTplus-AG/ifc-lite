@@ -67,6 +67,39 @@ describe('drawing2DSlice.addDxfUnderlay (PR #1965 review: tri-state georeference
   });
 });
 
+// SectionPanel.tsx's "View 2D" button calls clearDrawing2D() purely to force
+// regeneration with current settings (see the comment at its call site).
+// clearDrawing2D used to `set(getDefaultState())`, wiping the ENTIRE slice --
+// graphic overrides, DXF underlays, and all annotations -- exactly like the
+// `clearSheet` whole-state-default defect (sheetSlice.ts:180). It must only
+// reset the drawing-generation fields.
+describe('drawing2DSlice.clearDrawing2D (regression: must not wipe unrelated slice state)', () => {
+  it('resets drawing-generation fields but leaves overrides, DXF underlays, and annotations untouched', () => {
+    const s = makeStore();
+    s.getState().addCustomRule({
+      id: 'r1', name: 'rule 1', priority: 1, enabled: true,
+      criteria: { logic: 'and', conditions: [] }, style: {},
+    });
+    s.getState().setOverridesEnabled(false);
+    s.getState().addTextAnnotation2D({
+      id: 't1', position: { x: 0, y: 0 }, text: 'hello',
+      fontSize: 14, color: '#000', backgroundColor: '#fff', borderColor: '#000',
+    });
+    s.getState().addDxfUnderlay(makeUnderlay());
+    s.getState().setDrawing2D({} as never);
+
+    s.getState().clearDrawing2D();
+
+    const state = s.getState();
+    assert.strictEqual(state.drawing2D, null);
+    assert.strictEqual(state.drawing2DStatus, 'idle');
+    assert.strictEqual(state.customOverrideRules.length, 1, 'clearDrawing2D must not wipe custom override rules');
+    assert.strictEqual(state.overridesEnabled, false, 'clearDrawing2D must not reset overridesEnabled');
+    assert.strictEqual(state.textAnnotations2D.length, 1, 'clearDrawing2D must not wipe text annotations');
+    assert.strictEqual(state.dxfUnderlays.length, 1, 'clearDrawing2D must not wipe DXF underlays');
+  });
+});
+
 // Issue #2043: `visible` (2D) and `visible3D` (3D) are independent toggles,
 // both defaulting to on -- the issue's explicit "default to visible in both
 // 2D and 3D" requirement, and a load-time-only 2D-vs-3D choice was rejected.

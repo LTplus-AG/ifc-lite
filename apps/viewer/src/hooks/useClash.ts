@@ -258,6 +258,31 @@ export function useClash() {
   // focused clash can compute its real contact interface for that one pair.
   const elementsByRef = useRef(new Map<number, ClashElement>());
 
+  /**
+   * Per-call supersession guard for `run()` / `runDuplicates()` (#2802).
+   *
+   * `publishClashResult`'s `clashFederationIsCurrent` check is keyed on the
+   * MODEL SET, not on which call started it — two detection jobs issued while
+   * the federation is untouched (a slow "All elements" run, then a quick
+   * duplicate scan started while it is still going) carry the identical
+   * identity, so that guard alone cannot tell a call the user is still
+   * waiting on from one they have moved past. `run()` holds the thread for as
+   * long as its geometry takes; nothing stopped an OLDER call from finishing
+   * after a NEWER one and overwriting its (more current) answer.
+   *
+   * Each `run()` / `runDuplicates()` invocation captures the epoch bumped
+   * here as its own, and `stillWanted` below is re-checked synchronously
+   * immediately before every store write that follows an `await` — the
+   * publish, the error path, and the `finally` that flips `clashRunning` /
+   * `clashProgress` back off. The `finally` check matters as much as the
+   * publish one: without it, an older call's `finally` running after a newer
+   * one has already started reports "not running" while the newer job is
+   * still genuinely in flight. `clearAll()` also bumps this, so a clear
+   * mid-run cannot be resurrected by the run it cleared landing afterwards.
+   */
+  const runEpochRef = useRef(0);
+  const stillWanted = useCallback((epoch: number): boolean => runEpochRef.current === epoch, []);
+
   // The intersection-solid staleness guard that used to live here (a
   // `createLatestWinsGuard()` ref) is gone: it was private to one `useClash()`
   // instance, so no teardown outside this hook could invalidate it. It is now
@@ -395,11 +420,20 @@ export function useClash() {
    * completion signal bumped AFTER a successful write, not a cancellation
    * guard (see its field doc in `clashSlice`).
    *
+   * `epoch` is the calling `run()` / `runDuplicates()` invocation's own token
+   * from `runEpochRef` (see its doc above `elementsByRef`): a SECOND call
+   * issued while the federation is untouched carries the same
+   * `federationIdentity`, so that check alone cannot refuse an older call
+   * that is merely finishing after a newer one. `stillWanted(epoch)` is what
+   * catches that case — checked here, synchronously, immediately before the
+   * write, same as the federation check.
+   *
    * @returns whether the result was published. A discarded run must not go on
    *   to write its dependent state (groups, selection, telemetry) either.
    */
   const publishClashResult = useCallback(
-    (federationIdentity: ClashFederationIdentity, res: ClashResult): boolean => {
+    (federationIdentity: ClashFederationIdentity, res: ClashResult, epoch: number): boolean => {
+      if (!stillWanted(epoch)) return false;
       const state = useViewerStore.getState();
       if (!clashFederationIsCurrent(federationIdentity, state.models)) return false;
       // The identity travels WITH the result object. Publish-time currency is
@@ -412,7 +446,7 @@ export function useClash() {
       state.bumpClashRunSeq();
       return true;
     },
-    [],
+    [stillWanted],
   );
 
   /**
@@ -447,6 +481,11 @@ export function useClash() {
 
   const run = useCallback(
     async (rules: ClashRule[]): Promise<void> => {
+      // Captured before anything else so a call issued while this one is
+      // already in flight (`runAll` again, a duplicate scan, a preset) makes
+      // every write below — including this call's own error/finally, once
+      // superseded — a no-op instead of clobbering the newer call (#2802).
+      const myEpoch = ++runEpochRef.current;
       const state = useViewerStore.getState();
       discardSolidPresentation();
       state.setClashRunning(true);
@@ -460,7 +499,7 @@ export function useClash() {
         await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
         const { elements, exclusions, federationIdentity } = gatherElements();
         if (elements.length === 0) {
-          state.setClashError('No model geometry is loaded. Load an IFC model first.');
+          if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
         // Keep per-ref geometry so focusClash can build the contact interface.
@@ -470,13 +509,17 @@ export function useClash() {
           exclusions,
           tolerance: state.clashTolerance,
           // The TS engine yields between chunks, so these updates actually paint.
-          onProgress: (p) => useViewerStore.getState().setClashProgress(p),
+          // A superseded run keeps reporting progress harmlessly — `clashProgress`
+          // is re-armed by the call that superseded it and this write loses any
+          // race against that the same way every other write here does.
+          onProgress: (p) => { if (stillWanted(myEpoch)) useViewerStore.getState().setClashProgress(p); },
         });
         // Publishes the raw run, the user's exclusion-filtered view of it, and
         // the spatial clusters (the BCF unit) in one commit; the panel list
         // groups by its own dimension separately. Discarded outright if the
-        // federation it examined is gone — see `publishClashResult`.
-        if (!publishClashResult(federationIdentity, res)) return;
+        // federation it examined is gone, or if a newer call has started —
+        // see `publishClashResult`.
+        if (!publishClashResult(federationIdentity, res, myEpoch)) return;
         state.setClashSelectedId(null);
         posthog.capture('clash_detection_run', {
           clash_count: res.clashes.length,
@@ -484,15 +527,21 @@ export function useClash() {
           mode: state.clashMode,
         });
       } catch (err) {
+        if (!stillWanted(myEpoch)) return;
         console.error('[clash] detection run failed', err);
         state.setClashError(err instanceof Error ? err.message : String(err));
         posthog.captureException(err, { context: 'clash_detection', ...errorCaptureProps(err) });
       } finally {
-        state.setClashRunning(false);
-        state.setClashProgress(null);
+        // A superseded call must not report itself as no-longer-running: the
+        // call that superseded it is the one actually in flight, and this
+        // would flip `clashRunning` off underneath it (#2802).
+        if (stillWanted(myEpoch)) {
+          state.setClashRunning(false);
+          state.setClashProgress(null);
+        }
       }
     },
-    [gatherElements, discardSolidPresentation, publishClashResult],
+    [gatherElements, discardSolidPresentation, publishClashResult, stillWanted],
   );
 
   /**
@@ -546,6 +595,13 @@ export function useClash() {
    * shape, so the panel, grouping and BCF export render it unchanged.
    */
   const runDuplicates = useCallback(async (): Promise<void> => {
+    // Same epoch capture as `run()`, and for the same reason: a duplicate
+    // scan started while an "All elements" run (or another scan) is still
+    // in flight — the two share one Run panel and neither disables the
+    // other's trigger while it's the other one running — must not have its
+    // OWN eventual completion, or the older call's, win by landing last
+    // (#2802).
+    const myEpoch = ++runEpochRef.current;
     const state = useViewerStore.getState();
     discardSolidPresentation();
     state.setClashRunning(true);
@@ -557,7 +613,7 @@ export function useClash() {
       await nextFrameOrTimeout(PAINT_FRAME_WAIT_MS);
       const { elements, exclusions, federationIdentity } = gatherElements();
       if (elements.length === 0) {
-        state.setClashError('No model geometry is loaded. Load an IFC model first.');
+        if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
         return;
       }
       // The duplicate scan has its own tolerance ("how far apart may two
@@ -575,7 +631,7 @@ export function useClash() {
       // must not be one line apart in correctness: adding a yield to the
       // duplicate scan tomorrow would otherwise reopen the defect on this path
       // alone, silently.
-      if (!publishClashResult(federationIdentity, res)) return;
+      if (!publishClashResult(federationIdentity, res, myEpoch)) return;
       // Coincident SETS, not spatial clusters: three copies of one column are one
       // finding, and two unrelated duplicate pairs a metre apart stay two. The
       // panel renders these as its sections (see duplicate-set-sections.ts).
@@ -589,14 +645,17 @@ export function useClash() {
         pair_count: res.clashes.length,
       });
     } catch (err) {
+      if (!stillWanted(myEpoch)) return;
       console.error('[clash] duplicate scan failed', err);
       state.setClashError(err instanceof Error ? err.message : String(err));
       posthog.captureException(err, { context: 'clash_duplicates', ...errorCaptureProps(err) });
     } finally {
-      state.setClashRunning(false);
-      state.setClashProgress(null);
+      if (stillWanted(myEpoch)) {
+        state.setClashRunning(false);
+        state.setClashProgress(null);
+      }
     }
-  }, [gatherElements, discardSolidPresentation, publishClashResult]);
+  }, [gatherElements, discardSolidPresentation, publishClashResult, stillWanted]);
 
   /**
    * Resolve a clash ref back to its model + local expressId. `null` means "this
@@ -1188,6 +1247,11 @@ export function useClash() {
   );
 
   const clearAll = useCallback((): void => {
+    // Bump the run epoch FIRST: a `run()` / `runDuplicates()` still in flight
+    // when the user clears must not be able to resurrect what they just
+    // cleared once it lands — see `runEpochRef`'s doc above `elementsByRef`
+    // (#2802).
+    runEpochRef.current += 1;
     const state = useViewerStore.getState();
     state.clearEntitySelection();
     state.clearIsolation();

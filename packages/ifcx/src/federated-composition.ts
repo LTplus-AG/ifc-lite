@@ -286,7 +286,22 @@ function resolveInheritance(
   let resolutions = 0;
   let crossLayer = 0;
 
-  // Resolve each inherit reference
+  // Own (occurrence-level) attributes/children always outrank anything
+  // inherited, regardless of inherit order. Snapshot the keys that were
+  // present *before* any inherit is resolved so the loop below can tell
+  // "own opinion" apart from "value left behind by an earlier inherit in
+  // this same loop" -- see the last-listed-wins note below.
+  const ownAttributeKeys = new Set(Object.keys(pre.attributes));
+  const ownChildKeys = new Set(Object.keys(pre.children));
+
+  // Resolve each inherit reference. Composition is USD-style: when a node
+  // has multiple simultaneous `inherits` keys with a conflicting attribute,
+  // the LAST-listed inherit wins (matches composition.ts's composeNode and
+  // the buildingSMART reference composer, AddDataFromPreComposition in
+  // IFC5-development/src/ifcx-core/composition/compose.ts, which applies
+  // `Object.values(input.inherits).forEach(...)` with plain `Map.set`
+  // overwrites). Own attributes/children (captured above) still always
+  // beat any inherited value.
   for (const [, inheritPath] of Object.entries(pre.inherits)) {
     if (!inheritPath) continue;
 
@@ -320,9 +335,11 @@ function resolveInheritance(
     resolutions += subResult.resolutions;
     crossLayer += subResult.crossLayer;
 
-    // Merge inherited data (inherited values are weaker - don't override existing)
+    // Merge inherited data. Own opinions always win; among conflicting
+    // inherits, later-listed overwrites earlier-listed (see comment above
+    // the loop).
     for (const [key, value] of Object.entries(inherited.attributes)) {
-      if (!(key in pre.attributes)) {
+      if (!ownAttributeKeys.has(key)) {
         pre.attributes[key] = value;
         // Track source from inherited node
         const inheritedSource = inherited.attributeSources.get(key);
@@ -333,7 +350,7 @@ function resolveInheritance(
     }
 
     for (const [key, value] of Object.entries(inherited.children)) {
-      if (!(key in pre.children)) {
+      if (!ownChildKeys.has(key)) {
         pre.children[key] = value;
       }
     }

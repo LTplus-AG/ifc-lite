@@ -25,7 +25,7 @@
 import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
-import { ownerHistoryRef } from './_emit-helpers.js';
+import { assertPositiveFinite, ownerHistoryRef } from './_emit-helpers.js';
 
 export type SlabInStoreParams = SlabRectangleParams | SlabPolygonParams;
 
@@ -122,11 +122,12 @@ export function addSlabToStore(
 ): SlabBuildResult {
   const { ownerHistoryId, bodyContextId, storeyId, storeyPlacementId } = anchor;
 
-  if (params.Thickness <= 0) {
-    throw new Error('addSlabToStore: Thickness must be positive');
-  }
-  if (!isPolygonParams(params) && (params.Width <= 0 || params.Depth <= 0)) {
-    throw new Error('addSlabToStore: Width and Depth must be positive');
+  assertPositiveFinite([params.Thickness], 'addSlabToStore: Thickness must be positive');
+  if (!isPolygonParams(params)) {
+    assertPositiveFinite(
+      [params.Width, params.Depth],
+      'addSlabToStore: Width and Depth must be positive',
+    );
   }
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale). A new

@@ -222,6 +222,113 @@ function distinctMeshes(count: number): MeshData[] {
   }));
 }
 
+describe('hydrate does not hand out aliased vertex data', () => {
+  // Found via Louis's NEEDS-CHANGES on #2708, which observed that hydrate
+  // shallow-cloned cached meshes "under a comment asserting (read-only)".
+  // Verified against the renderer: `translateFlatMeshesForEntity` and
+  // `rotateMeshesForEntity` (`packages/renderer/src/scene.ts`) write
+  // `pos[i] = ...` IN PLACE, and `scene` stores the caller's mesh object, so
+  // the array it mutates is the one hydrate handed it.
+  //
+  // The renderer's own guard against moving a shared mesh keys on
+  // `meshData.entityIds`, which a hydrated mesh does not carry - so it never
+  // applied to this path.
+
+  it('gives two entities sharing ONE blob their own positions and normals', async () => {
+    // Two entities referencing the SAME geomId is the case that matters, and
+    // it cannot be built through `seedGeometryToRoom`: mesh-codec encodes the
+    // expressId, so two meshes only hash alike if they ARE the same mesh, and
+    // then `pathFor` sends them to one path. (My first version of this test
+    // seeded two meshes and asserted they were unaliased - they were, because
+    // they had different hashes and never shared a cache entry at all. The
+    // fixture did not build the situation its name described.)
+    //
+    // So the ref is attached to both entities directly, which is exactly what
+    // the doc holds when a model has repeated geometry.
+    const doc = createCollabDoc();
+    const guidA = '0aBcDeFgHiJkLmNoPqRsT1';
+    const guidB = '0aBcDeFgHiJkLmNoPqRsT2';
+    seedFromStep(doc, {
+      entities: [
+        { guid: guidA, ifcClass: 'IfcWallStandardCase' },
+        { guid: guidB, ifcClass: 'IfcWallStandardCase' },
+      ],
+    });
+    const blobStore = new MemoryBlobStore();
+    const session = { doc, transact: (fn: () => void) => doc.transact(fn) } as never;
+    await seedGeometryToRoom(api, session, blobStore, [sampleMesh(1)], () => guidToPath(guidA));
+    // The second entity references the SAME geomId.
+    const geomId = getGeometryRef(doc, guidToPath(guidA))!.geomIds[0];
+    addGeometryRef(doc, guidToPath(guidB), geomId);
+
+    // `concurrency: 1` is load-bearing, not tidiness. With the default, both
+    // workers check the empty cache before either fills it, so both DECODE and
+    // the two meshes come back distinct by a race rather than by the fix -
+    // which made this test pass against the aliasing defect it exists to
+    // catch. Serialised, the second job takes the cache HIT, which is the
+    // path where sharing actually happened.
+    const hydrated = await hydrateGeometryFromRoom(api, session, blobStore, undefined, {
+      cache: new Map(),
+      concurrency: 1,
+    });
+    assert.equal(hydrated.length, 2, 'both entities hydrate from the one blob');
+    assert.notStrictEqual(
+      hydrated[0].positions,
+      hydrated[1].positions,
+      'two entities must not share one positions array',
+    );
+    assert.notStrictEqual(hydrated[0].normals, hydrated[1].normals, 'nor one normals array');
+
+    // What the renderer actually does to a moved element, on both arrays it
+    // writes to in place.
+    hydrated[0].positions[0] += 5;
+    hydrated[0].normals![0] = 0.5;
+    assert.equal(hydrated[1].positions[0], sampleMesh(1).positions[0], 'the twin did not move');
+    assert.equal(hydrated[1].normals![0], sampleMesh(1).normals[0], 'nor did its normals rotate');
+  });
+
+  it('keeps the cache pristine when a hydrated mesh is mutated', async () => {
+    // Any peer edit re-runs the reconstruct, which re-hydrates from this cache.
+    // If a move mutated the cached array, the re-hydrate returned geometry
+    // already displaced instead of the baked original.
+    const doc = createCollabDoc();
+    const guid = '0aBcDeFgHiJkLmNoPqRsT7';
+    seedFromStep(doc, { entities: [{ guid, ifcClass: 'IfcWallStandardCase' }] });
+    const blobStore = new MemoryBlobStore();
+    const session = { doc, transact: (fn: () => void) => doc.transact(fn) } as never;
+    await seedGeometryToRoom(api, session, blobStore, [sampleMesh(1)], () => guidToPath(guid));
+
+    const cache = new Map<string, MeshData>();
+    const first = await hydrateGeometryFromRoom(api, session, blobStore, undefined, { cache });
+    first[0].positions[0] += 5;
+    first[0].normals![0] = 0.5;
+
+    const second = await hydrateGeometryFromRoom(api, session, blobStore, undefined, { cache });
+    assert.equal(
+      second[0].positions[0],
+      sampleMesh(1).positions[0],
+      're-hydrate must return the baked geometry, not a previously moved copy',
+    );
+    assert.equal(second[0].normals![0], sampleMesh(1).normals[0], 'normals too: the renderer rotates them in place');
+  });
+
+  it('still shares the INDEX array, which nothing mutates', async () => {
+    // The bounding control: copying indices too would double the cost of the
+    // larger array for no benefit, so the fix is deliberately narrow.
+    const doc = createCollabDoc();
+    const guid = '0aBcDeFgHiJkLmNoPqRsT8';
+    seedFromStep(doc, { entities: [{ guid, ifcClass: 'IfcWallStandardCase' }] });
+    const blobStore = new MemoryBlobStore();
+    const session = { doc, transact: (fn: () => void) => doc.transact(fn) } as never;
+    await seedGeometryToRoom(api, session, blobStore, [sampleMesh(1)], () => guidToPath(guid));
+
+    const cache = new Map<string, MeshData>();
+    const a = await hydrateGeometryFromRoom(api, session, blobStore, undefined, { cache });
+    const b = await hydrateGeometryFromRoom(api, session, blobStore, undefined, { cache });
+    assert.strictEqual(a[0].indices, b[0].indices, 'indices are shared on purpose');
+  });
+});
+
 describe('geometry-sync seed resilience', () => {
   it('keeps the meshes that uploaded when one blob fails', async () => {
     // The failure used to reject the enclosing Promise.all, so step 3 never

@@ -330,10 +330,32 @@ export async function hydrateGeometryFromRoom(
           continue;
         }
       }
-      // Re-key into the recipient id space. Shallow-clone so a cached mesh shared
-      // by several entities (instanced geometry) can carry distinct expressIds
-      // without mutating the cached copy; the typed arrays are shared (read-only).
-      const mesh = job.expressId !== undefined ? { ...base, expressId: job.expressId } : base;
+      // Re-key into the recipient id space, with the vertex data COPIED.
+      //
+      // The previous version shallow-cloned and shared the typed arrays, under
+      // a comment asserting they were read-only. They are not. The renderer
+      // mutates them IN PLACE on a move or rotate:
+      // `translateFlatMeshesForEntity` / `rotateMeshesForEntity`
+      // (`packages/renderer/src/scene.ts`) write `pos[i] = ...` directly, and
+      // `scene` stores the caller's mesh object rather than a copy, so the
+      // array it mutates is the one handed to it here.
+      //
+      // Two consequences, both silent:
+      //  - blobs are CONTENT-ADDRESSED, so two entities with identical geometry
+      //    share one cache entry. Sharing the array meant moving one of them
+      //    moved the other. The renderer's own guard against this checks
+      //    `meshData.entityIds`, which a hydrated mesh does not have, so it
+      //    never applied.
+      //  - the cache itself was mutated, so a later re-hydrate (any peer edit
+      //    re-runs the reconstruct) served geometry already displaced by an
+      //    earlier move instead of the baked original.
+      //
+      // Indices are not copied: nothing mutates them, and they are the larger
+      // array for a typical mesh.
+      const mesh: MeshData =
+        job.expressId !== undefined
+          ? { ...base, expressId: job.expressId, positions: base.positions.slice(), normals: base.normals?.slice() }
+          : { ...base, positions: base.positions.slice(), normals: base.normals?.slice() };
       out.push(mesh);
       if (opts.onProgress && ++sinceProgress >= 50) {
         sinceProgress = 0;

@@ -24,6 +24,7 @@ import {
   detectScaleUnitMismatch,
   mergeMapConversion,
   mergeProjectedCRS,
+  resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from '@/lib/geo/effective-georef';
 import { detectDoubleGeoreference, formatApproxDistance, trimFloat } from '@/lib/geo/double-georeference';
@@ -368,8 +369,22 @@ export function GeoreferencingPanel({ georef, modelId, enableEditing, schemaVers
   const canUseStandardGeoreferencing = supportsStandardGeoreferencing(schemaVersion, georef);
 
   const mergedCRS = useMemo((): ProjectedCRS | undefined => {
-    return mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
-  }, [georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale]);
+    const merged = mergeProjectedCRS(georef?.projectedCRS, mutations?.projectedCRS, lengthUnitScale ?? 1);
+    if (!merged) return merged;
+    // `mergeProjectedCRS` alone doesn't know the georeference's `source`, so an
+    // IFC2x3 `ePSet_MapConversion` file with no explicit ePset MapUnit leaves
+    // `mapUnitScale` undefined here -- which `resolveMapUnitToMetreScale` then
+    // reads as "treat offsets as metres" instead of the buildingSMART
+    // convention (project length unit). Every other consumer routes through
+    // `getEffectiveGeoreference`, which applies this same correction; this
+    // panel built its own `georef` via `extractGeoreferencingOnDemand` and
+    // never did, so `detectDoubleGeoreference` below was scaling a millimetre
+    // project's eastings/northings by 1 instead of 0.001 -- 1000x off.
+    return {
+      ...merged,
+      mapUnitScale: resolveEpsetMapUnitScale(georef?.source, merged.mapUnitScale, lengthUnitScale ?? 1),
+    };
+  }, [georef?.projectedCRS, georef?.source, mutations?.projectedCRS, lengthUnitScale]);
 
   const mergedConversion = useMemo((): MapConversion | undefined => {
     return mergeMapConversion(georef?.mapConversion, mutations?.mapConversion);

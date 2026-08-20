@@ -55,6 +55,23 @@ export function extractRelFast(
         const [relating, _] = readRefId(buffer, pos, end);
         if (relating < 0 || related.length === 0) return null;
         return { relatingObject: relating, relatedObjects: related };
+    } else if (typeUpper === 'IFCRELCONNECTSPORTTOELEMENT' || typeUpper === 'IFCRELCONNECTSPORTS') {
+        // attr[4]=RelatingPort, attr[5]=RelatedElement / RelatedPort — both
+        // SINGLE references, and both at the front of the attribute list.
+        //
+        // Neither existing branch fits: the default one reads attr[5] as a
+        // LIST, and the ConnectsElements branch skips one attribute first
+        // because that entity carries an optional ConnectionGeometry at [4].
+        // These two carry the port straight away. (`IfcRelConnectsPorts` also
+        // has an optional RealizingElement at [6] — the element that realises
+        // the connection, e.g. a piece of duct. Not read: it is a third party
+        // to the connection, not one of its two ends, and an edge has two.)
+        const [relating, rp] = readRefId(buffer, pos, end);
+        if (relating < 0) return null;
+        pos = skipCommas(buffer, rp, end, 1);
+        const [related, _] = readRefId(buffer, pos, end);
+        if (related < 0) return null;
+        return { relatingObject: relating, relatedObjects: [related] };
     } else if (typeUpper === 'IFCRELCONNECTSELEMENTS' || typeUpper === 'IFCRELCONNECTSPATHELEMENTS') {
         pos = skipCommas(buffer, pos, end, 1);
         const [relating, rp2] = readRefId(buffer, pos, end);
@@ -76,14 +93,29 @@ export function extractRelFast(
 }
 
 /**
- * Extract property rel data: attr[4]=relatedObjects, attr[5]=relatingDef.
+ * Extract property rel data: attr[4]=relatedObjects, attr[5]=relatingDef(s).
  * Numbers only, no TextDecoder.
+ *
+ * attr[5] is read as a ref LIST, not a single ref: it is reused for both
+ * `IfcRelDefinesByProperties.RelatingPropertyDefinition` (typed
+ * `IfcPropertySetDefinitionSelect`, whose second alternative
+ * `IfcPropertySetDefinitionSet` is a `SET [1:?] OF IfcPropertySetDefinition`
+ * and is written as a parenthesised list, e.g. `(#20,#21)`, not `#20`) and
+ * the single-ref `IfcRelAssociates*` selects (`IfcMaterialSelect` /
+ * `IfcClassificationSelect` / `IfcDocumentSelect`, always one ref).
+ * `readRefList` already accepts both a bare `#id` and a `(...)` list, so one
+ * call handles both callers; the single-ref case is a length-1 list. A prior
+ * version used `readRefId` here, which only recognises a bare `#id` — for a
+ * schema-legal grouped `IfcPropertySetDefinitionSet` (`(#20,#21)`) it saw the
+ * list's opening `(` instead of `#`, returned -1, and this function returned
+ * null, silently dropping the WHOLE `IfcRelDefinesByProperties` relationship:
+ * every related object lost all properties/quantities from that pset group.
  */
 export function extractPropertyRelFast(
     buffer: Uint8Array,
     byteOffset: number,
     byteLength: number,
-): { relatedObjects: number[]; relatingDef: number } | null {
+): { relatedObjects: number[]; relatingDefs: number[] } | null {
     const end = byteOffset + byteLength;
     let pos = byteOffset;
 
@@ -98,7 +130,7 @@ export function extractPropertyRelFast(
     while (pos < end && buffer[pos] !== 0x2C) pos++;
     pos++;
 
-    const [relatingDef, _] = readRefId(buffer, pos, end);
-    if (relatingDef < 0 || relatedObjects.length === 0) return null;
-    return { relatedObjects, relatingDef };
+    const [relatingDefs, _] = readRefList(buffer, pos, end);
+    if (relatingDefs.length === 0 || relatedObjects.length === 0) return null;
+    return { relatedObjects, relatingDefs };
 }

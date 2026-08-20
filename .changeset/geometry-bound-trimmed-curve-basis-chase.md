@@ -11,9 +11,10 @@ downstream could turn it into a load error. The sampler is reached by any
 generator profile, so ordinary geometry paths were exposed.
 
 Two guards now, because they bound different things: a visited set stops cycles
-and fan-out, and `MAX_BASIS_CURVE_DEPTH = 32` stops a long acyclic chain, where
-every id is distinct so the set never fires and the recursion aborts on stack
-depth alone. Real trimming nests one or two levels.
+(and any fan-out a later change introduces — the single tail call here has none
+today, but nothing enforces that), and `MAX_BASIS_CURVE_DEPTH = 32` stops a
+long acyclic chain, where every id is distinct so the set never fires and the
+recursion aborts on stack depth alone. Real trimming nests one or two levels.
 
 At either bound the sampler returns an empty polyline rather than an error, so
 the offending curve contributes no points and the edge or face built from it is

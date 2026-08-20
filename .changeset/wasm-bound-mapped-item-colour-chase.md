@@ -6,10 +6,10 @@ The viewer's colour resolver no longer aborts the worker on a cyclic mapped
 item. `find_color_for_geometry` chased `IfcMappedItem ->
 IfcRepresentationMap -> MappedRepresentation.Items` with no depth cap and no
 visited set, and a three-entity file whose mapped representation lists the
-mapped item itself was enough to overflow the stack. Every IFC opened in the
-browser goes through this resolver, and a Rust stack overflow aborts rather
-than raising a catchable panic, so the tab's worker died with no error to
-report.
+mapped item itself was enough to overflow the stack. The resolver runs while
+the browser batches GPU meshes, for every element with a representation in any
+file that carries geometry styles, and a Rust stack overflow aborts rather than
+raising a catchable panic, so the tab's worker died with no error to report.
 
 The chase is bounded in both dimensions, because a depth cap alone only trades
 the abort for a hang — `k` items each leading back into the cycle cost

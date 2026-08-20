@@ -11,41 +11,8 @@
 
 use crate::merged_visibility::{compute_keep_set, narrow_for_emission, VisibilityFilter};
 use crate::step_text::{detect_schema, escape};
-use ifc_lite_core::EntityScanner;
+use ifc_lite_core::{EntityScanner, IfcType};
 use std::collections::HashSet;
-
-/// Non-`IfcRoot` entity types whose first attribute is (or can be) a quoted
-/// Name/Identifier string that could coincidentally be 22 charset characters
-/// long. Ported from `NON_ROOTED_STRING_TYPES` in
-/// `packages/export/src/merged-exporter.ts` (kept in sync there) -- without
-/// this denylist, GlobalId reconciliation could mistake a `Name`/`Identifier`
-/// for a GlobalId and corrupt it by "reconciling" a coincidental collision.
-/// A miss in the other direction (treating a real root as non-rooted) only
-/// skips one reconciliation, which is safe.
-const NON_ROOTED_STRING_TYPES: &[&str] = &[
-    // IfcSimpleProperty / IfcComplexProperty (IfcPropertyAbstraction — not rooted)
-    "IFCPROPERTYSINGLEVALUE", "IFCPROPERTYENUMERATEDVALUE", "IFCPROPERTYLISTVALUE",
-    "IFCPROPERTYBOUNDEDVALUE", "IFCPROPERTYTABLEVALUE", "IFCPROPERTYREFERENCEVALUE",
-    "IFCCOMPLEXPROPERTY",
-    // IfcPhysicalQuantity (not rooted)
-    "IFCQUANTITYLENGTH", "IFCQUANTITYAREA", "IFCQUANTITYVOLUME", "IFCQUANTITYCOUNT",
-    "IFCQUANTITYWEIGHT", "IFCQUANTITYTIME", "IFCQUANTITYNUMBER", "IFCPHYSICALCOMPLEXQUANTITY",
-    // Materials & their constituents (IfcMaterialDefinition — not rooted; lead with a Name)
-    "IFCMATERIAL", "IFCMATERIALPROFILE", "IFCMATERIALPROFILESET",
-    "IFCMATERIALCONSTITUENT", "IFCMATERIALCONSTITUENTSET",
-    // Classification, library & document refs (IfcExternalInformation/Reference)
-    "IFCCLASSIFICATION", "IFCCLASSIFICATIONREFERENCE",
-    "IFCLIBRARYINFORMATION", "IFCLIBRARYREFERENCE", "IFCEXTERNALREFERENCE",
-    "IFCDOCUMENTINFORMATION", "IFCDOCUMENTREFERENCE",
-    // Constraints & approvals (lead with a Name/Identifier)
-    "IFCMETRIC", "IFCOBJECTIVE", "IFCAPPROVAL", "IFCTABLE",
-    // Actors (IfcPerson/IfcOrganization lead with an Identification string)
-    "IFCPERSON", "IFCORGANIZATION",
-    // Presentation layers, styles & text literals (lead with a Name/Literal string)
-    "IFCPRESENTATIONLAYERASSIGNMENT", "IFCPRESENTATIONLAYERWITHSTYLE",
-    "IFCSURFACESTYLE", "IFCCURVESTYLE", "IFCTEXTSTYLE", "IFCFILLAREASTYLE",
-    "IFCTEXTLITERAL", "IFCTEXTLITERALWITHEXTENT",
-];
 
 const GLOBAL_ID_CHARS: &[u8; 64] =
     b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
@@ -56,26 +23,93 @@ fn is_global_id_shaped(s: &str) -> bool {
     s.len() == 22 && s.bytes().all(|b| GLOBAL_ID_CHARS.contains(&b))
 }
 
-/// Read the first quoted attribute of a STEP entity line (the GlobalId
-/// position for an `IfcRoot` subtype), if it is 22-char GlobalId-shaped and
-/// the entity's type is not in the non-rooted denylist above. Mirrors
-/// `extractGlobalIdFast`/`readLeadingGuid` in `merged-exporter.ts`, working
-/// off raw bytes the same way `rewrite_refs` does (a GlobalId's charset
-/// excludes `'`, so a naive first-quote-pair scan is safe -- it never needs
-/// the doubled-apostrophe in/out-of-string toggle `rewrite_refs` uses for
-/// arbitrary string content).
+/// Read the entity's **first attribute** (the GlobalId position for an
+/// `IfcRoot` subtype), if it is 22-char GlobalId-shaped and the entity's
+/// type actually derives from `IfcRoot`.
+///
+/// Two things distinguish this from a plain "first quoted string on the
+/// line" scan, and both matter: (1) the quote must be the FIRST thing after
+/// `(` (only whitespace allowed in between) -- a non-rooted entity whose
+/// first attribute is a number/enum/reference and whose Name/Identifier
+/// happens to be a 22-char quoted string LATER on the line must not be
+/// mistaken for a rooted entity's GlobalId; (2) `type_name` is checked
+/// against the generated schema's `IfcRoot` subtype table via
+/// [`IfcType::is_subtype_of`] (plus [`is_legacy_rooted_type`] for the
+/// handful of IFC2X3/IFC4-only rooted types that table doesn't know, since
+/// it's generated from IFC4X3 alone) rather than an entity-type denylist -- a
+/// denylist can only ever be as complete as whoever last audited the
+/// schema for non-rooted resource types that lead with a string, while this
+/// positive allowlist is derived from the schema itself and can't drift out
+/// of sync with it. Mirrors `extractGlobalIdFast` in
+/// `packages/export/src/merged-exporter.ts`, which is likewise positional
+/// (skips only whitespace after `(`) though it still uses the denylist —
+/// `rust-core`'s generated schema has no JS-side equivalent to allowlist
+/// from.
+///
+/// Works off raw bytes the same way `rewrite_refs` does (a GlobalId's
+/// charset excludes `'`, so a naive first-quote-pair scan of the attribute
+/// content is safe -- it never needs the doubled-apostrophe in/out-of-string
+/// toggle `rewrite_refs` uses for arbitrary string content).
 fn leading_guid(line: &[u8], type_name: &str) -> Option<String> {
-    if NON_ROOTED_STRING_TYPES.contains(&type_name) {
+    let ifc_type = IfcType::from_str(type_name);
+    let rooted = ifc_type.is_subtype_of(IfcType::IfcRoot)
+        || (matches!(ifc_type, IfcType::Unknown(_))
+            && is_legacy_rooted_type(&type_name.to_ascii_uppercase()));
+    if !rooted {
         return None;
     }
     let open = line.iter().position(|&b| b == b'(')?;
-    let rest = &line[open + 1..];
-    let q1 = rest.iter().position(|&b| b == b'\'')?;
-    let after_q1 = &rest[q1 + 1..];
+    let mut i = open + 1;
+    while i < line.len() && line[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if line.get(i) != Some(&b'\'') {
+        return None;
+    }
+    let after_q1 = &line[i + 1..];
     let q2 = after_q1.iter().position(|&b| b == b'\'')?;
     let raw = &after_q1[..q2];
     let s = std::str::from_utf8(raw).ok()?;
     is_global_id_shaped(s).then(|| s.to_string())
+}
+
+/// Rooted entity types that exist in IFC2X3 and/or IFC4 but were dropped or
+/// renamed by IFC4X3 -- the only schema `rust-core`'s generated `IfcType`
+/// table is derived from (`rust/core/src/generated/schema.rs`). For these,
+/// `IfcType::from_str` resolves to `Unknown`, which `is_subtype_of(IfcRoot)`
+/// correctly refuses -- an *unrecognised* type must never be assumed rooted,
+/// that is the exact corruption this file's type check exists to prevent.
+/// This closes the resulting gap for the entities that genuinely ARE rooted
+/// in the older schemas real IFC2X3/IFC4 files still use, so their GlobalIds
+/// keep getting deduplicated across a merge instead of silently duplicating.
+///
+/// Derived by diffing `@ifc-lite/data`'s IFC2X3/IFC4/IFC4X3 entity tables
+/// (`packages/data/src/ifc-schema/generated/entities-*.ts`) against this
+/// crate's IFC4X3-only schema and keeping only the entries whose parent
+/// chain in the older schema reaches `IfcRoot`. Update by re-running that
+/// diff, not by ad hoc inspection.
+fn is_legacy_rooted_type(upper: &str) -> bool {
+    matches!(
+        upper,
+        "IFCBEAMSTANDARDCASE" | "IFCBUILDINGELEMENT" | "IFCBUILDINGELEMENTCOMPONENT"
+        | "IFCBUILDINGELEMENTTYPE" | "IFCCHAMFEREDGEFEATURE" | "IFCCOLUMNSTANDARDCASE"
+        | "IFCCONDITION" | "IFCCONDITIONCRITERION" | "IFCDOORSTANDARDCASE" | "IFCDOORSTYLE"
+        | "IFCEDGEFEATURE" | "IFCELECTRICDISTRIBUTIONPOINT" | "IFCELECTRICHEATERTYPE"
+        | "IFCELECTRICALBASEPROPERTIES" | "IFCELECTRICALCIRCUIT" | "IFCELECTRICALELEMENT"
+        | "IFCENERGYPROPERTIES" | "IFCEQUIPMENTELEMENT" | "IFCEQUIPMENTSTANDARD"
+        | "IFCFLUIDFLOWPROPERTIES" | "IFCFURNITURESTANDARD" | "IFCGASTERMINALTYPE"
+        | "IFCMEMBERSTANDARDCASE" | "IFCMOVE" | "IFCOPENINGSTANDARDCASE" | "IFCORDERACTION"
+        | "IFCPLATESTANDARDCASE" | "IFCPROJECTORDERRECORD" | "IFCPROXY" | "IFCRELASSIGNSTASKS"
+        | "IFCRELASSIGNSTOPROJECTORDER" | "IFCRELASSOCIATESAPPLIEDVALUE"
+        | "IFCRELASSOCIATESPROFILEPROPERTIES" | "IFCRELCONNECTSSTRUCTURALELEMENT"
+        | "IFCRELINTERACTIONREQUIREMENTS" | "IFCRELOCCUPIESSPACES" | "IFCRELOVERRIDESPROPERTIES"
+        | "IFCRELSCHEDULESCOSTITEMS" | "IFCROUNDEDEDGEFEATURE" | "IFCSCHEDULETIMECONTROL"
+        | "IFCSERVICELIFE" | "IFCSERVICELIFEFACTOR" | "IFCSLABELEMENTEDCASE"
+        | "IFCSLABSTANDARDCASE" | "IFCSOUNDPROPERTIES" | "IFCSOUNDVALUE" | "IFCSPACEPROGRAM"
+        | "IFCSPACETHERMALLOADPROPERTIES" | "IFCSTRUCTURALLINEARACTIONVARYING"
+        | "IFCSTRUCTURALPLANARACTIONVARYING" | "IFCTIMESERIESSCHEDULE" | "IFCWALLELEMENTEDCASE"
+        | "IFCWINDOWSTANDARDCASE" | "IFCWINDOWSTYLE"
+    )
 }
 
 /// Replace a line's first quoted attribute (the GlobalId) with `new_guid`.

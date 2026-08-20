@@ -411,9 +411,16 @@ export class ShadowPass {
         // ground plane under an evening sun stops self-shadowing into moiré.
         // Reverse-Z inverts the sign: negative pushes the stored occluder depth
         // AWAY from the light, so a co-planar receiver passes `greater-equal`.
-        depthBias: -2,
-        depthBiasSlopeScale: -4,
-        depthBiasClamp: 0,
+        //
+        // Kept SMALL for depth32float: the constant-bias unit for a float depth
+        // format is implementation-defined and scales with the depth exponent,
+        // so a large constant behaves unpredictably across the range/hardware
+        // (#2670 review). The shader-side slope bias (sunShadowFactor) is the
+        // primary acne defense; this is a light occluder-side nudge, bounded by
+        // a clamp so no driver can turn it into peter-panning.
+        depthBias: -1,
+        depthBiasSlopeScale: -2,
+        depthBiasClamp: -0.004,
       },
     });
   }

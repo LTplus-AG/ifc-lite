@@ -22,15 +22,22 @@
  * it is unit-testable with plain fakes.
  */
 
-import type { BatchedMesh } from './types.js';
+import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
 import type { ShadowOccluderDraw } from './shadow-pass.js';
 
-/** The three draw lists a `Scene` exposes, as the collector needs them. */
+/** The draw lists a `Scene` exposes, as the collector needs them. */
 export interface ShadowOccluderSources {
   batches: readonly BatchedMesh[];
   instanced: readonly InstancedTemplateGPU[];
   textured: readonly TexturedMesh[];
+  /**
+   * Individual meshes (the `Renderer.addMesh()` / no-batch fallback path).
+   * Optional — the batched viewer never populates it. Hydrated meshes (lazy
+   * selection-highlight copies that duplicate batch geometry) are skipped so
+   * they don't double-cast.
+   */
+  meshes?: readonly Mesh[];
 }
 
 /** Hide/isolate state, matching `RenderOptions`. */
@@ -155,6 +162,24 @@ export function collectShadowOccluders(
       indexBuffer: tm.indexBuffer,
       indexCount: tm.indexCount,
       model: originModelMatrix(tm.origin),
+    });
+  }
+
+  // Individual meshes (Renderer.addMesh() / no-batch fallback). Same 28-byte
+  // flat vertex layout as a batch, so kind 'flat'; the mesh's full transform is
+  // the model matrix. Skip hydrated meshes (selection-highlight copies that
+  // duplicate batch geometry — they would double-cast).
+  for (const mesh of sources.meshes ?? []) {
+    if (mesh.hydrated) continue;
+    if (!mesh.vertexBuffer || !mesh.indexBuffer || mesh.indexCount <= 0) continue;
+    if (mesh.color[3] < minCastAlpha) continue; // transparent → light through
+    if (!anyVisible([mesh.expressId], visibility)) continue;
+    draws.push({
+      kind: 'flat',
+      vertexBuffer: mesh.vertexBuffer,
+      indexBuffer: mesh.indexBuffer,
+      indexCount: mesh.indexCount,
+      model: mesh.transform.m,
     });
   }
 

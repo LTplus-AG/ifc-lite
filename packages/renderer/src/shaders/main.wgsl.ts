@@ -78,7 +78,16 @@ export const mainShaderSource = `
 
         fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
           if (shadowU.params.y < 0.5) { return 1.0; }
-          let biased = worldPos + N * shadowU.params.z;
+          // The diffuse sun term is TWO-SIDED (abs(dot(N, sun)) in the shading
+          // below), so a face whose stabilized normal points away from the sun is
+          // still lit. Orient the normal toward the sun before biasing: otherwise
+          // the normal-offset push (params.z) moves the sample AWAY from the light
+          // (deeper behind the surface), and the slope term below collapses to its
+          // max (NdotL→0), together biasing the compare toward "lit" — which leaks
+          // direct sun onto interior faces the roof occludes (#2670 review).
+          let L = normalize(env.sunDirection);
+          let Ns = N * select(-1.0, 1.0, dot(N, L) >= 0.0);
+          let biased = worldPos + Ns * shadowU.params.z;
           let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
           let ndc = clip.xyz / clip.w;
           let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
@@ -90,7 +99,7 @@ export const mainShaderSource = `
           // as the surface tilts away from the sun (NdotL → 0) and with the
           // kernel width. The hardware slope bias in the depth pass covers the
           // occluder side; this covers the receiver side.
-          let NdotL = max(dot(N, normalize(env.sunDirection)), 0.0);
+          let NdotL = max(dot(Ns, L), 0.0);
           let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.1), 1.0, 12.0);
           let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w);
           let radius = shadowU.params.x * shadowU.params.w;  // penumbra, uv units

@@ -17,7 +17,7 @@ import {
   type ShadowOccluderSources,
 } from './shadow-occluders.js';
 import { ShadowPass } from './shadow-pass.js';
-import type { BatchedMesh } from './types.js';
+import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
 
 /** A distinct buffer stand-in per call so occluders can be told apart. */
@@ -155,6 +155,50 @@ describe('collectShadowOccluders', () => {
     assert.equal(m[5], 1);
     assert.equal(m[10], 1);
     assert.equal(m[15], 1);
+  });
+
+  it('casts individual meshes (the addMesh / no-batch fallback path)', () => {
+    const mesh = {
+      expressId: 500,
+      vertexBuffer: buf('mesh-v'),
+      indexBuffer: buf('mesh-i'),
+      indexCount: 18,
+      transform: { m: new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 3, 4, 1]) },
+      color: [1, 1, 1, 1] as [number, number, number, number],
+    } as unknown as Mesh;
+    const draws = collectShadowOccluders({ batches: [], instanced: [], textured: [], meshes: [mesh] });
+    assert.equal(draws.length, 1);
+    assert.equal(draws[0].kind, 'flat');
+    // the mesh's full transform is the model matrix (translation carried)
+    assert.equal(draws[0].model?.[12], 2);
+    assert.equal(draws[0].model?.[14], 4);
+  });
+
+  it('skips a hydrated mesh (selection copy) so it does not double-cast', () => {
+    const hydrated = {
+      expressId: 500,
+      vertexBuffer: buf('h-v'),
+      indexBuffer: buf('h-i'),
+      indexCount: 18,
+      transform: { m: new Float32Array(16) },
+      color: [1, 1, 1, 1] as [number, number, number, number],
+      hydrated: true,
+    } as unknown as Mesh;
+    const draws = collectShadowOccluders({ batches: [], instanced: [], textured: [], meshes: [hydrated] });
+    assert.equal(draws.length, 0);
+  });
+
+  it('skips a transparent individual mesh (glass)', () => {
+    const glass = {
+      expressId: 500,
+      vertexBuffer: buf('g-v'),
+      indexBuffer: buf('g-i'),
+      indexCount: 18,
+      transform: { m: new Float32Array(16) },
+      color: [0.6, 0.8, 1, 0.3] as [number, number, number, number],
+    } as unknown as Mesh;
+    const draws = collectShadowOccluders({ batches: [], instanced: [], textured: [], meshes: [glass] });
+    assert.equal(draws.length, 0);
   });
 });
 

@@ -2053,6 +2053,10 @@ export class Renderer {
                             batches: this.scene.getBatchedMeshes(),
                             instanced: this.scene.getInstancedTemplates(),
                             textured: this.scene.getTexturedMeshes(),
+                            // Individual meshes cast too (Renderer.addMesh() /
+                            // no-batch fallback); the collector skips hydrated
+                            // selection copies so batched scenes don't double-cast.
+                            meshes: this.scene.getMeshes(),
                         },
                         { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds ?? undefined },
                     );

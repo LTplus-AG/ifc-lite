@@ -143,6 +143,12 @@ export function useIfcServer() {
       // Check if Parquet is supported (requires parquet-wasm)
       const parquetSupported = await client.isParquetSupported();
 
+      // A newer load (or model removal) may have superseded this one while
+      // the capability check above was in flight — same reasoning as every
+      // other post-await re-check in this function: an `await` is a window
+      // for `isStale` to flip, not just the streaming/parse calls below.
+      if (isStale?.()) return false;
+
       let allMeshes: MeshData[];
       let result: ServerParseResultType;
 

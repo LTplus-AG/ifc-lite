@@ -2,7 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
+
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url)).replaceAll('\\', '/');
+const BUILT_SIBLING = new RegExp(
+  `^${repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}packages/[^/]+/(dist|pkg)/`,
+);
 
 export default defineConfig({
   test: {
@@ -12,5 +18,6 @@ export default defineConfig({
     // cold cache it routinely exceeds the default 5s test timeout. Bump the
     // window so the cold-path tests don't flake.
     testTimeout: 30_000,
+    server: { deps: { external: [BUILT_SIBLING] } },
   },
 });

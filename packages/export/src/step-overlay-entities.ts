@@ -19,14 +19,16 @@
  * Nothing downstream of this phase reads anything it writes except the
  * settle/assemble tail, so it moves cleanly.
  *
- * What is injected rather than moved, and why: `applyOverlayEntityOverrides`
- * stays on `StepExporter` because it calls the two `serializeNamedAttribute`
- * / `serializePositionalOverride` helpers, which have no other reader in this
- * phase's region and were left in place by step 2d for the same reason.
- * `isGeometryEntity` is shared with the setup closure and with
- * `step-source-iteration.ts`. `relationshipWithheldWarning` is the same pure
- * string formatter `step-source-iteration.ts` already injects, not
- * duplicated here.
+ * What is injected rather than read off the pass, and why: `isGeometryEntity`
+ * is shared with the setup closure and with `step-source-iteration.ts`.
+ * `relationshipWithheldWarning` is the same pure string formatter
+ * `step-source-iteration.ts` already injects, not duplicated here.
+ * `applyOverlayEntityOverrides` is injected as `OverlayEntitiesContext`'s
+ * field even though, since #2475's "remaining private helpers" step, it is
+ * an ordinary export of `step-attribute-mutations.ts` this file could import
+ * directly — kept as an injected field for symmetry with the other two and
+ * because `StepExporter.overlayEntitiesContext()` is still the one
+ * construction site for this context, exactly as before that step.
  *
  * `mutationView` is passed through as-is (not narrowed to an interface of the
  * three optional methods this phase calls) because the original code guards
@@ -50,9 +52,9 @@ import type { ExportPass, StepExportOptions } from './step-exporter.js';
  */
 export interface OverlayEntitiesContext {
   readonly mutationView: MutablePropertyView | null;
-  /** `StepExporter.applyOverlayEntityOverrides`: resolves named/positional
-   *  overrides against the overlay-created entity's EFFECTIVE class. Kept on
-   *  the exporter because it calls the private serialize helpers. */
+  /** `step-attribute-mutations.ts`'s `applyOverlayEntityOverrides`: resolves
+   *  named/positional overrides against the overlay-created entity's
+   *  EFFECTIVE class. */
   readonly applyOverlayEntityOverrides: (
     argsText: string,
     entityType: string,

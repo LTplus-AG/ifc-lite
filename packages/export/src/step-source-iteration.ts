@@ -18,13 +18,15 @@
  *
  * What is injected rather than moved, and why: the
  * `applySourceLineMutations` pipeline (and its `applyAttributeMutations` /
- * `applyPositionalMutations` / serialize helpers) is shared verbatim with the
- * type-object `HasPropertySets` rewrite in `step-property-sets.ts` and with
- * the overlay-created-entities block still in the exporter, so it belongs to
- * no single phase; `isGeometryEntity` is likewise read by the setup closure
- * and by the overlay block. `applyOverlayEntityOverrides` is NOT a dependency
- * of this phase at all — it is reached only from the overlay-created-entities
- * block — and stays where it is.
+ * `applyPositionalMutations` / serialize helpers — all now free functions in
+ * `step-attribute-mutations.ts`, #2475's "remaining private helpers" step)
+ * is shared verbatim with the type-object `HasPropertySets` rewrite in
+ * `step-property-sets.ts` and with `step-overlay-entities.ts`, so it belongs
+ * to no single phase; `isGeometryEntity` is likewise read by the setup
+ * closure and by that module. `applyOverlayEntityOverrides` is NOT a
+ * dependency of this phase at all — it is reached only from
+ * `step-overlay-entities.ts` — and is injected there instead, though it too
+ * now lives in `step-attribute-mutations.ts`.
  *
  * Unlike `step-georeferencing.ts` this phase needs no `allocateExpressId`
  * callback: it never allocates an id, it only rewrites lines that already have
@@ -67,8 +69,9 @@ import type { ExportPass, SourceLineMutations, StepExportOptions } from './step-
  */
 export interface SourceIterationContext {
   readonly dataStore: IfcDataStore;
-  /** `StepExporter.applySourceLineMutations`: the ONE pipeline this pass and
-   *  the type-object rewrite share, so it belongs to neither and is injected. */
+  /** `step-attribute-mutations.ts`'s `applySourceLineMutations`: the ONE
+   *  pipeline this pass and the type-object rewrite share, so it belongs to
+   *  neither and is injected. */
   readonly applySourceLineMutations: (
     expressId: number,
     entityText: string,

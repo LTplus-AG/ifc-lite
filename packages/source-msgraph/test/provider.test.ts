@@ -6,6 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { PLUGIN_API_VERSION, satisfiesCaretRange } from '@ifc-lite/plugin-api';
 
 import { MsGraphProvider } from '../src/provider.js';
+import { clampPageSize } from '../src/mapping.js';
 import {
   GRAPH_MOCK_DOWNLOAD_HOST,
   GRAPH_MOCK_DOWNLOAD_SECRET,
@@ -120,6 +121,26 @@ describe('MsGraphProvider', () => {
       await expect(provider.listFiles(ctx, 'me', 'f-alpha', undefined, { signal: controller.signal })).rejects.toMatchObject({
         name: 'AbortError',
       });
+    });
+
+    // Every other paged method here (`listContainers`, `searchFiles`,
+    // `listRevisions`) shares this same `@odata.nextLink` cursor plumbing —
+    // this is the one place it's driven across a real page boundary rather
+    // than only ever returning everything on page one, mirroring
+    // `source-dropbox`'s "paginates across a real page boundary" test.
+    it('paginates across a real page boundary via @odata.nextLink, with no duplicate or dropped rows', async () => {
+      const ctx = createGraphMockContext(WORLD);
+
+      // `listFiles` always sends an explicit `$top` (`clampPageSize`'s
+      // default is 200), so it's `limit` — not the mock's own
+      // `defaultPageSize` — that has to force the small page here.
+      const first = await provider.listFiles(ctx, 'me', 'f-alpha', undefined, { limit: 1 });
+      expect(first.items.map((f) => f.id)).toEqual(['file-1']);
+      expect(first.cursor).toBeDefined();
+
+      const second = await provider.listFiles(ctx, 'me', 'f-alpha', undefined, { cursor: first.cursor });
+      expect(second.items.map((f) => f.id)).toEqual(['file-2']);
+      expect(second.cursor).toBeUndefined();
     });
 
     /**
@@ -350,6 +371,24 @@ describe('MsGraphProvider', () => {
       const ctx = createGraphMockContext(WORLD);
       const noClientCtx = { ...ctx, getPreference: () => Promise.resolve(undefined) };
       await expect(provider.listProjects(noClientCtx)).rejects.toThrow('no Azure AD application (client) ID');
+    });
+  });
+
+  describe('clampPageSize', () => {
+    it('clamps a requested limit above the $top ceiling', () => {
+      expect(clampPageSize(10_000)).toBe('999');
+    });
+
+    it('defaults when no limit is given', () => {
+      expect(clampPageSize(undefined)).toBe('200');
+    });
+
+    // Mirrors `source-dropbox`'s own `clampPageSize(0.5)` test (`provider.test.ts`):
+    // a fractional limit under 1 floors to 0 with no floor clamp, which would
+    // send Graph a literal `$top=0` rather than "use the default"/"at least
+    // one item" — the same shape that package's clamp already guards against.
+    it('never floors a fractional sub-1 limit to 0', () => {
+      expect(clampPageSize(0.5)).toBe('1');
     });
   });
 });

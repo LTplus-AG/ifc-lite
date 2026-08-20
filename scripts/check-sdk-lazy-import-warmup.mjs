@@ -8,19 +8,15 @@
  * packages that `packages/sdk/src/namespaces/*.ts` load with a dynamic
  * `import()`.
  *
- * Every namespace resolves its implementation lazily (`loadIds`, `loadLists`,
- * `loadBcf`, `loadDrawing`, `loadSandbox`) so consumers who never touch
- * `bim.ids` do not pay for it. In tests that means whichever test runs first
- * pays the cold import inside its own 5000ms budget: measured 2002ms for
- * `@ifc-lite/lists` plus `@ifc-lite/data`, which crosses the limit under CI
- * load. It took `main` red on 19 of 20 runs (#2935) after being fixed one file
- * at a time three times before that (3a00b5e64, #2248).
+ * Why warming matters at all is in `packages/sdk/vitest.setup.ts`; briefly, an
+ * un-warmed package makes the first test to touch it pay a cold import inside
+ * its own 5000ms budget, which took `main` red on 19 of 20 runs (#2935).
  *
- * The setup file's list is maintained BY HAND against the source. A seventh
- * dynamic import added later would simply not be warmed, and the failure would
- * surface months on as a flake in whichever unrelated test happened to run
- * first. An un-warmed package is indistinguishable from a warmed one until
- * that happens, which is why this is checked rather than trusted.
+ * Why it is CHECKED rather than trusted: the setup file's list is maintained by
+ * hand against the source, so a seventh dynamic import added later is simply
+ * not warmed, and the failure surfaces months on as a flake in whichever
+ * unrelated test happened to run first. An un-warmed package is
+ * indistinguishable from a warmed one until that happens.
  *
  * THIS is a lint, not a test. It began as
  * `packages/sdk/src/namespaces/lazy-imports.test.ts` until the repo's own
@@ -73,6 +69,11 @@ export function lazilyImportedPackages(sourcesByFile) {
   const found = new Set();
   for (const source of Object.values(sourcesByFile)) {
     const code = stripComments(source);
+    // Only DYNAMIC imports cost anything to warm; a static one is already
+    // resolved. Inert on today's tree -- nothing but the loader idiom writes
+    // this binding -- and kept because the contract it states is the point:
+    // a future `const someName = '@ifc-lite/x'` feeding a static import must
+    // not be demanded here.
     if (!code.includes('import(')) continue;
     for (const m of code.matchAll(/const\s+\w*[Nn]ame\s*=\s*'(@ifc-lite\/[^']+)'/g)) {
       found.add(m[1]);
@@ -83,11 +84,15 @@ export function lazilyImportedPackages(sourcesByFile) {
 
 /** Every package named in the setup file's `LAZY_NAMESPACE_PACKAGES` array. */
 export function warmedPackages(setupSource) {
-  const code = stripComments(setupSource);
-  const start = code.indexOf('LAZY_NAMESPACE_PACKAGES');
-  if (start === -1) return new Set();
-  const body = code.slice(start, code.indexOf('];', start));
-  return new Set([...body.matchAll(/'(@ifc-lite\/[^']+)'/g)].map((m) => m[1]));
+  // Anchored on the array literal, not on a bare scan of the file: both this
+  // file and the setup file discuss these package names in prose, and a
+  // straight-quoted specifier in a comment would otherwise satisfy the gate.
+  // Comments are stripped above, which handles that; anchoring additionally
+  // means a RENAMED constant yields the empty set and fails loudly, rather
+  // than the whole file being scanned and appearing to agree.
+  const array = /LAZY_NAMESPACE_PACKAGES\s*=\s*\[([^\]]*)\]/.exec(stripComments(setupSource));
+  if (!array) return new Set();
+  return new Set([...array[1].matchAll(/'(@ifc-lite\/[^']+)'/g)].map((m) => m[1]));
 }
 
 function readNamespaceSources(root) {

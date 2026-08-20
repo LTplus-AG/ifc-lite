@@ -14,14 +14,11 @@
  * inside its own 5000ms budget. Measured for `@ifc-lite/lists` plus
  * `@ifc-lite/data`: 2002ms cold, 481ms on a warm repo, 2-3ms once resolved.
  *
- * Under CI's parallel load that alone crosses the default. It has now been
- * fixed three times, once per namespace, each time by warming that one file:
- * `ids.test.ts` (3a00b5e64, reporting 5021-5038ms), `list.test.ts` (#2935,
- * five unrelated PRs failing at once between 5005ms and 5056ms), and
- * `packages/export/src/parquet-geometry.test.ts` (#2248) for the same shape
- * elsewhere. `drawing`, `bcf` and `sandbox` share the idiom and had not fired
- * yet. This replaces the per-file patches with one mechanism so the fourth
- * instance does not happen.
+ * Under CI's parallel load that alone crosses the default, and it was patched
+ * one file at a time three times before this (3a00b5e64, #2935, #2248) -- the
+ * last of which took `main` red. `drawing`, `bcf` and `sandbox` share the idiom
+ * and had not fired yet, which is the point: one mechanism, so there is no
+ * fourth instance.
  *
  * Chosen over raising `testTimeout`, which is how `packages/data` handles its
  * own cold-transform cost: a blanket raise buys the same green at the price of

@@ -7,9 +7,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    // Deliberately NOT raising testTimeout. See vitest.setup.ts: the cold
-    // dynamic imports are warmed out of every test's budget instead, so the
-    // default 5000ms still catches a genuine hang in 5s.
+    // testTimeout stays at the 5000ms default on purpose; see vitest.setup.ts.
     setupFiles: ['./vitest.setup.ts'],
   },
 });

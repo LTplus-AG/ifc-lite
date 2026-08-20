@@ -125,6 +125,20 @@ test('fires when the loader idiom disappears, rather than passing vacuously', ()
   assert.match(stderr, /No dynamic @ifc-lite import found/);
 });
 
+test('fires when the warm-up array is renamed, rather than scanning the whole file', () => {
+  // The setup-side counterpart of the vacuity guard. The extractor anchors on
+  // the array literal, so a rename yields the empty set and every package reads
+  // as unwarmed -- loud. A bare whole-file scan would instead keep finding all
+  // six and report agreement with a list that no longer exists.
+  const anchor = 'LAZY_NAMESPACE_PACKAGES';
+  assert.ok(realSetup.includes(anchor), 'anchor: the array constant is named that');
+  const renamed = realSetup.split(anchor).join('WARMED_PACKAGES');
+  assert.equal(warmedPackages(renamed).size, 0, 'mutation applied');
+  const { status, stderr } = runOn({ setup: renamed });
+  assert.equal(status, 1);
+  assert.match(stderr, /NOT warmed/);
+});
+
 test('a package named only in a comment does not count as warmed', () => {
   const anchor = "  '@ifc-lite/bcf',\n";
   assert.ok(realSetup.includes(anchor), 'anchor: bcf listed in the setup file');

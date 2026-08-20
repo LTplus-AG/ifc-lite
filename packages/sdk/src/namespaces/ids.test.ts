@@ -13,11 +13,8 @@ import type {
 
 const ids = new IDSNamespace();
 
-// `IDSNamespace` dynamically imports `@ifc-lite/ids` on first use (see
-// `loadIDS` in ids.ts), so the first test here to call `validate`/`parse`
-// would otherwise pay the cold-import cost inside its own 5000ms budget.
-// That import is warmed for the whole package in `vitest.setup.ts`; this
-// file no longer warms it itself.
+// `@ifc-lite/ids` is imported lazily by `loadIDS`; it is warmed for the whole
+// package in `vitest.setup.ts`, so no test here pays for it.
 
 const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
 

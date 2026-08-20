@@ -7,7 +7,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnumFromString, type SpatialHierarchy } from '@ifc-lite/data';
+import { IfcTypeEnum, IfcTypeEnumFromString, type SpatialHierarchy } from '@ifc-lite/data';
 import { EntityQuery } from './entity-query.js';
 import { EntityNode } from './entity-node.js';
 import { DuckDBIntegration, type SQLResult } from './duckdb-integration.js';
@@ -82,7 +82,22 @@ export class IfcQuery {
   }
   
   ofType(...types: string[]): EntityQuery {
-    const typeEnums = types.map(t => IfcTypeEnumFromString(t));
+    // `IfcTypeEnumFromString` falls back to `IfcTypeEnum.Unknown` for any name
+    // it does not recognize (typo, or a vendor-specific type this build's enum
+    // table has no entry for). Left unchecked, that fallback makes a typo'd
+    // `ofType('IfcWal')` silently query the Unknown bucket instead — every
+    // entity whose type the store itself could not classify, which is neither
+    // the caller's wall nor empty, but some other, unrelated set of entities.
+    // Reject the typo here rather than let it through as `Unknown`; a genuine
+    // query for the Unknown bucket can still be made by passing the literal
+    // string `'Unknown'`.
+    const typeEnums = types.map(t => {
+      const typeEnum = IfcTypeEnumFromString(t);
+      if (typeEnum === IfcTypeEnum.Unknown && t.trim().toUpperCase() !== 'UNKNOWN') {
+        throw new Error(`ofType(): unrecognized IFC type "${t}"`);
+      }
+      return typeEnum;
+    });
     return new EntityQuery(this.store, typeEnums);
   }
   

@@ -21,6 +21,7 @@ import { formatDistance } from './formatDistance';
 import { ANGLE_REQUIRED_PICKS, type AngleKind, type AngleMeasurement } from '@/store/types';
 import { formatThreePointAngle, threePointAngle } from './measure-modes/three-point-angle';
 import { edgePairAngle, facePairAngle, formatAnglePair } from './measure-modes/edge-face-angle';
+import { fitRadius, formatRadius, type Point3 as RadiusPoint3 } from './measure-modes/radius';
 
 /**
  * The three angle kinds, their button text and what each one asks the user to
@@ -87,6 +88,21 @@ function formatAngleMeasurement(a: AngleMeasurement): string {
         facePairAngle(a.picks[0].normal, a.picks[1].normal),
       );
   }
+}
+
+/**
+ * Readout for a radius/diameter pick sequence, derived on render — same
+ * reasoning as {@link formatAngleMeasurement}: a correction to the fit
+ * retroactively fixes every measurement already listed, and there is no
+ * second, independently-stale copy of the answer.
+ *
+ * Shared between the in-progress sequence and finished measurements: below
+ * `MIN_RADIUS_POINTS` this renders `fitRadius`'s own "Pick N more points"
+ * wording, so the SAME readout updates live as points are added rather than
+ * staying blank until the count is met.
+ */
+function formatRadiusPoints(points: readonly RadiusPoint3[]): string {
+  return formatRadius(fitRadius(points));
 }
 
 const ANGLE_KIND_LABELS: ReadonlyArray<readonly [AngleKind, string, string]> = [
@@ -159,6 +175,10 @@ export function MeasureOverlay() {
   const polylineMeasurements = useViewerStore((s) => s.polylineMeasurements);
   const cancelPolyline = useViewerStore((s) => s.cancelPolyline);
   const deletePolylineMeasurement = useViewerStore((s) => s.deletePolylineMeasurement);
+  const activeRadius = useViewerStore((s) => s.activeRadius);
+  const radiusMeasurements = useViewerStore((s) => s.radiusMeasurements);
+  const cancelRadius = useViewerStore((s) => s.cancelRadius);
+  const deleteRadiusMeasurement = useViewerStore((s) => s.deleteRadiusMeasurement);
 
   // Track cursor position in ref (no re-renders on mouse move)
   const cursorPosRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -238,15 +258,18 @@ export function MeasureOverlay() {
     setActiveTool('select');
   }, [setActiveTool]);
 
-  // Cycles Distance -> Polyline -> Angle -> Distance. A cycle rather than three
-  // buttons keeps this control the same width it was, which matters because
-  // `measure-parity.test.tsx` pins that the mode control lives in the panel and
-  // not in either toolbar.
+  // Cycles Distance -> Polyline -> Angle -> Radius -> Distance. A cycle rather
+  // than four buttons keeps this control the same width it was, which matters
+  // because `measure-parity.test.tsx` pins that the mode control lives in the
+  // panel and not in either toolbar. Radius (#2737 item 2) sits LAST, after
+  // the two already-shipped multi-click modes it was built alongside
+  // (polyline #2199, angle #2735) — it does not replace or reorder either.
   const toggleMeasureMode = useCallback(() => {
     const next: Record<typeof measureMode, typeof measureMode> = {
       drag: 'polyline',
       polyline: 'angle',
-      angle: 'drag',
+      angle: 'radius',
+      radius: 'drag',
     };
     setMeasureMode(next[measureMode]);
   }, [measureMode, setMeasureMode]);
@@ -256,9 +279,15 @@ export function MeasureOverlay() {
     [deleteAngleMeasurement],
   );
 
+  const handleDeleteRadius = useCallback(
+    (id: string) => deleteRadiusMeasurement(id),
+    [deleteRadiusMeasurement],
+  );
+
   // Calculate total distance
   const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
-  const totalItemCount = measurements.length + polylineMeasurements.length + angleMeasurements.length;
+  const totalItemCount =
+    measurements.length + polylineMeasurements.length + angleMeasurements.length + radiusMeasurements.length;
 
   // Real-world XYZ readout. `anchor` is non-null only when the georef anchor
   // model carries a usable IfcMapConversion (projected CRS + offsets, not a
@@ -341,9 +370,15 @@ export function MeasureOverlay() {
                 ? 'bg-primary text-primary-foreground border-primary'
                 : 'bg-zinc-100 dark:bg-zinc-900 text-zinc-500 border-zinc-300 dark:border-zinc-700'
             }`}
-            title="Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels)"
+            title="Cycle measure mode - Distance (drag), Polyline (click to accumulate; double-click or Enter to finish, click the start to close), Angle (three clicks: apex first, then the two directions; Esc cancels), Radius (three or more clicks on a circular edge; double-click or Enter to finish; Esc cancels)"
           >
-            {measureMode === 'polyline' ? 'Polyline' : measureMode === 'angle' ? 'Angle' : 'Distance'}
+            {measureMode === 'polyline'
+              ? 'Polyline'
+              : measureMode === 'angle'
+                ? 'Angle'
+                : measureMode === 'radius'
+                  ? 'Radius'
+                  : 'Distance'}
           </button>
           {measureMode === 'angle' && (
             <>
@@ -527,6 +562,58 @@ export function MeasureOverlay() {
                     : ''}
                 </div>
               )}
+
+              {/* Radius/diameter results (#2737 item 2) — own list, same
+                  reasoning as polyline's above: a fitted radius (or an
+                  explicit refusal) is not a distance and does not share a
+                  "Total" with one. */}
+              {radiusMeasurements.length > 0 && (
+                <div className="space-y-1 mt-2">
+                  {radiusMeasurements.map((r, i) => (
+                    <div key={r.id} className="bg-muted/50 rounded px-2 py-0.5 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground text-xs shrink-0">Radius #{i + 1}</span>
+                        <span className="font-mono font-medium text-right">
+                          {/* Derived on render, never stored — a correction to
+                              the fit retroactively fixes every measurement
+                              already listed. */}
+                          {formatRadiusPoints(r.points)}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-4 w-4 shrink-0 hover:bg-destructive/20"
+                          onClick={() => handleDeleteRadius(r.id)}
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activeRadius && (
+                <div className="flex items-center justify-between gap-2 mt-2 rounded bg-primary/10 px-2 py-1 text-xs">
+                  <span className="font-mono text-muted-foreground">
+                    {/* Live: the same fit the finished list uses, re-derived on
+                        every added point — reaches "fitted"/"refused" as soon
+                        as the picks clear the module's gate, no separate
+                        finish step required to SEE the reading (only to
+                        record it). */}
+                    Radius in progress · {activeRadius.points.length} pick
+                    {activeRadius.points.length === 1 ? '' : 's'} · {formatRadiusPoints(activeRadius.points)}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="h-4 w-4 shrink-0"
+                    onClick={cancelRadius}
+                    title="Cancel (Esc)"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
           {section === 'point' && <MeasurePointReadout />}
@@ -559,9 +646,16 @@ export function MeasureOverlay() {
                 // mode that ignores drags entirely. The hint has to name the
                 // gesture that actually works, and which pick is next.
                 angleHint(angleKind, activeAngle?.picks.length ?? 0)
-              : activeMeasurement
-                ? 'Release to complete'
-                : 'Drag to measure'}
+              : measureMode === 'radius'
+                ? // Same reasoning as angle above: radius is click-driven too,
+                  // and unbounded rather than fixed-count, so the hint names
+                  // the finish gesture explicitly instead of a pick count.
+                  activeRadius
+                    ? 'Click to add a point on the arc · dbl-click/Enter to finish · Esc to cancel'
+                    : 'Click 3+ points on a circular edge'
+                : activeMeasurement
+                  ? 'Release to complete'
+                  : 'Drag to measure'}
         </span>
       </div>
 

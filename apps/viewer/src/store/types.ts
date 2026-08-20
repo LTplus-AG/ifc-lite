@@ -40,11 +40,14 @@ export interface ActiveMeasurement {
  * Which gesture the Measure tool is currently listening for. `'drag'` is the
  * original mousedown→mouseup distance measurement (unchanged by this mode).
  * `'polyline'` accumulates points via successive clicks instead; `'angle'`
- * (#2735) accumulates a FIXED number of clicks and finishes itself. All three
- * are mutually exclusive so a sequence started in one can never leak state
- * into another (see `setMeasureMode` in measurementSlice.ts).
+ * (#2735) accumulates a FIXED number of clicks and finishes itself. `'radius'`
+ * (#2737 item 2) accumulates an UNBOUNDED number of clicks (three minimum)
+ * and finishes on the same gesture polyline uses — double-click or Enter —
+ * because there is no natural "last pick" the way angle has one. All four are
+ * mutually exclusive so a sequence started in one can never leak state into
+ * another (see `setMeasureMode` in measurementSlice.ts).
  */
-export type MeasureMode = 'drag' | 'polyline' | 'angle';
+export type MeasureMode = 'drag' | 'polyline' | 'angle' | 'radius';
 
 /** A multi-click sequence in progress, not yet finished or cancelled. */
 export interface ActivePolyline {
@@ -123,6 +126,35 @@ export interface AngleMeasurement {
   id: string;
   kind: AngleKind;
   picks: AnglePick[];
+}
+
+// ============================================================================
+// Radius Measurement Types (issue #2737 item 2, split from #2199 §3)
+// ============================================================================
+
+/**
+ * A radius/diameter click sequence in progress, not yet finished or
+ * cancelled. Unbounded, like {@link ActivePolyline} rather than
+ * {@link ActiveAngle}: `fitRadius` (measure-modes/radius.ts) takes three or
+ * more picks and there is no fixed count at which the measurement finishes
+ * itself, so the same explicit finish gesture polyline uses (double-click or
+ * Enter) applies here too.
+ */
+export interface ActiveRadius {
+  points: MeasurePoint[];
+}
+
+/**
+ * A finished radius measurement. Only the PICKS are stored, never the fitted
+ * radius/diameter — mirrors {@link AngleMeasurement}: the fit (including
+ * which refusal reason, if any) is derived on render by `fitRadius`, so a
+ * correction to the maths retroactively fixes every measurement already
+ * listed rather than leaving a second, independently-stale copy of the
+ * answer.
+ */
+export interface RadiusMeasurement {
+  id: string;
+  points: MeasurePoint[];
 }
 
 /** Orthogonal constraint axis type */

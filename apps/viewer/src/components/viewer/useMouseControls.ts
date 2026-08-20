@@ -33,8 +33,9 @@ import {
   updateMeasureScreenCoords,
   shouldStartDragMeasurement,
 } from './measureHandlers.js';
-import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick } from './selectionHandlers.js';
+import { handleSelectionClick, handleContextMenu as handleContextMenuSelection, handleAddElementHover, handleSplitHover, finishPolylineFromDoubleClick, finishRadiusFromDoubleClick } from './selectionHandlers.js';
 import { applyWheelZoom, createFineZoomModifierTracker } from './wheelZoom.js';
+import { MIN_RADIUS_POINTS } from './tools/measure-modes/radius.js';
 
 export interface MouseState {
   isDragging: boolean;
@@ -864,24 +865,41 @@ export function useMouseControls(params: UseMouseControlsParams): void {
     // as pressing Enter (see useKeyboardShortcuts.ts). Closing the loop is a
     // different gesture entirely (clicking back near the first point — see
     // handlePolylineClick), so double-click never closes anything.
+    //
+    // Radius (#2737 item 2) shares the same double-click-to-finish gesture —
+    // it is the OTHER unbounded, explicit-finish click sequence — so this
+    // tries polyline first, then radius; at most one of `activePolyline` /
+    // `activeRadius` is ever non-null, so the two `!== null` checks below
+    // never both fire.
     const handleDoubleClick = (e: MouseEvent) => {
       if (activeToolRef.current !== 'measure') return;
       // The store side lives in selectionHandlers.ts (beside
-      // handlePolylineClick) so it is reachable from a test without a canvas
-      // — it is the one finish path allowed to drop the browser's duplicate
-      // second click, and that has to be verifiable.
-      const recorded = finishPolylineFromDoubleClick();
-      if (recorded === null) return; // not this gesture — leave the event alone
+      // handlePolylineClick / handleRadiusClick) so it is reachable from a
+      // test without a canvas — it is the one finish path allowed to drop
+      // the browser's duplicate second click, and that has to be verifiable.
+      const recordedPolyline = finishPolylineFromDoubleClick();
+      if (recordedPolyline !== null) {
+        e.preventDefault();
+        // The duplicate near-final point is dropped before the minimum is
+        // checked (see measurementSlice.ts), so double-clicking right after
+        // the very first placed point can still collapse below the 2-point
+        // minimum — same "did nothing register" gap as Enter on a 1-point
+        // sequence (useKeyboardShortcuts.ts), same fix: surface it instead of
+        // leaving it silent.
+        if (!recordedPolyline) {
+          import('@/components/ui/toast').then(({ toast }) => {
+            toast.error('Polyline needs at least 2 points');
+          });
+        }
+        return;
+      }
+
+      const recordedRadius = finishRadiusFromDoubleClick();
+      if (recordedRadius === null) return; // not this gesture — leave the event alone
       e.preventDefault();
-      // The duplicate near-final point is dropped before the minimum is
-      // checked (see measurementSlice.ts), so double-clicking right after
-      // the very first placed point can still collapse below the 2-point
-      // minimum — same "did nothing register" gap as Enter on a 1-point
-      // sequence (useKeyboardShortcuts.ts), same fix: surface it instead of
-      // leaving it silent.
-      if (!recorded) {
+      if (!recordedRadius) {
         import('@/components/ui/toast').then(({ toast }) => {
-          toast.error('Polyline needs at least 2 points');
+          toast.error(`Radius needs at least ${MIN_RADIUS_POINTS} points`);
         });
       }
     };

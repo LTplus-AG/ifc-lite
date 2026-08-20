@@ -24,11 +24,14 @@ import type {
   AngleKind,
   AngleMeasurement,
   AnglePick,
+  ActiveRadius,
+  RadiusMeasurement,
 } from '../types.js';
 import { ANGLE_REQUIRED_PICKS } from '../types.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
+import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
 
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
@@ -92,6 +95,12 @@ export interface MeasurementSlice {
    *  (distance-only) rather than folded in, since they carry an extra basis
    *  (open length vs. closed perimeter) that a drag measurement never has. */
   polylineMeasurements: PolylineMeasurement[];
+  /** A radius/diameter click sequence in progress when `measureMode ===
+   *  'radius'` (#2737 item 2), or null. */
+  activeRadius: ActiveRadius | null;
+  /** Finished radius measurements. Picks only — the fit (or refusal) is
+   *  derived on render by `fitRadius`. */
+  radiusMeasurements: RadiusMeasurement[];
 
   // Legacy measurement actions
   addMeasurePoint: (point: MeasurePoint) => void;
@@ -173,6 +182,33 @@ export interface MeasurementSlice {
   cancelPolyline: () => void;
   deletePolylineMeasurement: (id: string) => void;
 
+  // Radius/diameter (multi-click, unbounded) measurement actions (#2737 item 2)
+  /** Begin a radius sequence at `point`. No-op if one is already active —
+   *  use {@link addRadiusPoint} to extend it. Mirrors `startPolyline`. */
+  startRadius: (point: MeasurePoint) => void;
+  /** Append a point to the in-progress radius sequence. No-op if none is
+   *  active. */
+  addRadiusPoint: (point: MeasurePoint) => void;
+  /**
+   * Finish the in-progress radius sequence and push it to
+   * `radiusMeasurements`. No-op below {@link MIN_RADIUS_POINTS} — `fitRadius`
+   * needs at least three picks to attempt anything, so recording fewer would
+   * only ever produce a stored "insufficient-points" readout, which is not a
+   * measurement.
+   *
+   * `fromDoubleClick` mirrors `finishPolyline`'s option of the same name: it
+   * opts into dropping the trailing near-duplicate point a physical
+   * double-click leaves behind (browsers dispatch click, click, dblclick),
+   * and belongs to exactly one call site the same way.
+   *
+   * Returns whether a measurement was actually recorded, so the Enter
+   * shortcut can tell "finished" apart from "did nothing register".
+   */
+  finishRadius: (options?: { fromDoubleClick?: boolean }) => boolean;
+  /** Discard the in-progress radius sequence without recording a measurement. */
+  cancelRadius: () => void;
+  deleteRadiusMeasurement: (id: string) => void;
+
   /**
    * Discard whatever measurement gesture is in progress — a drag mid-flight
    * or a polyline click sequence — without touching finished measurements,
@@ -239,6 +275,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   angleKind: 'points',
   activeAngle: null,
   angleMeasurements: [],
+  activeRadius: null,
+  radiusMeasurements: [],
 
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
@@ -331,6 +369,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     polylineMeasurements: [],
     activeAngle: null,
     angleMeasurements: [],
+    activeRadius: null,
+    radiusMeasurements: [],
   }),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
@@ -437,6 +477,21 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       picks: m.picks.map((pick) => ({ ...pick, point: reprojectPoint(pick.point) })),
     }));
 
+    // Radius picks (#2737 item 2) need the same treatment, for the same
+    // reason the angle comment above gives — the list panel re-derives the
+    // fit from these points on every render, and while the fit itself is
+    // frame-independent (world-space x/y/z, untouched here), the stored
+    // screenX/screenY would otherwise stay frozen at click time.
+    let updatedActiveRadius = state.activeRadius;
+    if (state.activeRadius) {
+      updatedActiveRadius = { points: state.activeRadius.points.map(reprojectPoint) };
+    }
+
+    const updatedRadiusMeasurements = state.radiusMeasurements.map((m) => ({
+      ...m,
+      points: m.points.map(reprojectPoint),
+    }));
+
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
@@ -449,6 +504,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       polylineMeasurements: updatedPolylineMeasurements,
       activeAngle: updatedActiveAngle,
       angleMeasurements: updatedAngleMeasurements,
+      activeRadius: updatedActiveRadius,
+      radiusMeasurements: updatedRadiusMeasurements,
     });
   },
 
@@ -522,6 +579,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       measureMode: mode,
       ...(leaving === 'polyline' ? { activePolyline: null } : {}),
       ...(leaving === 'angle' ? { activeAngle: null } : {}),
+      ...(leaving === 'radius' ? { activeRadius: null } : {}),
       ...(mode !== 'drag'
         ? { activeMeasurement: null, snapTarget: null, measurementConstraintEdge: null }
         : {}),
@@ -641,10 +699,57 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     polylineMeasurements: state.polylineMeasurements.filter((m) => m.id !== id),
   })),
 
+  startRadius: (point) => set((state) => {
+    if (state.activeRadius) return {}; // already accumulating — use addRadiusPoint
+    return { activeRadius: { points: [point] } };
+  }),
+
+  addRadiusPoint: (point) => set((state) => {
+    if (!state.activeRadius) return {};
+    return { activeRadius: { points: [...state.activeRadius.points, point] } };
+  }),
+
+  finishRadius: (options) => {
+    // Mirrors `finishPolyline`'s recorded/no-op contract — see its comment
+    // for why the double-click duplicate drop is scoped to that one gesture.
+    let recorded = false;
+    set((state) => {
+      const active = state.activeRadius;
+      if (!active) return {};
+      let points = active.points;
+      if (
+        options?.fromDoubleClick &&
+        points.length >= 2 &&
+        isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])
+      ) {
+        points = points.slice(0, -1);
+      }
+      if (points.length < MIN_RADIUS_POINTS) return {};
+      measurementCounter++;
+      const measurement: RadiusMeasurement = {
+        id: `rad-${Date.now()}-${measurementCounter}`,
+        points,
+      };
+      recorded = true;
+      return {
+        radiusMeasurements: [...state.radiusMeasurements, measurement],
+        activeRadius: null,
+      };
+    });
+    return recorded;
+  },
+
+  cancelRadius: () => set({ activeRadius: null }),
+
+  deleteRadiusMeasurement: (id) => set((state) => ({
+    radiusMeasurements: state.radiusMeasurements.filter((m) => m.id !== id),
+  })),
+
   resetMeasureGesture: () => set({
     activeMeasurement: null,
     activePolyline: null,
     activeAngle: null,
+    activeRadius: null,
     snapTarget: null,
     measurementConstraintEdge: null,
   }),
@@ -666,5 +771,7 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     angleKind: 'points',
     activeAngle: null,
     angleMeasurements: [],
+    activeRadius: null,
+    radiusMeasurements: [],
   }),
 });

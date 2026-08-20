@@ -23,8 +23,6 @@ const ids = new IDSNamespace();
 // import here, during module collection (unbounded by any per-test or
 // per-hook timeout), so the locale test below only times the logic it
 // exists to check.
-await import('@ifc-lite/ids');
-
 const sv = (value: string): IDSSimpleValue => ({ type: 'simpleValue', value });
 
 /** Minimal IFCDataAccessor over a single entity missing its Name attribute. */

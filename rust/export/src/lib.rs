@@ -26,6 +26,7 @@ mod json;
 mod jsonld;
 mod kmz;
 mod merged;
+mod merged_guid;
 mod merged_visibility;
 mod model;
 mod obj;

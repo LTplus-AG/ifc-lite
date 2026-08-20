@@ -76,6 +76,25 @@ test('maskKey falls back to bullets for absurdly short input', () => {
   assert.equal(maskKey(''), '••••');
 });
 
+test('maskKey does not leak secret characters when the secret body contains a dash', () => {
+  // The key alphabet is [A-Za-z0-9_-] (see PROVIDER_PATTERNS), so a real
+  // secret can legitimately contain a `-` anywhere after the provider
+  // prefix. `maskKey` must mask everything past the KNOWN prefix regardless
+  // of where any later dash falls — a secret-body dash is not the prefix
+  // boundary.
+  const legacyKey = 'sk-ab-cdEFGH12IJKLMNOP34QRST5678';
+  const legacyMasked = maskKey(legacyKey);
+  assert.equal(legacyMasked.startsWith('sk-••••'), true, `expected only "sk-" unmasked, got: ${legacyMasked}`);
+  assert.equal(legacyMasked.endsWith('5678'), true);
+  assert.equal(legacyMasked.includes('ab-cd'), false, `secret body leaked into: ${legacyMasked}`);
+
+  const projKey = 'sk-proj-ab-cdEFGH12IJKLMNOP34QRST';
+  const projMasked = maskKey(projKey);
+  assert.equal(projMasked.startsWith('sk-proj-••••'), true, `expected only "sk-proj-" unmasked, got: ${projMasked}`);
+  assert.equal(projMasked.endsWith('QRST'), true);
+  assert.equal(projMasked.includes('ab-cd'), false, `secret body leaked into: ${projMasked}`);
+});
+
 // ── readClipboardKey ──────────────────────────────────────────────────────
 // We can't easily simulate a real browser Clipboard API in node:test, but we
 // can verify the helper degrades gracefully when navigator/clipboard is absent

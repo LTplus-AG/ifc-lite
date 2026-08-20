@@ -130,7 +130,6 @@ export function pairTimestampsWithLabels(labels: readonly string[], timestamps: 
  * across frames while a previous frame's readback might still be pending.
  */
 export class GpuFrameTimingRecorder {
-  private readonly device: GPUDevice;
   private readonly maxPasses: number;
   private readonly querySet: GPUQuerySet;
   private readonly resolveBuffer: GPUBuffer;
@@ -139,8 +138,7 @@ export class GpuFrameTimingRecorder {
   private nextQueryIndex = 0;
   private resolved = false;
 
-  private constructor(device: GPUDevice, maxPasses: number, querySet: GPUQuerySet, resolveBuffer: GPUBuffer, readbackBuffer: GPUBuffer) {
-    this.device = device;
+  private constructor(maxPasses: number, querySet: GPUQuerySet, resolveBuffer: GPUBuffer, readbackBuffer: GPUBuffer) {
     this.maxPasses = maxPasses;
     this.querySet = querySet;
     this.resolveBuffer = resolveBuffer;
@@ -167,7 +165,7 @@ export class GpuFrameTimingRecorder {
       usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
       label: 'frame-timing-readback',
     });
-    return new GpuFrameTimingRecorder(device, maxPasses, querySet, resolveBuffer, readbackBuffer);
+    return new GpuFrameTimingRecorder(maxPasses, querySet, resolveBuffer, readbackBuffer);
   }
 
   /**

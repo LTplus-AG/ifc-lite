@@ -777,3 +777,115 @@ ENDSEC;\nEND-ISO-10303-21;\n"
         "shared IFC2X3-only-rooted GlobalId {shared_style} must be emitted exactly once, not duplicated across federated models -- got:\n{merged}"
     );
 }
+
+/// Interaction test: relationship narrowing and GlobalId re-stamping are two
+/// independent line-rewriting passes over the SAME line
+/// (`export_merged_with_stats`'s loop narrows via `narrow_for_emission`, then
+/// separately re-stamps via `leading_guid`/`replace_leading_guid`) -- neither
+/// individual branch's test suite could exercise both firing on one line,
+/// since narrowing shipped on the visibility-filter chain and re-stamping
+/// predates it on the base/misidentification/schema-coverage chain.
+///
+/// `IFCREL*` types are themselves `IfcRoot` subtypes (`GlobalId` is their
+/// first attribute), so a relationship line can simultaneously: (a) collide
+/// on `GlobalId` with an already-emitted relationship from an earlier model
+/// (triggering re-stamping), and (b) name an excluded id inside its SET
+/// attribute (triggering narrowing). This fixture forces both on model B's
+/// `IFCRELCONTAINEDINSPATIALSTRUCTURE` line:
+///   - Model A's own `IFCRELCONTAINEDINSPATIALSTRUCTURE` is emitted first,
+///     unfiltered, and keeps `shared_rel_guid` unchanged (first occurrence).
+///   - Model B's `IFCRELCONTAINEDINSPATIALSTRUCTURE` repeats the exact same
+///     `shared_rel_guid` (second occurrence -> re-stamped) AND has a
+///     visibility filter that excludes one of its two SET members (-> the
+///     SET is narrowed from two members to one).
+///
+/// Asserted against the exact emitted STEP text: the narrowed SET has only
+/// the surviving member, the GlobalId is neither empty nor the original
+/// (shape-checked as 22 GlobalId-charset characters), and everything else on
+/// the line (ids, `#`-refs, punctuation) is exactly as narrowing+offsetting
+/// alone would produce -- i.e. re-stamping only ever touches the leading
+/// quoted attribute, never the narrowed SET or the trailing refs.
+#[test]
+fn narrowing_and_guid_restamping_both_apply_to_the_same_relationship_line() {
+    let shared_rel_guid = "RELGUID0000000000000AA";
+    let b_included_wall = "BWALLGUID0000000000B1Q";
+    let b_excluded_wall = "BWALLGUID0000000000B2Q";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('AWALLGUID0000000000A1Q',$,$,$,$,$,$,$,$);\n\
+#3=IFCRELCONTAINEDINSPATIALSTRUCTURE('{shared_rel_guid}',$,$,$,(#2),#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{b_included_wall}',$,$,$,$,$,$,$,$);\n\
+#3=IFCWALL('{b_excluded_wall}',$,$,$,$,$,$,$,$);\n\
+#4=IFCRELCONTAINEDINSPATIALSTRUCTURE('{shared_rel_guid}',$,$,$,(#2,#3),#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let opts = MergedOptions {
+        included: Some(vec![
+            None, // model A: unfiltered
+            Some(VisibilityFilter { roots: vec![1, 2, 4], excluded: vec![3] }), // model B: wall #3 excluded
+        ]),
+        ..MergedOptions::default()
+    };
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &opts);
+
+    // Model A's relationship is the first occurrence of the shared GUID and
+    // is unfiltered -- byte-identical, GUID untouched, SET unnarrowed.
+    assert!(
+        merged.contains(&format!(
+            "#3=IFCRELCONTAINEDINSPATIALSTRUCTURE('{shared_rel_guid}',$,$,$,(#2),#1);"
+        )),
+        "model A's relationship (first occurrence, unfiltered) must survive byte-identical -- got:\n{merged}"
+    );
+
+    // Model B's excluded wall never appears.
+    assert_eq!(merged.matches(b_excluded_wall).count(), 0, "excluded wall must not be emitted");
+    assert_eq!(merged.matches(b_included_wall).count(), 1, "included wall must survive once");
+
+    // Model A's ids are unshifted (local_max=3, so offset for model B is 4):
+    // model B's wall #2 -> #6, and its relationship (local id 4) -> #8.
+    let rel_line = merged
+        .lines()
+        .find(|l| l.starts_with("#8="))
+        .expect("model B's narrowed+re-stamped relationship must still be emitted at #8");
+
+    let prefix = "#8=IFCRELCONTAINEDINSPATIALSTRUCTURE('";
+    assert!(rel_line.starts_with(prefix), "unexpected line shape: {rel_line}");
+    let after_prefix = &rel_line[prefix.len()..];
+    let quote_end = after_prefix.find('\'').expect("closing quote on re-stamped GlobalId");
+    let restamped_guid = &after_prefix[..quote_end];
+    let tail = &after_prefix[quote_end..];
+
+    // Re-stamping: the GUID differs from the original (it collided with
+    // model A's) and is still 22 GlobalId-charset characters -- shape-valid,
+    // not merely non-empty.
+    assert_ne!(
+        restamped_guid, shared_rel_guid,
+        "model B's relationship is the SECOND occurrence of the shared GUID and must be re-stamped -- got:\n{merged}"
+    );
+    assert_eq!(restamped_guid.len(), 22, "re-stamped GlobalId must still be 22 chars");
+    const GLOBAL_ID_CHARS: &str =
+        "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$";
+    assert!(
+        restamped_guid.chars().all(|c| GLOBAL_ID_CHARS.contains(c)),
+        "re-stamped GlobalId {restamped_guid:?} must be GlobalId-charset shaped"
+    );
+
+    // Narrowing: the SET (#2,#3) had its excluded member (wall #3) dropped,
+    // narrowing to just the surviving wall (#2 -> offset to #6); the
+    // trailing project ref (#1, redirected to model A's canonical project)
+    // is untouched by either pass.
+    assert_eq!(
+        tail, "',$,$,$,(#6),#1);",
+        "narrowing must drop the excluded member from the SET, and re-stamping must not touch \
+         anything past the leading GlobalId -- got tail {tail:?} in line:\n{rel_line}"
+    );
+}

@@ -68,8 +68,8 @@ export interface ClashGlobalSettings {
  * the message.
  *
  * A failed undo is necessary but not sufficient: if the write being undone
- * rewrote the bytes that were already there, nothing was stranded and the
- * caller reports the refused write's own reason instead. See
+ * stored the same rule set that was already stored, nothing was stranded and
+ * the caller reports the refused write's own reason instead. See
  * `presetsStoreIdentically`.
  */
 export type ClashSaveFailureReason =
@@ -279,7 +279,15 @@ function presetsPayload(presets: ClashPreset[]): string | null {
 
 /**
  * Whether storing `a` and storing `b` would write the same bytes under the
- * presets key — i.e. whether replacing `a` with `b` is a no-op on disk.
+ * presets key — i.e. whether replacing `a` with `b` leaves the store's
+ * serialized form unchanged.
+ *
+ * Not the same question as "would the bytes on disk change": `readStoredPresets`
+ * also accepts a legacy bare array, so the key can already be in sync with a
+ * value that is not what `savePresets` writes, and storing either of these rule
+ * sets over it would rewrite it into the current wrapper. What this answers is
+ * that both rule sets persist as the same thing, so whichever one lands, a
+ * reload rebuilds the same state.
  *
  * Built through `presetsPayload`, the same function `savePresets` writes from,
  * so this cannot drift from the real payload the way a structural or reference
@@ -342,10 +350,42 @@ export function loadSettings(): ClashGlobalSettings {
   }
 }
 
+/**
+ * The exact string `saveSettings` hands to `localStorage.setItem`. The single
+ * source of those bytes, so a caller asking whether a settings write would
+ * change anything compares what would actually be written.
+ */
+function settingsPayload(settings: ClashGlobalSettings): string {
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings });
+}
+
+/**
+ * Whether the settings key already holds exactly the bytes `saveSettings`
+ * would write for `settings` — i.e. whether that write would change nothing.
+ *
+ * Built through `settingsPayload`, the same function `saveSettings` writes
+ * from, so the compared bytes are the written bytes by construction.
+ *
+ * One-directional on purpose: `false` only means "not provably a no-op". A
+ * stored value that normalizes to these settings through some other encoding
+ * (a legacy blob without the wrapper, a different key order) answers `false`,
+ * because the write really would rewrite the key. A caller uses this to let a
+ * refused write pass, and letting one pass that would have changed the stored
+ * bytes is the failure that matters.
+ */
+export function settingsAlreadyStored(settings: ClashGlobalSettings): boolean {
+  try {
+    return localStorage.getItem(SETTINGS_KEY) === settingsPayload(settings);
+  } catch {
+    // No storage, or a blocked one: nothing is provably stored.
+    return false;
+  }
+}
+
 export function saveSettings(settings: ClashGlobalSettings): SaveResult {
   if (unwritableKeys.has(SETTINGS_KEY)) return refuseOverwrite('clash settings');
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }));
+    localStorage.setItem(SETTINGS_KEY, settingsPayload(settings));
     return { ok: true };
   } catch {
     return { ok: false, reason: 'quota', message: 'Browser storage is full — clash settings were not saved.' };

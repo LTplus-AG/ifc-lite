@@ -54,6 +54,7 @@ import {
   savePresets,
   saveReviews,
   saveSettings,
+  settingsAlreadyStored,
   validatePresetName,
   validateSelector,
   CLASH_BOUNDS,
@@ -857,17 +858,32 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       if (!presetsResult.ok) return presetsResult; // nothing written, nothing to undo
 
       const settingsResult = saveSettings(settings);
-      if (!settingsResult.ok) {
+      // The same rule the rollback below applies to the presets write, applied
+      // to this one: a refused write that would have stored exactly what is
+      // stored already changed nothing, so it must not fail the apply. A flavor
+      // can carry the settings that are on disk and differ only in its rule set
+      // — flavors that share the thresholds and swap the rules around them —
+      // and then the settings key needs no write at all: the presets write
+      // above landed, and both keys already hold the flavor's config. Aborting
+      // here would roll that write back and report "clash settings were not
+      // saved" over storage holding exactly those settings.
+      //
+      // `settingsAlreadyStored` compares against the bytes `saveSettings`
+      // itself builds, so what is compared is what would have been written; it
+      // answers `false` for anything it cannot prove identical, which only ever
+      // costs a refusal that was already the old behaviour.
+      if (!settingsResult.ok && !settingsAlreadyStored(settings)) {
         // Put the previous rule set back so storage matches the store we are
         // about to leave untouched. This rewrites a payload that fit a moment
         // ago, in place of the one that just replaced it, so it should land.
         const undo = savePresets(previousPresets);
         // A failed undo only strands something if the write it was undoing
-        // actually changed the stored bytes. A flavor can carry the rule set
-        // that is already stored and differ only in its tolerances, and then
-        // the presets write rewrote the same payload: storage still holds the
-        // previous rule set beside the previous settings, which is exactly
-        // what the store holds, so this is an ordinary refused settings write.
+        // stored a different rule set than the one already stored. A flavor can
+        // carry the rule set that is already stored and differ only in its
+        // tolerances, and then the presets write stored the same rule set over
+        // itself: storage still holds the previous rule set beside the previous
+        // settings, which is exactly what the store holds, so this is an
+        // ordinary refused settings write.
         // `presetsStoreIdentically` compares the payloads `savePresets` itself
         // builds, not the arrays, because `presetsToStore` drops unmodified
         // built-ins — two rule sets that differ as arrays can store the same.

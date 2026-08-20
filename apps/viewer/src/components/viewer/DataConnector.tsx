@@ -100,6 +100,14 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
+  // Collab role gate, injected straight into CsvConnector's constructor (see
+  // mutation-guard.ts): CSV import reaches the mutation view's setProperty
+  // directly via generateMutations/importAsync, bypassing the store's own
+  // setProperty action (and its canCollabEdit() check) entirely. Passing the
+  // predicate at construction means the connector itself refuses a write for
+  // a viewer/commenter role, rather than relying on this component
+  // remembering to check first.
+  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -206,9 +214,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     return new CsvConnector(
       dataStore.entities,
       mutationView,
-      dataStore.strings || null
+      dataStore.strings || null,
+      canCollabEdit
     );
-  }, [selectedModel, selectedModelId, getMutationView]);
+  }, [selectedModel, selectedModelId, getMutationView, canCollabEdit]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

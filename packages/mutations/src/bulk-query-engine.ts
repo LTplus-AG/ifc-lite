@@ -13,6 +13,7 @@ import type { EntityTable, SpatialHierarchy, PropertyTable } from '@ifc-lite/dat
 import { PropertyValueType } from '@ifc-lite/data';
 import type { MutablePropertyView } from './mutable-property-view.js';
 import type { Mutation, PropertyValue } from './types.js';
+import { checkMutationGuard, type MutationGuard } from './mutation-guard.js';
 
 /**
  * Filter operators for property values
@@ -131,19 +132,23 @@ export class BulkQueryEngine {
   private strings: { get(idx: number): string } | null;
   /** expressId → array index lookup, built once to avoid O(n) scans */
   private expressIdIndex: Map<number, number>;
+  /** See mutation-guard.ts: consulted once by `applyAction`, opt-in. */
+  private canEdit: MutationGuard | undefined;
 
   constructor(
     entities: EntityTable,
     mutationView: MutablePropertyView,
     spatialHierarchy?: SpatialHierarchy | null,
     properties?: PropertyTable | null,
-    strings?: { get(idx: number): string } | null
+    strings?: { get(idx: number): string } | null,
+    canEdit?: MutationGuard
   ) {
     this.entities = entities;
     this.mutationView = mutationView;
     this.spatialHierarchy = spatialHierarchy || null;
     this.properties = properties || null;
     this.strings = strings || null;
+    this.canEdit = canEdit;
 
     // Build O(1) lookup map once instead of O(n) linear scan per query
     this.expressIdIndex = new Map<number, number>();
@@ -329,6 +334,7 @@ export class BulkQueryEngine {
    * Apply an action to a single entity (public for chunked execution from UI)
    */
   applyAction(entityId: number, action: BulkAction): Mutation | null {
+    checkMutationGuard(this.canEdit);
     switch (action.type) {
       case 'SET_PROPERTY':
         return this.mutationView.setProperty(

@@ -122,6 +122,14 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
+  // Collab role gate, injected straight into BulkQueryEngine's constructor (see
+  // mutation-guard.ts): bulk edits reach the mutation view's setProperty/
+  // setEntityType directly via applyAction, bypassing the store's own
+  // setProperty action (and its canCollabEdit() check) entirely. Passing the
+  // predicate at construction means the engine itself refuses a write for a
+  // viewer/commenter role, rather than relying on this component remembering
+  // to check first.
+  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -315,9 +323,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       mutationView,
       dataStore.spatialHierarchy || null,
       dataStore.properties || null,
-      dataStore.strings || null
+      dataStore.strings || null,
+      canCollabEdit
     );
-  }, [open, selectedModel, selectedModelId, mutationViews]);
+  }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
 
   // Build selection criteria using pre-computed typeEnum mapping (no entity scan needed)
   const currentCriteria = useMemo((): SelectionCriteria => {

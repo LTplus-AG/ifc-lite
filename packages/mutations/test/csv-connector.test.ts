@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
-import { CsvConnector, MutablePropertyView, type DataMapping } from '../src/index.js';
+import { CsvConnector, MutablePropertyView, MutationGuardError, type DataMapping } from '../src/index.js';
 
 /**
  * Builds a minimal EntityTable-shaped mock, matching the fixture style used
@@ -360,5 +360,95 @@ describe('CsvConnector.importAsync', () => {
       expect(progressUpdates[i]).toBeGreaterThanOrEqual(progressUpdates[i - 1]);
     }
     expect(view.getPropertyValue(3, 'Pset_WallCommon', 'FireRating')).toBe('REI 30');
+  });
+});
+
+/**
+ * `CsvConnector` writes straight to `MutablePropertyView.setProperty`,
+ * bypassing the viewer store's own `setProperty` action and its
+ * `canCollabEdit()` check entirely (DataConnector.tsx constructs and drives
+ * this class directly — see mutation-guard.ts). These tests prove the
+ * engine refuses a write on its own when constructed with a `canEdit`
+ * predicate that returns false — without any caller having to remember to
+ * check the role first.
+ */
+describe('CsvConnector: local-edit guard (mutation-guard.ts)', () => {
+  const rows = [{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }];
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [
+      {
+        sourceColumn: 'Rating',
+        targetPset: 'Pset_WallCommon',
+        targetProperty: 'FireRating',
+        valueType: PropertyValueType.Real,
+      },
+    ],
+  };
+  const content = 'GlobalId,Rating\nguid-a,60';
+
+  it('generateMutations throws MutationGuardError and applies nothing when canEdit() is false', () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+
+    expect(() => connector.generateMutations(matches, mapping)).toThrow(MutationGuardError);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBeNull();
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('generateMutations still applies when canEdit() is true (guard is opt-in, not a new default)', () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => true);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBe(60);
+  });
+
+  it("['import'] (sync) surfaces the refusal as a stats error, not a silent no-op", () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const stats = connector['import'](content, mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.errors.length).toBeGreaterThan(0);
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('importAsync surfaces the refusal as a stats error, not a silent no-op', async () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const stats = await connector.importAsync(content, mapping, () => {});
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.errors.length).toBeGreaterThan(0);
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('a connector with no canEdit predicate behaves exactly as before (backward compatible)', () => {
+    const { connector, view } = makeConnector(rows);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBe(60);
   });
 });

@@ -93,10 +93,28 @@ export function allocatePassQueryIndices(
  * mapping is involved. Extracted out of `readback()` so this pairing
  * arithmetic — the part that would silently mis-attribute a duration to
  * the wrong label on an off-by-one — is checked directly.
+ *
+ * `GpuFrameTimingRecorder.readback()` always calls this with
+ * `timestamps.length === labels.length * 2` (it sizes the readback slice
+ * from the same `nextQueryIndex` cursor that `beginPass` pushed each label
+ * against — see `readback()`'s call site), so a short buffer cannot occur
+ * on that path today. But this function is exported precisely so it can be
+ * exercised standalone, and a caller passing a corrupted or hand-built
+ * buffer must not get back a sample whose `startNs`/`endNs` is `undefined`
+ * where the type says `bigint`: that silently propagates into
+ * `frameTotalMs`/`passDurationsMs` (`frame-timing.ts`), which throws a
+ * `TypeError` mixing `BigInt` and `undefined` for a one-short buffer, or
+ * silently computes `NaN` for a two-short buffer — two different failure
+ * shapes for what is really the same input error, and neither is the
+ * "never throws, never fabricates" contract the rest of this module's
+ * siblings hold themselves to. A label whose (start, end) pair does not
+ * fully fit in `timestamps` is dropped rather than pushed with a missing
+ * field.
  */
 export function pairTimestampsWithLabels(labels: readonly string[], timestamps: BigInt64Array): PassTimingSample[] {
   const samples: PassTimingSample[] = [];
   for (let i = 0; i < labels.length; i++) {
+    if (i * 2 + 1 >= timestamps.length) break; // buffer shorter than this (and every later) label needs — stop rather than fabricate a partial pair.
     samples.push({ label: labels[i], startNs: timestamps[i * 2], endNs: timestamps[i * 2 + 1] });
   }
   return samples;

@@ -124,4 +124,47 @@ describe('pairTimestampsWithLabels', () => {
       { label: 'shadow', startNs: 108n, endNs: 111n },
     ]);
   });
+
+  describe('a malformed (short) timestamps buffer — not reachable via GpuFrameTimingRecorder.readback() today, but this function is exported to be called standalone', () => {
+    it('drops a pair one element short instead of returning an undefined endNs (which crashes frameTotalMs downstream: "Cannot mix BigInt and other types")', () => {
+      const labels = ['a', 'b'];
+      const timestamps = new BigInt64Array([1n, 2n, 3n]); // b's endNs (index 3) is missing
+      const result = pairTimestampsWithLabels(labels, timestamps);
+      assert.deepStrictEqual(result, [{ label: 'a', startNs: 1n, endNs: 2n }]);
+      // Every returned sample must be safe to sum in frameTotalMs without throwing.
+      for (const sample of result) {
+        assert.strictEqual(typeof sample.startNs, 'bigint');
+        assert.strictEqual(typeof sample.endNs, 'bigint');
+      }
+    });
+
+    it('drops a pair two elements short instead of silently producing NaN', () => {
+      const labels = ['a', 'b'];
+      const timestamps = new BigInt64Array([1n, 2n]); // b has no timestamps at all
+      const result = pairTimestampsWithLabels(labels, timestamps);
+      assert.deepStrictEqual(result, [{ label: 'a', startNs: 1n, endNs: 2n }]);
+    });
+
+    it('returns an empty array when there are no timestamps at all', () => {
+      const labels = ['a', 'b'];
+      const timestamps = new BigInt64Array([]);
+      assert.deepStrictEqual(pairTimestampsWithLabels(labels, timestamps), []);
+    });
+
+    it('drops every label when the timestamps buffer is shorter than even the first pair', () => {
+      const labels = ['a', 'b', 'c'];
+      const timestamps = new BigInt64Array([1n]);
+      assert.deepStrictEqual(pairTimestampsWithLabels(labels, timestamps), []);
+    });
+
+    it('the exact-length case (labels.length * 2 === timestamps.length) is unaffected: byte-identical to the pre-guard result', () => {
+      const labels = ['shadow', 'main', 'sky'];
+      const timestamps = new BigInt64Array([10n, 25n, 25n, 900n, 900n, 950n]);
+      assert.deepStrictEqual(pairTimestampsWithLabels(labels, timestamps), [
+        { label: 'shadow', startNs: 10n, endNs: 25n },
+        { label: 'main', startNs: 25n, endNs: 900n },
+        { label: 'sky', startNs: 900n, endNs: 950n },
+      ]);
+    });
+  });
 });

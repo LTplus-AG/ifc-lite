@@ -83,8 +83,8 @@ describe('PropertyTable', () => {
 
   // getProperty stopped at the FIRST same-named pset and returned null even
   // when the property lived in a later same-named pset (findEntities, right
-  // below, already scans every same-named pset for this exact shape).
-  it('should find a property in a later same-named pset when an earlier one lacks it', () => {
+  // below, already scans every same-named pset for this exact shape). #2907
+  it('should find a property in a later same-named pset when an earlier one lacks it (#2907)', () => {
     const table = makeTable();
     table.addPropertySet(100, makePropSet('Pset_WallCommon', new Map([
       ['IsExternal', { type: 'boolean', value: true }],

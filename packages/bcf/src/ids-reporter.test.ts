@@ -480,7 +480,78 @@ describe('IDS BCF Reporter', () => {
       const report = createMockReport();
       const project = createBCFFromIDSReport(report, { maxTopics: 1 });
 
-      expect(project.topics.size).toBe(1);
+      // 1 real topic (the cap) + 1 synthetic "...and N more" notice topic,
+      // the same way MAX_COMMENTS_PER_TOPIC's truncation adds an extra
+      // comment rather than dropping the overflow with no trace.
+      const topics = [...project.topics.values()];
+      expect(topics.length).toBe(2);
+      expect(topics.filter((t) => t.topicType !== 'Info').length).toBe(1);
+    });
+
+    it('signals maxTopics truncation instead of silently dropping entities (per-entity grouping)', () => {
+      // createMockReport() has 2 failing entities (express IDs 100, 200) in
+      // its one spec. Capping at 1 topic must not just stop — the comment
+      // cap (MAX_COMMENTS_PER_TOPIC) already adds an "...and N more" note
+      // when it truncates; the topic cap must do the same, or a real export
+      // over 1000+ failures silently drops entities with no trace in the
+      // BCF file.
+      const report = createMockReport();
+      const project = createBCFFromIDSReport(report, { maxTopics: 1 });
+
+      const topics = [...project.topics.values()];
+      const notice = topics.find((t) => /more/i.test(t.title) || /more/i.test(t.description ?? ''));
+      expect(notice, 'expected a truncation-notice topic when maxTopics cuts off remaining entities').toBeDefined();
+      expect(notice!.title + (notice!.description ?? '')).toContain('1');
+    });
+
+    it('does not silently drop a cardinality-only failure (zero applicable entities) in per-entity grouping', () => {
+      // "At least one IfcWindow must exist": a required (minOccurs=1) spec
+      // that matched ZERO entities. The validator correctly marks the
+      // specification 'fail', but there is no entity to attach a topic to
+      // — entityResults is empty. Per-entity grouping (the default) used
+      // to iterate only entityResults, so this failure produced no topic
+      // at all: a real defect (a required element type entirely missing
+      // from the model) was invisible in the exported BCF file while the
+      // CLI/JSON summary correctly counted it as a failed specification.
+      const report: IDSReportInput = {
+        title: 'Cardinality-only failure',
+        specificationResults: [
+          {
+            specification: { name: 'At least one window must exist' },
+            status: 'fail',
+            applicableCount: 0,
+            passedCount: 0,
+            failedCount: 0,
+            entityResults: [],
+            cardinalityResult: {
+              passed: false,
+              actualCount: 0,
+              minExpected: 1,
+              message: 'Expected at least 1, found 0',
+            },
+          },
+        ],
+      };
+
+      const perEntity = createBCFFromIDSReport(report, { topicGrouping: 'per-entity' });
+      expect(perEntity.topics.size, 'per-entity grouping dropped the cardinality-only failure').toBeGreaterThan(0);
+      const perEntityTopic = [...perEntity.topics.values()][0];
+      expect(perEntityTopic.title).toContain('At least one window must exist');
+
+      const perRequirement = createBCFFromIDSReport(report, { topicGrouping: 'per-requirement' });
+      expect(
+        perRequirement.topics.size,
+        'per-requirement grouping dropped the cardinality-only failure',
+      ).toBeGreaterThan(0);
+    });
+
+    it('signals maxTopics truncation for per-requirement grouping too', () => {
+      const report = createMockReport();
+      const project = createBCFFromIDSReport(report, { maxTopics: 1, topicGrouping: 'per-requirement' });
+
+      const topics = [...project.topics.values()];
+      const notice = topics.find((t) => /more/i.test(t.title) || /more/i.test(t.description ?? ''));
+      expect(notice, 'expected a truncation-notice topic when maxTopics cuts off remaining requirement failures').toBeDefined();
     });
 
     it('should handle empty report', () => {

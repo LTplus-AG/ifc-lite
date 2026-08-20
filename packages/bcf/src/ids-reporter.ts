@@ -96,6 +96,21 @@ export interface IDSSpecResultInput {
   passedCount: number;
   failedCount: number;
   entityResults: IDSEntityResultInput[];
+  /**
+   * Present when the specification declares minOccurs/maxOccurs. A
+   * cardinality-only failure (e.g. a required entity type entirely
+   * absent from the model) has `applicableCount === 0` and an empty
+   * `entityResults` — there is no entity to attach a per-entity topic
+   * to, so grouping strategies that iterate `entityResults` must fall
+   * back to this to avoid dropping the failure silently.
+   */
+  cardinalityResult?: {
+    passed: boolean;
+    actualCount: number;
+    minExpected?: number;
+    maxExpected?: number | 'unbounded';
+    message: string;
+  };
 }
 
 /** Entity result — structurally matches IDSEntityResult */
@@ -259,6 +274,56 @@ export function createBCFFromIDSReport(
   return project;
 }
 
+/**
+ * Build the topic for a specification that FAILED on cardinality alone
+ * (its applicability matched zero entities and minOccurs required at
+ * least one). There is no entity to attach a per-entity or
+ * per-requirement topic to, so grouping strategies that iterate
+ * `entityResults` need this fallback or the failure never appears in
+ * the exported BCF file at all.
+ */
+function createCardinalityFailureTopic(
+  specResult: IDSSpecResultInput,
+  author: string,
+  failureTopicType: string,
+): BCFTopic {
+  const message = specResult.cardinalityResult?.message ?? 'Cardinality requirement not satisfied';
+  return createTopic({
+    title: `${specResult.specification.name}: cardinality requirement not met`,
+    description: `Specification: ${specResult.specification.name}\n${specResult.specification.description ?? ''}\n\n${message} (0 applicable entities matched).`,
+    author,
+    topicType: failureTopicType,
+    topicStatus: 'Open',
+    priority: 'High',
+    labels: ['IDS', specResult.specification.name, 'cardinality'],
+  });
+}
+
+/**
+ * Add a synthetic "Info" topic recording that `maxTopics` cut off `remaining`
+ * further items. Without this, a large model silently drops entities past
+ * the cap with no trace in the exported BCF file — the same silent-loss
+ * shape `MAX_COMMENTS_PER_TOPIC`'s "... and N more" comment exists to avoid
+ * for comments within one topic.
+ */
+function addTruncationNoticeTopic(
+  project: BCFProject,
+  author: string,
+  remaining: number,
+  itemLabel: string,
+): void {
+  if (remaining <= 0) return;
+  const topic = createTopic({
+    title: `... and ${remaining} more ${itemLabel}${remaining === 1 ? '' : 's'} (truncated at maxTopics)`,
+    description: `The IDS validation report contained more ${itemLabel}s than the configured maxTopics limit. ${remaining} additional ${remaining === 1 ? 'entry was' : 'entries were'} not exported as BCF topics.`,
+    author,
+    topicType: 'Info',
+    topicStatus: 'Open',
+    labels: ['IDS', 'truncated'],
+  });
+  project.topics.set(topic.guid, topic);
+}
+
 // ============================================================================
 // Per-entity grouping (default — recommended)
 // ============================================================================
@@ -280,15 +345,30 @@ function buildTopicsPerEntity(
   opts: BuildOptions,
 ): void {
   let topicCount = 0;
+  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status === 'not_applicable') continue;
 
-    for (const entity of specResult.entityResults) {
-      if (topicCount >= opts.maxTopics) return;
+    // A cardinality-only failure (required entity type matched zero
+    // times) has no entities to iterate below — without this branch the
+    // failure is invisible in per-entity grouping.
+    if (specResult.status === 'fail' && specResult.entityResults.length === 0) {
+      qualifyingCount++;
+      if (topicCount < opts.maxTopics) {
+        const topic = createCardinalityFailureTopic(specResult, opts.author, opts.failureTopicType);
+        project.topics.set(topic.guid, topic);
+        topicCount++;
+      }
+      continue;
+    }
 
+    for (const entity of specResult.entityResults) {
       // Skip passing entities unless requested
       if (entity.passed && !opts.includePassingEntities) continue;
+
+      qualifyingCount++;
+      if (topicCount >= opts.maxTopics) continue;
 
       const failedReqs = entity.requirementResults.filter(r => r.status === 'fail');
       const totalReqs = entity.requirementResults.filter(r => r.status !== 'not_applicable').length;
@@ -343,6 +423,8 @@ function buildTopicsPerEntity(
       topicCount++;
     }
   }
+
+  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'entity');
 }
 
 // ============================================================================
@@ -355,10 +437,12 @@ function buildTopicsPerSpecification(
   opts: Omit<BuildOptions, 'includePassingEntities' | 'passTopicType'>,
 ): void {
   let topicCount = 0;
+  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status !== 'fail') continue;
-    if (topicCount >= opts.maxTopics) return;
+    qualifyingCount++;
+    if (topicCount >= opts.maxTopics) continue;
 
     const failedEntities = specResult.entityResults.filter(e => !e.passed);
 
@@ -414,6 +498,8 @@ function buildTopicsPerSpecification(
     project.topics.set(topic.guid, topic);
     topicCount++;
   }
+
+  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'specification');
 }
 
 // ============================================================================
@@ -426,16 +512,31 @@ function buildTopicsPerRequirement(
   opts: Omit<BuildOptions, 'includePassingEntities' | 'passTopicType'>,
 ): void {
   let topicCount = 0;
+  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status !== 'fail') continue;
+
+    // Cardinality-only failure — no entity/requirement to attach a topic
+    // to below. Same fallback as buildTopicsPerEntity, for the same
+    // reason: otherwise the failure has no BCF topic anywhere.
+    if (specResult.entityResults.length === 0) {
+      qualifyingCount++;
+      if (topicCount < opts.maxTopics) {
+        const topic = createCardinalityFailureTopic(specResult, opts.author, opts.failureTopicType);
+        project.topics.set(topic.guid, topic);
+        topicCount++;
+      }
+      continue;
+    }
 
     for (const entity of specResult.entityResults) {
       if (entity.passed) continue;
 
       for (const req of entity.requirementResults) {
         if (req.status !== 'fail') continue;
-        if (topicCount >= opts.maxTopics) return;
+        qualifyingCount++;
+        if (topicCount >= opts.maxTopics) continue;
 
         const entityLabel = entity.entityName || `#${entity.expressId}`;
 
@@ -472,6 +573,8 @@ function buildTopicsPerRequirement(
       }
     }
   }
+
+  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'requirement failure');
 }
 
 // ============================================================================

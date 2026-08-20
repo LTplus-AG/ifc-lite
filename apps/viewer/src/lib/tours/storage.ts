@@ -27,16 +27,26 @@ interface TourStorage {
   tours: Record<string, TourRecord>;
 }
 
+/** A plain, non-array object — the shape every field below needs before its
+ *  own properties are trusted. `??` alone only rescues null/undefined, so a
+ *  wrong-typed-but-present value (a string, a number, an array) would
+ *  otherwise sail through unchanged; downstream writers (`s.tours[id] = …`)
+ *  then throw assigning a property onto a primitive. */
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
 function read(): TourStorage {
   if (typeof window === 'undefined') return { tours: {} };
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return { tours: {} };
-    const parsed = JSON.parse(raw) as Partial<TourStorage>;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return { tours: {} };
     return {
-      inviteDismissedAt: parsed.inviteDismissedAt,
-      notices: parsed.notices ?? {},
-      tours: parsed.tours ?? {},
+      inviteDismissedAt: typeof parsed.inviteDismissedAt === 'string' ? parsed.inviteDismissedAt : undefined,
+      notices: isPlainObject(parsed.notices) ? (parsed.notices as Record<string, string>) : {},
+      tours: isPlainObject(parsed.tours) ? (parsed.tours as Record<string, TourRecord>) : {},
     };
   } catch {
     // Privacy modes throw on localStorage access and malformed JSON is not

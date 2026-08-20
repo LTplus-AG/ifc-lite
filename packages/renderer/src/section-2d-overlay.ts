@@ -603,9 +603,12 @@ export class Section2DOverlayRenderer {
     // 0.3m bias was there to keep the outline lines clear of below-plane
     // geometry, but it made the cap visually drift off the slider plane
     // (users could see a 0.3m gap between the plane preview and the cap).
-    // The fill pipeline uses depthCompare 'always' so z-fighting with
-    // coincident below-plane top faces is not an issue; the stencil gate
-    // keeps the fill restricted to the actual cap polygons.
+    // The fill pipeline uses depthCompare 'greater-equal' (reverse-Z) so the
+    // cap ties cleanly with coincident below-plane top faces and is occluded
+    // by nearer model geometry — see the depthStencil comment on
+    // `fillPipeline` above. There is no stencil test; the fill is restricted
+    // to the actual cap polygons by the triangle-plane intersection geometry
+    // `SectionCutter` produces, not by a stencil gate.
     const offset: [number, number, number] = [0, 0, 0];
 
     // Update uniforms. Field offsets come from SECTION_2D_UNIFORM_SLOTS, which

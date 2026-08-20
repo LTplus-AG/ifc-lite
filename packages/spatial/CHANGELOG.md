@@ -1,5 +1,17 @@
 # @ifc-lite/spatial
 
+## 1.14.14
+
+### Patch Changes
+
+- [#2764](https://github.com/LTplus-AG/ifc-lite/pull/2764) [`ae5a5ca`](https://github.com/LTplus-AG/ifc-lite/commit/ae5a5caa3e20304085ba14c0708cd026c1d4bf16) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the spatial index placing an empty mesh with a non-zero origin at world `[0,0,0]` instead of its own origin.
+  
+  `computeMeshBounds` returned early for `positions.length === 0` before the origin lift ran, so an empty mesh (a mesh with geometry stripped, e.g. a fully-clipped or degenerate element) with `mesh.origin` set was indexed at world `[0,0,0]` regardless of where it actually sits. Every other mesh — including a populated one with the same origin — was correctly lifted by `mesh.origin` before being indexed. Reproduced directly: an empty mesh with `origin: [500, 500, 500]` was found by a query box at `[0,0,0]` and missed by a query box at `[500, 500, 500]`.
+  
+  The origin extraction is now hoisted above the early return so there is a single place that reads `mesh.origin`, and the empty-mesh path returns a degenerate box at `[ox, oy, oz]` instead of `[0, 0, 0]`. This only changes behaviour for empty meshes that also carry a non-zero `mesh.origin`; the common case (no origin, or a populated mesh) is unaffected.
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa)]:
+  - @ifc-lite/geometry@3.8.4
+
 ## 1.14.13
 
 ### Patch Changes

@@ -1,5 +1,43 @@
 # @ifc-lite/cache
 
+## 3.0.5
+
+### Patch Changes
+
+- [#2784](https://github.com/LTplus-AG/ifc-lite/pull/2784) [`7b3617f`](https://github.com/LTplus-AG/ifc-lite/commit/7b3617f2ec9a6e9e8a57127d2ec61f9c33cadf3a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Pin the reject path of `decodeGeometryChunk`'s consumed-bytes guard.
+  
+  `decodeGeometryChunk` (v13 chunked geometry) ends with
+  `if (reader.position !== raw.byteLength) throw ...` — it requires a chunk's
+  mesh records to consume exactly the decoded buffer. Mutation testing showed
+  this guard was unpinned: deleting it left the full suite green, even though
+  the sibling `uncompressedLength` mismatch guard immediately above it already
+  had a dedicated test.
+  
+  The gap is structural, not incidental: `meshCount` and `uncompressedLength`
+  are directory-level fields and can both be truthful while a mesh record's
+  *own* `vertexCount` field disagrees with how many vertices were actually
+  written for it (truncation or corruption mid record). That desync doesn't
+  move the chunk's overall decoded length or its declared mesh count, so
+  neither of the two checks that run before this guard can catch it —
+  `readMeshRecord` simply under-reads, and only the consumed-bytes check
+  notices the reader stopped short of the chunk's end.
+  
+  The new test builds one real chunk, then corrupts only the lone mesh
+  record's `vertexCount` field (leaving the directory's `meshCount` and
+  `uncompressedLength` untouched and correct) so the record under-consumes by
+  exactly the bytes two shortened arrays account for. It fails when the guard
+  is removed and passes with it restored; a control decode with the field
+  restored round-trips fine, confirming the corruption — not an unrelated
+  fixture bug — is what triggers the throw.
+  
+  As a calibration check, the analogous mutation on the neighbouring
+  `validateGeometryDirectory` `headLength` guard (`geometry-directory.ts:32-36`)
+  was confirmed to fail exactly one existing test, showing the harness and
+  build are sound and the new test's win is real.
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/geometry@3.8.4
+  - @ifc-lite/data@3.4.0
+
 ## 3.0.4
 
 ### Patch Changes

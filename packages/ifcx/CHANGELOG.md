@@ -1,5 +1,40 @@
 # @ifc-lite/ifcx
 
+## 2.3.7
+
+### Patch Changes
+
+- [#2891](https://github.com/LTplus-AG/ifc-lite/pull/2891) [`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bakeLayers`' `dedupeImports` keeping the weakest layer's import metadata (e.g. a pinned `integrity` hash) for a URI shared across layers, while `mergeSchemas` in the same file resolves same-key conflicts with the strongest (last) layer winning. `dedupeImports` now agrees with `mergeSchemas` and with `composeIfcx`'s layer semantics generally: the strongest layer's import wins.
+
+- [#2890](https://github.com/LTplus-AG/ifc-lite/pull/2890) [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `composeFederated`'s handling of a node with multiple simultaneous `inherits` keys: it resolved conflicting attributes/children with the first-listed inherit winning, while `composeIfcx` (and the buildingSMART IFC5 reference composer) resolve them with the last-listed inherit winning. Given identical input, the two composers previously disagreed on the composed value; `resolveInheritance` in `federated-composition.ts` now matches `composeNode` in `composition.ts`, and own (occurrence-level) attributes still always outrank any inherited value in both.
+
+- [#2782](https://github.com/LTplus-AG/ifc-lite/pull/2782) [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Pin `isQuantityProperty` / `routesToQuantityTable` quantity-vs-property
+  classification against real third-party IFC5 fixtures (buildingSMART sample
+  scenes under `tests/models/ifc5/`), not our own writer's output.
+  
+  `exactQuantityNames` and `suffixPatterns` in `property-extractor.ts` are two
+  hand-maintained, asymmetric name lists (e.g. `Height`/`Width`/`Depth`/
+  `Thickness` are exact-match only, absent from the suffix list) with no prior
+  test coverage in the package. A corpus-wide census of every
+  `bsi::ifc::prop::*` short name across the whole downloaded fixture set found
+  no real misclassification: every name present (`Height`, `Width`, `Depth`,
+  `Volume`, `Length`, `NetArea`, `NetSideArea`, `NetVolume`,
+  `CrossSectionArea`, plus non-quantity names like `ElevationOfRefHeight`,
+  `ElevationOfTerrain`, `NumberOfStoreys`) already classifies correctly — this
+  is a coverage gap, not a bug fix.
+  
+  New tests pin the exact quantity/property split for `Hello_Wall_hello-wall.ifcx`
+  and the PCERT `Building-Architecture`/`Building-Structural` sample scenes by
+  value, so a future edit to either list can no longer silently regress the
+  split (deleting `Height` from `exactQuantityNames` previously left the
+  package's whole suite green while dropping Hello Wall's extracted quantities
+  from 10 to 5).
+
+- [#2893](https://github.com/LTplus-AG/ifc-lite/pull/2893) [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `validateProvenance` silently accepting an untrusted manifest that omits the required `merge` field entirely. Per `docs/architecture/layer-prs/03-provenance.md` §3.1 and the `ProvenanceManifest` type (`merge: MergeRecord | null`, not optional), every manifest carries `merge`, as `null` for non-merge layers. The check treated `undefined` the same as `null` and skipped validation, so a manifest missing the key passed with zero errors; it now matches the sibling `base` field's pattern and only exempts a literal `null`.
+- Updated dependencies [[`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/data@3.4.0
+
 ## 2.3.6
 
 ### Patch Changes

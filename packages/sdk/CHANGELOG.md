@@ -1,5 +1,69 @@
 # @ifc-lite/sdk
 
+## 2.1.3
+
+### Patch Changes
+
+- [#2841](https://github.com/LTplus-AG/ifc-lite/pull/2841) [`679c7cb`](https://github.com/LTplus-AG/ifc-lite/commit/679c7cb680ab0d8f17e8f5c267fdb424049ec0d0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.list.execute()` returning `null` for every column, every row, always.
+  
+  The SDK's `ListColumn` is documented as `{ header, source }` where `source`
+  is a free-form string — `'name'`, `'type'`, `'globalId'`, or a
+  `'PsetName.PropName'` path (`packages/sdk/src/namespaces/list.ts`). `@ifc-lite/lists`'
+  `executeList` (`packages/lists/src/engine.ts:566`) switches on `col.source`
+  against its own structured enum instead — `'attribute' | 'property' |
+  'quantity' | 'material' | 'classification' | 'spatial' | 'model' | 'zone'` —
+  and falls through to `default: values[i] = null` for anything else
+  (`packages/lists/src/engine.ts:608`). `execute()` forwarded SDK columns
+  straight through unchanged, so every SDK-shaped column matched none of the
+  library's cases: every cell in every `bim.list.execute()` result came back
+  `null`, for every caller, on every call.
+  
+  Separately, the library's `ListDefinition.conditions` is a required array —
+  `resolveSourceSet` reads `conditions.length` unconditionally
+  (`packages/lists/src/engine.ts:270`) — while the SDK documents its own
+  `conditions` as optional. Omitting it (a documented-valid call) threw
+  `Cannot read properties of undefined (reading 'length')` instead of running
+  unfiltered. And a *supplied* condition fared no better: the SDK's
+  `ListCondition` (`{ psetName, propName, operator: '=' | '!=' | ... }`) has no
+  `source` discriminator and spells its operators differently from the
+  library's `PropertyCondition` (`'equals' | 'notEquals' | ...`), so it matched
+  none of `getConditionValue`'s cases (`engine.ts:382`) and — because a `null`
+  actual value makes `matchesCondition` return `false` unconditionally
+  (`engine.ts:308`) — every entity failed every condition: a filtered call
+  silently came back with an **empty** table rather than an error.
+  
+  `ListNamespace.execute()` now translates each SDK column into the library's
+  `ColumnDefinition` shape (`'name'`/`'type'`/`'globalId'` map to the
+  `'attribute'` source; a `'Pset.Prop'` path maps to `'property'`, or
+  `'quantity'` when the set name has the `Qto_` prefix `bim.bsdd` already uses
+  to distinguish the two), translates each supplied condition into the
+  library's `PropertyCondition` shape the same way (plus mapping the operator
+  spelling), and defaults `conditions` to `[]` when omitted.
+  
+  Downstream-visible: `bim.list.execute()` now returns the actual property/
+  attribute/quantity values it always claimed to, instead of an all-`null`
+  table; a `ListDefinition` without `conditions` no longer throws; and a
+  supplied `conditions` filter now actually filters instead of silently
+  returning zero rows.
+
+- [#2755](https://github.com/LTplus-AG/ifc-lite/pull/2755) [`c49c7f6`](https://github.com/LTplus-AG/ifc-lite/commit/c49c7f644cd7930bd3937ed850f3864aa516934b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.ids.validate({ locale })` being silently ignored. The SDK forwarded a `locale` key into `@ifc-lite/ids`'s `validateIDS` options, but `ValidatorOptions` has no such field — only a `translator` object it destructures directly — so every call produced English-only messages regardless of the requested locale (this also made the CLI's `ids --locale` flag inert).
+  
+  `validate()` now builds a `translator` from the requested locale via `createTranslationService` before calling into the validator, the same pattern the viewer's IDS worker already used. `de` and `fr` locales now actually change the human-readable requirement and failure text in the validation report.
+- Updated dependencies [[`b9faf82`](https://github.com/LTplus-AG/ifc-lite/commit/b9faf8296f86943914c30550af8131fee250d4c8), [`8f89331`](https://github.com/LTplus-AG/ifc-lite/commit/8f893311b170a983e160737bd9479c3caf961911), [`bc179f6`](https://github.com/LTplus-AG/ifc-lite/commit/bc179f6a1091c8c307a07b31d8c30fbba140e4a9), [`b9faf82`](https://github.com/LTplus-AG/ifc-lite/commit/b9faf8296f86943914c30550af8131fee250d4c8), [`48b204b`](https://github.com/LTplus-AG/ifc-lite/commit/48b204b868016aad29b694b53ac8ace5e76a0542), [`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`432fdb8`](https://github.com/LTplus-AG/ifc-lite/commit/432fdb8dd12dd90af17d1ca3ce24a2fd5b7168b0), [`6a43522`](https://github.com/LTplus-AG/ifc-lite/commit/6a43522cdf3b0a9b0f7ce303b59f479dca2a2aca), [`b699875`](https://github.com/LTplus-AG/ifc-lite/commit/b6998754039676def950735335147556afcb2977), [`b3a4d30`](https://github.com/LTplus-AG/ifc-lite/commit/b3a4d307c50c9b0a8b8bb0e29952c4a98e417c16), [`0a10389`](https://github.com/LTplus-AG/ifc-lite/commit/0a1038972a72b27bda99c8793055efe39d623f10), [`5334bd1`](https://github.com/LTplus-AG/ifc-lite/commit/5334bd1589acb1c4b81a1f255d1a9171530b1467), [`b1ac6be`](https://github.com/LTplus-AG/ifc-lite/commit/b1ac6be425cd89ff90eaab02636211f0d928b3e6), [`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`3329521`](https://github.com/LTplus-AG/ifc-lite/commit/33295218a3a2ecd35671483bc92bbf018807ae1e), [`2156528`](https://github.com/LTplus-AG/ifc-lite/commit/2156528c926114233c79ba74925c0c8656f1ea65), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`b4740a1`](https://github.com/LTplus-AG/ifc-lite/commit/b4740a1fb18050c065e8fbd58714626bdf852f00), [`5a9ecfb`](https://github.com/LTplus-AG/ifc-lite/commit/5a9ecfb6bcd3190eae4463bd8926cf38a2143496), [`9fb50eb`](https://github.com/LTplus-AG/ifc-lite/commit/9fb50ebcfaaf2926b2badd4d4d8dfc6ca55b762f), [`969cff9`](https://github.com/LTplus-AG/ifc-lite/commit/969cff95a77ce4c17a949a93632c8a0378fd3ede), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`ccc38b0`](https://github.com/LTplus-AG/ifc-lite/commit/ccc38b0de9925a3de1106893a5785117e0e7551d), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`4f01d5c`](https://github.com/LTplus-AG/ifc-lite/commit/4f01d5caf469c380c5e1a15d807a5ebb7f6de86e), [`ae14cd3`](https://github.com/LTplus-AG/ifc-lite/commit/ae14cd3036f11c039d9b7cd786acf51a68b884dc), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`c233d48`](https://github.com/LTplus-AG/ifc-lite/commit/c233d48a935a70851271b61a305f43dd9261dcca), [`b28a629`](https://github.com/LTplus-AG/ifc-lite/commit/b28a629d49f279ce01537cb06ae4c28f32beb2bb), [`1900a1a`](https://github.com/LTplus-AG/ifc-lite/commit/1900a1a9f8174ef874dddbd1541ccadd9a89415e), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2), [`b7d2a11`](https://github.com/LTplus-AG/ifc-lite/commit/b7d2a11345add8acdf0926ade5d4c1ca19ccecf7), [`c849b13`](https://github.com/LTplus-AG/ifc-lite/commit/c849b1395511e48ed6c8b6bd01bc0b1a66d60bfa), [`ae5a5ca`](https://github.com/LTplus-AG/ifc-lite/commit/ae5a5caa3e20304085ba14c0708cd026c1d4bf16), [`adc37ca`](https://github.com/LTplus-AG/ifc-lite/commit/adc37cac288e53be88796fddf06b0a7ae179f451), [`2affb53`](https://github.com/LTplus-AG/ifc-lite/commit/2affb534e8ed7b339dc52984789638d4ea4774bc), [`adc37ca`](https://github.com/LTplus-AG/ifc-lite/commit/adc37cac288e53be88796fddf06b0a7ae179f451), [`f19206b`](https://github.com/LTplus-AG/ifc-lite/commit/f19206b8912ba418627373e147c1699019450ebf)]:
+  - @ifc-lite/bcf@1.18.2
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/clash@1.9.0
+  - @ifc-lite/parser@4.2.0
+  - @ifc-lite/drawing-2d@2.1.1
+  - @ifc-lite/query@1.14.17
+  - @ifc-lite/data@3.4.0
+  - @ifc-lite/ids@1.15.48
+  - @ifc-lite/create@2.1.2
+  - @ifc-lite/lens@1.18.1
+  - @ifc-lite/export@2.9.4
+  - @ifc-lite/spatial@1.14.14
+  - @ifc-lite/lists@1.23.2
+
 ## 2.1.2
 
 ### Patch Changes

@@ -1,5 +1,0 @@
----
-"@ifc-lite/viewer": patch
----
-
-Reset `collabRoomId`, `collabRole` and `collabSelfToken` when `startCollab` fails to bring up a session, instead of leaving them naming the room that never started. `startCollab` sets those three fields synchronously (so an early `ShareDialog` subscriber sees the join token) before it awaits `createCollabSession`; if that rejects — for example a browser without IndexedDB, or a WebSocket provider that never connects — the failure handler cleared `collabConnecting` and `collabStatus` but left the room id, role and token in place with no live session behind them. Anything reading "is `collabRoomId` set" as "still in a room" (the toolbar indicator, the Share dialog) kept showing a joined room, and `canCollabEdit()` / `canCollabComment()` — the gate `mutationSlice` checks every write against — kept applying the failed room's role instead of falling back to single-user editing rules, silently blocking edits for a viewer/commenter role even though the session that role belonged to never came up.

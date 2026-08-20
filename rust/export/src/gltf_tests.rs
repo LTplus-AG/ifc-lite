@@ -1012,6 +1012,27 @@ fn try_from_meshes_rejects_index_counts_past_buffer() {
 }
 
 #[test]
+fn try_from_meshes_rejects_empty_input() {
+    // Zero meshes (e.g. a viewer selection whose visible set filtered to
+    // nothing) passes every per-count-consistency check trivially — vsum=0,
+    // isum=0, index_counts.len() 0 >= n 0 — so the checked path fell through
+    // to the infallible assembler and returned Ok with a "successful" GLB.
+    //
+    // glTF-Validator (npm `gltf-validator`, the reference implementation)
+    // rejects that GLB outright: `accessors`/`bufferViews`/`meshes`/`nodes`
+    // are EMPTY_ENTITY (glTF schema requires each `minItems: 1` when
+    // present) and `buffers[0].byteLength` is 0 (schema `minimum: 1`).
+    // `try_export_glb` (the from-bytes sibling, #1438/#1516) already fails
+    // closed on an empty visible-mesh set with `ExportError::NoRenderGeometry`
+    // for exactly this reason; this from-meshes entry point — reachable from
+    // the viewer's `exportGlbFromMeshes` — did not.
+    let err = try_export_glb_from_meshes(&[], &[], &[], &[], &[], &[], &[], &[], false, true, false)
+        .expect_err("zero meshes must be NoRenderGeometry, not a spec-invalid empty GLB");
+    assert!(matches!(err, ExportError::NoRenderGeometry), "got {err:?}");
+    assert_eq!(err.code(), "NO_RENDER_GEOMETRY");
+}
+
+#[test]
 fn export_is_byte_deterministic() {
     // Instancing groups by HashMap keys (rep colour buckets, material dedup);
     // emission order must be fixed so repeated exports are byte-identical.

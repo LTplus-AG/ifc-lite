@@ -78,10 +78,22 @@ pub fn try_export_glb_from_meshes(
     }
     // Every count is backed and every mesh's normals/indices are present, so the
     // infallible assembler's malformed-input `break` is unreachable and no mesh is dropped.
-    Ok(export_glb_from_meshes(
+    let (glb, stats) = export_glb_from_meshes(
         positions, normals, indices, vertex_counts, index_counts, colors, origins,
         express_ids, include_metadata, lit, emissive,
-    ))
+    );
+    // Zero visible meshes (empty input, or every declared mesh failing `view_ok` —
+    // e.g. a single-vertex/zero-index mesh) passes every count check above trivially
+    // and would otherwise return a "successful" GLB that glTF-Validator rejects:
+    // `accessors`/`bufferViews`/`meshes`/`nodes` are EMPTY_ENTITY (glTF schema
+    // `minItems: 1` when present) and `buffers[0].byteLength` is 0 (schema
+    // `minimum: 1`). `try_export_glb` (the from-bytes sibling, #1438/#1516) already
+    // fails closed here with `NoRenderGeometry`; this from-meshes entry point —
+    // reachable from the viewer's `exportGlbFromMeshes` — did not.
+    if stats.meshes == 0 {
+        return Err(ExportError::NoRenderGeometry);
+    }
+    Ok((glb, stats))
 }
 
 /// Assemble a GLB from already-produced meshes (the viewer's MeshData — **no re-meshing**).

@@ -283,11 +283,29 @@ export const msGraphAuth: SourceAuth = {
     // stale token set left over from before the preference was cleared — so
     // fall back to a placeholder rather than no-op. `TokenManager.clear()`
     // never uses `clientId` itself, only `storageKey`.
-    const manager = createTokenManager(ctx, clientId ?? 'unconfigured', tenant);
-    await manager.clear();
-    // The tokens this manager was caching a refresh lock for are gone; keeping
-    // the instance would leave the next sign-in serializing behind a lock for
-    // a session that no longer exists.
+    createTokenManager(ctx, clientId ?? 'unconfigured', tenant);
+    // Disarm EVERY cached manager, not only the one for the current
+    // `(clientId, tenant)` pair — mirrors `source-dropbox`'s `signOut` (see
+    // its doc comment and `#2635`). `clear()` is what swaps the session an
+    // in-flight refresh re-checks before it writes, and that check is
+    // per-instance (`TokenManager`'s `session` field in `@ifc-lite/oauth-pkce`).
+    // Building the "current" manager from freshly-read preferences, as the
+    // single-manager version above did, is safe only while `clientId`/`tenant`
+    // haven't changed since the manager actually holding an in-flight refresh
+    // was created. If either preference changed or was cleared in between —
+    // a host config reload landing right as the user clicks Sign out, not
+    // just an interactive re-auth — `createTokenManager` above builds or looks
+    // up a *different* cache entry than the armed one, `clear()` lands on the
+    // wrong instance, and the real refresh's session check never sees the
+    // sign-out: it writes a valid token set back to storage after this
+    // deletes it, silently signing the user back into the account they just
+    // disconnected. Reproduced end to end against this package (mirroring
+    // `source-dropbox/test/refresh-race.test.ts`'s scenario, adapted to flip
+    // `clientId` mid-flight); `test/refresh-race.test.ts` is the guard.
+    await Promise.all([...managerCache.values()].map((m) => m.clear()));
+    // The tokens these managers held a refresh lock for are gone; keeping the
+    // instances would leave the next sign-in serializing behind a lock for a
+    // session that no longer exists.
     resetTokenManagerCache();
   },
 

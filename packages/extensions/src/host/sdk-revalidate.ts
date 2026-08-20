@@ -114,7 +114,15 @@ export async function revalidateAgainstSdk(
     });
   }
 
-  const needsRepair = items.filter((i) => i.outcome === 'fail' || (i.outcome === 'skipped' && i.compatibility.status === 'outdated'));
+  // `skipped` only ever arises for 'outdated' or 'permissive' rows (the
+  // 'compatible' branch above always resolves to 'pass' without touching
+  // the test runner), so any skip means we could not self-verify a row
+  // the compatibility check itself flagged as needing a re-test. Treat
+  // every skip as needing repair — narrowing to 'outdated' silently
+  // dropped 'permissive' extensions (e.g. wildcard engine ranges) that
+  // crossed a major SDK bump with no declared tests to confirm they
+  // still work.
+  const needsRepair = items.filter((i) => i.outcome === 'fail' || i.outcome === 'skipped');
   return { sdk: opts.sdk, items, needsRepair };
 }
 

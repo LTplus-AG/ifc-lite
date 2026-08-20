@@ -89,6 +89,18 @@ if (!existsSync(ASSETS_DIR)) {
 
 const files = readdirSync(ASSETS_DIR).filter((f) => f.endsWith('.js'));
 
+if (files.length === 0) {
+  console.error(
+    `❌ ${relative(ROOT, ASSETS_DIR)} exists but contains no .js chunks -- this is\n` +
+      `not a clean build, it is an INTERRUPTED or misconfigured one. Nothing was\n` +
+      `inspected: an empty chunk list is not the same as zero violations, and\n` +
+      `reporting "0 chunks checked" as success would silently stop guarding the\n` +
+      `moment the build tool changes where it emits chunks. Rebuild the viewer:\n\n` +
+      `    pnpm turbo build --filter=@ifc-lite/viewer\n`,
+  );
+  process.exit(1);
+}
+
 /** entry: "name" | "local as exported" -> the EXPORTED (public) name. */
 function exportedNameOf(entry) {
   const m = entry.trim().match(/^([\w$]+)\s+as\s+(['"]?)([\w$]+)\2$/);

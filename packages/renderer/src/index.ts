@@ -151,7 +151,7 @@ import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
 import { ShadowPass } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
-import { collectShadowOccluders } from './shadow-occluders.js';
+import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
@@ -1281,6 +1281,63 @@ export class Renderer {
     }
 
     /**
+     * The batched occluders the sun shadow pass should cast, filtered to the same
+     * visibility the colour pass draws (#2670, Phase 2b). Without filtering every
+     * batch casts. With hide/isolate active a fully-hidden batch is dropped and a
+     * partially-hidden OPAQUE batch casts only its visible subset via the SAME
+     * cached partial sub-batch the colour pass renders (shared cache key
+     * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
+     * phantom shadow from an individually-hidden element in a shared batch.
+     *
+     * Transparent (glass-like) partially-hidden parents are left to the collector's
+     * material-alpha filter — they don't cast at all, so building a visible subset
+     * for them would waste a clone (and diverge from the colour pass's promotion
+     * split keys). Fully-visible transparent batches pass through unchanged and the
+     * collector drops them.
+     */
+    private shadowOccluderBatches(
+        options: RenderOptions,
+        device: GPUDevice,
+        hasVisibilityFiltering: boolean,
+    ): BatchedMesh[] {
+        const all = this.scene.getBatchedMeshes();
+        if (!hasVisibilityFiltering) return all;
+        const pipeline = this.pipeline;
+
+        const out: BatchedMesh[] = [];
+        for (const batch of all) {
+            const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
+            if (vis.kind === 'none') continue; // fully hidden → does not cast
+            if (vis.kind === 'all') {
+                out.push(batch); // fully visible → its own buffers
+                continue;
+            }
+            // Partially hidden. Transparent parents don't cast (collector's alpha
+            // filter) — skip rather than build a wasted, divergent-key clone.
+            if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
+            // Opaque partial: reuse the colour pass's cached sub-batch. The key is
+            // visibility-content-independent; `_partialBatchEpoch` invalidates it on
+            // any hide/isolate or override change, so the clone is always current.
+            // Without a pipeline the renderer isn't drawing, so skip (the shadow
+            // pass won't run either); casting the whole parent would be wrong.
+            if (!pipeline) continue;
+            const sub = this.scene.getOrCreatePartialBatch(
+                `${batch.colorKey}:${batch.id}`,
+                batch.colorKey,
+                vis.visibleIds,
+                device,
+                pipeline,
+                this._partialBatchEpoch,
+            );
+            // A cold parent yields an empty partial (its residency restore is queued
+            // by the colour pass); skip this frame — the collector drops zero-index
+            // draws anyway, and the subset casts once resident.
+            if (sub && sub.indexCount > 0) out.push(sub);
+        }
+        return out;
+    }
+
+    /**
      * Create a GPU Mesh from MeshData (lazy creation for selection highlighting)
      * This is called on-demand when a mesh is selected, avoiding 2x buffer creation during streaming
      */
@@ -2050,7 +2107,13 @@ export class Renderer {
                     const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
                     const occluders = collectShadowOccluders(
                         {
-                            batches: this.scene.getBatchedMeshes(),
+                            // Cast from the same visibility the colour pass draws: a
+                            // fully-hidden batch is dropped and a partially-hidden one
+                            // casts only its visible subset (the same cached partial
+                            // sub-batch the colour pass renders), so an
+                            // individually-hidden element in a shared batch stops
+                            // casting instead of throwing a phantom shadow.
+                            batches: this.shadowOccluderBatches(options, device, hasVisibilityFiltering),
                             instanced: this.scene.getInstancedTemplates(),
                             textured: this.scene.getTexturedMeshes(),
                             // Individual meshes cast too (Renderer.addMesh() /

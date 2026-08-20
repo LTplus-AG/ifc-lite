@@ -69,6 +69,10 @@ export const shadowShaderSource = `
           @location(4) m1: vec4<f32>,
           @location(5) m2: vec4<f32>,
           @location(6) m3: vec4<f32>,
+          // Per-occurrence flags lane (bit 1 = hidden), same instance buffer the
+          // colour pass reads. Locations 7 (entityId) and 8 (rgba) are unused by
+          // the depth pass and left unbound.
+          @location(9) flags: u32,
         }
 
         struct ShadowOut {
@@ -97,6 +101,16 @@ export const shadowShaderSource = `
 
         @vertex
         fn vs_shadow_instanced(input: FlatIn, inst: InstanceIn) -> ShadowOut {
+          // A hidden / isolation-excluded occurrence (flags bit 1) must not cast:
+          // the colour pass discards it in fs_main, so collapse it to a zero-area
+          // triangle here (every vertex to one clip point) — the rasterizer drops
+          // it and it writes no depth. Mirrors main.wgsl's instSelected & 2u check.
+          if ((inst.flags & 2u) != 0u) {
+            var out: ShadowOut;
+            out.position = vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            out.worldPos = vec3<f32>(0.0, 0.0, 0.0);
+            return out;
+          }
           let instMat = mat4x4<f32>(inst.m0, inst.m1, inst.m2, inst.m3);
           return emit(instMat * vec4<f32>(input.position, 1.0));
         }

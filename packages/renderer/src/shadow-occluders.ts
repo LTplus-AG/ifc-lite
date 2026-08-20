@@ -25,6 +25,7 @@
 import type { BatchedMesh, Mesh } from './types.js';
 import type { InstancedTemplateGPU, TexturedMesh } from './scene.js';
 import type { ShadowOccluderDraw } from './shadow-pass.js';
+import { isEntityVisible } from './entity-visibility.js';
 
 /** The draw lists a `Scene` exposes, as the collector needs them. */
 export interface ShadowOccluderSources {
@@ -104,17 +105,54 @@ function anyVisible(ids: readonly number[], vis: ShadowVisibility | undefined): 
 }
 
 /**
+ * How a shared batch stands under the current hide/isolate state (#2670, Phase
+ * 2b), so the renderer can feed the shadow collector the SAME visible subset the
+ * colour pass draws:
+ * - `all` — no filtering, or every element visible → cast the batch's own buffers.
+ * - `none` — every element hidden/excluded → the batch does not cast at all.
+ * - `partial` — a mix → cast only `visibleIds` (via the colour pass's cached
+ *   partial sub-batch), so an individually-hidden element stops casting instead
+ *   of throwing a phantom shadow.
+ *
+ * Uses {@link isEntityVisible}, so the empty-isolate-hides-everything and
+ * hiding-wins-over-isolation rules match every other visibility surface exactly.
+ */
+export type BatchVisibilityClass =
+  | { kind: 'all' }
+  | { kind: 'none' }
+  | { kind: 'partial'; visibleIds: Set<number> };
+
+export function classifyBatchVisibility(
+  expressIds: readonly number[],
+  hiddenIds: ReadonlySet<number> | null | undefined,
+  isolatedIds: ReadonlySet<number> | null | undefined,
+): BatchVisibilityClass {
+  // No active filter → the whole batch is visible (fast path, no Set built).
+  if ((hiddenIds == null || hiddenIds.size === 0) && isolatedIds == null) {
+    return { kind: 'all' };
+  }
+  const visibleIds = new Set<number>();
+  for (const id of expressIds) {
+    if (isEntityVisible(id, hiddenIds, isolatedIds)) visibleIds.add(id);
+  }
+  if (visibleIds.size === 0) return { kind: 'none' };
+  if (visibleIds.size === expressIds.length) return { kind: 'all' };
+  return { kind: 'partial', visibleIds };
+}
+
+/**
  * Collect every occluder draw for the shadow depth pass.
  *
  * A batch casts if it is GPU-resident, opaque enough (material alpha >=
  * `minCastAlpha` — transparent glass lets light through, see
  * {@link ShadowOccluderOptions.minCastAlpha}) and has at least one visible
- * element (a partially-hidden batch still casts from its whole geometry —
- * hiding the shadow of individually-hidden elements within a shared batch is a
- * Phase-2b refinement). Instanced templates cast every occurrence; the
- * per-occurrence HIDDEN flag and per-occurrence transparency are not yet
- * honoured for shadows (also 2b). Textured meshes are filtered per element like
- * the main textured sub-pass.
+ * element. Per-element hide/isolate within a shared batch is applied UPSTREAM:
+ * the renderer feeds this collector the same visible subset it draws (a
+ * fully-hidden batch is dropped, a partially-hidden one arrives as its visible
+ * sub-batch), so `sources.batches` is already visibility-correct. Instanced
+ * templates carry a per-occurrence HIDDEN flag the depth shader discards on, so
+ * a hidden/isolated occurrence stops casting. Textured meshes are filtered per
+ * element like the main textured sub-pass.
  */
 export function collectShadowOccluders(
   sources: ShadowOccluderSources,

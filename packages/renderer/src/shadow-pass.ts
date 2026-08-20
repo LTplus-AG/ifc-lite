@@ -377,6 +377,10 @@ export class ShadowPass {
         { shaderLocation: 4, offset: 16, format: 'float32x4' },
         { shaderLocation: 5, offset: 32, format: 'float32x4' },
         { shaderLocation: 6, offset: 48, format: 'float32x4' },
+        // Per-occurrence flags (bit 1 = hidden), so a hidden/isolated instance
+        // stops casting, matching the colour pass's discard. Offset 84 within the
+        // 88-byte INSTANCE_STRIDE_BYTES layout (mat4 + entityId + rgba + flags).
+        { shaderLocation: 9, offset: 84, format: 'uint32' },
       ],
     };
   }

@@ -14,6 +14,7 @@ import assert from 'node:assert';
 import {
   collectShadowOccluders,
   originModelMatrix,
+  classifyBatchVisibility,
   type ShadowOccluderSources,
 } from './shadow-occluders.js';
 import { ShadowPass } from './shadow-pass.js';
@@ -216,7 +217,7 @@ interface MockRecord {
 
 /** What a device saw built/written, for the clipping assertions. */
 interface DeviceRecord {
-  pipelines: { label: string; hasFragment: boolean }[];
+  pipelines: { label: string; hasFragment: boolean; buffers?: readonly GPUVertexBufferLayout[] }[];
   /** Last data written to the buffer labelled 'shadow-clip-uniform'. */
   clipWrite: Float32Array | null;
 }
@@ -254,8 +255,12 @@ function mockShadowDevice(rec?: DeviceRecord): GPUDevice {
         case 'createPipelineLayout':
           return () => ({});
         case 'createRenderPipeline':
-          return (d: { label?: string; fragment?: unknown }) => {
-            rec?.pipelines.push({ label: d?.label ?? '', hasFragment: d?.fragment != null });
+          return (d: { label?: string; fragment?: unknown; vertex?: { buffers?: readonly GPUVertexBufferLayout[] } }) => {
+            rec?.pipelines.push({
+              label: d?.label ?? '',
+              hasFragment: d?.fragment != null,
+              buffers: d?.vertex?.buffers,
+            });
             return { label: d?.label };
           };
         default:
@@ -394,5 +399,71 @@ describe('ShadowPass clipping', () => {
     assert.equal(dev.pipelines.length, 8, 'first clipped frame adds the clipping set');
     pass.render(mockEncoder(emptyRecord()), { m: new Float32Array(16) }, draws(), { box });
     assert.equal(dev.pipelines.length, 8, 'later frames reuse them');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2b: per-element hide/isolate must not cast a phantom shadow.
+//
+// Batch geometry is filtered UPSTREAM (the renderer feeds the collector the
+// visible subset via classifyBatchVisibility); instanced geometry is filtered
+// in the depth shader via a per-occurrence flag, which requires the instanced
+// shadow pipeline to bind the flags lane. Both halves are pinned here.
+// ---------------------------------------------------------------------------
+
+describe('classifyBatchVisibility', () => {
+  it('is "all" when no filter is active (both nullish and empty-hidden)', () => {
+    assert.deepEqual(classifyBatchVisibility([1, 2, 3], undefined, undefined), { kind: 'all' });
+    assert.deepEqual(classifyBatchVisibility([1, 2, 3], new Set(), null), { kind: 'all' });
+  });
+
+  it('is "none" when every element is hidden (a fully-hidden batch stops casting)', () => {
+    assert.deepEqual(classifyBatchVisibility([1, 2], new Set([1, 2]), undefined), { kind: 'none' });
+  });
+
+  it('is "partial" with the visible subset when some elements are hidden', () => {
+    const v = classifyBatchVisibility([1, 2, 3], new Set([2]), undefined);
+    assert.equal(v.kind, 'partial');
+    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds].sort(), [1, 3]);
+  });
+
+  it('treats isolate as an allowlist: an empty isolate set hides everything', () => {
+    assert.deepEqual(classifyBatchVisibility([1, 2], undefined, new Set()), { kind: 'none' });
+  });
+
+  it('is "all" when the isolate set covers every element', () => {
+    assert.deepEqual(classifyBatchVisibility([1, 2], undefined, new Set([1, 2])), { kind: 'all' });
+  });
+
+  it('narrows to the isolated subset when isolation is partial', () => {
+    const v = classifyBatchVisibility([1, 2, 3], undefined, new Set([2, 3]));
+    assert.equal(v.kind, 'partial');
+    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds].sort(), [2, 3]);
+  });
+
+  it('lets hiding win over isolation (an isolated-but-hidden element is excluded)', () => {
+    const v = classifyBatchVisibility([1, 2], new Set([1]), new Set([1, 2]));
+    assert.equal(v.kind, 'partial');
+    assert.deepEqual([...(v as { visibleIds: Set<number> }).visibleIds], [2]);
+  });
+});
+
+describe('ShadowPass instanced pipeline', () => {
+  it('binds the per-occurrence flags lane so a hidden instance can be culled in-shader', () => {
+    const dev: DeviceRecord = { pipelines: [], clipWrite: null };
+    new ShadowPass(mockShadowDevice(dev), 1024);
+
+    const inst = dev.pipelines.find((p) => p.label === 'shadow-pipeline-vs_shadow_instanced');
+    assert.ok(inst, 'instanced shadow pipeline built');
+    const instanceLayout = inst!.buffers?.find((b) => b.stepMode === 'instance');
+    assert.ok(instanceLayout, 'slot-1 instance-step layout present');
+    const flags = [...instanceLayout!.attributes].find((a) => a.shaderLocation === 9);
+    assert.ok(flags, 'flags lane (shaderLocation 9) bound');
+    // Offset 84 within the 88-byte INSTANCE_STRIDE_BYTES layout (mat4 + id + rgba + flags).
+    assert.equal(flags!.offset, 84);
+    assert.equal(flags!.format, 'uint32');
+    // The mat4 columns (3..6) stay bound so the transform still arrives.
+    const locs = [...instanceLayout!.attributes].map((a) => a.shaderLocation).sort((x, y) => x - y);
+    assert.deepEqual(locs, [3, 4, 5, 6, 9]);
   });
 });

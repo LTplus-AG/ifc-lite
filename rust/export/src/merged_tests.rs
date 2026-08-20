@@ -127,6 +127,7 @@ fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: "app\u{07}bell\u{0B}vt".to_string(),
+        included: None,
     };
     let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
     let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
@@ -192,6 +193,7 @@ fn header_fields_round_trip_apostrophe_and_backslash_per_spec() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: r"O'Brien\Docs\ifc-lite".to_string(),
+        included: None,
     };
     let a = fixture_or_skip!("ara3d/duplex.ifc");
     let (step, _stats) = export_merged_with_stats(&[&a], &opts);
@@ -387,4 +389,243 @@ ENDSEC;\nEND-ISO-10303-21;\n"
     .map(|g| merged.matches(*g).count())
     .sum();
     assert_eq!(total_occurrences, 7, "7 distinct GlobalIds, one occurrence each");
+}
+
+// ---------------------------------------------------------------------------
+// Visibility filtering (#2951 parity increment)
+// ---------------------------------------------------------------------------
+
+/// Two federated models, each independently visibility-filtered via
+/// `MergedOptions.included`, with DIFFERENT included/excluded counts per
+/// model so a filter that silently no-ops (or applies globally instead of
+/// per-model) cannot pass by coincidence:
+///
+///   - Model A: 3 walls -- 2 included, 1 excluded -- plus a property set
+///     attached ONLY to the excluded wall via an `IFCRELDEFINESBYPROPERTIES`
+///     that names BOTH the excluded wall and the pset. That relationship
+///     spans an included/excluded boundary (its own id is a root, one of its
+///     two references is excluded) -- the case that would dangle a `#ref` if
+///     the line were emitted verbatim.
+///   - Model B: 2 walls -- 1 included, 1 excluded -- independently filtered,
+///     proving model A's exclusion list has no effect on model B (the entity
+///     excluded from A is a distinct GlobalId from the one excluded in B,
+///     and B's excluded wall is a DIFFERENT id/count shape than A's).
+#[test]
+fn visibility_filter_excludes_per_model_and_drops_the_dangling_relationship() {
+    let a_vis1 = "AAAAAAAAAAAAAAAAAAAAV1";
+    let a_vis2 = "AAAAAAAAAAAAAAAAAAAAV2";
+    let a_hidden = "AAAAAAAAAAAAAAAAAAAAHD";
+    let b_vis1 = "BBBBBBBBBBBBBBBBBBBBV1";
+    let b_hidden = "BBBBBBBBBBBBBBBBBBBBHD";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{a_vis1}',$,$,$,$,$,$,$,$);\n\
+#3=IFCWALL('{a_vis2}',$,$,$,$,$,$,$,$);\n\
+#4=IFCWALL('{a_hidden}',$,$,$,$,$,$,$,$);\n\
+#5=IFCPROPERTYSET('pset-a',$,$,$,$);\n\
+#6=IFCRELDEFINESBYPROPERTIES('rel-a',$,$,$,(#4),#5);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{b_vis1}',$,$,$,$,$,$,$,$);\n\
+#3=IFCWALL('{b_hidden}',$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let opts = MergedOptions {
+        included: Some(vec![
+            Some(VisibilityFilter { roots: vec![1, 2, 3, 6], excluded: vec![4] }),
+            Some(VisibilityFilter { roots: vec![1, 2], excluded: vec![3] }),
+        ]),
+        ..MergedOptions::default()
+    };
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &opts);
+
+    // Included survive, exactly once each.
+    for guid in [a_vis1, a_vis2, b_vis1] {
+        assert_eq!(merged.matches(guid).count(), 1, "included GlobalId {guid} must survive");
+    }
+    // Excluded never appear -- neither model's exclusion leaks into the other.
+    for guid in [a_hidden, b_hidden] {
+        assert_eq!(merged.matches(guid).count(), 0, "excluded GlobalId {guid} must not be emitted");
+    }
+    // The relationship spanning the excluded wall must not be emitted at all
+    // (dropped, not narrowed -- see merged_visibility.rs module doc), and
+    // its pset (reachable only through it) must not survive as an orphan.
+    assert!(!merged.contains("IFCRELDEFINESBYPROPERTIES"), "dangling relationship must be dropped");
+    assert!(!merged.contains("pset-a"), "pset reachable only through the dropped relationship must not survive");
+
+    // No dangling references anywhere in the output: every #ref resolves to
+    // a written id. Reuses the same byte-level ref scan the GlobalId test
+    // above uses, run over the FULL merged text.
+    let written_ids: std::collections::HashSet<u32> = scan_ids(&merged).into_iter().collect();
+    for line in merged.lines().filter(|l| l.starts_with('#')) {
+        let body = &line[1..];
+        let after_eq = body.find('=').map(|e| &body[e..]).unwrap_or(body);
+        let mut i = 0;
+        let bytes = after_eq.as_bytes();
+        let mut in_str = false;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c == b'\'' {
+                in_str = !in_str;
+            } else if !in_str && c == b'#' {
+                let mut j = i + 1;
+                let mut n = 0u32;
+                let mut any = false;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    n = n * 10 + (bytes[j] - b'0') as u32;
+                    j += 1;
+                    any = true;
+                }
+                if any {
+                    assert!(written_ids.contains(&n), "dangling ref #{n} in visibility-filtered merge");
+                    i = j;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+}
+
+/// A SET/LIST relationship attribute naming three ids, only ONE of which is
+/// excluded, must survive NARROWED to the two kept ids rather than being
+/// dropped whole -- the defect this branch fixes. Distinct member count (3,
+/// narrowed to 2) from `visibility_filter_excludes_per_model_and_drops_the_dangling_relationship`'s
+/// 1-member-SET-emptied-to-0 case above, so neither could pass on the other's
+/// fixture. Asserted against the exact EMITTED STEP text, not an intermediate
+/// keep-set -- the shape of check this branch's own predecessor test lacked.
+#[test]
+fn narrows_a_set_relationship_to_its_surviving_members_not_the_whole_line() {
+    let vis1 = "NNNNNNNNNNNNNNNNNNNNV1";
+    let vis2 = "NNNNNNNNNNNNNNNNNNNNV2";
+    let hidden = "NNNNNNNNNNNNNNNNNNNNHD";
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proj',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{vis1}',$,$,$,$,$,$,$,$);\n\
+#3=IFCWALL('{vis2}',$,$,$,$,$,$,$,$);\n\
+#4=IFCWALL('{hidden}',$,$,$,$,$,$,$,$);\n\
+#5=IFCRELCONTAINEDINSPATIALSTRUCTURE('rel',$,$,$,(#2,#3,#4),#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let opts = MergedOptions {
+        included: Some(vec![Some(VisibilityFilter { roots: vec![1, 2, 3, 5], excluded: vec![4] })]),
+        ..MergedOptions::default()
+    };
+    let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
+
+    assert_eq!(merged.matches(vis1).count(), 1, "kept wall #1 survives");
+    assert_eq!(merged.matches(vis2).count(), 1, "kept wall #2 survives");
+    assert_eq!(merged.matches(hidden).count(), 0, "excluded wall never emitted");
+
+    let rel_line = merged
+        .lines()
+        .find(|l| l.starts_with("#5="))
+        .expect("the narrowed relationship must still be emitted, not dropped whole");
+    assert_eq!(
+        rel_line,
+        "#5=IFCRELCONTAINEDINSPATIALSTRUCTURE('rel',$,$,$,(#2,#3),#1);",
+        "SET narrowed to its two surviving members"
+    );
+}
+
+/// An excluded id in a SINGLE-VALUED slot (no SET/LIST parentheses) has no
+/// narrowing to fall back to -- the whole relationship must be withheld, same
+/// as before this branch. Proves the two shapes stay distinguished: the SET
+/// case just above survives narrowed, this one does not survive at all.
+#[test]
+fn drops_relationship_whole_when_excluded_id_is_in_a_single_valued_slot() {
+    let wall = "SSSSSSSSSSSSSSSSSSSSW1";
+    let opening = "SSSSSSSSSSSSSSSSSSSSOP";
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proj',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{wall}',$,$,$,$,$,$,$,$);\n\
+#3=IFCOPENINGELEMENT('{opening}',$,$,$,$,$,$,$,$);\n\
+#4=IFCRELVOIDSELEMENT('rel2',$,$,$,#2,#3);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let opts = MergedOptions {
+        included: Some(vec![Some(VisibilityFilter { roots: vec![1, 2, 4], excluded: vec![3] })]),
+        ..MergedOptions::default()
+    };
+    let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
+
+    assert_eq!(merged.matches(wall).count(), 1, "the wall itself still survives");
+    assert_eq!(merged.matches(opening).count(), 0, "excluded opening never emitted");
+    assert!(
+        !merged.contains("IFCRELVOIDSELEMENT"),
+        "a single-valued slot has no spelling for omitted -- withheld, not narrowed"
+    );
+}
+
+/// A relationship naming no excluded ids at all must pass through the
+/// visibility-filtered path byte-identical -- narrowing must be a strict
+/// no-op when there is nothing to narrow.
+#[test]
+fn relationship_naming_no_excluded_ids_is_emitted_byte_identical() {
+    let a = "UUUUUUUUUUUUUUUUUUUUA1";
+    let b = "UUUUUUUUUUUUUUUUUUUUB1";
+    let c = "UUUUUUUUUUUUUUUUUUUUC1";
+    let original_rel_line = "#5=IFCRELCONTAINEDINSPATIALSTRUCTURE('rel',$,$,$,(#2,#3,#4),#1);";
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proj',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL('{a}',$,$,$,$,$,$,$,$);\n\
+#3=IFCWALL('{b}',$,$,$,$,$,$,$,$);\n\
+#4=IFCWALL('{c}',$,$,$,$,$,$,$,$);\n\
+{original_rel_line}\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let opts = MergedOptions {
+        included: Some(vec![Some(VisibilityFilter { roots: vec![1, 2, 3, 4, 5], excluded: vec![] })]),
+        ..MergedOptions::default()
+    };
+    let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
+
+    let rel_line = merged.lines().find(|l| l.starts_with("#5=")).expect("the relationship line");
+    assert_eq!(rel_line, original_rel_line, "nothing excluded -- line must pass through byte-identical");
+}
+
+/// An ABSENT per-model filter entry (`included: Some(vec![None, ...])`, or
+/// the whole `included` field left `None`) includes that model in full. An
+/// explicitly EMPTY filter (`roots: vec![]`) on another model includes
+/// NOTHING from it -- not even its `IfcProject`. These must be
+/// distinguishable outcomes, not both collapsing to "everything" or both to
+/// "nothing".
+#[test]
+fn empty_allowlist_means_nothing_absent_means_everything() {
+    let model_a = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n#2=IFCWALL('AAAAAAAAAAAAAAAAAAAAWW',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let model_b = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n#2=IFCWALL('BBBBBBBBBBBBBBBBBBBBWW',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+
+    // Model A: explicitly empty allowlist -> nothing survives from it.
+    // Model B: absent entry (None) -> included in full.
+    let opts = MergedOptions {
+        included: Some(vec![Some(VisibilityFilter::default()), None]),
+        ..MergedOptions::default()
+    };
+    let (merged, stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &opts);
+
+    assert!(!merged.contains("proja"), "empty allowlist must drop even model A's own IfcProject");
+    assert!(!merged.contains("AAAAAAAAAAAAAAAAAAAAWW"), "empty allowlist keeps nothing from model A");
+    assert!(merged.contains("projb"), "absent per-model entry keeps model B's IfcProject");
+    assert!(merged.contains("BBBBBBBBBBBBBBBBBBBBWW"), "absent per-model entry keeps model B in full");
+    assert_eq!(stats.written, 2, "exactly model B's 2 entities survive");
+
+    // The whole-field-absent case (no filtering requested at all) is the
+    // existing default behavior, already pinned by every other test in this
+    // file that constructs `MergedOptions::default()` (included: None) and
+    // asserts every source entity survives -- e.g.
+    // `merge_two_models_unifies_project_and_offsets_ids` above.
 }

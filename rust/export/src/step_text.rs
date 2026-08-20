@@ -133,7 +133,14 @@ pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
 }
 
 /// Split a STEP attribute list into its top-level arguments (parens/strings aware).
-fn split_top_level_args(attrs: &str) -> Vec<String> {
+///
+/// `pub(crate)` (not just `apply_attr_mutations`-private) because
+/// `merged_visibility::narrow_relationship_line` reuses this exact splitter to
+/// tell a parenthesised SET/LIST attribute apart from a single-valued one —
+/// the same distinction `splitTopLevelArgs` draws for
+/// `filterHiddenRefsFromRelationshipLine` in `reference-collector.ts`. One
+/// parser, not a second hand-rolled copy.
+pub(crate) fn split_top_level_args(attrs: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut depth = 0i32;
     let mut in_string = false;

@@ -9,6 +9,7 @@
 //! valid `IfcProject` tree. Deeper shared-infrastructure dedup (units, contexts) and
 //! spatial unification by name/elevation are the P2 follow-on.
 
+use crate::merged_visibility::{compute_keep_set, narrow_for_emission, VisibilityFilter};
 use crate::step_text::{detect_schema, escape};
 use ifc_lite_core::EntityScanner;
 use std::collections::HashSet;
@@ -172,6 +173,20 @@ pub struct MergedOptions {
     pub schema: Option<String>,
     pub description: String,
     pub application: String,
+    /// Per-model visibility filter, index-aligned with the `models` slice
+    /// passed to [`export_merged_with_stats`]. `None` (the whole field) ⇒ no
+    /// filtering: every model is included in full, unchanged from before
+    /// this option existed.
+    ///
+    /// `Some(per_model)` may be shorter than `models`; a missing or `None`
+    /// entry for model `i` includes that model in full. `Some(filter)`
+    /// keeps only `filter.roots` plus their forward-reference closure, minus
+    /// anything the closure refuses to walk into or dedangle — see
+    /// [`VisibilityFilter`] and [`compute_keep_set`] for the exact contract,
+    /// including why an explicitly empty filter (`roots: vec![]`) means
+    /// "nothing from this model", a different outcome from omitting the
+    /// entry (or the whole field) entirely.
+    pub included: Option<Vec<Option<VisibilityFilter>>>,
 }
 
 impl Default for MergedOptions {
@@ -180,6 +195,7 @@ impl Default for MergedOptions {
             schema: None,
             description: "ViewDefinition [CoordinationView]".to_string(),
             application: "ifc-lite".to_string(),
+            included: None,
         }
     }
 }
@@ -261,7 +277,11 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
         .or_else(|| models.first().map(|m| detect_schema(m)))
         .unwrap_or_else(|| "IFC4".to_string());
 
-    let canonical_project = models.first().and_then(|m| find_project(m));
+    // Mutable: a visibility filter on model 0 that excludes its own
+    // `IfcProject` invalidates this below (see the `is_first` branch in the
+    // loop) -- there is then nothing valid to redirect later models' project
+    // references onto, so their own project must NOT be dropped either.
+    let mut canonical_project = models.first().and_then(|m| find_project(m));
 
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
@@ -294,7 +314,25 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
             lines.push((id, t, &content[s..e]));
         }
 
+        // Visibility filter for this model: `None` ⇒ keep everything (no
+        // per-entity check below), `Some(keep)` ⇒ only ids in `keep` survive.
+        // Computed on the model-LOCAL (pre-offset) ids `lines` already holds.
+        let keep_set: Option<HashSet<u32>> = opts.included.as_ref().and_then(|per_model| {
+            per_model.get(i).cloned().flatten().map(|filter| compute_keep_set(&lines, &filter))
+        });
+
         let is_first = i == 0;
+        // If model 0's own visibility filter excludes its `IfcProject`, there
+        // is nothing to unify subsequent models onto: invalidate the
+        // canonical project BEFORE it's captured by `remap` or checked by
+        // the "drop this model's own project" test below.
+        if is_first {
+            if let (Some(cp), Some(keep)) = (canonical_project, &keep_set) {
+                if !keep.contains(&cp) {
+                    canonical_project = None;
+                }
+            }
+        }
         let remap = |n: u32| -> Option<u32> {
             // Subsequent models: redirect their project reference to model 0's project.
             if !is_first {
@@ -313,11 +351,26 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
         let mut pending_minted: HashSet<String> = HashSet::new();
 
         for (id, type_name, line) in &lines {
-            // Drop later models' IfcProject lines (the project is unified to model 0's).
-            if !is_first && Some(*id) == model_project {
+            // Visibility filter: an id not in this model's kept set is
+            // dropped before anything else (GlobalId bookkeeping included --
+            // an excluded entity was never emitted, so it must not occupy or
+            // reserve a GlobalId either).
+            if let Some(keep) = &keep_set {
+                if !keep.contains(id) {
+                    continue;
+                }
+            }
+            // Drop later models' IfcProject lines (the project is unified to
+            // model 0's) -- only when model 0's project actually survived its
+            // own visibility filter (see the `is_first` block above); if it
+            // didn't, this model's project is kept, subject only to its own
+            // filter, same as any other entity.
+            if !is_first && canonical_project.is_some() && Some(*id) == model_project {
                 continue;
             }
-            let mut rewritten = rewrite_refs(line, offset, &remap);
+            // Narrow (not just gate on) a kept IFCREL* line -- see `narrow_for_emission`.
+            let narrowed = keep_set.as_ref().map(|k| narrow_for_emission(type_name, line, k));
+            let mut rewritten = rewrite_refs(narrowed.as_deref().unwrap_or(line), offset, &remap);
 
             if let Some(guid) = leading_guid(line, type_name) {
                 if emitted_guids.contains(&guid) {

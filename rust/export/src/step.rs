@@ -246,10 +246,15 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     // repointed referrers both go through it.
     //
     // Allocated from a counter `PropMutation` synthesis continues from, so the
-    // two cannot hand out the same id. `saturating_add` because this now runs
-    // on every export: a file holding `u32::MAX` used to reach it only when
-    // property mutations were present.
-    let mut next_id = max_id.saturating_add(1);
+    // two cannot hand out the same id.
+    //
+    // `checked_add`, and `None` means no record can be added at all. Saturating
+    // was worse than the overflow it replaced: on a file holding `u32::MAX` it
+    // leaves the counter equal to an id the file already uses, so the first
+    // copy silently collides with a real record. A file that has spent the
+    // whole id space has no room for another record, and emitting one anyway
+    // corrupts it, so none is emitted.
+    let mut next_id = max_id.checked_add(1);
     let mut copies: Vec<(u32, u32, usize, String)> = Vec::new();
     // Folded per (referrer, attribute). Two copies repointed through the same
     // attribute each produced a rewrite of the whole attribute computed from
@@ -265,7 +270,10 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         let Some(&(rs, re)) = line_of.get(&cow.referrer_id) else {
             continue;
         };
-        let copy_id = next_id;
+        let Some(copy_id) = next_id else {
+            // No id left to give it. Skipped rather than duplicated.
+            continue;
+        };
 
         // Computed against what the attribute holds now, which is the previous
         // substitution's output when there was one.
@@ -287,7 +295,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             continue;
         };
 
-        next_id += 1;
+        next_id = copy_id.checked_add(1);
         copies.push((copy_id, cow.express_id, cow.index, cow.value.clone()));
         referrer_edits.insert((cow.referrer_id, cow.referrer_index), rewritten);
     }
@@ -374,7 +382,13 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
         }
 
-        let mut next = next_id;
+        // Same exhaustion, same answer: a synthesized property set needs three
+        // fresh ids, and inventing them on a full file would duplicate real
+        // records.
+        let Some(mut next) = next_id else {
+            out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+            return (out, StepStats { total: order.len(), written });
+        };
         for ((express_id, pset_name), props) in &groups {
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {

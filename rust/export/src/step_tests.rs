@@ -350,3 +350,42 @@ fn a_reference_inside_a_string_is_not_repointed() {
         Some("(IFCLABEL('lot #41'),#43)")
     );
 }
+
+/// A file that has spent the whole id space has no room for another record.
+/// Saturating the counter left it equal to an id already in use, so the copy
+/// collided with a real record instead of being refused.
+#[test]
+fn an_exhausted_id_space_emits_no_copy() {
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n",
+        "FILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#41=IFCPROPERTYSINGLEVALUE('A',$,IFCLABEL('s'),$);\n",
+        "#9=IFCPROPERTYSET('g',$,'P',$,(#41));\n",
+        "#4294967295=IFCPROPERTYSINGLEVALUE('Z',$,IFCLABEL('z'),$);\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let (out, stats) = export_step_with_stats(
+        src.as_bytes(),
+        &StepOptions {
+            copy_on_write: vec![CopyOnWriteMutation {
+                express_id: 41,
+                index: 2,
+                value: "IFCLABEL('e')".to_string(),
+                referrer_id: 9,
+                referrer_index: 4,
+            }],
+            ..StepOptions::default()
+        },
+    );
+    assert_eq!(stats.written, stats.total, "no record should be added");
+    // And nothing acquired a second definition.
+    let mut ids: Vec<&str> = out
+        .lines()
+        .filter_map(|l| l.strip_prefix('#'))
+        .filter_map(|l| l.split('=').next())
+        .collect();
+    let before = ids.len();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(ids.len(), before, "an id was handed out twice");
+}

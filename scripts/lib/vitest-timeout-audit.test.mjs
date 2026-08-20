@@ -25,7 +25,18 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { auditSource, classifyExplicitTimeout, hasExplicitTimeout, stripNoise } from './vitest-timeout-audit.mjs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  auditFile,
+  auditSource,
+  classifyExplicitTimeout,
+  findPackageConfigTimeout,
+  hasExplicitTimeout,
+  resolveConfigTimeout,
+  stripNoise,
+} from './vitest-timeout-audit.mjs';
 
 function protectedNames(source) {
   return auditSource(source).filter((r) => r.protectedBy !== null).map((r) => r.name);
@@ -270,4 +281,176 @@ test('stripNoise preserves length and newlines exactly (line-number safety for c
   const clean = stripNoise(src);
   assert.equal(clean.length, src.length);
   assert.equal((clean.match(/\n/g) || []).length, (src.match(/\n/g) || []).length);
+});
+
+// ---- CONFIG-LEVEL protection: the blind spot fixed after #2948 shipped.
+// `packages/data` and `packages/create-ifc-lite` both set a package-wide
+// `testTimeout` in `vitest.config.ts`, protecting every test in the
+// package with no `it`/`describe`-level signal at all — 193 real calls,
+// confirmed by running this tool against the actual repo. These fixtures
+// are synthetic package roots built in a temp directory per
+// `check-source-text-assertions.mjs`'s convention: the tool is exercised
+// against engineered inputs, never against this repo's real test files.
+
+function makeSyntheticPackage(files) {
+  const root = mkdtempSync(join(tmpdir(), 'vitest-timeout-audit-config-'));
+  for (const [relPath, contents] of Object.entries(files)) {
+    const full = join(root, relPath);
+    mkdirSync(join(full, '..'), { recursive: true });
+    writeFileSync(full, contents);
+  }
+  return root;
+}
+
+test('resolveConfigTimeout: a bare numeric testTimeout resolves to its value', () => {
+  const src = "import { defineConfig } from 'vitest/config';\nexport default defineConfig({\n  test: {\n    testTimeout: 30_000,\n  },\n});\n";
+  assert.deepEqual(resolveConfigTimeout(src), { determined: true, value: 30000 });
+});
+
+test('resolveConfigTimeout: no testTimeout key at all resolves to null', () => {
+  const src = "import { defineConfig } from 'vitest/config';\nexport default defineConfig({\n  test: {\n    environment: 'node',\n  },\n});\n";
+  assert.equal(resolveConfigTimeout(src), null);
+});
+
+test('resolveConfigTimeout: a named identifier is reported as undetermined, not guessed protected or unprotected', () => {
+  const src = "import { DEFAULT_TIMEOUT_MS } from './constants.js';\nexport default { test: { testTimeout: DEFAULT_TIMEOUT_MS } };\n";
+  assert.deepEqual(resolveConfigTimeout(src), { determined: false, value: null });
+});
+
+test('resolveConfigTimeout: a computed expression is reported as undetermined', () => {
+  const src = 'export default { test: { testTimeout: process.env.CI ? 30_000 : 5_000 } };';
+  assert.deepEqual(resolveConfigTimeout(src), { determined: false, value: null });
+});
+
+// Fixture 1: a package with a config-level testTimeout — every it with no
+// own/describe timeout is protected via config, and the value is shown.
+test('auditFile fixture 1: package-level testTimeout protects a call with no own timeout', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-config"}',
+    'vitest.config.ts': "import { defineConfig } from 'vitest/config';\nexport default defineConfig({ test: { testTimeout: 30_000 } });\n",
+    'src/slow.test.ts': "import { it } from 'vitest';\nit('is slow but covered', () => { doWork(); });\n",
+  });
+  try {
+    const testFile = join(root, 'src/slow.test.ts');
+    const [r] = auditFile(testFile, "import { it } from 'vitest';\nit('is slow but covered', () => { doWork(); });\n");
+    assert.equal(r.protectedBy, 'config');
+    assert.equal(r.form, 'config');
+    assert.equal(r.value, 30000);
+    assert.equal(r.configPath, join(root, 'vitest.config.ts'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Fixture 2: a package whose vitest.config.ts sets no testTimeout — the
+// call stays unprotected, config presence alone is not protection.
+test('auditFile fixture 2: a config file with no testTimeout key leaves the call unprotected', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-no-timeout-key"}',
+    'vitest.config.ts': "export default { test: { environment: 'node' } };\n",
+    'src/plain.test.ts': "it('has no timeout anywhere', () => { doWork(); });\n",
+  });
+  try {
+    const testFile = join(root, 'src/plain.test.ts');
+    const [r] = auditFile(testFile, "it('has no timeout anywhere', () => { doWork(); });\n");
+    assert.equal(r.protectedBy, null);
+    assert.equal(r.configStatus, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Fixture 3: both signals present — a per-call timeout inside a
+// config-covered package. The own timeout must win and be reported as
+// 'own', not silently reattributed to config — the two signals must stay
+// distinguishable.
+test('auditFile fixture 3: an own timeout inside a config-covered package is reported as own, not config', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-both-signals"}',
+    'vitest.config.ts': "export default { test: { testTimeout: 30_000 } };\n",
+    'src/both.test.ts': "it('has its own timeout too', () => { doWork(); }, 9000);\n",
+  });
+  try {
+    const testFile = join(root, 'src/both.test.ts');
+    const [r] = auditFile(testFile, "it('has its own timeout too', () => { doWork(); }, 9000);\n");
+    assert.equal(r.protectedBy, 'own');
+    assert.equal(r.form, 'trailing');
+    assert.equal(r.value, 9000);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Fixture 4: a config whose testTimeout value cannot be determined
+// statically — reported as its own 'unknown' bucket, not flipped to
+// protected (would repeat the exact mistake being fixed) or silently
+// folded into plain unprotected (would hide that a config override exists).
+test('auditFile fixture 4: an undeterminable config value is reported as config-unknown, not protected or plain-unprotected', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-undeterminable"}',
+    'vitest.config.ts': "import { TIMEOUT_MS } from './shared.js';\nexport default { test: { testTimeout: TIMEOUT_MS } };\n",
+    'src/unclear.test.ts': "it('timeout value cannot be resolved', () => { doWork(); });\n",
+  });
+  try {
+    const testFile = join(root, 'src/unclear.test.ts');
+    const [r] = auditFile(testFile, "it('timeout value cannot be resolved', () => { doWork(); });\n");
+    assert.equal(r.protectedBy, null);
+    assert.equal(r.configStatus, 'unknown');
+    assert.equal(r.configPath, join(root, 'vitest.config.ts'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Fixture 5: a package with no vitest.config.* / vite.config.* at all —
+// findPackageConfigTimeout must stop at the package.json boundary and
+// return null, not walk further up and pick up an unrelated ancestor
+// config.
+test('auditFile fixture 5: a package with no config file at all is unprotected, with no config fields set', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-no-config"}',
+    'src/bare.test.ts': "it('nothing protects this', () => { doWork(); });\n",
+  });
+  try {
+    const testFile = join(root, 'src/bare.test.ts');
+    const result = findPackageConfigTimeout(testFile);
+    assert.equal(result, null);
+    const [r] = auditFile(testFile, "it('nothing protects this', () => { doWork(); });\n");
+    assert.equal(r.protectedBy, null);
+    assert.equal(r.configStatus, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// Regression: a package-config lookup cache that keys on the intermediate
+// "no config found in THIS directory" answer, rather than the FINAL
+// resolved answer, wrongly caches `null` for a subdirectory during the
+// first file's walk-up to the package root — before the walk ever reaches
+// the config that actually governs it. Every sibling test file below that
+// subdirectory then hits the stale cached `null` and never resolves the
+// real config. Caught by running this tool against the real repo: only the
+// first `packages/data/src/*.test.ts` file processed came back
+// config-protected; the other 13 siblings in the same `src/` directory did
+// not. This fixture reproduces that shape with two sibling files sharing a
+// `src/` directory one level below the package root.
+test('auditFile: a second sibling test file in the same subdirectory also resolves the package config (cache does not stick on the intermediate miss)', () => {
+  const root = makeSyntheticPackage({
+    'package.json': '{"name":"fixture-pkg-cache-regression"}',
+    'vitest.config.ts': "export default { test: { testTimeout: 30_000 } };\n",
+    'src/first.test.ts': "it('first sibling', () => { doWork(); });\n",
+    'src/second.test.ts': "it('second sibling', () => { doWork(); });\n",
+  });
+  try {
+    const firstFile = join(root, 'src/first.test.ts');
+    const secondFile = join(root, 'src/second.test.ts');
+    const [r1] = auditFile(firstFile, "it('first sibling', () => { doWork(); });\n");
+    assert.equal(r1.protectedBy, 'config');
+    assert.equal(r1.value, 30000);
+    const [r2] = auditFile(secondFile, "it('second sibling', () => { doWork(); });\n");
+    assert.equal(r2.protectedBy, 'config');
+    assert.equal(r2.value, 30000);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

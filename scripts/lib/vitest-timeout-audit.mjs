@@ -80,7 +80,47 @@
  * real test files — that would be exactly the source-text-as-behaviour
  * substitution `check-source-text-assertions.mjs` exists to block) in
  * `vitest-timeout-audit.test.mjs`.
+ *
+ * CONFIG-LEVEL PROTECTION (the blind spot fixed after #2948 shipped): a
+ * package's `vitest.config.ts` can set `test.testTimeout`, which is vitest's
+ * DEFAULT for every `it`/`test` in that package that does not carry its own
+ * (call-level or `describe`-level) timeout. Two packages in this repo do
+ * this deliberately — `packages/data` and `packages/create-ifc-lite`, both
+ * `testTimeout: 30_000` — and everything that scans only `it`/`describe`
+ * call sites, this module included before this fix, reported every one of
+ * those tests as unprotected (193 calls, confirmed against this repo). This
+ * module now also resolves that config value, per test file, by walking
+ * from the test file's directory up to its nearest package root (the first
+ * ancestor directory containing a `package.json`) and reading the first
+ * matching config filename there. Supported filenames, in vitest's own
+ * resolution order: `vitest.config.{ts,mts,cts,js,mjs,cjs}`, then
+ * `vite.config.{ts,mts,cts,js,mjs,cjs}` (a `vitest.config.*` always wins
+ * over `vite.config.*` when both exist — matches vitest's own precedence).
+ * Every `vitest.config.*` in this repo today is a `.ts` file with no
+ * matching `vite.config.*` alongside it, and no workspace-level config
+ * exists at the repo root; the other filenames are supported because
+ * vitest itself accepts them, not because anything here uses them yet.
+ *
+ * The config file is READ AS TEXT, never imported/executed — same
+ * `stripNoise` + depth-aware scan the call-site parser uses, not `eval` or
+ * a dynamic `import()`, because a config module can have arbitrary side
+ * effects and top-level imports that may not resolve outside a real vitest
+ * run. `resolveConfigTimeout` looks for a top-level `testTimeout:` key and
+ * classifies its value the same way `classifyExplicitTimeout` classifies a
+ * call-level timeout: a bare numeric literal (with underscores) resolves to
+ * a number. ANYTHING ELSE — a named identifier (`testTimeout: DEFAULT_MS`,
+ * which could be a local const or an import), a ternary, a function call —
+ * is reported as `determined: false` rather than guessed either way. This
+ * is stricter than the call-site scanner's treatment of a bare identifier
+ * (which it still counts as "explicit, value unresolved"): at the config
+ * level a wrong "protected" verdict is exactly the failure this fix exists
+ * to correct, so an undetermined config value gets its own third status,
+ * `config-unknown`, distinct from both `protected` and `unprotected` — see
+ * `auditFile`.
  */
+
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 
 const CALL_KEYWORD_RE = /(?<![.\w$])(describe|it|test)(?![\w$])/g;
 
@@ -302,6 +342,136 @@ export function classifyExplicitTimeout(argTexts) {
   return { explicit: false, form: null, value: null };
 }
 
+/**
+ * Text of the value bound to a `key: VALUE` pair in `clean`, starting the
+ * scan just after the `:` at `colonIdx`. Depth-aware over `()[]{}` (and
+ * regex-literal-safe via `isRegexStart`/`skipRegexLiteral`) so a value that
+ * itself contains a comma or brace (`{ a: 1, b: 2 }`, `fn(1, 2)`) is not cut
+ * short — the scan stops only at a top-level comma or the closing bracket
+ * of whatever encloses the key (depth going negative).
+ */
+function extractAssignedValue(clean, colonIdx) {
+  let i = colonIdx + 1;
+  while (i < clean.length && /\s/.test(clean[i])) i += 1;
+  const start = i;
+  let depth = 0;
+  while (i < clean.length) {
+    const c = clean[i];
+    if (c === '/' && isRegexStart(clean, i)) { i = skipRegexLiteral(clean, i); continue; }
+    if (c === '(' || c === '{' || c === '[') { depth += 1; i += 1; continue; }
+    if (c === ')' || c === '}' || c === ']') {
+      if (depth === 0) break;
+      depth -= 1; i += 1; continue;
+    }
+    if (c === ',' && depth === 0) break;
+    i += 1;
+  }
+  return clean.slice(start, i).trim();
+}
+
+const TEST_TIMEOUT_KEY_RE = /(?<![.\w$])testTimeout(?![\w$])\s*:/;
+
+/**
+ * Resolve a package `vitest.config.*`/`vite.config.*`'s `test.testTimeout`
+ * value from its SOURCE TEXT (never imported/executed — see the module doc
+ * comment). Returns:
+ *   - `null` if the file has no top-level `testTimeout:` key at all (no
+ *     config-level override — every test in the package falls back to
+ *     vitest's own 5000ms default);
+ *   - `{ determined: true, value: N }` if the value is a bare numeric
+ *     literal (underscores allowed, e.g. `30_000`);
+ *   - `{ determined: false, value: null }` for anything else — a named
+ *     identifier, a ternary, a function call — because none of those can be
+ *     resolved without evaluating the module, and guessing either
+ *     "protected" or "unprotected" here is exactly the mistake this module
+ *     exists to avoid making twice.
+ */
+export function resolveConfigTimeout(configSource) {
+  const clean = stripNoise(configSource);
+  const m = TEST_TIMEOUT_KEY_RE.exec(clean);
+  if (!m) return null;
+  const colonIdx = m.index + m[0].length - 1;
+  const raw = extractAssignedValue(clean, colonIdx);
+  if (NUMERIC_RE.test(raw)) {
+    return { determined: true, value: Number(raw.replace(/_/g, '')) };
+  }
+  return { determined: false, value: null };
+}
+
+/**
+ * Config filenames vitest itself recognises, in its own resolution order:
+ * a `vitest.config.*` always wins over a `vite.config.*` in the same
+ * directory. Every extension vitest accepts is listed even though this
+ * repo, as of this fix, only actually has `.ts` files — see the module doc
+ * comment for the "what actually exists here" audit behind that choice.
+ */
+const CONFIG_FILENAMES = [
+  'vitest.config.ts', 'vitest.config.mts', 'vitest.config.cts',
+  'vitest.config.js', 'vitest.config.mjs', 'vitest.config.cjs',
+  'vite.config.ts', 'vite.config.mts', 'vite.config.cts',
+  'vite.config.js', 'vite.config.mjs', 'vite.config.cjs',
+];
+
+const packageConfigCache = new Map();
+
+/**
+ * Find and resolve the `testTimeout` governing `testFilePath`, by walking
+ * from its directory up to the nearest ancestor containing a
+ * `package.json` (that package's root — this is a monorepo, each package
+ * carries its own independent vitest config, so walking PAST a package
+ * root risks picking up an unrelated sibling or the repo's own tooling
+ * config) and reading the first `CONFIG_FILENAMES` match found along the
+ * way. Returns `null` if no config file governs this test file, or if one
+ * does but sets no `testTimeout`; otherwise the `resolveConfigTimeout`
+ * result, plus `configPath` for reporting. Memoised per directory since a
+ * single package root serves every test file beneath it.
+ */
+export function findPackageConfigTimeout(testFilePath) {
+  let dir = dirname(resolvePath(testFilePath));
+  // Every directory visited on the way to a resolved answer gets that SAME
+  // final answer cached against it — not the per-directory "no config
+  // here" intermediate — so a second test file starting in a subdirectory
+  // one level below the package root (e.g. `src/`, having no config or
+  // `package.json` of its own) does not short-circuit on a stale `null`
+  // cached for `src/` during the FIRST file's walk-up before it ever
+  // reached the package root's real config. That was a real bug caught by
+  // running this tool against the whole repo: only the first test file
+  // touched per package root came back config-protected; every sibling
+  // test file one directory below it wrongly stayed "no config".
+  const visited = [];
+  for (let guard = 0; guard < 64; guard += 1) {
+    if (packageConfigCache.has(dir)) {
+      const cached = packageConfigCache.get(dir);
+      for (const v of visited) packageConfigCache.set(v, cached);
+      return cached;
+    }
+    visited.push(dir);
+    let result = null;
+    for (const name of CONFIG_FILENAMES) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) {
+        const source = readFileSync(candidate, 'utf8');
+        const resolved = resolveConfigTimeout(source);
+        result = resolved ? { ...resolved, configPath: candidate } : null;
+        break;
+      }
+    }
+    const isPackageRoot = existsSync(join(dir, 'package.json'));
+    if (result || isPackageRoot) {
+      for (const v of visited) packageConfigCache.set(v, result);
+      return result;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) {
+      for (const v of visited) packageConfigCache.set(v, null);
+      return null;
+    }
+    dir = parent;
+  }
+  for (const v of visited) packageConfigCache.set(v, null);
+  return null;
+}
+
 function lineOf(source, index) {
   let line = 1;
   for (let i = 0; i < index && i < source.length; i += 1) if (source[i] === '\n') line += 1;
@@ -427,14 +597,81 @@ export function hasExplicitTimeout(source, testName) {
   return match.protectedBy !== null;
 }
 
+/**
+ * `auditSource`'s per-call/`describe` results, PLUS the package-level
+ * `testTimeout` fallback resolved from `filePath`'s nearest package config
+ * (see `findPackageConfigTimeout`) for whichever calls neither their own
+ * nor an enclosing `describe`'s timeout already covers. Three outcomes for
+ * `configStatus` on a call this promotes or flags, distinct from the
+ * existing `own`/`describe:*`/`null` `protectedBy` values:
+ *   - not set at all: an `own`/`describe` timeout already covers this call,
+ *     or no package config (or no `testTimeout` key in it) applies — the
+ *     `protectedBy`/`unprotected` verdict from `auditSource` stands as-is;
+ *   - `'determined'`: no config governs, sets `protectedBy: 'config'` and
+ *     `value` to the resolved number — genuinely protected, just by a
+ *     package default rather than this call's own argument list;
+ *   - `'unknown'`: a `testTimeout:` key exists in the governing config but
+ *     its value could not be statically resolved (see
+ *     `resolveConfigTimeout`). `protectedBy` is left `null` (NOT flipped to
+ *     `'config'`) because we have no evidence the value is anything other
+ *     than vitest's 5000ms default made explicit — but this is also not
+ *     the plain "no timeout anywhere" case `auditSource` alone would
+ *     report, so callers must not silently fold it into "unprotected"
+ *     either. Report it as its own bucket.
+ */
+export function auditFile(filePath, source) {
+  const results = auditSource(source);
+  let configResult; // resolved lazily, once, only if some call actually needs it
+  let configResolved = false;
+  for (const r of results) {
+    if (r.protectedBy !== null) continue;
+    if (!configResolved) {
+      configResult = findPackageConfigTimeout(filePath);
+      configResolved = true;
+    }
+    if (!configResult) continue;
+    if (configResult.determined) {
+      r.protectedBy = 'config';
+      r.form = 'config';
+      r.value = configResult.value;
+      r.configPath = configResult.configPath;
+    } else {
+      r.configStatus = 'unknown';
+      r.configPath = configResult.configPath;
+    }
+  }
+  return results;
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const { readFileSync } = await import('node:fs');
+  let protectedCount = 0;
+  let configProtectedCount = 0;
+  let configUnknownCount = 0;
+  let unprotectedCount = 0;
   for (const file of process.argv.slice(2)) {
     const source = readFileSync(file, 'utf8');
-    for (const r of auditSource(source)) {
+    for (const r of auditFile(file, source)) {
       const shown = r.value ?? r.valueRef ?? '?';
-      const status = r.protectedBy ? `protected (${r.form}=${shown}, via ${r.protectedBy})` : 'NO EXPLICIT TIMEOUT';
+      let status;
+      if (r.protectedBy === 'config') {
+        status = `protected (config testTimeout=${shown}, via ${r.configPath})`;
+        configProtectedCount += 1;
+      } else if (r.protectedBy) {
+        status = `protected (${r.form}=${shown}, via ${r.protectedBy})`;
+        protectedCount += 1;
+      } else if (r.configStatus === 'unknown') {
+        status = `UNKNOWN — package config sets testTimeout to an unresolvable value (${r.configPath})`;
+        configUnknownCount += 1;
+      } else {
+        status = 'NO EXPLICIT TIMEOUT';
+        unprotectedCount += 1;
+      }
       console.log(`${file}:${r.line}: ${r.keyword}('${r.name}') — ${status}`);
     }
   }
+  console.log(
+    `\nsummary: ${protectedCount} protected (own call/describe), `
+    + `${configProtectedCount} config-protected, ${configUnknownCount} config-unknown, `
+    + `${unprotectedCount} unprotected`,
+  );
 }

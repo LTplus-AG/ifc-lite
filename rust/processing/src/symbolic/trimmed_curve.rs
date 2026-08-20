@@ -5,9 +5,10 @@
 //! `IfcTrimmedCurve` tessellation, split out of `items.rs` to keep that
 //! module's dispatch table under the module-size ratchet (#2256 follow-up).
 
+use super::output_cap::SymbolicAccumulator;
 use ifc_lite_core::{AttributeValue, DecodedEntity, EntityDecoder, IfcType};
 
-use super::primitives::{SymbolicData, SymbolicPolyline};
+use super::primitives::{SymbolicPolyline};
 use super::transform::{parse_axis2_placement_2d, Transform2D};
 
 /// Tessellate an `IfcTrimmedCurve` whose `BasisCurve` is an `IfcCircle`.
@@ -31,7 +32,7 @@ pub(super) fn extract_trimmed_curve(
     transform: &Transform2D,
     rtc_x: f32,
     rtc_z: f32,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let Some(basis_ref) = item.get_ref(0) else { return };
     let Ok(basis_curve) = decoder.decode_by_id(basis_ref) else { return };
@@ -138,7 +139,7 @@ pub(super) fn extract_trimmed_curve(
         let (wsx, wsy) = transform.transform_point(start_x, start_y);
         let (wex, wey) = transform.transform_point(end_x, end_y);
         let points = vec![wsx - rtc_x, -wsy + rtc_z, wex - rtc_x, -wey + rtc_z];
-        out.polylines.push(SymbolicPolyline {
+        out.push_polyline(SymbolicPolyline {
             express_id,
             ifc_type: ifc_type.to_string(),
             points,
@@ -163,7 +164,7 @@ pub(super) fn extract_trimmed_curve(
             }
         }
         if points.len() >= 4 {
-            out.polylines.push(SymbolicPolyline {
+            out.push_polyline(SymbolicPolyline {
                 express_id,
                 ifc_type: ifc_type.to_string(),
                 points,

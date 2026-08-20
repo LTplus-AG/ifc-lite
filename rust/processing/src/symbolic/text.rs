@@ -2,11 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicAccumulator;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
-use super::primitives::{SymbolicData, SymbolicText};
+use super::primitives::{SymbolicText};
 use super::transform::{compose_transforms, parse_axis2_placement_2d, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ pub(super) fn extract_text_literal(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let content = match item.get(0).and_then(|a| a.as_string()) {
         Some(s) => s.to_string(),
@@ -86,7 +87,7 @@ pub(super) fn extract_text_literal(
     let color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.05, 0.05, 0.05, 1.0]);
 
-    out.texts.push(SymbolicText {
+    out.push_text(SymbolicText {
         express_id,
         ifc_type: ifc_type.to_string(),
         x: wx - rtc_x,

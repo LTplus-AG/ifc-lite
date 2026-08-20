@@ -61,6 +61,7 @@
 //!   default fill colour.
 
 
+use output_cap::SymbolicAccumulator;
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner, IfcType};
 
 mod color;
@@ -68,13 +69,17 @@ mod fill;
 mod grid;
 mod item_walk;
 mod items;
+mod output_cap;
 #[cfg(test)]
 mod items_cycle_tests;
+#[cfg(test)]
+mod output_cap_tests;
 mod primitives;
 mod text;
 mod transform;
 mod trimmed_curve;
 
+pub use output_cap::SymbolicTruncation;
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
 };
@@ -95,6 +100,21 @@ use transform::{compose_transforms, parse_axis2_placement_2d, resolve_object_pla
 /// symbolic primitive collection. Pure-Rust (no `wasm_bindgen`), so it
 /// works inside the HTTP server.
 pub fn extract_symbolic_data<T>(content: &T) -> SymbolicData
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let mut out = SymbolicAccumulator::new();
+    extract_symbolic_data_into(content, &mut out);
+    out.into_data()
+}
+
+/// The extraction itself, writing into a caller-supplied accumulator.
+///
+/// Split out so a test can supply an accumulator with a small injected cap
+/// and exercise the real path, instead of building a fixture that emits two
+/// million primitives to reach `MAX_SYMBOLIC_ELEMENTS`. Production has exactly
+/// one caller, above, which supplies the real cap via `Default`.
+fn extract_symbolic_data_into<T>(content: &T, out: &mut SymbolicAccumulator)
 where
     T: AsRef<[u8]> + ?Sized,
 {
@@ -124,10 +144,18 @@ where
     // IfcFillAreaStyle → IfcColourRgb).
     let styled_items = build_styled_item_index(content, &mut decoder);
 
-    let mut out = SymbolicData::default();
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
+        // Stop the SCAN, not just the innermost item loop. Breaking only the
+        // inner loop still decodes every remaining product, resolves its
+        // placements and composes its transforms, which is not the "stop" this
+        // bound claims. Bounded by file size rather than by the fan-out, so it
+        // was never the DoS lever -- but it is work with a known-useless
+        // result.
+        if out.is_exhausted() {
+            break;
+        }
         let is_grid = type_name == "IFCGRID";
         if !is_grid && !ifc_lite_core::has_geometry_by_name(type_name) {
             // IfcGrid isn't in `has_geometry_by_name` (it's not a building
@@ -149,7 +177,7 @@ where
                 &grid_transform,
                 rtc_x,
                 rtc_z,
-                &mut out,
+                out,
             );
             continue;
         }
@@ -247,6 +275,9 @@ where
                 continue;
             };
             for item in items {
+                if out.is_exhausted() {
+                    break;
+                }
                 extract_symbolic_item(
                     &item,
                     &mut decoder,
@@ -258,11 +289,10 @@ where
                     rtc_x,
                     rtc_z,
                     &styled_items,
-                    &mut out,
+                    out,
                 );
             }
         }
     }
 
-    out
 }

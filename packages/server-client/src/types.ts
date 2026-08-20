@@ -359,12 +359,32 @@ export interface SymbolicFillArea {
  * binary (Parquet) transports. Arrays may be empty when the model carries no
  * 2D symbols.
  */
+/**
+ * Present only when extraction stopped at its bound; absent when the file was
+ * emitted in full.
+ */
+export interface SymbolicTruncation {
+  /** The bound that was hit. */
+  limit: number;
+  /** Primitives emitted before extraction stopped. */
+  emitted: number;
+}
+
 export interface SymbolicData {
   grid_axes: SymbolicGridAxis[];
   polylines: SymbolicPolyline[];
   circles: SymbolicCircle[];
   texts: SymbolicText[];
   fills: SymbolicFillArea[];
+  /**
+   * Set when the server bounded this extraction and returned a partial result.
+   *
+   * Optional because it is omitted for a complete extraction, so an existing
+   * consumer keeps compiling. But a consumer that renders symbolic geometry
+   * without reading this shows a clipped drawing as though it were the whole
+   * drawing, which is the failure this field exists to end.
+   */
+  truncated?: SymbolicTruncation;
 }
 
 /**

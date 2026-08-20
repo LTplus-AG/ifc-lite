@@ -17,6 +17,7 @@ use super::item_walk::{
     extract_symbolic_item, extract_symbolic_item_with_revisit_budget, MAX_ITEM_DEPTH,
     MAX_ITEM_REVISITS,
 };
+use super::output_cap::SymbolicAccumulator;
 use super::primitives::SymbolicData;
 use super::transform::Transform2D;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
@@ -28,7 +29,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicData::default();
+    let mut out = SymbolicAccumulator::new();
     extract_symbolic_item(
         &item,
         &mut decoder,
@@ -42,7 +43,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         &styled,
         &mut out,
     );
-    out
+    out.into_data()
 }
 
 fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
@@ -51,7 +52,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicData::default();
+    let mut out = SymbolicAccumulator::new();
     extract_symbolic_item_with_revisit_budget(
         &item,
         &mut decoder,
@@ -66,7 +67,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         &mut out,
         budget,
     );
-    out
+    out.into_data()
 }
 
 /// Run the walk in a worker thread with a timeout, so a regressed guard is

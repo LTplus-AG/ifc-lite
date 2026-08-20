@@ -11,21 +11,36 @@
 //!   also names it. This is `merged-exporter.ts`'s `hiddenProductIds`
 //!   (`computeIncludedEntityIds`, `reference-collector.ts:865` builds it,
 //!   `reference-collector.ts:379`'s `excludeIds` param consumes it).
-//! - A pass that drops a KEPT relationship (`IFCREL*`) entity outright when
-//!   any id it names is not in the kept set, rather than emitting the
-//!   relationship's original bytes with a now-dangling `#ref`. The real JS
-//!   exporter instead NARROWS the relationship's SET/LIST attribute to its
-//!   surviving members (`relationshipRefsSurviveExclusion`,
-//!   `filterHiddenRefsFromRelationshipLine` in `step-exporter.ts`) — this
-//!   repo's Rust side has no per-attribute-group parser for STEP lines
-//!   (`refs_in_line` only extracts a flat list of `#id`s), so narrowing one
-//!   list while keeping the rest of the line is not available here yet.
-//!   Dropping the whole relationship is strictly more conservative than
-//!   narrowing (it can only under-connect, never dangle), and this repo has
-//!   already shipped the dangling-reference shape once (#2398), so
-//!   correctness is chosen over completeness for this increment.
+//! - A pass that NARROWS a kept relationship (`IFCREL*`) entity's SET/LIST
+//!   attribute to its surviving members instead of emitting the relationship's
+//!   original bytes with a now-dangling `#ref`, dropping the whole line only
+//!   when narrowing itself has no spelling for "omitted" (a single-valued
+//!   slot, or a SET/LIST's only member). This mirrors
+//!   `filterHiddenRefsFromRelationshipLine` in `reference-collector.ts`
+//!   ([`narrow_relationship_line`], below) — `step_text::split_top_level_args`
+//!   (originally written for `apply_attr_mutations`) already tells a
+//!   parenthesised SET/LIST attribute apart from a single-valued one, so no
+//!   second attribute-group parser was needed here. Before this module grew
+//!   [`narrow_relationship_line`], the whole KEPT relationship was dropped
+//!   the instant it named ANY excluded id, at every one of its callers —
+//!   proven wrong on real IFC: an exporter that lists every element of a
+//!   storey in one `IFCRELCONTAINEDINSPATIALSTRUCTURE` would lose that
+//!   storey's containment for every visible element on it just because one
+//!   sibling was hidden, not merely "conservative" but materially incorrect.
+//!
+//! Neither this module nor `filterHiddenRefsFromRelationshipLine` closes every
+//! dangling-reference shape: an excluded id can still survive as a `#ref`
+//! inside a NON-`IFCREL*` entity this pass never inspects — an
+//! `IFCSTYLEDITEM.Item`, a product's `Representation`/`ObjectPlacement`. That
+//! gap is inherited from the JS reference, not introduced here — `step-exporter.ts`
+//! documents it openly (see the "What the filter can and cannot reach" section
+//! of the doc above its own two `filterHiddenRefsFromRelationshipLine` call
+//! sites), including a measurement of 80 dangling refs, before and after, on
+//! `tests/models/AB22.ifc` — so this module makes no "never dangles" claim
+//! either.
 
-use crate::step_text::refs_in_line;
+use crate::step_text::{refs_in_line, split_top_level_args};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 /// One model's visibility filter for merged export.
@@ -76,23 +91,169 @@ fn forward_closure(
     keep
 }
 
-/// Kept `IFCREL*` ids in `keep` that name an id NOT in `keep` — these would
-/// dangle if their original bytes were emitted verbatim.
+/// Kept `IFCREL*` ids in `keep` whose own line does NOT survive
+/// [`narrow_relationship_line`] against `is_excluded(r) = !keep.contains(&r)`
+/// — i.e. an excluded id sits in a single-valued slot, or was a SET/LIST's
+/// only member, so narrowing itself has no way to keep the line. A
+/// relationship that CAN be narrowed (an excluded id inside a SET/LIST that
+/// still has surviving members) is not dangling and stays in `keep` — the
+/// actual narrowed text is produced later, at emission time, by
+/// [`narrow_for_emission`], using this same `keep` set as the final answer to
+/// "what does this id resolve to".
+///
+/// `!keep.contains(&r)` is the right `is_excluded` predicate here (not a
+/// separate `excluded`/`by_id` lookup) because [`forward_closure`] already
+/// guarantees the equivalence for any ref `r` named by an already-kept id: `r`
+/// is in `keep` iff it is neither in the current `excluded` set nor absent
+/// from `by_id` — those are the only two reasons `forward_closure` would
+/// refuse to walk into a ref it reached from a kept entity. So "not in keep"
+/// and "excluded-or-absent" are the same fact, one iteration at a time, which
+/// is also exactly the union `hiddenProductIds.has(id) || !completeIndex.has(id)`
+/// computes at `merged-exporter.ts`'s own `filterHiddenRefsFromRelationshipLine`
+/// call site (`renderEntity`, `packages/export/src/merged-exporter.ts:1150`).
 fn dangling_relationship_ids(keep: &HashSet<u32>, by_id: &HashMap<u32, (&str, &[u8])>) -> Vec<u32> {
-    let mut refs: Vec<u32> = Vec::new();
     let mut dangling = Vec::new();
     for &id in keep {
         let (ty, bytes) = by_id[&id];
         if !ty.starts_with("IFCREL") {
             continue;
         }
-        refs.clear();
-        refs_in_line(bytes, &mut refs);
-        if refs.iter().any(|r| by_id.contains_key(r) && !keep.contains(r)) {
+        let text = String::from_utf8_lossy(bytes);
+        if narrow_relationship_line(&text, &|r| !keep.contains(&r)).is_none() {
             dangling.push(id);
         }
     }
     dangling
+}
+
+/// The ONE named exception to "a single-valued STEP attribute has no spelling
+/// for omitted", ported from `isOptionalTrailingRef` in
+/// `reference-collector.ts:713`: `IfcRelConnectsStructuralMember`'s 10th
+/// attribute (`ConditionCoordinateSystem`, position 9 zero-based) is declared
+/// `OPTIONAL` by both IFC4 and IFC4X3, so an excluded id there can be rewritten
+/// to `$` instead of withholding the whole relationship. Matched on the exact
+/// type token AND attribute count (10) so `IFCRELCONNECTSWITHECCENTRICITY`
+/// (11 attributes — `ConditionCoordinateSystem` shifts to position 8 and a
+/// mandatory `ConnectionConstraint` is appended) falls through to the general
+/// withhold rule, same as the JS original.
+fn is_optional_trailing_ref(entity_type: &str, attr_count: usize, index: usize) -> bool {
+    entity_type == "IFCRELCONNECTSSTRUCTURALMEMBER" && attr_count == 10 && index == 9
+}
+
+/// Mirrors `filterHiddenRefsFromRelationshipLine`
+/// (`packages/export/src/reference-collector.ts:630`): narrows a `#N=TYPE(...);`
+/// line's SET/LIST attribute(s) to just the members `is_excluded` does not
+/// reject, returning `None` to mean "withhold this line entirely" only when:
+///
+///  - an excluded id sits in a bare, single-valued attribute slot (no
+///    parentheses) — a single-valued STEP attribute has no spelling for
+///    "omitted", UNLESS [`is_optional_trailing_ref`] says this exact slot is
+///    schema-optional, in which case it is rewritten to `$` instead; or
+///  - a parenthesised SET/LIST attribute's excluded members were its ONLY
+///    members — an empty SET/LIST is not valid STEP for an IFC schema
+///    attribute, so an empty list is a second, different kind of invalid file,
+///    not "no forward reference".
+///
+/// Returns the line unchanged (same underlying text) when nothing named is
+/// excluded, and a line unparseable as a single `#N=TYPE(...);` record is
+/// also returned unchanged — this function only ever narrows a well-formed
+/// record, matching the JS original's own "return line unchanged" contract
+/// for a regex miss.
+pub(crate) fn narrow_relationship_line(line: &str, is_excluded: &dyn Fn(u32) -> bool) -> Option<String> {
+    let trimmed = line.trim_end();
+    let body = trimmed.strip_suffix(';')?;
+    let eq = body.find('=')?;
+    let after = &body[eq + 1..];
+    let popen = after.find('(')?;
+    let aclose = after.rfind(')')?;
+    if aclose <= popen {
+        return Some(line.to_string());
+    }
+    let entity_type = after[..popen].trim().to_uppercase();
+    let attrs_text = &after[popen + 1..aclose];
+    let attrs = split_top_level_args(attrs_text);
+    let attr_count = attrs.len();
+
+    let mut changed = false;
+    let mut next_attrs: Vec<String> = Vec::with_capacity(attrs.len());
+    for (index, attr) in attrs.into_iter().enumerate() {
+        let t = attr.trim();
+        if t.len() >= 2 && t.as_bytes()[0] == b'(' && t.as_bytes()[t.len() - 1] == b')' {
+            let inner = &t[1..t.len() - 1];
+            let items: Vec<String> = if inner.trim().is_empty() { Vec::new() } else { split_top_level_args(inner) };
+            let mut survivors: Vec<String> = Vec::with_capacity(items.len());
+            let mut any_dropped = false;
+            for item in &items {
+                if let Some(id) = parse_bare_ref(item) {
+                    if is_excluded(id) {
+                        any_dropped = true;
+                        continue;
+                    }
+                }
+                survivors.push(item.trim().to_string());
+            }
+            if any_dropped {
+                if survivors.is_empty() {
+                    return None;
+                }
+                changed = true;
+                next_attrs.push(format!("({})", survivors.join(",")));
+            } else {
+                next_attrs.push(attr);
+            }
+            continue;
+        }
+
+        if let Some(id) = parse_bare_ref(t) {
+            if is_excluded(id) {
+                if is_optional_trailing_ref(&entity_type, attr_count, index) {
+                    changed = true;
+                    next_attrs.push("$".to_string());
+                    continue;
+                }
+                return None;
+            }
+        }
+        next_attrs.push(attr);
+    }
+
+    if !changed {
+        return Some(line.to_string());
+    }
+    let prefix = &body[..=(eq + 1 + popen)];
+    Some(format!("{prefix}{});", next_attrs.join(",")))
+}
+
+/// `#(\d+)` (no other characters, ignoring surrounding whitespace) — a bare
+/// STEP forward reference, not a nested list or an inline typed value.
+fn parse_bare_ref(s: &str) -> Option<u32> {
+    let s = s.trim();
+    let digits = s.strip_prefix('#')?;
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    digits.parse::<u32>().ok()
+}
+
+/// Emission-time entry point for [`export_merged_with_stats`]: apply
+/// [`narrow_relationship_line`] to a KEPT `IFCREL*` entity's raw line bytes,
+/// using `keep` — the same set [`compute_keep_set`] already returned for this
+/// model — as the exclusion predicate. Non-`IFCREL*` types, and any line
+/// [`narrow_relationship_line`] finds nothing to change in, are returned
+/// BORROWED (no allocation): [`compute_keep_set`]'s own fixpoint already
+/// proved every `IFCREL*` id still in `keep` survives this exact narrowing (see
+/// [`dangling_relationship_ids`]'s doc for why `!keep.contains` is the right
+/// predicate both times), so the `None` arm below is unreached in practice and
+/// only a defensive fallback to the original bytes, never a panic.
+pub(crate) fn narrow_for_emission<'a>(type_name: &str, line: &'a [u8], keep: &HashSet<u32>) -> Cow<'a, [u8]> {
+    if !type_name.starts_with("IFCREL") {
+        return Cow::Borrowed(line);
+    }
+    let text = String::from_utf8_lossy(line);
+    match narrow_relationship_line(&text, &|r| !keep.contains(&r)) {
+        Some(narrowed) if narrowed.as_bytes() != line => Cow::Owned(narrowed.into_bytes()),
+        _ => Cow::Borrowed(line),
+    }
 }
 
 /// Compute the kept express-id set for one model's lines under `filter`.

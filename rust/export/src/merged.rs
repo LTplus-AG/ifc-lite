@@ -9,7 +9,7 @@
 //! valid `IfcProject` tree. Deeper shared-infrastructure dedup (units, contexts) and
 //! spatial unification by name/elevation are the P2 follow-on.
 
-use crate::merged_visibility::{compute_keep_set, VisibilityFilter};
+use crate::merged_visibility::{compute_keep_set, narrow_for_emission, VisibilityFilter};
 use crate::step_text::{detect_schema, escape};
 use ifc_lite_core::EntityScanner;
 use std::collections::HashSet;
@@ -368,7 +368,9 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
             if !is_first && canonical_project.is_some() && Some(*id) == model_project {
                 continue;
             }
-            let mut rewritten = rewrite_refs(line, offset, &remap);
+            // Narrow (not just gate on) a kept IFCREL* line -- see `narrow_for_emission`.
+            let narrowed = keep_set.as_ref().map(|k| narrow_for_emission(type_name, line, k));
+            let mut rewritten = rewrite_refs(narrowed.as_deref().unwrap_or(line), offset, &remap);
 
             if let Some(guid) = leading_guid(line, type_name) {
                 if emitted_guids.contains(&guid) {

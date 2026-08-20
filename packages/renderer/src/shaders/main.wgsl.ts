@@ -115,7 +115,16 @@ export const mainShaderSource = `
             let off = vec2<f32>(p.x * cr - p.y * sr, p.x * sr + p.y * cr) * radius;
             sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
           }
-          return sum / 12.0;
+          let pcf = sum / 12.0;
+          // Terminator fade. On a surface nearly PARALLEL to the sun rays
+          // (NdotL → 0, e.g. a vertical wall under a midday sun) the receiver
+          // straddles the shadow threshold, so the rotated-disk taps randomly
+          // pass/fail and the wall breaks into salt-and-pepper speckle. The
+          // direct sun term is near zero there anyway, so fade the cast shadow
+          // smoothly toward lit as the surface goes grazing: a clean gradient
+          // replaces the ripple (#2670).
+          let graze = smoothstep(0.0, 0.3, NdotL);
+          return mix(1.0, pcf, graze);
         }
 
         struct VertexInput {

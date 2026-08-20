@@ -34,8 +34,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore, loadLastSectionMode } from './index.js';
 
-const SECTION_MODE_KEY = 'ifc-lite:section-last-mode';
-
 describe('resetViewerState — drops the persisted cross-session section mode (#2939)', () => {
   it('a cardinal mode saved for one model is not read back after resetViewerState() (simulating a new file load)', () => {
     // Simulate "model A" session: user cuts a cardinal section, off-center,

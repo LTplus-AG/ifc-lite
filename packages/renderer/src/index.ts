@@ -84,6 +84,18 @@ export { isEntityVisible } from './entity-visibility.js';
 export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
+// Frame/pass GPU timing (issue #2670 perf-verdict gate). Opt-in and NOT wired
+// into `Renderer` by default — a caller constructs `GpuFrameTimingRecorder`
+// itself and attaches its `timestampWrites` to the passes it wants measured;
+// see `frame-timing-gpu.ts`'s module doc for the usage pattern, and
+// `decideTimingMode` for choosing GPU queries vs. the CPU fallback vs. off.
+export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
+export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
+export { computeDurationStats, nsToMs } from './frame-timing-stats.js';
+export type { DurationStats } from './frame-timing-stats.js';
+export { GpuFrameTimingRecorder, hasTimestampQueryFeature } from './frame-timing-gpu.js';
+export { createCpuFrameTicker } from './frame-timing-cpu.js';
+export type { CpuFrameTicker } from './frame-timing-cpu.js';
 export { RaycastEngine } from './raycast-engine.js';
 export type { RenderDegradationInfo } from './render-degradation.js';
 export { PointPicker, decodePickSample } from './point-picker.js';

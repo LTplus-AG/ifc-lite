@@ -1,0 +1,13 @@
+---
+"@ifc-lite/renderer": minor
+---
+
+Add opt-in frame/pass GPU timing instrumentation, so a perf-sensitive rendering feature (e.g. the sun-shadow work gated on an end-to-end perf verdict) can actually be measured instead of eyeballed.
+
+The renderer had no frame-time or pass-time instrumentation at all — the existing `tests/benchmark/*` suite measures load and streaming KPIs, not per-frame GPU cost. `GpuFrameTimingRecorder` wraps WebGPU timestamp queries (`GPUQuerySet` of type `'timestamp'`, `timestampWrites` on a render pass, resolved into a buffer and read back) to time individual passes and whole frames. Timestamp queries require the `'timestamp-query'` adapter feature, which is not always available: `WebGPUDevice` now requests it opportunistically (only when the adapter already advertises it — never as a hard requirement) and exposes `hasTimestampQueryFeature()`, and `decideTimingMode()` degrades cleanly to a CPU-side frame-delta fallback (`createCpuFrameTicker`, explicitly labelled `'cpu-fallback'` so it is never confused with a GPU number) or to `'disabled'`, rather than throwing or reporting a silent zero.
+
+Statistics (`computeDurationStats`: min/median/p95/max/mean, with an explicit `count: 0` / all-`null` shape for an empty sample) and aggregation (`aggregateFrameTimings`, `passDurationsMs`, `frameTotalMs`) are pure functions with no GPU or clock dependency, so they are fully unit-testable; only query-set creation, pass attachment, and buffer readback touch the GPU, and that surface is kept as thin as possible.
+
+Nothing in the renderer constructs a recorder or requests the feature as required — this is entirely opt-in. A caller creates `GpuFrameTimingRecorder.create(device.getDevice())` (returns `null` when unsupported), attaches `recorder.beginPass(label)` to each render pass's `timestampWrites`, calls `recorder.endFrame(encoder)` before `queue.submit`, and awaits `recorder.readback()` for that frame's samples — see `frame-timing-gpu.ts`'s module doc for the full pattern. Sampling every frame is not recommended for a shipped build (query resolution and the readback have their own cost); sample intermittently.
+
+Producing an actual perf verdict for #2670 still needs a WebGPU-capable test harness with the `'timestamp-query'` feature (this repo's current Chromium test environment exposes no WebGPU adapter at all), a representative model, and a defined shadows-off-vs-on comparison at a stated shadow-map resolution — none of that is included here.

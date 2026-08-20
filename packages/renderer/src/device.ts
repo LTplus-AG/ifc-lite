@@ -109,8 +109,22 @@ export class WebGPUDevice {
     if (limits?.maxStorageBufferBindingSize) {
       requiredLimits.maxStorageBufferBindingSize = limits.maxStorageBufferBindingSize;
     }
+
+    // Request 'timestamp-query' when the adapter advertises it (issue #2670
+    // perf-verdict gate — see frame-timing-gpu.ts). It is an OPTIONAL feature
+    // per the WebGPU spec, not all adapters/backends support it, so it is
+    // only added to requiredFeatures when already present in
+    // adapter.features — asking for a feature the adapter doesn't have would
+    // make requestDevice() reject outright. this.hasTimestampQueryFeature()
+    // reports the outcome; nothing in the renderer requests query sets
+    // unless a caller opts into GpuFrameTimingRecorder.create().
+    const requiredFeatures: GPUFeatureName[] = [];
+    if (this.adapter.features?.has('timestamp-query')) {
+      requiredFeatures.push('timestamp-query');
+    }
+
     try {
-      this.device = await this.adapter.requestDevice({ requiredLimits });
+      this.device = await this.adapter.requestDevice({ requiredLimits, requiredFeatures });
     } catch {
       // Some drivers reject requiredLimits they nominally advertise — fall back to a
       // default device rather than failing to initialise the renderer entirely.
@@ -265,6 +279,19 @@ export class WebGPUDevice {
    */
   getAdapterInfo(): AdapterInfoSnapshot | null {
     return this.adapterInfoSnapshot;
+  }
+
+  /**
+   * Whether this device's adapter supports GPU timestamp queries (issue
+   * #2670 perf-verdict gate — see frame-timing-gpu.ts). Reflects what was
+   * actually granted on `this.device`, not merely what the adapter
+   * advertised, so it stays correct even on the rare path where
+   * `requestDevice()` with `requiredFeatures` failed and init() fell back to
+   * a plain `requestDevice()` with none granted. False before `init()` has
+   * run, same as every other device-derived getter here.
+   */
+  hasTimestampQueryFeature(): boolean {
+    return this.device?.features?.has('timestamp-query') ?? false;
   }
 
   getContext(): GPUCanvasContext {

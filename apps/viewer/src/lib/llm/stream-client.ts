@@ -333,11 +333,16 @@ export async function streamChat(options: StreamOptions): Promise<void> {
       if (response.status === 502 && errorBody.code === 'provider_model_not_found') {
         const providerMessage = errorBody.providerMessage?.trim();
         const modelLabel = errorBody.model ? ` ${errorBody.model}` : '';
-        if (providerMessage) {
-          errorDetail = `Provider routing unavailable for${modelLabel}. ${providerMessage}`;
-        } else {
-          errorDetail = `Provider routing unavailable for${modelLabel}. Try again shortly or switch model.`;
-        }
+        // The provider's own text is usually addressed to whoever configures the
+        // routing, not to the person sitting in front of the viewer: when a free
+        // tier ends it says to migrate to a paid slug (#2886), which nobody can
+        // do from here. Switching model is the one thing that always works in
+        // this app, so say it in both branches -- it used to appear only when
+        // the provider stayed silent, i.e. it was withheld from exactly the
+        // users who had been handed an instruction they could not act on.
+        errorDetail = providerMessage
+          ? `Provider routing unavailable for${modelLabel}. ${providerMessage} Switch model to continue.`
+          : `Provider routing unavailable for${modelLabel}. Try again shortly or switch model.`;
       }
 
       if (errorBody.code === 'provider_error' && errorBody.providerMessage) {

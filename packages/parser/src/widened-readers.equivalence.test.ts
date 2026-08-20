@@ -283,6 +283,18 @@ describe('widened byte-range readers: source-shape equivalence', () => {
     });
   });
 
+  // Explicit, generous timeout (not vitest's 5000ms default): this test
+  // tokenizes AC20-FZK-Haus's ~44k records three times over through
+  // `scanIfcEntities` and the three reader shapes below. That is real,
+  // non-amortizable CPU work — nothing to warm up outside the timer, unlike
+  // a one-time dynamic import (packages/export/src/parquet-geometry.test.ts,
+  // #2248) — so under light load it finishes in well under a second
+  // (measured locally: ~300ms), but under CI-scale contention (many
+  // packages' suites racing for CPU in the same `turbo test` run) it can
+  // push past 5s: this exact test timed out at "Test timed out in 5000ms"
+  // on PR #2905's CI run while passing instantly on the same commit locally.
+  // The assertions are not the problem; the budget was just too tight for
+  // this file's genuine cost under contention.
   it('agrees across source shapes on a real IFC file', async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
       // ctx.skip(), never a bare `return`: a return records a PASS, so the
@@ -353,5 +365,5 @@ describe('widened byte-range readers: source-shape equivalence', () => {
     expect(typeMismatches).toEqual([]);
     expect(seenTypes.size).toBeGreaterThanOrEqual(20);
     expect(seenTypes.has('')).toBe(false);
-  });
+  }, 30_000);
 });

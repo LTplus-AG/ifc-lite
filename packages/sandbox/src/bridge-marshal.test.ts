@@ -132,6 +132,31 @@ describe("returns: 'string' marshalling", () => {
   });
 });
 
+describe('marshalValue typed-array handling', () => {
+  it('marshals a Uint8Array as a real, indexable script array', async () => {
+    // A typed array's own enumerable properties ARE its numeric indices, so
+    // walking one with the generic-object branch (Object.entries) used to
+    // hand the script `{ "0": 73, "1": 70, "2": 67 }` — no `.length`, and
+    // `Array.isArray()` false. `bim.export.ifc()` returns exactly this shape
+    // once STEP output exceeds V8's string-length limit and falls back to
+    // `Uint8Array` chunks (step-exporter.ts): small models marshal fine,
+    // large ones silently hand the script junk.
+    const { sdk } = stubSdk({ json: () => new Uint8Array([73, 70, 67]) });
+    const value = await withSandbox(sdk, (run) =>
+      run(
+        `const r = bim.export.json([], []); JSON.stringify({ isArray: Array.isArray(r), length: r.length, values: r })`,
+      ),
+    );
+    expect(value).toBe('{"isArray":true,"length":3,"values":[73,70,67]}');
+  });
+
+  it('marshals a Float64Array element inside a plain array the same way', async () => {
+    const { sdk } = stubSdk({ json: () => ({ samples: new Float64Array([1.5, 2.5]) }) });
+    const value = await withSandbox(sdk, (run) => run(`bim.export.json([], [])`));
+    expect(value).toEqual({ samples: [1.5, 2.5] });
+  });
+});
+
 describe('marshalValue cycle guard', () => {
   it('serialises a sub-object shared between siblings in full, both times', async () => {
     // Acyclic: `shared` appears twice, but never inside itself. Both

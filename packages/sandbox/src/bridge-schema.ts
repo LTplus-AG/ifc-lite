@@ -412,11 +412,27 @@ function marshalValueWithGuard(
   if (stack.has(obj)) return vm.null;
   stack.add(obj);
   try {
-    if (Array.isArray(value)) {
+    // A typed array's own enumerable properties are its numeric indices —
+    // walking one with `Object.entries` (the generic-object branch below)
+    // hands the script `{ "0": …, "1": … }` with no `.length`, not an array.
+    // `bim.export.ifc()` returns exactly this shape once STEP output exceeds
+    // V8's string-length limit and the SDK falls back to `Uint8Array` chunks
+    // (see step-exporter.ts), so a script that works on small models silently
+    // gets junk on large ones. `DataView` is excluded: it's a byte-range
+    // view, not a sequence of elements, and has no index keys to mangle in
+    // the first place — falling through to the generic branch below just
+    // marshals it as `{}`, its actual (empty) own-property shape.
+    const arrayLikeValue =
+      ArrayBuffer.isView(value) && !(value instanceof DataView)
+        ? (Array.from(value as unknown as ArrayLike<number>) as unknown[])
+        : Array.isArray(value)
+          ? value
+          : undefined;
+    if (arrayLikeValue) {
       const arr = vm.newArray();
       try {
-        for (let i = 0; i < value.length; i++) {
-          const item = marshalValueWithGuard(vm, value[i], depth + 1, stack);
+        for (let i = 0; i < arrayLikeValue.length; i++) {
+          const item = marshalValueWithGuard(vm, arrayLikeValue[i], depth + 1, stack);
           try {
             vm.setProp(arr, i, item);
           } finally {

@@ -47,8 +47,22 @@
 /// the failure mode this module exists to remove. Guessing "off" for an
 /// unrecognised value would reproduce that; refusing to guess does not.
 fn require_fixtures() -> bool {
-    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
-        Err(_) => false,
+    require_fixtures_from(std::env::var("IFC_LITE_REQUIRE_FIXTURES"))
+}
+
+/// The pure decision behind [`require_fixtures`], taken as a parameter so
+/// tests can exercise every `Result<String, VarError>` shape (including
+/// `NotUnicode`) without mutating the real process environment -- `cargo
+/// test` runs this crate's tests on multiple threads that share one process,
+/// so setting `IFC_LITE_REQUIRE_FIXTURES` for one test would race every other
+/// test that calls [`require_fixtures`] concurrently.
+fn require_fixtures_from(var: Result<String, std::env::VarError>) -> bool {
+    match var {
+        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotUnicode(v)) => panic!(
+            "IFC_LITE_REQUIRE_FIXTURES={v:?} is not recognised (use \"1\" or \"0\") — \
+             refusing to guess, because guessing \"off\" would silently disable the gate"
+        ),
         Ok(v) if v.is_empty() || v == "0" => false,
         Ok(v) if v == "1" => true,
         Ok(v) => panic!(
@@ -102,4 +116,33 @@ macro_rules! fixture_or_skip {
             None => return,
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_fixtures_from;
+    use std::env::VarError;
+    use std::ffi::OsString;
+
+    /// A present-but-not-Unicode value must fail closed the same way an
+    /// unrecognised string does (panic), not fall through to "off" like an
+    /// unset variable would. Before this fix, `require_fixtures` matched
+    /// `Err(_) => false`, which treated `VarError::NotUnicode` the same as
+    /// `NotPresent` and silently disabled the gate for a misconfigured value
+    /// instead of panicking.
+    #[test]
+    fn not_unicode_is_rejected_not_treated_as_absent() {
+        let result = std::panic::catch_unwind(|| {
+            require_fixtures_from(Err(VarError::NotUnicode(OsString::from("\u{FFFD}"))))
+        });
+        assert!(
+            result.is_err(),
+            "non-Unicode value must panic, not silently disable the gate"
+        );
+    }
+
+    #[test]
+    fn not_present_is_off() {
+        assert!(!require_fixtures_from(Err(VarError::NotPresent)));
+    }
 }

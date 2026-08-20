@@ -97,12 +97,20 @@ pub fn is_non_rooted_string_type(type_upper: &str) -> bool {
             | "IFCQUANTITYTIME"
             | "IFCQUANTITYNUMBER"
             | "IFCPHYSICALCOMPLEXQUANTITY"
-            // Materials & their constituents
+            // Materials & their constituents (lead with a Name; IfcMaterialLayer/Usage
+            // lead with a #ref, so they can't be misread, but list them for clarity)
             | "IFCMATERIAL"
             | "IFCMATERIALPROFILE"
             | "IFCMATERIALPROFILESET"
             | "IFCMATERIALCONSTITUENT"
             | "IFCMATERIALCONSTITUENTSET"
+            | "IFCMATERIALLAYER"
+            | "IFCMATERIALLAYERSET"
+            | "IFCMATERIALLAYERSETUSAGE"
+            // Colours & presentation resources (IfcColourRgb leads with an optional
+            // Name that can be 22 charset chars; IfcColourSpecification likewise)
+            | "IFCCOLOURRGB"
+            | "IFCCOLOURSPECIFICATION"
             // Classification, library & document refs
             | "IFCCLASSIFICATION"
             | "IFCCLASSIFICATIONREFERENCE"
@@ -151,6 +159,35 @@ pub fn extract_global_id_fast(type_upper: &str, line: &[u8]) -> Option<String> {
     let close = window[start..].iter().position(|&b| b == b'\'')? + start;
     let inner = std::str::from_utf8(&window[start..close]).ok()?;
     is_global_id(inner).then(|| inner.to_string())
+}
+
+/// The uppercase entity type token of a `#id=TYPE(...)` line, tolerating
+/// whitespace after `=` (some exporters write `#1= IFCPROJECT(`).
+pub fn entity_type_upper(line: &[u8]) -> Option<String> {
+    let eq = line.iter().position(|&b| b == b'=')?;
+    let mut i = eq + 1;
+    while i < line.len() && line[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    let start = i;
+    while i < line.len() && line[i] != b'(' && !line[i].is_ascii_whitespace() {
+        i += 1;
+    }
+    if i == start {
+        return None;
+    }
+    std::str::from_utf8(&line[start..i]).ok().map(|s| s.to_ascii_uppercase())
+}
+
+/// The leading GlobalId of a raw STEP entity line, classified by TYPE (not just
+/// the 22-char shape): reads the type from the line and applies the rooted-entity
+/// rule, so a non-rooted entity leading with a 22-char charset Name (e.g. an
+/// `IfcColourRgb`) is not counted as a rooted GlobalId. For callers that only
+/// have raw text — the merge harness and duplicate-GlobalId diagnostics — and
+/// want the same classification the merge itself uses.
+pub fn leading_rooted_global_id(line: &[u8]) -> Option<String> {
+    let type_upper = entity_type_upper(line)?;
+    extract_global_id_fast(&type_upper, line)
 }
 
 /// Read the GlobalId of an already-rendered STEP line (first `'…'` after the
@@ -205,11 +242,21 @@ impl GuidMinter {
     }
 
     /// A fresh GlobalId for `original` (seeded by `model_id`), guaranteed not to
-    /// collide with anything in `emitted` or previously minted here.
-    pub fn mint(&mut self, original: &str, model_id: &str, emitted: &HashSet<String>) -> String {
+    /// collide with anything in `emitted`, in `also` (e.g. the current model's own
+    /// unchanged GlobalIds, which are not yet in `emitted`), or previously minted here.
+    pub fn mint(
+        &mut self,
+        original: &str,
+        model_id: &str,
+        emitted: &HashSet<String>,
+        also: &HashSet<String>,
+    ) -> String {
         let mut candidate = deterministic_global_id(&format!("{original}#{model_id}"));
         let mut n: u32 = 0;
-        while emitted.contains(&candidate) || self.pending.contains(&candidate) {
+        while emitted.contains(&candidate)
+            || also.contains(&candidate)
+            || self.pending.contains(&candidate)
+        {
             candidate = deterministic_global_id(&format!("{original}#{model_id}#{n}"));
             n = n.wrapping_add(1);
         }
@@ -274,14 +321,45 @@ mod guid_tests {
     }
 
     #[test]
-    fn mint_avoids_collisions_with_emitted_and_pending() {
+    fn non_rooted_colour_and_material_types_are_not_guids() {
+        // IfcColourRgb leads with an optional Name that can be 22 charset chars;
+        // it must not be classified as a rooted GlobalId (CR regression #2952).
+        let colour = b"#12=IFCCOLOURRGB('AAAAAAAAAAAAAAAAAAAAAA',0.5,0.5,0.5);";
+        assert_eq!(extract_global_id_fast("IFCCOLOURRGB", colour), None);
+        assert_eq!(leading_rooted_global_id(colour), None);
+        // A real rooted entity with the same-shaped leading string IS read.
+        let wall = b"#5=IFCWALL('2O2Fr$t4X7Zf8NOew3FLOH',#6,'Wall',$,$,#7,#8,'tag');";
+        assert_eq!(leading_rooted_global_id(wall).as_deref(), Some("2O2Fr$t4X7Zf8NOew3FLOH"));
+        // IfcMaterialLayer leads with a #ref, so it never even reaches the shape test.
+        let layer = b"#8=IFCMATERIALLAYER(#7,200.,$);";
+        assert_eq!(leading_rooted_global_id(layer), None);
+    }
+
+    #[test]
+    fn entity_type_upper_tolerates_spacing_and_case() {
+        assert_eq!(entity_type_upper(b"#1=IFCWALL('g',$);").as_deref(), Some("IFCWALL"));
+        assert_eq!(entity_type_upper(b"#1= IfcProject('g',$);").as_deref(), Some("IFCPROJECT"));
+        assert_eq!(entity_type_upper(b"not an entity"), None);
+    }
+
+    #[test]
+    fn mint_avoids_collisions_with_emitted_pending_and_local() {
         let mut emitted = HashSet::new();
+        let empty = HashSet::new();
         let mut minter = GuidMinter::new();
-        let first = minter.mint("dup", "m1", &emitted);
+        let first = minter.mint("dup", "m1", &emitted, &empty);
         emitted.insert(first.clone());
         // Same original+model, but the first candidate now collides → different id.
-        let second = minter.mint("dup", "m1", &emitted);
+        let second = minter.mint("dup", "m1", &emitted, &empty);
         assert_ne!(first, second);
         assert!(is_global_id(&second));
+        // A candidate already emitted by THIS model (passed via `also`) is avoided
+        // even though it is absent from `emitted`.
+        let mut also = HashSet::new();
+        also.insert(minter.mint("x", "m2", &empty, &empty));
+        // Re-run the same seed: the pending set from the previous mint already
+        // forces a fresh value, and `also` is an extra guard the loop honours.
+        let third = minter.mint("y", "m2", &empty, &also);
+        assert!(!also.contains(&third));
     }
 }

@@ -93,15 +93,18 @@ fn main() {
     println!("duplicate GlobalIds : {dup_guids}  (within-source exporter defects survive the merge, exactly as the JS MergedExporter would emit them — cross-model collisions are what reconciliation removes)");
     println!("dangling references : {dangling}");
 
-    // A merge is correct when it introduces no dangling references and unifies
-    // the project. Duplicate GlobalIds carried in from a defective source file
-    // are not a merge regression (the JS path emits them too), so they do not
-    // fail the run — only a dangling ref or a lost/duplicated project does.
-    let ok = dangling == 0 && projects <= 1;
+    // A merge is correct when it introduces no dangling references and produces
+    // the expected number of IfcProjects: one unified project, plus one per
+    // FEDERATED model (an incompatible-unit model under Auto keeps its own
+    // project — a supported result, not a failure). Duplicate GlobalIds carried
+    // in from a defective source file are not a merge regression (the JS path
+    // emits them too), so they do not fail the run.
+    let expected_projects = 1 + stats.federated_model_count;
+    let ok = dangling == 0 && projects == expected_projects;
     println!(
         "\nresult: {}",
         if ok {
-            "PASS (no dangling refs, project unified)"
+            "PASS (no dangling refs, expected project count)"
         } else {
             "FAIL — see counts above"
         }
@@ -131,7 +134,10 @@ fn self_check(step: &str) -> (usize, usize, usize) {
         if type_token(line).as_deref() == Some("IFCPROJECT") {
             projects += 1;
         }
-        if let Some(g) = leading_guid(line) {
+        // Type-aware GlobalId classification (the same rule the merge uses), so a
+        // non-rooted entity leading with a 22-char charset Name (e.g. IfcColourRgb)
+        // is not counted as a duplicate GlobalId (CR #2952).
+        if let Some(g) = ifc_lite_export::leading_rooted_global_id(line.as_bytes()) {
             *guid_counts.entry(g).or_default() += 1;
         }
         // Count references to ids that were never written.
@@ -161,18 +167,6 @@ fn type_token(line: &str) -> Option<String> {
     let rest = &after_eq[start..];
     let end = rest.find('(')?;
     Some(rest[..end].trim().to_ascii_uppercase())
-}
-
-/// The first quoted 22-char GlobalId of a line (rooted entities only).
-fn leading_guid(line: &str) -> Option<String> {
-    let b = line.as_bytes();
-    let open = b.iter().position(|&c| c == b'(')?;
-    let q1 = b[open..].iter().position(|&c| c == b'\'')? + open;
-    let q2 = b[q1 + 1..].iter().position(|&c| c == b'\'')? + q1 + 1;
-    let inner = &line[q1 + 1..q2];
-    let is_guid = inner.len() == 22
-        && inner.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'$');
-    is_guid.then(|| inner.to_string())
 }
 
 /// Every `#N` reference in a line, ignoring the leading id and quoted strings.

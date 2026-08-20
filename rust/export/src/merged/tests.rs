@@ -351,11 +351,13 @@ ENDSEC;\nEND-ISO-10303-21;\n",
     )
 }
 
-/// The leading 22-char GlobalId of every rooted entity line in a STEP string.
+/// The leading GlobalId of every ROOTED entity line in a STEP string, classified
+/// by type (not just the 22-char shape), so a non-rooted entity leading with a
+/// 22-char charset Name is never counted as a GlobalId (CR #2952).
 fn leading_guids(step: &str) -> Vec<String> {
     step.lines()
         .filter(|l| l.starts_with('#'))
-        .filter_map(super::guid::read_leading_guid)
+        .filter_map(|l| super::guid::leading_rooted_global_id(l.as_bytes()))
         .collect()
 }
 
@@ -469,6 +471,34 @@ fn visibility_allowlist_limits_output() {
     assert_eq!(type_count(&merged, "=IFCPROJECT("), 0, "project excluded by visibility");
     assert_eq!(type_count(&merged, "=IFCSITE("), 0, "site excluded by visibility");
     assert_no_dangling(&merged);
+}
+
+#[test]
+fn first_model_visibility_excluded_target_does_not_dangle() {
+    // The first model exports only its wall (id 20) — its IfcProject / unit /
+    // site / building / storey are excluded by visibility. A later compatible
+    // model must NOT redirect its references onto those non-emitted canonical
+    // ids, which would dangle (Greptile P1 / CR #2952). It keeps its own instead.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let models = [
+        MergedModel { content: a.as_bytes(), id: "a".to_string(), included: Some(vec![20]) },
+        MergedModel { content: b.as_bytes(), id: "b".to_string(), included: None },
+    ];
+    let (merged, _stats) = export_merged_models(&models, &MergedOptions::default());
+
+    // No reference points at an entity the first model's visibility dropped.
+    assert_no_dangling(&merged);
+    // The second model kept its own project (it could not unify into an excluded
+    // one), and both walls survive.
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "second model keeps its project");
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    // Still no duplicate GlobalIds after the fallback.
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len());
 }
 
 #[test]

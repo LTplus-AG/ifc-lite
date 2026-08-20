@@ -33,6 +33,7 @@ use std::collections::{HashMap, HashSet};
 use crate::step_text::{detect_schema, escape};
 
 use guid::{extract_global_id_fast, is_relationship_type, read_leading_guid, replace_global_id, GuidMinter};
+pub use guid::leading_rooted_global_id;
 use plan::{ModelIndex, SHARED_INFRASTRUCTURE_TYPES};
 use units::{resolve_length_scale, units_compatible};
 
@@ -182,12 +183,24 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         return (out, stats);
     }
 
-    // First-model facts every later model unifies against.
+    // First-model facts every later model unifies against. Restrict them to the
+    // first model's VISIBLE set: a redirect target that visibility excludes from
+    // emission would leave later models dangling a `#ref` to a line never written
+    // (Greptile P1 / CR). An excluded canonical simply isn't a target — later
+    // models then keep their own project/infra/containers (less dedup, still valid).
     let first = ModelIndex::build(models[0].content);
-    let canonical_project = first.projects.first().copied();
-    let first_infra = first.first_infra.clone();
+    let first_included = plan::resolve_included(&first, &models[0].included);
+    let canonical_project = first.projects.iter().copied().find(|id| first_included.contains(id));
+    let first_infra: HashMap<&'static str, u32> = first
+        .first_infra
+        .iter()
+        .filter(|(_, id)| first_included.contains(id))
+        .map(|(&ty, &id)| (ty, id))
+        .collect();
+    let first_order: Vec<u32> =
+        first.order.iter().copied().filter(|id| first_included.contains(id)).collect();
     let spatial_lookup = spatial::SpatialLookup::build(
-        &first.order,
+        &first_order,
         &|id| first.line_str(id),
         &|id| first.type_of.get(&id).cloned(),
     );
@@ -257,7 +270,17 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
                 None => remapped,
             };
             let final_text = if converting {
-                crate::schema_convert::convert_step_line(&after_guid, &source_schema, &schema, id)
+                // Pass the GLOBAL id (offset applied): a schema downgrade with no
+                // target type falls back to IFCPROXY with a `placeholder_guid(id)`
+                // GlobalId, so two models sharing a source-local id must not seed the
+                // same placeholder (Greptile P1). rewrite_refs already offset the
+                // line's own `#id`, so this keeps the proxy guid consistent with it.
+                crate::schema_convert::convert_step_line(
+                    &after_guid,
+                    &source_schema,
+                    &schema,
+                    id.wrapping_add(offset),
+                )
             } else {
                 after_guid
             };
@@ -378,8 +401,13 @@ fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPl
             restamp.push((id, guid.clone()));
         }
     }
+    // A minted replacement must also avoid the guids THIS model emits unchanged:
+    // `emitted_guids` only holds prior models' guids (the plan is built before this
+    // model emits), so without this a fresh guid could collide with an untouched
+    // one in the same model (CR). Collect them once, before the mutable borrow.
+    let local_guids: HashSet<String> = plan.local_guids.values().cloned().collect();
     for (id, guid) in restamp {
-        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids);
+        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids, &local_guids);
         plan.guid_rewrite.insert(id, minted);
     }
 }

@@ -46,7 +46,7 @@ pub(super) const MAX_ITEM_DEPTH: u32 = 32;
 /// legitimately. First visits are bounded by the file itself (an entity must
 /// exist to be reached), so they cannot be the exponential; only revisits can,
 /// and an acyclic DAG reaching one node down 2^levels paths is exactly that.
-const MAX_ITEM_REVISITS: u32 = 200_000;
+pub(super) const MAX_ITEM_REVISITS: u32 = 200_000;
 
 /// State threaded through the walk: the ancestors on the current path, and the
 /// remaining emit budget.
@@ -128,6 +128,38 @@ pub(super) fn extract_symbolic_item(
         path: FxHashSet::default(),
         seen: FxHashSet::default(),
         revisit_budget: MAX_ITEM_REVISITS,
+    };
+    extract_symbolic_item_at(
+        item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,
+        styled_items, out, 0, &mut walk,
+    );
+}
+
+/// Same walk with a caller-chosen revisit budget, so a test can pin the
+/// "first visits are never charged" property against a budget of 50 instead of
+/// building a 23.8 MB fixture to exceed the real one. The mechanism under test
+/// is identical; only the scale differs. Measured: the full-size version cost
+/// 4.24s of the crate's 4.79s lib suite.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn extract_symbolic_item_with_revisit_budget(
+    item: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    express_id: u32,
+    ifc_type: &str,
+    rep_identifier: &str,
+    unit_scale: f32,
+    transform: &Transform2D,
+    rtc_x: f32,
+    rtc_z: f32,
+    styled_items: &HashMap<u32, Vec<u32>>,
+    out: &mut SymbolicData,
+    revisit_budget: u32,
+) {
+    let mut walk = ItemWalk {
+        path: FxHashSet::default(),
+        seen: FxHashSet::default(),
+        revisit_budget,
     };
     extract_symbolic_item_at(
         item, decoder, express_id, ifc_type, rep_identifier, unit_scale, transform, rtc_x, rtc_z,

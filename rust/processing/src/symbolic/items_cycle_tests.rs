@@ -13,7 +13,10 @@
 //! overflow takes the whole test binary down as SIGABRT, which reads as broken
 //! infrastructure instead of a failed assertion.
 
-use super::item_walk::extract_symbolic_item;
+use super::item_walk::{
+    extract_symbolic_item, extract_symbolic_item_with_revisit_budget, MAX_ITEM_DEPTH,
+    MAX_ITEM_REVISITS,
+};
 use super::primitives::SymbolicData;
 use super::transform::Transform2D;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
@@ -42,6 +45,30 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
     out
 }
 
+fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
+    let content = step.as_bytes();
+    let index = build_entity_index(content);
+    let mut decoder = EntityDecoder::with_index(content, index);
+    let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
+    let styled: HashMap<u32, Vec<u32>> = HashMap::new();
+    let mut out = SymbolicData::default();
+    extract_symbolic_item_with_revisit_budget(
+        &item,
+        &mut decoder,
+        1,
+        "IfcAnnotation",
+        "Annotation",
+        1.0,
+        &Transform2D::identity(),
+        0.0,
+        0.0,
+        &styled,
+        &mut out,
+        budget,
+    );
+    out
+}
+
 /// Run the walk in a worker thread with a timeout, so a regressed guard is
 /// observed as a TIMEOUT rather than hanging the suite. Necessary because the
 /// breadth budget's failure mode is a hang, not an abort: a stack overflow
@@ -58,7 +85,7 @@ fn run_with_timeout(step: String, start_id: u32, secs: u64) -> SymbolicData {
     assert!(
         outcome.is_ok(),
         "extract_symbolic_item did not terminate within {secs}s -- the breadth bound \
-         (MAX_ITEM_BUDGET) is gone; a depth cap and a path guard alone allow k! paths"
+         (MAX_ITEM_REVISITS) is gone; a depth cap and a path guard alone allow k! paths"
     );
     let _ = handle.join();
     outcome.unwrap()
@@ -166,11 +193,23 @@ fn depth_cap_stops_a_chain_longer_than_the_cap() {
     );
 }
 
+/// Geometry emitted TWICE: two mapped items sharing one representation, so the
+/// polyline inside it is reached once on a first visit and once on a REVISIT.
+/// Both starvation tests assert on the revisit, because only revisits are
+/// charged -- an assertion on a first visit cannot be starved and pins nothing.
+const SHARED_TWICE: &str = "#70=IFCMAPPEDITEM(#72,$);\n\
+     #71=IFCMAPPEDITEM(#72,$);\n\
+     #72=IFCREPRESENTATIONMAP($,#73);\n\
+     #73=IFCSHAPEREPRESENTATION($,$,$,(#50));\n\
+     #50=IFCPOLYLINE((#60,#61));\n\
+     #60=IFCCARTESIANPOINT((0.,0.));\n\
+     #61=IFCCARTESIANPOINT((1.,1.));\n";
+
 /// The path guard is not redundant with the depth cap, and this is the damage
 /// it prevents rather than the mechanism it uses.
 ///
 /// The cap alone terminates a cycle, so every test above still passes without
-/// the guard. But a cycle re-entered under the cap burns `MAX_ITEM_BUDGET`
+/// the guard. But a cycle re-entered under the cap burns `MAX_ITEM_REVISITS`
 /// before it stops, and the budget is shared by the whole extraction — so the
 /// legitimate geometry that follows the cycle in the same representation is
 /// silently dropped. Cheap termination is the point: the guard returns on the
@@ -186,11 +225,10 @@ fn a_cycle_must_not_starve_the_geometry_that_follows_it() {
     // polyline inside it is emitted twice: once on the first visit, once on a
     // revisit. The 8-way self-referential cycle in #20 must not consume the
     // budget that second emission needs.
-    let shared = "#70=IFCMAPPEDITEM(#72,$);\n        #71=IFCMAPPEDITEM(#72,$);\n        #72=IFCREPRESENTATIONMAP($,#73);\n        #73=IFCSHAPEREPRESENTATION($,$,$,(#50));\n        #50=IFCPOLYLINE((#60,#61));\n        #60=IFCCARTESIANPOINT((0.,0.));\n        #61=IFCCARTESIANPOINT((1.,1.));\n";
     let cycle = "#20=IFCMAPPEDITEM(#30,$);\n        #30=IFCREPRESENTATIONMAP($,#40);\n        #40=IFCSHAPEREPRESENTATION($,$,$,(#21,#22,#23,#24,#25,#26,#27,#28));\n        #21=IFCMAPPEDITEM(#30,$);\n#22=IFCMAPPEDITEM(#30,$);\n        #23=IFCMAPPEDITEM(#30,$);\n#24=IFCMAPPEDITEM(#30,$);\n        #25=IFCMAPPEDITEM(#30,$);\n#26=IFCMAPPEDITEM(#30,$);\n        #27=IFCMAPPEDITEM(#30,$);\n#28=IFCMAPPEDITEM(#30,$);\n";
 
     // Control: the same shared geometry with NO cycle ahead of it emits twice.
-    let control = format!("#10=IFCGEOMETRICCURVESET((#70,#71));\n{shared}");
+    let control = format!("#10=IFCGEOMETRICCURVESET((#70,#71));\n{SHARED_TWICE}");
     let baseline = run(&wrap(&control), 10);
     assert_eq!(
         baseline.polylines.len(),
@@ -199,7 +237,7 @@ fn a_cycle_must_not_starve_the_geometry_that_follows_it() {
     );
 
     // Same file with the cycle in front of it must still emit twice.
-    let with_cycle = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{shared}");
+    let with_cycle = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{SHARED_TWICE}");
     let out = run_with_timeout(wrap(&with_cycle), 10, 60);
     assert_eq!(
         out.polylines.len(),
@@ -220,10 +258,9 @@ fn a_cycle_must_not_starve_the_geometry_that_follows_it() {
 /// path guard be deleted with the whole file still green.
 #[test]
 fn a_set_cycle_must_not_starve_the_geometry_that_follows_it() {
-    let shared = "#70=IFCMAPPEDITEM(#72,$);\n        #71=IFCMAPPEDITEM(#72,$);\n        #72=IFCREPRESENTATIONMAP($,#73);\n        #73=IFCSHAPEREPRESENTATION($,$,$,(#50));\n        #50=IFCPOLYLINE((#60,#61));\n        #60=IFCCARTESIANPOINT((0.,0.));\n        #61=IFCCARTESIANPOINT((1.,1.));\n";
     let cycle = "#20=IFCGEOMETRICCURVESET((#21,#22,#23,#24,#25,#26,#27,#28));\n        #21=IFCGEOMETRICCURVESET((#20));\n#22=IFCGEOMETRICCURVESET((#20));\n        #23=IFCGEOMETRICCURVESET((#20));\n#24=IFCGEOMETRICCURVESET((#20));\n        #25=IFCGEOMETRICCURVESET((#20));\n#26=IFCGEOMETRICCURVESET((#20));\n        #27=IFCGEOMETRICCURVESET((#20));\n#28=IFCGEOMETRICCURVESET((#20));\n";
 
-    let body = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{shared}");
+    let body = format!("#10=IFCGEOMETRICCURVESET((#20,#70,#71));\n{cycle}{SHARED_TWICE}");
     let out = run_with_timeout(wrap(&body), 10, 60);
     assert_eq!(
         out.polylines.len(),
@@ -306,7 +343,7 @@ fn a_shared_item_reached_deep_then_shallow_is_still_emitted() {
 /// doubles per level. Codex found this defeating a cap-plus-set guard on the
 /// curve resolver (#2876) at 2^levels.
 ///
-/// Only a total-work bound stops it. Here that is `MAX_ITEM_BUDGET`.
+/// Only a total-work bound stops it. Here that is `MAX_ITEM_REVISITS`.
 #[test]
 fn an_acyclic_dag_is_bounded_by_total_work_not_by_depth() {
     // Level i's representation holds TWO mapped items, both pointing at level
@@ -335,7 +372,7 @@ fn an_acyclic_dag_is_bounded_by_total_work_not_by_depth() {
     // 2^24 paths. Emitting some polylines is correct; emitting 2^24 is not.
     assert!(
         out.polylines.len() < 300_000,
-        "an acyclic DAG must be bounded by MAX_ITEM_BUDGET, got {} polylines",
+        "an acyclic DAG must be bounded by MAX_ITEM_REVISITS, got {} polylines",
         out.polylines.len()
     );
 }
@@ -347,21 +384,49 @@ fn an_acyclic_dag_is_bounded_by_total_work_not_by_depth() {
 /// size legitimately. First visits are bounded by the file, so they are free.
 #[test]
 fn a_large_flat_set_is_not_truncated() {
-    let n = 200_050usize;
-    let mut lines = String::with_capacity(n * 60);
-    let mut items = String::with_capacity(n * 8);
+    // A flat set LARGER than the revisit budget must still emit every element.
+    // `IfcGeometricSet` recurses per element, so an earlier version that
+    // charged every visit rather than only revisits silently truncated a
+    // well-formed file: 200,050 curves emitted 199,999 and dropped 51, with no
+    // error. Plan hatching, a survey drawing or an imported DWG reaches that
+    // size legitimately.
+    //
+    // Pinned against an injected budget of 50 rather than the real 200,000.
+    // The mechanism is identical -- first visits are not charged, so the set
+    // may exceed the budget -- and the full-size fixture cost 4.24s of the
+    // crate's 4.79s lib suite to build and walk 23.8 MB of STEP.
+    const BUDGET: u32 = 50;
+    let n = BUDGET as usize + 10;
+    let mut lines = String::new();
+    let mut items = String::new();
     for i in 0..n {
         let pl = 1000 + i * 3;
-        if i > 0 { items.push(','); }
+        if i > 0 {
+            items.push(',');
+        }
         items.push_str(&format!("#{pl}"));
         lines.push_str(&format!("#{pl}=IFCPOLYLINE((#{},#{}));\n", pl + 1, pl + 2));
         lines.push_str(&format!("#{}=IFCCARTESIANPOINT((0.,0.));\n", pl + 1));
         lines.push_str(&format!("#{}=IFCCARTESIANPOINT((1.,1.));\n", pl + 2));
     }
     lines.push_str(&format!("#10=IFCGEOMETRICCURVESET(({items}));\n"));
-    let out = run_with_timeout(wrap(&lines), 10, 120);
+    let out = run_with_budget(&wrap(&lines), 10, BUDGET);
     assert_eq!(
-        out.polylines.len(), n,
+        out.polylines.len(),
+        n,
         "a well-formed flat set must emit every element; charging first visits truncates it"
+    );
+}
+
+/// The depth cap is the fourth copy of one policy (`element.rs`,
+/// `router/processing.rs`, `wasm-bindings/.../color.rs`). Those three hold each
+/// other in step with an agreement assertion; this pins the fourth, so moving
+/// the family's value fails here instead of leaving this site silently short.
+/// A shorter cap here renders the geometry but drops its symbolic annotation.
+#[test]
+fn depth_cap_matches_the_mapped_item_family() {
+    assert_eq!(
+        MAX_ITEM_DEPTH, 32,
+        "must equal MAX_MAPPED_ITEM_DEPTH in element.rs, router/processing.rs and color.rs"
     );
 }

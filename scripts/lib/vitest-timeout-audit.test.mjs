@@ -52,6 +52,20 @@ test('trailing form, split across lines (the #2947 multi-line spelling)', () => 
   assert.equal(r.value, 60000);
 });
 
+test('trailing form preceded by a comment justifying the number (the tri-mesh.test.ts shape found auditing #2948-adjacent work)', () => {
+  // The multi-line case above puts nothing but whitespace before the
+  // literal. This is the harder real shape: one or more full comment LINES
+  // sit between the callback's closing `}` and the trailing number, which
+  // is exactly `argTexts[last].trim()` failing NUMERIC_RE if the comment
+  // text is not stripped first — this was a real false "NO EXPLICIT
+  // TIMEOUT" on an already-protected test until fixed.
+  const src = `it('a', () => {\n  doWork();\n},\n  // 32 288 probes x an all-triangle scan each.\n  // sized for a contended CI runner.\n  60_000,\n);`;
+  const [r] = auditSource(src);
+  assert.equal(r.protectedBy, 'own');
+  assert.equal(r.form, 'trailing');
+  assert.equal(r.value, 60000);
+});
+
 test('options-object form (the #2947 blocked-source-equivalence.test.ts shape)', () => {
   const src = `it('a', { timeout: 60_000 }, () => { doWork(); });`;
   const [r] = auditSource(src);

@@ -270,7 +270,13 @@ const IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/;
  */
 export function classifyExplicitTimeout(argTexts) {
   if (argTexts.length >= 3) {
-    const trailing = argTexts[argTexts.length - 1].trim();
+    // A comment justifying the number (as opposed to trailing whitespace
+    // alone) legitimately precedes the literal on its own line(s) — see
+    // tri-mesh.test.ts's `agrees with an exhaustive scan on %s` for a real
+    // example. `stripNoise` before trimming is what keeps that comment from
+    // making `trailing` fail NUMERIC_RE/IDENTIFIER_RE and reporting a
+    // false "no explicit timeout" on an already-protected test.
+    const trailing = stripNoise(argTexts[argTexts.length - 1]).trim();
     if (NUMERIC_RE.test(trailing)) {
       return { explicit: true, form: 'trailing', value: Number(trailing.replace(/_/g, '')) };
     }

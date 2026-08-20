@@ -370,9 +370,14 @@ fn an_acyclic_dag_is_bounded_by_total_work_not_by_depth() {
     let out = run_with_timeout(wrap(&lines), 5, 30);
     // The point is that it TERMINATES within the budget rather than realising
     // 2^24 paths. Emitting some polylines is correct; emitting 2^24 is not.
+    // Derived from the constant rather than restated: every emission past the
+    // first reaches the leaf through a REVISIT, so the budget is the ceiling.
+    // A raised budget moves this bound with it instead of leaving a literal
+    // that quietly stops binding.
     assert!(
-        out.polylines.len() < 300_000,
-        "an acyclic DAG must be bounded by MAX_ITEM_REVISITS, got {} polylines",
+        out.polylines.len() <= MAX_ITEM_REVISITS as usize,
+        "an acyclic DAG must be bounded by MAX_ITEM_REVISITS ({}), got {} polylines",
+        MAX_ITEM_REVISITS,
         out.polylines.len()
     );
 }

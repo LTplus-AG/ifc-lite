@@ -879,13 +879,20 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
           // it, matching every other refused write in this slice; enrich the
           // message so that warning names the real severity instead of
           // reading like an ordinary "settings not saved" refusal.
+          //
+          // `reason` carries the same distinction in machine-readable form.
+          // Passing `settingsResult.reason` through would report `'quota'` for
+          // both halves of this branch — genuine exhaustion is what fails a
+          // rollback in the first place — leaving "recovered, storage is
+          // consistent" and "stranded, storage is not" indistinguishable in
+          // the only field a caller can branch on.
           console.warn(
             '[clash] flavor apply: could not restore the previous rule set after a refused settings write — storage now holds the new rule set with the previous settings:',
             undo.message,
           );
           return {
             ok: false,
-            reason: settingsResult.reason,
+            reason: 'rollback_failed',
             message:
               `${settingsResult.message} The previous rule set could also not be restored ` +
               `(${undo.message}), so saved data may no longer match what is shown.`,

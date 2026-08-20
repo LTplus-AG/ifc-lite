@@ -245,6 +245,76 @@ describe('applyClashFlavorConfig - only commit a config that actually persisted'
     );
   });
 
+  /**
+   * The two outcomes above differ in a way that matters to a caller: after the
+   * first, storage is consistent (the rollback undid the landed half); after
+   * the second, storage holds the NEW rule set beside the OLD settings. Both
+   * are reported with `ok: false`, so `reason` is the only field a caller can
+   * branch on — a `message` is display text, not a contract. Reusing the
+   * settings write's own `reason` for the double failure makes "recovered" and
+   * "storage is now inconsistent" the same value, and genuine quota exhaustion
+   * (the case that produces the second) reports `'quota'` for both.
+   */
+  it('distinguishes a recovered rollback from a failed one in the machine-readable reason', () => {
+    // Scenario A: only the settings key is blocked, so the rollback's write to
+    // the presets key lands and storage ends up consistent.
+    storage.failKey = SETTINGS_KEY;
+    const recovered = state.applyClashFlavorConfig({
+      presets: FLAVOR_PRESETS,
+      settings: FLAVOR_SETTINGS,
+    });
+    assert.strictEqual(recovered.ok, false);
+    // Pin the premise: this really is the consistent outcome.
+    assert.deepStrictEqual(storedCustomIds(storage), [OLD_CUSTOM_ID]);
+
+    // Scenario B: the disk is full, so the settings write AND the rollback both
+    // throw and storage is left holding the hybrid. Rebuild from scratch so
+    // this apply starts from the same seeded state scenario A did.
+    storage = new MemoryStorage();
+    g.localStorage = storage;
+    storage.setItem(
+      PRESETS_KEY,
+      JSON.stringify({
+        schemaVersion: 1,
+        presets: [customPreset(OLD_CUSTOM_ID, 'Rule from the previous flavor')],
+      }),
+    );
+    storage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: 1, settings: OLD_SETTINGS }));
+    storage.writes.length = 0;
+    const setState = (
+      partial: Partial<ClashSlice> | ((s: ClashSlice) => Partial<ClashSlice>),
+    ) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    state = createClashSlice(setState, () => state, {} as never);
+    storage.failAfterWrites = 1;
+
+    const stranded = state.applyClashFlavorConfig({
+      presets: FLAVOR_PRESETS,
+      settings: FLAVOR_SETTINGS,
+    });
+    assert.strictEqual(stranded.ok, false);
+    // Pin the premise: this really is the inconsistent outcome.
+    assert.deepStrictEqual(storedCustomIds(storage), [FLAVOR_CUSTOM_ID]);
+    assert.strictEqual(storedTolerance(storage), OLD_SETTINGS.tolerance);
+
+    assert.notStrictEqual(
+      !stranded.ok && stranded.reason,
+      !recovered.ok && recovered.reason,
+      'a caller must be able to tell a stranded write from a recovered one without parsing the message',
+    );
+    assert.strictEqual(
+      !stranded.ok && stranded.reason,
+      'rollback_failed',
+      'the double failure needs its own reason, not the settings write reason',
+    );
+    // The human-readable half is unchanged: this adds a signal, it does not
+    // replace the enriched message the console warning relies on.
+    assert.ok(
+      !stranded.ok && /previous rule set could also not be restored/.test(stranded.message),
+    );
+  });
+
   // ── partial: presets refused ───────────────────────────────────────────────
 
   it('commits nothing and never touches settings when the presets write is refused', () => {

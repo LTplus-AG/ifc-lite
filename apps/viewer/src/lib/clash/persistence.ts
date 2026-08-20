@@ -56,9 +56,27 @@ export interface ClashGlobalSettings {
   groupBy: ClashSettingsGroupBy;
 }
 
+/**
+ * Why a save was refused.
+ *
+ * `rollback_failed` is the odd one out: no writer in this module returns it.
+ * It is raised by a caller that writes more than one key and could not undo
+ * the half that landed after a later write was refused (see
+ * `applyClashFlavorConfig` in `clashSlice.ts`). The others all mean "nothing
+ * changed"; this one means storage is now holding a mix the user never chose,
+ * so it is the one value a caller must be able to tell apart without reading
+ * the message.
+ */
+export type ClashSaveFailureReason =
+  | 'quota'
+  | 'serialize'
+  | 'too_many'
+  | 'unreadable'
+  | 'rollback_failed';
+
 export type SaveResult =
   | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many' | 'unreadable'; message: string };
+  | { ok: false; reason: ClashSaveFailureReason; message: string };
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';

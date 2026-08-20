@@ -844,8 +844,15 @@
         // reads `cycle[i]` a second time on this path (the shared-edge pin), so it
         // could be mis-indexed on its own. Area is invariant under the opposite-edge
         // swap here too — sweeping all 256 index maps, the area check alone leaves
-        // eight passing, including the three non-identity permutations
-        // (0,3,2,1), (2,1,0,3) and (2,3,0,1). The four bounds below cut that to one.
+        // nine passing: the identity plus eight mis-indexings, among them the
+        // permutations (0,3,2,1), (2,1,0,3) and (2,3,0,1). Adding the four bounds
+        // below cuts that to the identity alone. As on the inset side, though, only
+        // the two `min` bounds ever fire first — the area check plus
+        // `out_min_x`/`out_min_y` already leaves the identity as the only survivor,
+        // so `out_max_x` / `out_max_y` are never reached. They are kept because they
+        // state the same property for the far sides, and either pair suffices: area
+        // plus the two `max` bounds also leaves only the identity, and with the area
+        // check dropped the four bounds alone still do.
         let expected_outer = (4.0 + halves[3] + halves[1]) * (3.0 + halves[0] + halves[2]);
         let outer_ring = plate.net_outline(room, false);
         let outer = polygon_area(&outer_ring).abs();

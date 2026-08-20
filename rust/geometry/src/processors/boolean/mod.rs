@@ -188,6 +188,13 @@ impl BooleanClippingProcessor {
             // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
             // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
             // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
+            // `depth` restarts at 0 here, as it did before this guard existed
+            // (the hop built a fresh processor). Carrying it would tighten
+            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
+            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
+            // main, and would error as "depth 11 exceeds limit 10", dropping
+            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
+            // hop instead, counting frames of both kinds.
             IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(
                 self.skip_small_cuts,
             )
@@ -195,7 +202,7 @@ impl BooleanClippingProcessor {
                 operand,
                 decoder,
                 &self.schema,
-                depth,
+                0,
                 quality,
                 visited,
             ),

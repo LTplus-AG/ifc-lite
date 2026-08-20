@@ -735,16 +735,29 @@ fn a_long_acyclic_boolean_csg_chain_terminates() {
     }
     data.push_str("#90000=IFCBLOCK($,1.,1.,1.);\n#90001=IFCBLOCK($,1.,1.,1.);\n");
 
+    // On a worker thread like its siblings: if the bound regresses, this
+    // overflows the stack, and a stack overflow ABORTS the whole test binary --
+    // taking ~690 unrelated tests with it and burying whichever test reported
+    // the regression cleanly. Cargo still exits non-zero, so it is not a false
+    // green, but the diagnostic is unreadable.
     let content = wrap_ifc(&data);
-    let mut decoder = EntityDecoder::new(&content);
-    let entity = decoder.decode_by_id(1).expect("decode #1");
-    let processor = BooleanClippingProcessor::new();
-    let schema = IfcSchema::new();
-    let err = processor
-        .process(&entity, &mut decoder, &schema, Default::default())
+    let (tx, rx) = std::sync::mpsc::channel();
+    let handle = std::thread::spawn(move || {
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(1).expect("decode #1");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let result = processor.process(&entity, &mut decoder, &schema, Default::default());
+        let _ = tx.send(result.map(|m| m.positions.len()).map_err(|e| e.to_string()));
+    });
+    let outcome = rx.recv_timeout(std::time::Duration::from_secs(20));
+    assert!(outcome.is_ok(), "the operand chain bound did not terminate");
+    let _ = handle.join();
+    let err = outcome
+        .unwrap()
         .expect_err("an over-long operand chain must be reported, not rendered half-built");
     assert!(
-        err.to_string().contains("operand chain exceeds"),
+        err.contains("operand chain exceeds"),
         "expected the chain bound to be named, got: {err}"
     );
 }
@@ -812,4 +825,45 @@ fn the_path_bound_counts_csg_frames_too_not_only_booleans() {
         err.to_string().contains("operand chain exceeds"),
         "the path bound must be what stops it, got: {err}"
     );
+}
+
+/// Pins the path-scoped `remove` on BOTH sides. Deleting either one leaves the
+/// set accumulate-only, which turns a legitimately SHARED operand into a
+/// reported cycle: `#10` below is reached from two different branches of an
+/// acyclic tree, not twice down one path.
+///
+/// Without the removes this returns `Err("Cyclic boolean/CSG operand
+/// reference at #10")` and the router drops the whole element. Every other
+/// test in this file stayed green with them deleted -- the same
+/// unpinned-not-redundant trap this file already records for the CSG insert,
+/// one step over.
+#[test]
+fn an_operand_shared_between_two_branches_is_not_a_cycle() {
+    for (label, shared) in [
+        ("boolean", "#10=IFCBOOLEANRESULT(.UNION.,#900,#901);\n"),
+        ("csg", "#10=IFCCSGSOLID(#11);\n#11=IFCBOOLEANRESULT(.UNION.,#900,#901);\n"),
+    ] {
+        let data = format!(
+            "#1=IFCBOOLEANRESULT(.UNION.,#2,#3);\n\
+             #2=IFCBOOLEANRESULT(.UNION.,#900,#10);\n\
+             #3=IFCBOOLEANRESULT(.UNION.,#900,#10);\n\
+             {shared}\
+             #900=IFCBLOCK($,1.,1.,1.);\n\
+             #901=IFCBLOCK($,1.,1.,1.);\n"
+        );
+        let content = wrap_ifc(&data);
+        let mut decoder = EntityDecoder::new(&content);
+        let entity = decoder.decode_by_id(1).expect("decode #1");
+        let processor = BooleanClippingProcessor::new();
+        let schema = IfcSchema::new();
+        let mesh = processor
+            .process(&entity, &mut decoder, &schema, Default::default())
+            .unwrap_or_else(|e| {
+                panic!("{label}: an operand shared across two BRANCHES is not a cycle: {e}")
+            });
+        assert!(
+            !mesh.positions.is_empty(),
+            "{label}: the shared operand must contribute geometry"
+        );
+    }
 }

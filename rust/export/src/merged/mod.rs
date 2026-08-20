@@ -1,22 +1,93 @@
 // SPDX-License-Identifier: MPL-2.0
-//! **Merged** multi-model STEP exporter. Ports the core of `merged-exporter.ts`:
-//! combine several IFC files into one by ID-offsetting each subsequent model and
-//! rewriting every `#`-reference. The first model keeps its ids; each later model is
-//! shifted past the running maximum.
+//! **Merged** multi-model STEP exporter. A native (Rust) port of
+//! `packages/export/src/merged-exporter.ts`: combine several IFC files into one
+//! by offsetting each later model's express ids and rewriting every
+//! `#`-reference, while unifying the shared spatial/infrastructure tree so the
+//! result is one coherent model rather than N stacked copies.
 //!
-//! P1 unifies the **project**: subsequent models' `IfcProject` lines are dropped and any
-//! reference to them is redirected to the first model's project, so the result is a single
-//! valid `IfcProject` tree. Deeper shared-infrastructure dedup (units, contexts) and
-//! spatial unification by name/elevation are the P2 follow-on.
+//! Feature parity with the JS `MergedExporter` (issue #2951):
+//! - **Project / infrastructure unification** — later models' `IfcProject` and
+//!   the first `IfcUnitAssignment` / representation contexts are dropped and
+//!   their references redirected to the first model's (compatible models only).
+//! - **Spatial unification** — `IfcSite` / `IfcBuilding` / `IfcBuildingStorey`
+//!   are matched onto the first model's by name / elevation ([`spatial`]).
+//! - **GlobalId reconciliation** — a rooted entity that duplicates a prior
+//!   GlobalId in the same unit space is unified (refs remapped to the first
+//!   instance); otherwise it is re-stamped with a deterministic fresh GlobalId
+//!   ([`guid`]), so a federated file never carries duplicate GlobalIds.
+//! - **Visibility filtering** — a per-model `included` allowlist is honored via
+//!   the forward-reference closure ([`plan::resolve_included`]).
+//!
+//! Genuine cross-unit rescaling (`unitReconciliation: 'normalize'`) is deferred:
+//! a model whose length unit is incompatible with the first is **federated**
+//! (kept as its own project, never mis-scaled) and [`MergedStats::unit_rescale_required`]
+//! is set so the caller can gate that case to the JS path.
+
+mod guid;
+mod plan;
+mod spatial;
+mod units;
+
+use std::collections::{HashMap, HashSet};
 
 use crate::step_text::{detect_schema, escape};
-use ifc_lite_core::EntityScanner;
+
+use guid::{extract_global_id_fast, is_relationship_type, read_leading_guid, replace_global_id, GuidMinter};
+use plan::{ModelIndex, SHARED_INFRASTRUCTURE_TYPES};
+use units::{resolve_length_scale, units_compatible};
+
+pub use spatial::{ContainerMergeStrategy, StoreyMergeStrategy};
+
+/// How to reconcile models whose length unit differs from the first model's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum UnitReconciliation {
+    /// Federate an incompatible-unit model as its own `IfcProject` (JS default).
+    #[default]
+    Auto,
+    /// Request rescaling into the first model's unit. Not performed natively in
+    /// this iteration: an incompatible model is federated and
+    /// [`MergedStats::unit_rescale_required`] is set for the caller to gate.
+    Normalize,
+    /// Treat every model as sharing the first model's unit (no compatibility
+    /// check) — unify regardless of the declared length unit.
+    AssumeShared,
+}
+
+/// A single input model for [`export_merged_models`].
+pub struct MergedModel<'a> {
+    /// Raw IFC/STEP bytes.
+    pub content: &'a [u8],
+    /// Stable identifier, used to salt re-stamped GlobalIds so they are
+    /// reproducible and do not churn when an unrelated model changes size. When
+    /// empty, the model's index is used.
+    pub id: String,
+    /// Express ids to include (visibility). `None` ⇒ the whole model; when set,
+    /// the forward-reference closure is added so every emitted `#ref` resolves.
+    pub included: Option<Vec<u32>>,
+}
+
+impl<'a> MergedModel<'a> {
+    /// A model that exports in full with a default (empty) id.
+    pub fn new(content: &'a [u8]) -> Self {
+        Self { content, id: String::new(), included: None }
+    }
+}
 
 /// Options for merged export.
 pub struct MergedOptions {
+    /// FILE_SCHEMA label to write. `None` ⇒ the first model's schema; each model
+    /// whose source schema differs is converted to it.
     pub schema: Option<String>,
     pub description: String,
     pub application: String,
+    /// Cross-unit reconciliation policy (see [`UnitReconciliation`]).
+    pub unit_reconciliation: UnitReconciliation,
+    /// `IfcSite` matching strategy.
+    pub merge_sites: ContainerMergeStrategy,
+    /// `IfcBuilding` matching strategy.
+    pub merge_buildings: ContainerMergeStrategy,
+    /// `IfcBuildingStorey` matching strategy.
+    pub merge_storeys: StoreyMergeStrategy,
 }
 
 impl Default for MergedOptions {
@@ -25,88 +96,68 @@ impl Default for MergedOptions {
             schema: None,
             description: "ViewDefinition [CoordinationView]".to_string(),
             application: "ifc-lite".to_string(),
+            unit_reconciliation: UnitReconciliation::default(),
+            merge_sites: ContainerMergeStrategy::default(),
+            merge_buildings: ContainerMergeStrategy::default(),
+            merge_storeys: StoreyMergeStrategy::default(),
         }
     }
 }
 
 /// Coverage stats for a merged export.
 pub struct MergedStats {
+    /// Number of input models.
     pub models: usize,
+    /// Entity lines written.
     pub written: usize,
+    /// Models federated as their own `IfcProject` (incompatible units under
+    /// `Auto` / `Normalize`).
+    pub federated_model_count: usize,
+    /// True when a `Normalize` export encountered an incompatible-unit model
+    /// that was federated rather than rescaled — the caller should route that
+    /// case to the JS path if true single-project normalization is required.
+    pub unit_rescale_required: bool,
+    /// Human-readable notes (e.g. federation relaxing `IfcSingleProjectInstance`).
+    pub warnings: Vec<String>,
 }
 
-/// First `IfcProject` express id in a model, if any.
-fn find_project(content: &[u8]) -> Option<u32> {
-    let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, _s, _e)) = scanner.next_entity() {
-        if type_name == "IFCPROJECT" {
-            return Some(id);
-        }
-    }
-    None
-}
-
-/// Rewrite every `#N` in a STEP entity line. `remap(n)` returns `Some(absolute_id)` to
-/// redirect a reference (no offset), or `None` to apply `offset`. Single-quoted strings
-/// are left untouched (a `#` there is literal text) -- and, crucially, passed through as
-/// raw bytes: `#`-ref scanning only needs to track in/out-of-string state (via the same
-/// doubled-apostrophe toggle the STEP escape rule guarantees nets to a no-op), never to
-/// decode string content. Everything outside a `#`-ref match is copied byte-for-byte, so a
-/// multi-byte UTF-8 sequence (or any other non-ASCII byte run) in a DATA-section literal
-/// survives unchanged instead of being Latin-1-expanded one byte at a time.
-fn rewrite_refs(line: &[u8], offset: u32, remap: &impl Fn(u32) -> Option<u32>) -> String {
-    let mut out: Vec<u8> = Vec::with_capacity(line.len() + 8);
-    let mut i = 0;
-    let mut in_string = false;
-    while i < line.len() {
-        let b = line[i];
-        if b == b'\'' {
-            in_string = !in_string;
-            out.push(b'\'');
-            i += 1;
-            continue;
-        }
-        if !in_string && b == b'#' {
-            let mut j = i + 1;
-            let mut n: u32 = 0;
-            let mut any = false;
-            while j < line.len() && line[j].is_ascii_digit() {
-                n = n.wrapping_mul(10).wrapping_add((line[j] - b'0') as u32);
-                j += 1;
-                any = true;
-            }
-            if any {
-                let target = remap(n).unwrap_or(n.wrapping_add(offset));
-                out.push(b'#');
-                out.extend_from_slice(target.to_string().as_bytes());
-                i = j;
-                continue;
-            }
-        }
-        out.push(b);
-        i += 1;
-    }
-    // `line` is a byte slice straight out of the source model with no
-    // guarantee of valid UTF-8 (e.g. a Latin-1-encoded IFC file); fall back
-    // to lossy replacement only for genuinely invalid sequences, matching
-    // `step.rs`'s `String::from_utf8_lossy` treatment of raw entity lines.
-    String::from_utf8_lossy(&out).into_owned()
-}
-
-/// Merge `models` (raw IFC byte slices) into one STEP/IFC string.
+/// Merge `models` (raw IFC byte slices) into one STEP/IFC string. Convenience
+/// wrapper over [`export_merged_models`] that exports each model in full.
 pub fn export_merged(models: &[&[u8]], opts: &MergedOptions) -> String {
     export_merged_with_stats(models, opts).0
 }
 
 /// Like [`export_merged`] but also returns coverage stats.
 pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (String, MergedStats) {
+    let inputs: Vec<MergedModel> = models
+        .iter()
+        .enumerate()
+        .map(|(i, &content)| MergedModel { content, id: i.to_string(), included: None })
+        .collect();
+    export_merged_models(&inputs, opts)
+}
+
+/// The plan state built for one model before it is emitted.
+#[derive(Default)]
+struct ModelPlan {
+    /// Local express id → absolute final id (redirect; no offset applied).
+    shared_remap: HashMap<u32, u32>,
+    /// Local express ids whose line is not emitted (unified into the first model).
+    skip: HashSet<u32>,
+    /// Local express id → fresh GlobalId to stamp (duplicate GUID re-stamp).
+    guid_rewrite: HashMap<u32, String>,
+    /// Local express id → its source GlobalId (rooted entities only).
+    local_guids: HashMap<u32, String>,
+}
+
+/// Merge several parsed models into one STEP/IFC string, honoring per-model
+/// visibility, spatial-merge strategies, and unit reconciliation.
+pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (String, MergedStats) {
     let schema = opts
         .schema
         .clone()
-        .or_else(|| models.first().map(|m| detect_schema(m)))
+        .or_else(|| models.first().map(|m| detect_schema(m.content)))
         .unwrap_or_else(|| "IFC4".to_string());
-
-    let canonical_project = models.first().and_then(|m| find_project(m));
 
     let mut out = String::new();
     out.push_str("ISO-10303-21;\nHEADER;\n");
@@ -118,45 +169,228 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
     out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(&schema)));
     out.push_str("ENDSEC;\nDATA;\n");
 
-    let mut offset: u32 = 0;
-    let mut written = 0usize;
-    for (i, content) in models.iter().enumerate() {
-        let model_project = find_project(content);
-        let mut local_max = 0u32;
-        let mut scanner = EntityScanner::new(content);
-        let mut lines: Vec<(u32, &[u8])> = Vec::new();
-        while let Some((id, _t, s, e)) = scanner.next_entity() {
-            local_max = local_max.max(id);
-            lines.push((id, &content[s..e]));
-        }
+    let mut stats = MergedStats {
+        models: models.len(),
+        written: 0,
+        federated_model_count: 0,
+        unit_rescale_required: false,
+        warnings: Vec::new(),
+    };
 
+    if models.is_empty() {
+        out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+        return (out, stats);
+    }
+
+    // First-model facts every later model unifies against.
+    let first = ModelIndex::build(models[0].content);
+    let canonical_project = first.projects.first().copied();
+    let first_infra = first.first_infra.clone();
+    let spatial_lookup = spatial::SpatialLookup::build(
+        &first.order,
+        &|id| first.line_str(id),
+        &|id| first.type_of.get(&id).cloned(),
+    );
+    let primary_scale = resolve_length_scale(models[0].content);
+    drop(first);
+
+    // Running cross-model state.
+    let mut guid_to_final: HashMap<String, (u32, f64)> = HashMap::new();
+    let mut emitted_guids: HashSet<String> = HashSet::new();
+    let mut minter = GuidMinter::new();
+    let mut offset: u32 = 0;
+
+    for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
-        let remap = |n: u32| -> Option<u32> {
-            // Subsequent models: redirect their project reference to model 0's project.
-            if !is_first {
-                if let (Some(mp), Some(cp)) = (model_project, canonical_project) {
-                    if n == mp {
-                        return Some(cp);
-                    }
+        let index = ModelIndex::build(model.content);
+        let included = plan::resolve_included(&index, &model.included);
+
+        // Unit mode.
+        let this_scale = resolve_length_scale(model.content);
+        let (compatible, effective_scale) = if is_first {
+            (true, primary_scale)
+        } else {
+            match opts.unit_reconciliation {
+                UnitReconciliation::AssumeShared => (true, this_scale),
+                _ if units_compatible(this_scale, primary_scale) => (true, this_scale),
+                UnitReconciliation::Normalize => {
+                    stats.federated_model_count += 1;
+                    stats.unit_rescale_required = true;
+                    (false, this_scale)
+                }
+                UnitReconciliation::Auto => {
+                    stats.federated_model_count += 1;
+                    (false, this_scale)
                 }
             }
-            None
         };
 
-        for (id, line) in &lines {
-            // Drop later models' IfcProject lines (the project is unified to model 0's).
-            if !is_first && Some(*id) == model_project {
+        let plan = build_plan(&index, is_first, compatible, PlanCtx {
+            canonical_project,
+            first_infra: &first_infra,
+            spatial_lookup: &spatial_lookup,
+            merge_sites: opts.merge_sites,
+            merge_buildings: opts.merge_buildings,
+            merge_storeys: opts.merge_storeys,
+            primary_scale,
+            guid_to_final: &guid_to_final,
+            emitted_guids: &emitted_guids,
+            minter: &mut minter,
+            salt: model_salt(model, i),
+        });
+
+        // Emit.
+        let source_schema = detect_schema(model.content);
+        let converting = crate::schema_convert::needs_conversion(&source_schema, &schema);
+        for &id in &index.order {
+            if !included.contains(&id) || plan.skip.contains(&id) {
                 continue;
             }
-            out.push_str(&rewrite_refs(line, offset, &remap));
+            let Some(bytes) = index.line_bytes(id) else { continue };
+            let remapped = if offset == 0 && plan.shared_remap.is_empty() {
+                String::from_utf8_lossy(bytes).into_owned()
+            } else {
+                plan::rewrite_refs(bytes, offset, &|n| plan.shared_remap.get(&n).copied())
+            };
+            let after_guid = match plan.guid_rewrite.get(&id) {
+                Some(g) => replace_global_id(&remapped, g),
+                None => remapped,
+            };
+            let final_text = if converting {
+                crate::schema_convert::convert_step_line(&after_guid, &source_schema, &schema, id)
+            } else {
+                after_guid
+            };
+
+            if let Some(local_guid) = plan.local_guids.get(&id) {
+                let emitted = read_leading_guid(&final_text)
+                    .or_else(|| plan.guid_rewrite.get(&id).cloned())
+                    .unwrap_or_else(|| local_guid.clone());
+                guid_to_final.insert(emitted.clone(), (id.wrapping_add(offset), effective_scale));
+                emitted_guids.insert(emitted);
+            }
+
+            out.push_str(&final_text);
             out.push('\n');
-            written += 1;
+            stats.written += 1;
         }
-        offset = offset.wrapping_add(local_max).wrapping_add(1);
+
+        offset = offset.wrapping_add(index.max_id);
+    }
+
+    if stats.federated_model_count > 0 {
+        stats.warnings.push(format!(
+            "{} model(s) had an incompatible length unit and were federated as separate IfcProject instances (relaxing IfcSingleProjectInstance).",
+            stats.federated_model_count
+        ));
     }
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-    (out, MergedStats { models: models.len(), written })
+    (out, stats)
+}
+
+/// Immutable-ish context threaded into [`build_plan`].
+struct PlanCtx<'a> {
+    canonical_project: Option<u32>,
+    first_infra: &'a HashMap<&'static str, u32>,
+    spatial_lookup: &'a spatial::SpatialLookup,
+    merge_sites: ContainerMergeStrategy,
+    merge_buildings: ContainerMergeStrategy,
+    merge_storeys: StoreyMergeStrategy,
+    primary_scale: f64,
+    guid_to_final: &'a HashMap<String, (u32, f64)>,
+    emitted_guids: &'a HashSet<String>,
+    minter: &'a mut GuidMinter,
+    salt: String,
+}
+
+/// Build the [`ModelPlan`] for one model: project / infrastructure / spatial
+/// unification (compatible non-first models only) plus GlobalId reconciliation.
+fn build_plan(index: &ModelIndex, is_first: bool, compatible: bool, mut ctx: PlanCtx) -> ModelPlan {
+    let mut plan = ModelPlan::default();
+
+    for &id in &index.order {
+        if let Some(ty) = index.type_of.get(&id) {
+            if let Some(bytes) = index.line_bytes(id) {
+                if let Some(guid) = extract_global_id_fast(ty, bytes) {
+                    plan.local_guids.insert(id, guid);
+                }
+            }
+        }
+    }
+
+    if !is_first && compatible {
+        // Unify each later project into the first model's.
+        if let Some(cp) = ctx.canonical_project {
+            for &pid in &index.projects {
+                plan.shared_remap.insert(pid, cp);
+                plan.skip.insert(pid);
+            }
+        }
+        // Deduplicate the first instance of each shared-infrastructure type.
+        for &ty in &SHARED_INFRASTRUCTURE_TYPES {
+            if let (Some(&this_id), Some(&first_id)) =
+                (index.first_infra.get(ty), ctx.first_infra.get(ty))
+            {
+                plan.shared_remap.insert(this_id, first_id);
+                plan.skip.insert(this_id);
+            }
+        }
+        // Unify spatial containers, then drop now-redundant aggregations.
+        plan::unify_spatial(
+            ctx.spatial_lookup,
+            index,
+            &mut plan.shared_remap,
+            &mut plan.skip,
+            ctx.merge_sites,
+            ctx.merge_buildings,
+            ctx.merge_storeys,
+            1.0,
+        );
+        plan::skip_redundant_rel_aggregates(index, &plan.shared_remap, &mut plan.skip);
+    }
+
+    if !is_first {
+        reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
+    }
+
+    plan
+}
+
+/// Unify or re-stamp each rooted entity whose GlobalId already appeared.
+fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &mut PlanCtx) {
+    // Collect first so the mutable `minter` borrow does not overlap the read of
+    // `plan.local_guids` / `plan.skip`.
+    let mut restamp: Vec<(u32, String)> = Vec::new();
+    for &id in &index.order {
+        if plan.skip.contains(&id) {
+            continue;
+        }
+        let Some(guid) = plan.local_guids.get(&id) else { continue };
+        let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
+        let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
+        let can_unify =
+            compatible && units_compatible(scale, ctx.primary_scale) && !is_relationship_type(ty);
+        if can_unify {
+            plan.shared_remap.insert(id, final_id);
+            plan.skip.insert(id);
+        } else {
+            restamp.push((id, guid.clone()));
+        }
+    }
+    for (id, guid) in restamp {
+        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids);
+        plan.guid_rewrite.insert(id, minted);
+    }
+}
+
+/// The GlobalId-mint salt for a model: its stable id, or its index when empty.
+fn model_salt(model: &MergedModel, index: usize) -> String {
+    if model.id.is_empty() {
+        index.to_string()
+    } else {
+        model.id.clone()
+    }
 }
 
 #[cfg(test)]

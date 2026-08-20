@@ -6,6 +6,7 @@
 //! the `_tests.rs` suffix convention.
 
 use super::*;
+use ifc_lite_core::EntityScanner;
 
 fn scan_ids(step: &str) -> Vec<u32> {
     let bytes = step.as_bytes();
@@ -127,6 +128,7 @@ fn merge_maps_raw_control_bytes_in_header_fields_to_a_space() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: "app\u{07}bell\u{0B}vt".to_string(),
+        ..Default::default()
     };
     let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
     let (merged, _stats) = export_merged_with_stats(&[content.as_bytes()], &opts);
@@ -192,6 +194,7 @@ fn header_fields_round_trip_apostrophe_and_backslash_per_spec() {
         schema: Some("IFC4".to_string()),
         description: "ViewDefinition [CoordinationView]".to_string(),
         application: r"O'Brien\Docs\ifc-lite".to_string(),
+        ..Default::default()
     };
     let a = fixture_or_skip!("ara3d/duplex.ifc");
     let (step, _stats) = export_merged_with_stats(&[&a], &opts);
@@ -303,4 +306,207 @@ fn detect_schema_un_doubles_backslash_before_escape_re_doubles_it() {
     // matching what was in the source: the header round-trips instead of
     // compounding.
     assert_eq!(schema_line, "FILE_SCHEMA(('IFC\\\\4'));");
+}
+
+// ── Native feature-parity tests (issue #2951) ───────────────────────────────
+//
+// Synthetic federated scenes exercise the pieces the old id-offset-only merge
+// lacked: GlobalId reconciliation, spatial unification, visibility filtering,
+// and unit federation. All fixtures are inline STEP (no external fixtures).
+
+/// A minimal but structurally complete IFC model: project + unit + site +
+/// building + storey + wall + the two spatial relationships. `tag` makes every
+/// GlobalId unique per model (identical `tag` ⇒ identical GlobalIds); `mm`
+/// selects millimetre vs metre length units; `site_name`/`storey_name` drive
+/// spatial name-matching.
+fn build_model(tag: &str, mm: bool, site_name: &str, storey_name: &str) -> String {
+    let prefix = if mm { ".MILLI." } else { "$" };
+    let g = |base: &str| -> String {
+        let mut s = format!("{base}{tag}");
+        while s.len() < 22 {
+            s.push('0');
+        }
+        s.truncate(22);
+        s
+    };
+    format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('{proj}',$,'Project',$,$,$,$,$,#2);\n\
+#2=IFCUNITASSIGNMENT((#3));\n\
+#3=IFCSIUNIT(*,.LENGTHUNIT.,{prefix},.METRE.);\n\
+#10=IFCSITE('{site}',$,'{site_name}',$,$,$,$,$,$);\n\
+#11=IFCBUILDING('{bldg}',$,'Building',$,$,$,$,$,$,$,$);\n\
+#12=IFCBUILDINGSTOREY('{storey}',$,'{storey_name}',$,$,$,$,$,.ELEMENT.,0.);\n\
+#20=IFCWALL('{wall}',$,'Wall',$,$,$,$,$);\n\
+#30=IFCRELAGGREGATES('{ragg}',$,$,$,#10,(#11));\n\
+#31=IFCRELCONTAINEDINSPATIALSTRUCTURE('{rcon}',$,$,$,(#20),#12);\n\
+ENDSEC;\nEND-ISO-10303-21;\n",
+        proj = g("PROJ"),
+        site = g("SITE"),
+        bldg = g("BLDG"),
+        storey = g("STOR"),
+        wall = g("WALL"),
+        ragg = g("RAGG"),
+        rcon = g("RCON"),
+    )
+}
+
+/// The leading 22-char GlobalId of every rooted entity line in a STEP string.
+fn leading_guids(step: &str) -> Vec<String> {
+    step.lines()
+        .filter(|l| l.starts_with('#'))
+        .filter_map(super::guid::read_leading_guid)
+        .collect()
+}
+
+/// Count entity lines whose type token matches `=IFC…(`.
+fn type_count(step: &str, needle: &str) -> usize {
+    step.lines().filter(|l| l.contains(needle)).count()
+}
+
+/// Assert every `#ref` in the DATA section resolves to a written id.
+fn assert_no_dangling(step: &str) {
+    let ids: std::collections::HashSet<u32> = scan_ids(step).into_iter().collect();
+    for line in step.lines().filter(|l| l.starts_with('#')) {
+        let after_eq = line.find('=').map(|e| &line[e..]).unwrap_or(line);
+        let bytes = after_eq.as_bytes();
+        let mut i = 0;
+        let mut in_str = false;
+        while i < bytes.len() {
+            let c = bytes[i];
+            if c == b'\'' {
+                in_str = !in_str;
+            } else if !in_str && c == b'#' {
+                let mut j = i + 1;
+                let mut n = 0u32;
+                let mut any = false;
+                while j < bytes.len() && bytes[j].is_ascii_digit() {
+                    n = n * 10 + (bytes[j] - b'0') as u32;
+                    j += 1;
+                    any = true;
+                }
+                if any {
+                    assert!(ids.contains(&n), "dangling ref #{n} in {line:?}");
+                    i = j;
+                    continue;
+                }
+            }
+            i += 1;
+        }
+    }
+}
+
+#[test]
+fn duplicate_globalids_are_reconciled_no_dupes() {
+    // Two identical millimetre models. The old id-offset-only merge would emit
+    // every GlobalId twice; reconciliation must unify same-unit roots and
+    // re-stamp the objectified relationship instead.
+    let m = build_model("A", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[m.as_bytes(), m.as_bytes()], &MergedOptions::default());
+
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len(), "no duplicate GlobalIds after merge");
+
+    // One unified project, site, building, storey, wall.
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1);
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1);
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1);
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1, "duplicate wall unified");
+    // The objectified relationship is re-stamped (kept), not dropped.
+    assert_eq!(type_count(&merged, "=IFCRELCONTAINEDINSPATIALSTRUCTURE("), 2);
+    assert_eq!(stats.federated_model_count, 0);
+    assert!(!stats.unit_rescale_required);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn spatial_containers_unify_by_name() {
+    // Distinct element GlobalIds, but identical site/storey names ⇒ one shared
+    // spatial tree.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 1");
+    let (merged, stats) =
+        export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "sites unified by name");
+    assert_eq!(type_count(&merged, "=IFCBUILDING("), 1, "buildings unified");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 1, "storeys unified by name");
+    // Two distinct walls survive (different GlobalIds, both physical elements).
+    assert_eq!(type_count(&merged, "=IFCWALL("), 2);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1);
+    assert_eq!(stats.federated_model_count, 0);
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn distinct_storey_names_stay_separate() {
+    // Same site, different storey names, ByName strategy (no elevation fallback)
+    // ⇒ storeys are NOT merged.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let b = build_model("B", true, "Terrain", "Level 2");
+    let opts =
+        MergedOptions { merge_storeys: StoreyMergeStrategy::ByName, ..Default::default() };
+    let (merged, _stats) = export_merged_with_stats(&[a.as_bytes(), b.as_bytes()], &opts);
+    assert_eq!(type_count(&merged, "=IFCSITE("), 1, "sites still unify");
+    assert_eq!(type_count(&merged, "=IFCBUILDINGSTOREY("), 2, "differently-named storeys kept");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn visibility_allowlist_limits_output() {
+    // Include only the wall (express id 20). Its forward closure is just itself
+    // (all its attributes are `$`), so nothing else is emitted.
+    let a = build_model("A", true, "Terrain", "Level 1");
+    let models =
+        [MergedModel { content: a.as_bytes(), id: "a".to_string(), included: Some(vec![20]) }];
+    let (merged, _stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert_eq!(type_count(&merged, "=IFCWALL("), 1);
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 0, "project excluded by visibility");
+    assert_eq!(type_count(&merged, "=IFCSITE("), 0, "site excluded by visibility");
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn incompatible_units_federate_and_flag_under_normalize() {
+    // Millimetre + metre models. Under Normalize the metre model cannot be
+    // rescaled natively, so it is federated and the flag is set for the caller.
+    let mm = build_model("A", true, "Terrain", "Level 1");
+    let m = build_model("B", false, "Terrain", "Level 1");
+    let opts =
+        MergedOptions { unit_reconciliation: UnitReconciliation::Normalize, ..Default::default() };
+    let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
+
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 2, "incompatible model federated");
+    assert_eq!(stats.federated_model_count, 1);
+    assert!(stats.unit_rescale_required, "caller should gate to the JS path");
+    assert!(!stats.warnings.is_empty());
+    let guids = leading_guids(&merged);
+    let mut unique = guids.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), guids.len());
+    assert_no_dangling(&merged);
+}
+
+#[test]
+fn assume_shared_unifies_across_declared_units() {
+    // Same GlobalIds, different declared units. AssumeShared skips the
+    // compatibility check and unifies into one project regardless.
+    let mm = build_model("A", true, "Terrain", "Level 1");
+    let m = build_model("A", false, "Terrain", "Level 1");
+    let opts = MergedOptions {
+        unit_reconciliation: UnitReconciliation::AssumeShared,
+        ..Default::default()
+    };
+    let (merged, stats) = export_merged_with_stats(&[mm.as_bytes(), m.as_bytes()], &opts);
+
+    assert_eq!(type_count(&merged, "=IFCPROJECT("), 1, "unified despite unit mismatch");
+    assert_eq!(stats.federated_model_count, 0);
+    assert!(!stats.unit_rescale_required);
+    assert_no_dangling(&merged);
 }

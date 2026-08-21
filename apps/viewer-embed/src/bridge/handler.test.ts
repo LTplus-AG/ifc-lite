@@ -169,6 +169,7 @@ function makeState() {
     showAllInAllModels: rec('showAllInAllModels'),
     updateMeshColors: rec('updateMeshColors'),
     clearPendingColorUpdates: rec('clearPendingColorUpdates'),
+    resetMeshColors: rec('resetMeshColors'),
     setCameraRotation: rec('setCameraRotation'),
     setSectionPlaneAxis: rec('setSectionPlaneAxis'),
     setSectionPlanePosition: rec('setSectionPlanePosition'),
@@ -814,15 +815,24 @@ describe('selection and visibility commands', () => {
   it('SET_COLORS converts string keys to numeric entity ids', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SET_COLORS', { colorMap: { '12': [1, 0, 0, 1] } }, 'r1'));
-    const [updates] = argsOf(state, 'updateMeshColors') as [Map<number, unknown>];
+    const [updates, options] = argsOf(state, 'updateMeshColors') as [Map<number, unknown>, { override?: boolean }];
     expect([...updates.keys()]).toEqual([12]);
     expect(updates.get(12)).toEqual([1, 0, 0, 1]);
+    // Marked as an override so the displaced colors are captured and
+    // RESET_COLORS can put them back.
+    expect(options).toEqual({ override: true });
   });
 
-  it('RESET_COLORS clears pending updates', async () => {
+  it('RESET_COLORS undoes the SET_COLORS bake and leaves the overlay channel alone', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('RESET_COLORS', undefined, 'r1'));
-    expect(called(state, 'clearPendingColorUpdates')).toBe(true);
+    // `resetMeshColors` restores what SET_COLORS baked into
+    // geometryResult.meshes[].color. `clearPendingColorUpdates` is the
+    // lens/IDS/clash overlay channel — a different subsystem's state, which
+    // this command must not touch (#2934). See handler.effects.test.ts for the
+    // same pair asserted on the real slices rather than on this double.
+    expect(called(state, 'resetMeshColors')).toBe(true);
+    expect(called(state, 'clearPendingColorUpdates')).toBe(false);
   });
 
   it('SET_TYPE_VISIBILITY toggles only the flags that actually differ', async () => {

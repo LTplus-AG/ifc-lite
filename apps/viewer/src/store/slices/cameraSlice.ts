@@ -41,7 +41,16 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   onScaleChange: null,
 
   // Actions
-  setCameraRotation: (cameraRotation) => set({ cameraRotation }),
+  // Drive the renderer FIRST, then record — the same shape as
+  // setProjectionMode below. Recording alone is what made the embed API's
+  // SET_CAMERA inert: the store field was written, `CAMERA_CHANGED` echoed it
+  // back to the host as confirmation, and the camera never moved (#2934).
+  // This is the absolute-orientation path only; live navigation reports
+  // through `updateCameraRotationRealtime`, which must NOT actuate.
+  setCameraRotation: (cameraRotation) => {
+    get().cameraCallbacks.setCameraRotation?.(cameraRotation);
+    set({ cameraRotation });
+  },
   setCameraCallbacks: (cameraCallbacks) => set({ cameraCallbacks }),
   setProjectionMode: (projectionMode) => {
     get().cameraCallbacks.setProjectionMode?.(projectionMode);

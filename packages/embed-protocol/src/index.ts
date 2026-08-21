@@ -93,6 +93,16 @@ export interface InboundPayloads {
   SET_COLORS: { colorMap: Record<string, [number, number, number, number]> };
   RESET_COLORS: void;
   FIT_TO_VIEW: { ids?: number[] };
+  /**
+   * Absolute camera orientation in degrees: `azimuth` horizontal (normalized
+   * into 0-360), `elevation` from the horizon (clamped just inside ±90°, where
+   * the view matrix degenerates). The target and the orbit distance are kept —
+   * this rotates the camera, it does not reframe; use `FIT_TO_VIEW` for that.
+   *
+   * `zoom` is NOT applied. It has no defined meaning on this side (factor?
+   * distance? relative to what?), and the viewer deliberately ignores it rather
+   * than guessing — see #2934. Treat it as reserved.
+   */
   SET_CAMERA: { azimuth: number; elevation: number; zoom?: number };
   SET_VIEW: { preset: ViewPreset };
   SET_SECTION: { axis?: SectionAxis; position?: number; enabled?: boolean; flipped?: boolean };

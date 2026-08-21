@@ -10,7 +10,7 @@
 //! allowed to do; nothing here knows about any IFC type.
 
 use super::items::extract_symbolic_item_inner;
-use super::primitives::SymbolicData;
+use super::output_cap::{SymbolicAccumulator, SymbolicTruncationReason};
 use super::transform::Transform2D;
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rustc_hash::FxHashSet;
@@ -122,7 +122,7 @@ pub(super) fn extract_symbolic_item(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let mut walk = ItemWalk {
         path: FxHashSet::default(),
@@ -153,7 +153,7 @@ pub(super) fn extract_symbolic_item_with_revisit_budget(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
     revisit_budget: u32,
 ) {
     let mut walk = ItemWalk {
@@ -179,11 +179,21 @@ pub(super) fn extract_symbolic_item_at(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
     depth: u32,
     walk: &mut ItemWalk,
 ) {
     if depth >= MAX_ITEM_DEPTH {
+        // Report it. This return DROPS CONTENT, and #2938 is precisely that it
+        // did so in silence: the file-level totals stay far below the
+        // extraction bounds, so nothing else in the pipeline notices.
+        out.note_item_bound(SymbolicTruncationReason::ItemDepth);
+        return;
+    }
+    // Stop WALKING once the accumulator is FULL -- not merely because some
+    // earlier item reported dropping content, which must not abandon the rest
+    // of the file.
+    if out.is_exhausted() {
         return;
     }
     // A first visit is free: their number is bounded by the file. Only a
@@ -192,7 +202,16 @@ pub(super) fn extract_symbolic_item_at(
     if !walk.seen.insert(item.id) {
         match walk.revisit_budget.checked_sub(1) {
             Some(left) => walk.revisit_budget = left,
-            None => return,
+            None => {
+                // #2938's LEAD case: a well-formed nested block import
+                // (2,000 inserts of a 250-curve symbol) loses 60% of its
+                // curves here while emitting only 200,250 primitives -- far
+                // under both extraction bounds. A diagnostic that reported
+                // only those bounds would say nothing about the scenario the
+                // issue is actually about.
+                out.note_item_bound(SymbolicTruncationReason::ItemRevisits);
+                return;
+            }
         }
     }
     if !walk.enter_node(item.id) {

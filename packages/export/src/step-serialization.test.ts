@@ -12,6 +12,7 @@ import {
   resolveExpressBase,
   tokenIsRealLiteral,
   toStepReal,
+  escapeStepString,
 } from './step-serialization.js';
 import { toStepRealScaled } from './unit-normalize.js';
 
@@ -192,5 +193,30 @@ describe('toStepRealScaled', () => {
     for (const v of [Number.MAX_VALUE, Number.MIN_VALUE, -1.5e-300, 1e-7, 123.456]) {
       expect(toStepRealScaled(v)).toMatch(STEP_REAL_RE);
     }
+  });
+});
+
+describe('escapeStepString non-ASCII encoding (ISO 10303-21 6.3.3.4)', () => {
+  // ISO 10303-21 restricts a string literal's plain-text bytes to the "basic
+  // graphic" range 32-126; anything outside it is a control directive
+  // (\X\HH, \X2\HHHH\X0\, \X4\HHHHHHHH\X0\), never a raw byte. buildingSMART's
+  // own IFC string-encoding guidance states the same for IFC2X3/IFC4/IFC4X3:
+  // "characters ... represented by decimal value 32 to 126 ... any other
+  // character ... has to be encoded" (e.g. German 'Ä' as '\X2\00C4\X0\').
+  // A reader that treats the file bytes as ISO-8859-1 (the byte encoding real
+  // consumers - and the base standard - assume) turns a raw UTF-8 multi-byte
+  // sequence into mojibake or an outright parse break; this is a reported,
+  // reproduced defect in real IFC tooling (IfcOpenShell#699, files rejected
+  // by Solibri) for exactly this shape of writer bug.
+  it('encodes a BMP character as \\X2\\HHHH\\X0\\, not raw UTF-8', () => {
+    expect(escapeStepString('Trümpler')).toBe('Tr\\X2\\00FC\\X0\\mpler');
+  });
+
+  it('encodes a non-BMP character (emoji) as \\X4\\HHHHHHHH\\X0\\', () => {
+    expect(escapeStepString('😀')).toBe('\\X4\\0001F600\\X0\\');
+  });
+
+  it('leaves printable ASCII untouched', () => {
+    expect(escapeStepString('plain text 123')).toBe('plain text 123');
   });
 });

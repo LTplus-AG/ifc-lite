@@ -37,8 +37,22 @@ fn merge_two_models_unifies_project_and_offsets_ids() {
     let projects = merged.lines().filter(|l| l.contains("=IFCPROJECT(")).count();
     assert_eq!(projects, 1, "single unified project");
 
-    // Two models minus one dropped project ≈ 2*single - 1 entities.
-    assert_eq!(stats.written, single * 2 - 1);
+    // Self-merge: every rooted entity of the second model shares a GlobalId with
+    // the first (same unit space) and unifies into it — references remapped, the
+    // line not re-emitted — matching merged-exporter.ts's reconciliation. So the
+    // merged file has far fewer than 2*single lines, yet the first model survives
+    // in full and the second still contributes its non-rooted geometry and
+    // relationships (which carry no GlobalId to unify on).
+    assert!(
+        stats.written < single * 2 - 1,
+        "duplicate rooted entities must unify, not blindly duplicate (written={}, single={single})",
+        stats.written
+    );
+    assert!(
+        stats.written > single,
+        "second model's non-rooted geometry/relationships still contribute (written={}, single={single})",
+        stats.written
+    );
 
     // No dangling references: every #ref resolves to a written id.
     let idset: std::collections::HashSet<u32> = ids.into_iter().collect();
@@ -539,4 +553,238 @@ fn assume_shared_unifies_across_declared_units() {
     assert_eq!(stats.federated_model_count, 0);
     assert!(!stats.unit_rescale_required);
     assert_no_dangling(&merged);
+}
+
+// ── GlobalId reconciliation regression tests (issue #3007) ───────────────────
+/// Reproduces the issue's headline defect: two federated models that share a
+/// GlobalId (a linked/shared element loaded into both models -- the common
+/// "same file merged twice" and "shared door type" cases) must not emit that
+/// GlobalId twice into the output STEP text. Distinct groups with distinct
+/// counts so nothing passes by coincidence:
+///   - 3 entities whose GlobalId is IDENTICAL across both models (a shared
+///     `IFCDOOR` -- same real-world element, referenced from both models).
+///   - 2 entities per model (4 total) whose GlobalId is genuinely UNIQUE to
+///     that model (ordinary walls/spaces -- no collision).
+///
+/// All six entities here are genuine `IfcRoot` subtypes (`IFCDOOR`,
+/// `IFCWALL`, `IFCSPACE`) with their GlobalId as the true first attribute --
+/// unlike the fixture this replaced, which stood `IFCGRIDAXIS` in for a
+/// "GlobalId" using its `AxisTag` attribute. `IfcGridAxis` is NOT an
+/// `IfcRoot` subtype, so that fixture only exercised reconciliation because
+/// of the exact bug this file now fixes: it passed for the wrong reason,
+/// on a type the fixed `leading_guid` correctly stops reconciling (see
+/// `merge_never_corrupts_a_non_rooted_string_that_looks_like_a_globalid`
+/// below for the corruption that fixture was masking).
+///
+/// Assertion is against the emitted STEP text itself (`.matches(guid).count()`),
+/// not an intermediate map -- this is the shape a reader/writer round-trip
+/// through our own tooling could not catch (both sides would agree on the
+/// same misreading of an intermediate structure).
+#[test]
+fn merge_two_models_never_emit_a_shared_globalid_twice_in_the_output_text() {
+    // 22-char buildingSMART-alphabet GlobalIds, distinguishable by name.
+    let shared_door_a = "00000000000000000000A1";
+    let shared_door_b = "00000000000000000000B2";
+    let shared_door_c = "00000000000000000000C3";
+    let model1_wall = "11111111111111111111W1";
+    let model1_space = "11111111111111111111S1";
+    let model2_wall = "22222222222222222222W2";
+    let model2_space = "22222222222222222222S2";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOOR('{shared_door_a}',$,$,$,$,$,$,$,$);\n\
+#3=IFCDOOR('{shared_door_b}',$,$,$,$,$,$,$,$);\n\
+#4=IFCDOOR('{shared_door_c}',$,$,$,$,$,$,$,$);\n\
+#5=IFCWALL('{model1_wall}',$,$,$,$,$,$,$,$);\n\
+#6=IFCSPACE('{model1_space}',$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOOR('{shared_door_a}',$,$,$,$,$,$,$,$);\n\
+#3=IFCDOOR('{shared_door_b}',$,$,$,$,$,$,$,$);\n\
+#4=IFCDOOR('{shared_door_c}',$,$,$,$,$,$,$,$);\n\
+#5=IFCWALL('{model2_wall}',$,$,$,$,$,$,$,$);\n\
+#6=IFCSPACE('{model2_space}',$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &MergedOptions::default());
+
+    // The 3 shared-door GlobalIds must appear exactly once each in the
+    // output text -- not twice, even though both source models carried them.
+    for guid in [shared_door_a, shared_door_b, shared_door_c] {
+        assert_eq!(
+            merged.matches(guid).count(),
+            1,
+            "shared GlobalId {guid} must be emitted exactly once, not duplicated across federated models"
+        );
+    }
+
+    // The 4 legitimately-distinct GlobalIds (2 per model) must each survive
+    // unchanged -- exactly one occurrence, no collision to reconcile.
+    for guid in [model1_wall, model1_space, model2_wall, model2_space] {
+        assert_eq!(
+            merged.matches(guid).count(),
+            1,
+            "non-colliding GlobalId {guid} must survive unchanged"
+        );
+    }
+
+    // Overall: 7 distinct GlobalIds (3 shared + 4 unique) must appear in the
+    // output -- one occurrence each, 7 total occurrences of *some* 22-char
+    // GlobalId-shaped token from our fixture set. This distinct count check
+    // (7, not 10) is what would fail if collisions were silently duplicated
+    // instead of reconciled.
+    let total_occurrences: usize = [
+        shared_door_a, shared_door_b, shared_door_c,
+        model1_wall, model1_space, model2_wall, model2_space,
+    ]
+    .iter()
+    .map(|g| merged.matches(*g).count())
+    .sum();
+    assert_eq!(total_occurrences, 7, "7 distinct GlobalIds, one occurrence each");
+}
+
+/// The adversarial-review regression: a non-rooted entity carrying a 22-char
+/// quoted string that coincidentally matches the GlobalId charset/length must
+/// survive the merge byte-for-byte, even when it collides with ANOTHER
+/// occurrence of the same string -- because it isn't a GlobalId at all, and
+/// reconciling a coincidence corrupts ordinary model data.
+///
+/// Two independently-pinned layers, distinct group counts (3 vs 2) so
+/// neither passes by coincidence:
+///   - Layer (a), 3 `IFCMATERIALLAYER` entities: `Name` is that type's 4th
+///     attribute, not its first. A scanner that finds the first quoted token
+///     ANYWHERE on the line -- rather than the entity's true first attribute
+///     -- misidentifies it as a GlobalId regardless of how complete a type
+///     denylist is. Two of the three share the exact same 22-char `Name`
+///     (the review's `'AAAAAAAAAAAAAAAAAAAAAA'` repro string) so the second
+///     one hits the reconciliation path if the bug is present.
+///   - Layer (b), 2 `IFCMATERIALLAYERSET` entities: here the coincidental
+///     string genuinely IS the first attribute, so position alone can't
+///     save it -- only recognising that `IfcMaterialLayerSet` is not an
+///     `IfcRoot` subtype does. Both share the same string so the second
+///     hits the reconciliation path if the type is wrongly treated as
+///     rooted.
+#[test]
+fn merge_never_corrupts_a_non_rooted_string_that_looks_like_a_globalid() {
+    let layer_dup = "AAAAAAAAAAAAAAAAAAAAAA"; // the review's exact repro string
+    let layer_unique = "BBBBBBBBBBBBBBBBBBBBBB";
+    let set_dup = "CCCCCCCCCCCCCCCCCCCCCC";
+
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projx',$,$,$,$,$,$,$,$);\n\
+#2=IFCMATERIALLAYER(#10,100.,.F.,'{layer_dup}',$,$,$,$);\n\
+#3=IFCMATERIALLAYER(#10,150.,.F.,'{layer_unique}',$,$,$,$);\n\
+#4=IFCMATERIALLAYER(#10,200.,.F.,'{layer_dup}',$,$,$,$);\n\
+#5=IFCMATERIALLAYERSET('{set_dup}',$,$);\n\
+#6=IFCMATERIALLAYERSET('{set_dup}',$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[content.as_bytes()], &MergedOptions::default());
+
+    // Layer (a): all three IFCMATERIALLAYER lines, including the two that
+    // coincidentally share the same Name, survive byte-for-byte.
+    for line in [
+        "#2=IFCMATERIALLAYER(#10,100.,.F.,'AAAAAAAAAAAAAAAAAAAAAA',$,$,$,$);",
+        "#3=IFCMATERIALLAYER(#10,150.,.F.,'BBBBBBBBBBBBBBBBBBBBBB',$,$,$,$);",
+        "#4=IFCMATERIALLAYER(#10,200.,.F.,'AAAAAAAAAAAAAAAAAAAAAA',$,$,$,$);",
+    ] {
+        assert!(
+            merged.contains(line),
+            "layer (a): a non-rooted entity's Name (not its first attribute) was corrupted -- missing line {line:?} in:\n{merged}"
+        );
+    }
+
+    // Layer (b): both IFCMATERIALLAYERSET lines, sharing the same coincidental
+    // first-attribute string, survive byte-for-byte too.
+    for line in [
+        "#5=IFCMATERIALLAYERSET('CCCCCCCCCCCCCCCCCCCCCC',$,$);",
+        "#6=IFCMATERIALLAYERSET('CCCCCCCCCCCCCCCCCCCCCC',$,$);",
+    ] {
+        assert!(
+            merged.contains(line),
+            "layer (b): a non-rooted entity's first attribute was corrupted -- missing line {line:?} in:\n{merged}"
+        );
+    }
+}
+
+/// Isolates the positional half of the fix on its own: `IFCMATERIALLAYER`
+/// above is filtered by the `IfcRoot` type check alone (it is never a
+/// rooted type, so `leading_guid` returns early regardless of where the
+/// quote sits) -- that test cannot by itself prove the position check does
+/// anything. This one uses a genuinely rooted type (`IFCWALL`, which DOES
+/// pass the type check) with a malformed/adversarial attribute list whose
+/// first attribute is not a string at all, and whose Name (a later
+/// attribute) happens to be GlobalId-shaped. Only the "quoted token must be
+/// the first attribute" positional rule -- not the type check -- stops this
+/// from being reconciled.
+#[test]
+fn merge_never_corrupts_a_rooted_entitys_non_leading_string_attribute() {
+    let stray = "DDDDDDDDDDDDDDDDDDDDDD";
+    let content = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projy',$,$,$,$,$,$,$,$);\n\
+#2=IFCWALL(#99,$,'{stray}',$,$,$,$,$,$);\n\
+#3=IFCWALL(#99,$,'{stray}',$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[content.as_bytes()], &MergedOptions::default());
+
+    for line in [
+        "#2=IFCWALL(#99,$,'DDDDDDDDDDDDDDDDDDDDDD',$,$,$,$,$,$);",
+        "#3=IFCWALL(#99,$,'DDDDDDDDDDDDDDDDDDDDDD',$,$,$,$,$,$);",
+    ] {
+        assert!(
+            merged.contains(line),
+            "a rooted type's non-leading string attribute was mistaken for its GlobalId -- missing line {line:?} in:\n{merged}"
+        );
+    }
+}
+
+/// `IfcDoorStyle` is a genuine `IfcRoot` subtype in IFC2X3 (its first
+/// attribute IS the GlobalId) but the entity was dropped in IFC4X3, whose
+/// entity table is the only one `rust/core`'s generated `IfcType` schema is
+/// derived from. `IfcType::from_str("IFCDOORSTYLE")` therefore resolves to
+/// `Unknown`, which is never a subtype of anything -- so an unpatched
+/// `leading_guid` treats it as non-rooted and never reconciles its GlobalId.
+/// Two IFC2X3 models sharing an `IFCDOORSTYLE` (a shared door-type/style
+/// definition, the common "same catalog type in both files" case) must still
+/// collapse to one occurrence in the merged output, exactly like the
+/// IFC4 `IFCDOOR` case above.
+#[test]
+fn merge_reconciles_a_shared_globalid_on_an_ifc2x3_only_rooted_type() {
+    let shared_style = "00000000000000000000D1";
+
+    let model_a = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('proja',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOORSTYLE('{shared_style}',$,$,$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let model_b = format!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n\
+#1=IFCPROJECT('projb',$,$,$,$,$,$,$,$);\n\
+#2=IFCDOORSTYLE('{shared_style}',$,$,$,$,$,$,$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+
+    let (merged, _stats) =
+        export_merged_with_stats(&[model_a.as_bytes(), model_b.as_bytes()], &MergedOptions::default());
+
+    assert_eq!(
+        merged.matches(shared_style).count(),
+        1,
+        "shared IFC2X3-only-rooted GlobalId {shared_style} must be emitted exactly once, not duplicated across federated models -- got:\n{merged}"
+    );
 }

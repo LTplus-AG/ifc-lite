@@ -762,6 +762,135 @@
         assert!((inner - 8.75).abs() < 1e-6, "the split edge keeps its wall thickness: {inner}");
     }
 
+    #[test]
+    fn net_outline_uses_each_edges_own_thickness_not_a_neighbours() {
+        // Every prior net_outline fixture uses a UNIFORM half_thickness on all four
+        // edges, so a bug that reads the wrong edge's half_thickness (e.g. cycle[i]
+        // vs cycle[(i+1)%n], an off-by-one into the neighbouring edge) is invisible:
+        // the offset applied is the same number either way. Give each of the four
+        // edges of a 4x3 room a DISTINCT thickness so only the correctly-indexed
+        // half_thickness reproduces the expected area.
+        //
+        // loop_segments(&rect(0,0,4,3)) edges, in order: bottom (0,0)->(4,0),
+        // right (4,0)->(4,3), top (4,3)->(0,3), left (0,3)->(0,0).
+        let corners = rect(0.0, 0.0, 4.0, 3.0);
+        let n = corners.len();
+        let halves = [0.1_f64, 0.2, 0.3, 0.4]; // bottom, right, top, left
+        let segs: Vec<InputSegment> = (0..n)
+            .map(|i| {
+                InputSegment::new(corners[i], corners[(i + 1) % n], Some(100 + i as u32))
+                    .with_half_thickness(halves[i])
+            })
+            .collect();
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        let room = plate.rooms().next().unwrap();
+
+        // Axis-aligned rectangle, so each side's inset is exactly its own edge's
+        // half-thickness: width shrinks by (left + right), height by (bottom + top).
+        let expected_inner = (4.0 - halves[3] - halves[1]) * (3.0 - halves[0] - halves[2]);
+        let ring = plate.net_outline(room, true);
+        let inner = polygon_area(&ring).abs();
+        assert!(
+            (inner - expected_inner).abs() < 1e-6,
+            "net inset with distinct per-edge thickness: expected {expected_inner}, got {inner}"
+        );
+
+        // Area alone cannot see an OPPOSITE-edge swap (bottom↔top, left↔right):
+        // it only reads the sums (bottom + top) and (left + right), which such a
+        // swap leaves unchanged for any thickness values. Pin each side's inset
+        // POSITION as well — that is what distinguishes an edge from the one
+        // across the room. Each bound is the corresponding edge's own half-
+        // thickness by construction, so this reads as the property, not as magic
+        // numbers.
+        //
+        // Measured, not assumed: sweeping the half_thickness lookup over all 256
+        // index maps in {0,1,2,3}^4, the area check plus these four bounds leave
+        // the identity map as the only survivor. Individually, though, only the
+        // two `min` bounds ever fire first — with `{0.1, 0.2, 0.3, 0.4}` no pair
+        // solves the equation that would let a mis-index keep the area AND both
+        // `min` corners, so `max_x` / `max_y` are never reached. They are kept
+        // because they state the same property for the far sides: drop the area
+        // check and they become load-bearing.
+        let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+        let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in &ring {
+            min_x = min_x.min(p[0]);
+            min_y = min_y.min(p[1]);
+            max_x = max_x.max(p[0]);
+            max_y = max_y.max(p[1]);
+        }
+        assert!(
+            (min_x - halves[3]).abs() < 1e-6,
+            "left inset must use the LEFT edge's thickness: expected {}, got {min_x}",
+            halves[3]
+        );
+        assert!(
+            (min_y - halves[0]).abs() < 1e-6,
+            "bottom inset must use the BOTTOM edge's thickness: expected {}, got {min_y}",
+            halves[0]
+        );
+        assert!(
+            (max_x - (4.0 - halves[1])).abs() < 1e-6,
+            "right inset must use the RIGHT edge's thickness: expected {}, got {max_x}",
+            4.0 - halves[1]
+        );
+        assert!(
+            (max_y - (3.0 - halves[2])).abs() < 1e-6,
+            "top inset must use the TOP edge's thickness: expected {}, got {max_y}",
+            3.0 - halves[2]
+        );
+
+        // The OUTSET ring needs the same treatment, and independently: `net_outline`
+        // reads `cycle[i]` a second time on this path (the shared-edge pin), so it
+        // could be mis-indexed on its own. Area is invariant under the opposite-edge
+        // swap here too — sweeping all 256 index maps, the area check alone leaves
+        // nine passing: the identity plus eight mis-indexings, among them the
+        // permutations (0,3,2,1), (2,1,0,3) and (2,3,0,1). Adding the four bounds
+        // below cuts that to the identity alone. As on the inset side, though, only
+        // the two `min` bounds ever fire first — the area check plus
+        // `out_min_x`/`out_min_y` already leaves the identity as the only survivor,
+        // so `out_max_x` / `out_max_y` are never reached. They are kept because they
+        // state the same property for the far sides, and either pair suffices: area
+        // plus the two `max` bounds also leaves only the identity, and with the area
+        // check dropped the four bounds alone still do.
+        let expected_outer = (4.0 + halves[3] + halves[1]) * (3.0 + halves[0] + halves[2]);
+        let outer_ring = plate.net_outline(room, false);
+        let outer = polygon_area(&outer_ring).abs();
+        assert!(
+            (outer - expected_outer).abs() < 1e-6,
+            "net outset with distinct per-edge thickness: expected {expected_outer}, got {outer}"
+        );
+
+        let (mut out_min_x, mut out_min_y) = (f64::INFINITY, f64::INFINITY);
+        let (mut out_max_x, mut out_max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for p in &outer_ring {
+            out_min_x = out_min_x.min(p[0]);
+            out_min_y = out_min_y.min(p[1]);
+            out_max_x = out_max_x.max(p[0]);
+            out_max_y = out_max_y.max(p[1]);
+        }
+        assert!(
+            (out_min_x + halves[3]).abs() < 1e-6,
+            "left outset must use the LEFT edge's thickness: expected {}, got {out_min_x}",
+            -halves[3]
+        );
+        assert!(
+            (out_min_y + halves[0]).abs() < 1e-6,
+            "bottom outset must use the BOTTOM edge's thickness: expected {}, got {out_min_y}",
+            -halves[0]
+        );
+        assert!(
+            (out_max_x - (4.0 + halves[1])).abs() < 1e-6,
+            "right outset must use the RIGHT edge's thickness: expected {}, got {out_max_x}",
+            4.0 + halves[1]
+        );
+        assert!(
+            (out_max_y - (3.0 + halves[2])).abs() < 1e-6,
+            "top outset must use the TOP edge's thickness: expected {}, got {out_max_y}",
+            3.0 + halves[2]
+        );
+    }
+
     // Test-only helper.
     impl SpacePlate {
         fn find_vertex(&self, pt: [f64; 2]) -> VertexId {

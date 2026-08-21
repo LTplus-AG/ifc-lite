@@ -184,8 +184,13 @@ export function extractWallSegmentsForStorey(
   const dividerIds = collectDividerIdsOnStorey(store, extractor, storeyExpressId, dividerTypes, log);
   log(`storey #${storeyExpressId}: ${dividerIds.length} contained divider element(s)`);
 
+  // Segments are emitted in the STOREY frame, so composition of each
+  // element's PlacementRelTo chain stops as soon as it reaches the storey's
+  // own placement chain. See `frameInStoreyFrame`.
+  const storeyChain = storeyPlacementChain(store, extractor, overlay, storeyExpressId);
+
   for (const id of dividerIds) {
-    const result = extractWallAxisFromSource(store, extractor, id, log);
+    const result = extractWallAxisFromSource(store, extractor, id, storeyChain, log);
     if (result.segment) {
       segments.push(scaleSegment(result.segment, lengthUnitScale));
       contributing.push(id);
@@ -200,7 +205,7 @@ export function extractWallSegmentsForStorey(
     for (const ent of overlay.getNewEntities()) {
       if (!dividerTypes.has(ent.type.toLowerCase())) continue;
       overlayCount++;
-      const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, log);
+      const result = extractWallAxisFromOverlay(store, extractor, overlay, ent, storeyChain, log);
       if (result.segment) {
         // Overlay walls are authored via addWallToStore which emits
         // metre coords — don't double-scale.
@@ -346,6 +351,9 @@ export function existingSpaceFootprintsByStorey(store: IfcDataStore): Map<number
   const contained = buildRelatingChildrenIndex(store, extractor, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', 5, 4);
   for (const st of store.getEntitiesByType('IfcBuildingStorey')) {
     const kids = [...(aggregated.get(st.expressId) ?? []), ...(contained.get(st.expressId) ?? [])];
+    // Same frame as the extracted wall segments — storey-local — so the
+    // overlap test in generate-spaces compares like with like.
+    const storeyChain = storeyPlacementChain(store, extractor, undefined, st.expressId);
     const footprints: Vec2[][] = [];
     for (const id of kids) {
       if ((store.entities.getTypeName(id) ?? '').toUpperCase() !== 'IFCSPACE') continue;
@@ -356,7 +364,7 @@ export function existingSpaceFootprintsByStorey(store: IfcDataStore): Map<number
       const placementId = numericAttr(ent.attributes[5]);   // ObjectPlacement
       const representationId = numericAttr(ent.attributes[6]); // Representation
       if (placementId === null || representationId === null) continue;
-      const frame = readPlacementFrame(store, extractor, undefined, placementId);
+      const frame = frameInStoreyFrame(store, extractor, undefined, placementId, storeyChain);
       const localPts = gatherBodyFootprintPoints(store, extractor, undefined, representationId);
       if (!frame || !localPts || localPts.length < 3) continue;
       footprints.push(localPts.map((p) => {
@@ -414,6 +422,7 @@ function extractWallAxisFromSource(
   store: IfcDataStore,
   extractor: EntityExtractor,
   wallId: number,
+  storeyChain: ReadonlySet<number>,
   log: Logger,
 ): ExtractAttempt {
   const ref = store.entityIndex.byId.get(wallId);
@@ -430,7 +439,7 @@ function extractWallAxisFromSource(
   const representationId = numericAttr(wall.attributes[6]);
   if (placementId === null) return { segment: null, reason: 'no-placement' };
   if (representationId === null) return { segment: null, reason: 'no-representation' };
-  return computeWallSegment(store, extractor, placementId, representationId, undefined, wallId, log);
+  return computeWallSegment(store, extractor, placementId, representationId, undefined, wallId, storeyChain, log);
 }
 
 function extractWallAxisFromOverlay(
@@ -438,13 +447,14 @@ function extractWallAxisFromOverlay(
   extractor: EntityExtractor,
   overlay: OverlayWallReader,
   wall: { expressId: number; attributes: IfcAttributeValue[] },
+  storeyChain: ReadonlySet<number>,
   log: Logger,
 ): ExtractAttempt {
   const placementId = numericAttr(wall.attributes[5]);
   const representationId = numericAttr(wall.attributes[6]);
   if (placementId === null) return { segment: null, reason: 'no-placement' };
   if (representationId === null) return { segment: null, reason: 'no-representation' };
-  return computeWallSegment(store, extractor, placementId, representationId, overlay, wall.expressId, log);
+  return computeWallSegment(store, extractor, placementId, representationId, overlay, wall.expressId, storeyChain, log);
 }
 
 interface PlacementFrame {
@@ -461,9 +471,10 @@ function computeWallSegment(
   representationId: number,
   overlay: OverlayWallReader | undefined,
   wallId: number,
+  storeyChain: ReadonlySet<number>,
   log: Logger,
 ): ExtractAttempt {
-  const frame = readPlacementFrame(store, extractor, overlay, placementId);
+  const frame = frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
   if (!frame) {
     log(`wall #${wallId}: placement chain not resolvable (placement=#${placementId})`);
     return { segment: null, reason: 'placement-not-resolvable' };
@@ -747,11 +758,12 @@ function finaliseSegment(start: Vec2, end: Vec2, wallId: number, log: Logger, so
 }
 
 /**
- * Walk IfcLocalPlacement → IfcAxis2Placement3D → CartesianPoint and
- * read the ground-plane origin + RefDirection. Returns null when any
- * link is missing.
+ * Walk IfcLocalPlacement → IfcAxis2Placement3D → CartesianPoint and read the
+ * ground-plane origin + RefDirection *of this one placement*, i.e. expressed
+ * in its own `PlacementRelTo` parent's frame. Returns null when any link is
+ * missing.
  */
-function readPlacementFrame(
+function readOwnPlacementFrame(
   store: IfcDataStore,
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
@@ -783,6 +795,104 @@ function readPlacementFrame(
     }
   }
   return { origin: [origin[0], origin[1]], axisX };
+}
+
+/**
+ * The set of placement ids that make up the storey's OWN placement chain:
+ * the storey's `ObjectPlacement` and every ancestor reachable from it via
+ * `IfcLocalPlacement.PlacementRelTo`. Composition stops when it reaches one
+ * of these — see `frameInStoreyFrame`.
+ *
+ * Returns an empty set when the storey has no resolvable placement; the
+ * chain walk then behaves as before this existed and composes only what it
+ * can reach before running out of parents.
+ */
+function storeyPlacementChain(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  overlay: OverlayWallReader | undefined,
+  storeyId: number,
+): Set<number> {
+  const chain = new Set<number>();
+  const storey = readEntity(store, extractor, overlay, storeyId);
+  if (!storey) return chain;
+  let id = numericAttr(storey.attributes[5]); // ObjectPlacement
+  while (id !== null && !chain.has(id)) {
+    chain.add(id);
+    const placement = readEntity(store, extractor, overlay, id);
+    if (!placement) break;
+    id = numericAttr(placement.attributes[0]); // PlacementRelTo
+  }
+  return chain;
+}
+
+/**
+ * Compose `inner` (expressed in `outer`'s frame) with `outer`, giving the
+ * frame of `inner` expressed in whatever frame `outer` is expressed in.
+ */
+function composeFrames(outer: PlacementFrame, inner: PlacementFrame): PlacementFrame {
+  const ax = outer.axisX[0];
+  const ay = outer.axisX[1];
+  // Perpendicular = rotate axisX 90° CCW around +Z — same convention as
+  // `applyFrame`, which this must agree with exactly.
+  const px = -ay;
+  const py = ax;
+  return {
+    origin: applyFrame(outer, inner.origin),
+    // Directions rotate but do not translate.
+    axisX: [ax * inner.axisX[0] + px * inner.axisX[1], ay * inner.axisX[0] + py * inner.axisX[1]],
+  };
+}
+
+/**
+ * Frame of `placementId` expressed in the STOREY's frame: this placement's
+ * own frame composed with every intermediate `IfcLocalPlacement.
+ * PlacementRelTo` hop, stopping *before* the storey's own placement.
+ *
+ * An element's `ObjectPlacement` is not always one hop from its storey. The
+ * IFC-standard grouping pattern — an `IfcElementAssembly` for a curtain
+ * wall, precast panel run or railing system, all of them in
+ * `DEFAULT_DIVIDER_TYPES` — inserts an intermediate `IfcLocalPlacement`
+ * between the member and the storey. Reading only the member's own
+ * `RelativePlacement` silently drops that hop's translation and rotation, so
+ * the member is extracted at the wrong position relative to walls placed
+ * directly under the storey: corners that should meet come out disconnected
+ * and the enclosed room is never detected.
+ *
+ * Composition deliberately STOPS at the storey rather than continuing to the
+ * root. Storey-local is the frame the write side uses: `generateSpacesFromWalls`
+ * hands these segments to `addSpaceToStore`, which authors the new `IfcSpace`
+ * with `anchor.storeyPlacementId` as its `PlacementRelTo` (see `space.ts` and
+ * `resolve-anchor.ts`). Composing to the root would bake the storey's own
+ * offset into the coordinates and the storey placement would then apply it a
+ * second time, putting the space a whole site-offset away from its room.
+ */
+function frameInStoreyFrame(
+  store: IfcDataStore,
+  extractor: EntityExtractor,
+  overlay: OverlayWallReader | undefined,
+  placementId: number,
+  storeyChain: ReadonlySet<number>,
+): PlacementFrame | null {
+  let frame = readOwnPlacementFrame(store, extractor, overlay, placementId);
+  if (!frame) return null;
+  // Visited-set termination: exact for cyclic/self-referential
+  // `PlacementRelTo` in malformed IFC, and needs no arbitrary depth bound.
+  const visited = new Set<number>([placementId]);
+  let currentId = placementId;
+  for (;;) {
+    const placement = readEntity(store, extractor, overlay, currentId);
+    const relToId = placement ? numericAttr(placement.attributes[0]) : null;
+    // Stop at the storey's own placement (or any of its ancestors): the
+    // frame is already storey-local. Also stops at the root, at a cycle,
+    // and at an unresolvable parent (best effort with what we have).
+    if (relToId === null || storeyChain.has(relToId) || visited.has(relToId)) return frame;
+    const parent = readOwnPlacementFrame(store, extractor, overlay, relToId);
+    if (!parent) return frame;
+    frame = composeFrames(parent, frame);
+    visited.add(relToId);
+    currentId = relToId;
+  }
 }
 
 /**

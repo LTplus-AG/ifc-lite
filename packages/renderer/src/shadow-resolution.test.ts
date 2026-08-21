@@ -39,4 +39,12 @@ describe('resolveShadowMapResolution (#2670 review)', () => {
   it('clamps a manual value that exceeds the device limit (createTexture would fail)', () => {
     assert.equal(resolveShadowMapResolution(4096, 2048), 2048);
   });
+
+  it('floors and clamps a fractional or sub-256 manual value to match allocation (#3053)', () => {
+    // ShadowPass allocates max(256, floor(res)); the resolver must return the
+    // SAME size or texelWorld/texelSize sample at a different resolution.
+    assert.equal(resolveShadowMapResolution(1, 8192), 256);
+    assert.equal(resolveShadowMapResolution(100, 8192), 256);
+    assert.equal(resolveShadowMapResolution(2048.9, 8192), 2048);
+  });
 });

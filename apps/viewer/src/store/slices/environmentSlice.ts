@@ -168,14 +168,19 @@ function clampSunTime(value: number): number {
 
 export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], EnvironmentSlice> = (set, get) => {
   const stored = loadPersisted();
+  const initialPreset: LightingPresetId =
+    stored.preset && isLightingPresetId(stored.preset) ? stored.preset : 'default';
   const initial = {
-    envPreset: (stored.preset && isLightingPresetId(stored.preset) ? stored.preset : 'default') as LightingPresetId,
+    envPreset: initialPreset,
     envSkyEnabled: stored.skyEnabled === true,
     envExposure: clampExposure(stored.exposure ?? 1),
     envHardness: clampHardness(stored.hardness ?? 1),
     envSoftness: clampSoftness(stored.softness ?? 1),
     envShadowsEnabled: stored.shadowsEnabled === true,
-    envSunAngle: clampSunAngle(stored.sunAngle ?? 0.53),
+    // No stored angle → seed from the restored preset, not a fixed clear-sky
+    // 0.53, so a persisted Overcast reopens soft instead of crisp until the
+    // first preset switch (CodeRabbit #3053). A stored override is preserved.
+    envSunAngle: clampSunAngle(stored.sunAngle ?? LIGHTING_PRESETS[initialPreset].shadowSunAngleDeg),
     envShadowResolution: clampShadowResolution(stored.shadowResolution ?? 0),
     envSunTimeEnabled: stored.sunTimeEnabled === true,
     envSunTime: clampSunTime(stored.sunTime ?? 13),

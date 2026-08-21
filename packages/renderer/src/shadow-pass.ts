@@ -40,7 +40,11 @@ export type ShadowDrawKind = 'flat' | 'quantized' | 'instanced' | 'textured';
 export function resolveShadowMapResolution(requested: number | undefined, maxTextureDim: number): number {
   const cap = Number.isFinite(maxTextureDim) && maxTextureDim >= 1024 ? maxTextureDim : 2048;
   if (requested && requested > 0) {
-    return Math.min(requested, cap);
+    // Floor + clamp to the same [256, cap] window ShadowPass allocates in, so
+    // the caller's texelWorld / texelSize (derived from this return value) match
+    // the texture actually created — a fractional or sub-256 request otherwise
+    // samples at one size and allocates at another (CodeRabbit #3053).
+    return Math.max(256, Math.floor(Math.min(requested, cap)));
   }
   if (cap >= 8192) return 4096;
   if (cap >= 4096) return 2048;

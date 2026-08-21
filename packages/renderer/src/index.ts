@@ -2198,13 +2198,18 @@ export class Renderer {
                     shadowsThisFrame = true;
                 }
             }
-            if (!shadowsThisFrame && this.shadowsWired) {
+            if (!shadowsThisFrame && (this.shadowsWired || this.shadowPass)) {
                 // Toggle-off: disable sampling, release the depth view, and free
                 // the shadow pass itself so its depth texture (16.8 MB at 2048,
                 // 67 MB at 4096) is returned to the driver for the rest of the
                 // session instead of lingering unused. Re-enabling reconstructs
                 // it lazily on the next shadowed frame (see the `!this.shadowPass`
-                // guard above). #2670 review.
+                // guard above). The `|| this.shadowPass` arm also covers a pass
+                // that was allocated but never wired — an occluder-prep throw
+                // between `new ShadowPass` and `shadowsWired = true` would
+                // otherwise leak its texture until Renderer.destroy() (Greptile
+                // #3053). The uniform-unwire below is a no-op when never wired.
+                // #2670 review.
                 this.shadowScratch[17] = 0;
                 this.pipeline.updateShadowUniform(this.shadowScratch);
                 this.pipeline.setShadowDepthView(null);

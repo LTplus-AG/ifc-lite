@@ -20,9 +20,11 @@ import { createEnvironmentSlice, type EnvironmentSlice } from './slices/environm
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 
 const savedLS = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+const STORAGE_KEY = 'ifc-lite:environment';
 
-function stubLocalStorage(): void {
+function stubLocalStorage(seed?: Record<string, unknown>): void {
   const m = new Map<string, string>();
+  if (seed) m.set(STORAGE_KEY, JSON.stringify(seed));
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: {
@@ -48,7 +50,7 @@ function makeSlice(): { get: () => EnvironmentSlice } {
 }
 
 describe('environment slice — cast-shadow softness follows the preset (#2670 review)', () => {
-  beforeEach(stubLocalStorage);
+  beforeEach(() => stubLocalStorage());
   afterEach(() => {
     if (savedLS) Object.defineProperty(globalThis, 'localStorage', savedLS);
     else Reflect.deleteProperty(globalThis, 'localStorage');
@@ -83,5 +85,19 @@ describe('environment slice — cast-shadow softness follows the preset (#2670 r
     assert.equal(get().envShadowResolution, 4096);
     get().setEnvShadowResolution(1234);
     assert.equal(get().envShadowResolution, 0);
+  });
+
+  it('seeds the initial angle from a persisted preset that has no stored sunAngle (#3053)', () => {
+    // A stored Overcast with no angle must reopen at Overcast's soft angle, not
+    // the clear-sky 0.53 default.
+    stubLocalStorage({ preset: 'overcast' });
+    const { get } = makeSlice();
+    assert.equal(get().envSunAngle, LIGHTING_PRESETS.overcast.shadowSunAngleDeg);
+  });
+
+  it('preserves a stored manual sunAngle over the preset default', () => {
+    stubLocalStorage({ preset: 'overcast', sunAngle: 0.9 });
+    const { get } = makeSlice();
+    assert.equal(get().envSunAngle, 0.9);
   });
 });

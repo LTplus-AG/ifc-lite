@@ -18,9 +18,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { runCheck } from './check-refwalk-guards.mjs';
 
 const ROOT = 'rust/geometry/src';
@@ -275,4 +277,79 @@ test('allowlist growth cannot land without editing the ceiling', () => {
 test('allowlist shrinkage must lower the ceiling too', () => {
   const r = check({ [`${ROOT}/a.rs`]: UNGUARDED }, { allowlist: new Set(), allowlistCeiling: 1 });
   assert.match(r.errors.join('\n'), /ALLOWLIST_CEILING reads 1/);
+});
+
+
+/**
+ * The gate is only worth anything if it RUNS. `isMain` decides that, and the
+ * obvious spelling of it is wrong: `import.meta.url` is percent-encoded while
+ * `process.argv[1]` is a raw path, so one space in the checkout path makes
+ * them unequal, the module falls through, and the process exits 0 having
+ * scanned nothing. CI reads that as a pass.
+ *
+ * These two run the script as a real entry point and assert on its SUCCESS
+ * LINE rather than its exit code: a script that never ran also exits 0, so the
+ * exit code cannot tell the two apart. That is the whole point -- the same
+ * absence-reads-as-success shape this gate exists to catch, one level up in
+ * the gate itself.
+ *
+ * They cannot be covered by importing `runCheck`, the way every other test
+ * here does: an imported module has `isMain === false` by design, so the bug
+ * is invisible from inside the test process. It has to be spawned.
+ */
+test('the gate actually runs from a path containing a space', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'refwalk gate '));
+  try {
+    assert.ok(dir.includes(' '), `temp dir must contain a space, got ${dir}`);
+    const copied = join(dir, 'check-refwalk-guards.mjs');
+    mkdirSync(join(dir, 'lib'), { recursive: true });
+    writeFileSync(copied, readFileSync(new URL('./check-refwalk-guards.mjs', import.meta.url)));
+    writeFileSync(
+      join(dir, 'lib', 'refwalk-classify.mjs'),
+      readFileSync(new URL('./lib/refwalk-classify.mjs', import.meta.url))
+    );
+    writeFileSync(
+      join(dir, 'refwalk-guard-allowlist.txt'),
+      readFileSync(new URL('./refwalk-guard-allowlist.txt', import.meta.url))
+    );
+
+    const run = spawnSync(process.execPath, [copied], { encoding: 'utf8' });
+    const output = `${run.stdout}${run.stderr}`;
+
+    // The discriminator is OUTPUT, not exit code. A module that falls through
+    // because `isMain` came out false prints NOTHING and exits 0 -- which is
+    // indistinguishable from a clean pass if you only read the status. Any
+    // output naming the gate proves the body executed.
+    //
+    // Here it is the missing-scan-root failure: the copy has no rust/ tree, so
+    // a gate that ran must refuse to report a pass over zero files. That
+    // refusal IS the evidence.
+    assert.notEqual(
+      output.trim(),
+      '',
+      'the gate produced no output at all, so `isMain` was false and it never ran'
+    );
+    assert.match(
+      output,
+      /refwalk-guards: scan root missing/,
+      `expected the gate to run and refuse an empty scan, got:\n${output}`
+    );
+    assert.equal(run.status, 1, 'a gate that scanned nothing must exit non-zero');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the success line reports a non-zero file count, not an empty scan', () => {
+  const run = spawnSync(
+    process.execPath,
+    [fileURLToPath(new URL('./check-refwalk-guards.mjs', import.meta.url))],
+    { encoding: 'utf8' }
+  );
+  const m = /check-refwalk-guards: OK \((\d+) \.rs files scanned/.exec(`${run.stdout}${run.stderr}`);
+  assert.ok(m, `no success line:\nstdout: ${run.stdout}\nstderr: ${run.stderr}`);
+  assert.ok(
+    Number(m[1]) > 0,
+    'scanned 0 .rs files -- a green that examined nothing is what this gate is for'
+  );
 });

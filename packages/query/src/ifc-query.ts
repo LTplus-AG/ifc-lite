@@ -7,7 +7,12 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnum, IfcTypeEnumFromString, type SpatialHierarchy } from '@ifc-lite/data';
+import {
+  IFC_ENTITY_NAMES,
+  IfcTypeEnum,
+  IfcTypeEnumFromString,
+  type SpatialHierarchy,
+} from '@ifc-lite/data';
 import { EntityQuery } from './entity-query.js';
 import { EntityNode } from './entity-node.js';
 import { DuckDBIntegration, type SQLResult } from './duckdb-integration.js';
@@ -83,18 +88,38 @@ export class IfcQuery {
   
   ofType(...types: string[]): EntityQuery {
     // `IfcTypeEnumFromString` falls back to `IfcTypeEnum.Unknown` for any name
-    // it does not recognize (typo, or a vendor-specific type this build's enum
-    // table has no entry for). Left unchecked, that fallback makes a typo'd
-    // `ofType('IfcWal')` silently query the Unknown bucket instead — every
-    // entity whose type the store itself could not classify, which is neither
-    // the caller's wall nor empty, but some other, unrelated set of entities.
-    // Reject the typo here rather than let it through as `Unknown`; a genuine
-    // query for the Unknown bucket can still be made by passing the literal
-    // string `'Unknown'`.
+    // it does not recognize. That fallback conflates two very different cases:
+    //
+    //  1. A typo (`ofType('IfcWal')`). `IfcWal` is not an IFC entity name at
+    //     all, so the caller can only have meant `IfcWall`. Left unchecked the
+    //     query silently returns the Unknown bucket - every entity the store
+    //     itself could not classify - which is neither the caller's wall nor
+    //     an empty result, but some other, unrelated set of entities.
+    //
+    //  2. A real IFC entity name that `TYPE_STRING_TO_ENUM` (data/types.ts)
+    //     simply has no entry for. That table is a curated subset, so standard
+    //     IFC4/IFC4X3 types such as `IfcChiller`, `IfcActuator` or
+    //     `IfcBuildingSystem` map to `Unknown` too. For those the Unknown
+    //     bucket is the only representation available and querying it is the
+    //     documented, working behaviour - a file whose sole unclassified
+    //     entities are chillers really does answer `ofType('IfcChiller')`
+    //     correctly this way.
+    //
+    // Only case 1 is rejected. `IFC_ENTITY_NAMES` (the ~880-entry IFC4X3
+    // entity-name table in @ifc-lite/data) is the oracle for "is this a real
+    // IFC entity name", so case 2 keeps falling through to Unknown unchanged.
+    // A genuine query for the Unknown bucket is still made by passing the
+    // literal string `'Unknown'`.
     const typeEnums = types.map(t => {
       const typeEnum = IfcTypeEnumFromString(t);
-      if (typeEnum === IfcTypeEnum.Unknown && t.trim().toUpperCase() !== 'UNKNOWN') {
-        throw new Error(`ofType(): unrecognized IFC type "${t}"`);
+      if (typeEnum === IfcTypeEnum.Unknown) {
+        const upper = t.trim().toUpperCase();
+        if (upper !== 'UNKNOWN' && IFC_ENTITY_NAMES[upper] === undefined) {
+          throw new Error(
+            `ofType(): "${t}" is not an IFC entity name - check the spelling. ` +
+            `To query entities whose type could not be classified, pass 'Unknown'.`
+          );
+        }
       }
       return typeEnum;
     });

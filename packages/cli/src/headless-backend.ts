@@ -39,6 +39,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -464,15 +465,20 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createMutateAdapter(): MutateBackendMethods {
-    return {
-      setProperty() { /* no-op in headless mode */ },
-      setAttribute() { /* no-op in headless mode */ },
-      deleteProperty() { /* no-op in headless mode */ },
-      batchBegin() { /* no-op */ },
-      batchEnd() { /* no-op */ },
-      undo() { return false; },
-      redo() { return false; },
-    };
+    return createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+  }
+
+  /**
+   * The overlay every write goes through, created on first use.
+   *
+   * Built by `getOrCreateStoreEditor` so the property and quantity extractors
+   * are wired exactly once, whichever adapter writes first.
+   */
+  private getOrCreateMutationView(): MutablePropertyView {
+    this.getOrCreateStoreEditor();
+    // Non-null immediately after: getOrCreateStoreEditor assigns both fields
+    // together and never clears them.
+    return this.mutationView as MutablePropertyView;
   }
 
   private getOrCreateStoreEditor(): StoreEditor {

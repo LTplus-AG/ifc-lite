@@ -201,6 +201,7 @@ export { ScheduleNamespace } from './namespaces/schedule.js';
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';
 export { SpacesNamespace } from './namespaces/spaces.js';
+export { createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results
 // without taking a second direct dependency on @ifc-lite/clash.

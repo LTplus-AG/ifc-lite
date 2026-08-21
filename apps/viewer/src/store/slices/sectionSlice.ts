@@ -109,7 +109,20 @@ function saveLastSectionMode(mode: LastSectionMode): void {
   }
 }
 
-function clearLastSectionMode(): void {
+/// Persist a section mode. Exported under a `__…ForTest` name so the
+/// #2939 regression test can establish the precondition it needs (a mode
+/// saved for a previous model) without driving the whole section UI.
+export const __saveLastSectionModeForTest = saveLastSectionMode;
+
+/// Drop the persisted section mode.
+///
+/// Exported because `resetViewerState()` must call it on a model switch. That
+/// reset already clears the in-memory `axis`/`position`/`enabled`/`flipped`
+/// with the reason stated in its own comment -- they are "model-relative and
+/// meaningless when switching files" -- and this key persists exactly those
+/// four fields. Without this call the reset is undone the moment the panel
+/// remounts and `loadLastSectionMode()` reads the value back (#2939).
+export function clearLastSectionMode(): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(SECTION_MODE_STORAGE_KEY);

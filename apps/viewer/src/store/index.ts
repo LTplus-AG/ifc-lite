@@ -18,7 +18,7 @@ import { createVisibilitySlice, type VisibilitySlice } from './slices/visibility
 import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
 import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
-import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
+import { createSectionSlice, clearLastSectionMode, type SectionSlice } from './slices/sectionSlice.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
@@ -288,6 +288,10 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
     // comment (measurementSlice.ts) for why this must not be a field list
     // duplicated here.
     get().resetAllMeasurementState();
+    // Model-relative section state has two homes: the store fields reset in
+    // the `set` below, and this localStorage key. Clearing one without the
+    // other is not a reset, because the surviving copy is read back first.
+    clearLastSectionMode();
     set({
       // Selection (legacy)
       selectedEntityId: null,
@@ -371,6 +375,13 @@ const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInv
       // capStyle). Those round-trip to localStorage via the slice's
       // persistence helpers; clobbering them here was the cause of "my
       // hatch / colour resets to defaults every time I open a file".
+      //
+      // The persisted `ifc-lite:section-last-mode` key holds the SAME four
+      // model-relative fields, so it is cleared alongside them just above
+      // this `set` -- see the `clearLastSectionMode()` call. Resetting only
+      // the in-memory copy left the persisted one to win on the next panel
+      // mount, which is what made a cardinal cut stick across files (#2939).
+      // Cap appearance is display style, not geometry, so its keys stay.
       sectionPlane: {
         ...get().sectionPlane,
         axis:     SECTION_PLANE_DEFAULTS.AXIS,

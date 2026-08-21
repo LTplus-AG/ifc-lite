@@ -167,6 +167,28 @@ report that you bounded it. Mutate the halves separately; they fail differently
 ## New source files
 - MPL-2.0 header on every new file: see [`./LICENSE_HEADER.md`](./LICENSE_HEADER.md).
 
+## Claiming work
+
+**Respect assignments, and assign yourself before you start.** This is not etiquette, it is the mechanism that stops two people building the same thing.
+
+Before touching an issue:
+
+1. `gh issue view <n> --json assignees,title` — **if someone else is assigned, it is theirs.** Do not start. If you think it is stalled or you have context they lack, say so in a comment and let them answer.
+2. `gh pr list --search "<n>"` — an open PR referencing the issue is a claim even when nobody is assigned.
+3. If both are clear, `gh issue edit <n> --add-assignee <you>` **before** writing code, not when you open the PR. An assignment made at PR time claims nothing; the window it needed to cover has already closed.
+
+Check again immediately before opening the PR. A claim can appear while you work, and the second check is the cheap one.
+
+When you find you have duplicated someone:
+
+- **The person who was assigned keeps the work.** Not whoever is further along, and not whoever noticed first.
+- Do not close the duplicate silently. Enumerate what it holds that the surviving one does not, so nothing is lost when it goes, and post that list on both.
+- Never push to a branch you do not own to "help". If a fix is a one-liner, say the one line in a comment.
+
+This rule exists because it was broken. Issue #2951 was filed by an external contributor, assigned to them, and implemented in #2952 — and #2970 arrived fifteen hours later implementing the same thing. They were right to object. The cost is not the wasted effort, it is that a contributor who did everything correctly watched their work get duplicated by the project they contributed to.
+
+Applies to every agent and every session, including short-lived subagents.
+
 ## Delegating to subagents
 - Any delegated agent must obey this file: use the canonical load/geometry/export paths here, preserve IFC EXPRESS names, add no second load path, and prove changes with the narrowest local verification command. Treat delegated implementation output as a patch proposal until `git diff` plus local verification pass.
 - Keep the orchestrator's context clean: delegate token-heavy filesystem work (broad search, log triage, fixture inspection, first-pass test repair) and get back a concise summary (files changed, commands run, result, risks), not raw logs or fixture dumps.

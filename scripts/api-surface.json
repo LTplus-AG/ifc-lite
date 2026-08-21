@@ -2430,6 +2430,8 @@
     "Mutation: interface",
     "MutationEntityByIdIndex: interface",
     "MutationEntityRef: interface",
+    "MutationGuard: type",
+    "MutationGuardError: class",
     "MutationStoreShape: interface",
     "MutationType: type",
     "NewEntity: interface",

@@ -38,7 +38,7 @@
  */
 
 import '@/test/setup-dom.js';
-import { afterEach, beforeEach, describe, it } from 'node:test';
+import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click, advance } from '@/test/render.js';
 import { useViewerStore } from '@/store';

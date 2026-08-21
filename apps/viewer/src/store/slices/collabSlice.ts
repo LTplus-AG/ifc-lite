@@ -109,6 +109,19 @@ import { getEntityCenter } from '@/utils/viewportUtils';
  */
 export type CollabRole = 'viewer' | 'commenter' | 'editor' | 'admin';
 
+/**
+ * The single role -> edit rule. `canCollabEdit()` below is its store-bound
+ * form, and components that mirror the same gate in their own UI
+ * (`BulkPropertyEditor`, `DataConnector`) call this directly off `collabRole`.
+ * Keeping one body means a future role change cannot drift the copies apart.
+ * `null` = not in a shared room, so the local single-user editing rules apply
+ * (handled by the UI's existing `editEnabled` gate) and this returns true.
+ */
+export function roleCanEdit(role: CollabRole | null): boolean {
+  if (role === null) return true;
+  return role === 'editor' || role === 'admin';
+}
+
 export type CollabStatus = 'disconnected' | WebSocketStatus | 'memory' | 'indexeddb';
 
 export interface StartCollabOptions {
@@ -1291,13 +1304,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     }
   },
 
-  canCollabEdit: () => {
-    const role = get().collabRole;
-    // Not in a shared room → fall back to the local single-user editing rules
-    // (handled by the UI's existing `editEnabled` gate), so treat as allowed.
-    if (role === null) return true;
-    return role === 'editor' || role === 'admin';
-  },
+  canCollabEdit: () => roleCanEdit(get().collabRole),
 
   canCollabComment: () => {
     const role = get().collabRole;

@@ -50,6 +50,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
+import { roleCanEdit } from '@/store/slices/collabSlice';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -129,12 +130,13 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   // the engine itself refuses a write for a viewer/commenter role as containment.
   // (2) canEditInSession mirrors that same role check here in the component, the
   // same way MainToolbar/AuthorTab gate Edit mode, so the Execute button is disabled
-  // and never gets clicked in the first place. null role = single-user, always
+  // and never gets clicked in the first place. Both layers read the one shared
+  // `roleCanEdit` rule that `canCollabEdit()` is itself built from, so a future
+  // role change cannot leave them disagreeing. null role = single-user, always
   // editable.
   const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
   const collabEditRole = useViewerStore((s) => s.collabRole);
-  const canEditInSession =
-    collabEditRole === null || collabEditRole === 'editor' || collabEditRole === 'admin';
+  const canEditInSession = roleCanEdit(collabEditRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);

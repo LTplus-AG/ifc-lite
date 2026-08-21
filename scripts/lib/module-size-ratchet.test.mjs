@@ -1,0 +1,223 @@
+#!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Unit tests for the pure half of the TypeScript module-size ratchet.
+ *
+ * The interesting cases are the FIRING ones. A gate exercised only against the
+ * currently-clean tree is a gate nobody has seen fail, and this repo has
+ * shipped three scripts that exited 0 having verified nothing — so the
+ * boundaries (exactly 400, exactly at budget), the loud-failure paths (empty
+ * allowlist, malformed row, duplicate row) and the digest's cross-language
+ * agreement with the Rust gate all live here as executable cases.
+ *
+ * Run: node --test scripts/lib/module-size-ratchet.test.mjs
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  LIMIT,
+  countLines,
+  isExempt,
+  parseAllowlist,
+  allowlistDigest,
+  evaluate,
+  staleRows,
+} from './module-size-ratchet.mjs';
+
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+test('LIMIT is the AGENTS.md house rule', () => {
+  assert.equal(LIMIT, 400);
+});
+
+test('countLines matches Rust str::lines()', () => {
+  assert.equal(countLines(''), 0);
+  assert.equal(countLines('a'), 1);
+  // A trailing newline TERMINATES the last line; it does not start an empty
+  // one. `split('\n').length` gets this wrong and reports 2 here, which made
+  // every budget one line too generous.
+  assert.equal(countLines('a\n'), 1);
+  assert.equal(countLines('a\nb'), 2);
+  assert.equal(countLines('a\nb\n'), 2);
+  assert.equal(countLines('\n'), 1);
+  assert.equal(countLines('a\n\n'), 2);
+});
+
+test('isExempt covers generated, declaration and test files only', () => {
+  for (const rel of [
+    'packages/data/src/generated/schema.ts',
+    'apps/viewer/src/generated/x.tsx',
+    'packages/sdk/src/index.d.ts',
+    'packages/sdk/src/index.d.mts',
+    'packages/export/src/step-exporter.test.ts',
+    'apps/viewer/src/components/X.spec.tsx',
+    'packages/geometry/src/x.bench.ts',
+    'apps/viewer/src/test/render.tsx',
+    'packages/parser/tests/big.ts',
+    'apps/viewer/src/__tests__/x.ts',
+    'apps/viewer/src/__mocks__/x.ts',
+    'tests/e2e/x.ts',
+    'packages/x/fixtures/model.ts',
+  ]) {
+    assert.equal(isExempt(rel), true, rel);
+  }
+  for (const rel of [
+    'packages/export/src/step-exporter.ts',
+    'apps/viewer/src/components/viewer/Viewport.tsx',
+    // "generated" must be a path SEGMENT, not a substring: a module that
+    // generates something is production code.
+    'apps/viewer/src/components/viewer/schedule/generate-schedule.ts',
+    'packages/data/scripts/generate-ifc-schema.ts',
+    // `.d.ts` must be a suffix, not a substring.
+    'packages/x/src/a.d.ts.ts',
+    // A file merely NAMED test-ish is not a test file.
+    'packages/x/src/testing.ts',
+    'packages/extensions/src/testing/runner.ts',
+  ]) {
+    assert.equal(isExempt(rel), false, rel);
+  }
+});
+
+test('parseAllowlist reads rows and ignores comments and blanks', () => {
+  const map = parseAllowlist('# header\n\n  500 packages/a/b.ts\n1200 apps/c/d.tsx\n');
+  assert.deepEqual([...map], [
+    ['packages/a/b.ts', 500],
+    ['apps/c/d.tsx', 1200],
+  ]);
+});
+
+test('parseAllowlist is LOUD on every degenerate input', () => {
+  // Exiting 0 on an allowlist nobody could read is the vacuous pass this
+  // whole file exists to make impossible.
+  assert.throws(() => parseAllowlist(''), /empty or unreadable/);
+  assert.throws(() => parseAllowlist('   \n\n'), /empty or unreadable/);
+  assert.throws(() => parseAllowlist(undefined), /empty or unreadable/);
+  assert.throws(() => parseAllowlist('# only comments\n'), /parsed 0 rows/);
+  assert.throws(() => parseAllowlist('500\n'), /malformed line/);
+  assert.throws(() => parseAllowlist('abc packages/a.ts\n'), /bad budget/);
+  assert.throws(() => parseAllowlist('4.5 packages/a.ts\n'), /bad budget/);
+  assert.throws(() => parseAllowlist('-5 packages/a.ts\n'), /bad budget/);
+  // A duplicate row means one of the two budgets is silently ignored — i.e. a
+  // file that looks frozen and is not.
+  assert.throws(() => parseAllowlist('500 a.ts\n600 a.ts\n'), /duplicate row/);
+});
+
+test('evaluate fires on a new god file and on growth past budget', () => {
+  const allowlist = new Map([
+    ['packages/a/big.ts', 500],
+    ['packages/a/grown.ts', 600],
+  ]);
+  const files = [
+    { rel: 'packages/a/small.ts', lines: 399 }, // under the limit — clean
+    { rel: 'packages/a/at_limit.ts', lines: 400 }, // exactly 400 is NOT > 400 — clean
+    { rel: 'packages/a/new_god.tsx', lines: 401 }, // > 400, unlisted — FIRES
+    { rel: 'packages/a/big.ts', lines: 500 }, // exactly at budget — clean
+    { rel: 'packages/a/grown.ts', lines: 601 }, // one over budget — FIRES
+  ];
+  const { newOffenders, grew, shrunk, missing } = evaluate(files, allowlist);
+  assert.deepEqual(newOffenders, ['  packages/a/new_god.tsx: 401 lines']);
+  assert.deepEqual(grew, ['  packages/a/grown.ts: 601 lines, budget 600']);
+  assert.deepEqual(shrunk, []);
+  assert.deepEqual(missing, []);
+});
+
+test('evaluate is clean when everything is within budget', () => {
+  const allowlist = new Map([['packages/a/big.ts', 500]]);
+  const files = [
+    { rel: 'packages/a/small.ts', lines: 12 },
+    { rel: 'packages/a/big.ts', lines: 480 },
+  ];
+  const { newOffenders, grew } = evaluate(files, allowlist);
+  assert.deepEqual(newOffenders, []);
+  assert.deepEqual(grew, []);
+});
+
+test('evaluate reports rows to delete without failing on them', () => {
+  const allowlist = new Map([
+    ['packages/a/shrank.ts', 500],
+    ['packages/a/deleted.ts', 700],
+  ]);
+  const { newOffenders, grew, shrunk, missing } = evaluate(
+    [{ rel: 'packages/a/shrank.ts', lines: 320 }],
+    allowlist,
+  );
+  assert.deepEqual(shrunk, ['  packages/a/shrank.ts: now 320 lines']);
+  assert.deepEqual(missing, ['  packages/a/deleted.ts (budget 700)']);
+  // Advisory: these must never be part of the failing set, so an unrelated PR
+  // cannot go red because someone else's shrink landed first.
+  assert.deepEqual(newOffenders, []);
+  assert.deepEqual(grew, []);
+});
+
+test('staleRows flags budgets that grant no exemption', () => {
+  const allowlist = new Map([
+    ['a.ts', 401],
+    ['b.ts', 400],
+    ['c.ts', 12],
+  ]);
+  assert.deepEqual(staleRows(allowlist), [
+    '  b.ts: budget 400 <= 400',
+    '  c.ts: budget 12 <= 400',
+  ]);
+});
+
+test('the digest moves for ANY row change, including a compensating pair', () => {
+  const base = new Map([
+    ['a.ts', 500],
+    ['b.ts', 600],
+  ]);
+  const raised = new Map([
+    ['a.ts', 501],
+    ['b.ts', 600],
+  ]);
+  // The reason a plain SUM was rejected: +100/-100 leaves the total identical.
+  const compensated = new Map([
+    ['a.ts', 600],
+    ['b.ts', 500],
+  ]);
+  const added = new Map([...base, ['c.ts', 450]]);
+  const removed = new Map([['a.ts', 500]]);
+  const d = allowlistDigest(base);
+  for (const [name, other] of [
+    ['raised', raised],
+    ['compensated', compensated],
+    ['added', added],
+    ['removed', removed],
+  ]) {
+    assert.notEqual(allowlistDigest(other), d, `digest did not move for: ${name}`);
+  }
+  // Sum-blindness demonstrated, so the above is a real distinction.
+  const sum = (m) => [...m.values()].reduce((x, y) => x + y, 0);
+  assert.equal(sum(compensated), sum(base));
+});
+
+test('the digest is a function of content, not of line order', () => {
+  const a = new Map([
+    ['a.ts', 500],
+    ['b.ts', 600],
+  ]);
+  const b = new Map([
+    ['b.ts', 600],
+    ['a.ts', 500],
+  ]);
+  assert.equal(allowlistDigest(a), allowlistDigest(b));
+});
+
+test('the digest agrees with the Rust ratchet, byte for byte', () => {
+  // Not a self-comparison: this runs the JS FNV-1a over the RUST allowlist and
+  // asserts it reproduces the u64 pinned in module_size_ratchet.rs. If the two
+  // hashes ever drift, one language's gate stops meaning what the other's
+  // does — and this is the only place that would notice.
+  const rustAllowlist = join(ROOT, 'rust', 'processing', 'tests', 'module_size_allowlist.txt');
+  const rustSource = readFileSync(join(ROOT, 'rust', 'processing', 'tests', 'module_size_ratchet.rs'), 'utf8');
+  const pinned = /const ALLOWLIST_DIGEST: u64 = (\d+);/.exec(rustSource);
+  assert.ok(pinned, 'could not find ALLOWLIST_DIGEST in module_size_ratchet.rs');
+  assert.equal(allowlistDigest(parseAllowlist(readFileSync(rustAllowlist, 'utf8'))), pinned[1]);
+});

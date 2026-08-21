@@ -369,6 +369,18 @@ jobs:
     # 25 min: the job also runs the previously dark ifcx/renderer suites and
     # the integration harness now; 18 min left no headroom (timed out at the
     # integration step on a cold-ish run).
+    #
+    # 25 stopped being enough on 2026-08-21 and the lane timed out on MAIN,
+    # which reads as `cancelled` — the same word a supersession gets, so it
+    # was only distinguishable by the clock (25m18s against this exact cap).
+    # The response was to make the work smaller rather than raise the number
+    # again: apps/viewer runs 521 files and was pinned to
+    # `--test-concurrency=1`, measured at 295s serial versus 142s at 4, with
+    # 5625 passing either way over three consecutive runs.
+    #
+    # If this needs raising again, look at `@ifc-lite/provenance` first: it
+    # alone spent 413s of the last green run, with single tests at 87s and
+    # 38s. Raising the cap buys time; it does not buy headroom.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:

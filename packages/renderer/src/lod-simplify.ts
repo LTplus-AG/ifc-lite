@@ -37,6 +37,12 @@ export const LOD_CELL_FRACTION = 0.02;
  * @returns the LOD1 index buffer, or null when simplification does not pay
  *   (too few source triangles, or the result is not meaningfully smaller)
  */
+/**
+ * V8 caps a `Map` at 2^24 - 1 entries and throws `RangeError: Map maximum size
+ * exceeded` on the next insert. Stopping one short keeps the refusal ours.
+ */
+const MAX_MAP_ENTRIES = 2 ** 24 - 1;
+
 export function simplifyIndicesByClustering(
   vertexData: Float32Array,
   strideFloats: number,
@@ -48,7 +54,24 @@ export function simplifyIndicesByClustering(
   if (!(cellSize > 0) || !Number.isFinite(cellSize)) return null;
 
   // Cell id per referenced vertex, memoized (vertices are referenced ~1-3x).
-  const cellOf = new Map<number, number>(); // vertexIndex -> cluster representative vertexIndex
+  //
+  // A TYPED ARRAY, not a Map, because V8 caps a Map at 2^24 - 1 entries and
+  // this is keyed per vertex. A single batch can exceed that: bucket size is
+  // bounded in BYTES against the GPU's `maxBufferSize` (`scene.ts`
+  // `resolveActiveBucket`), and that limit is deliberately requested at the
+  // adapter maximum so multi-GB models render, which on a 2 GiB adapter allows
+  // roughly 69M vertices per bucket at 28 B each. Buckets also group by
+  // spatial cell and colour rather than by model, so a dense federated load
+  // co-batches. Production hit exactly this: `RangeError: Map maximum size
+  // exceeded` from this line (issue #3028), which rejected the whole finalize
+  // and left the viewer on streaming fragments.
+  //
+  // -1 means "not yet memoized". Vertex indices are non-negative, so the
+  // sentinel cannot collide with a real representative. Int32Array also costs
+  // 4 bytes per vertex flat, well under the Map's per-entry overhead for the
+  // same population.
+  const vertexCount = strideFloats > 0 ? (vertexData.length / strideFloats) | 0 : 0;
+  const cellOf = new Int32Array(vertexCount).fill(-1); // vertexIndex -> representative, -1 = unset
   const repOfCell = new Map<string, number>(); // cell key -> representative vertexIndex
 
   // Clustering is ENTITY-SCOPED: the per-vertex entityId lane (u32 bit-cast
@@ -63,20 +86,31 @@ export function simplifyIndicesByClustering(
     : null;
 
   const repOf = (vi: number): number => {
-    let rep = cellOf.get(vi);
-    if (rep !== undefined) return rep;
+    const memo = cellOf[vi];
+    if (memo !== -1) return memo;
     const base = vi * strideFloats;
     const cx = Math.floor(vertexData[base] / cellSize);
     const cy = Math.floor(vertexData[base + 1] / cellSize);
     const cz = Math.floor(vertexData[base + 2] / cellSize);
     const entity = idLane ? idLane[base + 6] : 0;
     const key = `${cx},${cy},${cz},${entity}`;
-    rep = repOfCell.get(key);
-    if (rep === undefined) {
+    const existing = repOfCell.get(key);
+    let rep: number;
+    if (existing === undefined) {
       rep = vi;
+      // `repOfCell` is the remaining Map, and it is bounded by the number of
+      // OCCUPIED cells rather than by vertices, so it only approaches the same
+      // 2^24 cap when almost nothing collapses. That case is precisely the one
+      // where LOD1 would be no smaller than LOD0, so bail through the
+      // function's existing "simplification does not pay" contract rather than
+      // letting it throw. Callers already handle null (`scene.ts` renders
+      // LOD0), so nothing goes missing (issue #3028).
+      if (repOfCell.size >= MAX_MAP_ENTRIES) return -1;
       repOfCell.set(key, vi);
+    } else {
+      rep = existing;
     }
-    cellOf.set(vi, rep);
+    cellOf[vi] = rep;
     return rep;
   };
 
@@ -86,6 +120,8 @@ export function simplifyIndicesByClustering(
     const a = repOf(indices[i]);
     const b = repOf(indices[i + 1]);
     const c = repOf(indices[i + 2]);
+    // A cell-map overflow (see `repOf`) means nothing was collapsing anyway.
+    if (a < 0 || b < 0 || c < 0) return null;
     // Collapsed triangles (any two corners in the same cell) are dropped.
     if (a === b || b === c || a === c) continue;
     out[w] = a;

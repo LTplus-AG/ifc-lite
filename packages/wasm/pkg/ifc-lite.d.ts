@@ -1581,6 +1581,10 @@ export class SymbolicRepresentationCollection {
      * Get total count of all symbolic items
      */
     readonly totalCount: number;
+    /**
+     * Primitive count at which extraction stopped, else `undefined`.
+     */
+    readonly truncatedAt: number | undefined;
 }
 
 /**
@@ -2072,6 +2076,7 @@ export interface InitOutput {
     readonly symbolicrepresentationcollection_polylineCount: (a: number) => number;
     readonly symbolicrepresentationcollection_textCount: (a: number) => number;
     readonly symbolicrepresentationcollection_totalCount: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedAt: (a: number) => number;
     readonly symbolictext_alignment: (a: number, b: number) => void;
     readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_content: (a: number, b: number) => void;

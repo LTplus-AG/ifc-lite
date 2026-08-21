@@ -10,6 +10,7 @@ import type { IfcStoreBase as IfcDataStore } from '@ifc-lite/data';
 import type { PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import type { MeshData } from '@ifc-lite/geometry';
 import { EntityNode } from './entity-node.js';
+import { resolveEntityTypeName } from './resolve-type-name.js';
 
 export class QueryResultEntity {
   private store: IfcDataStore;
@@ -34,7 +35,7 @@ export class QueryResultEntity {
   }
 
   get type(): string {
-    return this.store.entities.getTypeName(this.expressId);
+    return resolveEntityTypeName(this.store, this.expressId);
   }
 
   get properties(): PropertySet[] {

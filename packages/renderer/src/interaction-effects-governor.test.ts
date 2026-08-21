@@ -51,6 +51,19 @@ test('sustained missed frames degrade within the window', () => {
     assert.equal(results[results.length - 1], false, 'sustained misses degrade');
 });
 
+test('degrades at exactly MISS_LIMIT misses, not one frame later', () => {
+    // Every other degrade-timing test drives the miss count well past the
+    // MISS_LIMIT=6 threshold, so an off-by-one (misses > MISS_LIMIT instead
+    // of >=) would still eventually degrade and go unnoticed. Pin the exact
+    // boundary: 5 misses stays enabled, the 6th degrades immediately.
+    const gov = new InteractionEffectsGovernor();
+    const b1 = burst(gov, 0, 10, 10); // calibrate refresh ~10ms
+    const b2 = burst(gov, b1.last + 50, 5, 40); // 5 consecutive missed frames
+    assert.ok(b2.results.every(Boolean), 'fewer than MISS_LIMIT misses stays enabled');
+    const sixth = gov.frame(true, b2.last + 40, false, 0);
+    assert.equal(sixth, false, 'the 6th miss crosses MISS_LIMIT and degrades on this frame');
+});
+
 test('a brief hitch (GC pause) does not degrade', () => {
     const gov = new InteractionEffectsGovernor();
     const { last } = burst(gov, 0, 30, 16.7);

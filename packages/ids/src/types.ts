@@ -494,6 +494,22 @@ export interface IFCDataAccessor {
    * type is unknown so callers fall back to permissive comparison.
    */
   getAttributeXsdTypes?(expressId: number, attrName: string): readonly string[] | undefined;
+  /**
+   * The model's raw IFC schema version string (e.g. `IFC2X3`, `IFC4`),
+   * when the accessor's backing store carries one. Used only for
+   * schema-scoped facet semantics — currently the IFC2X3
+   * occurrence/type mapping table (`facets/ifc2x3-type-mapping.ts`).
+   */
+  getSchemaVersion?(): string | undefined;
+  /**
+   * The IFC entity class of the type object (`IfcXxxType`) this
+   * instance is related to via `IfcRelDefinesByType`, if any. Distinct
+   * from `getPredefinedTypeRaw`, which reads the type's
+   * `PredefinedType` *value*, not the type object's own entity class
+   * name — needed to resolve the IFC2X3 occurrence/type mapping table,
+   * where the alias is picked out by the TYPE's class, not its value.
+   */
+  getTypeEntityType?(expressId: number): string | undefined;
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */

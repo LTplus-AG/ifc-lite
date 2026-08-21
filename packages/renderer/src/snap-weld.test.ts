@@ -106,3 +106,51 @@ test('#2199 a chain of distinct near-tolerance vertices does not collapse into o
   // and 3.6 tol, members joining the nearest leader within tol.
   assert.equal(clusters.size, 3);
 });
+
+/**
+ * Both tests above only ever vary the X coordinate (Y and Z sit at a shared
+ * 0 for every point in the batch), so the squared-distance sum `dx*dx +
+ * dy*dy + dz*dz` cannot be observed component-by-component: dropping the
+ * `dy` or `dz` term entirely (or duplicating `dx` in its place) leaves both
+ * suites green, since the dropped term's contribution was already zero.
+ * These pin each axis independently, the way `aabb.test.ts` and
+ * `spatial-index-builder.test.ts` already do for their own distance/bounds
+ * math.
+ *
+ * Separation is deliberately 1.5*tol, not something larger: the hash-grid
+ * probe already widens by +-tol around each point (`cell = 2*tol`), so a
+ * separation of, say, 3*tol lands the two points in non-overlapping buckets
+ * and gets rejected by the grid lookup alone -- before the (possibly
+ * mutated) squared-distance check ever runs. 1.5*tol stays inside the
+ * probed bucket range while still exceeding tol, so only the final `dSq`
+ * comparison can reject it.
+ */
+test('#2199 a Y-only separation beyond tolerance keeps points apart', () => {
+  // x and z identical; only y differs, past tol but within the grid probe
+  // range. If dy dropped out of the squared distance, this pair would
+  // incorrectly weld.
+  const flat = [5, 0, -5, 5, 1.5 * TOL, -5];
+  const { ids } = weldVertices(flat, 0, 0, 0, TOL);
+  assert.notEqual(ids[0], ids[1], 'points 1.5*TOL apart on Y alone must not weld');
+});
+
+test('#2199 a Z-only separation beyond tolerance keeps points apart', () => {
+  // x and y identical; only z differs, past tol but within the grid probe
+  // range. If dz dropped out of the squared distance, this pair would
+  // incorrectly weld.
+  const flat = [5, -5, 0, 5, -5, 1.5 * TOL];
+  const { ids } = weldVertices(flat, 0, 0, 0, TOL);
+  assert.notEqual(ids[0], ids[1], 'points 1.5*TOL apart on Z alone must not weld');
+});
+
+test('#2199 a Y-only or Z-only separation within tolerance still welds', () => {
+  // The positive sibling of the two tests above: small enough on Y or Z
+  // alone that a correct 3-axis distance welds them.
+  const flatY = [5, 0, -5, 5, 0.5 * TOL, -5];
+  const { ids: idsY } = weldVertices(flatY, 0, 0, 0, TOL);
+  assert.equal(idsY[0], idsY[1], 'points 0.5*TOL apart on Y alone must weld');
+
+  const flatZ = [5, -5, 0, 5, -5, 0.5 * TOL];
+  const { ids: idsZ } = weldVertices(flatZ, 0, 0, 0, TOL);
+  assert.equal(idsZ[0], idsZ[1], 'points 0.5*TOL apart on Z alone must weld');
+});

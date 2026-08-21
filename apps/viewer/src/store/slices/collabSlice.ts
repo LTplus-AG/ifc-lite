@@ -1100,8 +1100,9 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     // and this function then sailed on regardless, wiring up
     // `remoteApplyTeardown` for a session nothing still tracks and ending
     // with a `set({ collabSession: session, ... })` that revived a session
-    // the user had explicitly left. Same guard as the six checks above,
-    // moved to cover the one block that had none.
+    // the user had explicitly left. Same guard as every other
+    // `collabRoomId`-vs-`roomId` re-check earlier in `startCollab`, added
+    // for the one block that had none.
     if (get().collabRoomId !== roomId) {
       session.dispose();
       return;

@@ -6,9 +6,9 @@
  * Async-interleaving defect: `stopCollab()` racing an in-flight `startCollab`.
  *
  * `startCollab` guards its await points against a *newer* start/stop
- * happening while it was suspended — six separate `get().collabRoomId ===
- * roomId` / `!== roomId` checks between the session-creation call and the
- * end of the function (collabSlice.ts, roughly lines 729-1090). But the
+ * happening while it was suspended — a dozen separate `get().collabRoomId
+ * === roomId` / `!== roomId` checks between the session-creation call and
+ * the end of the function (collabSlice.ts). But the
  * FINAL block — `remoteApplyTeardown = attachRemoteApply(...)`, the
  * annotation-sync wiring, and the closing
  * `set({ collabSession: session, collabConnecting: false, ... })` — has no
@@ -50,7 +50,7 @@ import { register } from 'node:module';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-register('./collab-session-race-hook.mjs', import.meta.url);
+register('../../test/collab-session-race-hook.mjs', import.meta.url);
 
 import { createModelSlice, type ModelSlice, type ModelCrossSliceState } from './modelSlice.js';
 import { createDataSlice, type DataSlice, type DataCrossSliceState } from './dataSlice.js';
@@ -97,8 +97,26 @@ function buildState() {
     ...modelSlice,
     ...dataSlice,
     ...collabSlice,
+    // uiSlice's real action is not under test; `startCollab` only calls it
+    // when `canCollabEdit()` is false, which is not this test's path
+    // (role: 'admin'), but it must exist to type-check the call site.
     setEditEnabled: () => {},
     mutationViews: new Map(),
+    // `ModelCrossSliceState` — fields other slices own that `modelSlice`'s
+    // actions write to, so `TestState` requires them but no creator spread
+    // above supplies them. Same enumeration as the sibling
+    // `collabSlice.entry-race.test.ts`; keep the two in step.
+    addElementModelId: null,
+    addElementStoreyId: null,
+    selectedEntityId: null,
+    selectedEntityIds: new Set(),
+    selectedStoreys: new Set(),
+    hiddenEntities: new Set(),
+    isolatedEntities: null,
+    ghostExceptEntities: null,
+    classFilter: null,
+    hiddenEntitiesByModel: new Map(),
+    isolatedEntitiesByModel: new Map(),
     pinboardEntities: new Set(),
     hierarchyBasketSelection: new Set(),
   } as TestState;

@@ -173,11 +173,33 @@ report that you bounded it. Mutate the halves separately; they fail differently
 
 Before touching an issue:
 
-1. `gh issue view <n> --json assignees,title` — **if someone else is assigned, it is theirs.** Do not start. If you think it is stalled or you have context they lack, say so in a comment and let them answer.
+1. `gh issue view <n> --json assignees,title` — **if someone else is assigned, it is theirs.** See "Helping on someone else's issue" below for the two ways that changes.
 2. `gh pr list --search "<n>"` — an open PR referencing the issue is a claim even when nobody is assigned.
 3. If both are clear, `gh issue edit <n> --add-assignee <you>` **before** writing code, not when you open the PR. An assignment made at PR time claims nothing; the window it needed to cover has already closed.
 
 Check again immediately before opening the PR. A claim can appear while you work, and the second check is the cheap one.
+
+### Helping on someone else's issue
+
+Helping is welcome. **Taking over is not.** Two things make it help:
+
+**They accepted an offer.** Comment saying what you would do and wait for a yes. Silence is not a yes, and neither is a thumbs-up on something else. An assignee who is mid-development and reads "we have already built this in parallel" is being told, not asked.
+
+**It has genuinely gone quiet.** No commits on their branch and no word from them for about a week. Even then: comment first, say you will pick it up, and give them a couple of days to say otherwise. Then reassign explicitly rather than working in the shadows.
+
+What is help regardless, no permission needed:
+- Reviewing their PR, including finding real defects in it.
+- Diagnosing a failing check and posting the cause and the fix.
+- Answering a question they asked.
+- Reporting a defect you found in shipped code, even if it came from their PR.
+
+What is not help, however good the code:
+- Building a parallel implementation and announcing it afterwards.
+- Carrying an unraised branch that duplicates their work.
+- Pushing to their branch.
+- Opening a competing PR on their issue.
+
+If you have already built something before noticing, say so plainly, hand it over, and let them decide whether to use it. That is recoverable. Landing it is not.
 
 When you find you have duplicated someone:
 
@@ -185,7 +207,9 @@ When you find you have duplicated someone:
 - Do not close the duplicate silently. Enumerate what it holds that the surviving one does not, so nothing is lost when it goes, and post that list on both.
 - Never push to a branch you do not own to "help". If a fix is a one-liner, say the one line in a comment.
 
-This rule exists because it was broken. Issue #2951 was filed by an external contributor, assigned to them, and implemented in #2952 — and #2970 arrived fifteen hours later implementing the same thing. They were right to object. The cost is not the wasted effort, it is that a contributor who did everything correctly watched their work get duplicated by the project they contributed to.
+This rule exists because it was broken, twice in two days, against the same external contributor. Issue #2951 was filed by them, assigned to them, and implemented in #2952 — and #2970 arrived fifteen hours later implementing the same thing. On #2670 they were assigned and mid-development when they were told a parallel implementation already existed.
+
+The cost is not the wasted effort. It is that a contributor who did everything correctly had to be the one to raise it, twice.
 
 Applies to every agent and every session, including short-lived subagents.
 

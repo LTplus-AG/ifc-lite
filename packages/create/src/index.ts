@@ -45,6 +45,14 @@ export {
   type SpatialZoneBuildResult,
   type SpatialZoneType,
 } from './in-store/spatial-zone.js';
+export {
+  applyStylesInStore,
+  collectLeafRepresentationItems,
+  type ApplyStyleOptions,
+  type ApplyStyleResult,
+  type StyleBatch,
+  type SurfaceStyleColor,
+} from './in-store/apply-style.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';

@@ -1,5 +1,23 @@
 # @ifc-lite/data
 
+## 3.4.0
+
+### Minor Changes
+
+- [#2753](https://github.com/LTplus-AG/ifc-lite/pull/2753) [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2) Thanks [@mpancera](https://github.com/mpancera)! - Index `IfcRelConnectsPortToElement` and `IfcRelConnectsPorts`, so plant topology is traversable.
+  
+  The ports themselves were always parsed — they are `IfcProduct` subtypes and land in the `EntityTable` like any other product — but neither relationship was in the index, so nothing recorded which element a port belonged to or which port it was joined to. A distribution system therefore read as a set of unrelated parts, and there was no way to answer "what is this pump connected to" from the store.
+  
+  - `RelationshipType` gains `ConnectsPortToElement = 44` and `ConnectsPorts = 45`, keeping the existing 40-range grouping for connection relationships.
+  - Both need their own branch in `extractRelFast`: their two ends are single references at attributes 4 and 5, which neither existing branch reads. The default branch takes attribute 5 as a list, and the `IfcRelConnectsElements` branch skips one attribute first because that entity carries an optional `ConnectionGeometry` ahead of its ends.
+  - `IfcRelConnectsPorts.RealizingElement` (the optional element that realises a connection, e.g. a length of duct) is deliberately not read. It is a third party to the connection rather than one of its two ends, and treating it as one would invent an edge between a port and that element.
+  
+  A plant is walked as element → `ConnectsPortToElement` inverse → its ports → `ConnectsPorts` → the opposite ports → `ConnectsPortToElement` forward → their elements.
+
+### Patch Changes
+
+- [#2904](https://github.com/LTplus-AG/ifc-lite/pull/2904) [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Corrected the `towgs84` Helmert-transform rotation signs for EPSG:31370 (Belgian Lambert 72) and EPSG:3021 (Sweden RT90), and added the missing `towgs84` clause for EPSG:2065 (S-JTSK (Ferro) / Krovak) in the bundled EPSG index. epsg.io's `.proj4` output is not consistent about the Position Vector vs. Coordinate Frame rotation convention, and a rotation triplet published under the wrong convention is syntactically valid but silently mispositions the transform by tens to hundreds of metres.
+
 ## 3.3.0
 
 ### Minor Changes

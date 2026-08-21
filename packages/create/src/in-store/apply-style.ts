@@ -161,8 +161,6 @@ const REPRESENTATION_ITEMS_INDEX = 3;     // IfcShapeRepresentation.Items
 const MAPPED_ITEM_SOURCE_INDEX = 0;       // IfcMappedItem.MappingSource
 const MAPPED_REPRESENTATION_INDEX = 1;    // IfcRepresentationMap.MappedRepresentation
 const STYLED_ITEM_TARGET_INDEX = 0;       // IfcStyledItem.Item
-const STYLED_ITEM_STYLES_INDEX = 1;       // IfcStyledItem.Styles
-const SURFACE_STYLE_STYLES_INDEX = 2;     // IfcSurfaceStyle.Styles
 
 /**
  * Index of a named attribute on a class, resolved against the bundled schema
@@ -347,6 +345,10 @@ export function applyStylesInStore(
 
     const style = emitSurfaceStyle(editor, schema, batch.color, batch.name);
     const styleRef = `#${style.styleRefId}`;
+    const chain: AuthoredChain = {
+      styleId: style.surfaceStyleId, chainIds: style.chainIds, styledItemIds: [],
+    };
+    authoredChains.set(editor, [...(authoredChains.get(editor) ?? []), chain]);
 
     const styledItemIds: number[] = [];
     const replacedStyledItemIds: number[] = [];
@@ -360,6 +362,7 @@ export function applyStylesInStore(
       const styled = editor.addEntity('IfcStyledItem', [`#${item}`, [styleRef], null]);
       styledBy.set(item, styled.expressId);
       styledItemIds.push(styled.expressId);
+      chain.styledItemIds.push(styled.expressId);
     }
 
     return {
@@ -371,7 +374,7 @@ export function applyStylesInStore(
     };
   });
 
-  sweepUnreferencedStyles(editor);
+  sweepAuthoredChains(editor);
 
   // A styled item can be replaced after its batch returned — by a later batch,
   // or by a later call entirely. Report what is actually still in the file.
@@ -388,59 +391,56 @@ export function applyStylesInStore(
 }
 
 /**
- * Remove overlay-authored style chains that nothing points at any more.
+ * Style chains this module authored, per editor, and the styled items each was
+ * created for.
  *
- * Keyed on "is this style referenced" rather than on bookkeeping kept during
- * one pass, because the orphan does not always appear within one pass: colour a
- * wall red and then recolour it green in a second `apply`, and the first call's
- * chain is stranded with the tombstone set from that call long gone.
+ * Kept rather than inferred. Deciding "is this style garbage" by reading the
+ * overlay was wrong three ways: it could not see `setPositionalAttribute` edits
+ * (`getNewEntities` returns creation-time attributes, while the exporter
+ * applies positional mutations on top), so it deleted live styles and kept dead
+ * ones; it removed a chain's shading and colour without checking whether
+ * another style still used them; and it collected any overlay `IfcSurfaceStyle`
+ * at all, including chains a caller had authored with `bim.store.addEntity` and
+ * not yet attached. All three needed a caller using `bim.store.*` alongside
+ * `bim.style`, which is public API.
  *
- * Only overlay-created entities are considered. A style that came out of the
- * source file may be referenced by records this module never looked at, so
- * leaving it is the only safe answer.
+ * A `WeakMap` because it has to outlive one call — recolouring in a second
+ * `apply` is exactly the case per-call bookkeeping could not reach — without
+ * keeping a finished editor alive.
  */
-function sweepUnreferencedStyles(editor: StoreEditor): void {
-  // Removing an overlay-created entity drops it from newEntities, so presence
-  // in this list is liveness.
-  const created = editor.getNewEntities();
-  const byId = new Map(created.map(e => [e.expressId, e]));
+const authoredChains = new WeakMap<StoreEditor, AuthoredChain[]>();
 
-  const referenced = new Set<number>();
-  for (const entity of created) {
-    if (entity.type.toUpperCase() !== 'IFCSTYLEDITEM') continue;
-    for (const ref of refList(entity.attributes?.[STYLED_ITEM_STYLES_INDEX])) {
-      referenced.add(ref);
-      // An IFC2X3 styled item points at the assignment, which points at the style.
-      const assignment = byId.get(ref);
-      if (assignment?.type.toUpperCase() === 'IFCPRESENTATIONSTYLEASSIGNMENT') {
-        for (const inner of refList(assignment.attributes?.[0])) referenced.add(inner);
-      }
-    }
-  }
-
-  for (const entity of created) {
-    if (entity.type.toUpperCase() !== 'IFCSURFACESTYLE') continue;
-    if (referenced.has(entity.expressId)) continue;
-    for (const id of chainOf(entity, byId)) editor.removeEntity(id);
-  }
+interface AuthoredChain {
+  /** The `IfcSurfaceStyle`. */
+  styleId: number;
+  /** Every entity `emitSurfaceStyle` created for it, including the style. */
+  chainIds: number[];
+  /** The `IfcStyledItem` entities authored against it. */
+  styledItemIds: number[];
 }
 
-/** A surface style and the shading, colour and assignment entities only it uses. */
-function chainOf(
-  style: { expressId: number; attributes?: IfcAttributeValue[] },
-  byId: Map<number, { expressId: number; type: string; attributes?: IfcAttributeValue[] }>,
-): number[] {
-  const ids = [style.expressId];
-  for (const shadingId of refList(style.attributes?.[SURFACE_STYLE_STYLES_INDEX])) {
-    const shading = byId.get(shadingId);
-    if (!shading) continue;
-    ids.push(shadingId);
-    const colour = asRef(shading.attributes?.[0]);
-    if (colour !== null && byId.has(colour)) ids.push(colour);
+/**
+ * Drop the chains whose every styled item is gone.
+ *
+ * Liveness is membership in the overlay: removing an overlay-created entity
+ * deletes it from `newEntities`, so `getNewEntity` answering null is the whole
+ * test. Nothing here reads an attribute, which is what makes it immune to a
+ * caller repointing one of these styled items — that leaves the chain looking
+ * referenced, so it survives. Keeping a chain that turned out to be garbage is
+ * the safe direction; removing one still pointed at writes a dangling
+ * reference into the file.
+ */
+function sweepAuthoredChains(editor: StoreEditor): void {
+  const chains = authoredChains.get(editor);
+  if (!chains || chains.length === 0) return;
+
+  const surviving: AuthoredChain[] = [];
+  for (const chain of chains) {
+    if (chain.styledItemIds.some(id => editor.getNewEntity(id) !== null)) {
+      surviving.push(chain);
+      continue;
+    }
+    for (const id of chain.chainIds) editor.removeEntity(id);
   }
-  for (const [id, entity] of byId) {
-    if (entity.type.toUpperCase() !== 'IFCPRESENTATIONSTYLEASSIGNMENT') continue;
-    if (refList(entity.attributes?.[0]).includes(style.expressId)) ids.push(id);
-  }
-  return ids;
+  authoredChains.set(editor, surviving);
 }

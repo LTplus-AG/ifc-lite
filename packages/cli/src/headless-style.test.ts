@@ -228,6 +228,47 @@ describe('bim.style.apply', () => {
   });
 });
 
+describe('bim.style alongside hand-authored overlay entities', () => {
+  const addStyleChain = (bim: Awaited<ReturnType<typeof loadModel>>, name: string) => {
+    const add = (type: string, attributes: unknown[]) =>
+      bim.store.addEntity('default', { type, attributes } as never);
+    const colour = add('IfcColourRgb', [null, { real: 1 }, { real: 0 }, { real: 0 }]);
+    const shading = add('IfcSurfaceStyleShading', [`#${colour.expressId}`, { real: 0 }]);
+    return add('IfcSurfaceStyle', [name, '.BOTH.', [`#${shading.expressId}`]]);
+  };
+
+  it('does not collect a style the caller authored and has not attached yet', async () => {
+    // Deciding what is garbage by scanning the overlay swept anything with no
+    // styled item pointing at it, including a chain the caller was still
+    // assembling. Only chains this module authored are its to remove.
+    const bim = await loadModel();
+    const mine = addStyleChain(bim, 'HandAuthored');
+
+    bim.style.apply(bim.query().byType('IfcWall').refs(), '#00ff00');
+    expect(exportStep(bim)).toMatch(new RegExp(`^#${mine.expressId}=`, 'm'));
+  });
+
+  it('writes no dangling style reference after a styled item is repointed', async () => {
+    // getNewEntities reports attributes as created, while the exporter applies
+    // setPositionalAttribute on top. Reading the former to decide what is still
+    // referenced made the two disagree: a live style was removed and the file
+    // kept an unresolvable reference.
+    const bim = await loadModel();
+    const mine = addStyleChain(bim, 'HandAuthored');
+    const first = bim.style.apply(bim.query().byType('IfcWall').refs(), '#0000ff');
+
+    bim.store.setPositionalAttribute(
+      { modelId: 'default', expressId: first.styledItemIds[0] }, 1, [`#${mine.expressId}`],
+    );
+    bim.style.apply(bim.query().byType('IfcAirTerminal').refs(), '#ffff00');
+
+    const step = exportStep(bim);
+    const referenced = [...step.matchAll(/IFCSTYLEDITEM\(#\d+,\(#(\d+)\)/g)].map(m => m[1]);
+    const dangling = referenced.filter(id => !new RegExp(`^#${id}=`, 'm').test(step));
+    expect(dangling).toEqual([]);
+  });
+});
+
 describe('bim.style schema target', () => {
   it('builds the chain for the schema the file will be written as', async () => {
     // The style shape is decided when the style is authored, and the export

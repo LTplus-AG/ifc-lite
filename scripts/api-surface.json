@@ -1729,6 +1729,7 @@
     "WhenExpression: type",
     "WhenValue: type",
     "WidgetNode: type",
+    "activeFlavorPointer: function",
     "assertMethodCall: function",
     "buildAuthoringContract: function",
     "buildBundleFromFiles: function",

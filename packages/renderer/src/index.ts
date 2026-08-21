@@ -124,6 +124,7 @@ import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
 import { Picker } from './picker.js';
 import { MathUtils, viewBasis } from './math.js';
+import type { Vec3 as Vec3Type } from './types.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -160,6 +161,9 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
+import { ShadowPass } from './shadow-pass.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
+import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
@@ -266,6 +270,14 @@ export class Renderer {
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
     private skyPass: SkyPass | null = null;
+    // Sun shadow-map depth pre-pass (#2670, Phase 2) — created lazily on the
+    // first frame that enables `RenderOptions.sunShadows`. Off by default.
+    private shadowPass: ShadowPass | null = null;
+    // Whether the shadow map was wired into the environment bind group last
+    // frame — lets a toggle-off write `enabled = 0` and drop the depth view
+    // exactly once instead of every frame.
+    private shadowsWired = false;
+    private shadowScratch = new Float32Array(24); // lightViewProj(16) + params(4) + params2(4)
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
         enabled: false,
         strength: 1,
@@ -1281,6 +1293,63 @@ export class Renderer {
     }
 
     /**
+     * The batched occluders the sun shadow pass should cast, filtered to the same
+     * visibility the colour pass draws (#2670, Phase 2b). Without filtering every
+     * batch casts. With hide/isolate active a fully-hidden batch is dropped and a
+     * partially-hidden OPAQUE batch casts only its visible subset via the SAME
+     * cached partial sub-batch the colour pass renders (shared cache key
+     * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
+     * phantom shadow from an individually-hidden element in a shared batch.
+     *
+     * Transparent (glass-like) partially-hidden parents are left to the collector's
+     * material-alpha filter — they don't cast at all, so building a visible subset
+     * for them would waste a clone (and diverge from the colour pass's promotion
+     * split keys). Fully-visible transparent batches pass through unchanged and the
+     * collector drops them.
+     */
+    private shadowOccluderBatches(
+        options: RenderOptions,
+        device: GPUDevice,
+        hasVisibilityFiltering: boolean,
+    ): BatchedMesh[] {
+        const all = this.scene.getBatchedMeshes();
+        if (!hasVisibilityFiltering) return all;
+        const pipeline = this.pipeline;
+
+        const out: BatchedMesh[] = [];
+        for (const batch of all) {
+            const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
+            if (vis.kind === 'none') continue; // fully hidden → does not cast
+            if (vis.kind === 'all') {
+                out.push(batch); // fully visible → its own buffers
+                continue;
+            }
+            // Partially hidden. Transparent parents don't cast (collector's alpha
+            // filter) — skip rather than build a wasted, divergent-key clone.
+            if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
+            // Opaque partial: reuse the colour pass's cached sub-batch. The key is
+            // visibility-content-independent; `_partialBatchEpoch` invalidates it on
+            // any hide/isolate or override change, so the clone is always current.
+            // Without a pipeline the renderer isn't drawing, so skip (the shadow
+            // pass won't run either); casting the whole parent would be wrong.
+            if (!pipeline) continue;
+            const sub = this.scene.getOrCreatePartialBatch(
+                `${batch.colorKey}:${batch.id}`,
+                batch.colorKey,
+                vis.visibleIds,
+                device,
+                pipeline,
+                this._partialBatchEpoch,
+            );
+            // A cold parent yields an empty partial (its residency restore is queued
+            // by the colour pass); skip this frame — the collector drops zero-index
+            // draws anyway, and the subset casts once resident.
+            if (sub && sub.indexCount > 0) out.push(sub);
+        }
+        return out;
+    }
+
+    /**
      * Create a GPU Mesh from MeshData (lazy creation for selection highlighting)
      * This is called on-demand when a mesh is selected, avoiding 2x buffer creation during streaming
      */
@@ -1998,6 +2067,123 @@ export class Renderer {
 
             // Now record draw commands
             const encoder = device.createCommandEncoder();
+
+            // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
+            // in; when off the hot path pays only this check and (once) an
+            // enabled=0 reset on toggle-off. Runs BEFORE the colour pass (its
+            // own complete depth-only sub-pass on the same encoder); the colour
+            // pass then samples the map via the environment bind group. Every
+            // geometry path both casts (collectShadowOccluders) and receives
+            // (the shared main-family shader), so no part of the model silently
+            // stops shadowing.
+            const shadowOpts = options.sunShadows;
+            let shadowsThisFrame = false;
+            if (shadowOpts?.enabled) {
+                const bounds = this.getModelBounds();
+                if (bounds) {
+                    const resolution = shadowOpts.resolution ?? 2048;
+                    if (!this.shadowPass) {
+                        this.shadowPass = new ShadowPass(device, resolution);
+                    } else {
+                        this.shadowPass.setResolution(resolution);
+                    }
+                    const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
+                    const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    // Lateral shadow fit. AT REST: fit to the camera frustum
+                    // clipped to the model (maintainer #1) so a small building on
+                    // a large site keeps sharp shadows instead of spending the
+                    // map on distant terrain. DURING INTERACTION: fall back to a
+                    // whole-bounds fit — it is camera-INDEPENDENT, so orbiting or
+                    // scroll-zooming can't make the focus box breathe and drop
+                    // receivers off the map edge (which read as chunks of shadow
+                    // vanishing, #2670 follow-up). Depth always spans the whole
+                    // model so up-sun occluders keep casting.
+                    let focusCorners: readonly Vec3Type[] | undefined;
+                    if (!interacting) {
+                        const camEye = this.camera.getPosition();
+                        const camBasisFit = viewBasis(camEye, this.camera.getTarget(), this.camera.getUp());
+                        focusCorners = cameraFrustumFocusCorners({
+                            eye: camEye,
+                            forward: camBasisFit.forward,
+                            right: camBasisFit.right,
+                            up: camBasisFit.up,
+                            fovY: this.camera.getFOV(),
+                            aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                            ortho: this.camera.getProjectionMode() === 'orthographic',
+                            orthoHalfHeight: this.camera.getOrthoSize(),
+                            boundsMin,
+                            boundsMax,
+                        }) ?? undefined;
+                    }
+                    const sun = resolveEnvironment(options.environment).sunDirection;
+                    const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
+                    const occluders = collectShadowOccluders(
+                        {
+                            // Cast from the same visibility the colour pass draws: a
+                            // fully-hidden batch is dropped and a partially-hidden one
+                            // casts only its visible subset (the same cached partial
+                            // sub-batch the colour pass renders), so an
+                            // individually-hidden element in a shared batch stops
+                            // casting instead of throwing a phantom shadow.
+                            batches: this.shadowOccluderBatches(options, device, hasVisibilityFiltering),
+                            instanced: this.scene.getInstancedTemplates(),
+                            textured: this.scene.getTexturedMeshes(),
+                            // Individual meshes cast too (Renderer.addMesh() /
+                            // no-batch fallback); the collector skips hydrated
+                            // selection copies so batched scenes don't double-cast.
+                            meshes: this.scene.getMeshes(),
+                        },
+                        { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds ?? undefined },
+                    );
+                    // Cast the same cut the colour pass draws: geometry a
+                    // section plane / crop box removed from view must stop
+                    // casting too, or the sliced-off roof keeps shadowing the
+                    // floor it no longer covers. `sectionPlaneData` already
+                    // folds in the terrain clip, so that is covered as well.
+                    this.shadowPass.render(encoder, fit.lightViewProj, occluders, {
+                        section: sectionPlaneData?.enabled
+                            ? {
+                                normal: sectionPlaneData.normal,
+                                distance: sectionPlaneData.distance,
+                                flipped: options.sectionPlane?.flipped === true,
+                            }
+                            : null,
+                        box: options.clipBox?.enabled
+                            ? { min: options.clipBox.min, max: options.clipBox.max }
+                            : null,
+                    });
+
+                    // Shadow uniform: light matrix + sampling params. The kernel
+                    // width follows the sun's angular size (physical, ~0.53°
+                    // like Blender's Sun lamp). Bias scales with the kernel: a
+                    // wider penumbra samples farther, so the normal offset must
+                    // grow with it or the kernel edge self-shadows (the hardware
+                    // slope bias in ShadowPass handles the grazing-angle case).
+                    const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
+                    const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
+                    const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
+                    const normalBias = texelWorld * (2.0 + pcfRadius);
+                    const s = this.shadowScratch;
+                    s.set(fit.lightViewProj.m, 0);
+                    s[16] = 1 / resolution;  // texelSize
+                    s[17] = 1;               // enabled
+                    s[18] = normalBias;
+                    s[19] = pcfRadius;
+                    s[20] = 0.0006;          // depthBias (reverse-Z clip units)
+                    s[21] = 0; s[22] = 0; s[23] = 0;
+                    this.pipeline.updateShadowUniform(s);
+                    this.pipeline.setShadowDepthView(this.shadowPass.getDepthTextureView());
+                    this.shadowsWired = true;
+                    shadowsThisFrame = true;
+                }
+            }
+            if (!shadowsThisFrame && this.shadowsWired) {
+                // Toggle-off: disable sampling and release the depth view once.
+                this.shadowScratch[17] = 0;
+                this.pipeline.updateShadowUniform(this.shadowScratch);
+                this.pipeline.setShadowDepthView(null);
+                this.shadowsWired = false;
+            }
 
             // Set up MSAA rendering if enabled
             const msaaView = this.pipeline.getMultisampleTextureView();
@@ -3524,6 +3710,8 @@ export class Renderer {
         this.edlPass = null;
         this.skyPass?.destroy();
         this.skyPass = null;
+        this.shadowPass?.destroy();
+        this.shadowPass = null;
 
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().

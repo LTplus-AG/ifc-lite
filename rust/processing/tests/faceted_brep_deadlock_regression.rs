@@ -20,6 +20,7 @@
 //! worker forever, so the timeout fails the test instead of hanging CI.
 
 use std::sync::mpsc;
+use std::sync::mpsc::RecvTimeoutError;
 use std::time::Duration;
 
 const FIXTURE: &str = concat!(
@@ -60,10 +61,18 @@ fn multithreaded_faceted_brep_pipeline_does_not_deadlock() {
         Ok(()) => {
             let _ = worker.join();
         }
-        Err(_) => panic!(
+        // Distinguish the variants: `recv_timeout` returns Err for Disconnected
+        // as well as Timeout, so a PANIC in the worker would otherwise be
+        // reported as a deadlock and send the reader to #1572's `try_lock` fix
+        // for a bug that is not the one they have (#2945).
+        Err(RecvTimeoutError::Timeout) => panic!(
             "process_geometry deadlocked on a faceted-brep-heavy model — the \
              nested-par_iter worker-point-cache re-entrancy regression is back \
              (#1572; fix is `try_lock` in processor/mod.rs)"
+        ),
+        Err(RecvTimeoutError::Disconnected) => panic!(
+            "process_geometry's worker PANICKED rather than deadlocking, so #1572 \
+             is not implicated; its panic is printed above"
         ),
     }
 }

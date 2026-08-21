@@ -50,6 +50,7 @@ import {
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
+import { roleCanEdit } from '@/store/slices/collabSlice';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -122,6 +123,20 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
   // Subscribe to mutationViews directly to trigger re-render when views are registered
   const mutationViews = useViewerStore((s) => s.mutationViews);
+  // Collab role gate, two layers deep. (1) canCollabEdit is injected straight into
+  // BulkQueryEngine's constructor (see mutation-guard.ts): bulk edits reach the
+  // mutation view's setProperty/setEntityType directly via applyAction, bypassing
+  // the store's own setProperty action (and its canCollabEdit() check) entirely, so
+  // the engine itself refuses a write for a viewer/commenter role as containment.
+  // (2) canEditInSession mirrors that same role check here in the component, the
+  // same way MainToolbar/AuthorTab gate Edit mode, so the Execute button is disabled
+  // and never gets clicked in the first place. Both layers read the one shared
+  // `roleCanEdit` rule that `canCollabEdit()` is itself built from, so a future
+  // role change cannot leave them disagreeing. null role = single-user, always
+  // editable.
+  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
+  const collabEditRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = roleCanEdit(collabEditRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -315,9 +330,10 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       mutationView,
       dataStore.spatialHierarchy || null,
       dataStore.properties || null,
-      dataStore.strings || null
+      dataStore.strings || null,
+      canCollabEdit
     );
-  }, [open, selectedModel, selectedModelId, mutationViews]);
+  }, [open, selectedModel, selectedModelId, mutationViews, canCollabEdit]);
 
   // Build selection criteria using pre-computed typeEnum mapping (no entity scan needed)
   const currentCriteria = useMemo((): SelectionCriteria => {
@@ -557,7 +573,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
 
   // Execute bulk update — chunked so the UI stays responsive with a live progress bar
   const handleExecute = useCallback(async () => {
-    if (!queryEngine || liveMatchCount === 0) return;
+    if (!queryEngine || liveMatchCount === 0 || !canEditInSession) return;
 
     setIsExecuting(true);
     setExecuteResult(null);
@@ -622,7 +638,7 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
       setIsExecuting(false);
       setExecuteProgress(null);
     }
-  }, [queryEngine, liveMatchCount, currentCriteria, buildAction, bumpMutationVersion]);
+  }, [queryEngine, liveMatchCount, canEditInSession, currentCriteria, buildAction, bumpMutationVersion]);
 
   // Reset form
   const handleReset = useCallback(() => {
@@ -1030,7 +1046,8 @@ export function BulkPropertyEditor({ trigger }: BulkPropertyEditorProps) {
               </Button>
               <Button
                 onClick={handleExecute}
-                disabled={liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                disabled={!canEditInSession || liveMatchCount === 0 || !targetProp || (actionType !== 'SET_ATTRIBUTE' && !targetPset) || !executeDirty}
+                title={canEditInSession ? undefined : 'Editing requires editor access in this shared session'}
               >
                 <Play className="h-4 w-4 mr-2" />
                 Apply to {liveMatchCount} entities

@@ -14,6 +14,63 @@
 //! behaviours shipped side by side in the same file.
 //!
 //! This is the one place that decides. Use [`fixture_or_skip!`] from a test.
+//!
+//! A skip here is a real `eprintln!`, but `cargo test` captures stdout/stderr
+//! for a test that passes and only releases the buffer on failure -- so on a
+//! plain `cargo test` (no `--nocapture`) the skip message is written and then
+//! thrown away, and the only trace of it is the test showing `ok` like every
+//! other one. That is issue #2802: a passing `fixture_or_skip!` test looks
+//! identical, in the only output anyone reads, to one that actually asserted
+//! something. `IFC_LITE_REQUIRE_FIXTURES=1` closes that for CI: with it set,
+//! a missing fixture is a hard `panic!` (a real failure, never captured away)
+//! instead of a skip. CI already runs `pnpm fixtures` before `cargo test`, so
+//! setting this var there costs nothing on a correct run and turns fixture
+//! drift into a loud failure instead of a quietly-smaller test suite. Unset
+//! (the default), behavior is unchanged: a fixture-less local `cargo test` is
+//! still a legitimate, silently-skipping workflow.
+//!
+//! The value is parsed strictly (see [`require_fixtures`]): only `"1"` turns
+//! the gate on and only unset/empty/`"0"` leave it off. An unrecognised value
+//! -- `true`, `yes`, `TRUE` -- panics instead of being treated as either,
+//! because falling through to "off" for a typo would recreate exactly the
+//! silent-pass problem this module exists to close.
+
+/// Parse `IFC_LITE_REQUIRE_FIXTURES`, failing closed on the config itself.
+///
+/// Unset, empty, or `"0"` means "off" (the historical default: skip). `"1"`
+/// means "on". Anything else -- `true`, `yes`, `TRUE`, a typo -- panics rather
+/// than being treated as either value. A `== Ok("1")` check that let
+/// unrecognised strings fall through to "off" would land the misconfiguration
+/// on the permissive side: `IFC_LITE_REQUIRE_FIXTURES=true` in a workflow file
+/// would read as "gate enabled" while actually leaving every fixture test free
+/// to skip, silently and indistinguishably from the gate working -- exactly
+/// the failure mode this module exists to remove. Guessing "off" for an
+/// unrecognised value would reproduce that; refusing to guess does not.
+fn require_fixtures() -> bool {
+    require_fixtures_from(std::env::var("IFC_LITE_REQUIRE_FIXTURES"))
+}
+
+/// The pure decision behind [`require_fixtures`], taken as a parameter so
+/// tests can exercise every `Result<String, VarError>` shape (including
+/// `NotUnicode`) without mutating the real process environment -- `cargo
+/// test` runs this crate's tests on multiple threads that share one process,
+/// so setting `IFC_LITE_REQUIRE_FIXTURES` for one test would race every other
+/// test that calls [`require_fixtures`] concurrently.
+fn require_fixtures_from(var: Result<String, std::env::VarError>) -> bool {
+    match var {
+        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotUnicode(v)) => panic!(
+            "IFC_LITE_REQUIRE_FIXTURES={v:?} is not recognised (use \"1\" or \"0\") — \
+             refusing to guess, because guessing \"off\" would silently disable the gate"
+        ),
+        Ok(v) if v.is_empty() || v == "0" => false,
+        Ok(v) if v == "1" => true,
+        Ok(v) => panic!(
+            "IFC_LITE_REQUIRE_FIXTURES={v:?} is not recognised (use \"1\" or \"0\") — \
+             refusing to guess, because guessing \"off\" would silently disable the gate"
+        ),
+    }
+}
 
 /// Bytes of the catalogued fixture at `rel` (relative to `tests/models/`), or
 /// `None` when it has not been fetched.
@@ -23,11 +80,21 @@
 /// fixture setup, not an unfetched fixture, and it panics: treating those as
 /// absence would let a whole crate's tests skip while CI reported green, which
 /// is the exact failure mode this module exists to remove.
+///
+/// When `IFC_LITE_REQUIRE_FIXTURES=1` is set, a missing fixture panics too --
+/// see the module doc. Unset, empty, or `"0"` keeps the skip. Any other value
+/// (e.g. `true`, `yes`, a typo) is itself a hard error -- see
+/// [`require_fixtures`].
 pub(crate) fn fixture_opt(rel: &str) -> Option<Vec<u8>> {
     let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
     match std::fs::read(&path) {
         Ok(bytes) => Some(bytes),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if require_fixtures() {
+                panic!(
+                    "fixture {rel} not present and IFC_LITE_REQUIRE_FIXTURES=1 — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+                );
+            }
             eprintln!(
                 "skipping: fixture {rel} not present — run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
             );
@@ -49,4 +116,81 @@ macro_rules! fixture_or_skip {
             None => return,
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::require_fixtures_from;
+    use std::env::VarError;
+    use std::ffi::OsString;
+
+    /// A present-but-not-Unicode value must fail closed the same way an
+    /// unrecognised string does (panic), not fall through to "off" like an
+    /// unset variable would. Before this fix, `require_fixtures` matched
+    /// `Err(_) => false`, which treated `VarError::NotUnicode` the same as
+    /// `NotPresent` and silently disabled the gate for a misconfigured value
+    /// instead of panicking.
+    #[test]
+    fn not_unicode_is_rejected_not_treated_as_absent() {
+        let result = std::panic::catch_unwind(|| {
+            require_fixtures_from(Err(VarError::NotUnicode(OsString::from("\u{FFFD}"))))
+        });
+        assert!(
+            result.is_err(),
+            "non-Unicode value must panic, not silently disable the gate"
+        );
+    }
+
+    #[test]
+    fn not_present_is_off() {
+        assert!(!require_fixtures_from(Err(VarError::NotPresent)));
+    }
+
+    /// The gate's ON switch, which nothing pinned until #3014.
+    ///
+    /// Mutating the `Ok(v) if v == "1" => true` arm to `false` used to leave
+    /// the whole crate green: the one arm that turns drift detection on could
+    /// regress and CI would stay green forever. That is the failure
+    /// `fixture_or_skip!` exists to close, one level up -- the gate's own
+    /// on-switch had no gate.
+    ///
+    /// Deliberately no test-count here. A number would be true on the day it
+    /// was written and drift with every test added, which is the same
+    /// stale-comment trap this file's other docs avoid.
+    ///
+    /// Asserted in BOTH directions deliberately. `assert!(on)` alone is
+    /// satisfied by a mutation that hard-codes the arm to `true`, which is a
+    /// different bug with the same green: fixtures would then be demanded on
+    /// every developer machine, and the loud failure would be indistinguishable
+    /// from a real drift. Pinning "1" on AND "0"/"" off is what makes the pair
+    /// unfakeable by a constant.
+    #[test]
+    fn the_on_switch_is_on_and_the_off_values_are_off() {
+        assert!(
+            require_fixtures_from(Ok("1".to_string())),
+            "\"1\" must turn the gate ON; this is the arm whose regression \
+             silently disables drift detection"
+        );
+        assert!(
+            !require_fixtures_from(Ok("0".to_string())),
+            "\"0\" must turn the gate OFF, or the arm above could be a constant"
+        );
+        assert!(
+            !require_fixtures_from(Ok(String::new())),
+            "an empty value must be OFF, or the arm above could be a constant"
+        );
+    }
+
+    /// An unrecognised value must panic rather than be guessed either way.
+    /// Guessing "off" silently disables the gate; guessing "on" turns a typo
+    /// into a red build on every machine without the fixtures.
+    #[test]
+    fn an_unrecognised_value_is_rejected() {
+        let result =
+            std::panic::catch_unwind(|| require_fixtures_from(Ok("yes".to_string())));
+        assert!(
+            result.is_err(),
+            "an unrecognised value must panic, not be guessed"
+        );
+    }
 }

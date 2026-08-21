@@ -467,6 +467,16 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+
+      # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
+      # timeout, across all three spellings this repo uses. An audit that
+      # misreports is worse than no audit -- it turns "nobody checked" into
+      # "someone checked and it was fine" -- and the first version of that
+      # script shipped with both failure modes: an options bag inside a test
+      # BODY marked the test protected, and an apostrophe in a comment made it
+      # scan to EOF and drop the call from every count. This pins both.
+      - name: Check test-timeout audit
+        run: node --test scripts/audit-test-timeouts.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed
@@ -710,7 +720,30 @@ jobs:
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
+        # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
+        # so a missing one here is fixture drift, not a legitimate local skip
+        # (rust/export/src/test_support.rs) — make that a hard failure.
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test --workspace
+
+      # `parquet-bos` is OFF by default because arrow/parquet/zip do not target
+      # wasm32 cleanly (rust/export/Cargo.toml:33). The consequence is that
+      # `cargo test --workspace` above never COMPILES the module, let alone
+      # runs it: an off-by-default feature with no CI leg is dead code that
+      # looks maintained, and the first person to learn it had broken would be
+      # whoever enabled it (#2802).
+      #
+      # Its own step rather than `--all-features`, which would also switch on
+      # anything added later and make an unrelated feature's breakage read as
+      # this one's.
+      - name: Rust tests (parquet-bos feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-export --features parquet-bos
+
+      - name: Clippy (parquet-bos feature)
+        run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
 
   # Geometry watertightness / triangulation-invariance census.
   #

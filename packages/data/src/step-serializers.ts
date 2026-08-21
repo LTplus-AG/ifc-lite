@@ -180,13 +180,38 @@ export function serializeValue(value: StepValue): string {
  * value can never inject a physical line break into the line-oriented STEP
  * output (matching the export package's escaper) — a raw newline in a header
  * or attribute value would otherwise split one record across two lines.
+ *
+ * ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to the
+ * "basic graphic" range 32-126; every other character is a control directive
+ * (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte —
+ * buildingSMART's IFC string-encoding guidance states the same for
+ * IFC2X3/IFC4/IFC4X3. A reader that treats the file's bytes as ISO-8859-1 —
+ * the byte encoding the base standard and most real consumers assume — turns
+ * a raw UTF-8 multi-byte sequence into mojibake or a broken parse (reported,
+ * reproduced in real IFC tooling: IfcOpenShell#699/#1016, files rejected by
+ * Solibri). Matches `@ifc-lite/export`'s `escapeStepString`.
  */
 function escapeStepString(str: string): string {
-  return str
+  const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''")     // Single quote
     // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1F\x7F]+/g, ' '); // Collapse control chars
+  // Non-ASCII directive encoding, one character at a time. Must run AFTER
+  // backslash-doubling above: the directive's own backslashes are literal
+  // syntax the reader expects undoubled.
+  let out = '';
+  for (const ch of escaped) {
+    const cp = ch.codePointAt(0)!;
+    if (cp >= 32 && cp <= 126) {
+      out += ch;
+    } else if (cp <= 0xFFFF) {
+      out += `\\X2\\${cp.toString(16).toUpperCase().padStart(4, '0')}\\X0\\`;
+    } else {
+      out += `\\X4\\${cp.toString(16).toUpperCase().padStart(8, '0')}\\X0\\`;
+    }
+  }
+  return out;
 }
 
 /**
@@ -337,7 +362,22 @@ export function parseStepValue(str: string): StepValue {
 }
 
 /**
- * Parse a STEP list
+ * Parse a STEP list.
+ *
+ * Splits at top-level commas, tracking both paren/bracket nesting AND
+ * single-quoted string state (with `''` escapes). Without quote-tracking, a
+ * string member containing a literal comma — e.g. `('a,b','c')`, which any
+ * IfcLabel/IfcText value is free to contain — split mid-string: `'a,b'`
+ * became the two malformed tokens `'a` and `b'` instead of the one string
+ * `a,b`. Parens/brackets *inside* a quoted string (also legal STEP content)
+ * must likewise not perturb `depth`, hence checking `inString` first.
+ *
+ * Mirrors `splitTopLevel` in `@ifc-lite/parser`'s `source-header.ts`, which
+ * already had to solve this same problem for header fields and documented
+ * why: "FILE_DESCRIPTION items ... routinely contain commas ... inside
+ * quoted strings ... which a splitter that ignores quote state would
+ * mis-split." That reasoning applies equally to any STEP list, not just
+ * header fields — this generic parser had the same gap.
  */
 function parseStepList(str: string): StepValue[] {
   // Remove outer parentheses
@@ -348,12 +388,29 @@ function parseStepList(str: string): StepValue[] {
 
   const values: StepValue[] = [];
   let depth = 0;
+  let inString = false;
   let current = '';
 
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
 
-    if (char === '(' || char === '[') {
+    if (inString) {
+      current += char;
+      if (char === "'") {
+        if (inner[i + 1] === "'") {
+          current += "'";
+          i++;
+        } else {
+          inString = false;
+        }
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      inString = true;
+      current += char;
+    } else if (char === '(' || char === '[') {
       depth++;
       current += char;
     } else if (char === ')' || char === ']') {

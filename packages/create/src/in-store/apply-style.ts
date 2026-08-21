@@ -38,6 +38,28 @@ export interface ApplyStyleOptions {
    * tombstoned instead. Pass `false` to leave already-styled geometry alone.
    */
   replaceExisting?: boolean;
+  /**
+   * Style the geometry a type's occurrences share, rather than each occurrence
+   * (default `true`).
+   *
+   * Following `IfcMappedItem` to the `IfcRepresentationMap` is what makes one
+   * style cover every occurrence of a type, which is what you want colouring by
+   * IFC class. It is wrong for any other grouping: colouring by system, storey
+   * or property value, the shared geometry takes the colour of whichever batch
+   * touched it last, and occurrences in other groups change with it. Pass
+   * `false` to style the `IfcMappedItem` itself, one per occurrence.
+   */
+  followMappedItems?: boolean;
+  /**
+   * Schema the style chain is built for. Defaults to the store's own.
+   *
+   * `IfcStyledItem.Styles` holds `IfcPresentationStyleAssignment` on IFC2X3 and
+   * the `IfcSurfaceStyle` directly from IFC4 on, and this is decided when the
+   * style is authored, not when the file is written. Exporting to a different
+   * schema than the model was parsed from therefore needs the target passed in;
+   * otherwise the emitted records are invalid for the file they land in.
+   */
+  schema?: string;
 }
 
 export interface ApplyStyleResult {
@@ -154,6 +176,7 @@ export function collectLeafRepresentationItems(
   representationId: number,
   out: Set<number> = new Set(),
   depth = 0,
+  followMapped = true,
 ): Set<number> {
   if (depth > MAX_REPRESENTATION_DEPTH) return out;
   const entity = read(representationId);
@@ -162,21 +185,23 @@ export function collectLeafRepresentationItems(
   const type = entity.type.toUpperCase();
   if (type === 'IFCPRODUCTDEFINITIONSHAPE') {
     for (const rep of refList(entity.attributes[SHAPE_REPRESENTATIONS_INDEX])) {
-      collectLeafRepresentationItems(read, rep, out, depth + 1);
+      collectLeafRepresentationItems(read, rep, out, depth + 1, followMapped);
     }
     return out;
   }
   if (type === 'IFCSHAPEREPRESENTATION') {
     for (const item of refList(entity.attributes[REPRESENTATION_ITEMS_INDEX])) {
-      collectLeafRepresentationItems(read, item, out, depth + 1);
+      collectLeafRepresentationItems(read, item, out, depth + 1, followMapped);
     }
     return out;
   }
-  if (type === 'IFCMAPPEDITEM') {
+  if (type === 'IFCMAPPEDITEM' && followMapped) {
     const source = asRef(entity.attributes[MAPPED_ITEM_SOURCE_INDEX]);
     if (source === null) return out;
     const mapped = asRef(read(source)?.attributes[MAPPED_REPRESENTATION_INDEX]);
-    if (mapped !== null) collectLeafRepresentationItems(read, mapped, out, depth + 1);
+    if (mapped !== null) {
+      collectLeafRepresentationItems(read, mapped, out, depth + 1, followMapped);
+    }
     return out;
   }
   out.add(representationId);
@@ -251,10 +276,17 @@ export function applyStylesInStore(
   options: ApplyStyleOptions = {},
 ): ApplyStyleResult[] {
   const replaceExisting = options.replaceExisting ?? true;
+  const followMapped = options.followMappedItems ?? true;
+  const schema = options.schema ?? store.schemaVersion;
   const read = createReader(store, editor);
   const styledBy = indexExistingStyles(store, editor, read);
 
-  return batches.map(batch => {
+  /** Styled items this pass tombstoned, so an earlier batch's result can drop them. */
+  const tombstoned = new Set<number>();
+  /** Chain entities per batch, for taking a chain back out if nothing keeps it. */
+  const chains: Array<{ ids: number[] } | null> = [];
+
+  const results = batches.map(batch => {
     const items = new Set<number>();
     const productsWithoutGeometry: number[] = [];
 
@@ -269,7 +301,7 @@ export function applyStylesInStore(
         : asRef(entity?.attributes[repIndex]);
       const reached = representation === null
         ? new Set<number>()
-        : collectLeafRepresentationItems(read, representation);
+        : collectLeafRepresentationItems(read, representation, new Set(), 0, followMapped);
 
       if (reached.size === 0) {
         productsWithoutGeometry.push(product);
@@ -288,6 +320,7 @@ export function applyStylesInStore(
     }
 
     if (toStyle.length === 0) {
+      chains.push(null);
       return {
         surfaceStyleId: null,
         styledItemIds: [],
@@ -297,8 +330,9 @@ export function applyStylesInStore(
       };
     }
 
-    const style = emitSurfaceStyle(editor, store.schemaVersion, batch.color, batch.name);
+    const style = emitSurfaceStyle(editor, schema, batch.color, batch.name);
     const styleRef = `#${style.styleRefId}`;
+    chains.push({ ids: style.chainIds });
 
     const styledItemIds: number[] = [];
     const replacedStyledItemIds: number[] = [];
@@ -307,6 +341,7 @@ export function applyStylesInStore(
       const existing = styledBy.get(item);
       if (existing !== undefined) {
         editor.removeEntity(existing);
+        tombstoned.add(existing);
         replacedStyledItemIds.push(existing);
       }
       const styled = editor.addEntity('IfcStyledItem', [`#${item}`, [styleRef], null]);
@@ -321,5 +356,21 @@ export function applyStylesInStore(
       replacedStyledItemIds,
       keptExistingItemIds,
     };
+  });
+
+  // A later batch can take every item an earlier one styled. Without this the
+  // earlier batch reports styled items that no longer exist, and its colour
+  // chain stays in the file with nothing referencing it — the same orphan the
+  // empty-batch check above exists to prevent, one step further along.
+  return results.map((result, i) => {
+    const live = result.styledItemIds.filter(id => !tombstoned.has(id));
+    if (live.length === result.styledItemIds.length) return result;
+
+    const chain = chains[i];
+    if (live.length === 0 && chain) {
+      for (const id of chain.ids) editor.removeEntity(id);
+      return { ...result, styledItemIds: [], surfaceStyleId: null };
+    }
+    return { ...result, styledItemIds: live };
   });
 }

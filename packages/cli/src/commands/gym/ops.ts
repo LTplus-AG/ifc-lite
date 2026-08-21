@@ -13,7 +13,6 @@
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { PropertyValueType } from '@ifc-lite/data';
 import { propertyValueTypeOf } from '@ifc-lite/sdk';
 
 /** A single mutation op, applied cumulatively across `step` calls. */

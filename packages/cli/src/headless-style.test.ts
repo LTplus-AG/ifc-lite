@@ -72,6 +72,16 @@ describe('bim.style.apply', () => {
     expect(exportStep(bim)).toMatch(/IFCSURFACESTYLESHADING\(#\d+,0\.1\)/);
   });
 
+  it('honours the alpha pair of an #rrggbbaa string', async () => {
+    // hexToRgba discards those digits and takes alpha from its own argument,
+    // which is right for the viewer and wrong here: for a caller using the
+    // string form they are the only way to ask for transparency, and silently
+    // dropping them wrote an opaque style.
+    const bim = await loadModel();
+    bim.style.apply(bim.query().byType('IfcWall').refs(), '#ff000080');
+    expect(exportStep(bim)).toMatch(/IFCSURFACESTYLESHADING\(#\d+,0\.498\d*\)/);
+  });
+
   it('accepts every hex form bim.viewer.colorize accepts', async () => {
     // The two colour entry points are documented as counterparts, so a string
     // that paints in the viewer must not throw here.
@@ -105,6 +115,29 @@ describe('bim.style.apply', () => {
     // IFC does not allow.
     expect(result.styledItemIds).toHaveLength(1);
     expect(styledTargets(exportStep(bim))).toContain(MAPPED_SOLID);
+  });
+
+  it('styles one occurrence at a time when told not to follow mapped items', async () => {
+    // Following IfcMappedItem is right for colouring by IFC class and wrong for
+    // every other grouping: by system or storey, the shared geometry takes
+    // whichever colour ran last and drags unrelated occurrences with it.
+    const bim = await loadModel();
+    const [t1] = bim.query().byType('IfcAirTerminal').toArray()
+      .filter(t => t.name === 'T1')
+      .map(t => t.ref);
+
+    const shared = bim.style.apply([t1], '#ff0000');
+    expect(shared.styledItemIds).toHaveLength(1);
+    expect(styledTargets(exportStep(bim))).toContain(MAPPED_SOLID);
+
+    const perOccurrence = await loadModel();
+    const [only] = perOccurrence.query().byType('IfcAirTerminal').toArray()
+      .filter(t => t.name === 'T1')
+      .map(t => t.ref);
+    perOccurrence.style.apply([only], '#ff0000', { followMappedItems: false });
+
+    // The IfcMappedItem itself, not the solid every occurrence shares.
+    expect(styledTargets(exportStep(perOccurrence))).not.toContain(MAPPED_SOLID);
   });
 
   it('reports the product that has no geometry, and only that one', async () => {
@@ -174,6 +207,27 @@ describe('bim.style.apply', () => {
   });
 });
 
+describe('bim.style schema target', () => {
+  it('builds the chain for the schema the file will be written as', async () => {
+    // The style shape is decided when the style is authored, and the export
+    // schema is chosen later. IFC2X3 needs IfcStyledItem.Styles to hold
+    // IfcPresentationStyleAssignment; IFC4 takes the IfcSurfaceStyle directly
+    // and IFC4X3 removed the wrapper. Without a target, an IFC4 source exported
+    // as IFC2X3 wrote records invalid for the file they landed in.
+    const bim = await loadModel();
+    bim.style.apply(bim.query().byType('IfcWall').refs(), '#9caec9', { schema: 'IFC2X3' });
+
+    const step = exportStep(bim, 'IFC2X3');
+    expect(step).toContain('IFCPRESENTATIONSTYLEASSIGNMENT(');
+  });
+
+  it('follows the source schema when no target is given', async () => {
+    const bim = await loadModel();
+    bim.style.apply(bim.query().byType('IfcWall').refs(), '#9caec9');
+    expect(exportStep(bim)).not.toContain('IFCPRESENTATIONSTYLEASSIGNMENT(');
+  });
+});
+
 describe('bim.style.applyAll', () => {
   it('lets a later batch win over an earlier one on the same geometry', async () => {
     const bim = await loadModel();
@@ -185,6 +239,26 @@ describe('bim.style.applyAll', () => {
 
     expect(second.replacedStyledItemIds).toHaveLength(1);
     expect(styledTargets(exportStep(bim)).filter(id => id === WALL_SOLID)).toHaveLength(1);
+  });
+
+  it('leaves no orphan chain when a later batch takes every item of an earlier one', async () => {
+    // The empty-batch check covers a batch that styles nothing up front. This
+    // is one step further along: batch 1 styles, batch 2 replaces all of it,
+    // and batch 1's colour chain is left in the file referenced by nothing —
+    // while its result still names styled items that were tombstoned.
+    const bim = await loadModel();
+    const wall = bim.query().byType('IfcWall').refs();
+    const [first, second] = bim.style.applyAll([
+      { refs: wall, color: '#ff0000', name: 'Loser' },
+      { refs: wall, color: '#00ff00', name: 'Winner' },
+    ]);
+
+    const step = exportStep(bim);
+    expect(first.styledItemIds).toEqual([]);
+    expect(first.surfaceStyleId).toBeNull();
+    expect(step).not.toContain("'Loser'");
+    expect(step).toContain("'Winner'");
+    expect(second.styledItemIds).toHaveLength(1);
   });
 
   it('gives each batch its own style and names them', async () => {

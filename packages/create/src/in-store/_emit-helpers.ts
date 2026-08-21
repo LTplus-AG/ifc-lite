@@ -246,17 +246,22 @@ function roundTo(v: number, decimals: number): number {
 /**
  * Emit `IfcColourRgb` -> `IfcSurfaceStyleShading` -> `IfcSurfaceStyle`.
  *
- * Returns both the `IfcSurfaceStyle` and the id an `IfcStyledItem` should
- * point at. They differ on IFC2X3, which has no `IfcStyleAssignmentSelect`:
- * there `IfcStyledItem.Styles` is a set of `IfcPresentationStyleAssignment`,
- * the wrapper IFC4 deprecated.
+ * Returns the `IfcSurfaceStyle`, the id an `IfcStyledItem` should point at, and
+ * every entity in the chain. The first two differ on IFC2X3, which has no
+ * `IfcStyleAssignmentSelect`: there `IfcStyledItem.Styles` is a set of
+ * `IfcPresentationStyleAssignment`, the wrapper IFC4 deprecated and IFC4X3
+ * removed.
+ *
+ * `schemaVersion` is the schema the chain is built FOR. Callers that will
+ * export to a different schema than the model was parsed from have to pass the
+ * target, because this shape is not schema-neutral.
  */
 export function emitSurfaceStyle(
   editor: StoreEditor,
   schemaVersion: string,
   color: SurfaceStyleColor,
   name?: string,
-): { surfaceStyleId: number; styleRefId: number } {
+): { surfaceStyleId: number; styleRefId: number; chainIds: number[] } {
   const red = clamp01(color.red);
   const green = clamp01(color.green);
   const blue = clamp01(color.blue);
@@ -275,9 +280,18 @@ export function emitSurfaceStyle(
     [`#${shading.expressId}`],
   ]);
 
-  const styleRefId = schemaVersion === 'IFC2X3'
-    ? editor.addEntity('IfcPresentationStyleAssignment', [[`#${surfaceStyle.expressId}`]]).expressId
-    : surfaceStyle.expressId;
+  const chainIds = [colour.expressId, shading.expressId, surfaceStyle.expressId];
 
-  return { surfaceStyleId: surfaceStyle.expressId, styleRefId };
+  let styleRefId = surfaceStyle.expressId;
+  if (schemaVersion === 'IFC2X3') {
+    const assignment = editor.addEntity(
+      'IfcPresentationStyleAssignment', [[`#${surfaceStyle.expressId}`]],
+    );
+    styleRefId = assignment.expressId;
+    chainIds.push(assignment.expressId);
+  }
+
+  // chainIds so a caller that later finds nothing referencing this style can
+  // take the whole chain back out rather than leaving it orphaned.
+  return { surfaceStyleId: surfaceStyle.expressId, styleRefId, chainIds };
 }

@@ -19,7 +19,7 @@ import { describe, expect, it } from 'vitest';
 import type { IfcStoreBase } from '@ifc-lite/data';
 import { EntityNode } from '../src/entity-node.js';
 import { QueryResultEntity } from '../src/query-result-entity.js';
-import { createMockStore, IfcTypeEnum } from './mock-store.js';
+import { createMockStore } from './mock-store.js';
 
 const PSET_ID = 4201;
 const WALL_ID = 101;
@@ -41,7 +41,6 @@ function storeWithoutProductRow(): IfcStoreBase {
     entities: {
       ...store.entities,
       getTypeName: (id: number) => (id === PSET_ID ? 'Unknown' : store.entities.getTypeName(id)),
-      getTypeEnum: (id: number) => (id === PSET_ID ? IfcTypeEnum.Unknown : store.entities.getTypeEnum(id)),
     },
   } as IfcStoreBase;
 }

@@ -25,21 +25,27 @@ const HEX_COLOR = /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
  * the two APIs accept exactly the same syntax rather than one of them rejecting
  * a string the other paints with.
  *
- * The one deliberate difference is the failure mode: `hexToRgba` degrades an
+ * Two deliberate differences. The failure mode: `hexToRgba` degrades an
  * unparseable string to black, which is right for a transient overlay and wrong
- * here, where the result is written into the file and shipped. A typo would be
- * baked in as black with nothing said, so it throws instead.
+ * here, where the result is written into the file and shipped, so a typo throws
+ * rather than being baked in as black. And the alpha pair of an `#rrggbbaa`
+ * string is honoured rather than discarded — the viewer takes alpha from its
+ * own argument and ignores those digits, but here they are the only place a
+ * caller using the string form can express transparency.
  */
 function resolveColor(color: SurfaceStyleColor | string): SurfaceStyleColor {
   if (typeof color !== 'string') return color;
-  if (!HEX_COLOR.test(color.trim())) {
+  const trimmed = color.trim();
+  if (!HEX_COLOR.test(trimmed)) {
     throw new Error(
       `style: "${color}" is not a hex colour (#rgb, #rrggbb or #rrggbbaa). ` +
       'Pass { red, green, blue } channels in 0..1 for anything else.',
     );
   }
-  const [red, green, blue] = hexToRgba(color, 1);
-  return { red, green, blue };
+  const digits = trimmed.startsWith('#') ? trimmed.slice(1) : trimmed;
+  const alpha = digits.length === 8 ? parseInt(digits.slice(6, 8), 16) / 255 : 1;
+  const [red, green, blue] = hexToRgba(trimmed, alpha);
+  return { red, green, blue, alpha };
 }
 
 /**

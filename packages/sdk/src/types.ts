@@ -15,7 +15,6 @@ import type {
   StoreyInfo,
   ApplyStyleOptions,
   ApplyStyleResult,
-  StyleBatch,
   SurfaceStyleColor,
 } from '@ifc-lite/create';
 

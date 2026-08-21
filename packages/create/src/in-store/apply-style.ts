@@ -48,6 +48,11 @@ export interface ApplyStyleOptions {
    * or property value, the shared geometry takes the colour of whichever batch
    * touched it last, and occurrences in other groups change with it. Pass
    * `false` to style the `IfcMappedItem` itself, one per occurrence.
+   *
+   * Do not mix the two settings over one model. They style different entities
+   * — the mapped item and the geometry behind it — so `replaceExisting` cannot
+   * see the conflict, and an occurrence ends up carrying both a shared style
+   * and its own, with the winner left to the viewer.
    */
   followMappedItems?: boolean;
   /**
@@ -58,10 +63,25 @@ export interface ApplyStyleOptions {
    * style is authored, not when the file is written. Exporting to a different
    * schema than the model was parsed from therefore needs the target passed in;
    * otherwise the emitted records are invalid for the file they land in.
+   *
+   * Typed as the union `bim.export.ifc` takes rather than a bare string: the
+   * two are halves of one decision, and a near-miss like `'IFC2x3'` would
+   * otherwise typecheck and silently emit the IFC4 shape.
    */
-  schema?: string;
+  schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
 }
 
+/**
+ * What one batch did.
+ *
+ * A snapshot taken when the call returns, not a live view. Results from a
+ * single `applyStylesInStore` are reconciled against each other before they are
+ * handed back, so a batch whose work a later batch replaced reports that. A
+ * result from an *earlier* call cannot be: recolouring the same geometry in a
+ * second call removes the styled items the first call named, and that first
+ * result still names them. The file is correct either way; only the older
+ * return value goes stale.
+ */
 export interface ApplyStyleResult {
   /**
    * The `IfcSurfaceStyle` every item styled by this batch now points at, or
@@ -141,6 +161,8 @@ const REPRESENTATION_ITEMS_INDEX = 3;     // IfcShapeRepresentation.Items
 const MAPPED_ITEM_SOURCE_INDEX = 0;       // IfcMappedItem.MappingSource
 const MAPPED_REPRESENTATION_INDEX = 1;    // IfcRepresentationMap.MappedRepresentation
 const STYLED_ITEM_TARGET_INDEX = 0;       // IfcStyledItem.Item
+const STYLED_ITEM_STYLES_INDEX = 1;       // IfcStyledItem.Styles
+const SURFACE_STYLE_STYLES_INDEX = 2;     // IfcSurfaceStyle.Styles
 
 /**
  * Index of a named attribute on a class, resolved against the bundled schema
@@ -161,11 +183,11 @@ function attributeIndex(typeName: string, attrName: string): number | null {
 /**
  * The geometry a product is drawn from.
  *
- * An `IfcMappedItem` is followed through to the `IfcRepresentationMap` and the
- * mapped representation's items are styled rather than the mapped item. That is
- * what makes one style cover every occurrence of a type, and it is safe: a
- * representation map belongs to exactly one `IfcTypeProduct`, so it cannot
- * straddle two classes.
+ * With `followMappedItems` (the default), an `IfcMappedItem` resolves to the
+ * items of the `IfcRepresentationMap` behind it, so the geometry every
+ * occurrence of a type shares is what comes back. Without it, the mapped item
+ * itself is the leaf. See `ApplyStyleOptions.followMappedItems` for which one
+ * you want.
  *
  * Exported because three private copies of this walk already exist in
  * `extract-walls.ts` and one in `@ifc-lite/export`'s LOD generator, and none of
@@ -174,37 +196,36 @@ function attributeIndex(typeName: string, attrName: string): number | null {
 export function collectLeafRepresentationItems(
   read: (id: number) => RawEntity | null,
   representationId: number,
-  out: Set<number> = new Set(),
-  depth = 0,
-  followMapped = true,
+  options: { followMappedItems?: boolean } = {},
 ): Set<number> {
-  if (depth > MAX_REPRESENTATION_DEPTH) return out;
-  const entity = read(representationId);
-  if (!entity) return out;
+  const followMapped = options.followMappedItems ?? true;
+  const out = new Set<number>();
 
-  const type = entity.type.toUpperCase();
-  if (type === 'IFCPRODUCTDEFINITIONSHAPE') {
-    for (const rep of refList(entity.attributes[SHAPE_REPRESENTATIONS_INDEX])) {
-      collectLeafRepresentationItems(read, rep, out, depth + 1, followMapped);
+  const walk = (id: number, depth: number): void => {
+    if (depth > MAX_REPRESENTATION_DEPTH) return;
+    const entity = read(id);
+    if (!entity) return;
+
+    const type = entity.type.toUpperCase();
+    if (type === 'IFCPRODUCTDEFINITIONSHAPE') {
+      for (const rep of refList(entity.attributes[SHAPE_REPRESENTATIONS_INDEX])) walk(rep, depth + 1);
+      return;
     }
-    return out;
-  }
-  if (type === 'IFCSHAPEREPRESENTATION') {
-    for (const item of refList(entity.attributes[REPRESENTATION_ITEMS_INDEX])) {
-      collectLeafRepresentationItems(read, item, out, depth + 1, followMapped);
+    if (type === 'IFCSHAPEREPRESENTATION') {
+      for (const item of refList(entity.attributes[REPRESENTATION_ITEMS_INDEX])) walk(item, depth + 1);
+      return;
     }
-    return out;
-  }
-  if (type === 'IFCMAPPEDITEM' && followMapped) {
-    const source = asRef(entity.attributes[MAPPED_ITEM_SOURCE_INDEX]);
-    if (source === null) return out;
-    const mapped = asRef(read(source)?.attributes[MAPPED_REPRESENTATION_INDEX]);
-    if (mapped !== null) {
-      collectLeafRepresentationItems(read, mapped, out, depth + 1, followMapped);
+    if (type === 'IFCMAPPEDITEM' && followMapped) {
+      const source = asRef(entity.attributes[MAPPED_ITEM_SOURCE_INDEX]);
+      if (source === null) return;
+      const mapped = asRef(read(source)?.attributes[MAPPED_REPRESENTATION_INDEX]);
+      if (mapped !== null) walk(mapped, depth + 1);
+      return;
     }
-    return out;
-  }
-  out.add(representationId);
+    out.add(id);
+  };
+
+  walk(representationId, 0);
   return out;
 }
 
@@ -281,11 +302,6 @@ export function applyStylesInStore(
   const read = createReader(store, editor);
   const styledBy = indexExistingStyles(store, editor, read);
 
-  /** Styled items this pass tombstoned, so an earlier batch's result can drop them. */
-  const tombstoned = new Set<number>();
-  /** Chain entities per batch, for taking a chain back out if nothing keeps it. */
-  const chains: Array<{ ids: number[] } | null> = [];
-
   const results = batches.map(batch => {
     const items = new Set<number>();
     const productsWithoutGeometry: number[] = [];
@@ -301,7 +317,7 @@ export function applyStylesInStore(
         : asRef(entity?.attributes[repIndex]);
       const reached = representation === null
         ? new Set<number>()
-        : collectLeafRepresentationItems(read, representation, new Set(), 0, followMapped);
+        : collectLeafRepresentationItems(read, representation, { followMappedItems: followMapped });
 
       if (reached.size === 0) {
         productsWithoutGeometry.push(product);
@@ -320,7 +336,6 @@ export function applyStylesInStore(
     }
 
     if (toStyle.length === 0) {
-      chains.push(null);
       return {
         surfaceStyleId: null,
         styledItemIds: [],
@@ -332,7 +347,6 @@ export function applyStylesInStore(
 
     const style = emitSurfaceStyle(editor, schema, batch.color, batch.name);
     const styleRef = `#${style.styleRefId}`;
-    chains.push({ ids: style.chainIds });
 
     const styledItemIds: number[] = [];
     const replacedStyledItemIds: number[] = [];
@@ -341,7 +355,6 @@ export function applyStylesInStore(
       const existing = styledBy.get(item);
       if (existing !== undefined) {
         editor.removeEntity(existing);
-        tombstoned.add(existing);
         replacedStyledItemIds.push(existing);
       }
       const styled = editor.addEntity('IfcStyledItem', [`#${item}`, [styleRef], null]);
@@ -358,19 +371,76 @@ export function applyStylesInStore(
     };
   });
 
-  // A later batch can take every item an earlier one styled. Without this the
-  // earlier batch reports styled items that no longer exist, and its colour
-  // chain stays in the file with nothing referencing it — the same orphan the
-  // empty-batch check above exists to prevent, one step further along.
-  return results.map((result, i) => {
-    const live = result.styledItemIds.filter(id => !tombstoned.has(id));
-    if (live.length === result.styledItemIds.length) return result;
+  sweepUnreferencedStyles(editor);
 
-    const chain = chains[i];
-    if (live.length === 0 && chain) {
-      for (const id of chain.ids) editor.removeEntity(id);
-      return { ...result, styledItemIds: [], surfaceStyleId: null };
-    }
-    return { ...result, styledItemIds: live };
+  // A styled item can be replaced after its batch returned — by a later batch,
+  // or by a later call entirely. Report what is actually still in the file.
+  const live = new Set(editor.getNewEntities().map(e => e.expressId));
+  return results.map(result => {
+    const surviving = result.styledItemIds.filter(id => live.has(id));
+    if (surviving.length === result.styledItemIds.length) return result;
+    return {
+      ...result,
+      styledItemIds: surviving,
+      surfaceStyleId: surviving.length === 0 ? null : result.surfaceStyleId,
+    };
   });
+}
+
+/**
+ * Remove overlay-authored style chains that nothing points at any more.
+ *
+ * Keyed on "is this style referenced" rather than on bookkeeping kept during
+ * one pass, because the orphan does not always appear within one pass: colour a
+ * wall red and then recolour it green in a second `apply`, and the first call's
+ * chain is stranded with the tombstone set from that call long gone.
+ *
+ * Only overlay-created entities are considered. A style that came out of the
+ * source file may be referenced by records this module never looked at, so
+ * leaving it is the only safe answer.
+ */
+function sweepUnreferencedStyles(editor: StoreEditor): void {
+  // Removing an overlay-created entity drops it from newEntities, so presence
+  // in this list is liveness.
+  const created = editor.getNewEntities();
+  const byId = new Map(created.map(e => [e.expressId, e]));
+
+  const referenced = new Set<number>();
+  for (const entity of created) {
+    if (entity.type.toUpperCase() !== 'IFCSTYLEDITEM') continue;
+    for (const ref of refList(entity.attributes?.[STYLED_ITEM_STYLES_INDEX])) {
+      referenced.add(ref);
+      // An IFC2X3 styled item points at the assignment, which points at the style.
+      const assignment = byId.get(ref);
+      if (assignment?.type.toUpperCase() === 'IFCPRESENTATIONSTYLEASSIGNMENT') {
+        for (const inner of refList(assignment.attributes?.[0])) referenced.add(inner);
+      }
+    }
+  }
+
+  for (const entity of created) {
+    if (entity.type.toUpperCase() !== 'IFCSURFACESTYLE') continue;
+    if (referenced.has(entity.expressId)) continue;
+    for (const id of chainOf(entity, byId)) editor.removeEntity(id);
+  }
+}
+
+/** A surface style and the shading, colour and assignment entities only it uses. */
+function chainOf(
+  style: { expressId: number; attributes?: IfcAttributeValue[] },
+  byId: Map<number, { expressId: number; type: string; attributes?: IfcAttributeValue[] }>,
+): number[] {
+  const ids = [style.expressId];
+  for (const shadingId of refList(style.attributes?.[SURFACE_STYLE_STYLES_INDEX])) {
+    const shading = byId.get(shadingId);
+    if (!shading) continue;
+    ids.push(shadingId);
+    const colour = asRef(shading.attributes?.[0]);
+    if (colour !== null && byId.has(colour)) ids.push(colour);
+  }
+  for (const [id, entity] of byId) {
+    if (entity.type.toUpperCase() !== 'IFCPRESENTATIONSTYLEASSIGNMENT') continue;
+    if (refList(entity.attributes?.[0]).includes(style.expressId)) ids.push(id);
+  }
+  return ids;
 }

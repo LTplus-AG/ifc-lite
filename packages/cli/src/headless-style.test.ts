@@ -17,6 +17,7 @@ import { exportStep, ifcFile, loadInlineModel, styledTargets } from './headless-
 
 const WALL_SOLID = 61;
 const MAPPED_SOLID = 80;
+const T1_MAPPED_ITEM = 84;
 
 const MODEL = ifcFile(`#60= IFCRECTANGLEPROFILEDEF(.AREA.,$,#21,2.,0.2);
 #61= IFCEXTRUDEDAREASOLID(#60,#21,#62,3.);
@@ -92,6 +93,24 @@ describe('bim.style.apply', () => {
     }
   });
 
+  it('leaves no orphan chain when a second call recolours the same geometry', async () => {
+    // The colour-then-recolour flow, across two calls rather than two batches.
+    // Bookkeeping kept during one pass cannot reach this: by the second call
+    // the first call's tombstone set is long gone. The sweep keys on whether
+    // anything still references the style instead.
+    const bim = await loadModel();
+    const wall = bim.query().byType('IfcWall').refs();
+    bim.style.apply(wall, '#ff0000', { name: 'CallOne' });
+    bim.style.apply(wall, '#00ff00', { name: 'CallTwo' });
+
+    const step = exportStep(bim);
+    expect(step).not.toContain("'CallOne'");
+    expect(step).toContain("'CallTwo'");
+    expect(styledTargets(step).filter(id => id === WALL_SOLID)).toHaveLength(1);
+    // The first call's own returned result is not revisited — it was handed
+    // back before this call existed. See ApplyStyleResult.
+  });
+
   it('does not stack a second IfcStyledItem when applied twice', async () => {
     // The one-style-per-item rule has to hold against geometry this session
     // already styled, not only against what the source file carried. The index
@@ -137,7 +156,9 @@ describe('bim.style.apply', () => {
     perOccurrence.style.apply([only], '#ff0000', { followMappedItems: false });
 
     // The IfcMappedItem itself, not the solid every occurrence shares.
-    expect(styledTargets(exportStep(perOccurrence))).not.toContain(MAPPED_SOLID);
+    const targets = styledTargets(exportStep(perOccurrence));
+    expect(targets).not.toContain(MAPPED_SOLID);
+    expect(targets).toContain(T1_MAPPED_ITEM);
   });
 
   it('reports the product that has no geometry, and only that one', async () => {

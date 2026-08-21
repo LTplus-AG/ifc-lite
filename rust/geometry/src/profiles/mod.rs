@@ -27,7 +27,30 @@ use simplify::{mirror_profile_about_y_axis, simplify_smooth_curve_polyline};
 
 /// Maximum recursion depth for nested curve processing.
 /// Prevents stack overflow from deeply nested CompositeCurve → TrimmedCurve → CompositeCurve chains.
+/// Longest nested-curve chain the profile samplers will follow.
+///
+/// This bounds ONE PATH's length and says nothing about the NUMBER of paths,
+/// which is why it is not sufficient on its own. A composite curve with two
+/// segments per level, each resolving successfully, doubles the work per level:
+/// measured at 2^levels points (levels=20 gave 1,048,577 points in 473ms), so
+/// at this cap alone a file reaches 2^50. Nothing errors on that input, so the
+/// `?` propagation in the loops below never fires. [`MAX_CURVE_NODES`] is what
+/// actually bounds the traversal.
 const MAX_CURVE_DEPTH: u32 = 50;
+
+/// Total nested curve visits allowed per entry call.
+///
+/// `MAX_CURVE_DEPTH` bounds depth; this bounds BREADTH, and a file-driven
+/// traversal needs both. An acyclic composite-curve DAG -- every branch valid,
+/// nothing cyclic, nothing failing -- costs `O(2^depth)` under a depth cap
+/// alone, in time and in the `Vec<Point3>` it materialises.
+///
+/// 100k visits is far above any real profile (a detailed composite curve runs
+/// to hundreds of segments) and far below the point where the work is
+/// noticeable. Exhausting it is reported as an error rather than truncating
+/// silently: a short polyline returned as if complete is a wrong profile, and
+/// the router dropping the element is the honest outcome.
+const MAX_CURVE_NODES: u32 = 100_000;
 
 /// One bound of an `IfcTrimmingSelect` on a trimmed conic. A `Parameter` is an
 /// angle in the project's PLANEANGLEUNIT; a `Cartesian` point is resolved to an
@@ -51,6 +74,10 @@ pub struct ProfileProcessor {
     /// router instance is single-threaded (the router holds `RefCell` caches),
     /// so a `Cell` is sufficient. Defaults to [`TessellationQuality::Medium`].
     active_quality: Cell<TessellationQuality>,
+    /// Remaining curve visits for the in-flight entry call. Reset wherever
+    /// `active_quality` is, and decremented on every nested curve. See
+    /// [`MAX_CURVE_NODES`].
+    curve_budget: Cell<u32>,
 }
 
 impl ProfileProcessor {
@@ -59,6 +86,7 @@ impl ProfileProcessor {
         Self {
             schema,
             active_quality: Cell::new(TessellationQuality::Medium),
+            curve_budget: Cell::new(MAX_CURVE_NODES),
         }
     }
 
@@ -66,6 +94,24 @@ impl ProfileProcessor {
     #[inline]
     fn quality(&self) -> TessellationQuality {
         self.active_quality.get()
+    }
+
+    /// Charge one nested-curve visit against the entry call's budget.
+    ///
+    /// `MAX_CURVE_DEPTH` bounds one path; this bounds the whole traversal. An
+    /// acyclic composite-curve DAG fans out `2^depth` with nothing cyclic and
+    /// nothing failing, so neither a cycle guard nor the `?` propagation in the
+    /// segment loops can see it.
+    fn spend_curve_node(&self) -> Result<()> {
+        match self.curve_budget.get().checked_sub(1) {
+            Some(left) => {
+                self.curve_budget.set(left);
+                Ok(())
+            }
+            None => Err(Error::geometry(format!(
+                "Curve traversal exceeded {MAX_CURVE_NODES} nested curves"
+            ))),
+        }
     }
 
     /// Set the tessellation detail for subsequent curve sampling.
@@ -77,6 +123,7 @@ impl ProfileProcessor {
     #[inline]
     pub fn set_tessellation_quality(&self, quality: TessellationQuality) {
         self.active_quality.set(quality);
+        self.curve_budget.set(MAX_CURVE_NODES);
     }
 
     /// Process any IFC profile definition at the given tessellation `quality`.
@@ -100,6 +147,7 @@ impl ProfileProcessor {
         quality: TessellationQuality,
     ) -> Result<Profile2D> {
         self.active_quality.set(quality);
+        self.curve_budget.set(MAX_CURVE_NODES);
         self.process_with_depth(profile, decoder, 0)
     }
 
@@ -296,6 +344,7 @@ impl ProfileProcessor {
                 depth, MAX_CURVE_DEPTH
             )));
         }
+        self.spend_curve_node()?;
         match curve.ifc_type {
             IfcType::IfcPolyline => self.process_polyline(curve, decoder),
             IfcType::IfcIndexedPolyCurve => self.process_indexed_polycurve(curve, decoder),
@@ -331,6 +380,7 @@ impl ProfileProcessor {
         quality: TessellationQuality,
     ) -> Result<Vec<Point3<f64>>> {
         self.active_quality.set(quality);
+        self.curve_budget.set(MAX_CURVE_NODES);
         self.get_curve_points_with_depth(curve, decoder, 0)
     }
 
@@ -347,6 +397,7 @@ impl ProfileProcessor {
                 depth, MAX_CURVE_DEPTH
             )));
         }
+        self.spend_curve_node()?;
         match curve.ifc_type {
             IfcType::IfcPolyline => self.process_polyline_3d(curve, decoder),
             IfcType::IfcCompositeCurve => {
@@ -897,3 +948,7 @@ fn axis2_placement_location_and_x_axis_3d(
     }
     Some((origin, x_axis))
 }
+
+#[cfg(test)]
+#[path = "curve_fanout_tests.rs"]
+mod curve_fanout_tests;

@@ -120,6 +120,23 @@ export interface AutoColorEvaluationResult extends LensEvaluationResult {
 }
 
 /**
+ * Reserved rule ids and neutral (unsaturated) colors for the two "absence"
+ * legend buckets. Fixed rather than drawn from {@link uniqueColor} so that:
+ *  - they never compete with real values for a rank-based palette slot —
+ *    turning `includeUnclassified` on/off cannot shift the colors assigned to
+ *    real classification groups, and a large absence bucket can't grab the
+ *    most-saturated color and read as if it were the biggest *category*
+ *    rather than a gap in the data;
+ *  - they are visually distinguishable from both a real value (saturated,
+ *    golden-angle hues) and {@link GHOST_COLOR} (very low alpha, near
+ *    invisible) — an absence bucket is deliberately visible and clickable.
+ */
+const NO_CLASSIFICATION_RULE_ID = 'auto-absent-no-classification';
+const NOT_IN_SYSTEM_RULE_ID = 'auto-absent-not-in-system';
+const NO_CLASSIFICATION_COLOR = '#8a8a8a';
+const NOT_IN_SYSTEM_COLOR = '#bdbdbd';
+
+/**
  * Evaluate an auto-color lens against all entities.
  *
  * Single O(n) pass: extracts the target value for each entity, groups by
@@ -142,6 +159,15 @@ export function evaluateAutoColorLens(
   const valueLabels = new Map<string, string>();
   const ghostIds: number[] = [];
 
+  // Value-less entities, split by *why* they have no value — only populated
+  // when `includeUnclassified` opts in (classification source only; see
+  // AutoColorSpec.includeUnclassified). Left empty otherwise, so the ghosting
+  // behaviour below is byte-for-byte the pre-existing one when the flag is
+  // off or the source isn't classification.
+  const noClassificationIds: number[] = [];
+  const notInSystemIds: number[] = [];
+  const wantsAbsenceBuckets = autoColor.source === 'classification' && autoColor.includeUnclassified === true;
+
   provider.forEachEntity((globalId) => {
     // Most sources yield a single value; `material` can yield several — an
     // element built from a layer / constituent set belongs to EVERY one of its
@@ -149,7 +175,15 @@ export function evaluateAutoColorLens(
     const values = extractAutoColorValues(autoColor, globalId, provider);
 
     if (values.length === 0) {
-      ghostIds.push(globalId);
+      if (wantsAbsenceBuckets) {
+        if (classificationAbsenceReason(autoColor, globalId, provider) === 'not-in-system') {
+          notInSystemIds.push(globalId);
+        } else {
+          noClassificationIds.push(globalId);
+        }
+      } else {
+        ghostIds.push(globalId);
+      }
       return;
     }
 
@@ -196,7 +230,36 @@ export function evaluateAutoColorLens(
     legend.push({ id: ruleId, name: displayName, color, count: entityIds.length });
   }
 
-  // Ghost unmatched (null/empty value) entities
+  // Phase 4: Absence buckets — appended after every real value, never
+  // competing for a rank-based color (see the constants above). Each bucket
+  // only appears when it is non-empty, and "Not in this system" only exists
+  // at all when `psetName` names a specific system to be "not in" (see
+  // AutoColorSpec.includeUnclassified) — with no system named there is
+  // nothing to distinguish it from "No classification", so emitting an empty
+  // or duplicate second bucket would be noise, not data.
+  const absenceBuckets: Array<{ ruleId: string; name: string; color: string; ids: number[] }> = [];
+  if (noClassificationIds.length > 0) {
+    absenceBuckets.push({ ruleId: NO_CLASSIFICATION_RULE_ID, name: 'No classification', color: NO_CLASSIFICATION_COLOR, ids: noClassificationIds });
+  }
+  if (notInSystemIds.length > 0) {
+    absenceBuckets.push({ ruleId: NOT_IN_SYSTEM_RULE_ID, name: 'Not in this system', color: NOT_IN_SYSTEM_COLOR, ids: notInSystemIds });
+  }
+  absenceBuckets.sort((a, b) => b.ids.length - a.ids.length);
+
+  for (const bucket of absenceBuckets) {
+    const rgba = hexToRgba(bucket.color, 1);
+    for (const id of bucket.ids) {
+      colorMap.set(id, rgba);
+    }
+    ruleCounts.set(bucket.ruleId, bucket.ids.length);
+    ruleEntityIds.set(bucket.ruleId, bucket.ids);
+    legend.push({ id: bucket.ruleId, name: bucket.name, color: bucket.color, count: bucket.ids.length, isAbsent: true });
+  }
+
+  // Ghost unmatched (null/empty value) entities that didn't land in an
+  // absence bucket above — either `includeUnclassified` is off/not
+  // applicable (the pre-existing behaviour, unchanged), or the source isn't
+  // classification.
   for (const id of ghostIds) {
     colorMap.set(id, GHOST_COLOR);
   }
@@ -240,6 +303,39 @@ function selectClassificationRef(
 ): ClassificationInfo | undefined {
   if (!psetName) return cls[0];
   return cls.find((ref) => (ref.system ?? '').toLowerCase().includes(psetName.toLowerCase()));
+}
+
+/**
+ * Why a `source: "classification"` entity produced zero grouping values —
+ * used only when {@link AutoColorSpec.includeUnclassified} is on, to route
+ * the entity into the right absence bucket instead of ghosting it. Only
+ * called once {@link extractAutoColorValues} has already returned `[]` for
+ * this entity/spec pair.
+ *
+ * - `'no-classification'`: zero classification references at all, OR (with
+ *   no `psetName` filter) any value-less reason — there is no specific
+ *   system to be "not in", so everything collapses to one bucket.
+ * - `'not-in-system'`: the entity carries references, `psetName` names a
+ *   system, and none of the references matched it
+ *   ({@link selectClassificationRef} returned `undefined`).
+ *
+ * One degenerate case folds into `'no-classification'` even though a
+ * reference *did* match the selected system: a classification record with an
+ * empty system, identification, AND name (garbage/placeholder data). It
+ * carries no usable value, so — like having no classification at all — there
+ * is nothing to color it by; calling it "not in this system" would be wrong,
+ * since it IS in the system, just empty.
+ */
+function classificationAbsenceReason(
+  spec: AutoColorSpec,
+  globalId: number,
+  provider: LensDataProvider,
+): 'no-classification' | 'not-in-system' {
+  const cls = provider.getClassifications?.(globalId);
+  if (!cls || cls.length === 0) return 'no-classification';
+  if (!spec.psetName) return 'no-classification';
+  const matched = selectClassificationRef(cls, spec.psetName);
+  return matched ? 'no-classification' : 'not-in-system';
 }
 
 /**

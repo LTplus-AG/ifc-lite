@@ -13,6 +13,9 @@ import type {
   GenerateSpacesAllOptions,
   GenerateSpacesAllResult,
   StoreyInfo,
+  ApplyStyleOptions,
+  ApplyStyleResult,
+  SurfaceStyleColor,
 } from '@ifc-lite/create';
 
 // ============================================================================
@@ -780,6 +783,30 @@ export interface SpacesBackendMethods {
   generate(options?: GenerateSpacesAllOptions): GenerateSpacesAllResult;
 }
 
+/**
+ * Colour products by writing presentation-style entities into the model, so the
+ * colour is in the exported IFC rather than in the current view. Optional on
+ * the backend for the same reason as {@link SpacesBackendMethods}: it needs
+ * direct store access, which a remote backend does not have.
+ *
+ * Distinct from `ViewerBackendMethods.colorize`, which paints the view and is
+ * gone on export.
+ */
+export interface StyleBackendMethods {
+  /**
+   * Give every representation item behind each batch one `IfcSurfaceStyle`,
+   * writing to the backend's mutation overlay. Persist with `bim.export.ifc()`.
+   *
+   * Batched rather than one call per colour because the "at most one
+   * IfcStyledItem per item" rule has to hold across the whole pass, and because
+   * the index of already-styled geometry is the expensive part to build.
+   */
+  applyColors(
+    batches: Array<{ refs: EntityRef[]; color: SurfaceStyleColor; name?: string }>,
+    options?: ApplyStyleOptions,
+  ): ApplyStyleResult[];
+}
+
 export interface BimBackend {
   readonly model: ModelBackendMethods;
   readonly query: QueryBackendMethods;
@@ -795,6 +822,8 @@ export interface BimBackend {
   readonly schedule: ScheduleBackendMethods;
   /** Space derivation — present only on local backends with store access. */
   readonly spaces?: SpacesBackendMethods;
+  /** Persistent colouring — present only on local backends with store access. */
+  readonly style?: StyleBackendMethods;
 
   /** Subscribe to viewer events */
   subscribe(event: BimEventType, handler: (data: unknown) => void): () => void;

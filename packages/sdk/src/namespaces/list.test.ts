@@ -19,46 +19,8 @@
  * of undefined (reading 'length')` instead of running unfiltered.
  */
 
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { ListNamespace, type ListDefinition } from './list.js';
-
-/**
- * `ListNamespace.execute()` dynamically imports `@ifc-lite/lists` and
- * `@ifc-lite/data` on first use (`loadLists` in `list.ts`) so SDK consumers
- * who never touch `bim.list` don't pay for them. Right tradeoff for real
- * callers -- but it means whichever test here runs first pays the one-time
- * cold-import cost inside its own timer: measured at 2002ms cold and 481ms on
- * a warm repo, against 2-3ms once the modules are resolved.
- *
- * Under CI's parallel load that alone crosses the 5000ms default. This file
- * failed on FIVE unrelated PRs at once -- #2822, #2905, #2907, #2923, #2930 --
- * every one between 5005ms and 5056ms, while passing locally on the same
- * commit. Warming here moves the cost outside every `it()`'s budget, so each
- * test times only its own logic and keeps the tight default: a genuine hang
- * still fails in 5s rather than 30s.
- *
- * Same root cause and directory as `ids.test.ts` (3a00b5e64, which reported
- * 5021-5038ms), and the same shape as `packages/export/src/parquet-geometry.test.ts`
- * (#2248). `bcf.ts`, `drawing.ts` and `sandbox.ts` share the lazy-import idiom
- * and have not fired yet.
- *
- * Warmed rather than mocked: these tests exist to prove the real bridge to the
- * real library produces real values, and a mocked `executeList` would pass
- * with the very column-mapping bug they were written to catch (#2841).
- *
- * Known limitation, and the alternative was tried rather than assumed: this
- * names `execute()`'s imports instead of driving `execute()` itself, so a
- * third dependency added there would silently stop being covered. Driving the
- * real method would stay correct by construction, but every module-scope
- * `await` form breaks function hoisting in this file under vite's transform
- * (`makeProviderWithPsets` hits `ReferenceError: makeProvider is not
- * defined`), which is why the warm-up sits in `beforeAll`. If `execute()`
- * gains an import, add it here.
- */
-beforeAll(async () => {
-  await import('@ifc-lite/lists');
-  await import('@ifc-lite/data');
-}, 30_000);
 
 interface Provider {
   getEntitiesByType: (type: number) => number[];

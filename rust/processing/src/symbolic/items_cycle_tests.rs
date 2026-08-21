@@ -81,14 +81,23 @@ fn run_with_timeout(step: String, start_id: u32, secs: u64) -> SymbolicData {
     let handle = std::thread::spawn(move || {
         let _ = tx.send(run(&step, start_id));
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(secs));
-    assert!(
-        outcome.is_ok(),
-        "extract_symbolic_item did not terminate within {secs}s -- the breadth bound \
-         (MAX_ITEM_REVISITS) is gone; a depth cap and a path guard alone allow k! paths"
-    );
+    // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
+    // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
+    // reports as "did not terminate" — a confident wrong diagnosis pointing at
+    // a guard that is fine (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => panic!(
+            "extract_symbolic_item did not terminate within {secs}s -- the breadth bound \
+             (MAX_ITEM_REVISITS) is gone; a depth cap and a path guard alone allow k! paths"
+        ),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => panic!(
+            "extract_symbolic_item's worker PANICKED (not a hang, so the breadth bound \
+             is not implicated); its panic is printed above"
+        ),
+    };
     let _ = handle.join();
-    outcome.unwrap()
+    value
 }
 
 fn wrap(body: &str) -> String {

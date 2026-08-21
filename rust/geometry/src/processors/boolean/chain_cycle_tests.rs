@@ -43,10 +43,22 @@ fn collect_with_timeout(content: String, root_id: u32) -> (u32, Vec<u32>) {
             (base.id, cutters.iter().map(|c| c.id).collect::<Vec<_>>())
         }));
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
-    assert!(outcome.is_ok(), "collect_polygonal_chain hung (walk did not terminate)");
+    // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
+    // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
+    // reports as "did not terminate" — a confident wrong diagnosis pointing at
+    // a guard that is fine (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("collect_polygonal_chain hung (walk did not terminate)")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("collect_polygonal_chain's worker PANICKED (not a hang); \
+                    its panic is printed above")
+        }
+    };
     let _ = handle.join();
-    outcome.unwrap().expect("collect_polygonal_chain returned Err")
+    value.expect("collect_polygonal_chain returned Err")
 }
 
 #[test]
@@ -63,16 +75,20 @@ fn collect_polygonal_chain_terminates_on_cyclic_first_operand() {
         let _ = tx.send(result.map(|(base, cutters)| (base.id, cutters.len())));
     });
 
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(5));
-    assert!(
-        outcome.is_ok(),
-        "collect_polygonal_chain hung on a cyclic FirstOperand chain"
-    );
+    // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("collect_polygonal_chain hung on a cyclic FirstOperand chain")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("collect_polygonal_chain's worker PANICKED on the cyclic fixture \
+                    (not a hang); its panic is printed above")
+        }
+    };
     let _ = handle.join();
 
-    let (base_id, cutter_count) = outcome
-        .unwrap()
-        .expect("collect_polygonal_chain returned Err");
+    let (base_id, cutter_count) = value.expect("collect_polygonal_chain returned Err");
     // The walk bottoms out on the repeated entity and collects the single
     // PBHS cutter it saw before detecting the cycle.
     assert_eq!(base_id, 10, "cycle should bottom out on the repeated entity");
@@ -628,8 +644,17 @@ fn full_process_terminates_on_cyclic_boolean() {
         );
         let _ = tx.send(result.is_ok());
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
-    assert!(outcome.is_ok(), "full process() hung on a cyclic boolean chain");
+    // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
+    match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(_) => {}
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("full process() hung on a cyclic boolean chain")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("full process()'s worker PANICKED on the cyclic fixture (not a hang); \
+                    its panic is printed above")
+        }
+    }
     let _ = handle.join();
 }
 
@@ -674,17 +699,23 @@ fn boolean_csg_mutual_recursion_terminates() {
         let _ = tx.send(result.map(|m| m.positions.len()));
     });
 
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
-    assert!(
-        outcome.is_ok(),
-        "Boolean/CSG mutual recursion did not terminate"
-    );
+    // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("Boolean/CSG mutual recursion did not terminate")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("the Boolean/CSG worker PANICKED (not a hang); \
+                    its panic is printed above")
+        }
+    };
     let _ = handle.join();
 
     // The cycle is reported, not silently swallowed: an operand that cannot be
     // resolved must surface as an error so the router drops the element rather
     // than rendering a half-built solid as if it were complete.
-    let err = outcome.unwrap().expect_err("a cyclic operand must be an error");
+    let err = value.expect_err("a cyclic operand must be an error");
     let msg = err.to_string();
     assert!(
         msg.contains("Cyclic boolean/CSG operand reference"),
@@ -708,12 +739,19 @@ fn csg_entry_point_is_guarded_too() {
         let _ = tx.send(result.map(|m| m.positions.len()));
     });
 
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(10));
-    assert!(outcome.is_ok(), "CsgSolid entry point did not terminate");
+    // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("CsgSolid entry point did not terminate")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("the CsgSolid entry point's worker PANICKED (not a hang); \
+                    its panic is printed above")
+        }
+    };
     let _ = handle.join();
-    outcome
-        .unwrap()
-        .expect_err("a cyclic operand must be an error from this entry point too");
+    value.expect_err("a cyclic operand must be an error from this entry point too");
 }
 
 /// A long ACYCLIC `Boolean -> Csg -> Boolean` chain, every id distinct. The
@@ -750,11 +788,19 @@ fn a_long_acyclic_boolean_csg_chain_terminates() {
         let result = processor.process(&entity, &mut decoder, &schema, Default::default());
         let _ = tx.send(result.map(|m| m.positions.len()).map_err(|e| e.to_string()));
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(20));
-    assert!(outcome.is_ok(), "the operand chain bound did not terminate");
+    // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("the operand chain bound did not terminate")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("the operand chain worker PANICKED (not a hang, so the chain bound \
+                    is not implicated); its panic is printed above")
+        }
+    };
     let _ = handle.join();
-    let err = outcome
-        .unwrap()
+    let err = value
         .expect_err("an over-long operand chain must be reported, not rendered half-built");
     assert!(
         err.contains("operand chain exceeds"),

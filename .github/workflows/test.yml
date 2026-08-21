@@ -373,6 +373,16 @@ jobs:
   # knows what good looks like rather than only what broken looked like:
   # 2:29, 2:01, 1:50 against a 25 minute cap.
   #
+  # Parallelism comes from the SHARDS, not from concurrency inside a shard.
+  # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
+  # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three
+  # unrelated PRs in one hour that way (issue #3060) while passing locally 3/3.
+  # The bump to 4 came from an earlier attempt at this lane that was MEASURED
+  # not to help on CI, and it was carried forward as harmless once sharding
+  # worked. It is not harmless, and its speedup is redundant with sharding.
+  # Cost of going back to 1, measured: ~70s versus ~19s per shard locally,
+  # roughly 8 minutes versus 2 on CI, against a 25 minute cap.
+  #
   # Two earlier explanations in this file were WRONG and are corrected here,
   # because a confident wrong comment is worse than none:
   #

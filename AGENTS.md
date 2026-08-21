@@ -174,7 +174,11 @@ report that you bounded it. Mutate the halves separately; they fail differently
 Before touching an issue:
 
 1. `gh issue view <n> --json assignees,title` — **if someone else is assigned, it is theirs.** See "Helping on someone else's issue" below for the two ways that changes.
-2. `gh pr list --search "<n>"` — an open PR referencing the issue is a claim even when nobody is assigned.
+2. Look for an open PR on it. `gh pr list --search "<n>"` is a TEXT search: it
+   matches comment bodies, so it both misses linked PRs that never mention the
+   number and returns unrelated ones that happen to contain it. Treat a hit as a
+   reason to look, not as an answer, and confirm by opening the PR. The linked-PR
+   list on the issue page is authoritative where the two disagree.
 3. If both are clear, `gh issue edit <n> --add-assignee <you>` **before** writing code, not when you open the PR. An assignment made at PR time claims nothing; the window it needed to cover has already closed.
 
 Check again immediately before opening the PR. A claim can appear while you work, and the second check is the cheap one.
@@ -226,9 +230,17 @@ the claim appears.** Both have sunk work, both can reasonably feel they should
 be the one to finish, and the race is usually settled by whoever opens a PR
 first, which rewards speed over ownership.
 
-**The assignee decides. The other stops immediately** rather than racing to open
-first, and hands over what they have as a comment or a patch on the assignee's
-PR. If nobody is assigned yet, the one who claimed first decides.
+**The session named in the earliest claim comment decides. The other stops
+immediately** rather than racing to open first, and hands over what it has as a
+comment or a patch on that session's PR.
+
+"The assignee decides" is not usable here, because the assignee field holds one
+shared account and cannot name a session. The claim comment can, which is the
+other half of why it is required above. If no claim comment exists, ask on the
+issue rather than inferring from the field.
+
+An outside contributor's PR still takes precedence over any internal claim,
+however early. They cannot see our claims and are not bound by them.
 
 Stopping mid-build is cheap. Two finished implementations of the same thing is
 not, and neither is the conversation about which one lands.

@@ -291,6 +291,26 @@ export function useSandbox(config?: SandboxConfig) {
       // abort, not a fault in the script — the generic diagnostics below would
       // only mislead. (The ordinary route is the `finally`: the abort happens
       // during teardown, after this run has already returned.)
+      //
+      // NO TEST OBSERVES THIS BRANCH, and none in this repo can. Both other
+      // teardown-abort publishes are covered
+      // (`useSandbox.runSupersession.test.tsx`); this one is not, and the gap
+      // is in what can be *reached*, not in what is asserted.
+      // `SandboxAbortError` is constructed in exactly one place — the `catch`
+      // around `runtime.dispose()` in `Sandbox.dispose()` — and every
+      // `dispose()` this hook performs goes through
+      // `disposeSandboxReportingAbort`, which returns the message rather than
+      // throwing. So reaching here needs `createSandbox`/`eval` itself to
+      // throw one: `init()` failing AND the cleanup `dispose()` it runs
+      // aborting the runtime, which takes another sandbox retiring the shared
+      // WASM module in the single microtask between `acquireQuickJSModule()`
+      // resolving and `newRuntime()`. Measured, not assumed: a host bridge
+      // function that throws or rejects with a `SandboxAbortError` does not
+      // propagate one out of `eval()` (the bridge delivers it into the realm),
+      // and a 16 KiB heap limit does not make `init()` throw. Kept gated
+      // anyway — it is the same decision as the two publishes that ARE
+      // covered, and an ungated one here would put a superseded run's abort
+      // over a newer run's displayed result.
       const abortMessage = describeSandboxAbort(err);
       if (abortMessage) {
         if (stillCurrent()) setError(abortMessage);
@@ -343,6 +363,11 @@ export function useSandbox(config?: SandboxConfig) {
     // write. See `runEpochRef`'s doc above `execute()`.
     runEpochRef.current += 1;
     setExecutionState('idle');
+    // `setResult(null)` lands on `'idle'` too (scriptSlice.ts) — a null result
+    // is the absence of a run, not a successful one — so this clear leaves a
+    // coherent state no matter which of the two writes is read. It used to
+    // land on `'success'`, and the epoch bump above is what made that
+    // terminal: a run this reset() superseded no longer overwrites it.
     setResult(null);
     setError(null);
     setDiagnostics([]);

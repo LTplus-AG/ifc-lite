@@ -139,6 +139,11 @@ export interface ScriptSlice {
   bumpScriptRunSeq: () => void;
   /** Bump the run-supersession token and return the new value (this run's epoch). */
   bumpScriptRunEpoch: () => number;
+  /**
+   * Publish a run's result. Clears any error and its diagnostics, and moves
+   * `scriptExecutionState` to `'success'` — or to `'idle'` for a `null`
+   * result, which is not a successful run but the absence of one.
+   */
   setScriptResult: (result: ScriptResult | null) => void;
   setScriptError: (error: string | null, diagnostics?: ScriptDiagnostic[]) => void;
   setScriptDiagnostics: (diagnostics: ScriptDiagnostic[]) => void;
@@ -349,8 +354,23 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
     return next;
   },
 
+  // `'success'` describes a run whose outcome this call is publishing, so it
+  // is conditional on there BEING one. A `null` result is the absence of a
+  // run — the only caller that passes it is `useSandbox().reset()`, which
+  // clears the panel — and reporting that as a successful execution left the
+  // store claiming a success with no result and no error to explain it. That
+  // was survivable while the next completing run overwrote it; with the
+  // run-supersession epoch (`scriptRunEpoch`) a run superseded by that very
+  // `reset()` no longer writes at all, so the incoherent state became the
+  // terminal one. `'idle'` is what every other "nothing has run" path in this
+  // slice uses (`setActiveScriptId`, the model-load reset in `store/index.ts`).
   setScriptResult: (scriptLastResult) =>
-    set({ scriptLastResult, scriptLastError: null, scriptLastDiagnostics: [], scriptExecutionState: 'success' }),
+    set({
+      scriptLastResult,
+      scriptLastError: null,
+      scriptLastDiagnostics: [],
+      scriptExecutionState: scriptLastResult === null ? 'idle' : 'success',
+    }),
 
   // Error and execution state are set independently — clearing an error
   // does NOT change execution state unless explicitly transitioned

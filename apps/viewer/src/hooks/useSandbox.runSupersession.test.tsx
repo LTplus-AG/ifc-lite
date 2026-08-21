@@ -56,6 +56,7 @@ import type { BimContext } from '@ifc-lite/sdk';
 import type { ScriptResult, SandboxConfig } from '@ifc-lite/sandbox';
 import { BimReactContext } from '@/sdk/BimProvider.js';
 import { useViewerStore } from '@/store';
+import { SANDBOX_ABORT_MESSAGE } from '@/lib/sandboxAbort.js';
 import { useSandbox } from './useSandbox.js';
 
 const CONFIG: SandboxConfig = { limits: { memoryBytes: 64 * 1024 * 1024, timeoutMs: 10_000 } };
@@ -88,14 +89,57 @@ const bim = {
 const GATED = 'const out = {}; (async () => { const r = await bim.clash.run([], []); out.v = r.marker; })(); out';
 const UNGATED = '"B-result"';
 
+/**
+ * The #1922 reproducer, parked behind the same host gate.
+ *
+ * `eval()` still resolves normally — the OOM happens in a *drained promise
+ * job*, so the run reports success and only `dispose()` reports the damage —
+ * which is what puts this on `execute()`'s SUCCESS path: the teardown that
+ * settles the run before it is reported (`useSandbox.ts`'s `teardown()` call
+ * above the success publish) is the one that aborts, and the `finally`'s
+ * teardown is then a no-op. The gate is what lets a second instance's run
+ * start, finish and publish while this one is still in flight.
+ */
+const GATED_OOM_AT_TEARDOWN =
+  'const out = {}; (async () => { const r = await bim.clash.run([], []); out.v = r.marker; const a = []; for (;;) { a.push({ k: "v" }); } })(); out';
+
+/**
+ * The same abort, but on a run whose `eval()` also THROWS.
+ *
+ * The synchronous `throw` rejects `eval()`, so the success-path teardown never
+ * runs and the abort surfaces from the `finally`'s teardown instead — the
+ * other of the two teardown-abort publishes. The control test below pins that
+ * routing: the store's error must end up as the ABORT message, not
+ * `late-boom`, which can only happen if the `finally` publish ran after the
+ * catch block's `setError`.
+ */
+const GATED_OOM_AT_TEARDOWN_AFTER_THROW =
+  'const out = {}; (async () => { await bim.clash.run([], []); const a = []; for (;;) { a.push({ k: "v" }); } })(); out; throw new Error("late-boom")';
+
+/**
+ * A heap small enough that the reproducer above trips in tens of
+ * milliseconds. The default 64 MiB would take seconds to fill.
+ */
+const SMALL_HEAP: SandboxConfig = { limits: { memoryBytes: 4 * 1024 * 1024, timeoutMs: 10_000 } };
+
 let execute1: ((code: string) => Promise<ScriptResult | null>) | null = null;
 let reset1: (() => void) | null = null;
 let execute2: ((code: string) => Promise<ScriptResult | null>) | null = null;
+let executeOom: ((code: string) => Promise<ScriptResult | null>) | null = null;
 
-/** Two INDEPENDENT `useSandbox()` instances — the real ScriptPanel/ChatPanel shape. */
+/**
+ * INDEPENDENT `useSandbox()` instances — the real ScriptPanel/ChatPanel shape.
+ *
+ * The third differs from the first two only in its heap limit; it is the one
+ * that runs the #1922 reproducer, and it is a separate instance for the same
+ * reason the other two are: the runs that must supersede each other have to
+ * come from different hooks, or the per-instance `runEpochRef` alone would
+ * explain the outcome and the shared store epoch would go untested.
+ */
 function ProbePair() {
   ({ execute: execute1, reset: reset1 } = useSandbox(CONFIG));
   ({ execute: execute2 } = useSandbox(CONFIG));
+  ({ execute: executeOom } = useSandbox(SMALL_HEAP));
   return null;
 }
 
@@ -113,7 +157,7 @@ before(() => {
       </BimReactContext.Provider>,
     );
   });
-  assert.ok(execute1 && execute2 && reset1, 'the probe pair must have mounted and exposed both hooks');
+  assert.ok(execute1 && execute2 && reset1 && executeOom, 'the probe pair must have mounted and exposed every hook');
 });
 
 beforeEach(() => {
@@ -307,13 +351,11 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     const state = useViewerStore.getState();
     assert.equal(state.scriptLastResult, null, "reset()'s clear must not be resurrected by the stale run");
     assert.equal(state.scriptLastError, null, "reset()'s clear must not be resurrected by the stale run");
-    // `scriptExecutionState` is deliberately NOT asserted here. `reset()` ends
-    // with `setExecutionState('idle')` → `setResult(null)` → `setError(null)`,
-    // and `setScriptResult` sets `scriptExecutionState: 'success'`
-    // unconditionally (scriptSlice.ts) — so `reset()` has never left the state
-    // at `'idle'`, with or without this guard. That ordering defect is real but
-    // is not this change's, and pinning either value here would either assert a
-    // bug or fail for a reason unrelated to run supersession.
+    assert.equal(
+      state.scriptExecutionState,
+      'idle',
+      "reset() must leave the state it cleared coherent — 'success' with no result and no error is a state no consumer can render",
+    );
   });
 
   it('captures the epoch synchronously, before the first await, so a reset() landing in that window still supersedes the run', async () => {
@@ -369,5 +411,168 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     assert.ok(rSecond, 'the newer run on the same instance must resolve with its result');
     assert.equal((rSecond as ScriptResult).value, 'B-result');
     assert.deepEqual(useViewerStore.getState().scriptLastResult?.value, 'B-result');
+  });
+
+  it("reset() on instance A leaves a coherent state while a DIFFERENT instance's run is in flight", async () => {
+    // The cross-instance half of the reset story, which the same-instance test
+    // above cannot reach. `reset()` bumps the SHARED epoch, so instance B's
+    // in-flight run — which instance A knows nothing about — is superseded and
+    // skips its store write. Whatever `reset()` left behind is therefore
+    // FINAL: nothing lands after it to correct it. `setScriptResult(null)`
+    // used to report that cleared state as `'success'`, so the store came to
+    // rest permanently claiming a successful run with no result and no error,
+    // while `execute()` handed B's own caller the real result — two answers
+    // with nothing left to reconcile them.
+    let rB: ScriptResult | null | undefined;
+
+    await act(async () => {
+      const pB = execute2!(GATED).then((r) => { rB = r; });
+      await tick();
+      assert.equal(gates.length, 1, "instance B's run must be in flight when instance A resets");
+      reset1!();
+      gates[0]!({ marker: 'B-result' });
+      await pB;
+    });
+
+    // B's own caller still gets B's real outcome: an unrelated instance's
+    // reset is not evidence that B's script failed (the `runEpochRef` half).
+    assert.ok(rB, "a DIFFERENT instance's reset() must not fabricate a failure for B's own caller");
+    assert.deepEqual((rB as ScriptResult).value, { v: 'B-result' });
+
+    const state = useViewerStore.getState();
+    assert.equal(state.scriptLastResult, null, "the superseded run must not resurrect what reset() cleared");
+    assert.equal(state.scriptLastError, null, "the superseded run must not write an error over what reset() cleared");
+    assert.equal(
+      state.scriptExecutionState,
+      'idle',
+      "the state reset() comes to rest in must be coherent with the result it cleared — a terminal 'success' with a null result and a null error describes a run that never happened",
+    );
+  });
+
+  // ---------------------------------------------------------------------
+  // The #1922 teardown-abort publishes. These run LAST on purpose: each one
+  // aborts a real QuickJS WASM module. The package retires the aborted module
+  // and builds the next sandbox on a fresh one, so a later run still works —
+  // but emscripten latches `ABORT` per module instance, so keeping the healthy
+  // tests ahead of them costs nothing and removes the question entirely.
+  // ---------------------------------------------------------------------
+
+  it('publishes a teardown abort for an unsuperseded run (success-path teardown)', async () => {
+    // The control for the test below, and the proof that the fixture really
+    // produces a #1922 abort rather than some ordinary failure: nothing
+    // supersedes this run, so the abort MUST reach the store.
+    let r: ScriptResult | null | undefined;
+    await act(async () => {
+      const p = executeOom!(GATED_OOM_AT_TEARDOWN).then((x) => { r = x; });
+      await tick();
+      assert.equal(gates.length, 1, 'the reproducer must be parked on its host gate');
+      gates[0]!({ marker: 'A-result' });
+      await p;
+    });
+
+    assert.equal(r, null, 'a run the teardown abort proves died must resolve null');
+    const state = useViewerStore.getState();
+    assert.equal(
+      state.scriptLastError,
+      SANDBOX_ABORT_MESSAGE,
+      'the reproducer must actually produce a teardown abort — without this the superseded test below could pass vacuously',
+    );
+    assert.equal(state.scriptExecutionState, 'error');
+    assert.ok(state.scriptLastResult, 'the abort publish keeps the captured logs');
+    assert.equal(
+      (state.scriptLastResult as ScriptResult).value,
+      undefined,
+      'the abort publish must not keep the value — it is a lie about a dead run',
+    );
+  });
+
+  it('does not publish a superseded run\'s teardown abort (success-path teardown)', async () => {
+    // Same reproducer, now superseded by a newer run from a DIFFERENT
+    // instance that settles first. The abort is a real failure of THIS run,
+    // but it is no longer the document's current story: publishing it would
+    // replace a newer, already-displayed result with an error about a run the
+    // user has moved on from.
+    const settleOrder: string[] = [];
+    let rA: ScriptResult | null | undefined;
+
+    await act(async () => {
+      const pA = executeOom!(GATED_OOM_AT_TEARDOWN).then((r) => { settleOrder.push('A'); rA = r; });
+      const pB = execute2!(UNGATED).then(() => { settleOrder.push('B'); });
+      await pB;
+      assert.deepEqual(settleOrder, ['B'], 'the aborting run must still be parked when the newer run settles');
+      assert.equal(gates.length, 1, 'the aborting run must be parked on its host gate');
+      gates[0]!({ marker: 'A-result' });
+      await pA;
+    });
+
+    assert.deepEqual(settleOrder, ['B', 'A'], 'the aborting run must settle LAST — otherwise there is nothing for it to clobber');
+    assert.equal(rA, null, 'a run that died at teardown resolves null to its own caller regardless of either epoch');
+    const state = useViewerStore.getState();
+    assert.equal(
+      state.scriptLastError,
+      null,
+      "a superseded run's teardown abort must not be published over the newer run's clean state",
+    );
+    assert.deepEqual(
+      state.scriptLastResult?.value,
+      'B-result',
+      "the newer run's result must survive the superseded run's teardown abort",
+    );
+    assert.equal(state.scriptExecutionState, 'success');
+  });
+
+  it('publishes a teardown abort for an unsuperseded run that also threw (finally teardown)', async () => {
+    // The other teardown-abort publish. `eval()` REJECTS here, so the
+    // success-path teardown never runs and the abort can only come from the
+    // `finally`. The error assertion is what pins that routing: the catch
+    // block has already called `setError('late-boom')`, so the store reading
+    // back as the ABORT message proves the `finally` publish ran after it.
+    let r: ScriptResult | null | undefined;
+    await act(async () => {
+      const p = executeOom!(GATED_OOM_AT_TEARDOWN_AFTER_THROW).then((x) => { r = x; });
+      await tick();
+      assert.equal(gates.length, 1, 'the reproducer must be parked on its host gate');
+      gates[0]!({ marker: 'unused' });
+      await p;
+    });
+
+    assert.equal(r, null, 'a run that threw must resolve null');
+    const state = useViewerStore.getState();
+    assert.equal(
+      state.scriptLastError,
+      SANDBOX_ABORT_MESSAGE,
+      "the finally's teardown abort must be published, and must replace the ordinary script error the catch block reported",
+    );
+    assert.equal(state.scriptExecutionState, 'error');
+  });
+
+  it('does not publish a superseded run\'s teardown abort (finally teardown)', async () => {
+    const settleOrder: string[] = [];
+    let rA: ScriptResult | null | undefined;
+
+    await act(async () => {
+      const pA = executeOom!(GATED_OOM_AT_TEARDOWN_AFTER_THROW).then((r) => { settleOrder.push('A'); rA = r; });
+      const pB = execute2!(UNGATED).then(() => { settleOrder.push('B'); });
+      await pB;
+      assert.deepEqual(settleOrder, ['B'], 'the aborting run must still be parked when the newer run settles');
+      assert.equal(gates.length, 1, 'the aborting run must be parked on its host gate');
+      gates[0]!({ marker: 'unused' });
+      await pA;
+    });
+
+    assert.deepEqual(settleOrder, ['B', 'A'], 'the aborting run must settle LAST');
+    assert.equal(rA, null, 'a run that threw resolves null to its own caller');
+    const state = useViewerStore.getState();
+    assert.equal(
+      state.scriptLastError,
+      null,
+      "the finally's teardown-abort publish must be gated too — a superseded run's abort must not land over the newer run's result",
+    );
+    assert.deepEqual(
+      state.scriptLastResult?.value,
+      'B-result',
+      "the newer run's result must survive the superseded run's finally-path abort",
+    );
+    assert.equal(state.scriptExecutionState, 'success');
   });
 });

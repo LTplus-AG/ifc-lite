@@ -846,9 +846,10 @@ function showPickInfo(eid) {
   if (!info) return;
   const el = document.getElementById('pick-info');
   el.style.display = 'block';
-  // Build with textContent, not innerHTML: info.ifcType comes from streamed
-  // mesh data (a loaded IFC file or /api/create), not a fixed string, so it
-  // must never be parsed as markup.
+  // Build with textContent, not innerHTML. info.ifcType is safe today -- it
+  // comes from the WASM parser's IfcType::name(), a closed set of generated
+  // "Ifc..." literals -- so this is not fixing a reachable escape. It removes
+  // the file's last interpolation site that would depend on that staying true.
   el.textContent = '';
   const row = (cls, text) => {
     const d = document.createElement('div');

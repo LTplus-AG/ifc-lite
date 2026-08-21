@@ -1171,3 +1171,130 @@ describe('viewer blob — handleCommand: lifecycle and unknown actions', () => {
     assert.deepEqual(v.ctx.colorOverrides.get(100001), [0.2, 0.9, 0.4, 1]);
   });
 });
+
+// ── 9. Pick-info panel ──────────────────────────────────────────────────────
+
+/**
+ * `showPickInfo` touches `document`, so it is not browser-free — but the
+ * `makeViewer` harness above already shows a `loadDecls` scope can carry a
+ * `document` seam, so a fake one is all this needs. Asserting on the nodes the
+ * function actually appends — rather than grepping the emitted source for
+ * `.innerHTML` — is what makes the test survive a rewrite: any route that puts
+ * markup in instead of text (`innerHTML`, `insertAdjacentHTML`) fails here,
+ * because a text node is the only thing this fake document produces.
+ */
+function fakeDocument() {
+  /** Every write that would have gone through the HTML parser in a browser. */
+  const markupWrites: string[] = [];
+  const make = () => {
+    const node: any = {
+      className: '',
+      style: {} as Record<string, string>,
+      children: [] as any[],
+      _text: '',
+      get textContent(): string {
+        return node.children.length
+          ? node.children.map((c: any) => c.textContent).join('')
+          : node._text;
+      },
+      set textContent(v: string) {
+        node.children = [];
+        node._text = String(v);
+      },
+      // The two markup routes, recorded rather than parsed. A browser would
+      // turn these into elements; here they are evidence the panel stopped
+      // treating its input as text.
+      set innerHTML(v: string) {
+        markupWrites.push(String(v));
+        node.children = [];
+        node._text = '';
+      },
+      get innerHTML(): string {
+        return markupWrites[markupWrites.length - 1] ?? '';
+      },
+      insertAdjacentHTML(_where: string, v: string) {
+        markupWrites.push(String(v));
+      },
+      appendChild(child: any) {
+        node._text = '';
+        node.children.push(child);
+        return child;
+      },
+    };
+    return node;
+  };
+  const pickInfo = make();
+  return {
+    doc: {
+      getElementById: (id: string) => (id === 'pick-info' ? pickInfo : null),
+      createElement: make,
+    },
+    pickInfo,
+    markupWrites,
+  };
+}
+
+describe('viewer blob — showPickInfo builds the panel as text, not markup', () => {
+  const renderPick = (eid: number, info: Record<string, unknown>) => {
+    const { doc, pickInfo, markupWrites } = fakeDocument();
+    loadDecls(['showPickInfo'], {
+      entityMap: new Map<number, unknown>([[eid, info]]),
+      document: doc,
+    }).showPickInfo(eid);
+    return { el: pickInfo, markupWrites };
+  };
+
+  it('appends one text-only div per row', () => {
+    const { el, markupWrites } = renderPick(7, { ifcType: 'IfcWall', indexCount: 9 });
+    assert.deepEqual(
+      el.children.map((c: any) => [c.className, c.textContent]),
+      [
+        ['label', 'Entity #7'],
+        ['value', 'IfcWall'],
+        ['label', 'Triangles'],
+        ['value', '3'],
+      ],
+    );
+    assert.deepEqual(markupWrites, [], 'no row may be written through the HTML parser');
+  });
+
+  it('keeps an ifcType containing markup characters as literal text', () => {
+    // Not reachable today: ifcType comes from the parser's IfcType::name(), a
+    // closed set of "Ifc..." literals. This pins the property the rewrite
+    // exists to guarantee — the panel renders whatever it is handed as text.
+    const { el, markupWrites } = renderPick(1, {
+      ifcType: '<img src=x onerror=alert(1)>&',
+      indexCount: 3,
+    });
+    assert.deepEqual(
+      markupWrites,
+      [],
+      'the type string must never reach innerHTML or insertAdjacentHTML',
+    );
+    const value = el.children[1];
+    assert.equal(value.textContent, '<img src=x onerror=alert(1)>&');
+    assert.equal(value.children.length, 0, 'the value must be a text node, never parsed markup');
+  });
+
+  it('clears the previous pick rather than appending to it', () => {
+    const { doc, pickInfo } = fakeDocument();
+    const ctx = loadDecls(['showPickInfo'], {
+      entityMap: new Map<number, unknown>([
+        [1, { ifcType: 'IfcWall', indexCount: 3 }],
+        [2, { ifcType: 'IfcSlab', indexCount: 6 }],
+      ]),
+      document: doc,
+    });
+    ctx.showPickInfo(1);
+    ctx.showPickInfo(2);
+    assert.equal(pickInfo.children.length, 4, 'a second pick must replace the first four rows');
+    assert.equal(pickInfo.children[1].textContent, 'IfcSlab');
+  });
+
+  it('leaves the panel untouched for an unknown entity', () => {
+    const { doc, pickInfo } = fakeDocument();
+    loadDecls(['showPickInfo'], { entityMap: new Map(), document: doc }).showPickInfo(99);
+    assert.equal(pickInfo.children.length, 0);
+    assert.equal(pickInfo.style.display, undefined, 'an unknown id must not open the panel');
+  });
+});

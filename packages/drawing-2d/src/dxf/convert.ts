@@ -67,7 +67,7 @@ const INSUNITS_TO_METRES: Record<number, number> = {
   17: 1e9, // gigametres
   18: 1.495978707e11, // astronomical units (IAU 2012 exact definition)
   19: 9.4607304725808e15, // light years (Julian light year, exact)
-  20: 3.0856775814913673e16, // parsecs (IAU 2015 exact definition)
+  20: 3.085677581491367e16, // parsecs (IAU 2015; written at the precision f64 carries)
   21: US_SURVEY_FOOT_METRES, // US Survey Feet
   22: US_SURVEY_FOOT_METRES / 12, // US Survey Inch
   23: US_SURVEY_FOOT_METRES * 3, // US Survey Yard

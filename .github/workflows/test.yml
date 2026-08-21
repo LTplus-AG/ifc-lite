@@ -727,6 +727,24 @@ jobs:
           IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test --workspace
 
+      # `parquet-bos` is OFF by default because arrow/parquet/zip do not target
+      # wasm32 cleanly (rust/export/Cargo.toml:33). The consequence is that
+      # `cargo test --workspace` above never COMPILES the module, let alone
+      # runs it: an off-by-default feature with no CI leg is dead code that
+      # looks maintained, and the first person to learn it had broken would be
+      # whoever enabled it (#2802).
+      #
+      # Its own step rather than `--all-features`, which would also switch on
+      # anything added later and make an unrelated feature's breakage read as
+      # this one's.
+      - name: Rust tests (parquet-bos feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-export --features parquet-bos
+
+      - name: Clippy (parquet-bos feature)
+        run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
+
   # Geometry watertightness / triangulation-invariance census.
   #
   # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture

@@ -8,9 +8,12 @@ use std::collections::{HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 
+use super::guid::{extract_global_id_fast, is_relationship_type, GuidMinter};
 use super::spatial::{
     nth_attr, ContainerMergeStrategy, SpatialLookup, StoreyMergeStrategy,
 };
+use super::units::units_compatible;
+use super::MergedModel;
 use crate::step_text::refs_in_line;
 
 /// Entity types forming shared infrastructure — the first instance of each is
@@ -239,66 +242,133 @@ fn parse_ref_list(arg: &str) -> Vec<u32> {
         .collect()
 }
 
-#[cfg(test)]
-mod plan_tests {
-    use super::*;
+/// The plan state built for one model before it is emitted.
+#[derive(Default)]
+pub(super) struct ModelPlan {
+    /// Local express id → absolute final id (redirect; no offset applied).
+    pub(super) shared_remap: HashMap<u32, u32>,
+    /// Local express ids whose line is not emitted (unified into the first model).
+    pub(super) skip: HashSet<u32>,
+    /// Local express id → fresh GlobalId to stamp (duplicate GUID re-stamp).
+    pub(super) guid_rewrite: HashMap<u32, String>,
+    /// Local express id → its source GlobalId (rooted entities only).
+    pub(super) local_guids: HashMap<u32, String>,
+}
 
-    const TWO_STOREYS: &str = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('p',$,$,$,$,$,$,$,$);\n#2=IFCSITE('s',$,'Site',$,$,$,$,$,$);\n#3=IFCRELAGGREGATES('r',$,$,$,#1,(#2));\nENDSEC;\nEND-ISO-10303-21;\n";
+/// Immutable-ish context threaded into [`build_plan`].
+pub(super) struct PlanCtx<'a> {
+    pub(super) canonical_project: Option<u32>,
+    pub(super) first_infra: &'a HashMap<&'static str, u32>,
+    pub(super) spatial_lookup: &'a SpatialLookup,
+    pub(super) merge_sites: ContainerMergeStrategy,
+    pub(super) merge_buildings: ContainerMergeStrategy,
+    pub(super) merge_storeys: StoreyMergeStrategy,
+    pub(super) primary_scale: f64,
+    pub(super) guid_to_final: &'a HashMap<String, (u32, f64)>,
+    pub(super) emitted_guids: &'a HashSet<String>,
+    pub(super) minter: &'a mut GuidMinter,
+    pub(super) salt: String,
+}
 
-    #[test]
-    fn build_indexes_order_types_and_max() {
-        let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
-        assert_eq!(idx.order, vec![1, 2, 3]);
-        assert_eq!(idx.max_id, 3);
-        assert_eq!(idx.projects, vec![1]);
-        assert_eq!(idx.site_count, 1);
-        assert_eq!(idx.type_of.get(&2).map(String::as_str), Some("IFCSITE"));
+/// Build the [`ModelPlan`] for one model: project / infrastructure / spatial
+/// unification (compatible non-first models only) plus GlobalId reconciliation.
+pub(super) fn build_plan(
+    index: &ModelIndex,
+    is_first: bool,
+    compatible: bool,
+    mut ctx: PlanCtx,
+) -> ModelPlan {
+    let mut plan = ModelPlan::default();
+
+    for &id in &index.order {
+        if let Some(ty) = index.type_of.get(&id) {
+            if let Some(bytes) = index.line_bytes(id) {
+                if let Some(guid) = extract_global_id_fast(ty, bytes) {
+                    plan.local_guids.insert(id, guid);
+                }
+            }
+        }
     }
 
-    #[test]
-    fn resolve_included_pulls_forward_closure() {
-        let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
-        // Root at the rel: closure must pull in #1 (relating) and #2 (related).
-        let included = resolve_included(&idx, &Some(vec![3]));
-        assert!(included.contains(&3) && included.contains(&1) && included.contains(&2));
-        // None → everything.
-        assert_eq!(resolve_included(&idx, &None).len(), 3);
-    }
-
-    #[test]
-    fn rewrite_refs_offsets_and_redirects() {
-        let mut remap = HashMap::new();
-        remap.insert(2u32, 100u32);
-        let out = rewrite_refs(
-            b"#3=IFCRELAGGREGATES('r #2',$,$,$,#1,(#2));",
-            10,
-            &|n| remap.get(&n).copied(),
+    if !is_first && compatible {
+        // Unify each later project into the first model's.
+        if let Some(cp) = ctx.canonical_project {
+            for &pid in &index.projects {
+                plan.shared_remap.insert(pid, cp);
+                plan.skip.insert(pid);
+            }
+        }
+        // Deduplicate the first instance of each shared-infrastructure type.
+        for &ty in &SHARED_INFRASTRUCTURE_TYPES {
+            if let (Some(&this_id), Some(&first_id)) =
+                (index.first_infra.get(ty), ctx.first_infra.get(ty))
+            {
+                plan.shared_remap.insert(this_id, first_id);
+                plan.skip.insert(this_id);
+            }
+        }
+        // Unify spatial containers, then drop now-redundant aggregations.
+        unify_spatial(
+            ctx.spatial_lookup,
+            index,
+            &mut plan.shared_remap,
+            &mut plan.skip,
+            ctx.merge_sites,
+            ctx.merge_buildings,
+            ctx.merge_storeys,
+            1.0,
         );
-        // #1 offset by 10 → #11; #2 redirected → #100; '#2' in the string untouched.
-        assert!(out.contains("#11,(#100))"));
-        assert!(out.contains("'r #2'"));
+        skip_redundant_rel_aggregates(index, &plan.shared_remap, &mut plan.skip);
     }
 
-    #[test]
-    fn redundant_rel_aggregates_dropped_only_when_fully_shared() {
-        let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
-        let mut skip = HashSet::new();
-        // Both #1 and #2 unified → the rel #3 is redundant.
-        let mut shared = HashMap::from([(1u32, 50u32), (2u32, 51u32)]);
-        skip_redundant_rel_aggregates(&idx, &shared, &mut skip);
-        assert!(skip.contains(&3));
-        // Only relating shared → kept.
-        skip.clear();
-        shared.remove(&2);
-        skip_redundant_rel_aggregates(&idx, &shared, &mut skip);
-        assert!(!skip.contains(&3));
+    if !is_first {
+        reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
     }
 
-    #[test]
-    fn parse_ref_helpers() {
-        assert_eq!(parse_single_ref(" #42 "), Some(42));
-        assert_eq!(parse_single_ref("$"), None);
-        assert_eq!(parse_ref_list("(#1,#2,#3)"), vec![1, 2, 3]);
-        assert_eq!(parse_ref_list("()"), Vec::<u32>::new());
+    plan
+}
+
+/// Unify or re-stamp each rooted entity whose GlobalId already appeared.
+fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &mut PlanCtx) {
+    // Collect first so the mutable `minter` borrow does not overlap the read of
+    // `plan.local_guids` / `plan.skip`.
+    let mut restamp: Vec<(u32, String)> = Vec::new();
+    for &id in &index.order {
+        if plan.skip.contains(&id) {
+            continue;
+        }
+        let Some(guid) = plan.local_guids.get(&id) else { continue };
+        let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
+        let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
+        let can_unify =
+            compatible && units_compatible(scale, ctx.primary_scale) && !is_relationship_type(ty);
+        if can_unify {
+            plan.shared_remap.insert(id, final_id);
+            plan.skip.insert(id);
+        } else {
+            restamp.push((id, guid.clone()));
+        }
+    }
+    // A minted replacement must also avoid the guids THIS model emits unchanged:
+    // `emitted_guids` only holds prior models' guids (the plan is built before this
+    // model emits), so without this a fresh guid could collide with an untouched
+    // one in the same model (CR). Collect them once, before the mutable borrow.
+    let local_guids: HashSet<String> = plan.local_guids.values().cloned().collect();
+    for (id, guid) in restamp {
+        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids, &local_guids);
+        plan.guid_rewrite.insert(id, minted);
     }
 }
+
+/// The GlobalId-mint salt for a model: its stable id, or its index when empty.
+pub(super) fn model_salt(model: &MergedModel, index: usize) -> String {
+    if model.id.is_empty() {
+        index.to_string()
+    } else {
+        model.id.clone()
+    }
+}
+
+#[cfg(test)]
+#[path = "plan_tests.rs"]
+mod plan_tests;

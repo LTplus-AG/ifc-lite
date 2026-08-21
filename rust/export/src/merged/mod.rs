@@ -32,9 +32,9 @@ use std::collections::{HashMap, HashSet};
 
 use crate::step_text::{detect_schema, escape};
 
-use guid::{extract_global_id_fast, is_relationship_type, read_leading_guid, replace_global_id, GuidMinter};
+use guid::{read_leading_guid, replace_global_id, GuidMinter};
 pub use guid::leading_rooted_global_id;
-use plan::{ModelIndex, SHARED_INFRASTRUCTURE_TYPES};
+use plan::{build_plan, model_salt, ModelIndex, PlanCtx};
 use units::{resolve_length_scale, units_compatible};
 
 pub use spatial::{ContainerMergeStrategy, StoreyMergeStrategy};
@@ -136,19 +136,6 @@ pub fn export_merged_with_stats(models: &[&[u8]], opts: &MergedOptions) -> (Stri
         .map(|(i, &content)| MergedModel { content, id: i.to_string(), included: None })
         .collect();
     export_merged_models(&inputs, opts)
-}
-
-/// The plan state built for one model before it is emitted.
-#[derive(Default)]
-struct ModelPlan {
-    /// Local express id → absolute final id (redirect; no offset applied).
-    shared_remap: HashMap<u32, u32>,
-    /// Local express ids whose line is not emitted (unified into the first model).
-    skip: HashSet<u32>,
-    /// Local express id → fresh GlobalId to stamp (duplicate GUID re-stamp).
-    guid_rewrite: HashMap<u32, String>,
-    /// Local express id → its source GlobalId (rooted entities only).
-    local_guids: HashMap<u32, String>,
 }
 
 /// Merge several parsed models into one STEP/IFC string, honoring per-model
@@ -310,115 +297,6 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
     (out, stats)
-}
-
-/// Immutable-ish context threaded into [`build_plan`].
-struct PlanCtx<'a> {
-    canonical_project: Option<u32>,
-    first_infra: &'a HashMap<&'static str, u32>,
-    spatial_lookup: &'a spatial::SpatialLookup,
-    merge_sites: ContainerMergeStrategy,
-    merge_buildings: ContainerMergeStrategy,
-    merge_storeys: StoreyMergeStrategy,
-    primary_scale: f64,
-    guid_to_final: &'a HashMap<String, (u32, f64)>,
-    emitted_guids: &'a HashSet<String>,
-    minter: &'a mut GuidMinter,
-    salt: String,
-}
-
-/// Build the [`ModelPlan`] for one model: project / infrastructure / spatial
-/// unification (compatible non-first models only) plus GlobalId reconciliation.
-fn build_plan(index: &ModelIndex, is_first: bool, compatible: bool, mut ctx: PlanCtx) -> ModelPlan {
-    let mut plan = ModelPlan::default();
-
-    for &id in &index.order {
-        if let Some(ty) = index.type_of.get(&id) {
-            if let Some(bytes) = index.line_bytes(id) {
-                if let Some(guid) = extract_global_id_fast(ty, bytes) {
-                    plan.local_guids.insert(id, guid);
-                }
-            }
-        }
-    }
-
-    if !is_first && compatible {
-        // Unify each later project into the first model's.
-        if let Some(cp) = ctx.canonical_project {
-            for &pid in &index.projects {
-                plan.shared_remap.insert(pid, cp);
-                plan.skip.insert(pid);
-            }
-        }
-        // Deduplicate the first instance of each shared-infrastructure type.
-        for &ty in &SHARED_INFRASTRUCTURE_TYPES {
-            if let (Some(&this_id), Some(&first_id)) =
-                (index.first_infra.get(ty), ctx.first_infra.get(ty))
-            {
-                plan.shared_remap.insert(this_id, first_id);
-                plan.skip.insert(this_id);
-            }
-        }
-        // Unify spatial containers, then drop now-redundant aggregations.
-        plan::unify_spatial(
-            ctx.spatial_lookup,
-            index,
-            &mut plan.shared_remap,
-            &mut plan.skip,
-            ctx.merge_sites,
-            ctx.merge_buildings,
-            ctx.merge_storeys,
-            1.0,
-        );
-        plan::skip_redundant_rel_aggregates(index, &plan.shared_remap, &mut plan.skip);
-    }
-
-    if !is_first {
-        reconcile_global_ids(index, compatible, &mut plan, &mut ctx);
-    }
-
-    plan
-}
-
-/// Unify or re-stamp each rooted entity whose GlobalId already appeared.
-fn reconcile_global_ids(index: &ModelIndex, compatible: bool, plan: &mut ModelPlan, ctx: &mut PlanCtx) {
-    // Collect first so the mutable `minter` borrow does not overlap the read of
-    // `plan.local_guids` / `plan.skip`.
-    let mut restamp: Vec<(u32, String)> = Vec::new();
-    for &id in &index.order {
-        if plan.skip.contains(&id) {
-            continue;
-        }
-        let Some(guid) = plan.local_guids.get(&id) else { continue };
-        let Some(&(final_id, scale)) = ctx.guid_to_final.get(guid) else { continue };
-        let ty = index.type_of.get(&id).map(String::as_str).unwrap_or("");
-        let can_unify =
-            compatible && units_compatible(scale, ctx.primary_scale) && !is_relationship_type(ty);
-        if can_unify {
-            plan.shared_remap.insert(id, final_id);
-            plan.skip.insert(id);
-        } else {
-            restamp.push((id, guid.clone()));
-        }
-    }
-    // A minted replacement must also avoid the guids THIS model emits unchanged:
-    // `emitted_guids` only holds prior models' guids (the plan is built before this
-    // model emits), so without this a fresh guid could collide with an untouched
-    // one in the same model (CR). Collect them once, before the mutable borrow.
-    let local_guids: HashSet<String> = plan.local_guids.values().cloned().collect();
-    for (id, guid) in restamp {
-        let minted = ctx.minter.mint(&guid, &ctx.salt, ctx.emitted_guids, &local_guids);
-        plan.guid_rewrite.insert(id, minted);
-    }
-}
-
-/// The GlobalId-mint salt for a model: its stable id, or its index when empty.
-fn model_salt(model: &MergedModel, index: usize) -> String {
-    if model.id.is_empty() {
-        index.to_string()
-    } else {
-        model.id.clone()
-    }
 }
 
 #[cfg(test)]

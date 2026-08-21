@@ -361,6 +361,49 @@ jobs:
           path: packages
       - run: pnpm lint
 
+  # The viewer's own suite, split out of `node-tests` so the two run at the
+  # same time. 521 test files, each in its own process paying its own
+  # TypeScript transform (`vite-module-hooks.mjs` keeps no on-disk cache), so
+  # the constant cost per file is what dominates rather than the assertions.
+  # Concurrency helps it linearly and does not make it small.
+  #
+  # A timed-out lane reports as `cancelled`, which is the SAME word a
+  # supersession gets. Separate them by duration against `timeout-minutes`,
+  # never by the word: 25m16s and 25m18s against a 25 minute cap are timeouts,
+  # and nothing else in the API says so.
+  viewer-tests:
+    name: Viewer tests
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      - run: pnpm exec turbo test --filter=@ifc-lite/viewer
+
   node-tests:
     name: Node tests
     needs: [changes, build]
@@ -370,17 +413,23 @@ jobs:
     # the integration harness now; 18 min left no headroom (timed out at the
     # integration step on a cold-ish run).
     #
-    # 25 stopped being enough on 2026-08-21 and the lane timed out on MAIN,
-    # which reads as `cancelled` — the same word a supersession gets, so it
-    # was only distinguishable by the clock (25m18s against this exact cap).
-    # The response was to make the work smaller rather than raise the number
-    # again: apps/viewer runs 521 files and was pinned to
-    # `--test-concurrency=1`, measured at 295s serial versus 142s at 4, with
-    # 5625 passing either way over three consecutive runs.
+    # 25 stopped being enough on 2026-08-21 and the lane timed out on MAIN.
     #
-    # If this needs raising again, look at `@ifc-lite/provenance` first: it
-    # alone spent 413s of the last green run, with single tests at 87s and
-    # 38s. Raising the cap buys time; it does not buy headroom.
+    # DISAMBIGUATION RULE, because this cost hours: a timed-out lane reports as
+    # `cancelled`, the SAME word a supersession gets. Nothing in the API
+    # distinguishes them. Separate them by DURATION against `timeout-minutes` —
+    # 25m16s, 25m18s and 25m19s against a 25 minute cap are timeouts. Also note
+    # turbo BUFFERS a task's output until the task ends, so a task that never
+    # finishes prints nothing and reads as a hang rather than as slowness.
+    #
+    # The viewer suite now runs in its own concurrent job (`viewer-tests`)
+    # rather than at the tail of this one. Raising the cap was rejected: it
+    # went 18 -> 25 once already for this reason, and buys time rather than
+    # headroom.
+    #
+    # If this lane needs attention again, `@ifc-lite/provenance` is the next
+    # target: it alone spent 396s of the run that exposed this, with single
+    # tests at 87s and 38s.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -594,7 +643,14 @@ jobs:
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
-      - run: pnpm test
+      # The viewer suite runs in its OWN job (`viewer-tests`) rather than here.
+      # One job was running all 47 packages' tests in sequence, and the viewer
+      # alone needs more than the remainder of the budget: on the run that
+      # exposed this, everything up to and including @ifc-lite/provenance
+      # finished 7m55s in, and the viewer then had 17 minutes and did not
+      # finish. Splitting it out runs the two halves CONCURRENTLY, so each gets
+      # a whole budget instead of a leftover.
+      - run: pnpm exec turbo test --filter=!@ifc-lite/viewer
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.
@@ -896,7 +952,7 @@ jobs:
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -908,6 +964,7 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"

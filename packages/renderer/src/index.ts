@@ -149,7 +149,7 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { ShadowPass } from './shadow-pass.js';
+import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -2095,7 +2095,14 @@ export class Renderer {
             if (shadowOpts?.enabled) {
                 const bounds = this.getModelBounds();
                 if (bounds) {
-                    const resolution = shadowOpts.resolution ?? 2048;
+                    // `resolution === 0` (or unset) means Auto: pick from the
+                    // device's texture limit. A manual value is clamped to that
+                    // limit so a 4096 request can't fail createTexture on a
+                    // 2048-max device (#2670 review).
+                    const resolution = resolveShadowMapResolution(
+                        shadowOpts.resolution,
+                        device.limits.maxTextureDimension2D,
+                    );
                     if (!this.shadowPass) {
                         this.shadowPass = new ShadowPass(device, resolution);
                     } else {

@@ -17,7 +17,7 @@
  */
 
 import type { StateCreator } from 'zustand';
-import { isLightingPresetId, type LightingPresetId } from '@/lib/lighting-presets';
+import { isLightingPresetId, LIGHTING_PRESETS, type LightingPresetId } from '@/lib/lighting-presets';
 
 export interface EnvironmentSlice {
   /** Active lighting preset for the WebGPU viewport. */
@@ -53,14 +53,16 @@ export interface EnvironmentSlice {
   /**
    * Sun angular size in degrees — the physical control on shadow-edge softness
    * (Blender's Sun lamp `Angle`, ~0.53° for a clear sky). Larger = wider
-   * penumbra / softer shadows. Describes the LIGHT, so it persists with the
-   * lighting choices. Clamped to [0.1, 5].
+   * penumbra / softer shadows. A property of the sky, so switching preset
+   * seeds it from the preset's `shadowSunAngleDeg` (#2670 review); the slider
+   * then overrides until the next preset change. Clamped to [0.1, 5].
    */
   envSunAngle: number;
   /**
    * Shadow-map resolution (square side, texels). A pure cost-vs-fidelity dial
    * (the machine, not the light), so it lives here as a Quality control and
-   * persists per device. One of 1024 / 2048 / 4096.
+   * persists per device. `0` = Auto: the renderer picks from the device's
+   * texture limit (#2670 review); otherwise one of 1024 / 2048 / 4096.
    */
   envShadowResolution: number;
 
@@ -151,11 +153,11 @@ function clampSunAngle(value: number): number {
   return Math.min(5, Math.max(0.1, value));
 }
 
-/** Snap to one of the supported shadow-map sizes. */
+/** Snap to a supported shadow-map size, or `0` for Auto (device-picked). */
 function clampShadowResolution(value: number): number {
-  const allowed = [1024, 2048, 4096];
-  if (!Number.isFinite(value)) return 2048;
-  return allowed.includes(value) ? value : 2048;
+  const allowed = [0, 1024, 2048, 4096];
+  if (!Number.isFinite(value)) return 0;
+  return allowed.includes(value) ? value : 0;
 }
 
 /** Clamp time of day to the sun-arc day window. */
@@ -174,7 +176,7 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     envSoftness: clampSoftness(stored.softness ?? 1),
     envShadowsEnabled: stored.shadowsEnabled === true,
     envSunAngle: clampSunAngle(stored.sunAngle ?? 0.53),
-    envShadowResolution: clampShadowResolution(stored.shadowResolution ?? 2048),
+    envShadowResolution: clampShadowResolution(stored.shadowResolution ?? 0),
     envSunTimeEnabled: stored.sunTimeEnabled === true,
     envSunTime: clampSunTime(stored.sunTime ?? 13),
   };
@@ -189,7 +191,11 @@ export const createEnvironmentSlice: StateCreator<EnvironmentSlice, [], [], Envi
     ...initial,
     envPanelOpen: false,
 
-    setEnvPreset: (preset) => update({ envPreset: preset }),
+    // Cast-shadow softness is a property of the sky, so a preset switch seeds
+    // envSunAngle from the preset (louistrue's #2670 review). The slider still
+    // overrides afterwards, until the next preset change.
+    setEnvPreset: (preset) =>
+      update({ envPreset: preset, envSunAngle: clampSunAngle(LIGHTING_PRESETS[preset].shadowSunAngleDeg) }),
     setEnvSkyEnabled: (enabled) => update({ envSkyEnabled: enabled }),
     setEnvExposure: (exposure) => update({ envExposure: clampExposure(exposure) }),
     setEnvHardness: (hardness) => update({ envHardness: clampHardness(hardness) }),

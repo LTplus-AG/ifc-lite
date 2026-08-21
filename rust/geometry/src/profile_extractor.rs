@@ -19,6 +19,7 @@
 
 use crate::profiles::ProfileProcessor;
 use crate::{Error, Point3, Result, TessellationQuality, Vector3};
+pub(crate) use ifc_lite_core::MAX_PLACEMENT_DEPTH;
 use ifc_lite_core::{
     build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema,
     IfcType,
@@ -519,9 +520,8 @@ fn get_placement_transform(
     }
 }
 
-const MAX_PLACEMENT_DEPTH: usize = 100;
-
-fn get_placement_recursive(
+/// `pub(crate)` so the #2873 divergence test can drive this walk and the mesh path's.
+pub(crate) fn get_placement_recursive(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
     depth: usize,

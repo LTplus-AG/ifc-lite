@@ -43,6 +43,10 @@ pub(crate) fn cartesian_point_at(
 
 mod parsers;
 
+#[cfg(test)]
+#[path = "placement_depth_tests.rs"]
+mod placement_depth_tests;
+
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
@@ -256,8 +260,8 @@ impl GeometryRouter {
 
     /// Recursively resolve placement hierarchy
     ///
-    /// Uses a depth limit (100) to prevent stack overflow on malformed files
-    /// with circular placement references or extremely deep hierarchies.
+    /// Bounded by [`Self::MAX_PLACEMENT_DEPTH`] so a malformed file with a
+    /// circular or absurdly deep placement hierarchy cannot overflow the stack.
     pub(super) fn get_placement_transform(
         &self,
         placement: &DecodedEntity,
@@ -267,8 +271,12 @@ impl GeometryRouter {
     }
 
     /// Internal helper with depth tracking to prevent stack overflow.
-    /// Keep low for WASM — each frame uses ~2KB+ of stack with Matrix4<f64> locals.
-    const MAX_PLACEMENT_DEPTH: usize = 32;
+    ///
+    /// The bound is [`ifc_lite_core::limits::MAX_PLACEMENT_DEPTH`], shared with
+    /// `profile_extractor`'s walk over the same attribute. It was a private 32
+    /// against that walk's 100, and since both exceed-branches return the
+    /// identity the two paths drew a deep chain in two places, silently. #2873
+    pub(super) const MAX_PLACEMENT_DEPTH: usize = ifc_lite_core::MAX_PLACEMENT_DEPTH;
 
     pub(super) fn get_placement_transform_with_depth(
         &self,

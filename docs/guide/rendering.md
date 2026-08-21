@@ -266,7 +266,7 @@ canvas.addEventListener('mousemove', (e) => {
       snapToVertices: true,
       snapToEdges: true,
       snapToFaces: true,
-      snapRadius: 0.1,           // 10cm world units
+      snapRadius: 0.1,           // deprecated: ignored, screenSnapRadius is what is read
       screenSnapRadius: 20       // 20 pixels
     }
   });
@@ -300,7 +300,7 @@ canvas.addEventListener('mousemove', (e) => {
     snapOptions: {
       snapToVertices: true,
       snapToEdges: true,
-      snapRadius: 0.1,
+      snapRadius: 0.1,          // deprecated: ignored
       screenSnapRadius: 20
     }
   });
@@ -522,7 +522,7 @@ interface RenderOptions {
   clearColor?: [number, number, number, number];
 
   // Performance
-  enableDepthTest?: boolean;
+  enableDepthTest?: boolean;        // deprecated: declared but never read
   enableFrustumCulling?: boolean;
   spatialIndex?: SpatialIndex;
 

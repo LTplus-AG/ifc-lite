@@ -59,7 +59,15 @@ export interface SVGExportOptions {
   projectName?: string;
   /** Background color (default: white) */
   backgroundColor?: string;
-  /** Units for dimension display */
+  /**
+   * Declared but never read. `export()` does not destructure `units` and no
+   * other code path consults it, so setting it has no effect on the emitted
+   * SVG. The exporter emits no dimension annotations at all, and the sheet
+   * itself is always sized in millimetres (`width="…mm"`), so there is no
+   * substitute option to reach for. Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the exporter — see above.
+   */
   units?: 'mm' | 'm';
   /** DXF reference underlays rendered beneath the drawing (issue #1782) */
   underlays?: SVGUnderlayOptions[];

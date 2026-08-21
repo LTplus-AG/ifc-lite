@@ -204,6 +204,15 @@ export interface RenderOptions {
    * look exactly. See {@link import('./environment.js').LightingEnvironment}.
    */
   environment?: import('./environment.js').LightingEnvironment;
+  /**
+   * Declared but never read. This is the only occurrence of the name in the
+   * package: nothing sets it and nothing consults it, so it is dead on both
+   * ends. Depth testing is decided per pipeline at construction time and is
+   * not configurable through `RenderOptions`; there is no substitute field.
+   * Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the renderer — see above.
+   */
   enableDepthTest?: boolean;
   enableFrustumCulling?: boolean;
   spatialIndex?: import('@ifc-lite/spatial').SpatialIndex;

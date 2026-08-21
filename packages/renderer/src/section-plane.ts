@@ -17,7 +17,18 @@ export interface SectionPlaneRenderOptions {
     max: { x: number; y: number; z: number };
   };
   viewProj: Float32Array;
-  flipped?: boolean; // If true, show the opposite side indicator
+  /**
+   * Declared but never read. `SectionPlaneRenderer.render()` never consults
+   * it, so the gizmo quad looks identical either way — this field cannot
+   * "show the opposite side indicator". Note that the actual GPU clip plane
+   * is flipped correctly elsewhere (`scene-raycaster.ts` and `point-picker.ts`
+   * read a `flipped` off their own section-plane state), so cutting behaviour
+   * is unaffected; only this gizmo option is inert. Slated for removal; see
+   * issue #2731.
+   *
+   * @deprecated Ignored by the gizmo renderer — see above.
+   */
+  flipped?: boolean;
   isPreview?: boolean; // If true, render as preview (less opacity)
   min?: number;      // Optional override for min range value
   max?: number;      // Optional override for max range value

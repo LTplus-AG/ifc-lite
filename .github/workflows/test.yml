@@ -529,6 +529,23 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # Executable proof for the test-glob-coverage gate, which runs in `lint`:
+      # its fixtures drive the unmodified checker against synthetic packages via
+      # `--root` and assert it goes red for a non-recursive shell glob, for an
+      # unrecognised test-script shape, and for a vitest `include` that misses a
+      # file — the three ways it could otherwise wave a package through.
+      - name: Check test-glob-coverage gate regressions
+        run: node --test scripts/check-test-glob-coverage.test.mjs
+      # The steps above name each scripts/ test file one by one, which is
+      # itself the trap check-test-glob-coverage.mjs exists to catch: the file
+      # that shipped that gate was the one entry nobody added, so a gate for
+      # unrun test files was itself unrun. Its own audit cannot see the gap —
+      # it walks packages/ and apps/, and scripts/ is neither. This catch-all
+      # closes it by GLOB, so the next script's tests run on the commit that
+      # adds them. The named steps above stay for their comments and for
+      # per-gate attribution; re-running them here costs a few seconds.
+      - name: Run every scripts/ test file (glob catch-all)
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

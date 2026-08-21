@@ -48,8 +48,14 @@
  * unmodified checker against synthetic fixture packages, never real repo
  * state.
  *
- * Run via `node scripts/check-test-glob-coverage.mjs`. NOT wired into CI —
- * see the report that shipped this file for the wiring proposal.
+ * Run via `pnpm check:test-glob-coverage`; also runs as part of `pnpm lint`,
+ * which is the CI lane that enforces it. Its own regression harness runs in
+ * .github/workflows/test.yml.
+ *
+ * Blind spot, stated so nobody mistakes its OK for a whole-repo claim: it
+ * audits `packages/*` and `apps/*` only. Test files under `scripts/` are
+ * enumerated by hand in that workflow, so they are covered by the glob
+ * catch-all step there, not by this checker.
  */
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';

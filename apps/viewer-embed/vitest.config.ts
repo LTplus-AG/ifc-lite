@@ -7,6 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = fileURLToPath(new URL('../../', import.meta.url)).replaceAll('\\', '/');
+const BUILT_SIBLING = new RegExp(
+  `^${repoRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}packages/[^/]+/(dist|pkg)/`,
+);
 
 export default defineConfig({
   resolve: {
@@ -20,5 +24,6 @@ export default defineConfig({
     // postMessage/targetOrigin assertions exact instead of relying on a DOM impl.
     environment: 'node',
     include: ['src/**/*.test.ts'],
+    server: { deps: { external: [BUILT_SIBLING] } },
   },
 });

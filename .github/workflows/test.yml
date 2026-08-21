@@ -361,6 +361,100 @@ jobs:
           path: packages
       - run: pnpm lint
 
+  # The viewer's own suite, split out of `node-tests` AND sharded four ways.
+  #
+  # Measured, not guessed. Splitting it out of node-tests took that lane from
+  # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
+  # and a half minutes. The viewer alone then still timed out at 25:29 with a
+  # whole 4-vCPU runner to itself, which is what made sharding the answer
+  # rather than more concurrency inside one job.
+  #
+  # Healthy shard timings, recorded so the next person seeing this lane creep
+  # knows what good looks like rather than only what broken looked like:
+  # 2:29, 2:01, 1:50 against a 25 minute cap.
+  #
+  # Two earlier explanations in this file were WRONG and are corrected here,
+  # because a confident wrong comment is worse than none:
+  #
+  #  - "each process pays its own transform, with no on-disk cache" — tsx DOES
+  #    cache transforms under `os.tmpdir()/tsx-{uid}`. Measured, it barely
+  #    matters either way: the full suite is 112.0s cold versus 110.8s warm.
+  #    The dominant per-file cost is not the transform, it is EVALUATING a
+  #    ~1,200-module import graph in every forked process (~0.4s of ~0.55s).
+  #    So a shared transform cache is NOT the fix; measured benefit ~1%.
+  #
+  #  - "not a hang, just a long task". Turbo buffering explains the silence
+  #    but never proved forward progress. `node:test` has no per-file timeout,
+  #    so ONE never-exiting child holds the runner until the job cap while the
+  #    other slots finish everything else — which is exactly what identical
+  #    25:15 caps across four differently-sized shards look like.
+  #
+  # Hence `--test-timeout` in apps/viewer's script: a hung test now fails by
+  # name in two minutes instead of consuming twenty-five and reading as
+  # slowness. That is the guard this incident was missing.
+  #
+  # A timed-out lane reports as `cancelled`, which is the SAME word a
+  # supersession gets. Separate them by duration against `timeout-minutes`,
+  # never by the word: 25m16s and 25m18s against a 25 minute cap are timeouts,
+  # and nothing else in the API says so.
+  viewer-tests:
+    name: Viewer tests (shard ${{ matrix.shard }})
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+      # Run the package script DIRECTLY, not through turbo. Two reasons, both
+      # measured rather than assumed:
+      #
+      # 1. Turbo strips undeclared environment variables. `globalPassThroughEnv`
+      #    in turbo.json is an explicit allowlist and does not include these,
+      #    and the `test` task declares no `env`/`passThroughEnv`. Routed
+      #    through turbo, TEST_SHARD never reached the script and all four
+      #    shards ran the full 521 files, taking an identical 25:15 each. That
+      #    identical timing is what exposed it: quartering the input cannot
+      #    leave the duration unchanged.
+      # 2. `test` dependsOn `build`, so turbo also ran the viewer's Vite app
+      #    build (53s of "✓ built in 53.43s") which its tests do not need. The
+      #    sibling dists the tests DO need come from the downloaded artifact.
+      #
+      # `TEST_SHARDS`/`TEST_SHARD` select every Nth file (see apps/viewer's
+      # test script). Unset, the script takes all 521, so a local `pnpm test`
+      # is unchanged. The split is exact: 130+131+130+130 = 521 files, 521
+      # distinct paths, so nothing is dropped or run twice.
+      - run: pnpm --filter @ifc-lite/viewer run test
+        env:
+          TEST_SHARDS: '4'
+          TEST_SHARD: ${{ matrix.shard }}
+
   node-tests:
     name: Node tests
     needs: [changes, build]
@@ -369,6 +463,24 @@ jobs:
     # 25 min: the job also runs the previously dark ifcx/renderer suites and
     # the integration harness now; 18 min left no headroom (timed out at the
     # integration step on a cold-ish run).
+    #
+    # 25 stopped being enough on 2026-08-21 and the lane timed out on MAIN.
+    #
+    # DISAMBIGUATION RULE, because this cost hours: a timed-out lane reports as
+    # `cancelled`, the SAME word a supersession gets. Nothing in the API
+    # distinguishes them. Separate them by DURATION against `timeout-minutes` —
+    # 25m16s, 25m18s and 25m19s against a 25 minute cap are timeouts. Also note
+    # turbo BUFFERS a task's output until the task ends, so a task that never
+    # finishes prints nothing and reads as a hang rather than as slowness.
+    #
+    # The viewer suite now runs in its own concurrent job (`viewer-tests`)
+    # rather than at the tail of this one. Raising the cap was rejected: it
+    # went 18 -> 25 once already for this reason, and buys time rather than
+    # headroom.
+    #
+    # If this lane needs attention again, `@ifc-lite/provenance` is the next
+    # target: it alone spent 396s of the run that exposed this, with single
+    # tests at 87s and 38s.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -467,6 +579,16 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+
+      # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
+      # timeout, across all three spellings this repo uses. An audit that
+      # misreports is worse than no audit -- it turns "nobody checked" into
+      # "someone checked and it was fine" -- and the first version of that
+      # script shipped with both failure modes: an options bag inside a test
+      # BODY marked the test protected, and an apostrophe in a comment made it
+      # scan to EOF and drop the call from every count. This pins both.
+      - name: Check test-timeout audit
+        run: node --test scripts/audit-test-timeouts.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed
@@ -589,7 +711,14 @@ jobs:
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
-      - run: pnpm test
+      # The viewer suite runs in its OWN job (`viewer-tests`) rather than here.
+      # One job was running all 47 packages' tests in sequence, and the viewer
+      # alone needs more than the remainder of the budget: on the run that
+      # exposed this, everything up to and including @ifc-lite/provenance
+      # finished 7m55s in, and the viewer then had 17 minutes and did not
+      # finish. Splitting it out runs the two halves CONCURRENTLY, so each gets
+      # a whole budget instead of a leftover.
+      - run: pnpm exec turbo test --filter=!@ifc-lite/viewer
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.
@@ -727,7 +856,30 @@ jobs:
       - name: Clippy (lint gate)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
+        # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
+        # so a missing one here is fixture drift, not a legitimate local skip
+        # (rust/export/src/test_support.rs) — make that a hard failure.
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
         run: cargo test --workspace
+
+      # `parquet-bos` is OFF by default because arrow/parquet/zip do not target
+      # wasm32 cleanly (rust/export/Cargo.toml:33). The consequence is that
+      # `cargo test --workspace` above never COMPILES the module, let alone
+      # runs it: an off-by-default feature with no CI leg is dead code that
+      # looks maintained, and the first person to learn it had broken would be
+      # whoever enabled it (#2802).
+      #
+      # Its own step rather than `--all-features`, which would also switch on
+      # anything added later and make an unrelated feature's breakage read as
+      # this one's.
+      - name: Rust tests (parquet-bos feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-export --features parquet-bos
+
+      - name: Clippy (parquet-bos feature)
+        run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
 
   # Geometry watertightness / triangulation-invariance census.
   #
@@ -886,7 +1038,7 @@ jobs:
   # out); fails the moment any dependency fails or is cancelled.
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -898,6 +1050,7 @@ jobs:
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"

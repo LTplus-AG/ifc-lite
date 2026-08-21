@@ -146,12 +146,22 @@ function notifyCacheChange(): void {
   for (const fn of CACHE_LISTENERS) fn();
 }
 
-function ensureParseFor(stores: IfcDataStore[]): void {
+/**
+ * Exported for unit testing (retry-storm regression, see
+ * `useSymbolicAnnotations.retryStorm.test.ts`). Returns the in-flight
+ * promises so a test can await completion without polling module state.
+ */
+export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
+  const started: Promise<void>[] = [];
   for (const store of stores) {
     const key = sourceKey(store);
     if (!key) continue;
     if (PARSE_CACHE.has(key)) continue;
-    if (PARSE_INFLIGHT.has(key)) continue;
+    const existing = PARSE_INFLIGHT.get(key);
+    if (existing) {
+      started.push(existing);
+      continue;
+    }
 
     const promise = (async () => {
       try {
@@ -159,14 +169,33 @@ function ensureParseFor(stores: IfcDataStore[]): void {
         PARSE_CACHE.set(key, result);
         notifyCacheChange();
       } catch (error) {
+        // Cache empty on failure so we don't retry a doomed parse every tick
+        // (matches useGridLines3D / useAlignmentLines3D — a model whose
+        // annotation section is malformed would otherwise re-run the
+        // full-source WASM walk on every `stores` dependency change).
         // eslint-disable-next-line no-console
         console.warn('[useSymbolicAnnotations] parse failed:', error);
+        PARSE_CACHE.set(key, createEmptyParseResult());
+        notifyCacheChange();
       } finally {
         PARSE_INFLIGHT.delete(key);
       }
     })();
     PARSE_INFLIGHT.set(key, promise);
+    started.push(promise);
   }
+  return started;
+}
+
+/** @internal test-only reset of the module-level parse cache. */
+export function __resetSymbolicAnnotationsCacheForTests(): void {
+  PARSE_CACHE.clear();
+  PARSE_INFLIGHT.clear();
+}
+
+/** @internal test-only peek at how many entries are cached for a source key. */
+export function __symbolicAnnotationsCacheHasForTests(key: string): boolean {
+  return PARSE_CACHE.has(key);
 }
 
 /** One active model's data store plus the identity needed to map a parsed

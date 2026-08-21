@@ -71,6 +71,64 @@ function pointsOnCircle(
   return pts;
 }
 
+/**
+ * `MIN_SNAP_TOLERANCE` from `packages/renderer/src/snap-weld.ts` — the
+ * weld/snap floor a real pick inherits, and the same constant the module doc
+ * anchors its straight-run noise ceiling to.
+ */
+const MIN_SNAP_TOLERANCE = 1 / 65536;
+
+/**
+ * Push each point off the fixture's plane by a few multiples of the snap
+ * tolerance, alternating sign — what a pick off a tessellated f32 mesh
+ * actually looks like, as against `pointsOnCircle`'s output, which is
+ * coplanar to float precision because it is built from an orthonormal basis.
+ * Deterministic (no RNG): a fixture that only fails on some seeds is not a
+ * fixture.
+ */
+function offPlane(points: Point3[], normal: Point3): Point3[] {
+  const n = Math.hypot(normal.x, normal.y, normal.z);
+  const nn = { x: normal.x / n, y: normal.y / n, z: normal.z / n };
+  return points.map((p, i) => {
+    const d = ((i % 3) + 1) * (i % 2 === 0 ? 1 : -1) * MIN_SNAP_TOLERANCE;
+    return { x: p.x + nn.x * d, y: p.y + nn.y * d, z: p.z + nn.z * d };
+  });
+}
+
+/** Every ordering of `items`. */
+function permutations<T>(items: readonly T[]): T[][] {
+  if (items.length <= 1) return [[...items]];
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i++) {
+    const rest = [...items.slice(0, i), ...items.slice(i + 1)];
+    for (const tail of permutations(rest)) out.push([items[i], ...tail]);
+  }
+  return out;
+}
+
+const factorial = (n: number): number => (n <= 1 ? 1 : n * factorial(n - 1));
+
+const SWEEP_RADIUS_M = 1.8;
+
+/**
+ * One off-plane arc per pick count a user actually reaches, with EVERY
+ * ordering of its picks. 3 through 6 covers the tool's minimum, the count the
+ * documented double-click finish produces by default, and two more; 6 picks is
+ * 720 orders, so the whole sweep is a few thousand fits and runs in
+ * milliseconds.
+ */
+function orderSweep(): { count: number; picks: Point3[]; orders: Point3[][] }[] {
+  const arc = (86 * Math.PI) / 180;
+  return [3, 4, 5, 6].map((count) => {
+    const picks = offPlane(pointsOnCircle(CENTER, SWEEP_RADIUS_M, TILTED_NORMAL, 0, arc, count), TILTED_NORMAL);
+    return { count, picks, orders: permutations(picks) };
+  });
+}
+
+/** "ACBD"-style name for one ordering, so a failure says which click order broke. */
+const labelOf = (picks: readonly Point3[], order: readonly Point3[]): string =>
+  order.map((p) => String.fromCharCode(65 + picks.indexOf(p))).join('');
+
 // An off-origin centre and a deliberately tilted, non axis-aligned normal —
 // shared by every circular fixture below.
 const CENTER: Point3 = { x: 104.25, y: -18.7, z: 6.4 };
@@ -95,18 +153,86 @@ describe('fitRadius — genuine arc', () => {
     assert.ok(r.residualM < 1e-9, `residual should be ~0, got ${r.residualM}`);
   });
 
-  it('does not depend on the order the arc was picked in', () => {
-    const pts = pointsOnCircle(CENTER, 1.8, TILTED_NORMAL, -0.6, 0.9, 5);
-    const forward = fitRadius(pts);
-    const reversed = fitRadius([...pts].reverse());
-    const shuffled = fitRadius([pts[2], pts[0], pts[4], pts[1], pts[3]]);
-    assert.equal(forward.kind, 'fitted');
-    assert.equal(reversed.kind, 'fitted');
-    assert.equal(shuffled.kind, 'fitted');
-    if (forward.kind === 'fitted' && reversed.kind === 'fitted' && shuffled.kind === 'fitted') {
-      near(forward.radiusM, reversed.radiusM, 1e-9);
-      near(forward.radiusM, shuffled.radiusM, 1e-9);
+  it('does not depend on the order the arc was picked in — every order, at every pick count a user reaches', () => {
+    // The predecessor of this test could not fail. It used FIVE picks, one of
+    // the counts where the old Newell-over-the-click-sequence plane happens to
+    // survive every ordering, and points straight off `pointsOnCircle`, which
+    // builds from an orthonormal basis and so are coplanar to float precision
+    // — neither condition holds in the running app. Four picks is what the
+    // documented finish gesture produces by default (`handleRadiusClick`
+    // appends on every click, a physical double-click fires click/click/
+    // dblclick, and `finishRadius` drops the one trailing near-duplicate), and
+    // real picks land on a tessellated f32 mesh after snapping, tens of
+    // microns off any single plane. Under those two conditions the old plane
+    // fit reported a 2 m arc as a 2.8 km one on 1 order in 3 — with BOTH gate
+    // checks passing, because the sagitta never consults the plane and the
+    // residual is near zero precisely because the points do sit on the huge
+    // circle a collapsed basis fits them with.
+    //
+    // So: sweep EVERY ordering, at every count from the minimum up, with the
+    // picks pushed off-plane by a realistic amount. And assert both
+    // directions — a plane fit that refused these would pass an
+    // orderings-agree test while being just as broken.
+    for (const { count, picks, orders } of orderSweep()) {
+      assert.equal(orders.length, factorial(count), `sweep must be exhaustive at ${count} picks`);
+      for (const order of orders) {
+        const where = `${count} picks, order ${labelOf(picks, order)}`;
+        const got = fitRadius(order);
+        assert.equal(got.kind, 'fitted', `${where}: refused a real arc`);
+        if (got.kind !== 'fitted') continue;
+        assert.ok(
+          Math.abs(got.radiusM - SWEEP_RADIUS_M) < 1e-3,
+          `${where}: reported ${got.radiusM} m for a ${SWEEP_RADIUS_M} m arc`,
+        );
+      }
     }
+  });
+
+  it('returns bit-identical numbers for every click order, not merely close ones', () => {
+    // The companion to the sweep above, and a stricter claim than it: float
+    // addition is not associative, so an implementation can be order-blind in
+    // its MATHS and still wobble in its last bits by summing in click order.
+    // `canonicalOrder` is what makes the answer identical instead of close,
+    // and this is the assertion that holds it to that.
+    for (const { count, picks, orders } of orderSweep()) {
+      const first = fitRadius(orders[0]);
+      assert.equal(first.kind, 'fitted');
+      if (first.kind !== 'fitted') continue;
+      for (const order of orders) {
+        const got = fitRadius(order);
+        if (got.kind !== 'fitted') continue; // the sweep above owns that failure
+        const where = `${count} picks, order ${labelOf(picks, order)}`;
+        assert.equal(got.radiusM, first.radiusM, `${where}: ${got.radiusM} m vs ${first.radiusM} m`);
+        assert.equal(got.sagittaM, first.sagittaM, `${where}: sagitta differs`);
+        assert.equal(got.residualM, first.residualM, `${where}: residual differs`);
+      }
+    }
+  });
+
+  it('fits the arc the same way whichever end the user started from, off-plane picks and all', () => {
+    // The one concrete gesture from the report, kept as its own case so a
+    // regression names itself: a 90 degree arc picked A, B, D, then back to
+    // fill the gap at C.
+    const abcd = offPlane(pointsOnCircle(CENTER, 2, TILTED_NORMAL, 0, Math.PI / 2, 4), TILTED_NORMAL);
+    const inOrder = fitRadius(abcd);
+    const gapLast = fitRadius([abcd[0], abcd[1], abcd[3], abcd[2]]);
+    assert.equal(inOrder.kind, 'fitted');
+    assert.equal(gapLast.kind, 'fitted');
+    if (inOrder.kind !== 'fitted' || gapLast.kind !== 'fitted') return;
+    near(inOrder.radiusM, 2, 1e-3);
+    assert.equal(gapLast.radiusM, inOrder.radiusM);
+  });
+
+  it('accepts a perfect circle picked diametrically-opposite-pairs first', () => {
+    // Exactly coplanar picks are where the old sum cancelled to EXACTLY zero
+    // rather than merely collapsing: `planeNormal` returned null and the panel
+    // rendered "Not circular (straight)" for a perfect circle. Clicking two
+    // opposite points before the two between them is natural in a radius tool.
+    const quad = pointsOnCircle(CENTER, 2, TILTED_NORMAL, 0, (3 * Math.PI) / 2, 4);
+    const paired = fitRadius([quad[1], quad[3], quad[0], quad[2]]);
+    assert.equal(paired.kind, 'fitted', 'a perfect circle must not be refused as straight');
+    if (paired.kind !== 'fitted') return;
+    near(paired.radiusM, 2, 1e-9);
   });
 
   it('formats a fitted radius with its tessellation provenance', () => {
@@ -203,12 +329,15 @@ describe('fitRadius — poor circular fit is refused even with real curvature', 
     // Enough aggregate deviation from the chord to clear the curvature floor,
     // but an inflection partway along (bulging one way, then the other) — no
     // single circle explains this, so the fit residual must be large. The
-    // offsets are deliberately ASYMMETRIC about the midpoint: a symmetric
-    // zigzag cancels in the plane-normal sum (Newell's method over a
-    // perfectly antisymmetric sequence nets to ~0) and would be rejected for
-    // "no curvature" before the fit — a real fixture, not a shortcut. this
-    // one was checked directly against `fitRadius` to confirm it reaches the
-    // fit and is refused there (`reason: 'poor-fit'`), not earlier.
+    // offsets are ASYMMETRIC about the midpoint. That was load-bearing under
+    // the original Newell plane fit — a symmetric zigzag cancelled in its sum
+    // and was refused for "no curvature" before ever reaching the fit — and
+    // it no longer is: checked directly, a symmetric and an antisymmetric
+    // zigzag both reach the fit and are refused there too under the
+    // covariance plane. The offsets stay as they are because the fixture
+    // still exercises exactly what it was written for, which is the part
+    // asserted below: this input is refused AT THE FIT, with
+    // `reason: 'poor-fit'`, not earlier.
     const origin: Point3 = { x: 3.1, y: 8.2, z: -1.4 };
     const dir = { x: 1, y: 0, z: 0 };
     const perp = { x: 0, y: 0, z: 1 };
@@ -234,6 +363,24 @@ describe('fitRadius — insufficient input', () => {
     assert.equal(r.kind, 'insufficient-points');
     if (r.kind === 'insufficient-points') assert.equal(r.count, 2);
     assert.ok(MIN_RADIUS_POINTS === 3);
+  });
+
+  it('at exactly MIN_RADIUS_POINTS the fit-quality half of the gate has no reach', () => {
+    // Not a wish — a pin on what the gate actually does, so the module doc
+    // and the code cannot drift apart again. Three non-collinear points lie
+    // exactly on one circle, so the fit interpolates rather than regresses:
+    // `residualM` is zero whatever the picks are, and `poor-fit` is
+    // unreachable at this count. Only the curvature check guards a three-pick
+    // reading, which is why the module doc says so in as many words.
+    const noisy = offPlane(pointsOnCircle(CENTER, 20, TILTED_NORMAL, 0, 0.015, 3), TILTED_NORMAL);
+    const r = fitRadius(noisy);
+    assert.equal(r.kind, 'fitted');
+    if (r.kind !== 'fitted') return;
+    assert.ok(r.residualM < 1e-12, `three picks interpolate exactly; residual was ${r.residualM}`);
+    // The snap noise those three picks carry moves the reading by centimetres
+    // on a 20 m radius, and nothing in the gate objects. `formatRadius` still
+    // prints three decimals — the fit's precision, not the measurement's.
+    assert.ok(Math.abs(r.radiusM - 20) > 1e-3, `expected the noise to move the reading, got ${r.radiusM}`);
   });
 });
 

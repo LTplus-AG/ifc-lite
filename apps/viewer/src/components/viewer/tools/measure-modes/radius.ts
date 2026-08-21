@@ -51,6 +51,33 @@
  *    S-bend, a corner, noise), and reporting a circle would fit the wrong
  *    curve confidently.
  *
+ * Check 2 has NO reach at exactly {@link MIN_RADIUS_POINTS} picks, and the
+ * gate is one check there, not two. Three non-collinear points lie exactly on
+ * one circle, so the fit is interpolation rather than regression: `residualM`
+ * is identically zero (float noise aside) and its refusal branch cannot be
+ * taken. A three-pick reading is therefore only as good as the picks: over
+ * 500 trials of a true 20 m radius picked three times across a 0.30 m span,
+ * one `MIN_SNAP_TOLERANCE` of noise each, this reported 19.098 m to 21.003 m
+ * and refused none of them. The millimetres `formatRadius` prints there are
+ * the fit's precision, not the measurement's. Curvature (check 1) still
+ * guards the straight-run case the issue is about, at every count. Four or
+ * more picks overdetermine the circle, and only there does check 2 start
+ * doing work.
+ *
+ * # Why the pick order must not reach the arithmetic
+ *
+ * A radius is a property of the picked point SET. Users do not click an arc
+ * in order: clicking three points, noticing a gap and going back to fill it
+ * is an ordinary gesture, and nothing in the panel discourages it. So every
+ * quantity here is computed from the set alone - `sagitta` spans the two
+ * points FARTHEST apart rather than the first and last, `planeNormal` fits a
+ * covariance plane rather than summing consecutive cross products, and
+ * `canonicalOrder` fixes the summation order so the answer is bit-identical
+ * under permutation instead of merely close. `planeNormal`'s doc has the
+ * failure this last point is not paranoia about: an order-dependent plane
+ * turned a 2 m arc into a 2.8 km one, and BOTH gate checks passed while it
+ * did.
+ *
  * # Where the floor comes from
  *
  * `SAGITTA_FLOOR_M = 100 um`, chosen to sit in the gap between two numbers
@@ -99,6 +126,10 @@ export const SAGITTA_FLOOR_M = 1e-4;
  * than the floor itself. 3x keeps it inside the tessellator's own curvature
  * band (up to ~0.5 mm) while still refusing a residual that has drifted onto
  * the order of the fitted radius.
+ *
+ * Only meaningful above {@link MIN_RADIUS_POINTS}: at three picks the circle
+ * is interpolated, not fitted, and the residual is zero whatever the picks
+ * are. See the module doc's gate section.
  */
 const RESIDUAL_BUDGET = 3;
 
@@ -176,25 +207,137 @@ function sagitta(points: readonly Point3[]): { value: number; a: Point3; b: Poin
 }
 
 /**
- * Best-fit plane normal for a near-planar point set, via the sum of
- * consecutive cross products about the centroid (Newell's method, applied to
- * an open sequence rather than a closed polygon - the picks are not a loop).
- * `null` when the points carry no consistent normal (all collinear).
+ * Canonical (lexicographic x, then y, then z) ordering of a pick set.
+ *
+ * Every number this module reports is a property of the SET of picked points,
+ * never of the sequence the user clicked them in - see the module doc's
+ * "Why the pick order must not reach the arithmetic". Sorting once, here, is
+ * what makes that literally true rather than true-up-to-rounding: floating
+ * point addition is not associative, so a centroid, a covariance sum or a
+ * Kasa moment accumulated in click order differs in its last bits from the
+ * same sum accumulated in another order. Feeding every downstream loop one
+ * order derived from the point set alone makes the whole fit bit-identical
+ * under permutation, which is a property a test can assert exactly.
+ *
+ * The order itself carries no meaning - it is not "along the arc" and is not
+ * used as one. Two exactly coincident picks compare equal and sum
+ * identically either way, so ties need no further tie-break.
+ */
+function canonicalOrder(points: readonly Point3[]): Point3[] {
+  return [...points].sort((p, q) => p.x - q.x || p.y - q.y || p.z - q.z);
+}
+
+/**
+ * In-place Jacobi rotation zeroing the `(p, q)` off-diagonal of the symmetric
+ * 3x3 `a`, accumulating the same rotation into the eigenvector matrix `v`.
+ */
+function jacobiRotate(a: number[][], v: number[][], p: number, q: number): void {
+  const apq = a[p][q];
+  if (apq === 0) return;
+  const theta = (a[q][q] - a[p][p]) / (2 * apq);
+  const t = (theta >= 0 ? 1 : -1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+  const c = 1 / Math.sqrt(t * t + 1);
+  const s = t * c;
+  for (let k = 0; k < 3; k++) {
+    const akp = a[k][p];
+    const akq = a[k][q];
+    a[k][p] = c * akp - s * akq;
+    a[k][q] = s * akp + c * akq;
+  }
+  for (let k = 0; k < 3; k++) {
+    const apk = a[p][k];
+    const aqk = a[q][k];
+    a[p][k] = c * apk - s * aqk;
+    a[q][k] = s * apk + c * aqk;
+  }
+  for (let k = 0; k < 3; k++) {
+    const vkp = v[k][p];
+    const vkq = v[k][q];
+    v[k][p] = c * vkp - s * vkq;
+    v[k][q] = s * vkp + c * vkq;
+  }
+}
+
+/**
+ * Best-fit plane normal for a near-planar point set: the eigenvector of the
+ * smallest eigenvalue of the picks' covariance matrix about their centroid,
+ * i.e. the direction of least spread. That IS the total-least-squares plane -
+ * the one minimising the sum of squared perpendicular distances from the
+ * picks - and it is a function of the point SET: covariance is a sum of
+ * per-point outer products, so no term of it refers to a point's neighbour,
+ * its index, or the sequence it arrived in.
+ *
+ * This replaces a Newell sum over consecutive picks, which read the pick
+ * order and could not do otherwise. Newell computes the area vector of the
+ * POLYGON through the points in the order given; on a pick sequence that
+ * traces a self-intersecting path the lobes have opposing winding and their
+ * area vectors cancel, collapsing the sum toward zero and leaving
+ * out-of-plane noise as the surviving direction. Four picks clicked
+ * A, B, D, C - three along an arc, then back to fill the gap - is enough to
+ * do it, and neither half of the gate above can see it happen: the sagitta
+ * is measured on the raw 3D picks and never consults the plane, while the
+ * residual is near zero precisely BECAUSE the points really do sit on the
+ * huge circle a collapsed basis fits them with. Exactly coplanar picks make
+ * the same sum cancel to exactly zero, which refused a perfect circle as
+ * "not circular (straight)".
+ *
+ * The eigenvector's SIGN is arbitrary (a plane has two unit normals, and the
+ * fit is invariant under the handedness flip that swapping them causes), so
+ * it is pinned to a canonical choice here rather than left to the solver.
+ *
+ * `null` when the picks have no spread at all to fit a plane to; a collinear
+ * run is already refused by the sagitta check before this is reached.
  */
 function planeNormal(points: readonly Point3[], centroid: Point3): Point3 | null {
-  let nx = 0;
-  let ny = 0;
-  let nz = 0;
-  for (let i = 0; i < points.length; i++) {
-    const a = sub(points[i], centroid);
-    const b = sub(points[(i + 1) % points.length], centroid);
-    nx += a.y * b.z - a.z * b.y;
-    ny += a.z * b.x - a.x * b.z;
-    nz += a.x * b.y - a.y * b.x;
+  let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+  for (const p of points) {
+    const d = sub(p, centroid);
+    xx += d.x * d.x;
+    xy += d.x * d.y;
+    xz += d.x * d.z;
+    yy += d.y * d.y;
+    yz += d.y * d.z;
+    zz += d.z * d.z;
   }
-  const n = Math.hypot(nx, ny, nz);
+  const trace = xx + yy + zz;
+  if (!Number.isFinite(trace) || !(trace > 0)) return null;
+
+  const a = [
+    [xx, xy, xz],
+    [xy, yy, yz],
+    [xz, yz, zz],
+  ];
+  const v = [
+    [1, 0, 0],
+    [0, 1, 0],
+    [0, 0, 1],
+  ];
+  // Cyclic Jacobi. A symmetric 3x3 has only three off-diagonals, so a handful
+  // of sweeps drives them to rounding noise; the bound is a guard against a
+  // pathological input spinning forever, not an expected iteration count.
+  for (let sweep = 0; sweep < 24; sweep++) {
+    const off = Math.abs(a[0][1]) + Math.abs(a[0][2]) + Math.abs(a[1][2]);
+    if (!(off > trace * Number.EPSILON)) break;
+    jacobiRotate(a, v, 0, 1);
+    jacobiRotate(a, v, 0, 2);
+    jacobiRotate(a, v, 1, 2);
+  }
+
+  let min = 0;
+  if (a[1][1] < a[min][min]) min = 1;
+  if (a[2][2] < a[min][min]) min = 2;
+  const n = Math.hypot(v[0][min], v[1][min], v[2][min]);
   if (!(n > 0) || !Number.isFinite(n)) return null;
-  return { x: nx / n, y: ny / n, z: nz / n };
+  let normal = { x: v[0][min] / n, y: v[1][min] / n, z: v[2][min] / n };
+
+  // Canonical sign: the largest-magnitude component is made positive, with
+  // x before y before z when magnitudes tie. Which component wins a tie does
+  // not matter - the fit is invariant under the flip either way - only that
+  // the same point set always gets the same answer.
+  const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+  const lead = ax >= ay && ax >= az ? normal.x : ay >= az ? normal.y : normal.z;
+  if (lead < 0) normal = { x: -normal.x, y: -normal.y, z: -normal.z };
+  return normal;
 }
 
 /**
@@ -205,10 +348,14 @@ function planeNormal(points: readonly Point3[], centroid: Point3): Point3 | null
  * cases rather than throwing: a bad measurement is a value the caller
  * renders as "not circular", not an exception a UI has to catch.
  */
-export function fitRadius(points: readonly Point3[]): RadiusFitOutcome {
-  if (points.length < MIN_RADIUS_POINTS) {
-    return { kind: 'insufficient-points', count: points.length };
+export function fitRadius(picks: readonly Point3[]): RadiusFitOutcome {
+  if (picks.length < MIN_RADIUS_POINTS) {
+    return { kind: 'insufficient-points', count: picks.length };
   }
+
+  // Every loop below runs over this, never over `picks`, so the click order
+  // reaches none of the arithmetic - see {@link canonicalOrder}.
+  const points = canonicalOrder(picks);
 
   const { value: sagittaM } = sagitta(points);
   if (!(sagittaM > SAGITTA_FLOOR_M)) {

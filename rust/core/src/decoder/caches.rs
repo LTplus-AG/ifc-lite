@@ -102,8 +102,11 @@ impl EntityDecoder<'_> {
 
     /// Memoize a resolved placement world transform under its placement id. Only
     /// the geometry router's real computed transforms (IfcLocalPlacement /
-    /// linear / grid) are stored here; identity/depth-guard fallbacks are not, so
-    /// the memo stays a pure function of the placement id (byte-identical reuse).
+    /// linear / grid) are stored here; identity fallbacks are not, and neither
+    /// is any transform composed from a walk the depth guard cut short — what
+    /// such a walk composed depends on the depth it was entered at, not on the
+    /// placement id alone (#3012). With both excluded the memo stays a pure
+    /// function of the placement id (byte-identical reuse).
     pub fn cache_placement_transform(&mut self, id: u32, transform: [f64; 16]) {
         self.placement_transform_cache.insert(id, transform);
     }

@@ -134,3 +134,158 @@ fn the_profile_extractor_cap_is_the_shared_cap() {
     );
 }
 
+/// #3012. The router memoises composed placements per decoder. A walk that hits
+/// the depth cap returns the identity for the node ABOVE the cap, and the node
+/// AT the cap then composes `identity * local` — a truncated transform — and
+/// wrote it to the memo — as did every node above it, each composing on a
+/// truncated parent. Later queries for those nodes were served the truncated
+/// values, so the same placement resolved to two different positions depending
+/// on whether a deeper element had been resolved first.
+///
+/// Resolving the leaf of a `MAX_PLACEMENT_DEPTH + 20` chain truncates at
+/// `#(10 + links - MAX_PLACEMENT_DEPTH)`. Every node from there up to
+/// `#(10 + MAX_PLACEMENT_DEPTH)` still has a chain the cap composes in full, so
+/// each has one correct answer both orders must produce. Checking the whole span
+/// rather than only the first node is what makes the poisoning of the nodes
+/// ABOVE the cap visible too.
+#[test]
+fn a_truncated_walk_does_not_poison_the_placement_memo() {
+    let links = MAX_PLACEMENT_DEPTH + 20;
+    let content = deep_placement_chain(links);
+    let leaf_id = (10 + links) as u32;
+    // The node the leaf's walk reaches AT the cap: its parent is the first
+    // lookup the depth guard refuses.
+    let capped_id = (10 + links - MAX_PLACEMENT_DEPTH) as u32;
+    // The last node whose OWN chain still fits the cap, so its cold answer is
+    // complete; above this every walk truncates in both orders.
+    let last_in_cap_id = (10 + MAX_PLACEMENT_DEPTH) as u32;
+    let router = GeometryRouter::new();
+
+    // One decoder, warmed by resolving the leaf — the walk that truncates.
+    let mut warmed = EntityDecoder::new(&content);
+    let leaf = warmed.decode_by_id(leaf_id).expect("leaf placement");
+    router
+        .get_placement_transform(&leaf, &mut warmed)
+        .expect("leaf placement transform");
+
+    for id in capped_id..=last_in_cap_id {
+        // Each cold reading gets its own decoder, so no earlier answer of ours
+        // can stand in for the walk this one must perform.
+        let mut cold = EntityDecoder::new(&content);
+        let node = cold.decode_by_id(id).expect("node placement");
+        let cold_x = router
+            .get_placement_transform(&node, &mut cold)
+            .expect("cold placement transform")
+            .column(3)[0];
+        assert_eq!(
+            cold_x,
+            f64::from(id - 9),
+            "#{id}'s chain fits the cap, so a cold walk must compose all {} of \
+             its placements — otherwise the two orders agree for the wrong reason",
+            id - 9
+        );
+
+        let node = warmed.decode_by_id(id).expect("node placement");
+        let warm_x = router
+            .get_placement_transform(&node, &mut warmed)
+            .expect("warmed placement transform")
+            .column(3)[0];
+        assert_eq!(
+            cold_x, warm_x,
+            "#{id} must resolve identically whether or not a deeper element was \
+             resolved first; the warmed answer is the depth-truncated composition \
+             served from the memo"
+        );
+    }
+}
+
+/// The same order-dependence driven through the `IfcLinearPlacement` branch of
+/// the walk: it composes `PlacementRelTo` exactly like `IfcLocalPlacement`, so it
+/// inherits its parent's truncation and must not memoise a truncated result
+/// either. The capped node becomes a linear placement whose authored
+/// `CartesianPosition` is the same +1.0 X as every other link, which keeps the
+/// chain's expected values unchanged.
+#[test]
+fn a_truncated_linear_placement_walk_does_not_poison_the_placement_memo() {
+    let links = MAX_PLACEMENT_DEPTH + 20;
+    let capped_id = 10 + links - MAX_PLACEMENT_DEPTH;
+    let content = deep_placement_chain(links).replace(
+        &format!("#{capped_id}=IFCLOCALPLACEMENT(#{},#1);", capped_id - 1),
+        // RelativePlacement absent; CartesianPosition #1 is the +1.0 X origin.
+        &format!("#{capped_id}=IFCLINEARPLACEMENT(#{},$,#1);", capped_id - 1),
+    );
+    assert!(
+        content.contains("IFCLINEARPLACEMENT"),
+        "the substitution must land, or this test re-runs the IfcLocalPlacement case"
+    );
+    assert_two_orders_agree(&content, capped_id, links);
+}
+
+/// And through the `IfcGridPlacement` branch, which composes `PlacementRelTo` the
+/// same way and carries the same obligation. Axis P runs +X through the origin
+/// and axis Q runs +Y through it; offsetting Q by -1 along its left normal
+/// `(-1, 0)` moves the intersection to (1, 0, 0), matching the +1.0 X of the link
+/// it replaces.
+#[test]
+fn a_truncated_grid_placement_walk_does_not_poison_the_placement_memo() {
+    let links = MAX_PLACEMENT_DEPTH + 20;
+    let capped_id = 10 + links - MAX_PLACEMENT_DEPTH;
+    let grid = format!(
+        "#900=IFCCARTESIANPOINT((0.,0.));\n\
+#901=IFCCARTESIANPOINT((10.,0.));\n\
+#902=IFCPOLYLINE((#900,#901));\n\
+#903=IFCGRIDAXIS('P',#902,.T.);\n\
+#904=IFCCARTESIANPOINT((0.,10.));\n\
+#905=IFCPOLYLINE((#900,#904));\n\
+#906=IFCGRIDAXIS('Q',#905,.T.);\n\
+#907=IFCVIRTUALGRIDINTERSECTION((#903,#906),(0.,-1.,0.));\n\
+#{capped_id}=IFCGRIDPLACEMENT(#{},#907,$);",
+        capped_id - 1
+    );
+    let content = deep_placement_chain(links).replace(
+        &format!("#{capped_id}=IFCLOCALPLACEMENT(#{},#1);", capped_id - 1),
+        &grid,
+    );
+    assert!(
+        content.contains("IFCGRIDPLACEMENT"),
+        "the substitution must land, or this test re-runs the IfcLocalPlacement case"
+    );
+    assert_two_orders_agree(&content, capped_id, links);
+}
+
+/// World X of `node_id` from a cold decoder and from one warmed by resolving the
+/// leaf of the `links`-long chain first. Both must equal the full composition of
+/// `node_id`'s own chain, which is `node_id - 9` links of +1.0 X.
+fn assert_two_orders_agree(content: &str, node_id: usize, links: usize) {
+    let router = GeometryRouter::new();
+
+    let mut cold = EntityDecoder::new(content);
+    let node = cold.decode_by_id(node_id as u32).expect("capped node");
+    let cold_x = router
+        .get_placement_transform(&node, &mut cold)
+        .expect("cold placement transform")
+        .column(3)[0];
+    assert_eq!(
+        cold_x,
+        (node_id - 9) as f64,
+        "the substituted placement must contribute the same +1.0 X as the links \
+         below it, or the two orders could agree for the wrong reason"
+    );
+
+    let mut warmed = EntityDecoder::new(content);
+    let leaf = warmed.decode_by_id((10 + links) as u32).expect("leaf");
+    router
+        .get_placement_transform(&leaf, &mut warmed)
+        .expect("leaf placement transform");
+    let node = warmed.decode_by_id(node_id as u32).expect("capped node");
+    let warm_x = router
+        .get_placement_transform(&node, &mut warmed)
+        .expect("warmed placement transform")
+        .column(3)[0];
+
+    assert_eq!(
+        cold_x, warm_x,
+        "#{node_id} must resolve identically whether or not a deeper element was \
+         resolved first"
+    );
+}

@@ -85,6 +85,43 @@ describe('isProductType', () => {
     expect(isProductType('IFCSLAB')).toBe(true);
     expect(isProductType('IFCDOOR')).toBe(true);
   });
+
+  it('returns true for product classes the curated IfcTypeEnum omits', () => {
+    // The regression this replaced: the gate was IfcTypeEnumFromString, and
+    // TYPE_STRING_TO_ENUM is a curated 138-entry subset. All three resolve to
+    // IfcTypeEnum.Unknown, so an unfiltered query dropped every one of them —
+    // 2,575 real elements on a 176k-entity MEP model, reported as absent
+    // rather than as unclassified.
+    expect(isProductType('IFCAIRTERMINAL')).toBe(true);
+    expect(isProductType('IFCDUCTFITTING')).toBe(true);
+    expect(isProductType('IFCDISTRIBUTIONPORT')).toBe(true);
+  });
+
+  it('returns false for geometry and other non-rooted resource classes', () => {
+    // IFC_ENTITY_NAMES alone would not do: it carries all ~880 classes, so
+    // keying on "is a known IFC name" floods an unfiltered query with the
+    // 42,024 IfcCartesianPoint of that same model. The inheritance chain is
+    // what separates them.
+    expect(isProductType('IFCCARTESIANPOINT')).toBe(false);
+    expect(isProductType('IFCEXTRUDEDAREASOLID')).toBe(false);
+    expect(isProductType('IFCMATERIAL')).toBe(false);
+    expect(isProductType('IFCOWNERHISTORY')).toBe(false);
+    expect(isProductType('IFCPRESENTATIONLAYERASSIGNMENT')).toBe(false);
+  });
+
+  it('excludes type objects by inheritance, not by a TYPE suffix', () => {
+    expect(isProductType('IFCDUCTFITTINGTYPE')).toBe(false);
+    // IfcRelDefinesByType also ends in TYPE and is excluded, but as a
+    // relationship rather than as a type object.
+    expect(isProductType('IFCRELDEFINESBYTYPE')).toBe(false);
+  });
+
+  it('keeps spatial structure, groups and the project in the default set', () => {
+    expect(isProductType('IFCPROJECT')).toBe(true);
+    expect(isProductType('IFCSITE')).toBe(true);
+    expect(isProductType('IFCBUILDINGSTOREY')).toBe(true);
+    expect(isProductType('IFCDISTRIBUTIONSYSTEM')).toBe(true);
+  });
 });
 
 describe('normalizeBooleanValue', () => {

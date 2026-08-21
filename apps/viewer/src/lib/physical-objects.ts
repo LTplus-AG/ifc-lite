@@ -3,14 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "How many physical objects are visible?" — the denominator, and the count.
+ * "How many physical objects is the viewer withholding?" — the count, and the
+ * denominator it has to be derived against.
  *
- * The obvious denominator is `geometryResult.meshes.length`, but that counts
- * things that PRODUCED a mesh. An object that is in the file and never
- * generated geometry is then absent from the denominator too, so the ratio is
- * definitionally 1: the badge would read "1203 of 1203 visible" while a wall
- * silently failed to slice. Counting from the entity index instead makes the
- * gap between "in the model" and "on screen" observable.
+ * The UI reports HIDDEN, not a ratio, because that is the number a user acts
+ * on. But the hidden count still has to be derived from a total, and the
+ * obvious total, `geometryResult.meshes.length`, counts things that PRODUCED a
+ * mesh. An object in the file that never generated geometry is then absent
+ * from the total as well, so hidden comes out as zero while a wall silently
+ * failed to slice. Counting from the entity index instead makes the gap
+ * between "in the model" and "on screen" observable.
  *
  * The mesh array is the wrong denominator in three separate ways, not one:
  * an element can produce MANY `MeshData` entries (one per material or CSG
@@ -26,8 +28,8 @@
  *
  * `IfcElement` is the schema's own word for "an element of a construction
  * work" — a thing with physical presence. Everything excluded is excluded
- * because counting it would cry wolf, i.e. report objects as "not visible"
- * that were never meant to be drawn:
+ * because counting it would cry wolf, i.e. report objects as hidden that
+ * were never meant to be drawn:
  *
  * - Spatial containers (`IfcSite`, `IfcBuilding`, `IfcBuildingStorey`,
  *   `IfcSpace`) descend from `IfcSpatialElement`, NOT `IfcElement`, so they
@@ -36,7 +38,7 @@
  * - `IfcSpace` in particular is a real object a user cares about, but the
  *   viewer ships with spaces hidden (`TYPE_VISIBILITY_SEMANTIC_DEFAULTS.spaces
  *   === false`). In the denominator, every default-loaded model with rooms
- *   would permanently read "N not visible" — an alarm that is never actionable
+ *   would permanently report N hidden — an alarm that is never actionable
  *   and never wrong to ignore, which is the worst kind. It is a spatial
  *   element by schema and hidden by product decision, so both readings agree:
  *   out.

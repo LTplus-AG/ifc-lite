@@ -102,5 +102,14 @@ export const splitZonesInWorker: ZoneSplitBatchFn = (request, onProgress) =>
     // renderer's live scene, and transferring them would detach the buffers the
     // model is drawn from. The clone's copy IS the price of not blanking the
     // viewport.
-    worker.postMessage(payload);
+    try {
+      worker.postMessage(payload);
+    } catch (error) {
+      // postMessage can itself throw (structured clone rejecting an
+      // unsupported value). Thrown after the worker and its timeout timer
+      // are already live, so without this catch the Promise executor's
+      // synchronous throw auto-rejects the returned promise while nothing
+      // calls settle() — the worker thread AND the 600s timer both leak.
+      settle(() => reject(error instanceof Error ? error : new Error(String(error))));
+    }
   });

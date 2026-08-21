@@ -262,7 +262,7 @@ describe('LensPanel: isolating a rule resolves geometry-less assemblies to their
   });
 
   it('switches to a DIFFERENT rule matching the same entities without the toggle clearing the channel', () => {
-    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): fed
+    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`): fed
     // the ids the channel already holds it CLEARS. So switching from one rule
     // to another whose criteria differ but whose matches coincide un-isolated
     // the model, while the panel went on to record the new rule as the owner

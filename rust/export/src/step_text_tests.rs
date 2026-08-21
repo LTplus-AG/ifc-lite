@@ -160,6 +160,23 @@ fn escape_no_special_chars_is_byte_identical() {
         assert_eq!(escape(s), s);
     }
 }
+
+#[test]
+fn escape_encodes_non_ascii_as_x2_directive_not_raw_utf8() {
+    // ISO 10303-21 6.3.3.4 restricts a string literal's plain-text bytes to
+    // the basic graphic range 32-126 — the same clause the doc comment above
+    // `escape()` already cites for control chars. A byte outside that range
+    // must be a control directive (`\X\HH`, `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`),
+    // never a raw byte; buildingSMART's IFC string-encoding guidance says the
+    // same for IFC2X3/IFC4/IFC4X3. `ifc_lite_core::encode_ifc_string` already
+    // implements this correctly but was never wired into this writer, so a
+    // BMP or non-BMP character in a name/label went out as raw UTF-8 — bytes
+    // a reader that (correctly, per spec) treats the file as ISO-8859-1 turns
+    // into mojibake or a broken parse. Matches the TS-side fix in
+    // `@ifc-lite/export`'s `escapeStepString`.
+    assert_eq!(escape("Trümpler"), r"Tr\X2\00FC\X0\mpler");
+    assert_eq!(escape("😀"), r"\X4\0001F600\X0\");
+}
 /// End-to-end write-side round-trip for the ISO 10303-21 doubling escapes.
 ///
 /// ifc-lite's own reader (`ifc_lite_core::step_encoding::decode_ifc_string`

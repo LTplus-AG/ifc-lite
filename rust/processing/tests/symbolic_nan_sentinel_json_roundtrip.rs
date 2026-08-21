@@ -80,6 +80,7 @@ fn unresolved_world_y_survives_a_json_round_trip() {
         circles: vec![],
         texts: vec![],
         fills: vec![fill(f32::NAN, f32::NAN)],
+        ..Default::default()
     };
 
     let json = serde_json::to_string(&data).expect("SymbolicData serializes");
@@ -120,6 +121,7 @@ fn unresolved_world_y_is_spelled_null_on_the_wire() {
         circles: vec![],
         texts: vec![],
         fills: vec![],
+        ..Default::default()
     };
 
     let json = serde_json::to_value(&data).expect("SymbolicData serializes");
@@ -156,6 +158,7 @@ fn the_typescript_wire_fixture_matches_what_the_serializer_emits() {
         texts: vec![],
         // Resolved elevation, absent cross-hatch.
         fills: vec![fill(3.5, f32::NAN)],
+        ..Default::default()
     };
     let mut emitted = serde_json::to_string_pretty(&data).expect("SymbolicData serializes");
     emitted.push('\n');
@@ -193,6 +196,7 @@ fn finite_world_y_including_zero_round_trips_unchanged() {
             circles: vec![],
             texts: vec![],
             fills: vec![fill(value, 0.0)],
+            ..Default::default()
         };
 
         let json = serde_json::to_string(&data).expect("SymbolicData serializes");

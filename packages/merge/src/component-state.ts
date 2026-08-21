@@ -421,6 +421,36 @@ export function snapshotOf(attributes: ComponentAttributes): ComponentSnapshot {
 }
 
 /**
+ * Exact content equality between two attribute maps — not merely hash
+ * equality.
+ *
+ * Every caller in this package (`three-way.ts`, `state-diff.ts`,
+ * `inverse.ts`) uses `snapshotOf`'s hash to decide a merge outcome: fold two
+ * edits together, treat a side as "didn't touch it", or skip emitting a
+ * revert op. `stableHash` is a 64-bit FNV-1a hash — strong, but explicitly
+ * not cryptographic (see its docstring in `@ifc-lite/diff`) — and unlike
+ * `packages/diff`'s content-match pass, which requires an independent
+ * signal (component sub-hash agreement, often a geometry hash too) before
+ * trusting a `dataHash` match, none of the hash comparisons in this package
+ * had any fallback. A collision would silently fold two genuinely different
+ * edits — one vanishes with no conflict raised — or silently skip reverting
+ * a component that actually changed.
+ *
+ * Call this only after the hash already compared equal: it's the expensive
+ * half of a cheap-then-exact check, not a replacement for hashing. Callers
+ * keep the fast hash comparison as the common-case rejection and add this
+ * as the verifying fallback exactly where the two lines currently agree.
+ */
+export function attributesContentEqual(
+  x: ComponentAttributes | undefined,
+  y: ComponentAttributes | undefined,
+): boolean {
+  if (x === y) return true;
+  if (x === undefined || y === undefined) return false;
+  return canonicalStringify(x) === canonicalStringify(y);
+}
+
+/**
  * Unified view used by the matrix: real components plus `child:<name>` /
  * `inherit:<role>` pseudo-components whose single attribute is the
  * referenced path. Both are relation edges, so divergent edits surface

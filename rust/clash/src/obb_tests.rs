@@ -7,7 +7,7 @@
 //! `packages/clash/src/engine-ts/obb.test.ts` (review: #2536). Same fixtures,
 //! same tolerances, so the two kernels are pinned to the same behaviour.
 
-use super::{obb_penetration_depth, Obb};
+use super::{is_through_penetration, obb_penetration_depth, Obb, AXIS_NOISE_ULPS, OBB_EPS};
 use crate::vec3::{cross, dot, Vec3};
 
 /// Rodrigues rotation of `v` by `angle` radians about the unit axis `w`.
@@ -118,4 +118,73 @@ fn skips_an_exactly_parallel_cross_axis_without_dividing_by_zero() {
         half: [1.0, 2.0, 3.0],
     };
     assert_eq!(obb_penetration_depth(&a, &b), Some(0.5));
+}
+
+/// Ported from the TS twin `packages/clash/src/engine-ts/obb.test.ts`
+/// ("skips a candidate axis whose overlap sits exactly at the noise bound",
+/// obb.ts:250 / obb.rs `test_axis`'s `overlap.abs() <= noise`). Solved
+/// algebraically from the production formula so the x-face candidate's
+/// overlap is an EXACT float equality with its own noise bound — not merely
+/// close: `noise = extent_sum * K` with `K = AXIS_NOISE_ULPS * f64::EPSILON`,
+/// `dist = 0` so `overlap = S := half_a[0] + half_b[0]`, and
+/// `extent_sum = S + 2*hy + 2*hz`, giving `S = (2*hy + 2*hz) * K / (1 - K)`.
+///
+/// Under the real `<=` this axis (and its cross-product duplicates) is
+/// skipped as inconclusive, so the reported depth comes only from the y/z
+/// face axes (overlap 2 each). A mutated `<` would instead treat the
+/// boundary axis as a genuine, vastly smaller separating candidate
+/// (overlap ~= S, ~7e-15), collapsing the reported depth from 2 to ~7e-15.
+#[test]
+fn skips_a_candidate_axis_whose_overlap_sits_exactly_at_the_noise_bound() {
+    let hy = 1.0;
+    let hz = 1.0;
+    let k = AXIS_NOISE_ULPS * f64::EPSILON;
+    let s = (2.0 * hy + 2.0 * hz) * k / (1.0 - k);
+    let axes: [Vec3; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let a = Obb {
+        center: [0.0, 0.0, 0.0],
+        axes,
+        half: [0.0, hy, hz],
+    };
+    let b = Obb {
+        center: [0.0, 0.0, 0.0],
+        axes,
+        half: [s, hy, hz],
+    };
+    // Sanity check the algebra actually lands exactly on the boundary before
+    // trusting the depth assertion below.
+    let extent_sum = 0.0 + hy + hz + s + hy + hz;
+    let noise = extent_sum * k;
+    assert_eq!(s, noise, "fixture must land bit-exactly on the noise bound");
+    assert_eq!(obb_penetration_depth(&a, &b), Some(2.0));
+}
+
+/// Ported from the TS twin ("does not report a through-penetration when the
+/// far side lands exactly flush", obb.ts:325 / obb.rs `pierces_along`'s
+/// `p.half[k] > r_q_k + off_k.abs() + margin(r_q_k)`). `half[0]` is built
+/// from the identical expression `pierces_along` itself evaluates, so the
+/// comparison is a bit-exact tie, not an approximation. `>` (strictly past
+/// the far face) must report no through-penetration at exact flushness; a
+/// mutated `>=` would report one.
+#[test]
+fn does_not_report_a_through_penetration_when_the_far_side_lands_exactly_flush() {
+    let r_q_k: f64 = 0.1; // wall half-thickness
+    let off_k: f64 = 0.05; // duct center offset from wall center, along the pierce axis
+    let margin = OBB_EPS * 1.0f64.max(r_q_k);
+    let half_k = r_q_k + off_k.abs() + margin;
+    let axes: [Vec3; 3] = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    let duct = Obb {
+        center: [0.0, 0.0, 0.0],
+        axes,
+        half: [half_k, 0.05, 0.05],
+    };
+    let wall = Obb {
+        center: [off_k, 0.0, 0.0],
+        axes,
+        half: [r_q_k, 5.0, 5.0],
+    };
+    assert!(
+        !is_through_penetration(&duct, &wall),
+        "exact flushness must not be reported as a through-penetration",
+    );
 }

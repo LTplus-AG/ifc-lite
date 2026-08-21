@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/query",
-  "version": "1.14.16",
+  "version": "1.14.17",
   "description": "Query system for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",

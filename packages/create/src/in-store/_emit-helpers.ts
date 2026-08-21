@@ -216,3 +216,84 @@ export function ifcElementHeader(
     params.Tag ?? null,
   ];
 }
+
+/** An RGB colour with channels in 0..1. */
+export interface SurfaceStyleColor {
+  red: number;
+  green: number;
+  blue: number;
+  /** 1 is opaque. Written as `IfcSurfaceStyleShading.Transparency = 1 - alpha`. */
+  alpha?: number;
+}
+
+/** Guards a caller's 0..255 or out-of-range channel from reaching STEP. */
+function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+}
+
+/**
+ * Transparency is `1 - alpha`, and binary floating point turns an alpha of 0.9
+ * into `0.09999999999999998` in the STEP text. Four decimals is what
+ * `@ifc-lite/export`'s demesh writer settles on for the same value.
+ */
+const TRANSPARENCY_DECIMALS = 4;
+
+function roundTo(v: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(v * factor) / factor;
+}
+
+/**
+ * Emit `IfcColourRgb` -> `IfcSurfaceStyleShading` -> `IfcSurfaceStyle`.
+ *
+ * Returns the `IfcSurfaceStyle`, the id an `IfcStyledItem` should point at, and
+ * every entity in the chain. The first two differ on IFC2X3, which has no
+ * `IfcStyleAssignmentSelect`: there `IfcStyledItem.Styles` is a set of
+ * `IfcPresentationStyleAssignment`, the wrapper IFC4 deprecated and IFC4X3
+ * removed.
+ *
+ * `schemaVersion` is the schema the chain is built FOR. Callers that will
+ * export to a different schema than the model was parsed from have to pass the
+ * target, because this shape is not schema-neutral. IFC2X3 is the only version
+ * that needs the wrapper, so the test is for it by name and every later schema
+ * takes the default.
+ */
+export function emitSurfaceStyle(
+  editor: StoreEditor,
+  schemaVersion: string,
+  color: SurfaceStyleColor,
+  name?: string,
+): { surfaceStyleId: number; styleRefId: number; chainIds: number[] } {
+  const red = clamp01(color.red);
+  const green = clamp01(color.green);
+  const blue = clamp01(color.blue);
+  const alpha = clamp01(color.alpha ?? 1);
+
+  const colour = editor.addEntity('IfcColourRgb', [
+    null, { real: red }, { real: green }, { real: blue },
+  ]);
+  const shading = editor.addEntity('IfcSurfaceStyleShading', [
+    `#${colour.expressId}`,
+    { real: roundTo(1 - alpha, TRANSPARENCY_DECIMALS) },
+  ]);
+  const surfaceStyle = editor.addEntity('IfcSurfaceStyle', [
+    name ?? null,
+    '.BOTH.',
+    [`#${shading.expressId}`],
+  ]);
+
+  const chainIds = [colour.expressId, shading.expressId, surfaceStyle.expressId];
+
+  let styleRefId = surfaceStyle.expressId;
+  if (schemaVersion === 'IFC2X3') {
+    const assignment = editor.addEntity(
+      'IfcPresentationStyleAssignment', [[`#${surfaceStyle.expressId}`]],
+    );
+    styleRefId = assignment.expressId;
+    chainIds.push(assignment.expressId);
+  }
+
+  // chainIds so a caller that later finds nothing referencing this style can
+  // take the whole chain back out rather than leaving it orphaned.
+  return { surfaceStyleId: surfaceStyle.expressId, styleRefId, chainIds };
+}

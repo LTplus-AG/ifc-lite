@@ -53,11 +53,14 @@ describe('uuidFromSeed frozen vectors', () => {
   });
 
   // Two pairs differing in exactly one character, at opposite ends of the
-  // string. stableHash elsewhere in this repo is a confirmed 32-bit,
-  // prefix-coupled hash (a shared prefix can produce a related digest); these
-  // pairs make sure a prefix-coupling or truncation regression in this
-  // module's own hashing would flip one frozen vector without flipping its
-  // sibling, rather than both silently drifting together.
+  // string. This module's own `fnv1a` (above) is a 32-bit FNV-1a mix,
+  // independent of `@ifc-lite/diff`'s `stableHash` — the two share no code
+  // and this file never imports the other. Prefix-coupling is exactly the
+  // failure mode a per-character FNV-1a-style update is prone to (a shared
+  // prefix can produce a related digest); these pairs make sure a
+  // prefix-coupling or truncation regression in THIS module's hashing would
+  // flip one frozen vector without flipping its sibling, rather than both
+  // silently drifting together.
   it('matches frozen vectors for seeds differing only in the last character', () => {
     expect(uuidFromSeed('group-critical-a')).toBe('87b7dadf-f988-466a-ab03-2fddc8cbdc87');
     expect(uuidFromSeed('group-critical-b')).toBe('648a28ea-f9c7-45d1-ad6c-64cbebde3b13');

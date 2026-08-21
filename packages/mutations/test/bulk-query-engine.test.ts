@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
-import { BulkQueryEngine, MutablePropertyView } from '../src/index.js';
+import { BulkQueryEngine, MutablePropertyView, MutationGuardError } from '../src/index.js';
 
 /**
  * BulkQueryEngine.select() with propertyFilters exercises the private
@@ -266,5 +266,108 @@ describe('BulkQueryEngine property filter operators', () => {
         })
       ).toEqual([2]);
     });
+  });
+
+  describe('multiple propertyFilters compose as AND', () => {
+    // Two independent properties per entity so a fixture with only one
+    // filter can't observe whether later filters actually narrow the
+    // candidate set or silently replace it (`select()` applies each
+    // filter in `criteria.propertyFilters` in sequence over the same
+    // `candidates` array — a bug that used only the LAST filter would
+    // pass every single-filter test above unnoticed).
+    function makeEngineWithTwoProperties(rows: Array<[string, number]>) {
+      const entities = makeEntities(rows.length);
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor(() => []);
+      rows.forEach(([category, qty], i) => {
+        const entityId = i + 1;
+        view.setProperty(entityId, 'Pset_Test', 'Category', category, PropertyValueType.Label);
+        view.setProperty(entityId, 'Pset_Test', 'Qty', qty, PropertyValueType.Real);
+      });
+      return new BulkQueryEngine(entities, view, null, null, null);
+    }
+
+    it('narrows on both conditions, not just the last one in the array', () => {
+      const engine = makeEngineWithTwoProperties([
+        ['A', 5], // entity 1: matches Category, fails Qty
+        ['A', 15], // entity 2: matches both
+        ['B', 15], // entity 3: fails Category, matches Qty
+      ]);
+
+      const ids = engine.select({
+        propertyFilters: [
+          { psetName: 'Pset_Test', propName: 'Category', operator: '=', value: 'A' },
+          { psetName: 'Pset_Test', propName: 'Qty', operator: '>', value: 10 },
+        ],
+      });
+
+      expect(ids).toEqual([2]);
+    });
+  });
+});
+
+/**
+ * `BulkQueryEngine.applyAction` writes straight to
+ * `MutablePropertyView.setProperty`/`setEntityType`, bypassing the viewer
+ * store's own actions and `canCollabEdit()` entirely (BulkPropertyEditor.tsx
+ * constructs and drives this class directly — see mutation-guard.ts). These
+ * tests prove the engine refuses a write on its own when constructed with a
+ * `canEdit` predicate that returns false — without any caller having to
+ * remember to check the role first.
+ */
+describe('BulkQueryEngine: local-edit guard (mutation-guard.ts)', () => {
+  it('applyAction throws MutationGuardError and applies nothing when canEdit() is false', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null, () => false);
+
+    expect(() =>
+      engine.applyAction(1, {
+        type: 'SET_PROPERTY',
+        psetName: 'Pset_Test',
+        propName: 'Prop',
+        value: 42,
+        valueType: PropertyValueType.Real,
+      })
+    ).toThrow(MutationGuardError);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBeNull();
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('applyAction still applies when canEdit() is true (guard is opt-in, not a new default)', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null, () => true);
+
+    const mutation = engine.applyAction(1, {
+      type: 'SET_PROPERTY',
+      psetName: 'Pset_Test',
+      propName: 'Prop',
+      value: 42,
+      valueType: PropertyValueType.Real,
+    });
+
+    expect(mutation).not.toBeNull();
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
+  });
+
+  it('an engine with no canEdit predicate behaves exactly as before (backward compatible)', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    const mutation = engine.applyAction(1, {
+      type: 'SET_PROPERTY',
+      psetName: 'Pset_Test',
+      propName: 'Prop',
+      value: 42,
+      valueType: PropertyValueType.Real,
+    });
+
+    expect(mutation).not.toBeNull();
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
   });
 });

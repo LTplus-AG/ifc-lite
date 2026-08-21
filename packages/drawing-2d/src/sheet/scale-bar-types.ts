@@ -5,45 +5,23 @@
 /**
  * Scale Bar Types
  *
- * Configurable scale bar for architectural drawings:
- * - Multiple visual styles
- * - Metric and imperial units
- * - Auto-calculation of optimal length
+ * Configuration for the scale bar drawn in the sheet's title block
+ * (`renderScaleBarInTitleBlock` in `title-block-renderer.ts`, and its
+ * on-screen twin in the viewer's `Drawing2DCanvas`). Both draw one
+ * alternating-segment metric bar with `0` and end-distance labels; every
+ * field below is one that those renderers actually read.
  */
-
-/** Scale bar style */
-export type ScaleBarStyle = 'linear' | 'alternating' | 'single' | 'graphic';
-
-/** Scale bar position relative to drawing viewport */
-export type ScaleBarPosition = 'below-viewport' | 'above-viewport' | 'in-title-block' | 'custom';
-
-/** Scale bar unit system */
-export type ScaleBarUnits = 'metric' | 'imperial' | 'both';
 
 /** Scale bar configuration */
 export interface ScaleBarConfig {
   /** Whether to show scale bar */
   visible: boolean;
-  /** Scale bar style */
-  style: ScaleBarStyle;
-  /** Position */
-  position: ScaleBarPosition;
-  /** Custom position offset from default (mm) */
-  customOffset?: { x: number; y: number };
-  /** Unit system */
-  units: ScaleBarUnits;
   /** Total length in model units (meters) */
   totalLengthM: number;
   /** Number of primary divisions */
   primaryDivisions: number;
-  /** Number of subdivisions per primary division */
-  subdivisions: number;
-  /** Bar height in mm */
+  /** Bar height in mm (clamped to 3mm by the renderer) */
   heightMm: number;
-  /** Label font size in mm */
-  labelFontSize: number;
-  /** Show unit label (e.g., "meters") */
-  showUnitLabel: boolean;
   /** Fill color for filled segments */
   fillColor: string;
   /** Stroke color */
@@ -55,15 +33,9 @@ export interface ScaleBarConfig {
 /** Default scale bar configuration */
 export const DEFAULT_SCALE_BAR: ScaleBarConfig = {
   visible: true,
-  style: 'alternating',
-  position: 'below-viewport',
-  units: 'metric',
   totalLengthM: 5, // Will be auto-calculated based on scale
   primaryDivisions: 5,
-  subdivisions: 2,
   heightMm: 3,
-  labelFontSize: 2.5,
-  showUnitLabel: true,
   fillColor: '#000000',
   strokeColor: '#000000',
   lineWeight: 0.25,
@@ -116,15 +88,19 @@ export function calculateOptimalDivisions(totalLengthM: number): number {
 /** North arrow style */
 export type NorthArrowStyle = 'simple' | 'compass' | 'decorative' | 'none';
 
-/** North arrow configuration */
+/**
+ * North arrow configuration.
+ *
+ * The arrow is drawn at a fixed spot in the title block, so there is no
+ * position field: `style` only selects between drawn ('simple', 'compass',
+ * 'decorative' all render the same glyph today) and not drawn ('none').
+ */
 export interface NorthArrowConfig {
-  /** Arrow style */
+  /** Arrow style; 'none' suppresses the arrow */
   style: NorthArrowStyle;
   /** Rotation in degrees (0 = up) */
   rotation: number;
-  /** Position in mm from top-left of viewport */
-  positionMm: { x: number; y: number };
-  /** Size in mm */
+  /** Size in mm (clamped by the renderer to 8mm and to the title block) */
   sizeMm: number;
 }
 
@@ -132,6 +108,5 @@ export interface NorthArrowConfig {
 export const DEFAULT_NORTH_ARROW: NorthArrowConfig = {
   style: 'simple',
   rotation: 0,
-  positionMm: { x: 30, y: 30 },
   sizeMm: 15,
 };

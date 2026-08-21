@@ -11,7 +11,7 @@
  * accepts is one edit rather than three. Mirrors `diff-test-helpers.ts`.
  */
 
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHeadlessContext } from './loader.js';
@@ -40,12 +40,23 @@ END-ISO-10303-21;
 `;
 }
 
-/** Write a model to a temp dir and open a real headless context over it. */
+/**
+ * Write a model to a temp dir and open a real headless context over it.
+ *
+ * The directory is removed once the context is open: `loadIfcFile` reads the
+ * whole file into `store.source` before returning, so nothing reads it back off
+ * disk afterwards. Removed on the failure path too, so a broken fixture does
+ * not leave one behind per test.
+ */
 export async function loadInlineModel(source: string, label = 'headless') {
   const dir = await mkdtemp(join(tmpdir(), `ifc-lite-${label}-`));
-  const path = join(dir, 'model.ifc');
-  await writeFile(path, source, 'utf-8');
-  return (await createHeadlessContext(path)).bim;
+  try {
+    const path = join(dir, 'model.ifc');
+    await writeFile(path, source, 'utf-8');
+    return (await createHeadlessContext(path)).bim;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 }
 
 export type HeadlessBim = Awaited<ReturnType<typeof loadInlineModel>>;

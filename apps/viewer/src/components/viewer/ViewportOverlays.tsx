@@ -197,32 +197,30 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
         </div>
       )}
 
-      {/* Visible-object count. Passive: it only renders once something is
-          actually hidden, so an unfiltered model carries no chrome — the same
-          "speak up only when the numbers disagree" rule the point-cloud class
-          list uses (`PointCloudClasses.tsx`). `total === 0` (no model loaded,
-          or a model with no physical objects) therefore renders nothing at
-          all rather than a meaningless "0 of 0".
-          Bottom-right: bottom-left is the scale/axis cluster and bottom-centre
-          is the storey badge. It tracks `basketPresentationVisible` the same
-          way the storey badge does, and keeps `bottom-4` on mobile like the
-          bottom-left cluster. */}
+      {/* Hidden-object count. Reports what is WITHHELD, not a ratio: the
+          number a user acts on is "what am I not seeing", and "1442 of 1446
+          visible" makes them do the subtraction to find the 4 that matter.
+          Passive, so an unfiltered model carries no chrome at all.
+
+          Styled as the bottom-left scale/axis cluster is: bare text at
+          `text-xs text-foreground/80`, no pill, no border, no backdrop, no
+          off-palette accent. The 3D overlays along the bottom edge are
+          deliberately plain, and this sits in that row. */}
       {(objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
         <div
           className={cn(
-            'absolute right-6 px-3 py-1.5 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm',
+            'absolute right-4 flex flex-col items-end gap-1',
             basketPresentationVisible ? 'bottom-28' : 'bottom-4',
           )}
           role="status"
         >
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {/* Amber only when something is genuinely hidden. Ghosted objects
-                are translucent, i.e. still drawn, so X-Ray on its own is
-                reported without the warning colour. */}
-            <span className={cn(objectCounts.hidden > 0 && 'text-amber-500')}>
-              {objectCounts.visible} of {objectCounts.total} objects visible
-            </span>
-            {objectCounts.ghosted > 0 && ` · ${objectCounts.ghosted} ghosted`}
+          <span className="text-xs text-foreground/80 tabular-nums">
+            {[
+              objectCounts.hidden > 0 && `${objectCounts.hidden} hidden`,
+              objectCounts.ghosted > 0 && `${objectCounts.ghosted} ghosted`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
           </span>
         </div>
       )}

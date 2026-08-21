@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Home,
   ZoomIn,
@@ -17,6 +17,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
+import { collectPhysicalEntityIds, countPhysicalObjects } from '@/lib/physical-objects';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
@@ -27,12 +28,14 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  const classFilter = useViewerStore((s) => s.classFilter);
+  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
-  const { ifcDataStore, geometryResult } = useIfc();
+  const { ifcDataStore } = useIfc();
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -83,14 +86,26 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
       )
     : null;
 
-  // Calculate visible count considering visibility filters
-  const totalCount = geometryResult?.meshes?.length ?? 0;
-  let visibleCount = totalCount;
-  if (isolatedEntities !== null) {
-    visibleCount = isolatedEntities.size;
-  } else if (hiddenEntities.size > 0) {
-    visibleCount = totalCount - hiddenEntities.size;
-  }
+  // Physical objects in the loaded model — the denominator. Derived from the
+  // entity index, NOT from `geometryResult.meshes`, so an object that never
+  // produced geometry still shows up as "not visible" instead of vanishing
+  // from both sides of the ratio. Memoised on the store identity: the walk is
+  // one schema lookup per distinct type name, but the model can hold millions
+  // of ids and this runs on every camera-driven re-render otherwise.
+  const physicalIds = useMemo(
+    () => collectPhysicalEntityIds(ifcDataStore?.entityIndex?.byType),
+    [ifcDataStore],
+  );
+
+  const objectCounts = useMemo(
+    () => countPhysicalObjects(physicalIds, {
+      hiddenEntities,
+      isolatedEntities,
+      classFilter,
+      ghostExceptEntities,
+    }),
+    [physicalIds, hiddenEntities, isolatedEntities, classFilter, ghostExceptEntities],
+  );
 
   // Initial rotation values (ViewCube will update itself via ref)
   const initialRotationX = -cameraRotationRef.current.elevation;
@@ -179,6 +194,36 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
             </TooltipTrigger>
             <TooltipContent side="left">Zoom Out (-)</TooltipContent>
           </Tooltip>
+        </div>
+      )}
+
+      {/* Visible-object count. Passive: it only renders once something is
+          actually hidden, so an unfiltered model carries no chrome — the same
+          "speak up only when the numbers disagree" rule the point-cloud class
+          list uses (`PointCloudClasses.tsx`). `total === 0` (no model loaded,
+          or a model with no physical objects) therefore renders nothing at
+          all rather than a meaningless "0 of 0".
+          Bottom-right: bottom-left is the scale/axis cluster and bottom-centre
+          is the storey badge. It tracks `basketPresentationVisible` the same
+          way the storey badge does, and keeps `bottom-4` on mobile like the
+          bottom-left cluster. */}
+      {(objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
+        <div
+          className={cn(
+            'absolute right-6 px-3 py-1.5 bg-background/80 backdrop-blur-sm rounded-full border shadow-sm',
+            basketPresentationVisible ? 'bottom-28' : 'bottom-4',
+          )}
+          role="status"
+        >
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {/* Amber only when something is genuinely hidden. Ghosted objects
+                are translucent, i.e. still drawn, so X-Ray on its own is
+                reported without the warning colour. */}
+            <span className={cn(objectCounts.hidden > 0 && 'text-amber-500')}>
+              {objectCounts.visible} of {objectCounts.total} objects visible
+            </span>
+            {objectCounts.ghosted > 0 && ` · ${objectCounts.ghosted} ghosted`}
+          </span>
         </div>
       )}
 

@@ -25,6 +25,7 @@ import {
   detectRunner,
   extractNodeFlags,
   cargoRunner,
+  rootScriptsRunner,
   aggregate,
   parseRunnerOutput,
   verdict,
@@ -348,6 +349,25 @@ test('extractNodeFlags keeps only flags, dropping the script\'s file expression'
     '--tsconfig',
     'tests/tsconfig.json',
   ]);
+});
+
+test('rootScriptsRunner: scripts/**.test.mjs run the way CI runs them, not via `turbo test`', () => {
+  assert.deepEqual(rootScriptsRunner(['scripts/lib/revert-oracle.test.mjs']), {
+    family: 'node-test',
+    bin: 'node',
+    args: ['--test', 'scripts/lib/revert-oracle.test.mjs'],
+  });
+});
+
+test('rootScriptsRunner refuses anything it would have to guess about', () => {
+  assert.equal(rootScriptsRunner([]), null);
+  assert.equal(rootScriptsRunner(['scripts/a.test.ts']), null, 'a .ts needs a loader');
+  assert.equal(rootScriptsRunner(['packages/core/src/a.test.mjs']), null, 'not under scripts/');
+  assert.equal(
+    rootScriptsRunner(['scripts/a.test.mjs', 'packages/core/src/b.test.mjs']),
+    null,
+    'a mixed batch is not all-scripts',
+  );
 });
 
 test('cargoRunner targets one crate and refuses an unnamed one', () => {

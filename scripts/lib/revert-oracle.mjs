@@ -154,6 +154,19 @@ export function extractNodeFlags(script) {
   return flags;
 }
 
+/**
+ * `scripts/**` has no package of its own: the root `scripts.test` is
+ * `turbo test`, which runs the workspace and not these files. CI runs each one
+ * with an explicit `node --test scripts/<x>.test.mjs` step, so that is what we
+ * reproduce. Only plain-JS test files qualify — anything needing a loader must
+ * declare a runner rather than be guessed at.
+ */
+export function rootScriptsRunner(files) {
+  if (!Array.isArray(files) || files.length === 0) return null;
+  if (!files.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
+  return { family: 'node-test', bin: 'node', args: ['--test', ...files] };
+}
+
 /** Cargo test invocation for a crate. */
 export function cargoRunner(crate) {
   if (!crate) return null;

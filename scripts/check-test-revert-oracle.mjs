@@ -72,6 +72,7 @@ import {
   classifyDiff,
   detectRunner,
   cargoRunner,
+  rootScriptsRunner,
   parseRunnerOutput,
   aggregate,
   verdict,
@@ -202,7 +203,9 @@ function planRuns(testPaths) {
   const plans = [];
   for (const [key, g] of groups) {
     const relFiles = g.files.map((f) => relative(g.dir, join(ROOT, f)) || f);
-    const runner = g.crate ? cargoRunner(g.crate) : detectRunner(g.script, relFiles);
+    const runner = g.crate
+      ? cargoRunner(g.crate)
+      : (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
     plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: g.crate });
   }
   return { plans, unassigned };

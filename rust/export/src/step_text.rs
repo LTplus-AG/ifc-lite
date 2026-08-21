@@ -8,6 +8,27 @@
 //! line/string utilities with no dependency on the DATA-section emission
 //! orchestration that stays in `step.rs`.
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+/// The edits that apply to one record, where a caller's attribute mutation and
+/// a copy-on-write repointing can both land on it. The repointing wins: it was
+/// computed from the caller's value rather than instead of it.
+pub(crate) fn merge_edits<'a>(
+    muts: Option<&'a BTreeMap<usize, String>>,
+    repointed: Option<&'a BTreeMap<usize, String>>,
+) -> Option<Cow<'a, BTreeMap<usize, String>>> {
+    match (muts, repointed) {
+        (None, None) => None,
+        (Some(edits), None) | (None, Some(edits)) => Some(Cow::Borrowed(edits)),
+        (Some(muts), Some(repointed)) => {
+            let mut merged = muts.clone();
+            merged.extend(repointed.iter().map(|(i, v)| (*i, v.clone())));
+            Some(Cow::Owned(merged))
+        }
+    }
+}
+
 /// Escape a STEP string literal body: double the apostrophe and reverse
 /// solidus, and map every ASCII control character (the C0 range plus DEL) to
 /// a space, since ISO 10303-21 restricts a literal's plain-text bytes to the
@@ -176,7 +197,7 @@ fn split_top_level_args(attrs: &str) -> Vec<String> {
 
 /// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
 /// when it cannot be parsed.
-pub(crate) fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
+pub(crate) fn apply_attr_mutations(line: &str, muts: &BTreeMap<usize, String>) -> String {
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
     let eq = match body.find('=') {
@@ -219,20 +240,6 @@ pub(crate) fn renumber(line: &str, new_id: u32) -> String {
     }
 }
 
-/// Replace one reference inside one attribute, leaving its neighbours alone.
-///
-/// Returns the rewritten attribute, or `None` when the attribute does not hold
-/// that reference. The caller is expected to treat `None` as "this edit cannot
-/// be made" rather than proceeding, because a copy nothing points at is an
-/// orphan and a reference to a filtered record is a dangling one.
-///
-/// A list keeps its order and its other entries: repointing one element of a
-/// property set's `HasProperties` must not disturb the rest, or the diff
-/// against the source stops being small.
-///
-/// Text is left alone. A property value reading `'lot #41'` is a sentence, and
-/// rewriting inside it would change what the file says rather than what it
-/// points at.
 /// One attribute of a `#id=TYPE(args);` line, by position.
 ///
 /// Split from the substitution below so a caller applying two edits to the
@@ -250,8 +257,21 @@ pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
         .nth(index)
 }
 
-
-/// The substitution itself, over one attribute's text.
+/// Replace references inside one attribute, leaving its neighbours alone.
+///
+/// Rewrites every unquoted `#from` in the attribute to `#to`. Returns the
+/// rewritten attribute, or `None` when the attribute does not hold that
+/// reference. The caller is expected to treat `None` as "this edit cannot be
+/// made" rather than proceeding, because a copy nothing points at is an orphan
+/// and a reference to a filtered record is a dangling one.
+///
+/// A list keeps its order and its other entries: repointing one element of a
+/// property set's `HasProperties` must not disturb the rest, or the diff
+/// against the source stops being small.
+///
+/// Text is left alone. A property value reading `'lot #41'` is a sentence, and
+/// rewriting inside it would change what the file says rather than what it
+/// points at.
 pub(crate) fn substitute_ref_in_attr(attr: &str, from: u32, to: u32) -> Option<String> {
     let old = format!("#{from}");
     let new = format!("#{to}");

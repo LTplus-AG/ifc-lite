@@ -36,6 +36,7 @@ mod rooms;
 mod schema_convert;
 mod shades;
 mod step;
+mod step_cow;
 mod step_text;
 mod usd;
 

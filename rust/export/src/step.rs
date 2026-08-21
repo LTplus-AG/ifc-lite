@@ -8,7 +8,7 @@
 //! **mutation application** (MutablePropertyView edits bridged from TS) are the P2/P3
 //! follow-ons; the structure here is the seam they plug into.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 use serde::Deserialize;
@@ -108,11 +108,14 @@ pub struct StepStats {
     pub total: usize,
     /// Entities written (after filtering + reference closure).
     pub written: usize,
+    /// Copy-on-write mutations the file could not express, so none was made.
+    /// Non-zero means an edit the caller asked for is not in the output, and
+    /// the caller is the only one who can say what to do about it.
+    pub copies_refused: usize,
 }
 
 use crate::step_text::{
-    apply_attr_mutations, attribute_of, detect_schema, escape, refs_in_line, renumber,
-    substitute_ref_in_attr,
+    apply_attr_mutations, detect_schema, escape, merge_edits, refs_in_line, renumber,
 };
 
 // ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
@@ -236,83 +239,30 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
 
-    // Root-attribute edits, grouped by entity id.
-    let mut muts_by_id: HashMap<u32, Vec<(usize, String)>> = HashMap::new();
+    // Root-attribute edits, resolved per (entity, attribute) as they are read.
+    // A list plus a last-wins rule made "the value at this index" a derived
+    // fact that every reader re-derived its own way, and two of them got it
+    // wrong. Keyed by index there is nothing left to derive.
+    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     for m in &opts.attribute_mutations {
-        muts_by_id.entry(m.express_id).or_default().push((m.index, m.value.clone()));
+        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
     }
 
     // Copy-on-write, resolved before the emit loop so the copies and the
-    // repointed referrers both go through it.
-    //
-    // Allocated from a counter `PropMutation` synthesis continues from, so the
-    // two cannot hand out the same id.
-    //
-    // `checked_add`, and `None` means no record can be added at all. Saturating
-    // was worse than the overflow it replaced: on a file holding `u32::MAX` it
-    // leaves the counter equal to an id the file already uses, so the first
-    // copy silently collides with a real record. A file that has spent the
-    // whole id space has no room for another record, and emitting one anyway
-    // corrupts it, so none is emitted.
-    let mut next_id = max_id.checked_add(1);
-    let mut copies: Vec<(u32, u32, usize, String)> = Vec::new();
-    // Folded per (referrer, attribute). Two copies repointed through the same
-    // attribute each produced a rewrite of the whole attribute computed from
-    // the untouched original, and the second overwrote the first: one copy was
-    // orphaned and the referrer still pointed at the record it was supposed to
-    // stop sharing. Two properties on one element is the ordinary case, so the
-    // substitutions are applied in sequence to one accumulating value.
-    let mut referrer_edits: HashMap<(u32, usize), String> = HashMap::new();
-    for cow in &opts.copy_on_write {
-        let Some(&(source_start, source_end)) = line_of.get(&cow.express_id) else {
-            continue;
-        };
-        if !included.contains(&cow.referrer_id) {
-            continue;
-        }
-        // The attribute has to exist before an id is spent on the copy.
-        // `apply_attr_mutations` ignores an index past the end, so without this
-        // the copy comes out identical to the record it copied and the referrer
-        // is repointed at a duplicate that changed nothing.
-        let source_line = String::from_utf8_lossy(&content[source_start..source_end]);
-        if attribute_of(&source_line, cow.index).is_none() {
-            continue;
-        }
-        let Some(&(rs, re)) = line_of.get(&cow.referrer_id) else {
-            continue;
-        };
-        let Some(copy_id) = next_id else {
-            // No id left to give it. Skipped rather than duplicated.
-            continue;
-        };
-
-        // Computed against what the attribute holds now, which is the previous
-        // substitution's output when there was one.
-        let current = match referrer_edits.get(&(cow.referrer_id, cow.referrer_index)) {
-            Some(edited) => edited.clone(),
-            None => {
-                let raw = String::from_utf8_lossy(&content[rs..re]);
-                match attribute_of(&raw, cow.referrer_index) {
-                    Some(attr) => attr,
-                    None => continue,
-                }
-            }
-        };
-        let Some(rewritten) = substitute_ref_in_attr(&current, cow.express_id, copy_id) else {
-            // The referrer does not hold that reference, so there is nothing to
-            // repoint. Emitting the copy anyway would leave a record nothing
-            // points at, and one that may reference records the export filtered
-            // out. Skipped rather than half-applied.
-            continue;
-        };
-
-        next_id = copy_id.checked_add(1);
-        copies.push((copy_id, cow.express_id, cow.index, cow.value.clone()));
-        referrer_edits.insert((cow.referrer_id, cow.referrer_index), rewritten);
-    }
-    for ((referrer_id, index), value) in referrer_edits {
-        muts_by_id.entry(referrer_id).or_default().push((index, value));
-    }
+    // repointed referrers both go through it. Its own module: the pass has four
+    // rules now and every one of them is a file that came out wrong without it.
+    let resolved = crate::step_cow::resolve(
+        &opts.copy_on_write,
+        content,
+        &line_of,
+        &included,
+        &muts_by_id,
+        max_id.checked_add(1),
+    );
+    let next_id = resolved.next_id;
+    let copies_refused = resolved.refused;
+    let copies = resolved.copies;
+    let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
@@ -333,8 +283,8 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
-                let edited = match muts_by_id.get(id) {
-                    Some(muts) => apply_attr_mutations(&raw, muts),
+                let edited = match merge_edits(muts_by_id.get(id), repointed.get(id)) {
+                    Some(edits) => apply_attr_mutations(&raw, &edits),
                     None => raw.into_owned(),
                 };
                 if converting {
@@ -355,10 +305,16 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 
     // The copies, emitted rather than appended: counted in `written` and put
     // through `convert_step_line` like every other record.
-    for (copy_id, source_id, index, value) in &copies {
+    for (copy_id, source_id, edits) in &copies {
         if let Some(&(s0, e0)) = line_of.get(source_id) {
             let raw = String::from_utf8_lossy(&content[s0..e0]);
-            let edited = apply_attr_mutations(&raw, &[(*index, value.clone())]);
+            // The caller's edits to the record belong to the copy too: the
+            // copy is this element's version of that record, not a snapshot
+            // taken before the caller touched it. Repointings do not, which is
+            // why they are resolved into their own map.
+            let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
+            muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
+            let edited = apply_attr_mutations(&raw, &muts);
             let renumbered = renumber(&edited, *copy_id);
             if converting {
                 out.push_str(&crate::schema_convert::convert_step_line(
@@ -397,7 +353,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         // duplicate real records.
         let Some(mut next) = next_id else {
             out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-            return (out, StepStats { total: order.len(), written });
+            return (out, StepStats { total: order.len(), written, copies_refused });
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -444,7 +400,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 
-    (out, StepStats { total: order.len(), written })
+    (out, StepStats { total: order.len(), written, copies_refused })
 }
 
 #[cfg(test)]

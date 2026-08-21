@@ -19,8 +19,8 @@ import type {
   ValidationProgress,
 } from '@ifc-lite/ids';
 import {
-  releaseOwnedIdsFocusVisibility,
-  type IDSFocusVisibilityChannels,
+  endIdsRowFocusPresentation,
+  type IDSRowFocusPresentation,
   type IDSFocusVisibilityOwnership,
 } from '../../lib/ids/visibility-ownership.js';
 
@@ -243,7 +243,7 @@ function buildEntityIdSets(
  * own set-level isolation occupying the channel instead is left alone.
  */
 function endIdsRowFocus(get: () => IDSSlice): void {
-  releaseOwnedIdsFocusVisibility(get() as unknown as IDSFocusVisibilityChannels);
+  endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
 }
 
 export const createIdsSlice: StateCreator<IDSSlice, [], [], IDSSlice> = (set, get) => ({

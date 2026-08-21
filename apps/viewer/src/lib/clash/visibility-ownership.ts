@@ -112,7 +112,15 @@ export interface ClashVisibilityChannels {
  *   the paint channel too (see `endClashScenePresentation`).
  */
 export function releaseOwnedClashVisibility(state: ClashVisibilityChannels): boolean {
-  const stillOurs = releaseOwnedVisibility(state, state.clashVisibilityOwned ?? null);
+  const owned = state.clashVisibilityOwned ?? null;
+  // No record: nothing to release, and nothing to drop. This early return is
+  // load-bearing for the "delegating to `lib/visibility/ownership.ts` kept the
+  // API and the channel effects unchanged" claim: without it, every
+  // ownership-free release path commits a fresh store state (and notifies every
+  // subscriber) writing `null` over `null`, and several of them run on every
+  // model removal. Return values were never the difference (#2867 review).
+  if (!owned) return false;
+  const stillOurs = releaseOwnedVisibility(state, owned);
   state.setClashVisibilityOwned?.(null);
   return stillOurs;
 }

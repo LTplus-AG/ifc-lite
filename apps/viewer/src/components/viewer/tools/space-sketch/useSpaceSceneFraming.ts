@@ -60,15 +60,15 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     const prior = priorRef.current;
     if (!prior) return;
     const store = useViewerStore.getState();
-    // Isolation and X-ray are mutually exclusive in the slice (each setter
-    // clears the other), so restore isolation first, then any prior X-ray.
-    store.setIsolatedEntities(prior.isolated);
-    // `setIsolatedEntities` also clears `hiddenEntities` (visibilitySlice.ts:220
-    // — isolation supersedes per-entity hiding). This tool never owned that set,
-    // so put it back verbatim: otherwise simply opening and closing Space Sketch
-    // un-hides everything the user had hidden beforehand.
-    if (prior.hidden.size > 0) store.setHiddenEntities(prior.hidden);
-    if (prior.ghostExcept) store.setGhostExceptEntities(prior.ghostExcept);
+    // Isolation, X-ray and per-entity hiding all clear each other through the
+    // individual setters (isolation and ghosting are mutually exclusive;
+    // isolation supersedes hiding). Replaying them one call at a time therefore
+    // walked through states the user never had — and one of those intermediate
+    // states nulls the very channel the next call restores, which strips the
+    // ownership record off a presentation that is coming straight back (#2662
+    // P2, re-found in the review of #2867). One atomic restore instead: the
+    // captured view is a single fact and goes back as one.
+    store.restoreVisibilityState(prior);
     // Restore against the CAPTURED visibility, not a "did we flip it" flag —
     // something else may have toggled spaces mid-session. `keepSpacesVisible`
     // is a floor on that target rather than a skip: after a confirm the user

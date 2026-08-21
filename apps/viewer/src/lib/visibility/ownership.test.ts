@@ -14,6 +14,7 @@ import {
   ownsCurrentVisibility,
   releaseOwnedVisibility,
   sameMembers,
+  staleOwnershipReset,
   type VisibilityChannels,
 } from './ownership.js';
 
@@ -76,5 +77,81 @@ describe('releaseOwnedVisibility', () => {
     assert.equal(ownsCurrentVisibility(s, { channel: 'isolate', ids: new Set([1]) }), false);
     assert.equal(releaseOwnedVisibility(s, { channel: 'isolate', ids: new Set([1]) }), false);
     assert.deepEqual(s.cleared, []);
+  });
+});
+
+/**
+ * The invalidation side of the same predicate (review of #2867): a channel
+ * write drops every record it just made stale, symmetrically, so no
+ * subsystem's claim can outlive its presentation because a DIFFERENT owner
+ * replaced the channel.
+ */
+describe('staleOwnershipReset', () => {
+  it('drops a record whose channel the write is about to replace', () => {
+    assert.deepEqual(
+      staleOwnershipReset(
+        { idsFocusVisibilityOwned: { channel: 'isolate', ids: new Set([1]) } },
+        { isolatedEntities: new Set([2]), ghostExceptEntities: null },
+      ),
+      { idsFocusVisibilityOwned: null },
+    );
+  });
+
+  it('drops a record whose channel the write NULLS as a side effect', () => {
+    // The two channels are mutually exclusive: writing the ghost one nulls the
+    // isolate one. That is D1 — clash ghosting over an IDS row isolation.
+    assert.deepEqual(
+      staleOwnershipReset(
+        { idsFocusVisibilityOwned: { channel: 'isolate', ids: new Set([1]) } },
+        { isolatedEntities: null, ghostExceptEntities: new Set([5, 6]) },
+      ),
+      { idsFocusVisibilityOwned: null },
+    );
+  });
+
+  it('keeps a record the write leaves content-matching', () => {
+    // Space Sketch's restore and `syncSourceModel`'s rebuild both replay an
+    // unchanged channel through a cloning setter (#2662 P2). Equal members
+    // mean the same presentation is still on screen.
+    assert.deepEqual(
+      staleOwnershipReset(
+        { clashVisibilityOwned: { channel: 'ghost', ids: new Set([1, 2]) } },
+        { isolatedEntities: null, ghostExceptEntities: new Set([2, 1]) },
+      ),
+      {},
+      'a content-preserving rewrite must not launder a feature-owned focus into "user" state',
+    );
+  });
+
+  it('answers for BOTH subsystems, not whichever one was reported', () => {
+    assert.deepEqual(
+      staleOwnershipReset(
+        {
+          idsFocusVisibilityOwned: { channel: 'isolate', ids: new Set([1]) },
+          clashVisibilityOwned: { channel: 'ghost', ids: new Set([5, 6]) },
+        },
+        { isolatedEntities: new Set([9]), ghostExceptEntities: null },
+      ),
+      { idsFocusVisibilityOwned: null, clashVisibilityOwned: null },
+      'one direction of a two-way rule is not a rule',
+    );
+  });
+
+  it('adds no keys when there is nothing to invalidate', () => {
+    // The common case, and the reason this returns a patch rather than a pair
+    // of nulls: slice-level harnesses stub `get()` without these fields, and a
+    // blanket write would introduce them.
+    assert.deepEqual(
+      staleOwnershipReset({}, { isolatedEntities: new Set([1]), ghostExceptEntities: null }),
+      {},
+    );
+    assert.deepEqual(
+      staleOwnershipReset(
+        { idsFocusVisibilityOwned: null, clashVisibilityOwned: null },
+        { isolatedEntities: null, ghostExceptEntities: null },
+      ),
+      {},
+      'a record of `null` is already no claim — nulling it again is a store commit for nothing',
+    );
   });
 });

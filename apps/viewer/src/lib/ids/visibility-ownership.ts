@@ -42,6 +42,7 @@ import {
   type VisibilityChannels,
   type VisibilityOwnership,
 } from '../visibility/ownership.js';
+import { IDS_FOCUS_COLOR } from '../../hooks/ids/idsColorSystem.js';
 
 /**
  * What the IDS row focus last installed into a shared visibility channel, and
@@ -74,7 +75,83 @@ export interface IDSFocusVisibilityChannels extends VisibilityChannels {
  *   focus was still, verifiably, the owner.
  */
 export function releaseOwnedIdsFocusVisibility(state: IDSFocusVisibilityChannels): boolean {
-  const stillOurs = releaseOwnedVisibility(state, state.idsFocusVisibilityOwned ?? null);
+  const owned = state.idsFocusVisibilityOwned ?? null;
+  // No record: nothing to release, and nothing to drop. Returning before the
+  // write keeps this the pure no-op it reads as — an unconditional
+  // `setIdsFocusVisibilityOwned(null)` would commit a fresh store state (and
+  // notify every subscriber) on every ownership-free release path, and several
+  // of them run on every model removal. Same shape as
+  // `releaseOwnedClashVisibility`.
+  if (!owned) return false;
+  const stillOurs = releaseOwnedVisibility(state, owned);
   state.setIdsFocusVisibilityOwned?.(null);
   return stillOurs;
+}
+
+type ColorOverrides = Map<number, [number, number, number, number]>;
+
+/** The store surface `endIdsRowFocusPresentation` reads and writes: the
+ *  visibility channels above plus the PAINT channel (dataSlice). Optional for
+ *  the same reason. */
+export interface IDSRowFocusPresentation extends IDSFocusVisibilityChannels {
+  pendingColorUpdates?: ColorOverrides | null;
+  setPendingColorUpdates?: (updates: ColorOverrides) => void;
+}
+
+/**
+ * End the WHOLE row-focus presentation — both channels it writes.
+ *
+ * The row focus is two channels, not one: the shared visibility channel
+ * (`isolatedEntities` / `ghostExceptEntities`, released by ownership above)
+ * and the PAINT channel — `focusEntity` repaints the activated element
+ * {@link IDS_FOCUS_COLOR} through `pendingColorUpdates`, the albedo path, so
+ * the row can be found among identically-red neighbours. #2867 released the
+ * first at all eleven of its release sites and the second at none of them, so
+ * a model removal or a cleared report left a cyan marker painted on an element
+ * whose row no longer exists. `ClashPanel`'s unmount cleanup has always handed
+ * the paint channel back for exactly this reason (#1277 review), and
+ * `endClashScenePresentation` documents the same three-channel shape.
+ *
+ * What is released is the tint the row focus ITSELF added, not the overlay it
+ * added it to. The focus colour is painted ON TOP of the report's red/green —
+ * that surrounding context is what makes it mean anything — and the report
+ * overlay belongs to the report, which these paths do not all invalidate. So
+ * the entries wearing the focus colour are dropped and every other entry is
+ * left exactly as it was. That is the same value-identity discipline the
+ * visibility channels use, with the same single, bounded false positive: an
+ * entry another owner painted this precise RGBA is indistinguishable from the
+ * marker and goes with it.
+ *
+ * `useIDS`'s own release sites do NOT come through here — `clearEntitySelection`
+ * and `applyFocusMode` follow their release with `paintFocus()`, which rebuilds
+ * the report overlay in full (the display options and geometry that needs are
+ * the hook's, not the store's). This is for the store- and panel-level
+ * teardowns, which have no way to rebuild it and must not leave the marker.
+ *
+ * @returns whether the visibility channel was actually released — i.e. whether
+ *   the row focus was still, verifiably, its owner.
+ */
+export function endIdsRowFocusPresentation(state: IDSRowFocusPresentation): boolean {
+  const released = releaseOwnedIdsFocusVisibility(state);
+
+  const painted = state.pendingColorUpdates;
+  if (painted) {
+    let marked = false;
+    const next: ColorOverrides = new Map();
+    for (const [id, color] of painted) {
+      if (isFocusColor(color)) { marked = true; continue; }
+      next.set(id, color);
+    }
+    // Only write when something changes: an unconditional push would commit a
+    // new map — and re-run the fire-and-forget override effect — on every model
+    // removal in a session that never focused an IDS row.
+    if (marked) state.setPendingColorUpdates?.(next);
+  }
+
+  return released;
+}
+
+function isFocusColor(color: readonly number[]): boolean {
+  return color.length === IDS_FOCUS_COLOR.length
+    && color.every((c, i) => c === IDS_FOCUS_COLOR[i]);
 }

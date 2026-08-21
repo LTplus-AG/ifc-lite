@@ -110,8 +110,23 @@ export interface UseIDSResult {
    * (#2867) — the clash panel's three focus modes, applied per IDS row.
    */
   focusMode: IDSFocusMode;
-  /** True when any entity isolation is currently active in the 3D view */
+  /** True when an entity ISOLATION is currently active in the 3D view. Reads
+   *  the isolate channel alone, because the isolate-failed / passed / involved
+   *  buttons derive their pressed state from it and those buttons install
+   *  isolation specifically. */
   isolationActive: boolean;
+  /**
+   * True when EITHER shared visibility channel is showing something — the
+   * state "Clear isolation (show all)" exists to undo.
+   *
+   * Not `isolationActive`: the row focus's DEFAULT mode is `ghost`, and
+   * `setGhostExceptEntities` nulls `isolatedEntities` (the two channels are
+   * mutually exclusive — visibilitySlice). Gating the clear button on the
+   * isolate channel alone therefore greyed out the panel's only way back while
+   * the whole model was faded around one element — the default path, on the
+   * default mode. `ClashPanel`'s equivalent has never had that gate.
+   */
+  visibilityFilterActive: boolean;
   /** Display options */
   displayOptions: {
     highlightFailed: boolean;
@@ -278,6 +293,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
   const setIsolatedEntities = useViewerStore((s) => s.setIsolatedEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
   const toGlobalId = useViewerStore((s) => s.toGlobalId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const geometryResult = useViewerStore((s) => s.geometryResult);
@@ -644,8 +660,15 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
    * exactly what was installed so the release can release only that.
    *
    * Mirrors `useClash.installClashIsolation`, including the read-BACK: the
-   * slice setter clones, and the record must hold what the channel actually
-   * shows, or ownership (tested by value) would never match again.
+   * record holds the SET THE CHANNEL ENDED UP WITH, not the argument.
+   *
+   * Under value equality those two are interchangeable today — the setter
+   * clones the argument, so recording the argument instead is an equivalent
+   * mutant (verified: it survives). The read-back is what stops that from
+   * being a property this code depends on: `null` for "the channel refused the
+   * install" is expressible, and a setter that ever normalised what it stores
+   * (dropping unknown ids, say) would silently make the argument a claim on
+   * something that is not on screen.
    */
   const installFocusIsolation = useCallback((ids: Set<number>): void => {
     const state = useViewerStore.getState();
@@ -1342,6 +1365,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     isolateMode,
     focusMode,
     isolationActive: isolatedEntities != null,
+    visibilityFilterActive: isolatedEntities != null || ghostExceptEntities != null,
     displayOptions,
 
     // Document actions

@@ -77,7 +77,7 @@ import type {
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
-import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
+import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
@@ -470,6 +470,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     isolationScope,
     isolateMode,
     isolationActive,
+    visibilityFilterActive,
     focusMode,
 
     // Actions
@@ -519,7 +520,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   // clash, the spaces X-ray or IDS's own set-level isolate buttons is left
   // exactly as the user left it.
   useEffect(() => () => {
-    releaseOwnedIdsFocusVisibility(useViewerStore.getState());
+    endIdsRowFocusPresentation(useViewerStore.getState());
   }, []);
 
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
@@ -906,7 +907,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 className="h-8 w-8 p-0"
                 aria-label="Clear isolation (show all)"
                 onClick={clearIsolation}
-                disabled={!isolationActive}
+                disabled={!visibilityFilterActive}
               >
                 <Focus className="h-4 w-4" />
               </Button>

@@ -115,3 +115,66 @@ export function releaseOwnedVisibility(
   else state.clearGhost?.();
   return true;
 }
+
+/**
+ * Every store field that holds one of these records, so a THIRD subsystem
+ * recording a claim on the same two channels is invalidated by construction
+ * rather than by remembering to extend a list somewhere else.
+ */
+export interface OwnedVisibilityRecords {
+  idsFocusVisibilityOwned?: VisibilityOwnership;
+  clashVisibilityOwned?: VisibilityOwnership;
+}
+
+const OWNERSHIP_RECORD_FIELDS = [
+  'idsFocusVisibilityOwned',
+  'clashVisibilityOwned',
+] as const satisfies readonly (keyof OwnedVisibilityRecords)[];
+
+/**
+ * The record fields a channel write has just made STALE — the one shared
+ * invalidation point (review of #2867).
+ *
+ * A record that outlives its presentation is not inert. Ownership is tested by
+ * VALUE, so it goes matching → cleared → MATCHING AGAIN the moment any other
+ * owner installs a set with equal content, and the next release then destroys
+ * THAT owner's presentation (#2654 fourth review). Each subsystem already drops
+ * its OWN record as it releases, and IDS's set-level isolate drops the row
+ * focus's — but nothing dropped a record when a DIFFERENT owner replaced the
+ * channel underneath it. Three running reproductions, one per direction:
+ * clash's `focusClash` over an IDS row focus, `useClash.clearHighlight()` over
+ * one, and an IDS row focus over a clash ghost.
+ *
+ * Fixing that per caller is one direction of a two-way rule, and the next owner
+ * of the channel reintroduces it. So it is answered where the channels are
+ * actually written instead — `visibilitySlice`, which every owner goes through
+ * — and answered for EVERY record symmetrically, not for the one that happened
+ * to be reported.
+ *
+ * Invalidation is by CONTENT, not by "somebody wrote": `next` is the state the
+ * channels are about to hold, and a record still content-matching it survives.
+ * That is what keeps the content-preserving rewrites alive — Space Sketch's
+ * open/close view capture and `syncSourceModel`'s rebuild both replay an
+ * unchanged channel through these setters, and under a blanket "any write
+ * invalidates" rule they would silently convert a feature-owned focus into
+ * "user" state, which is #2662 P2 again. It is also why this cannot strand a
+ * presentation the way an unconditional null would: every installer writes the
+ * CHANNEL first and its record second (`useClash.installClashIsolation` /
+ * `installClashGhost`, `useIDS.installFocusIsolation` / `installFocusGhost`),
+ * so a record can never be invalidated by the very write that installed it.
+ *
+ * @returns a partial state patch — `{}` when nothing went stale, so the common
+ *   case adds no keys to the `set()` and slice-level harnesses that stub `get()`
+ *   without these fields are unaffected.
+ */
+export function staleOwnershipReset(
+  records: OwnedVisibilityRecords,
+  next: Pick<VisibilityChannels, 'isolatedEntities' | 'ghostExceptEntities'>,
+): Partial<OwnedVisibilityRecords> {
+  const reset: Partial<OwnedVisibilityRecords> = {};
+  for (const field of OWNERSHIP_RECORD_FIELDS) {
+    const owned = records[field];
+    if (owned && !ownsCurrentVisibility(next, owned)) reset[field] = null;
+  }
+  return reset;
+}

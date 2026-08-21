@@ -368,8 +368,14 @@ describe('IDS and clash share the visibility channels — neither may strand the
     // IDS takes the channel over with its own content.
     await act(async () => { api!.ids.focusEntity('A', 1, 'isolate'); });
     assert.deepEqual(isolated(), [1], 'setup sanity: IDS owns the isolate channel now');
-    assert.equal(useViewerStore.getState().clashVisibilityOwned?.channel, 'ghost',
-      "setup sanity: clash's record is now stale — its ghost was replaced");
+    // CORRECTED (review of #2867): this used to assert clash's record was left
+    // STALE here — "its ghost was replaced" — as setup sanity. That staleness
+    // was the D3 defect, not a property worth pinning: a record outliving its
+    // presentation re-matches as soon as a third owner installs equal content.
+    // `setIsolatedEntities` now drops every record its write invalidates
+    // (visibilitySlice), symmetrically for both subsystems.
+    assert.equal(useViewerStore.getState().clashVisibilityOwned, null,
+      "setup sanity: clash's claim ended when IDS replaced its ghost");
 
     // `releaseOwnedClashVisibility` is the ONE predicate every ownership-scoped
     // clash release routes through — the run-start release

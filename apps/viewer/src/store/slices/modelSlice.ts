@@ -18,8 +18,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import {
-  releaseOwnedIdsFocusVisibility,
-  type IDSFocusVisibilityChannels,
+  endIdsRowFocusPresentation,
+  type IDSRowFocusPresentation,
 } from '../../lib/ids/visibility-ownership.js';
 import {
   endClashScenePresentation,
@@ -327,9 +327,18 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // standing over a federation that just changed is the same blank viewport
     // #2654 describes, with nothing on screen to explain it. Released by
     // IDS's OWN record, so a presentation belonging to clash, the spaces
-    // X-ray or IDS's set-level isolate buttons survives untouched. This must
-    // also precede the IDS clears below, which drop the record.
-    releaseOwnedIdsFocusVisibility(get() as unknown as IDSFocusVisibilityChannels);
+    // X-ray or IDS's set-level isolate buttons survives untouched. The row
+    // focus's colour marker goes with it — both channels it wrote.
+    //
+    // CORRECTION (review of #2867): an earlier revision of this comment
+    // claimed this "must also precede the IDS clears below, which drop the
+    // record". It does not. The only clear below is
+    // `clearIdsValidationReport`, which releases through this same helper
+    // BEFORE nulling the record — moving this call after it passes the whole
+    // suite (verified). The order here is not load-bearing and is not
+    // asserted; what IS load-bearing is the release-before-null order INSIDE
+    // `clearIdsValidationReport` (idsSlice), where it is asserted.
+    endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -643,7 +652,7 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // normally just drops the record — which it must, because a record that
     // outlives its presentation re-matches as soon as any other owner
     // installs equal content (#2654 fourth review).
-    releaseOwnedIdsFocusVisibility(get() as unknown as IDSFocusVisibilityChannels);
+    endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
     // Clear the federation registry
     federationRegistry.clear();
     // Same dangling reference as `removeModel`'s `addElementModelId` cleanup

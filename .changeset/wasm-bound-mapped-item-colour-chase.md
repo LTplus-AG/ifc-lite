@@ -13,10 +13,11 @@ raising a catchable panic, so the tab's worker died with no error to report.
 
 The chase is bounded in both dimensions, because a depth cap alone only trades
 the abort for a hang — `k` items each leading back into the cycle cost
-`O(k^depth)` decodes. It now stops at 32 hops (matching the sibling
-traversals in `ifc-lite-geometry`'s `router::processing` and
-`ifc-lite-processing`'s `element`) and records the depth each item was
-explored at, so a cycle is broken while an item legitimately reached again from
+`O(k^depth)` decodes. It now stops at 32 hops — the same cap the
+mapped-item traversals in `ifc-lite-geometry`'s `router::processing` and
+`ifc-lite-processing`'s `element` use, which #2873 has since consolidated into
+one `MAX_MAPPED_ITEM_DEPTH` in `ifc-lite-core` that all three now import — and
+records the depth each item was explored at, so a cycle is broken while an item legitimately reached again from
 a shorter branch is still resolved — a plain visited set silently lost that
 item's authored colour.
 

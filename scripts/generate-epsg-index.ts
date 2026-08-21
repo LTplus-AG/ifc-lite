@@ -278,6 +278,40 @@ async function fetchEntries(summaries: RegistrySummary[], concurrency: number): 
  * Fetch proj4 definition strings from epsg.io for all entries.
  * Uses concurrent workers with retries. Entries without a valid
  * proj4 definition are left with proj4=undefined.
+ *
+ * `+towgs84=` sign convention (read this before re-running this script):
+ *
+ * EPSG registers each datum's 7-parameter Helmert transformation under one of
+ * two conventions — Position Vector (method 9606) or Coordinate Frame rotation
+ * (method 9607) — which are related by negating all three rotation terms
+ * (tX/tY/tZ and the scale term dS are identical either way). proj4's
+ * `+towgs84=` parameter is hard-coded to the Position Vector convention; a
+ * Coordinate-Frame-convention rotation dropped in unchanged silently produces
+ * a mispositioned (but plausible-looking) transform.
+ *
+ * epsg.io's `.proj4` output is not consistently one convention. Verified
+ * 2026-08-19 against the EPSG Registry API's own method-labelled parameter
+ * records, with proj4js round-trip residuals against independently-known
+ * landmark coordinates:
+ *   - EPSG:31370 (Belgian Lambert 72): epsg.io's rotation signs did not match
+ *     EPSG:1652 "BD72 to ETRS89 (1)" (method 9606) negated correctly — a prior
+ *     vendored fetch had picked up the Coordinate-Frame-signed variant
+ *     (~65 m residual); the Position-Vector-signed variant is correct (~0.1 m).
+ *   - EPSG:3021 (Sweden RT90): EPSG:1896 "RT90 to WGS 84 (2)" is published
+ *     under method 9607 (Coordinate Frame); proj4's +towgs84 needs the
+ *     negation of those signs (~256 m residual with the raw 9607 signs vs
+ *     ~0 m negated).
+ *   - EPSG:2065 (S-JTSK (Ferro) / Krovak): epsg.io sometimes omits +towgs84
+ *     for this CRS entirely, which silently disables the datum shift
+ *     (~117 m residual at Prague vs ~0 m with EPSG:5239 "S-JTSK to WGS 84 (5)",
+ *     method 9607, negated to Position Vector).
+ *
+ * There is no way to detect this class of bug from the fetched string alone —
+ * both conventions look like valid proj4 syntax. If re-running this script
+ * changes the towgs84 rotation signs (or presence) for a CRS with an existing
+ * fixture in packages/data/scripts/fixtures/epsg-control-points.json, treat
+ * that as a signal to re-verify against the EPSG Registry API's CoordOperation
+ * method field before accepting the regenerated value, not just diff-review it.
  */
 async function fetchProj4Definitions(entries: EpsgIndexEntry[], concurrency: number): Promise<void> {
   const queue = [...entries];

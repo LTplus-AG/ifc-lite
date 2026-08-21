@@ -34,6 +34,7 @@ import type {
 } from './types.js';
 import type { EntityState, StackState } from './component-state.js';
 import {
+  attributesContentEqual,
   componentEntries,
   extractStackState,
   projectStackStates,
@@ -264,6 +265,22 @@ function escalateShadowedConflicts(
 
 type HashOf = (attrs: ComponentAttributes | undefined) => string | undefined;
 
+/**
+ * Attribute-map equality: hash first (cheap, and correct for every real
+ * match), `attributesContentEqual` only when the hashes already agree. See
+ * that function's docstring for why this indirection exists — the fold and
+ * "didn't touch it" decisions below trusted the hash alone before this.
+ */
+function attrsEqual(
+  x: ComponentAttributes | undefined,
+  y: ComponentAttributes | undefined,
+  hashOf: HashOf
+): boolean {
+  if (x === y) return true;
+  if (hashOf(x) !== hashOf(y)) return false;
+  return attributesContentEqual(x, y);
+}
+
 interface EntityMergeResult {
   ops: MergeOp[];
   conflicts: MergeConflict[];
@@ -288,7 +305,7 @@ function componentsEqual(
     const other = y.get(key);
     if (!other) return false;
     if (other === attrs) continue;
-    if (hashOf(other) !== hashOf(attrs)) return false;
+    if (!attrsEqual(other, attrs, hashOf)) return false;
   }
   return true;
 }
@@ -417,13 +434,13 @@ function mergeEntity(
     // Reference equality first (shared objects from the projection fast
     // path); only genuinely diverging references pay for hashing.
     if (aAttrs === oAttrs && aAttrs === tAttrs) continue;
-    const oChanged = aAttrs === oAttrs ? false : hashOf(aAttrs) !== hashOf(oAttrs);
-    const tChanged = aAttrs === tAttrs ? false : hashOf(aAttrs) !== hashOf(tAttrs);
+    const oChanged = aAttrs === oAttrs ? false : !attrsEqual(aAttrs, oAttrs, hashOf);
+    const tChanged = aAttrs === tAttrs ? false : !attrsEqual(aAttrs, tAttrs, hashOf);
     if (!oChanged && !tChanged) continue;
     touched += 1;
 
     if (oChanged && !tChanged) continue; // keep ours
-    if (oChanged && tChanged && (oAttrs === tAttrs || hashOf(oAttrs) === hashOf(tAttrs))) continue; // fold
+    if (oChanged && tChanged && (oAttrs === tAttrs || attrsEqual(oAttrs, tAttrs, hashOf))) continue; // fold
 
     if (!oChanged && tChanged) {
       ops.push(...opsForComponentChange(path, key, aAttrs, tAttrs, oAttrs));
@@ -462,7 +479,7 @@ function opsForComponentDelta(
     const aAttrs = ancestor.get(key);
     const tAttrs = theirs.get(key);
     if (aAttrs === tAttrs) continue;
-    if (aAttrs !== undefined && tAttrs !== undefined && hashOf(aAttrs) === hashOf(tAttrs)) continue;
+    if (aAttrs !== undefined && tAttrs !== undefined && attrsEqual(aAttrs, tAttrs, hashOf)) continue;
     ops.push(...opsForComponentChange(path, key, aAttrs, tAttrs, ours.get(key)));
   }
   return ops;

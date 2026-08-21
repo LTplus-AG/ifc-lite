@@ -273,10 +273,24 @@ export function scanEntitiesInWorker(
   buffer: ArrayBuffer | SharedArrayBuffer,
 ): Promise<EntityRefWorkerResult[]> {
   return new Promise((resolve, reject) => {
+    // Declared outside the try so the catch block below can still reach it:
+    // `new Worker(...)` can succeed and a later step in this same try (e.g.
+    // `postMessage` on an already-detached buffer, or under memory pressure
+    // while cloning a large one) can still throw. A `worker` scoped to the
+    // try block would be unreachable from `catch`, leaking the spawned
+    // worker — construct-then-fail with no handle to dispose it.
+    let worker: Worker | undefined;
     try {
-      const worker = new Worker(getWorkerBlobUrl());
+      worker = new Worker(getWorkerBlobUrl());
+      // TS loses the `worker` narrowing inside these closures (a captured
+      // `let` is re-widened to `Worker | undefined` at the point the
+      // callback body reads it), even though it is definitely assigned by
+      // the time either callback can run. Alias to a const so the handlers
+      // reference a known-`Worker` binding instead of asserting past the
+      // checker.
+      const activeWorker = worker;
 
-      worker.onmessage = (e: MessageEvent) => {
+      activeWorker.onmessage = (e: MessageEvent) => {
         const { ids, offsets, lengths, lines, types, count } = e.data;
         const idArr = new Uint32Array(ids);
         const offsetArr = new Uint32Array(offsets);
@@ -294,19 +308,20 @@ export function scanEntitiesInWorker(
           };
         }
 
-        worker.terminate();
+        activeWorker.terminate();
         resolve(refs);
       };
 
-      worker.onerror = (e) => {
-        worker.terminate();
+      activeWorker.onerror = (e) => {
+        activeWorker.terminate();
         reject(new Error(`Scan worker error: ${e.message}`));
       };
 
       // Send buffer copy to worker (structured clone — browser copies efficiently).
       // Do NOT transfer: caller needs the original buffer for columnar parsing.
-      worker.postMessage(buffer);
+      activeWorker.postMessage(buffer);
     } catch (err) {
+      worker?.terminate();
       reject(err);
     }
   });

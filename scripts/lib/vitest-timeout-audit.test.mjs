@@ -37,7 +37,7 @@ import {
   findPackageConfigTimeout,
   findUnparsedCallSites,
   hasExplicitTimeout,
-  hasTestKeywordToken,
+  isVitestTestFile,
   resolveConfigTimeout,
   stripNoise,
 } from './vitest-timeout-audit.mjs';
@@ -623,13 +623,13 @@ test('(cond ? it : it.skip)(...) is counted exactly once', () => {
 
 // -- Files with no literal call site of their own ----------------------------
 
-test('hasTestKeywordToken separates a describe-only suite runner from a non-test file', () => {
+test('isVitestTestFile separates a describe-only suite runner from a non-test file', () => {
   const runner = "import { describe } from 'vitest';\ndescribe('X conformance', () => runConformanceSuite(fixtures));\n";
-  assert.equal(hasTestKeywordToken(runner), true);
+  assert.equal(isVitestTestFile(runner), true);
   assert.deepEqual(auditSource(runner), []);
-  assert.equal(hasTestKeywordToken('export const value = 1;\n'), false);
+  assert.equal(isVitestTestFile('export const value = 1;\n'), false);
   // A keyword appearing only inside a comment or a string does not count.
-  assert.equal(hasTestKeywordToken("// describe it test\nconst s = 'it';\n"), false);
+  assert.equal(isVitestTestFile("// describe it test\nconst s = 'it';\n"), false);
 });
 
 test('findUnparsedCallSites reports a call site it could not parse, and nothing otherwise', () => {
@@ -677,4 +677,172 @@ test('CLI: an unparseable call site fails with its own message, not "check your 
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+// -- Regressions found by an independent TypeScript-AST cross-check ---------
+//
+// Every test below was written RED against the version of this module that
+// shipped `hasTestKeywordToken` (bare-token presence) and the angle-only
+// `skipTypeArguments`, and each names the concrete wrong answer it pins.
+
+test('the vacuous-pass guard rejects a production module whose only describe sits inside a function', () => {
+  // A shared-suite MODULE (`export function runXConformance() { describe(...) }`)
+  // registers nothing when vitest loads it, so auditing it alone classifies
+  // nothing — exactly the all-zero summary the guard exists to refuse. The
+  // token-presence guard accepted it.
+  const suiteModule = [
+    "import { describe } from 'vitest';",
+    'export function runConformanceSuite(provider) {',
+    "  describe('FileSourceProvider conformance', () => {",
+    '    describeManifestConformance(provider);',
+    '  });',
+    '}',
+  ].join('\n');
+  assert.equal(isVitestTestFile(suiteModule), false);
+});
+
+test('the vacuous-pass guard rejects a production module that merely uses `it` as a local variable', () => {
+  // `packages/renderer/src/scene.ts`'s shape, reduced: a `for (const it of …)`
+  // loop whose body calls a method on `it`. There is no vitest here at all,
+  // but `it.vertexBuffer.destroy()` matches the lexical call-site pattern.
+  const production = [
+    'export function destroyAll(templates) {',
+    '  for (const it of templates) {',
+    '    if (!it) continue;',
+    '    it.vertexBuffer.destroy();',
+    '  }',
+    '}',
+  ].join('\n');
+  assert.equal(isVitestTestFile(production), false);
+});
+
+test('the vacuous-pass guard still accepts a describe-wrapped shared-suite runner, including inside a loop', () => {
+  const flat = "import { describe } from 'vitest';\ndescribe('X conformance', () => runConformanceSuite(fixtures));\n";
+  assert.equal(isVitestTestFile(flat), true);
+  // `packages/source-fixture/test/fixture.test.ts`'s shape: the top-level
+  // `describe` sits inside two `for` loops. A block statement is not a
+  // function body, so this still runs at import time.
+  const looped = [
+    "import { describe } from 'vitest';",
+    'for (const mode of modes) {',
+    '  for (const recursive of recursionModes) {',
+    "    describe(`mode=${mode}`, () => { runConformanceSuite(provider); });",
+    '  }',
+    '}',
+  ].join('\n');
+  assert.equal(isVitestTestFile(looped), true);
+});
+
+test('the vacuous-pass guard accepts a file holding a literal it/test call, wherever it sits', () => {
+  assert.equal(isVitestTestFile("it('x', () => { doWork(); });\n"), true);
+  // A shared-suite module that DOES declare `it` call sites is auditable —
+  // those calls have a timeout status to report.
+  const withIts = [
+    "import { describe, it } from 'vitest';",
+    'export function describeManifestConformance(provider) {',
+    "  describe('manifest', () => { it('declares its capabilities', () => { doWork(); }); });",
+    '}',
+  ].join('\n');
+  assert.equal(isVitestTestFile(withIts), true);
+});
+
+test('the vacuous-pass guard rejects a describe-only runner that never imports vitest', () => {
+  // Without the import there is no evidence the bare word is vitest's
+  // `describe` rather than a local helper of the same name.
+  const noImport = "describe('X conformance', () => runConformanceSuite(fixtures));\n";
+  assert.equal(isVitestTestFile(noImport), false);
+});
+
+test('CLI: a production source module exits non-zero instead of summarising zero of everything', () => {
+  const root = makeSyntheticPackage({
+    'suite-module.ts': [
+      "import { describe } from 'vitest';",
+      'export function runConformanceSuite(provider) {',
+      "  describe('conformance', () => { describeManifestConformance(provider); });",
+      '}',
+      '',
+    ].join('\n'),
+  });
+  try {
+    const run = runCli([join(root, 'suite-module.ts')]);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /refusing a vacuous pass/);
+    assert.doesNotMatch(run.stdout, /summary:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CLI: an `identifier < n` comparison is not reported as an unparsed call site', () => {
+  // The comparison made `skipTypeArguments` return -1, which the caller read
+  // as "found a call site but could not parse it" and the CLI turned into a
+  // hard failure claiming the run under-reports. There is no call site here.
+  const src = "if (it < 3) { doWork(); }\nit('real', () => { doWork(); });\n";
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  const root = makeSyntheticPackage({ 'cmp.test.ts': src });
+  try {
+    const run = runCli([join(root, 'cmp.test.ts')]);
+    assert.equal(run.status, 0);
+    assert.equal(run.stderr, '');
+    assert.match(run.stdout, /summary: 0 protected \(own call\/describe\), 0 config-protected, 0 config-unknown, 1 unprotected/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a `test.n < 4` comparison on a property is not read as a type-argument list either', () => {
+  const src = "if (test.n < 4) { doWork(); }\nit('real', () => { doWork(); });\n";
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['real']);
+});
+
+test('JSX prose reading `test <b>(optional)</b>` does not invent a call site', () => {
+  // `<b>` is a balanced pair of angle brackets followed by `(`, so an
+  // angle-only scan stepped over it and read the `(optional)` that follows
+  // as a `test(...)` argument list — a call site that does not exist,
+  // reported as NO EXPLICIT TIMEOUT.
+  const src = [
+    "it('real', () => { doWork(); });",
+    'const help = <p>test <b>(optional)</b></p>;',
+  ].join('\n');
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['real']);
+  assert.deepEqual(findUnparsedCallSites(src), []);
+});
+
+test('an object type inside a type-argument list parses instead of failing the run', () => {
+  const src = "it.each<{ role: Role; ok: boolean }>([{ role: 'a', ok: true }])('role=$role', () => { doWork(); }, 22_000);";
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(protectedNames(src), ['role=$role']);
+});
+
+test('an object type with comma-separated members inside a type-argument list also parses', () => {
+  const src = "it.each<{ role: Role, ok: boolean }>([{ role: 'a', ok: true }])('role=$role', () => { doWork(); }, 22_000);";
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(protectedNames(src), ['role=$role']);
+});
+
+test('a type-argument list on the call itself may hold an object type too', () => {
+  const src = "test<{ ctx: string; n: number }>('typed', () => { doWork(); }, 60_000);";
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(protectedNames(src), ['typed']);
+});
+
+test('stripNoise keeps UTF-16 length exactly, astral-plane characters included', () => {
+  // `Array.from` iterates CODE POINTS while every consumer of the result
+  // indexes UTF-16 code units, so one emoji made the output one unit shorter
+  // than the input and shifted every later offset — garbling reported names
+  // and line numbers in seven real files.
+  const src = "it('a \u{1F3E0} house', () => { doWork(); });\n";
+  assert.equal(stripNoise(src).length, src.length);
+});
+
+test('a test name after an astral-plane character is reported cleanly, at the right line', () => {
+  const src = [
+    "it('a \u{1F3E0} house', () => { doWork(); });",
+    "it('a Windows path survives', () => { doWork(); });",
+    '',
+  ].join('\n');
+  const results = auditSource(src);
+  assert.deepEqual(results.map((r) => r.name), ['a \u{1F3E0} house', 'a Windows path survives']);
+  assert.deepEqual(results.map((r) => r.line), [1, 2]);
 });

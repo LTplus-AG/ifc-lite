@@ -55,10 +55,14 @@
  *   - detection of `it`/`test`/`describe` call sites is lexical (a global
  *     scan for the bare word, not preceded by `.`), so a local variable or
  *     object property literally named `it`/`test`/`describe` used as a
- *     function call would be misread as a vitest call. Not observed in this
- *     repo's test files; if it ever happens, `auditSource` reports an entry
- *     for it rather than crashing, and that entry is wrong. This mirrors the
- *     honesty requirement `scripts/check-source-text-assertions.mjs`
+ *     function call is misread as a vitest call. `auditSource` reports an
+ *     entry for it rather than crashing, and that entry is wrong. This DOES
+ *     happen here: `tests/integration.test.ts` declares its own
+ *     `function test(name, fn)` helper, and this module counts that
+ *     declaration's parameter list plus nine calls to the helper as ten
+ *     unprotected entries — one more site than a TypeScript AST finds in
+ *     the whole repo (14310 vs 14309, all of the difference here). It
+ *     mirrors the honesty requirement `scripts/check-source-text-assertions.mjs`
  *     documents for its own lexical (not data-flow) detection.
  *   - template-literal interpolations (`` `${…}` ``) are treated as opaque
  *     text, not parsed — a call inside `${…}` would not be found. Not used
@@ -71,23 +75,47 @@
  *     otherwise — including right after a string or template literal,
  *     which `stripNoise` tracks separately because a blanked literal is
  *     indistinguishable from whitespace. This covers every shape actually
- *     seen in this codebase. NOT handled: a regex after an operator absent
- *     from that list; a regex spanning a line break (bailed on, and the `/`
- *     is then read as ordinary); a `/` immediately after `}` where the `}`
- *     closed a block rather than an object literal (read as division).
+ *     seen in this codebase. NOT handled, and each of these is a REAL
+ *     defect verified by running this module, not a theoretical one:
+ *       * a regex after an operator absent from that list;
+ *       * a regex spanning a line break (bailed on, and the `/` is then read
+ *         as ordinary);
+ *       * a regex immediately after `}` (a block close) or after `)` — both
+ *         characters are absent from `REGEX_PRECEDING_RE`, so the `/` is
+ *         read as division, and an apostrophe inside the pattern then opens
+ *         a phantom string that swallows the rest of the file. EVERY call
+ *         site in that file disappears, including the ones written before
+ *         the regex. There is no error: the file simply reports nothing.
+ *         Auditing that file ALONE now fails the vacuous-pass guard below
+ *         (verified), but in a multi-file run one healthy file satisfies
+ *         that guard and the erasure stays silent.
+ *       * the same erasure through a different door: a template literal
+ *         nested inside another template literal's `${…}`, whose inner text
+ *         holds an apostrophe. `stripNoise` closes the outer template at the
+ *         inner backtick and the apostrophe then opens a phantom string.
  *     `stripNoise` MUST step over regex literals — before it did, a regex
- *     containing an apostrophe (`toMatch(/^'/)`) opened a phantom string
- *     that swallowed the rest of the file and dropped EVERY call site in
- *     it, including ones before the regex. Pinned by
+ *     containing an apostrophe (`toMatch(/^'/)`) hit the same failure for
+ *     the much more common `toMatch(/…/)` shape. Pinned by
  *     `vitest-timeout-audit.test.mjs`.
  *   - a `describe`/`it`/`test` reached through a value rather than named
  *     directly — `const t = it; t('name', fn)`, or a `.each` table built by
  *     a helper — is not found. The one indirection that IS handled is the
  *     immediately-invoked parenthesized form `(cond ? it : it.skip)('name',
  *     fn)`, which this repo uses.
+ *   - the tagged-template `.each` spelling, `` it.each`table`(…) ``, is not
+ *     recognised at all and contributes zero call sites, silently. No file
+ *     in this repo uses it today (verified); a file that started to would
+ *     under-report without saying so.
  *   - TypeScript type-argument lists on the call or its modifier
- *     (`it.each<[Role, boolean]>([...])`) are stepped over; see
- *     `skipTypeArguments` for what that scan does not cover.
+ *     (`it.each<[Role, boolean]>([...])`) are stepped over, but ONLY when
+ *     the `<` is adjacent to the callee with no whitespace, which is how
+ *     TypeScript type arguments are written and how both occurrences in
+ *     this repo are written. The adjacency requirement is what stops JSX
+ *     prose in a `.test.tsx` — `test <b>(optional)</b>` — from having its
+ *     balanced `<b>` stepped over and the `(optional)` after it read as an
+ *     argument list, which invented a call site that does not exist. Prose
+ *     written WITHOUT the space (`test<b>(optional)</b>`) would still be
+ *     misread. See `skipTypeArguments` for the rest of that scan's limits.
  *
  * Run standalone: `node scripts/lib/vitest-timeout-audit.mjs <file...>`
  * prints one line per `it`/`test` call — deliberately a reporting tool a
@@ -103,11 +131,12 @@
  * Standalone exit codes: 0 once every file it was given is a vitest test
  * file whose call sites it could parse — INCLUDING a `describe`-wrapped
  * shared-suite runner with zero literal `it`/`test` call sites of its own.
- * 1 if it was given no file arguments, if none of the named files holds a
- * `describe`/`it`/`test` token (wrong paths), or if a call site was found
- * but could not be parsed (a parser blind spot, reported as such). An audit
- * of nothing prints a summary of all zeros, which reads like a clean report
- * — see the guard at the bottom of this file.
+ * 1 if it was given no file arguments, if none of the named files is a
+ * vitest test file by {@link isVitestTestFile}'s two-arm test (wrong
+ * paths), or if a call site was found but could not be parsed (a parser
+ * blind spot, reported as such). An audit of nothing prints a summary of
+ * all zeros, which reads like a clean report — see the guard at the bottom
+ * of this file.
  *
  * CONFIG-LEVEL PROTECTION (the blind spot fixed after #2948 shipped): a
  * package's `vitest.config.ts` can set `test.testTimeout`, which is vitest's
@@ -169,6 +198,18 @@ const REGEX_PRECEDING_RE = /[([{,;:=!&|?~^%*+-]$|^$|(?:^|[^\w$])(return|typeof|i
  * numbers and character offsets stay valid, while nothing inside a string,
  * template, or comment can be mistaken for real `()[]{}",` structure.
  *
+ * "Same length" means the same number of UTF-16 CODE UNITS, which is the
+ * unit every consumer indexes in (`String.prototype.slice`, `lineOf`, the
+ * `RegExp.exec` indices `findCalls` works from). This used to split with
+ * `Array.from`, which iterates CODE POINTS: one astral-plane character (an
+ * emoji, a rare CJK ideograph) collapsed a surrogate pair into a single
+ * array element, so the returned string was shorter than its input and
+ * every offset after the character was shifted. Seven real files in this
+ * repo hit that, and their reported test names came out spliced
+ * (`it('('a Windows path survives')`). Splitting on code units keeps the
+ * invariant true: a lone surrogate half matches none of the quote, slash,
+ * or bracket characters scanned for, so it is simply copied through.
+ *
  * Regex literals are left in place as ordinary characters — see the module
  * doc comment's LIMITATIONS note — because unlike strings/comments they can
  * legitimately be adjacent to the very call syntax callers care about (e.g.
@@ -178,7 +219,7 @@ const REGEX_PRECEDING_RE = /[([{,;:=!&|?~^%*+-]$|^$|(?:^|[^\w$])(return|typeof|i
  * token via `skipRegexLiteral` below.
  */
 export function stripNoise(source) {
-  const out = Array.from(source);
+  const out = source.split('');
   const n = out.length;
   let i = 0;
   // Index just past the most recently blanked string/template literal.
@@ -552,32 +593,68 @@ function lineOf(source, index) {
 }
 
 /**
+ * `skipTypeArguments`'s two failure answers, kept distinct because the
+ * caller must do OPPOSITE things with them:
+ *   - NOT_TYPE_ARGUMENTS: the `<` is not a type-argument list at all (a
+ *     less-than comparison, a JSX tag, …). There is no call site here, so
+ *     the caller drops the candidate silently. Reporting it as an unparsed
+ *     call site would fail the CLI claiming the run under-reports, when in
+ *     truth there is nothing to report — the bug this pair replaced.
+ *   - TYPE_ARGUMENTS_UNRESOLVED: it opened something that never resolved
+ *     within the scan cap, so we cannot tell. That IS a parser blind spot
+ *     and stays a loud unparsed-call-site report.
+ */
+const NOT_TYPE_ARGUMENTS = -1;
+const TYPE_ARGUMENTS_UNRESOLVED = -2;
+
+/**
  * Index just past the `>` closing a TypeScript type-argument list opening at
- * `pos` (`it.each<[Role, boolean]>([...])`, `test<Ctx>(...)`), or -1 if the
- * `<` at `pos` does not open a balanced one. Depth is counted on `<`/`>`
- * with `=>` stepped over so a function type inside the list
- * (`<(a: string) => void>`) does not close it early. Strings and comments
- * are already blanked in `clean`, so nothing inside one can be miscounted.
- * NOT handled: a `>` inside a nested regex or a `>>` shift inside a type-level
- * expression, neither of which occurs in a vitest type-argument list; a `<`
- * that is really a less-than comparison bails out via the -1 return because
- * an unmatched `>` will not be found before the scan cap.
+ * `pos` (`it.each<[Role, boolean]>([...])`, `test<Ctx>(...)`), or one of the
+ * two sentinels above.
+ *
+ * Angle depth is counted only OUTSIDE `()[]{}`, with `=>` stepped over, so
+ * neither a function type (`<(a: string) => void>`) nor an object type
+ * (`<{ role: Role; ok: boolean }>` — idiomatic vitest TS, and a hard failure
+ * before this) closes the list early. `;` and `,` are ordinary member
+ * separators inside those brackets and only end the scan at bracket depth 0.
+ * Strings and comments are already blanked in `clean`.
+ *
+ * A closing bracket with nothing open (`if (it < 3)`) means the `<` belongs
+ * to an enclosing construct, not to a type-argument list: NOT_TYPE_ARGUMENTS.
+ * So does a `;` at bracket depth 0, and so does a balanced `<…>` that is NOT
+ * followed by a `(` or a template tag — a call's type arguments are always
+ * immediately followed by its argument list.
+ *
+ * NOT handled: a `>` inside a nested regex, or a `>>` shift inside a
+ * type-level expression, neither of which occurs in a vitest type-argument
+ * list.
  */
 function skipTypeArguments(clean, pos) {
-  let depth = 0;
+  let angle = 0;
+  let bracket = 0;
   let i = pos;
   const limit = Math.min(clean.length, pos + 2000);
   while (i < limit) {
     const c = clean[i];
     if (c === '=' && clean[i + 1] === '>') { i += 2; continue; }
-    if (c === '<') depth += 1;
-    else if (c === '>') {
-      depth -= 1;
-      if (depth === 0) return i + 1;
-    } else if (c === ';' || c === '}') return -1; // ran past the end of an expression
+    if (c === '(' || c === '[' || c === '{') { bracket += 1; i += 1; continue; }
+    if (c === ')' || c === ']' || c === '}') {
+      if (bracket === 0) return NOT_TYPE_ARGUMENTS;
+      bracket -= 1; i += 1; continue;
+    }
+    if (c === ';' && bracket === 0) return NOT_TYPE_ARGUMENTS;
+    if (bracket === 0 && c === '<') { angle += 1; i += 1; continue; }
+    if (bracket === 0 && c === '>') {
+      angle -= 1;
+      if (angle === 0) {
+        let j = i + 1;
+        while (j < clean.length && /\s/.test(clean[j])) j += 1;
+        return clean[j] === '(' || clean[j] === '`' ? i + 1 : NOT_TYPE_ARGUMENTS;
+      }
+    }
     i += 1;
   }
-  return -1;
+  return i >= clean.length ? NOT_TYPE_ARGUMENTS : TYPE_ARGUMENTS_UNRESOLVED;
 }
 
 /**
@@ -586,6 +663,14 @@ function skipTypeArguments(clean, pos) {
  * and skipping any parenthesized modifier argument (`.each([...])`,
  * `.skipIf(cond)`) as an opaque unit before locating the call's own
  * argument list.
+ *
+ * A TypeScript type-argument list is only looked for where TypeScript itself
+ * puts one: IMMEDIATELY after the callee, with no whitespace. `it.each<T>(…)`
+ * and `test<Ctx>(…)` are how the two real occurrences in this repo are
+ * written, and requiring adjacency is what keeps JSX prose — `test <b>
+ * (optional)</b>` inside a `.test.tsx` — from having its balanced `<b>`
+ * stepped over and the `(optional)` after it read as an argument list, which
+ * invented a `test('optional')` call site that does not exist.
  */
 function findCalls(source) {
   const clean = stripNoise(source);
@@ -597,15 +682,19 @@ function findCalls(source) {
   while ((m = CALL_KEYWORD_RE.exec(clean)) !== null) {
     const keyword = m[1];
     let pos = m.index + keyword.length;
-    let ok = true;
+    // 'ok' | 'not-a-call' (drop silently — there is nothing here to report)
+    // | 'unparsed' (a real blind spot; the CLI must fail loudly).
+    let verdict = 'ok';
     for (;;) {
+      // `afterToken` is the position with NO whitespace consumed, which is
+      // where a type-argument list would have to start.
+      const afterToken = pos;
       while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
       if (clean[pos] === '.') {
         pos += 1;
         const nameStart = pos;
         while (pos < clean.length && /[\w$]/.test(clean[pos])) pos += 1;
         const modifierName = clean.slice(nameStart, pos);
-        while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
         // `it.each<[Role, boolean]>([...])` — the TS type-argument list sits
         // between the modifier name and its argument list. Without stepping
         // over it the `(` check below fails and the whole call is dropped;
@@ -613,28 +702,31 @@ function findCalls(source) {
         // missing.
         if (clean[pos] === '<') {
           const afterTypeArgs = skipTypeArguments(clean, pos);
-          if (afterTypeArgs === -1) { ok = false; break; }
+          if (afterTypeArgs === NOT_TYPE_ARGUMENTS) { verdict = 'not-a-call'; break; }
+          if (afterTypeArgs === TYPE_ARGUMENTS_UNRESOLVED) { verdict = 'unparsed'; break; }
           pos = afterTypeArgs;
-          while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
         }
+        while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
         if (clean[pos] === '(' && PARAMETERIZED_MODIFIERS.has(modifierName)) {
           const close = findMatchingParen(clean, pos);
-          if (close === -1) { ok = false; break; }
+          if (close === -1) { verdict = 'unparsed'; break; }
           pos = close;
         }
         continue;
       }
+      pos = afterToken;
       break;
     }
-    if (!ok) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
-    while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
+    if (verdict === 'not-a-call') continue;
+    if (verdict === 'unparsed') { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
     // Same for a type-argument list on the call itself: `test<Ctx>(...)`.
     if (clean[pos] === '<') {
       const afterTypeArgs = skipTypeArguments(clean, pos);
-      if (afterTypeArgs === -1) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
+      if (afterTypeArgs === NOT_TYPE_ARGUMENTS) continue;
+      if (afterTypeArgs === TYPE_ARGUMENTS_UNRESOLVED) { unparsed.push({ keyword, line: lineOf(source, m.index) }); continue; }
       pos = afterTypeArgs;
-      while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
     }
+    while (pos < clean.length && /\s/.test(clean[pos])) pos += 1;
     // `(hasBuild ? it : it.skip)('name', fn)` — the keyword sits inside a
     // parenthesized expression that is then invoked, so the call's own `(`
     // comes after one or more closing parens. Both `it` occurrences in that
@@ -677,17 +769,159 @@ export function findUnparsedCallSites(source) {
 }
 
 /**
- * True iff `source` contains a bare `describe`/`it`/`test` token outside
- * every comment, string, and template literal — i.e. it is plausibly a
- * vitest test file, even if it declares no `it`/`test` of its own (a
- * `describe`-wrapped shared-suite runner such as
- * `describe('X', () => runConformanceSuite(...))` is a real test file with
- * zero literal call sites).
+ * `{` characters that open a FUNCTION BODY, as opposed to a block statement
+ * or an object literal, judged from the last significant token before them:
+ * `=>` (arrow), or a `)` whose matching `(` is preceded by a word that is
+ * not a control-flow keyword (`fn(a) {`, `function (a) {`, `method() {}` —
+ * versus `if (…) {`, `for (…) {`). Anything else (`= {`, `else {`, `try {`,
+ * `: {`) is not a function body.
+ *
+ * Used only by {@link isVitestTestFile}, to tell a `describe` that RUNS when
+ * vitest loads the file from one that merely sits inside an exported helper
+ * and runs only if some other file calls it.
  */
-export function hasTestKeywordToken(source) {
+const RETURN_TYPE_CHAR_RE = /[\w$\s.,:|&<>?'"-]/;
+const CONTROL_FLOW_HEADS = ['if', 'for', 'while', 'switch', 'catch', 'with'];
+
+function opensFunctionBody(clean, braceIdx) {
+  const end = lastSignificant(clean, braceIdx);
+  if (end < 0) return false;
+  if (clean[end] === '>' && end > 0 && clean[end - 1] === '=') return true;
+  // Walk back to the `)` closing the parameter list, stepping over an
+  // optional TypeScript return-type annotation on the way (`): void {`,
+  // `): Promise<Foo[]> {`). Bounded, because the annotation is short and a
+  // `{` that is not a function body should give up quickly.
+  let j = end;
+  let depth = 0;
+  const floor = Math.max(0, end - 300);
+  while (j >= floor) {
+    const ch = clean[j];
+    if (ch === ']' || ch === '}') { depth += 1; j -= 1; continue; }
+    if (ch === '[' || ch === '{') {
+      if (depth === 0) return false;
+      depth -= 1; j -= 1; continue;
+    }
+    if (ch === ')') {
+      if (depth === 0) break;
+      depth += 1; j -= 1; continue;
+    }
+    if (ch === '(') {
+      if (depth === 0) return false;
+      depth -= 1; j -= 1; continue;
+    }
+    if (!RETURN_TYPE_CHAR_RE.test(ch)) return false; // `;`, `=`, … — not a signature
+    j -= 1;
+  }
+  if (j < floor || clean[j] !== ')') return false;
+  // Walk back to the `(` matching that `)`.
+  depth = 0;
+  let i = j;
+  while (i >= 0) {
+    if (clean[i] === ')') depth += 1;
+    else if (clean[i] === '(') {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+    i -= 1;
+  }
+  if (i < 0) return false;
+  const before = lastSignificant(clean, i);
+  if (before < 0 || !/[\w$]/.test(clean[before])) return false;
+  let s = before;
+  while (s >= 0 && /[\w$]/.test(clean[s])) s -= 1;
+  const word = sliceText(clean, s + 1, before + 1);
+  return !CONTROL_FLOW_HEADS.includes(word);
+}
+
+/**
+ * True iff the module has a `describe`/`it`/`test` call that is evaluated
+ * when the module itself is evaluated — i.e. one sitting outside every
+ * function body. Loops and blocks do not count as function bodies, because
+ * `for (…) { describe(…) }` still registers its suites at import time (this
+ * repo's `source-fixture/test/fixture.test.ts` is exactly that shape).
+ */
+function hasLoadTimeSuiteCall(clean, calls) {
+  if (calls.length === 0) return false;
+  const positions = calls.map((c) => c.start).sort((a, b) => a - b);
+  const depthAt = new Array(positions.length).fill(0);
+  const stack = [];
+  let functionDepth = 0;
+  let p = 0;
+  for (let i = 0; i < clean.length; i += 1) {
+    while (p < positions.length && positions[p] <= i) { depthAt[p] = functionDepth; p += 1; }
+    const c = clean[i];
+    if (c === '{') {
+      const isFn = opensFunctionBody(clean, i);
+      stack.push(isFn);
+      if (isFn) functionDepth += 1;
+    } else if (c === '}') {
+      if (stack.pop() === true) functionDepth -= 1;
+    }
+  }
+  return depthAt.some((d) => d === 0);
+}
+
+const VITEST_IMPORT_SPECIFIER_RE = /from\s*['"]vitest(?:\/[\w./-]+)?['"]|^import\s*['"]vitest(?:\/[\w./-]+)?['"]/;
+const IMPORT_KEYWORD_RE = /(?<![.\w$])import(?![\w$])/g;
+
+/**
+ * True iff `source` imports anything from `vitest`. The specifier is a
+ * STRING, which `stripNoise` blanks, so this finds each `import` keyword in
+ * the stripped text (which cannot be one inside a comment or a string) and
+ * then reads that statement back out of the ORIGINAL source to look at the
+ * specifier — offsets line up because `stripNoise` preserves them exactly.
+ */
+function importsVitest(source, clean) {
+  IMPORT_KEYWORD_RE.lastIndex = 0;
+  let m;
+  while ((m = IMPORT_KEYWORD_RE.exec(clean)) !== null) {
+    const semi = clean.indexOf(';', m.index);
+    const end = Math.min(semi === -1 ? clean.length : semi + 1, m.index + 500);
+    if (VITEST_IMPORT_SPECIFIER_RE.test(source.slice(m.index, end))) return true;
+  }
+  return false;
+}
+
+/**
+ * True iff auditing `source` alone can classify something — i.e. it is a
+ * vitest test file rather than a production module that happens to contain
+ * the letters `it`. Two arms, because this repo really has both shapes:
+ *
+ *   (a) it declares at least one literal `it`/`test` call whose first
+ *       argument is a string or template literal — a test with a name, which
+ *       is what this tool reports on. The name requirement is what keeps a
+ *       production `for (const it of …) { it.buffer.destroy(); }` out: that
+ *       matches the lexical call pattern but has no name argument;
+ *   (b) it imports from `vitest` AND evaluates a `describe`/`it`/`test` call
+ *       at module load time — the `describe`-wrapped shared-suite runner
+ *       (`describe('X', () => runConformanceSuite(fixtures))`), which
+ *       declares real tests at run time and has no literal call site of its
+ *       own. This repo has four.
+ *
+ * A bare TOKEN is deliberately NOT enough. Requiring only the word let
+ * fifteen of this repo's 993 non-test `packages/*​/src/**.ts` files through,
+ * seven more than the call-site rule they replaced — every one of them a
+ * production module that would then exit 0 with an all-zero summary, which
+ * is precisely the vacuous pass this guard exists to refuse. Both arms
+ * measured against all 993: eight accepted, the same eight the call-site
+ * rule accepted, and every `.test.ts`/`.test.tsx` file in the repo still
+ * accepted.
+ *
+ * A shared-suite MODULE (`export function runConformanceSuite() {
+ * describe(…) }`) is rejected by arm (b) — it registers nothing on its own —
+ * but a sibling that also spells out `it('…', …)` inside its exported
+ * helper is accepted by arm (a), because those call sites do have a timeout
+ * status worth reporting.
+ */
+export function isVitestTestFile(source) {
   const clean = stripNoise(source);
-  CALL_KEYWORD_RE.lastIndex = 0;
-  return CALL_KEYWORD_RE.test(clean);
+  const { calls } = findCalls(source);
+  const named = calls.filter((c) => {
+    const first = c.argTexts[0];
+    return first !== undefined && /^['"`]/.test(first.trim());
+  });
+  if (named.some((c) => c.keyword === 'it' || c.keyword === 'test')) return true;
+  return importsVitest(source, clean) && hasLoadTimeSuiteCall(clean, named);
 }
 
 /**
@@ -808,24 +1042,33 @@ export function auditFile(filePath, source) {
  * message because the remedy differs:
  *   - no file arguments at all (e.g. a caller whose target list expanded to
  *     nothing, or a future CI wiring with no default targets);
- *   - files were named, but not one of them holds a bare
- *     `describe`/`it`/`test` token — they are not vitest test files, so the
- *     paths are wrong;
+ *   - files were named, but not one of them is a vitest test file by
+ *     {@link isVitestTestFile} — they classify nothing, so the paths are
+ *     wrong;
  *   - a file DOES hold call sites, but this module could not parse them.
  *     That is a bug in this parser, not in the caller's paths, and saying
  *     "check your paths" there would send the reader hunting the wrong
  *     thing. Zero such files exist in this repo today (verified by running
- *     `findUnparsedCallSites` over all 1285 test files); the check exists so
- *     a future parser blind spot surfaces as a loud failure instead of a
- *     silently lower count.
+ *     `findUnparsedCallSites` over all 1288 `.test.ts`/`.test.tsx` files);
+ *     the check exists so a future parser blind spot surfaces as a loud
+ *     failure instead of a silently lower count.
  * ZERO `it`/`test` call sites is NOT by itself an error, and must not be:
  * a `describe`-wrapped shared-suite runner
  * (`describe('X conformance', () => runConformanceSuite(fixtures))`) is a
  * legitimate test file with no literal call site of its own, and this repo
  * has four of them. An earlier version of this guard failed exactly those
- * files. This is the same shape as `check-tla-chunk-await.mjs` refusing to
- * run against a missing dist and
- * `scripts/lib/server-bin-targets-parse.mjs`'s `refusing a vacuous pass`.
+ * files; the version after it swung the other way and accepted any file
+ * containing the WORD, which let fifteen of this repo's 993 non-test
+ * `packages/*​/src/**.ts` modules exit 0 with an all-zero summary. The
+ * two-arm rule in `isVitestTestFile` accepts all four runners, all 1288
+ * test files, and seven of the 993 — measured, not assumed. This is the
+ * same shape as `check-tla-chunk-await.mjs` refusing to run against a
+ * missing dist and `scripts/lib/server-bin-targets-parse.mjs`'s
+ * `refusing a vacuous pass`.
+ *
+ * The guard is per-RUN, not per-file: one healthy file satisfies it. A
+ * single corrupted file inside a large run therefore still contributes
+ * silently zero — see the regex/template erasure notes in LIMITATIONS.
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
   const targets = process.argv.slice(2);
@@ -845,11 +1088,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   let configProtectedCount = 0;
   let configUnknownCount = 0;
   let unprotectedCount = 0;
-  let keywordFiles = 0;
+  let testFiles = 0;
   const unparsedSites = [];
   for (const file of targets) {
     const source = readFileSync(file, 'utf8');
-    if (hasTestKeywordToken(source)) keywordFiles += 1;
+    if (isVitestTestFile(source)) testFiles += 1;
     for (const u of findUnparsedCallSites(source)) unparsedSites.push(`${file}:${u.line}: ${u.keyword}`);
     for (const r of auditFile(file, source)) {
       const shown = r.value ?? r.valueRef ?? '?';
@@ -882,10 +1125,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     process.exit(1);
   }
 
-  if (keywordFiles === 0) {
+  if (testFiles === 0) {
     console.error(
-      `vitest-timeout-audit: ERROR: ${targets.length} file(s) named, but not one holds a `
-      + '`describe`/`it`/`test` token; refusing a vacuous pass.\n\n'
+      `vitest-timeout-audit: ERROR: ${targets.length} file(s) named, but not one is a `
+      + 'vitest test file; refusing a vacuous pass.\n\n'
+      + 'A vitest test file here means one that either declares a named `it`/`test`\n'
+      + 'call of its own, or imports `vitest` and registers a `describe`/`it`/`test`\n'
+      + 'suite at module load time (the shared-suite runner shape). A production\n'
+      + 'module that merely mentions the words, or that only defines a suite inside\n'
+      + 'an exported helper, classifies nothing.\n\n'
       + 'A summary of all zeros here means the audit classified nothing, not that\n'
       + 'every test carries a timeout. Check that the paths point at vitest test\n'
       + 'files.\n',

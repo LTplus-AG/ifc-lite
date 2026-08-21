@@ -80,6 +80,7 @@ import {
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
   extractScheduleOnDemand,
+  getInheritanceChainAcrossSchemas,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
@@ -129,15 +130,22 @@ export function expandTypes(types: string[]): string[] {
 }
 
 export function isProductType(type: string): boolean {
-  const enumVal = IfcTypeEnumFromString(type);
-  if (enumVal === IfcTypeEnum.Unknown) return false;
-  const upper = type.toUpperCase();
-  if (upper.startsWith('IFCREL')) return false;
-  if (upper.startsWith('IFCPROPERTY')) return false;
-  if (upper.startsWith('IFCQUANTITY')) return false;
-  if (upper === 'IFCELEMENTQUANTITY') return false;
-  if (upper.endsWith('TYPE')) return false;
-  return true;
+  // IfcObjectDefinition is the exact line: it covers products, type objects,
+  // groups and systems, and IfcContext, and excludes the other two IfcRoot
+  // branches — IfcPropertyDefinition and IfcRelationship — without matching on
+  // name prefixes. The chain resolves across the bundled schema union, so a
+  // class the curated IfcTypeEnum omits still answers correctly.
+  //
+  // Keying on IfcTypeEnumFromString instead dropped every class outside that
+  // 138-entry subset. On an MEP model that silently lost every IfcAirTerminal
+  // and IfcDuctFitting from an unfiltered query — real elements, reported as
+  // absent rather than as unclassified.
+  const chain = getInheritanceChainAcrossSchemas(type);
+  if (!chain.includes('IfcObjectDefinition')) return false;
+  // Type objects stay out, as before: an unfiltered query answers with
+  // occurrences, and IfcTypeObject is the exact form of the old
+  // `endsWith('TYPE')` test.
+  return !chain.includes('IfcTypeObject');
 }
 
 /**

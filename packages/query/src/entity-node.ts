@@ -8,7 +8,19 @@
 
 import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import { getRawNamedAttributes, extractRootAttributesFromEntity } from '@ifc-lite/parser';
-import { RelationshipType } from '@ifc-lite/data';
+import { IFC_ENTITY_NAMES, RelationshipType } from '@ifc-lite/data';
+
+/**
+ * The raw STEP class token off an entity-index entry.
+ *
+ * `IfcStoreBase` types the index values as `unknown` on purpose — the ref shape
+ * belongs to the parser — so this narrows structurally rather than casting.
+ */
+function rawTypeOf(ref: unknown): string | undefined {
+  if (ref === null || typeof ref !== 'object' || !('type' in ref)) return undefined;
+  const { type } = ref as { type: unknown };
+  return typeof type === 'string' ? type : undefined;
+}
 
 function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
   if (typeof raw === 'string') {
@@ -130,7 +142,21 @@ export class EntityNode {
   }
 
   get type(): string {
-    return this.store.entities.getTypeName(this.expressId);
+    const fromTable = this.store.entities.getTypeName(this.expressId);
+    if (fromTable !== 'Unknown') return fromTable;
+    // `store.entities` is the product table; it holds no row for an
+    // IfcPropertySet, IfcElementQuantity, IfcRelDefinesByProperties or
+    // IfcRelAssociatesMaterial, so `getTypeName` answers 'Unknown' for all of
+    // them. The parsed entity index does know their class — as the raw
+    // UPPERCASE STEP token — and IFC_ENTITY_NAMES carries the PascalCase form.
+    //
+    // Reporting 'Unknown' here is not a cosmetic wart: it is the value callers
+    // key passes on. Iterating classes by `type` skipped 8,928 entities on a
+    // 176k-entity model, silently, because four of its classes answered with a
+    // name that matches nothing.
+    const raw = rawTypeOf(this.store.entityIndex.byId.get(this.expressId));
+    if (raw === undefined) return fromTable;
+    return IFC_ENTITY_NAMES[raw.toUpperCase()] ?? raw;
   }
 
   // Spatial containment

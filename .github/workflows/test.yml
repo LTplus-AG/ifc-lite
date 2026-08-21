@@ -467,6 +467,16 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+
+      # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
+      # timeout, across all three spellings this repo uses. An audit that
+      # misreports is worse than no audit -- it turns "nobody checked" into
+      # "someone checked and it was fine" -- and the first version of that
+      # script shipped with both failure modes: an options bag inside a test
+      # BODY marked the test protected, and an apostrophe in a comment made it
+      # scan to EOF and drop the call from every count. This pins both.
+      - name: Check test-timeout audit
+        run: node --test scripts/audit-test-timeouts.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

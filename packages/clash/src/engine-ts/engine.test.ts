@@ -380,7 +380,10 @@ describe('TsKernel cancellation (#2419)', () => {
     await expectAbortError(
       detect(controller.signal, Infinity, (done) => { if (done === 512) controller.abort(); }),
     );
-  });
+    // 3332ms measured on a green CI run against the 5000ms
+    // default. 30_000 by convention (#2905, AB22_TIMEOUT_MS), not a
+    // per-test derivation: this runs the clash engine to an abort point (#2948).
+  }, 30_000);
 
   it('lets a cancellation beat the maxCandidatePairs cap', async () => {
     // The cap bites on the first iteration (`maxPairs` 0), and the periodic
@@ -404,7 +407,10 @@ describe('TsKernel cancellation (#2419)', () => {
     expect(detection.candidatesProcessed).toBe(576);
     expect(detection.records.length).toBeGreaterThan(0);
     expect(controller.signal.aborted).toBe(false);
-  });
+    // 2747ms measured on a green CI run against the 5000ms
+    // default. 30_000 by convention (#2905, AB22_TIMEOUT_MS), not a
+    // per-test derivation: this runs the clash engine to completion (#2948).
+  }, 30_000);
 });
 
 describe('TsClashEngine: false-positive + bounds regressions (#1362 / #1402)', () => {

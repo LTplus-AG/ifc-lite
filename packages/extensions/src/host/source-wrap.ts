@@ -40,7 +40,6 @@
  */
 
 import * as acorn from 'acorn';
-import * as walk from 'acorn-walk';
 import type { ValidationError, ValidationResult } from '../types.js';
 
 export interface SourceWrapOptions {
@@ -141,6 +140,22 @@ if (typeof ${entryFn} === 'function') {
 }
 
 /**
+ * Maximum AST nesting depth the banned-construct walk will inspect.
+ *
+ * Real entry scripts nest a few tens of levels deep; this bound is
+ * two orders of magnitude above that. It exists because the AST comes
+ * from extension-author-controlled source: past this depth the walk
+ * stops and reports a validation error instead of continuing. acorn's
+ * own parser gives up at roughly twice this depth in the same process
+ * ("Not enough stack space to parse input"), but that limit moves with
+ * however much stack the host happens to have left; this one does not.
+ *
+ * A script nested deeper than this is rejected with an
+ * `invalid_value` error naming the limit — never a thrown RangeError.
+ */
+const MAX_AST_DEPTH = 1000;
+
+/**
  * Walk the *entire* AST — including nested function bodies, arrow
  * bodies, class methods, and blocks — looking for constructs we do
  * not support in v1. Returns one ValidationError per offending node.
@@ -153,39 +168,100 @@ if (typeof ${entryFn} === 'function') {
  * anywhere an expression can — nested inside a function body, an
  * arrow, a class method, etc. — which is exactly the gap this walk
  * closes: the previous top-level-only scan missed it entirely.
+ *
+ * The traversal keeps its own stack on the heap instead of recursing
+ * the way `acorn-walk` does. `wrapEntrySource` is declared to return a
+ * ValidationResult, and a recursive walk over a deeply nested script
+ * escapes that contract by throwing a RangeError out of the middle of
+ * it. Deeply nested input has to come back as a *reported* error, the
+ * same way acorn's own depth failure already does.
  */
 function checkBannedConstructs(ast: acorn.Node): ValidationError[] {
   const errors: ValidationError[] = [];
+  const stack: Array<{ node: AstNode; depth: number }> = [
+    { node: ast as unknown as AstNode, depth: 0 },
+  ];
 
-  walk.simple(ast, {
-    ImportDeclaration() {
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop()!;
+
+    if (depth > MAX_AST_DEPTH) {
       errors.push({
         path: '',
         code: 'invalid_value',
-        message: '`import` statements are not supported in extension entry scripts.',
-        hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
+        message: `Entry script is nested more than ${MAX_AST_DEPTH} AST levels deep.`,
+        hint: 'Flatten the script — extract deeply nested blocks into separate helper functions.',
       });
-    },
-    ExportNamedDeclaration() {
-      errors.push(exportError());
-    },
-    ExportDefaultDeclaration() {
-      errors.push(exportError());
-    },
-    ExportAllDeclaration() {
-      errors.push(exportError());
-    },
-    ImportExpression() {
-      errors.push({
-        path: '',
-        code: 'invalid_value',
-        message: 'Dynamic `import(...)` is not supported in extension entry scripts.',
-        hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
-      });
-    },
-  });
+      return errors;
+    }
+
+    switch (node.type) {
+      case 'ImportDeclaration':
+        errors.push({
+          path: '',
+          code: 'invalid_value',
+          message: '`import` statements are not supported in extension entry scripts.',
+          hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
+        });
+        break;
+      case 'ExportNamedDeclaration':
+      case 'ExportDefaultDeclaration':
+      case 'ExportAllDeclaration':
+        errors.push(exportError());
+        break;
+      case 'ImportExpression':
+        errors.push({
+          path: '',
+          code: 'invalid_value',
+          message: 'Dynamic `import(...)` is not supported in extension entry scripts.',
+          hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
+        });
+        break;
+    }
+
+    // Push children in reverse so the LIFO stack visits them in source
+    // order, matching the order acorn-walk would have reported in.
+    const children = childNodes(node);
+    for (let i = children.length - 1; i >= 0; i--) {
+      stack.push({ node: children[i]!, depth: depth + 1 });
+    }
+  }
 
   return errors;
+}
+
+interface AstNode {
+  type: string;
+  [key: string]: unknown;
+}
+
+function isAstNode(value: unknown): value is AstNode {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { type?: unknown }).type === 'string'
+  );
+}
+
+/**
+ * Every child node of `node`, in property order. Generic over the AST
+ * shape on purpose: an unknown property is either a primitive, a node,
+ * or an array of nodes, and anything else (`loc`, `regex`, …) carries
+ * no `type` string and is skipped.
+ */
+function childNodes(node: AstNode): AstNode[] {
+  const out: AstNode[] = [];
+  for (const key of Object.keys(node)) {
+    const value = node[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (isAstNode(item)) out.push(item);
+      }
+    } else if (isAstNode(value)) {
+      out.push(value);
+    }
+  }
+  return out;
 }
 
 function exportError(): ValidationError {

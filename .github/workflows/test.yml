@@ -426,6 +426,16 @@ jobs:
       # viewer's canonical load path, which fires on every IFC load.
       - name: Check WASM handle disposal
         run: node scripts/check-wasm-disposal.mjs
+      # A collab recipient's meshes are hydrated from blobs baked at
+      # `meta.placementBaseline`, so placement has to be re-derived from the doc
+      # after every reconstruct -- otherwise a late joiner renders moved
+      # elements at the wrong place, and a peer's create/delete silently reverts
+      # every applied move. `placement-sweep.ts` is unit-tested; its CALL SITES
+      # are what this pins, because `startCollab`'s recipient branch needs
+      # jsdom, IndexedDB, `import.meta.env` and a websocket and cannot be driven
+      # under `tsx --test`.
+      - name: Check collab placement sweep
+        run: node scripts/check-collab-placement-sweep.mjs
       # The collab recipient re-derives the shared model from the CRDT on every
       # peer edit; writing that through `setIfcDataStore` / `setGeometryResult`
       # targets `activeModelId`, so a recipient with their own file active lost
@@ -457,6 +467,16 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+
+      # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
+      # timeout, across all three spellings this repo uses. An audit that
+      # misreports is worse than no audit -- it turns "nobody checked" into
+      # "someone checked and it was fine" -- and the first version of that
+      # script shipped with both failure modes: an options bag inside a test
+      # BODY marked the test protected, and an apostrophe in a comment made it
+      # scan to EOF and drop the call from every count. This pins both.
+      - name: Check test-timeout audit
+        run: node --test scripts/audit-test-timeouts.test.mjs
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

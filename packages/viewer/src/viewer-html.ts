@@ -846,11 +846,21 @@ function showPickInfo(eid) {
   if (!info) return;
   const el = document.getElementById('pick-info');
   el.style.display = 'block';
-  el.innerHTML =
-    '<div class="label">Entity #' + eid + '</div>' +
-    '<div class="value">' + info.ifcType + '</div>' +
-    '<div class="label">Triangles</div>' +
-    '<div class="value">' + Math.floor(info.indexCount / 3).toLocaleString() + '</div>';
+  // Build with textContent, not innerHTML. info.ifcType is safe today -- it
+  // comes from the WASM parser's IfcType::name(), a closed set of generated
+  // "Ifc..." literals -- so this is not fixing a reachable escape. It removes
+  // the file's last interpolation site that would depend on that staying true.
+  el.textContent = '';
+  const row = (cls, text) => {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    return d;
+  };
+  el.appendChild(row('label', 'Entity #' + eid));
+  el.appendChild(row('value', info.ifcType));
+  el.appendChild(row('label', 'Triangles'));
+  el.appendChild(row('value', Math.floor(info.indexCount / 3).toLocaleString()));
 }
 
 // ═══════════════════════════════════════════════════════════════════

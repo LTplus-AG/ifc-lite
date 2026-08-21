@@ -4,25 +4,24 @@
 
 //! World-frame corpus coverage for the intersection-solid trust gate.
 //!
-//! `intersection_solid` gates on `TRUST_BAND_MULTIPLE *
-//! near_band_from_extent(operand_extent(a, b))`, and `operand_extent` is the
-//! max |coordinate| over ALL THREE axes of both operands — the milder shared
-//! form of the #2598/#2600/#2529 class. The thickness it gates is measured
-//! along the contact normal (Z here), whose f32 noise does not grow with an
-//! X offset; deriving the requirement from the X magnitude makes the SAME
-//! genuine 5 mm overlap a `Solid` at the origin and `BelowKernelResolution`
-//! 10 km out. The corpus places the identical pair in both frames; a
-//! frame-correct gate answers identically.
+//! `intersection_solid` gates on `TRUST_BAND_MULTIPLE * band`, where `band`
+//! used to come from `near_band_from_extent(operand_extent(a, b))` —
+//! `operand_extent` being the max |coordinate| over ALL THREE axes of both
+//! operands, the milder shared form of the #2598/#2600/#2529 class. The
+//! thickness it gates is measured along the contact normal (Z here), whose
+//! f32 noise does not grow with an X offset; deriving the requirement from
+//! the X magnitude made the SAME genuine 5 mm overlap a `Solid` at the origin
+//! and `BelowKernelResolution` 10 km out. The corpus places the identical
+//! pair in both frames; a frame-correct gate answers identically.
 //!
-//! The known-failing case asserts the CORRECT behaviour under
-//! `#[should_panic]`: when the gate learns the normal-projected band, the
-//! assertion stops panicking, the `should_panic` itself fails, and the
-//! attribute must be removed — the corpus cannot rot silently. The expectation
-//! string names the WITHHELD panic specifically (`world-frame corpus
-//! [withheld]`), so a partial fix that starts trusting the far solid but
-//! computes the wrong volume hits the textually distinct `[wrong-volume]`
-//! assertion and fails, instead of matching the attribute and still reading as
-//! the known failure.
+//! Fixed by projecting the operands' per-axis extents onto the SAME axis the
+//! thickness is measured along (`NearBand::scaled_band2`, `operand_near_band`
+//! in `clash_solid.rs`), exactly as `near_band.rs` already does for the
+//! kernel's own near-coplanar reconciliation. `a_5mm_overlap_10km_out_in_x_
+//! must_still_be_a_solid` below used to assert the correct behaviour under
+//! `#[should_panic]`, documenting the defect without silently rotting; now
+//! that the gate is frame-correct it asserts the same thing as a normal
+//! passing test.
 
 use super::{DegenerateReason, IntersectionSolid, intersection_solid};
 use crate::world_frame_fixture::{
@@ -87,34 +86,28 @@ fn counter_case_a_sub_band_overlap_at_the_origin_stays_withheld() {
     );
 }
 
-// KNOWN-FAILING on the live max-over-axes gate: asserts the CORRECT
-// behaviour. `operand_extent` reads ~10 km from the irrelevant X axis, the
-// required thickness balloons to ~9.5 mm, and the genuine 5 mm Z overlap is
-// withheld. When the gate projects the band onto the contact normal this
-// stops panicking and the `should_panic` fails: remove the attribute (and
-// this comment) in that PR.
+// Was KNOWN-FAILING on the live max-over-axes gate (asserted the CORRECT
+// behaviour under `#[should_panic(expected = "world-frame corpus
+// [withheld]")]`): `operand_extent` read ~10 km from the irrelevant X axis,
+// the required thickness ballooned to ~9.5 mm, and the genuine 5 mm Z overlap
+// was withheld. Now that the gate projects the band onto the SAME axis the
+// thickness is measured along (`operand_near_band` /
+// `NearBand::scaled_band2` in `clash_solid.rs`), an X-axis offset no longer
+// widens the Z-normal requirement and this passes like any other test.
 #[test]
-// The expectation names the WITHHELD case specifically. The two panic sites in
-// this test say textually distinct things, so a partial fix that starts
-// trusting the solid but computes the WRONG volume fails loudly instead of
-// matching the `should_panic` and still reading as KNOWN-FAILING.
-#[should_panic(expected = "world-frame corpus [withheld]")]
 fn a_5mm_overlap_10km_out_in_x_must_still_be_a_solid() {
     let (a, b) = overlapping_pair(WorldFrameCase::FarBaked);
     let solid = intersection_solid(&a, &b);
     let volume = solid.volume_m3().unwrap_or_else(|| {
         panic!(
-            "world-frame corpus [withheld]: the SAME genuine 5 mm overlap that is a \
-             Solid at the origin must be a Solid 10 km out in X (offset axis X, \
-             contact normal Z); got {solid:?}"
+            "the SAME genuine 5 mm overlap that is a Solid at the origin must be a \
+             Solid 10 km out in X (offset axis X, contact normal Z); got {solid:?}"
         )
     });
     let expected = 1.0 * 1.0 * OVERLAP_M;
     assert!(
         (volume - expected).abs() < 1e-4,
-        "world-frame corpus [wrong-volume]: the gate returned a Solid 10 km out, but \
-         its far-placement volume {volume} does not match the expected {expected} \
-         (this is NOT the known failure — the gate now trusts the solid and must \
-         compute it correctly)"
+        "the gate returned a Solid 10 km out, but its far-placement volume {volume} \
+         does not match the expected {expected}"
     );
 }

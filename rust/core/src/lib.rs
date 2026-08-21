@@ -69,6 +69,7 @@ pub mod fast_parse;
 pub mod generated;
 pub mod georef;
 pub mod legacy_entities;
+pub mod limits;
 pub mod model_bounds;
 pub mod parser;
 pub mod project_units;
@@ -88,6 +89,7 @@ pub use fast_parse::{
 };
 pub use generated::{IfcType, IFC_TYPES};
 pub use georef::{GeoRefExtractor, GeoRefSource, GeoReference, RtcOffset};
+pub use limits::MAX_MAPPED_ITEM_DEPTH;
 pub use legacy_entities::{
     get_legacy_entity_info, is_legacy_entity, map_legacy_to_base_type, LegacyEntityInfo,
 };

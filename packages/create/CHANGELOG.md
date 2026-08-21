@@ -1,5 +1,60 @@
 # @ifc-lite/create
 
+## 2.1.2
+
+### Patch Changes
+
+- [#2769](https://github.com/LTplus-AG/ifc-lite/pull/2769) [`9fb50eb`](https://github.com/LTplus-AG/ifc-lite/commit/9fb50ebcfaaf2926b2badd4d4d8dfc6ca55b762f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reject non-finite (`NaN`/`Infinity`) dimensions and `Start`/`End` coordinates in `IfcCreator`, the from-scratch STEP builder, instead of silently emitting them into the file.
+  
+  A bare `value <= 0` check is `false` for both `NaN` and `Infinity`, so those values used to pass every dimension guard and land in the emitted STEP as the literal strings `"NaN"`/`"Infinity"` — not valid STEP REAL tokens. `addIfcColumn` had no dimension guard at all, so a negative or zero `Width`/`Depth`/`Height` passed through too. Every dimension-taking method on `IfcCreator` (`addIfcWall`, `addIfcColumn`, `addIfcBeam`, `addIfcSlab`, `addIfcRoof`, `addIfcGableRoof`, `addIfcDoor`/`addIfcWindow` and their wall-hosted variants, `addIfcRamp`, `addIfcRailing`, `addIfcPlate`, `addIfcMember`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcCurtainWall`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, and the I/L/T/U/hollow-section shape methods) now validates through a shared `assertPositiveFinite` helper.
+  
+  Separately, `addIfcWall`, `addIfcBeam`, `addIfcMember` and the shape-section methods compute a length from `Start`/`End` and only rejected an exact zero-length vector (`Start === End`). A non-finite coordinate makes the computed length `NaN`, and `NaN <= 0` is also `false`, so that guard never fired either — the point is now validated at the source via a new `assertFinitePoint3` helper before any arithmetic runs.
+  
+  This is the same defect class as `@ifc-lite/create`'s `in-store/` builders fixed in [#2767](https://github.com/LTplus-AG/ifc-lite/issues/2767) (`assertPositiveFinite` there, and the `beamLen`/`wallLen`/`memberLen` distinct-points gap in `beam.ts`/`wall.ts`/`member.ts`), extended here to `ifc-creator.ts` — a separate, from-scratch builder class outside `in-store/` that shares no code with it — and to the equivalent `Start`/`End` distinct-points gap in those same `in-store/` builders, which [#2767](https://github.com/LTplus-AG/ifc-lite/issues/2767) left out of scope.
+  
+  `addIfcColumn`'s new `Height` guard also rejects `0`, which is spec-correct (`IfcExtrudedAreaSolid.Depth` is an `IfcPositiveLengthMeasure`) but is a value adversarial test tooling deliberately constructs to exercise how the geometry pipeline handles degenerate, spec-invalid extrusions. `IfcCreator` now also exposes `addIfcColumnUnvalidated`, a deliberately unvalidated escape hatch for that kind of fixture-building; it is not meant for application code.
+
+- [#2767](https://github.com/LTplus-AG/ifc-lite/pull/2767) [`ccc38b0`](https://github.com/LTplus-AG/ifc-lite/commit/ccc38b0de9925a3de1106893a5785117e0e7551d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the eight in-store element builders that emitted invalid IFC when
+  given a `NaN` or `Infinity` dimension instead of throwing.
+  
+  Every in-store builder (`addWallToStore`, `addBeamToStore`,
+  `addDoorToStore`, `addWindowToStore`, `addMemberToStore`,
+  `addPlateToStore`, `addRoofToStore`, `addSpaceToStore`,
+  `addSlabToStore`) validated its `Width`/`Height`/`Depth`/`Thickness`/
+  `FrameThickness` params with a bare `value <= 0` check. That check is
+  `false` for both `NaN` and `Infinity`, so those values passed
+  validation silently and landed as the literal STEP tokens `NaN` /
+  `Infinity` in the emitted `IfcExtrudedAreaSolid` and profile
+  attributes — e.g. `addWallToStore({ ..., Height: NaN })` threw
+  nothing and wrote an `IfcExtrudedAreaSolid` whose Depth attribute was
+  the string `"NaN"`.
+  
+  `addColumnToStore` already guarded against this — the docstring at
+  `column.ts:14` records that the `Number.isFinite` check was added
+  while closing the merge-roundtrip gap from LTplus-AG/ifc-lite#592 —
+  but the fix never propagated to its eight siblings, each of which
+  carries its own copy of the same validation shape.
+  
+  Rather than copy the guard into eight more places (which is how the
+  gap opened in the first place — one copy got fixed, eight did not),
+  the check is now a single `assertPositiveFinite` helper in
+  `_emit-helpers.ts`, and every builder — including `addColumnToStore`
+  itself — calls it. A parametrised test
+  (`in-store/dimension-validation.test.ts`) runs `NaN`/`Infinity`/
+  `-Infinity`/`0`/`-1` against every dimension field of every builder,
+  so a future builder added without the guard fails visibly instead of
+  shipping silently.
+  
+  This is a behaviour change: builders that previously accepted a
+  `NaN`/`Infinity` dimension and produced invalid IFC now throw
+  `Error('add<Type>ToStore: <Fields> must be positive')` instead. No
+  caller in this repository relied on the previous permissiveness —
+  every call site passes numeric literals or values already validated
+  upstream.
+- Updated dependencies [[`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/parser@4.2.0
+
 ## 2.1.1
 
 ### Patch Changes

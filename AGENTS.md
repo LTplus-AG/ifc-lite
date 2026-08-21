@@ -77,6 +77,48 @@ Browser-first IFC toolkit: a WebGPU web viewer plus a headless CLI/MCP/server. N
 ## Test fixtures
 - Not committed (no LFS): catalogued in `tests/models/manifest.json`, fetched via `pnpm fixtures`. Tests must **skip** (never throw/panic) when a fixture is absent; point to `pnpm fixtures` in the skip message. Add one: drop under `tests/models/<group>/`, run `pnpm fixtures:manifest`, then `pnpm fixtures:upload`; commit only the manifest. CI runs `pnpm fixtures` before tests.
 
+## Bounding walks over file-supplied references
+
+Entity references come from the file, so their shape is exporter- and
+attacker-controlled. An unbounded recursive walk over one self-referential
+entity dies by `SIGABRT`, which is not a catchable panic: nothing upstream turns
+it into a load error, and in the wasm geometry worker it takes down the
+instance. #2866 found seven such sites.
+
+The three mechanisms are not interchangeable, and each alone leaves a hole:
+
+- a **depth cap** bounds one path's LENGTH, not its breadth. `k` items each
+  leading back into a cycle cost `O(k^depth)`, turning an abort into a hang
+  (measured 7.21s at k=3). A hang is worse: nothing reports it.
+- a **visited set** bounds cycles and revisits. While the walk still recurses it
+  does NOT bound a long *acyclic* chain: every insert succeeds, the set never
+  fires, and the stack still overflows.
+- a **work budget** bounds acyclic DAG fan-out, which neither of the others
+  sees. A DAG where every branch succeeds never errors and never repeats an id;
+  it just emits `2^levels` outputs.
+
+Choose the visited set's SCOPE by what the walk returns:
+
+- **global / memoising** when the result is a pure function of the id (a colour
+  is determined by item id plus style map). Safe and strictly stronger: it kills
+  fan-out outright.
+- **path-scoped** (insert on the way in, remove on the way out) when output
+  ACCUMULATES. A boolean operand tree is a DAG and geometry accumulates, so the
+  same node down two branches is two real pieces of geometry. A global set
+  silently drops the second: **missing geometry, not a cycle guard**, and no
+  termination test notices.
+
+Prefer making the walk **iterative** over adding a cap: with no stack to consume
+there is nothing left for a cap to protect, and the visited set becomes
+sufficient alone. A cap tight enough to stop a cycle usually rejects legitimate
+input — #960 records Revit `FirstOperand` chains 42 nodes deep.
+
+Reuse the shared bound where the chain is shared: `ifc_lite_core::limits`.
+
+A guard that both ACTS and REPORTS has a two-part contract — bound the work, and
+report that you bounded it. Mutate the halves separately; they fail differently
+(a missing bound hangs, a missing report returns a truncated success).
+
 ## Writing tests
 - A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
 - Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.

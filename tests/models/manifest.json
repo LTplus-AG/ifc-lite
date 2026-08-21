@@ -754,6 +754,11 @@
       "size": 228220
     },
     {
+      "path": "issues/860_solid_stratum.ifc",
+      "sha256": "e2ac9a2382866c5cc3ac021d0143f0fe4e264253d905f1b33340dd36b13813de",
+      "size": 67104
+    },
+    {
       "path": "issues/953_trimmed_curve_cartesian_arc.ifc",
       "sha256": "1740106fe498b12e36b09a4d752d4de538559fbbfadb5aa339e3150ffaf19592",
       "size": 129717

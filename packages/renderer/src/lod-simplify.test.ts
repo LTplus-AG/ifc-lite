@@ -49,6 +49,27 @@ function strip(n: number, step: number) {
   return { vertexData: interleave(positions), indices: new Uint32Array(indices) };
 }
 
+/**
+ * The same dense-strip shape as `strip()`, but advancing along Z instead of
+ * X, with X and Y held at fixed (non-zero-only-by-accident) values. `strip()`
+ * alone never gives any vertex a non-zero Z, so a clustering bug that reads
+ * the wrong buffer offset for the Z cell (e.g. picking up the always-zero
+ * normal lane instead of position.z) is invisible to it: the bogus Z cell
+ * and the real one both collapse to 0. This variant makes Z the axis that
+ * must be read correctly for the collapse pattern to come out right.
+ */
+function stripZ(n: number, step: number) {
+  const positions: Array<[number, number, number]> = [];
+  const indices: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const z = i * step;
+    const base = positions.length;
+    positions.push([0, 0, z], [0, 0, z + step], [0, 1000, z]);
+    indices.push(base, base + 1, base + 2);
+  }
+  return { vertexData: interleave(positions), indices: new Uint32Array(indices) };
+}
+
 describe('simplifyIndicesByClustering', () => {
   it('drops triangles whose corners collapse into one cell and reduces index count', () => {
     const { vertexData, indices } = strip(LOD_MIN_TRIANGLES, 0.01);
@@ -59,6 +80,14 @@ describe('simplifyIndicesByClustering', () => {
     assert.strictEqual(lod!.length % 3, 0);
     // Every output index refers to a real vertex.
     for (const idx of lod!) assert.ok(idx < vertexData.length / STRIDE);
+  });
+
+  it('drops triangles whose corners collapse into one cell along Z (clustering must read Z, not just X/Y)', () => {
+    const { vertexData, indices } = stripZ(LOD_MIN_TRIANGLES, 0.01);
+    const lod = simplifyIndicesByClustering(vertexData, STRIDE, indices, 1.0);
+    assert.ok(lod, 'simplification should pay on a dense Z-strip');
+    assert.ok(lod!.length < indices.length * 0.25, `expected big reduction, got ${lod!.length}/${indices.length}`);
+    assert.strictEqual(lod!.length % 3, 0);
   });
 
   it('returns null when nothing collapses (result not meaningfully smaller)', () => {

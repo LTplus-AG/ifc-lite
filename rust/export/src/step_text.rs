@@ -8,6 +8,27 @@
 //! line/string utilities with no dependency on the DATA-section emission
 //! orchestration that stays in `step.rs`.
 
+use std::borrow::Cow;
+use std::collections::BTreeMap;
+
+/// The edits that apply to one record, where a caller's attribute mutation and
+/// a copy-on-write repointing can both land on it. The repointing wins: it was
+/// computed from the caller's value rather than instead of it.
+pub(crate) fn merge_edits<'a>(
+    muts: Option<&'a BTreeMap<usize, String>>,
+    repointed: Option<&'a BTreeMap<usize, String>>,
+) -> Option<Cow<'a, BTreeMap<usize, String>>> {
+    match (muts, repointed) {
+        (None, None) => None,
+        (Some(edits), None) | (None, Some(edits)) => Some(Cow::Borrowed(edits)),
+        (Some(muts), Some(repointed)) => {
+            let mut merged = muts.clone();
+            merged.extend(repointed.iter().map(|(i, v)| (*i, v.clone())));
+            Some(Cow::Owned(merged))
+        }
+    }
+}
+
 /// Escape a STEP string literal body: double the apostrophe and reverse
 /// solidus, and map every ASCII control character (the C0 range plus DEL) to
 /// a space, since ISO 10303-21 restricts a literal's plain-text bytes to the
@@ -138,17 +159,20 @@ fn split_top_level_args(attrs: &str) -> Vec<String> {
     let mut depth = 0i32;
     let mut in_string = false;
     let mut current = String::new();
-    let bytes = attrs.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        let ch = bytes[i] as char;
+    // Over chars, not bytes. `bytes[i] as char` reads a UTF-8 continuation byte
+    // as a Latin-1 character and re-encodes it, so a property name like
+    // `Größe` came back as `GrÃ¶ÃŸe` in any record this rewrote. Every
+    // delimiter STEP cares about is ASCII, so iterating chars costs nothing and
+    // leaves the rest of the text alone.
+    let mut chars = attrs.chars().peekable();
+    while let Some(ch) = chars.next() {
         if ch == '\'' && !in_string {
             in_string = true;
             current.push(ch);
         } else if ch == '\'' && in_string {
-            if i + 1 < bytes.len() && bytes[i + 1] == b'\'' {
+            if chars.peek() == Some(&'\'') {
                 current.push_str("''");
-                i += 2;
+                chars.next();
                 continue;
             }
             in_string = false;
@@ -166,7 +190,6 @@ fn split_top_level_args(attrs: &str) -> Vec<String> {
         } else {
             current.push(ch);
         }
-        i += 1;
     }
     out.push(current);
     out
@@ -174,7 +197,7 @@ fn split_top_level_args(attrs: &str) -> Vec<String> {
 
 /// Apply root-attribute edits to a `#id=TYPE(attrs);` line. Returns the line unchanged
 /// when it cannot be parsed.
-pub(crate) fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> String {
+pub(crate) fn apply_attr_mutations(line: &str, muts: &BTreeMap<usize, String>) -> String {
     let trimmed = line.trim_end();
     let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
     let eq = match body.find('=') {
@@ -204,3 +227,90 @@ pub(crate) fn apply_attr_mutations(line: &str, muts: &[(usize, String)]) -> Stri
 #[cfg(test)]
 #[path = "step_text_tests.rs"]
 mod tests;
+
+/// Rewrite a record's own id, leaving everything after the `=` untouched.
+///
+/// For a copy-on-write copy: the body is the original's, byte for byte, with
+/// one attribute already replaced, and only the number in front changes.
+pub(crate) fn renumber(line: &str, new_id: u32) -> String {
+    let trimmed = line.trim_end();
+    match trimmed.find('=') {
+        Some(eq) => format!("#{new_id}{}", &trimmed[eq..]),
+        None => line.to_string(),
+    }
+}
+
+/// One attribute of a `#id=TYPE(args);` line, by position.
+///
+/// Split from the substitution below so a caller applying two edits to the
+/// same attribute can feed the first result into the second, rather than
+/// computing both from the original and losing one.
+pub(crate) fn attribute_of(line: &str, index: usize) -> Option<String> {
+    let trimmed = line.trim_end();
+    let body = trimmed.strip_suffix(';').unwrap_or(trimmed);
+    let eq = body.find('=')?;
+    let after = &body[eq + 1..];
+    let popen = after.find('(')?;
+    let aclose = after.rfind(')').filter(|c| *c > popen)?;
+    split_top_level_args(&after[popen + 1..aclose])
+        .into_iter()
+        .nth(index)
+}
+
+/// Replace references inside one attribute, leaving its neighbours alone.
+///
+/// Rewrites every unquoted `#from` in the attribute to `#to`. Returns the
+/// rewritten attribute, or `None` when the attribute does not hold that
+/// reference. The caller is expected to treat `None` as "this edit cannot be
+/// made" rather than proceeding, because a copy nothing points at is an orphan
+/// and a reference to a filtered record is a dangling one.
+///
+/// A list keeps its order and its other entries: repointing one element of a
+/// property set's `HasProperties` must not disturb the rest, or the diff
+/// against the source stops being small.
+///
+/// Text is left alone. A property value reading `'lot #41'` is a sentence, and
+/// rewriting inside it would change what the file says rather than what it
+/// points at.
+pub(crate) fn substitute_ref_in_attr(attr: &str, from: u32, to: u32) -> Option<String> {
+    let old = format!("#{from}");
+    let new = format!("#{to}");
+    let mut out = String::with_capacity(attr.len());
+    let mut replaced = false;
+    let mut in_string = false;
+    let mut rest = attr;
+    while let Some(ch) = rest.chars().next() {
+        if in_string {
+            if ch == '\'' {
+                if rest[ch.len_utf8()..].starts_with('\'') {
+                    out.push_str("''");
+                    rest = &rest[ch.len_utf8() * 2..];
+                    continue;
+                }
+                in_string = false;
+            }
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
+            continue;
+        }
+        if ch == '\'' {
+            in_string = true;
+            out.push(ch);
+            rest = &rest[ch.len_utf8()..];
+            continue;
+        }
+        if ch == '#' && rest.starts_with(old.as_str()) {
+            let after = &rest[old.len()..];
+            // `#4` must not match inside `#41`.
+            if !after.starts_with(|c: char| c.is_ascii_digit()) {
+                out.push_str(&new);
+                rest = after;
+                replaced = true;
+                continue;
+            }
+        }
+        out.push(ch);
+        rest = &rest[ch.len_utf8()..];
+    }
+    replaced.then_some(out)
+}

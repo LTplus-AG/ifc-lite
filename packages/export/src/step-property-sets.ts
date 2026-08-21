@@ -33,8 +33,10 @@
  * exported for the mirror-image reason: the collection loops consume its
  * `byEntity` half, but `export()` reads `relatedByRel` for the deleted-host
  * relationship sweep, which is neither phase's work.
- * `StepExporter.applySourceLineMutations` is shared with the source-iteration
- * pass, so it is injected on the context rather than moved.
+ * `step-attribute-mutations.ts`'s `applySourceLineMutations` (moved off
+ * `StepExporter` by #2475's "remaining private helpers" step) is shared with
+ * the source-iteration pass, so it is injected on the context rather than
+ * imported directly.
  *
  * ## The state these phases cannot read off the pass
  *
@@ -124,9 +126,9 @@ export interface PropertySetContext {
   /** `() => this.nextExpressId++` on the exporter. */
   readonly allocateExpressId: () => number;
   readonly ownerHistory: OwnerHistoryCache;
-  /** `StepExporter.applySourceLineMutations`: the ONE pipeline the
-   *  source-iteration pass and the type-object rewrite share, so it belongs to
-   *  neither phase and is injected instead of moved. */
+  /** `step-attribute-mutations.ts`'s `applySourceLineMutations`: the ONE
+   *  pipeline the source-iteration pass and the type-object rewrite share, so
+   *  it belongs to neither phase and is injected. */
   readonly applySourceLineMutations: (
     expressId: number,
     entityText: string,

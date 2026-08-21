@@ -202,12 +202,41 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
  * Write markup.bcf file
  * Uses buildingSMART standard format
  */
+// BCF 3.0's markup.xsd types `Topic/@TopicType` and `Topic/@TopicStatus` as
+// `NonEmptyOrBlankString`: after XML whitespace (#x9, #xA, #xD, #x20) is
+// collapsed, the value must have length >= 1. A value that is present but
+// consists entirely of XML whitespace collapses to nothing and is therefore
+// as invalid as an absent one.
+const XML_WHITESPACE_ONLY = /^[\t\n\r ]*$/;
+
 function writeMarkupFile(
   folder: JSZip,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
 ): void {
+  // BCF 3.0's markup.xsd tightens `Topic/@TopicType` and `Topic/@TopicStatus`
+  // from optional (2.1) to `use="required"`. Omitting the attribute -
+  // which is what 2.1 output does when the value is unset - produces
+  // markup.bcf that fails 3.0 schema validation in every downstream tool.
+  // We refuse to invent a value (e.g. defaulting to "Open") because that
+  // would assert a topic status the user never chose; instead we fail the
+  // write so the caller supplies one.
+  if (version === '3.0') {
+    if (!topic.topicType || XML_WHITESPACE_ONLY.test(topic.topicType)) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicType (topic "${topic.guid}" has none). ` +
+          `Set topic.topicType before writing a 3.0 file.`
+      );
+    }
+    if (!topic.topicStatus || XML_WHITESPACE_ONLY.test(topic.topicStatus)) {
+      throw new Error(
+        `BCF 3.0 requires Topic/@TopicStatus (topic "${topic.guid}" has none). ` +
+          `Set topic.topicStatus before writing a 3.0 file.`
+      );
+    }
+  }
+
   let content = `<?xml version="1.0" encoding="UTF-8"?>
 <Markup xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">`;
 
@@ -220,16 +249,33 @@ function writeMarkupFile(
   <Topic Guid="${escapeXml(topic.guid)}"${topic.topicType ? ` TopicType="${escapeXml(topic.topicType)}"` : ''}${topic.topicStatus ? ` TopicStatus="${escapeXml(topic.topicStatus)}"` : ''}>
     <Title>${escapeXml(topic.title)}</Title>`;
 
-  if (topic.description) {
-    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
-  }
-
+  // Order below (Title, Priority, Index, Labels, CreationDate,
+  // CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate, AssignedTo,
+  // Stage, Description, BimSnippet, ...) follows the Topic xs:sequence in
+  // BOTH buildingSMART/BCF-XML markup.xsd release_2_1 and release_3_0 --
+  // confirmed identical there and against release_3_0's own conformance
+  // fixture (Test Cases/v3.0/Visualization/Perspective camera/markup.bcf,
+  // which reads ModifiedAuthor then Description then DocumentReferences).
+  // Description and Labels were previously written out of this order
+  // (Description right after Title; Labels after Stage). Both Priority,
+  // Index, Labels, and Stage are optional and can be omitted, but
+  // CreationDate/CreationAuthor below are always emitted, so xs:sequence
+  // made the output schema-invalid whenever topic.description was set or
+  // topic.labels was non-empty -- not "regardless of content": an absent
+  // Description or empty Labels never appeared at all, so there was nothing
+  // to be out of order.
   if (topic.priority) {
     content += `\n    <Priority>${escapeXml(topic.priority)}</Priority>`;
   }
 
   if (topic.index !== undefined) {
     content += `\n    <Index>${topic.index}</Index>`;
+  }
+
+  if (topic.labels && topic.labels.length > 0) {
+    for (const label of topic.labels) {
+      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
+    }
   }
 
   content += `\n    <CreationDate>${escapeXml(topic.creationDate)}</CreationDate>`;
@@ -254,10 +300,8 @@ function writeMarkupFile(
     content += `\n    <Stage>${escapeXml(topic.stage)}</Stage>`;
   }
 
-  if (topic.labels && topic.labels.length > 0) {
-    for (const label of topic.labels) {
-      content += `\n    <Labels>${escapeXml(label)}</Labels>`;
-    }
+  if (topic.description) {
+    content += `\n    <Description>${escapeXml(topic.description)}</Description>`;
   }
 
   // ReferenceSchema is required inside BimSnippet by the BCF XSD; only emit the
@@ -284,44 +328,81 @@ function writeMarkupFile(
     }
   }
 
-  content += `\n  </Topic>`;
+  // Render each <Comment Guid="..."> wrapper. Shared by both versions --
+  // the wrapper's own shape doesn't change, only where it's placed (see
+  // below).
+  const commentXml = (indent: string) =>
+    topic.comments
+      .map((comment) => {
+        let c = `\n${indent}<Comment Guid="${escapeXml(comment.guid)}">`;
+        c += `\n${indent}  <Date>${escapeXml(comment.date)}</Date>`;
+        c += `\n${indent}  <Author>${escapeXml(comment.author)}</Author>`;
+        c += `\n${indent}  <Comment>${escapeXml(comment.comment)}</Comment>`;
+        if (comment.viewpointGuid) {
+          c += `\n${indent}  <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+        }
+        if (comment.modifiedDate) {
+          c += `\n${indent}  <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
+        }
+        if (comment.modifiedAuthor) {
+          c += `\n${indent}  <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
+        }
+        c += `\n${indent}</Comment>`;
+        return c;
+      })
+      .join('');
 
-  // Write viewpoint references
-  for (let i = 0; i < topic.viewpoints.length; i++) {
-    const viewpoint = topic.viewpoints[i];
-    // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
-    // but the file name component is the sanitized base name (zip-slip
-    // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
-    // so the markup reference and the archive agree. The real GUID is still
-    // written verbatim as the Guid attribute below.
-    const baseName = viewpointBaseNames[i];
-    const filename = `Viewpoint_${baseName}.bcfv`;
-    const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
+  // Render each viewpoint reference. BCF 2.1 names the per-entry element
+  // <Viewpoints Guid="..."> (the wrapper IS the entry, repeated); BCF 3.0
+  // renamed the entry to singular <ViewPoint Guid="..."> (capital P) nested
+  // inside one shared <Viewpoints> wrapper (buildingSMART/BCF-XML
+  // markup.xsd, release_3_0 Topic.Viewpoints/ViewPoint -- confirmed against
+  // Test Cases/v3.0/Visualization/Perspective camera/unzipped/.../markup.bcf,
+  // which reads `<Viewpoints><ViewPoint Guid="f99eb1ed-...">`).
+  const viewpointEntryTag = version === '3.0' ? 'ViewPoint' : 'Viewpoints';
+  const viewpointXml = (indent: string) =>
+    topic.viewpoints
+      .map((viewpoint, i) => {
+        // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
+        // but the file name component is the sanitized base name (zip-slip
+        // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
+        // so the markup reference and the archive agree. The real GUID is still
+        // written verbatim as the Guid attribute below.
+        const baseName = viewpointBaseNames[i];
+        const filename = `Viewpoint_${baseName}.bcfv`;
+        const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
 
-    content += `\n  <Viewpoints Guid="${escapeXml(viewpoint.guid)}">`;
-    content += `\n    <Viewpoint>${filename}</Viewpoint>`;
-    if (viewpoint.snapshot || viewpoint.snapshotData) {
-      content += `\n    <Snapshot>${snapshotName}</Snapshot>`;
-    }
-    content += `\n  </Viewpoints>`;
-  }
+        let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
+        v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
+        if (viewpoint.snapshot || viewpoint.snapshotData) {
+          v += `\n${indent}  <Snapshot>${snapshotName}</Snapshot>`;
+        }
+        v += `\n${indent}</${viewpointEntryTag}>`;
+        return v;
+      })
+      .join('');
 
-  // Write comments
-  for (const comment of topic.comments) {
-    content += `\n  <Comment Guid="${escapeXml(comment.guid)}">`;
-    content += `\n    <Date>${escapeXml(comment.date)}</Date>`;
-    content += `\n    <Author>${escapeXml(comment.author)}</Author>`;
-    content += `\n    <Comment>${escapeXml(comment.comment)}</Comment>`;
-    if (comment.viewpointGuid) {
-      content += `\n    <Viewpoint Guid="${escapeXml(comment.viewpointGuid)}"/>`;
+  if (version === '3.0') {
+    // BCF 3.0's markup.xsd moves Comments and Viewpoints INSIDE <Topic>
+    // (wrapped in their own plural containers), after RelatedTopics -- unlike
+    // 2.1, where they are top-level <Markup> siblings following </Topic>.
+    // Writing them as 2.1-shaped top-level siblings at version 3.0 produces
+    // markup a strict 3.0 consumer rejects outright (Comments/Viewpoints
+    // would not even be children of Topic, let alone in schema order).
+    if (topic.comments.length > 0) {
+      content += `\n    <Comments>${commentXml('      ')}\n    </Comments>`;
     }
-    if (comment.modifiedDate) {
-      content += `\n    <ModifiedDate>${escapeXml(comment.modifiedDate)}</ModifiedDate>`;
+    if (topic.viewpoints.length > 0) {
+      content += `\n    <Viewpoints>${viewpointXml('      ')}\n    </Viewpoints>`;
     }
-    if (comment.modifiedAuthor) {
-      content += `\n    <ModifiedAuthor>${escapeXml(comment.modifiedAuthor)}</ModifiedAuthor>`;
-    }
-    content += `\n  </Comment>`;
+    content += `\n  </Topic>`;
+  } else {
+    content += `\n  </Topic>`;
+    // 2.1's Markup sequence is Header, Topic, Comment*, Viewpoints*
+    // (buildingSMART/BCF-XML release_2_1 markup.xsd) -- Comment precedes
+    // Viewpoints, the reverse of the order written here previously.
+    content += commentXml('  ');
+    content += viewpointXml('  ');
   }
 
   content += `\n</Markup>`;

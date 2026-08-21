@@ -15,6 +15,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { Window } from 'happy-dom';
 import type {
   IDSEntityFacet,
   IDSEntityResult,
@@ -420,5 +421,137 @@ describe('buildReportHTML — per-entity table truncation', () => {
     );
 
     assert.ok(!/\d+ hidden/.test(html), 'no hidden-count note when nothing was hidden');
+  });
+});
+
+// ----------------------------------------------------------------------------
+// Search behaviour — the report's inline `filterAll()` driven for real.
+//
+// The other suites in this file assert on the markup string. Search cannot be
+// asserted that way: it is behaviour of the inline `<script>`, and the defect
+// this suite pins (a `[title]` sweep that swallowed the static "Click to copy"
+// hint on every GlobalId cell) is invisible in the markup — both the hint and
+// the untruncated values are just `title` attributes.
+//
+// The harness parses the whole generated document into happy-dom, then takes
+// the report's own inline `<script>` source verbatim out of the same HTML and
+// evaluates it against that document, handing back the page's real
+// `filterAll`. (happy-dom needs `enableJavaScriptEvaluation` to run page
+// scripts, and even then a top-level `function` declaration does not surface on
+// the window object — so the script is driven explicitly rather than implicitly.
+// The source under test is byte-for-byte what ships.)
+//
+// What this does NOT cover: the browser's event wiring (nothing here fires the
+// search box's `oninput`, so only `filterAll` itself is exercised), CSS —
+// `.hidden` is asserted as a class, not as computed visibility — and the
+// click-to-copy clipboard handler.
+// ----------------------------------------------------------------------------
+
+interface ReportPage {
+  filterAll: () => void;
+  document: Document;
+  close: () => void;
+}
+
+function renderReport(html: string): ReportPage {
+  const window = new Window({ url: 'http://localhost/' });
+  window.document.write(html);
+
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html);
+  assert.ok(script, 'the report must carry exactly one inline script — the harness depends on it');
+  const evaluate = new Function('window', 'document', 'navigator', `${script![1]}\nreturn filterAll;`) as (
+    w: unknown,
+    d: unknown,
+    n: unknown,
+  ) => () => void;
+
+  return {
+    filterAll: evaluate(window, window.document, window.navigator),
+    document: window.document as unknown as Document,
+    close: () => {
+      window.close();
+    },
+  };
+}
+
+function searchRows(page: ReportPage, term: string): { visible: string[]; total: number; count: string } {
+  const input = page.document.getElementById('search') as HTMLInputElement | null;
+  assert.ok(input, 'the report must have a search box');
+  input!.value = term;
+  page.filterAll();
+  const rows = Array.from(page.document.querySelectorAll('.entity-row')) as HTMLElement[];
+  return {
+    visible: rows.filter(r => !r.classList.contains('hidden')).map(r => r.dataset.name ?? ''),
+    total: rows.length,
+    count: page.document.getElementById('result-count')?.textContent ?? '',
+  };
+}
+
+describe('buildReportHTML — search matches content, not chrome', () => {
+  // A failing entity whose failure reason overruns the character budget, so the
+  // full reason exists ONLY in a `title` attribute. Deliberately not the entity
+  // *name*: the name is also copied verbatim into `data-name`, which search has
+  // always read, so a name-based fixture could not tell "search reads titles"
+  // from "search reads data-name".
+  const TAIL = 'zztailmarker';
+  const LONG_REASON = `${'R'.repeat(200)} ${TAIL}`;
+
+  function buildTwoRowReport(): string {
+    const req = makeRequirement('req-search');
+    const failing = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: LONG_REASON })], {
+      entityName: 'Failing Wall',
+      globalId: 'GID-FAIL',
+    });
+    const passing = makeEntity(2, [makeReqResult(req, 'pass')], {
+      entityName: 'Passing Wall',
+      globalId: 'GID-PASS',
+    });
+    return buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-search', 'Search Spec', [req]), [failing, passing])]),
+      'en',
+    );
+  }
+
+  it('does not match rows on the static "Click to copy" GlobalId hint', () => {
+    const page = renderReport(buildTwoRowReport());
+    try {
+      assert.ok(
+        page.document.querySelector('.globalid[title="Click to copy"]'),
+        'fixture check: the GlobalId cells must still carry the copy hint',
+      );
+
+      const hit = searchRows(page, 'ick to cop');
+      assert.equal(
+        hit.visible.length,
+        0,
+        'a substring of the "Click to copy" affordance is chrome, not content — it must match no row',
+      );
+      assert.equal(hit.count, `0 of ${hit.total} rows shown`, 'the count must report the empty result honestly');
+    } finally {
+      page.close();
+    }
+  });
+
+  it('still matches untruncated text that exists only in a title attribute', () => {
+    const page = renderReport(buildTwoRowReport());
+    try {
+      assert.ok(
+        !page.document.body.textContent?.includes(TAIL),
+        `fixture check: "${TAIL}" must be truncated away from visible text, reachable only via title`,
+      );
+
+      // The failing entity is rendered twice — once in the per-entity table and
+      // once in the requirement's failing-elements table — and both rows carry
+      // the reason, so match on the set of names rather than a row count.
+      const hit = searchRows(page, TAIL);
+      assert.ok(hit.visible.length > 0, 'the search must match something');
+      assert.deepEqual(
+        [...new Set(hit.visible)],
+        ['Failing Wall'],
+        'the untruncated value carried in a title must still be searchable — that is the feature',
+      );
+    } finally {
+      page.close();
+    }
   });
 });

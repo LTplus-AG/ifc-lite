@@ -749,8 +749,11 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
         const status = row.dataset.status;
         // Visible cell text is truncated to a character budget, so also match
         // against the full values kept in data-* attributes and in the title
-        // attributes that carry the untruncated text.
-        const titles = Array.from(row.querySelectorAll('[title]'))
+        // attributes that carry the untruncated text. Only the spans emitted by
+        // truncateField do — a bare [title] sweep would also pick up the
+        // GlobalId cell's static "Click to copy" hint, and every row would then
+        // match a search for "to".
+        const titles = Array.from(row.querySelectorAll('.truncated[title]'))
           .map(el => el.getAttribute('title'))
           .join(' ');
         const text = (row.textContent + ' ' + (row.dataset.name || '') + ' ' + (row.dataset.type || '') + ' ' + titles).toLowerCase();

@@ -477,6 +477,10 @@ export async function askCommand(args: string[]): Promise<void> {
   } catch (err: any) {
     if (jsonOutput) {
       printJson({ error: err.message, recipe: recipe.name, question });
+      // Match the non-JSON path's verdict: a build pipeline reading only the
+      // exit code must not see success on a question that could not be
+      // answered (same shape as the `ids --json` always-exit-0 defect).
+      process.exitCode = 1;
     } else {
       fatal(`Recipe "${recipe.name}" failed: ${err.message}`);
     }

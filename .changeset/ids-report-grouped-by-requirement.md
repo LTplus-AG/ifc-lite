@@ -1,0 +1,13 @@
+---
+"@ifc-lite/viewer": patch
+---
+
+Restructure the IDS HTML report around requirements, and stop emitting an unopenable document for a large model.
+
+The report grouped results only by entity: each specification rendered one flat table whose rows were entities, and a requirement appeared only inside a per-entity `<details>` in the last column, and only when it had failed. Answering the question a reader actually brings to the report — *which requirement is failing, and on what?* — meant expanding every row and tallying by hand. Each specification now leads with one block per requirement carrying the facet type, the checked description, the pass/fail check counts, and the failing elements beneath it with type, name, GlobalId, express id and the written failure reason. The per-entity table is still there, moved into a collapsed `<details>` below.
+
+Grouping happens before `not_applicable` is filtered out, keyed on `requirement.id` rather than on array position, so an entity whose requirement was not applicable does not shift every later requirement's results onto the wrong requirement.
+
+Three pass rates are now reported side by side instead of two, with an explanation of why they legitimately disagree. The check-level rate — one element measured against one requirement — was not computed anywhere before; it is aggregated here from `requirementResults`. The entity-level rate (an entity passes only if all its requirements pass) is `summary.overallPassRate`, read rather than recomputed, and is the figure the report showed before, previously labelled ambiguously as "entity checks". The specification-level rate is the one a compliance deliverable should quote, and the report now says so. Every rate is floored, matching the validator and the in-app panel; the export used to round, so 99.6% could read as 100% while elements were still failing.
+
+Nothing is truncated silently. Failing elements are grouped by IFC type, capped at 5 examples per type and 100 elements per requirement, and every cap states its exact hidden count ("Showing 5 of 312 IfcWall failures"). The per-entity table is capped at 100 rows and emits failing entities first, so the cap can never hide every failure behind a wall of passes. Individual text fields are truncated at a 160-character budget — a count of code points, so a surrogate pair is never split in half — with a visible ellipsis and the untruncated text preserved in a `title` attribute, so a shortened field stays readable rather than being destroyed. The summary card states plainly that the HTML is a summary and that the JSON export holds the complete results.

@@ -269,3 +269,156 @@ describe('buildReportHTML — requirement-level grouping', () => {
     assert.ok(html.includes('Name must not contain &lt;script&gt;'), 'checkedDescription is escaped');
   });
 });
+
+describe('buildReportHTML — long field truncation', () => {
+  it('truncates a long failure reason with a visible ellipsis and keeps the full text recoverable', () => {
+    // 500 characters: comfortably past the 160-character budget, and a
+    // repeating marker lets us prove exactly where the cut landed.
+    const longReason = 'A'.repeat(400) + 'TAIL-MARKER';
+    const req = makeRequirement('req-long', 'Short description');
+    const entity = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: longReason })], {
+      entityName: 'Wall 1',
+      globalId: 'GID-1',
+    });
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-long', 'Long Spec', [req]), [entity])]),
+      'en',
+    );
+
+    // Truncated: the tail is NOT in the rendered cell text...
+    assert.ok(
+      !html.includes(`>${longReason}<`),
+      'the full reason must not be rendered as visible cell text',
+    );
+    // ...the cut is announced with an ellipsis, not a silent stop...
+    assert.match(html, /A{160}&hellip;<\/span>/, 'exactly 160 characters then an ellipsis entity');
+    assert.ok(!/A{161}&hellip;/.test(html), 'must not exceed the 160-character budget');
+
+    // ...and the full value stays reachable via the title attribute.
+    assert.ok(
+      html.includes(`title="${longReason}"`),
+      'the untruncated reason must survive in the title attribute',
+    );
+  });
+
+  it('leaves a field at or under the budget completely untouched — no ellipsis, no wrapper', () => {
+    const shortReason = 'B'.repeat(160);
+    const req = makeRequirement('req-edge');
+    const entity = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: shortReason })]);
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-edge', 'Edge Spec', [req]), [entity])]),
+      'en',
+    );
+
+    assert.ok(html.includes(shortReason), 'a 160-character field is rendered whole');
+    assert.ok(
+      !html.includes(`title="${shortReason}"`),
+      'a field within budget gets no title attribute and no truncation wrapper',
+    );
+  });
+
+  it('escapes a hostile string inside the title attribute of a truncated field', () => {
+    // Long enough to be truncated, and built so the DANGEROUS characters land
+    // in the tail — i.e. only in the title attribute, never in visible text.
+    // An unescaped quote here would close the attribute and let the rest of
+    // the string become markup.
+    const hostileTail = `" onmouseover="alert(1)" x="<script>alert(2)</script>`;
+    const longHostile = 'C'.repeat(200) + hostileTail;
+    const req = makeRequirement('req-hostile');
+    const entity = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: longHostile })], {
+      entityName: 'D'.repeat(200) + hostileTail,
+    });
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-hostile', 'Hostile Spec', [req]), [entity])]),
+      'en',
+    );
+
+    // The literal text `onmouseover=` survives escaping (only the quotes and
+    // angle brackets change), so assert on the form that would actually be a
+    // live attribute: the name followed by an UNESCAPED quote.
+    assert.ok(
+      !html.includes('onmouseover="'),
+      'the injected attribute must never appear followed by a raw quote, i.e. as live markup',
+    );
+    assert.ok(!/"\s+onmouseover/.test(html), 'no raw quote may close the title attribute early');
+    assert.ok(!html.includes('<script>alert(2)</script>'), 'no raw script tag anywhere');
+    assert.ok(
+      html.includes('&quot; onmouseover=&quot;alert(1)&quot;'),
+      'quotes inside the title attribute are escaped',
+    );
+    assert.ok(
+      html.includes('&lt;script&gt;alert(2)&lt;/script&gt;'),
+      'angle brackets inside the title attribute are escaped',
+    );
+  });
+
+  it('truncates on code points, never splitting a surrogate pair', () => {
+    // 200 astral-plane characters, each a surrogate PAIR in UTF-16. A
+    // UTF-16-based slice(0, 160) would cut at 80 emoji plus half of the 81st,
+    // emitting a lone surrogate. A code-point slice yields 160 whole emoji.
+    const emoji = '\u{1F9F1}'; // brick
+    const req = makeRequirement('req-emoji');
+    const entity = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: emoji.repeat(200) })]);
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-emoji', 'Emoji Spec', [req]), [entity])]),
+      'en',
+    );
+
+    const cell = html.match(/<td class="col-failure">([\s\S]*?)<\/td>/);
+    assert.ok(cell, 'failure cell must be present');
+    const visible = cell![1].replace(/<[^>]*>/g, '').replace('&hellip;', '');
+    assert.equal(Array.from(visible).length, 160, '160 whole code points are shown');
+    assert.ok(
+      !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(visible),
+      'no unpaired high surrogate may be emitted',
+    );
+  });
+});
+
+describe('buildReportHTML — per-entity table truncation', () => {
+  it('caps the per-entity table, lists failing entities first, and states the hidden count', () => {
+    const req = makeRequirement('req-cap');
+    // 250 entities where the ONLY failures sit at the very end of the array.
+    // A naive slice(0, 100) would render 100 passes and hide every failure.
+    const entities = Array.from({ length: 250 }, (_, i) =>
+      makeEntity(
+        i,
+        [makeReqResult(req, i >= 245 ? 'fail' : 'pass', i >= 245 ? { failureReason: `late failure ${i}` } : {})],
+        { entityName: `Wall ${i}`, globalId: `GID-${i}` },
+      ),
+    );
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-cap', 'Capped Spec', [req]), entities)]),
+      'en',
+    );
+
+    const tbody = html.match(/<tbody id="tbody-0">([\s\S]*?)<\/tbody>/);
+    assert.ok(tbody, 'per-entity tbody must be present');
+    const rows = tbody![1].match(/<tr class="entity-row"/g) ?? [];
+    assert.equal(rows.length, 100, 'the per-entity table is capped, not emitted in full');
+
+    assert.match(
+      html,
+      /Showing 100 of 250 entities \(150 hidden, failing entities listed first\)/,
+      'the hidden count must be stated exactly',
+    );
+
+    // Every late failure survives the cap because failures are ordered first.
+    for (let i = 245; i < 250; i++) {
+      assert.ok(tbody![1].includes(`GID-${i}`), `failing entity ${i} must survive the cap`);
+    }
+    // And the first passing entity is still present, just after the failures.
+    assert.ok(tbody![1].includes('GID-0'), 'passing entities fill the remaining budget');
+  });
+
+  it('adds no truncation note when every entity fits under the cap', () => {
+    const req = makeRequirement('req-small');
+    const entities = Array.from({ length: 3 }, (_, i) => makeEntity(i, [makeReqResult(req, 'pass')]));
+    const html = buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-small', 'Small Spec', [req]), entities)]),
+      'en',
+    );
+
+    assert.ok(!/\d+ hidden/.test(html), 'no hidden-count note when nothing was hidden');
+  });
+});

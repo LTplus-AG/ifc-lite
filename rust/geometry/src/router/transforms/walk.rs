@@ -16,6 +16,16 @@ use nalgebra::Matrix4;
 /// composed `identity * local`, which is not that node's world transform, so
 /// every ancestor built on it is truncated too. Only an untruncated result is a
 /// pure function of the placement id, and only those may reach the memo. #3012
+///
+/// This does NOT make an over-cap chain order-independent — only the direction
+/// that matters. A memo hit is a return, not a frame, so a walk that finds a
+/// warm ancestor near the cap composes PAST the cap for free: the same leaf of a
+/// `MAX_PLACEMENT_DEPTH + 8` chain legitimately reports 101 from a cold decoder
+/// and 109 from one warmed at the node the guard would have refused. Both are
+/// legal under a cap that stops rather than promising an answer, and the longer
+/// one is the whole chain, i.e. the more correct of the two. What is excluded
+/// here is the narrower and worse case: a SHORT answer served from the memo as
+/// though it were whole.
 #[derive(Clone, Copy)]
 pub(super) struct PlacementWalk {
     pub(super) transform: Matrix4<f64>,
@@ -58,26 +68,38 @@ impl GeometryRouter {
         decoder: &mut EntityDecoder,
         depth: usize,
     ) -> Result<PlacementWalk> {
-        // Depth limit to prevent stack overflow on circular references or deep
-        // hierarchies. The identity here is NOT this placement's transform, so
-        // the walk is flagged truncated all the way back up.
-        if depth > Self::MAX_PLACEMENT_DEPTH {
-            return Ok(PlacementWalk { transform: Matrix4::identity(), truncated: true });
-        }
-
-        // Per-worker placement-transform memo. For a well-formed acyclic IFC
-        // placement DAG the composed world transform is a pure function of
-        // `placement.id`, so returning a cached result is byte-identical — and
-        // it collapses the repeated work: storey/building placements shared by
-        // thousands of elements compose once per worker, not once per element.
+        // Per-worker placement-transform memo, consulted BEFORE the depth guard
+        // below. For a well-formed acyclic IFC placement DAG the composed world
+        // transform is a pure function of `placement.id`, so returning a cached
+        // result is byte-identical — and it collapses the repeated work:
+        // storey/building placements shared by thousands of elements compose
+        // once per worker, not once per element.
+        //
         // Only untruncated computed transforms (local/linear/grid) are cached:
         // a walk that hit the depth guard composed part of the chain, and what
         // it composed depends on the depth it was ENTERED at, not on the
         // placement id alone. Caching one made the first caller's depth budget
         // every later caller's answer for that node (#3012), so a cache hit is
         // depth-independent only because truncated results never enter.
+        //
+        // Because every entry is a complete transform, serving one is always
+        // better than refusing it, and the guard must not get there first: a
+        // memo hit RETURNS, it does not recurse, so it costs no stack — measured
+        // max recursion depth over a `MAX_PLACEMENT_DEPTH + 8` chain is 101 both
+        // cold and when the hit lands on the node the guard would have refused.
+        // Checking the guard first threw away a complete cached transform and
+        // handed back a shorter one in its place.
         if let Some(m) = decoder.get_placement_transform_cached(placement.id) {
             return Ok(PlacementWalk::complete(Matrix4::from_column_slice(&m)));
+        }
+
+        // Depth limit to prevent stack overflow on circular references or deep
+        // hierarchies, reached only on a memo MISS — the frames it bounds are
+        // the ones that would actually recurse. The identity here is NOT this
+        // placement's transform, so the walk is flagged truncated all the way
+        // back up.
+        if depth > Self::MAX_PLACEMENT_DEPTH {
+            return Ok(PlacementWalk { transform: Matrix4::identity(), truncated: true });
         }
 
         // IfcLinearPlacement is the IFC4x3 placement used by infrastructure

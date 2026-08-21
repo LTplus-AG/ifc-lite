@@ -289,3 +289,142 @@ fn assert_two_orders_agree(content: &str, node_id: usize, links: usize) {
          resolved first"
     );
 }
+
+/// #3043 follow-up. The depth guard used to run BEFORE the memo lookup, so a
+/// node whose complete transform was already memoised got refused at the cap and
+/// the caller was handed a shorter chain instead — a complete answer discarded in
+/// favour of a truncated one.
+///
+/// On a `MAX_PLACEMENT_DEPTH + 8` chain the walk from the leaf reaches
+/// `#(10 + links - MAX_PLACEMENT_DEPTH - 1)` at depth `MAX_PLACEMENT_DEPTH + 1`,
+/// the first depth the guard refuses. Warm that one node and the leaf's answer
+/// goes from `MAX_PLACEMENT_DEPTH + 1` links to the whole chain — but only if the
+/// memo is consulted first. Guard-first, the warmed decoder still reports the
+/// truncated 101.
+///
+/// The swap costs no stack: a memo hit returns instead of recursing, so it
+/// replaces the rejected frame rather than adding one. Measured with an atomic
+/// max-depth probe on the recursion, max depth is `MAX_PLACEMENT_DEPTH + 1` in
+/// both the cold and the warmed case.
+#[test]
+fn a_memoised_ancestor_at_the_cap_is_served_rather_than_refused() {
+    let links = MAX_PLACEMENT_DEPTH + 8;
+    let content = deep_placement_chain(links);
+    let leaf_id = (10 + links) as u32;
+    // The node the leaf's walk reaches at depth MAX_PLACEMENT_DEPTH + 1 — the
+    // first lookup the guard refuses, and so the one a memo hit must rescue.
+    let refused_id = (10 + links - MAX_PLACEMENT_DEPTH - 1) as u32;
+    let router = GeometryRouter::new();
+
+    // Cold: the guard stops the walk, and the truncated result must not be
+    // memoised — the direction #3012 fixed, re-pinned here because a fix that
+    // widened what the memo serves would reintroduce it.
+    let mut cold = EntityDecoder::new(&content);
+    let leaf = cold.decode_by_id(leaf_id).expect("leaf placement");
+    let cold_x = router
+        .get_placement_transform(&leaf, &mut cold)
+        .expect("cold placement transform")
+        .column(3)[0];
+    assert_eq!(
+        cold_x,
+        (MAX_PLACEMENT_DEPTH + 1) as f64,
+        "a cold walk of a {}-placement chain composes only the {} the cap admits",
+        links + 1,
+        MAX_PLACEMENT_DEPTH + 1
+    );
+    assert!(
+        cold.get_placement_transform_cached(leaf_id).is_none(),
+        "the truncated leaf transform must never reach the memo"
+    );
+    assert!(
+        cold.get_placement_transform_cached(refused_id + 1).is_none(),
+        "nor may the node AT the cap, whose composition is `identity * local`"
+    );
+
+    // Warmed at the refused node, whose own chain fits the cap and so has one
+    // complete answer.
+    let mut warmed = EntityDecoder::new(&content);
+    let refused = warmed.decode_by_id(refused_id).expect("refused placement");
+    let refused_x = router
+        .get_placement_transform(&refused, &mut warmed)
+        .expect("refused placement transform")
+        .column(3)[0];
+    assert_eq!(
+        refused_x,
+        f64::from(refused_id - 9),
+        "#{refused_id}'s own chain fits the cap, so warming it memoises a COMPLETE \
+         transform — otherwise this test would only prove the memo serves junk"
+    );
+
+    let leaf = warmed.decode_by_id(leaf_id).expect("leaf placement");
+    let warm_x = router
+        .get_placement_transform(&leaf, &mut warmed)
+        .expect("warmed placement transform")
+        .column(3)[0];
+    assert_eq!(
+        warm_x,
+        (links + 1) as f64,
+        "with #{refused_id} memoised the walk composes the whole {}-placement \
+         chain: the hit is a return, not a frame, so the cap has nothing to \
+         refuse. Checking the depth guard before the memo drops that cached \
+         transform and reports {cold_x} instead",
+        links + 1
+    );
+}
+
+/// Two placements pointing at each other — far likelier in a malformed file than
+/// a 101-link chain, and the case that first drove a partial product into the
+/// memo for every node on the cycle.
+///
+/// A cycle has no correct world transform, so the property that exists is
+/// order-independence: `#11` must resolve the same whether or not `#10` was
+/// resolved first. Before #3012 it did not — the first query wrote its partial
+/// composition for both nodes, and the second was served it.
+#[test]
+fn a_placement_cycle_resolves_the_same_in_either_order() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCAXIS2PLACEMENT3D(#2,$,$);\n\
+#2=IFCCARTESIANPOINT((1.,0.,0.));\n\
+#10=IFCLOCALPLACEMENT(#11,#1);\n\
+#11=IFCLOCALPLACEMENT(#10,#1);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let router = GeometryRouter::new();
+    let expected = (MAX_PLACEMENT_DEPTH + 1) as f64;
+
+    let mut alone = EntityDecoder::new(content);
+    let n11 = alone.decode_by_id(11).expect("#11");
+    let alone_x = router
+        .get_placement_transform(&n11, &mut alone)
+        .expect("#11 alone")
+        .column(3)[0];
+    assert_eq!(
+        alone_x, expected,
+        "the cap admits depths 0..=MAX_PLACEMENT_DEPTH, so a cycle composes \
+         {expected} links of +1.0 X before it stops"
+    );
+
+    let mut after = EntityDecoder::new(content);
+    let n10 = after.decode_by_id(10).expect("#10");
+    router
+        .get_placement_transform(&n10, &mut after)
+        .expect("#10 first");
+    let n11 = after.decode_by_id(11).expect("#11");
+    let after_x = router
+        .get_placement_transform(&n11, &mut after)
+        .expect("#11 after #10")
+        .column(3)[0];
+    assert_eq!(
+        alone_x, after_x,
+        "#11 must resolve identically whether or not #10 was resolved first; \
+         the differing answer is #10's partial composition served from the memo"
+    );
+
+    assert!(
+        alone.get_placement_transform_cached(11).is_none()
+            && alone.get_placement_transform_cached(10).is_none(),
+        "every node on a cycle is reached through a truncated walk, so none of \
+         them may be memoised"
+    );
+}

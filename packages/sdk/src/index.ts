@@ -127,6 +127,7 @@ export type {
   MutateBackendMethods,
   StoreBackendMethods,
   SpacesBackendMethods,
+  StyleBackendMethods,
   AddColumnInStoreParams,
   AddWallInStoreParams,
   AddSlabInStoreParams,
@@ -201,6 +202,7 @@ export { ScheduleNamespace } from './namespaces/schedule.js';
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';
 export { SpacesNamespace } from './namespaces/spaces.js';
+export { StyleNamespace, type ApplyColorOptions, type ColorBatch } from './namespaces/style.js';
 export { createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results

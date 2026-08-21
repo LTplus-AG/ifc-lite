@@ -21,6 +21,7 @@ import type {
   MutateBackendMethods,
   StoreBackendMethods,
   SpacesBackendMethods,
+  StyleBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -49,6 +50,7 @@ import {
   addMemberToStore,
   addPlateToStore,
   addRoofToStore,
+  applyStyleInStore,
   addSlabToStore,
   addSpaceToStore,
   addWallToStore,
@@ -188,6 +190,7 @@ export class HeadlessBackend implements BimBackend {
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
   readonly spaces: SpacesBackendMethods;
+  readonly style: StyleBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -210,6 +213,20 @@ export class HeadlessBackend implements BimBackend {
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
     this.spaces = this.createSpacesAdapter();
+    this.style = this.createStyleAdapter();
+  }
+
+  private createStyleAdapter(): StyleBackendMethods {
+    return {
+      // Same arrangement as the spaces adapter: the work happens in
+      // @ifc-lite/create against the shared StoreEditor, so the new entities
+      // land in the overlay this backend's export adapter already reads.
+      applyColor: (refs, color, options) => applyStyleInStore(
+        this.getOrCreateStoreEditor(),
+        this.dataStore,
+        { products: refs.map(r => r.expressId), color, ...options },
+      ),
+    };
   }
 
   private createSpacesAdapter(): SpacesBackendMethods {

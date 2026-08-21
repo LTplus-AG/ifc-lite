@@ -417,11 +417,25 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # Run the package script DIRECTLY, not through turbo. Two reasons, both
+      # measured rather than assumed:
+      #
+      # 1. Turbo strips undeclared environment variables. `globalPassThroughEnv`
+      #    in turbo.json is an explicit allowlist and does not include these,
+      #    and the `test` task declares no `env`/`passThroughEnv`. Routed
+      #    through turbo, TEST_SHARD never reached the script and all four
+      #    shards ran the full 521 files, taking an identical 25:15 each. That
+      #    identical timing is what exposed it: quartering the input cannot
+      #    leave the duration unchanged.
+      # 2. `test` dependsOn `build`, so turbo also ran the viewer's Vite app
+      #    build (53s of "✓ built in 53.43s") which its tests do not need. The
+      #    sibling dists the tests DO need come from the downloaded artifact.
+      #
       # `TEST_SHARDS`/`TEST_SHARD` select every Nth file (see apps/viewer's
       # test script). Unset, the script takes all 521, so a local `pnpm test`
-      # is unchanged. Verified the split is exact: 130+131+130+130 = 521, with
-      # 521 distinct paths across the four, so no file is dropped or run twice.
-      - run: pnpm exec turbo test --filter=@ifc-lite/viewer
+      # is unchanged. The split is exact: 130+131+130+130 = 521 files, 521
+      # distinct paths, so nothing is dropped or run twice.
+      - run: pnpm --filter @ifc-lite/viewer run test
         env:
           TEST_SHARDS: '4'
           TEST_SHARD: ${{ matrix.shard }}

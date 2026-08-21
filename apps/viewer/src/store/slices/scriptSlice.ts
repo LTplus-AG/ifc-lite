@@ -86,6 +86,35 @@ export interface ScriptSlice {
    * baseline-compare a number. Mirrors `clashRunSeq` / `compareRunSeq`.
    */
   scriptRunSeq: number;
+  /**
+   * Monotonic token bumped by `useSandbox().execute()` at the START of every
+   * run, BEFORE any await. `useSandbox()` is instantiated independently in
+   * `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`
+   * (each gets its own `activeSandboxRef`/closure — there is no shared
+   * per-hook state), so a per-hook-instance guard (the `runEpochRef` shape
+   * `useClash`/`useIDS`/`useCompare` use) cannot detect a SECOND run started
+   * from a DIFFERENT component instance while the first is still in flight.
+   * This lives in the store instead so every instance reads/writes the same
+   * counter. A run captures the value right after bumping it and re-checks
+   * it, synchronously, before every terminal store write that follows an
+   * await (`setScriptResult`/`setScriptError`) — a stale run whose epoch no
+   * longer matches the current one skips the write. Without this, two
+   * scripts started in either order publish to the shared
+   * `scriptLastResult`/`scriptExecutionState` in FINISH order, so an older,
+   * slower run can silently clobber a newer, already-displayed result.
+   *
+   * This gates the STORE WRITE only, not what `execute()` resolves with to
+   * its OWN caller — that is a separate, per-instance `runEpochRef` inside
+   * `useSandbox()`. A run that a DIFFERENT instance's newer run made stale
+   * here still genuinely succeeded (or failed) on its own terms, and its own
+   * caller (`ExecutableCodeBlock.handleRun`, `ChatPanel`'s auto-execute) gets
+   * that real outcome — being skipped here only means it lost the race to be
+   * the document's displayed state, not that the run itself failed. Only a
+   * run THIS SAME instance itself superseded (a second `execute()` call, or
+   * its own `reset()`) resolves `null`, matching the #1922 teardown-abort
+   * path's contract for a run that actually died.
+   */
+  scriptRunEpoch: number;
   scriptLastResult: ScriptResult | null;
   scriptLastError: string | null;
   scriptLastDiagnostics: ScriptDiagnostic[];
@@ -108,6 +137,8 @@ export interface ScriptSlice {
   setScriptEditorContent: (content: string) => void;
   setScriptExecutionState: (state: ScriptExecutionState) => void;
   bumpScriptRunSeq: () => void;
+  /** Bump the run-supersession token and return the new value (this run's epoch). */
+  bumpScriptRunEpoch: () => number;
   setScriptResult: (result: ScriptResult | null) => void;
   setScriptError: (error: string | null, diagnostics?: ScriptDiagnostic[]) => void;
   setScriptDiagnostics: (diagnostics: ScriptDiagnostic[]) => void;
@@ -162,6 +193,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptEditorDirty: false,
   scriptExecutionState: 'idle',
   scriptRunSeq: 0,
+  scriptRunEpoch: 0,
   scriptLastResult: null,
   scriptLastError: null,
   scriptLastDiagnostics: [],
@@ -310,6 +342,12 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   setScriptExecutionState: (scriptExecutionState) => set({ scriptExecutionState }),
 
   bumpScriptRunSeq: () => set((s) => ({ scriptRunSeq: s.scriptRunSeq + 1 })),
+
+  bumpScriptRunEpoch: () => {
+    const next = get().scriptRunEpoch + 1;
+    set({ scriptRunEpoch: next });
+    return next;
+  },
 
   setScriptResult: (scriptLastResult) =>
     set({ scriptLastResult, scriptLastError: null, scriptLastDiagnostics: [], scriptExecutionState: 'success' }),

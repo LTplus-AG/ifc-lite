@@ -139,6 +139,19 @@ function augmentScriptError(message: string, code?: string): { message: string; 
 export function useSandbox(config?: SandboxConfig) {
   const bim = useBim();
   const activeSandboxRef = useRef<Sandbox | null>(null);
+  // Per-INSTANCE epoch (the `useClash`/`useIDS`/`useCompare` shape) — gates
+  // only the RETURN VALUE this instance's `execute()` resolves with. A run
+  // that this same instance itself superseded (a second `execute()` call, or
+  // `reset()`) must resolve `null`, exactly like those other hooks' guards —
+  // that is a real "this call lost" signal a caller awaiting it should see.
+  // But `scriptRunEpoch` (the store field, shared by every `useSandbox()`
+  // instance) must NOT gate this: a DIFFERENT instance's unrelated run
+  // bumping the shared epoch does not mean THIS instance's own script failed
+  // or was cancelled — it succeeded or failed on its own terms, and its
+  // caller (e.g. `ExecutableCodeBlock.handleRun`) reads the return value as
+  // ground truth for ITS OWN outcome. Conflating the two turned "another
+  // panel started a script" into "this script's return value is a lie".
+  const runEpochRef = useRef(0);
 
   const setExecutionState = useViewerStore((s) => s.setScriptExecutionState);
   const setResult = useViewerStore((s) => s.setScriptResult);
@@ -147,6 +160,22 @@ export function useSandbox(config?: SandboxConfig) {
 
   /** Execute a script in an isolated sandbox context */
   const execute = useCallback(async (code: string): Promise<ScriptResult | null> => {
+    // Captured BEFORE any await, and re-checked before every terminal store
+    // write below: `useSandbox()` is instantiated independently per caller
+    // (ScriptPanel, ChatPanel, CommandPalette, ExecutableCodeBlock each get
+    // their own closure/`activeSandboxRef`), so two overlapping `execute()`
+    // calls from DIFFERENT instances are not ordered by anything local to
+    // this hook. `scriptRunEpoch` lives in the store precisely so every
+    // instance shares one counter (see its doc in scriptSlice.ts).
+    const myEpoch = useViewerStore.getState().bumpScriptRunEpoch();
+    const stillCurrent = () => useViewerStore.getState().scriptRunEpoch === myEpoch;
+
+    // This instance's own epoch: whether THIS instance has since started a
+    // newer run (a second `execute()` call) or reset itself. Gates the
+    // RETURN VALUE only — see the doc above `runEpochRef`.
+    const myLocalEpoch = ++runEpochRef.current;
+    const stillCurrentLocally = () => runEpochRef.current === myLocalEpoch;
+
     setExecutionState('running');
     setError(null);
     setDiagnostics([]);
@@ -210,27 +239,52 @@ export function useSandbox(config?: SandboxConfig) {
       // is null. The store said "error" while the UI said "ran fine".
       const teardownAbortMessage = teardown();
       if (teardownAbortMessage) {
-        // Keep the captured logs — they are the only record of how far the
-        // script got — but not the value, which is a lie about a dead run.
-        setResult({
-          value: undefined,
-          logs: result.logs,
-          durationMs: result.durationMs,
-        });
-        setError(teardownAbortMessage);
+        // A #1922 teardown abort is a genuine failure of THIS run — unlike
+        // the success path below, there is no real outcome for a caller to
+        // recover, so this always resolves `null` regardless of either
+        // epoch. The shared-store write is still gated on `stillCurrent()`:
+        // a superseded run's abort is not this document's current story to
+        // tell any more; a newer run already published (or is about to).
+        if (stillCurrent()) {
+          // Keep the captured logs — they are the only record of how far the
+          // script got — but not the value, which is a lie about a dead run.
+          setResult({
+            value: undefined,
+            logs: result.logs,
+            durationMs: result.durationMs,
+          });
+          setError(teardownAbortMessage);
+        }
         return null;
       }
 
-      setResult({
-        value: result.value,
-        logs: result.logs,
-        durationMs: result.durationMs,
-      });
-      // Successful-run signal for baseline consumers (scripting tour run
-      // gate). Deliberately NOT bumped on the error-path setResult below
-      // (that call only preserves captured logs), on reset(), or on the
-      // teardown-abort path above — a crashed run must not count as a run.
-      useViewerStore.getState().bumpScriptRunSeq();
+      // The shared-store publish and this call's RETURN VALUE are gated
+      // separately on purpose (see `runEpochRef`'s doc above): `stillCurrent()`
+      // (the store epoch) decides whether this run's data is still the
+      // document's current story — a DIFFERENT instance's newer run may have
+      // already made it stale, and publishing anyway would clobber that
+      // newer, already-displayed result (the original #2802-shaped bug this
+      // guard exists for). `stillCurrentLocally()` decides what THIS call
+      // resolves with — this run genuinely succeeded, so its own caller gets
+      // the real result even when a different instance's run means the store
+      // itself must not hear about it. Only THIS instance's own newer call
+      // (or its own `reset()`) supersedes what execute() resolves with.
+      if (stillCurrent()) {
+        setResult({
+          value: result.value,
+          logs: result.logs,
+          durationMs: result.durationMs,
+        });
+        // Successful-run signal for baseline consumers (scripting tour run
+        // gate). Deliberately NOT bumped on the error-path setResult below
+        // (that call only preserves captured logs), on reset(), or on the
+        // teardown-abort path above — a crashed run must not count as a run.
+        // Tied to the store publish, not the return value: a run this
+        // instance's own store write skipped never became "the document's
+        // current script run" for the tour gate to observe.
+        useViewerStore.getState().bumpScriptRunSeq();
+      }
+      if (!stillCurrentLocally()) return null;
       return result;
     } catch (err: unknown) {
       // A SandboxAbortError surfacing from create/eval is the #1922 teardown
@@ -239,11 +293,13 @@ export function useSandbox(config?: SandboxConfig) {
       // during teardown, after this run has already returned.)
       const abortMessage = describeSandboxAbort(err);
       if (abortMessage) {
-        setError(abortMessage);
+        if (stillCurrent()) setError(abortMessage);
         return null;
       }
 
       const runtime = augmentScriptError(err instanceof Error ? err.message : String(err), code);
+
+      if (!stillCurrent()) return null;
 
       // If the error is a ScriptError with captured logs, preserve them.
       // Important: setError must run AFTER setResult, because setResult clears
@@ -264,7 +320,7 @@ export function useSandbox(config?: SandboxConfig) {
       // Reported after the result is set, because setResult clears the
       // store's error.
       const teardownAbortMessage = teardown();
-      if (teardownAbortMessage) {
+      if (teardownAbortMessage && stillCurrent()) {
         setError(teardownAbortMessage);
       }
     }
@@ -276,6 +332,16 @@ export function useSandbox(config?: SandboxConfig) {
       disposeSandboxReportingAbort(activeSandboxRef.current);
       activeSandboxRef.current = null;
     }
+    // Same reasoning as `useClash.clearAll()`/`useIDS.clearIDS()`: bump the
+    // shared epoch so an in-flight run (this instance's or any other
+    // `useSandbox()` instance's) that lands after this reset cannot
+    // resurrect the state this call just cleared.
+    useViewerStore.getState().bumpScriptRunEpoch();
+    // Also bump THIS instance's own local epoch: `reset()` is this
+    // instance's own action, so an in-flight run of its own that lands after
+    // this must resolve `null` to its caller too — not just skip the store
+    // write. See `runEpochRef`'s doc above `execute()`.
+    runEpochRef.current += 1;
     setExecutionState('idle');
     setResult(null);
     setError(null);

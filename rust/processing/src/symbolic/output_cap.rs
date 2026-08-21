@@ -108,12 +108,31 @@ pub enum SymbolicTruncationReason {
     ItemRevisits,
 }
 
+impl SymbolicTruncationReason {
+    /// The wire spelling, identical to what `Serialize` emits.
+    ///
+    /// The WASM boundary cannot hand a serde enum to JavaScript, so it needs a
+    /// plain string; having it here rather than a `match` in wasm-bindings keeps
+    /// one vocabulary for both surfaces. `the_wire_spellings_match_serde` pins
+    /// them together, because two hand-kept lists is how they drift.
+    pub fn as_wire_str(self) -> &'static str {
+        match self {
+            Self::ElementCount => "element-count",
+            Self::OutputBytes => "output-bytes",
+            Self::ItemDepth => "item-depth",
+            Self::ItemRevisits => "item-revisits",
+        }
+    }
+}
+
 /// What stopped an extraction early, when something did.
 ///
 /// Present only on a truncated result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicTruncation {
-    /// The FIRST bound that fired. Later ones are the same event continuing.
+    /// The MOST SEVERE bound that fired, not the first: an extraction bound
+    /// outranks a per-item one whatever the scan order. See
+    /// `SymbolicAccumulator::record`.
     pub reason: SymbolicTruncationReason,
     /// Primitives emitted in total. NOT necessarily equal to any limit: a
     /// per-item bound stops one item's contribution while the file-level
@@ -122,6 +141,11 @@ pub struct SymbolicTruncation {
     /// The bound's value, when the reason has a single numeric one. `None` for
     /// per-item reasons, whose bound is per item and not comparable with
     /// `emitted`.
+    ///
+    /// Skipped rather than serialized as `null`: the TypeScript mirror declares
+    /// `limit?: number`, which means the key is ABSENT. Emitting `null` satisfies
+    /// Rust and breaks the consumer's `'limit' in truncated` check.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
 }
 
@@ -154,7 +178,7 @@ pub(super) struct SymbolicAccumulator {
     bytes: usize,
     /// Byte bound for this extraction, injectable alongside `limit`.
     byte_limit: usize,
-    /// The first bound that fired, if any. Later ones are the same event.
+    /// The most severe bound that fired, if any. See [`SymbolicAccumulator::record`].
     reason: Option<SymbolicTruncationReason>,
     /// Set only by the EXTRACTION bounds, never by a per-item one.
     ///
@@ -271,12 +295,17 @@ impl SymbolicAccumulator {
         self.bytes += PRIMITIVE_OVERHEAD_BYTES + payload * BYTES_PER_COORD;
     }
 
-    /// Append a grid axis unless the extraction has hit its cap.
-    pub(super) fn push_grid_axis(&mut self, axis: SymbolicGridAxis) {
-        // `tag` comes from the file. Grid extraction is top-level and
-        // file-bounded so it has no fan-out amplifier, but an uncharged
-        // heap field is the same class of hole as `alignment` was.
-        let payload = axis.tag.len();
+    /// The one place an append is accepted or refused.
+    ///
+    /// Every `push_*` differs only in its payload charge and its target vector;
+    /// the decision (does this fit, which bound did it break, mark exhausted) is
+    /// identical. Keeping it in five copies is how `push_text` came to omit
+    /// `alignment` from its payload and under-count the byte bound by 13.5x, so
+    /// a sixth primitive must not have to re-derive the block to get it right.
+    fn try_push<F>(&mut self, payload: usize, push: F)
+    where
+        F: FnOnce(&mut SymbolicData),
+    {
         if let Some(reason) = self.exceeded_by(payload) {
             self.record(reason);
             self.exhausted = true;
@@ -286,8 +315,17 @@ impl SymbolicAccumulator {
             }
         } else {
             self.charge(payload);
-            self.data.grid_axes.push(axis);
+            push(&mut self.data);
         }
+    }
+
+    /// Append a grid axis unless the extraction has hit its cap.
+    pub(super) fn push_grid_axis(&mut self, axis: SymbolicGridAxis) {
+        // `tag` comes from the file. Grid extraction is top-level and
+        // file-bounded so it has no fan-out amplifier, but an uncharged
+        // heap field is the same class of hole as `alignment` was.
+        let payload = axis.tag.len();
+        self.try_push(payload, |data| data.grid_axes.push(axis));
     }
 
     /// Append a polyline unless the extraction has hit its cap.
@@ -295,33 +333,13 @@ impl SymbolicAccumulator {
         let payload = polyline.points.len()
             + polyline.ifc_type.len()
             + polyline.representation.len();
-        if let Some(reason) = self.exceeded_by(payload) {
-            self.record(reason);
-            self.exhausted = true;
-            #[cfg(test)]
-            {
-                self.refusals += 1;
-            }
-        } else {
-            self.charge(payload);
-            self.data.polylines.push(polyline);
-        }
+        self.try_push(payload, |data| data.polylines.push(polyline));
     }
 
     /// Append a circle unless the extraction has hit its cap.
     pub(super) fn push_circle(&mut self, circle: SymbolicCircle) {
         let payload = 8 + circle.ifc_type.len() + circle.representation.len();
-        if let Some(reason) = self.exceeded_by(payload) {
-            self.record(reason);
-            self.exhausted = true;
-            #[cfg(test)]
-            {
-                self.refusals += 1;
-            }
-        } else {
-            self.charge(payload);
-            self.data.circles.push(circle);
-        }
+        self.try_push(payload, |data| data.circles.push(circle));
     }
 
     /// Append a text annotation unless the extraction has hit its cap.
@@ -336,17 +354,7 @@ impl SymbolicAccumulator {
             + text.alignment.len()
             + text.ifc_type.len()
             + text.representation.len();
-        if let Some(reason) = self.exceeded_by(payload) {
-            self.record(reason);
-            self.exhausted = true;
-            #[cfg(test)]
-            {
-                self.refusals += 1;
-            }
-        } else {
-            self.charge(payload);
-            self.data.texts.push(text);
-        }
+        self.try_push(payload, |data| data.texts.push(text));
     }
 
     /// Append a filled region unless the extraction has hit its cap.
@@ -355,17 +363,7 @@ impl SymbolicAccumulator {
             + fill.holes_offsets.len()
             + fill.ifc_type.len()
             + fill.representation.len();
-        if let Some(reason) = self.exceeded_by(payload) {
-            self.record(reason);
-            self.exhausted = true;
-            #[cfg(test)]
-            {
-                self.refusals += 1;
-            }
-        } else {
-            self.charge(payload);
-            self.data.fills.push(fill);
-        }
+        self.try_push(payload, |data| data.fills.push(fill));
     }
 
     /// Finish, stamping the diagnostics field iff an append was ever refused.

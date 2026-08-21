@@ -481,3 +481,59 @@ fn an_extraction_bound_outranks_a_per_item_one_whatever_the_scan_order() {
          so mislabelling also silently drops the number"
     );
 }
+
+#[test]
+fn a_per_item_reason_omits_limit_on_the_wire_rather_than_sending_null() {
+    // The TypeScript mirror in `packages/server-client/src/types.ts` declares
+    // `limit?: number`, which means the key is ABSENT. `Option<usize>` with a
+    // plain `Serialize` emits `"limit": null` instead, which type-checks on
+    // both sides and still breaks a consumer that asks `'limit' in truncated`
+    // before rendering "showing {emitted} of {limit}".
+    //
+    // Asserting `truncation.limit == None` (as the sibling test does) cannot
+    // catch this: the Rust value is None either way. Only the serialized shape
+    // distinguishes them, so this reads the JSON.
+    let mut acc = SymbolicAccumulator::with_limits(10_000_000, 64 * 1024 * 1024);
+    super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
+    let out = acc.into_data();
+
+    let json = serde_json::to_value(&out).expect("serializes");
+    let truncated = &json["truncated"];
+    assert_eq!(truncated["reason"], "item-revisits");
+    assert!(
+        !truncated
+            .as_object()
+            .expect("truncated is an object")
+            .contains_key("limit"),
+        "a per-item reason must OMIT `limit`, not emit null: {truncated}"
+    );
+
+    // The other direction, so the fix cannot be "always skip": an extraction
+    // bound still has to put its number on the wire.
+    let mut acc = SymbolicAccumulator::with_limits(200, 64 * 1024 * 1024);
+    super::extract_symbolic_data_into(&hostile_dag(2).into_bytes(), &mut acc);
+    let json = serde_json::to_value(acc.into_data()).expect("serializes");
+    assert_eq!(json["truncated"]["reason"], "element-count");
+    assert_eq!(json["truncated"]["limit"], 200);
+}
+
+#[test]
+fn the_wire_spellings_match_serde() {
+    // `as_wire_str` exists because the WASM boundary cannot pass a serde enum
+    // to JavaScript. Two hand-kept spellings of one vocabulary drift, and the
+    // drift is silent: the JSON consumer and the WASM consumer would simply
+    // disagree about what `item-depth` is called. Derive one from the other.
+    for reason in [
+        SymbolicTruncationReason::ElementCount,
+        SymbolicTruncationReason::OutputBytes,
+        SymbolicTruncationReason::ItemDepth,
+        SymbolicTruncationReason::ItemRevisits,
+    ] {
+        let via_serde = serde_json::to_value(reason).expect("serializes");
+        assert_eq!(
+            via_serde,
+            serde_json::Value::String(reason.as_wire_str().to_string()),
+            "as_wire_str disagrees with Serialize for {reason:?}"
+        );
+    }
+}

@@ -508,21 +508,18 @@ pub struct SymbolicRepresentationCollection {
     circles: Vec<SymbolicCircle>,
     texts: Vec<SymbolicText>,
     fills: Vec<SymbolicFillArea>,
-    /// Primitives emitted when extraction hit its bound; `None` if complete.
-    /// Carried across the boundary because geometry is client-side only, so
-    /// this is the only way a browser consumer learns its drawing was clipped
-    /// (#2938).
-    truncated_at: Option<usize>,
+    /// What stopped extraction early; `None` if it completed.
+    ///
+    /// Carried across the boundary in FULL because geometry is client-side
+    /// only, so the browser is the consumer that most needs it (#2938). The
+    /// count alone cannot say whether a whole-file bound clipped the drawing or
+    /// one representation item hit a per-item bound, and cannot render
+    /// "showing {emitted} of {limit}" for the cases that have a limit.
+    pub(super) truncated: Option<ifc_lite_processing::SymbolicTruncation>,
 }
 
 #[wasm_bindgen]
 impl SymbolicRepresentationCollection {
-    /// Primitive count at which extraction stopped, else `undefined`.
-    #[wasm_bindgen(getter, js_name = truncatedAt)]
-    pub fn truncated_at(&self) -> Option<usize> {
-        self.truncated_at
-    }
-
     /// Get all express IDs that have symbolic representations
     #[wasm_bindgen(js_name = getExpressIds)]
     pub fn get_express_ids(&self) -> Vec<u32> {
@@ -657,7 +654,7 @@ impl SymbolicRepresentationCollection {
             circles: Vec::new(),
             texts: Vec::new(),
             fills: Vec::new(),
-            truncated_at: None,
+            truncated: None,
         }
     }
 
@@ -667,7 +664,7 @@ impl SymbolicRepresentationCollection {
             circles: Vec::with_capacity(circle_capacity),
             texts: Vec::new(),
             fills: Vec::new(),
-            truncated_at: None,
+            truncated: None,
         }
     }
 
@@ -694,7 +691,7 @@ impl SymbolicRepresentationCollection {
     /// identical symbol streams from one canonical implementation.
     pub fn from_data(data: ifc_lite_processing::SymbolicData) -> Self {
         let mut collection = Self::with_capacity(data.polylines.len(), data.circles.len());
-        collection.truncated_at = data.truncated.as_ref().map(|t| t.emitted);
+        collection.truncated = data.truncated.clone();
         for p in data.polylines {
             collection.add_polyline(SymbolicPolyline::new(
                 p.express_id,

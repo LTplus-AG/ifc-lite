@@ -119,6 +119,16 @@ A guard that both ACTS and REPORTS has a two-part contract — bound the work, a
 report that you bounded it. Mutate the halves separately; they fail differently
 (a missing bound hangs, a missing report returns a truncated success).
 
+`scripts/check-refwalk-guards.mjs` (CI) enforces the *presence* of a guard, not
+its choice: it fails when a self- or mutually-recursive function, or a
+cursor-chasing loop, reaches `decode_by_id`/`resolve_ref`/`resolve_ref_list`
+under `rust/geometry/src`, `rust/processing/src` or `rust/wasm-bindings/src`
+with no visited set, path stack or depth cap in scope. Five of the six #2866
+fixes are detected at their parent commit and clear at the fix; the sixth
+(#2870) spans two files and is missed, which is the documented blind spot. Which
+guard is right stays a review question — everything above still applies. The
+allowlist is `scripts/refwalk-guard-allowlist.txt` and is empty.
+
 ## Writing tests
 - A new test must assert behavior through a real fixture or a stated invariant. Don't write: set-state-then-read-it-back store tests, tests that assert a mock's return value (they test the mock), constructor/setter tautologies, or byte-for-byte output pinning unless the byte layout IS the compatibility contract (e.g. signed bundles). Regression tests cite the issue/PR number in the test name or a comment.
 - Every package with test files needs a `test` script in its package.json or `turbo test` silently skips it; `scripts/check-test-wiring.mjs` (CI) enforces this. Packages use vitest OR node:test via `tsx --test`; match the package's existing convention, never mix within a package.

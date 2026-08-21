@@ -32,6 +32,7 @@
     "test:snap-edges": "node scripts/test-snap-edges.mjs",
     "check:test-wiring": "node scripts/check-test-wiring.mjs",
     "check:source-text-assertions": "node scripts/check-source-text-assertions.mjs",
+    "check:refwalk-guards": "node scripts/check-refwalk-guards.mjs",
     "check:unbounded-frame-wait": "node scripts/check-unbounded-frame-wait.mjs",
     "check:wasm-disposal": "node scripts/check-wasm-disposal.mjs",
     "check:collab-placement-sweep": "node scripts/check-collab-placement-sweep.mjs",

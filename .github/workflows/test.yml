@@ -413,6 +413,18 @@ jobs:
       # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
       - name: Check for new source-text assertions
         run: node scripts/check-source-text-assertions.mjs
+      # A walk that follows a file-supplied entity reference with no visited set
+      # and no depth cap overflows the Rust stack on a self-referential
+      # reference, which is SIGABRT rather than a catchable panic -- in the wasm
+      # geometry worker it takes down the instance (#2866). Six sites were fixed
+      # one at a time (#2868-#2874) and #2873 wrote the guard-choice rule into
+      # AGENTS.md, but a convention does not fail CI when a seventh lands (#2944).
+      # Its own tests run first: this check's value is entirely in not passing
+      # vacuously, so a broken detector must fail here, not report a clean tree.
+      - name: Check refwalk gate's own tests
+        run: node --test scripts/check-refwalk-guards.test.mjs
+      - name: Check for unguarded entity-reference walks
+        run: node scripts/check-refwalk-guards.mjs
       # A hidden tab never delivers an animation frame, so an unbounded
       # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
       # parks finalize / WASM release / setLoading(false) until the user comes

@@ -18,6 +18,10 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import {
+  endIdsRowFocusPresentation,
+  type IDSRowFocusPresentation,
+} from '../../lib/ids/visibility-ownership.js';
+import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
@@ -30,6 +34,24 @@ import {
 export interface ModelCrossSliceState {
   ifcDataStore: IfcDataStore | null;
   geometryResult: GeometryResult | null;
+  /** AddElement panel's target-model pin (addElementSlice) — cleared here on
+   *  full teardown for the same reason `removeModel` clears it when it names
+   *  the one model being removed. See that call site's comment. */
+  addElementModelId: string | null;
+  addElementStoreyId: number | null;
+  /** Global-id state `removeModel`/`clearAllModels` purge of ids the removed
+   *  model(s) owned — same shape as `syncSourceModel.ts`'s
+   *  `purgeStaleEntityState`, run here for the full-removal path it never
+   *  covered. See `removeModel`'s comment for why. */
+  selectedEntityId: number | null;
+  selectedEntityIds: Set<number>;
+  selectedStoreys: Set<number>;
+  hiddenEntities: Set<number>;
+  isolatedEntities: Set<number> | null;
+  ghostExceptEntities: Set<number> | null;
+  classFilter: { ids: Set<number>; label: string } | null;
+  hiddenEntitiesByModel: Map<string, Set<number>>;
+  isolatedEntitiesByModel: Map<string, Set<number>>;
   /** Pinboard/basket state (pinboardSlice) `removeModel`/`clearAllModels`
    *  purge of refs the removed model(s) owned — same entityRef-string
    *  keying as `selectedEntitiesSet`. See `removeModel`'s comment for why. */
@@ -299,6 +321,25 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // property of today's implementations, not of this call site.
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'model-removed');
 
+    // The IDS per-row focus (#2867) owns the same two shared channels clash
+    // does — `focusEntity` installs the activated row's element into
+    // `isolatedEntities` or `ghostExceptEntities` — and a row isolation left
+    // standing over a federation that just changed is the same blank viewport
+    // #2654 describes, with nothing on screen to explain it. Released by
+    // IDS's OWN record, so a presentation belonging to clash, the spaces
+    // X-ray or IDS's set-level isolate buttons survives untouched. The row
+    // focus's colour marker goes with it — both channels it wrote.
+    //
+    // CORRECTION (review of #2867): an earlier revision of this comment
+    // claimed this "must also precede the IDS clears below, which drop the
+    // record". It does not. The only clear below is
+    // `clearIdsValidationReport`, which releases through this same helper
+    // BEFORE nulling the record — moving this call after it passes the whole
+    // suite (verified). The order here is not load-bearing and is not
+    // asserted; what IS load-bearing is the release-before-null order INSIDE
+    // `clearIdsValidationReport` (idsSlice), where it is asserted.
+    endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
+
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
     // longer exists, and the panel's controlled model picker would bind to a
@@ -388,6 +429,18 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         selectedEntities: EntityRef[];
         selectedEntitiesSet: Set<string>;
         selectedModelId: string | null;
+        addElementModelId: string | null;
+        addElementStoreyId: number | null;
+        selectedEntityId: number | null;
+        selectedEntityIds: Set<number>;
+        selectedStoreys: Set<number>;
+        hiddenEntities: Set<number>;
+        isolatedEntities: Set<number> | null;
+        ghostExceptEntities: Set<number> | null;
+        classFilter: { ids: Set<number>; label: string } | null;
+        hiddenEntitiesByModel: Map<string, Set<number>>;
+        isolatedEntitiesByModel: Map<string, Set<number>>;
+        mutationViews: Map<string, { getNewEntity: (id: number) => unknown }>;
         pinboardEntities: Set<string>;
         hierarchyBasketSelection: Set<string>;
       }>;
@@ -398,6 +451,63 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
         sel.selectedEntity?.modelId === modelId ||
         sel.activeStorey?.modelId === modelId ||
         keptEntities.length !== priorEntities.length;
+
+      // Global-id sets (selection, hidden, isolated, ghost, class filter) key
+      // off `globalId`, not `modelId` — they don't carry which model an id
+      // belongs to the way `EntityRef`-shaped state above does. A global id
+      // is "stale" once no SURVIVING model's parse range or overlay owns it
+      // (mirrors `syncSourceModel.ts`'s `purgeStaleEntityState`, the same
+      // check the resync path already runs after a model swap; full removal
+      // never got it, matching the gap `addElementModelId` had above — same
+      // dangling-reference shape, more fields). Left unpurged, an isolate or
+      // ghost set that only ever named the removed model's entities stays
+      // non-null while matching nothing in the survivors, so
+      // `effectiveIsolatedIds` keeps returning it and the entire remaining
+      // federation renders as hidden — worse than the id merely dangling.
+      const survivors = Array.from(newModels.values());
+      const mutationViews = sel.mutationViews;
+      const isStale = (id: number): boolean => {
+        for (const survivor of survivors) {
+          const localId = id - survivor.idOffset;
+          if (localId < 0) continue;
+          if (localId <= survivor.maxExpressId) return false;
+          if (mutationViews?.get(survivor.id)?.getNewEntity(localId) != null) return false;
+        }
+        return true;
+      };
+      const priorSelectedEntityIds = sel.selectedEntityIds;
+      const priorSelectedStoreys = sel.selectedStoreys;
+      const priorHiddenEntities = sel.hiddenEntities;
+      const priorIsolatedEntities = sel.isolatedEntities;
+      const priorGhostEntities = sel.ghostExceptEntities;
+      const priorClassFilter = sel.classFilter;
+      const globalIdStateTouchedRemoved =
+        (priorSelectedEntityIds && [...priorSelectedEntityIds].some(isStale)) ||
+        (priorSelectedStoreys && [...priorSelectedStoreys].some(isStale)) ||
+        (priorHiddenEntities && [...priorHiddenEntities].some(isStale)) ||
+        (priorIsolatedEntities && [...priorIsolatedEntities].some(isStale)) ||
+        (priorGhostEntities && [...priorGhostEntities].some(isStale)) ||
+        (priorClassFilter && [...priorClassFilter.ids].some(isStale)) ||
+        (sel.selectedEntityId !== undefined && sel.selectedEntityId !== null && isStale(sel.selectedEntityId)) ||
+        sel.hiddenEntitiesByModel?.has(modelId) ||
+        sel.isolatedEntitiesByModel?.has(modelId);
+
+      // The AddElement panel's "target model" pin (addElementSlice) is the
+      // same shape of dangling reference as the selection fields above, just
+      // on a different slice: `addElementModelId` names a specific federated
+      // model so the panel and the click-placement handlers
+      // (`resolveAddElementContext` in selectionHandlers.ts) stop tracking
+      // whichever model is merely active. Nothing else clears it when that
+      // model goes away, so it keeps naming a model no longer in `models`
+      // after removal — the panel's Select renders blank instead of falling
+      // back to the active model, and every subsequent placement click fails
+      // with "No model loaded for id" until the user re-picks a model by
+      // hand. `addElementStoreyId` is an express id local to that same
+      // model, so it is stale too and reset alongside it; it is left alone
+      // when the pin names a different (surviving) model, matching how
+      // `selectedEntities` above only drops entries that belong to the
+      // removed model.
+      const addElementTouchedRemoved = sel.addElementModelId === modelId;
 
       // Pinboard/basket state (pinboardSlice) is keyed the same way as
       // `selectedEntitiesSet` above -- Set<string> of "modelId:expressId"
@@ -448,6 +558,60 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
               selectedModelId: sel.selectedModelId === modelId ? null : (sel.selectedModelId ?? null),
             }
           : {}),
+        ...(addElementTouchedRemoved
+          ? { addElementModelId: null, addElementStoreyId: null }
+          : {}),
+        ...(globalIdStateTouchedRemoved
+          ? {
+              selectedEntityId:
+                sel.selectedEntityId != null && isStale(sel.selectedEntityId) ? null : sel.selectedEntityId,
+              selectedEntityIds: priorSelectedEntityIds
+                ? new Set([...priorSelectedEntityIds].filter((id) => !isStale(id)))
+                : priorSelectedEntityIds,
+              selectedStoreys: priorSelectedStoreys
+                ? new Set([...priorSelectedStoreys].filter((id) => !isStale(id)))
+                : priorSelectedStoreys,
+              hiddenEntities: priorHiddenEntities
+                ? new Set([...priorHiddenEntities].filter((id) => !isStale(id)))
+                : priorHiddenEntities,
+              // An isolate/ghost set left with zero surviving ids must clear
+              // to `null` outright, not an empty `Set` — a non-null empty set
+              // still reads as "isolation active, nothing matches" and hides
+              // every remaining entity, same as the stale set it replaces.
+              isolatedEntities: priorIsolatedEntities
+                ? (() => {
+                    const kept = new Set([...priorIsolatedEntities].filter((id) => !isStale(id)));
+                    return kept.size > 0 ? kept : null;
+                  })()
+                : priorIsolatedEntities,
+              ghostExceptEntities: priorGhostEntities
+                ? (() => {
+                    const kept = new Set([...priorGhostEntities].filter((id) => !isStale(id)));
+                    return kept.size > 0 ? kept : null;
+                  })()
+                : priorGhostEntities,
+              classFilter: priorClassFilter
+                ? (() => {
+                    const kept = new Set([...priorClassFilter.ids].filter((id) => !isStale(id)));
+                    return kept.size > 0 ? { ids: kept, label: priorClassFilter.label } : null;
+                  })()
+                : priorClassFilter,
+              hiddenEntitiesByModel: sel.hiddenEntitiesByModel
+                ? (() => {
+                    const next = new Map(sel.hiddenEntitiesByModel);
+                    next.delete(modelId);
+                    return next;
+                  })()
+                : sel.hiddenEntitiesByModel,
+              isolatedEntitiesByModel: sel.isolatedEntitiesByModel
+                ? (() => {
+                    const next = new Map(sel.isolatedEntitiesByModel);
+                    next.delete(modelId);
+                    return next;
+                  })()
+                : sel.isolatedEntitiesByModel,
+            }
+          : {}),
         ...(pinboardTouchedRemoved
           ? { pinboardEntities: keptPinboard, hierarchyBasketSelection: keptHierarchyBasket }
           : {}),
@@ -483,8 +647,25 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // nothing left for either to refer to, and `resetViewerState`
     // (store/index.ts) has always nulled the visibility fields here.
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
+    // Same claim, released the same way: with every model gone the clash
+    // helper above has already cleared both channels outright, so this
+    // normally just drops the record — which it must, because a record that
+    // outlives its presentation re-matches as soon as any other owner
+    // installs equal content (#2654 fourth review).
+    endIdsRowFocusPresentation(get() as unknown as IDSRowFocusPresentation);
     // Clear the federation registry
     federationRegistry.clear();
+    // Same dangling reference as `removeModel`'s `addElementModelId` cleanup
+    // above, just for every model at once: with `models` about to become
+    // empty there is no federated model left for the AddElement panel's pin
+    // to name, so it and the model-local storey id go too. Same for every
+    // global-id set `removeModel` purges by range (selection, hidden,
+    // isolated, ghost, class filter, and the per-model maps): with zero
+    // survivors every id in them is stale by definition, so this unconditionally
+    // clears them rather than repeating the range check for an always-true
+    // answer. `isolatedEntities`/`ghostExceptEntities` clear to `null` (not an
+    // empty `Set`) for the same reason `removeModel` does — an empty-but-set
+    // isolate would hide the very next model loaded, until it does.
     // `federationRegistry.clear()` above resets the offset counter to 0, so
     // the very next model registered can be handed the exact global ids a
     // still-registered overlay layer's `hiddenIds`/`colorOverrides` name.
@@ -569,6 +750,17 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
       activeModelId: null,
       ifcDataStore: null,
       geometryResult: null,
+      addElementModelId: null,
+      addElementStoreyId: null,
+      selectedEntityId: null,
+      selectedEntityIds: new Set(),
+      selectedStoreys: new Set(),
+      hiddenEntities: new Set(),
+      isolatedEntities: null,
+      ghostExceptEntities: null,
+      classFilter: null,
+      hiddenEntitiesByModel: new Map(),
+      isolatedEntitiesByModel: new Map(),
       // Same dangling-ref shape as `removeModel`'s pinboard purge above, for
       // the full-teardown path: with every model gone, every basket ref is
       // stale by definition.

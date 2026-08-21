@@ -266,6 +266,31 @@ export interface AutoColorSpec {
   psetName?: string;
   /** Attribute, property, or quantity name */
   propertyName?: string;
+  /**
+   * Opt-in, `source: "classification"` only: give value-less entities a real
+   * legend entry instead of silently ghosting them (#unclassified-bucket).
+   *
+   * Two absence reasons are distinguished whenever `psetName` (the
+   * classification-system filter) is set, because they mean different things:
+   * "No classification" (zero classification references at all) vs. "Not in
+   * this system" (the entity has references, just none in the selected
+   * system). Collapsing them would hide that distinction behind one number.
+   * When `psetName` is unset there is no system to be "not in", so only "No
+   * classification" is emitted.
+   *
+   * Default `false`/unset preserves the pre-existing behaviour exactly:
+   * value-less entities are ghosted (`GHOST_COLOR`, no legend entry, no
+   * count). This is deliberately opt-in, not a new default — an existing
+   * saved lens (or a consumer relying on ghosted-and-invisible unclassified
+   * elements) must not change appearance on upgrade.
+   *
+   * Forward compatibility: this field is additive. An engine build that
+   * predates it does not read it, so an exported lens with
+   * `includeUnclassified: true` opened in an older build silently falls back
+   * to ghosting the absent entities — the pre-existing, safe behaviour —
+   * rather than doing anything wrong with a field it doesn't understand.
+   */
+  includeUnclassified?: boolean;
 }
 
 /** A saved Lens configuration */
@@ -310,6 +335,20 @@ export interface AutoColorLegendEntry {
   name: string;
   color: string;
   count: number;
+  /**
+   * Set (`true`) only for a synthetic "absence" bucket — e.g. "No
+   * classification" or "Not in this system" — rather than a real distinct
+   * value drawn from the model. Consumers that group/filter/export values
+   * should not treat `name` as a classification code, material name, etc.
+   * when this is set.
+   *
+   * Forward compatibility: an older consumer that doesn't know this field
+   * simply renders the entry like any other legend row. That's safe, not
+   * silently wrong: the `name` text ("No classification") is self-describing
+   * and the entry behaves like a normal clickable/isolatable row — it just
+   * can't be told apart from a real value by an older UI's styling.
+   */
+  isAbsent?: boolean;
 }
 
 /** Supported auto-color data sources for display in UI */

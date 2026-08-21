@@ -65,9 +65,29 @@
       "epsg": "31370",
       "name": "Belge 1972 / Belgian Lambert 72",
       "control_point": {
-        "description": "Brussels, Grand Place area",
+        "description": "Brussels, Grand Place area. towgs84 rotation terms fixed 2026-08-19: the epsg.io-vendored string had them sign-flipped (Coordinate Frame convention values dropped into a Position-Vector-expecting +towgs84), verified against EPSG:1652 'BD72 to ETRS89 (1)' (method 9606, Position Vector) — vendored sign gave a 64.8m residual, corrected sign gives 0.07m. This baseline reflects the corrected string.",
         "projected": { "easting": 148677.0, "northing": 170851.0 },
-        "expected_wgs84": { "lat": 50.847793, "lon": 4.349147 }
+        "expected_wgs84": { "lat": 50.84806, "lon": 4.349966 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "3021",
+      "name": "RT90 2.5 gon V (Sweden)",
+      "control_point": {
+        "description": "Stockholm City Hall area. towgs84 rotation terms fixed 2026-08-19: the epsg.io-vendored string carried EPSG:1896's Coordinate Frame convention rotation signs directly; proj4's +towgs84 expects Position Vector convention (the negation), verified against EPSG:1896 'RT90 to WGS 84 (2)' (method 9607, Coordinate Frame). The vendored sign put this landmark about 256m off; the corrected sign matches.",
+        "projected": { "easting": 1628038.54, "northing": 6580668.76 },
+        "expected_wgs84": { "lat": 59.32739, "lon": 18.05452 }
+      },
+      "tolerance_m": 1
+    },
+    {
+      "epsg": "2065",
+      "name": "S-JTSK (Ferro) / Krovak",
+      "control_point": {
+        "description": "Prague, Old Town Square area (same landmark as the EPSG:5514 fixture below, reprojected). towgs84 clause added 2026-08-19: the epsg.io-vendored string had none at all, so proj4 applied no datum shift, landing this landmark about 117m off WGS84. Value taken from epsg.io live output, verified against EPSG:5239 'S-JTSK to WGS 84 (5)' (method 9607, Coordinate Frame) negated to Position Vector convention for +towgs84.",
+        "projected": { "easting": -743323.79, "northing": -1043492.36 },
+        "expected_wgs84": { "lat": 50.082564, "lon": 14.41505 }
       },
       "tolerance_m": 1
     },

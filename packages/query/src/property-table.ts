@@ -37,7 +37,11 @@ export class PropertyTable {
   }
 
   /**
-   * Get property value for entity
+   * Get property value for entity. An entity can carry two same-named
+   * property sets (two IfcRelDefinesByProperties pointing at distinct
+   * IfcPropertySets, same as `findEntities` below handles) — keep scanning
+   * subsequent same-named sets when an earlier one doesn't have the
+   * property, rather than returning null on the first name match.
    */
   getProperty(entityId: number, propertySetName: string, propertyName: string): PropertyValue | null {
     const propertySetIds = this.entityPropertyMap.get(entityId);
@@ -46,7 +50,8 @@ export class PropertyTable {
     for (const setId of propertySetIds) {
       const pset = this.propertySets.get(setId);
       if (pset && pset.name === propertySetName) {
-        return pset.properties.get(propertyName) || null;
+        const value = pset.properties.get(propertyName);
+        if (value) return value;
       }
     }
 

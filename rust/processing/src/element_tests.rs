@@ -276,16 +276,27 @@ END-ISO-10303-21;
     assert_eq!(find_geometry_item_color(100, &styles, &mut decoder), None);
 }
 
-/// The cap is not a free parameter: it must match the geometry router's
-/// `MAX_MAPPED_ITEM_DEPTH`, or a chain longer than this one but shorter than
-/// the router's renders its geometry and silently loses its leaf's style.
-/// The boundary tests above derive their fixtures FROM this constant, so they
-/// follow it anywhere; this pins the value itself.
+/// The cap is not a free parameter: it must match the geometry router's, or a
+/// chain longer than this one but shorter than the router's renders its
+/// geometry and silently loses its leaf's style.
+///
+/// Agreement is now STRUCTURAL: all three walks import one constant from
+/// `ifc_lite_core::limits`, so they cannot disagree. This test used to assert
+/// `MAX_MAPPED_ITEM_DEPTH == 32` against a literal, with a message claiming it
+/// "must equal ifc_lite_geometry::router::processing::MAX_MAPPED_ITEM_DEPTH" —
+/// but it never read the router's value, so it would have stayed green while
+/// the router moved to any other number. It pinned agreement in its message and
+/// a literal in its assertion, which is the illusion of enforcement rather than
+/// enforcement. The value itself is pinned once, in core, next to the constant.
+///
+/// What is worth keeping here is the identity of the import, so that swapping
+/// back to a private copy is a visible change rather than a silent one.
 #[test]
-fn mapped_item_depth_cap_matches_the_geometry_router() {
+fn mapped_item_depth_cap_is_the_shared_constant() {
     assert_eq!(
-        MAX_MAPPED_ITEM_DEPTH, 32,
-        "must equal ifc_lite_geometry::router::processing::MAX_MAPPED_ITEM_DEPTH"
+        MAX_MAPPED_ITEM_DEPTH,
+        ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
+        "element.rs must use the shared cap, not a private copy"
     );
 }
 

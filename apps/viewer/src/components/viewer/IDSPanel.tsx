@@ -238,10 +238,12 @@ function SpecificationCard({
                 <div className="mt-2">
                   <PassRateBar passRate={result.passRate} />
                 </div>
-                {/* Check-level rate: one entity can fail several requirements
-                    at once, so this legitimately differs from (and is <=) the
+                {/* Check-level rate: an entity is failed by its FIRST failing
+                    requirement while its other requirements still count as
+                    passes here, so this normally reads HIGHER than the
                     entity-level rate above — both matter and are shown
-                    separately rather than picking one. */}
+                    separately rather than picking one. See computeCheckStats
+                    for the denominator caveat. */}
                 {applicableChecks > 0 && (
                   <div className="mt-1 text-xs text-muted-foreground">
                     {checkStats.passedChecks}/{applicableChecks} checks passed ({checkStats.checkPassRate}%)

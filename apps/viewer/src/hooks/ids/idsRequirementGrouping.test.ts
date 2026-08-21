@@ -128,7 +128,7 @@ describe('groupRequirementResults', () => {
 });
 
 describe('computeCheckStats', () => {
-  it('check-level pass rate legitimately differs from (and is <=) an entity-level rate', () => {
+  it('check-level pass rate legitimately differs from an entity-level rate', () => {
     // 3 doors x 3 requirements = 9 checks. Only 1 check fails, but it's
     // spread across a single entity, so entity-level (2/3 = 67%) and
     // check-level (8/9 = 88%) intentionally disagree.
@@ -174,5 +174,47 @@ describe('computeCheckStats', () => {
     const entities: IDSEntityResult[] = [entity(1, [reqResult(certificateRef, 'not_applicable')])];
     const stats = computeCheckStats(entities);
     assert.strictEqual(stats.checkPassRate, 100);
+  });
+
+  // The direction of the check-level vs entity-level relation was documented
+  // backwards ("always <=") until this pinned it. It is prose nobody can run,
+  // so both directions live here as arithmetic instead.
+  it('reads HIGHER than the entity-level rate when a failing entity still passes some checks', () => {
+    const entities: IDSEntityResult[] = [
+      // A: fails one of two checks -> a FAILED entity that still passes a check.
+      entity(1, [reqResult(fireRating, 'pass'), reqResult(width, 'fail')]),
+      // B: passes both.
+      entity(2, [reqResult(fireRating, 'pass'), reqResult(width, 'pass')]),
+    ];
+
+    const stats = computeCheckStats(entities);
+    const passedEntities = entities.filter((e) => e.passed).length;
+    const entityPassRate = Math.floor((passedEntities / entities.length) * 100);
+
+    assert.strictEqual(entityPassRate, 50, 'one of two entities passes');
+    assert.strictEqual(stats.checkPassRate, 75, 'three of four applicable checks pass');
+    assert.ok(
+      stats.checkPassRate > entityPassRate,
+      `check-level ${stats.checkPassRate}% must exceed entity-level ${entityPassRate}%, not fall below it`
+    );
+  });
+
+  it('can read LOWER than the entity-level rate: an all-not_applicable entity passes but contributes no check', () => {
+    const entities: IDSEntityResult[] = [
+      // A: passes as an entity (nothing failed) but adds zero applicable checks.
+      entity(1, [reqResult(certificateRef, 'not_applicable')]),
+      // B: fails its only check.
+      entity(2, [reqResult(certificateRef, 'fail')]),
+    ];
+
+    const stats = computeCheckStats(entities);
+    const passedEntities = entities.filter((e) => e.passed).length;
+    const entityPassRate = Math.floor((passedEntities / entities.length) * 100);
+
+    assert.strictEqual(entityPassRate, 50);
+    assert.strictEqual(stats.checkPassRate, 0, 'zero of one applicable check passes');
+    // Hence the docblock says "normally above", never "always": the two rates
+    // have different denominators, so neither direction holds unconditionally.
+    assert.ok(stats.checkPassRate < entityPassRate);
   });
 });

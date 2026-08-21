@@ -136,8 +136,19 @@ export function groupRequirementResults(
 
 /**
  * Roll every entity's requirement checks in a specification into a single
- * check-level pass rate — distinct from (and always <=) the specification's
- * own entity-level `passRate`, since one entity can fail several checks.
+ * check-level pass rate. This is a DIFFERENT measure from the specification's
+ * own entity-level `passRate` (packages/ids/src/validation/validator.ts), not
+ * a refinement of it, and the two move in a specific relative direction: an
+ * entity counts as failed the moment ONE of its checks fails, while each of
+ * its remaining checks still counts as a pass here. So the check-level rate
+ * normally sits ABOVE the entity-level one — entity A passing 1 of 2 checks
+ * and entity B passing both give 50% entity-level against 75% check-level.
+ *
+ * "Normally", not "always": the two rates have different denominators. An
+ * entity whose requirements are ALL `not_applicable` counts as a passing
+ * entity but contributes no applicable checks at all, so enough of those can
+ * put the entity-level rate above the check-level one. Both directions are
+ * pinned in idsRequirementGrouping.test.ts.
  */
 export function computeCheckStats(entityResults: readonly IDSEntityResult[]): CheckStats {
   let passedChecks = 0;

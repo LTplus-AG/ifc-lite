@@ -194,3 +194,82 @@ describe('installFromBytes rollback', () => {
     assert.equal(after.bytes, undefined);
   });
 });
+
+/**
+ * The record and the bundle bytes are two independent pieces of state. A
+ * record can outlive its bytes — the loader has a dedicated
+ * `invalid_reference` error for exactly that — and restoring the bytes can
+ * fail on its own (a storage quota rejection). Neither may take the record
+ * down with it: the record carries the capability grants, the enabled bit,
+ * the install time and the source, none of which need bytes to be worth
+ * keeping, and none of which the user asked to remove.
+ */
+describe('installFromBytes rollback keeps the record independent of the bytes', () => {
+  beforeEach(async () => {
+    await new IdbExtensionStorage().clear();
+  });
+
+  it('keeps the previous record when a same-version reinstall is rejected', async () => {
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    const before = await installedState(first.storage, '1.0.0');
+    assert.ok(before.record, 'the first install landed');
+
+    // The bytes go missing behind the record's back.
+    await first.storage.deleteBundle(EXT_ID, '1.0.0');
+
+    const second = makeDeps([failStatus(), okStatus()]);
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('1.0.0', 'replacement'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+
+    const after = await installedState(second.storage, '1.0.0');
+    assert.deepEqual(after.record, before.record, 'the previous record survives');
+  });
+
+  it('keeps the previous record when an upgrade is rejected', async () => {
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    const before = await installedState(first.storage, '1.0.0');
+    assert.ok(before.record, 'the first install landed');
+    await first.storage.deleteBundle(EXT_ID, '1.0.0');
+
+    const second = makeDeps([failStatus(), okStatus()]);
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('2.0.0', 'upgrade'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+
+    // The outgoing version is still torn down — that part is a version change.
+    assert.equal(second.teardowns.count, 1, 'the outgoing version is torn down');
+    const after = await installedState(second.storage, '1.0.0');
+    assert.deepEqual(after.record, before.record, 'the previous record survives');
+  });
+
+  it('keeps the previous record when restoring its bytes fails', async () => {
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    const before = await installedState(first.storage, '1.0.0');
+    assert.ok(before.record, 'the first install landed');
+
+    const second = makeDeps([failStatus(), okStatus()]);
+    // Fail only the restore's `putBundle`, the way a quota rejection would.
+    const realPutBundle = second.storage.putBundle.bind(second.storage);
+    let bundleWrites = 0;
+    second.storage.putBundle = (id: string, version: string, bytes: Uint8Array) => {
+      bundleWrites += 1;
+      if (bundleWrites > 1) return Promise.reject(new Error('QuotaExceeded during restore'));
+      return realPutBundle(id, version, bytes);
+    };
+
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('1.0.0', 'replacement'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+    assert.ok(bundleWrites > 1, 'the restore actually attempted a bundle write');
+
+    const after = await installedState(second.storage, '1.0.0');
+    assert.deepEqual(after.record, before.record, 'the previous record survives');
+  });
+});

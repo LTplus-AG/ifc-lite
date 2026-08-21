@@ -15,6 +15,7 @@
 
 import {
   activeFlavorPointer,
+  activeFlavorPointerAlreadyStored,
   DEFAULT_FLAVOR_ID,
   flavorImportedId,
   packFlavor,
@@ -183,35 +184,21 @@ export class FlavorService {
     // storage is exactly what a successful reset leaves behind.
     //
     // `activeFlavorPointer` builds the value handed to `setActiveId`, and
-    // `activeIdAlreadyStored` compares through the same value, so what is
-    // compared is what would have been written.
+    // `activeFlavorPointerAlreadyStored` — the one comparison, shared with the
+    // switcher — compares through that same value, so what is compared is what
+    // would have been written.
     const activeId = activeFlavorPointer(flavor);
     try {
       await this.storage.setActiveId(activeId);
     } catch (err) {
-      if (!(await this.activeIdAlreadyStored(activeId))) throw err;
+      const stored = await activeFlavorPointerAlreadyStored(
+        () => this.storage.getActiveId(),
+        activeId,
+      );
+      if (!stored) throw err;
     }
     this.emit();
     return flavor;
-  }
-
-  /**
-   * Whether the active-flavor pointer already holds exactly `id` — i.e.
-   * whether writing `id` would change nothing.
-   *
-   * One-directional on purpose: `false` only means "not provably a no-op". A
-   * pointer that cannot be read back answers `false`, because the write really
-   * might have changed it. A caller uses this to let a refused write pass, and
-   * letting one pass that would have moved the pointer is the failure that
-   * matters.
-   */
-  private async activeIdAlreadyStored(id: string): Promise<boolean> {
-    try {
-      return (await this.storage.getActiveId()) === id;
-    } catch {
-      // Unreadable pointer: nothing is provably stored.
-      return false;
-    }
   }
 
   /** Subscribe to flavor changes. Returns unsubscribe. */

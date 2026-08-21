@@ -1730,6 +1730,7 @@
     "WhenValue: type",
     "WidgetNode: type",
     "activeFlavorPointer: function",
+    "activeFlavorPointerAlreadyStored: function",
     "assertMethodCall: function",
     "buildAuthoringContract: function",
     "buildBundleFromFiles: function",

@@ -52,6 +52,7 @@ export {
 } from './migrate-scripts.js';
 export {
   activeFlavorPointer,
+  activeFlavorPointerAlreadyStored,
   switchFlavor,
   type FlavorSwitcherCallbacks,
   type FlavorExtensionState,

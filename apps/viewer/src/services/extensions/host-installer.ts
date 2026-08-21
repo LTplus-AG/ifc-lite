@@ -184,17 +184,47 @@ export async function installFromBytes(
     await deps.storage.deleteBundle(id, version);
     await deps.storage.deleteExtension(id);
 
-    // Restore the previous install if we had one — re-write its
-    // record and bundle bytes, then re-load. Best effort: log if
-    // restore itself fails, don't mask the original error.
-    if (previous && previousBundleBytes) {
+    // Restore the previous install if we had one — re-write its record and
+    // bundle bytes, then re-load. Best effort: log if a step fails, don't
+    // mask the original error.
+    //
+    // The record goes back FIRST and in its own step. It is the piece the
+    // user cannot reconstruct — the capability grants, the enabled bit, the
+    // install time, the source — and none of it needs bytes: a record whose
+    // bundle is missing is a state the loader already names
+    // (`invalid_reference`, "Bundle for X@Y not found in storage"), and it is
+    // recoverable by reinstalling the same version. So the record is not
+    // gated on a byte snapshot, and a byte write that fails — the plausible
+    // failure here, since `putBundle` is the one with a quota path — cannot
+    // take it down. Each step is independently guarded for the same reason.
+    if (previous) {
       try {
-        await deps.storage.putBundle(id, previous.version, previousBundleBytes);
         await deps.storage.putExtension(previous);
+      } catch (restoreErr) {
+        console.error(
+          `[ext-host] Failed to restore the previous record of ${id}:`,
+          restoreErr,
+        );
+      }
+      if (previousBundleBytes) {
+        try {
+          await deps.storage.putBundle(id, previous.version, previousBundleBytes);
+        } catch (restoreErr) {
+          console.error(
+            `[ext-host] Failed to restore the previous bundle of ${id}:`,
+            restoreErr,
+          );
+        }
+      }
+      try {
+        // Best effort either way: with the bytes back this reloads the
+        // working install; without them the loader reports
+        // `invalid_reference` and nothing is left running, which is the
+        // truthful state and not something a throw here would improve.
         await deps.loader.load(id);
       } catch (restoreErr) {
         console.error(
-          `[ext-host] Failed to restore previous install of ${id}:`,
+          `[ext-host] Failed to reload the previous install of ${id}:`,
           restoreErr,
         );
       }

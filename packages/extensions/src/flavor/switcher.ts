@@ -83,26 +83,36 @@ export function activeFlavorPointer(target: Flavor): string {
 }
 
 /**
- * Whether the persisted active-flavor pointer already holds exactly what
- * `setActiveFlavor` would write for `target` — i.e. whether that write would
- * change nothing.
+ * Whether the persisted active-flavor pointer already holds exactly
+ * `pointer` — i.e. whether writing `pointer` would change nothing.
  *
- * Built through `activeFlavorPointer`, the same function the write above is
- * handed, so the compared value is the written value by construction.
+ * `read` is the host's way of reading the pointer back and `pointer` is the
+ * value that would have been written, which callers build with
+ * `activeFlavorPointer` so the compared value is the written value by
+ * construction. Every host that asks this question asks it in exactly this
+ * shape, so it lives here once: an encoding change to the pointer lands in
+ * `activeFlavorPointer` and this comparison follows it, in every package.
  *
  * One-directional on purpose: `false` only means "not provably a no-op". A
  * host that cannot read the pointer back, or whose read fails, answers
  * `false`, because the write really might have changed it. A caller uses this
  * to let a refused write pass, and letting one pass that would have moved the
  * pointer is the failure that matters.
+ *
+ * The same asymmetry governs a non-string `pointer`: the type forbids it, but
+ * if one arrives, `undefined === undefined` against an unset pointer would
+ * report a refused write with nothing stored as a successful one. That is the
+ * unsafe direction, so it answers `false`.
  */
-async function activeFlavorAlreadyStored(
-  callbacks: FlavorSwitcherCallbacks,
-  target: Flavor,
+export async function activeFlavorPointerAlreadyStored(
+  read: (() => Promise<string | undefined>) | undefined,
+  pointer: string | undefined,
 ): Promise<boolean> {
-  if (!callbacks.readActiveFlavor) return false;
+  if (!read) return false;
+  // Nothing is provably stored for a pointer that is not a value we write.
+  if (typeof pointer !== 'string') return false;
   try {
-    return (await callbacks.readActiveFlavor()) === activeFlavorPointer(target);
+    return (await read()) === pointer;
   } catch {
     // Unreadable pointer: nothing is provably stored.
     return false;
@@ -188,7 +198,8 @@ export async function switchFlavor(
     // pointer it already holds; failing here would disable every extension the
     // target declares and report the flavor as not applied while the pointer on
     // disk names it.
-    if (!(await activeFlavorAlreadyStored(opts.callbacks, opts.target))) {
+    const read = opts.callbacks.readActiveFlavor?.bind(opts.callbacks);
+    if (!(await activeFlavorPointerAlreadyStored(read, activeFlavorPointer(opts.target)))) {
       await rollback(opts.callbacks, touched);
       return { ok: false, active: opts.current ?? opts.target, failures: [...failures, '<pointer>'], disabled, enabled };
     }

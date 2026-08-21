@@ -3,7 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from 'vitest';
-import { switchFlavor, type FlavorSwitcherCallbacks } from './switcher.js';
+import {
+  activeFlavorPointerAlreadyStored,
+  switchFlavor,
+  type FlavorSwitcherCallbacks,
+} from './switcher.js';
 import type { Flavor, FlavorExtension } from './types.js';
 
 function flavor(id: string, extensionIds: string[]): Flavor {
@@ -207,5 +211,46 @@ describe('switchFlavor', () => {
     });
     expect(seen).toEqual(['flv.b']);
     expect(result.ok).toBe(false);
+  });
+});
+
+describe('activeFlavorPointerAlreadyStored', () => {
+  it('is true only when the stored pointer is exactly the value to be written', async () => {
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.a', 'flv.a')).toBe(true);
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.b', 'flv.a')).toBe(false);
+    expect(await activeFlavorPointerAlreadyStored(async () => undefined, 'flv.a')).toBe(false);
+  });
+
+  it('is false when the host cannot read the pointer back', async () => {
+    expect(await activeFlavorPointerAlreadyStored(undefined, 'flv.a')).toBe(false);
+    expect(
+      await activeFlavorPointerAlreadyStored(() => Promise.reject(new Error('io')), 'flv.a'),
+    ).toBe(false);
+  });
+
+  it('is false for a non-string pointer, even against an unset pointer', async () => {
+    // The unsafe direction: `undefined === undefined` would report a refused
+    // write with nothing stored as a successful one. The type forbids the
+    // input, so this pins the behaviour if it ever arrives anyway.
+    const missing = undefined as unknown as string;
+    expect(await activeFlavorPointerAlreadyStored(async () => undefined, missing)).toBe(false);
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.a', missing)).toBe(false);
+  });
+
+  it('backs the switcher: a target with no id never passes a refused write', async () => {
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockResolvedValue(undefined),
+    });
+    const target = flavor('flv.b', []);
+    (target as { id?: string }).id = undefined;
+    const result = await switchFlavor({
+      target,
+      current: flavor('flv.a', []),
+      installed: [],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
   });
 });

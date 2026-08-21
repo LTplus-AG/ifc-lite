@@ -21,6 +21,11 @@ already:
 - **`activeFlavorPointer(target)`** is now exported: it builds the id the
   pointer stores for a flavor, so the value compared is the value written by
   construction rather than a second derivation that can drift.
+- **`activeFlavorPointerAlreadyStored(read, pointer)`** is now exported and is
+  the single comparison both hosts ask through, so a change to how the pointer
+  is encoded lands once. It answers `false` for a pointer that is not a string,
+  so an absent id can never match an unset pointer and report a refused write
+  with nothing stored as a successful one.
 - **`ExtensionHostService.switchFlavor`** (viewer) wires that callback through
   `FlavorService.activeId()`, also new. It turned a failed switch into a thrown
   error, which skipped the lens, clash and sidebar restores below it.
@@ -35,6 +40,20 @@ id and version, so a reinstall of the same version overwrote them; a loader
 rejection then deleted the record and the bundle with nothing to restore,
 wiping a working extension. The snapshot is now taken for any previous install.
 The teardown stays gated on a version change.
+
+The rollback also restores the previous record first and in its own step,
+independent of the bundle bytes. The record carries the capability grants, the
+enabled bit, the install time and the source, none of which need bytes: a
+record whose bundle is missing is a state the loader already names
+(`invalid_reference`) and one a reinstall repairs, so a previous install whose
+bytes were already gone no longer has its record deleted by the rollback, and a
+byte write that fails during the restore — `putBundle` is the step with a
+storage-quota path — no longer takes the record down with it.
+
+One cost, in the safe direction: because the snapshot is no longer gated on a
+version change, a transient failure reading the previous bundle bytes now fails
+a same-version reinstall that previously would have proceeded. Nothing is
+written or destroyed in that case; the install has to be retried.
 
 Each comparison is one-directional: `false` means "not provably a no-op", never
 a guess, so anything unreadable costs only a refusal that was already the old

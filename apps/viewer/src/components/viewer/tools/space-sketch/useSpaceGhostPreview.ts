@@ -151,12 +151,14 @@ export function useSpaceGhostPreview({ enabled, ghosts, contextIds }: GhostPrevi
       // owns that on close, and it runs synchronously on the `enabled` transition
       // while this path is reached from a debounce — so clearing here landed AFTER
       // the restore and undid it. Worse than it sounds: `setGhostExceptEntities(null)`
-      // also nulls `isolatedEntities` (visibilitySlice.ts:227), so a stale clear wiped
-      // the user's restored isolation as well as their prior X-ray.
+      // also nulls `isolatedEntities` (visibilitySlice.ts, `setGhostExceptEntities`),
+      // so a stale clear wiped the user's restored isolation as well as their
+      // prior X-ray.
       //
-      // The tool's own X-ray still gets cleared: `restore` calls
-      // `setIsolatedEntities` first, which sets `ghostExceptEntities: null`
-      // unconditionally (visibilitySlice.ts:221) before replaying any prior X-ray.
+      // The tool's own X-ray still gets cleared: `restore` puts the CAPTURED
+      // view back through `restoreVisibilityState`, which writes both channels
+      // verbatim — so when nothing was ghosted before the tool opened it writes
+      // `ghostExceptEntities: null`, and the tool's X-ray goes with it.
       ghostViewActiveRef.current = false;
       return;
     }

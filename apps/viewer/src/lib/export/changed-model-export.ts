@@ -72,8 +72,19 @@ export async function exportChangedModelToIfcx(
   invocation: IfcxExportInvocation,
 ): Promise<ChangesExportArtifact> {
   const { withInstancedMeshes } = await import('../../utils/instancedExport.js');
+  // GPU instancing stopped being primary-only on 2026-08-06 (#2255) — scope by
+  // THIS model's `{ idOffset, maxExpressId }` bracket rather than an
+  // `idOffset === 0` gate, or a federation of N models would splice every
+  // other model's instanced entities into this one's export.
+  // `invocation.maxExpressId` is undefined only for the legacy slot, which is
+  // provably the sole model loaded (#2865/#2878 follow-up).
   const exportGeometry = invocation.geometryResult
-    ? withInstancedMeshes(invocation.geometryResult, invocation.idOffset === 0)
+    ? withInstancedMeshes(
+        invocation.geometryResult,
+        invocation.maxExpressId !== undefined
+          ? { idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
+          : null,
+      )
     : invocation.geometryResult;
 
   const exporter = new Ifc5Exporter(dataStore, exportGeometry, view, invocation.idOffset);

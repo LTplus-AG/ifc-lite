@@ -50,9 +50,11 @@ import {
   loadReviews,
   loadSettings,
   saveExclusions,
+  presetsStoreIdentically,
   savePresets,
   saveReviews,
   saveSettings,
+  settingsAlreadyStored,
   validatePresetName,
   validateSelector,
   CLASH_BOUNDS,
@@ -366,8 +368,12 @@ export interface ClashSlice {
   /**
    * Replace the entire clash config (presets + detection settings) and persist.
    * Used when activating a flavor/profile so each one carries its own rule-set.
+   *
+   * All-or-nothing: the two writes go to two independent localStorage keys, so
+   * a refused write (quota, or storage blocked entirely) is undone and nothing
+   * is committed to the store. Callers report `result.message`.
    */
-  applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => void;
+  applyClashFlavorConfig: (config: { presets: ClashPreset[]; settings: ClashGlobalSettings }) => SaveResult;
   clearClash: () => void;
 }
 
@@ -837,6 +843,109 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       }),
 
     applyClashFlavorConfig: ({ presets, settings }) => {
+      // Persist FIRST, commit only if both writes landed: a flavor whose config
+      // is shown as applied but was refused by storage silently reverts to the
+      // previous flavor's rules on the next reload.
+      //
+      // The two halves live under two independent localStorage keys and there is
+      // no transaction across them, so a half-landed apply (new rule set, old
+      // tolerances) is reachable. That state is not one the user can reason
+      // about or even see is wrong, so it is undone rather than committed.
+      // Presets go first because `savePresets` rejects an over-cap rule set
+      // before it touches storage, which makes the common failure a clean no-op.
+      const previousPresets = get().clashPresets;
+      const presetsResult = savePresets(presets);
+      // The same rule the settings write below and the rollback under it both
+      // apply, applied to the write that runs FIRST: a refused write that would
+      // have stored exactly what is stored already changed nothing, so it must
+      // not fail the apply. "Nothing written, nothing to undo" is a statement
+      // about the rollback, not a reason to abort — a flavor can carry the rule
+      // set that is already stored and differ only in its thresholds (the same
+      // pairing the rollback branch below names), and then the presets key
+      // needs no write at all and the settings write still has somewhere to go.
+      // Aborting here applies neither half and reports "clash rules were not
+      // saved" over storage holding exactly those rules.
+      //
+      // `presetsStoreIdentically` compares the payloads `savePresets` itself
+      // builds, so what is compared is what would have been written; it answers
+      // `false` for anything it cannot prove identical (an unserializable rule
+      // set included), which only ever costs a refusal that was already the old
+      // behaviour. Letting the refusal pass does not make the apply succeed on
+      // its own: everything below still gates on the settings write.
+      if (!presetsResult.ok && !presetsStoreIdentically(previousPresets, presets)) {
+        return presetsResult; // nothing written, nothing to undo
+      }
+
+      const settingsResult = saveSettings(settings);
+      // The same rule the rollback below applies to the presets write, applied
+      // to this one: a refused write that would have stored exactly what is
+      // stored already changed nothing, so it must not fail the apply. A flavor
+      // can carry the settings that are on disk and differ only in its rule set
+      // — flavors that share the thresholds and swap the rules around them —
+      // and then the settings key needs no write at all: the presets write
+      // above landed, and both keys already hold the flavor's config. Aborting
+      // here would roll that write back and report "clash settings were not
+      // saved" over storage holding exactly those settings.
+      //
+      // `settingsAlreadyStored` compares against the bytes `saveSettings`
+      // itself builds, so what is compared is what would have been written; it
+      // answers `false` for anything it cannot prove identical, which only ever
+      // costs a refusal that was already the old behaviour.
+      if (!settingsResult.ok && !settingsAlreadyStored(settings)) {
+        // Put the previous rule set back so storage matches the store we are
+        // about to leave untouched. This rewrites a payload that fit a moment
+        // ago, in place of the one that just replaced it, so it should land.
+        const undo = savePresets(previousPresets);
+        // A failed undo only strands something if the write it was undoing
+        // stored a different rule set than the one already stored. A flavor can
+        // carry the rule set that is already stored and differ only in its
+        // tolerances, and then the presets write stored the same rule set over
+        // itself: storage still holds the previous rule set beside the previous
+        // settings, which is exactly what the store holds, so this is an
+        // ordinary refused settings write.
+        // `presetsStoreIdentically` compares the payloads `savePresets` itself
+        // builds, not the arrays, because `presetsToStore` drops unmodified
+        // built-ins — two rule sets that differ as arrays can store the same.
+        if (!undo.ok && !presetsStoreIdentically(previousPresets, presets)) {
+          // The rollback failed too — realistic, since genuine quota exhaustion
+          // (as opposed to one blocked key) leaves the disk full for the next
+          // write as well. The store is still correct: nothing below this
+          // branch runs, so the in-memory flavor never moved. But storage now
+          // holds the NEW presets next to the OLD settings, a hybrid the user
+          // never chose, and that pair rehydrates as-is on the next reload.
+          //
+          // There is no third write to retry and no snapshot beyond the one
+          // that just failed to fall back to, so a bigger recovery mechanism
+          // (re-reading storage back into the store, or a latch that refuses
+          // further applies) would be reacting to a failure mode this rare —
+          // a full quota surviving two consecutive writes — with a permanent
+          // behavior change. What the caller (`ExtensionHostService`, see
+          // `host.ts`) already does with a failed `SaveResult` is console.warn
+          // it, matching every other refused write in this slice; enrich the
+          // message so that warning names the real severity instead of
+          // reading like an ordinary "settings not saved" refusal.
+          //
+          // `reason` carries the same distinction in machine-readable form.
+          // Passing `settingsResult.reason` through would report `'quota'` for
+          // both halves of this branch — genuine exhaustion is what fails a
+          // rollback in the first place — leaving "recovered, storage is
+          // consistent" and "stranded, storage is not" indistinguishable in
+          // the only field a caller can branch on.
+          console.warn(
+            '[clash] flavor apply: could not restore the previous rule set after a refused settings write — storage now holds the new rule set with the previous settings:',
+            undo.message,
+          );
+          return {
+            ok: false,
+            reason: 'rollback_failed',
+            message:
+              `${settingsResult.message} The previous rule set could also not be restored ` +
+              `(${undo.message}), so saved data may no longer match what is shown.`,
+          };
+        }
+        return settingsResult;
+      }
+
       const state = get();
       set({
         clashPresets: presets,
@@ -858,9 +967,7 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
           false,
         ),
       });
-      // Persist so the activated flavor's config becomes the working set on reload.
-      savePresets(presets);
-      saveSettings(settings);
+      return { ok: true };
     },
 
     clearClash: () =>

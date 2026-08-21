@@ -229,7 +229,21 @@ export class WorkerParser {
         deferPropertyAtomIndex: options.deferPropertyAtomIndex,
         waitForEntityIndex: options.waitForEntityIndex,
       };
-      worker.postMessage(input);
+      try {
+        worker.postMessage(input);
+      } catch (err) {
+        // postMessage can itself throw (e.g. a DataCloneError from structured
+        // clone). It's called after the worker is spawned, assigned to
+        // `this.worker`, and its handlers attached, so without this catch the
+        // Promise executor's synchronous throw auto-rejects the returned
+        // promise while nothing ever calls settle() — the worker thread is
+        // left running (and `this.worker` left pointing at it) forever.
+        settle(() => {
+          worker.terminate();
+          this.worker = null;
+        });
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 

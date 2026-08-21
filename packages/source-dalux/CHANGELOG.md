@@ -1,5 +1,31 @@
 # @ifc-lite/source-dalux
 
+## 0.3.0
+
+### Minor Changes
+
+- [#2796](https://github.com/LTplus-AG/ifc-lite/pull/2796) [`5103734`](https://github.com/LTplus-AG/ifc-lite/commit/51037344717fe3d4c7c138e03f709a01a19ddccd) Thanks [@louistrue](https://github.com/louistrue)! - Let a Dalux user reach their own node. Dalux assigns each customer a node and
+  prints its base URL beside the API key, but the base URL was fixed at node1, so
+  every customer on node2 or above could not use Dalux Box at all. A new optional
+  "API base URL" preference accepts the URL Dalux shows them.
+  
+  Only the node NAME is taken from that URL, and the relay assembles the origin
+  from an anchored allowlist. A caller-supplied base URL is never forwarded,
+  because `/api/dalux` is unauthenticated and publicly reachable: any host the
+  relay can be aimed at becomes reachable by anyone through our egress IPs.
+  Building the origin ourselves bounds that to Dalux.
+
+### Patch Changes
+
+- [#2807](https://github.com/LTplus-AG/ifc-lite/pull/2807) [`a257092`](https://github.com/LTplus-AG/ifc-lite/commit/a2570927c5496fc4a6e3a54183a4f6d99c6f5edf) Thanks [@louistrue](https://github.com/louistrue)! - Fix the Dalux node selection in local development, which was inert. The dev
+  proxy was given a `router` callback to pick the upstream per request, but Vite
+  has no such option: it uses `http-proxy-3`, while `router` belongs to
+  `http-proxy-middleware`. The callback was silently ignored, so a developer on a
+  non-default node still reached node1.
+  
+  Dev now serves `/api/dalux` with the same relay handler production uses, rather
+  than a second proxy configuration that can drift from it.
+
 ## 0.2.3
 
 ### Patch Changes

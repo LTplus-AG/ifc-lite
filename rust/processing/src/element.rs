@@ -790,13 +790,7 @@ fn build_mesh_data(
     mesh_data
 }
 
-/// Longest `IfcMappedItem → IfcRepresentationMap → MappedRepresentation`
-/// chain the colour chase will follow, matching the geometry router's limit
-/// of the same name (`ifc_lite_geometry::router::processing`) — a cap below
-/// the router's would leave a 17-to-32 link chain rendering its geometry
-/// while silently losing the authored style on its leaf. `pub(crate)`:
-/// `processor::color_layer` delegates here rather than keeping its own copy.
-pub(crate) const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
+pub(crate) use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
 /// Resolve a geometry item's authored colour: direct style on the item, else
 /// chase `IfcMappedItem → IfcRepresentationMap → MappedRepresentation.Items`

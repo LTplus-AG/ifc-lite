@@ -70,7 +70,10 @@ describe('parser.worker.ts forwards this realm\'s wasm panic stash on error', ()
     expect(errorMsg?.wasmPanicLocation).toBe('parser/src/tokenizer.rs:88:5');
     expect(errorMsg?.wasmPanicAt).toBe(5678);
     expect(g[WASM_PANIC_STASH_KEY]).toBeUndefined();
-  });
+    // 4462ms measured on a green CI run against the 5000ms
+    // default. 30_000 by convention (#2905, AB22_TIMEOUT_MS), not a
+    // per-test derivation: this spins up a real worker and forces a wasm panic (#2948).
+  }, 30_000);
 
   it('omits the panic fields entirely when there is no stash', async () => {
     (self as unknown as Worker).onmessage!({

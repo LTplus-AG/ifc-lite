@@ -13,9 +13,45 @@ import type {
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
 
 /** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
 const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
+
+/**
+ * Does `facet.name` match this entity through buildingSMART's IFC2X3
+ * occurrence/type mapping table, when a direct type-name comparison
+ * already failed?
+ *
+ * "The following table lists all special cases for checking IFC2X3
+ * models['] identification of model subsets is further restricted by
+ * the type object." — an IDS facet naming an IFC4-only class
+ * (`IfcAirTerminal`) must still match the IFC2X3 (occurrence, type)
+ * pair that represents it (`IfcFlowTerminal` typed by
+ * `IfcAirTerminalType`).
+ * https://github.com/buildingSMART/IDS/blob/master/Documentation/ImplementersDocumentation/ifc2x3-occurrence-type-mapping-table.md
+ *
+ * Scoped to IFC2X3: IFC4+ already has a dedicated class for every alias
+ * in the table, so this must not also fire there.
+ */
+function matchesIfc2x3Mapping(
+  facet: IDSEntityFacet,
+  entityType: string,
+  expressId: number,
+  accessor: IFCDataAccessor
+): boolean {
+  if ((accessor.getSchemaVersion?.() || '').toUpperCase() !== 'IFC2X3') return false;
+  const rows = rowsForOccurrence(entityType.toUpperCase());
+  if (rows.length === 0) return false;
+  const typeEntityType = accessor.getTypeEntityType?.(expressId);
+  if (!typeEntityType) return false;
+  const typeEntityUpper = typeEntityType.toUpperCase();
+  for (const row of rows) {
+    if (row.typeEntity !== typeEntityUpper) continue;
+    if (matchConstraint(facet.name, row.alias, IFC_CASE_INSENSITIVE)) return true;
+  }
+  return false;
+}
 
 /**
  * Check if an entity matches an entity facet
@@ -63,7 +99,10 @@ export function checkEntityFacet(
   }
 
   // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
-  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
+  if (
+    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
+  ) {
     return {
       passed: false,
       actualValue: entityType,
@@ -181,7 +220,10 @@ export function entityFacetPasses(
     return false;
   }
 
-  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
+  if (
+    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
+  ) {
     return false;
   }
 
@@ -224,13 +266,32 @@ export function filterByEntityFacet(
 ): number[] | undefined {
   const constraint = facet.name;
 
+  // IFC2X3: a literal naming a mapping-table alias (`IFCAIRTERMINAL`)
+  // never appears as an actual entity type in the model — only its
+  // mapped occurrence class does (`IFCFLOWTERMINAL`). A type-indexed
+  // broadphase filter keyed on the alias itself would come back empty
+  // and wrongly prune every candidate before the per-entity check (and
+  // its type-object lookup) ever runs. Falling back to a full scan
+  // keeps `matchesIfc2x3Mapping` as the single source of truth instead
+  // of duplicating its (occurrence, type) resolution here.
+  const isIfc2x3 = (accessor.getSchemaVersion?.() || '').toUpperCase() === 'IFC2X3';
+
   // For simple values, we can efficiently filter by type
   if (constraint.type === 'simpleValue') {
+    if (isIfc2x3 && IFC2X3_MAPPED_ALIASES.has(constraint.value.toUpperCase())) {
+      return undefined;
+    }
     return accessor.getEntitiesByType(constraint.value);
   }
 
   // For enumerations, collect entities of all specified types
   if (constraint.type === 'enumeration') {
+    if (
+      isIfc2x3 &&
+      constraint.values.some((v) => IFC2X3_MAPPED_ALIASES.has(v.toUpperCase()))
+    ) {
+      return undefined;
+    }
     const ids: number[] = [];
     for (const value of constraint.values) {
       ids.push(...accessor.getEntitiesByType(value));

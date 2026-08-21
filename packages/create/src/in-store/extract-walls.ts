@@ -422,7 +422,7 @@ function extractWallAxisFromSource(
   store: IfcDataStore,
   extractor: EntityExtractor,
   wallId: number,
-  storeyChain: ReadonlySet<number>,
+  storeyChain: ReadonlySet<number> | null,
   log: Logger,
 ): ExtractAttempt {
   const ref = store.entityIndex.byId.get(wallId);
@@ -447,7 +447,7 @@ function extractWallAxisFromOverlay(
   extractor: EntityExtractor,
   overlay: OverlayWallReader,
   wall: { expressId: number; attributes: IfcAttributeValue[] },
-  storeyChain: ReadonlySet<number>,
+  storeyChain: ReadonlySet<number> | null,
   log: Logger,
 ): ExtractAttempt {
   const placementId = numericAttr(wall.attributes[5]);
@@ -471,7 +471,7 @@ function computeWallSegment(
   representationId: number,
   overlay: OverlayWallReader | undefined,
   wallId: number,
-  storeyChain: ReadonlySet<number>,
+  storeyChain: ReadonlySet<number> | null,
   log: Logger,
 ): ExtractAttempt {
   const frame = frameInStoreyFrame(store, extractor, overlay, placementId, storeyChain);
@@ -803,20 +803,25 @@ function readOwnPlacementFrame(
  * `IfcLocalPlacement.PlacementRelTo`. Composition stops when it reaches one
  * of these — see `frameInStoreyFrame`.
  *
- * Returns an empty set when the storey has no resolvable placement; the
- * chain walk then behaves as before this existed and composes only what it
- * can reach before running out of parents.
+ * Returns `null` — NOT an empty set — when the storey has no resolvable
+ * placement, which `IfcProduct.ObjectPlacement` being OPTIONAL makes a
+ * well-formed possibility. An empty set is not "no storey frame", it is
+ * "a storey frame the walk can never reach": the walk would find nothing to
+ * stop on and compose every hop up to the world root, labelling world
+ * coordinates storey-local. `frameInStoreyFrame` treats `null` as "compose
+ * nothing" instead — see there.
  */
 function storeyPlacementChain(
   store: IfcDataStore,
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   storeyId: number,
-): Set<number> {
+): Set<number> | null {
   const chain = new Set<number>();
   const storey = readEntity(store, extractor, overlay, storeyId);
-  if (!storey) return chain;
+  if (!storey) return null;
   let id = numericAttr(storey.attributes[5]); // ObjectPlacement
+  if (id === null) return null;
   while (id !== null && !chain.has(id)) {
     chain.add(id);
     const placement = readEntity(store, extractor, overlay, id);
@@ -866,16 +871,27 @@ function composeFrames(outer: PlacementFrame, inner: PlacementFrame): PlacementF
  * `resolve-anchor.ts`). Composing to the root would bake the storey's own
  * offset into the coordinates and the storey placement would then apply it a
  * second time, putting the space a whole site-offset away from its room.
+ *
+ * A `null` `storeyChain` (storey with no `ObjectPlacement`) means there is no
+ * storey frame to compose towards, so no hop is composed at all.
  */
 function frameInStoreyFrame(
   store: IfcDataStore,
   extractor: EntityExtractor,
   overlay: OverlayWallReader | undefined,
   placementId: number,
-  storeyChain: ReadonlySet<number>,
+  storeyChain: ReadonlySet<number> | null,
 ): PlacementFrame | null {
   let frame = readOwnPlacementFrame(store, extractor, overlay, placementId);
   if (!frame) return null;
+  // No storey placement at all (`ObjectPlacement` is OPTIONAL): there is no
+  // storey frame to compose towards and nothing for the walk to stop on, so
+  // walking parents would run to the world root and return world coordinates
+  // where every caller expects storey-local ones. Compose nothing — the
+  // element's own frame, which is what this returned before the chain walk
+  // existed — and leave the element where its own placement puts it rather
+  // than silently moving it by the site and building offsets.
+  if (!storeyChain) return frame;
   // Visited-set termination: exact for cyclic/self-referential
   // `PlacementRelTo` in malformed IFC, and needs no arbitrary depth bound.
   const visited = new Set<number>([placementId]);

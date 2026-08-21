@@ -17,3 +17,5 @@ root, because storey-local is the frame the write side uses: the generated
 `IfcSpace` is authored with the storey placement as its `PlacementRelTo`.
 `existingSpaceFootprintsByStorey` shares that frame and now uses the same
 composition.
+
+A storey with no `ObjectPlacement` — optional on `IfcProduct` — has no chain to stop the composition, so nothing is composed at all for it rather than composing every hop up to the world root and returning world coordinates where storey-local ones are the contract.

@@ -38,6 +38,15 @@ export interface FlavorSwitcherCallbacks {
   reload(id: string): Promise<boolean>;
   /** Persist the active-flavor pointer. */
   setActiveFlavor(id: string): Promise<void>;
+  /**
+   * Read the persisted active-flavor pointer back, if the host can.
+   *
+   * Optional. Supplying it lets the switcher tell a refused pointer write
+   * that would have changed nothing from one that would have: without it,
+   * every refusal fails the switch, which is the behaviour a host that does
+   * not supply it already had.
+   */
+  readActiveFlavor?(): Promise<string | undefined>;
 }
 
 export interface FlavorSwitchResult {
@@ -60,6 +69,44 @@ export interface FlavorSwitchOptions {
   /** Currently-active flavor (for rollback context). */
   current?: Flavor;
   callbacks: FlavorSwitcherCallbacks;
+}
+
+/**
+ * The exact id the active-flavor pointer stores for `target` — the value
+ * `setActiveFlavor` is handed here, and the value a `FlavorStorage.setActiveId`
+ * is handed elsewhere. The single source of it, so a caller asking whether a
+ * pointer write would change anything compares the value that would actually
+ * be written.
+ */
+export function activeFlavorPointer(target: Flavor): string {
+  return target.id;
+}
+
+/**
+ * Whether the persisted active-flavor pointer already holds exactly what
+ * `setActiveFlavor` would write for `target` — i.e. whether that write would
+ * change nothing.
+ *
+ * Built through `activeFlavorPointer`, the same function the write above is
+ * handed, so the compared value is the written value by construction.
+ *
+ * One-directional on purpose: `false` only means "not provably a no-op". A
+ * host that cannot read the pointer back, or whose read fails, answers
+ * `false`, because the write really might have changed it. A caller uses this
+ * to let a refused write pass, and letting one pass that would have moved the
+ * pointer is the failure that matters.
+ */
+async function activeFlavorAlreadyStored(
+  callbacks: FlavorSwitcherCallbacks,
+  target: Flavor,
+): Promise<boolean> {
+  if (!callbacks.readActiveFlavor) return false;
+  try {
+    return (await callbacks.readActiveFlavor()) === activeFlavorPointer(target);
+  } catch {
+    // Unreadable pointer: nothing is provably stored.
+    return false;
+  }
 }
 
 /**
@@ -132,10 +179,19 @@ export async function switchFlavor(
 
   // Step 3: commit the new active-flavor pointer.
   try {
-    await opts.callbacks.setActiveFlavor(opts.target.id);
+    await opts.callbacks.setActiveFlavor(activeFlavorPointer(opts.target));
   } catch (err) {
-    await rollback(opts.callbacks, touched);
-    return { ok: false, active: opts.current ?? opts.target, failures: [...failures, '<pointer>'], disabled, enabled };
+    // A refused write that would have stored exactly what is stored already
+    // changed nothing, so it must not undo the toggles that landed above.
+    // Switching to the flavor that is already the active one — a re-apply
+    // after a partial switch, or a reload that re-runs the switch — writes the
+    // pointer it already holds; failing here would disable every extension the
+    // target declares and report the flavor as not applied while the pointer on
+    // disk names it.
+    if (!(await activeFlavorAlreadyStored(opts.callbacks, opts.target))) {
+      await rollback(opts.callbacks, touched);
+      return { ok: false, active: opts.current ?? opts.target, failures: [...failures, '<pointer>'], disabled, enabled };
+    }
   }
 
   return { ok: true, active: opts.target, failures, disabled, enabled };

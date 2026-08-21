@@ -446,6 +446,12 @@ export class ExtensionHostService {
       setActiveFlavor: async (id) => {
         await this.flavors.activate(id);
       },
+      // Lets the switcher tell a refused pointer write that would have changed
+      // nothing — re-applying the flavor that is already active — from one
+      // that would have moved the pointer. Without it every refusal undoes the
+      // extension toggles that landed and throws below, skipping the lens,
+      // clash and sidebar restores.
+      readActiveFlavor: () => this.flavors.activeId(),
     });
 
     if (!result.ok) {

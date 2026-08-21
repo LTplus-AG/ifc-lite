@@ -14,6 +14,7 @@
  */
 
 import {
+  activeFlavorPointer,
   DEFAULT_FLAVOR_ID,
   flavorImportedId,
   packFlavor,
@@ -57,6 +58,16 @@ export class FlavorService {
   async getActive(): Promise<Flavor | undefined> {
     const id = await this.storage.getActiveId();
     return id ? this.storage.getFlavor(id) : undefined;
+  }
+
+  /**
+   * The persisted active-flavor pointer, without loading the flavor behind it.
+   * `getActive` answers `undefined` both for "no pointer" and for "the pointer
+   * names a flavor that is gone"; a caller comparing against the value a
+   * pointer write would store needs the pointer itself.
+   */
+  async activeId(): Promise<string | undefined> {
+    return this.storage.getActiveId();
   }
 
   async put(flavor: Flavor, reason?: string): Promise<void> {
@@ -164,9 +175,43 @@ export class FlavorService {
       settings: {},
     };
     await this.storage.putFlavor(flavor, 'reset to defaults');
-    await this.storage.setActiveId(id);
+    // A refused pointer write that would have stored exactly what is stored
+    // already changed nothing, so it must not fail the reset. Resetting when
+    // the default flavor is already active — the common case, since the reset
+    // button is the way back from anything — writes the pointer it already
+    // holds: the baseline flavor above landed and the pointer names it, so
+    // storage is exactly what a successful reset leaves behind.
+    //
+    // `activeFlavorPointer` builds the value handed to `setActiveId`, and
+    // `activeIdAlreadyStored` compares through the same value, so what is
+    // compared is what would have been written.
+    const activeId = activeFlavorPointer(flavor);
+    try {
+      await this.storage.setActiveId(activeId);
+    } catch (err) {
+      if (!(await this.activeIdAlreadyStored(activeId))) throw err;
+    }
     this.emit();
     return flavor;
+  }
+
+  /**
+   * Whether the active-flavor pointer already holds exactly `id` — i.e.
+   * whether writing `id` would change nothing.
+   *
+   * One-directional on purpose: `false` only means "not provably a no-op". A
+   * pointer that cannot be read back answers `false`, because the write really
+   * might have changed it. A caller uses this to let a refused write pass, and
+   * letting one pass that would have moved the pointer is the failure that
+   * matters.
+   */
+  private async activeIdAlreadyStored(id: string): Promise<boolean> {
+    try {
+      return (await this.storage.getActiveId()) === id;
+    } catch {
+      // Unreadable pointer: nothing is provably stored.
+      return false;
+    }
   }
 
   /** Subscribe to flavor changes. Returns unsubscribe. */

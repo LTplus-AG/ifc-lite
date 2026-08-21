@@ -150,11 +150,20 @@ export async function installFromBytes(
   // Snapshot the previous install so we can restore it if the new
   // bundle fails to load. Without this, a bad update wipes the
   // user's previously-working install entirely.
+  //
+  // The snapshot is taken for every previous install, not only for a version
+  // change. Bundle bytes are keyed by `id + version`, so a reinstall of the
+  // same version overwrites them in `putBundle` below — that is exactly the
+  // case where the rollback has nothing left to read, and it deletes the
+  // record and the bundle of an install the failed write never changed the
+  // identity of. The teardown stays conditional: replacing the bytes under a
+  // version that is already loaded is not a version change, and unloading a
+  // still-working extension is not this function's business.
   const previous = await deps.storage.getExtension(id);
   let previousBundleBytes: Uint8Array | undefined;
-  if (previous && previous.version !== version) {
+  if (previous) {
     previousBundleBytes = await deps.storage.getBundle(id, previous.version);
-    await teardownExtension(deps, id);
+    if (previous.version !== version) await teardownExtension(deps, id);
   }
 
   const record: InstalledExtensionRecord = {

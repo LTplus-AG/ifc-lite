@@ -51,6 +51,7 @@ export {
   type SyntheticExtension,
 } from './migrate-scripts.js';
 export {
+  activeFlavorPointer,
   switchFlavor,
   type FlavorSwitcherCallbacks,
   type FlavorExtensionState,

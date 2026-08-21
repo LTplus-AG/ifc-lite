@@ -1,5 +1,110 @@
 # @ifc-lite/parser
 
+## 4.2.0
+
+### Minor Changes
+
+- [#2753](https://github.com/LTplus-AG/ifc-lite/pull/2753) [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2) Thanks [@mpancera](https://github.com/mpancera)! - Index `IfcRelConnectsPortToElement` and `IfcRelConnectsPorts`, so plant topology is traversable.
+  
+  The ports themselves were always parsed — they are `IfcProduct` subtypes and land in the `EntityTable` like any other product — but neither relationship was in the index, so nothing recorded which element a port belonged to or which port it was joined to. A distribution system therefore read as a set of unrelated parts, and there was no way to answer "what is this pump connected to" from the store.
+  
+  - `RelationshipType` gains `ConnectsPortToElement = 44` and `ConnectsPorts = 45`, keeping the existing 40-range grouping for connection relationships.
+  - Both need their own branch in `extractRelFast`: their two ends are single references at attributes 4 and 5, which neither existing branch reads. The default branch takes attribute 5 as a list, and the `IfcRelConnectsElements` branch skips one attribute first because that entity carries an optional `ConnectionGeometry` ahead of its ends.
+  - `IfcRelConnectsPorts.RealizingElement` (the optional element that realises a connection, e.g. a length of duct) is deliberately not read. It is a third party to the connection rather than one of its two ends, and treating it as one would invent an edge between a port and that element.
+  
+  A plant is walked as element → `ConnectsPortToElement` inverse → its ports → `ConnectsPorts` → the opposite ports → `ConnectsPortToElement` forward → their elements.
+
+### Patch Changes
+
+- [#2887](https://github.com/LTplus-AG/ifc-lite/pull/2887) [`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `extractPropertyRelFast` silently dropping `IfcRelDefinesByProperties` relationships whose `RelatingPropertyDefinition` is a grouped `IfcPropertySetDefinitionSet` instead of a single property/quantity set reference.
+  
+  `RelatingPropertyDefinition` is typed `IfcPropertySetDefinitionSelect`, whose
+  second alternative (`IfcPropertySetDefinitionSet`, a `SET [1:?] OF
+  IfcPropertySetDefinition`) is schema-legal in both bundled IFC4 and IFC4X3
+  schemas and is written as a parenthesised ref list, e.g. `([#20](https://github.com/LTplus-AG/ifc-lite/issues/20),[#21](https://github.com/LTplus-AG/ifc-lite/issues/21))`, not a
+  bare `[#20](https://github.com/LTplus-AG/ifc-lite/issues/20)`. The byte-level scanner read this attribute with `readRefId`,
+  which only recognises a bare `#id`; on the list form it saw the opening `(`
+  instead of `#`, returned `-1`, and the whole relationship was discarded --
+  every related object in the `RelatedObjects` set silently lost all
+  properties and quantities from that pset group, with no error surfaced.
+  
+  `extractPropertyRelFast` now reads the attribute with `readRefList`, which
+  already accepts both a bare ref and a parenthesised list, and returns
+  `relatingDefs: number[]` instead of a single `relatingDef: number`. The two
+  other consumers of this shared scanner (`IfcRelAssociatesMaterial` /
+  `...Classification` / `...Document`) are unaffected: none of their
+  `Relating*` selects admit a SET alternative, so they always see a
+  length-1 list.
+
+- [#2740](https://github.com/LTplus-AG/ifc-lite/pull/2740) [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `buildEntityRefsFromIndex` dropping the entity type when a line break
+  follows `#id=` directly (`[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=\nIFCWALL($);`).
+  
+  This is legal STEP — a newline directly after `#id=` appears in real
+  fixtures — and the tokenizer's own `scanEntitiesFast` / `scanEntities`
+  already handle it. `buildEntityRefsFromIndex` is the fast path taken when
+  the streaming geometry pre-pass has already built the entity index; its
+  whitespace skip after `=` only recognised space and tab, so a record
+  starting with a newline resolved to `type: ''` and the entity was silently
+  misclassified. The skip now also recognises `LF` and `CR`, matching the
+  type-end scan a few lines below it in the same function.
+
+- [#2813](https://github.com/LTplus-AG/ifc-lite/pull/2813) [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e) Thanks [@louistrue](https://github.com/louistrue)! - An `.ifczip` compressed on macOS is no longer rejected. Finder writes an
+  AppleDouble sidecar (`__MACOSX/._<name>`) beside each entry, and it keeps the
+  original extension, so `__MACOSX/._model.ifc` was counted as a second model and
+  the archive failed with "contains 2 model files — expected exactly one".
+  
+  Entries whose BASENAME begins with `._` are now excluded from the model-entry
+  scan on both the browser and server paths. A genuine second model still fails as
+  before, and a real model inside a folder named `__MACOSX` is still found.
+
+- [#2822](https://github.com/LTplus-AG/ifc-lite/pull/2822) [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Two Web Worker resource leaks, same shape as the confirmed `collab`/`collab-server`
+  leaks: a `Worker` is spawned, a fallible step runs right after it (a
+  `postMessage` structured-clone), and the failure path had no handle to the
+  worker it had already created.
+  
+  `packages/geometry/src/geometry-parallel.ts`: the process-worker pool's
+  init loop (spawn, then `postMessage({type:'init', ...})` and five more
+  `set-*` messages per worker) ran before the function's own try/finally, so
+  a `postMessage` throw partway through the loop (a `wasmModule`
+  structured-clone failure is the realistic trigger — the same class of
+  error `dispatchJobsChunkInternal` already guards against) left every
+  worker spawned so far un-terminated; the finally that owns teardown for
+  the rest of the pipeline never saw the throw. The loop now has its own
+  try/catch that terminates every worker pushed to `workers` so far before
+  rethrowing.
+  
+  `packages/parser/src/scan-worker-inline.ts`: `scanEntitiesInWorker`
+  declared its `Worker` with `const` inside the try that also calls
+  `postMessage`, so the catch block — which only had `reject(err)` — could
+  not reach it if `postMessage` threw after construction (a detached-buffer
+  or memory-pressure clone failure). The `worker` binding now lives outside
+  the try so the catch can terminate it before rejecting.
+
+- [#2883](https://github.com/LTplus-AG/ifc-lite/pull/2883) [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Resolve `IfcElectricalDistributionPoint`'s inheritance chain in the TS parser.
+  
+  `IfcElectricalDistributionPoint` is deprecated IFC2x3 syntax that no bundled
+  schema table (`ENTITIES_IFC2X3`/`IFC4`/`IFC4X3`) carries as a class — none has
+  an entry for it at all. `rust/core/src/legacy_entities.rs` handles this by
+  name ("IFC2x3 names that have no IFC4x3 enum variant") and resolves it to
+  `IfcDistributionElement`. `ifc-schema.ts`'s `ENTITY_NAME_ALIASES` table
+  carries a comment claiming it "mirrors `rust/core/src/legacy_entities.rs` so
+  the two sides stay in lockstep", but only ported the three IFC4.3 stratum
+  leaves — this entity, and 16 other Rust-side legacy names, were never added.
+  Of those, only this one is a real gap: the other 16 (`IfcBeamStandardCase`,
+  `IfcWindowStyle`, `IfcProxy`, ...) already resolve directly, since they exist
+  in `ENTITIES_IFC4`.
+  
+  Before this change, `getInheritanceChain('IfcElectricalDistributionPoint')`
+  returned `[]` in the TS parser while the Rust core resolved the same entity
+  name to `IfcDistributionElement` with geometry — a real cross-language
+  divergence on a legal (if deprecated) STEP entity. `ENTITY_NAME_ALIASES` now
+  carries the same mapping, so `getInheritanceChain` includes
+  `IfcDistributionElement` for this class, matching the Rust core.
+- Updated dependencies [[`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`0ed2582`](https://github.com/LTplus-AG/ifc-lite/commit/0ed2582b71973fa6d16307999ed2ea59f7a2db3f), [`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034), [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18), [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163), [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/data@3.4.0
+  - @ifc-lite/wasm@5.0.0
+  - @ifc-lite/ifcx@2.3.7
+
 ## 4.1.0
 
 ### Minor Changes

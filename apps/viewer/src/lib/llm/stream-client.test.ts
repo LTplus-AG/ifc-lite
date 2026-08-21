@@ -95,3 +95,41 @@ test('streamChat surfaces request timeout errors', async () => {
     globalThis.clearTimeout = originalClearTimeout;
   }
 });
+
+test('a retired model still tells the user what they can actually do (#2886)', async () => {
+  // The free Devstral window closed and the provider answered with migration
+  // advice aimed at whoever configures routing: "migrate to the paid slug".
+  // Nobody can do that from the viewer. The branch that adds "switch model"
+  // used to run only when the provider said nothing, so the users handed the
+  // most confusing message were told the least about their options.
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({
+      code: 'provider_model_not_found',
+      model: 'mistralai/devstral-2512',
+      providerMessage:
+        'The free Devstral 2 2512 period has ended. To continue using this model, please migrate to the paid slug: mistralai/devstral-2512',
+    }),
+    { status: 502, headers: { 'Content-Type': 'application/json' } },
+  );
+
+  try {
+    let captured: string | null = null;
+    await streamChat({
+      proxyUrl: '/api/chat',
+      model: 'mistralai/devstral-2512',
+      messages: [{ role: 'user', content: 'hi' }],
+      onChunk: () => undefined,
+      onComplete: () => undefined,
+      onError: (error) => { captured = error.message; },
+    });
+
+    const message = captured as string | null;
+    assert.ok(message, 'expected an error to surface');
+    assert.match(message, /mistralai\/devstral-2512/, 'the dead model should be named');
+    assert.match(message, /free Devstral 2 2512 period has ended/, "the provider's explanation is worth keeping");
+    assert.match(message, /[Ss]witch model/, 'the one action available in this app must be stated');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

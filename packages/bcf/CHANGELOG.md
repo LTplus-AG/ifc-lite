@@ -1,5 +1,116 @@
 # @ifc-lite/bcf
 
+## 1.18.2
+
+### Patch Changes
+
+- [#2900](https://github.com/LTplus-AG/ifc-lite/pull/2900) [`b9faf82`](https://github.com/LTplus-AG/ifc-lite/commit/b9faf8296f86943914c30550af8131fee250d4c8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fail `writeBCF` for a BCF 3.0 topic missing `TopicType` or `TopicStatus` instead of silently emitting invalid markup.
+  
+  buildingSMART/BCF-XML `markup.xsd` (`release_3_0`) tightens both attributes
+  from optional (2.1) to `use="required"`:
+  
+  ```
+  <xs:attribute name="TopicType" type="NonEmptyOrBlankString" use="required"/>
+  <xs:attribute name="TopicStatus" type="NonEmptyOrBlankString" use="required"/>
+  ```
+  
+  `BCFTopic.topicType`/`topicStatus` are optional in our type, and the writer
+  previously omitted the attribute entirely when either was unset, at both
+  versions -- valid for 2.1, but schema-invalid for 3.0. Every first-party call
+  site (`createBCFTopic`, the viewer's topic form, the IDS-to-BCF reporter, the
+  clash bridge) already defaults both fields, so the gap was unreachable from
+  the shipped app; it is reachable from the public `@ifc-lite/bcf` API
+  (`createBCFProject({version:'3.0'})` + a hand-built `BCFTopic` +
+  `addTopicToProject` + `writeBCF`), which SDK/script consumers can call
+  directly.
+  
+  `writeBCF` now throws when writing a 3.0 topic without `topicType` or
+  `topicStatus`, naming the missing attribute and the topic's guid, rather than
+  inventing a default status the caller never chose -- a fabricated "Open" or
+  "Issue" would misrepresent a topic's real state to every downstream
+  consumer that reads `TopicStatus` for workflow logic. 2.1 output is
+  unaffected; both attributes stay optional there.
+
+- [#2758](https://github.com/LTplus-AG/ifc-lite/pull/2758) [`8f89331`](https://github.com/LTplus-AG/ifc-lite/commit/8f893311b170a983e160737bd9479c3caf961911) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `readBCF` silently dropping topics from spec-legal BCF files written by other tools.
+  
+  `reader.ts`'s regexes for `<Topic>`, `<RelatedTopic>`, `<Comment>`, and the
+  comment's `<Viewpoint>` reference required `Guid` to be the attribute
+  immediately after the tag name. XML attribute order is not semantically
+  significant, so a file written with e.g. `<Topic TopicType="Issue"
+  TopicStatus="Open" Guid="topic-1">` failed to match: `readTopic` logged
+  "missing Topic element" and the whole topic -- title, comments, viewpoints --
+  was silently dropped with no throw and no partial result.
+  
+  Our own `writer.ts` always emits `Guid` first, so every self round-trip
+  passed and no existing test caught this; only a file from another tool
+  exposed it.
+  
+  Each affected site now matches the opening tag generically (`<Tag\b([^>]*)>`)
+  and pulls individual attributes out of the captured attribute string with a
+  new shared `extractAttr` helper, so attribute order can no longer matter at
+  any of these call sites.
+
+- [#2899](https://github.com/LTplus-AG/ifc-lite/pull/2899) [`bc179f6`](https://github.com/LTplus-AG/ifc-lite/commit/bc179f6a1091c8c307a07b31d8c30fbba140e4a9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `markup.bcf`'s `<Topic>` children being written out of `xs:sequence` order.
+  
+  buildingSMART's BCF `markup.xsd` `Topic` sequence — identical in release_2_1 and release_3_0 — is `Title, Priority, Index, Labels, CreationDate, CreationAuthor, ModifiedDate, ModifiedAuthor, DueDate, AssignedTo, Stage, Description, BimSnippet, ...`. The writer previously emitted `Description` right after `Title` (before `Priority`/`Index`/`Labels`/the creation and modification fields/`Stage`) and `Labels` after `Stage` (long after `Priority`/`Index`) — both schema-invalid, since `xs:sequence` enforces element order, whenever a topic actually had a `Description` or non-empty `Labels` to write (an absent `Description` or empty `Labels` produced no element to be out of order). Confirmed against buildingSMART/BCF-XML's own release_3_0 conformance fixture (`Test Cases/v3.0/Visualization/Perspective camera`), whose `markup.bcf` places `Description` right before `BimSnippet`/`DocumentReferences`, matching the schema.
+
+- [#2900](https://github.com/LTplus-AG/ifc-lite/pull/2900) [`b9faf82`](https://github.com/LTplus-AG/ifc-lite/commit/b9faf8296f86943914c30550af8131fee250d4c8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `writeBCF` accepting a BCF 3.0 topic whose `topicType` or `topicStatus`
+  is XML-whitespace-only (e.g. `'   '` or `'\t'`) and writing it verbatim.
+  
+  `writeMarkupFile`'s BCF 3.0 required-attribute check used a bare `!value`
+  test, which is falsy only for `undefined`/`''`. `markup.xsd` types both
+  attributes as `NonEmptyOrBlankString`: after XML whitespace (`#x9`, `#xA`,
+  `#xD`, `#x20`) is collapsed, the value must have length >= 1, so a
+  whitespace-only value is schema-invalid even though it is JS-truthy. The
+  check now also rejects a value that is entirely XML whitespace, with the
+  same "fail the write rather than invent a value" behavior as the
+  already-existing absent-value case.
+
+- [#2760](https://github.com/LTplus-AG/ifc-lite/pull/2760) [`48b204b`](https://github.com/LTplus-AG/ifc-lite/commit/48b204b868016aad29b694b53ac8ace5e76a0542) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `readBCF` failing to resolve a viewpoint's snapshot when `markup.bcf` names
+  it with a non-buildingSMART-convention filename.
+  
+  `parseViewpoints` looked up each viewpoint's declared `<Viewpoint>`/`<Snapshot>`
+  filenames in `markup.bcf` with a regex matching the singular tag
+  `<Viewpoint Guid="...">`. The markup element that actually carries those
+  filenames is plural — `<Viewpoints Guid="...">`, per the BCF 2.1/3.0 schema and
+  this package's own writer (`writer.ts` `writeMarkupFile` emits exactly that tag)
+  — so the regex could never match a spec-correct file, and the lookup map was
+  always empty. Every snapshot resolution silently fell through to a
+  filename-guessing fallback (`Viewpoint_<guid>.bcfv` → `Snapshot_<guid>.png` and
+  similar patterns). That fallback happens to cover buildingSMART's own reference
+  fixtures, which follow the convention, but a third-party file is free to name
+  its entries however it likes; when the filenames don't match a guessed
+  pattern, the snapshot markup.bcf explicitly names was silently dropped even
+  though it exists in the archive.
+  
+  The viewpoint's own GUID was never at risk — it comes from the `.bcfv` file's
+  `<VisualizationInfo Guid="...">` element directly, independent of this lookup
+  — so this was a snapshot-association defect, not a GUID/identity defect.
+  
+  Fixed the regex to match the plural `<Viewpoints>` tag, so the markup-declared
+  filename is used when present and the naming-convention fallback now only
+  runs when markup.bcf genuinely doesn't declare a snapshot. Added a test using
+  a synthetic third-party-shaped archive (custom filenames, spec-legal) that
+  previously lost its snapshot and now resolves it, plus a regression test
+  against the buildingSMART `PerspectiveCamera.bcf` fixture.
+
+- [#2902](https://github.com/LTplus-AG/ifc-lite/pull/2902) [`5a9ecfb`](https://github.com/LTplus-AG/ifc-lite/commit/5a9ecfb6bcd3190eae4463bd8926cf38a2143496) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden the IDS→BCF reporter's camera-direction test so a sign-flipped viewpoint camera can't pass silently.
+  
+  `computeCameraFromBounds` (`ids-reporter.ts`) places the BCF viewpoint camera
+  off-center and points it back at the failing entity. The only test covering
+  that direction, `should point camera toward entity center`, checked just
+  `Math.sqrt(x²+y²+z²) ≈ 1` — true for *any* unit vector, including one
+  pointing the camera at empty space away from the entity. Reversing the
+  `dx/dy/dz` sign in `computeCameraFromBounds` (camera looking away from the
+  entity instead of at it) left all 48 `ids-reporter.test.ts` tests green.
+  
+  The test now asserts `cameraDirection` equals the normalized vector from the
+  (converted) camera position to the (converted) entity center, so a reversed
+  sign fails. No production code changed — `computeCameraFromBounds` already
+  computes the correct direction; this closes the fixture gap that couldn't
+  have caught a regression there. Confirmed by mutation: reversing the sign in
+  `computeCameraFromBounds` now fails the new assertion; reverting restores 48/48.
+
 ## 1.18.1
 
 ### Patch Changes

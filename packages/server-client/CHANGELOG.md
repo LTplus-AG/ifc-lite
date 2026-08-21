@@ -1,5 +1,24 @@
 # @ifc-lite/server-client
 
+## 1.22.2
+
+### Patch Changes
+
+- [#2843](https://github.com/LTplus-AG/ifc-lite/pull/2843) [`5d68a13`](https://github.com/LTplus-AG/ifc-lite/commit/5d68a13f7e2ed9c9754242b624abfa7343888f14) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two `server-client` request paths that had drifted from their siblings.
+  
+  `parseParquetStream`'s SSE reader was never released on a throwing path (a
+  terminal `error` event, or any exception mid-loop) — `response.body`'s
+  `ReadableStreamDefaultReader` stayed locked, leaking the underlying
+  connection. `parseStream` already wraps its identical read loop in a
+  `try`/`finally` that calls `reader.releaseLock()`; `parseParquetStream` now
+  does the same.
+  
+  `getCached` (`GET /api/v1/cache/{key}`) never sent the configured bearer
+  token, even though every other request method does via `authHeaders()` and
+  the route is one of the server's `protected_routes` (bearer-gated whenever
+  `IFC_SERVER_API_TOKEN` is set). A client configured with `token` would get a
+  401 from `getCached` while every other call succeeded.
+
 ## 1.22.1
 
 ### Patch Changes

@@ -127,15 +127,20 @@ fn stops_one_hop_past_the_depth_cap() {
     assert_eq!(find_color_for_geometry(200, &styles, &mut decoder), None);
 }
 
-/// The cap is not a free parameter: all three copies of this traversal
-/// must agree, or the shortest one silently strips colour off chains the
-/// others still render.
+/// The cap is not a free parameter: every walk over this chain must agree, or
+/// the shortest one silently strips colour off chains the others still render.
+///
+/// There are no longer three copies to compare — all three sites import one
+/// constant — so this asserts the import rather than a literal. It used to read
+/// `assert_eq!(MAX_MAPPED_ITEM_DEPTH, 32)` with a message naming the other two
+/// crates, which is the shape it was written to prevent: the message claimed
+/// agreement while the assertion checked a constant against itself.
 #[test]
-fn depth_cap_agrees_with_the_other_two_copies() {
+fn depth_cap_is_the_shared_constant() {
     assert_eq!(
-        MAX_MAPPED_ITEM_DEPTH, 32,
-        "must equal ifc_lite_geometry::router::processing and \
-         ifc_lite_processing::element MAX_MAPPED_ITEM_DEPTH"
+        MAX_MAPPED_ITEM_DEPTH,
+        ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
+        "use the shared cap from ifc_lite_core::limits, not a private copy"
     );
 }
 

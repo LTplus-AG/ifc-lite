@@ -1,5 +1,71 @@
 # @ifc-lite/geometry
 
+## 3.8.4
+
+### Patch Changes
+
+- [#2923](https://github.com/LTplus-AG/ifc-lite/pull/2923) [`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `intersection_solid`'s trust gate now projects each operand's extent onto the same axis the overlap thickness is measured along, instead of sizing the required band from the max coordinate magnitude over all three axes. An operand pair offset far from the origin on an axis the measured thickness never touches no longer inflates the trust band and wrongly withholds a genuine near-origin-scale overlap as `BelowKernelResolution`.
+
+- [#2905](https://github.com/LTplus-AG/ifc-lite/pull/2905) [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcExtrudedAreaSolidTapered` (lofted extrusion) hole side walls shading with inverted normals. `create_lofted_side_walls` applied a `winding_sign` correction (matching `create_side_walls`'s convention, which already leaves a CW-authored hole's walls facing into the solid, away from the void) and then flipped the normal a second time for `is_hole`, undoing that and pointing hole side walls into the void instead of into the solid — any tapered element with an opening (a tapered wall or column with a window/duct penetration) would shade its opening reveal inside-out. Removed the redundant second flip; a new regression test compares the untapered (`start == end`) lofted case directly against uniform `extrude_profile`'s hole normal and requires them to agree.
+
+- [#2720](https://github.com/LTplus-AG/ifc-lite/pull/2720) [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Harden three Rust fixtures that could not observe the property they asserted.
+  
+  Test-only; no production code changed. Each of the three was verified by
+  mutating production, confirming the old fixture still passed, and confirming
+  the new one fails.
+  
+  - `rust/processing/src/simplify_session_tests.rs` — the only `y_up: true` test
+    passed `origin: [0.0; 3]`, and `yup_to_zup` of zero is zero, so
+    `simplify_element`'s `yup_to_zup(rec.origin)` branch was unobservable:
+    replacing it with `let origin = rec.origin;` kept the crate green. The
+    record now carries a Z-up origin of (1, 2, 3), fed in as the boundary's Y-up
+    swap, and both the local and render extents are pinned at min and max.
+  
+  - `rust/ffi/src/tests.rs` — `normalize_to_site_local`'s guard skips the shift
+    only when all three site-translation components are inside
+    `LARGE_COORD_THRESHOLD`, but the only fixture exercising it put all three
+    past 1 km, so rewriting `&&` as `||` still shifted. The fixture now uses a
+    realistic georeferenced placement (large easting and northing, a 2 m
+    elevation), and a second test brackets the constant itself, which the
+    previous 1.0-vs-123456.0 pair left free anywhere in between.
+  
+  - `rust/geometry/src/router/voids/bool2d_path_tests.rs` — `hm_inv()` returned
+    the identity and was the argument to every `opening_solid_footprint` call in
+    the crate, so production's `let to_host = hm_inv * op.m;` was
+    indistinguishable from `let to_host = op.m;`. The host is now placed at
+    (3, -2, 5) rotated about Z, `hm_inv()` is its real inverse, and opening
+    placements are given in world space as `host_m() * (host-local placement)`.
+  
+  Scope: these three fixtures only. The sweep that found them did not cover most
+  of `rust/export`, about 40 files under `rust/processing/tests/`, or the 90-plus
+  files under `rust/geometry/tests/`; nothing is claimed about those.
+
+- [#2822](https://github.com/LTplus-AG/ifc-lite/pull/2822) [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Two Web Worker resource leaks, same shape as the confirmed `collab`/`collab-server`
+  leaks: a `Worker` is spawned, a fallible step runs right after it (a
+  `postMessage` structured-clone), and the failure path had no handle to the
+  worker it had already created.
+  
+  `packages/geometry/src/geometry-parallel.ts`: the process-worker pool's
+  init loop (spawn, then `postMessage({type:'init', ...})` and five more
+  `set-*` messages per worker) ran before the function's own try/finally, so
+  a `postMessage` throw partway through the loop (a `wasmModule`
+  structured-clone failure is the realistic trigger — the same class of
+  error `dispatchJobsChunkInternal` already guards against) left every
+  worker spawned so far un-terminated; the finally that owns teardown for
+  the rest of the pipeline never saw the throw. The loop now has its own
+  try/catch that terminates every worker pushed to `workers` so far before
+  rethrowing.
+  
+  `packages/parser/src/scan-worker-inline.ts`: `scanEntitiesInWorker`
+  declared its `Worker` with `const` inside the try that also calls
+  `postMessage`, so the catch block — which only had `reject(err)` — could
+  not reach it if `postMessage` threw after construction (a detached-buffer
+  or memory-pressure clone failure). The `worker` binding now lives outside
+  the try so the catch can terminate it before rejecting.
+- Updated dependencies [[`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`0ed2582`](https://github.com/LTplus-AG/ifc-lite/commit/0ed2582b71973fa6d16307999ed2ea59f7a2db3f), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/data@3.4.0
+  - @ifc-lite/wasm@5.0.0
+
 ## 3.8.3
 
 ### Patch Changes

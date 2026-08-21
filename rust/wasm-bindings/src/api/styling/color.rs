@@ -2,18 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-/// Longest `IfcMappedItem -> IfcRepresentationMap -> MappedRepresentation`
-/// chain the colour chase will follow.
-///
-/// This is the THIRD copy of this constant. `ifc_lite_geometry`'s
-/// `router::processing` and `ifc_lite_processing`'s `element` both define
-/// `MAX_MAPPED_ITEM_DEPTH = 32` for the same traversal; all three must agree,
-/// or a chain longer than the smallest cap renders its geometry through the
-/// router while silently losing the authored style on its leaf. They are not
-/// deduplicated because the router's is private and the three crates do not
-/// share a home for it — collapsing them is worth doing and is a bigger change
-/// than this fix (#2866).
-const MAX_MAPPED_ITEM_DEPTH: u32 = 32;
+use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
 /// Find color for a geometry item, following MappedItem references if needed.
 /// This handles the case where IfcStyledItem points to geometry inside a MappedRepresentation,
@@ -314,3 +303,30 @@ END-ISO-10303-21;
 #[cfg(test)]
 #[path = "color_cycle_tests.rs"]
 mod find_color_for_geometry_cycle_tests;
+
+#[cfg(test)]
+mod shared_cap_tests {
+    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
+    /// a private copy that happens to hold the same number today.
+    ///
+    /// This is not redundant with the constant being shared. Sharing removes
+    /// the drift that EXISTS; it does not stop anyone reintroducing a local
+    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
+    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
+    /// green until this test existed. A mid-review revision of #2864 held
+    /// exactly that value against the router's 32, so the shadow is not a
+    /// hypothetical shape.
+    ///
+    /// The assertion is on the VALUE, not on identity, so a private copy
+    /// holding the same 32 still passes. That is the honest ceiling: Rust has
+    /// no cheap const-identity check, and a same-value shadow is harmless until
+    /// the shared value is next tuned, at which point this fires.
+    #[test]
+    fn mapped_item_depth_is_the_shared_constant() {
+        assert_eq!(
+            super::MAX_MAPPED_ITEM_DEPTH,
+            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
+            "use the shared cap from ifc_lite_core::limits, not a private copy"
+        );
+    }
+}

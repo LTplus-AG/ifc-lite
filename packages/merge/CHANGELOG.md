@@ -1,5 +1,55 @@
 # @ifc-lite/merge
 
+## 0.4.3
+
+### Patch Changes
+
+- [#2911](https://github.com/LTplus-AG/ifc-lite/pull/2911) [`f31822b`](https://github.com/LTplus-AG/ifc-lite/commit/f31822b0833e1bcd76c43736daf1d76cb3e59914) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the three-way merge, layer diff, and revert-op paths trusting a `stableHash` component match with no fallback content check.
+  
+  `snapshotOf` (`component-state.ts`) hashes each component's canonical JSON with `stableHash`, and every consumer — the three-way merge's fold/keep-ours decisions, the layer diff's changed-component detection, and revert-op generation — decided "same content" from hash equality alone. `stableHash` is a 64-bit FNV-1a hash: strong, but not cryptographic, and unlike `packages/diff`'s content-match pass (which requires an independent component sub-hash or geometry-hash agreement before trusting a `dataHash` match) nothing here had a fallback. A collision would have silently folded two genuinely different concurrent edits into one — the losing edit vanishes with no conflict raised — or silently skipped reverting a component that had actually changed.
+  
+  `attributesContentEqual` now verifies with an exact canonical-JSON comparison whenever two hashes already agree, at negligible cost since it only runs on the (common) case of an actual match. No behavior changes for any non-colliding pair.
+
+- [#2783](https://github.com/LTplus-AG/ifc-lite/pull/2783) [`4d1c611`](https://github.com/LTplus-AG/ifc-lite/commit/4d1c611b822e80a6123b040887a31cdb43c460da) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add test coverage pinning the multi-layer suffix fold in the merge fast path.
+  
+  `projectSide` (`packages/merge/src/component-state.ts`) folds a side's
+  suffix layers weakest-first, per attribute — same contract documented on
+  `extractStackState`. That ordering was structurally unpinned: every
+  `ours`/`theirs` fixture in the suite was a suffix of length exactly 1, so
+  "earlier" never existed and the fold could not be observed. Reversing the
+  loop left all 94 existing tests green.
+  
+  Adds:
+  - A hand-written fixture (`component-state.test.ts`) with a two-layer
+    `ours` suffix that writes the same attribute in both layers (different
+    values) plus an attribute written only in the earlier layer, proving
+    shadowing is per-attribute rather than wholesale replacement, and
+    carrying the fold-order-dependent value into an actual
+    `planThreeWayMerge` conflict.
+  - A `layersPerSide` parameter on `fast-path-differential.test.ts`'s
+    `scenario()` builder so the differential fuzz's fast-path-equals-
+    reference proof also covers multi-layer suffixes, not only
+    single-layer ones.
+  
+  No production code changed; `projectSide`'s existing loop order is
+  correct (it already applies weakest-first) — only its test coverage was
+  missing. Confirmed by reversing the loop locally: the new tests fail
+  (RED) and the loop-order mutation at `component-state.ts:179`
+  (`extractStackState`'s equivalent fold) still fails the expected 40
+  tests across 8 files, confirming both mutation sites are exercised.
+  
+  Also recorded, not fixed (out of scope for this patch):
+  - `merge-layer.ts:41-43` — `applyResolutions`'s `byKey` map uses
+    last-insertion-wins with no test submitting two `ResolutionInput`s for
+    the same `(path, componentKey)`; may be an undefined contract rather
+    than a bug.
+  - `ref-flow.ts:109` — `checkRefPolicy`'s `requiredChecks` loop is only
+    ever exercised with a single-entry array; which failing check is
+    reported first with multiple failures is unpinned (message selection
+    only).
+- Updated dependencies [[`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034), [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18), [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163), [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3)]:
+  - @ifc-lite/ifcx@2.3.7
+
 ## 0.4.2
 
 ### Patch Changes

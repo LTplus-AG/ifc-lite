@@ -5,7 +5,7 @@
     "IFC-Lite Contributors"
   ],
   "description": "WebAssembly bindings for IFC-Lite",
-  "version": "4.7.0",
+  "version": "5.0.0",
   "scripts": {
     "build": "node ../../scripts/run-build-wasm.mjs",
     "test": "node --test test/*.test.mjs"

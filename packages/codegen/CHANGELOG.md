@@ -1,5 +1,27 @@
 # @ifc-lite/codegen
 
+## 1.15.10
+
+### Patch Changes
+
+- [#2852](https://github.com/LTplus-AG/ifc-lite/pull/2852) [`3c5557b`](https://github.com/LTplus-AG/ifc-lite/commit/3c5557bad1dce0d0f27166184452353fded3209c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `generateAll()` named the IFC4X3 schema file as `IFC4X3_ADD2.exp`, but the
+  schema actually shipped in `schemas/` is `IFC4X3.exp`. The function does not
+  throw or exit non-zero when a named schema file is missing — it logs a
+  warning and moves on — so calling `generateAll()` silently produced only the
+  `ifc4/` output directory and skipped `ifc4x3/` entirely, with no error to
+  signal that a whole schema had gone missing.
+  
+  `generateAll()` is not exercised by any script in this repo (the package.json
+  `generate:ifc4x3` script calls the CLI directly with an explicit path), so the
+  mismatch was invisible here, but it is exported from the package's public API
+  for anyone using `@ifc-lite/codegen` as a library.
+  
+  Fixed the filename and added a regression test that runs `generateAll()`
+  against the real `schemas/` directory and asserts both output directories are
+  produced.
+- Updated dependencies [[`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/data@3.4.0
+
 ## 1.15.9
 
 ### Patch Changes

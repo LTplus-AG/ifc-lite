@@ -1,5 +1,41 @@
 # @ifc-lite/ids
 
+## 1.15.48
+
+### Patch Changes
+
+- [#2789](https://github.com/LTplus-AG/ifc-lite/pull/2789) [`b4740a1`](https://github.com/LTplus-AG/ifc-lite/commit/b4740a1fb18050c065e8fbd58714626bdf852f00) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add regression tests pinning `PSET_MISSING` and `PARTOF_RELATION_MISSING`
+  in `checkRequirement`'s `optional` allowlist (`packages/ids/src/validation/validator.ts`).
+  
+  Per the IDS spec, `optional` means "if present, must satisfy" -- a
+  wholly-absent facet passes, a present-but-wrong facet fails. The allowlist
+  that implements this already covered eight failure-type codes, but two of
+  them -- `PSET_MISSING` (entity has no property sets at all) and
+  `PARTOF_RELATION_MISSING` (entity has no parent under the requested
+  relation at all) -- had no test forcing that exact shape, so either could
+  be silently dropped from the allowlist without failing `vitest run` or the
+  vendored buildingSMART corpus runner. Dropping either causes a
+  wrong-direction regression: entities that legitimately have nothing would
+  start failing an `optional` requirement instead of passing it.
+  
+  No production logic changed. This also re-verifies the other six codes in
+  the same allowlist (`ATTRIBUTE_MISSING`, `PROPERTY_MISSING`,
+  `CLASSIFICATION_MISSING`, `MATERIAL_MISSING`, `PREDEFINED_TYPE_MISSING`,
+  `PARTOF_PREDEFINED_TYPE_MISSING`) individually against both suites; all
+  six were already pinned by at least one of `vitest run` or
+  `npm run test:ids-corpus`.
+
+- [#2897](https://github.com/LTplus-AG/ifc-lite/pull/2897) [`969cff9`](https://github.com/LTplus-AG/ifc-lite/commit/969cff95a77ce4c17a949a93632c8a0378fd3ede) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an IDS entity facet naming an IFC4-only class (`IfcAirTerminal`, `IfcFilter`, `IfcValve`, …) never matching anything in an IFC2X3 model.
+  
+  IFC2X3 predates those classes; the same concept there is a generic occurrence class (`IfcFlowTerminal`, `IfcFlowTreatmentDevice`, `IfcFlowController`, …) related to a specific type object (`IfcAirTerminalType`, `IfcFilterType`, `IfcValveType`, …) via `IfcRelDefinesByType`. buildingSMART's IDS spec defines an occurrence/type mapping table so a facet naming the IFC4-only class still matches the equivalent IFC2X3 pair ("the definition of an IDS applicability facet with entity `IfcFilter`, should result in the identification of all `IfcFlowTreatmentDevice` that are associated with a type `IfcFilterType`") — this package implemented no such mapping, so every entity facet using one of the table's 55 aliases against an IFC2X3 model reported zero applicable entities regardless of content. `packages/ids/src/facets/ifc2x3-type-mapping.ts` now carries the table (scoped to IFC2X3 only — IFC4+ already has a dedicated class for every alias), consulted by `checkEntityFacet`, `entityFacetPasses` and the applicability broadphase filter.
+  
+  Also fix a property facet applied directly to `IfcMaterial` always reporting the property set missing. `IfcMaterialProperties` (IFC4+) / `IfcExtendedMaterialProperties` (IFC2X3) attach property sets straight to the material, not through `IfcRelDefinesByProperties` like every other pset, and `collectAllPropertySets` never read them.
+  
+  Found via buildingSMART's official IDS conformance corpus (16 test cases added upstream since this repository's [#1685](https://github.com/LTplus-AG/ifc-lite/issues/1685) vendoring, re-synced here): all 6 `pass-` cases covering these two gaps previously failed.
+- Updated dependencies [[`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/parser@4.2.0
+  - @ifc-lite/data@3.4.0
+
 ## 1.15.47
 
 ### Patch Changes

@@ -37,6 +37,8 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -63,6 +65,7 @@ export class HeadlessLikeBackend implements BimBackend {
   visibility: VisibilityBackendMethods;
   viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
+  readonly style: StyleBackendMethods;
   readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
@@ -93,9 +96,21 @@ export class HeadlessLikeBackend implements BimBackend {
       flyTo() {}, setSection() {}, getSection() { return null; },
       setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
     };
-    this.mutate = {
-      setProperty() {}, setAttribute() {}, deleteProperty() {},
-      batchBegin() {}, batchEnd() {}, undo() { return false; }, redo() { return false; },
+    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
+    // against the shared StoreEditor, so the new entities land in the overlay
+    // this backend's export adapter already reads.
+    this.style = {
+      applyColors: (batches, options) => applyStylesInStore(
+        this.getOrCreateStoreEditor(),
+        this.dataStore,
+        batches.map(batch => ({
+          products: batch.refs.map(r => r.expressId),
+          color: batch.color,
+          name: batch.name,
+        })),
+        options,
+      ),
     };
     this.store = this.createStoreAdapter();
     this.spatial = { queryBounds() { return []; }, raycast() { return []; }, queryFrustum() { return []; } };
@@ -167,6 +182,18 @@ export class HeadlessLikeBackend implements BimBackend {
   /** Expose the mutation view so tools can inspect pending mutations. */
   getMutationView(): MutablePropertyView | null {
     return this.mutationView;
+  }
+
+  /**
+   * The overlay every `bim.mutate.*` write goes through, created on first use
+   * so a read-only session still pays nothing. Built by `getOrCreateStoreEditor`
+   * to keep the extractor wiring in one place.
+   */
+  private getOrCreateMutationView(): MutablePropertyView {
+    this.getOrCreateStoreEditor();
+    // Non-null immediately after: the two fields are assigned together and
+    // never cleared.
+    return this.mutationView as MutablePropertyView;
   }
 
   /** Force creation of the editor (used by mutation tools that always need it). */

@@ -27,8 +27,10 @@ use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
 use std::sync::Arc;
 
-/// Maximum nested IfcMappedItem depth we will traverse for a single geometry item.
-const MAX_MAPPED_ITEM_DEPTH: usize = 32;
+// Maximum nested IfcMappedItem depth for a single geometry item. Shared with
+// `ifc_lite_processing::element` and the wasm styling colour resolver, which
+// walk the same chain; the constant's own docs say why they must agree.
+use ifc_lite_core::MAX_MAPPED_ITEM_DEPTH;
 
 impl GeometryRouter {
     /// Process building element (IfcWall, IfcBeam, etc.) into mesh
@@ -335,7 +337,7 @@ impl GeometryRouter {
             &rustc_hash::FxHashMap<u32, crate::processors::texture::ResolvedTextureMap>,
         >,
     ) -> Result<()> {
-        if depth >= MAX_MAPPED_ITEM_DEPTH {
+        if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
             return Err(Error::geometry(format!(
                 "MappedItem nesting exceeded maximum depth of {} at #{}",
                 MAX_MAPPED_ITEM_DEPTH, item.id
@@ -894,7 +896,7 @@ impl GeometryRouter {
         visited: &mut FxHashSet<u32>,
         truncated: &mut bool,
     ) -> Result<Mesh> {
-        if depth >= MAX_MAPPED_ITEM_DEPTH {
+        if depth >= MAX_MAPPED_ITEM_DEPTH as usize {
             return Err(Error::geometry(format!(
                 "MappedItem nesting exceeded maximum depth of {} at #{}",
                 MAX_MAPPED_ITEM_DEPTH, item.id
@@ -1138,5 +1140,27 @@ impl GeometryRouter {
         self.scale_mesh(&mut mesh);
         self.apply_placement(element, decoder, &mut mesh)?;
         Ok(Some(mesh))
+    }
+}
+
+#[cfg(test)]
+mod shared_cap_tests {
+    /// `MAX_MAPPED_ITEM_DEPTH` must be the one in `ifc_lite_core::limits`, not
+    /// a private copy that happens to hold the same number today.
+    ///
+    /// This is not redundant with the constant being shared. Sharing removes
+    /// the drift that EXISTS; it does not stop anyone reintroducing a local
+    /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
+    /// mutation: with the import replaced by a private `= 16` — the exact
+    /// #2864 regression, where elements with 17-to-32-link chains rendered
+    /// their geometry and silently lost their authored colour — 800 tests
+    /// stayed green until this test existed.
+    #[test]
+    fn mapped_item_depth_is_the_shared_constant() {
+        assert_eq!(
+            super::MAX_MAPPED_ITEM_DEPTH,
+            ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
+            "use the shared cap from ifc_lite_core::limits, not a private copy"
+        );
     }
 }

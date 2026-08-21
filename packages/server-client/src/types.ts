@@ -363,11 +363,35 @@ export interface SymbolicFillArea {
  * Present only when extraction stopped at its bound; absent when the file was
  * emitted in full.
  */
+/**
+ * Which bound stopped an extraction early.
+ *
+ * Mirrors `SymbolicTruncationReason` in `rust/processing/src/symbolic/output_cap.rs`,
+ * serialized kebab-case. The extraction bounds (`element-count`, `output-bytes`)
+ * are the severe ones and outrank the per-item bounds, which stop one
+ * representation item's contribution while the whole-file totals can sit far
+ * below either extraction bound.
+ */
+export type SymbolicTruncationReason =
+  | 'element-count'
+  | 'output-bytes'
+  | 'item-depth'
+  | 'item-revisits';
+
 export interface SymbolicTruncation {
-  /** The bound that was hit. */
-  limit: number;
-  /** Primitives emitted before extraction stopped. */
+  /** Which bound fired. */
+  reason: SymbolicTruncationReason;
+  /** Total primitives emitted. */
   emitted: number;
+  /**
+   * The bound's numeric value, when the reason has one.
+   *
+   * ABSENT for `item-depth` and `item-revisits`: those bounds are per
+   * representation item, so there is no file-level number to compare `emitted`
+   * against, and rendering "showing {emitted} of {limit}" for them would
+   * invent a relationship that does not exist.
+   */
+  limit?: number;
 }
 
 export interface SymbolicData {

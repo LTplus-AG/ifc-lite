@@ -292,7 +292,9 @@ impl SymbolicAccumulator {
 
     /// Append a polyline unless the extraction has hit its cap.
     pub(super) fn push_polyline(&mut self, polyline: SymbolicPolyline) {
-        let payload = polyline.points.len();
+        let payload = polyline.points.len()
+            + polyline.ifc_type.len()
+            + polyline.representation.len();
         if let Some(reason) = self.exceeded_by(payload) {
             self.record(reason);
             self.exhausted = true;
@@ -308,7 +310,7 @@ impl SymbolicAccumulator {
 
     /// Append a circle unless the extraction has hit its cap.
     pub(super) fn push_circle(&mut self, circle: SymbolicCircle) {
-        let payload = 8;
+        let payload = 8 + circle.ifc_type.len() + circle.representation.len();
         if let Some(reason) = self.exceeded_by(payload) {
             self.record(reason);
             self.exhausted = true;
@@ -330,7 +332,10 @@ impl SymbolicAccumulator {
         // emission. Omitting it made the byte bound a 13.5x under-count:
         // 800,100 texts charged 54.9 MB while the process held 3.45 GB and
         // `truncated` stayed None.
-        let payload = text.content.len() + text.alignment.len();
+        let payload = text.content.len()
+            + text.alignment.len()
+            + text.ifc_type.len()
+            + text.representation.len();
         if let Some(reason) = self.exceeded_by(payload) {
             self.record(reason);
             self.exhausted = true;
@@ -346,7 +351,10 @@ impl SymbolicAccumulator {
 
     /// Append a filled region unless the extraction has hit its cap.
     pub(super) fn push_fill(&mut self, fill: SymbolicFillArea) {
-        let payload = fill.points.len() + fill.holes_offsets.len();
+        let payload = fill.points.len()
+            + fill.holes_offsets.len()
+            + fill.ifc_type.len()
+            + fill.representation.len();
         if let Some(reason) = self.exceeded_by(payload) {
             self.record(reason);
             self.exhausted = true;

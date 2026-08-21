@@ -4212,6 +4212,7 @@
     "SymbolicPolyline: interface",
     "SymbolicText: interface",
     "SymbolicTruncation: interface",
+    "SymbolicTruncationReason: type",
     "decodeDataModel: function",
     "decodeOptimizedParquetGeometry: function",
     "decodeParquetGeometry: function",

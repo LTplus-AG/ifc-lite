@@ -1782,6 +1782,7 @@
     "migrateManifest: function",
     "migrateSavedScripts: function",
     "mineSequences: function",
+    "needsSdkRepair: function",
     "opMatchesScopeClaim: function",
     "overallTier: function",
     "overlayParagraphDiff: function",

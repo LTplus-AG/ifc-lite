@@ -361,22 +361,37 @@ jobs:
           path: packages
       - run: pnpm lint
 
-  # The viewer's own suite, split out of `node-tests` so the two run at the
-  # same time. 521 test files, each in its own process paying its own
-  # TypeScript transform (`vite-module-hooks.mjs` keeps no on-disk cache), so
-  # the constant cost per file is what dominates rather than the assertions.
-  # Concurrency helps it linearly and does not make it small.
+  # The viewer's own suite, split out of `node-tests` AND sharded four ways.
+  #
+  # Measured, not guessed. Splitting it out of node-tests took that lane from
+  # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
+  # and a half minutes. The viewer alone then still timed out at 25:29 with a
+  # whole 4-vCPU runner to itself, which is what made sharding the answer
+  # rather than more concurrency inside one job.
+  #
+  # 521 test files, each in its own process paying its own TypeScript transform
+  # (`vite-module-hooks.mjs` keeps no on-disk cache), so a per-file CONSTANT
+  # dominates rather than the assertions. Concurrency divides that constant and
+  # cannot remove it; only running fewer files per job does.
+  #
+  # The real fix underneath is a shared transform cache, which would make the
+  # shards unnecessary. Until then this is honest about being a division of
+  # the work rather than a reduction of it.
   #
   # A timed-out lane reports as `cancelled`, which is the SAME word a
   # supersession gets. Separate them by duration against `timeout-minutes`,
   # never by the word: 25m16s and 25m18s against a 25 minute cap are timeouts,
   # and nothing else in the API says so.
   viewer-tests:
-    name: Viewer tests
+    name: Viewer tests (shard ${{ matrix.shard }})
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -402,7 +417,14 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # `TEST_SHARDS`/`TEST_SHARD` select every Nth file (see apps/viewer's
+      # test script). Unset, the script takes all 521, so a local `pnpm test`
+      # is unchanged. Verified the split is exact: 130+131+130+130 = 521, with
+      # 521 distinct paths across the four, so no file is dropped or run twice.
       - run: pnpm exec turbo test --filter=@ifc-lite/viewer
+        env:
+          TEST_SHARDS: '4'
+          TEST_SHARD: ${{ matrix.shard }}
 
   node-tests:
     name: Node tests

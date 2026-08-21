@@ -148,6 +148,25 @@ describe('bim.style.apply', () => {
     expect(exportStep(bim)).toContain("'Old Red'");
   });
 
+  it('writes no colour chain at all for a batch that styles nothing', async () => {
+    // A caller colouring by IFC class hands in a batch per class, and most
+    // classes in a real model (types, ports, spatial structure) reach no
+    // geometry. Emitting the style up front left one orphan IfcColourRgb /
+    // IfcSurfaceStyleShading / IfcSurfaceStyle in the file per such batch.
+    const bim = await loadModel();
+    const before = (exportStep(bim).match(/IFCSURFACESTYLE\(/g) ?? []).length;
+
+    const result = bim.style.apply(bim.query().byType('IfcProject').refs(), '#123456', {
+      name: 'Nothing',
+    });
+
+    expect(result.surfaceStyleId).toBeNull();
+    expect(result.styledItemIds).toEqual([]);
+    const step = exportStep(bim);
+    expect((step.match(/IFCSURFACESTYLE\(/g) ?? []).length).toBe(before);
+    expect(step).not.toContain("'Nothing'");
+  });
+
   it('rejects a colour string that is not a hex triple', async () => {
     const bim = await loadModel();
     const wall = bim.query().byType('IfcWall').refs();

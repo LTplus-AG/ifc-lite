@@ -41,8 +41,17 @@ export interface ApplyStyleOptions {
 }
 
 export interface ApplyStyleResult {
-  /** The `IfcSurfaceStyle` every item styled by this batch now points at. */
-  surfaceStyleId: number;
+  /**
+   * The `IfcSurfaceStyle` every item styled by this batch now points at, or
+   * `null` when the batch styled nothing.
+   *
+   * Null rather than an id because the style is only authored once there is
+   * something to attach it to. Emitting it up front left an orphan colour chain
+   * in the file for every batch that reached no geometry — and a caller
+   * colouring by IFC class hands in a batch per class, most of which (types,
+   * ports, spatial structure) have none.
+   */
+  surfaceStyleId: number | null;
   /** One `IfcStyledItem` per representation item that was styled. */
   styledItemIds: number[];
   /** Products that reached no geometry: no representation, or an empty one. */
@@ -269,22 +278,35 @@ export function applyStylesInStore(
       for (const item of reached) items.add(item);
     }
 
-    const surfaceStyleId = emitSurfaceStyle(editor, store.schemaVersion, batch.color, batch.name);
-    const styleRef = `#${surfaceStyleId.styleRefId}`;
+    // Split before emitting anything, so a batch that turns out to style
+    // nothing does not leave a colour chain behind.
+    const keptExistingItemIds: number[] = [];
+    const toStyle: number[] = [];
+    for (const item of [...items].sort((a, b) => a - b)) {
+      if (!replaceExisting && styledBy.has(item)) keptExistingItemIds.push(item);
+      else toStyle.push(item);
+    }
+
+    if (toStyle.length === 0) {
+      return {
+        surfaceStyleId: null,
+        styledItemIds: [],
+        productsWithoutGeometry,
+        replacedStyledItemIds: [],
+        keptExistingItemIds,
+      };
+    }
+
+    const style = emitSurfaceStyle(editor, store.schemaVersion, batch.color, batch.name);
+    const styleRef = `#${style.styleRefId}`;
 
     const styledItemIds: number[] = [];
     const replacedStyledItemIds: number[] = [];
-    const keptExistingItemIds: number[] = [];
 
-    for (const item of [...items].sort((a, b) => a - b)) {
+    for (const item of toStyle) {
       const existing = styledBy.get(item);
       if (existing !== undefined) {
-        if (!replaceExisting) {
-          keptExistingItemIds.push(item);
-          continue;
-        }
         editor.removeEntity(existing);
-        styledBy.delete(item);
         replacedStyledItemIds.push(existing);
       }
       const styled = editor.addEntity('IfcStyledItem', [`#${item}`, [styleRef], null]);
@@ -293,7 +315,7 @@ export function applyStylesInStore(
     }
 
     return {
-      surfaceStyleId: surfaceStyleId.surfaceStyleId,
+      surfaceStyleId: style.surfaceStyleId,
       styledItemIds,
       productsWithoutGeometry,
       replacedStyledItemIds,

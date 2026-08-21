@@ -141,3 +141,44 @@ test('the audit is fast enough to actually run', () => {
   assert.equal(r.untimed, 400);
   assert.ok(ms < 10_000, `audit took ${ms}ms on 400 tests; it should be well under 10s`);
 });
+
+test('an expression callback with a trailing timeout counts as timed', () => {
+  // No `}` before the timeout comma. A tail regex anchored on `[)}\]]` reports
+  // this untimed; splitting top-level arguments does not.
+  const r = audit(`
+it('expression callback', () => ready, 30_000);
+it('expression callback, unbounded', () => ready);
+`);
+  assert.equal(r.timed, 1);
+  assert.equal(r.untimed, 1);
+});
+
+test('a multi-line it.each finds the TEST call, not the table', () => {
+  const r = audit(`
+it.each([
+  ['a'],
+  ['b'],
+])('parameterized %s', async () => { expect(1).toBe(1); }, 30_000);
+it.each([['c']])('unbounded %s', async () => { expect(1).toBe(1); });
+`);
+  assert.equal(r.unparseable, 0);
+  assert.equal(r.timed, 1);
+  assert.equal(r.untimed, 1);
+});
+
+test('an it(...) that exists only inside a comment or string is not discovered', () => {
+  // Discovery must read the BLANKED source. Reading raw source, a commented
+  // `it(` either consumes the next real call (hiding it) or, with no real call
+  // after it, reports a false unparseable.
+  //
+  // The commented-out test above passed even before this was fixed, because
+  // the false match happened to swallow the one real call and land on the
+  // right total. It was right by luck, which is why this fixture has no real
+  // call after the fake one.
+  const r = audit(`
+// it('only in a comment', async () => { expect(1).toBe(1); });
+const sample = "it('only in a string', fn)";
+`);
+  assert.equal(r.unparseable, 0, 'a fake call must not be reported as unparseable');
+  assert.equal(r.timed + r.untimed, 0, 'nothing real to count here');
+});

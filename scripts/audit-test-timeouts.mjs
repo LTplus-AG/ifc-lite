@@ -156,25 +156,53 @@ function matchParen(code, open) {
 }
 
 /**
- * Does this call carry a per-test timeout?
+ * Split a call slice `( a, b, c )` into its TOP-LEVEL argument texts.
  *
- * The options object must be an ARGUMENT, not anything inside the callback
- * body. The first version tested the whole call slice, so
- * `execFileAsync(..., { timeout: 120_000 })` inside a test marked that test
- * protected — six subprocess-spawning CLI tests, exactly the slow class this
- * audit is for, reported as already bounded. A false TIMED hides a gap, so it
- * is the dangerous direction.
+ * Needed because a tail regex cannot tell an argument from something inside
+ * one. `it('x', () => ready, 30_000)` has no `}` before the timeout comma, so
+ * a `[)}\]]\s*,\s*\d+\s*\)$` pattern reports it untimed; and any
+ * `{ timeout: N }` deeper in the body looks like an argument to a pattern that
+ * only sees text.
  */
-function hasTimeout(call) {
-  const trimmed = call.replace(/\s+$/, '');
-  // trailing numeric argument, single- or multi-line, optional trailing comma
-  if (/[)}\]]\s*,\s*[0-9][0-9_]*\s*,?\s*\)$/.test(trimmed)) return true;
-  // options object BEFORE the callback: `it('x', { timeout: N }, fn)`
-  const head = call.slice(0, call.search(/=>|function\b/) + 1 || call.length);
-  return /,\s*\{[^{}]*\btimeout\s*:/.test(head);
+function splitArgs(call) {
+  const inner = call.slice(1, -1);
+  const args = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === ',' && depth === 0) {
+      args.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  const tail = inner.slice(start).trim();
+  if (tail) args.push(tail);
+  return args;
 }
 
-const CALL = /\b(?:it|test)(?:\.(?:each|skipIf|runIf|only|skip|concurrent|sequential|todo|fails)\b(?:\([^\n]*?\))?)*\s*\(/g;
+/**
+ * Does this call carry a per-test timeout?
+ *
+ * Two forms, both decided on ARGUMENTS rather than on the call's text:
+ *   - a trailing numeric literal:  it('x', fn, 30_000)
+ *   - an options object with `timeout:` anywhere before the callback
+ *
+ * Deciding on text is what made the first version report a test as protected
+ * because its BODY called `execFileAsync(..., { timeout: 120_000 })`.
+ */
+function hasTimeout(call) {
+  const args = splitArgs(call);
+  if (args.length === 0) return false;
+  if (/^[0-9][0-9_]*$/.test(args[args.length - 1])) return true;
+  return args.slice(0, -1).some((a) => /^\{[\s\S]*\btimeout\s*:/.test(a));
+}
+
+// The modifier's own argument list (`it.each([...])`) may span lines, so it
+// is matched by paren-scanning below rather than by this regex.
+const CALL = /\b(?:it|test)(?:\.(?:each|skipIf|runIf|only|skip|concurrent|sequential|todo|fails)\b)*\s*\(/g;
 
 let timed = 0;
 let untimed = 0;
@@ -187,9 +215,15 @@ for (const root of roots.length ? roots : ['.']) {
     const code = blankNonCode(src);
     CALL.lastIndex = 0;
     let m;
-    while ((m = CALL.exec(src)) !== null) {
-      const open = code.indexOf('(', m.index + m[0].length - 1);
-      const close = matchParen(code, open);
+    while ((m = CALL.exec(code)) !== null) {
+      let open = code.indexOf('(', m.index + m[0].length - 1);
+      let close = matchParen(code, open);
+      // `it.each([...])( 'name', fn, 30_000 )` — the first group is the table,
+      // the second is the test call. Step past any groups followed by another.
+      while (close !== -1 && /^\s*\(/.test(code.slice(close + 1, close + 8))) {
+        open = code.indexOf('(', close + 1);
+        close = matchParen(code, open);
+      }
       if (close === -1) {
         // Never drop silently: an unparseable call is a hole in the audit, and
         // a hole that prints nothing is indistinguishable from no gap.

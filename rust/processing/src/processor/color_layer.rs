@@ -124,7 +124,8 @@ fn resolve_presentation_layer_name(
     resolved
 }
 
-/// Find a color in a representation by traversing its items.
+/// Find a color in a representation (`IfcProductDefinitionShape`) by
+/// traversing each of its `IfcShapeRepresentation`s.
 fn find_color_in_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
@@ -137,42 +138,35 @@ fn find_color_in_representation(
     let repr_list = get_refs_from_list(&repr, 2)?;
 
     for shape_repr_id in repr_list {
-        if let Ok(shape_repr) = decoder.decode_by_id(shape_repr_id) {
-            // Attribute 3: Items (list of IfcRepresentationItem)
-            if let Some(items) = get_refs_from_list(&shape_repr, 3) {
-                for item_id in items {
-                    // Check direct style
-                    if let Some(style) = geometry_styles.get(&item_id) {
-                        return Some(style.color);
-                    }
-
-                    // Check mapped items
-                    if let Ok(item) = decoder.decode_by_id(item_id) {
-                        if item.ifc_type == IfcType::IfcMappedItem {
-                            if let Some(source_id) = item.get_ref(0) {
-                                if let Ok(source) = decoder.decode_by_id(source_id) {
-                                    if let Some(mapped_repr_id) = source.get_ref(1) {
-                                        if let Some(color) = find_color_in_shape_representation(
-                                            mapped_repr_id,
-                                            geometry_styles,
-                                            decoder,
-                                        ) {
-                                            return Some(color);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+        if let Some(color) =
+            find_color_in_shape_representation(shape_repr_id, geometry_styles, decoder)
+        {
+            return Some(color);
         }
     }
 
     None
 }
 
-/// Find color in a shape representation.
+/// Find color in a shape representation: delegates each item to
+/// `element::find_geometry_item_color`, the canonical per-element resolver
+/// (#913 §2.7), instead of re-walking the `IfcMappedItem ->
+/// IfcRepresentationMap -> MappedRepresentation` chain here.
+///
+/// This used to duplicate that walk inline, one hop deep, so a styled leaf
+/// sitting two or more mapped-item hops down resolved through the canonical
+/// path but not through this prepass fallback (the asymmetry this function
+/// exists to fix). Widening the local walk to match — instead of delegating
+/// — reintroduced the walk's own unbounded recursion here a second time:
+/// `element::find_geometry_item_color` had already been bounded by
+/// `MAX_MAPPED_ITEM_DEPTH` plus a depth-recording visited map after a cyclic
+/// `IfcMappedItem` chain was found to abort the process through it (#2863,
+/// #2864 — a Rust stack overflow is an abort, not a catchable panic, so
+/// nothing short of a bound stops it). A second, separately bounded copy of
+/// the same traversal here would only defer the next divergence: the two caps
+/// would need to be kept in step by hand instead of not existing. Calling the
+/// guarded resolver directly means there is one traversal and one bound, and
+/// the asymmetry cannot reopen.
 fn find_color_in_shape_representation(
     repr_id: u32,
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
@@ -182,10 +176,156 @@ fn find_color_in_shape_representation(
     let items = get_refs_from_list(&repr, 3)?;
 
     for item_id in items {
-        if let Some(style) = geometry_styles.get(&item_id) {
-            return Some(style.color);
+        if let Some(color) =
+            crate::element::find_geometry_item_color(item_id, geometry_styles, decoder)
+        {
+            return Some(color);
         }
     }
 
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ifc_lite_core::{build_entity_index, EntityDecoder};
+
+    /// `find_color_in_representation` used to bottom out after ONE level of
+    /// `IfcMappedItem` indirection: `find_color_in_shape_representation`
+    /// checked each item's own direct style but never chased a nested
+    /// `IfcMappedItem` inside a mapped representation's items, unlike the
+    /// canonical per-element resolver `element::find_geometry_item_color`
+    /// (#913 §2.7), which recurses to arbitrary depth.
+    ///
+    /// This fixture nests the styled geometry TWO mapped-item hops deep:
+    /// `#10 PDS -> #20 ShapeRepr -> #30 MappedItem -> #40 RepMap -> #50
+    /// ShapeRepr -> #60 MappedItem -> #70 RepMap -> #80 ShapeRepr -> #90
+    /// (styled leaf item)`.
+    #[test]
+    fn find_color_in_representation_follows_nested_mapped_items() {
+        let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n\
+            #20=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
+            #30=IFCMAPPEDITEM(#40,$);\n\
+            #40=IFCREPRESENTATIONMAP($,#50);\n\
+            #50=IFCSHAPEREPRESENTATION($,$,$,(#60));\n\
+            #60=IFCMAPPEDITEM(#70,$);\n\
+            #70=IFCREPRESENTATIONMAP($,#80);\n\
+            #80=IFCSHAPEREPRESENTATION($,$,$,(#90));\n\
+            #90=IFCEXTRUDEDAREASOLID($,$,$,$);\n\
+            ENDSEC;\nEND-ISO-10303-21;\n";
+        let index = build_entity_index(content);
+        let mut decoder = EntityDecoder::with_index(content, index);
+
+        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        styles.insert(
+            90,
+            GeometryStyleInfo {
+                color: [1.0, 0.0, 0.0, 1.0],
+                shading_color: None,
+                material_name: None,
+            },
+        );
+
+        let color = find_color_in_representation(10, &styles, &mut decoder);
+        assert_eq!(
+            color,
+            Some([1.0, 0.0, 0.0, 1.0]),
+            "a styled leaf item two IfcMappedItem hops deep must still resolve — \
+             find_color_in_shape_representation must chase nested IfcMappedItem \
+             the same way find_color_in_representation's own first hop does, \
+             mirroring element::find_geometry_item_color's unbounded recursion"
+        );
+    }
+
+    /// #2863's cyclic fixture, transplanted to this module's own entry
+    /// point: `#30`'s mapped representation lists `#30` itself, so the chase
+    /// re-enters where it started. Before the guard this stack-overflows and
+    /// SIGABRTs the whole test binary; asserting `None` (not merely "does not
+    /// crash") is the only way to see it pass or fail rather than vanish.
+    #[test]
+    fn find_color_in_representation_terminates_on_cyclic_mapping() {
+        let content = b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n\
+            #10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n\
+            #20=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
+            #30=IFCMAPPEDITEM(#40,$);\n\
+            #40=IFCREPRESENTATIONMAP($,#50);\n\
+            #50=IFCSHAPEREPRESENTATION($,$,$,(#30));\n\
+            ENDSEC;\nEND-ISO-10303-21;\n";
+        let index = build_entity_index(content);
+        let mut decoder = EntityDecoder::with_index(content, index);
+        let styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        assert_eq!(find_color_in_representation(10, &styles, &mut decoder), None);
+    }
+
+    /// Build a chain of `hops` nested `IfcMappedItem`s under one
+    /// `IfcProductDefinitionShape` (`#10`), terminating in a leaf
+    /// `IfcShapeRepresentation` (`#9000`) whose own item `#9999` carries the
+    /// style. `#9999` is never decoded as an entity — the resolver checks
+    /// styles by id before it ever needs to decode the item — so it does not
+    /// need its own STEP record.
+    fn nested_mapped_chain(hops: u32) -> Vec<u8> {
+        let mut s = String::from(
+            "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#10=IFCPRODUCTDEFINITIONSHAPE($,$,(#20));\n",
+        );
+        for i in 0..hops {
+            let shape = 20 + i * 10;
+            let map_item = 21 + i * 10;
+            let rep_map = 22 + i * 10;
+            let next = if i + 1 == hops { 9000 } else { 20 + (i + 1) * 10 };
+            s.push_str(&format!(
+                "#{shape}=IFCSHAPEREPRESENTATION($,$,$,(#{map_item}));\n"
+            ));
+            s.push_str(&format!("#{map_item}=IFCMAPPEDITEM(#{rep_map},$);\n"));
+            s.push_str(&format!("#{rep_map}=IFCREPRESENTATIONMAP($,#{next});\n"));
+        }
+        s.push_str("#9000=IFCSHAPEREPRESENTATION($,$,$,(#9999));\n");
+        s.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+        s.into_bytes()
+    }
+
+    #[test]
+    fn find_color_in_representation_resolves_exactly_at_the_depth_cap() {
+        let red = [1.0, 0.0, 0.0, 1.0];
+        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        styles.insert(
+            9999,
+            GeometryStyleInfo {
+                color: red,
+                shading_color: None,
+                material_name: None,
+            },
+        );
+        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH);
+        let index = build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, index);
+        assert_eq!(
+            find_color_in_representation(10, &styles, &mut decoder),
+            Some(red),
+            "a chain exactly MAX_MAPPED_ITEM_DEPTH hops deep must still resolve"
+        );
+    }
+
+    #[test]
+    fn find_color_in_representation_stops_one_hop_past_the_depth_cap() {
+        let red = [1.0, 0.0, 0.0, 1.0];
+        let mut styles: FxHashMap<u32, GeometryStyleInfo> = FxHashMap::default();
+        styles.insert(
+            9999,
+            GeometryStyleInfo {
+                color: red,
+                shading_color: None,
+                material_name: None,
+            },
+        );
+        let content = nested_mapped_chain(crate::element::MAX_MAPPED_ITEM_DEPTH + 1);
+        let index = build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, index);
+        assert_eq!(
+            find_color_in_representation(10, &styles, &mut decoder),
+            None,
+            "one hop past the cap the chase gives up rather than recursing on"
+        );
+    }
 }

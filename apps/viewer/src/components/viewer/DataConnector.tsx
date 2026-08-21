@@ -61,6 +61,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useViewerStore } from '@/store';
+import { roleCanEdit } from '@/store/slices/collabSlice';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { PropertyValueType } from '@ifc-lite/data';
@@ -100,6 +101,20 @@ export function DataConnector({ trigger }: DataConnectorProps) {
   const { models } = useIfc();
   const getMutationView = useViewerStore((s) => s.getMutationView);
   const registerMutationView = useViewerStore((s) => s.registerMutationView);
+  // Collab role gate, two layers deep. (1) canCollabEdit is injected straight into
+  // CsvConnector's constructor (see mutation-guard.ts): CSV import reaches the
+  // mutation view's setProperty directly via generateMutations/importAsync,
+  // bypassing the store's own setProperty action (and its canCollabEdit() check)
+  // entirely, so the connector itself refuses a write for a viewer/commenter role
+  // as containment. (2) canEditInSession mirrors that same role check here in the
+  // component, the same way MainToolbar/AuthorTab gate Edit mode, so the Import
+  // button is disabled and never gets clicked in the first place. Both layers read
+  // the one shared `roleCanEdit` rule that `canCollabEdit()` is itself built from,
+  // so a future role change cannot leave them disagreeing. null role = single-user,
+  // always editable.
+  const canCollabEdit = useViewerStore((s) => s.canCollabEdit);
+  const collabEditRole = useViewerStore((s) => s.collabRole);
+  const canEditInSession = roleCanEdit(collabEditRole);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -206,9 +221,10 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     return new CsvConnector(
       dataStore.entities,
       mutationView,
-      dataStore.strings || null
+      dataStore.strings || null,
+      canCollabEdit
     );
-  }, [selectedModel, selectedModelId, getMutationView]);
+  }, [selectedModel, selectedModelId, getMutationView, canCollabEdit]);
 
   // Parse CSV file
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -434,7 +450,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
 
   // Import using CsvConnector.importAsync for non-blocking progress
   const handleImport = useCallback(async () => {
-    if (!csvConnector || !csvContent) return;
+    if (!csvConnector || !csvContent || !canEditInSession) return;
 
     setIsProcessing(true);
     setImportStats(null);
@@ -468,7 +484,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
     } finally {
       setIsProcessing(false);
     }
-  }, [csvConnector, csvContent, buildDataMapping]);
+  }, [csvConnector, csvContent, canEditInSession, buildDataMapping]);
 
   // Scroll to bottom of the body area — double rAF ensures DOM is painted
   const scrollToBottom = useCallback(() => {
@@ -1014,6 +1030,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
           <Button
             onClick={handleImport}
             disabled={
+              !canEditInSession ||
               !csvConnector ||
               !csvContent ||
               !matchColumn ||
@@ -1021,6 +1038,7 @@ export function DataConnector({ trigger }: DataConnectorProps) {
               isProcessing ||
               !importDirty
             }
+            title={canEditInSession ? undefined : 'Editing requires editor access in this shared session'}
           >
             {isProcessing && importProgress ? (
               <>

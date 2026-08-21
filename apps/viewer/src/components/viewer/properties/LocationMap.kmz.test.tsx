@@ -125,7 +125,9 @@ function makeStub() {
 }
 
 /** Mount the panel and click Google Earth, returning what reached the exporter. */
-async function exportViaButton(): Promise<RecordedCall[]> {
+async function exportViaButton(
+  instancedModelRange?: { idOffset: number; maxExpressId: number } | null,
+): Promise<RecordedCall[]> {
   const { gp, calls } = makeStub();
   const container = render(
     <LocationMap
@@ -135,6 +137,7 @@ async function exportViaButton(): Promise<RecordedCall[]> {
       geometryResult={GEOMETRY_RESULT}
       lengthUnitScale={1}
       createKmzProcessor={() => gp}
+      instancedModelRange={instancedModelRange}
     />,
   );
 
@@ -203,6 +206,26 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
     );
   });
 
+  it('scopes instanced occurrences to the passed instancedModelRange, not every loaded model (PR #2878 review)', async () => {
+    // Two instanced occurrences: expressId 42 is IN this model's bracket
+    // (idOffset 0, maxExpressId 100 — global ids 1..100), expressId 500 belongs
+    // to some OTHER federated model entirely. Before this fix, the Location
+    // panel always passed `instancedModelRange: null` (no filter) to the KMZ
+    // builder, so a multi-model federation's export leaked every other loaded
+    // model's instanced geometry into this one model's KMZ.
+    setInstancedScene([instancedOccurrence(42), instancedOccurrence(500)]);
+
+    const calls = await exportViaButton({ idOffset: 0, maxExpressId: 100 });
+
+    assert.strictEqual(calls.length, 1, 'expected exactly one KMZ export');
+    assert.deepStrictEqual(
+      calls[0].meshes.map((m) => m.expressId).sort((a, b) => a - b),
+      [1, 42],
+      'the exported file must carry only this model\'s flat mesh and its OWN instanced occurrence, ' +
+        'not another loaded model\'s (expressId 500)',
+    );
+  });
+
   it('exports the flat model unchanged when the scene holds no instanced geometry', async () => {
     setInstancedScene([]);
 
@@ -220,7 +243,7 @@ describe('LocationMap — Google Earth (KMZ) export', () => {
       coordinateInfo: MAP_ABSOLUTE_COORDINATE_INFO,
       lengthUnitScale: 1,
       geometryResult: GEOMETRY_RESULT,
-      isPrimaryModel: true,
+      instancedModelRange: null,
       name: 'IFC Model',
     }, () => gp);
     assert.ok(out instanceof Uint8Array);

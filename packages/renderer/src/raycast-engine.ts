@@ -142,10 +142,17 @@ export class RaycastEngine {
             pushVisiblePieces(mesh.expressId, mesh.modelIndex);
         }
 
-        // Collect mesh data from batched meshes
+        // Collect mesh data from batched meshes. Batches group by colour, NOT
+        // by model (see Scene.bucketBaseKey / BatchedMesh.modelIndices), so
+        // two federated models sharing an expressId AND colour can be
+        // co-batched. Scope each entry to ITS OWN modelIndex (parallel array,
+        // same index = same source piece) rather than calling
+        // getMeshDataPieces(expressId) unscoped, which would return every
+        // model's pieces for that id — including ones with no entry in this
+        // batch or scene at all.
         for (const batch of batchedMeshes) {
-            for (const expressId of batch.expressIds) {
-                pushVisiblePieces(expressId);
+            for (let i = 0; i < batch.expressIds.length; i++) {
+                pushVisiblePieces(batch.expressIds[i], batch.modelIndices?.[i]);
             }
         }
 

@@ -312,6 +312,8 @@ describe('reference-collector: source-shape equivalence', () => {
     });
   });
 
+  // 60s: parses a 2.4 MB IFC; ~2.3s under CI fork contention against vitest's
+  // 5000ms default. Same shape as the parser twin, which went over.
   it('agrees across source shapes on a real IFC file', async (ctx) => {
     if (!existsSync(FIXTURE_PATH)) {
       // ctx.skip(), never a bare `return`: a return records a PASS, so the
@@ -405,5 +407,5 @@ describe('reference-collector: source-shape equivalence', () => {
     expect(styledRaw.size).toBeGreaterThan(closureRaw.size);
     expect(sorted(styledAccessor)).toEqual(sorted(styledRaw));
     expect(sorted(styledReference)).toEqual(sorted(styledRaw));
-  });
+  }, 60_000);
 });

@@ -2,7 +2,7 @@
 "@ifc-lite/sdk": minor
 "@ifc-lite/cli": patch
 "@ifc-lite/mcp": patch
-"viewer": patch
+"@ifc-lite/viewer": patch
 ---
 
 Make `bim.mutate.*` persist in the headless CLI and MCP backends instead of silently discarding every edit.

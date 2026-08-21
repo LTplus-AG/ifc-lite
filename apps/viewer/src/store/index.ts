@@ -59,6 +59,7 @@ import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouse
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
 import {
   endClashScenePresentation,
   type ClashSceneTeardown,
@@ -222,9 +223,16 @@ export type ViewerState = LoadingSlice &
   };
 
 /**
- * Main viewer store combining all slices
+ * Main viewer store combining all slices.
+ *
+ * `withVisibilityOwnershipInvalidation` wraps the store's `set` (and its
+ * `setState`) so that no slice — present or future — can replace
+ * `isolatedEntities` / `ghostExceptEntities` without dropping the
+ * visibility-ownership records that write makes stale. See
+ * `store/visibility-invalidation.ts` for why that is a middleware rather than a
+ * helper each writing action remembers to call.
  */
-const createViewerStore = () => create<ViewerState>()((...args) => ({
+const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation((...args) => ({
   // Spread all slices
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
@@ -726,7 +734,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       get().showWorkspacePanel(panel);
     }
   },
-}));
+})));
 
 const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
 const globalStoreRegistry = globalThis as typeof globalThis & {

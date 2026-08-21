@@ -71,6 +71,14 @@ export interface IDSFocusVisibilityChannels extends VisibilityChannels {
  * the moment another owner installs a set with equal content, and the next
  * release destroys THAT owner's presentation (#2654 fourth review).
  *
+ * The drop matters most on the branch where nothing is released. When this DID
+ * release through the live store, the store's own channel-write invalidation
+ * (`store/visibility-invalidation.ts`) would have dropped the record for the
+ * same reason — which is exactly why no store-driven test can see this line.
+ * When the answer is "not ours", nothing is written, nothing invalidates, and
+ * this is the only thing that ends the stale claim. `visibility-ownership.test.ts`
+ * covers both branches over the all-optional surface this is typed for.
+ *
  * @returns whether a channel was actually released — i.e. whether the row
  *   focus was still, verifiably, the owner.
  */

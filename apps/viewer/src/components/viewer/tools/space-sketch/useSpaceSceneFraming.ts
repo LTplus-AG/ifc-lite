@@ -68,6 +68,12 @@ export function useSpaceSceneFraming({ enabled, existingSpaceIds }: SceneFraming
     // ownership record off a presentation that is coming straight back (#2662
     // P2, re-found in the review of #2867). One atomic restore instead: the
     // captured view is a single fact and goes back as one.
+    //
+    // Two behaviour changes come with it, both wanted: a captured ISOLATION now
+    // survives a non-empty captured hidden set (the replay's `setHiddenEntities`
+    // nulled the isolation it had just restored), and a Class-tab `classFilter`
+    // this tool never touched is no longer cleared on close (that same setter
+    // nulls it).
     store.restoreVisibilityState(prior);
     // Restore against the CAPTURED visibility, not a "did we flip it" flag —
     // something else may have toggled spaces mid-session. `keepSpacesVisible`

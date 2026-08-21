@@ -12,8 +12,8 @@
  * landed AFTER the restore and undid it.
  *
  * That is not a cosmetic race: `setGhostExceptEntities(null)` also nulls
- * `isolatedEntities` (visibilitySlice.ts:227), so the late clear wiped the user's
- * restored ISOLATION as well as their prior X-ray. Opening Space Sketch on a
+ * `isolatedEntities` (visibilitySlice.ts, `setGhostExceptEntities`), so the
+ * late clear wiped the user's restored ISOLATION as well as their prior X-ray. Opening Space Sketch on a
  * clash-focused or isolated view and closing it dropped that view a frame later.
  *
  * Both hooks are rendered together here, in the same order the overlay calls

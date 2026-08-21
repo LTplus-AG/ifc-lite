@@ -1369,7 +1369,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     const resolved = cameraCallbacks.resolveHighlightIds?.(matchingIds) ?? [];
     const isolationIds = [...new Set([...resolved, ...matchingIds])];
 
-    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts:176-194): if
+    // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`): if
     // the channel already holds exactly these ids it CLEARS instead of
     // isolating. Switching from rule A to a rule B that lands on the SAME set
     // would therefore un-isolate the model while the record below claims B

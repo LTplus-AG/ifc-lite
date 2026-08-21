@@ -147,9 +147,11 @@ const OWNERSHIP_RECORD_FIELDS = [
  *
  * Fixing that per caller is one direction of a two-way rule, and the next owner
  * of the channel reintroduces it. So it is answered where the channels are
- * actually written instead — `visibilitySlice`, which every owner goes through
- * — and answered for EVERY record symmetrically, not for the one that happened
- * to be reported.
+ * actually written instead — and for EVERY record symmetrically, not for the
+ * one that happened to be reported. "Where they are written" is the store's own
+ * `set`, wrapped once in `store/visibility-invalidation.ts`: a list of writing
+ * ACTIONS was tried first and was already incomplete on the day it was written
+ * (`showAllInAllModels`, and ten actions in `pinboardSlice`).
  *
  * Invalidation is by CONTENT, not by "somebody wrote": `next` is the state the
  * channels are about to hold, and a record still content-matching it survives.
@@ -162,6 +164,8 @@ const OWNERSHIP_RECORD_FIELDS = [
  * CHANNEL first and its record second (`useClash.installClashIsolation` /
  * `installClashGhost`, `useIDS.installFocusIsolation` / `installFocusGhost`),
  * so a record can never be invalidated by the very write that installed it.
+ * (The middleware also leaves a record the patch itself carries alone, so an
+ * installer that committed both in ONE `set()` would be safe too.)
  *
  * @returns a partial state patch — `{}` when nothing went stale, so the common
  *   case adds no keys to the `set()` and slice-level harnesses that stub `get()`

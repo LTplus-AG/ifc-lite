@@ -2,21 +2,44 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { ApplyStyleResult, SurfaceStyleColor } from '@ifc-lite/create';
+import { hexToRgba } from '@ifc-lite/lens';
+import type { ApplyStyleOptions, ApplyStyleResult, SurfaceStyleColor } from '@ifc-lite/create';
 import type { BimBackend, EntityRef } from '../types.js';
-
-export interface ApplyColorOptions {
-  /** `IfcSurfaceStyle.Name`, useful when the colour stands for a class. */
-  name?: string;
-  /** Replace a style the geometry already carries. Default `true`. */
-  replaceExisting?: boolean;
-}
 
 /** One colour and the entities to paint with it. */
 export interface ColorBatch {
   refs: EntityRef[];
+  /** A hex string in any form `bim.viewer.colorize` takes, or channels in 0..1. */
   color: SurfaceStyleColor | string;
+  /** `IfcSurfaceStyle.Name`, useful when the colour stands for a class. */
   name?: string;
+}
+
+/** Anything `hexToRgba` resolves: `#rgb`, `#rrggbb`, `#rrggbbaa`, with or without `#`. */
+const HEX_COLOR = /^#?(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+/**
+ * Resolve a colour to channels.
+ *
+ * Strings go through the same `hexToRgba` that `bim.viewer.colorize` uses, so
+ * the two APIs accept exactly the same syntax rather than one of them rejecting
+ * a string the other paints with.
+ *
+ * The one deliberate difference is the failure mode: `hexToRgba` degrades an
+ * unparseable string to black, which is right for a transient overlay and wrong
+ * here, where the result is written into the file and shipped. A typo would be
+ * baked in as black with nothing said, so it throws instead.
+ */
+function resolveColor(color: SurfaceStyleColor | string): SurfaceStyleColor {
+  if (typeof color !== 'string') return color;
+  if (!HEX_COLOR.test(color.trim())) {
+    throw new Error(
+      `style: "${color}" is not a hex colour (#rgb, #rrggbb or #rrggbbaa). ` +
+      'Pass { red, green, blue } channels in 0..1 for anything else.',
+    );
+  }
+  const [red, green, blue] = hexToRgba(color, 1);
+  return { red, green, blue };
 }
 
 /**
@@ -25,8 +48,9 @@ export interface ColorBatch {
  * `bim.viewer.colorize` paints the current view; the colour is an overlay and
  * is gone the moment the model is written out. This writes real
  * `IfcSurfaceStyle` / `IfcStyledItem` entities, so the file opens coloured
- * anywhere. Available on local and headless contexts, which have direct store
- * access; a remote backend throws.
+ * anywhere. Needs direct store access: the headless CLI and MCP contexts
+ * implement it; a backend without the store, including the browser viewer's,
+ * throws rather than silently doing nothing.
  *
  * @example
  * bim.style.apply(bim.query().byType('IfcDuctSegment').refs(), '#9caec9');
@@ -39,29 +63,39 @@ export class StyleNamespace {
     if (!this.backend.style) {
       throw new Error(
         'style: not available on this backend — persistent colouring needs ' +
-        'direct store access (use a headless/local context, not a remote transport).',
+        'direct store access (use a headless context, not a remote transport).',
       );
     }
     return this.backend.style;
   }
 
-  /** Colour these entities. `color` is `#rgb`, `#rrggbb`, or channels in 0..1. */
+  /** Colour these entities. Hex string, or channels in 0..1. */
   apply(
     refs: EntityRef[],
     color: SurfaceStyleColor | string,
-    options?: ApplyColorOptions,
+    options?: ApplyStyleOptions & { name?: string },
   ): ApplyStyleResult {
-    return this.impl().applyColor(refs, color, options);
+    const { name, ...rest } = options ?? {};
+    return this.applyAll([{ refs, color, name }], rest)[0];
   }
 
   /**
    * Colour several groups in one pass, the persistent counterpart to
    * `bim.viewer.colorizeAll`. Batches are applied in order, so a later batch
-   * wins where two of them name the same geometry.
+   * wins where two of them reach the same geometry.
+   *
+   * One call rather than a loop over `apply`: the "at most one IfcStyledItem
+   * per representation item" rule has to hold across the whole pass, and the
+   * index of already-styled geometry is built once instead of per batch.
    */
-  applyAll(batches: ColorBatch[], options?: ApplyColorOptions): ApplyStyleResult[] {
-    return batches.map(batch =>
-      this.impl().applyColor(batch.refs, batch.color, { ...options, name: batch.name ?? options?.name }),
+  applyAll(batches: ColorBatch[], options?: ApplyStyleOptions): ApplyStyleResult[] {
+    return this.impl().applyColors(
+      batches.map(batch => ({
+        refs: batch.refs,
+        color: resolveColor(batch.color),
+        name: batch.name,
+      })),
+      options,
     );
   }
 }

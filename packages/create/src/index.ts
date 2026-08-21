@@ -46,9 +46,11 @@ export {
   type SpatialZoneType,
 } from './in-store/spatial-zone.js';
 export {
-  applyStyleInStore,
-  type ApplyStyleParams,
+  applyStylesInStore,
+  collectLeafRepresentationItems,
+  type ApplyStyleOptions,
   type ApplyStyleResult,
+  type StyleBatch,
   type SurfaceStyleColor,
 } from './in-store/apply-style.js';
 export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type RoofPolygonParams, type RoofBuildResult } from './in-store/roof.js';

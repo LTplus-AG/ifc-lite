@@ -31,6 +31,7 @@ import type { HeadlessLikeBackend } from '../headless-backend.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 import { resolveSafePath } from '../safe-path.js';
 import { validateInput } from '../validate.js';
+import { propertyValueTypeOf } from '@ifc-lite/sdk';
 
 interface MutationContext {
   m: ReturnType<typeof resolveModel>;
@@ -54,11 +55,8 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
   throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide global_id or express_id.' });
 }
 
-function detectValueType(value: unknown): PropertyValueType {
-  if (typeof value === 'boolean') return PropertyValueType.Boolean;
-  if (typeof value === 'number') return Number.isInteger(value) ? PropertyValueType.Integer : PropertyValueType.Real;
-  return PropertyValueType.String;
-}
+/** Shared with `bim.mutate.setProperty`, so the two paths cannot classify differently. */
+const detectValueType = propertyValueTypeOf;
 
 function applySetProperty(ctx: MutationContext, args: { expressId: number; pset: string; name: string; value: unknown }): Mutation {
   const editor = ctx.backend.ensureEditor();

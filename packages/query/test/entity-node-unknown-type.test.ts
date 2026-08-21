@@ -18,6 +18,7 @@
 import { describe, expect, it } from 'vitest';
 import type { IfcStoreBase } from '@ifc-lite/data';
 import { EntityNode } from '../src/entity-node.js';
+import { QueryResultEntity } from '../src/query-result-entity.js';
 import { createMockStore, IfcTypeEnum } from './mock-store.js';
 
 const PSET_ID = 4201;
@@ -66,5 +67,28 @@ describe('EntityNode.type', () => {
   it('stays Unknown for an id the index does not carry either', () => {
     const store = storeWithoutProductRow();
     expect(new EntityNode(store, 999999).type).toBe('Unknown');
+  });
+
+  it('canonicalises a class the hand-maintained name map does not carry', () => {
+    // IFC_ENTITY_NAMES is ~880 entries kept by hand, and its generator script
+    // is gone (see its own header). Resolving through it would hand back the
+    // raw uppercase token for anything it omits — a second wrong answer, and
+    // the same curated-subset trap that isProductType was moved off.
+    const store = createMockStore({
+      entities: [{ expressId: 7, type: 'IfcMove', globalId: 'MOVE00000000000000000X', name: 'M' }],
+    });
+    const patched = {
+      ...store,
+      entities: { ...store.entities, getTypeName: () => 'Unknown' },
+    } as IfcStoreBase;
+    expect(new EntityNode(patched, 7).type).toBe('IfcMove');
+  });
+
+  it('answers the same through QueryResultEntity, which EntityQuery returns', () => {
+    // The two getters were identical, so fixing only one left
+    // bim.query().execute() disagreeing with graph traversal on the same id.
+    const store = storeWithoutProductRow();
+    expect(new QueryResultEntity(store, PSET_ID).type)
+      .toBe(new EntityNode(store, PSET_ID).type);
   });
 });

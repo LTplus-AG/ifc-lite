@@ -13,7 +13,9 @@ import type {
   GenerateSpacesAllOptions,
   GenerateSpacesAllResult,
   StoreyInfo,
+  ApplyStyleOptions,
   ApplyStyleResult,
+  StyleBatch,
   SurfaceStyleColor,
 } from '@ifc-lite/create';
 
@@ -793,14 +795,17 @@ export interface SpacesBackendMethods {
  */
 export interface StyleBackendMethods {
   /**
-   * Give every representation item behind `refs` one `IfcSurfaceStyle`,
+   * Give every representation item behind each batch one `IfcSurfaceStyle`,
    * writing to the backend's mutation overlay. Persist with `bim.export.ifc()`.
+   *
+   * Batched rather than one call per colour because the "at most one
+   * IfcStyledItem per item" rule has to hold across the whole pass, and because
+   * the index of already-styled geometry is the expensive part to build.
    */
-  applyColor(
-    refs: EntityRef[],
-    color: SurfaceStyleColor | string,
-    options?: { name?: string; replaceExisting?: boolean },
-  ): ApplyStyleResult;
+  applyColors(
+    batches: Array<{ refs: EntityRef[]; color: SurfaceStyleColor; name?: string }>,
+    options?: ApplyStyleOptions,
+  ): ApplyStyleResult[];
 }
 
 export interface BimBackend {

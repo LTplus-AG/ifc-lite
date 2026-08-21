@@ -12,29 +12,13 @@
  * style, which IFC allows only one of per item.
  */
 
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createHeadlessContext } from './loader.js';
+import { exportStep, ifcFile, loadInlineModel, styledTargets } from './headless-test-helpers.js';
 
 const WALL_SOLID = 61;
 const MAPPED_SOLID = 80;
 
-const MODEL = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('m','2024',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1= IFCPROJECT('PROJ00000000000000000X',$,'Proj',$,$,$,$,(#20),#30);
-#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
-#21= IFCAXIS2PLACEMENT3D(#22,$,$);
-#22= IFCCARTESIANPOINT((0.,0.,0.));
-#30= IFCUNITASSIGNMENT((#31));
-#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#60= IFCRECTANGLEPROFILEDEF(.AREA.,$,#21,2.,0.2);
+const MODEL = ifcFile(`#60= IFCRECTANGLEPROFILEDEF(.AREA.,$,#21,2.,0.2);
 #61= IFCEXTRUDEDAREASOLID(#60,#21,#62,3.);
 #62= IFCDIRECTION((0.,0.,1.));
 #63= IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#61));
@@ -56,29 +40,9 @@ DATA;
 #93= IFCCOLOURRGB($,1.,0.,0.);
 #94= IFCSURFACESTYLESHADING(#93,0.);
 #95= IFCSURFACESTYLE('Old Red',.BOTH.,(#94));
-#96= IFCSTYLEDITEM(#61,(#95),$);
-ENDSEC;
-END-ISO-10303-21;
-`;
+#96= IFCSTYLEDITEM(#61,(#95),$);`);
 
-async function loadModel() {
-  const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-headless-style-'));
-  const path = join(dir, 'model.ifc');
-  await writeFile(path, MODEL, 'utf-8');
-  return (await createHeadlessContext(path)).bim;
-}
-
-type Bim = Awaited<ReturnType<typeof loadModel>>;
-
-function exportStep(bim: Bim): string {
-  const content = bim.export.ifc([], { schema: 'IFC4' });
-  return typeof content === 'string' ? content : new TextDecoder().decode(content);
-}
-
-/** The Item ref of every IfcStyledItem in an exported file. */
-function styledTargets(step: string): number[] {
-  return [...step.matchAll(/IFCSTYLEDITEM\(#(\d+),/g)].map(m => Number(m[1]));
-}
+const loadModel = () => loadInlineModel(MODEL, 'style');
 
 describe('bim.style.apply', () => {
   it('writes the colour into the exported file, not just the view', async () => {
@@ -98,6 +62,37 @@ describe('bim.style.apply', () => {
     const bim = await loadModel();
     bim.style.apply(bim.query().byType('IfcWall').refs(), { red: 1, green: 0, blue: 0, alpha: 0.25 });
     expect(exportStep(bim)).toMatch(/IFCSURFACESTYLESHADING\(#\d+,0\.75\)/);
+  });
+
+  it('rounds transparency instead of writing a binary-float tail', async () => {
+    // 1 - 0.9 is 0.09999999999999998 in IEEE 754, and that lands verbatim in
+    // the STEP text without rounding.
+    const bim = await loadModel();
+    bim.style.apply(bim.query().byType('IfcWall').refs(), { red: 1, green: 0, blue: 0, alpha: 0.9 });
+    expect(exportStep(bim)).toMatch(/IFCSURFACESTYLESHADING\(#\d+,0\.1\)/);
+  });
+
+  it('accepts every hex form bim.viewer.colorize accepts', async () => {
+    // The two colour entry points are documented as counterparts, so a string
+    // that paints in the viewer must not throw here.
+    const bim = await loadModel();
+    const wall = bim.query().byType('IfcWall').refs();
+    for (const form of ['#f00', 'ff0000', '#FF0000', '#ff000080']) {
+      expect(() => bim.style.apply(wall, form)).not.toThrow();
+    }
+  });
+
+  it('does not stack a second IfcStyledItem when applied twice', async () => {
+    // The one-style-per-item rule has to hold against geometry this session
+    // already styled, not only against what the source file carried. The index
+    // of existing styles is built from the source, and addEntity does not
+    // insert into it, so a source-only check cannot see the first call.
+    const bim = await loadModel();
+    bim.style.apply(bim.query().byType('IfcAirTerminal').refs(), '#ff0000');
+    const second = bim.style.apply(bim.query().byType('IfcAirTerminal').refs(), '#00ff00');
+
+    expect(second.replacedStyledItemIds).toHaveLength(1);
+    expect(styledTargets(exportStep(bim)).filter(id => id === MAPPED_SOLID)).toHaveLength(1);
   });
 
   it('styles shared mapped geometry once, not once per occurrence', async () => {
@@ -156,11 +151,23 @@ describe('bim.style.apply', () => {
   it('rejects a colour string that is not a hex triple', async () => {
     const bim = await loadModel();
     const wall = bim.query().byType('IfcWall').refs();
-    expect(() => bim.style.apply(wall, 'cornflowerblue')).toThrow(/not a #rgb or #rrggbb colour/);
+    expect(() => bim.style.apply(wall, 'cornflowerblue')).toThrow(/not a hex colour/);
   });
 });
 
 describe('bim.style.applyAll', () => {
+  it('lets a later batch win over an earlier one on the same geometry', async () => {
+    const bim = await loadModel();
+    const wall = bim.query().byType('IfcWall').refs();
+    const [, second] = bim.style.applyAll([
+      { refs: wall, color: '#111111', name: 'First' },
+      { refs: wall, color: '#222222', name: 'Second' },
+    ]);
+
+    expect(second.replacedStyledItemIds).toHaveLength(1);
+    expect(styledTargets(exportStep(bim)).filter(id => id === WALL_SOLID)).toHaveLength(1);
+  });
+
   it('gives each batch its own style and names them', async () => {
     const bim = await loadModel();
     const results = bim.style.applyAll([

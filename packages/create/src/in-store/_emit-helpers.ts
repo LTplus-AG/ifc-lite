@@ -216,3 +216,68 @@ export function ifcElementHeader(
     params.Tag ?? null,
   ];
 }
+
+/** An RGB colour with channels in 0..1. */
+export interface SurfaceStyleColor {
+  red: number;
+  green: number;
+  blue: number;
+  /** 1 is opaque. Written as `IfcSurfaceStyleShading.Transparency = 1 - alpha`. */
+  alpha?: number;
+}
+
+/** Guards a caller's 0..255 or out-of-range channel from reaching STEP. */
+function clamp01(v: number): number {
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 0;
+}
+
+/**
+ * Transparency is `1 - alpha`, and binary floating point turns an alpha of 0.9
+ * into `0.09999999999999998` in the STEP text. Four decimals is what
+ * `@ifc-lite/export`'s demesh writer settles on for the same value.
+ */
+const TRANSPARENCY_DECIMALS = 4;
+
+function roundTo(v: number, decimals: number): number {
+  const factor = 10 ** decimals;
+  return Math.round(v * factor) / factor;
+}
+
+/**
+ * Emit `IfcColourRgb` -> `IfcSurfaceStyleShading` -> `IfcSurfaceStyle`.
+ *
+ * Returns both the `IfcSurfaceStyle` and the id an `IfcStyledItem` should
+ * point at. They differ on IFC2X3, which has no `IfcStyleAssignmentSelect`:
+ * there `IfcStyledItem.Styles` is a set of `IfcPresentationStyleAssignment`,
+ * the wrapper IFC4 deprecated.
+ */
+export function emitSurfaceStyle(
+  editor: StoreEditor,
+  schemaVersion: string,
+  color: SurfaceStyleColor,
+  name?: string,
+): { surfaceStyleId: number; styleRefId: number } {
+  const red = clamp01(color.red);
+  const green = clamp01(color.green);
+  const blue = clamp01(color.blue);
+  const alpha = clamp01(color.alpha ?? 1);
+
+  const colour = editor.addEntity('IfcColourRgb', [
+    null, { real: red }, { real: green }, { real: blue },
+  ]);
+  const shading = editor.addEntity('IfcSurfaceStyleShading', [
+    `#${colour.expressId}`,
+    { real: roundTo(1 - alpha, TRANSPARENCY_DECIMALS) },
+  ]);
+  const surfaceStyle = editor.addEntity('IfcSurfaceStyle', [
+    name ?? null,
+    '.BOTH.',
+    [`#${shading.expressId}`],
+  ]);
+
+  const styleRefId = schemaVersion === 'IFC2X3'
+    ? editor.addEntity('IfcPresentationStyleAssignment', [[`#${surfaceStyle.expressId}`]]).expressId
+    : surfaceStyle.expressId;
+
+  return { surfaceStyleId: surfaceStyle.expressId, styleRefId };
+}

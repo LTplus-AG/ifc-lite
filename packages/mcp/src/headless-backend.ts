@@ -37,7 +37,8 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -64,6 +65,7 @@ export class HeadlessLikeBackend implements BimBackend {
   visibility: VisibilityBackendMethods;
   viewer: ViewerBackendMethods;
   readonly mutate: MutateBackendMethods;
+  readonly style: StyleBackendMethods;
   readonly store: StoreBackendMethods;
   readonly spatial: SpatialBackendMethods;
   readonly export: ExportBackendMethods;
@@ -95,6 +97,21 @@ export class HeadlessLikeBackend implements BimBackend {
       setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
     };
     this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
+    // against the shared StoreEditor, so the new entities land in the overlay
+    // this backend's export adapter already reads.
+    this.style = {
+      applyColors: (batches, options) => applyStylesInStore(
+        this.getOrCreateStoreEditor(),
+        this.dataStore,
+        batches.map(batch => ({
+          products: batch.refs.map(r => r.expressId),
+          color: batch.color,
+          name: batch.name,
+        })),
+        options,
+      ),
+    };
     this.store = this.createStoreAdapter();
     this.spatial = { queryBounds() { return []; }, raycast() { return []; }, queryFrustum() { return []; } };
     this.export = this.createExportAdapter();

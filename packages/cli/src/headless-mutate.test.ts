@@ -13,48 +13,21 @@
  * adapter, so every assertion here goes through the export.
  */
 
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createHeadlessContext } from './loader.js';
+import { exportStep, ifcFile, loadInlineModel } from './headless-test-helpers.js';
 
-const MODEL = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('m','2024',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1= IFCPROJECT('PROJ00000000000000000X',$,'Proj',$,$,$,$,(#20),#30);
-#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
-#21= IFCAXIS2PLACEMENT3D(#22,$,$);
-#22= IFCCARTESIANPOINT((0.,0.,0.));
-#30= IFCUNITASSIGNMENT((#31));
-#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#70= IFCWALL('WALL00000000000000000X',$,'Original Name',$,$,$,$,'tag',$);
+const MODEL = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Original Name',$,$,$,$,'tag',$);
 #100= IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER('W-01'),$);
 #101= IFCPROPERTYSINGLEVALUE('Sibling',$,IFCLABEL('keep me'),$);
 #102= IFCPROPERTYSET('PSET00000000000000000X',$,'Pset_WallCommon',$,(#100,#101));
-#103= IFCRELDEFINESBYPROPERTIES('RELP00000000000000000X',$,$,$,(#70),#102);
-ENDSEC;
-END-ISO-10303-21;
-`;
+#103= IFCRELDEFINESBYPROPERTIES('RELP00000000000000000X',$,$,$,(#70),#102);`);
 
 async function loadModel() {
-  const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-headless-mutate-'));
-  const path = join(dir, 'model.ifc');
-  await writeFile(path, MODEL, 'utf-8');
-  const { bim } = await createHeadlessContext(path);
+  const bim = await loadInlineModel(MODEL, 'mutate');
   const wall = bim.query().byType('IfcWall').first();
   if (!wall) throw new Error('fixture has no IfcWall');
   return { bim, wall };
 }
-
-const exportStep = (bim: Awaited<ReturnType<typeof loadModel>>['bim']): string => {
-  const content = bim.export.ifc([], { schema: 'IFC4' });
-  return typeof content === 'string' ? content : new TextDecoder().decode(content);
-};
 
 describe('bim.mutate through the headless context', () => {
   it('persists setAttribute into the exported STEP', async () => {

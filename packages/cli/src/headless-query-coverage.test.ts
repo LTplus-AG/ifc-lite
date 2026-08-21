@@ -12,42 +12,18 @@
  * either from "the model does not contain that".
  */
 
-import { mkdtemp, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createHeadlessContext } from './loader.js';
+import { ifcFile, loadInlineModel } from './headless-test-helpers.js';
 
-const MODEL = `ISO-10303-21;
-HEADER;
-FILE_DESCRIPTION((''),'2;1');
-FILE_NAME('m','2024',(''),(''),'','','');
-FILE_SCHEMA(('IFC4'));
-ENDSEC;
-DATA;
-#1= IFCPROJECT('PROJ00000000000000000X',$,'Proj',$,$,$,$,(#20),#30);
-#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
-#21= IFCAXIS2PLACEMENT3D(#22,$,$);
-#22= IFCCARTESIANPOINT((0.,0.,0.));
-#30= IFCUNITASSIGNMENT((#31));
-#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
-#70= IFCWALL('WALL00000000000000000X',$,'A Wall',$,$,$,$,'tag',$);
+const MODEL = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'A Wall',$,$,$,$,'tag',$);
 #71= IFCAIRTERMINAL('AIRT00000000000000000X',$,'A Terminal',$,$,$,$,'tag',.DIFFUSER.);
 #72= IFCDUCTFITTING('DUCT00000000000000000X',$,'A Fitting',$,$,$,$,'tag',.BEND.);
 #73= IFCAIRTERMINALTYPE('AITY00000000000000000X',$,'A Terminal Type',$,$,$,$,$,$,.DIFFUSER.);
 #100= IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER('W-01'),$);
 #102= IFCPROPERTYSET('PSET00000000000000000X',$,'Pset_WallCommon',$,(#100));
-#103= IFCRELDEFINESBYPROPERTIES('RELP00000000000000000X',$,$,$,(#70),#102);
-ENDSEC;
-END-ISO-10303-21;
-`;
+#103= IFCRELDEFINESBYPROPERTIES('RELP00000000000000000X',$,$,$,(#70),#102);`);
 
-async function loadModel() {
-  const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-headless-query-'));
-  const path = join(dir, 'model.ifc');
-  await writeFile(path, MODEL, 'utf-8');
-  return (await createHeadlessContext(path)).bim;
-}
+const loadModel = () => loadInlineModel(MODEL, 'query');
 
 describe('unfiltered bim.query()', () => {
   it('includes product classes the curated IfcTypeEnum omits', async () => {

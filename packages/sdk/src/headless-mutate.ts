@@ -6,12 +6,11 @@
  * The `bim.mutate.*` implementation for backends that hold an `IfcDataStore`
  * directly — the CLI's `ifc-lite run` context and the MCP session.
  *
- * Both used to answer every method with a no-op. That is worse than throwing:
- * a script called `setProperty` 6,000 times, reported 6,000 edits, and got an
- * export back byte-for-byte identical to its input, with nothing anywhere
- * saying the edits had been dropped. The write path that does persist was
- * already there — `MutablePropertyView`, which `StepExporter` reads when
- * `applyMutations` is on — nothing was routed into it.
+ * Both used to answer every method with a no-op, which is worse than throwing:
+ * a script's edits were reported as made and the export came back identical to
+ * its input, with nothing saying they had been dropped. The write path that
+ * persists was already there — `MutablePropertyView`, which `StepExporter`
+ * reads when `applyMutations` is on — nothing was routed into it.
  */
 
 import { PropertyValueType } from '@ifc-lite/data';
@@ -24,8 +23,11 @@ import type { EntityRef, MutateBackendMethods } from './types.js';
  * `MutablePropertyView.setProperty` defaults to `String`, so passing a boolean
  * through unclassified writes `IFCLABEL('true')` where the caller meant
  * `IFCBOOLEAN(.T.)`.
+ *
+ * Takes `unknown` so every caller that has to classify a value can share it —
+ * anything that is not a boolean or a number is written as a label.
  */
-export function propertyValueTypeOf(value: string | number | boolean): PropertyValueType {
+export function propertyValueTypeOf(value: unknown): PropertyValueType {
   if (typeof value === 'boolean') return PropertyValueType.Boolean;
   if (typeof value === 'number') {
     return Number.isInteger(value) ? PropertyValueType.Integer : PropertyValueType.Real;
@@ -61,8 +63,8 @@ export function createHeadlessMutateAdapter(
     deleteProperty(ref: EntityRef, psetName: string, propName: string): void {
       getView().deleteProperty(ref.expressId, psetName, propName);
     },
-    batchBegin(): void { /* no undo history to group — see the doc comment */ },
-    batchEnd(): void { /* no undo history to group — see the doc comment */ },
+    batchBegin(): void { /* no history to group */ },
+    batchEnd(): void { /* no history to group */ },
     undo(): boolean { return false; },
     redo(): boolean { return false; },
   };

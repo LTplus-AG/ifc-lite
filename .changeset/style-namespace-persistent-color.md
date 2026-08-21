@@ -2,21 +2,26 @@
 "@ifc-lite/create": minor
 "@ifc-lite/sdk": minor
 "@ifc-lite/cli": minor
+"@ifc-lite/mcp": minor
 ---
 
 Add `bim.style`, colour that ends up in the exported IFC.
 
 `bim.viewer.colorize` paints the current view. The colour is an overlay and is gone the moment the model is written out, so a script that wanted a coloured file had to hand-build the `IfcColourRgb → IfcSurfaceStyleShading → IfcSurfaceStyle → IfcStyledItem` chain itself and walk `IfcProductDefinitionShape → IfcShapeRepresentation → Items` to find something to attach it to. `StepExporter` already builds that chain internally for demeshed output; nothing exposed it.
 
-`bim.style.apply(refs, color)` and `bim.style.applyAll(batches)` take `#rgb`, `#rrggbb`, or channels in 0..1, and return what was styled. The work lives in `applyStyleInStore` in `@ifc-lite/create`, beside the other in-store builders, and writes through the same `StoreEditor` overlay as `bim.spaces.generate`, so the entities are in the export with no extra step. Like `spaces`, the backend member is optional: local and headless contexts implement it, and a remote backend throws with a message that says why.
+`bim.style.apply(refs, color)` and `bim.style.applyAll(batches)` take any hex form `bim.viewer.colorize` takes — they share its `hexToRgba` — or channels in 0..1. The one deliberate difference is the failure mode: `hexToRgba` degrades an unparseable string to black, which is right for a transient overlay and wrong for something written into the file, so a non-hex string throws instead of being baked in as black.
 
-Three things the call site no longer has to get right:
+The work lives in `applyStylesInStore` in `@ifc-lite/create`, beside the other in-store builders, and writes through the same `StoreEditor` overlay as `bim.spaces.generate`. Both headless backends implement it; a backend without direct store access, including the browser viewer's, throws.
+
+Four things the call site no longer has to get right:
 
 **Mapped geometry.** An `IfcMappedItem` is followed through to the `IfcRepresentationMap` and the mapped representation's items are styled, so one style covers every occurrence of a type. On a real MEP model, 139 air terminals share 63 geometry items; styling per occurrence would write a second `IfcStyledItem` on geometry that already had one, which IFC does not allow.
 
-**Geometry that already has a style.** IFC permits at most one `IfcStyledItem` per representation item. The existing one is tombstoned rather than joined by a second, or kept and the item skipped under `replaceExisting: false`. The detached `IfcSurfaceStyle` is deliberately left in the file: it can be shared with styled items the call never touched, and an unreferenced style definition is valid IFC.
+**Geometry that already has a style, including geometry this session styled.** IFC permits at most one `IfcStyledItem` per representation item. The index of existing styles covers both the source file and the overlay: `StoreEditor.addEntity` does not insert into `store.entityIndex`, so a source-only check could not see the session's own writes and a second `apply` over the same products emitted two styled items on one solid — a schema-invalid file, from the very machinery meant to prevent it. That index is also built once per pass rather than per batch, which was 87 ms per batch on a 92k-styled-item model, about two thirds of a colour-by-class run.
 
-**IFC2X3.** That schema has no `IfcStyleAssignmentSelect`, so `IfcStyledItem.Styles` there is a set of `IfcPresentationStyleAssignment`; the wrapper is written on 2X3 and skipped on IFC4 and later, which deprecated it.
+**Entities created in the same session.** Reads fall back to the overlay, so `bim.store.addWall(...)` followed by `bim.style.apply` colours the new wall instead of reporting it as geometry-less and leaving an orphan `IfcSurfaceStyle` in the file.
+
+**Schema differences.** `Representation` is resolved by attribute name rather than by a hardcoded index 6, because that slot is `RepresentationMaps` on `IfcTypeProduct` — a list, so a constant index turned a type object into a silent no-op. IFC2X3 gets the `IfcPresentationStyleAssignment` wrapper that IFC4 deprecated. Transparency is rounded, since `1 - 0.9` otherwise reaches the STEP text as `0.09999999999999998`.
 
 `productsWithoutGeometry` counts a product only when its own walk reached nothing. Deciding it from the growth of the shared item set instead would report every occurrence after the first as geometry-less whenever a type's occurrences share one mapped representation — which is most of them, and was wrong in the first cut of this.
 

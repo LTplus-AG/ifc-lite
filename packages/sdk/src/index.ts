@@ -202,7 +202,10 @@ export { ScheduleNamespace } from './namespaces/schedule.js';
 // Clash — geometric interference detection over caller-provided ClashElement[]
 export { ClashNamespace } from './namespaces/clash.js';
 export { SpacesNamespace } from './namespaces/spaces.js';
-export { StyleNamespace, type ApplyColorOptions, type ColorBatch } from './namespaces/style.js';
+export { StyleNamespace, type ColorBatch } from './namespaces/style.js';
+// Re-exported so a TypeScript consumer can name `bim.style.apply`'s return
+// type without taking a direct dependency on @ifc-lite/create.
+export type { ApplyStyleOptions, ApplyStyleResult, SurfaceStyleColor } from '@ifc-lite/create';
 export { createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results

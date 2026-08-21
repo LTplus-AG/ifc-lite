@@ -50,7 +50,7 @@ import {
   addMemberToStore,
   addPlateToStore,
   addRoofToStore,
-  applyStyleInStore,
+  applyStylesInStore,
   addSlabToStore,
   addSpaceToStore,
   addWallToStore,
@@ -71,7 +71,7 @@ import {
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractClassificationsOnDemand,
@@ -82,7 +82,7 @@ import {
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
   extractScheduleOnDemand,
-  getInheritanceChainAcrossSchemas,
+  isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
@@ -131,24 +131,14 @@ export function expandTypes(types: string[]): string[] {
   return result;
 }
 
-export function isProductType(type: string): boolean {
-  // IfcObjectDefinition is the exact line: it covers products, type objects,
-  // groups and systems, and IfcContext, and excludes the other two IfcRoot
-  // branches — IfcPropertyDefinition and IfcRelationship — without matching on
-  // name prefixes. The chain resolves across the bundled schema union, so a
-  // class the curated IfcTypeEnum omits still answers correctly.
-  //
-  // Keying on IfcTypeEnumFromString instead dropped every class outside that
-  // 138-entry subset. On an MEP model that silently lost every IfcAirTerminal
-  // and IfcDuctFitting from an unfiltered query — real elements, reported as
-  // absent rather than as unclassified.
-  const chain = getInheritanceChainAcrossSchemas(type);
-  if (!chain.includes('IfcObjectDefinition')) return false;
-  // Type objects stay out, as before: an unfiltered query answers with
-  // occurrences, and IfcTypeObject is the exact form of the old
-  // `endsWith('TYPE')` test.
-  return !chain.includes('IfcTypeObject');
-}
+/**
+ * Which classes an unfiltered query answers with.
+ *
+ * Thin alias: the predicate is schema logic and lives in `@ifc-lite/parser`, so
+ * the CLI and MCP backends cannot drift apart on it. Kept as a named export
+ * here because both packages already publish it under this name.
+ */
+export const isProductType = isQueryableObjectType;
 
 /**
  * Normalize boolean-like values for comparison.
@@ -221,10 +211,15 @@ export class HeadlessBackend implements BimBackend {
       // Same arrangement as the spaces adapter: the work happens in
       // @ifc-lite/create against the shared StoreEditor, so the new entities
       // land in the overlay this backend's export adapter already reads.
-      applyColor: (refs, color, options) => applyStyleInStore(
+      applyColors: (batches, options) => applyStylesInStore(
         this.getOrCreateStoreEditor(),
         this.dataStore,
-        { products: refs.map(r => r.expressId), color, ...options },
+        batches.map(batch => ({
+          products: batch.refs.map(r => r.expressId),
+          color: batch.color,
+          name: batch.name,
+        })),
+        options,
       ),
     };
   }

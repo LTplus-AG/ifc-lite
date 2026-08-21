@@ -117,6 +117,15 @@ export function createCachedAccessor(accessor: IFCDataAccessor): IFCDataAccessor
       accessor.getAncestors!(id, rel as PartOfRelation)
     ) as IFCDataAccessor['getAncestors'];
   }
+  if (accessor.getSchemaVersion) {
+    // Model-wide, not per-entity — compute once and hand back the
+    // same value forever for this accessor's lifetime.
+    const schemaVersion = accessor.getSchemaVersion();
+    cached.getSchemaVersion = () => schemaVersion;
+  }
+  if (accessor.getTypeEntityType) {
+    cached.getTypeEntityType = memoById((id) => accessor.getTypeEntityType!(id));
+  }
 
   return cached;
 }

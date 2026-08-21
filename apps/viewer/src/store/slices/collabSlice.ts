@@ -109,6 +109,19 @@ import { getEntityCenter } from '@/utils/viewportUtils';
  */
 export type CollabRole = 'viewer' | 'commenter' | 'editor' | 'admin';
 
+/**
+ * The single role -> edit rule. `canCollabEdit()` below is its store-bound
+ * form, and components that mirror the same gate in their own UI
+ * (`BulkPropertyEditor`, `DataConnector`) call this directly off `collabRole`.
+ * Keeping one body means a future role change cannot drift the copies apart.
+ * `null` = not in a shared room, so the local single-user editing rules apply
+ * (handled by the UI's existing `editEnabled` gate) and this returns true.
+ */
+export function roleCanEdit(role: CollabRole | null): boolean {
+  if (role === null) return true;
+  return role === 'editor' || role === 'admin';
+}
+
 export type CollabStatus = 'disconnected' | WebSocketStatus | 'memory' | 'indexeddb';
 
 export interface StartCollabOptions {
@@ -1079,6 +1092,22 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
       }
     }
 
+    // The seed/reconstruct branches above re-check `collabRoomId === roomId`
+    // after each of their own awaits, but nothing after them did: a
+    // `stopCollab()` landing anywhere in the awaits above (e.g. RoomPanel's
+    // "Leave" button, reachable the moment `collabRoomId` is set — before
+    // this join has finished) left `collabRoomId`/`collabSession` cleared,
+    // and this function then sailed on regardless, wiring up
+    // `remoteApplyTeardown` for a session nothing still tracks and ending
+    // with a `set({ collabSession: session, ... })` that revived a session
+    // the user had explicitly left. Same guard as every other
+    // `collabRoomId`-vs-`roomId` re-check earlier in `startCollab`, added
+    // for the one block that had none.
+    if (get().collabRoomId !== roomId) {
+      session.dispose();
+      return;
+    }
+
     // Remote → local apply (plan §7.5): replay peers' property/attribute edits
     // into the ROOM model's MutablePropertyView (no undo tracking, no echo).
     //
@@ -1291,13 +1320,7 @@ export const createCollabSlice: StateCreator<ViewerState, [], [], CollabSlice> =
     }
   },
 
-  canCollabEdit: () => {
-    const role = get().collabRole;
-    // Not in a shared room → fall back to the local single-user editing rules
-    // (handled by the UI's existing `editEnabled` gate), so treat as allowed.
-    if (role === null) return true;
-    return role === 'editor' || role === 'admin';
-  },
+  canCollabEdit: () => roleCanEdit(get().collabRole),
 
   canCollabComment: () => {
     const role = get().collabRole;

@@ -174,6 +174,24 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
       );
     },
 
+    getSchemaVersion(): string | undefined {
+      return store.schemaVersion;
+    },
+
+    getTypeEntityType(expressId: number): string | undefined {
+      const typeIds =
+        store.relationships?.getRelated?.(
+          expressId,
+          RelationshipType.DefinesByType,
+          'inverse'
+        ) || [];
+      for (const typeId of typeIds) {
+        const t = accessor.getEntityType(typeId);
+        if (t) return t;
+      }
+      return undefined;
+    },
+
     getEntitiesByType(typeName: string): number[] {
       const ids = store.entityIndex?.byType?.get(typeName.toUpperCase());
       return ids ? Array.from(ids) : [];

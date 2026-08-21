@@ -14,11 +14,12 @@
  *
  *   - a literal from a REAL FILE now decodes its directives (the first block);
  *   - a value written by this module's own `escapeStepString` still comes back
- *     byte-identical (the second block). That writer emits non-ASCII RAW and
- *     never emits a directive, so every `\\` it produces really is a doubled
- *     reverse solidus — and giving directives precedence in the scan is exactly
- *     what keeps `\\X2\\…` reading as the LITERAL text `\X2\…` rather than
- *     decoding to the character it would have meant unescaped.
+ *     byte-identical (the second block), including a value that merely LOOKS
+ *     like a directive: `escapeStepString` doubles every reverse solidus in
+ *     the caller's text, so `\X2\00FC\X0\` typed by a user becomes
+ *     `\\X2\\00FC\\X0\\` on disk, and giving directives precedence in the
+ *     scan is exactly what keeps that doubled form reading back as the
+ *     LITERAL text `\X2\00FC\X0\` rather than decoding to `ü`.
  *
  * Note how the fixtures are built. A source literal is spelled with explicit
  * `\\` in the TS string so the file says what bytes are on disk; the expected
@@ -27,7 +28,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { parseStepValue } from './step-serializers.js';
+import { parseStepValue, serializeValue } from './step-serializers.js';
 import { generateHeader } from './step-serializers.js';
 
 /** Strip the outer quotes the way `parseStepValue` is handed a literal. */
@@ -67,6 +68,36 @@ describe('parseStepValue decodes STEP directives, not just the doublings', () =>
   });
 });
 
+describe('parseStepList respects quote state, not just paren/bracket depth', () => {
+  // `parseStepList` split on every top-level comma without tracking whether
+  // it was inside a single-quoted string. A list member that is itself a
+  // string containing a literal comma — legal STEP content, and exactly what
+  // an IfcLabel/IfcText value like a description or address routinely is —
+  // split mid-string: `('a,b','c')` came back as `["'a", "b'", "c"]` instead
+  // of `['a,b', 'c']`. `@ifc-lite/parser`'s `source-header.ts` already solved
+  // this same problem for header fields with a quote-aware `splitTopLevel`
+  // and documented exactly why a quote-blind splitter mis-splits; this
+  // generic list parser — the one two other packages re-export as their
+  // public `parseStepValue` — had the same gap.
+  it('keeps a comma inside a quoted list member intact', () => {
+    expect(parseStepValue("('a,b','c')")).toEqual(['a,b', 'c']);
+  });
+
+  it('round-trips a value produced by serializeValue through this module', () => {
+    const serialized = serializeValue(['a,b', 'c']);
+    expect(serialized).toBe("('a,b','c')");
+    expect(parseStepValue(serialized)).toEqual(['a,b', 'c']);
+  });
+
+  it('does not let a paren/bracket inside a quoted string perturb nesting depth', () => {
+    expect(parseStepValue("('(a,b)','c')")).toEqual(['(a,b)', 'c']);
+  });
+
+  it('still tracks the doubled-quote escape while inside a string', () => {
+    expect(parseStepValue("('it''s, ok','c')")).toEqual(["it's, ok", 'c']);
+  });
+});
+
 describe('the escapeStepString / parseStepValue pair stays closed', () => {
   /** Round-trip a value through the writer this module ships and back. */
   const roundTrip = (value: string): unknown => {
@@ -91,9 +122,11 @@ describe('the escapeStepString / parseStepValue pair stays closed', () => {
     expect(roundTrip("it's")).toBe("it's");
   });
 
-  it('a non-ASCII value survives - the writer emits it RAW', () => {
-    // No directive is written, so nothing for the reader to decode; the point
-    // is that the reader must not invent one.
+  it('a non-ASCII value survives - the writer emits an \\X2\\ directive, not raw UTF-8', () => {
+    // ISO 10303-21 6.3.3.4 / buildingSMART's IFC string-encoding guidance:
+    // bytes outside decimal 32-126 must be a control directive, never a raw
+    // byte. `escapeStepString` now emits one; this checks the writer and
+    // reader still agree once it does.
     expect(roundTrip('Trümpler')).toBe('Trümpler');
   });
 

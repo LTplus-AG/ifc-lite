@@ -21,6 +21,7 @@ import type {
   MutateBackendMethods,
   StoreBackendMethods,
   SpacesBackendMethods,
+  StyleBackendMethods,
   SpatialBackendMethods,
   ExportBackendMethods,
   LensBackendMethods,
@@ -39,6 +40,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -48,6 +50,7 @@ import {
   addMemberToStore,
   addPlateToStore,
   addRoofToStore,
+  applyStylesInStore,
   addSlabToStore,
   addSpaceToStore,
   addWallToStore,
@@ -68,7 +71,7 @@ import {
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractClassificationsOnDemand,
@@ -79,6 +82,7 @@ import {
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
   extractScheduleOnDemand,
+  isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
@@ -127,17 +131,14 @@ export function expandTypes(types: string[]): string[] {
   return result;
 }
 
-export function isProductType(type: string): boolean {
-  const enumVal = IfcTypeEnumFromString(type);
-  if (enumVal === IfcTypeEnum.Unknown) return false;
-  const upper = type.toUpperCase();
-  if (upper.startsWith('IFCREL')) return false;
-  if (upper.startsWith('IFCPROPERTY')) return false;
-  if (upper.startsWith('IFCQUANTITY')) return false;
-  if (upper === 'IFCELEMENTQUANTITY') return false;
-  if (upper.endsWith('TYPE')) return false;
-  return true;
-}
+/**
+ * Which classes an unfiltered query answers with.
+ *
+ * Thin alias: the predicate is schema logic and lives in `@ifc-lite/parser`, so
+ * the CLI and MCP backends cannot drift apart on it. Kept as a named export
+ * here because both packages already publish it under this name.
+ */
+export const isProductType = isQueryableObjectType;
 
 /**
  * Normalize boolean-like values for comparison.
@@ -179,6 +180,7 @@ export class HeadlessBackend implements BimBackend {
   readonly files: FilesBackendMethods;
   readonly schedule: ScheduleBackendMethods;
   readonly spaces: SpacesBackendMethods;
+  readonly style: StyleBackendMethods;
 
   private dataStore: IfcDataStore;
   private modelName: string;
@@ -201,6 +203,25 @@ export class HeadlessBackend implements BimBackend {
     this.files = this.createFilesAdapter();
     this.schedule = this.createScheduleAdapter();
     this.spaces = this.createSpacesAdapter();
+    this.style = this.createStyleAdapter();
+  }
+
+  private createStyleAdapter(): StyleBackendMethods {
+    return {
+      // Same arrangement as the spaces adapter: the work happens in
+      // @ifc-lite/create against the shared StoreEditor, so the new entities
+      // land in the overlay this backend's export adapter already reads.
+      applyColors: (batches, options) => applyStylesInStore(
+        this.getOrCreateStoreEditor(),
+        this.dataStore,
+        batches.map(batch => ({
+          products: batch.refs.map(r => r.expressId),
+          color: batch.color,
+          name: batch.name,
+        })),
+        options,
+      ),
+    };
   }
 
   private createSpacesAdapter(): SpacesBackendMethods {
@@ -464,15 +485,20 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createMutateAdapter(): MutateBackendMethods {
-    return {
-      setProperty() { /* no-op in headless mode */ },
-      setAttribute() { /* no-op in headless mode */ },
-      deleteProperty() { /* no-op in headless mode */ },
-      batchBegin() { /* no-op */ },
-      batchEnd() { /* no-op */ },
-      undo() { return false; },
-      redo() { return false; },
-    };
+    return createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+  }
+
+  /**
+   * The overlay every write goes through, created on first use.
+   *
+   * Built by `getOrCreateStoreEditor` so the property and quantity extractors
+   * are wired exactly once, whichever adapter writes first.
+   */
+  private getOrCreateMutationView(): MutablePropertyView {
+    this.getOrCreateStoreEditor();
+    // Non-null immediately after: getOrCreateStoreEditor assigns both fields
+    // together and never clears them.
+    return this.mutationView as MutablePropertyView;
   }
 
   private getOrCreateStoreEditor(): StoreEditor {

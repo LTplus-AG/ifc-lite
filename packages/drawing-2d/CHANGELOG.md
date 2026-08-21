@@ -1,5 +1,28 @@
 # @ifc-lite/drawing-2d
 
+## 2.1.1
+
+### Patch Changes
+
+- [#2772](https://github.com/LTplus-AG/ifc-lite/pull/2772) [`3329521`](https://github.com/LTplus-AG/ifc-lite/commit/33295218a3a2ecd35671483bc92bbf018807ae1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix door swing arc opening into the opposite room from the drawn leaf.
+  
+  `DoorSymbolGenerator`'s swing arc was derived purely from `wallDir` plus a
+  hardcoded `direction > 0 ? Math.PI : 0` sign, ignoring the `swingDir`
+  parameter entirely. The door leaf line, meanwhile, correctly used `swingDir`
+  for its open-position tip. Since the arc traces the path of that same tip as
+  it swings from closed to open, the two are required to end at the same
+  point — instead the arc swept to the wall side opposite the leaf, so a
+  door's swing arc and its leaf pointed into different rooms in every
+  generated drawing.
+  
+  `generateArc` and `generateArcSVGPath` now derive both the arc's start and
+  end angle from `swingDir` (sweeping back by the swing angle in the
+  hinge-side's rotational sense), so the arc always terminates exactly at the
+  leaf's open tip, for all four swing types (`SINGLE_SWING_LEFT/RIGHT`,
+  `DOUBLE_SWING_LEFT/RIGHT`).
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa)]:
+  - @ifc-lite/geometry@3.8.4
+
 ## 2.1.0
 
 ### Minor Changes

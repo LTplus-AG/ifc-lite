@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useCallback, useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import {
   Home,
   ZoomIn,
@@ -17,6 +17,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { emitCameraInteracted } from '@/lib/tours/events';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { cn } from '@/lib/utils';
+import { collectPhysicalEntityIds, countPhysicalObjects } from '@/lib/physical-objects';
 import { ViewCube, type ViewCubeRef } from './ViewCube';
 import { AxisHelper, type AxisHelperRef } from './AxisHelper';
 import { BasepointOverlay } from './BasepointOverlay';
@@ -27,12 +28,14 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
+  const classFilter = useViewerStore((s) => s.classFilter);
+  const ghostExceptEntities = useViewerStore((s) => s.ghostExceptEntities);
   const basketPresentationVisible = useViewerStore((s) => s.basketPresentationVisible);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
   const isMobile = useViewerStore((s) => s.isMobile);
   const setOnCameraRotationChange = useViewerStore((s) => s.setOnCameraRotationChange);
   const setOnScaleChange = useViewerStore((s) => s.setOnScaleChange);
-  const { ifcDataStore, geometryResult } = useIfc();
+  const { ifcDataStore } = useIfc();
 
   // Cesium state
   const cesiumEnabled = useViewerStore((s) => s.cesiumEnabled);
@@ -83,14 +86,26 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
       )
     : null;
 
-  // Calculate visible count considering visibility filters
-  const totalCount = geometryResult?.meshes?.length ?? 0;
-  let visibleCount = totalCount;
-  if (isolatedEntities !== null) {
-    visibleCount = isolatedEntities.size;
-  } else if (hiddenEntities.size > 0) {
-    visibleCount = totalCount - hiddenEntities.size;
-  }
+  // Physical objects in the loaded model — the denominator. Derived from the
+  // entity index, NOT from `geometryResult.meshes`, so an object that never
+  // produced geometry still shows up as "not visible" instead of vanishing
+  // from both sides of the ratio. Memoised on the store identity: the walk is
+  // one schema lookup per distinct type name, but the model can hold millions
+  // of ids and this runs on every camera-driven re-render otherwise.
+  const physicalIds = useMemo(
+    () => collectPhysicalEntityIds(ifcDataStore?.entityIndex?.byType),
+    [ifcDataStore],
+  );
+
+  const objectCounts = useMemo(
+    () => countPhysicalObjects(physicalIds, {
+      hiddenEntities,
+      isolatedEntities,
+      classFilter,
+      ghostExceptEntities,
+    }),
+    [physicalIds, hiddenEntities, isolatedEntities, classFilter, ghostExceptEntities],
+  );
 
   // Initial rotation values (ViewCube will update itself via ref)
   const initialRotationX = -cameraRotationRef.current.elevation;
@@ -179,6 +194,34 @@ export function ViewportOverlays({ hideViewCube = false }: { hideViewCube?: bool
             </TooltipTrigger>
             <TooltipContent side="left">Zoom Out (-)</TooltipContent>
           </Tooltip>
+        </div>
+      )}
+
+      {/* Hidden-object count. Reports what is WITHHELD, not a ratio: the
+          number a user acts on is "what am I not seeing", and "1442 of 1446
+          visible" makes them do the subtraction to find the 4 that matter.
+          Passive, so an unfiltered model carries no chrome at all.
+
+          Styled as the bottom-left scale/axis cluster is: bare text at
+          `text-xs text-foreground/80`, no pill, no border, no backdrop, no
+          off-palette accent. The 3D overlays along the bottom edge are
+          deliberately plain, and this sits in that row. */}
+      {(objectCounts.hidden > 0 || objectCounts.ghosted > 0) && (
+        <div
+          className={cn(
+            'absolute right-4 flex flex-col items-end gap-1',
+            basketPresentationVisible ? 'bottom-28' : 'bottom-4',
+          )}
+          role="status"
+        >
+          <span className="text-xs text-foreground/80 tabular-nums">
+            {[
+              objectCounts.hidden > 0 && `${objectCounts.hidden} hidden`,
+              objectCounts.ghosted > 0 && `${objectCounts.ghosted} ghosted`,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </span>
         </div>
       )}
 

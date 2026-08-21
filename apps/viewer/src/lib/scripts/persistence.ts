@@ -55,13 +55,34 @@ export function loadSavedScripts(): SavedScript[] {
       'scripts' in parsed &&
       Array.isArray((parsed as StoredScripts).scripts)
     ) {
-      return (parsed as StoredScripts).scripts;
+      // The array shape being right says nothing about each element: a
+      // hand-edited or partially-written entry (e.g. `{}`) is valid JSON of
+      // the right container type but the wrong element shape. Returning it
+      // unchecked hands callers a "SavedScript" missing `code`/timestamps —
+      // `script.code.length` in scriptSlice.ts's setActiveScriptId then
+      // throws the moment that entry is opened. The legacy (bare-array)
+      // branch above already validates every field via migrateFromLegacy;
+      // this branch must not be the weaker path for the exact same data.
+      return (parsed as StoredScripts).scripts.filter(isValidStoredScript);
     }
 
     return [];
   } catch {
     return [];
   }
+}
+
+function isValidStoredScript(value: unknown): value is SavedScript {
+  if (!value || typeof value !== 'object') return false;
+  const s = value as Record<string, unknown>;
+  return (
+    typeof s.id === 'string' && s.id.length > 0 &&
+    typeof s.name === 'string' &&
+    typeof s.code === 'string' &&
+    typeof s.createdAt === 'number' && Number.isFinite(s.createdAt) &&
+    typeof s.updatedAt === 'number' && Number.isFinite(s.updatedAt) &&
+    typeof s.version === 'number'
+  );
 }
 
 /** Migrate from the original unversioned format — discards corrupted entries */

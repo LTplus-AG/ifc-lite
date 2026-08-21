@@ -282,3 +282,99 @@ describe('elementsFromIfcx', () => {
     expect(elements.every((e) => e.tag === 'IfcWall')).toBe(true);
   });
 });
+
+/**
+ * A project containing a physical wall PLUS the same non-physical / container
+ * classes `adapters/step.ts` drops (#1464): an opening, a space, and a
+ * storey that (as IFC4.3 infra exports routinely do) carries its own
+ * tessellated geometry. Every non-wall node here carries mesh geometry, so a
+ * missing filter lets all of them through as ordinary `ClashElement`s.
+ */
+function buildNonClashableIfcxFile() {
+  const ifcClass = (code: string) => ({
+    code,
+    uri: `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`,
+  });
+
+  return {
+    header: {
+      id: 'clash-ifcx-nonclashable-fixture',
+      ifcxVersion: 'ifcx_alpha',
+      dataVersion: '1.0.0',
+      author: 'ifc-lite clash adapter test',
+      timestamp: '2025-01-01T00:00:00Z',
+    },
+    imports: [],
+    schemas: {
+      'bsi::ifc::class': { value: SCHEMA_VALUE },
+      'usd::usdgeom::mesh': { value: SCHEMA_VALUE },
+    },
+    data: [
+      {
+        path: 'Project',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcProject') },
+        children: {
+          Storey: 'Project/Storey',
+          Opening: 'Project/Opening',
+          Space: 'Project/Space',
+        },
+      },
+      {
+        // Spatial container carrying its own geometry (follow-up to #1464).
+        path: 'Project/Storey',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcBuildingStorey') },
+        children: { Body: 'Project/Storey/Body', Wall: 'Project/Storey/Wall' },
+      },
+      {
+        path: 'Project/Storey/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(0, 0, 0, 10) },
+      },
+      {
+        // The one physical element in the fixture.
+        path: 'Project/Storey/Wall',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcWall') },
+        children: { Body: 'Project/Storey/Wall/Body' },
+      },
+      {
+        path: 'Project/Storey/Wall/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(1, 1, 1, 1) },
+      },
+      {
+        path: 'Project/Opening',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcOpeningElement') },
+        children: { Body: 'Project/Opening/Body' },
+      },
+      {
+        path: 'Project/Opening/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(2, 2, 2, 1) },
+      },
+      {
+        path: 'Project/Space',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcSpace') },
+        children: { Body: 'Project/Space/Body' },
+      },
+      {
+        path: 'Project/Space/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(3, 3, 3, 1) },
+      },
+    ],
+  };
+}
+
+function nonClashableIfcxBuffer(): ArrayBuffer {
+  const json = JSON.stringify(buildNonClashableIfcxFile());
+  return new TextEncoder().encode(json).buffer as ArrayBuffer;
+}
+
+describe('elementsFromIfcx - drops non-physical / container classes (parity with step.ts, #1464)', () => {
+  it('drops IfcOpeningElement, IfcSpace and the spatial-container IfcBuildingStorey, keeping only IfcWall', async () => {
+    const { elements } = await elementsFromIfcx({
+      buffer: nonClashableIfcxBuffer(),
+      modelId: 'ifcx-model',
+    });
+
+    const keys = elements.map((e) => e.key).sort();
+    expect(keys).toEqual(['Project/Storey/Wall']);
+    expect(elements[0].tag).toBe('IfcWall');
+  });
+});

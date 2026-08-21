@@ -10,6 +10,7 @@
 //! (`IfcRectangularPyramid`, `IfcRightCircularCone`, `IfcRightCircularCylinder`)
 //! are not yet implemented.
 
+use super::boolean::OperandPath;
 use crate::extrusion::apply_transform;
 use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -121,13 +122,53 @@ impl Default for CsgSolidProcessor {
     }
 }
 
-impl GeometryProcessor for CsgSolidProcessor {
-    fn process(
+impl CsgSolidProcessor {
+    /// Like [`GeometryProcessor::process`], but carrying the caller's boolean
+    /// recursion depth and path-scoped visited set across the hop.
+    ///
+    /// `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult` whose
+    /// operands may be `IfcCsgSolid`, so the two are mutually recursive over
+    /// file-supplied references. Entering through `process()` built a FRESH
+    /// `BooleanClippingProcessor`, resetting both, so three entities recursed
+    /// forever with depth never passing 1 — and a stack overflow ABORTS in
+    /// Rust, so nothing could turn it into a load error (#2866).
+    ///
+    /// The CSG id is inserted too, path-scoped like the boolean side, so
+    /// `visited.len()` is an honest frame count. An earlier revision omitted
+    /// it because deleting either insert left every test green — which meant
+    /// neither was PINNED, not that one was redundant
+    /// (`the_path_bound_counts_csg_frames_too_not_only_booleans` now pins it).
+    /// Omitting it also made the `IfcCsgSolid -> IfcCsgSolid` rejection below
+    /// load-bearing for stack safety instead of a spec check.
+    pub(crate) fn process_with_boolean_cycle_guard(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
+    ) -> Result<Mesh> {
+        if !visited.insert(entity.id) {
+            return Err(Error::geometry(format!(
+                "Cyclic boolean/CSG operand reference at #{}",
+                entity.id
+            )));
+        }
+        let out = self.resolve_tree_root(entity, decoder, schema, depth, quality, visited);
+        visited.remove(&entity.id);
+        out
+    }
+
+    /// Shared body of `process` and `process_with_boolean_cycle_guard`.
+    fn resolve_tree_root(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
@@ -140,11 +181,13 @@ impl GeometryProcessor for CsgSolidProcessor {
         // an `IfcBooleanResult` or an `IfcCsgPrimitive3D`, NEVER another
         // `IfcCsgSolid`. Reject that case explicitly so a malformed (or
         // adversarial) file with a self-reference can't blow the stack on
-        // unbounded recursion.
+        // unbounded recursion. That guard is one hop wide; the visited set
+        // threaded through the boolean side closes the two-hop
+        // CSG -> Boolean -> CSG cycle it cannot see (#2866).
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)
-                    .process(&root, decoder, schema, quality)
+                    .process_with_depth(&root, decoder, schema, depth, quality, visited)
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
             IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),
@@ -158,6 +201,21 @@ impl GeometryProcessor for CsgSolidProcessor {
                 other
             ))),
         }
+    }
+}
+
+impl GeometryProcessor for CsgSolidProcessor {
+    fn process(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        quality: TessellationQuality,
+    ) -> Result<Mesh> {
+        // Top-level entry (the router registers this processor directly, so
+        // this is the path a file whose Body item IS the IfcCsgSolid takes).
+        let mut visited = OperandPath::default();
+        self.resolve_tree_root(entity, decoder, schema, 0, quality, &mut visited)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
@@ -360,43 +418,5 @@ fn build_axis_aligned_box(x: f64, y: f64, z: f64) -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn axis_aligned_box_is_closed_and_has_outward_normals() {
-        let mesh = build_axis_aligned_box(2.0, 3.0, 4.0);
-        assert_eq!(mesh.positions.len() / 3, 24);
-        assert_eq!(mesh.indices.len() / 3, 12);
-
-        let mut min = [f32::INFINITY; 3];
-        let mut max = [f32::NEG_INFINITY; 3];
-        for chunk in mesh.positions.chunks_exact(3) {
-            for i in 0..3 {
-                min[i] = min[i].min(chunk[i]);
-                max[i] = max[i].max(chunk[i]);
-            }
-        }
-        assert_eq!(min, [0.0, 0.0, 0.0]);
-        assert_eq!(max, [2.0, 3.0, 4.0]);
-
-        // Each face's normal should match its outward axis.
-        let mut faces_seen = [false; 6];
-        for chunk in mesh.normals.chunks_exact(12) {
-            let nx = chunk[0];
-            let ny = chunk[1];
-            let nz = chunk[2];
-            let label = match (nx, ny, nz) {
-                (x, _, _) if x > 0.5 => 0,
-                (x, _, _) if x < -0.5 => 1,
-                (_, y, _) if y > 0.5 => 2,
-                (_, y, _) if y < -0.5 => 3,
-                (_, _, z) if z > 0.5 => 4,
-                (_, _, z) if z < -0.5 => 5,
-                _ => panic!("non-axial normal"),
-            };
-            faces_seen[label] = true;
-        }
-        assert!(faces_seen.iter().all(|&seen| seen), "missing a face");
-    }
-}
+#[path = "csg_primitive_tests.rs"]
+mod tests;

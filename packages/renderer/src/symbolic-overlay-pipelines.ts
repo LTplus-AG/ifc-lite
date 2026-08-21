@@ -676,32 +676,49 @@ export class SymbolicTextPipeline {
  * IFC BoxAlignment → normalized offsets in [-1, 0] for vertical and
  * horizontal axes. Returned offset is multiplied by the relevant span.
  *
- * Vertical:
+ * The EXPRESS WHERE rule (`IfcBoxAlignment.WR1`, `IFC4_ADD2_TC1.exp`) pins
+ * the exact 9-value enum: 'top-left', 'top-middle', 'top-right',
+ * 'middle-left', 'center', 'middle-right', 'bottom-left', 'bottom-middle',
+ * 'bottom-right'. Note the row/column asymmetry the spec itself bakes in:
+ * the ROW qualifier is top/middle/bottom, the COLUMN qualifier is
+ * left/middle/right — so "middle" means vertical-center as the first token
+ * ("middle-left") but horizontal-center as the second token ("top-middle",
+ * "bottom-middle"). A plain `includes('middle')` cannot tell those apart —
+ * it used to read "bottom-middle" as vertical=middle (wrong: it's the
+ * bottom row) and every "*-middle" as horizontal=left (wrong: it's the
+ * middle column). Splitting on the hyphen resolves the ambiguity: the
+ * first token decides vertical, the second decides horizontal, matching
+ * the row-then-column order every compound value in the enum uses.
+ *
+ * Vertical (from the first token, or the whole string for a single-token
+ * value like "center"):
  *   "top"     →  0   (no offset)
  *   "middle"  → -0.5
  *   "bottom"  → -1   (default per IFC)
- * Horizontal:
+ * Horizontal (from the second token, or the whole string for a single-token
+ * value):
  *   "left"    →  0   (default per IFC)
- *   "center"  → -0.5
+ *   "middle" / "center" → -0.5
  *   "right"   → -1
  *
- * Unknown values fall back to ("bottom", "left"). Single-token values like
- * "center" are interpreted as { vertical: "middle", horizontal: "center" }.
+ * Unknown / empty values fall back to ("bottom", "left").
  */
-function parseBoxAlignment(s: string): { horizontal: number; vertical: number } {
+export function parseBoxAlignment(s: string): { horizontal: number; vertical: number } {
   const norm = s.toLowerCase().trim();
-  let horizontal = 0;
-  let vertical = -1;
+  if (norm === '') return { horizontal: 0, vertical: -1 };
 
-  if (norm === '') return { horizontal, vertical };
+  const parts = norm.split('-');
+  const verticalToken = parts.length >= 2 ? parts[0] : norm;
+  const horizontalToken = parts.length >= 2 ? parts[1] : norm;
 
-  if (norm.includes('top')) vertical = 0;
-  else if (norm.includes('middle')) vertical = -0.5;
-  else if (norm.includes('center') && !norm.includes('center-')) vertical = -0.5;
+  let vertical: number;
+  if (verticalToken.includes('top')) vertical = 0;
+  else if (verticalToken.includes('middle') || verticalToken.includes('center')) vertical = -0.5;
   else vertical = -1;
 
-  if (norm.includes('right')) horizontal = -1;
-  else if (norm.includes('center')) horizontal = -0.5;
+  let horizontal: number;
+  if (horizontalToken.includes('right')) horizontal = -1;
+  else if (horizontalToken.includes('middle') || horizontalToken.includes('center')) horizontal = -0.5;
   else horizontal = 0;
 
   return { horizontal, vertical };

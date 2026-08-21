@@ -312,10 +312,15 @@ mod shared_cap_tests {
     /// This is not redundant with the constant being shared. Sharing removes
     /// the drift that EXISTS; it does not stop anyone reintroducing a local
     /// `const MAX_MAPPED_ITEM_DEPTH` that shadows the import. Verified by
-    /// mutation: with the import replaced by a private `= 16` — the exact
-    /// #2864 regression, where elements with 17-to-32-link chains rendered
-    /// their geometry and silently lost their authored colour — 800 tests
-    /// stayed green until this test existed.
+    /// mutation: with the import replaced by a private `= 16`, 800 tests stayed
+    /// green until this test existed. A mid-review revision of #2864 held
+    /// exactly that value against the router's 32, so the shadow is not a
+    /// hypothetical shape.
+    ///
+    /// The assertion is on the VALUE, not on identity, so a private copy
+    /// holding the same 32 still passes. That is the honest ceiling: Rust has
+    /// no cheap const-identity check, and a same-value shadow is harmless until
+    /// the shared value is next tuned, at which point this fires.
     #[test]
     fn mapped_item_depth_is_the_shared_constant() {
         assert_eq!(

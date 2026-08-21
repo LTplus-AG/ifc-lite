@@ -450,7 +450,8 @@ fn a_large_flat_set_is_not_truncated() {
 #[test]
 fn depth_cap_matches_the_mapped_item_family_value() {
     assert_eq!(
-        MAX_ITEM_DEPTH, 32,
+        MAX_ITEM_DEPTH,
+        ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
         "must equal MAX_MAPPED_ITEM_DEPTH in element.rs, router/processing.rs and color.rs; \
          note this cap charges set elements and curve segments too, so equal values do not \
          mean equal reach"

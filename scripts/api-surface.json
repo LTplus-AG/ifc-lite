@@ -4211,6 +4211,7 @@
     "SymbolicGridAxis: interface",
     "SymbolicPolyline: interface",
     "SymbolicText: interface",
+    "SymbolicTruncation: interface",
     "decodeDataModel: function",
     "decodeOptimizedParquetGeometry: function",
     "decodeParquetGeometry: function",

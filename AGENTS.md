@@ -179,6 +179,60 @@ Before touching an issue:
 
 Check again immediately before opening the PR. A claim can appear while you work, and the second check is the cheap one.
 
+### Every agent is the same GitHub account
+
+`gh issue edit --add-assignee` cannot tell two agents apart, because they all
+push and assign as the **same account**. An issue assigned to that account
+means *somebody has claimed this*. It does **not** mean *you* claimed it, and
+you cannot tell which from the assignee field.
+
+So an assignment to your own account is a claim by someone else until you can
+show otherwise. **Leave a claim comment as well**, naming the session, so the
+next agent can tell:
+
+    gh issue comment <n> --body "Claiming this. Session <id>, branch <name>."
+
+And when you find the account already assigned with no claim comment, ask on
+the issue before starting rather than reading the field as your own.
+
+Note this is about OUR sessions only. An outside contributor has their own
+account, so the field says what it looks like it says for them.
+
+### The contributor check and the session check are different checks
+
+Doing one does not do the other, and the assignee field cannot cover both.
+
+On #3012 the account was self-assigned at 14:12:52 and a PR for the same issue
+appeared 47 minutes later. The natural reading was another session ignoring the
+claim. It was not: **the PR came from an outside contributor**, who has no
+reason to know or care about an internal assignment, and for whom the repo's
+existing rules already apply (look for their PR before starting, external work
+takes precedence, never push to their branch).
+
+The session that self-assigned never ran `gh pr list --search 3012`. No
+assignee field, however precise about sessions, would have helped: **no session
+held it.** Only the PR search would have.
+
+So run both, every time:
+
+    gh issue view <n> --json assignees      # is one of us on it
+    gh pr list --search "<n>"               # is anyone at all on it
+
+### When you collide mid-flight
+
+The checks above cover noticing **before** you start and noticing **after** you
+finish. The expensive case is neither: **both of you are already half-built when
+the claim appears.** Both have sunk work, both can reasonably feel they should
+be the one to finish, and the race is usually settled by whoever opens a PR
+first, which rewards speed over ownership.
+
+**The assignee decides. The other stops immediately** rather than racing to open
+first, and hands over what they have as a comment or a patch on the assignee's
+PR. If nobody is assigned yet, the one who claimed first decides.
+
+Stopping mid-build is cheap. Two finished implementations of the same thing is
+not, and neither is the conversation about which one lands.
+
 ### Helping on someone else's issue
 
 Helping is welcome. **Taking over is not.** Two things make it help:

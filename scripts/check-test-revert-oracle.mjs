@@ -476,6 +476,16 @@ console.log(`  baseline:  ${result.baseline.kind} — ${result.baseline.passed ?
 console.log(`  reverted:  ${result.revertedRun.kind} — ${result.revertedRun.passed ?? '?'} passed, ${result.revertedRun.failed ?? '?'} failed / ${result.revertedRun.total ?? '?'} collected`);
 console.log(`\n  ${result.reason}`);
 if (result.advice) console.log(`\n  NEXT: ${result.advice}`);
+// An OBSERVED earned by reverting many files at once can be carried by a single
+// line of the change while the rest is unobserved -- the shape of the
+// `device.ts` case this tool was written for. Say so rather than let the tick
+// read as a verdict on the whole branch.
+if (result.verdict === 'OBSERVED' && result.prodPaths.length > 1 && opts.only.length === 0) {
+  console.log(
+    `\n  NOTE: ${result.prodPaths.length} production files were reverted together, so this tick may be ` +
+      'earned by one of them. Re-run with --only <path> per file to find the unobserved ones.',
+  );
+}
 if (result.verdict === 'INCONCLUSIVE' && result.advice !== SURGICAL_ADVICE) console.log(`\n  ALSO: ${SURGICAL_ADVICE}`);
 console.log('');
 

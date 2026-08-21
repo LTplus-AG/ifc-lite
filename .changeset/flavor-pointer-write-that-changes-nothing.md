@@ -41,14 +41,24 @@ rejection then deleted the record and the bundle with nothing to restore,
 wiping a working extension. The snapshot is now taken for any previous install.
 The teardown stays gated on a version change.
 
-The rollback also restores the previous record first and in its own step,
-independent of the bundle bytes. The record carries the capability grants, the
-enabled bit, the install time and the source, none of which need bytes: a
-record whose bundle is missing is a state the loader already names
-(`invalid_reference`) and one a reinstall repairs, so a previous install whose
-bytes were already gone no longer has its record deleted by the rollback, and a
-byte write that fails during the restore — `putBundle` is the step with a
-storage-quota path — no longer takes the record down with it.
+The rollback also restores the previous record under its own guard, independent
+of the bundle bytes. The record carries the capability grants, the enabled bit,
+the install time and the source, none of which need bytes and none of which the
+user can reconstruct, so a previous install whose bytes were already gone no
+longer has its record deleted by the rollback, and a byte write that fails
+during the restore — `putBundle` is the step with a storage-quota path — no
+longer takes the record down with it. A record without its bytes is a state the
+loader names (`invalid_reference`); reinstalling the same version repairs it and
+keeps the grants, but the app offers no route to that today — the Repair queue
+passes an extension whose engine range still matches, so it never reports the
+missing bytes. Keeping the record is still the better outcome: unloaded *and*
+deleted is strictly worse than unloaded.
+
+The rollback now also checks that the record in storage is still the one this
+install wrote before undoing anything. `load` is an await point, so a user can
+uninstall while a slow load is in flight; restoring the previous record after
+that would undo an explicit uninstall. The check is on record identity, never
+on whether bytes exist, so it does not reintroduce the gate above.
 
 One cost, in the safe direction: because the snapshot is no longer gated on a
 version change, a transient failure reading the previous bundle bytes now fails

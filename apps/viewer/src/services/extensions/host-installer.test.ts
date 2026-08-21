@@ -25,7 +25,7 @@ import {
   type LoadedExtensionStatus,
 } from '@ifc-lite/extensions';
 import { IdbExtensionStorage } from './idb-storage.js';
-import { installFromBytes, type InstallerDeps } from './host-installer.js';
+import { installFromBytes, uninstall, type InstallerDeps } from './host-installer.js';
 
 const EXT_ID = 'com.example.rollback';
 
@@ -245,6 +245,106 @@ describe('installFromBytes rollback keeps the record independent of the bytes', 
     assert.equal(second.teardowns.count, 1, 'the outgoing version is torn down');
     const after = await installedState(second.storage, '1.0.0');
     assert.deepEqual(after.record, before.record, 'the previous record survives');
+  });
+
+  it('does not resurrect a record the user uninstalled while the install was loading', async () => {
+    // Install v1, its bytes go missing behind the record's back, then a v2
+    // install hangs in `load` and the user hits Uninstall before it comes
+    // back. The uninstall is explicit and it wins: restoring `previous`
+    // here would undo it and leave a listed-but-unloadable record behind.
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    assert.ok(await first.storage.getExtension(EXT_ID), 'the first install landed');
+    await first.storage.deleteBundle(EXT_ID, '1.0.0');
+
+    const second = makeDeps([]);
+    let uninstalledDuringLoad = false;
+    (second.deps.loader as { load: (id: string) => Promise<LoadedExtensionStatus | undefined> })
+      .load = async () => {
+        if (uninstalledDuringLoad) return okStatus();
+        uninstalledDuringLoad = true;
+        // The user hits Uninstall while this load is still in flight.
+        await uninstall(second.deps, EXT_ID);
+        return failStatus();
+      };
+
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('2.0.0', 'upgrade'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+    assert.ok(uninstalledDuringLoad, 'the uninstall actually ran mid-install');
+
+    assert.equal(
+      await second.storage.getExtension(EXT_ID),
+      undefined,
+      'the record the user uninstalled stays uninstalled',
+    );
+  });
+
+  it('still rolls back when the record re-read fails', async () => {
+    // The re-read that guards against an uninstall-mid-load proves nothing
+    // when it fails, so it falls back to rolling back — what happens when
+    // nobody touched storage, which is every case but the racing one.
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    const before = await first.storage.getExtension(EXT_ID);
+    assert.ok(before, 'the first install landed');
+
+    const second = makeDeps([failStatus(), okStatus()]);
+    const realGet = second.storage.getExtension.bind(second.storage);
+    let reads = 0;
+    second.storage.getExtension = (id: string) => {
+      reads += 1;
+      // The pre-install snapshot read succeeds; the rollback's re-read throws.
+      return reads === 1 ? realGet(id) : Promise.reject(new Error('re-read blew up'));
+    };
+
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('1.0.0', 'replacement'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+    assert.ok(reads > 1, 'the rollback actually attempted the re-read');
+
+    const after = await new IdbExtensionStorage().getExtension(EXT_ID);
+    assert.deepEqual(after, before, 'the previous record was still restored');
+  });
+
+  it('re-loads the restored record even when there were no bytes to restore', async () => {
+    // The rollback's reload is not gated on the byte snapshot. With the bytes
+    // gone it is the load that makes the loader report the record's real
+    // state (`invalid_reference`) rather than leaving whatever it was running
+    // in place, backed by a bundle no longer in storage. Gating it on
+    // `previousBundleBytes` is otherwise silent — this is the test that
+    // notices.
+    const first = makeDeps([okStatus()]);
+    await installFromBytes(first.deps, bundleBytes('1.0.0', 'original'), ['model.read']);
+    assert.ok(await first.storage.getExtension(EXT_ID), 'the first install landed');
+    await first.storage.deleteBundle(EXT_ID, '1.0.0');
+    assert.equal(
+      await first.storage.getBundle(EXT_ID, '1.0.0'),
+      undefined,
+      'there is no byte snapshot for the rollback to restore',
+    );
+
+    const second = makeDeps([]);
+    const loadedIds: string[] = [];
+    const verdicts = [failStatus(), okStatus()];
+    (second.deps.loader as { load: (id: string) => Promise<LoadedExtensionStatus | undefined> })
+      .load = (id: string) => {
+      loadedIds.push(id);
+      return Promise.resolve(verdicts.shift());
+    };
+
+    await assert.rejects(
+      () => installFromBytes(second.deps, bundleBytes('1.0.0', 'replacement'), ['model.read']),
+      /Loader rejected the new bundle/,
+    );
+
+    assert.deepEqual(
+      loadedIds,
+      [EXT_ID, EXT_ID],
+      'the rollback re-loaded the restored record even with no bytes to restore',
+    );
   });
 
   it('keeps the previous record when restoring its bytes fails', async () => {

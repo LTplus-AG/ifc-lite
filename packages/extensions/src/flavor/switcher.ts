@@ -198,8 +198,28 @@ export async function switchFlavor(
     // pointer it already holds; failing here would disable every extension the
     // target declares and report the flavor as not applied while the pointer on
     // disk names it.
-    const read = opts.callbacks.readActiveFlavor?.bind(opts.callbacks);
-    if (!(await activeFlavorPointerAlreadyStored(read, activeFlavorPointer(opts.target)))) {
+    //
+    // Everything this check needs is built inside the `try`. We are already
+    // inside a `catch` with toggles applied and the rollback still ahead of
+    // us, so a throw from here would escape `switchFlavor` and skip that
+    // rollback — leaving applied exactly the toggles this branch exists to
+    // preserve or undo. A host that hands a non-function `readActiveFlavor`,
+    // or a target whose id cannot be read, is therefore not provably a no-op:
+    // it takes the refusal path below like any other unreadable pointer.
+    let alreadyStored = false;
+    try {
+      const read =
+        typeof opts.callbacks.readActiveFlavor === 'function'
+          ? opts.callbacks.readActiveFlavor.bind(opts.callbacks)
+          : undefined;
+      alreadyStored = await activeFlavorPointerAlreadyStored(
+        read,
+        activeFlavorPointer(opts.target),
+      );
+    } catch {
+      alreadyStored = false;
+    }
+    if (!alreadyStored) {
       await rollback(opts.callbacks, touched);
       return { ok: false, active: opts.current ?? opts.target, failures: [...failures, '<pointer>'], disabled, enabled };
     }

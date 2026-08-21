@@ -2,11 +2,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicAccumulator;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
-use super::primitives::{SymbolicData, SymbolicFillArea};
+use super::primitives::{SymbolicFillArea};
 use super::transform::{circle_center, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ pub(super) fn extract_annotation_fill_area(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let Some(outer_ref) = item.get_ref(0) else { return };
     let mut points = extract_curve_ring(outer_ref, decoder, unit_scale, transform, rtc_x, rtc_z);
@@ -51,7 +52,7 @@ pub(super) fn extract_annotation_fill_area(
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
     let world_y = sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz;
 
-    out.fills.push(SymbolicFillArea {
+    out.push_fill(SymbolicFillArea {
         express_id,
         ifc_type: ifc_type.to_string(),
         points,

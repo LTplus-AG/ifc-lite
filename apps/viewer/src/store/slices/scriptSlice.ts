@@ -86,6 +86,35 @@ export interface ScriptSlice {
    * baseline-compare a number. Mirrors `clashRunSeq` / `compareRunSeq`.
    */
   scriptRunSeq: number;
+  /**
+   * Monotonic token bumped by `useSandbox().execute()` at the START of every
+   * run, BEFORE any await. `useSandbox()` is instantiated independently in
+   * `ScriptPanel`, `ChatPanel`, `CommandPalette` and `ExecutableCodeBlock`
+   * (each gets its own `activeSandboxRef`/closure — there is no shared
+   * per-hook state), so a per-hook-instance guard (the `runEpochRef` shape
+   * `useClash`/`useIDS`/`useCompare` use) cannot detect a SECOND run started
+   * from a DIFFERENT component instance while the first is still in flight.
+   * This lives in the store instead so every instance reads/writes the same
+   * counter. A run captures the value right after bumping it and re-checks
+   * it, synchronously, before every terminal store write that follows an
+   * await (`setScriptResult`/`setScriptError`) — a stale run whose epoch no
+   * longer matches the current one skips the write. Without this, two
+   * scripts started in either order publish to the shared
+   * `scriptLastResult`/`scriptExecutionState` in FINISH order, so an older,
+   * slower run can silently clobber a newer, already-displayed result.
+   *
+   * This gates the STORE WRITE only, not what `execute()` resolves with to
+   * its OWN caller — that is a separate, per-instance `runEpochRef` inside
+   * `useSandbox()`. A run that a DIFFERENT instance's newer run made stale
+   * here still genuinely succeeded (or failed) on its own terms, and its own
+   * caller (`ExecutableCodeBlock.handleRun`, `ChatPanel`'s auto-execute) gets
+   * that real outcome — being skipped here only means it lost the race to be
+   * the document's displayed state, not that the run itself failed. Only a
+   * run THIS SAME instance itself superseded (a second `execute()` call, or
+   * its own `reset()`) resolves `null`, matching the #1922 teardown-abort
+   * path's contract for a run that actually died.
+   */
+  scriptRunEpoch: number;
   scriptLastResult: ScriptResult | null;
   scriptLastError: string | null;
   scriptLastDiagnostics: ScriptDiagnostic[];
@@ -108,6 +137,13 @@ export interface ScriptSlice {
   setScriptEditorContent: (content: string) => void;
   setScriptExecutionState: (state: ScriptExecutionState) => void;
   bumpScriptRunSeq: () => void;
+  /** Bump the run-supersession token and return the new value (this run's epoch). */
+  bumpScriptRunEpoch: () => number;
+  /**
+   * Publish a run's result. Clears any error and its diagnostics, and moves
+   * `scriptExecutionState` to `'success'` — or to `'idle'` for a `null`
+   * result, which is not a successful run but the absence of one.
+   */
   setScriptResult: (result: ScriptResult | null) => void;
   setScriptError: (error: string | null, diagnostics?: ScriptDiagnostic[]) => void;
   setScriptDiagnostics: (diagnostics: ScriptDiagnostic[]) => void;
@@ -162,6 +198,7 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
   scriptEditorDirty: false,
   scriptExecutionState: 'idle',
   scriptRunSeq: 0,
+  scriptRunEpoch: 0,
   scriptLastResult: null,
   scriptLastError: null,
   scriptLastDiagnostics: [],
@@ -311,8 +348,29 @@ export const createScriptSlice: StateCreator<ScriptSlice, [], [], ScriptSlice> =
 
   bumpScriptRunSeq: () => set((s) => ({ scriptRunSeq: s.scriptRunSeq + 1 })),
 
+  bumpScriptRunEpoch: () => {
+    const next = get().scriptRunEpoch + 1;
+    set({ scriptRunEpoch: next });
+    return next;
+  },
+
+  // `'success'` describes a run whose outcome this call is publishing, so it
+  // is conditional on there BEING one. A `null` result is the absence of a
+  // run — the only caller that passes it is `useSandbox().reset()`, which
+  // clears the panel — and reporting that as a successful execution left the
+  // store claiming a success with no result and no error to explain it. That
+  // was survivable while the next completing run overwrote it; with the
+  // run-supersession epoch (`scriptRunEpoch`) a run superseded by that very
+  // `reset()` no longer writes at all, so the incoherent state became the
+  // terminal one. `'idle'` is what every other "nothing has run" path in this
+  // slice uses (`setActiveScriptId`, the model-load reset in `store/index.ts`).
   setScriptResult: (scriptLastResult) =>
-    set({ scriptLastResult, scriptLastError: null, scriptLastDiagnostics: [], scriptExecutionState: 'success' }),
+    set({
+      scriptLastResult,
+      scriptLastError: null,
+      scriptLastDiagnostics: [],
+      scriptExecutionState: scriptLastResult === null ? 'idle' : 'success',
+    }),
 
   // Error and execution state are set independently — clearing an error
   // does NOT change execution state unless explicitly transitioned

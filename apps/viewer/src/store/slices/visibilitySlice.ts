@@ -20,6 +20,26 @@ import {
   type TypeViewMode,
 } from '../constants.js';
 
+/**
+ * ## These two channels are shared, and every write of them is invalidating
+ *
+ * `isolatedEntities` / `ghostExceptEntities` are shared by clash, IDS,
+ * "Isolate in 3D", assembly isolation, `LayerDiffView`, Space Sketch, BCF, the
+ * basket and `syncSourceModel`. Features record what they installed so they
+ * can release only that, and a record left behind after ANOTHER owner replaced
+ * the channel starts matching again the moment a third owner installs equal
+ * content — at which point the stale owner's next release destroys that
+ * owner's presentation (#2654 fourth review).
+ *
+ * The actions below therefore do NOT each carry that invalidation, and must
+ * not start to: it is performed once for the whole store, by the wrapped `set`
+ * every slice and every `useViewerStore.setState` goes through
+ * (`store/visibility-invalidation.ts`). Review of #2867 did answer it here, in
+ * a helper each channel-writing action called — and the list was incomplete on
+ * the day it was written (`showAllInAllModels` below, and ten actions in
+ * `pinboardSlice`). A list of writers is not an invariant.
+ */
+
 export interface VisibilitySlice {
   // State (legacy - single model)
   hiddenEntities: Set<number>;
@@ -79,6 +99,45 @@ export interface VisibilitySlice {
   setIsolatedEntities: (ids: Set<number> | null) => void;
   /** Ghost everything except these entities (X-Ray context). `null` clears it. */
   setGhostExceptEntities: (ids: Set<number> | null) => void;
+  /**
+   * Put a previously CAPTURED view back, all three fields at once.
+   *
+   * Restoring through the individual setters cannot express this: each of them
+   * clears the others (isolation and ghosting are mutually exclusive, and
+   * isolation supersedes per-entity hiding), so a three-call replay passes
+   * through intermediate states the user never had. That used to be invisible;
+   * it stopped being invisible once a channel write started invalidating the
+   * ownership records it makes stale (review of #2867) — restoring a captured
+   * clash GHOST went `setIsolatedEntities(null)` (which nulls the ghost
+   * channel, killing the record) and only then `setGhostExceptEntities(...)`,
+   * so the presentation came back with its claim laundered off. That is #2662
+   * P2 by another route, and `useClash.run-preserves-isolation.test.tsx` catches
+   * it.
+   *
+   * One `set()`, one final state, one invalidation pass against it: a record
+   * that still content-matches what the restore put back survives.
+   *
+   * It is NOT otherwise equivalent to the replay, and both divergences are
+   * deliberate (measured in `store/visibility-channel-invalidation.test.ts`):
+   *
+   *  - `classFilter` is left alone. The replay reached `setHiddenEntities`
+   *    whenever anything was hidden, and that setter nulls the class filter, so
+   *    closing Space Sketch used to drop a Class-tab filter the tool never
+   *    touched.
+   *  - a captured ISOLATION now survives a non-empty captured hidden set. The
+   *    replay restored the isolation and then `setHiddenEntities` nulled it
+   *    again one call later, so that combination came back without its
+   *    isolation. This is the fix, not a side effect — but it is a behaviour
+   *    change, not a no-op refactor.
+   *
+   * Both channels are written exactly as captured, including a both-non-null
+   * pair — see the body for why that pair is legal.
+   */
+  restoreVisibilityState: (prior: {
+    isolated: Set<number> | null;
+    ghostExcept: Set<number> | null;
+    hidden: Set<number>;
+  }) => void;
   /** Clear X-Ray context ghosting. */
   clearGhost: () => void;
 
@@ -161,13 +220,14 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
       state.isolatedEntities.has(id);
 
     if (isAlreadyIsolated) {
-      return { isolatedEntities: null };
+      return { isolatedEntities: null, ghostExceptEntities: state.ghostExceptEntities };
     } else {
       // Isolate this entity (and unhide it)
       const newHidden = new Set(state.hiddenEntities);
       newHidden.delete(id);
       return {
         isolatedEntities: new Set([id]),
+        ghostExceptEntities: state.ghostExceptEntities,
         hiddenEntities: newHidden,
       };
     }
@@ -181,19 +241,23 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
       ids.every(id => state.isolatedEntities!.has(id));
 
     if (isAlreadyIsolated) {
-      return { isolatedEntities: null };
+      return { isolatedEntities: null, ghostExceptEntities: state.ghostExceptEntities };
     } else {
       // Isolate these entities (and unhide them)
       const newHidden = new Set(state.hiddenEntities);
       ids.forEach(id => newHidden.delete(id));
       return {
         isolatedEntities: idsSet,
+        ghostExceptEntities: state.ghostExceptEntities,
         hiddenEntities: newHidden,
       };
     }
   }),
 
-  clearIsolation: () => set({ isolatedEntities: null }),
+  clearIsolation: () => set((state) => ({
+    isolatedEntities: null,
+    ghostExceptEntities: state.ghostExceptEntities,
+  })),
 
   setClassFilter: (ids, label) => set((state) => {
     const idsSet = new Set(ids);
@@ -209,16 +273,30 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
 
   clearClassFilter: () => set({ classFilter: null }),
 
-  clearAllFilters: () => set({ isolatedEntities: null, classFilter: null, ghostExceptEntities: null }),
+  clearAllFilters: () => set({
+    isolatedEntities: null,
+    ghostExceptEntities: null,
+    classFilter: null,
+  }),
 
-  showAll: () => set({ hiddenEntities: new Set(), isolatedEntities: null, classFilter: null, ghostExceptEntities: null }),
+  showAll: () => set({
+    isolatedEntities: null,
+    ghostExceptEntities: null,
+    hiddenEntities: new Set<number>(),
+    classFilter: null,
+  }),
 
-  setHiddenEntities: (ids) => set({ hiddenEntities: new Set(ids), isolatedEntities: null, classFilter: null, ghostExceptEntities: null }),
+  setHiddenEntities: (ids) => set({
+    isolatedEntities: null,
+    ghostExceptEntities: null,
+    hiddenEntities: new Set(ids),
+    classFilter: null,
+  }),
 
   setIsolatedEntities: (ids) => set({
     isolatedEntities: ids ? new Set(ids) : null,
-    hiddenEntities: new Set(), // Clear hidden when setting isolation
     ghostExceptEntities: null, // Isolation (hide) and ghosting are mutually exclusive
+    hiddenEntities: new Set<number>(), // Clear hidden when setting isolation
   }),
 
   setGhostExceptEntities: (ids) => set({
@@ -227,7 +305,28 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     isolatedEntities: null,
   }),
 
-  clearGhost: () => set({ ghostExceptEntities: null }),
+  restoreVisibilityState: ({ isolated, ghostExcept, hidden }) => set({
+    // Verbatim, both channels together — including the both-non-null pair,
+    // which IS reachable and is therefore restored rather than normalised. The
+    // individual setters each clear the other channel, but the actions that
+    // deliberately PRESERVE it (`isolateEntity` / `isolateEntities` /
+    // `clearIsolation` / `clearGhost`) do not, so
+    // `setGhostExceptEntities([9]); isolateEntity(5)` leaves isolated={5} and
+    // ghost={9} — and `showPinboard` reaches the same shape from the basket
+    // side. The pair is coherent downstream — isolation filters, ghosting then
+    // fades what survived it (`lib/geo/cesium-model-glb.ts`, which restates the
+    // render pass's order for the world view) — and a capture that observed it
+    // is a view the user actually had; normalising one channel away here would
+    // restore a view they never saw.
+    isolatedEntities: isolated ? new Set(isolated) : null,
+    ghostExceptEntities: ghostExcept ? new Set(ghostExcept) : null,
+    hiddenEntities: new Set(hidden),
+  }),
+
+  clearGhost: () => set((state) => ({
+    ghostExceptEntities: null,
+    isolatedEntities: state.isolatedEntities,
+  })),
 
   isEntityVisible: (id) => {
     const state = get();

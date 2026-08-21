@@ -344,7 +344,14 @@
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
      727 rust/wasm-bindings/src/zero_copy/mesh.rs
-     743 rust/wasm-bindings/src/zero_copy/symbolic.rs
+# symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
+# boundary as `truncatedAt` (#2938). A raise rather than a split because the
+# addition is one field, one assignment in `from_data` and one getter -- the
+# file is a god file for reasons that predate this and splitting it is its own
+# change. The alternative was to drop the flag on the browser path, which is
+# the bug being fixed: geometry is client-side only, so that path is the only
+# way a viewer learns its drawing was clipped.
+     757 rust/wasm-bindings/src/zero_copy/symbolic.rs
 # +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
 # geometry-job discovery path with the same has_geometry_by_name gap as the
 # serial/sharded scans; adds the instance-level exception plus its regression

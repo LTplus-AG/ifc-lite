@@ -2,12 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicAccumulator;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::item_walk::{extract_symbolic_item_at, ItemWalk};
 use super::fill::extract_annotation_fill_area;
-use super::primitives::{SymbolicCircle, SymbolicData, SymbolicPolyline};
+use super::primitives::{SymbolicCircle, SymbolicPolyline};
 use super::text::extract_text_literal;
 use super::transform::{
     circle_center, compose_transforms, parse_axis2_placement_2d,
@@ -32,7 +33,7 @@ pub(super) fn extract_symbolic_item_inner(
     rtc_x: f32,
     rtc_z: f32,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
     depth: u32,
     walk: &mut ItemWalk,
 ) {
@@ -173,7 +174,7 @@ pub(super) fn extract_symbolic_item_inner(
                             && (points[0] - points[n - 2]).abs() < 0.001
                             && (points[1] - points[n - 1]).abs() < 0.001;
                         let world_y = first_z.unwrap_or(0.0) + transform.tz;
-                        out.polylines.push(SymbolicPolyline {
+                        out.push_polyline(SymbolicPolyline {
                             express_id,
                             ifc_type: ifc_type.to_string(),
                             points,
@@ -214,7 +215,7 @@ pub(super) fn extract_symbolic_item_inner(
                     && (points[0] - points[n - 2]).abs() < 0.001
                     && (points[1] - points[n - 1]).abs() < 0.001;
                 let world_y = first_z.unwrap_or(0.0) + transform.tz;
-                out.polylines.push(SymbolicPolyline {
+                out.push_polyline(SymbolicPolyline {
                     express_id,
                     ifc_type: ifc_type.to_string(),
                     points,
@@ -233,7 +234,7 @@ pub(super) fn extract_symbolic_item_inner(
                 return;
             }
             let (wx, wy) = transform.transform_point(center_x, center_y);
-            out.circles.push(SymbolicCircle::full(
+            out.push_circle(SymbolicCircle::full(
                 express_id,
                 ifc_type.to_string(),
                 wx - rtc_x,
@@ -266,7 +267,7 @@ pub(super) fn extract_symbolic_item_inner(
                 }
             }
             if points.len() >= 4 {
-                out.polylines.push(SymbolicPolyline {
+                out.push_polyline(SymbolicPolyline {
                     express_id,
                     ifc_type: ifc_type.to_string(),
                     points,

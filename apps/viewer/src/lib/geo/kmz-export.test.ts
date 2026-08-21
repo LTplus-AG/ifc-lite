@@ -225,7 +225,7 @@ describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', ()
     coordinateInfo: undefined,
     lengthUnitScale: 1,
     geometryResult: { meshes } as GeometryResult,
-    isPrimaryModel: true,
+    instancedModelRange: { idOffset: 0, maxExpressId: 1000 },
     name: 'IFC Model',
   }, () => gp);
 
@@ -247,9 +247,14 @@ describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', ()
     assert.strictEqual(seen.length, 0, 'the exporter must not be driven with nothing');
   });
 
-  it('does not adopt instanced occurrences for a federated (non-primary) model', async () => {
-    // Shard occurrences live in the primary model's id space.
-    setInstancedScene([occurrence(42)]);
+  it('adopts only THIS federated model\'s own instanced occurrences, not another loaded model\'s', async () => {
+    // GPU instancing stopped being primary-only on 2026-08-06 (#2255) — a
+    // federated model at idOffset 100 can carry its own instanced shard,
+    // re-homed onto its own global id space (100 + local id). The scene also
+    // holds instanced entity 42, which belongs to a DIFFERENT model (e.g. the
+    // primary, idOffset 0) — `withInstancedMeshes` must include the former and
+    // exclude the latter (#2865/#2878 follow-up).
+    setInstancedScene([occurrence(42), occurrence(142)]);
     const { gp, seen } = stub();
 
     const out = await buildKmzForResolvedGeoref({
@@ -257,12 +262,16 @@ describe('buildKmzForResolvedGeoref — the model is not the flat mesh list', ()
       crs: CRS,
       coordinateInfo: undefined,
       lengthUnitScale: 1,
-      geometryResult: { meshes: [occurrence(7)] } as GeometryResult,
-      isPrimaryModel: false,
+      geometryResult: { meshes: [occurrence(107)] } as GeometryResult,
+      instancedModelRange: { idOffset: 100, maxExpressId: 100 },
       name: 'IFC Model',
     }, () => gp);
 
     assert.ok(out instanceof Uint8Array);
-    assert.deepStrictEqual(seen[0].map((m) => m.expressId), [7]);
+    assert.deepStrictEqual(
+      seen[0].map((m) => m.expressId).sort((a, b) => a - b),
+      [107, 142],
+      'the federated model\'s own instanced occurrence (142) is adopted; the other model\'s (42) is not',
+    );
   });
 });

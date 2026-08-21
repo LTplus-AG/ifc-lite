@@ -1,6 +1,6 @@
 # buildingSMART/IDS Implementer Test Cases
 
-The 318 IDS+IFC pairs in `attribute/`, `classification/`, `entity/`,
+The 334 IDS+IFC pairs in `attribute/`, `classification/`, `entity/`,
 `ids/`, `material/`, `partof/`, `property/`, `restriction/`, `tolerance/`
 are copied verbatim from
 [buildingSMART/IDS](https://github.com/buildingSMART/IDS) under
@@ -33,10 +33,21 @@ whether the IDS FILE is well-formed at all, which is a question for the audit
 rather than the validator — running an `invalid-` case through `validateIDS`
 returns `fail`, a defensible answer to a different question.
 
-`../corpus.test.ts` runs all 318 pairs on that routing, per specification
+`../corpus.test.ts` runs all 334 pairs on that routing, per specification
 rather than per file. Every `pass-` and `fail-` case currently agrees. Of the
 27 `invalid-` cases the audit detects 6; the other 21 are listed in
 `AUDIT_UNDETECTED` in that file, which may only shrink.
+
+The corpus was re-synced from upstream on 2026-08-19, picking up 16 pairs
+added since the original #1685 vendoring: 8 `entity/*type_mapping_table*`
+cases (the IFC2X3 occurrence/type mapping table — an IDS facet naming an
+IFC4-only class like `IfcAirTerminal` must still match the IFC2X3
+`IfcFlowTerminal` + `IfcAirTerminalType` pair that represents it) and 8
+`property/*material_propert*` / `*project_propert*` cases (property facets
+applied directly to `IfcMaterial`, `IfcObject`/`IfcContext`). Both gaps were
+real: this repository failed all 4 `entity/pass-*type_mapping_table*` cases
+and both `property/pass-material_properties_are_supported_*` cases before
+being fixed.
 
 ## Updating
 

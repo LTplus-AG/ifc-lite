@@ -65,6 +65,17 @@ describe('Scene.translateMeshesForEntity', () => {
     assert.strictEqual(scene.translateMeshesForEntity(999, [1, 0, 0]), false);
   });
 
+  it('moves the z axis independently (all other fixtures only exercise x/y)', () => {
+    const scene = new Scene();
+    const m = mesh(5, [0, 0, 0, 1, 1, 1]);
+    scene.addMeshData(m);
+    assert.strictEqual(scene.translateMeshesForEntity(5, [0, 0, 3]), true);
+    assert.strictEqual(m.positions[0], 0, 'x unchanged');
+    assert.strictEqual(m.positions[1], 0, 'y unchanged');
+    assert.strictEqual(m.positions[2], 3, 'z += 3 on first vertex');
+    assert.strictEqual(m.positions[5], 4, 'z += 3 on second vertex');
+  });
+
   it('evicts the entity\'s stale selection-highlight meshes on move (no ghost)', () => {
     const scene = new Scene();
     scene.addMeshData(mesh(7, [0, 0, 0, 1, 0, 0, 0, 1, 0]));
@@ -167,6 +178,15 @@ describe('Scene.translateInstancedEntity', () => {
     scene.translateInstancedEntity(9, [0, -8, 0]);
     assert.strictEqual(dv.getFloat32(48, true), 2, 'x restored');
     assert.strictEqual(dv.getFloat32(52, true), 0, 'y restored to native');
+  });
+
+  it('moves the z axis independently (all other instanced fixtures only exercise x/y)', () => {
+    const scene = new Scene();
+    const dv = injectInstanced(scene, 11, [0, 0, 0]);
+    assert.strictEqual(scene.translateInstancedEntity(11, [0, 0, 7]), true);
+    assert.strictEqual(dv.getFloat32(48, true), 0, 'x translation unchanged');
+    assert.strictEqual(dv.getFloat32(52, true), 0, 'y translation unchanged');
+    assert.strictEqual(dv.getFloat32(56, true), 7, 'z translation += 7');
   });
 
   it('returns false for a non-instanced id and for a zero delta', () => {

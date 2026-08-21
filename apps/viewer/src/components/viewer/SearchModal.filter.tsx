@@ -435,7 +435,7 @@ export function SearchModalFilter() {
       isolationIds = [...merged];
     }
 
-    // isolateEntities is a same-set TOGGLE (visibilitySlice.ts:176-194):
+    // isolateEntities is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`):
     // pressing "Isolate in 3D" again on the identical result un-isolates
     // rather than re-isolating. Detect that up front so the un-isolate press
     // only clears — it must not also select/frame the id set and close the

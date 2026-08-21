@@ -167,4 +167,25 @@ describe('uniqueColor', () => {
     expect(uniqueColor(42)).toBe(uniqueColor(42));
     expect(uniqueColor(999)).toBe(uniqueColor(999));
   });
+
+  // The three prior tests only check format, uniqueness, and repeatability —
+  // none of them pin what color a given index actually produces, so the
+  // internal HSL->hex conversion's per-branch channel assignment (6 hue
+  // ranges, each writing a different pair of {r,g,b} to {c,x,0}) can be
+  // silently transposed without failing anything above. i=0..6 walk the
+  // golden-angle hue sequence ((i * 137.508) % 360) through all six 60°
+  // branches in turn (hues ≈ 0°, 137.5°, 275.0°, 52.5°, 190.0°, 327.5°,
+  // 105.0°), and the saturation/lightness that go with each index cycle
+  // independently (i % 2, i % 3). Expected values were computed with an
+  // independent HSL->RGB reference (Python's colorsys.hls_to_rgb), not by
+  // reading this file's own algorithm back.
+  it('pins the exact hex output across all six hue branches', () => {
+    expect(uniqueColor(0)).toBe('#bd2828'); // hue   0.0°, branch h<60
+    expect(uniqueColor(1)).toBe('#30e866'); // hue 137.5°, branch 120<=h<180
+    expect(uniqueColor(2)).toBe('#631f93'); // hue 275.0°, branch 240<=h<300
+    expect(uniqueColor(3)).toBe('#cfb817'); // hue  52.5°, branch h<60
+    expect(uniqueColor(4)).toBe('#42bed7'); // hue 190.0°, branch 180<=h<240
+    expect(uniqueColor(5)).toBe('#a1125f'); // hue 327.5°, branch 300<=h<360
+    expect(uniqueColor(6)).toBe('#4dbd28'); // hue 105.0°, branch  60<=h<120
+  });
 });

@@ -82,19 +82,21 @@ export function cesiumModelGLBKey(input: CesiumModelGLBInput): string {
  *    map. Both halves are now filtered with `isEntityVisible`, the same rule
  *    the flat and instanced draw paths answer with.
  *
- * `isPrimary` is `true` for `withInstancedMeshes` because — unlike the
+ * `withInstancedMeshes` gets `null` (no per-model filter) because — unlike the
  * per-model exporters that share it — the world view renders the whole merged
  * federation. Its mesh list already spans every loaded model, the scene only
  * holds templates for models still present (a hidden or removed model's are
  * torn down by `removeInstancedTemplatesForModel`, #2258), and shard entity ids
- * are re-homed onto their owning model's id space at upload (#1912).
+ * are re-homed onto their owning model's id space at upload (#1912) — every
+ * model's instanced occurrences belong in this merged view, not just the
+ * primary's (GPU instancing stopped being primary-only on 2026-08-06, #2255).
  */
 export function buildCesiumModelGLB(input: CesiumModelGLBInput): {
   glb: Uint8Array;
   key: string;
 } {
   const key = cesiumModelGLBKey(input);
-  const complete = withInstancedMeshes(input.geometryResult, true);
+  const complete = withInstancedMeshes(input.geometryResult, null);
   const visible = filterVisibleMeshes(complete.meshes, input.hiddenIds, input.isolatedIds);
   const shaded = applyGhostAlpha(visible, input.ghostExceptIds, input.selectedIds);
   return { glb: buildMergedGLB(shaded), key };

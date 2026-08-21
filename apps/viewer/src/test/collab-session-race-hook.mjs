@@ -20,12 +20,34 @@
 
 const MARKER = 'collab-session-race-hook:';
 
+/**
+ * Match on the RESOLVED URL, not the bare specifier.
+ *
+ * Matching `specifier === '@ifc-lite/collab'` looked equivalent and was not.
+ * `module.registerHooks` (synchronous, in-thread) landed in Node 22.15.0, and
+ * tsx feature-detects it: on a newer 22 it resolves through the sync path,
+ * which normalises the bare specifier to a `file://` URL BEFORE this async
+ * `register()` hook is consulted. The exact-match then misses, nothing is
+ * wrapped, `__collabSessionGated` never fires, and the test waits forever.
+ *
+ * That is why this passed on a developer machine and hung on CI: the workflow
+ * pins `node-version: 22`, which floats to the newest 22.x, so the two were
+ * never running the same loader architecture. Reproduced by running this file
+ * on 22.14.0 (passes, 0.35s) and 22.23.2 (hangs, `testTimeoutFailure`).
+ *
+ * The `parentURL` guard is load-bearing rather than defensive: the wrapper
+ * module below imports the REAL url, so URL-matching without it would wrap the
+ * wrapper, forever.
+ */
+const COLLAB_ENTRY = /\/packages\/collab\/(?:src\/index\.ts|dist\/index\.js)$/;
+
 export async function resolve(specifier, context, nextResolve) {
-  if (specifier === '@ifc-lite/collab') {
-    const real = await nextResolve(specifier, context);
+  if (context.parentURL?.startsWith(MARKER)) return nextResolve(specifier, context);
+  const real = await nextResolve(specifier, context);
+  if (specifier === '@ifc-lite/collab' || COLLAB_ENTRY.test(real.url.split('?')[0])) {
     return { url: MARKER + real.url, shortCircuit: true, format: 'module' };
   }
-  return nextResolve(specifier, context);
+  return real;
 }
 
 export async function load(url, context, nextLoad) {

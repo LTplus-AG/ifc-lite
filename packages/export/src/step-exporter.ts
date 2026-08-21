@@ -12,58 +12,42 @@
 import type { IfcDataStore, IfcAttributeValue, IfcSourceHeader } from '@ifc-lite/parser';
 import {
   EntityExtractor,
-  generateHeader,
   parseSourceHeader,
-  getAttributeNamesAcrossSchemas,
   type MapConversion,
   type ProjectedCRS,
 } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
 import type { RandomSource } from '@ifc-lite/encoding';
-import {
-  collectReferencedEntityIds,
-  getVisibleEntityIds,
-  collectStyleEntities,
-  filterHiddenRefsFromRelationshipLine,
-} from './reference-collector.js';
-import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
-import { retypeStepLine, retypeArgTokens } from './retype.js';
+import { needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { getCompleteEntityIndex, getMaxExpressId } from './entity-iteration.js';
 import {
   createModificationLedger,
   type ModificationLedger,
   type SourceLineDelivery,
 } from './delta-modification-ledger.js';
-import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
-import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
+import { createSourceRefReader } from './source-ref-bounds.js';
 import {
-  buildRelDefinesByPropertiesIndex,
-  collectPropertyAndQuantitySetMutations,
+  writeSourceEntityLines,
+  type SourceIterationContext,
+} from './step-source-iteration.js';
+import {
+  writeOverlayCreatedEntities,
+  type OverlayEntitiesContext,
+} from './step-overlay-entities.js';
+import {
   generatePropertyAndQuantitySetEntities,
-  getPropertyIdsInSet,
   type OwnerHistoryCache,
   type PropertySetContext,
 } from './step-property-sets.js';
-import { applyGeoreferencingMutations, type GeorefContext } from './step-georeferencing.js';
+import { type GeorefContext } from './step-georeferencing.js';
+import { collectModifications, type CollectionContext } from './step-collection.js';
 import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
-import { HAS_PROPERTY_SETS_SLOT } from './type-owned-psets.js';
+import { buildStepHeader, assembleExportResult } from './step-header.js';
 import {
-  toStepReal,
-  serializeAttributeValue,
-  serializeStepValue,
-  tokenIsRealLiteral,
-} from './step-serialization.js';
-import { splitTopLevelArgs } from './step-argument-parser.js';
-import { assembleStepBytes } from './step-file-assembly.js';
-import { getRealTypedSlots, serializeEntityArgs, serializeAttributeSlot, isTypedMarker } from './attribute-real-slots.js';
-import {
-  getEnumTypedSlots,
-  getStringTypedSlots,
-  serializeEnumToken,
-  serializeStringSlot,
-} from './attribute-slot-types.js';
-import { serializeQualifiedSelectSlot } from './select-qualification.js';
+  applySourceLineMutations,
+  applyOverlayEntityOverrides,
+} from './step-attribute-mutations.js';
 
 /**
  * Options for STEP export
@@ -216,7 +200,7 @@ const relationshipWithheldWarning = (expressId: number, type: string): string =>
   `Relationship #${expressId} (${type}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output.`;
 
 /**
- * What {@link StepExporter.applySourceLineMutations} produced: the rewritten
+ * What `step-attribute-mutations.ts`'s `applySourceLineMutations` produced: the rewritten
  * line, plus which edit kinds that rewrite actually delivered. The delivery
  * half is {@link SourceLineDelivery} rather than three loose booleans so that
  * the pipeline and the ledger cannot disagree about what a source line carries
@@ -428,38 +412,12 @@ export class StepExporter {
 
       // Built once entity counts are known, so the provenance item can report the
       // actual modification count. See the two call sites (empty delta + final).
-      buildHeader: (modifications: number): string => {
-        // FILE_DESCRIPTION items: an explicit option wins, else the source items
-        // verbatim, else the generic default.
-        const description: string[] =
-          options.description !== undefined
-            ? [options.description]
-            : sourceHeader && sourceHeader.description.length > 0
-              ? [...sourceHeader.description]
-              : ['Exported from ifc-lite'];
-        // Honest provenance: never claim untouched source output. Append (never
-        // overwrite) one item when ifc-lite actually changed the file.
-        if (modifications > 0) {
-          description.push(
-            `Re-exported by ifc-lite, ${modifications} modification${modifications === 1 ? '' : 's'}`,
-          );
-        }
-        return generateHeader({
-          schema: schemaToken,
-          description,
-          implementationLevel: sourceHeader?.implementationLevel,
-          author: options.author ?? sourceHeader?.author,
-          organization: options.organization ?? sourceHeader?.organization,
-          // preprocessor_version = the tool that WROTE this file (ifc-lite);
-          // originating_system keeps the source authoring tool so it isn't erased.
-          preprocessorVersion: options.application ?? 'ifc-lite',
-          originatingSystem: sourceHeader?.originatingSystem,
-          authorization: sourceHeader?.authorization,
-          application: options.application ?? 'ifc-lite',
-          filename: options.filename ?? 'export.ifc',
-          timeStamp: options.timeStamp,
-        });
-      },
+      // Body lives in `step-header.ts` (#2475 header/assembly tail): the
+      // closure still has to be built here, because it closes over this
+      // call's own `options`/`sourceHeader`/`schemaToken`, and both call
+      // sites still read it as `pass.buildHeader`.
+      buildHeader: (modifications: number): string =>
+        buildStepHeader(options, sourceHeader, schemaToken, modifications),
 
       // The one authority for exists / class / deleted, overlay first and source
       // buffer second. Every pass below asks this instead of `this.dataStore`,
@@ -693,30 +651,12 @@ export class StepExporter {
       warnings: [],
     };
 
-    if (options.visibleOnly && this.dataStore.source) {
-      const visible = getVisibleEntityIds(
-        this.dataStore,
-        options.hiddenEntityIds ?? new Set(),
-        options.isolatedEntityIds ?? null,
-        pass.effective,
-      );
-      pass.hiddenProductIds = visible.hiddenProductIds;
-      pass.allowedEntityIds = collectReferencedEntityIds(
-        visible.roots,
-        this.dataStore.source,
-        pass.effective,
-        visible.hiddenProductIds,
-        pass.isRefExcludedDuringClosureWalk,
-      );
-      // Second pass: collect IFCSTYLEDITEM entities that reference included
-      // geometry. Styled items reference geometry items but nothing references
-      // them back, so the forward closure misses them.
-      collectStyleEntities(
-        pass.allowedEntityIds,
-        this.dataStore.source,
-        { byId: pass.effective, byType: pass.effective.byType },
-      );
-    }
+    // Visible-only closure, overlay mutation grouping, and georeferencing
+    // edits — everything `pass` needs before the output passes below can run
+    // (#2475, the collection block). See `step-collection.ts` for why
+    // `hasAnyUnreadableSourceRef` and the predicates just past it stay here
+    // instead of moving with it.
+    collectModifications(pass, options, applyMutations, this.collectionContext());
 
     /**
      * "Does this model hold a record whose bytes this export cannot read?" —
@@ -781,115 +721,6 @@ export class StepExporter {
       }
       return false;
     };
-
-
-    // Process mutations if we have a mutation view
-    if (this.mutationView && applyMutations) {
-      const mutations = this.mutationView.getMutations();
-
-      // Attribute values come from the *overlay*, never from the mutation
-      // history. The history is append-only and undo writes its reverse edit
-      // with `skipHistory: true`, so a superseded UPDATE_ATTRIBUTE record keeps
-      // its stale `newValue` forever — replaying it resurrects edits the user
-      // undid (#1957). The overlay is what the editor shows, and it is already
-      // the source for psets, quantities, positional attributes and retypes
-      // below, so attributes were the sole outlier.
-      for (const [entityId, attrs] of this.mutationView.getAttributeMutationsByEntity()) {
-        pass.modifiedEntities.add(entityId);
-        let target = pass.modifiedAttributes.get(entityId);
-        if (!target) {
-          target = new Map();
-          pass.modifiedAttributes.set(entityId, target);
-        }
-        for (const [name, value] of attrs) target.set(name, value);
-      }
-
-      // Group mutations by entity, separating property vs quantity mutations
-      const entityPropMutations = new Map<number, Set<string>>();
-      const entityQuantMutations = new Map<number, Set<string>>();
-      for (const mutation of mutations) {
-        // Handled above, off the overlay. Skipped explicitly because an
-        // UPDATE_ATTRIBUTE record can also carry a `psetName` (georef fields
-        // encode their target entity there) and must not be mistaken for a
-        // property-set edit.
-        if (mutation.type === 'UPDATE_ATTRIBUTE') continue;
-
-        if (!mutation.psetName) continue;
-
-        const isQuantity = mutation.type === 'CREATE_QUANTITY' || mutation.type === 'UPDATE_QUANTITY'
-          || mutation.type === 'DELETE_QUANTITY' || mutation.type === 'DELETE_QUANTITY_SET';
-        const targetMap = isQuantity ? entityQuantMutations : entityPropMutations;
-
-        if (!targetMap.has(mutation.entityId)) {
-          targetMap.set(mutation.entityId, new Set());
-        }
-        targetMap.get(mutation.entityId)!.add(mutation.psetName);
-      }
-
-      // Build a reverse index of IfcRelDefinesByProperties → (relId, psetId)
-      // pairs keyed on each related entity. The two property/quantity loops
-      // below previously walked every entity in `entityIndex.byId` per
-      // modified entity (O(E·N)); the index keeps the per-entity step
-      // O(K) where K is the number of rels referencing that entity.
-      const { byEntity: relDefinesByEntity, relatedByRel } = buildRelDefinesByPropertiesIndex(this.propertySetContext());
-
-      // A source IfcRelDefinesByProperties whose EVERY related object the
-      // session deleted has nothing left to relate, and emitting it leaves a
-      // `#id` pointing at a record the export skipped. Dropped only when all of
-      // them are gone: a rel that still names a live entity is that entity's
-      // only link to its psets, and nothing here rewrites a RelatedObjects list.
-      for (const [relId, related] of relatedByRel) {
-        if (related.length > 0 && related.every((id) => pass.effective.isDeleted(id))) {
-          pass.skipRelationshipIds.add(relId);
-        }
-      }
-
-      collectPropertyAndQuantitySetMutations(
-        pass,
-        options,
-        { entityPropMutations, entityQuantMutations, relDefinesByEntity },
-        this.propertySetContext(),
-      );
-
-      for (const [entityId] of pass.modifiedAttributes) {
-        // An overlay-CREATED entity carrying attribute edits is emitted once,
-        // by the new-entities pass, and already counted in `newEntityCount`.
-        // Counting it here too made the header claim two affected entities for
-        // one created-then-renamed wall.
-        if (pass.isOverlayCreated(entityId)) continue;
-        // A source entity with no bytes never gets its line rewritten (the
-        // source-iteration pass skips it), so an attribute edit against it
-        // must not inflate the count either.
-        if (!pass.hasEmittableHostBytes(entityId)) continue;
-        // Under `deltaOnly` this only NOMINATES the host's ATTRIBUTE edits:
-        // nothing writes an in-place attribute edit into a delta except the
-        // type-object line rewrite, so the ledger drops it at settle time
-        // unless that pass reports having carried it (#2462). That nomination
-        // is deliberately made at INTENT: the per-kind warning exists to NAME
-        // an edit the delta could not carry, and an undeliverable edit is
-        // exactly the one that must still be named.
-        //
-        // A FULL export has no such warning, so an edit that resolved to
-        // nothing has nothing to say and nothing to claim — it waits for the
-        // rewrite instead. `setAttribute` to the value already in the slot, and
-        // `setAttribute` naming a slot the class does not declare, both leave
-        // the line byte-identical and used to count anyway (#2483).
-        //
-        // Recorded unconditionally. It used to be skipped for a host that also
-        // had a pset or qset edit, because the count was per entity and the
-        // other loop had already nominated it — which is exactly what let a
-        // pset emission mark the rename delivered and suppress its warning. The
-        // ledger de-duplicates the COUNT per entity now, so the two edits can
-        // and must be nominated separately.
-        pass.inPlaceNominees.attribute.add(entityId);
-        if (options.deltaOnly === true) pass.modifications.nominate(entityId, 'attribute');
-      }
-    }
-
-    // Process georeferencing mutations (only when applyMutations is enabled)
-    if (applyMutations && options.georefMutations) {
-      applyGeoreferencingMutations(pass, options.georefMutations, this.georefContext(options.deltaOnly === true));
-    }
 
     // If delta only, only export modified entities. Overlay-created entities
     // also count — without this, `createEntity()`-only edits would silently
@@ -1087,139 +918,10 @@ export class StepExporter {
       || excludeGeometry
       || hasAnyUnreadableSourceRef();
 
-    // A modified pset is replaced wholesale, which skips ALL of its member atoms.
-    // But IFC exporters deduplicate identical Pset_*Common atoms (e.g. one
-    // IsExternal IfcPropertySingleValue shared by dozens of psets), so skipping a
-    // shared atom would orphan every OTHER pset that still references it, leaving
-    // dangling refs and an invalid file. Keep any atom a surviving container needs.
-    this.retainSharedAtoms(pass.skipPropertySetIds, pass.allowedEntityIds);
-
-    // Export original entities from source buffer, SKIPPING modified property sets
-    if (!options.deltaOnly && this.dataStore.source) {
-      const source = this.dataStore.source;
-
-      // Extract existing entities from source. The effective index has already
-      // dropped everything the overlay tombstoned, so there is no separate
-      // deleted check to forget here.
-      for (const [expressId, entityRef] of pass.effective) {
-        // Skip overlay-only entities — emitted by the new-entities pass below.
-        // A ref this source cannot address is skipped by the same test rather
-        // than decoded: `decodeUtf8` clamps such a range and the empty string
-        // it returns used to be pushed into the file as a blank line, leaving
-        // every generated record that names the host dangling (#2491).
-        if (!pass.isReadableSourceRef(entityRef)) {
-          continue;
-        }
-
-        // Skip entities outside the visible closure
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip property sets/relationships that are being replaced
-        if (pass.skipPropertySetIds.has(expressId) || pass.skipRelationshipIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip type entities whose HasPropertySets attribute will be rewritten
-        if (pass.rewrittenEntityIds.has(expressId)) {
-          continue;
-        }
-
-        // Skip geometry if not included. Classified via `isGeometryExcluded`
-        // (which reads the EFFECTIVE type, `effective.effectiveType`) rather
-        // than `entityRef.type` directly: a retype can move a record across
-        // the geometry boundary in either direction, and this check has to
-        // agree with `hasEmittableHostBytes`/`willBeEmitted`'s use of the
-        // same predicate — otherwise a wall retyped to `IfcCartesianPoint`
-        // still ships its (rewritten) geometry line under
-        // `includeGeometry: false`, the exact "predicate must agree" failure
-        // this file already guards for the non-retyped case (#2414).
-        if (pass.isGeometryExcluded(expressId, entityRef.type)) {
-          continue;
-        }
-
-        // Get original entity text — decodeRange handles SAB-backed
-        // sources (Firefox/Chrome reject `TextDecoder.decode()` on a
-        // SharedArrayBuffer-backed view; the parser deliberately keeps
-        // `source` zero-copy SAB-backed for worker sharing).
-        const entityText = decodeRange(
-          source,
-          entityRef.byteOffset,
-          entityRef.byteOffset + entityRef.byteLength
-        );
-        // Retype, named attribute edits and positional edits, in that order.
-        // Shared verbatim with the type-object `HasPropertySets` rewrite below,
-        // which writes the line this pass would otherwise have written.
-        const mutated = this.applySourceLineMutations(
-          expressId,
-          entityText,
-          entityRef.type,
-          pass.modifiedAttributes.get(expressId),
-          pass.sourceSchema,
-          pass.overlayActive,
-          (attr, value) =>
-            pass.warnings.push(
-              `entity #${expressId}: attribute ${attr} not written - ` +
-                `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
-            ),
-        );
-        let nextEntityText = mutated.text;
-
-        // A hidden PRODUCT's own line is already out of the export via
-        // `allowedEntityIds`, and a TOMBSTONED entity's via `effective` — this
-        // is the relationship that NAMED either one. `IFCREL*` is an
-        // unconditional root (see `getVisibleEntityIds`), so its bytes reach
-        // here unfiltered even when one of the ids they name was just
-        // excluded; left alone that ships a `#N` with no `#N=` line, whether
-        // the exclusion came from `visibleOnly` or from a plain deletion
-        // (#2398). Checked before the nomination below: a relationship this
-        // withholds must not also be counted as a delivered modification.
-        //
-        // Classified by the EFFECTIVE type (`effective.effectiveType`), not
-        // the source's authored type: a retype can move a record across
-        // the `IFCREL*` boundary in either direction (`applySourceLineMutations`
-        // already rewrote `nextEntityText` to the new class), and this check
-        // has to agree with what actually got written, the same way
-        // `getVisibleEntityIds` already does for the visibility walk itself.
-        const effectiveRelType = pass.effective.effectiveType(expressId, entityRef.type).toUpperCase();
-        if (mayNameOmittedRefs && effectiveRelType.startsWith('IFCREL')) {
-          const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
-          if (filtered === null) {
-            pass.warnings.push(relationshipWithheldWarning(expressId, effectiveRelType));
-            continue;
-          }
-          nextEntityText = filtered;
-        }
-
-        // A retype or a positional edit that CHANGED the line is what makes
-        // this entity count; a named attribute edit was already nominated by
-        // the collection pass. Both flags report effect, so retyping an entity
-        // to the class it already is — or writing a slot the token it already
-        // holds — no longer claims a modification over a line the export left
-        // byte-identical. This pass is full-export-only (`deltaOnly` skips it
-        // wholesale), so nomination IS emission here and the kinds only have to
-        // be right for the entity count — which is per entity, hence unchanged.
-        if (mutated.retyped || mutated.positional) pass.modifiedEntities.add(expressId);
-        if (mutated.retyped) pass.modifications.nominate(expressId, 'retype');
-        if (mutated.positional) pass.modifications.nominate(expressId, 'positional');
-        // The named-attribute kinds join them here rather than at their
-        // collection sites, for the same reason and on the same signal (#2483).
-        // This pass is full-export-only, so there is nothing to gate.
-        nominateDeliveredInPlaceEdits(pass.modifications, expressId, mutated, pass.inPlaceNominees);
-
-        // Apply schema conversion if exporting to a different schema version
-        if (pass.converting) {
-          const converted = convertStepLine(nextEntityText, pass.sourceSchema, pass.schema, options.guidRandom);
-          if (converted !== null) {
-            pass.entities.push(converted);
-          }
-          // null means entity should be skipped (no valid representation in target schema)
-        } else {
-          pass.entities.push(nextEntityText);
-        }
-      }
-    }
+    // Write every source-backed record this export keeps (#2475 step 2d),
+    // preceded — inside that call — by the shared-atom retention that decides
+    // which member atoms the skip sets may still drop.
+    writeSourceEntityLines(pass, options, mayNameOmittedRefs, isOmittedFromOutput, this.sourceIterationContext());
 
     // Generated property/quantity sets and the type-object `HasPropertySets`
     // rewrite that resolves against them, in that one order (#2475 steps 2b
@@ -1236,157 +938,21 @@ export class StepExporter {
       pass.entities.push(line);
     }
 
-    // Add overlay-created entities (store.addEntity / mutationView.createEntity).
-    // Apply the same filters as the source-iteration pass so newly-created
-    // beams/slabs don't smuggle their geometry helpers (IfcCartesianPoint,
-    // IfcExtrudedAreaSolid, etc.) past `includeGeometry:false` /
-    // `exportPropertiesOnly()` modes.
-    if (
-      this.mutationView
-      && applyMutations
-      && typeof this.mutationView.getNewEntities === 'function'
-    ) {
-      const getTypeMut = typeof this.mutationView.getEntityTypeMutation === 'function'
-        ? this.mutationView.getEntityTypeMutation.bind(this.mutationView)
-        : null;
-      for (const entity of this.mutationView.getNewEntities()) {
-        // A retyped overlay entity keeps its AUTHORED type on `entity.type`
-        // (the overlay typeMutation is the source of truth for the effective
-        // class). Resolve the effective class, then re-lay-out the authored
-        // attributes from the authored layout up to it.
-        const typeMut = getTypeMut ? getTypeMut(entity.expressId) : null;
-        const effectiveType = typeMut?.newType ?? entity.type;
-        // STEP requires UPPERCASE entity type tokens; the upper-case happens
-        // here at the file-format boundary.
-        const upperType = effectiveType.toUpperCase();
-        if (excludeGeometry && this.isGeometryEntity(upperType)) {
-          continue;
-        }
-        if (pass.allowedEntityIds !== null && !pass.allowedEntityIds.has(entity.expressId)) {
-          continue;
-        }
-        // Re-lay-out by name against the effective class (identity for
-        // compatible layouts). Runs whenever a retype intent exists — even a
-        // same-class retype, which carries a PredefinedType override
-        // (e.g. setEntityType(id, 'IfcColumn', 'PILASTER')).
-        let argsText: string;
-        if (typeMut) {
-          // Serialize against the AUTHORED layout (`entity.type`); retypeArgTokens
-          // then re-lays the tokens out by name up to the effective class.
-          const srcTokens = entity.attributes.map(
-            (value, i) => serializeAttributeSlot(entity.type, i, value, pass.sourceSchema),
-          );
-          const { tokens } = retypeArgTokens(
-            srcTokens,
-            entity.type,
-            effectiveType,
-            typeMut.predefinedType ?? null,
-            pass.sourceSchema,
-          );
-          argsText = tokens.join(',');
-        } else {
-          argsText = serializeEntityArgs(entity.type, entity.attributes, pass.sourceSchema);
-        }
-        // Edits made AFTER the create live in the overlay, never in the
-        // authored payload (#2006). The source-iteration pass applies them to
-        // source records via applyAttributeMutations / applyPositionalMutations;
-        // an overlay-created entity has no source record, so without this it was
-        // written from its creation payload alone and every later
-        // `setAttribute` / `setPositionalAttribute` was silently dropped on
-        // save — data loss with no error and no warning.
-        //
-        // Order mirrors the source pass: retype (above) -> named attributes ->
-        // positional overrides, all resolved against the EFFECTIVE class.
-        const attributeOverrides = pass.modifiedAttributes.get(entity.expressId) ?? null;
-        const queuedPositional = typeof this.mutationView.getPositionalMutationsForEntity === 'function'
-          ? this.mutationView.getPositionalMutationsForEntity(entity.expressId)
-          : null;
-        // A created TYPE object owns its psets through HasPropertySets, and the
-        // ids of the psets this export generated are only known now — so they
-        // arrive as one more slot override rather than through the overlay.
-        // `has`, not `??`, for the same reason `overlaySlotValue` gives: the
-        // stored value is deliberately null when the resolved list is empty.
-        const positionalOverrides = pass.overlayTypeOwnedPsets.has(entity.expressId)
-          ? new Map(queuedPositional).set(
-              HAS_PROPERTY_SETS_SLOT,
-              pass.overlayTypeOwnedPsets.get(entity.expressId) ?? null,
-            )
-          : queuedPositional;
-        if (
-          (attributeOverrides && attributeOverrides.size > 0)
-          || (positionalOverrides && positionalOverrides.size > 0)
-        ) {
-          argsText = this.applyOverlayEntityOverrides(
-            argsText,
-            upperType,
-            attributeOverrides,
-            positionalOverrides,
-            pass.sourceSchema,
-            // Overlay-created entities report a rejected REAL edit exactly as
-            // source-backed ones do. Without this the slot was kept and NOTHING
-            // was said - the silent discard this whole change exists to
-            // prevent, surviving in the one path that had no test.
-            (attr, value) =>
-              pass.warnings.push(
-                `entity #${entity.expressId}: attribute ${attr} not written - ` +
-                  `${JSON.stringify(value)} is not a number and the slot is REAL-typed`,
-              ),
-          );
-        }
-        let line: string | null = `#${entity.expressId}=${upperType}(${argsText});`;
-        // Same gap as the source-iteration pass, for an overlay-authored
-        // relationship instead of a parsed one (#2398).
-        //
-        // `mayNameOmittedRefs` is provably TRUE wherever this line executes:
-        // the block enclosing this pass requires `this.mutationView` and
-        // `applyMutations`, which is `pass.overlayActive`, which is one of the
-        // gate's own disjuncts. Spelled out anyway so both filter sites read the
-        // same — the previous gate's failure was one site's condition drifting
-        // from what the filter needed, and a pass reachable without an overlay
-        // would otherwise silently need the gate re-derived here.
-        if (mayNameOmittedRefs && upperType.startsWith('IFCREL')) {
-          line = filterHiddenRefsFromRelationshipLine(line, isOmittedFromOutput);
-          if (line === null) {
-            pass.warnings.push(relationshipWithheldWarning(entity.expressId, upperType));
-            continue;
-          }
-        }
-        if (pass.converting) {
-          const converted = convertStepLine(line, pass.sourceSchema, pass.schema, options.guidRandom);
-          if (converted !== null) {
-            pass.entities.push(converted);
-            pass.newEntityCount++;
-          }
-        } else {
-          pass.entities.push(line);
-          pass.newEntityCount++;
-        }
-      }
-    }
+    // Add overlay-created entities (store.addEntity / mutationView.createEntity),
+    // applying the same filters as the source-iteration pass (#2475 step 2e).
+    writeOverlayCreatedEntities(
+      pass,
+      options,
+      excludeGeometry,
+      applyMutations,
+      mayNameOmittedRefs,
+      isOmittedFromOutput,
+      this.overlayEntitiesContext(),
+    );
 
-    // Settle the count against what the passes above actually wrote, and say
-    // out loud every KIND of edit a delta could not carry, per host. Silence
-    // was the other half of #2462: `deltaOnly` skips the source-iteration pass,
-    // so an in-place edit to a source entity is not in the file and never was —
-    // the header merely used to claim otherwise.
-    const { modifiedEntityCount, warnings: deltaWarnings } = pass.modifications.settle();
-    pass.warnings.push(...deltaWarnings);
-
-    // Assemble final file as Uint8Array chunks to avoid V8 string length limit.
-    // The header is built last so its provenance item reflects the real count.
-    const header = pass.buildHeader(pass.newEntityCount + modifiedEntityCount);
-    const content = assembleStepBytes(header, pass.entities);
-
-    return {
-      content,
-      stats: {
-        entityCount: pass.entities.length,
-        newEntityCount: pass.newEntityCount,
-        modifiedEntityCount,
-        fileSize: content.byteLength,
-        warnings: pass.warnings,
-      },
-    };
+    // Settle the ledger, build the header, assemble the finished bytes —
+    // `step-header.ts` (#2475 header/assembly tail).
+    return assembleExportResult(pass);
   }
 
   /**
@@ -1426,375 +992,6 @@ export class StepExporter {
   }
 
   /**
-   * THE mutation pipeline for a line read out of the source buffer: retype,
-   * then named attribute edits, then positional edits.
-   *
-   * **One implementation, two call sites**, and that is the whole point. Two
-   * passes can write the defining line of a source entity — the
-   * source-iteration pass, and the type-object `HasPropertySets` rewrite that
-   * REPLACES it (`rewrittenEntityIds` makes the source pass skip those ids).
-   * The rewrite used to do its own thing (replace slot 5, nothing else), so
-   * every other edit to a type object with a type-owned pset edit was dropped
-   * in silence: first the renames (#2462 follow-up), and after those were
-   * special-cased here, still the retypes and the positional edits. Whatever
-   * the source pass applies, the rewrite has to apply too, or the next edit
-   * kind added to one site goes missing at the other.
-   *
-   * The order is load-bearing:
-   *
-   *   - the retype runs FIRST so named attribute edits resolve against the
-   *     TARGET class's attribute names, and so positional slots are indexed
-   *     into the retyped argument list;
-   *   - the `HasPropertySets` replacement (rewrite path only) runs LAST, on
-   *     the text this returns. Run it first and a positional edit to slot 5 —
-   *     or a retype's argument-list rebuild — overwrites the resolved pset
-   *     list with the stale one, which is the same silent drop one slot over.
-   *
-   * The expressId is unchanged by all of this, so geometry / placement /
-   * representation and every IfcRel* reference (keyed by #id) carry over.
-   *
-   * All three flags report EFFECT, not intent — each is the answer to "did this
-   * operation change the line", measured across that operation alone. The count
-   * and the ledger are claims about the FILE, so an edit that resolves to the
-   * text already there has delivered nothing and must not be reported: retyping
-   * an entity to the class it already is, or writing a positional slot the token
-   * it already holds, used to count as a modification and reach the ledger as a
-   * landed edit, over a byte-identical line. Discarded edits read the same way:
-   * `applyAttributeMutations` drops a name its class has no slot for and
-   * `retypeStepLine` returns an unparseable line untouched, and neither is a
-   * modification of anything.
-   *
-   * `retyped` / `positional` matter most in a FULL export, which is where the
-   * two are nominated (their edits have no earlier nomination site); named
-   * attribute edits are nominated by the collection pass and `attributed` only
-   * settles their delivery.
-   */
-  private applySourceLineMutations(
-    expressId: number,
-    entityText: string,
-    recordType: string,
-    attributeMutations: Map<string, string> | undefined,
-    sourceSchema: IfcSchemaVersion,
-    overlayActive: boolean,
-    onRejected?: (attrName: string, value: string) => void,
-  ): SourceLineMutations {
-    let text = entityText;
-    let workingType = recordType.toUpperCase();
-
-    const typeMutation = overlayActive && typeof this.mutationView!.getEntityTypeMutation === 'function'
-      ? this.mutationView!.getEntityTypeMutation(expressId)
-      : null;
-    let retyped = false;
-    if (typeMutation) {
-      const beforeRetype = text;
-      text = retypeStepLine(
-        text,
-        recordType,
-        typeMutation.newType,
-        typeMutation.predefinedType ?? null,
-        sourceSchema,
-      );
-      retyped = text !== beforeRetype;
-      // Set even for a no-op retype: the entity IS the target class from here
-      // on, so the named and positional edits below must resolve against it.
-      workingType = typeMutation.newType.toUpperCase();
-    }
-
-    // `applyAttributeMutations` returns its input UNCHANGED when it wrote
-    // nothing — no slot resolved for any of the names, or the line does not
-    // parse — so comparing is what tells the ledger whether a named attribute
-    // edit was really carried, rather than merely attempted.
-    let attributed = false;
-    if (attributeMutations && attributeMutations.size > 0) {
-      const beforeAttributes = text;
-      text = this.applyAttributeMutations(
-        text,
-        workingType,
-        attributeMutations,
-        sourceSchema,
-        onRejected,
-      );
-      attributed = text !== beforeAttributes;
-    }
-
-    const positionals = overlayActive && typeof this.mutationView!.getPositionalMutationsForEntity === 'function'
-      ? this.mutationView!.getPositionalMutationsForEntity(expressId)
-      : null;
-    let positional = false;
-    if (positionals && positionals.size > 0) {
-      const beforePositionals = text;
-      text = this.applyPositionalMutations(text, positionals, workingType, sourceSchema);
-      positional = text !== beforePositionals;
-    }
-
-    return { text, attributed, retyped, positional };
-  }
-
-  /**
-   * Rewrite root IFC attributes directly on the original STEP entity line.
-   */
-  private applyAttributeMutations(
-    entityText: string,
-    entityType: string,
-    attributeMutations: Map<string, string>,
-    schemaVersion: IfcSchemaVersion,
-    onRejected?: (attrName: string, value: string) => void,
-  ): string {
-    const openParen = entityText.indexOf('(');
-    const closeParen = entityText.lastIndexOf(');');
-    if (openParen < 0 || closeParen < openParen) {
-      return entityText;
-    }
-
-    // Cross-schema, not the IFC4 pin: an IFC4X3-only class (IfcCourse, IfcRoad,
-    // IfcBridge, …) resolves no slots under the pin, so every named edit on one
-    // was silently discarded here too. Identical for the 755 pinned classes
-    // that declare attributes — `attribute-slot-types.test.ts` measures that —
-    // so no IFC4 export changes; this only stops dropping edits it used to drop.
-    const attrNames = getAttributeNamesAcrossSchemas(entityType);
-    if (attrNames.length === 0) {
-      return entityText;
-    }
-
-    const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
-    // A source line NEVER pads (unlike the overlay-created path): a short
-    // argument list here means the file speaks a different schema, and growing
-    // a record we did not author would corrupt it.
-    let changed = false;
-    const realSlots = getRealTypedSlots(entityType, schemaVersion);
-
-    for (const [attrName, value] of attributeMutations) {
-      const index = attrNames.indexOf(attrName);
-      if (index < 0 || index >= args.length) continue;
-      // The source path shares every `$`-slot hole with the overlay-created
-      // path, because a source record has plenty of `$` slots of its own. Both
-      // go through the one helper below.
-      const serialized = this.serializeNamedAttribute(
-        entityType,
-        index,
-        value,
-        args[index],
-        realSlots,
-      );
-      if (serialized === null) {
-        // Slot untouched AND reported. Not counted as a change: claiming a
-        // modification we did not make is the failure this avoids.
-        onRejected?.(attrName, value);
-        continue;
-      }
-      args[index] = serialized;
-      changed = true;
-    }
-
-    if (!changed) {
-      return entityText;
-    }
-
-    return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
-  }
-
-  /**
-   * Serialize one NAMED attribute override into its slot — the single point
-   * both the source-buffer rewrite and the overlay-created rewrite go through.
-   *
-   * `serializeAttributeValue` decides the STEP form by reading the token being
-   * replaced, which is sound only while that token carries type information. A
-   * `$` slot carries none, and both paths have plenty: a source record's
-   * optional attributes are `$`, and overlay-created records pad missing slots
-   * with `$`. So the declared type decides first, and inference is the fallback
-   * for slots the schema does not classify (references, SELECTs, numerics),
-   * where reading the old token is exactly the right heuristic.
-   *
-   * Before this REAL check existed, "the declared type decides first" was true
-   * for enum/string slots only — a REAL-backed slot (`IfcMapConversion.
-   * OrthogonalHeight`, any other `IfcLengthMeasure`/`IfcReal`-typed attribute)
-   * fell straight to `serializeAttributeValue`'s token inference, which quotes
-   * anything it cannot recognize as numeric. A schema-legal `$` placeholder
-   * carries no digits to recognize, so setting such a field for the first time
-   * wrote `'12345'` in a slot ISO 10303-21 requires to be an unquoted REAL —
-   * silently invalid output (#2724, LTplus-AG/ifc-lite#2475).
-   */
-  private serializeNamedAttribute(
-    entityType: string,
-    index: number,
-    value: string,
-    currentToken: string,
-    realSlots: ReadonlySet<number>,
-  ): string | null {
-    if (getEnumTypedSlots(entityType).has(index)) return serializeEnumToken(value);
-    if (getStringTypedSlots(entityType).has(index)) return serializeStringSlot(value);
-    if (realSlots.has(index)) {
-      const trimmed = value.trim();
-      if (trimmed === '') return '$';
-      const numberValue = Number(trimmed);
-      if (Number.isFinite(numberValue)) return toStepReal(numberValue);
-      // A non-numeric value in a REAL slot used to fall through and be QUOTED,
-      // producing the same ISO 10303-21 violation #2725 exists to prevent
-      // (#2741). `StoreEditor.setAttribute` takes a string, so any UI text
-      // field bound to a georeferencing REAL can deliver one; it does not need
-      // a corrupt file.
-      //
-      // `null` means "leave the slot as the file had it". Simply returning
-      // `currentToken` here would stop the invalid output but SILENTLY DISCARD
-      // the edit - the exporter would then claim a modification it did not
-      // carry, which is the exact misreport #2723/#2724/#2726 were written to
-      // pin. The caller turns this into a warning, so a dropped edit is visible
-      // rather than inferred from absence.
-      return null;
-    }
-    return serializeAttributeValue(value, currentToken);
-  }
-
-  /**
-   * Apply overlay attribute + positional overrides to an OVERLAY-CREATED
-   * entity's argument list (#2006).
-   *
-   * Distinct from {@link applyAttributeMutations} / {@link applyPositionalMutations},
-   * which rewrite a line read out of the source buffer. Here the whole line is
-   * ours: it was serialized moments ago from the creation payload, so the
-   * argument list is the authoring payload's, not the file's. That difference
-   * is why this PADS — `entity_create` takes whatever positional list the
-   * caller passes, so a wall authored with three arguments still has a real
-   * `Tag` slot at index 7, and dropping the edit because the payload was short
-   * would be the very data loss this fixes. The source-buffer path must not
-   * pad: there a short line means a different schema, and growing a record we
-   * did not author would corrupt it.
-   *
-   * Named and positional overrides resolve to a slot index up front and share
-   * ONE padding rule. Two padding rules on one record is how the next bug
-   * starts, and the argument for padding — the class is fixed at creation time,
-   * so a short payload is partial authoring — never depended on which of the
-   * two APIs queued the edit.
-   */
-  private applyOverlayEntityOverrides(
-    argsText: string,
-    entityType: string,
-    attributeOverrides: Map<string, string> | null,
-    positionalOverrides: Map<number, IfcAttributeValue> | null,
-    schemaVersion: IfcSchemaVersion,
-    onRejected?: (attrName: string, value: string) => void,
-  ): string {
-    const args = argsText.length > 0 ? splitTopLevelArgs(argsText) : [];
-    const attrNames = getAttributeNamesAcrossSchemas(entityType);
-
-    const named: Array<[number, string]> = [];
-    for (const [attrName, value] of attributeOverrides ?? []) {
-      const index = attrNames.indexOf(attrName);
-      if (index >= 0) named.push([index, value]);
-    }
-
-    // Grow to the class's FULL declared arity as soon as any override names a
-    // declared slot the creation payload never reached. Growing only as far as
-    // the edited slot would emit eight arguments for an IfcWall that declares
-    // nine: this parser tolerates the truncated record, a schema-validating
-    // consumer rejects the file.
-    //
-    // An index PAST the declared layout is not a slot at all, so it cannot
-    // justify growing the record and stays dropped — as does any override on a
-    // class neither schema source knows, where there is no arity to grow to.
-    let needsPad = named.some(([index]) => index >= args.length);
-    if (!needsPad && positionalOverrides) {
-      for (const [index] of positionalOverrides) {
-        if (index >= args.length && index < attrNames.length) {
-          needsPad = true;
-          break;
-        }
-      }
-    }
-    if (needsPad) {
-      while (args.length < attrNames.length) args.push('$');
-    }
-
-    // Every `named` index is < attrNames.length by construction, and padding
-    // has taken args.length to at least that, so each one lands.
-    const realSlots = getRealTypedSlots(entityType, schemaVersion);
-    for (const [index, value] of named) {
-      const serialized = this.serializeNamedAttribute(
-        entityType,
-        index,
-        value,
-        args[index],
-        realSlots,
-      );
-      // Overlay-created entities take the same rejection: a non-numeric REAL is
-      // invalid STEP whoever authored the record. The slot keeps the `$` this
-      // path padded it with, rather than gaining a quoted string.
-      if (serialized === null) {
-        onRejected?.(attrNames[index] ?? `#${index}`, value);
-        continue;
-      }
-      args[index] = serialized;
-    }
-
-    if (positionalOverrides && positionalOverrides.size > 0) {
-      for (const [index, value] of positionalOverrides) {
-        if (index < 0 || index >= args.length) continue;
-        args[index] = this.serializePositionalOverride(
-          entityType,
-          index,
-          value,
-          args[index],
-          realSlots,
-          schemaVersion,
-        );
-      }
-    }
-
-    return args.join(',');
-  }
-
-  /**
-   * Apply positional STEP argument overrides to an entity line.
-   * Used for non-IfcRoot edits (e.g. profile dimensions) where attributes
-   * have no symbolic names. Indexes that fall outside the existing arg list
-   * are silently ignored.
-   */
-  private applyPositionalMutations(
-    entityText: string,
-    positionals: Map<number, IfcAttributeValue>,
-    entityType: string,
-    schemaVersion: IfcSchemaVersion,
-  ): string {
-    const openParen = entityText.indexOf('(');
-    const closeParen = entityText.lastIndexOf(');');
-    if (openParen < 0 || closeParen < openParen) return entityText;
-
-    const args = splitTopLevelArgs(entityText.slice(openParen + 1, closeParen));
-    const realSlots = getRealTypedSlots(entityType, schemaVersion);
-    let changed = false;
-    for (const [index, value] of positionals) {
-      if (index < 0 || index >= args.length) continue;
-      args[index] = this.serializePositionalOverride(entityType, index, value, args[index], realSlots, schemaVersion);
-      changed = true;
-    }
-    if (!changed) return entityText;
-    return `${entityText.slice(0, openParen + 1)}${args.join(',')}${entityText.slice(closeParen)}`;
-  }
-
-  /**
-   * Serialize one positional override, composing the schema-aware passes:
-   * explicit `{ real }`/`{ typed }` marker → SELECT auto-qualification
-   * (`IFCBOOLEAN(.T.)`) → REAL forcing. For REAL forcing the current source
-   * token is a secondary signal: replacing a value that was already a REAL
-   * (`0.4`, `1.5E-7`) keeps it REAL even for entities the XSD index doesn't
-   * cover, so a whole-number edit can't silently downgrade the slot.
-   */
-  private serializePositionalOverride(
-    entityType: string,
-    index: number,
-    value: IfcAttributeValue,
-    currentToken: string,
-    realSlots: ReadonlySet<number>,
-    schemaVersion: IfcSchemaVersion,
-  ): string {
-    if (isTypedMarker(value)) return serializeStepValue(value);
-    const qualified = serializeQualifiedSelectSlot(entityType, index, value);
-    if (qualified !== null) return qualified;
-    const forceReal = realSlots.has(index) || tokenIsRealLiteral(currentToken);
-    return serializeStepValue(value, forceReal);
-  }
-
-  /**
    * Find the maximum EXPRESS ID in the data store
    */
   private findMaxExpressId(): number {
@@ -1830,11 +1027,13 @@ export class StepExporter {
    * `ownerHistory` is passed by reference — the object is this exporter's, and
    * `export()` resets it. `isReadableSourceRef` is the instance predicate, not
    * `pass.isReadableSourceRef`, because two consumers of that module
-   * (`buildRelDefinesByPropertiesIndex`, `retainSharedAtoms`) run with no pass
-   * in hand; both readers are built over the same source.
+   * (`buildRelDefinesByPropertiesIndex`, and `retainSharedAtoms` in
+   * `step-source-iteration.ts`) run with no pass in hand; both readers are
+   * built over the same source.
    *
    * Rebuilt per call, as `georefContext` is: every call site runs once per
-   * export bar `retainSharedAtoms`, which hoists it out of its loop.
+   * export bar `retainSharedAtoms`, which hoists it out of its loop — hence
+   * {@link sourceIterationContext} takes this as a thunk rather than a value.
    */
   private propertySetContext(): PropertySetContext {
     return {
@@ -1845,7 +1044,68 @@ export class StepExporter {
       allocateExpressId: () => this.nextExpressId++,
       ownerHistory: this.ownerHistory,
       applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
-        this.applySourceLineMutations(expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
+        applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
+    };
+  }
+
+  /**
+   * The state `step-collection.ts` cannot read off the pass (#2475, the
+   * collection block). `propertySetContext` and `georefContext` are handed
+   * over as the SAME thunks {@link propertySetContext} and
+   * {@link georefContext} already are — this phase calls the first twice per
+   * export and the second once, and nothing here should change how often
+   * either is rebuilt.
+   */
+  private collectionContext(): CollectionContext {
+    return {
+      dataStore: this.dataStore,
+      mutationView: this.mutationView,
+      propertySetContext: () => this.propertySetContext(),
+      georefContext: (deltaOnly) => this.georefContext(deltaOnly),
+    };
+  }
+
+  /**
+   * The state `step-source-iteration.ts` cannot read off the pass (#2475 2d).
+   *
+   * No `allocateExpressId`: that phase never allocates an id, it only rewrites
+   * lines that already have one. `applySourceLineMutations` (#2475, remaining
+   * private helpers: now a free function in `step-attribute-mutations.ts`,
+   * closed over `this.mutationView` here) and `isGeometryEntity` are injected
+   * rather than read off the pass because each has readers outside this
+   * phase — the mutation pipeline is shared with the type-object
+   * `HasPropertySets` rewrite (see {@link propertySetContext}) and with the
+   * overlay-created-entities block in `export()`; `isGeometryEntity` with the
+   * visible-only setup closure and that same block.
+   */
+  private sourceIterationContext(): SourceIterationContext {
+    return {
+      dataStore: this.dataStore,
+      applySourceLineMutations: (expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected) =>
+        applySourceLineMutations(this.mutationView, expressId, entityText, recordType, attributeMutations, sourceSchema, overlayActive, onRejected),
+      isGeometryEntity: (type) => this.isGeometryEntity(type),
+      propertySetContext: () => this.propertySetContext(),
+      relationshipWithheldWarning,
+    };
+  }
+
+  /**
+   * The state `step-overlay-entities.ts` cannot read off the pass (#2475
+   * step 2e). `applyOverlayEntityOverrides` is now the free function
+   * `step-attribute-mutations.ts` exports (#2475, remaining private
+   * helpers) — it and its two `serializeNamedAttribute` /
+   * `serializePositionalOverride` helpers moved together, since those two
+   * have no reader outside this cluster; `isGeometryEntity` and
+   * `relationshipWithheldWarning` are the same shared readers
+   * {@link sourceIterationContext} already injects into the other output
+   * pass.
+   */
+  private overlayEntitiesContext(): OverlayEntitiesContext {
+    return {
+      mutationView: this.mutationView,
+      applyOverlayEntityOverrides,
+      isGeometryEntity: (type) => this.isGeometryEntity(type),
+      relationshipWithheldWarning,
     };
   }
 
@@ -1887,42 +1147,6 @@ export class StepExporter {
       'IFCCOLOURRGB',
     ]);
     return geometryTypes.has(type);
-  }
-
-  /**
-   * Un-skip property/quantity atoms that a surviving (non-skipped, and — under
-   * visible-only export — still-included) IfcPropertySet / IfcElementQuantity
-   * still references.
-   *
-   * When a property is edited, the modified pset is replaced and its member atoms
-   * are added to `skipIds` wholesale. Because exporters deduplicate shared
-   * Pset_*Common atoms (e.g. a single IsExternal / IsLoadBearing value referenced
-   * by many psets), that wholesale skip can drop an atom another pset still needs.
-   * This pass restores any such atom: the edited pset still emits its replacement
-   * with the new value, while the shared atom stays for the psets that keep their
-   * original value.
-   */
-  private retainSharedAtoms(skipIds: Set<number>, allowedEntityIds: Set<number> | null): void {
-    if (skipIds.size === 0) return;
-    // Built once for the whole sweep rather than per container: the readers in
-    // `step-property-sets.ts` take the context, and this loop calls one of them
-    // once per IfcPropertySet / IfcElementQuantity in the file.
-    const ctx = this.propertySetContext();
-    const byType = this.dataStore.entityIndex.byType;
-    const containerIds = [
-      ...(byType.get('IFCPROPERTYSET') ?? []),
-      ...(byType.get('IFCELEMENTQUANTITY') ?? []),
-    ];
-    for (const containerId of containerIds) {
-      // Skipped containers are being dropped/replaced — their atoms may go.
-      if (skipIds.has(containerId)) continue;
-      // Under visible-only export a container outside the closure is not emitted,
-      // so it cannot keep an atom alive.
-      if (allowedEntityIds !== null && !allowedEntityIds.has(containerId)) continue;
-      for (const atomId of getPropertyIdsInSet(ctx, containerId)) {
-        skipIds.delete(atomId);
-      }
-    }
   }
 
 }

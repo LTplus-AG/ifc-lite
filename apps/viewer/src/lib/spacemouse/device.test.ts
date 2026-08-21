@@ -13,7 +13,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SpaceMouseSession } from './device.js';
+import { SpaceMouseSession, connectSpaceMouse } from './device.js';
 
 const GD = 0x01 << 16;
 const [X, Y, Z] = [GD | 0x30, GD | 0x31, GD | 0x32];
@@ -116,4 +116,56 @@ test('buttons report fires the fit callback on press edges, never motion', () =>
   assert.deepEqual(session.getState().tx, 100);
   assert.equal(session.getLastSampleAt(), sampleAt);
   session.detach();
+});
+
+/**
+ * `openSession` (via `connectSpaceMouse`) opens the physical HID device —
+ * a real OS-level exclusive lock — THEN constructs `SpaceMouseSession`.
+ * If that construction throws (a malformed descriptor, a device that goes
+ * away between `open()` and the constructor's `addEventListener` calls),
+ * the catch block in the candidate loop only records `lastError` and moves
+ * on; the device that `open()` just acquired is never `close()`d. Same
+ * acquire-then-fallible-step-throws-before-teardown shape as
+ * `createCollabSession` (#leak-on-failure-sweep): the HID device leaks,
+ * held open for the rest of the browser tab's lifetime, and a real
+ * 3DxWare-style exclusive-open device becomes unusable by any other
+ * consumer until the page reloads.
+ */
+test('openSession closes a device it opened when SpaceMouseSession construction throws', async () => {
+  const originalNavigator = globalThis.navigator;
+  const closeCalls: number[] = [];
+  function fakeThrowingDevice(productId: number): HIDDevice {
+    const device = new EventTarget() as unknown as Record<string, unknown>;
+    device.vendorId = 0x256f;
+    device.productId = productId;
+    device.productName = 'Fake';
+    device.opened = false;
+    device.collections = [];
+    device.open = async () => { device.opened = true; };
+    device.close = async () => { closeCalls.push(productId); device.opened = false; };
+    // Simulate the constructor failing AFTER open() already succeeded —
+    // e.g. a descriptor-parsing throw or a device that vanished mid-setup.
+    device.addEventListener = () => { throw new Error('boom: cannot subscribe'); };
+    return device as unknown as HIDDevice;
+  }
+
+  const fakeDeviceObj = fakeThrowingDevice(0xc635);
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { hid: { requestDevice: async () => [fakeDeviceObj] } },
+    configurable: true,
+  });
+
+  try {
+    await assert.rejects(connectSpaceMouse({}), /Could not open the SpaceMouse/);
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      configurable: true,
+    });
+  }
+  assert.deepEqual(
+    closeCalls,
+    [0xc635],
+    'the device openSession() itself opened must be closed when constructing the session fails',
+  );
 });

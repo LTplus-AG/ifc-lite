@@ -53,10 +53,11 @@ import {
   extractMaterialsOnDemand,
   extractRelationshipsOnDemand,
   extractTypePropertiesOnDemand,
+  isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { RelationshipType } from '@ifc-lite/data';
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
 
 const REL_TYPE_MAP: Record<string, RelationshipType> = {
@@ -90,17 +91,14 @@ export function expandTypes(types: string[]): string[] {
   return result;
 }
 
-export function isProductType(type: string): boolean {
-  const enumVal = IfcTypeEnumFromString(type);
-  if (enumVal === IfcTypeEnum.Unknown) return false;
-  const upper = type.toUpperCase();
-  if (upper.startsWith('IFCREL')) return false;
-  if (upper.startsWith('IFCPROPERTY')) return false;
-  if (upper.startsWith('IFCQUANTITY')) return false;
-  if (upper === 'IFCELEMENTQUANTITY') return false;
-  if (upper.endsWith('TYPE')) return false;
-  return true;
-}
+/**
+ * Which classes an unfiltered query answers with.
+ *
+ * Thin alias: the predicate is schema logic and lives in `@ifc-lite/parser`, so
+ * the CLI and MCP backends cannot drift apart on it. Kept as a named export
+ * here because both packages already publish it under this name.
+ */
+export const isProductType = isQueryableObjectType;
 
 function normalizeBoolean(value: unknown): unknown {
   if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';

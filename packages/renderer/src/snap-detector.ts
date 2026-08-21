@@ -33,6 +33,16 @@ export interface SnapOptions {
   snapToVertices: boolean;
   snapToEdges: boolean;
   snapToFaces: boolean;
+  /**
+   * Declared but never read. Documented as a world-units snap distance, but
+   * every proximity check in `SnapDetector` uses {@link screenSnapRadius}
+   * (pixels) instead — see the two call sites that pass `opts.screenSnapRadius`
+   * into the candidate search. Snapping is therefore purely screen-space and
+   * zoom-dependent; changing this value has no effect. Set
+   * {@link screenSnapRadius} instead. Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored — `screenSnapRadius` is the value that is read.
+   */
   snapRadius: number; // In world units
   screenSnapRadius: number; // In pixels
   /**

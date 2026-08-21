@@ -11,6 +11,7 @@ use wasm_bindgen::prelude::*;
 mod frame_swap;
 mod mesh;
 mod symbolic;
+mod symbolic_truncation;
 
 pub use mesh::{GeometryFingerprint, MeshCollection, MeshDataJs};
 pub use symbolic::{

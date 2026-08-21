@@ -66,6 +66,26 @@ export async function readClipboardKey(provider: BYOKProvider): Promise<string |
 }
 
 /**
+ * Recognised provider prefixes, longest-first so `sk-proj-` etc. win over the
+ * bare `sk-` they all start with. Anchored at the start of the string.
+ *
+ * Deliberately NOT `lastIndexOf('-')` on the whole key: the secret alphabet
+ * ([A-Za-z0-9_-], see `PROVIDER_PATTERNS`) permits a dash anywhere in the
+ * body, and `lastIndexOf` would find the RIGHTMOST dash in the string —
+ * which, the moment a secret's random tail contains one, is a dash inside
+ * the secret, not the provider prefix. That mis-measured "prefix" then gets
+ * displayed in plaintext, leaking part of the key. This must match a KNOWN
+ * prefix and nothing else.
+ */
+const KEY_PREFIX_PATTERNS: readonly RegExp[] = [
+  /^sk-ant-api03-/,
+  /^sk-proj-/,
+  /^sk-svcacct-/,
+  /^sk-admin-/,
+  /^sk-/,
+];
+
+/**
  * Render-safe key mask. Preserves the provider prefix so the user can confirm
  * the right key is detected, hides the secret middle, shows the last 4 chars
  * for disambiguation.
@@ -76,8 +96,10 @@ export async function readClipboardKey(provider: BYOKProvider): Promise<string |
  */
 export function maskKey(key: string): string {
   if (key.length < 12) return '••••';
-  const dashIdx = key.lastIndexOf('-');
-  const prefixEnd = dashIdx > 0 && dashIdx < 14 ? dashIdx + 1 : Math.min(14, key.length - 4);
+  const prefixMatch = KEY_PREFIX_PATTERNS.map((pattern) => pattern.exec(key)?.[0]).find(
+    (match) => match !== undefined,
+  );
+  const prefixEnd = prefixMatch !== undefined ? prefixMatch.length : 0;
   return `${key.slice(0, prefixEnd)}••••${key.slice(-4)}`;
 }
 

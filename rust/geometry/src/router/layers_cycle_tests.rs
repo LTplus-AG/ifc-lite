@@ -27,13 +27,22 @@ fn identity_of(data: &str, id: u32) -> bool {
         let item = decoder.decode_by_id(id).expect("decode item");
         let _ = tx.send(item_has_identity_position(item, &mut decoder));
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(30));
-    assert!(
-        outcome.is_ok(),
-        "item_has_identity_position did not terminate"
-    );
+    // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
+    // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
+    // reports as "did not terminate" — a confident wrong diagnosis pointing at
+    // a guard that is fine (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(30)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            panic!("item_has_identity_position did not terminate within 30s")
+        }
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("item_has_identity_position's worker PANICKED (not a hang); \
+                    its panic is printed above")
+        }
+    };
     let _ = handle.join();
-    outcome.unwrap()
+    value
 }
 
 /// One self-referential entity: `#10`'s FirstOperand is `#10` (#2866).

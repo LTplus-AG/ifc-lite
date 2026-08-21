@@ -36,6 +36,7 @@ import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
 import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
+import { withInstancedMeshes } from '@/utils/instancedExport';
 import { buildClashPairColors, CLASH_COLOR_A, CLASH_COLOR_OVERLAP } from '@/lib/clash/clash-colors';
 import {
   elementPairExclusion,
@@ -254,9 +255,18 @@ export function useClash() {
   const toggleStatusFilter = useViewerStore((s) => s.toggleClashStatusFilter);
   const clear = useViewerStore((s) => s.clearClash);
 
-  // Geometry of the last-gathered clash elements, keyed by federated ref, so a
-  // focused clash can compute its real contact interface for that one pair.
-  const elementsByRef = useRef(new Map<number, ClashElement>());
+  // Geometry of the last-gathered clash elements, keyed by (model, key) IDENTITY —
+  // not by `ref` — so a focused clash can compute its real contact interface for
+  // that one pair. `ref` is derived from the bare expressId (see step.ts) and is
+  // deliberately SHARED across every occurrence of a GPU-instanced entity, while
+  // `key` folds in `mesh.occurrenceKey` to stay distinct per physical occurrence
+  // (#2865). Keying this cache by `ref` collapsed multiple occurrences onto one
+  // map entry (last-write-wins), so `focusClash` below could build the contact
+  // interface / intersection solid from the WRONG occurrence's geometry whenever
+  // two instanced copies of one element actually clashed.
+  const elementsByIdentity = useRef(new Map<string, ClashElement>());
+  const elementIdentity = (element: Pick<ClashElement, 'model' | 'key'>): string =>
+    JSON.stringify([element.model, element.key]);
 
   /**
    * Per-call supersession guard for `run()` / `runDuplicates()` (#2802).
@@ -361,8 +371,34 @@ export function useClash() {
 
     for (const [modelId, model] of state.models) {
       const store = model.ifcDataStore;
-      const meshes = model.geometryResult?.meshes;
-      if (!store || !meshes || meshes.length === 0) continue;
+      const geometryResult = model.geometryResult;
+      if (!store || !geometryResult) continue;
+      // Every entity whose geometry went fully GPU-instanced (8+ repeats,
+      // `INSTANCE_MIN_OCCURRENCES` in the wasm mesher) is ABSENT from
+      // `geometryResult.meshes` — doors, windows, columns, sprinklers, the
+      // exact repeated components a clash run exists to catch (#2865).
+      // `withInstancedMeshes` is the SAME helper the glTF/IFC5 export path
+      // (#2558/#2576) uses to restore them: it materializes every occurrence
+      // from the live renderer scene's GPU instance buffers
+      // (`Scene.getAllInstancedMeshData`) and appends real triangles, not an
+      // approximation — no separate AABB-only code path, so a clash reported
+      // off an instanced entity is exactly as exact as one reported off a flat
+      // one. GPU instancing stopped being primary-only on 2026-08-06 (#2255) —
+      // federated models get instanced shards too, re-homed onto their own
+      // global id space at drain — so every model in this loop can have
+      // instanced entities, not just the one at idOffset 0 (#2865/#2878
+      // follow-up). `{ idOffset, maxExpressId }` scopes the (unfiltered,
+      // all-models) scene data down to THIS model's global-id bracket, so a
+      // federation of N models does not count each instanced entity N times
+      // over as this loop visits every model. Returns the SAME object back
+      // when there is nothing to add (no renderer mounted, or nothing
+      // instanced for this model), so this is a no-op for every case this bug
+      // did not touch.
+      const meshes = withInstancedMeshes(geometryResult, {
+        idOffset: model.idOffset ?? 0,
+        maxExpressId: model.maxExpressId ?? 0,
+      }).meshes;
+      if (meshes.length === 0) continue;
       // `useIfcLoader` shifts every `mesh.expressId` into the GLOBAL id space by
       // this model's `idOffset` while `ifcDataStore` stays LOCAL, so the adapter
       // has to be told the offset or it addresses the store with ids that are
@@ -502,8 +538,8 @@ export function useClash() {
           if (stillWanted(myEpoch)) state.setClashError('No model geometry is loaded. Load an IFC model first.');
           return;
         }
-        // Keep per-ref geometry so focusClash can build the contact interface.
-        elementsByRef.current = new Map(elements.map((e) => [e.ref, e]));
+        // Keep per-occurrence geometry so focusClash can build the contact interface.
+        elementsByIdentity.current = new Map(elements.map((e) => [elementIdentity(e), e]));
         const engine = createClashEngine({ backend: 'ts' });
         const res = await engine.run(elements, rules, {
           exclusions,
@@ -864,8 +900,8 @@ export function useClash() {
       // REAL contact interface (shared-face polygon / intersection line) computed
       // for this one pair; fall back to the AABB box if it can't be built.
       let contactDrawn = false;
-      const elA = elementsByRef.current.get(clash.a.ref);
-      const elB = elementsByRef.current.get(clash.b.ref);
+      const elA = elementsByIdentity.current.get(elementIdentity(clash.a));
+      const elB = elementsByIdentity.current.get(elementIdentity(clash.b));
       if (elA && elB) {
         try {
           const clusters = contactClusters(

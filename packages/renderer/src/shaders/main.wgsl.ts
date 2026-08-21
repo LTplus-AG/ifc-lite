@@ -44,6 +44,89 @@ export const mainShaderSource = `
         }
         @binding(0) @group(1) var<uniform> env: Environment;
 
+        // Sun shadow map (#2670, Phase 2b) at group(1). The depth map, a
+        // comparison sampler, and the light matrix + params. Bound on every
+        // main-family pipeline; sampling is gated by shadowU.params.y (enabled),
+        // so when shadows are off this reads the 1×1 dummy and returns 1.0.
+        @binding(1) @group(1) var shadowMap: texture_depth_2d;
+        @binding(2) @group(1) var shadowCmp: sampler_comparison;
+        struct Shadow {
+          lightViewProj: mat4x4<f32>,
+          // x = texelSize (1/resolution), y = enabled (0/1),
+          // z = normalBias (world units), w = pcfRadius (texels).
+          params: vec4<f32>,
+          // x = depthBias (reverse-Z clip units, nudges toward lit).
+          params2: vec4<f32>,
+        }
+        @binding(3) @group(1) var<uniform> shadowU: Shadow;
+
+        // Fraction of the sun reaching this surface point (1 = lit, 0 = fully
+        // shadowed). Normal-offset + slope-scaled bias defeats acne without
+        // peter-panning; the penumbra is sampled with a 12-tap Poisson disk
+        // ROTATED per pixel (interleaved gradient noise). A fixed grid kernel
+        // undersamples a wide penumbra and breaks into discrete bands (the
+        // "tripled shadow" at high softness); a rotated disk turns that banding
+        // into fine dither that reads as smooth at any softness.
+        // textureSampleCompareLevel is used (not ...Compare) so it is legal in
+        // this non-uniform control flow.
+        const SHADOW_POISSON = array<vec2<f32>, 12>(
+          vec2<f32>(-0.326, -0.406), vec2<f32>(-0.840, -0.074), vec2<f32>(-0.696,  0.457),
+          vec2<f32>(-0.203,  0.621), vec2<f32>( 0.962, -0.195), vec2<f32>( 0.473, -0.480),
+          vec2<f32>( 0.519,  0.767), vec2<f32>( 0.185, -0.893), vec2<f32>( 0.507,  0.064),
+          vec2<f32>( 0.896,  0.412), vec2<f32>(-0.322, -0.933), vec2<f32>(-0.792, -0.598),
+        );
+
+        fn sunShadowFactor(worldPos: vec3<f32>, N: vec3<f32>, fragCoord: vec2<f32>) -> f32 {
+          if (shadowU.params.y < 0.5) { return 1.0; }
+          // The diffuse sun term is TWO-SIDED (abs(dot(N, sun)) in the shading
+          // below), so a face whose stabilized normal points away from the sun is
+          // still lit. Orient the normal toward the sun before biasing: otherwise
+          // the normal-offset push (params.z) moves the sample AWAY from the light
+          // (deeper behind the surface), and the slope term below collapses to its
+          // max (NdotL→0), together biasing the compare toward "lit" — which leaks
+          // direct sun onto interior faces the roof occludes (#2670 review).
+          let L = normalize(env.sunDirection);
+          let Ns = N * select(-1.0, 1.0, dot(N, L) >= 0.0);
+          let biased = worldPos + Ns * shadowU.params.z;
+          let clip = shadowU.lightViewProj * vec4<f32>(biased, 1.0);
+          let ndc = clip.xyz / clip.w;
+          let uv = vec2<f32>(ndc.x * 0.5 + 0.5, ndc.y * -0.5 + 0.5);
+          let inBounds = uv.x >= 0.0 && uv.x <= 1.0 && uv.y >= 0.0 && uv.y <= 1.0 && ndc.z > 0.0;
+          if (!inBounds) { return 1.0; }
+          // Slope-scaled depth bias: at a grazing sun the receiver's light-space
+          // depth changes fast across the kernel, so a constant bias can't clear
+          // the whole footprint and the surface rings with moiré. Grow the bias
+          // as the surface tilts away from the sun (NdotL → 0) and with the
+          // kernel width. The hardware slope bias in the depth pass covers the
+          // occluder side; this covers the receiver side.
+          let NdotL = max(dot(Ns, L), 0.0);
+          let slope = clamp(sqrt(max(1.0 - NdotL * NdotL, 0.0)) / max(NdotL, 0.1), 1.0, 12.0);
+          let refDepth = ndc.z + shadowU.params2.x * slope * (1.0 + shadowU.params.w);
+          let radius = shadowU.params.x * shadowU.params.w;  // penumbra, uv units
+          // Per-pixel rotation (interleaved gradient noise) dithers the disk so
+          // the discrete taps never line up into bands.
+          let ign = fract(52.9829189 * fract(dot(fragCoord, vec2<f32>(0.06711056, 0.00583715))));
+          let ang = ign * 6.2831853;
+          let cr = cos(ang);
+          let sr = sin(ang);
+          var sum = 0.0;
+          for (var i = 0; i < 12; i = i + 1) {
+            let p = SHADOW_POISSON[i];
+            let off = vec2<f32>(p.x * cr - p.y * sr, p.x * sr + p.y * cr) * radius;
+            sum = sum + textureSampleCompareLevel(shadowMap, shadowCmp, uv + off, refDepth);
+          }
+          let pcf = sum / 12.0;
+          // Terminator fade. On a surface nearly PARALLEL to the sun rays
+          // (NdotL → 0, e.g. a vertical wall under a midday sun) the receiver
+          // straddles the shadow threshold, so the rotated-disk taps randomly
+          // pass/fail and the wall breaks into salt-and-pepper speckle. The
+          // direct sun term is near zero there anyway, so fade the cast shadow
+          // smoothly toward lit as the surface goes grazing: a clean gradient
+          // replaces the ripple (#2670).
+          let graze = smoothstep(0.0, 0.3, NdotL);
+          return mix(1.0, pcf, graze);
+        }
+
         struct VertexInput {
           @location(0) position: vec3<f32>,
           @location(1) normal: vec3<f32>,
@@ -389,10 +472,10 @@ export const mainShaderSource = `
           // Darken whites/grays more to reduce washed-out appearance
           baseColor = mix(baseColor, baseColor * 0.7, isWhiteish * 0.4);
 
-          // Combine all lighting. Keep the lighting term separate so the
-          // selection highlight can reuse it (re-light a blue albedo) without
-          // the base material colour bleeding through.
-          let lightTerm = ambient + env.sunColor * diffuseSun + vec3<f32>(diffuseFill + rim);
+          // Combine all lighting. Only the DIRECT sun term is occluded by cast
+          // shadows (#2670); ambient/fill/rim are indirect and stay unshadowed.
+          let sunShadow = sunShadowFactor(input.worldPos, N, input.position.xy);
+          let lightTerm = ambient + env.sunColor * (diffuseSun * sunShadow) + vec3<f32>(diffuseFill + rim);
           var color = baseColor * lightTerm;
 
           // flags.x is a bitfield:

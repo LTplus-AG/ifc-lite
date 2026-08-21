@@ -44,7 +44,15 @@ export interface DoorSymbolConfig {
   swingAngle: number;
   /** Show door leaf line */
   showLeaf: boolean;
-  /** Show threshold line */
+  /**
+   * Declared but never read. No threshold-rendering code exists anywhere in
+   * the package, so this field cannot switch anything on: setting it to
+   * `true` produces exactly the same geometry as leaving it at the default
+   * `false`. There is no substitute option — a threshold line would have to
+   * be drawn by the caller. Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the generator — no threshold is ever drawn.
+   */
   showThreshold: boolean;
 }
 

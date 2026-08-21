@@ -14,7 +14,7 @@ import type { GeorefMutationData } from '@/store/slices/mutationSlice';
 import { getMapUnitScale } from './cesium-placement';
 import { mergeMapConversion, mergeProjectedCRS, resolveEpsetMapUnitScale } from './effective-georef';
 import { resolveMapUnitToMetreScale } from './geo-scale';
-import { withInstancedMeshes } from '../../utils/instancedExport.js';
+import { withInstancedMeshes, type InstancedModelRange } from '../../utils/instancedExport.js';
 import { effectiveMapConversionForGeometry } from './map-absolute';
 import { reprojectToLatLon } from './reproject';
 import { buildKmz, type KmzAltitudeMode, type KmzProcessor } from './kmz-exporter';
@@ -28,9 +28,9 @@ export function modelHasGeoreference(dataStore: IfcDataStore | null | undefined)
 
 export interface BuildKmzInput {
   geometryResult: GeometryResult;
-  /** True when this is the primary model (`idOffset === 0`) — see
-   *  {@link ResolvedKmzGeorefInput.isPrimaryModel}. */
-  isPrimaryModel: boolean;
+  /** This model's global-id bracket, or `null` when it is provably the only model
+   *  loaded — see {@link ResolvedKmzGeorefInput.instancedModelRange}. */
+  instancedModelRange: InstancedModelRange | null;
   dataStore: IfcDataStore;
   /** Pending georef edits for this model (store `georefMutations.get(modelId)`). */
   mutations?: GeorefMutationData;
@@ -142,11 +142,16 @@ export interface ResolvedKmzGeorefInput {
    */
   geometryResult: GeometryResult;
   /**
-   * True when this is the primary model (`idOffset === 0`). Instanced shard
-   * occurrences live in the primary model's id space, so a federated model must
-   * not adopt them — same flag the glTF/IFC exporters pass.
+   * This model's global-id bracket (`{ idOffset, maxExpressId }`), used to scope
+   * `getAllInstancedMeshData()`'s unfiltered (all-loaded-models) output down to
+   * just this model's occurrences — GPU instancing stopped being primary-only on
+   * 2026-08-06 (#2255), so a federated model can carry instanced entities too, and
+   * without this bracket a federation of N models would splice every other
+   * model's instanced occurrences into this one's KMZ. `null` only when this is
+   * provably the sole model loaded (nothing else to wrongly include) — same
+   * argument the glTF/IFC exporters pass.
    */
-  isPrimaryModel: boolean;
+  instancedModelRange: InstancedModelRange | null;
   /** Display name / file stem. */
   name: string;
   altitudeMode?: KmzAltitudeMode;
@@ -179,7 +184,7 @@ export async function buildKmzForResolvedGeoref(
   input: ResolvedKmzGeorefInput,
   createProcessor?: () => KmzProcessor,
 ): Promise<Uint8Array | KmzBuildError> {
-  const meshes = withInstancedMeshes(input.geometryResult, input.isPrimaryModel).meshes as MeshData[];
+  const meshes = withInstancedMeshes(input.geometryResult, input.instancedModelRange).meshes as MeshData[];
   if (!meshes.length) return 'no-geometry';
   const { conversion, crs, coordinateInfo, lengthUnitScale } = input;
   const latLon = await reprojectToLatLon(conversion, crs, coordinateInfo, lengthUnitScale);
@@ -236,7 +241,7 @@ export async function buildKmzForModel(
     coordinateInfo: input.geometryResult.coordinateInfo,
     lengthUnitScale: scale,
     geometryResult: input.geometryResult,
-    isPrimaryModel: input.isPrimaryModel,
+    instancedModelRange: input.instancedModelRange,
     name: input.name,
     altitudeMode: input.altitudeMode,
   }, createProcessor);

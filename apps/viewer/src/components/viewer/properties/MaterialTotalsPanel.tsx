@@ -50,16 +50,100 @@ interface MaterialTotals {
   byClass: Array<{ ifcClass: string; count: number }>;
 }
 
-/** Pick a quantity value by candidate names (case-insensitive), else by type. */
+/**
+ * Pick a quantity value by candidate names (case-insensitive), else by type:
+ * when nothing matches a candidate but the map (minus `deny`) is non-empty,
+ * fall back to the alphabetically-first remaining name. That fallback exists
+ * for vendor-specific quantity names (e.g. "PerimeterArea", "TopArea") that
+ * carry a real value of the right type but never match the IFC-standard
+ * candidate list — without it, such an element contributes nothing to the
+ * total and its row is dropped from the panel even though the quantity was
+ * there all along.
+ *
+ * The tiebreak is alphabetical rather than "whichever the map saw first":
+ * map insertion order mirrors the order qsets/quantities were encountered
+ * while scanning the element (itself downstream of on-demand-parse vs.
+ * type-fallback ordering, see the qsets selection above) — a happenstance of
+ * traversal, not a meaningful choice. Sorting by name at least makes the
+ * fallback reproducible independent of that traversal order.
+ *
+ * `deny` excludes names that are the right IFC *type* (e.g. `IfcQuantityArea`)
+ * but not the right *kind* of value — `CrossSectionArea` is a section
+ * property (profile area), not a surface extent, yet it type-checks as an
+ * area and sorts alphabetically before every real surface-area name a beam
+ * or column carries (`GrossSurfaceArea`, `NetSurfaceArea`, `OuterSurfaceArea`).
+ * A name-blind alphabetical fallback would silently select it and report a
+ * value up to two orders of magnitude too small. Skipping a denied name
+ * still degrades to "no value" rather than a wrong one when it is the only
+ * candidate present — the honest outcome PR #2777 traded away.
+ */
 function pickQuantity(
   byName: Map<string, number>,
   candidates: string[],
+  deny: ReadonlySet<string> = EMPTY_DENY,
 ): number | undefined {
   for (const c of candidates) {
     const v = byName.get(c);
     if (v !== undefined) return v;
   }
-  return undefined;
+  const fallbackNames = [...byName.keys()].filter((n) => !deny.has(n)).sort();
+  if (fallbackNames.length === 0) return undefined;
+  return byName.get(fallbackNames[0]);
+}
+
+const EMPTY_DENY: ReadonlySet<string> = new Set();
+
+const VOLUME_CANDIDATES = ['netvolume', 'grossvolume', 'volume'];
+// Most-specific first: the true extents (net/gross *surface* area) are tried
+// before the generic "area" name, so a beam/column/member carrying a
+// standard `NetSurfaceArea`/`OuterSurfaceArea` quantity resolves BY NAME and
+// never reaches the by-type fallback at all (louistrue, PR #2777 review 2).
+const AREA_CANDIDATES = [
+  'netarea',
+  'grossarea',
+  'netsidearea',
+  'grosssidearea',
+  'netfloorarea',
+  'grossfloorarea',
+  'netsurfacearea',
+  'grosssurfacearea',
+  'outersurfacearea',
+  'area',
+];
+// `CrossSectionArea` (IfcBeam/IfcColumn/IfcMember/IfcFooting/IfcPile/duct
+// and pipe segments' Qto_*BaseQuantities) is an `IfcQuantityArea` but a
+// section/profile property, not an extent — the by-type fallback must never
+// select it. See `pickQuantity`'s docstring.
+const AREA_TYPE_FALLBACK_DENY: ReadonlySet<string> = new Set(['crosssectionarea']);
+const WEIGHT_CANDIDATES = ['netweight', 'grossweight', 'weight'];
+
+/**
+ * Build per-name quantity maps from an element's (or its type's) qsets and
+ * pick one value of each quantity kind — the single place all three call
+ * sites (volume/area/weight) share, so the "match a candidate name, else by
+ * type" rule from `pickQuantity`'s docstring is applied identically to all
+ * three instead of three copies that can silently drift apart (as they did:
+ * only the volume call site implemented the fallback).
+ */
+export function aggregateQuantitiesFromQsets(
+  qsets: ReadonlyArray<{ quantities: ReadonlyArray<{ name: string; type: number; value: number }> }>,
+): { volume?: number; area?: number; weight?: number } {
+  const volByName = new Map<string, number>();
+  const areaByName = new Map<string, number>();
+  const weightByName = new Map<string, number>();
+  for (const qset of qsets) {
+    for (const q of qset.quantities) {
+      const key = q.name.toLowerCase();
+      if (q.type === QuantityType.Volume) volByName.set(key, q.value);
+      else if (q.type === QuantityType.Area) areaByName.set(key, q.value);
+      else if (q.type === QuantityType.Weight) weightByName.set(key, q.value);
+    }
+  }
+  return {
+    volume: pickQuantity(volByName, VOLUME_CANDIDATES),
+    area: pickQuantity(areaByName, AREA_CANDIDATES, AREA_TYPE_FALLBACK_DENY),
+    weight: pickQuantity(weightByName, WEIGHT_CANDIDATES),
+  };
 }
 
 /** Format an aggregated quantity with magnitude-appropriate precision. */
@@ -191,33 +275,19 @@ export function MaterialTotalsPanel({ materialId, modelId }: { materialId: numbe
                 return own.some((qset) => qset.quantities.length > 0) ? own : typeQsetsFor(entityId);
               })();
           if (qsets.length === 0) continue;
-          const volByName = new Map<string, number>();
-          const areaByName = new Map<string, number>();
-          const weightByName = new Map<string, number>();
-          for (const qset of qsets) {
-            for (const q of qset.quantities) {
-              const key = q.name.toLowerCase();
-              if (q.type === QuantityType.Volume) volByName.set(key, q.value);
-              else if (q.type === QuantityType.Area) areaByName.set(key, q.value);
-              else if (q.type === QuantityType.Weight) weightByName.set(key, q.value);
-            }
-          }
+          const { volume: vol, area, weight: wt } = aggregateQuantitiesFromQsets(qsets);
 
-          const vol = pickQuantity(volByName, ['netvolume', 'grossvolume', 'volume'])
-            ?? (volByName.size > 0 ? [...volByName.values()][0] : undefined);
           if (vol !== undefined) {
             result.volume += vol * weight;
             result.hasVolume = true;
             result.elementsWithVolume += 1;
           }
 
-          const area = pickQuantity(areaByName, ['netarea', 'grossarea', 'netsidearea', 'grosssidearea', 'netfloorarea', 'grossfloorarea', 'area']);
           if (area !== undefined) {
             result.area += area * weight;
             result.hasArea = true;
           }
 
-          const wt = pickQuantity(weightByName, ['netweight', 'grossweight', 'weight']);
           if (wt !== undefined) {
             result.weight += wt * weight;
             result.hasWeight = true;

@@ -523,6 +523,17 @@ fn the_wire_spellings_match_serde() {
     // to JavaScript. Two hand-kept spellings of one vocabulary drift, and the
     // drift is silent: the JSON consumer and the WASM consumer would simply
     // disagree about what `item-depth` is called. Derive one from the other.
+    // The array below is hand-listed, so a fifth variant could be added with a
+    // wrong spelling and this test would stay green while never checking it.
+    // This match is exhaustive over the enum, so adding a variant fails to
+    // compile here (E0004) until the array is extended too.
+    match SymbolicTruncationReason::ElementCount {
+        SymbolicTruncationReason::ElementCount
+        | SymbolicTruncationReason::OutputBytes
+        | SymbolicTruncationReason::ItemDepth
+        | SymbolicTruncationReason::ItemRevisits => {}
+    }
+
     for reason in [
         SymbolicTruncationReason::ElementCount,
         SymbolicTruncationReason::OutputBytes,

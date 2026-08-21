@@ -145,4 +145,52 @@ mod tests {
     fn not_present_is_off() {
         assert!(!require_fixtures_from(Err(VarError::NotPresent)));
     }
+
+    /// The gate's ON switch, which nothing pinned until #3014.
+    ///
+    /// Mutating the `Ok(v) if v == "1" => true` arm to `false` used to leave
+    /// the whole crate green: the one arm that turns drift detection on could
+    /// regress and CI would stay green forever. That is the failure
+    /// `fixture_or_skip!` exists to close, one level up -- the gate's own
+    /// on-switch had no gate.
+    ///
+    /// Deliberately no test-count here. A number would be true on the day it
+    /// was written and drift with every test added, which is the same
+    /// stale-comment trap this file's other docs avoid.
+    ///
+    /// Asserted in BOTH directions deliberately. `assert!(on)` alone is
+    /// satisfied by a mutation that hard-codes the arm to `true`, which is a
+    /// different bug with the same green: fixtures would then be demanded on
+    /// every developer machine, and the loud failure would be indistinguishable
+    /// from a real drift. Pinning "1" on AND "0"/"" off is what makes the pair
+    /// unfakeable by a constant.
+    #[test]
+    fn the_on_switch_is_on_and_the_off_values_are_off() {
+        assert!(
+            require_fixtures_from(Ok("1".to_string())),
+            "\"1\" must turn the gate ON; this is the arm whose regression \
+             silently disables drift detection"
+        );
+        assert!(
+            !require_fixtures_from(Ok("0".to_string())),
+            "\"0\" must turn the gate OFF, or the arm above could be a constant"
+        );
+        assert!(
+            !require_fixtures_from(Ok(String::new())),
+            "an empty value must be OFF, or the arm above could be a constant"
+        );
+    }
+
+    /// An unrecognised value must panic rather than be guessed either way.
+    /// Guessing "off" silently disables the gate; guessing "on" turns a typo
+    /// into a red build on every machine without the fixtures.
+    #[test]
+    fn an_unrecognised_value_is_rejected() {
+        let result =
+            std::panic::catch_unwind(|| require_fixtures_from(Ok("yes".to_string())));
+        assert!(
+            result.is_err(),
+            "an unrecognised value must panic, not be guessed"
+        );
+    }
 }

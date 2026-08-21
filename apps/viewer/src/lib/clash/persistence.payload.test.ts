@@ -26,6 +26,7 @@ import {
   presetsStoreIdentically,
   settingsAlreadyStored,
   DEFAULT_CLASH_SETTINGS,
+  type ClashGlobalSettings,
   type ClashPreset,
 } from './persistence.js';
 
@@ -166,6 +167,72 @@ describe('clash persistence: settingsAlreadyStored compares the bytes saveSettin
       false,
     );
     assert.strictEqual(ls.getItem(SETTINGS_KEY), written, 'the comparison must not write anything');
+  });
+
+  /**
+   * The axis "compared through the same builder" does NOT cover.
+   *
+   * `settingsPayload` is shared, but `JSON.stringify` takes its key order from
+   * the object it is handed, and the two production settings objects are built
+   * by two unshared object literals in two files: `snapshotSettings`
+   * (`store/slices/clashSlice.ts`), the only producer of the bytes on disk, and
+   * `normalizeSettings` (this file), the only producer of the object a flavor
+   * carries (via `deserializeClashConfig`). They agree today by convention
+   * alone. Let either literal be reordered — a field moved while editing, a new
+   * field appended on one side and inserted on the other — and a comparison
+   * that rode on key order would answer `false` forever, silently turning every
+   * caller of this into dead code with no test able to see it.
+   *
+   * So the property under test is the values, not the order they were written
+   * in. Both sides here are built field by field, in deliberately different
+   * orders, rather than one spread from the other: a spread inherits the seed's
+   * key order and therefore cannot observe this at all.
+   */
+  it('compares the settings, not the order the producer happened to build them in', () => {
+    const writerOrder: ClashGlobalSettings = {
+      mode: DEFAULT_CLASH_SETTINGS.mode,
+      tolerance: DEFAULT_CLASH_SETTINGS.tolerance,
+      clearance: DEFAULT_CLASH_SETTINGS.clearance,
+      duplicateTolerance: DEFAULT_CLASH_SETTINGS.duplicateTolerance,
+      clusterEpsilon: DEFAULT_CLASH_SETTINGS.clusterEpsilon,
+      reportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
+      groupBy: DEFAULT_CLASH_SETTINGS.groupBy,
+    };
+    const readerOrder: ClashGlobalSettings = {
+      groupBy: DEFAULT_CLASH_SETTINGS.groupBy,
+      reportTouch: DEFAULT_CLASH_SETTINGS.reportTouch,
+      clusterEpsilon: DEFAULT_CLASH_SETTINGS.clusterEpsilon,
+      duplicateTolerance: DEFAULT_CLASH_SETTINGS.duplicateTolerance,
+      clearance: DEFAULT_CLASH_SETTINGS.clearance,
+      tolerance: DEFAULT_CLASH_SETTINGS.tolerance,
+      mode: DEFAULT_CLASH_SETTINGS.mode,
+    };
+    // Premise: same settings, genuinely different key orders.
+    assert.deepStrictEqual(writerOrder, readerOrder, 'the two objects must carry the same settings');
+    assert.notDeepStrictEqual(
+      Object.keys(writerOrder),
+      Object.keys(readerOrder),
+      'the two objects must really have been built in different orders',
+    );
+
+    // What the writer stores cannot depend on it either: whichever object it is
+    // handed, the key holds the same bytes, so a reordered producer does not
+    // start rewriting a key that already holds the same settings.
+    assert.deepStrictEqual(saveSettings(writerOrder), { ok: true });
+    const fromWriterOrder = ls.getItem(SETTINGS_KEY);
+    assert.deepStrictEqual(saveSettings(readerOrder), { ok: true });
+    assert.strictEqual(ls.getItem(SETTINGS_KEY), fromWriterOrder);
+
+    // ...and the comparison answers on the settings, in both directions.
+    assert.strictEqual(settingsAlreadyStored(writerOrder), true);
+    assert.strictEqual(settingsAlreadyStored(readerOrder), true);
+    assert.deepStrictEqual(saveSettings(writerOrder), { ok: true });
+    assert.strictEqual(settingsAlreadyStored(readerOrder), true);
+
+    // Not weakened into a wrong `true`: this stays a byte comparison against
+    // what the write would produce, so one differing VALUE is still a write.
+    assert.strictEqual(settingsAlreadyStored({ ...readerOrder, tolerance: 0.5 }), false);
+    assert.strictEqual(settingsAlreadyStored({ ...writerOrder, mode: 'clearance' }), false);
   });
 
   it('is false for a stored blob that parses to the same settings but different bytes', () => {

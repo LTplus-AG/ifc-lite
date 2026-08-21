@@ -855,7 +855,26 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       // before it touches storage, which makes the common failure a clean no-op.
       const previousPresets = get().clashPresets;
       const presetsResult = savePresets(presets);
-      if (!presetsResult.ok) return presetsResult; // nothing written, nothing to undo
+      // The same rule the settings write below and the rollback under it both
+      // apply, applied to the write that runs FIRST: a refused write that would
+      // have stored exactly what is stored already changed nothing, so it must
+      // not fail the apply. "Nothing written, nothing to undo" is a statement
+      // about the rollback, not a reason to abort — a flavor can carry the rule
+      // set that is already stored and differ only in its thresholds (the same
+      // pairing the rollback branch below names), and then the presets key
+      // needs no write at all and the settings write still has somewhere to go.
+      // Aborting here applies neither half and reports "clash rules were not
+      // saved" over storage holding exactly those rules.
+      //
+      // `presetsStoreIdentically` compares the payloads `savePresets` itself
+      // builds, so what is compared is what would have been written; it answers
+      // `false` for anything it cannot prove identical (an unserializable rule
+      // set included), which only ever costs a refusal that was already the old
+      // behaviour. Letting the refusal pass does not make the apply succeed on
+      // its own: everything below still gates on the settings write.
+      if (!presetsResult.ok && !presetsStoreIdentically(previousPresets, presets)) {
+        return presetsResult; // nothing written, nothing to undo
+      }
 
       const settingsResult = saveSettings(settings);
       // The same rule the rollback below applies to the presets write, applied

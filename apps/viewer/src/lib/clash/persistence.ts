@@ -354,9 +354,34 @@ export function loadSettings(): ClashGlobalSettings {
  * The exact string `saveSettings` hands to `localStorage.setItem`. The single
  * source of those bytes, so a caller asking whether a settings write would
  * change anything compares what would actually be written.
+ *
+ * The settings object is rebuilt here, field by field, rather than serialized
+ * as handed in: `JSON.stringify` takes its key order from its input, so
+ * stringifying the caller's object would put that order — not this function —
+ * in charge of the bytes. The two settings objects production compares are
+ * built by two unshared literals in two files (`snapshotSettings` in
+ * `store/slices/clashSlice.ts` builds what is written; `normalizeSettings`
+ * below builds what a flavor carries, via `deserializeClashConfig`), and they
+ * matched only by convention. Reorder either literal and every "is this
+ * already stored?" answer flips to `false` forever, with nothing to catch it.
+ *
+ * Rebuilding here makes the order this function's own, so both sides of any
+ * comparison — and the write itself — serialize the same way regardless of how
+ * their object was assembled. The annotation, not `satisfies`, is deliberate: a
+ * field added to `ClashGlobalSettings` and forgotten here is a compile error
+ * rather than a field silently dropped from storage.
  */
 function settingsPayload(settings: ClashGlobalSettings): string {
-  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings });
+  const canonical: ClashGlobalSettings = {
+    mode: settings.mode,
+    tolerance: settings.tolerance,
+    clearance: settings.clearance,
+    duplicateTolerance: settings.duplicateTolerance,
+    clusterEpsilon: settings.clusterEpsilon,
+    reportTouch: settings.reportTouch,
+    groupBy: settings.groupBy,
+  };
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings: canonical });
 }
 
 /**
@@ -364,14 +389,16 @@ function settingsPayload(settings: ClashGlobalSettings): string {
  * would write for `settings` — i.e. whether that write would change nothing.
  *
  * Built through `settingsPayload`, the same function `saveSettings` writes
- * from, so the compared bytes are the written bytes by construction.
+ * from, so the compared bytes are the written bytes by construction — the key
+ * order included, since that builder fixes it rather than inheriting it from
+ * whichever object literal produced these settings.
  *
  * One-directional on purpose: `false` only means "not provably a no-op". A
  * stored value that normalizes to these settings through some other encoding
- * (a legacy blob without the wrapper, a different key order) answers `false`,
- * because the write really would rewrite the key. A caller uses this to let a
- * refused write pass, and letting one pass that would have changed the stored
- * bytes is the failure that matters.
+ * (a legacy blob without the wrapper, or one an older build wrote in another
+ * key order) answers `false`, because the write really would rewrite the key.
+ * A caller uses this to let a refused write pass, and letting one pass that
+ * would have changed the stored bytes is the failure that matters.
  */
 export function settingsAlreadyStored(settings: ClashGlobalSettings): boolean {
   try {

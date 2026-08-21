@@ -20,6 +20,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { createClashSlice, type ClashSlice } from './clashSlice.js';
+import { deserializeClashConfig } from '@/lib/clash/persistence';
 import type { ClashPreset, ClashGlobalSettings } from '@/lib/clash/persistence';
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
@@ -537,6 +538,146 @@ describe('applyClashFlavorConfig - only commit a config that actually persisted'
     assert.ok(!state.clashPresets.some((p) => p.id === FLAVOR_CUSTOM_ID));
     assert.strictEqual(state.clashReportTouch, OLD_SETTINGS.reportTouch);
     assert.deepStrictEqual(storedCustomIds(storage), [OLD_CUSTOM_ID], 'the presets write was undone');
+  });
+
+  /**
+   * The no-op settings rule with BOTH sides built the way production builds
+   * them, rather than one spread from the other.
+   *
+   * The comparison is between bytes `snapshotSettings` (this file's slice) put
+   * on disk and a settings object `normalizeSettings` built (what
+   * `deserializeClashConfig` hands `applyClashFlavorConfig` from a flavor's
+   * blob — see `ExtensionHostService`). Those are two unshared object literals
+   * in two files, and every other test of this branch feeds the equal case a
+   * spread of the seed, which inherits the seed's key order and so cannot
+   * observe a divergence between the two producers at all.
+   *
+   * So: drive the stored bytes through the slice's own setters (the real
+   * writer), then build the flavor's half through the real deserializer, and
+   * let them meet. Nothing here shares an object with anything there.
+   */
+  it('treats settings the deserializer built as already stored when the slice wrote them', () => {
+    // The real writer: each setter snapshots the slice and persists it.
+    state.setClashMode('clearance');
+    state.setClashTolerance(0.007);
+    state.setClashClearance(0.11);
+    state.setClashDuplicateTolerance(0.023);
+    state.setClashClusterEpsilon(2.5);
+    state.setClashReportTouch(true);
+    state.setClashGroupBy('rule');
+    const settingsBefore = storage.getItem(SETTINGS_KEY);
+    assert.ok(settingsBefore?.includes('0.007'), 'premise: the slice really persisted its snapshot');
+    storage.writes.length = 0;
+
+    // The real reader: a flavor blob through the deserializer, whose settings
+    // object is built by `normalizeSettings` — the other production literal.
+    const config = deserializeClashConfig({
+      presets: [customPreset(FLAVOR_CUSTOM_ID, 'Flavor rule')],
+      settings: {
+        mode: 'clearance',
+        tolerance: 0.007,
+        clearance: 0.11,
+        duplicateTolerance: 0.023,
+        clusterEpsilon: 2.5,
+        reportTouch: true,
+        groupBy: 'rule',
+      },
+    });
+    assert.ok(config, 'premise: the blob deserialized');
+
+    storage.failKey = SETTINGS_KEY;
+    const result = state.applyClashFlavorConfig(config);
+
+    assert.deepStrictEqual(
+      result,
+      { ok: true },
+      'the two producers describe the same settings, so the refused write would have changed nothing',
+    );
+    assert.deepStrictEqual(state.clashPresets.filter((p) => !p.builtin).map((p) => p.id), [FLAVOR_CUSTOM_ID]);
+    assert.deepStrictEqual(storedCustomIds(storage), [FLAVOR_CUSTOM_ID]);
+    assert.strictEqual(storage.getItem(SETTINGS_KEY), settingsBefore, 'the settings key never moved');
+    assert.deepStrictEqual(storage.writes, [PRESETS_KEY]);
+  });
+
+  // ── the presets write is refused but the rule set is already stored ───────
+
+  /**
+   * The same no-op rule as the two cases above, on the write that runs FIRST.
+   *
+   * "Nothing written, nothing to undo" is a statement about the rollback, not a
+   * reason to fail: a flavor can carry the rule set that is already stored and
+   * move only the thresholds — the exact twin of the settings-side case, and
+   * the pairing the rollback branch already names as realistic. With the
+   * presets key blocked, the refused write would have stored what is stored
+   * already, so the settings write below it can still land and the flavor is
+   * fully applied. Aborting instead applies nothing and tells the user the
+   * clash rules were not saved over storage holding exactly those rules.
+   */
+  it('applies the flavor when the refused presets write would not have changed the stored rule set', () => {
+    storage.failKey = PRESETS_KEY;
+    const presetsBefore = storage.getItem(PRESETS_KEY);
+
+    // The flavor carries the rule set already in storage; only settings move.
+    const result = state.applyClashFlavorConfig({
+      presets: [customPreset(OLD_CUSTOM_ID, 'Rule from the previous flavor')],
+      settings: FLAVOR_SETTINGS,
+    });
+
+    assert.deepStrictEqual(
+      result,
+      { ok: true },
+      'the refused write would have stored the rule set already stored, so it changed nothing',
+    );
+    // The half that had somewhere to go is live in the store...
+    assert.strictEqual(state.clashMode, FLAVOR_SETTINGS.mode);
+    assert.strictEqual(state.clashTolerance, FLAVOR_SETTINGS.tolerance);
+    assert.strictEqual(state.clashGroupBy, FLAVOR_SETTINGS.groupBy);
+    // ...and landed on disk.
+    assert.strictEqual(storedTolerance(storage), FLAVOR_SETTINGS.tolerance);
+    // The rule set the store shows is the flavor's, which is the one the
+    // untouched presets key already holds.
+    assert.deepStrictEqual(state.clashPresets.filter((p) => !p.builtin).map((p) => p.id), [OLD_CUSTOM_ID]);
+    assert.strictEqual(
+      storage.getItem(PRESETS_KEY),
+      presetsBefore,
+      'the presets key was never written — it did not need to be',
+    );
+    assert.deepStrictEqual(storedCustomIds(storage), [OLD_CUSTOM_ID]);
+    assert.deepStrictEqual(
+      storage.writes,
+      [SETTINGS_KEY],
+      'the settings write is the only one that had anything to do',
+    );
+  });
+
+  it('still reports the settings refusal when the no-op presets write is followed by a real one', () => {
+    // The cell where letting the presets write pass must NOT turn into a
+    // success: the rule set is already stored, but the settings write is a
+    // real one and it is refused. Nothing the user asked for was applied, so
+    // this has to stay a failure — the pass-through above only removes a
+    // reason to fail, it does not add a reason to succeed.
+    storage.failKey = PRESETS_KEY;
+    storage.failAfterWrites = 0; // ...and the settings key cannot be written either
+    const presetsBefore = storage.getItem(PRESETS_KEY);
+    const settingsBefore = storage.getItem(SETTINGS_KEY);
+
+    const result = state.applyClashFlavorConfig({
+      presets: [customPreset(OLD_CUSTOM_ID, 'Rule from the previous flavor')],
+      settings: FLAVOR_SETTINGS,
+    });
+
+    assert.strictEqual(result.ok, false, 'the settings the flavor asked for were not saved');
+    assert.strictEqual(
+      !result.ok && result.reason,
+      'quota',
+      'nothing was stranded: neither key moved, so this is an ordinary refused write',
+    );
+    // Nothing committed, nothing written.
+    assert.strictEqual(state.clashTolerance, OLD_SETTINGS.tolerance);
+    assert.strictEqual(state.clashMode, OLD_SETTINGS.mode);
+    assert.strictEqual(storage.getItem(PRESETS_KEY), presetsBefore);
+    assert.strictEqual(storage.getItem(SETTINGS_KEY), settingsBefore);
+    assert.deepStrictEqual(storage.writes, []);
   });
 
   // ── partial: presets refused ───────────────────────────────────────────────

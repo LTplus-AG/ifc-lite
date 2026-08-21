@@ -14,8 +14,11 @@ import type { CodeBlock } from './types.js';
  */
 export function extractCodeBlocks(markdown: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
-  // Match ```lang\n...code...\n```
-  const regex = /```(\w*)\n([\s\S]*?)```/g;
+  // Match ```lang\n...code...\n```. `\r?` before the newline tolerates CRLF
+  // source text (pasted/Windows-authored messages) - without it, the fence's
+  // opening line never matches, the block is silently treated as plain text,
+  // and its "Run" affordance never appears.
+  const regex = /```(\w*)\r?\n([\s\S]*?)```/g;
   let match: RegExpExecArray | null;
   let index = 0;
 

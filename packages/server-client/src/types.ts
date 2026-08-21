@@ -359,12 +359,56 @@ export interface SymbolicFillArea {
  * binary (Parquet) transports. Arrays may be empty when the model carries no
  * 2D symbols.
  */
+/**
+ * Present only when extraction stopped at its bound; absent when the file was
+ * emitted in full.
+ */
+/**
+ * Which bound stopped an extraction early.
+ *
+ * Mirrors `SymbolicTruncationReason` in `rust/processing/src/symbolic/output_cap.rs`,
+ * serialized kebab-case. The extraction bounds (`element-count`, `output-bytes`)
+ * are the severe ones and outrank the per-item bounds, which stop one
+ * representation item's contribution while the whole-file totals can sit far
+ * below either extraction bound.
+ */
+export type SymbolicTruncationReason =
+  | 'element-count'
+  | 'output-bytes'
+  | 'item-depth'
+  | 'item-revisits';
+
+export interface SymbolicTruncation {
+  /** Which bound fired. */
+  reason: SymbolicTruncationReason;
+  /** Total primitives emitted. */
+  emitted: number;
+  /**
+   * The bound's numeric value, when the reason has one.
+   *
+   * ABSENT for `item-depth` and `item-revisits`: those bounds are per
+   * representation item, so there is no file-level number to compare `emitted`
+   * against, and rendering "showing {emitted} of {limit}" for them would
+   * invent a relationship that does not exist.
+   */
+  limit?: number;
+}
+
 export interface SymbolicData {
   grid_axes: SymbolicGridAxis[];
   polylines: SymbolicPolyline[];
   circles: SymbolicCircle[];
   texts: SymbolicText[];
   fills: SymbolicFillArea[];
+  /**
+   * Set when the server bounded this extraction and returned a partial result.
+   *
+   * Optional because it is omitted for a complete extraction, so an existing
+   * consumer keeps compiling. But a consumer that renders symbolic geometry
+   * without reading this shows a clipped drawing as though it were the whole
+   * drawing, which is the failure this field exists to end.
+   */
+  truncated?: SymbolicTruncation;
 }
 
 /**

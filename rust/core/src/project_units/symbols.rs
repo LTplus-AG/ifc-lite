@@ -222,6 +222,17 @@ mod tests {
     }
 
     #[test]
+    fn prefixed_volume_uses_cubed_power() {
+        // A milli cubic-metre must scale by (1e-3)^3, not (1e-3)^1 or (1e-3)^2:
+        // `prefix_power` for CUBIC_METRE is untested at any non-default value
+        // without this, so a regression collapsing the cube to a square (or to
+        // no power at all) would pass every other test in this file.
+        let (sym, scale) = si_unit_symbol_and_scale("CUBIC_METRE", Some("MILLI")).unwrap();
+        assert_eq!(sym, "mm\u{00B3}");
+        assert!((scale - 1e-9).abs() < 1e-24, "expected 1e-9 (cubed), got {scale}");
+    }
+
+    #[test]
     fn bare_square_metre() {
         let (sym, scale) = si_unit_symbol_and_scale("SQUARE_METRE", None).unwrap();
         assert_eq!(sym, "m\u{00B2}");

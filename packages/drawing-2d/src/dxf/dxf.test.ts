@@ -325,6 +325,24 @@ describe('DXF parser', () => {
     expect(layerByName(underlay, '0').paths).toHaveLength(1);
   });
 
+  it('scales $INSUNITS=21 (US Survey Feet) using the exact 1200/3937 m definition, not the international foot', () => {
+    const text =
+      pairsToText(
+        [0, 'SECTION'],
+        [2, 'HEADER'],
+        [9, '$INSUNITS'],
+        [70, 21],
+        [0, 'ENDSEC'],
+      ) +
+      entitiesSection([0, 'LINE'], [8, '0'], [10, 0], [20, 0], [11, 1], [21, 0]);
+    const underlay = importDxf(text);
+    // US Survey Foot = 1200/3937 m exactly (~0.3048006096012192), NOT 0.3048.
+    expect(underlay.unitScale).toBeCloseTo(1200 / 3937, 12);
+    // The 2ppm difference from the international foot must be preserved.
+    expect(underlay.unitScale).not.toBeCloseTo(0.3048, 9);
+    expect(underlay.warnings.some((w) => w.includes('Unknown $INSUNITS'))).toBe(false);
+  });
+
   it('rejects binary DXF and malformed group codes with clear errors', () => {
     expect(() => parseDxf('AutoCAD Binary DXF\r\n rubbish')).toThrow(/Binary DXF/);
     expect(() => parseDxf('0\nSECTION\nnot-a-code\nvalue\n')).toThrow(/group code/);

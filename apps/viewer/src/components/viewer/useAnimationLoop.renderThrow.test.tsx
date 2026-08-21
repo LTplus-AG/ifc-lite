@@ -121,6 +121,7 @@ function baseParams(renderer: Renderer): UseAnimationLoopParams {
     clearColorRef: ref<[number, number, number, number]>([1, 1, 1, 1]),
     visualEnhancementRef: ref({ enabled: false }),
     environmentRef: ref({}),
+    sunShadowsRef: ref(null),
     sectionPlaneRef: ref({ axis: 'y', position: 0, enabled: false, flipped: false }),
     sectionRangeRef: ref<{ min: number; max: number } | null>(null),
     selectedEntityIdsRef: ref<Set<number> | undefined>(undefined),

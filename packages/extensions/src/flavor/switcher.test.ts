@@ -3,7 +3,11 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it, vi } from 'vitest';
-import { switchFlavor, type FlavorSwitcherCallbacks } from './switcher.js';
+import {
+  activeFlavorPointerAlreadyStored,
+  switchFlavor,
+  type FlavorSwitcherCallbacks,
+} from './switcher.js';
 import type { Flavor, FlavorExtension } from './types.js';
 
 function flavor(id: string, extensionIds: string[]): Flavor {
@@ -111,6 +115,188 @@ describe('switchFlavor', () => {
       target: flavor('flv.b', ['ext.b']),
       current: flavor('flv.a', []),
       installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+  });
+  it('does not fail the switch when the refused pointer write already stored the target', async () => {
+    // The pointer write is refused, but the pointer on disk already names the
+    // target: that write would have changed nothing, so the extension toggles
+    // that landed must stand and the switch must report success.
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockResolvedValue('flv.b'),
+    });
+    const result = await switchFlavor({
+      target: flavor('flv.b', ['ext.b']),
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.active.id).toBe('flv.b');
+    expect(result.failures).toEqual([]);
+    expect(result.enabled).toEqual(['ext.b']);
+    // No rollback: ext.b stays enabled.
+    const calls = (callbacks.setEnabled as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toEqual([['ext.b', true]]);
+  });
+
+  it('still fails when the refused pointer write would have stored a different id', async () => {
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockResolvedValue('flv.a'),
+    });
+    const result = await switchFlavor({
+      target: flavor('flv.b', ['ext.b']),
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+    const calls = (callbacks.setEnabled as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(['ext.b', false]);
+  });
+
+  it('still fails when the pointer is unreadable', async () => {
+    // One-directional: anything not provably identical is a refusal, which is
+    // the behaviour a host without the callback already had.
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockRejectedValue(new Error('read io')),
+    });
+    const result = await switchFlavor({
+      target: flavor('flv.b', ['ext.b']),
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+  });
+
+  it('still fails when the host cannot read the pointer back at all', async () => {
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+    });
+    expect(callbacks.readActiveFlavor).toBeUndefined();
+    const result = await switchFlavor({
+      target: flavor('flv.b', ['ext.b']),
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+  });
+
+  it('reports a refused pointer write when the host handed a non-function readActiveFlavor', async () => {
+    // `FlavorSwitcherCallbacks` is a published export, so a JS consumer can
+    // hand a non-function here. The no-op check must answer "not provably a
+    // no-op" and take the normal refusal path — it must not throw out of
+    // `switchFlavor`, which would skip the rollback and leave the toggles the
+    // switch had already applied in place.
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: true as unknown as () => Promise<string | undefined>,
+    });
+    const result = await switchFlavor({
+      target: flavor('flv.b', ['ext.b']),
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+    // The toggle that landed is rolled back, not left applied.
+    const calls = (callbacks.setEnabled as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(['ext.b', false]);
+  });
+
+  it('reports a refused pointer write when building the pointer throws', async () => {
+    // Same contract for a target whose id cannot be read: the no-op check
+    // answers `false` and the switch rejects the write by returning, so the
+    // rollback still runs.
+    const target = flavor('flv.b', ['ext.b']);
+    Object.defineProperty(target, 'id', {
+      get() {
+        throw new Error('id getter blew up');
+      },
+    });
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockResolvedValue(undefined),
+    });
+    const result = await switchFlavor({
+      target,
+      current: flavor('flv.a', []),
+      installed: [{ id: 'ext.b', enabled: false }],
+      callbacks,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContain('<pointer>');
+    const calls = (callbacks.setEnabled as ReturnType<typeof vi.fn>).mock.calls;
+    expect(calls).toContainEqual(['ext.b', false]);
+  });
+
+  it('compares the pointer against the id it hands setActiveFlavor, not the current flavor', async () => {
+    // Guards the compare-the-wrong-pair mutant: reading back `current.id` and
+    // calling that a no-op would pass the stored pointer off as the target.
+    const seen: string[] = [];
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn(async (id: string) => {
+        seen.push(id);
+        throw new Error('pointer io');
+      }),
+      readActiveFlavor: vi.fn().mockResolvedValue('flv.a'),
+    });
+    const result = await switchFlavor({
+      target: flavor('flv.b', []),
+      current: flavor('flv.a', []),
+      installed: [],
+      callbacks,
+    });
+    expect(seen).toEqual(['flv.b']);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe('activeFlavorPointerAlreadyStored', () => {
+  it('is true only when the stored pointer is exactly the value to be written', async () => {
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.a', 'flv.a')).toBe(true);
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.b', 'flv.a')).toBe(false);
+    expect(await activeFlavorPointerAlreadyStored(async () => undefined, 'flv.a')).toBe(false);
+  });
+
+  it('is false when the host cannot read the pointer back', async () => {
+    expect(await activeFlavorPointerAlreadyStored(undefined, 'flv.a')).toBe(false);
+    expect(
+      await activeFlavorPointerAlreadyStored(() => Promise.reject(new Error('io')), 'flv.a'),
+    ).toBe(false);
+  });
+
+  it('is false for a non-string pointer, even against an unset pointer', async () => {
+    // The unsafe direction: `undefined === undefined` would report a refused
+    // write with nothing stored as a successful one. The type forbids the
+    // input, so this pins the behaviour if it ever arrives anyway.
+    const missing = undefined as unknown as string;
+    expect(await activeFlavorPointerAlreadyStored(async () => undefined, missing)).toBe(false);
+    expect(await activeFlavorPointerAlreadyStored(async () => 'flv.a', missing)).toBe(false);
+  });
+
+  it('backs the switcher: a target with no id never passes a refused write', async () => {
+    const callbacks = makeCallbacks({
+      setActiveFlavor: vi.fn().mockRejectedValue(new Error('pointer io')),
+      readActiveFlavor: vi.fn().mockResolvedValue(undefined),
+    });
+    const target = flavor('flv.b', []);
+    (target as { id?: string }).id = undefined;
+    const result = await switchFlavor({
+      target,
+      current: flavor('flv.a', []),
+      installed: [],
       callbacks,
     });
     expect(result.ok).toBe(false);

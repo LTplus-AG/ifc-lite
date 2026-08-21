@@ -254,7 +254,9 @@ function roundTo(v: number, decimals: number): number {
  *
  * `schemaVersion` is the schema the chain is built FOR. Callers that will
  * export to a different schema than the model was parsed from have to pass the
- * target, because this shape is not schema-neutral.
+ * target, because this shape is not schema-neutral. IFC2X3 is the only version
+ * that needs the wrapper, so the test is for it by name and every later schema
+ * takes the default.
  */
 export function emitSurfaceStyle(
   editor: StoreEditor,

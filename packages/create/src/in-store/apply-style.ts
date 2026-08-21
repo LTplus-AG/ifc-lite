@@ -64,11 +64,13 @@ export interface ApplyStyleOptions {
    * schema than the model was parsed from therefore needs the target passed in;
    * otherwise the emitted records are invalid for the file they land in.
    *
-   * Typed as the union `bim.export.ifc` takes rather than a bare string: the
-   * two are halves of one decision, and a near-miss like `'IFC2x3'` would
-   * otherwise typecheck and silently emit the IFC4 shape.
+   * Typed as the store's own schema union rather than a bare string: the two
+   * are halves of one decision, and a near-miss like `'IFC2x3'` would otherwise
+   * typecheck and silently emit the IFC4 shape. IFC2X3 is the only member that
+   * differs; IFC4, IFC4X3 and IFC5 all take the `IfcSurfaceStyle` directly,
+   * which is why the branch tests for IFC2X3 rather than listing the rest.
    */
-  schema?: 'IFC2X3' | 'IFC4' | 'IFC4X3';
+  schema?: IfcDataStore['schemaVersion'];
 }
 
 /**

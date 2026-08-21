@@ -726,7 +726,7 @@ test('the vacuous-pass guard still accepts a describe-wrapped shared-suite runne
     "import { describe } from 'vitest';",
     'for (const mode of modes) {',
     '  for (const recursive of recursionModes) {',
-    "    describe(`mode=${mode}`, () => { runConformanceSuite(provider); });",
+    `    describe(\`mode=\${mode}\`, () => { runConformanceSuite(provider); });`,
     '  }',
     '}',
   ].join('\n');

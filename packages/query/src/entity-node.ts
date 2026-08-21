@@ -8,6 +8,7 @@
 
 import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import { getRawNamedAttributes, extractRootAttributesFromEntity } from '@ifc-lite/parser';
+import { resolveEntityTypeName } from './resolve-type-name.js';
 import { RelationshipType } from '@ifc-lite/data';
 
 function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
@@ -130,8 +131,9 @@ export class EntityNode {
   }
 
   get type(): string {
-    return this.store.entities.getTypeName(this.expressId);
+    return resolveEntityTypeName(this.store, this.expressId);
   }
+
 
   // Spatial containment
   contains(): EntityNode[] {

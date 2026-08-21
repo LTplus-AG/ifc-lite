@@ -446,6 +446,12 @@ export class ExtensionHostService {
       setActiveFlavor: async (id) => {
         await this.flavors.activate(id);
       },
+      // Lets the switcher tell a refused pointer write that would have changed
+      // nothing — re-applying the flavor that is already active — from one
+      // that would have moved the pointer. Without it every refusal undoes the
+      // extension toggles that landed and throws below, skipping the lens,
+      // clash and sidebar restores.
+      readActiveFlavor: () => this.flavors.activeId(),
     });
 
     if (!result.ok) {
@@ -484,7 +490,16 @@ export class ExtensionHostService {
       const config = deserializeClashConfig((target.settings as Record<string, unknown> | undefined)?.clash);
       if (config) {
         const { useViewerStore } = await import('@/store');
-        useViewerStore.getState().applyClashFlavorConfig(config);
+        const applied = useViewerStore.getState().applyClashFlavorConfig(config);
+        // The slice leaves the previous clash config in place when the write is
+        // refused, so there is nothing to undo here — only a reason to report.
+        // This service is deliberately free of UI deps (see the late imports
+        // above), and throwing would abort the sidebar restore below and mark
+        // the whole switch as failed, which it was not; a warning is what is
+        // available at this layer.
+        if (!applied.ok) {
+          console.warn('[ext-host] clash config was not persisted on switch:', applied.message);
+        }
       }
     } catch (err) {
       console.warn('[ext-host] clash restore on switch failed:', err);

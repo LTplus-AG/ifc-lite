@@ -418,16 +418,45 @@ function marshalValueWithGuard(
     // `bim.export.ifc()` returns exactly this shape once STEP output exceeds
     // V8's string-length limit and the SDK falls back to `Uint8Array` chunks
     // (see step-exporter.ts), so a script that works on small models silently
-    // gets junk on large ones. `DataView` is excluded: it's a byte-range
-    // view, not a sequence of elements, and has no index keys to mangle in
-    // the first place — falling through to the generic branch below just
-    // marshals it as `{}`, its actual (empty) own-property shape.
-    const arrayLikeValue =
-      ArrayBuffer.isView(value) && !(value instanceof DataView)
-        ? (Array.from(value as unknown as ArrayLike<number>) as unknown[])
-        : Array.isArray(value)
-          ? value
-          : undefined;
+    // gets junk on large ones.
+    //
+    // Three view kinds are excluded and fall through to the generic branch,
+    // which marshals them as their actual own-property shape:
+    //  - `DataView`: a byte-range accessor, not a sequence of elements. It
+    //    has no index keys to mangle, and `Array.from` reads its absent
+    //    `length` as 0 and answers `[]` — "zero elements" instead of "not a
+    //    sequence". The generic branch gives `{}`.
+    //  - `BigInt64Array` / `BigUint64Array`: their elements are bigints,
+    //    which this marshaller has no representation for and turns into
+    //    `null`. As an array that reads back as `[null, null]` — correct
+    //    `.length`, `Array.isArray` true, indistinguishable from a genuine
+    //    array of nulls. `{ "0": null, "1": null }` loses exactly as much but
+    //    cannot be mistaken for a sequence of numbers the script can use.
+    // The tag test rather than `instanceof` so a view from another realm
+    // (a worker's structured clone) is classified the same as a local one.
+    const viewTag = ArrayBuffer.isView(value) ? Object.prototype.toString.call(value) : '';
+    const isElementView =
+      viewTag !== '' &&
+      viewTag !== '[object DataView]' &&
+      viewTag !== '[object BigInt64Array]' &&
+      viewTag !== '[object BigUint64Array]';
+    let arrayLikeValue: unknown[] | undefined;
+    if (isElementView) {
+      try {
+        arrayLikeValue = Array.from(value as unknown as ArrayLike<number>);
+      } catch {
+        // Every element read on a view whose `ArrayBuffer` has been detached
+        // throws, `Array.from` included — and detaching is what transferring
+        // the buffer to a worker does, i.e. the large-model export path this
+        // branch was added for. Letting that escape would fail the entire
+        // `bim.*` call over one value; degrade to the generic branch instead,
+        // which yields `{}` (a detached view has no own keys) exactly as this
+        // marshaller did before the typed-array branch existed.
+        arrayLikeValue = undefined;
+      }
+    } else if (Array.isArray(value)) {
+      arrayLikeValue = value;
+    }
     if (arrayLikeValue) {
       const arr = vm.newArray();
       try {

@@ -195,3 +195,45 @@ describe('marshalValue cycle guard', () => {
     expect(value).toEqual({ level: 0, child: { level: 1, back: null } });
   });
 });
+
+describe('marshalValue hostile typed-array inputs', () => {
+  it('degrades a detached typed array instead of killing the whole call', async () => {
+    // Transferring an ArrayBuffer to a worker detaches it — the large-model
+    // export path does exactly this. Every element access on the view then
+    // throws from host code, `Array.from` included, and an escaping throw
+    // takes down the entire `bim.*` call rather than one value.
+    const view = new Uint8Array([1, 2, 3]);
+    structuredClone(view.buffer, { transfer: [view.buffer] });
+    expect(view.byteLength, 'fixture must actually be detached').toBe(0);
+
+    const { sdk } = stubSdk({ json: () => ({ chunk: view, ok: 'still here' }) });
+    const value = await withSandbox(sdk, (run) => run(`bim.export.json([], [])`));
+    // The rest of the payload must survive: the failure being fixed is that
+    // `ok` never reached the script at all.
+    expect(value).toEqual({ chunk: {}, ok: 'still here' });
+  });
+
+  it('does not hand a script a plausible-looking array of nulls for 64-bit ints', async () => {
+    // BigInt64Array elements are bigints, which marshal to null. As an array
+    // that is `[null, null]` — `Array.isArray` true, `.length` correct, and
+    // indistinguishable from a genuine array of nulls. The object shape is
+    // just as lossy but visibly not a sequence of numbers.
+    const { sdk } = stubSdk({ json: () => new BigInt64Array([1n, 2n]) });
+    const value = await withSandbox(sdk, (run) =>
+      run(`const r = bim.export.json([], []); JSON.stringify({ isArray: Array.isArray(r), r })`),
+    );
+    expect(value).toBe('{"isArray":false,"r":{"0":null,"1":null}}');
+  });
+
+  it('does not turn a DataView into an array of its byte range', async () => {
+    // A DataView is a byte-range accessor, not a sequence of elements: it has
+    // no index properties, and `Array.from` reads its `length` as undefined
+    // and answers `[]` — an empty array a script reads as "zero elements"
+    // rather than "not a sequence".
+    const { sdk } = stubSdk({ json: () => new DataView(new Uint8Array([7, 8]).buffer) });
+    const value = await withSandbox(sdk, (run) =>
+      run(`const r = bim.export.json([], []); JSON.stringify({ isArray: Array.isArray(r), r })`),
+    );
+    expect(value).toBe('{"isArray":false,"r":{}}');
+  });
+});

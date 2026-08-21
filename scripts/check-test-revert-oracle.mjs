@@ -58,6 +58,9 @@
  *                       reverse-applied. Use it for sub-expression findings and
  *                       to escape an INCONCLUSIVE.
  *   --test <path>       restrict the tests that get run (repeatable)
+ *   --root <dir>        repository to operate on (default: this script's repo).
+ *                       Lets you point a version of the oracle you trust at a
+ *                       checkout that predates it.
  *   --json              emit a machine-readable result alongside the report
  */
 
@@ -80,7 +83,9 @@ import {
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const rootFlag = process.argv.indexOf('--root');
+const ROOT = rootFlag === -1 ? SELF_ROOT : resolve(process.argv[rootFlag + 1] ?? SELF_ROOT);
 
 // Restoration state, declared before the first abort path can fire: `die()`
 // consults it, and a `let` in the temporal dead zone would throw instead.
@@ -138,6 +143,7 @@ function parseArgs(argv) {
     else if (a === '--only') opts.only.push(next());
     else if (a === '--test') opts.tests.push(next());
     else if (a === '--mutation') opts.mutation = next();
+    else if (a === '--root') next(); // already consumed above, before ROOT is frozen
     else if (a === '--json') opts.json = true;
     else if (a === '--help' || a === '-h') {
       console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);

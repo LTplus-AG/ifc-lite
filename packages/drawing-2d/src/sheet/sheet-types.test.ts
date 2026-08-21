@@ -25,9 +25,13 @@
  * wraps it with the correction for whichever axis the caller's `flipY` /
  * `flipX` say is wrong (Y: plan/'down' sections; X: 'side' sections). Both
  * `Drawing2DCanvas.tsx` (preview) and `useDrawingExport.ts`'s
- * `generateSheetSVG` (print/export) now call `calculateDrawingTransformForAxis`
- * with the SAME `flipY`/`flipX` so they can never again disagree on where
- * the drawing lands on the sheet — see the second `describe` block below,
+ * `generateSheetSVG` (print/export) now reach `calculateDrawingTransformForAxis`
+ * through one shared resolver that derives `flipY`/`flipX` from the section
+ * axis, so neither derives the correction on its own. (The flip correction
+ * is only half of "the preview and the print agree": the placement can also
+ * come from the pinned-transform cache, which lives in the viewer, not
+ * here — see `apps/viewer/src/lib/drawing/sheet-transform.ts`.) See the
+ * second `describe` block below,
  * and issue #2940 (print showed different, wrongly-centered extents than
  * the preview: first for a plan section whose bounds were not symmetric
  * about Y=0, and — the X-axis half of the same defect class, fixed

@@ -58,6 +58,10 @@ import {
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
+import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
+
+/** The preview's placement-cache ref, as this file passes it in. */
+type CacheRef = { current: CachedSheetTransform | null };
 
 // happy-dom has no `window.alert` — the production error path calls it on
 // failure, which would otherwise throw `ReferenceError: alert is not
@@ -203,10 +207,13 @@ function buildPlanDrawing(): Drawing2D {
 interface HarnessProps {
   activeSheet: DrawingSheet;
   drawing: Drawing2D;
+  axis: 'down' | 'front' | 'side';
+  isPinned: boolean;
+  cachedSheetTransformRef: CacheRef;
   onReady: (fn: (scaleFactor?: number) => void) => void;
 }
 
-function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
+function Harness({ activeSheet, drawing, axis, isPinned, cachedSheetTransformRef, onReady }: HarnessProps): null {
   const { handleExportPDF } = useDrawingExport({
     drawing,
     displayOptions: {
@@ -216,7 +223,7 @@ function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
       scanSectionOpacity: 0,
       scanSectionIncludeInExport: false,
     },
-    sectionPlane: { axis: 'down', position: 50, flipped: false },
+    sectionPlane: { axis, position: 50, flipped: false },
     activePresetId: null,
     entityColorMap: new Map(),
     overridesEnabled: false,
@@ -231,6 +238,8 @@ function Harness({ activeSheet, drawing, onReady }: HarnessProps): null {
     ifcDataStore: null,
     coordinateInfo: undefined,
     scanSection: { points: [] },
+    isPinned,
+    cachedSheetTransformRef,
   });
   onReady(handleExportPDF);
   return null;
@@ -293,10 +302,28 @@ function stubRasterization(): {
   };
 }
 
-async function exportPdfForSheet(sheet: DrawingSheet, drawing: Drawing2D = buildDrawing()): Promise<{
+interface ExportOptions {
+  /** Section axis the hook is mounted with. Defaults to 'down' — the axis
+   *  every pre-existing case in this file used. */
+  axis?: 'down' | 'front' | 'side';
+  /** Pin View state, and the preview's placement cache the export must read
+   *  through while pinned. */
+  isPinned?: boolean;
+  cached?: CachedSheetTransform | null;
+}
+
+async function exportPdfForSheet(
+  sheet: DrawingSheet,
+  drawing: Drawing2D = buildDrawing(),
+  options: ExportOptions = {},
+): Promise<{
   addImageArgs: unknown[];
   svg: string;
+  /** The cache entry AFTER the export — export must never write to it. */
+  cacheAfter: CachedSheetTransform | null;
 }> {
+  const { axis = 'down', isPinned = false, cached = null } = options;
+  const cachedSheetTransformRef: CacheRef = { current: cached };
   const rasterStub = stubRasterization();
   const container = document.createElement('div');
   document.body.appendChild(container);
@@ -331,6 +358,9 @@ async function exportPdfForSheet(sheet: DrawingSheet, drawing: Drawing2D = build
         <Harness
           activeSheet={sheet}
           drawing={drawing}
+          axis={axis}
+          isPinned={isPinned}
+          cachedSheetTransformRef={cachedSheetTransformRef}
           onReady={(fn) => {
             exportFn = fn;
           }}
@@ -347,7 +377,7 @@ async function exportPdfForSheet(sheet: DrawingSheet, drawing: Drawing2D = build
     if (rasterStub.capturedSvg.value === null) {
       throw new Error('expected the sheet SVG to have been rasterized (Blob spy never fired)');
     }
-    return { addImageArgs, svg: rasterStub.capturedSvg.value };
+    return { addImageArgs, svg: rasterStub.capturedSvg.value, cacheAfter: cachedSheetTransformRef.current };
   } finally {
     jsPDFApi.addImage = originalAddImage;
     rasterStub.restore();
@@ -459,5 +489,181 @@ describe('handleExportPDF — Drawing Sheet mode (#2941/#2942)', () => {
       Math.abs(uncorrectedTranslateYDelta) > 1,
       `fixture does not distinguish corrected vs. uncorrected transform (delta ${uncorrectedTranslateYDelta}mm) — strengthen it`
     );
+  });
+});
+
+/** Viewport centre is exactly (110, 60) mm on paper. A sheet built with
+ *  `calculateViewportBounds` gives fractional bounds, which makes a
+ *  hand-computed expected position unreadable; overriding `viewportBounds`
+ *  with round values is what lets the assertions below be ABSOLUTE numbers
+ *  rather than a second call into the production helper. */
+const ROUND_VIEWPORT = { x: 10, y: 10, width: 200, height: 100 };
+
+function buildSheetWithRoundViewport(id = 'sheet-round'): DrawingSheet {
+  const sheet = buildSheet('A3_LANDSCAPE', 100, '1:100');
+  return { ...sheet, id, viewportBounds: { ...ROUND_VIEWPORT } };
+}
+
+/** A 10m x 6m section at x 2..12, y 3..9 — asymmetric about BOTH axes, so
+ *  neither flip correction can be dropped without moving the drawing. The
+ *  line runs (2,3) -> (12,9), so the svg's first `<line>` reports where
+ *  those two corners land. */
+function buildAsymmetricDrawing(): Drawing2D {
+  return {
+    ...buildPlanDrawing(),
+    lines: [
+      {
+        line: { start: { x: 2, y: 3 }, end: { x: 12, y: 9 } },
+        category: 'projection',
+        visibility: 'visible',
+        entityId: 1,
+        ifcType: 'IfcWall',
+        modelIndex: 0,
+        depth: 0,
+      },
+    ],
+    bounds: { min: { x: 2, y: 3 }, max: { x: 12, y: 9 } },
+  };
+}
+
+/**
+ * Hand-computed placement for `buildAsymmetricDrawing()` on
+ * `buildSheetWithRoundViewport()` (1:100 -> 10mm per metre):
+ *
+ *   fitScale        = min(200*.95/100, 100*.95/60, 1)  = 1
+ *   scaleFactor     = 10
+ *   base.translateX = 10 + (200-100)/2 - 2*10          = 40
+ *   base.translateY = 10 + (100-60)/2 + 9*10           = 120
+ *
+ *   'down'  (flipX=false, flipY=false): tX 40,  tY 0
+ *   'front' (flipX=false, flipY=true) : tX 40,  tY 120
+ *   'side'  (flipX=true,  flipY=true) : tX 180, tY 120
+ *
+ * so the line's endpoints land at (paper mm):
+ *   'down'  (2,3) -> (60, 30)  ; (12,9) -> (160, 90)
+ *   'front' (2,3) -> (60, 90)  ; (12,9) -> (160, 30)
+ *   'side'  (2,3) -> (160, 90) ; (12,9) -> (60, 30)
+ */
+const EXPECTED_ENDPOINTS: Record<'down' | 'front' | 'side', { x1: number; y1: number; x2: number; y2: number }> = {
+  down: { x1: 60, y1: 30, x2: 160, y2: 90 },
+  front: { x1: 60, y1: 90, x2: 160, y2: 30 },
+  side: { x1: 160, y1: 90, x2: 60, y2: 30 },
+};
+
+function closeTo(actual: number, expected: number, what: string): void {
+  assert.ok(Math.abs(actual - expected) < 0.01, `${what}: expected ${expected}, got ${actual}`);
+}
+
+describe("generateSheetSVG — every section axis, not just 'down' (review gap on the flipX fix)", () => {
+  // Before this block every case in this file mounted the hook with
+  // `axis: 'down'`, where `flipX` is false. Mutating `generateSheetSVG`'s
+  // resolver call to pass a hard `flipX: false` — recreating exactly the
+  // off-centre 'side' section the fix exists to prevent — left all four
+  // green (verified by running the mutation). The 'side' behaviour was
+  // asserted only by reading a one-line pass-through.
+  for (const axis of ['down', 'front', 'side'] as const) {
+    it(`places a '${axis}' section's endpoints at their hand-computed paper mm`, async () => {
+      const sheet = buildSheetWithRoundViewport();
+      const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), { axis });
+      const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+      const expected = EXPECTED_ENDPOINTS[axis];
+      closeTo(x1, expected.x1, `${axis} x1`);
+      closeTo(y1, expected.y1, `${axis} y1`);
+      closeTo(x2, expected.x2, `${axis} x2`);
+      closeTo(y2, expected.y2, `${axis} y2`);
+    });
+  }
+
+  it("keeps 'side' distinct from 'front' — the flipX correction is not a no-op on this fixture", () => {
+    // Guards the fixture, not the code: with bounds symmetric about X=0 the
+    // correction term `(minX + maxX) * scaleFactor` is zero and the 'side'
+    // case above could not fail.
+    assert.notEqual(EXPECTED_ENDPOINTS.side.x1, EXPECTED_ENDPOINTS.front.x1);
+  });
+});
+
+describe('generateSheetSVG — pinned placement, shared with the preview', () => {
+  // The second divergence, on the DEFAULT path: `useDrawingExport` was
+  // never given `isPinned` or the preview's placement cache, so it
+  // recomputed the transform from the CURRENT drawing bounds while a pinned
+  // preview kept the held one. `sheetGeometryKeyOf` deliberately excludes
+  // the drawing bounds (bounds are what pinning holds constant), so after a
+  // regenerate at a new elevation the cache stayed valid, the preview kept
+  // the held placement, and the print computed a different one. Pin View
+  // defaults ON.
+  const heldFor = (sheet: DrawingSheet): CachedSheetTransform => ({
+    key: sheetGeometryKeyOf(sheet),
+    translateX: 33,
+    translateY: 44,
+    scaleFactor: 5,
+  });
+
+  it('prints at the HELD placement while pinned, not a fresh fit of the current bounds', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const held = heldFor(sheet);
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: true,
+      cached: held,
+    });
+    const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
+    // 'side' flips both axes, so with the held placement
+    // (2,3)  -> (-2*5 + 33,  -3*5 + 44) = (23, 29)
+    // (12,9) -> (-12*5 + 33, -9*5 + 44) = (-27, -1)
+    closeTo(x1, 23, 'held x1');
+    closeTo(y1, 29, 'held y1');
+    closeTo(x2, -27, 'held x2');
+    closeTo(y2, -1, 'held y2');
+    // And that is NOT what an unpinned fit of these bounds would produce.
+    assert.notEqual(x1, EXPECTED_ENDPOINTS.side.x1);
+  });
+
+  it('ignores the cache when NOT pinned — the unpinned path still auto-fits', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: heldFor(sheet),
+    });
+    const { x1, y1 } = parseLineEndpoints(svg);
+    closeTo(x1, EXPECTED_ENDPOINTS.side.x1, 'unpinned x1');
+    closeTo(y1, EXPECTED_ENDPOINTS.side.y1, 'unpinned y1');
+  });
+
+  it('rejects a cache entry tagged with a DIFFERENT sheet geometry, even when pinned', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    const stale: CachedSheetTransform = {
+      ...heldFor(sheet),
+      key: sheetGeometryKeyOf(buildSheetWithRoundViewport('some-other-sheet')),
+    };
+    const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: true,
+      cached: stale,
+    });
+    const { x1, y1 } = parseLineEndpoints(svg);
+    closeTo(x1, EXPECTED_ENDPOINTS.side.x1, 'stale-key x1');
+    closeTo(y1, EXPECTED_ENDPOINTS.side.y1, 'stale-key y1');
+  });
+
+  it('NEVER writes the cache — printing must not move what is on screen', async () => {
+    const sheet = buildSheetWithRoundViewport();
+    // Unpinned, so the export computes a fresh placement: the tempting bug
+    // is to write that fresh value back, which would shove the pinned
+    // preview to a new position the moment the user hits Print.
+    const { cacheAfter } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: null,
+    });
+    assert.equal(cacheAfter, null, 'the export path must not populate the preview cache');
+
+    const held = heldFor(sheet);
+    const { cacheAfter: after } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
+      axis: 'side',
+      isPinned: false,
+      cached: { ...held },
+    });
+    assert.deepEqual(after, held, 'the export path must not overwrite an existing cache entry');
   });
 });

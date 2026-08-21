@@ -191,8 +191,13 @@ export function calculateDrawingTransform(
  *
  * Call this instead of `calculateDrawingTransform` directly wherever the
  * axis's flip behavior is known, so every sheet consumer (screen preview,
- * print, SVG/PDF export) computes the identical, correctly-centered
- * transform from one place.
+ * print, SVG/PDF export) derives the flip correction from one place rather
+ * than each re-deriving it. Note this function is the geometry only: it
+ * takes no view state, so two callers still agree only insofar as they pass
+ * the same `flipY`/`flipX` AND resolve any cached/pinned placement the same
+ * way. The viewer routes both sheet consumers through one resolver
+ * (`apps/viewer/src/lib/drawing/sheet-transform.ts`) for exactly that
+ * reason.
  *
  * `translateX` needs the mirror-image correction, but gated the OPPOSITE
  * way from `translateY`: `calculateDrawingTransform`'s `translateX` bakes

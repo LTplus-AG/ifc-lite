@@ -562,13 +562,15 @@ impl SymbolicRepresentationCollection {
         self.polylines.len() + self.circles.len() + self.texts.len() + self.fills.len()
     }
 
-    /// Check if collection is empty
+    /// Check if collection is empty. A TRUNCATED result never is, even with no
+    /// primitives; the reasoning and the parity test are in `symbolic_truncation.rs`.
     #[wasm_bindgen(getter, js_name = isEmpty)]
     pub fn is_empty(&self) -> bool {
         self.polylines.is_empty()
             && self.circles.is_empty()
             && self.texts.is_empty()
             && self.fills.is_empty()
+            && self.truncated.is_none()
     }
 
     /// Get polyline at index

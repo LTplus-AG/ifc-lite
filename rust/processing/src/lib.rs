@@ -73,8 +73,7 @@ pub use simplify_session::{simplify_element, SimplifiedElement, SimplifyRecordIn
 pub use style::{default_color_for_type, Rgba, TRANSPARENCY_ALPHA_THRESHOLD};
 pub use symbolic::{
     extract_symbolic_data, SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis,
-    SymbolicTruncation,
-    SymbolicPolyline, SymbolicText,
+    SymbolicPolyline, SymbolicText, SymbolicTruncation, SymbolicTruncationReason,
 };
 pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{

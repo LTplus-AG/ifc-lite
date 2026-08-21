@@ -79,7 +79,7 @@ mod text;
 mod transform;
 mod trimmed_curve;
 
-pub use output_cap::SymbolicTruncation;
+pub use output_cap::{SymbolicTruncation, SymbolicTruncationReason};
 pub use primitives::{
     SymbolicCircle, SymbolicData, SymbolicFillArea, SymbolicGridAxis, SymbolicPolyline, SymbolicText,
 };

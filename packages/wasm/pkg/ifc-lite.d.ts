@@ -1566,7 +1566,8 @@ export class SymbolicRepresentationCollection {
      */
     readonly fillCount: number;
     /**
-     * Check if collection is empty
+     * Check if collection is empty. A TRUNCATED result never is, even with no
+     * primitives; the reasoning and the parity test are in `symbolic_truncation.rs`.
      */
     readonly isEmpty: boolean;
     /**

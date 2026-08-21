@@ -17,6 +17,13 @@ import {
     type LightingEnvironment,
 } from './environment.js';
 
+/**
+ * Bytes of the sun shadow uniform (#2670): lightViewProj mat4 (64) + two vec4
+ * param rows (32). Row 1 = (texelSize, enabled, normalBias, pcfRadius); row 2 =
+ * (depthBias, _, _, _). Kept in lockstep with the WGSL `Shadow` struct.
+ */
+const SHADOW_UNIFORM_SIZE = 96;
+
 export class RenderPipeline {
     private device: GPUDevice;
     private webgpuDevice: WebGPUDevice;
@@ -62,6 +69,17 @@ export class RenderPipeline {
     private environmentBindGroup: GPUBindGroup;
     private environmentBindGroupLayout: GPUBindGroupLayout;
     private environmentScratch = new Float32Array(ENVIRONMENT_UNIFORM_SIZE / 4);
+    // Sun shadow map (#2670, Phase 2b): the depth map lives in ShadowPass; the
+    // environment bind group (group 1) carries a view of it at binding 1, a
+    // comparison sampler at binding 2, and the light matrix + params at binding
+    // 3 — so EVERY main-family pipeline (all already bind group 1) can sample
+    // shadows with no pipeline-layout change. A 1×1 dummy depth texture is
+    // bound while shadows are off (the uniform's `enabled` flag gates sampling).
+    private shadowSampler: GPUSampler;
+    private shadowUniformBuffer: GPUBuffer;
+    private dummyShadowTexture: GPUTexture;
+    private dummyShadowView: GPUTextureView;
+    private currentShadowView: GPUTextureView;
     private currentWidth: number;
     private currentHeight: number;
 
@@ -129,11 +147,28 @@ export class RenderPipeline {
 
         // Lighting environment at group(1) — written once per frame from
         // RenderOptions.environment, initialized to the legacy default look.
+        // Bindings 1..3 carry the sun shadow map (#2670): depth texture,
+        // comparison sampler, and the light matrix + params uniform.
         this.environmentBindGroupLayout = this.device.createBindGroupLayout({
             label: 'environment-bgl',
             entries: [
                 {
                     binding: 0,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    buffer: { type: 'uniform' },
+                },
+                {
+                    binding: 1,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    texture: { sampleType: 'depth' },
+                },
+                {
+                    binding: 2,
+                    visibility: GPUShaderStage.FRAGMENT,
+                    sampler: { type: 'comparison' },
+                },
+                {
+                    binding: 3,
                     visibility: GPUShaderStage.FRAGMENT,
                     buffer: { type: 'uniform' },
                 },
@@ -144,10 +179,30 @@ export class RenderPipeline {
             size: ENVIRONMENT_UNIFORM_SIZE,
             usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
         });
-        this.environmentBindGroup = this.device.createBindGroup({
-            layout: this.environmentBindGroupLayout,
-            entries: [{ binding: 0, resource: { buffer: this.environmentBuffer } }],
+        // Shadow-sampling resources. The comparison direction mirrors the
+        // reverse-Z depth pass (a receiver is lit when its depth is ≥ the stored
+        // closest-occluder depth). The dummy 1×1 depth texture is bound whenever
+        // no shadow map is active.
+        this.shadowSampler = this.device.createSampler({
+            label: 'shadow-cmp-sampler',
+            compare: 'greater-equal',
+            magFilter: 'linear',
+            minFilter: 'linear',
         });
+        this.shadowUniformBuffer = this.device.createBuffer({
+            label: 'shadow-uniforms',
+            size: SHADOW_UNIFORM_SIZE,
+            usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+        });
+        this.dummyShadowTexture = this.device.createTexture({
+            label: 'shadow-dummy-depth',
+            size: { width: 1, height: 1 },
+            format: 'depth32float',
+            usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+        });
+        this.dummyShadowView = this.dummyShadowTexture.createView();
+        this.currentShadowView = this.dummyShadowView;
+        this.environmentBindGroup = this.buildEnvironmentBindGroup();
         this.updateEnvironment();
 
         // Create shader module with PBR lighting, section plane clipping, and selection outline
@@ -655,6 +710,38 @@ export class RenderPipeline {
         return this.environmentBindGroup;
     }
 
+    /** (Re)build the group(1) bind group over the current shadow depth view. */
+    private buildEnvironmentBindGroup(): GPUBindGroup {
+        return this.device.createBindGroup({
+            label: 'environment-bg',
+            layout: this.environmentBindGroupLayout,
+            entries: [
+                { binding: 0, resource: { buffer: this.environmentBuffer } },
+                { binding: 1, resource: this.currentShadowView },
+                { binding: 2, resource: this.shadowSampler },
+                { binding: 3, resource: { buffer: this.shadowUniformBuffer } },
+            ],
+        });
+    }
+
+    /**
+     * Point the environment bind group at the active shadow depth map (#2670).
+     * Pass `null` to fall back to the 1×1 dummy (shadows off). Rebuilds the bind
+     * group only when the view actually changes, so a steady enabled/disabled
+     * state costs nothing per frame.
+     */
+    setShadowDepthView(view: GPUTextureView | null): void {
+        const next = view ?? this.dummyShadowView;
+        if (next === this.currentShadowView) return;
+        this.currentShadowView = next;
+        this.environmentBindGroup = this.buildEnvironmentBindGroup();
+    }
+
+    /** Write the sun shadow uniform (light matrix + params). 96 bytes. */
+    updateShadowUniform(data: Float32Array): void {
+        this.device.queue.writeBuffer(this.shadowUniformBuffer, 0, data);
+    }
+
     /**
      * Check if resize is needed
      */
@@ -859,5 +946,7 @@ export class RenderPipeline {
         this.multisampleTextureView = null;
         this.uniformBuffer.destroy();
         this.environmentBuffer.destroy();
+        this.shadowUniformBuffer.destroy();
+        this.dummyShadowTexture.destroy();
     }
 }

@@ -124,7 +124,16 @@ export function runValidationInWorker(
       locale: args.locale,
       includePassingEntities: args.includePassingEntities,
     };
-    worker.postMessage(request);
+    try {
+      worker.postMessage(request);
+    } catch (err) {
+      // postMessage can itself throw (e.g. a DataCloneError from structured
+      // clone). A throw here happens after the worker is spawned and its
+      // handlers attached, so without this catch the Promise executor's
+      // synchronous throw auto-rejects the returned promise while nothing
+      // ever calls settle() — the worker thread is left running forever.
+      settle(() => reject(err instanceof Error ? err : new Error(String(err))));
+    }
   });
 }
 

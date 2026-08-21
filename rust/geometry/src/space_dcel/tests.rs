@@ -51,6 +51,100 @@
         assert!((gross - 13.44).abs() < 1e-3, "gross (outer faces) = 13.44, got {gross}");
     }
 
+    /// `gap_boundary` must offset each edge by ITS OWN wall's half-thickness.
+    ///
+    /// Every other fixture in this file gives all four walls the same thickness,
+    /// which makes the per-edge read at the top of `gap_boundary` unobservable:
+    /// permuting `half_thickness` around the cycle moves nothing, so the entire
+    /// crate suite stayed green with that read pointing at the neighbouring edge
+    /// (#3013). The read is reached -- `build_from_wall_rects` calls
+    /// `gap_boundary` for its axis lift -- it just was not pinned.
+    ///
+    /// Area does not separate the cases either: offsetting a rectangle by a
+    /// permutation of the same four numbers only permutes which side each one
+    /// lands on, and an opposite-side swap leaves the area identical. That is
+    /// the lesson #2913 recorded -- assert a POSITION the mutation actually
+    /// moves.
+    ///
+    /// So: four DISTINCT half-thicknesses and an assertion per side. Each side
+    /// of the offset rectangle is displaced by exactly one edge's
+    /// half-thickness, so any misrouting of the read moves at least one side.
+    /// Bounds are taken as min/max rather than by vertex index, so this pins the
+    /// geometry and not which corner the face cycle happens to start at.
+    #[test]
+    fn gap_boundary_offsets_each_edge_by_its_own_half_thickness() {
+        // CCW 4x3 centreline room; `rect` yields bottom, right, top, left.
+        let corners = rect(0.0, 0.0, 4.0, 3.0);
+        let halves: [f64; 4] = [0.10, 0.25, 0.40, 0.55]; // bottom, right, top, left
+        // The fixture can only see the defect while these differ; a future edit
+        // making them uniform would silently restore the blind spot this test
+        // exists to close.
+        for i in 0..halves.len() {
+            for j in (i + 1)..halves.len() {
+                assert!(
+                    (halves[i] - halves[j]).abs() > 1e-9,
+                    "the four half-thicknesses must stay distinct, or a permuted \
+                     read becomes unobservable again"
+                );
+            }
+        }
+        let segs: Vec<InputSegment> = (0..4)
+            .map(|i| {
+                InputSegment::new(corners[i], corners[(i + 1) % 4], Some(200 + i as u32))
+                    .with_half_thickness(halves[i])
+            })
+            .collect();
+        let plate = SpacePlate::build(&segs, BuildOptions::default());
+        assert_eq!(plate.room_count(), 1);
+        let room = plate.rooms().next().unwrap();
+
+        let bounds = |ring: &[[f64; 2]]| {
+            ring.iter().fold(
+                [f64::MAX, f64::MIN, f64::MAX, f64::MIN],
+                |[lo_x, hi_x, lo_y, hi_y], p| {
+                    [lo_x.min(p[0]), hi_x.max(p[0]), lo_y.min(p[1]), hi_y.max(p[1])]
+                },
+            )
+        };
+        // Sanity: the un-offset outline is the centreline rectangle itself.
+        let [cx0, cx1, cy0, cy1] = bounds(&plate.face_outline(room));
+        for (got, want, what) in
+            [(cx0, 0.0, "left"), (cx1, 4.0, "right"), (cy0, 0.0, "bottom"), (cy1, 3.0, "top")]
+        {
+            assert!((got - want).abs() < 1e-9, "centreline {what} = {want}, got {got}");
+        }
+
+        // factor = 1 pushes each side out by that side's own half-thickness.
+        let [x0, x1, y0, y1] = bounds(&plate.gap_boundary(room, 1.0));
+        for (got, want, what) in [
+            (x0, -0.55, "left (half 0.55)"),
+            (x1, 4.25, "right (half 0.25)"),
+            (y0, -0.10, "bottom (half 0.10)"),
+            (y1, 3.40, "top (half 0.40)"),
+        ] {
+            assert!(
+                (got - want).abs() < 1e-6,
+                "factor=1: {what} side must sit at {want}, got {got} — a side at \
+                 another edge's offset means the per-edge half_thickness read is \
+                 misrouted"
+            );
+        }
+
+        // factor = 2 must scale each side's OWN offset, not a shared one.
+        let [dx0, dx1, dy0, dy1] = bounds(&plate.gap_boundary(room, 2.0));
+        for (got, want, what) in [
+            (dx0, -1.10, "left (2 x 0.55)"),
+            (dx1, 4.50, "right (2 x 0.25)"),
+            (dy0, -0.20, "bottom (2 x 0.10)"),
+            (dy1, 3.80, "top (2 x 0.40)"),
+        ] {
+            assert!(
+                (got - want).abs() < 1e-6,
+                "factor=2: {what} side must sit at {want}, got {got}"
+            );
+        }
+    }
+
     #[test]
     fn face_based_edits_preserve_room_classification() {
         // The 4-wall box → one gap room. `is_room` is set once at build and

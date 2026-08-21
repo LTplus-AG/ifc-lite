@@ -41,6 +41,12 @@
  * ownership bookkeeping for the same channels.
  */
 
+import {
+  releaseOwnedVisibility,
+  sameMembers,
+  type VisibilityOwnership,
+} from '../visibility/ownership.js';
+
 /**
  * What clash last installed into a shared visibility channel, and which one.
  * `null` means clash owns neither channel — including after a `highlight`-mode
@@ -49,35 +55,19 @@
  * The installed CONTENT is kept, not just the channel name, because ownership
  * is tested by value: see `releaseOwnedClashVisibility`.
  */
-export type ClashVisibilityOwnership =
-  | { channel: 'ghost' | 'isolate'; ids: ReadonlySet<number> }
-  | null;
+export type ClashVisibilityOwnership = VisibilityOwnership;
 
 /**
- * Content equality for the ownership record. The shared channels are only ever
- * REPLACED wholesale (every slice setter stores a fresh `Set`), never mutated
- * in place, so equal members mean the channel still shows exactly the
- * presentation clash installed.
+ * Content equality for the ownership record — re-exported from
+ * `lib/visibility/ownership.ts`, which now holds the one implementation.
  *
- * Ownership is tested by VALUE, not by `Set` reference: reference identity
- * would be exact, but it is destroyed by every flow that snapshots and later
- * restores the channel with equal content in a fresh `Set` — Space Sketch's
- * open/close view capture (`useSpaceSceneFraming` clones the prior sets and
- * replays them through the cloning slice setters) and a source-model resync
- * (`syncSourceModel` rebuilds the kept sets even when nothing was filtered).
- * Under reference identity those flows silently converted a clash-owned focus
- * into "user" state, so the next run replaced the result set but left the old
- * pair isolated/ghosted (#2662 P2). Value identity survives any content-
- * preserving rewrite, and its one false positive is harmless by construction:
- * it only fires when the channel shows EXACTLY the presentation clash
- * installed, in which case releasing it renders precisely what discarding the
- * clash focus should render.
+ * IDS's per-row focus (#2867) records and releases its own claim on the same
+ * two channels, and two subsystems arbitrating the same channel with two
+ * copies of the same predicate is precisely the shape that drifts. See that
+ * module's doc for WHY ownership is tested by value and not by `Set`
+ * reference (#2662 P2).
  */
-export function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
-  if (a.size !== b.size) return false;
-  for (const id of a) if (!b.has(id)) return false;
-  return true;
-}
+export { sameMembers };
 
 /** The store surface `releaseOwnedClashVisibility` reads and writes. Every
  *  member is optional: `modelSlice`'s own tests drive the model actions through
@@ -122,17 +112,7 @@ export interface ClashVisibilityChannels {
  *   the paint channel too (see `endClashScenePresentation`).
  */
 export function releaseOwnedClashVisibility(state: ClashVisibilityChannels): boolean {
-  const owned = state.clashVisibilityOwned ?? null;
-  if (!owned) return false;
-  const current =
-    owned.channel === 'isolate'
-      ? state.isolatedEntities ?? null
-      : state.ghostExceptEntities ?? null;
-  const stillOurs = current !== null && sameMembers(current, owned.ids);
-  if (stillOurs) {
-    if (owned.channel === 'isolate') state.clearIsolation?.();
-    else state.clearGhost?.();
-  }
+  const stillOurs = releaseOwnedVisibility(state, state.clashVisibilityOwned ?? null);
   state.setClashVisibilityOwned?.(null);
   return stillOurs;
 }

@@ -20,6 +20,22 @@ export type ColorTuple = [number, number, number, number];
 export const DEFAULT_FAILED_COLOR: ColorTuple = [0.9, 0.2, 0.2, 1.0];
 export const DEFAULT_PASSED_COLOR: ColorTuple = [0.2, 0.8, 0.2, 1.0];
 
+/**
+ * The colour the ROW the user just activated is painted, on top of the report
+ * overlay (#2867).
+ *
+ * The reported problem is that an activated element cannot be found: it keeps
+ * the report red (failed) or green (passed), so it looks exactly like every
+ * other failing element around it. A third, distinct hue is what separates
+ * "the one I clicked" from "the ones near it", and it has to be far from BOTH
+ * report colours to do that — hence cyan rather than a lighter red.
+ *
+ * Pushed through the colour-override channel (the albedo path the lens and the
+ * clash pair tint use), not the selection outline, so it survives batched and
+ * GPU-instanced geometry and shows in all three focus modes.
+ */
+export const IDS_FOCUS_COLOR: ColorTuple = [0.0, 0.75, 1.0, 1.0];
+
 /** Display options controlling which entities get color overrides */
 export interface ColorDisplayOptions {
   highlightFailed: boolean;

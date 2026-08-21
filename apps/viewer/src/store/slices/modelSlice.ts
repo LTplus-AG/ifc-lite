@@ -18,6 +18,10 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { federationRegistry, type GlobalIdLookup } from '@ifc-lite/renderer';
 import {
+  releaseOwnedIdsFocusVisibility,
+  type IDSFocusVisibilityChannels,
+} from '../../lib/ids/visibility-ownership.js';
+import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
@@ -316,6 +320,16 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // — verified against `mutationSlice.clearMutations` — but that is a
     // property of today's implementations, not of this call site.
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'model-removed');
+
+    // The IDS per-row focus (#2867) owns the same two shared channels clash
+    // does — `focusEntity` installs the activated row's element into
+    // `isolatedEntities` or `ghostExceptEntities` — and a row isolation left
+    // standing over a federation that just changed is the same blank viewport
+    // #2654 describes, with nothing on screen to explain it. Released by
+    // IDS's OWN record, so a presentation belonging to clash, the spaces
+    // X-ray or IDS's set-level isolate buttons survives untouched. This must
+    // also precede the IDS clears below, which drop the record.
+    releaseOwnedIdsFocusVisibility(get() as unknown as IDSFocusVisibilityChannels);
 
     // If the removed model is the one the current IDS report describes, that
     // report is stale by definition — its results reference a model that no
@@ -624,6 +638,12 @@ export const createModelSlice: StateCreator<ModelSlice & ModelCrossSliceState, [
     // nothing left for either to refer to, and `resetViewerState`
     // (store/index.ts) has always nulled the visibility fields here.
     endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
+    // Same claim, released the same way: with every model gone the clash
+    // helper above has already cleared both channels outright, so this
+    // normally just drops the record — which it must, because a record that
+    // outlives its presentation re-matches as soon as any other owner
+    // installs equal content (#2654 fourth review).
+    releaseOwnedIdsFocusVisibility(get() as unknown as IDSFocusVisibilityChannels);
     // Clear the federation registry
     federationRegistry.clear();
     // Same dangling reference as `removeModel`'s `addElementModelId` cleanup

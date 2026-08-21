@@ -96,7 +96,7 @@ export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from '
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
 // Re-export IDS types
-export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode } from './slices/idsSlice.js';
+export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
 // Re-export List types
 export type { ListSlice } from './slices/listSlice.js';
@@ -469,6 +469,14 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       idsError: null,
       idsActiveSpecificationId: null,
       idsActiveEntityId: null,
+      // The per-row focus's claim on the shared isolate/ghost channels
+      // (#2867) goes with the row it belonged to. Both channels are nulled by
+      // this same `set`, so there is nothing left to release — but the RECORD
+      // must not survive: ownership is tested by value, so a record left
+      // behind starts matching again the moment another owner installs equal
+      // content, and the next release destroys that owner's presentation
+      // (#2654 fourth review).
+      idsFocusVisibilityOwned: null,
       // Keep idsDocument, idsValidationReport, idsLocale - user's work
 
       // Lists - reset result but keep definitions (user's saved lists)

@@ -67,6 +67,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useIDS } from '@/hooks/useIDS';
+import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import type {
   IDSSpecificationResult,
@@ -76,6 +77,7 @@ import type {
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
+import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
@@ -468,6 +470,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     isolationScope,
     isolateMode,
     isolationActive,
+    focusMode,
 
     // Actions
     loadIDSFile,
@@ -475,9 +478,10 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     runValidation,
     clearValidation,
     setActiveSpecification,
-    selectEntity,
+    focusEntity,
     setFilterMode,
     setIsolationScope,
+    setFocusMode,
     applyColors,
     isolateFailed,
     isolatePassed,
@@ -508,6 +512,16 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   // updates once a run completes. Hold the user's in-flight choice locally so
   // the dropdown keeps showing the model being validated instead of snapping
   // back to the previous one while `loading` (#1702 C3).
+  // Leaving the panel ends the ROW focus presentation (#2867): an isolate- or
+  // ghost-mode focus would otherwise leave the model isolated on, or faded
+  // around, an element whose panel is gone — the same reason `ClashPanel` has
+  // an unmount cleanup. Ownership-scoped, so a presentation belonging to
+  // clash, the spaces X-ray or IDS's own set-level isolate buttons is left
+  // exactly as the user left it.
+  useEffect(() => () => {
+    releaseOwnedIdsFocusVisibility(useViewerStore.getState());
+  }, []);
+
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   useEffect(() => {
     // Once a run settles (report landed or errored), fall back to the report's
@@ -548,10 +562,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     fileInputRef.current?.click();
   }, [loadIdsFromDialog]);
 
-  // Handle entity click
+  // Handle entity click. The row's focus MODE (highlight / isolate / ghost) is
+  // the user's persistent choice, applied by `focusEntity` — activating a row
+  // used to select, colour nothing extra and frame, which in a dense model
+  // left the element indistinguishable from the failures around it (#2867).
   const handleEntityClick = useCallback((modelId: string, expressId: number) => {
-    selectEntity(modelId, expressId);
-  }, [selectEntity]);
+    focusEntity(modelId, expressId);
+  }, [focusEntity]);
 
   // Active state for the isolate toggle buttons. A button is "active" only
   // when ITS mode is applied AND isolation is still live, so an externally
@@ -915,6 +932,34 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
             bcfExportProgress={bcfExportProgress}
             report={report}
           />
+        </div>
+
+        {/* On-select focus mode (#2867) — the same control, the same wording
+            and the same three modes as the clash panel's, because it is the
+            same action: how the rest of the model is shown when you activate
+            one result row. */}
+        <div className="flex items-center gap-1 px-2 py-1 border-b text-[11px] text-muted-foreground">
+          <span>On select:</span>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {([
+              ['highlight', 'Highlight', 'Keep the whole model visible'],
+              ['isolate', 'Isolate', 'Hide everything except the selected element'],
+              ['ghost', 'Ghost', 'Fade the rest to translucent context (X-Ray)'],
+            ] as [IDSFocusMode, string, string][]).map(([m, label, tip]) => (
+              <button
+                key={m}
+                title={tip}
+                aria-pressed={focusMode === m}
+                onClick={() => setFocusMode(m)}
+                className={cn(
+                  'px-1.5 py-0.5 transition-colors',
+                  focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Specifications List */}

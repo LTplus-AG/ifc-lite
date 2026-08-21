@@ -45,9 +45,12 @@ import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient
 import {
   DEFAULT_FAILED_COLOR,
   DEFAULT_PASSED_COLOR,
+  IDS_FOCUS_COLOR,
   buildValidationColorUpdates,
   buildRestoreColorUpdates,
 } from './ids/idsColorSystem';
+import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
+import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
 import { posthog } from '../lib/analytics';
@@ -102,6 +105,11 @@ export interface UseIDSResult {
   isolationScope: 'ids' | 'spec';
   /** Which isolate action is currently applied by IDS (null = none) */
   isolateMode: 'failed' | 'passed' | 'involved' | null;
+  /**
+   * How activating a single result row presents the rest of the model
+   * (#2867) — the clash panel's three focus modes, applied per IDS row.
+   */
+  focusMode: IDSFocusMode;
   /** True when any entity isolation is currently active in the 3D view */
   isolationActive: boolean;
   /** Display options */
@@ -129,8 +137,17 @@ export interface UseIDSResult {
   // Selection actions
   /** Set active specification for filtering */
   setActiveSpecification: (specId: string | null) => void;
-  /** Select an entity from results (syncs to 3D view and zooms) */
-  selectEntity: (modelId: string, expressId: number, zoomToEntity?: boolean) => void;
+  /**
+   * Activate an entity from the results: select it, paint it a colour its
+   * peers do not share, frame it, and present the rest of the model according
+   * to `mode` (defaults to the persistent `focusMode`) — #2867.
+   */
+  focusEntity: (
+    modelId: string,
+    expressId: number,
+    mode?: IDSFocusMode,
+    zoomToEntity?: boolean,
+  ) => void;
   /** Clear entity selection */
   clearEntitySelection: () => void;
 
@@ -145,6 +162,8 @@ export interface UseIDSResult {
   setFilterMode: (mode: 'all' | 'failed' | 'passed') => void;
   /** Set the isolation/color scope (whole report vs active spec) */
   setIsolationScope: (scope: 'ids' | 'spec') => void;
+  /** Set the per-row focus mode, and re-apply it to the active row (#2867) */
+  setFocusMode: (mode: IDSFocusMode) => void;
   /** Update display options */
   setDisplayOptions: (options: Partial<UseIDSResult['displayOptions']>) => void;
 
@@ -222,6 +241,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const filterMode = useViewerStore((s) => s.idsFilterMode);
   const isolationScope = useViewerStore((s) => s.idsIsolationScope);
   const isolateMode = useViewerStore((s) => s.idsIsolateMode);
+  const focusMode = useViewerStore((s) => s.idsFocusMode);
   const displayOptions = useViewerStore((s) => s.idsDisplayOptions);
 
   // IDS store actions
@@ -242,6 +262,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const setIdsFilterMode = useViewerStore((s) => s.setIdsFilterMode);
   const setIdsIsolationScope = useViewerStore((s) => s.setIdsIsolationScope);
   const setIdsIsolateMode = useViewerStore((s) => s.setIdsIsolateMode);
+  const setIdsFocusMode = useViewerStore((s) => s.setIdsFocusMode);
   const setIdsDisplayOptions = useViewerStore((s) => s.setIdsDisplayOptions);
   const idsFailedEntityIds = useViewerStore((s) => s.idsFailedEntityIds);
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
@@ -531,41 +552,8 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   // Selection Actions
   // ============================================================================
 
-  const selectEntity = useCallback((modelId: string, expressId: number, zoomToEntity = true) => {
-
-    // Update IDS state
-    setIdsActiveEntity({ modelId, expressId });
-
-    // Sync to viewer selection
-    // Handle legacy mode vs federation mode
-    const isLegacyMode = modelId === '__legacy__' || modelId === 'legacy' || models.size === 0;
-
-    if (isLegacyMode) {
-      // Legacy mode: globalId equals expressId, use 'legacy' for selection
-      setSelectedEntityId(expressId);
-      // Use 'legacy' as the modelId for PropertiesPanel compatibility
-      setSelectedEntity({ modelId: 'legacy', expressId });
-    } else {
-      // Federation mode: use the store helper so ID resolution stays centralized.
-      const globalId = toViewerGlobalId(modelId, expressId);
-      if (globalId == null) return;
-      setSelectedEntityId(globalId);
-      setSelectedEntity({ modelId, expressId });
-    }
-
-    // Zoom to entity after a small delay to ensure selection is processed
-    if (zoomToEntity && cameraCallbacks.frameSelection) {
-      setTimeout(() => {
-        cameraCallbacks.frameSelection?.();
-      }, 50);
-    }
-  }, [setIdsActiveEntity, setSelectedEntityId, setSelectedEntity, models, cameraCallbacks, toViewerGlobalId]);
-
-  const clearEntitySelection = useCallback(() => {
-    setIdsActiveEntity(null);
-    setSelectedEntityId(null);
-    setSelectedEntity(null);
-  }, [setIdsActiveEntity, setSelectedEntityId, setSelectedEntity]);
+  // `focusEntity` / `clearEntitySelection` live further down, after the colour
+  // helpers they build on (`buildColors`) — see "Row Focus (#2867)".
 
   // ============================================================================
   // UI Actions
@@ -646,6 +634,174 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     originalColorsRef.current.clear();
   }, [setPendingColorUpdates]);
 
+
+  // ============================================================================
+  // Row Focus (#2867)
+  // ============================================================================
+
+  /**
+   * Install the row focus's isolation into the SHARED channel, recording
+   * exactly what was installed so the release can release only that.
+   *
+   * Mirrors `useClash.installClashIsolation`, including the read-BACK: the
+   * slice setter clones, and the record must hold what the channel actually
+   * shows, or ownership (tested by value) would never match again.
+   */
+  const installFocusIsolation = useCallback((ids: Set<number>): void => {
+    const state = useViewerStore.getState();
+    state.setIsolatedEntities(ids);
+    const installed = useViewerStore.getState().isolatedEntities;
+    state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
+  }, []);
+
+  /** Install the row focus's ghosting (X-Ray context) into the shared channel,
+   *  with the same install-record contract as `installFocusIsolation`. */
+  const installFocusGhost = useCallback((ids: Set<number>): void => {
+    const state = useViewerStore.getState();
+    state.setGhostExceptEntities(ids);
+    const installed = useViewerStore.getState().ghostExceptEntities;
+    state.setIdsFocusVisibilityOwned(installed ? { channel: 'ghost', ids: installed } : null);
+  }, []);
+
+  /**
+   * Release the isolation/ghost the ROW FOCUS itself installed — and only
+   * that. A clash focus, a spaces X-ray, "Isolate in 3D" or IDS's own
+   * set-level isolate buttons occupying the channel instead do not
+   * content-match the record and survive untouched.
+   */
+  const releaseFocusVisibility = useCallback((): void => {
+    releaseOwnedIdsFocusVisibility(useViewerStore.getState());
+  }, []);
+
+  /**
+   * The colour overlay the report is currently showing, with the focused row
+   * (if any) repainted in {@link IDS_FOCUS_COLOR}.
+   *
+   * The focus colour is ADDED to the report overlay rather than replacing it:
+   * the surrounding red/green is the context that makes "this one is the row I
+   * clicked" mean anything. Scoped exactly as the isolate actions are — the
+   * active spec's own verdict in 'spec' scope, the whole report otherwise — so
+   * activating a row never silently changes which verdict is on screen.
+   *
+   * Does nothing without a report: IDS is not colouring then, and pushing a
+   * map here would take the colour-override channel away from whoever is (a
+   * lens, clash) — the same reason `restoreReportColors` returns early.
+   */
+  const paintFocus = useCallback((focusedGlobalId: number | null): void => {
+    if (!report) return;
+    const colors = isolationScope === 'spec' && activeSpecificationId
+      ? buildColors(activeSpecificationId, true)
+      : buildColors();
+    if (focusedGlobalId != null) colors.set(focusedGlobalId, IDS_FOCUS_COLOR);
+    setPendingColorUpdates(colors);
+  }, [report, isolationScope, activeSpecificationId, buildColors, setPendingColorUpdates]);
+
+  /**
+   * Apply a focus mode to the activated row's element in the shared visibility
+   * channels — the IDS spelling of `useClash.applyFocusMode`:
+   *
+   * - `highlight`: release whatever the row focus itself installed, and take
+   *   no claim. Unlike clash's `highlight`, this does NOT clear both channels
+   *   outright: IDS has set-level isolation of its own (`isolateFailed` and
+   *   friends) that the user may have established deliberately, and clicking a
+   *   row must not silently discard it. Releasing by ownership discards the
+   *   previous ROW presentation and nothing else.
+   * - `isolate`: hide everything except the activated element.
+   * - `ghost`:   keep it solid and fade the rest to translucent context.
+   *
+   * A row focus that installs into a channel supersedes any set-level
+   * isolation that was showing (both slice setters replace the channel
+   * wholesale), so `idsIsolateMode` is cleared with it — otherwise the isolate
+   * buttons keep a pressed state for an isolation no longer on screen.
+   */
+  const applyFocusMode = useCallback((globalId: number, mode: IDSFocusMode): void => {
+    if (mode === 'highlight') {
+      releaseFocusVisibility();
+      return;
+    }
+    if (mode === 'isolate') installFocusIsolation(new Set([globalId]));
+    else installFocusGhost(new Set([globalId]));
+    setIdsIsolateMode(null);
+  }, [releaseFocusVisibility, installFocusIsolation, installFocusGhost, setIdsIsolateMode]);
+
+  const focusEntity = useCallback((
+    modelId: string,
+    expressId: number,
+    mode: IDSFocusMode = focusMode,
+    zoomToEntity = true,
+  ) => {
+    // Update IDS state
+    setIdsActiveEntity({ modelId, expressId });
+
+    // Sync to viewer selection
+    // Handle legacy mode vs federation mode
+    const isLegacyMode = modelId === '__legacy__' || modelId === 'legacy' || models.size === 0;
+
+    if (isLegacyMode) {
+      // Legacy mode: globalId equals expressId, use 'legacy' for selection
+      setSelectedEntityId(expressId);
+      // Use 'legacy' as the modelId for PropertiesPanel compatibility
+      setSelectedEntity({ modelId: 'legacy', expressId });
+    } else {
+      // Federation mode: use the store helper so ID resolution stays centralized.
+      const federatedId = toViewerGlobalId(modelId, expressId);
+      if (federatedId == null) return;
+      setSelectedEntityId(federatedId);
+      setSelectedEntity({ modelId, expressId });
+    }
+
+    // The isolation / ghost / colour-override channels are all keyed by GLOBAL
+    // id — the same id the selection above carries.
+    const globalId = toViewerGlobalId(modelId, expressId);
+    if (globalId != null) {
+      applyFocusMode(globalId, mode);
+      // Selection alone is an outline; in a crowd of equally-red failures that
+      // is exactly what the user reported they cannot find (#2867). The colour
+      // override repaints the albedo, so it also survives batched and
+      // GPU-instanced geometry.
+      paintFocus(globalId);
+    }
+
+    // Zoom to entity after a small delay to ensure selection is processed
+    if (zoomToEntity && cameraCallbacks.frameSelection) {
+      setTimeout(() => {
+        cameraCallbacks.frameSelection?.();
+      }, 50);
+    }
+  }, [
+    focusMode,
+    setIdsActiveEntity,
+    setSelectedEntityId,
+    setSelectedEntity,
+    models,
+    cameraCallbacks,
+    toViewerGlobalId,
+    applyFocusMode,
+    paintFocus,
+  ]);
+
+  /** Switch the focus mode and immediately re-apply it to the active row, so
+   *  the change is visible without re-clicking the row (mirrors
+   *  `ClashPanel.changeFocusMode`, #1275). Re-framing is suppressed: the user
+   *  is changing how they look at the row they are already on, not asking to
+   *  travel to it again. */
+  const setFocusModeAction = useCallback((mode: IDSFocusMode) => {
+    setIdsFocusMode(mode);
+    const active = useViewerStore.getState().idsActiveEntityId;
+    if (active) focusEntity(active.modelId, active.expressId, mode, false);
+  }, [setIdsFocusMode, focusEntity]);
+
+  const clearEntitySelection = useCallback(() => {
+    setIdsActiveEntity(null);
+    setSelectedEntityId(null);
+    setSelectedEntity(null);
+    // The row focus's presentation ends with the row: its isolation/ghost is
+    // released by ownership (so another feature's is left alone), and the
+    // focus tint is repainted back to the plain report overlay.
+    releaseFocusVisibility();
+    paintFocus(null);
+  }, [setIdsActiveEntity, setSelectedEntityId, setSelectedEntity, releaseFocusVisibility, paintFocus]);
+
   // Ref to store applyColors for stable useEffect (prevents infinite loops)
   const applyColorsRef = useRef(applyColors);
   applyColorsRef.current = applyColors;
@@ -693,12 +849,25 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     return ids;
   }, [keyToGlobalId]);
 
+  /**
+   * Install a SET-level isolation (the isolate-failed / passed / involved
+   * buttons). Unowned, exactly as before — but it replaces the channel
+   * wholesale, so any ROW-focus claim on it is now stale and must be dropped:
+   * a record that outlives its presentation starts matching again the moment
+   * another owner installs equal content, and the next release then destroys
+   * THAT owner's presentation (#2654 fourth review).
+   */
+  const installSetIsolation = useCallback((ids: Set<number> | null) => {
+    setIsolatedEntities(ids);
+    useViewerStore.getState().setIdsFocusVisibilityOwned(null);
+  }, [setIsolatedEntities]);
+
   const isolateFailed = useCallback(() => {
     if (isolationScope === 'spec') {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getFailedEntitiesForSpec(activeSpecificationId));
       if (ids.size > 0) {
-        setIsolatedEntities(ids);
+        installSetIsolation(ids);
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('failed');
       }
@@ -706,7 +875,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     }
     const failedIds = keySetToGlobalIds(idsFailedEntityIds);
     if (failedIds.size > 0) {
-      setIsolatedEntities(failedIds);
+      installSetIsolation(failedIds);
       setIdsIsolateMode('failed');
     }
   }, [
@@ -716,7 +885,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     refsToGlobalIds,
     keySetToGlobalIds,
     idsFailedEntityIds,
-    setIsolatedEntities,
+    installSetIsolation,
     setSpecColors,
     setIdsIsolateMode,
   ]);
@@ -726,7 +895,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       if (!activeSpecificationId) return;
       const ids = refsToGlobalIds(getPassedEntitiesForSpec(activeSpecificationId));
       if (ids.size > 0) {
-        setIsolatedEntities(ids);
+        installSetIsolation(ids);
         setSpecColors(activeSpecificationId);
         setIdsIsolateMode('passed');
       }
@@ -734,7 +903,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     }
     const passedIds = keySetToGlobalIds(idsPassedEntityIds);
     if (passedIds.size > 0) {
-      setIsolatedEntities(passedIds);
+      installSetIsolation(passedIds);
       setIdsIsolateMode('passed');
     }
   }, [
@@ -744,7 +913,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     refsToGlobalIds,
     keySetToGlobalIds,
     idsPassedEntityIds,
-    setIsolatedEntities,
+    installSetIsolation,
     setSpecColors,
     setIdsIsolateMode,
   ]);
@@ -757,7 +926,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         ...getPassedEntitiesForSpec(targetSpec),
       ]);
       if (ids.size > 0) {
-        setIsolatedEntities(ids);
+        installSetIsolation(ids);
         setSpecColors(targetSpec);
         setIdsIsolateMode('involved');
       } else {
@@ -765,7 +934,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
         // nothing to isolate, so drop any stale isolation/overlay left by a
         // previously selected spec rather than leaving it on screen while
         // the panel points at this (empty) spec.
-        setIsolatedEntities(null);
+        installSetIsolation(null);
         restoreReportColors();
         setIdsIsolateMode(null);
       }
@@ -776,7 +945,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const ids = keySetToGlobalIds(idsFailedEntityIds);
     for (const globalId of keySetToGlobalIds(idsPassedEntityIds)) ids.add(globalId);
     if (ids.size > 0) {
-      setIsolatedEntities(ids);
+      installSetIsolation(ids);
       setPendingColorUpdates(buildColors(undefined, true));
       setIdsIsolateMode('involved');
     }
@@ -789,7 +958,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     keySetToGlobalIds,
     idsFailedEntityIds,
     idsPassedEntityIds,
-    setIsolatedEntities,
+    installSetIsolation,
     setSpecColors,
     restoreReportColors,
     setPendingColorUpdates,
@@ -798,12 +967,18 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   ]);
 
   const clearIsolation = useCallback(() => {
-    setIsolatedEntities(null);
+    // "Show all" ends the ROW focus's presentation too, both channels of it:
+    // `setIsolatedEntities(null)` nulls `ghostExceptEntities` as well (the two
+    // are mutually exclusive — see visibilitySlice), so a row GHOST goes with
+    // a row isolation, and `installSetIsolation` drops the row focus's claim
+    // with it. No separate ownership-scoped release is needed here, and an
+    // added one would be dead code: verified by mutation.
+    installSetIsolation(null);
     // Returning to "show all" restores the default whole-report coloring,
     // replacing any per-spec green/red applied while isolated.
     restoreReportColors();
     setIdsIsolateMode(null);
-  }, [setIsolatedEntities, restoreReportColors, setIdsIsolateMode]);
+  }, [installSetIsolation, restoreReportColors, setIdsIsolateMode]);
 
   const setActiveSpecification = useCallback((specId: string | null) => {
     setIdsActiveSpecification(specId);
@@ -1165,6 +1340,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     filterMode,
     isolationScope,
     isolateMode,
+    focusMode,
     isolationActive: isolatedEntities != null,
     displayOptions,
 
@@ -1179,7 +1355,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
     // Selection actions
     setActiveSpecification,
-    selectEntity,
+    focusEntity,
     clearEntitySelection,
 
     // UI actions
@@ -1188,6 +1364,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     setLocale,
     setFilterMode: setFilterModeAction,
     setIsolationScope,
+    setFocusMode: setFocusModeAction,
     setDisplayOptions: setDisplayOptionsAction,
 
     // Color actions

@@ -369,14 +369,29 @@ jobs:
   # whole 4-vCPU runner to itself, which is what made sharding the answer
   # rather than more concurrency inside one job.
   #
-  # 521 test files, each in its own process paying its own TypeScript transform
-  # (`vite-module-hooks.mjs` keeps no on-disk cache), so a per-file CONSTANT
-  # dominates rather than the assertions. Concurrency divides that constant and
-  # cannot remove it; only running fewer files per job does.
+  # Healthy shard timings, recorded so the next person seeing this lane creep
+  # knows what good looks like rather than only what broken looked like:
+  # 2:29, 2:01, 1:50 against a 25 minute cap.
   #
-  # The real fix underneath is a shared transform cache, which would make the
-  # shards unnecessary. Until then this is honest about being a division of
-  # the work rather than a reduction of it.
+  # Two earlier explanations in this file were WRONG and are corrected here,
+  # because a confident wrong comment is worse than none:
+  #
+  #  - "each process pays its own transform, with no on-disk cache" — tsx DOES
+  #    cache transforms under `os.tmpdir()/tsx-{uid}`. Measured, it barely
+  #    matters either way: the full suite is 112.0s cold versus 110.8s warm.
+  #    The dominant per-file cost is not the transform, it is EVALUATING a
+  #    ~1,200-module import graph in every forked process (~0.4s of ~0.55s).
+  #    So a shared transform cache is NOT the fix; measured benefit ~1%.
+  #
+  #  - "not a hang, just a long task". Turbo buffering explains the silence
+  #    but never proved forward progress. `node:test` has no per-file timeout,
+  #    so ONE never-exiting child holds the runner until the job cap while the
+  #    other slots finish everything else — which is exactly what identical
+  #    25:15 caps across four differently-sized shards look like.
+  #
+  # Hence `--test-timeout` in apps/viewer's script: a hung test now fails by
+  # name in two minutes instead of consuming twenty-five and reading as
+  # slowness. That is the guard this incident was missing.
   #
   # A timed-out lane reports as `cancelled`, which is the SAME word a
   # supersession gets. Separate them by duration against `timeout-minutes`,

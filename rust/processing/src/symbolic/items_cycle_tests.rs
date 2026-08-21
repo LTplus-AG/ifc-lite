@@ -17,6 +17,7 @@ use super::item_walk::{
     extract_symbolic_item, extract_symbolic_item_with_revisit_budget, MAX_ITEM_DEPTH,
     MAX_ITEM_REVISITS,
 };
+use super::output_cap::SymbolicAccumulator;
 use super::primitives::SymbolicData;
 use super::transform::Transform2D;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
@@ -28,7 +29,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicData::default();
+    let mut out = SymbolicAccumulator::new();
     extract_symbolic_item(
         &item,
         &mut decoder,
@@ -42,7 +43,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         &styled,
         &mut out,
     );
-    out
+    out.into_data()
 }
 
 fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
@@ -51,7 +52,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
     let mut decoder = EntityDecoder::with_index(content, index);
     let item = decoder.decode_by_id(start_id).expect("fixture entity decodes");
     let styled: HashMap<u32, Vec<u32>> = HashMap::new();
-    let mut out = SymbolicData::default();
+    let mut out = SymbolicAccumulator::new();
     extract_symbolic_item_with_revisit_budget(
         &item,
         &mut decoder,
@@ -66,7 +67,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         &mut out,
         budget,
     );
-    out
+    out.into_data()
 }
 
 /// Run the walk in a worker thread with a timeout, so a regressed guard is
@@ -81,14 +82,23 @@ fn run_with_timeout(step: String, start_id: u32, secs: u64) -> SymbolicData {
     let handle = std::thread::spawn(move || {
         let _ = tx.send(run(&step, start_id));
     });
-    let outcome = rx.recv_timeout(std::time::Duration::from_secs(secs));
-    assert!(
-        outcome.is_ok(),
-        "extract_symbolic_item did not terminate within {secs}s -- the breadth bound \
-         (MAX_ITEM_REVISITS) is gone; a depth cap and a path guard alone allow k! paths"
-    );
+    // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
+    // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
+    // reports as "did not terminate" — a confident wrong diagnosis pointing at
+    // a guard that is fine (#2945).
+    let value = match rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+        Ok(v) => v,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => panic!(
+            "extract_symbolic_item did not terminate within {secs}s -- the breadth bound \
+             (MAX_ITEM_REVISITS) is gone; a depth cap and a path guard alone allow k! paths"
+        ),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => panic!(
+            "extract_symbolic_item's worker PANICKED (not a hang, so the breadth bound \
+             is not implicated); its panic is printed above"
+        ),
+    };
     let _ = handle.join();
-    outcome.unwrap()
+    value
 }
 
 fn wrap(body: &str) -> String {
@@ -450,7 +460,8 @@ fn a_large_flat_set_is_not_truncated() {
 #[test]
 fn depth_cap_matches_the_mapped_item_family_value() {
     assert_eq!(
-        MAX_ITEM_DEPTH, 32,
+        MAX_ITEM_DEPTH,
+        ifc_lite_core::MAX_MAPPED_ITEM_DEPTH,
         "must equal MAX_MAPPED_ITEM_DEPTH in element.rs, router/processing.rs and color.rs; \
          note this cap charges set elements and curve segments too, so equal values do not \
          mean equal reach"

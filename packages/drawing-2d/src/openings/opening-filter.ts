@@ -24,7 +24,16 @@ import { projectTo2D, getProjectionAxes } from '../math.js';
 export interface OpeningFilterOptions {
   /** Tolerance for point-in-bounds testing (world units) */
   tolerance: number;
-  /** Whether to keep segments at opening boundaries */
+  /**
+   * Declared but never read. The constructor merges it into `this.options`,
+   * but no method consults it: boundary handling is governed entirely by
+   * {@link tolerance}, which inflates the opening bounds in `pointInBounds`
+   * so a larger tolerance drops slightly more of the segment near the edge.
+   * Setting this to `false` does not make boundary segments disappear.
+   * Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the filter — `tolerance` is what governs boundaries.
+   */
   keepBoundarySegments: boolean;
 }
 

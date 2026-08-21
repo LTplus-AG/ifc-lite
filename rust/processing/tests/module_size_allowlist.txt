@@ -160,7 +160,19 @@
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
      586 rust/geometry/src/router/diagnostics.rs
-     659 rust/geometry/src/router/layers.rs
+# +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
+# a file-supplied reference, so one self-referential entity aborted the process
+# (stack overflow = abort in Rust, not a catchable panic). The walk is now
+# ITERATIVE with a visited-id set, matching collect_polygonal_chain in
+# processors/boolean/mod.rs. Iterating is what makes the set sufficient on its
+# own: it breaks on the first repeat, and with no stack to consume there is
+# nothing left for a length cap to protect. A cap would be actively wrong here
+# — #960 records Revit chains 42 DIFFERENCE nodes deep, and bailing on one
+# returns false, silently dropping layer slicing on a file that renders today.
+# A repeat returns false, which is this function's existing "anything exotic
+# bails safely" contract rather than a new special case. Tests are in a sibling
+# layers_cycle_tests.rs.
+     685 rust/geometry/src/router/layers.rs
 # +1: unify body-rep predicate — added is_direct_body_representation + docs; net removes ~60 lines from processing.rs and ~12 from layers.rs (crate trends down).
 # +65: promote the per-router IfcMappedItem source cache to a model-wide SharedMappedItemCache (type alias + field + new_/enable_ setters + unique-count diagnostic), meshing each source once model-wide (#1623).
 # +38: #1623 Phase 2 don't-bake — MappedInstancePlan type alias + output_instancing_plan field + enable_/getter + `mod instancing` decl.
@@ -332,7 +344,14 @@
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
      727 rust/wasm-bindings/src/zero_copy/mesh.rs
-     743 rust/wasm-bindings/src/zero_copy/symbolic.rs
+# symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
+# boundary as `truncatedAt` (#2938). A raise rather than a split because the
+# addition is one field, one assignment in `from_data` and one getter -- the
+# file is a god file for reasons that predate this and splitting it is its own
+# change. The alternative was to drop the flag on the browser path, which is
+# the bug being fixed: geometry is client-side only, so that path is the only
+# way a viewer learns its drawing was clipped.
+     757 rust/wasm-bindings/src/zero_copy/symbolic.rs
 # +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
 # geometry-job discovery path with the same has_geometry_by_name gap as the
 # serial/sharded scans; adds the instance-level exception plus its regression

@@ -804,7 +804,13 @@ fn a_valid_mutations_json_is_still_applied() {
         "#1=IFCWALL('g',$,'OriginalName',$,$,$,$,$,$);\n",
         "ENDSEC;\nEND-ISO-10303-21;\n"
     );
-    let payload = r#"{"attributeUpdates":[{"expressId":1,"index":2,"value":"'RenamedByPayload'"}],
+    // TWO attribute updates at DIFFERENT indices. With only one, "the payload's
+    // index is carried through" and "the index is hard-coded to 2" produce the
+    // same output -- measured: replacing `index: a.index` with `index: 2` in
+    // export_step_json's mapping left all 261 tests in this crate green.
+    // Index 2 is IfcWall's Name, index 3 its Description.
+    let payload = r#"{"attributeUpdates":[{"expressId":1,"index":2,"value":"'RenamedByPayload'"},
+                                          {"expressId":1,"index":3,"value":"'DescFromPayload'"}],
                       "propertyMutations":[{"expressId":1,"psetName":"NewSet","propName":"P","value":"IFCLABEL('v')"}]}"#;
 
     let step = export_step_json(src.as_bytes(), None, None, payload).expect("a valid payload exports");
@@ -815,6 +821,12 @@ fn a_valid_mutations_json_is_still_applied() {
         "attributeUpdates from the JSON payload must reach the output: {wall}"
     );
     assert!(!wall.contains("'OriginalName'"), "the old name must be gone: {wall}");
+    // Positional, not just "contains": each value must land in ITS OWN slot,
+    // which is what makes the per-update index observable.
+    assert_eq!(
+        wall, "#1=IFCWALL('g',$,'RenamedByPayload','DescFromPayload',$,$,$,$,$);",
+        "each attributeUpdate must be written at its own index"
+    );
     assert!(
         step.contains("'NewSet'") && step.contains("IFCLABEL('v')"),
         "propertyMutations from the JSON payload must reach the output too"

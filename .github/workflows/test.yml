@@ -635,6 +635,17 @@ jobs:
       # through a pipe and asserts the bytes that arrive.
       - name: Check lint gate survives a piped stdout
         run: node --test scripts/check-lint-ran.test.mjs
+      # check-tla-chunk-await.mjs runs inside the viewer build, so it is only
+      # ever exercised against whatever that build happens to emit — the one
+      # bundle shape that cannot demonstrate the gate still has teeth. These
+      # tests drive it over synthetic bundles instead: the #2246 minified
+      # single-line importer and its pretty-printed twin must still turn it
+      # red, a correct bundle (including one whose __tla chunk is only
+      # import()ed) must still pass, and each way of inspecting nothing —
+      # missing assets dir, no chunks, chunks but no __tla-wrapped chunk —
+      # must fail rather than tick.
+      - name: Check the TLA chunk-await gate cannot pass vacuously
+        run: node --test scripts/check-tla-chunk-await.test.mjs
       # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
       # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
       # returned twenty lines of prose and the tar two lines down exited 2,

@@ -180,6 +180,40 @@ describe('environmentSlice', () => {
     assert.strictEqual(s.getState().envSunAngle, 1.7);
   });
 
+  // The three tests above pin the SETTER direction of each clamp. The slice
+  // clamps in two places, though: every setter, and once at construction over
+  // whatever `loadPersisted()` returns. localStorage is not a trusted input —
+  // it survives downgrades, is hand-editable, and is shared across tabs — so
+  // the constructor direction is the one that actually faces a hostile value.
+  //
+  // Verified by mutation: dropping `clampShadowResolution`, `clampSunTime` or
+  // `clampSunAngle` from the `initial` object and passing the stored value
+  // straight through left the suite 15/15 green before these were added.
+  it('clamps a stored shadowResolution that is not a supported size', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ shadowResolution: 8192 }));
+    // 8192 reaches the renderer as a shadow-map texture side; only the
+    // allow-list stands between a corrupt entry and an allocation failure.
+    assert.strictEqual(makeStore().getState().envShadowResolution, 0);
+  });
+
+  it('clamps a stored sunTime outside the sun-arc day window', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sunTime: 23 }));
+    assert.strictEqual(makeStore().getState().envSunTime, 18);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ sunTime: Number.NaN }));
+    // JSON.stringify turns NaN into null, which is exactly the shape a
+    // corrupt entry takes on disk — and `null ?? 13` keeps the default.
+    assert.strictEqual(makeStore().getState().envSunTime, 13);
+  });
+
+  it('clamps a stored sunAngle outside [0.1, 5]', () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preset: 'overcast', sunAngle: 50 }));
+    const angle = makeStore().getState().envSunAngle;
+    assert.strictEqual(angle, 5);
+    // Not the preset's own angle either: the stored override is clamped, not
+    // discarded, so this cannot pass by falling back to the preset seed.
+    assert.notStrictEqual(angle, LIGHTING_PRESETS.overcast.shadowSunAngleDeg);
+  });
+
   it('envPanelOpen is session-only: toggling it does not touch persisted storage', () => {
     const s = makeStore();
     s.getState().toggleEnvPanel();

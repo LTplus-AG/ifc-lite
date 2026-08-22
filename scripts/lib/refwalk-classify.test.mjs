@@ -21,6 +21,7 @@ import {
   extractLoopBodies,
   findChaseLoopFunctions,
   classifyFile,
+  findWalkCandidates,
 } from './refwalk-classify.mjs';
 
 test('extractFunctions finds a simple function and its body', () => {
@@ -378,4 +379,64 @@ fn process_operand_with_depth(operand: &DecodedEntity, decoder: &mut EntityDecod
   const bothResult = classifyFile(bothSrc);
   assert.ok(bothResult.flagged.includes('process_with_depth'), 'mutual recursion with process_operand_with_depth');
   assert.ok(bothResult.chaseFlagged.includes('process_with_depth'), 'also an inline chase loop over FirstOperand');
+});
+
+test('a nested generic bound in the header does not hide the function', () => {
+  // `<[^>]*>` stopped at the FIRST `>`, so `<S: GeomScalar, M: MeshSink<S>>`
+  // matched nothing and the function vanished from the parse entirely. Five
+  // functions in the scan roots have this shape today
+  // (rust/geometry/src/extrusion_generic.rs, .../zero_copy/frame_swap.rs), and
+  // the vacuity check only fires when a file parses to ZERO functions -- so
+  // losing SOME of a file's functions was silent.
+  const src = `
+fn helper(x: u32) -> u32 { x }
+
+fn walk<S: GeomScalar, M: MeshSink<S>>(store: &Store, id: u32) -> Option<Thing> {
+    let e = store.decode_by_id(id)?;
+    for child in e.children() {
+        walk(store, child);
+    }
+    None
+}
+`;
+  assert.deepEqual(
+    extractFunctions(src).map((f) => f.name),
+    ['helper', 'walk'],
+  );
+  const walk = findWalkCandidates(src).find((c) => c.name === 'walk');
+  assert.ok(walk, 'the generic walk must still be a candidate');
+  assert.equal(walk.signal, 'recursion');
+  assert.equal(walk.guard, null, 'and it is unguarded');
+});
+
+test('a Fn(..) -> .. bound inside the generic list does not end the header early', () => {
+  const src = `
+fn walk<F: Fn(u32) -> u32>(store: &Store, id: u32, f: F) {
+    let e = store.decode_by_id(id);
+    walk(store, f(id), f);
+}
+`;
+  assert.deepEqual(
+    extractFunctions(src).map((f) => f.name),
+    ['walk'],
+  );
+});
+
+test('a turbofish recursive call is still a call site', () => {
+  // `walk::<T>(store, child)` is how a generic walk routinely recurses. The
+  // call-site regex required `name(`, so the self-edge was missing from the
+  // call graph, no cycle formed, and the unguarded walk was not a candidate.
+  const src = `
+fn walk<T>(store: &Store, id: u32) -> Option<Thing> {
+    let e = store.decode_by_id(id)?;
+    for child in e.children() {
+        walk::<T>(store, child);
+    }
+    None
+}
+`;
+  const walk = findWalkCandidates(src).find((c) => c.name === 'walk');
+  assert.ok(walk, 'turbofish self-recursion must be detected');
+  assert.equal(walk.signal, 'recursion');
+  assert.equal(walk.guard, null);
 });

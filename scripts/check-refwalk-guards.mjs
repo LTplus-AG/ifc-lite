@@ -101,6 +101,19 @@
  *  - NOT CAUGHT: a walk that reaches the decode through a trait object, a
  *    closure stored in a struct, or any dynamic dispatch -- callee names are
  *    matched textually.
+ *  - NOT CAUGHT: an ITERATIVE worklist walk -- `let mut queue = vec![root];
+ *    while let Some(id) = queue.pop() { ...decode_by_id(id)...; queue.push(child) }`
+ *    with no visited set. Verified by running: neither signal fires, because
+ *    there is no recursion cycle and nothing REASSIGNS a cursor, which is what
+ *    the chase signal keys on. "Walk-as-a-loop" above means the cursor-chase
+ *    loop specifically, not every loop. A self-referential reference makes this
+ *    shape spin forever rather than blow the stack, so the symptom differs from
+ *    #2866's SIGABRT -- but the missing guard is the same missing guard. The
+ *    one worklist BFS in the scan roots today,
+ *    `rust/geometry/src/void_index.rs`'s `propagate_voids_via_aggregates`, does
+ *    hold a `seen` set -- but by review, not because this gate saw it: it is in
+ *    neither the candidate list nor the unguarded list. This is a hole a new
+ *    walk can be written into.
  *  - NOT CAUGHT: a walk that reads raw bytes instead of calling
  *    `decode_by_id`/`resolve_ref`. `rust/geometry/src/router/content_hash.rs`'s
  *    `sig_entity` is exactly that, deliberately, for cost reasons. Verified by

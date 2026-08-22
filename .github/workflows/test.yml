@@ -533,8 +533,12 @@ jobs:
       # AGENTS.md, but a convention does not fail CI when a seventh lands (#2944).
       # Its own tests run first: this check's value is entirely in not passing
       # vacuously, so a broken detector must fail here, not report a clean tree.
+      # Both files: check-refwalk-guards.test.mjs covers the harness (scan
+      # roots, candidate floor, allowlist ratchet), refwalk-classify.test.mjs
+      # covers the DETECTOR. Running only the first would leave the half that
+      # decides flagged/not-flagged untested in CI.
       - name: Check refwalk gate's own tests
-        run: node --test scripts/check-refwalk-guards.test.mjs
+        run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
       - name: Check for unguarded entity-reference walks
         run: node scripts/check-refwalk-guards.mjs
       # A hidden tab never delivers an animation frame, so an unbounded

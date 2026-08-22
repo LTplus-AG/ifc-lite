@@ -55,9 +55,48 @@ const REASSIGN_RE = /(let\s+(?:mut\s+)?)?\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S
 // chase loops are still flagged, same policy as findRecursiveFunctions).
 const GUARD_RE = /\bvisited\b[\s\S]{0,60}?\.insert\(|\.insert\(\s*[\w.]*\bid\b\s*\)|\bdepth\s*(>=|>|<=|<)|0\s*\.\.\s*[A-Z_][A-Z0-9_]*|\bMAX_[A-Z0-9_]*\b/;
 
-// Matches `fn name(` or `fn name<...>(` at any indentation, capturing the
-// name. Does not require `pub`/`pub(crate)` etc. prefixes to be absent.
-const FN_HEADER_RE = /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:<[^>]*>)?\s*\(/g;
+// Matches `fn name` at any indentation, capturing the name. Does not require
+// `pub`/`pub(crate)` etc. prefixes to be absent.
+//
+// The generic parameter list is NOT matched here. It used to be, as
+// `(?:<[^>]*>)?`, and that spelling stops at the FIRST `>`, so a nested bound
+// -- `fn extrude_rings_into<S: GeomScalar, M: MeshSink<S>>(` -- failed to match
+// at all and the function vanished from the file's parse. Five such functions
+// exist in the scan roots today (rust/geometry/src/extrusion_generic.rs x4,
+// rust/wasm-bindings/src/zero_copy/frame_swap.rs x1). The vacuity check in
+// check-refwalk-guards.mjs only fires when a file parses to ZERO functions, so
+// losing SOME of a file's functions was silent -- the same shape as the
+// `-> Option<[f32; 4]>` defect this classifier already had to fix once.
+// `skipGenericParams` below does it with bracket balancing instead.
+const FN_HEADER_RE = /\bfn\s+([A-Za-z_][A-Za-z0-9_]*)\s*/g;
+
+/**
+ * If `text[i]` opens a generic parameter list, return the index just past its
+ * closing `>`; otherwise return `i` unchanged. Returns -1 if the list never
+ * closes.
+ *
+ * `->` is stepped over as a unit: a bound may contain a function type
+ * (`fn f<F: Fn(u32) -> u32>(`), and counting that `>` as a closer would end
+ * the list one bracket early.
+ */
+function skipGenericParams(text, i) {
+  if (text[i] !== '<') return i;
+  let depth = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '-' && text[i + 1] === '>') {
+      i += 2;
+      continue;
+    }
+    if (c === '<') depth++;
+    else if (c === '>') {
+      depth--;
+      if (depth === 0) return i + 1;
+    } else if (c === '{' || c === ';') return -1; // ran past the header
+    i++;
+  }
+  return -1;
+}
 
 /**
  * Split `text` into top-level function definitions by brace-matching from
@@ -78,10 +117,15 @@ export function extractFunctions(text) {
   let m;
   while ((m = FN_HEADER_RE.exec(text))) {
     const name = m[1];
+    // Step over the generic parameter list, if any, then require the value
+    // parameter list. Anything else after `fn name` is not a definition we can
+    // parse, so skip it rather than mis-attributing a body to it.
+    let i = skipGenericParams(text, FN_HEADER_RE.lastIndex);
+    if (i === -1 || text[i] !== '(') continue;
+    FN_HEADER_RE.lastIndex = i + 1;
     // Find the matching closing paren of the parameter list first, so a
     // `-> Result<T>` return type's angle brackets don't confuse brace
     // matching before the body even starts.
-    let i = FN_HEADER_RE.lastIndex - 1; // index of the '(' just matched
     let depth = 1;
     i++;
     while (i < text.length && depth > 0) {
@@ -224,7 +268,12 @@ function buildCallGraph(fns) {
  */
 function callSitePresent(body, name) {
   const n = escapeRe(name);
-  const re = new RegExp(`(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})\\s*\\(`);
+  // `(?:::\s*<...>)?` is the turbofish: a generic function recursing on itself
+  // is routinely spelled `walk::<T>(store, child)`, and without this the call
+  // site is invisible, so the cycle -- and therefore the whole candidate --
+  // disappears. Bounded by `[^;{}\n]` so a stray `<` cannot swallow the file.
+  const tf = '(?:::\\s*<[^;{}\\n]*?>)?\\s*';
+  const re = new RegExp(`(?:(?<![.\\w])${n}|(?<!\\w)self\\.${n}|(?<!\\w)Self::${n})${tf}\\(`);
   return re.test(body);
 }
 

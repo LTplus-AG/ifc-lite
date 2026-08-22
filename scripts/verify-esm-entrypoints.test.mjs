@@ -134,6 +134,78 @@ test('passes on a legitimate run that discovers and imports a package', () => {
   }
 });
 
+test('fails when a package is skipped only because it is unbuilt', () => {
+  // The other half of this script's fail-closed rule, and the one the
+  // discovery gate above cannot carry: a package that DECLARES a dist entry
+  // whose file is absent was never built, so its ESM entry point is
+  // unverified, not fine. Discovery finds it (so `skipped` is non-empty and
+  // the empty-discovery gate stays quiet) and the run must still exit 1.
+  const { root, scriptCopy } = makeRoot([
+    {
+      dir: 'unbuilt',
+      pkgJson: {
+        name: '@ifc-lite/unbuilt',
+        version: '1.0.0',
+        type: 'module',
+        exports: { '.': { import: './dist/index.js' } },
+      },
+    },
+  ]);
+  try {
+    const r = run(scriptCopy);
+    assert.equal(
+      r.status,
+      1,
+      `expected exit 1 on an unbuilt package, got ${r.status}\n${r.stdout}${r.stderr}`
+    );
+    assert.match(r.stderr, /skipped only because they are unbuilt/);
+    assert.doesNotMatch(r.stderr, /No publishable packages were discovered/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a healthy package does not mask an unbuilt sibling', () => {
+  // The asymmetric case: `testable.length` is non-zero and the smoke loop
+  // reports "1 passed, 0 failed", so every count in the summary line reads
+  // green. Only the unbuilt filter sees the second package, and a build
+  // that skipped one package is exactly the shape a wholesale-unbuilt check
+  // would miss.
+  const { root, scriptCopy } = makeRoot([
+    {
+      dir: 'good',
+      pkgJson: {
+        name: '@ifc-lite/good',
+        version: '1.0.0',
+        type: 'module',
+        exports: { '.': { import: './dist/index.js' } },
+      },
+      files: { 'dist/index.js': 'export const ok = true;\n' },
+    },
+    {
+      dir: 'unbuilt',
+      pkgJson: {
+        name: '@ifc-lite/unbuilt',
+        version: '1.0.0',
+        type: 'module',
+        exports: { '.': { import: './dist/index.js' } },
+      },
+    },
+  ]);
+  try {
+    const r = run(scriptCopy);
+    assert.equal(
+      r.status,
+      1,
+      `one unbuilt package must red the run, got ${r.status}\n${r.stdout}${r.stderr}`
+    );
+    assert.match(r.stdout, /1 passed, 0 failed, 1 skipped/);
+    assert.match(r.stderr, /1 package\(s\) were skipped only because they are unbuilt/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('does not fire when everything discovered was legitimately skipped', () => {
   // A skip is a package that WAS discovered, so the empty-discovery gate
   // must stay quiet and leave the existing skip semantics untouched.

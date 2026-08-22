@@ -946,7 +946,7 @@ function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: 
 - Openings and symbols: `buildOpeningRelationships`, `generateDoorSymbol`, `generateWindowSymbol`, `generateStairArrow`
 - Graphic overrides: `GraphicOverrideEngine`, `createOverrideEngine`, presets `ARCHITECTURAL_PRESET` and `FIRE_SAFETY_PRESET`
 - SVG output: `SVGExporter`, `exportToSVG`
-- Sheets: `createFrame`, `createTitleBlock`, `renderFrame`, `renderTitleBlock`, `renderScaleBar`, `PAPER_SIZE_REGISTRY`
+- Sheets: `createFrame`, `createTitleBlock`, `renderFrame`, `renderTitleBlock`, `PAPER_SIZE_REGISTRY`
 - Constants: `LINE_STYLES`, `COMMON_SCALES`, `PAPER_SIZES`
 
 ---

@@ -213,6 +213,23 @@ function coordRowLabel(container: HTMLElement, value: RegExp): string {
   return row.querySelector(':scope > span')?.textContent?.trim() ?? '';
 }
 
+/**
+ * The VALUE cell of the coordinate row whose label cell reads exactly `label`.
+ *
+ * The inverse of {@link coordRowLabel}, and needed for the same reason: the
+ * relative rows print a triple that a whole-panel text scan cannot tell from
+ * the absolute row above them (that indistinguishability is the very thing
+ * #2737 §3 is about), so a row has to be reached by its label, then read.
+ */
+function coordRow(container: HTMLElement, label: string): { value: string; hint: string } | null {
+  const row = [...container.querySelectorAll('div')].find(
+    (d) => d.querySelector(':scope > span')?.textContent?.trim() === label,
+  );
+  if (!row) return null;
+  const spans = row.querySelectorAll(':scope > span');
+  return { value: spans[1]?.textContent ?? '', hint: spans[2]?.textContent ?? '' };
+}
+
 /** Click the panel's section button whose label is `label`. */
 function openSection(container: HTMLElement, label: string): void {
   const button = [...container.querySelectorAll('button')].find(
@@ -386,8 +403,8 @@ describe('the shipped panel hosts each #2199 section', () => {
     // Renderer (3, 3, -4) -> IFC (3, 4, 3). The northing is +4, not -4: the
     // sign is what a dropped negation would flip.
     assert.match(text, /X 3\.000\s+Y 4\.000\s+Z 3\.000/, `wrong model coordinates: ${text}`);
-    // Offset from IFC (0, 0, -1) is (3, 4, 4).
-    assert.match(text, /X 3\.000\s+Y 4\.000\s+Z 4\.000/, `wrong relative offset: ${text}`);
+    // Offset from IFC (0, 0, -1) is (3, 4, 4), printed as signed deltas.
+    assert.match(text, /ΔX \+3\.000\s+ΔY \+4\.000\s+ΔZ \+4\.000/, `wrong relative offset: ${text}`);
   });
 
   it('Qty answers for an empty selection instead of rendering nothing', () => {
@@ -484,7 +501,7 @@ describe('the LENGTHUNIT override reaches every rendered readout (#2538 wiring g
     assert.match(text, /H 10 ft\s+V 0 ft/, `horizontal\/vertical line did not convert to ft: ${text}`);
   });
 
-  it('Point: the Rel. ref triple and its distance hint agree in the override unit', () => {
+  it('Point: the Relative triple and its distance hint agree in the override unit', () => {
     useViewerStore.setState({
       measurements: [{ id: 'm1', start: FT_START, end: FT_END, distance: 3.048 }],
       // Reference point at the origin (renderer space) so the offset to the
@@ -495,24 +512,20 @@ describe('the LENGTHUNIT override reaches every rendered readout (#2538 wiring g
     const container = render();
     openSection(container, 'Point');
 
-    // Isolate the "Rel. ref" row specifically — the Model row above it stays
+    // Isolate the "Relative" row specifically — the Model row above it stays
     // in unlabelled metres by design (#2199 scope), and DOES print "X 3.048"
     // for this same fixture, so a whole-panel text search cannot tell the two
     // apart.
-    const relRefRow = [...container.querySelectorAll('div')].find(
-      (d) => d.querySelector(':scope > span')?.textContent?.trim() === 'Rel. ref',
-    );
-    assert.ok(relRefRow, `no "Rel. ref" row rendered: ${container.textContent}`);
-    const spans = relRefRow!.querySelectorAll(':scope > span');
-    const value = spans[1]?.textContent ?? '';
-    const hint = spans[2]?.textContent ?? '';
+    const relRefRow = coordRow(container, 'Relative');
+    assert.ok(relRefRow, `no "Relative" row rendered: ${container.textContent}`);
+    const { value, hint } = relRefRow;
 
     // Renderer (3.048, 0, 0) -> IFC (3.048, 0, 0): dx=3.048 -> 10 ft.
-    assert.match(value, /X 10\s+Y 0\s+Z 0/, `Rel. ref triple did not convert to ft: "${value}"`);
-    assert.equal(hint, '10 ft', `Rel. ref distance hint did not convert to ft: "${hint}"`);
+    assert.match(value, /ΔX \+10\s+ΔY 0\s+ΔZ 0/, `Relative triple did not convert to ft: "${value}"`);
+    assert.equal(hint, '10 ft', `Relative distance hint did not convert to ft: "${hint}"`);
     // The failure mode this guards: hint converts but the triple stays in
-    // unlabelled metres, e.g. "X 3.048  Y 0.000  Z 0.000" next to "10 ft".
-    assert.doesNotMatch(value, /X 3\.048/, `Rel. ref triple fell back to unconverted metres: "${value}"`);
+    // unlabelled metres, e.g. "ΔX +3.048  ΔY 0.000  ΔZ 0.000" next to "10 ft".
+    assert.doesNotMatch(value, /3\.048/, `Relative triple fell back to unconverted metres: "${value}"`);
   });
 
   it('does not convert when unitDisplayOverrides is empty, as the control for the tests above', () => {
@@ -693,6 +706,45 @@ describe('the relative-coordinate datum belongs to the scene it was picked in', 
     );
   });
 
+  it('survives a measure-mode switch, like the session settings and unlike the in-progress gesture', () => {
+    // Which comparable state does the datum follow? `setMeasureMode` discards
+    // GESTURE state (the in-progress drag/polyline/angle and the snap target)
+    // because picks taken under one mode mean something else under the next.
+    // It leaves the session SETTINGS (`snapEnabled`, `geoReadoutEnabled`)
+    // alone. A setting-out datum is a session choice, not a half-finished
+    // pick — the same origin is still the origin whether the next reading is
+    // taken by drag, polyline or angle — so it follows the settings.
+    useViewerStore.setState({
+      measureMode: 'drag',
+      measureReferencePoint: { x: 1, y: 2, z: 3 },
+      activeMeasurement: { start: START, current: END, distance: Math.hypot(3, 3, 4) },
+    });
+    useViewerStore.getState().setMeasureMode('polyline');
+    const after = useViewerStore.getState();
+    assert.equal(after.activeMeasurement, null, 'the gesture should have been discarded');
+    assert.deepEqual(
+      after.measureReferencePoint,
+      { x: 1, y: 2, z: 3 },
+      'switching how the next point is picked must not move the origin it is measured from',
+    );
+  });
+
+  it('survives leaving the measure tool entirely', () => {
+    // `setActiveTool` away from 'measure' calls `resetMeasureGesture`, which
+    // is the one boundary that clears every in-progress pick. The datum is not
+    // one: re-entering the tool to take one more offset from the same origin
+    // is the whole point of a temporary reference point.
+    useViewerStore.setState({
+      activeTool: 'measure',
+      measureReferencePoint: { x: 1, y: 2, z: 3 },
+      activeMeasurement: { start: START, current: END, distance: Math.hypot(3, 3, 4) },
+    });
+    useViewerStore.getState().setActiveTool('select');
+    const after = useViewerStore.getState();
+    assert.equal(after.activeMeasurement, null, 'the gesture should have been discarded');
+    assert.deepEqual(after.measureReferencePoint, { x: 1, y: 2, z: 3 });
+  });
+
   it('is dropped when a new primary file replaces the scene', () => {
     // The datum is stored in RENDERER space. Carried into the next model it
     // would subtract a point from the outgoing scene and print a plausible,
@@ -700,6 +752,110 @@ describe('the relative-coordinate datum belongs to the scene it was picked in', 
     useViewerStore.setState({ measureReferencePoint: { x: 1, y: 2, z: 3 } });
     useViewerStore.getState().resetViewerState();
     assert.equal(useViewerStore.getState().measureReferencePoint, null);
+  });
+});
+
+describe('a relative coordinate is visually distinct from an absolute one (#2737 §3)', () => {
+  /** Live point renderer (3, 3, -4) = IFC (3, 4, 3); datum renderer (0, -1, 0)
+   *  = IFC (0, 0, -1), so the offset is IFC (3, 4, 4) — distinct on every
+   *  axis from both the absolute point and the datum. */
+  const seedPickAndDatum = (datum: Vec3 | null = { x: 0, y: -1, z: 0 }) => {
+    useViewerStore.setState({
+      measurements: [{ id: 'm1', start: START, end: END, distance: Math.hypot(3, 3, 4) }],
+      measureReferencePoint: datum,
+    });
+  };
+
+  it('prints the relative triple in a form no absolute row uses', () => {
+    seedPickAndDatum();
+    const container = render();
+    openSection(container, 'Point');
+    const model = coordRow(container, 'Model');
+    const relative = coordRow(container, 'Relative');
+    assert.ok(model, `no Model row: ${container.textContent}`);
+    assert.ok(relative, `no Relative row: ${container.textContent}`);
+    // The absolute row is a bare X/Y/Z position.
+    assert.match(model.value, /^X 3\.000\s+Y 4\.000\s+Z 3\.000$/, `Model row: "${model.value}"`);
+    // The relative row is per-axis deltas with explicit signs. The
+    // distinction lives in the VALUE, not only in the label beside it, so it
+    // survives being read out of context.
+    assert.match(
+      relative.value,
+      /^ΔX \+3\.000\s+ΔY \+4\.000\s+ΔZ \+4\.000$/,
+      `Relative row: "${relative.value}"`,
+    );
+    assert.doesNotMatch(
+      relative.value,
+      /^X /,
+      `a relative triple formatted like an absolute coordinate: "${relative.value}"`,
+    );
+  });
+
+  it('shows the datum the offset is measured from, in the same frame as the absolute row', () => {
+    // The failure mode #2737 names: a number whose reference point is
+    // off-screen or forgotten. The origin has to be READABLE, not implied by
+    // the existence of a delta row.
+    seedPickAndDatum();
+    const container = render();
+    openSection(container, 'Point');
+    const datum = coordRow(container, 'Datum');
+    assert.ok(datum, `the reference point itself is not shown: ${container.textContent}`);
+    // Renderer (0, -1, 0) -> IFC (0, 0, -1). Printed exactly like the Model
+    // row, because it IS a model coordinate — a position, not a delta.
+    assert.match(datum.value, /^X 0\.000\s+Y 0\.000\s+Z -1\.000$/, `Datum row: "${datum.value}"`);
+  });
+
+  it('shows neither relative row, and an unchanged absolute one, when no datum is set', () => {
+    // The other direction: a change that always subtracts would satisfy every
+    // test above while breaking the coordinate readout that already shipped.
+    seedPickAndDatum(null);
+    const container = render();
+    openSection(container, 'Point');
+    assert.equal(coordRow(container, 'Relative'), null, 'a relative row with no datum set');
+    assert.equal(coordRow(container, 'Datum'), null, 'a datum row with no datum set');
+    const model = coordRow(container, 'Model');
+    assert.ok(model, `no Model row: ${container.textContent}`);
+    assert.match(model.value, /^X 3\.000\s+Y 4\.000\s+Z 3\.000$/, `Model row: "${model.value}"`);
+  });
+
+  it('recomputes the offset in place when the datum is moved under a reading on screen', () => {
+    seedPickAndDatum();
+    const container = render();
+    openSection(container, 'Point');
+    assert.match(coordRow(container, 'Relative')?.value ?? '', /ΔZ \+4\.000/);
+
+    // Move the datum a metre up in renderer Y (IFC Z -1 -> +1): the offset's
+    // Z must fall from +4 to +2, not keep the number taken from the old
+    // origin.
+    act(() => {
+      useViewerStore.getState().setMeasureReferencePoint({ x: 0, y: 1, z: 0 });
+    });
+    const moved = coordRow(container, 'Relative');
+    assert.match(
+      moved?.value ?? '',
+      /^ΔX \+3\.000\s+ΔY \+4\.000\s+ΔZ \+2\.000$/,
+      `stale offset after the datum moved: "${moved?.value}"`,
+    );
+    assert.match(
+      coordRow(container, 'Datum')?.value ?? '',
+      /^X 0\.000\s+Y 0\.000\s+Z 1\.000$/,
+      'the displayed datum did not follow the store',
+    );
+  });
+
+  it('removes the relative rows when the datum is cleared, rather than leaving their last numbers', () => {
+    seedPickAndDatum();
+    const container = render();
+    openSection(container, 'Point');
+    assert.ok(coordRow(container, 'Relative'));
+
+    act(() => {
+      useViewerStore.getState().setMeasureReferencePoint(null);
+    });
+    assert.equal(coordRow(container, 'Relative'), null, 'a relative offset outlived its origin');
+    assert.equal(coordRow(container, 'Datum'), null, 'a datum row outlived the datum');
+    // And the absolute readout is still there and still absolute.
+    assert.match(coordRow(container, 'Model')?.value ?? '', /^X 3\.000\s+Y 4\.000\s+Z 3\.000$/);
   });
 });
 

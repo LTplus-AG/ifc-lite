@@ -25,9 +25,11 @@ import {
   type AnnotationFill2D,
   type AnnotationText2D,
   type AnnotationsForStorey,
+  type ElevationRebase,
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
+import { totalYupOffset } from '../lib/geo/ifc-origin.js';
 
 // The parse walk itself lives in `lib/overlay-parse/symbolic-parse.ts` so a
 // worker can import it (a worker module cannot import this React hook file).
@@ -87,7 +89,37 @@ async function parseAnnotations(
   return buildParseResult(flat, {
     elementToStorey: store.spatialHierarchy?.elementToStorey,
     storeyElevations: store.spatialHierarchy?.storeyElevations,
+    elevationRebase: elevationRebaseFor(store),
   });
+}
+
+/**
+ * The render-frame elevation offsets for the model that owns `store`.
+ *
+ * `totalYupOffset(info).y` is `originShift.y + rtc.z` — the whole distance
+ * between an IFC elevation and the renderer's Y (`lib/geo/ifc-origin.ts`).
+ * The wasm extractor has already removed the `rtc.z` half from
+ * `primitive.worldY` (`rust/processing/src/symbolic/rebase.rs`), so only the
+ * remainder applies there, while a raw storey-table elevation needs all of
+ * it. Derived from ONE offset read so the two cannot drift apart.
+ *
+ * Read once per parse and baked into the cached `ParseResult`, exactly like
+ * the RTC subtraction the wasm walk already baked into the same primitives —
+ * so a later re-alignment invalidates this the same way it invalidates those,
+ * and neither is more stale than the other.
+ */
+function elevationRebaseFor(store: IfcDataStore): ElevationRebase {
+  const state = useViewerStore.getState();
+  let info = state.geometryResult?.coordinateInfo ?? null;
+  for (const [, model] of state.models) {
+    if (model.ifcDataStore === store && model.geometryResult?.coordinateInfo) {
+      info = model.geometryResult.coordinateInfo;
+      break;
+    }
+  }
+  const total = totalYupOffset(info ?? undefined).y;
+  const rtcZ = info?.wasmRtcOffset?.z ?? 0;
+  return { primitive: total - rtcZ, storeyTable: total };
 }
 
 /**

@@ -19,6 +19,7 @@ use super::item_walk::{
 };
 use super::output_cap::SymbolicAccumulator;
 use super::primitives::SymbolicData;
+use super::rebase::RenderFrameRebase;
 use super::transform::Transform2D;
 use ifc_lite_core::{build_entity_index, EntityDecoder};
 use std::collections::HashMap;
@@ -38,8 +39,7 @@ fn run(step: &str, start_id: u32) -> SymbolicData {
         "Annotation",
         1.0,
         &Transform2D::identity(),
-        0.0,
-        0.0,
+        RenderFrameRebase::default(),
         &styled,
         &mut out,
     );
@@ -61,8 +61,7 @@ fn run_with_budget(step: &str, start_id: u32, budget: u32) -> SymbolicData {
         "Annotation",
         1.0,
         &Transform2D::identity(),
-        0.0,
-        0.0,
+        RenderFrameRebase::default(),
         &styled,
         &mut out,
         budget,

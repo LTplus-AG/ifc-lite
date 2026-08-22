@@ -162,6 +162,32 @@ describe('MutablePropertyView', () => {
       expect(m.type).toBe('CREATE_PROPERTY');
     });
 
+    // The two halves of `maskedInSession` — the per-property DELETE marker and
+    // `deletedPsets` — overlap in the tests above, because `deletePropertySet`
+    // also writes a DELETE marker for every property it masks. So the
+    // `deletedPsets` half is load-bearing for exactly one route and nothing
+    // fails if it is deleted: verified by mutation, dropping it left the whole
+    // file green. The halves separate once that marker has been overwritten,
+    // which the first re-set does. The second re-set then has no DELETE marker
+    // and a null `oldValue`, so only `deletedPsets` still knows the base row is
+    // masked; without it the base row counts as present and the re-set comes
+    // back as UPDATE with `oldValue: null` — the resurrection the guard exists
+    // to prevent. Null values throughout because a non-null first re-set makes
+    // `oldValue !== null` carry the classification on its own.
+    it('a deleted base PSET keeps masking after its per-property DELETE marker is overwritten', () => {
+      const view = withBaseProp();
+      view.deletePropertySet(7, 'Pset_Base');
+
+      const first = view.setProperty(7, 'Pset_Base', 'Status', null, PropertyValueType.Label);
+      expect(first.type).toBe('CREATE_PROPERTY');
+
+      // The DELETE marker is gone now (overwritten by the SET above), so
+      // `deletedPsets` is the only remaining mask on the base row.
+      const second = view.setProperty(7, 'Pset_Base', 'Status', null, PropertyValueType.Label);
+      expect(second.type).toBe('CREATE_PROPERTY');
+      expect(second.oldValue).toBeNull();
+    });
+
     it('an undeleted base property is still an UPDATE (the guard is not blanket)', () => {
       const view = withBaseProp();
       const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);

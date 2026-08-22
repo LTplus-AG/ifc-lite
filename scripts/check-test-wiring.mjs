@@ -375,19 +375,79 @@ function resolveRef(dir, token) {
 }
 
 /**
+ * Blank `//` and block comments to spaces, keeping newlines and every offset,
+ * so a filename NAMED IN PROSE cannot be read as a reference.
+ *
+ * This is load-bearing rather than tidiness. This repo's comment convention
+ * puts filenames in BACKTICKS — `` `scripts/check-x.mjs` `` — and a backtick is
+ * a quote, so "only quoted tokens count" does not exclude prose at all: a
+ * one-line historical note in any already-wired script would otherwise confer
+ * reach on a gate nothing runs, which is the exact absence this file exists to
+ * find. `check-test-wiring.mjs`'s own header names
+ * `scripts/moonshot/diff-spike/verify-common.mjs` that way.
+ *
+ * Strings are tracked so a `'https://…'` is not mistaken for a comment. Regex
+ * literals are not, which can only DROP a reference (a red), never invent one.
+ */
+function blankScriptComments(source) {
+  let out = '';
+  let i = 0;
+  let quote = '';
+  while (i < source.length) {
+    const ch = source[i];
+    if (quote) {
+      out += ch;
+      if (ch === '\\' && i + 1 < source.length) {
+        out += source[i + 1];
+        i += 2;
+        continue;
+      }
+      if (ch === quote) quote = '';
+      i += 1;
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') {
+      quote = ch;
+      out += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '/') {
+      while (i < source.length && source[i] !== '\n') {
+        out += ' ';
+        i += 1;
+      }
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '*') {
+      while (i < source.length && !(source[i] === '*' && source[i + 1] === '/')) {
+        out += source[i] === '\n' ? '\n' : ' ';
+        i += 1;
+      }
+      out += i < source.length ? '  ' : '';
+      i += 2;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
  * The `scripts/` files a given script's source names, resolved to repo-relative
  * paths — its static imports, its `spawn`/`fork` targets, anything it opens by
- * path. Only QUOTED tokens count, so a filename mentioned in prose or a header
- * comment is not mistaken for a reference; a bare specifier (`'./x.mjs'`, or
- * the `'verify-worker.mjs'` that a `path.join(HERE, ...)` hands to a worker)
- * resolves against the referencing file's own directory, and a token already
- * rooted at `scripts/` is taken as written. Anything not resolving to a file in
- * `known` is dropped.
+ * path. Comments are blanked first and only then do QUOTED tokens count, so a
+ * filename mentioned in prose or a header comment is not mistaken for a
+ * reference; a bare specifier (`'./x.mjs'`, or the `'verify-worker.mjs'` that a
+ * `path.join(HERE, ...)` hands to a worker) resolves against the referencing
+ * file's own directory, and a token already rooted at `scripts/` is taken as
+ * written. Anything not resolving to a file in `known` is dropped.
  */
 export function referencedScriptFiles(source, fromRel, known) {
   const out = new Set();
   const dir = fromRel.slice(0, fromRel.lastIndexOf('/'));
-  for (const [, token] of source.matchAll(/['"`]([\w./-]+\.(?:mjs|js|cjs))['"`]/g)) {
+  for (const [, token] of blankScriptComments(source).matchAll(/['"`]([\w./-]+\.(?:mjs|js|cjs))['"`]/g)) {
     const candidate = resolveRef(dir, token);
     if (known.has(candidate)) out.add(candidate);
   }
@@ -420,12 +480,28 @@ function directlyWired(rel, { workflows, pkgScripts, reachedNames, tasks, worksp
  * is a module the workflow-wired `verify-trajectory.mjs` imports, and demanding
  * a workflow step of it would be a false positive, not a finding. A file a
  * running gate imports does run.
+ *
+ * TWO EDGES ARE DELIBERATELY NOT FOLLOWED, because each would let this check
+ * pass the very absence it exists to find:
+ *
+ *   - A COMMENT. See `blankScriptComments`: prose names files in backticks
+ *     here, so an unwired gate mentioned in any wired script's header would
+ *     otherwise read as reachable.
+ *   - A TEST FILE. A gate's harness spawns the gate, so expanding through
+ *     `check-x.test.mjs` would make 2a satisfiable by 2b — the `node --test`
+ *     step wired, the gate step forgotten, the gate never run against the
+ *     repo. Tests are still reached; they just confer nothing.
  */
 export function reachableScriptFiles(root, context) {
   const all = findScriptFiles(root);
   const known = new Set(all);
   const reached = new Set(all.filter((rel) => directlyWired(rel, context)));
-  const queue = [...reached];
+  // A TEST never confers reach on what it names. A gate's own harness spawns
+  // the gate by construction, so expanding through `check-x.test.mjs` would
+  // make 2a satisfiable by 2b: wire the `node --test` step, leave the gate
+  // step out, and the gate that never runs against the REPO reads as wired.
+  // That is #3062 exactly, and it is what the 2a/2b split exists to reject.
+  const queue = [...reached].filter((rel) => !TEST_SUFFIX_RE.test(rel.slice(rel.lastIndexOf('/') + 1)));
   while (queue.length > 0) {
     const rel = queue.pop();
     let source;
@@ -437,7 +513,7 @@ export function reachableScriptFiles(root, context) {
     for (const ref of referencedScriptFiles(source, rel, known)) {
       if (reached.has(ref)) continue;
       reached.add(ref);
-      queue.push(ref);
+      if (!TEST_SUFFIX_RE.test(ref.slice(ref.lastIndexOf('/') + 1))) queue.push(ref);
     }
   }
   return { all, reached };

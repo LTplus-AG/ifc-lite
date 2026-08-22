@@ -280,13 +280,89 @@ test('transitive reach is transitive: a module reached only through another modu
   });
 });
 
-test('reach follows QUOTED references only — naming a file in a comment does not run it', () => {
+test('reach follows CODE only — naming a file in a comment does not run it', () => {
   withTree({}, (root) => {
     write(root, 'scripts/check-wired.mjs', '// see also lib/check-shared.mjs for the details\n');
     write(root, 'scripts/lib/check-shared.mjs', '// nothing imports this\n');
     const { status, out } = run(root);
     assert.equal(status, 1, out);
     assert.match(out, /scripts\/lib\/check-shared\.mjs/);
+  });
+});
+
+/**
+ * The fixture above shares a symmetry with the bug: its comment names the file
+ * UNQUOTED, and the reference scan only ever matched quoted tokens, so it was
+ * green either side of the comment-blanking. This repo's comment convention is
+ * BACKTICKS around filenames — `check-test-wiring.mjs`'s own header names
+ * `scripts/moonshot/diff-spike/verify-common.mjs` that way — and a backtick is
+ * a quote. One line of prose in any already-wired script would otherwise buy an
+ * unwired gate a pass.
+ */
+test('a BACKTICKED filename in prose is still prose — it confers no reach', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-wired.mjs', '/** Historical note: `scripts/check-evader.mjs` used to do this. */\n');
+    write(root, 'scripts/check-evader.mjs', '// nothing runs this\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/check-evader\.mjs/);
+  });
+});
+
+test("a quoted filename in a trailing `//` comment confers no reach either", () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-wired.mjs', "const x = 1; // replaces './check-evader.mjs'\n");
+    write(root, 'scripts/check-evader.mjs', '// nothing runs this\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/check-evader\.mjs/);
+  });
+});
+
+test('a URL inside a string is not read as a comment: real references beside it survive', () => {
+  withTree({}, (root) => {
+    write(
+      root,
+      'scripts/check-wired.mjs',
+      "const DOCS = 'https://example.test/x';\nimport './lib/check-shared.mjs';\n",
+    );
+    write(root, 'scripts/lib/check-shared.mjs', '// imported by a wired gate\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+/**
+ * 2a must not become satisfiable by 2b. A gate's own harness spawns the gate,
+ * so following that edge would mean: wire the `node --test` step, forget the
+ * gate step, and the gate that never runs against the REPO reads as wired.
+ * That is #3062's failure with one of its two halves wired.
+ */
+test('a gate is NOT wired by its own test being wired', () => {
+  withTree({
+    extraSteps:
+      '      - name: Evader gate regressions\n        run: node --test scripts/check-evader.test.mjs\n',
+  }, (root) => {
+    write(root, 'scripts/check-evader.mjs', '// a gate no workflow step runs\n');
+    write(root, 'scripts/check-evader.test.mjs', "import './check-evader.mjs';\n");
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/check-evader\.mjs/);
+    // The TEST is wired, so 2b must stay silent about it — only 2a fires.
+    assert.doesNotMatch(out, /check-evader\.test\.mjs/);
+  });
+});
+
+test('a module a wired TEST imports is not thereby wired for 2a', () => {
+  withTree({
+    extraSteps:
+      '      - name: Evader gate regressions\n        run: node --test scripts/check-evader.test.mjs\n',
+  }, (root) => {
+    write(root, 'scripts/check-evader.test.mjs', "import './lib/check-helper.mjs';\n");
+    write(root, 'scripts/lib/check-helper.mjs', '// only a test names this\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/lib\/check-helper\.mjs/);
   });
 });
 

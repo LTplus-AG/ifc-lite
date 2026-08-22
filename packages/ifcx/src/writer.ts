@@ -157,7 +157,8 @@ export class IfcxWriter {
       const typeEnum = entities.typeEnum[i];
       resolvedPaths.set(
         expressId,
-        idToPath?.get(expressId) ?? this.generatePath(expressId, typeEnum)
+        idToPath?.get(expressId)
+          ?? this.generatePath(expressId, typeEnum, this.getString(entities.globalId[i]))
       );
     }
 
@@ -167,11 +168,14 @@ export class IfcxWriter {
       const typeEnum = entities.typeEnum[i];
 
       // Get or generate path
-      const path = resolvedPaths.get(expressId) ?? this.generatePath(expressId, typeEnum);
+      // The map above has a row for every entity, so the fallback is
+      // unreachable — but it must derive the path the same way regardless, or
+      // an entity's own path and every reference to it could disagree.
+      const path = resolvedPaths.get(expressId)
+        ?? this.generatePath(expressId, typeEnum, this.getString(entities.globalId[i]));
 
       // Get entity name
       const name = this.getString(entities.name[i]);
-      const globalId = this.getString(entities.globalId[i]);
 
       // Build attributes
       const attributes: Record<string, unknown> = {};
@@ -335,9 +339,25 @@ export class IfcxWriter {
   }
 
   /**
-   * Generate path for an entity
+   * Generate path for an entity.
+   *
+   * A node's `path` IS the entity's identity in IFCX: the reader hands it
+   * straight back as the GlobalId (`entity-extractor.ts`: "Use path as
+   * GlobalId"), the sibling IFC5 exporter keys nodes by GlobalId for that
+   * reason, and the buildingSMART v5a schemas committed under
+   * `packages/export/src/__fixtures__/schemas/` define no attribute that could
+   * carry a GlobalId instead — there is no other slot for it.
+   *
+   * So synthesizing `ifc:<Type>.<expressId>` for an entity that HAS a
+   * GlobalId did not merely pick a different name: it discarded the real IFC
+   * identity on the way through and invented one in its place, and expressId
+   * is not stable across files, so nothing downstream could federate or
+   * re-match the node. The synthetic form remains the fallback for an entity
+   * with no GlobalId (and an explicit `idToPath` entry still wins over both,
+   * so a round-trip keeps the paths the source file authored).
    */
-  private generatePath(expressId: number, typeEnum: number): string {
+  private generatePath(expressId: number, typeEnum: number, globalId?: string): string {
+    if (globalId) return globalId;
     const typeName = this.getTypeName(typeEnum) || 'IfcElement';
     return `ifc:${typeName}.${expressId}`;
   }

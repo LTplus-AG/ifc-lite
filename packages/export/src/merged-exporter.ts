@@ -11,7 +11,13 @@
  */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
-import { generateHeader, deterministicGlobalId, IfcParser, asSourceBytes } from '@ifc-lite/parser';
+import {
+  generateHeader,
+  deterministicGlobalId,
+  IfcParser,
+  asSourceBytes,
+  getInheritanceChainAcrossSchemas,
+} from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
@@ -50,51 +56,33 @@ const SHARED_INFRASTRUCTURE_TYPES = new Set([
  * first attribute. Geometry/list entities never carry a string there, but some
  * non-rooted RESOURCE entities lead with a Name/Identifier string that can
  * legitimately be 22 charset chars (e.g. a coded property key). Those are
- * excluded by type ({@link NON_ROOTED_STRING_TYPES}) so their Name is never
- * mistaken for a GlobalId — otherwise the GlobalId reconciliation could drop or
- * rename them.
+ * excluded with a schema-derived rootedness check ({@link isRootedType}) so
+ * their Name is never mistaken for a GlobalId — otherwise the GlobalId
+ * reconciliation could drop or rename them.
  */
 const GLOBAL_ID_RE = /^[0-9A-Za-z_$]{22}$/;
 
 /**
- * Non-IfcRoot entity types whose first attribute is (or can be) a quoted
- * Name/Identifier string. They must NOT be treated as rooted by GlobalId, even
- * when that string happens to be 22 charset characters. (IfcRoot property
- * containers like IFCPROPERTYSET / IFCELEMENTQUANTITY are deliberately absent —
- * they ARE rooted and carry a real GlobalId at attribute 0.)
+ * Whether `type` is an IfcRoot subtype — a schema-derived replacement for a
+ * hand-maintained denylist of "non-rooted types whose first attribute happens
+ * to be a string". A denylist has to be told about every such type by hand and
+ * silently under-covers as the schema grows — `IfcMaterialProfileWithOffsets`
+ * and several other resource types were missing and got their leading Name
+ * treated as a GlobalId, corrupting ordinary model data on a collision.
  *
- * This is a best-effort denylist, not an exhaustive IfcRoot classifier — the
- * merge works off raw STEP text and has no schema table. It covers the resource
- * families that realistically appear in federated models; an unlisted
- * string-leading resource type is only ever a problem if two models share an
- * identical 22-char charset Name for it AND it collides, which is negligible. A
- * miss in the other direction (treating a real root as non-rooted) is safe — it
- * just skips one GlobalId reconciliation.
+ * `getInheritanceChainAcrossSchemas` walks the bundled IFC2X3/IFC4/IFC4X3
+ * schema union to the entity's root ancestor; a rooted entity's chain always
+ * ends in `IfcRoot`. This mirrors the Rust side's `IfcType::is_subtype_of`
+ * schema check, so the two implementations of "is this rooted" agree instead
+ * of drifting apart as separate hand-maintained lists.
+ *
+ * A type unknown to every bundled schema (typo, vendor extension) yields an
+ * empty chain and is treated as non-rooted — the same safe-miss direction the
+ * old denylist documented: it just skips one GlobalId reconciliation.
  */
-const NON_ROOTED_STRING_TYPES = new Set([
-  // IfcSimpleProperty / IfcComplexProperty (IfcPropertyAbstraction — not rooted)
-  'IFCPROPERTYSINGLEVALUE', 'IFCPROPERTYENUMERATEDVALUE', 'IFCPROPERTYLISTVALUE',
-  'IFCPROPERTYBOUNDEDVALUE', 'IFCPROPERTYTABLEVALUE', 'IFCPROPERTYREFERENCEVALUE',
-  'IFCCOMPLEXPROPERTY',
-  // IfcPhysicalQuantity (not rooted)
-  'IFCQUANTITYLENGTH', 'IFCQUANTITYAREA', 'IFCQUANTITYVOLUME', 'IFCQUANTITYCOUNT',
-  'IFCQUANTITYWEIGHT', 'IFCQUANTITYTIME', 'IFCQUANTITYNUMBER', 'IFCPHYSICALCOMPLEXQUANTITY',
-  // Materials & their constituents (IfcMaterialDefinition — not rooted; lead with a Name)
-  'IFCMATERIAL', 'IFCMATERIALPROFILE', 'IFCMATERIALPROFILESET',
-  'IFCMATERIALCONSTITUENT', 'IFCMATERIALCONSTITUENTSET',
-  // Classification, library & document refs (IfcExternalInformation/Reference)
-  'IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE',
-  'IFCLIBRARYINFORMATION', 'IFCLIBRARYREFERENCE', 'IFCEXTERNALREFERENCE',
-  'IFCDOCUMENTINFORMATION', 'IFCDOCUMENTREFERENCE',
-  // Constraints & approvals (lead with a Name/Identifier)
-  'IFCMETRIC', 'IFCOBJECTIVE', 'IFCAPPROVAL', 'IFCTABLE',
-  // Actors (IfcPerson/IfcOrganization lead with an Identification string)
-  'IFCPERSON', 'IFCORGANIZATION',
-  // Presentation layers, styles & text literals (lead with a Name/Literal string)
-  'IFCPRESENTATIONLAYERASSIGNMENT', 'IFCPRESENTATIONLAYERWITHSTYLE',
-  'IFCSURFACESTYLE', 'IFCCURVESTYLE', 'IFCTEXTSTYLE', 'IFCFILLAREASTYLE',
-  'IFCTEXTLITERAL', 'IFCTEXTLITERALWITHEXTENT',
-]);
+function isRootedType(type: string): boolean {
+  return getInheritanceChainAcrossSchemas(type).includes('IfcRoot');
+}
 
 /** True for IfcRelationship subtypes (objectified relationships). */
 function isRelationshipType(typeUpper: string): boolean {
@@ -1246,7 +1234,7 @@ export class MergedExporter {
     // Non-rooted resource entities (property/quantity/material/style/actor …)
     // lead with a Name string that can itself be 22 charset chars; never treat
     // those as a GlobalId or reconciliation would drop/rename them.
-    if (NON_ROOTED_STRING_TYPES.has((ref.type ?? '').toUpperCase())) return null;
+    if (!isRootedType(ref.type ?? '')) return null;
     // 128 bytes comfortably spans `#<id>=<LONGEST_TYPE_NAME>('<22-char id>'`,
     // so the GlobalId is always fully inside the window.
     const end = Math.min(ref.byteOffset + 128, ref.byteOffset + ref.byteLength);

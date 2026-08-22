@@ -148,6 +148,12 @@ pub(crate) mod router;
 /// vertex-clustering decimation, bounding-box collapse).
 pub mod simplify;
 pub(crate) mod tessellation;
+/// Test-harness helpers shared by the termination/deadlock suites (the
+/// receive-and-diagnose watchdog). Never present in a shipping build; the
+/// `test-support` feature exists so `ifc-lite-processing`'s integration tests
+/// can reach it as well.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 pub mod space_dcel;
 pub(crate) mod transform;
 pub(crate) mod triangulation;

@@ -170,7 +170,10 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
  *
  * Still a real guard, not a pass-through: a typo (`IfcWal`), a vendor extension
  * and an EXPRESS defined type (`IfcLengthMeasure`, `IfcArcIndex`) are all
- * rejected.
+ * rejected. So are `Object.prototype` member names (`constructor`, `toString`,
+ * `__proto__`, ...): the union lookup is a `Map`, and the pin fallback is an
+ * `Object.hasOwn` test rather than the `in` it used to be, which walked the
+ * prototype chain and answered `true` for every one of them.
  *
  * Known-ness, not instantiability: abstract supertypes (`IfcProduct`,
  * `IfcRoot`) answer `true`, as they always have — that is a different

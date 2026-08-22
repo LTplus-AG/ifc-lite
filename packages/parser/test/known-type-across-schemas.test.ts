@@ -144,6 +144,41 @@ describe('isKnownType across the bundled schema union (#2003)', () => {
     }
   });
 
+  it('rejects Object.prototype member names', () => {
+    // The union lookup is a `Map`, but the pin fallback (`isKnownEntity`) used
+    // `name in SCHEMA_REGISTRY.entities` — and `in` walks the prototype chain,
+    // so every member of `Object.prototype` answered `true`. `ofType()` and
+    // `addEntity` both key on this predicate, so a query for `'constructor'`
+    // passed the guard and silently returned the Unknown bucket.
+    //
+    // Structural, not a denylist: the fix is `Object.hasOwn`, so this list is
+    // a sample of the class of names, not the definition of it. `NotAThing`
+    // rides along as the control — a plain unknown name has always been
+    // rejected, and must stay rejected.
+    for (const type of [
+      'constructor',
+      'toString',
+      'valueOf',
+      'hasOwnProperty',
+      '__proto__',
+      'isPrototypeOf',
+      'propertyIsEnumerable',
+      'toLocaleString',
+      'NotAThing',
+    ]) {
+      expect(isKnownType(type), type).toBe(false);
+    }
+  });
+
+  it('does not hand back an Object.prototype member as entity metadata', () => {
+    // `getEntityMetadata` indexed the same object literal, so `'toString'`
+    // resolved to `Object.prototype.toString` — a `Function` returned under
+    // the `EntityMetadata` type.
+    for (const type of ['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf']) {
+      expect(getEntityMetadata(type), type).toBeUndefined();
+    }
+  });
+
   it('rejects EXPRESS defined types that ride along in the bundled entity tables', () => {
     // The `ENTITIES_*` tables carry `IfcLengthMeasure`, `IfcBoolean` and 130
     // other defined types as rows. They are not instantiable, the pin has

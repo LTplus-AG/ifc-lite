@@ -74,6 +74,22 @@ const NOT_IFC_ENTITY_NAMES = [
   'Wall',
   'IfcLengthMeasure', // a real IFC *defined type*, not an entity
   '',
+  // `Object.prototype` member names. The oracle's pin fallback asked
+  // `name in SCHEMA_REGISTRY.entities`, and `in` walks the prototype chain,
+  // so each of these answered "known" and `ofType()` handed back the Unknown
+  // bucket - the exact silent-wrong-answer this guard exists to stop, reached
+  // by a name the caller can produce from any untrusted string. Fixed in
+  // `isKnownEntity`/`getEntityMetadata` (the codegen template) with
+  // `Object.hasOwn`, so this list samples the class rather than enumerating a
+  // denylist that would drift.
+  'constructor',
+  'toString',
+  'valueOf',
+  'hasOwnProperty',
+  '__proto__',
+  'isPrototypeOf',
+  // The control: a plain non-IFC name, rejected before and after.
+  'NotAThing',
 ] as const;
 
 function storeWithUnclassified(unclassifiedType: string) {

@@ -1514,9 +1514,10 @@ fn streaming_bounded_is_byte_identical_on_flat_models() {
 
 #[test]
 fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
-    // duplex has rep-identity groups the streaming path deliberately skips
-    // (bounded memory cannot hold every occurrence). World geometry must be
-    // identical anyway: same element nodes, same total placed triangles.
+    // duplex has rep-identity groups. Both paths share them now, so both emit
+    // one element node per occurrence and the same total placed triangles; what
+    // differs is how many meshes those nodes point at, which
+    // `streaming_bounded_shares_a_repeated_shape` pins.
     let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
     let opts = GltfOptions::default();
     let (in_memory, _) = export_glb_from_result(process_geometry(&content), &opts);
@@ -1545,6 +1546,72 @@ fn streaming_bounded_preserves_world_geometry_on_instanced_model() {
     // pos/norm are 12-byte and idx 4-byte multiples, so the BIN needs no padding
     // and must be exactly the three declared runs.
     assert_eq!(declared as usize, str_bin.len(), "BIN length matches declared runs");
+}
+
+/// The bounded path shares a repeated shape instead of sending it once per
+/// occurrence.
+///
+/// It used to skip this, on the reasoning that grouping "needs every occurrence
+/// co-resident". The geometry does; the decision does not, and that is the whole
+/// change: grouping reads a representation identity, so what the plan has to
+/// carry is that and a placement.
+///
+/// Pinned as an inequality rather than a count, because the number moves with
+/// the fixture. What must hold is that occurrences outnumber meshes at all,
+/// which is false for every version that baked each one.
+#[test]
+fn streaming_bounded_shares_a_repeated_shape() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (streamed, stats) = export_glb_streaming_bounded(&content, &opts);
+    let (json, _) = parse_glb(&streamed);
+    let nodes = json["nodes"].as_array().unwrap().len();
+    assert!(stats.meshes > 0, "the fixture has geometry");
+    assert!(
+        stats.meshes < nodes - 1,
+        "{} meshes for {} element nodes: nothing was shared",
+        stats.meshes,
+        nodes - 1,
+    );
+    // A shared shape is placed by a node matrix, because occurrences of one
+    // shape differ by rotation as often as by translation.
+    assert!(
+        json["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|n| n.get("matrix").is_some()),
+        "shared shapes are placed, and not by translation",
+    );
+}
+
+/// The bounded path shares at least as much as the in-memory one.
+///
+/// Not the same amount, and the difference is deliberate on both sides. The
+/// in-memory path sends a whole group back to flat when any one occurrence has
+/// no instance side-channel, or when the group disagrees about vertex count;
+/// this one drops the occurrence and keeps the rest, because on a real model the
+/// most repeated shapes are the ones with a few clipped occurrences among the
+/// thousand plain ones. The world geometry either path produces is pinned by
+/// `streaming_bounded_preserves_world_geometry_on_instanced_model`.
+#[test]
+fn the_bounded_path_shares_at_least_as_much() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (_, mem) = export_glb_from_result(process_geometry(&content), &opts);
+    let (_, streamed) = export_glb_streaming_bounded(&content, &opts);
+    assert!(
+        streamed.meshes <= mem.meshes,
+        "in-memory emitted {} meshes, bounded {} — bounded found less sharing",
+        mem.meshes,
+        streamed.meshes,
+    );
+    assert!(
+        streamed.vertices <= mem.vertices,
+        "vertices follow meshes: in-memory {}, bounded {}",
+        mem.vertices,
+        streamed.vertices,
+    );
 }
 
 #[test]

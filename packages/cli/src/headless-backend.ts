@@ -40,7 +40,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter, escapeCsvCell } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -611,19 +611,6 @@ export class HeadlessBackend implements BimBackend {
     const modelName = this.modelName;
     const queryAdapter = this.query;
 
-    function escapeCsv(value: string, sep: string): string {
-      // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-      // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-      let str = value;
-      if (/^[=+\-@\t\r]/.test(str)) {
-        str = `'${str}`;
-      }
-      if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    }
-
     function resolveColumn(data: EntityData, col: string, props: PropertySetData[] | null, qsets: QuantitySetData[] | null): string {
       if (col === 'Name' || col === 'name') return data.name;
       if (col === 'Type' || col === 'type') return data.type;
@@ -670,7 +657,7 @@ export class HeadlessBackend implements BimBackend {
           rows.push(columns.map(col => resolveColumn(data, col, props, qsets)));
         }
 
-        return rows.map(r => r.map(cell => escapeCsv(cell, sep)).join(sep)).join('\n');
+        return rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
       },
       json(refs: unknown, columns: unknown): Record<string, unknown>[] {
         const entityRefs = refs as EntityRef[];

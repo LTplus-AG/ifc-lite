@@ -11,6 +11,7 @@
  */
 
 import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
+import { escapeCsvCell } from '../csv-escape.js';
 
 export interface ExportCsvOptions {
   columns: string[];
@@ -116,7 +117,7 @@ export class ExportNamespace {
     }
 
     const sep = options.separator ?? ',';
-    const csvString = rows.map(r => r.map(cell => this.escapeCsv(cell, sep)).join(sep)).join('\n');
+    const csvString = rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
 
     // Trigger browser download if filename specified
     if (options.filename) {
@@ -245,29 +246,5 @@ export class ExportNamespace {
    */
   download(content: string, filename: string, mimeType?: string): void {
     this.backend.export.download(content, filename, mimeType ?? 'text/plain');
-  }
-
-  private escapeCsv(value: string, sep: string): string {
-    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-    //
-    // The trigger is looked for past any leading INVISIBLE characters. A BOM,
-    // zero-width space, left-to-right mark or non-breaking space in front of
-    // `=` does not stop a spreadsheet reading the cell as a formula, but it
-    // does stop an anchored regex matching, so `\uFEFF=HYPERLINK(...)`, a BOM then `=`, used to
-    // sail through. IFC text properties are attacker-controllable and can
-    // carry any of them.
-    //
-    // `\p{Cf}` (format) and `\p{Zs}` (space separator) deliberately, NOT `\s`:
-    // `\s` would swallow a leading tab, and tab is itself a trigger, so
-    // "\thello" would stop being guarded.
-    let str = value;
-    if (/^[\p{Cf}\p{Zs}]*[=+\-@\t\r]/u.test(str)) {
-      str = `'${str}`;
-    }
-    if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
   }
 }

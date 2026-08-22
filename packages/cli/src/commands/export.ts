@@ -18,6 +18,7 @@ import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
+import { escapeCsvCell } from '@ifc-lite/sdk';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -152,19 +153,6 @@ async function rustExportContext(
   return { bytes, gp };
 }
 
-function escapeCsv(value: string, sep: string): string {
-  // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-  // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-  let str = value;
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
-  if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
 export async function exportCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   const format = getFlag(args, '--format') ?? 'csv';
@@ -264,7 +252,7 @@ export async function exportCommand(args: string[]): Promise<void> {
         for (const entity of entities) {
           rows.push(columns.map(col => columnValueToCsv(resolveColumnValue(entity, col, bim))));
         }
-        const csv = rows.map(r => r.map(cell => escapeCsv(cell, separator)).join(separator)).join('\n');
+        const csv = rows.map(r => r.map(cell => escapeCsvCell(cell, separator)).join(separator)).join('\n');
         await writeOutput(csv, outPath);
       } else {
         const csv = bim.export.csv(refs, { columns, separator });

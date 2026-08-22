@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreApi } from './types.js';
+import { escapeCsvCell } from '@ifc-lite/sdk';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode } from '@ifc-lite/query';
 import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
@@ -18,7 +19,6 @@ interface CsvOptions {
   separator?: string;
   filename?: string;
 }
-
 
 /** Options for IFC STEP export */
 interface IfcExportOptions {
@@ -102,22 +102,6 @@ export function resolveVisibilityFilterSets(
       ? selectedExpressIds
       : modelIsolated,
   };
-}
-
-/**
- * Escape a CSV cell value — wrap in quotes if it contains the separator,
- * double-quotes, or newlines.
- */
-function escapeCsv(value: string, sep: string): string {
-  // Neutralize spreadsheet formula injection (CWE-1236): a leading
-  // =, +, -, @, TAB or CR makes a cell execute as a formula in Excel/
-  // LibreOffice/Sheets. IFC values are attacker-controllable, so prefix
-  // such cells with an apostrophe.
-  if (/^[=+\-@\t\r]/.test(value)) value = `'${value}`;
-  if (value.includes(sep) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
 
 /**
@@ -267,7 +251,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         rows.push(row);
       }
 
-      const csvString = rows.map(r => r.map(cell => escapeCsv(cell, sep)).join(sep)).join('\n');
+      const csvString = rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
 
       // If filename specified, trigger browser download
       if (options.filename) {

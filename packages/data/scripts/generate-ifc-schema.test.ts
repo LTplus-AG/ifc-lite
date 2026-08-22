@@ -83,6 +83,15 @@ function rename(file: string, from: RegExp, to: string): void {
   fs.writeFileSync(path, after);
 }
 
+/** Apply an arbitrary edit to a copied upstream file, failing if it is a no-op. */
+function edit(file: string, fn: (text: string) => string): void {
+  const path = join(upstreamDir, file);
+  const before = fs.readFileSync(path, 'utf8');
+  const after = fn(before);
+  expect(after, `the edit did not change ${file}`).not.toBe(before);
+  fs.writeFileSync(path, after);
+}
+
 function runGenerator(): { status: number | null; stdout: string; stderr: string } {
   const r = spawnSync(process.execPath, ['--import', TSX_LOADER, scriptPath], {
     encoding: 'utf8',
@@ -156,4 +165,74 @@ describe('generate-ifc-schema marker lookup', () => {
       expect(r.stdout).not.toContain('Done.');
     }
   );
+
+  /**
+   * Making a missing marker read as missing was only half of it. The block
+   * slicing also assumes each marker occurs EXACTLY ONCE and that the markers
+   * run in the order the versions are listed — and with either assumption
+   * broken the START lookup still succeeds, so nothing threw and the
+   * generator wrote a corrupted table and exited 0. Both were reproduced
+   * against the real vendored data before the guards existed; the counts in
+   * each case name what the corrupted run actually emitted.
+   */
+  it('refuses a second occurrence of a marker instead of slicing from it', () => {
+    // The dispatcher shape: a reference to GetPropertiesIFC4 ahead of the
+    // definitions. IFC4's start resolved onto it and psets-ifc4.ts was emitted
+    // with 725 psets against a 408 baseline — the whole IFC2X3 block absorbed.
+    edit('SchemaInfo.Properties.g.cs', (text) =>
+      text.replace(
+        'static IEnumerable<PropertySetInfo> GetPropertiesIFC2x3()',
+        '\tvoid Dispatch() { GetPropertiesIFC4(); }\n' +
+          '\tstatic IEnumerable<PropertySetInfo> GetPropertiesIFC2x3()'
+      )
+    );
+    const r = runGenerator();
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'GetPropertiesIFC4 occurs 2 times in Properties.g.cs'
+    );
+    expect(r.stdout).not.toContain('Done.');
+    expect(r.stdout).not.toContain('725 psets');
+  });
+
+  it('refuses an out-of-order upstream instead of running a block to EOF', () => {
+    // Every end lookup searches forward from its own section's start, so an
+    // IFC4X3 method placed above the IFC4 one is invisible to it: IFC2X3 ran
+    // to the IFC4X3 marker (1077 psets) and IFC4X3 ran to end of file (1168).
+    edit('SchemaInfo.Properties.g.cs', (text) => {
+      const i4 = text.indexOf(
+        'private static IEnumerable<PropertySetInfo> GetPropertiesIFC4()'
+      );
+      const i43 = text.indexOf(
+        'private static IEnumerable<PropertySetInfo> GetPropertiesIFC4x3()'
+      );
+      expect(i4, 'IFC4 method anchor drifted').toBeGreaterThan(-1);
+      expect(i43, 'IFC4X3 method anchor drifted').toBeGreaterThan(i4);
+      return text.slice(0, i4) + text.slice(i43) + text.slice(i4, i43);
+    });
+    const r = runGenerator();
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'GetPropertiesIFC4x3 appears before GetPropertiesIFC4 in Properties.g.cs'
+    );
+    expect(r.stdout).not.toContain('Done.');
+    expect(r.stdout).not.toContain('1077 psets');
+  });
+
+  // The same two guards are shared by every parser, not bolted onto the
+  // Properties one: a duplicate in a sibling file must be refused too.
+  it('refuses a duplicated marker in a sibling upstream file', () => {
+    edit('SchemaInfo.ObjectTypes.g.cs', (text) =>
+      text.replace(
+        'GetRelationTypesIFC4x3',
+        'GetRelationTypesIFC4x3();\n\t\t\tGetRelationTypesIFC4x3'
+      )
+    );
+    const r = runGenerator();
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain(
+      'GetRelationTypesIFC4x3 occurs 2 times in ObjectTypes.g.cs'
+    );
+    expect(r.stdout).not.toContain('Done.');
+  });
 });

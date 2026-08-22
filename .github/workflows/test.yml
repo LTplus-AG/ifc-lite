@@ -373,6 +373,15 @@ jobs:
   # knows what good looks like rather than only what broken looked like:
   # 2:29, 2:01, 1:50 against a 25 minute cap.
   #
+  # Shard membership is a hash of the file PATH, not its index in the sorted
+  # list. With `NR % n` every file after an added or removed test moves to a
+  # different shard: measured, adding ONE file reassigned 534 of 534. Two
+  # things that breaks. A flaky file wanders between shards, and "shard 1
+  # passed on PR X" stops being evidence about shard 1 on PR Y, because they
+  # are not the same set of files. I used exactly that cross-PR comparison as
+  # proof while chasing a flake, and it did not hold. With the hash, adding a
+  # file reassigns 0 of 534.
+  #
   # Parallelism comes from the SHARDS, not from concurrency inside a shard.
   # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
   # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three

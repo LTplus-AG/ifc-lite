@@ -324,6 +324,133 @@ export async function resolve(specifier, context, nextResolve) {
   assert.equal(status, 0, out);
 });
 
+// ── The inequality spelling, whose sense comes from the BRANCH ──────────────
+
+/**
+ * `if (specifier !== ALIASED) return nextResolve(...)` is the same deadness as
+ * the equality form wearing a different operator: the early return hands every
+ * OTHER specifier straight on, so the hook's real work sits below the guard and
+ * runs only when the specifier IS the aliased one — which, measured, it never
+ * is. It is also the more idiomatic hook shape of the two ("not mine, pass it
+ * through"), so leaving it invisible would leave the likelier spelling of the
+ * next incident unguarded.
+ *
+ * The next three tests are a matched TRIPLE, and the point is that the operator
+ * alone does not decide. Same condition, same specifier, same alias table:
+ * flagged when the branch passes through, green when the branch does the
+ * wrapping, green when the specifier is not alias-covered.
+ */
+const INEQUALITY_GUARD_HOOK = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier !== TARGET) return nextResolve(specifier, context);
+  return { url: 'file:///stub.js', shortCircuit: true };
+}
+`;
+
+test('RED: an inequality early-return on an aliased specifier is flagged', () => {
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': INEQUALITY_GUARD_HOOK });
+  assert.equal(status, 1, out);
+  assert.match(out, /`resolve` passes everything through on an inequality that always holds/);
+  assert.match(out, /returns early unless the specifier is `@ifc-lite\/collab`/);
+});
+
+test('CONTROL: the same inequality is NOT flagged when the branch does the wrapping', () => {
+  // The half of the rule that is easy to get wrong. Here the always-true
+  // condition guards the WRAPPING, not a pass-through, so nothing below it is
+  // load-bearing and nothing is dead. A gate that reds this reds a working hook,
+  // and a gate that reds working hooks gets disabled.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier !== TARGET) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 0, out);
+  assert.match(out, /1 bare-specifier arm\(s\), 1 alias-covered/);
+});
+
+test('an inequality early-return on a NON-aliased specifier is not flagged', () => {
+  // The alias table is still what decides, in this direction too: `cesium` is
+  // reached, so the guard's fall-through is reachable and nothing is dead.
+  const hook = `export async function resolve(specifier, context, nextResolve) {
+  if (specifier !== 'cesium') return nextResolve(specifier, context);
+  return { url: 'file:///stub.js', shortCircuit: true };
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 0, out);
+  assert.match(out, /1 bare-specifier arm\(s\), 0 alias-covered/);
+});
+
+test('`!(specifier === ALIASED)` reads exactly as `!==` does, in both directions', () => {
+  // Two claims in one, because they are one claim: the negation is understood
+  // structurally rather than string-matched. The pass-through spelling is
+  // flagged like its `!==` twin — and the wrapping spelling is NOT, which
+  // retires a false positive an earlier revision had on this exact shape,
+  // where the inner equality was read flat and the `!` around it ignored.
+  const guard = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  if (!(specifier === TARGET)) return nextResolve(specifier, context);
+  return { url: 'file:///stub.js', shortCircuit: true };
+}
+`;
+  const wrapping = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  if (!(specifier === TARGET)) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+  const red = runOn({ ...BALLAST, 'apps/x/hook.mjs': guard });
+  assert.equal(red.status, 1, red.out);
+  assert.match(red.out, /returns early unless the specifier is `@ifc-lite\/collab`/);
+
+  const green = runOn({ ...BALLAST, 'apps/x/hook.mjs': wrapping });
+  assert.equal(green.status, 0, green.out);
+});
+
+test('an inequality guard with a live url conjunct is not flagged', () => {
+  // The remedy in negated dress, and the reason the analysis carries BOTH
+  // directions through the `||`/`&&` structure instead of just inverting a
+  // verdict. The fall-through runs when `specifier === TARGET` OR the url test
+  // holds, and the second half is reachable, so nothing below is dead.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  const real = await nextResolve(specifier, context);
+  if (specifier !== TARGET && !real.url.endsWith('/collab/src/index.ts')) return nextResolve(specifier, context);
+  return { url: 'file:///stub.js', shortCircuit: true };
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 0, out);
+});
+
+test('a url signal inside a TERNARY leaf still clears the arm', () => {
+  // The one shape that reaches the leaf-level url escape. After the `||`/`&&`
+  // split no leaf can hold both an equality and a url signal EXCEPT through a
+  // ternary or a nested call, so without this fixture that escape is untested
+  // code in a gate. VERIFIED BY MUTATION: delete the escape and this test is the
+  // only one in the suite that reds — and it reds on a hook that does fire,
+  // through the ternary's consequent, which is exactly the false positive the
+  // escape exists to prevent.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  const real = await nextResolve(specifier, context);
+  if (context.parentURL ? real.url.endsWith('/collab/src/index.ts') : specifier === TARGET) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return real;
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 0, out);
+  assert.match(out, /1 bare-specifier arm\(s\), 1 alias-covered/);
+});
+
 test('alias coverage matches a `@/*` wildcard, not just an exact key', () => {
   // `@/lib/collab/geometry-sync` is claimed by `@/*`, which is how incident one
   // was dead. Exact-key-only matching would miss it, so pin the wildcard arm.

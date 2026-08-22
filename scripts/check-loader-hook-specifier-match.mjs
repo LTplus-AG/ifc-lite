@@ -4,8 +4,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Lint: a `node:module` `register()` loader hook must not match a TSCONFIG-ALIASED
- * specifier by bare equality alone.
+ * Lint: a `node:module` `register()` loader hook must not hinge on a bare
+ * comparison against a TSCONFIG-ALIASED specifier — neither matching on `===`
+ * nor passing through on `!==`, since the comparison's outcome is fixed either
+ * way and one whole side of the branch is dead.
  *
  * THE TRAP, from two real incidents rather than a hypothetical:
  *
@@ -67,10 +69,11 @@
  * THE RULE, and its exact scope: for every `resolve` hook found, this collects
  * the `if (...)` conditions in its body and, per condition, finds
  *
- *   - BARE targets  — an exact equality against the specifier parameter whose
- *                  right-hand side is a string with no URI scheme
- *                  (`specifier === '@/x'`, or `specifier === TARGET` where
- *                  `TARGET` is a top-level string const). A scheme-carrying
+ *   - BARE targets  — a comparison against the specifier parameter whose other
+ *                  side is a string with no URI scheme (`specifier === '@/x'`,
+ *                  or `specifier === TARGET` where `TARGET` is a top-level
+ *                  string const), collected with its SENSE: `===` and `!==` are
+ *                  both bare targets and mean opposite things. A scheme-carrying
  *                  literal (`'node:fs'`, `'file://…'`) is not a bare target:
  *                  Node does not rewrite those.
  *   - URL-CAPABLE signals — the condition tests something that survives
@@ -78,28 +81,52 @@
  *                  `.endsWith(`, `.includes(`, `.match(`, a `file://` literal,
  *                  or `pathToFileURL` / `fileURLToPath`.
  *
- * An ARM is FLAGGED when its bare target is claimed by a tsconfig `paths` entry
- * anywhere in the tree AND no URL-capable signal survives beside it in the same
- * BRANCH of the condition. Both halves are load-bearing, and both are pinned by
- * tests: alias coverage is what separates the two incidents from `cesium`, and
- * the URL-capable escape is what keeps the remedy green. That remedy is the one
- * both fixed hooks use: call `nextResolve` first and match the resolved URL,
- * keeping the specifier arm as an `||` IN THE SAME CONDITION for the older
- * async-only loader path.
+ * The one measured fact is asymmetric: an equality against an alias-covered
+ * specifier can never be TRUE. Everything else is boolean algebra over it. So
+ * each condition is evaluated in BOTH directions — can it still be true, can it
+ * still be false — and the flag depends on which side of the branch the hook's
+ * real work sits on:
  *
- * "In the same branch" is evaluated over the condition's `||`/`&&` STRUCTURE,
- * not by scanning it flat, because the two connectives do opposite things to a
- * dead equality:
+ *   - CANNOT BE TRUE  ⇒ the consequent never runs. Flagged.
+ *   - CANNOT BE FALSE ⇒ everything BELOW the `if` never runs, which matters only
+ *                       when the branch is a bare pass-through (`return
+ *                       nextResolve(specifier, context);`). Flagged then, and
+ *                       only then.
+ *
+ * That second case is the `!==` spelling, and it is the commoner hook shape of
+ * the two — "not my specifier, hand it on":
+ *
+ *   `if (specifier !== ALIASED) return nextResolve(…)`  everything below is dead
+ *   `if (specifier !== ALIASED) { …wrap here… }`        nothing is dead
+ *
+ * Same operator, same specifier, opposite verdicts. The OPERATOR does not decide
+ * and the CONSEQUENT does, which is why only the canonical pass-through shape is
+ * flagged: an always-taken branch that does the wrapping itself is a working
+ * hook, and a gate that reds working hooks gets disabled.
+ *
+ * Both directions are computed over the condition's `||`/`&&`/`!` STRUCTURE, not
+ * by scanning it flat, because the connectives do opposite things to a dead
+ * equality:
  *
  *   `specifier === ALIASED || resolved.url.includes(X)`   matches via the right
  *   `specifier === ALIASED && resolved.url.includes(X)`   can NEVER match
  *
- * A flat scan clears both. An OR is live when EITHER side is, an AND only when
- * BOTH are, and a leaf is dead exactly when it is an equality against an
- * alias-covered specifier with nothing URL-capable in it. That keeps the `&&`
- * self-wrap guard the fixed hooks use (`(specifier === TARGET || <url test>) &&
- * !context.parentURL?.startsWith(MARKER)`) green while flagging the `&&` form
- * that cannot fire.
+ * A flat scan clears both. An OR can be true when EITHER side can and false only
+ * when BOTH can; an AND is the mirror; `!` swaps the two. A leaf can never be
+ * true exactly when it is an equality against an alias-covered specifier with
+ * nothing URL-capable in it, and never false exactly when it is the matching
+ * inequality. That keeps the `&&` self-wrap guard the fixed hooks use
+ * (`(specifier === TARGET || <url test>) && !context.parentURL?.startsWith(MARKER)`)
+ * green while flagging the `&&` form that cannot fire — and it retires a false
+ * positive an earlier revision had on `!(specifier === ALIASED)`, which reads as
+ * a dead equality flat but is the negation of one, so it always holds.
+ *
+ * The URL-capable escape is what keeps the remedy green. That remedy is the one
+ * both fixed hooks use: call `nextResolve` first and match the resolved URL,
+ * keeping the specifier arm as an `||` IN THE SAME CONDITION for the older
+ * async-only loader path. Alias coverage and the URL escape are both
+ * load-bearing and both pinned by tests: alias coverage is what separates the
+ * two incidents from `cesium`, in the `!==` direction as well as the `===` one.
  *
  * Note the rule is PER ARM, not per hook. A dead alias arm is not excused by a
  * URL-capable arm sitting beside it, because the hook still hangs on that one
@@ -154,7 +181,22 @@
  *   6. IT SEES ONLY `if (...)`. A hook that matches inside a ternary, a `switch`,
  *      or a bare `return a || b` has no `if` condition to classify; that is a
  *      hard failure ("no match condition") rather than a pass, so the shape is
- *      fail-closed but not understood.
+ *      fail-closed but not understood. A ternary INSIDE an `if` condition is a
+ *      different matter and is seen, as one leaf.
+ *   7. AN ALWAYS-TRUE GUARD IS FLAGGED ONLY IN ITS PASS-THROUGH SHAPE. The
+ *      `!==` rule fires when the branch is exactly `return nextResolve(specifier,
+ *      context);`, braces optional. `if (specifier !== ALIASED) return real;`,
+ *      or a branch that logs before passing on, or one that returns a
+ *      pre-resolved result, is NOT flagged even though everything below it is
+ *      equally dead. That is deliberate: the pass-through is the shape whose
+ *      deadness is unambiguous from the text alone, and over-flagging here reds
+ *      a working hook — the failure mode that gets a gate deleted. The narrower
+ *      rule is the affordable one.
+ *   8. `!x === y` IS NOT MODELLED. A leading `!` is read as negating the whole
+ *      operand only when no comparison follows it at the top level, since
+ *      `!specifier === TARGET` actually parses as `(!specifier) === TARGET`.
+ *      That shape falls through to the flat leaf classifier, which is what the
+ *      previous revision did with every negation. No hook in the repo writes it.
  *
  * Closing gaps 1 and 4 needs a RUNTIME probe — register the hook on the pinned
  * Node and assert the stub applied — not a lexical one. This file is not that,
@@ -642,7 +684,42 @@ function stringConsts(clean) {
   return map;
 }
 
-/** Every `if (...)` condition inside a body, as raw text. */
+/**
+ * The statement the `if` guards, starting at `from`: a brace-balanced block, or
+ * everything up to the first depth-zero `;`. Read from the string-INTACT view,
+ * so a `;` inside a string literal can truncate it — which only ever makes the
+ * text fail `isPassThrough` below, i.e. errs toward not flagging.
+ */
+function consequentAt(text, from) {
+  let i = from;
+  while (i < text.length && /\s/.test(text[i])) i += 1;
+  if (text[i] === '{') {
+    let depth = 0;
+    for (let j = i; j < text.length; j += 1) {
+      if (text[j] === '{') depth += 1;
+      else if (text[j] === '}') {
+        depth -= 1;
+        if (depth === 0) return text.slice(i, j + 1);
+      }
+    }
+    return text.slice(i);
+  }
+  let depth = 0;
+  for (let j = i; j < text.length; j += 1) {
+    const ch = text[j];
+    if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') depth -= 1;
+    else if (ch === ';' && depth === 0) return text.slice(i, j + 1);
+  }
+  return text.slice(i);
+}
+
+/**
+ * Every `if (...)` inside a body: its condition, and the statement it guards.
+ *
+ * The consequent is needed because a NEGATED equality's sense depends on what
+ * the branch does, not on the operator — see `isPassThrough`.
+ */
 function ifConditions(bodyText) {
   const conditions = [];
   for (const m of bodyText.matchAll(/\bif\s*\(/g)) {
@@ -653,13 +730,37 @@ function ifConditions(bodyText) {
       else if (bodyText[i] === ')') {
         depth -= 1;
         if (depth === 0) {
-          conditions.push(bodyText.slice(open + 1, i));
+          conditions.push({
+            condition: bodyText.slice(open + 1, i),
+            consequent: consequentAt(bodyText, i + 1),
+          });
           break;
         }
       }
     }
   }
   return conditions;
+}
+
+/**
+ * Is this consequent a bare PASS-THROUGH — `return nextResolve(specifier,
+ * context);`, block-wrapped or not, and nothing else?
+ *
+ * This is what makes an early return an early return. `if (specifier !==
+ * ALIASED) return nextResolve(...)` hands every OTHER specifier straight on, so
+ * the hook's real work sits BELOW the guard and runs only when the specifier IS
+ * the aliased one — which never happens. `if (specifier !== ALIASED) { …wrap
+ * here… }` puts the work on the branch that always runs and is not dead at all.
+ * One operator, opposite verdicts; the consequent is what separates them.
+ *
+ * Built from `HOOK_MARKER` rather than written out, for the same reason
+ * `HOOK_USE` is: this file must not contain the pattern it searches for.
+ */
+const PASS_THROUGH = new RegExp(
+  String.raw`^\{?\s*return\s+(?:await\s+)?${HOOK_MARKER}\s*\([^()]*\)\s*;?\s*\}?$`,
+);
+function isPassThrough(consequent) {
+  return PASS_THROUGH.test(consequent.replace(/\s+/g, ' ').trim());
 }
 
 /** A literal carrying a URI scheme (`node:fs`, `file://…`) is not rewritten by Node. */
@@ -677,17 +778,29 @@ const URL_CAPABLE_SIGNALS = [
 
 /**
  * Classify one `if (...)` condition: the bare-only match targets it contains,
- * and the URL-capable signals it carries.
+ * split by the SENSE of the comparison, and the URL-capable signals it carries.
+ *
+ * `bare` holds equality targets (`specifier === ALIASED`), `bareNegated` holds
+ * inequality targets (`specifier !== ALIASED`). The two are collected apart
+ * because the mechanism makes an aliased equality permanently FALSE, which makes
+ * the matching inequality permanently TRUE — dead in opposite directions, and
+ * `analyze` needs to know which.
+ *
+ * The two operator patterns are disjoint by construction: `===?` cannot match at
+ * the `!` of `!==`, and `!==?` requires it.
  */
 function classifyCondition(condition, specifierParam, consts) {
   const bare = [];
+  const bareNegated = [];
   const ident = specifierParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const operand = String.raw`(['"]((?:\\.|[^'"])*)['"]|[A-Za-z_$][\w$]*)`;
   const forms = [
-    new RegExp(String.raw`\b${ident}\b\s*===?\s*${operand}`, 'g'),
-    new RegExp(String.raw`${operand}\s*===?\s*\b${ident}\b`, 'g'),
+    { into: bare, re: new RegExp(String.raw`\b${ident}\b\s*===?\s*${operand}`, 'g') },
+    { into: bare, re: new RegExp(String.raw`${operand}\s*===?\s*\b${ident}\b`, 'g') },
+    { into: bareNegated, re: new RegExp(String.raw`\b${ident}\b\s*!==?\s*${operand}`, 'g') },
+    { into: bareNegated, re: new RegExp(String.raw`${operand}\s*!==?\s*\b${ident}\b`, 'g') },
   ];
-  for (const re of forms) {
+  for (const { into, re } of forms) {
     for (const m of condition.matchAll(re)) {
       const raw = m[1];
       const text = raw.startsWith("'") || raw.startsWith('"') ? m[2] : consts.get(raw);
@@ -695,11 +808,11 @@ function classifyCondition(condition, specifierParam, consts) {
       // target: neither flagged nor vouched for (limitation 2 in the header).
       if (text === undefined) continue;
       if (HAS_SCHEME.test(text)) continue;
-      bare.push(text);
+      into.push(text);
     }
   }
   const urlSignals = URL_CAPABLE_SIGNALS.filter((s) => s.re.test(condition)).map((s) => s.why);
-  return { bare, urlSignals };
+  return { bare, bareNegated, urlSignals };
 }
 
 /**
@@ -752,51 +865,90 @@ function unwrapParens(text) {
   return t;
 }
 
+/** Does a top-level comparison operator appear in `text`? */
+function hasTopLevelComparison(text) {
+  return splitTopLevel(text, '==').length > 1 || splitTopLevel(text, '!=').length > 1;
+}
+
 /**
- * Is this condition still capable of matching, and if not, which alias-covered
- * targets killed it?
+ * Can this condition still be TRUE, can it still be FALSE, and which
+ * alias-covered targets are responsible?
  *
- * Evaluated over the condition's BOOLEAN STRUCTURE rather than as one flat
- * string, because `||` and `&&` do opposite things to a dead arm:
+ * BOTH directions are needed, because a hook can park its real work on either
+ * side of the branch and the mechanism kills only one of them:
+ *
+ *   `if (specifier === ALIASED) …`                the consequent never runs
+ *   `if (specifier !== ALIASED) return next…`     everything BELOW never runs
+ *
+ * The equality against an alias-covered specifier is the single asymmetric fact
+ * — measured, per the header: it can never hold. Everything else follows from
+ * ordinary boolean algebra, evaluated over the condition's STRUCTURE rather than
+ * as one flat string, because `||` and `&&` do opposite things to a dead arm:
  *
  *   `specifier === ALIASED || resolved.url.includes(X)`  matches via the right
  *   `specifier === ALIASED && resolved.url.includes(X)`  can NEVER match
  *
  * A flat "does this condition mention anything URL-capable" test clears both,
  * which lets an `&&` chain hide exactly the dead arm this guard exists to find.
- * The recursion is the whole difference: an OR is live when EITHER side is, an
- * AND only when BOTH are, and a leaf is dead precisely when it is an equality
- * against a tsconfig-aliased specifier with nothing URL-capable beside it.
+ * An OR can be true when EITHER side can and false only when BOTH can; an AND is
+ * the mirror; `!` swaps the two. The `||` remedy both fixed hooks use therefore
+ * stays green — its left half can never be true, its right half can — and
+ * `specifier === 'cesium' && …` stays green too, because `cesium` is not
+ * alias-covered and so is not dead in either direction.
  *
- * The `||` remedy both fixed hooks use therefore stays green — its left half is
- * dead and its right half is not — and `specifier === 'cesium' && …` stays
- * green too, because `cesium` is not alias-covered and so is not a dead leaf.
+ * Deciding the FALSE direction is also what retires an old false positive:
+ * `!(specifier === ALIASED)` reads as a dead equality to a flat scan, but the
+ * negation of something that can never be true can always be true, so it is
+ * live — which it is.
  */
-function conditionLiveness(condition, specifierParam, consts, aliasKeys) {
+function analyze(condition, specifierParam, consts, aliasKeys) {
   const text = unwrapParens(condition);
+  const UNKNOWN = { canBeTrue: true, canBeFalse: true, targets: [] };
 
   const ors = splitTopLevel(text, '||');
   if (ors.length > 1) {
-    const parts = ors.map((p) => conditionLiveness(p, specifierParam, consts, aliasKeys));
-    if (parts.some((p) => p.live)) return { live: true, deadTargets: [] };
-    return { live: false, deadTargets: parts.flatMap((p) => p.deadTargets) };
+    const parts = ors.map((p) => analyze(p, specifierParam, consts, aliasKeys));
+    return {
+      canBeTrue: parts.some((p) => p.canBeTrue),
+      canBeFalse: parts.every((p) => p.canBeFalse),
+      targets: parts.flatMap((p) => p.targets),
+    };
   }
 
   const ands = splitTopLevel(text, '&&');
   if (ands.length > 1) {
-    const parts = ands.map((p) => conditionLiveness(p, specifierParam, consts, aliasKeys));
-    if (parts.every((p) => p.live)) return { live: true, deadTargets: [] };
-    return { live: false, deadTargets: parts.flatMap((p) => p.deadTargets) };
+    const parts = ands.map((p) => analyze(p, specifierParam, consts, aliasKeys));
+    return {
+      canBeTrue: parts.every((p) => p.canBeTrue),
+      canBeFalse: parts.some((p) => p.canBeFalse),
+      targets: parts.flatMap((p) => p.targets),
+    };
   }
 
-  const { bare, urlSignals } = classifyCondition(text, specifierParam, consts);
-  const deadTargets = [];
-  for (const target of bare) {
-    const key = aliasCovers(aliasKeys, target);
-    if (key !== null) deadTargets.push({ target, key });
+  // A leading `!` negates the WHOLE operand only when no comparison follows it
+  // at the top level — `!x === y` parses as `(!x) === y`, so that shape is left
+  // to the leaf classifier rather than mis-negated.
+  if (text.startsWith('!') && !hasTopLevelComparison(text.slice(1))) {
+    const inner = analyze(text.slice(1), specifierParam, consts, aliasKeys);
+    return { canBeTrue: inner.canBeFalse, canBeFalse: inner.canBeTrue, targets: inner.targets };
   }
-  if (deadTargets.length === 0 || urlSignals.length > 0) return { live: true, deadTargets: [] };
-  return { live: false, deadTargets };
+
+  const { bare, bareNegated, urlSignals } = classifyCondition(text, specifierParam, consts);
+  // A leaf can carry both an equality and something URL-capable — through a
+  // ternary or a nested call, the only shapes the `||`/`&&` split leaves whole.
+  // `context.parentURL ? real.url.endsWith(X) : specifier === ALIASED` is live
+  // via its consequent, so the URL signal clears the leaf.
+  if (urlSignals.length > 0) return UNKNOWN;
+  const covered = (targets) =>
+    targets.map((target) => ({ target, key: aliasCovers(aliasKeys, target) })).filter((t) => t.key !== null);
+  const deadEqualities = covered(bare);
+  const deadInequalities = covered(bareNegated);
+  // Both senses in one leaf means the leaf is some expression this does not
+  // model. Claim nothing rather than pick one.
+  if (deadEqualities.length > 0 && deadInequalities.length > 0) return UNKNOWN;
+  if (deadEqualities.length > 0) return { canBeTrue: false, canBeFalse: true, targets: deadEqualities };
+  if (deadInequalities.length > 0) return { canBeTrue: true, canBeFalse: false, targets: deadInequalities };
+  return UNKNOWN;
 }
 
 const files = collectFiles();
@@ -902,19 +1054,32 @@ for (const abs of files) {
     // `||`/`&&` structure rather than scanning it flat, so an `&&` cannot
     // launder a dead equality past a URL-capable conjunct it is joined to.
     const deadTargets = [];
-    for (const condition of conditions) {
-      const { bare, urlSignals } = classifyCondition(condition, specifierParam, consts);
-      bareArmCount += bare.length;
+    const deadBelowGuard = [];
+    for (const { condition, consequent } of conditions) {
+      const { bare, bareNegated, urlSignals } = classifyCondition(condition, specifierParam, consts);
+      bareArmCount += bare.length + bareNegated.length;
       urlArmCount += urlSignals.length;
-      for (const target of bare) {
+      for (const target of [...bare, ...bareNegated]) {
         if (aliasCovers(aliasKeys, target) !== null) aliasArmCount += 1;
       }
-      const verdict = conditionLiveness(condition, specifierParam, consts, aliasKeys);
-      if (!verdict.live) deadTargets.push(...verdict.deadTargets);
+      const verdict = analyze(condition, specifierParam, consts, aliasKeys);
+      if (!verdict.canBeTrue) {
+        // The consequent can never run.
+        deadTargets.push(...verdict.targets);
+      } else if (!verdict.canBeFalse && isPassThrough(consequent)) {
+        // The condition always holds and the branch hands the specifier
+        // straight on, so the hook's real work — everything below this guard —
+        // is what can never run. Only the PASS-THROUGH shape is flagged: an
+        // always-taken branch that does the wrapping itself is live.
+        deadBelowGuard.push(...verdict.targets);
+      }
     }
 
     if (deadTargets.length > 0) {
-      flagged.push({ rel, line: lineOf(declOffset), targets: deadTargets });
+      flagged.push({ rel, line: lineOf(declOffset), kind: 'equality', targets: deadTargets });
+    }
+    if (deadBelowGuard.length > 0) {
+      flagged.push({ rel, line: lineOf(declOffset), kind: 'guard', targets: deadBelowGuard });
     }
   }
 }
@@ -930,10 +1095,17 @@ if (hookFileCount === 0 && failures.length === 0) {
 }
 
 for (const hit of flagged) {
+  const guard = hit.kind === 'guard';
   fail([
-    `${hit.rel}:${hit.line}: \`resolve\` matches an aliased specifier by equality only.`,
+    guard
+      ? `${hit.rel}:${hit.line}: \`resolve\` passes everything through on an inequality that always holds.`
+      : `${hit.rel}:${hit.line}: \`resolve\` matches an aliased specifier by equality only.`,
     '',
-    ...hit.targets.map((t) => `  matches only \`${t.target}\`, which tsconfig \`paths\` claims via \`${t.key}\``),
+    ...hit.targets.map((t) =>
+      guard
+        ? `  returns early unless the specifier is \`${t.target}\`, which tsconfig \`paths\` claims via \`${t.key}\` — so it never is, and everything below the guard is dead`
+        : `  matches only \`${t.target}\`, which tsconfig \`paths\` claims via \`${t.key}\``,
+    ),
     '',
     `\`module.registerHooks\` (synchronous, in-thread) landed in Node 22.15.0 and tsx
 feature-detects it. tsx's synchronous hook applies the tsconfig \`paths\` mapping

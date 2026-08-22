@@ -6,9 +6,8 @@
  * Main query interface - provides multiple access patterns
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { isKnownType, resolveEntityNameAlias, type IfcDataStore } from '@ifc-lite/parser';
 import {
-  IFC_ENTITY_NAMES,
   IfcTypeEnum,
   IfcTypeEnumFromString,
   type SpatialHierarchy,
@@ -90,34 +89,57 @@ export class IfcQuery {
     // `IfcTypeEnumFromString` falls back to `IfcTypeEnum.Unknown` for any name
     // it does not recognize. That fallback conflates two very different cases:
     //
-    //  1. A typo (`ofType('IfcWal')`). `IfcWal` is not an IFC entity name at
-    //     all, so the caller can only have meant `IfcWall`. Left unchecked the
-    //     query silently returns the Unknown bucket - every entity the store
-    //     itself could not classify - which is neither the caller's wall nor
-    //     an empty result, but some other, unrelated set of entities.
+    //  1. A typo (`ofType('IfcWal')`). `IfcWal` is not an IFC entity name in
+    //     any schema, so the caller can only have meant `IfcWall`. Left
+    //     unchecked the query silently returns the Unknown bucket - every
+    //     entity the store itself could not classify - which is neither the
+    //     caller's wall nor an empty result, but some other, unrelated set of
+    //     entities.
     //
     //  2. A real IFC entity name that `TYPE_STRING_TO_ENUM` (data/types.ts)
     //     simply has no entry for. That table is a curated subset, so standard
-    //     IFC4/IFC4X3 types such as `IfcChiller`, `IfcActuator` or
-    //     `IfcBuildingSystem` map to `Unknown` too. For those the Unknown
+    //     types such as `IfcChiller` and `IfcActuator` - and IFC2X3's
+    //     `IfcDoorStyle` and `IfcWindowStyle`, which is how 2X3 files carry
+    //     door and window typing - map to `Unknown` too. For those the Unknown
     //     bucket is the only representation available and querying it is the
-    //     documented, working behaviour - a file whose sole unclassified
-    //     entities are chillers really does answer `ofType('IfcChiller')`
+    //     documented, working behaviour: a file whose sole unclassified
+    //     entities are door styles really does answer `ofType('IfcDoorStyle')`
     //     correctly this way.
     //
-    // Only case 1 is rejected. `IFC_ENTITY_NAMES` (the ~880-entry IFC4X3
-    // entity-name table in @ifc-lite/data) is the oracle for "is this a real
-    // IFC entity name", so case 2 keeps falling through to Unknown unchanged.
+    // Only case 1 is rejected, and the oracle deciding which case a name falls
+    // in has to span every schema the parser reads. `IFC_ENTITY_NAMES` does
+    // not: it is the hand-kept IFC4X3-only display-name table, and keying on
+    // it rejected `IfcDoorStyle` and `IfcWindowStyle` outright. `isKnownType`
+    // (@ifc-lite/parser) is the predicate that already answers this question
+    // for the SDK's authoring guard - the bundled IFC2X3 + IFC4 + IFC4X3
+    // schema union, minus EXPRESS defined types (`IfcLengthMeasure`,
+    // `IfcArcIndex`), with the IFC4_ADD2_TC1 codegen pin as a fallback. Using
+    // it rather than growing a second name table keeps one source of truth.
+    //
+    // `isKnownType` deliberately does not resolve `ENTITY_NAME_ALIASES`,
+    // because it doubles as a name canonicalizer and an alias maps a leaf to
+    // its nearest schema-known *supertype*. For a pure known-ness question the
+    // alias table is exactly the right thing to consult: it lists names real
+    // STEP files carry that the bundled EXPRESS exports omit, such as IFC2X3's
+    // `IfcElectricalDistributionPoint`. Hence the second lookup - it is the
+    // difference between accepting and rejecting those names.
+    //
     // A genuine query for the Unknown bucket is still made by passing the
     // literal string `'Unknown'`.
     const typeEnums = types.map(t => {
       const typeEnum = IfcTypeEnumFromString(t);
       if (typeEnum === IfcTypeEnum.Unknown) {
-        const upper = t.trim().toUpperCase();
-        if (upper !== 'UNKNOWN' && IFC_ENTITY_NAMES[upper] === undefined) {
+        const trimmed = t.trim();
+        const known =
+          trimmed.toUpperCase() === 'UNKNOWN' ||
+          isKnownType(trimmed) ||
+          isKnownType(resolveEntityNameAlias(trimmed));
+        if (!known) {
           throw new Error(
-            `ofType(): "${t}" is not an IFC entity name - check the spelling. ` +
-            `To query entities whose type could not be classified, pass 'Unknown'.`
+            `ofType(): "${t}" is not an entity name in any IFC schema this ` +
+            `build reads (IFC2X3, IFC4, IFC4X3). Check the spelling; for a ` +
+            `vendor-specific type name, pass 'Unknown' to query entities ` +
+            `whose type could not be classified.`
           );
         }
       }

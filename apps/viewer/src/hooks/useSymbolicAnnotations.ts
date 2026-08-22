@@ -48,7 +48,16 @@ export { polylineToSegments, circleToSegments } from '../lib/overlay-parse/symbo
  * because the parse effect skipped it as already cached (#2183).
  */
 function sourceKey(store: IfcDataStore | null | undefined): string | null {
-  return store?.source.contentKey ?? null;
+  if (!store) return null;
+  const contentKey = store.source.contentKey ?? null;
+  if (!contentKey) return null;
+  // The cached `ParseResult` has the elevation rebase baked into it, and that
+  // rebase is NOT a function of the source bytes: it carries `originShift`,
+  // which federation and re-alignment set per model. Two models loaded from
+  // identical bytes at different placements share a `contentKey` and need
+  // different results, so the frame belongs in the key.
+  const rebase = elevationRebaseFor(store);
+  return `${contentKey}|${rebase.primitive}|${rebase.storeyTable}`;
 }
 
 /**
@@ -103,10 +112,13 @@ async function parseAnnotations(
  * remainder applies there, while a raw storey-table elevation needs all of
  * it. Derived from ONE offset read so the two cannot drift apart.
  *
- * Read once per parse and baked into the cached `ParseResult`, exactly like
- * the RTC subtraction the wasm walk already baked into the same primitives —
- * so a later re-alignment invalidates this the same way it invalidates those,
- * and neither is more stale than the other.
+ * Read once per parse and baked into the cached `ParseResult`. Unlike the RTC
+ * subtraction the wasm walk bakes into the same primitives, this is NOT a
+ * function of the source bytes — RTC is derived from the model's own
+ * coordinates, while `totalYupOffset` also carries `originShift`, which
+ * federation and re-alignment set per model. That is why `sourceKey` mixes
+ * these two values into the parse-cache key rather than keying on
+ * `contentKey` alone.
  */
 function elevationRebaseFor(store: IfcDataStore): ElevationRebase {
   const state = useViewerStore.getState();
@@ -223,6 +235,17 @@ export function ensureParseFor(stores: IfcDataStore[]): Promise<void>[] {
 export function __resetSymbolicAnnotationsCacheForTests(): void {
   PARSE_CACHE.clear();
   PARSE_INFLIGHT.clear();
+}
+
+/**
+ * @internal test-only view of the parse-cache key for a store. The key mixes
+ * the elevation rebase into `contentKey`, so a test must not spell it out as a
+ * literal — that would pass for the wrong reason the moment the key changes.
+ */
+export function __symbolicAnnotationsSourceKeyForTests(
+  store: IfcDataStore | null | undefined,
+): string | null {
+  return sourceKey(store);
 }
 
 /** @internal test-only peek at how many entries are cached for a source key. */

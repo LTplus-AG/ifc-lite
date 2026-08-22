@@ -28,6 +28,7 @@ import {
   ensureParseFor,
   __resetSymbolicAnnotationsCacheForTests,
   __symbolicAnnotationsCacheHasForTests,
+  __symbolicAnnotationsSourceKeyForTests,
 } from './useSymbolicAnnotations.js';
 
 function makeFailingStore(callCounter: { count: number }): IfcDataStore {
@@ -73,7 +74,9 @@ describe('ensureParseFor retry storm on repeated parse failure', () => {
     // The failure must be visible in the cache (as an empty result) so
     // downstream consumers don't stay in an indefinite "loading" limbo.
     assert.equal(
-      __symbolicAnnotationsCacheHasForTests('retry-storm-fault-key'),
+      __symbolicAnnotationsCacheHasForTests(
+        __symbolicAnnotationsSourceKeyForTests(store) ?? '',
+      ),
       true,
       'a failed parse must still populate PARSE_CACHE so retries are skipped',
     );

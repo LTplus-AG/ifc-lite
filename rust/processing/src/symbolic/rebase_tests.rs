@@ -12,7 +12,7 @@ const OFFSET: (f64, f64, f64) = (12_050.0, -14_530.0, 407.0);
 #[test]
 fn each_axis_is_rebased_by_its_own_component() {
     let rebase = RenderFrameRebase::from_rtc_offset(OFFSET);
-    // IFC (12_000, -14_500, 400) → render (-50, +30 after the flip, -7).
+    // IFC (12_000, -14_500, 400) → render (-50, -30 after the flip, -7).
     let (x, y) = rebase.plan(12_000.0, -14_500.0);
     assert!((x - -50.0).abs() < 1e-3, "x: {x}");
     assert!((y - -30.0).abs() < 1e-3, "y2d: {y}");

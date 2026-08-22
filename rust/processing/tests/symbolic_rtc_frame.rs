@@ -265,3 +265,58 @@ fn every_primitive_kinds_elevation_lands_in_the_mesh_render_frame() {
         );
     }
 }
+
+/// `IfcTrimmedCurve` emits *polylines*, so the coverage guard above cannot see
+/// it: the fixture's plain `IfcPolyline` fills the "polyline" slot whether or
+/// not the trimmed curve produced anything. Everything a trimmed curve emits
+/// also carries its owning annotation's express id, so the id cannot separate
+/// them either. Its arc geometry can: a tessellated 1.5 rad sweep of a 2 m
+/// radius is not something the straight two-point polyline can imitate.
+#[test]
+fn the_trimmed_curve_emits_its_arc_in_the_render_frame() {
+    let data = extract_symbolic_data(&fixture());
+    let want = expected(placement_of(LOW_ID).unwrap());
+
+    // Radius 2000 mm about the annotation's own origin, swept 0 → 1.5 rad.
+    const RADIUS_M: f32 = 2.0;
+    const SWEEP_RAD: f32 = 1.5;
+
+    let arc = data
+        .polylines
+        .iter()
+        .filter(|p| p.express_id == LOW_ID)
+        .find(|p| {
+            p.points.len() > 8
+                && p.points.chunks_exact(2).all(|c| {
+                    let r = ((c[0] - want.0).powi(2) + (c[1] - want.1).powi(2)).sqrt();
+                    (r - RADIUS_M).abs() < 0.05
+                })
+        })
+        .expect(
+            "no arc polyline at radius 2 m from the LOW placement — the trimmed \
+             curve stopped emitting, or stopped being tessellated as an arc",
+        );
+
+    // Every sample sits in the render frame, not just the first: a rebase
+    // applied to the start point alone would pass a start-only check.
+    for c in arc.points.chunks_exact(2) {
+        let r = ((c[0] - want.0).powi(2) + (c[1] - want.1).powi(2)).sqrt();
+        assert!(
+            (r - RADIUS_M).abs() < 0.05,
+            "arc sample at radius {r:.4} m, expected {RADIUS_M:.4} m about \
+             ({:.4}, {:.4})",
+            want.0,
+            want.1
+        );
+    }
+
+    // The sweep pins the trim parameters. The plan flip mirrors the arc, which
+    // reverses the direction but preserves the magnitude of the span.
+    let angle = |i: usize| (arc.points[i + 1] - want.1).atan2(arc.points[i] - want.0);
+    let span = (angle(arc.points.len() - 2) - angle(0)).abs();
+    assert!(
+        (span - SWEEP_RAD).abs() < 0.05,
+        "arc sweeps {span:.4} rad, expected {SWEEP_RAD:.4} rad — the trim \
+         parameters are not reaching the tessellator"
+    );
+}

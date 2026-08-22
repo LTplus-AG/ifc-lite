@@ -406,23 +406,48 @@ export const COMMON_SCALES: DrawingScale[] = [
   { name: '1:1000', factor: 1000, useCase: 'Urban context' },
 ];
 
+/** Fraction of the sheet a drawing may occupy, leaving a 10% margin. */
+const FIT_MARGIN = 0.9;
+
 /**
- * Get recommended scale for a given bounding box size
+ * Pick the tightest common scale at which a model of `boundsWidth` x
+ * `boundsHeight` still fits the paper.
+ *
+ * UNITS, because the two arguments are not in the same one: the BOUNDS are
+ * metres (model space) and the PAPER is millimetres (drawing space). At 1:100
+ * a 30 m wall is 300 mm on paper, so the conversion is `metres * 1000 / factor`.
+ *
+ * Throws on a non-finite or non-positive input rather than returning a scale.
+ * A scale has no safe default: the coarsest entry is a real scale, and for a
+ * large site it is even the right one, so a caller cannot tell a fallback
+ * apart from an answer.
  */
 export function getRecommendedScale(
   boundsWidth: number,
   boundsHeight: number,
-  paperWidth: number = 420, // A3 landscape
-  paperHeight: number = 297
+  paperWidth: number = PAPER_SIZES.A3_LANDSCAPE.width,
+  paperHeight: number = PAPER_SIZES.A3_LANDSCAPE.height
 ): DrawingScale {
-  const maxDimension = Math.max(boundsWidth, boundsHeight);
+  for (const [label, value] of Object.entries({ boundsWidth, boundsHeight, paperWidth, paperHeight })) {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(
+        `Invalid ${label} for getRecommendedScale: ${value}. ` +
+        `Expected a positive finite number (bounds in metres, paper in millimetres).`
+      );
+    }
+  }
 
-  // Find smallest scale that fits
+  const usableWidth = paperWidth * FIT_MARGIN;
+  const usableHeight = paperHeight * FIT_MARGIN;
+
+  // COMMON_SCALES runs finest (1:1) to coarsest (1:1000), so the first fit is
+  // the tightest one.
   for (const scale of COMMON_SCALES) {
-    const scaledWidth = boundsWidth / scale.factor;
-    const scaledHeight = boundsHeight / scale.factor;
-
-    if (scaledWidth <= paperWidth * 0.9 && scaledHeight <= paperHeight * 0.9) {
+    // `1000 / factor` is how the rest of the package spells metres-to-paper-mm
+    // (pdf-scale.ts, sheet-types.ts, svg-exporter.ts). Kept identical so a grep
+    // for it finds every site.
+    const worldToMm = 1000 / scale.factor;
+    if (boundsWidth * worldToMm <= usableWidth && boundsHeight * worldToMm <= usableHeight) {
       return scale;
     }
   }

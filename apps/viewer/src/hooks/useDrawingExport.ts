@@ -1029,10 +1029,18 @@ function useDrawingExport({
   // v1 scope, deliberately smaller than the SVG export: cut-polygon
   // OUTLINES and drawing LINES only (matching what an engineer actually
   // measures off a printed section). Not yet included: area fills /
-  // hatching, DXF underlays, the drawing-sheet title block/frame/scale
-  // bar, text/cloud annotations, and the point-cloud scan overlay. Those
-  // are straightforward follow-ups once this scale plumbing is reviewed;
-  // see the PR description.
+  // hatching, DXF underlays, text/cloud annotations, and the point-cloud
+  // scan overlay. Those are straightforward follow-ups once this scale
+  // plumbing is reviewed; see the PR description.
+  //
+  // The drawing-sheet frame / title block / scale bar are NOT on that list
+  // any more, and this path is not where they will arrive. It is the
+  // NON-SHEET path: since #2941/#2942 the sheet case returns from the
+  // branch at the top of `handleExportPDF` and never reaches here. This
+  // path is still the only PDF export for the "as displayed" / scaled
+  // drawing (#2042) and is not dead — but it is also the only true-vector
+  // PDF the viewer emits, so the branch above is where the raster
+  // trade-off is written down.
   const handleExportPDF = useCallback((scaleFactor?: number) => {
     if (!drawing) return;
 
@@ -1048,6 +1056,41 @@ function useDrawingExport({
     // all branch on `sheetEnabled && activeSheet` (e.g. handleExportSVG
     // above); PDF alone didn't. Reuse the already-correct sheet SVG instead
     // of re-deriving a second sheet layout for jsPDF's vector primitives.
+    //
+    // THE TRADE-OFF THIS BRANCH MAKES, stated so the next reader does not
+    // have to rediscover it by zooming into an exported sheet:
+    //
+    //   A sheet-mode PDF is a RASTER, not vector. It carries one PNG per
+    //   page ({@link SHEET_PDF_DPI}, capped by MAX_SHEET_RASTER_PIXELS),
+    //   so its text and lines are resolution-dependent and will pixelate
+    //   under zoom or on a plotter finer than the effective dpi.
+    //
+    // Before this branch existed, sheet mode fell through to the v1 path
+    // below and produced true-vector output — but of the wrong drawing:
+    // no frame, no title block, no scale bar (#2941) and at
+    // `displayOptions.scale` rather than the sheet's own (#2942). So the
+    // choice was not "vector vs raster", it was "a resolution-independent
+    // PDF that is not the sheet and is not to scale" vs "the correct sheet
+    // at the correct scale, rasterized". Correctness won.
+    //
+    // Vector would require re-deriving the whole sheet — frame, title
+    // block, scale bar, north arrow, and the drawing transform — against
+    // jsPDF's own primitives, because no SVG-import plugin is installed
+    // (apps/viewer depends on `jspdf` and `jspdf-autotable`; there is no
+    // `svg2pdf.js`). That is a second, independent implementation of
+    // `generateSheetSVG` that would then have to be kept in step with it —
+    // exactly the drift the v1 path already demonstrated. It is a real
+    // follow-up, not a hidden cost.
+    //
+    // The route for a user who needs vector today is the SVG export, which
+    // is not an approximation of this: `handleExportSVG` above emits the
+    // SAME `generateSheetSVG()` string, with no raster step at all. The
+    // over-cap toast below already points there; this note records that
+    // the recommendation applies to EVERY sheet PDF, not only capped ones.
+    //
+    // The non-sheet path below is untouched by any of this and stays true
+    // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
+    // both halves of that split.
     if (sheetEnabled && activeSheet) {
       const svg = generateSheetSVG();
       if (!svg) return;

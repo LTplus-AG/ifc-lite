@@ -361,8 +361,13 @@ describe('PointCloudSpatialIndex — occupied-cell cap (#3028 diagnosis)', () =>
   });
 
   it('truncates a chunk that crosses the cell cap instead of retaining all of it', () => {
-    // Only the accepted prefix may be retained, or the cap bounds nothing:
-    // a one-shot 10-point chunk with a 3-cell budget must keep 3 points.
+    // Only the accepted prefix is INDEXED: a one-shot 10-point chunk with
+    // a 3-cell budget must count and bound exactly 3 points. That the
+    // prefix is also the only thing RETAINED — the half of the claim that
+    // makes the cap bound memory rather than bookkeeping — is not visible
+    // here (`pointCount` and `getBounds` read the same either way) and is
+    // pinned separately in "what the index retains of the caller's
+    // buffers" below.
     const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 3);
     const pts: number[] = [];
     for (let i = 0; i < 10; i++) pts.push(i, 0, 0);
@@ -623,5 +628,97 @@ describe('PointCloudSpatialIndex — LAS class visibility mask (#1783 interplay)
     const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), m);
     assert.ok(hit);
     assert.strictEqual(hit!.distance, 2);
+  });
+});
+
+describe("PointCloudSpatialIndex — what the index retains of the caller's buffers", () => {
+  // `insertRange`'s contract has two halves, and BOTH are memory claims
+  // rather than picking claims: a chunk that fits is kept BY REFERENCE
+  // (copying it would double the 12 bytes/point this index already
+  // costs), and a chunk that CROSSES a cap keeps only a COPY of the
+  // accepted prefix (keeping the whole array by reference would retain a
+  // 100M-point chunk's 1.2 GB behind a 30M-point cap, so the cap would
+  // bound bookkeeping and not memory).
+  //
+  // Neither half is visible through `pointCount`, `cellCount` or
+  // `getBounds` — all three are folded in at insert time and read the
+  // same whichever array the chunk ended up holding. The only handle on
+  // "which array" is what `queryRay` reads back, so these tests write to
+  // the caller's array after the insert and watch whether the change
+  // shows through.
+  //
+  // Writing to it is exactly what the class doc tells callers NOT to do.
+  // That is deliberate and is not an endorsement: the mutation is the
+  // instrument, the way a spy is, and what is asserted is which storage
+  // the index kept — not that mutating afterwards is supported. The
+  // alternative is a documented memory bound that nothing enforces.
+  // The mechanism relied on is fully specified rather than incidental:
+  // `TypedArray.prototype.slice` allocates a new buffer, while the array
+  // passed in stays a live view over the caller's buffer.
+
+  it('keeps only a copy of the accepted prefix when a chunk crosses the cell cap', () => {
+    // 10 points, one per 0.5 m cell, against a 3-cell budget: the chunk
+    // is truncated to 3 and the other 7 triples must not be retained.
+    const src = new Float32Array(30);
+    for (let i = 0; i < 10; i++) src[i * 3 + 2] = 1 + i;
+    const idx = new PointCloudSpatialIndex(0.5, 1_000_000, 3);
+    idx.insertRange(src, 10);
+    assert.strictEqual(idx.pointCount, 3, 'precondition: the chunk was truncated');
+
+    const before = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(before);
+    assert.strictEqual(before!.distance, 1);
+
+    // Overwrite the caller's array wholesale. A retained COPY is a
+    // different buffer and cannot see this; a retained REFERENCE would
+    // put every indexed point 999 m down the ray, i.e. out of range.
+    src.fill(999);
+
+    const after = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(after, "a truncated chunk must be copied, not aliased to the caller's array");
+    assert.strictEqual(after!.distance, 1);
+    assert.strictEqual(after!.position.z, 1);
+  });
+
+  it('keeps only a copy of the accepted classifications when a chunk crosses a cap', () => {
+    // Same claim for the parallel class array — it is sliced on the same
+    // branch, and a retained reference would let a later write change
+    // which points the LAS visibility mask hides.
+    const classes = new Uint8Array([1, 1, 1, 1]);
+    const idx = new PointCloudSpatialIndex(0.5, 2);
+    idx.insertRange(new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0, 4]), 4, classes);
+    assert.strictEqual(idx.pointCount, 2, 'precondition: the chunk was truncated');
+
+    classes.fill(9);
+
+    // Class 9 hidden, class 1 visible. A copy still reports both indexed
+    // points as class 1, so the nearest (z=1) wins; a retained reference
+    // would see class 9 everywhere and hide the whole chunk.
+    const mask = new Uint32Array(8).fill(0xffffffff);
+    mask[0] &= ~(1 << 9);
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05), mask);
+    assert.ok(hit, 'truncated classifications must be copied, not aliased');
+    assert.strictEqual(hit!.distance, 1);
+  });
+
+  it('keeps a chunk that fits BY REFERENCE, paying no copy', () => {
+    // The other direction, and the reason the copy above is confined to
+    // the truncating branch: the streaming path inserts whole chunks that
+    // fit, and copying each one would double this index's retained bytes
+    // per point. A copy-always implementation would pass the two tests
+    // above and fail this one.
+    const src = new Float32Array([0, 0, 1, 0, 0, 2, 0, 0, 3]);
+    const idx = new PointCloudSpatialIndex(0.5);
+    idx.insertRange(src, 3);
+    assert.strictEqual(idx.pointCount, 3, 'precondition: nothing was truncated');
+
+    // Nudge the nearest point within its own 0.5 m cell, so the write
+    // changes only the position read back and not the grid the query
+    // walks. Reading it back through `queryRay` == the array was not copied.
+    src[2] = 1.25;
+
+    const hit = idx.queryRay(FORWARD_RAY.origin, FORWARD_RAY.direction, 100, flatTolerance(0.05));
+    assert.ok(hit);
+    assert.strictEqual(hit!.distance, 1.25, 'a chunk that fits must be aliased, not copied');
   });
 });

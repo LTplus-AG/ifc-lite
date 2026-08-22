@@ -146,6 +146,41 @@ describe('Camera.setRotation (absolute orientation)', () => {
     });
   });
 
+  it('re-seats a non-Y up vector, so the angles are observable from any prior pose', () => {
+    // Every other case here starts from a camera whose `up` is already world
+    // Y, which is the one state where the reset at the end of `setRotation`
+    // cannot be observed -- verified by mutation: deleting
+    // `this.state.camera.up = { x: 0, y: 1, z: 0 }` left the whole file green.
+    //
+    // `getRotation` derives azimuth from the UP vector whenever it has any
+    // horizontal component (`upLen > 0.01`), and only falls back to the
+    // position when up is vertical. A camera restored from a BCF viewpoint
+    // takes its up straight from the file (`Viewport.tsx`'s
+    // `camera.setUp(viewpoint.up...)`), so a top-down viewpoint arrives with
+    // up = (0, 0, -1). Without the reset the new position is written but the
+    // reported azimuth still comes from the stale up vector -- 0 instead of
+    // the 120 that was asked for, i.e. exactly the "the command did nothing"
+    // symptom of #2934, one layer down.
+    const camera = new Camera();
+    camera.setTarget(0, 0, 0);
+    camera.setPosition(0, 100, 0);
+    camera.setUp(0, 0, -1);
+    assert.ok(
+      Math.abs(camera.getRotation().azimuth - 0) < 1e-6,
+      'fixture precondition: the stale up vector reports azimuth 0',
+    );
+
+    camera.setRotation(120, 30);
+
+    const got = camera.getRotation();
+    assert.ok(
+      Math.abs(got.azimuth - 120) < 1e-6,
+      `azimuth ${got.azimuth} != 120 -- the stale up vector still drives the readout`,
+    );
+    assert.ok(Math.abs(got.elevation - 30) < 1e-6, `elevation ${got.elevation} != 30`);
+    assert.deepStrictEqual(camera.getUp(), { x: 0, y: 1, z: 0 });
+  });
+
   it('rejects non-finite angles instead of writing a NaN pose', () => {
     const camera = new Camera();
     camera.setRotation(30, 10);

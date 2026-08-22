@@ -611,6 +611,20 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # The CSV cell escaper reached NINE hand-rolled copies and no two were
+      # identical: some tested the formula trigger anchored at offset 0 (so a
+      # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),
+      # some hardened it by DELETING the leading invisibles (throwing away
+      # leading spaces, against RFC 4180 2.4), one hard-coded a comma while its
+      # caller had a configurable delimiter. Correcting the copies only resets
+      # the clock; this is what stops a tenth.
+      - name: Check for hand-rolled CSV cell escapers
+        run: node scripts/check-csv-escaper-copies.mjs
+      # Executable proof the gate fires: each of the ten real copies is replanted
+      # in its original shape and must turn the gate red, and a scan that finds
+      # almost no files must fail rather than report clean.
+      - name: Check CSV escaper gate regressions
+        run: node --test scripts/check-csv-escaper-copies.test.mjs
 
       # `audit-test-timeouts.mjs` reports which tests carry an explicit vitest
       # timeout, across all three spellings this repo uses. An audit that

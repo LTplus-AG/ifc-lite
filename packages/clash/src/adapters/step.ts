@@ -7,79 +7,29 @@
  * into representation-agnostic `ClashElement`s, and precompute the
  * void/host/assembly pair exclusions from IFC relationships.
  *
- * This module is the only part of the package that depends on
+ * This module (along with `ifcx.ts`, via `shared.ts`) depends on
  * `@ifc-lite/parser` / `@ifc-lite/query`; it is reached via the
- * `@ifc-lite/clash/step` subpath so the core stays version-neutral.
+ * `@ifc-lite/clash/step` subpath so the core stays version-neutral. The
+ * non-clashable-tag filter and per-entity mesh coalescing are shared with
+ * `ifcx.ts` through `./shared.ts` — see that module's doc comment for why.
  */
 
-import {
-  getInheritanceChainAcrossSchemas,
-  isIfcTypeLikeEntity,
-  type IfcDataStore,
-} from '@ifc-lite/parser';
+import { type IfcDataStore } from '@ifc-lite/parser';
 import { EntityNode } from '@ifc-lite/query';
 import type { MeshData } from '@ifc-lite/geometry';
 import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import type { ClashElement, ExclusionSet, Mat4 } from '../types.js';
+import { isNonClashableTag, mergeMeshes } from './shared.js';
 
 /** Minimal federation contract — pass an `@ifc-lite/renderer` `FederationRegistry`. */
 export interface FederationLike {
   toGlobalId(modelId: string, expressId: number): number;
 }
 
-/**
- * Types that are never physical clash candidates: voids, virtual/reference
- * geometry, and non-product material associations. Including them produced
- * phantom clashes (IfcVirtualElement, IfcOpeningElement, even
- * IfcMaterialConstituent) that no clash rule referenced - they are dropped from
- * the candidate set entirely, so "detect all" and per-rule runs only ever
- * consider real building elements. (#1464)
- *
- * Spatial containers are handled separately by {@link isSpatialContainerTag},
- * which derives them from the schema rather than from a list.
- */
-const NON_CLASHABLE_TAGS: ReadonlySet<string> = new Set([
-  'IfcOpeningElement',
-  'IfcOpeningStandardCase',
-  'IfcVirtualElement',
-  'IfcGrid',
-  'IfcGridAxis',
-  'IfcAnnotation',
-  'IfcMaterial',
-  'IfcMaterialConstituent',
-  'IfcMaterialLayer',
-]);
-
-/** Memoizes the schema walk below; IFC type names are a bounded vocabulary. */
-const spatialContainerByTag = new Map<string, boolean>();
-
-/**
- * True for spatial *containers* - the entities whose geometry describes an
- * extent that, by construction, encloses the elements assigned to it. A storey
- * against the slab it contains is not a coordination problem, and IFC4.3
- * infrastructure exports routinely give IfcBuildingStorey / IfcRoad / IfcBridge
- * tessellated bodies, so every contained element clashed with its own
- * container. (follow-up to #1464)
- *
- * Derived from the schema, not enumerated: `getInheritanceChainAcrossSchemas`
- * walks the bundled IFC2X3 + IFC4 + IFC4X3 union, so the IFC4.3 facility leaves
- * (IfcRoad, IfcBridge, IfcFacilityPart, ...) resolve even though the parser's
- * own codegen pin is IFC4_ADD2_TC1 and would return an empty chain for them.
- * Both supertypes are checked because IFC2X3 has no `IfcSpatialElement` -
- * `IfcSpatialStructureElement` descends straight from `IfcProduct` there.
- * This subsumes the IfcSpace / IfcSpatialZone entries that #1464 listed by hand.
- */
-function isSpatialContainerTag(tag: string): boolean {
-  const cached = spatialContainerByTag.get(tag);
-  if (cached !== undefined) return cached;
-  const chain = getInheritanceChainAcrossSchemas(tag);
-  const spatial = chain.some(
-    (a) => a === 'IfcSpatialElement' || a === 'IfcSpatialStructureElement',
-  );
-  spatialContainerByTag.set(tag, spatial);
-  return spatial;
-}
+// The non-clashable-tag filter (voids, spatial containers, type objects —
+// #1464 and its follow-up) now lives in `./shared.ts`, shared verbatim with
+// `ifcx.ts`. See that module for the full rationale.
 
 export interface StepAdapterOptions {
   store: IfcDataStore;
@@ -231,17 +181,34 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
   } = options;
 
   const elements: ClashElement[] = [];
-  // One expressId can now back MULTIPLE elements: a GPU-instanced entity
-  // (#2865) is fed in as one `MeshData` per occurrence, all sharing one
-  // `expressId` but holding distinct world-space positions and a distinct
-  // `occurrenceKey` (see `MeshData.occurrenceKey` doc, `packages/geometry/src/types.ts`).
-  // A `Map<number, ClashElement>` would let the LAST occurrence silently win
-  // both the identity (`key`) and the relationship exclusions computed below
-  // — the same collapse #1405 fixed in `SnapDetector`. Every occurrence is
-  // kept, so relationship exclusions (voids/assembly) fan out to all of them.
+  // One expressId can back MULTIPLE elements: a GPU-instanced entity is fed
+  // in as one `MeshData` per occurrence, all sharing one `expressId` but
+  // holding distinct world-space positions and a distinct `occurrenceKey`
+  // (see `MeshData.occurrenceKey` doc, `packages/geometry/src/types.ts`).
+  // `byExpressId` fans relationship exclusions (below, `buildStepExclusions`)
+  // out across every occurrence at each side of a relationship, so a host's
+  // void/assembly exclusions cover every physical placement of the
+  // filler/sibling, not just whichever occurrence happened to be built last
+  // (same remedy as #1405 / #2865).
   const byExpressId = new Map<number, ClashElement[]>();
   /** Elements whose GlobalId lookup came back empty — see the check below. */
   let missingGlobalIds = 0;
+
+  // Pass 1: group every mesh by its OWNING OCCURRENCE — `occurrenceKey` when
+  // present (a GPU-instanced entity's individual placement), else the bare
+  // expressId (every other mesh: at most one MeshData per expressId, so the
+  // expressId alone already identifies the occurrence) — filtering
+  // non-clashable tags and empty geometry up front, and folding each mesh's
+  // own origin into world-frame positions as it is collected. An entity with
+  // several mesh representations of the SAME occurrence (Body + Axis, several
+  // sub-meshes, ...) must become exactly ONE `ClashElement`, never one per
+  // mesh — see `./shared.ts`'s `mergeMeshes` doc for why, and `ifcx.ts` for
+  // the sibling adapter this mirrors. Grouping by the bare expressId alone
+  // (dropping `occurrenceKey`) would instead coalesce DISTINCT physical
+  // occurrences that merely share one expressId into one element, merging
+  // their geometry (and bounds) across unrelated world-space locations.
+  const groups = new Map<string, Array<{ positions: Float32Array; indices: Uint32Array }>>();
+  const groupMeta = new Map<string, { tag: string; expressId: number; occurrenceKey?: string }>();
 
   for (const mesh of meshes) {
     if (!mesh.positions || mesh.positions.length === 0) continue;
@@ -270,12 +237,7 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     // (which always shows classes 1 and 2) is a catalogue, not a place clash
     // runs from. Clashing origin-stacked templates against each other would be
     // pure noise, so excluding class 1 is the intended reading, not collateral.
-    if (
-      NON_CLASHABLE_TAGS.has(tag) ||
-      isSpatialContainerTag(tag) ||
-      isIfcTypeLikeEntity(tag.toUpperCase())
-    )
-      continue;
+    if (isNonClashableTag(tag)) continue;
 
     // The wasm geometry path stores positions in the element's LOCAL frame
     // (world = origin + position; see `MeshData.origin`). Clash works in world
@@ -289,13 +251,31 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       ? worldFramePositions(mesh.positions, o)
       : mesh.positions;
 
+    const occurrenceId = mesh.occurrenceKey ?? String(expressId);
+    const group = groups.get(occurrenceId);
+    if (group) {
+      group.push({ positions, indices: mesh.indices });
+    } else {
+      groups.set(occurrenceId, [{ positions, indices: mesh.indices }]);
+      groupMeta.set(occurrenceId, { tag, expressId, occurrenceKey: mesh.occurrenceKey });
+    }
+  }
+
+  // Pass 2: one ClashElement per OCCURRENCE, geometry merged across every
+  // mesh of that same occurrence that survived the filter above.
+  for (const [occurrenceId, meshGroup] of groups) {
+    const { tag, expressId, occurrenceKey } = groupMeta.get(occurrenceId)!;
+    const node = new EntityNode(store, expressId);
+    const merged = mergeMeshes(meshGroup);
+
     // Read stored (table-backed) values directly. `node.globalId` / `node.name`
     // fall back to `extractEntityAttributesOnDemand` when the table value is
     // empty (common: Name is optional, globalId is empty for fallback-only /
-    // malformed roots) — and with a fresh node per mesh that fallback would fire
-    // once per element inside this loop (AGENTS.md hot-loop ban). The table
-    // getters never trigger on-demand extraction. `node.type` (getTypeName) and
-    // `node.storey()` (relationship-only) are table-backed and stay.
+    // malformed roots) — and with a fresh node per entity that fallback would
+    // fire once per element inside this loop (AGENTS.md hot-loop ban). The
+    // table getters never trigger on-demand extraction. `node.type`
+    // (getTypeName) and `node.storey()` (relationship-only) are table-backed
+    // and stay.
     const storedGlobalId = store.entities.getGlobalId(expressId);
     const storedName = store.entities.getName(expressId);
 
@@ -305,9 +285,9 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
     const baseKey = storedGlobalId || syntheticKey(modelId, expressId);
     // A GPU-instanced occurrence carries `mesh.occurrenceKey`; fold it into the
     // identity so distinct physical occurrences of one expressId don't collapse
-    // onto one review/exclusion key (#2865, same remedy as #1405). Flat meshes
-    // are unaffected — one MeshData per expressId, `occurrenceKey` absent.
-    const key = mesh.occurrenceKey ? `${baseKey}:${mesh.occurrenceKey}` : baseKey;
+    // onto one review/exclusion key. Flat meshes are unaffected (occurrenceKey
+    // absent, one bucket per expressId as before).
+    const key = occurrenceKey ? `${baseKey}:${occurrenceKey}` : baseKey;
     if (!storedGlobalId) missingGlobalIds += 1;
 
     const element: ClashElement = {
@@ -317,14 +297,17 @@ export function elementsFromStep(options: StepAdapterOptions): StepAdapterResult
       // this mesh — i.e. `mesh.expressId` again, whenever `meshIdOffset` and
       // the federation agree (they are both read off the same `model.idOffset`
       // in the viewer). See the federated round-trip test in `step.test.ts`.
+      // Deliberately shared across every occurrence of one expressId — the
+      // renderer/selection channel addresses instanced occurrences by their
+      // shared source entity id, not a per-occurrence one.
       ref: federation ? federation.toGlobalId(modelId, expressId) : expressId,
       model: modelId,
       tag,
       name: storedName || undefined,
       storey: node.storey()?.name || undefined,
-      bounds: fromPositions(positions, worldTransform),
-      positions,
-      indices: mesh.indices,
+      bounds: fromPositions(merged.positions, worldTransform),
+      positions: merged.positions,
+      indices: merged.indices,
       transform: worldTransform,
     };
 
@@ -397,8 +380,8 @@ export function buildStepExclusions(
 
     // A relationship is stated between EXPRESS ids, not occurrences: fan it
     // out across every occurrence bucketed at each side (usually one element
-    // each; more than one only for a GPU-instanced expressId, #2865), so a
-    // host's void/assembly exclusions cover every physical placement of the
+    // each; more than one only for a GPU-instanced expressId), so a host's
+    // void/assembly exclusions cover every physical placement of the
     // filler/sibling, not just whichever occurrence happened to be built last.
     const pairAll = (otherId: number): void => {
       const others = byExpressId.get(otherId);

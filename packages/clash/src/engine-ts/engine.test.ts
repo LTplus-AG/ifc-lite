@@ -330,8 +330,10 @@ describe('TsKernel cancellation (#2419)', () => {
    * finish in low single-digit ms). Sized with wide margin over that CI
    * ceiling rather than "CI value + 50%", since the mechanism (OS/Node timer
    * scheduling under contention) can vary by more than a fixed percentage.
+   * 30_000 by convention (#2905, `AB22_TIMEOUT_MS`), not a per-test
+   * derivation.
    */
-  const YIELD_HEAVY_TIMEOUT_MS = 20_000;
+  const YIELD_HEAVY_TIMEOUT_MS = 30_000;
   const evens = elements.map((_, i) => i).filter((i) => i % 2 === 0);
   const odds = elements.map((_, i) => i).filter((i) => i % 2 === 1);
 
@@ -396,6 +398,8 @@ describe('TsKernel cancellation (#2419)', () => {
     await expectAbortError(
       detect(controller.signal, Infinity, (done) => { if (done === 512) controller.abort(); }),
     );
+    // 3332ms of the measured pair above: this runs the clash engine to an
+    // abort point (#2948).
   }, YIELD_HEAVY_TIMEOUT_MS);
 
   it('lets a cancellation beat the maxCandidatePairs cap', async () => {
@@ -420,6 +424,8 @@ describe('TsKernel cancellation (#2419)', () => {
     expect(detection.candidatesProcessed).toBe(576);
     expect(detection.records.length).toBeGreaterThan(0);
     expect(controller.signal.aborted).toBe(false);
+    // 2747ms of the measured pair above: this runs the clash engine to
+    // completion (#2948).
   }, YIELD_HEAVY_TIMEOUT_MS);
 });
 

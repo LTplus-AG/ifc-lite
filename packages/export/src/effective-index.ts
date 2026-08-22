@@ -548,7 +548,7 @@ function groupsFromAttributeValues(
  * the position it names, same precedence as the overlay-created branch: a
  * `getAttributeMutationsForEntity` override (resolved to a slot via
  * {@link getAttributeNamesAcrossSchemas}, cross-schema for the identical
- * reason `applyAttributeMutations` in `step-exporter.ts` is) wins, else a
+ * reason `applyAttributeMutations` in `step-attribute-mutations.ts` is) wins, else a
  * `getPositionalMutationsForEntity` override at that index, else the raw
  * text's own group stands.
  *

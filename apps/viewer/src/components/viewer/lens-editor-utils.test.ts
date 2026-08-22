@@ -427,6 +427,20 @@ describe('mergeImportedLenses (#1403)', () => {
     );
     assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good-autocolor']);
   });
+
+  it('preserves a valid imported includeUnclassified flag and rejects a malformed one', () => {
+    const next = mergeImportedLenses(
+      existing,
+      [
+        { id: 'u1', name: 'good-flag', rules: [], autoColor: { source: 'classification', includeUnclassified: true } },
+        { id: 'u2', name: 'bad-flag-string', rules: [], autoColor: { source: 'classification', includeUnclassified: 'true' } },
+        { id: 'u3', name: 'bad-flag-number', rules: [], autoColor: { source: 'classification', includeUnclassified: 1 } },
+      ],
+      (i) => `gen-${i}`,
+    );
+    assert.deepEqual(next.map((l) => l.name), ['Building Envelope', 'My Lens', 'good-flag']);
+    assert.deepEqual(next[2].autoColor, { source: 'classification', includeUnclassified: true });
+  });
 });
 
 describe('reserveUniqueId (#1403)', () => {

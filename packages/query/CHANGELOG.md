@@ -1,5 +1,24 @@
 # @ifc-lite/query
 
+## 1.14.17
+
+### Patch Changes
+
+- [#2861](https://github.com/LTplus-AG/ifc-lite/pull/2861) [`2156528`](https://github.com/LTplus-AG/ifc-lite/commit/2156528c926114233c79ba74925c0c8656f1ea65) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `ifc-lite query`'s DuckDB SQL integration reading a NULL string-typed property as an empty string instead of SQL `NULL`.
+  
+  `createPropertiesTable` (duckdb-integration.ts) resolved `PropertyTable.valueString` with `valueStringIdx >= 0 ? ... : ''`. `valueString` is a `Uint32Array`, so the NULL sentinel written by `StringTable.intern(null)` (-1) wraps to 4294967295 rather than going negative — the `>= 0` check was always true and never caught it, and the row was inserted with `value_string = ''`, indistinguishable from a genuine empty-string property. `WHERE value_string IS NULL` silently matched nothing.
+  
+  Two siblings on the same column family already guard this correctly: `getPropertyValue`'s String branch in `@ifc-lite/data`'s `property-table.ts` and its cache-restored twin in `@ifc-lite/cache`'s `properties.ts`, both checking `idx < strings.count`. This DuckDB path is named as a sibling in `property-table.ts`'s own doc comment ("the on-demand fallback in `@ifc-lite/query`") but used an independent, unguarded decode. The fix extracts the shared logic into `resolveDuckDBStringLiteral` and applies the same in-range check, emitting the bare `NULL` keyword — matching how this same file already handles the `containedInStorey`/`definedByType` sentinels a few lines above.
+
+- [#2907](https://github.com/LTplus-AG/ifc-lite/pull/2907) [`b7d2a11`](https://github.com/LTplus-AG/ifc-lite/commit/b7d2a11345add8acdf0926ade5d4c1ca19ccecf7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `PropertyTable.getProperty` returning null when an entity carries two property sets with the same name and the property lives only on the second one.
+  
+  `getProperty` stopped scanning at the first pset whose name matched, and returned whatever that pset had for the property (`null` if it lacked it) instead of continuing to the next same-named pset. `findEntities`, right below it in the same class, already handled two same-named psets correctly by scanning all of them; `getProperty` now does the same — it keeps checking subsequent same-named sets until it finds the property, matching the semantics IFC's `IfcRelDefinesByProperties` allows (an entity can be targeted by more than one property set sharing a name).
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2), [`ae5a5ca`](https://github.com/LTplus-AG/ifc-lite/commit/ae5a5caa3e20304085ba14c0708cd026c1d4bf16)]:
+  - @ifc-lite/geometry@3.8.4
+  - @ifc-lite/parser@4.2.0
+  - @ifc-lite/data@3.4.0
+  - @ifc-lite/spatial@1.14.14
+
 ## 1.14.16
 
 ### Patch Changes

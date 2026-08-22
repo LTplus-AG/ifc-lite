@@ -13,7 +13,7 @@
  */
 
 import { MutablePropertyView } from '@ifc-lite/mutations';
-import { PropertyValueType } from '@ifc-lite/data';
+import { propertyValueTypeOf } from '@ifc-lite/sdk';
 
 /** A single mutation op, applied cumulatively across `step` calls. */
 export type GymOp =
@@ -21,11 +21,8 @@ export type GymOp =
   | { op: 'setAttribute'; expressId: number; attrName: string; value: string }
   | { op: 'deleteProperty'; expressId: number; psetName: string; propName: string };
 
-function inferValueType(value: unknown): PropertyValueType {
-  if (typeof value === 'boolean') return PropertyValueType.Boolean;
-  if (typeof value === 'number') return Number.isInteger(value) ? PropertyValueType.Integer : PropertyValueType.Real;
-  return PropertyValueType.String;
-}
+/** Shared with `bim.mutate.setProperty`, so the two paths cannot classify differently. */
+const inferValueType = propertyValueTypeOf;
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);

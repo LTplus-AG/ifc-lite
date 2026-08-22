@@ -31,12 +31,13 @@
 # invariant test without growing this file; budget refreshed downward.
     430 rust/export/src/collada.rs
      468 rust/export/src/model.rs
-# step.rs's inline #[cfg(test)] mod tests was split out to step_tests.rs
-# (ratchet-exempt via the _tests.rs suffix convention, matching step_text.rs's
-# earlier split) to make room for a synthetic fixture-free twin of
-# attribute_mutation_renames_entity — the fixture_or_skip!-gated original only
-# pins that invariant when tests/models/ara3d/duplex.ifc has been fetched.
-# Leaves step.rs at 304 lines of production code: under 400, row deleted.
+# -140 net: text-level STEP primitives (escape/detect_schema/refs_in_line/
+# split_top_level_args/apply_attr_mutations) split out to step_text.rs, making
+# room for the backslash-doubling fix to escape() without raising this
+# budget. step_text.rs's own #[cfg(test)] block was further split into
+# step_text_tests.rs (ratchet-exempt via the _tests.rs suffix), leaving
+# step_text.rs at 196 lines of production code (under 400, no row needed).
+     471 rust/export/src/step.rs
 # +45: reject non-positive SegmentLength/HorizontalLength (malformed-input NaN guard) + regression test.
     1170 rust/geometry/src/alignment.rs
 # +19: split_on_edge now sets a failed flag and bails to the ear-clip fallback instead of the lone .expect() panic.
@@ -343,7 +344,14 @@
 # `#[allow(clippy::too_many_arguments)]` its 21 peers carry. The crate's lint
 # has never run in CI (`--exclude ifc-lite-wasm`), which is how it drifted.
      727 rust/wasm-bindings/src/zero_copy/mesh.rs
-     743 rust/wasm-bindings/src/zero_copy/symbolic.rs
+# symbolic.rs +14 (743 -> 757): carries SymbolicData::truncated across the WASM
+# boundary as `truncatedAt` (#2938). A raise rather than a split because the
+# addition is one field, one assignment in `from_data` and one getter -- the
+# file is a god file for reasons that predate this and splitting it is its own
+# change. The alternative was to drop the flag on the browser path, which is
+# the bug being fixed: geometry is client-side only, so that path is the only
+# way a viewer learns its drawing was clipped.
+     757 rust/wasm-bindings/src/zero_copy/symbolic.rs
 # +65: #1910 follow-up — buildPrePassOnce's combined_pre_pass is a third
 # geometry-job discovery path with the same has_geometry_by_name gap as the
 # serial/sharded scans; adds the instance-level exception plus its regression

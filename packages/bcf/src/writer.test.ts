@@ -1116,6 +1116,68 @@ describe('BCF Writer', () => {
     });
   });
 
+  it('nests Comments and Viewpoints INSIDE <Topic> for BCF 3.0, using singular <ViewPoint>', async () => {
+    // BCF 3.0's markup.xsd moves Comments and Viewpoints inside <Topic>
+    // (each wrapped in its own plural container), after RelatedTopics; 2.1
+    // keeps them as top-level <Markup> siblings after </Topic>, using
+    // <Viewpoints Guid="..."> itself as the per-entry element. Confirmed
+    // against buildingSMART/BCF-XML's own release_3_0 conformance fixture
+    // (Test Cases/v3.0/Visualization/Perspective camera/unzipped/.../markup.bcf),
+    // whose markup reads:
+    //   <Topic ...>
+    //     ...
+    //     <Comments> <Comment Guid="...">...</Comment> </Comments>
+    //     <Viewpoints> <ViewPoint Guid="...">...</ViewPoint> </Viewpoints>
+    //   </Topic>
+    // A prior writer emitted the 2.1-shaped flat siblings unconditionally
+    // (Viewpoints then Comment, both after </Topic>) regardless of version --
+    // schema-invalid at 3.0, and undetected because our own reader was
+    // equally unconditional about the flat shape, so a self round-trip
+    // could never see the mismatch against a real 3.0 consumer.
+    const topic = baseTopic({
+      comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
+      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+    });
+
+    const markup30 = await markupFor(topic, '3.0');
+
+    // Comments/Viewpoints must sit between </RelatedTopics-or-whatever-comes-
+    // last> and </Topic>, not after it.
+    const topicMatch = markup30.match(/<Topic\b[^>]*>([\s\S]*)<\/Topic>/);
+    expect(topicMatch).not.toBeNull();
+    const topicBody = topicMatch![1];
+    expect(topicBody).toContain('<Comments>');
+    expect(topicBody).toContain('Guid="c-1"');
+    expect(topicBody).toContain('<Viewpoints>');
+    expect(topicBody).toContain('<ViewPoint Guid="vp-1">');
+    expect(topicBody).not.toContain('<Viewpoints Guid="vp-1">');
+
+    // Nothing pointing to Comments/Viewpoints should remain outside </Topic>.
+    const afterTopic = markup30.slice(markup30.indexOf('</Topic>'));
+    expect(afterTopic).not.toContain('<Comment ');
+    expect(afterTopic).not.toContain('<Viewpoints');
+
+    // Control: 2.1 keeps the old flat shape, but Comment must now precede
+    // Viewpoints per its own schema sequence (Header, Topic, Comment*,
+    // Viewpoints*) -- the reverse of what a prior writer emitted.
+    const markup21 = await markupFor(topic, '2.1');
+    expect(markup21.indexOf('<Comment Guid="c-1">')).toBeLessThan(
+      markup21.indexOf('<Viewpoints Guid="vp-1">'),
+    );
+    expect(markup21).not.toContain('<ViewPoint ');
+
+    // And it must still round-trip through our own reader for both versions.
+    for (const version of ['2.1', '3.0'] as const) {
+      const project: BCFProject = { version, topics: new Map([[topic.guid, topic]]) };
+      const readTopic = (await readBCF(await (await writeBCF(project)).arrayBuffer()))
+        .topics.get(topic.guid)!;
+      expect(readTopic.comments).toHaveLength(1);
+      expect(readTopic.comments[0].guid).toBe('c-1');
+      expect(readTopic.viewpoints).toHaveLength(1);
+      expect(readTopic.viewpoints[0].guid).toBe('vp-1');
+    }
+  });
+
   it('writes <Topic> children in schema order: Priority, Index, Labels before CreationDate; Description right before BimSnippet', async () => {
     // buildingSMART/BCF-XML markup.xsd's Topic xs:sequence (identical in
     // release_2_1 and release_3_0) is: Title, Priority, Index, Labels,
@@ -1188,6 +1250,87 @@ describe('BCF Writer', () => {
       expect(stage).toBeLessThan(description);
       expect(description).toBeLessThan(bimSnippet);
     }
+  });
+
+  it('BCF 3.0: full <Topic> sequence holds end-to-end when Comments/Viewpoints AND reordered fields are both present', async () => {
+    // The two properties above ("children in xs:sequence order" and
+    // "Comments/Viewpoints nested inside Topic, after RelatedTopics") were
+    // fixed in separate changes that both touch writeMarkupFile and were
+    // merged together. Each has its own passing test, but neither one
+    // exercises a topic carrying every reordered field (Priority, Index,
+    // Labels, Description, BimSnippet, DocumentReferences, RelatedTopics)
+    // AND Comments/Viewpoints at once -- so a merge that silently dropped or
+    // mis-sequenced either half would not be caught by either test alone.
+    // This asserts the COMPLETE Topic child sequence per markup.xsd:
+    //   Title, Priority, Index, Labels, CreationDate, CreationAuthor,
+    //   ModifiedDate, ModifiedAuthor, DueDate, AssignedTo, Stage,
+    //   Description, BimSnippet, DocumentReferences, RelatedTopics,
+    //   Comments, Viewpoints
+    const topic = baseTopic({
+      priority: 'High',
+      index: 3,
+      labels: ['l1'],
+      modifiedDate: '2026-01-02T00:00:00.000Z',
+      modifiedAuthor: 'mod@x.com',
+      dueDate: '2026-02-01T00:00:00.000Z',
+      assignedTo: 'assignee@x.com',
+      stage: 'Design',
+      description: 'desc',
+      bimSnippet: {
+        snippetType: 'IFC',
+        isExternal: true,
+        reference: 'https://example.com/snippet.ifc',
+        referenceSchema: 'https://example.com/schema.xsd',
+      },
+      documentReferences: [{ guid: 'dr-1', documentGuid: 'doc-guid-1' }],
+      relatedTopics: ['related-guid-1'],
+      comments: [{ guid: 'c-1', date: '2026-01-01T00:00:00.000Z', author: 'a@x.com', comment: 'hi' }],
+      viewpoints: [{ guid: 'vp-1', snapshot: 'data:image/png;base64,AA==' }],
+    });
+
+    const markup = await markupFor(topic, '3.0');
+
+    const topicMatch = markup.match(/<Topic\b[^>]*>([\s\S]*)<\/Topic>/);
+    expect(topicMatch).not.toBeNull();
+    const topicBody = topicMatch![1];
+
+    const pos = (needle: string) => {
+      const i = topicBody.indexOf(needle);
+      expect(i).toBeGreaterThan(-1);
+      return i;
+    };
+
+    const sequence = [
+      pos('<Title>'),
+      pos('<Priority>'),
+      pos('<Index>'),
+      pos('<Labels>'),
+      pos('<CreationDate>'),
+      pos('<CreationAuthor>'),
+      pos('<ModifiedDate>'),
+      pos('<ModifiedAuthor>'),
+      pos('<DueDate>'),
+      pos('<AssignedTo>'),
+      pos('<Stage>'),
+      pos('<Description>'),
+      pos('<BimSnippet'),
+      pos('<DocumentReferences>'),
+      pos('<RelatedTopic '),
+      pos('<Comments>'),
+      pos('<Viewpoints>'),
+    ];
+    for (let i = 1; i < sequence.length; i++) {
+      expect(sequence[i]).toBeGreaterThan(sequence[i - 1]);
+    }
+
+    // Comments/Viewpoints must be nested inside Topic (before its close),
+    // using the 3.0 singular <ViewPoint> entry tag, not the 2.1 wrapper-as-
+    // entry shape.
+    expect(topicBody).toContain('<ViewPoint Guid="vp-1">');
+    expect(topicBody).not.toContain('<Viewpoints Guid="vp-1">');
+    const afterTopic = markup.slice(markup.indexOf('</Topic>'));
+    expect(afterTopic).not.toContain('<Comment ');
+    expect(afterTopic).not.toContain('<Viewpoints');
   });
 
   it('refuses to write a BCF 3.0 topic missing TopicType or TopicStatus rather than emitting invalid markup', async () => {

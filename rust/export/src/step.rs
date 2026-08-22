@@ -8,7 +8,7 @@
 //! **mutation application** (MutablePropertyView edits bridged from TS) are the P2/P3
 //! follow-ons; the structure here is the seam they plug into.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use ifc_lite_core::EntityScanner;
 use serde::Deserialize;
@@ -34,6 +34,38 @@ pub struct PropMutation {
     pub value: String,
 }
 
+/// Replace one attribute of a record that other records share, by copying the
+/// record and repointing a single referrer at the copy.
+///
+/// The reason this is a writer job rather than a caller one is the id. A copy
+/// needs a number no record holds, and the writer is what knows `max_id`; a
+/// caller that allocates its own has to agree with `PropMutation`'s synthesis
+/// about which numbers are free, and two allocators sharing one space is a
+/// collision waiting for the first export that uses both.
+///
+/// Doing it here also keeps the copy inside the emit path, so it is counted in
+/// [`StepStats::written`] and converted when the export targets another schema.
+/// A record spliced into the output afterwards is neither.
+///
+/// Property sets are the case this exists for. IFC exporters routinely give
+/// each element its own `IfcPropertySet` and point them all at one
+/// `IfcPropertySingleValue` per distinct value, so editing that value in place
+/// changes it for every element sharing it. Copying first changes one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CopyOnWriteMutation {
+    /// The record to copy.
+    pub express_id: u32,
+    /// Which attribute of the copy to replace, zero-based.
+    pub index: usize,
+    /// The replacement, STEP-serialized, e.g. `IFCLABEL('2HR')`.
+    pub value: String,
+    /// The record that should point at the copy instead of the original.
+    pub referrer_id: u32,
+    /// Which attribute of the referrer holds that reference. A list attribute
+    /// is rewritten with the one reference substituted and the rest untouched.
+    pub referrer_index: usize,
+}
+
 /// Options for STEP export.
 pub struct StepOptions {
     /// FILE_SCHEMA label to write (e.g. `IFC4`). `None` ⇒ preserve the source schema.
@@ -46,6 +78,8 @@ pub struct StepOptions {
     pub attribute_mutations: Vec<AttrMutation>,
     /// Property create/update edits — synthesized as new pset entities appended to DATA.
     pub property_mutations: Vec<PropMutation>,
+    /// Copy-then-edit mutations for records other records share.
+    pub copy_on_write: Vec<CopyOnWriteMutation>,
     pub description: String,
     pub author: String,
     pub organization: String,
@@ -59,6 +93,7 @@ impl Default for StepOptions {
             included: None,
             attribute_mutations: Vec::new(),
             property_mutations: Vec::new(),
+            copy_on_write: Vec::new(),
             description: "ViewDefinition [CoordinationView]".to_string(),
             author: "".to_string(),
             organization: "".to_string(),
@@ -73,9 +108,15 @@ pub struct StepStats {
     pub total: usize,
     /// Entities written (after filtering + reference closure).
     pub written: usize,
+    /// Copy-on-write mutations the file could not express, so none was made.
+    /// Non-zero means an edit the caller asked for is not in the output, and
+    /// the caller is the only one who can say what to do about it.
+    pub copies_refused: usize,
 }
 
-use crate::step_text::{apply_attr_mutations, detect_schema, escape, refs_in_line};
+use crate::step_text::{
+    apply_attr_mutations, detect_schema, escape, merge_edits, refs_in_line, renumber,
+};
 
 // ── Mutation JSON bridge (the wasm-facing contract) ─────────────────────────
 
@@ -198,11 +239,30 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let converting = opts.schema.is_some()
         && crate::schema_convert::needs_conversion(&source_schema, &schema);
 
-    // Root-attribute edits, grouped by entity id.
-    let mut muts_by_id: HashMap<u32, Vec<(usize, String)>> = HashMap::new();
+    // Root-attribute edits, resolved per (entity, attribute) as they are read.
+    // A list plus a last-wins rule made "the value at this index" a derived
+    // fact that every reader re-derived its own way, and two of them got it
+    // wrong. Keyed by index there is nothing left to derive.
+    let mut muts_by_id: HashMap<u32, BTreeMap<usize, String>> = HashMap::new();
     for m in &opts.attribute_mutations {
-        muts_by_id.entry(m.express_id).or_default().push((m.index, m.value.clone()));
+        muts_by_id.entry(m.express_id).or_default().insert(m.index, m.value.clone());
     }
+
+    // Copy-on-write, resolved before the emit loop so the copies and the
+    // repointed referrers both go through it. Its own module: the pass has four
+    // rules now and every one of them is a file that came out wrong without it.
+    let resolved = crate::step_cow::resolve(
+        &opts.copy_on_write,
+        content,
+        &line_of,
+        &included,
+        &muts_by_id,
+        max_id.checked_add(1),
+    );
+    let next_id = resolved.next_id;
+    let copies_refused = resolved.refused;
+    let copies = resolved.copies;
+    let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
     let mut out = String::new();
@@ -223,8 +283,8 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             if let Some(&(s, e)) = line_of.get(id) {
                 let raw = String::from_utf8_lossy(&content[s..e]);
                 // Apply root-attribute edits first (original-schema positions), then convert.
-                let edited = match muts_by_id.get(id) {
-                    Some(muts) => apply_attr_mutations(&raw, muts),
+                let edited = match merge_edits(muts_by_id.get(id), repointed.get(id)) {
+                    Some(edits) => apply_attr_mutations(&raw, &edits),
                     None => raw.into_owned(),
                 };
                 if converting {
@@ -240,6 +300,34 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
                 out.push('\n');
                 written += 1;
             }
+        }
+    }
+
+    // The copies, emitted rather than appended: counted in `written` and put
+    // through `convert_step_line` like every other record.
+    for (copy_id, source_id, edits) in &copies {
+        if let Some(&(s0, e0)) = line_of.get(source_id) {
+            let raw = String::from_utf8_lossy(&content[s0..e0]);
+            // The caller's edits to the record belong to the copy too: the
+            // copy is this element's version of that record, not a snapshot
+            // taken before the caller touched it. Repointings do not, which is
+            // why they are resolved into their own map.
+            let mut muts = muts_by_id.get(source_id).cloned().unwrap_or_default();
+            muts.extend(edits.iter().map(|(i, v)| (*i, v.clone())));
+            let edited = apply_attr_mutations(&raw, &muts);
+            let renumbered = renumber(&edited, *copy_id);
+            if converting {
+                out.push_str(&crate::schema_convert::convert_step_line(
+                    &renumbered,
+                    &source_schema,
+                    &schema,
+                    *copy_id,
+                ));
+            } else {
+                out.push_str(&renumbered);
+            }
+            out.push('\n');
+            written += 1;
         }
     }
 
@@ -261,8 +349,24 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             groups[idx].1.push((m.prop_name.as_str(), m.value.as_str()));
         }
 
-        let mut next = max_id + 1;
+        // Same exhaustion, same answer: inventing ids on a full file would
+        // duplicate real records.
+        let Some(mut next) = next_id else {
+            out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+            return (out, StepStats { total: order.len(), written, copies_refused });
+        };
         for ((express_id, pset_name), props) in &groups {
+            // One property set costs one id per property plus one for the set
+            // and one for the relationship. Checking that a single id is left
+            // is not enough: a group that starts near the ceiling used to run
+            // off it part way through and wrap, emitting ids that already
+            // belong to real records. A group that does not fit is skipped
+            // whole, so nothing half-written reaches the file.
+            let needed = u32::try_from(props.len()).ok().and_then(|n| n.checked_add(2));
+            match needed.and_then(|n| u32::MAX.checked_sub(n).map(|limit| next <= limit)) {
+                Some(true) => {}
+                _ => continue,
+            }
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {
                 out.push_str(&format!(
@@ -296,7 +400,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 
     out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 
-    (out, StepStats { total: order.len(), written })
+    (out, StepStats { total: order.len(), written, copies_refused })
 }
 
 #[cfg(test)]

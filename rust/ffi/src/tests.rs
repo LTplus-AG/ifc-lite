@@ -399,3 +399,102 @@ fn geometry_is_sound_and_deterministic_under_the_global_allocator() {
         assert_eq!(x.indices, y.indices, "indices must be deterministic");
     }
 }
+
+/// The `f64` intermediate in `normalize_to_site_local` is load-bearing, and
+/// until this test nothing observed it: rewriting all three lines to
+/// `chunk[0] = chunk[0] - site_tx as f32` left the whole suite green (#2950).
+///
+/// Every other fixture in this file uses coordinates (0, 1, 2, 3, 10, -5, 2.5)
+/// and translations (1.0, 123456.0, 1000.5) that are all exactly representable
+/// in f32. For those, `(v as f64 - t) as f32` and `v - (t as f32)` agree bit
+/// for bit, so no assertion could separate the two orderings. The tests were
+/// correct and the property was simply invisible to them.
+///
+/// The magnitude is real: 7_011_526 is a VERTEX northing taken from
+/// `tests/models/issues/860_solid_stratum.ifc` (EPSG:28356, MGA94 Zone 56).
+/// It is not that file's SITE northing — its `IFCSITE` placement is identity,
+/// so that file returns at this function's first guard and its geometry is
+/// unaffected either way. The fixture borrows the scale, nothing else.
+///
+/// At that scale an f32 ULP is 0.5, so rounding the translation to f32 FIRST
+/// snaps it onto the same representable value as the vertex and the offset
+/// collapses to exactly zero:
+///
+///   vertex   7_011_526.5   (exact in f32: 14_023_053 / 2, 24 bits)
+///   site     7_011_526.3
+///   f64 then narrow ->  0.2        (0x3e4ccccd)
+///   narrow then f32  ->  0.0        (0x00000000)
+///
+/// A 200 mm offset becomes no offset at all, silently. That is the whole
+/// reason the subtraction widens first.
+///
+/// REACHABILITY, stated because the test would otherwise imply more than it
+/// proves: no fixture reaches this loop today, and arguably nothing can.
+/// `processor/mod.rs:1098` picks `raw_ifc` only when the site translation is
+/// identity (within 1e-9), and this function returns early unless the space IS
+/// `raw_ifc` AND the translation exceeds LARGE_COORD_THRESHOLD (1000.0). Those
+/// two conditions contradict, so the combination is not one the pipeline can
+/// emit — measured: 113 corpus files parsed, 103 came back `raw_ifc`, 0 reached
+/// this loop. This test therefore pins the function's own documented contract,
+/// not observable render output, and it is worth having for the day that
+/// pipeline branch changes rather than as protection for geometry shipping
+/// today.
+///
+/// Asserted on exact f32 bits rather than an epsilon: an epsilon wide enough
+/// to feel safe here is wider than the 0.2 the bug destroys.
+#[test]
+fn the_subtraction_widens_to_f64_before_narrowing() {
+    // A vertex one ULP-ish above the site translation, at georeferenced scale.
+    const VERTEX_Y: f32 = 7_011_526.5;
+    const SITE_TY: f64 = 7_011_526.3;
+
+    let mesh = MeshData::new(
+        1,
+        "IfcWall".to_string(),
+        vec![0.0, VERTEX_Y, 0.0],
+        vec![0.0, 0.0, 1.0],
+        vec![0],
+        [1.0, 1.0, 1.0, 1.0],
+    );
+    let mut result = ProcessingResult {
+        meshes: vec![mesh],
+        instances: Vec::new(),
+        mesh_coordinate_space: Some(RAW_IFC_MESH_COORDINATE_SPACE.to_string()),
+        site_transform: Some(transform_with_translation(0.0, SITE_TY, 0.0).to_vec()),
+        building_transform: None,
+        metadata: ModelMetadata::default(),
+        stats: ProcessingStats::default(),
+    };
+
+    normalize_to_site_local(&mut result);
+
+    let got = result.meshes[0].positions[1];
+    // The literal, not a recomputation of the production expression: an oracle
+    // that recomputes what it is testing shares any mistake in it.
+    let widened = f32::from_bits(0x3e4c_cccd);
+    debug_assert_eq!(widened, (VERTEX_Y as f64 - SITE_TY) as f32);
+    let narrowed_first = VERTEX_Y - SITE_TY as f32;
+
+    // The control: the two orderings really do differ on this fixture, so the
+    // assertion below is capable of failing. Without this, a fixture that
+    // cannot distinguish them would make the test vacuous in exactly the way
+    // #2950 describes.
+    assert_ne!(
+        widened.to_bits(),
+        narrowed_first.to_bits(),
+        "fixture cannot distinguish the two orderings; it proves nothing"
+    );
+    assert_eq!(
+        narrowed_first, 0.0,
+        "the f32-first ordering should destroy the offset entirely here"
+    );
+
+    assert_eq!(
+        got.to_bits(),
+        widened.to_bits(),
+        "expected the f64-widened result {widened} (0x{:08x}), got {got} (0x{:08x}) \
+         — the subtraction narrowed to f32 before subtracting",
+        widened.to_bits(),
+        got.to_bits()
+    );
+}

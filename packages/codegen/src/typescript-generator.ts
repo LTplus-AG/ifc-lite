@@ -494,7 +494,11 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
  */
 export function isKnownEntity(typeName: string): boolean {
   const normalized = normalizeTypeName(typeName);
-  return normalized in SCHEMA_REGISTRY.entities;
+  // `in` walks the prototype chain, so it answers TRUE for every
+  // Object.prototype member: constructor, toString, valueOf, hasOwnProperty,
+  // __proto__, isPrototypeOf. Those are not IFC entities, and this function is
+  // the authoring guard callers use to decide whether a type name is real.
+  return Object.hasOwn(SCHEMA_REGISTRY.entities, normalized);
 }
 
 /**

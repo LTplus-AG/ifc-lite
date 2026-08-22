@@ -90,6 +90,12 @@ function discoverPublishablePackages() {
 
     const entry = resolveEsmEntry(pkg);
     if (!entry) {
+      // Known limit: this skip is soft on purpose. A package that
+      // legitimately declares no root ESM entry (`@ifc-lite/wasm`, subpath
+      // exports only) is indistinguishable here from one that LOST its
+      // entry to a bad `exports` edit — telling them apart needs the prior
+      // state of package.json, which this script does not have. Left as a
+      // skip rather than guessed at.
       out.push({ name: pkg.name, dir, skip: 'no ESM entry declared' });
       continue;
     }
@@ -242,6 +248,20 @@ function main() {
   // misread as success (see AGENTS.md, unbuilt/stale workspace sibling).
   // Fail closed instead, the same way `pnpm build` is a hard precondition
   // for this script's one caller (`pnpm release`).
+  // Nothing tested AND nothing skipped means discovery itself came up
+  // empty — `packages/` moved, or every package.json stopped matching the
+  // publishable filter. The loop above then has nothing to fail on and the
+  // summary reads "0 passed, 0 failed, 0 skipped", success reported for
+  // having imported nothing. Same absence-as-success shape as the unbuilt
+  // case below, one level further up.
+  if (testable.length === 0 && skipped.length === 0) {
+    console.error(
+      `\nNo publishable packages were discovered under ${PACKAGES_DIR}. Nothing was ` +
+        'verified, so this run proves nothing — check the package layout before trusting it.\n'
+    );
+    process.exit(1);
+  }
+
   const unbuilt = skipped.filter((p) => p.unbuilt);
   if (unbuilt.length) {
     console.error(

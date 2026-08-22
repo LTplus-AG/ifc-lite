@@ -651,6 +651,15 @@ jobs:
       # crates.io behind npm. This makes that order a PR-visible gate.
       - name: Check the crates publish order matches the dependency graph
         run: node --test scripts/release-crates-order.test.mjs
+      # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
+      # publishes. If its package discovery ever returns nothing — packages/
+      # moved, or the publishable filter stops matching — the smoke loop has
+      # nothing to fail on, the summary reads "0 passed, 0 failed, 0 skipped"
+      # and the run exits 0: success reported for having imported nothing.
+      # Same absence-as-success shape as the unbuilt skip it already fails
+      # closed on. This also pins that a legitimate run still exits 0.
+      - name: Check the ESM smoke test fails on an empty discovery
+        run: node --test scripts/verify-esm-entrypoints.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

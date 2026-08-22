@@ -462,9 +462,26 @@ export class MutablePropertyView {
     // file, exactly the #1107 shape) makes `getPropertyValue()` return null on
     // the very first edit even though the property genuinely exists — mirrors
     // the `propExistsInBase` check `deleteProperty` below already relies on.
+    //
+    // The base-pset disjunct is qualified by "not currently masked": once the
+    // user has deleted the property (a DELETE marker on this key) or its whole
+    // pset (`deletedPsets`), the base row is no longer visible in
+    // `getForEntity`, so re-setting it is a CREATE and its undo must remove the
+    // property again. Counting the masked base row as present would classify
+    // that re-set as an UPDATE with `oldValue: null`, and the viewer's undo
+    // handler (mutationSlice.ts, "decide by mutation TYPE") would then replay
+    // that null — resurrecting, as a present-but-unset row, the very property
+    // the user had deleted.
+    const maskedInSession =
+      this.deletedPsets.has(`${entityId}:${psetName}`) ||
+      this.propertyMutations.get(key)?.operation === 'DELETE';
+
     const propExistedBefore =
       oldValue !== null ||
-      basePsets.some(p => p.name === psetName && p.properties.some(prop => prop.name === propName)) ||
+      (!maskedInSession &&
+        basePsets.some(
+          p => p.name === psetName && p.properties.some(prop => prop.name === propName),
+        )) ||
       !!this.newPsets.get(entityId)?.get(psetName)?.properties.some(p => p.name === propName);
 
     // If pset doesn't exist anywhere, create it in newPsets

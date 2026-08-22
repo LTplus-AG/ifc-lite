@@ -95,6 +95,47 @@ describe('MutablePropertyView', () => {
     expect(edited.oldValue).toBeNull();
   });
 
+  // The other direction of the rule above: "present in base" must stop meaning
+  // present once the user has deleted it. Counting a masked base row as present
+  // makes the re-set an UPDATE with `oldValue: null`, and the viewer's undo
+  // handler decides by mutation TYPE (mutationSlice.ts) — so undo would replay
+  // that null and bring the deleted property back as a present-but-unset row
+  // instead of removing it again.
+  describe('a base property the user already deleted is absent again', () => {
+    const withBaseProp = () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+        name: 'Pset_Base',
+        globalId: 'base-guid',
+        properties: [
+          { name: 'Status', type: PropertyValueType.Label, value: 'Existing' },
+        ],
+      }] : []);
+      return view;
+    };
+
+    it('re-setting a deleted base property is a CREATE, not an UPDATE', () => {
+      const view = withBaseProp();
+      view.deleteProperty(7, 'Pset_Base', 'Status');
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('CREATE_PROPERTY');
+    });
+
+    it('re-setting a property whose whole base pset was deleted is a CREATE', () => {
+      const view = withBaseProp();
+      view.deletePropertySet(7, 'Pset_Base');
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('CREATE_PROPERTY');
+    });
+
+    it('an undeleted base property is still an UPDATE (the guard is not blanket)', () => {
+      const view = withBaseProp();
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('UPDATE_PROPERTY');
+      expect(m.oldValue).toBe('Existing');
+    });
+  });
+
   describe('setQuantity oldValue/type on a base quantity (undo correctness, #2297 shape)', () => {
     it('carries the base value as oldValue on the first edit of an existing quantity', () => {
       // `apps/viewer`'s undo handler only replays `mutation.oldValue` for

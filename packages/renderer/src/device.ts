@@ -123,13 +123,62 @@ export class WebGPUDevice {
       requiredFeatures.push('timestamp-query');
     }
 
+    // Degrade one ask at a time, most-wanted first. The two asks are NOT
+    // equally important and must not be surrendered together:
+    //
+    //  - `requiredLimits` is load-bearing for rendering at all. Without the
+    //    raise, a large IFC's vertex buffer exceeds the 256 MiB default and
+    //    "nothing renders" (see the comment on `requiredLimits` above).
+    //  - `requiredFeatures` is pure opt-in diagnostics ('timestamp-query',
+    //    which only does anything once a caller constructs a
+    //    GpuFrameTimingRecorder).
+    //
+    // A single try/catch around both would let a feature-caused rejection
+    // cost the user their render for a diagnostic they never asked for. So a
+    // rejection of the full request is retried with the LIMITS ALONE, and
+    // only a rejection of that reaches the bare request.
+    // `hasTimestampQueryFeature()` reports which stage was reached.
+    let device: GPUDevice | null = null;
+
+    // Stage 1: everything we want.
     try {
-      this.device = await this.adapter.requestDevice({ requiredLimits, requiredFeatures });
-    } catch {
-      // Some drivers reject requiredLimits they nominally advertise — fall back to a
-      // default device rather than failing to initialise the renderer entirely.
-      this.device = await this.adapter.requestDevice();
+      device = await this.adapter.requestDevice({ requiredLimits, requiredFeatures });
+    } catch (e) {
+      if (requiredFeatures.length > 0) {
+        console.warn(
+          '[WebGPU] requestDevice() rejected the request carrying requiredFeatures; ' +
+            'retrying with the buffer limits alone (GPU timestamp queries unavailable):',
+          e,
+        );
+      }
     }
+
+    // Stage 2: drop the optional diagnostic feature, KEEP the limits. Skipped
+    // when no feature was requested — the request would then be identical to
+    // the one that just failed, so that case degrades exactly as it did
+    // before 'timestamp-query' was ever asked for.
+    if (!device && requiredFeatures.length > 0) {
+      try {
+        device = await this.adapter.requestDevice({ requiredLimits });
+      } catch (e) {
+        console.warn('[WebGPU] requestDevice() also rejected the limits-only request:', e);
+      }
+    }
+
+    // Stage 3, last resort: some drivers reject requiredLimits they nominally
+    // advertise — fall back to a default device rather than failing to
+    // initialise the renderer entirely. This degradation is the damaging one,
+    // so it is logged rather than silent: without the raised limits a large
+    // model's geometry upload can exceed the default maxBufferSize.
+    if (!device) {
+      console.warn(
+        '[WebGPU] falling back to a default device with no required limits — ' +
+          'a large model may exceed the default maxBufferSize and fail to render.',
+      );
+      device = await this.adapter.requestDevice();
+    }
+
+    this.device = device;
     this.format = navigator.gpu.getPreferredCanvasFormat();
     this.canvas = canvas;
 
@@ -285,10 +334,11 @@ export class WebGPUDevice {
    * Whether this device's adapter supports GPU timestamp queries (issue
    * #2670 perf-verdict gate — see frame-timing-gpu.ts). Reflects what was
    * actually granted on `this.device`, not merely what the adapter
-   * advertised, so it stays correct even on the rare path where
-   * `requestDevice()` with `requiredFeatures` failed and init() fell back to
-   * a plain `requestDevice()` with none granted. False before `init()` has
-   * run, same as every other device-derived getter here.
+   * advertised, so it stays correct on the rare path where `requestDevice()`
+   * with `requiredFeatures` was rejected and `init()` degraded to one of the
+   * later stages (limits-only, or the bare request) with the feature never
+   * granted. False before `init()` has run, same as every other
+   * device-derived getter here.
    */
   hasTimestampQueryFeature(): boolean {
     return this.device?.features?.has('timestamp-query') ?? false;

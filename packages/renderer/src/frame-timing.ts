@@ -79,7 +79,13 @@ export interface PassTimingSample {
  * of raw pairs.
  */
 export function passDurationsMs(samples: readonly PassTimingSample[]): Record<string, number> {
-  const totals: Record<string, number> = {};
+  // Null-prototype: labels are caller-chosen free text, and on a plain `{}` the
+  // inherited `Object.prototype` names are live. `totals['__proto__'] = ms`
+  // invokes the prototype setter and is silently dropped (the pass vanishes),
+  // and `totals['constructor'] ?? 0` reads the inherited `Object` function, so
+  // `+ ms` string-concatenates instead of summing. A bare map has no inherited
+  // names, so every label is only ever a key.
+  const totals: Record<string, number> = Object.create(null) as Record<string, number>;
   for (const sample of samples) {
     const ms = nsToMs(sample.startNs, sample.endNs);
     totals[sample.label] = (totals[sample.label] ?? 0) + ms;
@@ -149,7 +155,12 @@ export function aggregateFrameTimings(
     }
   }
 
-  const passes: Record<string, DurationStats> = {};
+  // Same null-prototype reason as `passDurationsMs` above, and it is a
+  // SEPARATE accumulator: `passes['__proto__'] = stats` on a plain object
+  // assigns the prototype (the value is an object, so the setter takes it) and
+  // creates no own key, dropping the label from the report even when
+  // `passDurationsMs` handed it over correctly.
+  const passes: Record<string, DurationStats> = Object.create(null) as Record<string, DurationStats>;
   for (const [label, durations] of perLabelDurations) {
     passes[label] = computeDurationStats(durations);
   }

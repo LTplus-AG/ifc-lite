@@ -43,10 +43,21 @@ describe('decideTimingMode', () => {
   });
 });
 
+/**
+ * `assert.deepStrictEqual` compares prototypes, and the by-label accumulators
+ * are deliberately null-prototype (see `passDurationsMs`), so an expectation
+ * written as a plain `{}` literal would not match. Building the expectation
+ * the same way keeps the comparison exactly as strict — and additionally pins
+ * that the null prototype is still there.
+ */
+function bareMap<T>(entries: Record<string, T>): Record<string, T> {
+  return Object.assign(Object.create(null) as Record<string, T>, entries);
+}
+
 describe('passDurationsMs — single pass', () => {
   it('converts one pass to its millisecond duration under its label', () => {
     const samples: PassTimingSample[] = [{ label: 'main', startNs: 1_000_000n, endNs: 5_500_000n }];
-    assert.deepStrictEqual(passDurationsMs(samples), { main: 4.5 });
+    assert.deepStrictEqual(passDurationsMs(samples), bareMap({ main: 4.5 }));
   });
 });
 
@@ -57,7 +68,7 @@ describe('passDurationsMs — multiple passes in one frame', () => {
       { label: 'main', startNs: 2_100_000n, endNs: 9_800_000n },
       { label: 'sky', startNs: 9_800_000n, endNs: 10_050_000n },
     ];
-    assert.deepStrictEqual(passDurationsMs(samples), { shadow: 2.1, main: 7.7, sky: 0.25 });
+    assert.deepStrictEqual(passDurationsMs(samples), bareMap({ shadow: 2.1, main: 7.7, sky: 0.25 }));
   });
 
   it('sums two passes sharing one label (e.g. repeated shadow cascades)', () => {
@@ -65,7 +76,7 @@ describe('passDurationsMs — multiple passes in one frame', () => {
       { label: 'shadow', startNs: 0n, endNs: 1_250_000n }, // 1.25ms
       { label: 'shadow', startNs: 1_250_000n, endNs: 3_400_000n }, // 2.15ms
     ];
-    assert.deepStrictEqual(passDurationsMs(samples), { shadow: 3.4 });
+    assert.deepStrictEqual(passDurationsMs(samples), bareMap({ shadow: 3.4 }));
   });
 });
 
@@ -105,7 +116,7 @@ describe('aggregateFrameTimings — feature-absent / disabled path', () => {
     const report = aggregateFrameTimings('disabled', []);
     assert.strictEqual(report.mode, 'disabled');
     assert.strictEqual(report.frame.count, 0);
-    assert.deepStrictEqual(report.passes, {});
+    assert.deepStrictEqual(report.passes, bareMap({}));
   });
 });
 
@@ -208,5 +219,75 @@ describe('aggregateFrameTimings — invalidSampleCount (non-monotonic GPU timest
       max: null,
       mean: null,
     });
+  });
+});
+
+// A pass label is caller-chosen free text (`PassTimingSample.label`), and the
+// per-label accumulators are keyed by it directly. On a plain `{}` the
+// inherited `Object.prototype` names are live: `totals['__proto__'] = n` is a
+// setter call that is silently DROPPED (no own property is created, so the
+// label vanishes from the report), and `totals['constructor'] ?? 0` reads the
+// inherited `Object` function, so `+ ms` string-concatenates into
+// `"function Object() { [native code] }4.5"` instead of summing. This is a
+// correctness boundary, not a security one: a report that silently loses or
+// corrupts a pass is worse than one that omits it loudly. `Object.create(null)`
+// removes the inherited names entirely, so every label is just a key.
+describe('passDurationsMs — labels that collide with Object.prototype', () => {
+  it('records a __proto__ pass as an own key instead of silently dropping it', () => {
+    const totals = passDurationsMs([{ label: '__proto__', startNs: 1_000_000n, endNs: 5_500_000n }]);
+    assert.ok(
+      Object.hasOwn(totals, '__proto__'),
+      'a __proto__-labelled pass must be an own key, not a swallowed prototype assignment',
+    );
+    assert.strictEqual(totals['__proto__'], 4.5);
+    // And it must be a real entry in the enumerable shape — that is what
+    // aggregateFrameTimings' `Object.entries()` walk actually consumes.
+    assert.deepStrictEqual(Object.entries(totals), [['__proto__', 4.5]]);
+  });
+
+  it('sums two __proto__ passes rather than losing both', () => {
+    const totals = passDurationsMs([
+      { label: '__proto__', startNs: 0n, endNs: 1_250_000n },
+      { label: '__proto__', startNs: 1_250_000n, endNs: 3_400_000n },
+    ]);
+    assert.strictEqual(totals['__proto__'], 3.4);
+  });
+
+  it('sums a constructor-labelled pass as a number, not a concatenated function source', () => {
+    const totals = passDurationsMs([{ label: 'constructor', startNs: 0n, endNs: 2_000_000n }]);
+    assert.strictEqual(
+      totals.constructor,
+      2,
+      'the inherited Object constructor must not be read as the running total',
+    );
+  });
+
+  it('leaves ordinary labels untouched alongside a hostile one', () => {
+    const totals = passDurationsMs([
+      { label: 'main', startNs: 0n, endNs: 8_000_000n },
+      { label: '__proto__', startNs: 8_000_000n, endNs: 10_000_000n },
+    ]);
+    assert.strictEqual(totals.main, 8);
+    assert.strictEqual(totals['__proto__'], 2);
+  });
+});
+
+describe('aggregateFrameTimings — labels that collide with Object.prototype', () => {
+  // `report.passes` is accumulated by the same by-label-key pattern, so it
+  // carries the same defect INDEPENDENTLY of passDurationsMs':
+  // `passes['__proto__'] = stats` on a plain object sets the PROTOTYPE (the
+  // value is an object, so the setter accepts it) and creates no own key at
+  // all — the pass disappears from the aggregated report even once
+  // passDurationsMs itself is fixed.
+  it('keeps a __proto__ pass label in report.passes', () => {
+    const report = aggregateFrameTimings('gpu-queries', [
+      [{ label: '__proto__', startNs: 0n, endNs: 2_000_000n }],
+      [{ label: '__proto__', startNs: 0n, endNs: 4_000_000n }],
+    ]);
+    assert.ok(Object.hasOwn(report.passes, '__proto__'), 'the label must survive into report.passes');
+    assert.strictEqual(report.passes['__proto__'].count, 2);
+    assert.strictEqual(report.passes['__proto__'].min, 2);
+    assert.strictEqual(report.passes['__proto__'].max, 4);
+    assert.strictEqual(report.frame.count, 2, 'the frame totals are unaffected either way');
   });
 });

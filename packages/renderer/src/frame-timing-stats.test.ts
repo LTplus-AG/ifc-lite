@@ -65,6 +65,55 @@ describe('computeDurationStats', () => {
     });
   });
 
+  // The empty-sample result is a module-level constant handed back by
+  // reference to every caller, so one caller writing to the object it got
+  // would rewrite what every LATER empty result reports — a "nothing was
+  // measured" verdict silently turning into a fabricated number for everyone
+  // else in the process. Freezing it makes the write a no-op (and a throw in
+  // strict mode, which every ES module is), so the shared reference stays
+  // honest no matter what a caller does with it.
+  it('an empty result cannot be mutated to poison the next empty result', () => {
+    const first = computeDurationStats([]);
+    // A caller doing exactly what a caller might do: patching the nulls to
+    // zeros for its own display code, in place.
+    assert.throws(
+      () => {
+        (first as { count: number }).count = 99;
+      },
+      TypeError,
+      'the shared empty-sample object must reject a write, not absorb it',
+    );
+
+    const second = computeDurationStats([]);
+    assert.strictEqual(second.count, 0, 'a later empty result must still report count 0');
+    assert.deepStrictEqual(second, {
+      count: 0,
+      min: null,
+      median: null,
+      p95: null,
+      max: null,
+      mean: null,
+    });
+  });
+
+  it('the empty result is frozen, including against added and deleted fields', () => {
+    const stats = computeDurationStats([]);
+    assert.ok(Object.isFrozen(stats), 'the empty-sample constant must be frozen');
+    assert.throws(() => {
+      (stats as unknown as Record<string, unknown>).injected = 1;
+    }, TypeError);
+    assert.throws(() => {
+      delete (stats as unknown as Record<string, unknown>).count;
+    }, TypeError);
+  });
+
+  it('a non-empty result is a fresh object, unaffected by the empty-sample constant', () => {
+    const empty = computeDurationStats([]);
+    const real = computeDurationStats([1, 2, 3]);
+    assert.notStrictEqual(real, empty);
+    assert.strictEqual(real.count, 3);
+  });
+
   it('computes min/median/p95/max/mean for a single sample', () => {
     const stats = computeDurationStats([7.25]);
     assert.deepStrictEqual(stats, {

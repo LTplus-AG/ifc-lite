@@ -41,14 +41,23 @@ export interface DurationStats {
   mean: number | null;
 }
 
-const EMPTY_STATS: DurationStats = {
+/**
+ * The one empty-sample result, handed back BY REFERENCE to every caller of
+ * `computeDurationStats([])`. Frozen for exactly that reason: an unfrozen
+ * shared constant lets one caller's in-place edit (e.g. patching the nulls to
+ * zeros for its own display code) rewrite what every LATER empty result
+ * reports, turning an honest "nothing was measured" into a fabricated number
+ * process-wide. Frozen, such a write is a no-op — a `TypeError` under the
+ * strict mode every ES module runs in — and the constant stays honest.
+ */
+const EMPTY_STATS: DurationStats = Object.freeze({
   count: 0,
   min: null,
   median: null,
   p95: null,
   max: null,
   mean: null,
-};
+});
 
 /**
  * WebGPU timestamp queries resolve to nanoseconds (`BigInt64Array` values

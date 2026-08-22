@@ -635,6 +635,19 @@ jobs:
       # through a pipe and asserts the bytes that arrive.
       - name: Check lint gate survives a piped stdout
         run: node --test scripts/check-lint-ran.test.mjs
+      # check-coderabbit-review.mjs exists to tell a real CodeRabbit review from
+      # a green tick with nothing behind it, and it got that wrong in BOTH
+      # directions at once: an empty comment list returned "no review" before
+      # the inline thread count was even read (CodeRabbit posts findings while
+      # its summary is absent, deleted, or rewritten in place), and no timestamp
+      # reached the classifier at all, so a review from two pushes ago certified
+      # the commits the bot never saw. The second is the dangerous one -- a
+      # false "not reviewed" is loud and self-correcting, a false "reviewed" is
+      # silent and terminal. Both directions, the freshness comparison, and the
+      # decision that a missing or unparseable timestamp resolves to unreviewed
+      # are pinned here.
+      - name: Check the CodeRabbit review classifier
+        run: node --test scripts/lib/coderabbit-review-state.test.mjs
       # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
       # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
       # returned twenty lines of prose and the tar two lines down exited 2,

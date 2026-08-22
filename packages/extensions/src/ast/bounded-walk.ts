@@ -12,10 +12,22 @@
  * `RangeError: Maximum call stack size exceeded` out of the middle of
  * whatever function invoked the walk.
  *
- * This module is the single traversal used by every AST consumer here.
  * It keeps its own stack on the heap and stops at {@link MAX_AST_DEPTH},
  * *reporting* that it stopped rather than throwing. Callers vary the
  * visitor; they do not re-implement the traversal.
+ *
+ * Two of the package's three author-source walks go through here:
+ * `validate/code.ts` and `inference/capability.ts`. The third,
+ * `host/source-wrap.ts`'s `checkBannedConstructs`, keeps its own
+ * heap-stack traversal — it enumerates child properties generically
+ * instead of descending through `acorn-walk`'s `base`, so it visits a
+ * superset of these positions. It does not keep its own limit: it
+ * imports {@link MAX_AST_DEPTH} from here, so raising or lowering the
+ * bound moves both walks rather than opening a band where one gate on
+ * author-supplied source accepts what the next refuses. (The two count
+ * a level slightly differently — generic property nesting versus
+ * `base`'s child dispatch — so they are not guaranteed to cut the same
+ * script at the same node, only to share the same budget.)
  *
  * It descends using `acorn-walk`'s own `base` visitor rather than
  * enumerating object properties generically, so which child positions

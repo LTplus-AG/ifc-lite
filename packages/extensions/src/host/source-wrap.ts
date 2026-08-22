@@ -41,6 +41,7 @@
 
 import * as acorn from 'acorn';
 import type { ValidationError, ValidationResult } from '../types.js';
+import { MAX_AST_DEPTH as SHARED_MAX_AST_DEPTH } from '../ast/bounded-walk.js';
 
 export interface SourceWrapOptions {
   /** Name of the entry function to invoke (e.g. "activate"). */
@@ -142,18 +143,18 @@ if (typeof ${entryFn} === 'function') {
 /**
  * Maximum AST nesting depth the banned-construct walk will inspect.
  *
- * Real entry scripts nest a few tens of levels deep; this bound is
- * two orders of magnitude above that. It exists because the AST comes
- * from extension-author-controlled source: past this depth the walk
- * stops and reports a validation error instead of continuing. acorn's
- * own parser gives up at roughly twice this depth in the same process
- * ("Not enough stack space to parse input"), but that limit moves with
- * however much stack the host happens to have left; this one does not.
+ * Shared with `ast/bounded-walk.ts`, which bounds the package's other
+ * two author-source walks (`validateCode`, `inferCapabilities`). It was a
+ * private `1000` here against that module's `1000`: the same number twice,
+ * with nothing keeping them equal. A script that `wrapEntrySource` accepts
+ * and `validateCode` refuses — or the reverse — is a bundle that passes one
+ * gate on author-supplied source and fails the next, and moving either
+ * constant alone would have produced exactly that band silently.
  *
- * A script nested deeper than this is rejected with an
- * `invalid_value` error naming the limit — never a thrown RangeError.
+ * A script nested deeper than this is rejected with an `invalid_value`
+ * error naming the limit — never a thrown RangeError.
  */
-const MAX_AST_DEPTH = 1000;
+const MAX_AST_DEPTH = SHARED_MAX_AST_DEPTH;
 
 /**
  * Walk the *entire* AST — including nested function bodies, arrow

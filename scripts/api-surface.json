@@ -1895,6 +1895,7 @@
     "MetadataBootstrapEntitySummary: interface",
     "MetadataBootstrapPayload: interface",
     "MetadataBootstrapSpatialNode: interface",
+    "NORMAL_COORD_THRESHOLD_M: const",
     "NO_RENDER_GEOMETRY: const",
     "PlatformGeometryStats: interface",
     "PointCloudAsset: interface",
@@ -4159,6 +4160,7 @@
     "createHeadlessMutateAdapter: function",
     "dispatchToBackend: function",
     "entityRefToString: function",
+    "escapeCsvCell: function",
     "propertyValueTypeOf: function",
     "stringToEntityRef: function"
   ],

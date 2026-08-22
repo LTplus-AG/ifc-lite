@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/sdk': patch
+'@ifc-lite/sdk': minor
 '@ifc-lite/cli': patch
 '@ifc-lite/mcp': patch
 ---

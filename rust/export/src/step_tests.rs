@@ -120,9 +120,12 @@ fn attribute_mutation_renames_entity() {
 /// manipulation over `export_step_with_stats` — it does not need
 /// duplex.ifc's geometry or property sets, only *an* IFCWALLSTANDARDCASE
 /// line to edit. `fixture_or_skip!` means that invariant is unpinned
-/// on any checkout without the fixture corpus fetched (`pnpm fixtures`),
-/// local or CI. This minimal two-entity model exercises the identical
-/// code path without the fixture.
+/// on any checkout without the fixture corpus fetched (`pnpm fixtures`).
+/// That is the local case: CI's `rust-tests` job does fetch the corpus
+/// (`.github/workflows/test.yml`, "Fetch fixtures"), so the fixture-backed
+/// original really does execute there on a normal run. This minimal
+/// two-entity model exercises the identical code path without the fixture,
+/// so the invariant is pinned on a fixture-less checkout too.
 #[test]
 fn attribute_mutation_renames_entity_synthetic() {
     const SRC: &str = "ISO-10303-21;\nHEADER;\n\

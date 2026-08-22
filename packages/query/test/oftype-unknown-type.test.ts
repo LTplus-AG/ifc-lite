@@ -118,8 +118,10 @@ const NOT_IFC_ENTITY_NAMES = [
   // bucket - the exact silent-wrong-answer this guard exists to stop, reached
   // by a name the caller can produce from any untrusted string. Fixed in
   // `isKnownEntity`/`getEntityMetadata` (the codegen template) with
-  // `Object.hasOwn`, so this list samples the class rather than enumerating a
-  // denylist that would drift.
+  // `Object.hasOwn` (#3063/#3069, not this branch - the fix belongs in the
+  // template that emits the registry), so this list samples the class rather
+  // than enumerating a denylist that would drift. These entries therefore only
+  // pass once #3069 has landed.
   'constructor',
   'toString',
   'valueOf',

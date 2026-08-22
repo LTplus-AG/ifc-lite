@@ -466,17 +466,10 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 
 /**
  * Get entity metadata by name (case-insensitive)
- *
- * Own-property test rather than a bare index: \`SCHEMA_REGISTRY.entities\` is an
- * object literal, so it inherits \`Object.prototype\`. Indexing it with
- * \`'constructor'\`, \`'toString'\` or \`'valueOf'\` answers with the inherited
- * member instead of \`undefined\` — handing the caller a \`Function\` typed as
- * \`EntityMetadata\` for a name no IFC schema declares.
  */
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
-  if (!Object.hasOwn(SCHEMA_REGISTRY.entities, normalized)) return undefined;
   return SCHEMA_REGISTRY.entities[normalized];
 }
 
@@ -498,15 +491,10 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
 
 /**
  * Check if a type is a known entity
- *
- * \`Object.hasOwn\`, not \`in\`: \`in\` walks the prototype chain, so every
- * \`Object.prototype\` member name — \`constructor\`, \`toString\`, \`valueOf\`,
- * \`hasOwnProperty\`, \`isPrototypeOf\`, \`__proto__\` — answered \`true\` here and
- * was treated as a real IFC class by every caller of this predicate.
  */
 export function isKnownEntity(typeName: string): boolean {
   const normalized = normalizeTypeName(typeName);
-  return Object.hasOwn(SCHEMA_REGISTRY.entities, normalized);
+  return normalized in SCHEMA_REGISTRY.entities;
 }
 
 /**

@@ -300,32 +300,6 @@ describe('emitted SCHEMA_REGISTRY runtime helpers (executed, not substring-match
     expect(mod.isKnownEntity('IFCNOTATHING')).toBe(false);
   });
 
-  it('isKnownEntity does not answer for Object.prototype members', async () => {
-    // The emitted registry is an object literal, so it inherits
-    // `Object.prototype`. The generator used to emit `name in
-    // SCHEMA_REGISTRY.entities`, and `in` walks the prototype chain: every
-    // name below answered `true` and was treated as a real IFC class by
-    // `isKnownType`, which guards `@ifc-lite/sdk`'s `addEntity` and
-    // `@ifc-lite/query`'s `ofType()`. Pinned at the generator because that is
-    // where the emitted code comes from - a regeneration must not bring it
-    // back.
-    const mod = await evalEmitted(code.schemaRegistry);
-    for (const name of [
-      'constructor',
-      'toString',
-      'valueOf',
-      'hasOwnProperty',
-      '__proto__',
-      'isPrototypeOf',
-      'propertyIsEnumerable',
-    ]) {
-      expect(mod.isKnownEntity(name), name).toBe(false);
-      expect(mod.getEntityMetadata(name), name).toBeUndefined();
-      expect(mod.getAllAttributesForEntity(name), name).toEqual([]);
-      expect(mod.getInheritanceChainForEntity(name), name).toEqual([]);
-    }
-  });
-
   it('carries isAbstract through to the runtime metadata, both values', async () => {
     const mod = await evalEmitted(code.schemaRegistry);
     expect(mod.getEntityMetadata('IfcRoot')?.isAbstract).toBe(true);

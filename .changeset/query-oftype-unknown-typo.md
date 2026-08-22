@@ -1,7 +1,5 @@
 ---
 "@ifc-lite/query": major
-"@ifc-lite/parser": patch
-"@ifc-lite/codegen": patch
 ---
 
 **Breaking:** `IfcQuery.ofType()` now throws for a type string that is not an IFC entity name, instead of silently querying the `Unknown` bucket.
@@ -15,7 +13,7 @@ What still works unchanged:
   The oracle deciding this is `isKnownType()` (`@ifc-lite/parser`), the predicate that already guards `@ifc-lite/sdk`'s `addEntity`: the bundled **IFC2X3 + IFC4 + IFC4X3** schema union, minus EXPRESS defined types (`IfcLengthMeasure`, `IfcArcIndex`), with the IFC4_ADD2_TC1 codegen pin as a fallback, plus the parser's alias table for IFC2X3 leaves the bundled EXPRESS exports omit. Reusing it rather than adding a second name table keeps one source of truth for "is this a real IFC class". The suite asserts the coverage exhaustively — every entity in `SCHEMA_REGISTRY` and in all three per-version tables must pass `ofType()` — rather than by sampling names.
 - **The `Unknown` bucket itself**, still reachable by passing the literal string `'Unknown'`.
 
-Also fixed, in `@ifc-lite/parser`'s generated schema registry and the `@ifc-lite/codegen` template that emits it: `isKnownEntity()` asked `name in SCHEMA_REGISTRY.entities`, and `in` walks the prototype chain, so every `Object.prototype` member name — `constructor`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `__proto__` — answered `true`. That reached `isKnownType()`, so `ofType('constructor')` passed the guard and returned the `Unknown` bucket, and `@ifc-lite/sdk`'s `addEntity` accepted the same names as IFC classes. `getEntityMetadata()` indexed the same object literal and returned `Object.prototype.toString` typed as `EntityMetadata`. Both now use `Object.hasOwn`, fixed in the generator so a regeneration cannot bring it back.
+Depends on #3069 (`fix(codegen,parser): isKnownEntity must not accept Object.prototype members`), which must land first. `isKnownEntity()` asked `name in SCHEMA_REGISTRY.entities`, and `in` walks the prototype chain, so every `Object.prototype` member name — `constructor`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `__proto__` — answered `true` and reached `isKnownType()`. Without that fix `ofType('constructor')` passes this guard and returns the `Unknown` bucket, and the suite here asserts it does not. The fix itself belongs in the codegen template that emits the registry, which is what #3069 changes; this branch only relies on it.
 
 Surrounding whitespace is trimmed once, and the trimmed name feeds both the enum lookup and the acceptance check. `IfcTypeEnumFromString` only uppercases, so before this a padded `ofType(' IfcWall ')` missed the enum table and resolved to `Unknown` while the check — which did trim — found `IfcWall` known and let it through: the query then ran against the `Unknown` bucket and returned entities that are not walls, with no error. For a name with no surrounding whitespace the trim is the identity, so nothing that resolved correctly before resolves differently now.
 

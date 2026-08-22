@@ -17,3 +17,7 @@ the `Object` constructor, which made three exported guards wrong:
 
 `isKnownEntity` had the same defect and now delegates to `getEntityMetadata`
 rather than repeating the lookup.
+
+The same generator emits a second registry with the same defect, also fixed:
+`getTypeId('constructor')` returned the `Object` constructor from a signature
+declaring `number | undefined`.

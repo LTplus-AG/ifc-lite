@@ -1,5 +1,10 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect } from 'vitest';
 import { isKnownType, isInstantiable, normalizeIfcTypeName } from './ifc-schema.js';
+import { getTypeId } from './generated/type-ids.js';
 
 /**
  * #3063. The generated SCHEMA_REGISTRY is a plain object literal, so `in` and
@@ -43,6 +48,24 @@ describe('schema guards reject inherited Object.prototype names', () => {
     const result = normalizeIfcTypeName(name);
     expect(typeof result).toBe('string');
     expect(result).toBe(name);
+  });
+
+  // The same generator emits a second registry, and it had the same defect.
+  // The comment added to typescript-generator.ts says every lookup below it
+  // must be an own-property check, which was true of that file and read as
+  // covering the generator, so this is the sibling that claim would have hidden.
+  it.each(inherited)('getTypeId(%s) is undefined, not a function', (name) => {
+    const id = getTypeId(name);
+    // `number | undefined` is the declared return. Before the fix this handed
+    // back the Object constructor for `constructor` and Object.prototype for
+    // `__proto__`, so asserting `undefined` alone would pass for the wrong
+    // reason if the signature were ever loosened. Assert the type too.
+    expect(id).toBeUndefined();
+    expect(typeof id).not.toBe('function');
+  });
+
+  it('still resolves a real type id', () => {
+    expect(typeof getTypeId('IfcWall')).toBe('number');
   });
 
   // Without these the suite is satisfied by making every guard return false,

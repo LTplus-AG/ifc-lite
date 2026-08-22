@@ -357,6 +357,75 @@ describe('fitRadius — poor circular fit is refused even with real curvature', 
   });
 });
 
+/**
+ * The poor-fit gate was pinned only from the REFUSE side: every fitted
+ * fixture above lies on the analytic circle to float precision (residual
+ * ~1e-16, six thousand times under the budget) and every refused one misses
+ * a single circle by centimetres. Nothing sat between them, so the gate's
+ * SCALE was free — verified by mutation: dropping the `/ n` from
+ * `Math.sqrt(sumSqResidual / n)`, which turns the RMS residual into a plain
+ * sum-of-squares and tightens the gate by sqrt(n) (~2.2x at five picks),
+ * left all 17 tests green. A user's noisy-but-genuinely-circular picks would
+ * start reading "Not circular" with nothing red.
+ *
+ * These two put a fixture on each side of the budget, close enough that a
+ * scale change of ~1.4x either way crosses it.
+ */
+describe('fitRadius — the poor-fit budget, from the accept side as well', () => {
+  /**
+   * An arc whose picks alternate `amp` inside and outside the true radius,
+   * IN the fit plane (so `sagitta` and the plane fit are untouched and only
+   * the circle residual moves). The RMS residual comes out at ~0.86*amp, so
+   * `amp` is a dial that lands the measurement either side of the gate.
+   */
+  function radiallyNoisyArc(radius: number, count: number, arcRad: number, amp: number): Point3[] {
+    const { u, v } = planeBasis(TILTED_NORMAL);
+    const pts: Point3[] = [];
+    for (let i = 0; i < count; i++) {
+      const a = (arcRad * i) / (count - 1);
+      const r = radius + (i % 2 === 0 ? amp : -amp);
+      const c = Math.cos(a) * r;
+      const s = Math.sin(a) * r;
+      pts.push({
+        x: CENTER.x + u.x * c + v.x * s,
+        y: CENTER.y + u.y * c + v.y * s,
+        z: CENTER.z + u.z * c + v.z * s,
+      });
+    }
+    return pts;
+  }
+
+  /** `SAGITTA_FLOOR_M * RESIDUAL_BUDGET`; RESIDUAL_BUDGET (3) is not exported. */
+  const RESIDUAL_BUDGET_M = SAGITTA_FLOOR_M * 3;
+  const ARC_RAD = (86 * Math.PI) / 180;
+
+  it('accepts picks whose residual sits just UNDER the budget, and reports it', () => {
+    const r = fitRadius(radiallyNoisyArc(SWEEP_RADIUS_M, 5, ARC_RAD, 2e-4));
+    assert.equal(r.kind, 'fitted', `expected a fit, got ${JSON.stringify(r)}`);
+    if (r.kind !== 'fitted') return;
+    near(r.radiusM, SWEEP_RADIUS_M, 1e-3);
+    // Squarely inside the gate but nowhere near zero: this is the assertion
+    // the sum-of-squares mutation fails, since it scales the residual by
+    // sqrt(5) and pushes it past the budget (and past this bound).
+    assert.ok(
+      r.residualM > RESIDUAL_BUDGET_M * 0.4 && r.residualM < RESIDUAL_BUDGET_M * 0.8,
+      `residual ${r.residualM} must sit in the upper half of the ${RESIDUAL_BUDGET_M} m budget, ` +
+        'or the gate scale is unpinned again',
+    );
+  });
+
+  it('refuses the same arc once the noise doubles and the residual clears the budget', () => {
+    const r = fitRadius(radiallyNoisyArc(SWEEP_RADIUS_M, 5, ARC_RAD, 4e-4));
+    assert.equal(r.kind, 'refused', `expected a refusal, got ${JSON.stringify(r)}`);
+    if (r.kind !== 'refused') return;
+    assert.equal(r.reason, 'poor-fit');
+    assert.ok(
+      r.residualM !== undefined && r.residualM > RESIDUAL_BUDGET_M,
+      `a poor-fit refusal must carry the residual that caused it, got ${r.residualM}`,
+    );
+  });
+});
+
 describe('fitRadius — insufficient input', () => {
   it('refuses with too few points rather than fitting a circle through two', () => {
     const r = fitRadius([{ x: 0, y: 0, z: 0 }, { x: 1, y: 0, z: 0 }]);

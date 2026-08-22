@@ -7,6 +7,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createStore } from 'zustand/vanilla';
 import { createEnvironmentSlice, type EnvironmentSlice } from './environmentSlice.js';
+import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 
 const STORAGE_KEY = 'ifc-lite:environment';
 
@@ -94,6 +95,89 @@ describe('environmentSlice', () => {
     assert.doesNotThrow(() => makeStore());
     const s = makeStore();
     assert.strictEqual(s.getState().envExposure, 1);
+  });
+
+  // The three dials below were the ones this file did NOT reach. Verified by
+  // mutation: deleting `clampSunAngle`'s range clamp, `clampSunTime`'s range
+  // clamp or `clampShadowResolution`'s allow-list snap outright — and each of
+  // their `Number.isFinite` fallbacks — left the suite fully green, while the
+  // same treatment of `clampExposure`/`clampHardness`/`clampSoftness` turned
+  // it red. Exposure was pinned; the rest were not.
+  it('setEnvSunAngle clamps to [0.1, 5] and rejects NaN', () => {
+    const s = makeStore();
+    s.getState().setEnvSunAngle(50);
+    assert.strictEqual(s.getState().envSunAngle, 5);
+    s.getState().setEnvSunAngle(-1);
+    assert.strictEqual(s.getState().envSunAngle, 0.1);
+    s.getState().setEnvSunAngle(2.5);
+    assert.strictEqual(s.getState().envSunAngle, 2.5);
+    s.getState().setEnvSunAngle(Number.NaN);
+    // The renderer divides by / compares against this angle when sizing the
+    // penumbra; NaN here poisons the shadow term rather than widening it.
+    assert.strictEqual(s.getState().envSunAngle, 0.53);
+  });
+
+  it('setEnvSunTime clamps to the 6..18 sun-arc day window and rejects NaN', () => {
+    const s = makeStore();
+    s.getState().setEnvSunTime(23);
+    assert.strictEqual(s.getState().envSunTime, 18);
+    s.getState().setEnvSunTime(0);
+    assert.strictEqual(s.getState().envSunTime, 6);
+    s.getState().setEnvSunTime(9.5);
+    assert.strictEqual(s.getState().envSunTime, 9.5);
+    s.getState().setEnvSunTime(Number.NaN);
+    assert.strictEqual(s.getState().envSunTime, 13);
+  });
+
+  it('setEnvShadowResolution snaps to a supported size, falling back to 0 (Auto)', () => {
+    const s = makeStore();
+    s.getState().setEnvShadowResolution(2048);
+    assert.strictEqual(s.getState().envShadowResolution, 2048);
+    // 8192 is a plausible-looking value that is NOT on the allow-list; it must
+    // become Auto rather than be handed to the renderer as a texture size.
+    s.getState().setEnvShadowResolution(8192);
+    assert.strictEqual(s.getState().envShadowResolution, 0);
+    // NaN lands on Auto too — though note that `clampShadowResolution`'s own
+    // `Number.isFinite` early return is redundant for this input: `includes`
+    // uses SameValueZero, so `[0, 1024, 2048, 4096].includes(NaN)` is already
+    // false and the allow-list branch returns 0 by itself. Deleting that early
+    // return leaves this assertion green.
+    s.getState().setEnvShadowResolution(Number.NaN);
+    assert.strictEqual(s.getState().envShadowResolution, 0);
+  });
+
+  it('setEnvPreset re-seeds envSunAngle from the preset, overriding a manual angle', () => {
+    // louistrue's #2670 review: cast-shadow softness is a property of the sky,
+    // so switching preset must move the angle with it. Nothing pinned this.
+    const s = makeStore();
+    s.getState().setEnvSunAngle(2.5);
+    s.getState().setEnvPreset('overcast');
+    assert.strictEqual(
+      s.getState().envSunAngle,
+      LIGHTING_PRESETS.overcast.shadowSunAngleDeg,
+      'a preset switch must carry its own sun angle, not keep the manual override',
+    );
+    // And a preset with a *different* angle, so the assertion cannot pass on a
+    // shared default: overcast is 4.0, golden is 0.8.
+    s.getState().setEnvPreset('golden');
+    assert.strictEqual(s.getState().envSunAngle, LIGHTING_PRESETS.golden.shadowSunAngleDeg);
+  });
+
+  it('with no stored angle, seeds envSunAngle from the RESTORED preset, not a fixed 0.53', () => {
+    // CodeRabbit #3053: a persisted Overcast used to reopen crisp (0.53) until
+    // the first preset switch. `sunAngle` is deliberately absent here.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preset: 'overcast' }));
+    const s = makeStore();
+    assert.strictEqual(s.getState().envSunAngle, LIGHTING_PRESETS.overcast.shadowSunAngleDeg);
+    assert.notStrictEqual(s.getState().envSunAngle, LIGHTING_PRESETS.default.shadowSunAngleDeg);
+  });
+
+  it('a stored sunAngle override survives rehydration and is not overwritten by the preset', () => {
+    // The other direction of the same rule — the #3053 fix must not turn into
+    // "the preset always wins".
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ preset: 'overcast', sunAngle: 1.7 }));
+    const s = makeStore();
+    assert.strictEqual(s.getState().envSunAngle, 1.7);
   });
 
   it('envPanelOpen is session-only: toggling it does not touch persisted storage', () => {

@@ -27,19 +27,31 @@
  * Budgets ratchet DOWN only: shrink or split instead of raising one.
  *
  * NOT WIRED INTO CI, deliberately. Turning it on is a maintainer call: the
- * initial allowlist grandfathers 311 files and embodies a judgement about what
+ * initial allowlist grandfathers 312 files and embodies a judgement about what
  * counts as production TypeScript. Wiring would be one step in the node-test
  * job of .github/workflows/test.yml:
  *
  *     - name: Check module sizes (TypeScript)
  *       run: node scripts/check-module-size.mjs
  *
- * On day one that step is green (verified by running it). What it would break
- * on afterwards, by design: any PR adding a TS/TSX file over 400 lines, any PR
- * growing a listed file past its recorded budget, and any PR editing the
- * allowlist without moving ALLOWLIST_DIGEST — including a rebase that lands
- * after someone else's shrink, which requires recomputing the pin. It does NOT
- * break on a file shrinking or disappearing; those are advisory notes.
+ * That step is green against the tree the allowlist was recorded from, and
+ * only that tree — it was NOT verified green against any future main. The
+ * allowlist is a snapshot, so growth that lands on main after the snapshot
+ * (from any PR, this one included) makes the gate red the moment it is wired,
+ * or the moment this branch merges. Before turning the step on, and after any
+ * merge from main, run the script: if it reports a listed file past budget or
+ * a new file over 400, the allowlist needs refreshing in the same commit —
+ * re-record the measured counts, then recompute ALLOWLIST_DIGEST as described
+ * below. A refresh that only tracks growth already on main is a maintainer
+ * call and must be stated in the PR; it is not licence to raise a budget for
+ * growth the PR itself introduced.
+ *
+ * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
+ * over 400 lines, any PR growing a listed file past its recorded budget, and
+ * any PR editing the allowlist without moving ALLOWLIST_DIGEST — including a
+ * rebase that lands after someone else's shrink, which requires recomputing
+ * the pin. It does NOT break on a file shrinking or disappearing; those are
+ * advisory notes.
  *
  * WHAT THIS GATE CANNOT SEE: it counts lines, nothing else. A 400-line file
  * doing five jobs passes; a cohesive 900-line table fails. It does not look at
@@ -107,7 +119,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * and read the true value out of the failure message. Do it at the moment you
  * finalise the change — it moves if anything else touched the allowlist first.
  */
-const ALLOWLIST_DIGEST = '11429658777515969766';
+const ALLOWLIST_DIGEST = '8029829669247875978';
 
 function parseArgs(argv) {
   const out = { root: REPO_ROOT, allowlist: null, digest: ALLOWLIST_DIGEST };

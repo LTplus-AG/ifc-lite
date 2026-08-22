@@ -257,12 +257,12 @@
    417 packages/lens/src/types.ts
    792 packages/lists/src/engine.ts
    423 packages/lists/src/types.ts
-   511 packages/mcp/src/backend-query.ts
+   509 packages/mcp/src/backend-query.ts
    420 packages/mcp/src/overlay.ts
    544 packages/mcp/src/server.ts
    477 packages/mcp/src/tools/diff-fingerprints.ts
    470 packages/mcp/src/tools/layer-review.ts
-   443 packages/mcp/src/tools/mutate.ts
+   440 packages/mcp/src/tools/mutate.ts
    627 packages/mcp/src/tools/query.ts
    699 packages/mcp/src/tools/viewer.ts
    413 packages/mcp/src/transport/http.ts

@@ -112,16 +112,24 @@ export function allowlistDigest(map) {
  * The ratchet decision. `files` is `[{ rel, lines }]` for every non-exempt
  * file found; `allowlist` is the parsed Map.
  *
- * Returns `{ newOffenders, grew, shrunk, missing }`:
+ * Returns `{ newOffenders, grew, shrunk, missing, slack }`:
  *  - `newOffenders` (FAILS): over LIMIT with no row — a new god file.
  *  - `grew` (FAILS): allowlisted and over its recorded budget.
- *  - `shrunk` / `missing` (ADVISORY): rows that should be deleted or lowered.
- *    Advisory only, so that a merge landing a shrink elsewhere cannot turn an
- *    unrelated PR red — the same choice the Rust gate makes.
+ *  - `shrunk` / `missing` / `slack` (ADVISORY): rows that should be deleted or
+ *    lowered. Advisory only, so that a merge landing a shrink elsewhere cannot
+ *    turn an unrelated PR red — the same choice the Rust gate makes.
+ *
+ * `slack` is the one this gate could not previously see at all. A row whose
+ * budget sits ABOVE the file's current size is headroom the file may grow into
+ * without any check firing, and nothing reported it: `shrunk` only notices a
+ * file that fell back under LIMIT. Two such rows were already in the initial
+ * allowlist (+2 and +3 lines) despite it being recorded from measured counts,
+ * which is exactly how the shape goes unnoticed.
  */
 export function evaluate(files, allowlist) {
   const newOffenders = [];
   const grew = [];
+  const slack = [];
   const seen = new Map();
   for (const { rel, lines } of files) {
     seen.set(rel, lines);
@@ -130,6 +138,8 @@ export function evaluate(files, allowlist) {
       if (lines > LIMIT) newOffenders.push(`  ${rel}: ${lines} lines`);
     } else if (lines > budget) {
       grew.push(`  ${rel}: ${lines} lines, budget ${budget}`);
+    } else if (lines < budget && lines > LIMIT) {
+      slack.push(`  ${rel}: ${lines} lines, budget ${budget} (${budget - lines} lines of headroom)`);
     }
   }
   const shrunk = [];
@@ -143,7 +153,8 @@ export function evaluate(files, allowlist) {
   grew.sort();
   shrunk.sort();
   missing.sort();
-  return { newOffenders, grew, shrunk, missing };
+  slack.sort();
+  return { newOffenders, grew, shrunk, missing, slack };
 }
 
 /**

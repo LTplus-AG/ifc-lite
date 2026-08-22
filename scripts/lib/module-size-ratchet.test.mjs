@@ -134,7 +134,30 @@ test('evaluate is clean when everything is within budget', () => {
     { rel: 'packages/a/small.ts', lines: 12 },
     { rel: 'packages/a/big.ts', lines: 480 },
   ];
-  const { newOffenders, grew } = evaluate(files, allowlist);
+  const { newOffenders, grew, slack } = evaluate(files, allowlist);
+  assert.deepEqual(newOffenders, []);
+  assert.deepEqual(grew, []);
+  // Within budget, but 20 lines of headroom the file can grow into with
+  // nothing firing. Advisory, and it must be SAID.
+  assert.deepEqual(slack, ['  packages/a/big.ts: 480 lines, budget 500 (20 lines of headroom)']);
+});
+
+test('slack is advisory, and is silent when the budget is the measured count', () => {
+  const allowlist = new Map([
+    ['packages/a/exact.ts', 500],
+    ['packages/a/roomy.ts', 900],
+    ['packages/a/under.ts', 700],
+  ]);
+  const { slack, newOffenders, grew } = evaluate(
+    [
+      { rel: 'packages/a/exact.ts', lines: 500 },
+      { rel: 'packages/a/roomy.ts', lines: 640 },
+      // Back under LIMIT: `shrunk` owns this one, so slack must not double-report.
+      { rel: 'packages/a/under.ts', lines: 120 },
+    ],
+    allowlist,
+  );
+  assert.deepEqual(slack, ['  packages/a/roomy.ts: 640 lines, budget 900 (260 lines of headroom)']);
   assert.deepEqual(newOffenders, []);
   assert.deepEqual(grew, []);
 });

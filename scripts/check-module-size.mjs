@@ -119,7 +119,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * and read the true value out of the failure message. Do it at the moment you
  * finalise the change — it moves if anything else touched the allowlist first.
  */
-const ALLOWLIST_DIGEST = '8029829669247875978';
+const ALLOWLIST_DIGEST = '4512308649773476420';
 
 function parseArgs(argv) {
   const out = { root: REPO_ROOT, allowlist: null, digest: ALLOWLIST_DIGEST };
@@ -246,7 +246,7 @@ ${stale.join('\n')}
 `);
 }
 
-const { newOffenders, grew, shrunk, missing } = evaluate(files, allowlist);
+const { newOffenders, grew, shrunk, missing, slack } = evaluate(files, allowlist);
 
 if (newOffenders.length > 0) {
   failed = true;
@@ -276,6 +276,12 @@ for (const row of shrunk) {
 }
 for (const row of missing) {
   console.log(`note:${row} no longer matches a tracked file (gone, renamed or now exempt); remove it`);
+}
+// Advisory: headroom a file can grow into with nothing firing. Not a failure,
+// because a shrink landing in another PR would otherwise turn this one red —
+// but it must be VISIBLE, or the ratchet quietly stops being one for that row.
+for (const row of slack) {
+  console.log(`note:${row}; lower the budget to the measured count (and re-pin the digest)`);
 }
 
 if (failed) process.exit(1);

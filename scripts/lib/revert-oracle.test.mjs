@@ -28,6 +28,7 @@ import {
   rootScriptsRunner,
   aggregate,
   parseRunnerOutput,
+  hasLoadError,
   verdict,
   PASS,
   ASSERTION_FAILURE,
@@ -220,6 +221,173 @@ error[E0432]: unresolved import \`crate::walk::visit_typed\`
 error: aborting due to 1 previous error
 error: could not compile \`ifc-lite-geom\` (lib test) due to 1 previous error
 `;
+
+/**
+ * vitest 4, THE VITE FORM OF THE TRAP. Unlike node's ESM loader, which throws
+ * at instantiation when a named export is missing, Vite binds the import to
+ * `undefined`. The module therefore LOADS, the test body runs, and vitest
+ * prints an ordinary `Failed Tests` banner — the same shape as a real RED.
+ * Not one assertion was actually evaluated against the subject.
+ *
+ * Captured 2026-08-22 by running vitest 4.1.10 against a module that no longer
+ * exports `computeThing`. Verbatim except that the absolute cwd printed on the
+ * `RUN` line was replaced with `/w/.tmp-probe`.
+ */
+const VITEST_REMOVED_EXPORT_DEAD_BINDING = `
+ RUN  v4.1.10 /w/.tmp-probe
+
+ ❯ src/compute-thing.test.ts (3 tests | 3 failed) 2ms
+     × doubles 1ms
+     × handles zero 0ms
+     × handles negatives 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/compute-thing.test.ts > computeThing > doubles
+TypeError: computeThing is not a function
+ ❯ src/compute-thing.test.ts:6:12
+      4| describe('computeThing', () => {
+      5|   it('doubles', () => {
+      6|     expect(computeThing(2)).toBe(4);
+       |            ^
+      7|   });
+      8|   it('handles zero', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/compute-thing.test.ts > computeThing > handles zero
+TypeError: computeThing is not a function
+ ❯ src/compute-thing.test.ts:9:12
+      7|   });
+      8|   it('handles zero', () => {
+      9|     expect(computeThing(0)).toBe(0);
+       |            ^
+     10|   });
+     11|   it('handles negatives', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/compute-thing.test.ts > computeThing > handles negatives
+TypeError: computeThing is not a function
+ ❯ src/compute-thing.test.ts:12:12
+     10|   });
+     11|   it('handles negatives', () => {
+     12|     expect(computeThing(-3)).toBe(-6);
+       |            ^
+     13|   });
+     14| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed (3)
+   Start at  08:14:00
+   Duration  94ms (transform 10ms, setup 0ms, import 15ms, tests 2ms, environment 0ms)
+
+`;
+/**
+ * The same dead binding, one word different, because the removed export was a
+ * class: `is not a constructor` rather than `is not a function`. Captured the
+ * same way and on the same day as the fixture above.
+ */
+const VITEST_REMOVED_CLASS_DEAD_BINDING = `
+ RUN  v4.1.10 /w/.tmp-probe
+
+ ❯ src/klass.test.ts (1 test | 1 failed) 2ms
+     × constructs 1ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/klass.test.ts > Mesh > constructs
+TypeError: Mesh is not a constructor
+ ❯ src/klass.test.ts:6:12
+      4| describe('Mesh', () => {
+      5|   it('constructs', () => {
+      6|     expect(new Mesh().id).toBe(1);
+       |            ^
+      7|   });
+      8| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  08:15:02
+   Duration  84ms (transform 8ms, setup 0ms, import 13ms, tests 2ms, environment 0ms)
+
+`;
+/**
+ * The counter-example that keeps the pattern above honest: a GENUINE assertion
+ * failure whose message is also a TypeError, thrown from product code
+ * (`src/geom.ts`), not from a dead import binding. The test really did observe
+ * the bug, so this must stay an assertion failure. Captured the same way.
+ */
+const VITEST_GENUINE_TYPEERROR = `
+ RUN  v4.1.10 /w/.tmp-probe
+
+ ❯ src/geom.test.ts (2 tests | 1 failed) 2ms
+     × counts points 1ms
+     ✓ measures width 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/geom.test.ts > geom > counts points
+TypeError: Cannot read properties of undefined (reading 'length')
+ ❯ boundsOf src/geom.ts:4:18
+      2|   // Genuine product bug: points is not defaulted, so this throws a Ty…
+      3|   // from PRODUCT code, not from a dead import binding.
+      4|   return points!.length;
+       |                  ^
+      5| }
+      6|
+ ❯ src/geom.test.ts:6:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 passed (2)
+   Start at  08:15:35
+   Duration  95ms (transform 18ms, setup 0ms, import 23ms, tests 2ms, environment 0ms)
+
+`;
+/**
+ * vitest 4, a collection error whose text matches NO import/compile pattern
+ * (a bare `throw new Error('boom')` at module top level), running alongside a
+ * file that passed. `Tests  2 passed (2)` is the only summary line, so the
+ * STRUCTURAL `Failed Suites` signal is the only thing standing between this
+ * run and a catastrophic PASS. Captured the same way.
+ */
+const VITEST_COLLECTION_THROW_WITH_PASSES = `
+ RUN  v4.1.10 /w/.tmp-probe
+
+ ❯ src/boom.test.ts (0 test)
+ ✓ src/ok.test.ts (2 tests) 1ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/boom.test.ts [ src/boom.test.ts ]
+Error: boom
+ ❯ src/boom.test.ts:3:7
+      1| import { describe, it, expect } from 'vitest';
+      2|
+      3| throw new Error('boom');
+       |       ^
+      4|
+      5| describe('never collected', () => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  2 passed (2)
+   Start at  08:15:03
+   Duration  86ms (transform 21ms, setup 0ms, import 17ms, tests 1ms, environment 0ms)
+
+`;
+
 
 // ---------------------------------------------------------------------------
 // classifyPath / classifyDiff
@@ -440,6 +608,69 @@ test('vitest: all green', () => {
 test('vitest: "No test files found" is NO_TESTS, not a pass', () => {
   const r = parseRunnerOutput({ family: 'vitest', stdout: VITEST_NO_FILES, stderr: '', exitCode: 1 });
   assert.equal(r.kind, NO_TESTS);
+});
+
+test('THE TRAP, VITE FORM: a removed export bound to undefined is NOT an assertion failure', () => {
+  const r = parseRunnerOutput({
+    family: 'vitest',
+    stdout: VITEST_REMOVED_EXPORT_DEAD_BINDING,
+    stderr: '',
+    exitCode: 1,
+  });
+  // Vitest reported `Failed Tests 3` and exit 1 — indistinguishable from a real
+  // RED by every structural signal. Only the error text separates them.
+  assert.equal(r.kind, LOAD_FAILURE);
+  assert.equal(r.failed, 3);
+  assert.match(r.evidence[0], /is not a function/);
+  const v = verdict({
+    baseline: { kind: PASS, passed: 3, failed: 0, total: 3, evidence: [] },
+    reverted: r,
+  });
+  assert.equal(v.verdict, INCONCLUSIVE, 'a dead binding must never certify the change');
+  assert.notEqual(v.exitCode, 0);
+});
+
+test('THE TRAP, VITE FORM: a removed exported CLASS reads the same way', () => {
+  const r = parseRunnerOutput({
+    family: 'vitest',
+    stdout: VITEST_REMOVED_CLASS_DEAD_BINDING,
+    stderr: '',
+    exitCode: 1,
+  });
+  assert.equal(r.kind, LOAD_FAILURE);
+  assert.match(r.evidence[0], /is not a constructor/);
+});
+
+test('a GENUINE TypeError thrown by product code stays an assertion failure', () => {
+  // The opposite error to the one above, and the cost of getting it wrong is
+  // real coverage reported as INCONCLUSIVE. The pattern is deliberately spelt
+  // `is not a function`/`is not a constructor` rather than a blanket TypeError.
+  const r = parseRunnerOutput({
+    family: 'vitest',
+    stdout: VITEST_GENUINE_TYPEERROR,
+    stderr: '',
+    exitCode: 1,
+  });
+  assert.equal(r.kind, ASSERTION_FAILURE);
+  assert.equal(r.passed, 1);
+  assert.equal(r.failed, 1);
+  assert.equal(r.total, 2);
+  assert.equal(hasLoadError(VITEST_GENUINE_TYPEERROR), false);
+});
+
+test('vitest: the STRUCTURAL Failed Suites signal catches a collection error no text pattern matches', () => {
+  // No import/compile string appears anywhere in this output, and the only
+  // summary line is `Tests  2 passed (2)`. Without the `Failed Suites` check
+  // the run would be read as a clean PASS.
+  assert.equal(hasLoadError(VITEST_COLLECTION_THROW_WITH_PASSES), false);
+  const r = parseRunnerOutput({
+    family: 'vitest',
+    stdout: VITEST_COLLECTION_THROW_WITH_PASSES,
+    stderr: '',
+    exitCode: 1,
+  });
+  assert.equal(r.kind, LOAD_FAILURE);
+  assert.match(r.evidence[0], /Failed Suite/);
 });
 
 test('cargo: pass, assertion failure, and compile failure are three distinct kinds', () => {

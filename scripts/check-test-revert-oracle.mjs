@@ -41,6 +41,13 @@
  * that smells of a load failure is reported as INCONCLUSIVE with a
  * recommendation to supply a surgical `--mutation` patch instead.
  *
+ * VITEST HIDES THAT CASE. Node's ESM loader throws when a named export is
+ * missing; Vite instead binds the import to `undefined`, so the module loads,
+ * the test body runs, and vitest prints an ordinary `Failed Tests` banner
+ * carrying `TypeError: <name> is not a function`. Structurally it is
+ * indistinguishable from a real RED, so that text is read as a load failure
+ * too — see `LOAD_ERROR_PATTERNS` in `lib/revert-oracle.mjs`.
+ *
  * NOT A CI CHECK, DELIBERATELY. It mutates the working tree and it is slow.
  * See the LIMITATIONS block at the bottom of this file, and `--help`, for what
  * wiring it into CI would require.
@@ -163,7 +170,7 @@ function findUp(startDir, filename) {
     const candidate = join(dir, filename);
     if (existsSync(candidate)) return dir;
     const parent = dirname(dir);
-    if (parent === dir || !dir.startsWith(ROOT)) return null;
+    if (parent === dir || !parent.startsWith(ROOT)) return null;
     dir = parent;
   }
 }
@@ -226,7 +233,7 @@ function resolveBin(bin, pkgDir) {
     const candidate = join(dir, 'node_modules', '.bin', bin);
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
-    if (parent === dir || !dir.startsWith(ROOT)) return null;
+    if (parent === dir || !parent.startsWith(ROOT)) return null;
     dir = parent;
   }
 }

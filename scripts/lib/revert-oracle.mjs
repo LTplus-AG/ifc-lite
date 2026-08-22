@@ -24,6 +24,12 @@
  * module parses the runner's own output instead, and any whiff of a load
  * failure downgrades the whole run to INCONCLUSIVE rather than RED.
  *
+ * UNDER VITE THE TRAP IS INVISIBLE. Vite does not throw on a missing named
+ * export — it binds the import to `undefined`. The module loads, the test body
+ * runs, and vitest reports `Failed Tests` with `TypeError: x is not a
+ * function`, which has the exact shape of an honest assertion failure. Only
+ * the error text tells the two apart.
+ *
  * Everything here is a pure function over strings so it can be tested against
  * synthetic fixtures (`revert-oracle.test.mjs`) without reverting anything.
  */
@@ -207,6 +213,18 @@ const LOAD_ERROR_PATTERNS = [
   // real assertion, and biasing it to INCONCLUSIVE costs a human glance, while
   // biasing it to OBSERVED is the false reassurance this tool exists to stop.
   /ReferenceError: .* is not defined/,
+  // Vite's dead-binding form of the export-removal trap, and the one that hurts
+  // most because it does NOT look like a load error. Node's ESM loader throws at
+  // instantiation when a named export is missing; Vite instead binds the import
+  // to `undefined`, so the module "loads", the test body runs, and the runner
+  // prints an ordinary `Failed Tests` banner. Nothing was tested, yet without
+  // this pattern the oracle reads it as "the tests caught the revert".
+  //   TypeError: computeThing is not a function   (removed exported function)
+  //   TypeError: Mesh is not a constructor        (removed exported class)
+  // The cost is a genuine `X is not a function` thrown by product code being
+  // downgraded to INCONCLUSIVE. That is the loud, self-correcting direction; a
+  // false OBSERVED is the silent one this whole tool exists to prevent.
+  /TypeError: .* is not a (?:function|constructor)/,
   /The requested module/,
   /Missing "\.\/[^"]*" specifier in/,
   /\[vite\]: Rollup failed to resolve/,

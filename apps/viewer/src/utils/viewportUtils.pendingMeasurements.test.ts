@@ -28,6 +28,8 @@ function base(): PendingMeasurementState {
     polylineMeasurements: { length: 0 },
     activeAngle: null,
     angleMeasurements: { length: 0 },
+    activeRadius: null,
+    radiusMeasurements: { length: 0 },
   };
 }
 
@@ -69,6 +71,26 @@ describe('hasPendingMeasurementState - angle state (#2735)', () => {
   it('a finished angle measurement keeps it running too', () => {
     assert.equal(
       hasPendingMeasurementState({ ...base(), angleMeasurements: { length: 1 } }),
+      true,
+    );
+  });
+});
+
+describe('hasPendingMeasurementState - radius state (#2737 item 2)', () => {
+  it('an in-progress radius sequence keeps the reprojection pass running', () => {
+    // Fourth occurrence of #2641's defect: `updateMeasurementScreenCoords`
+    // (measurementSlice.ts) gained a radius reprojection arm while this gate
+    // did not, so with radius-only state the pass never ran at all and that
+    // arm was dead code.
+    assert.equal(
+      hasPendingMeasurementState({ ...base(), activeRadius: { points: [{}] } }),
+      true,
+    );
+  });
+
+  it('a finished radius measurement keeps it running too', () => {
+    assert.equal(
+      hasPendingMeasurementState({ ...base(), radiusMeasurements: { length: 1 } }),
       true,
     );
   });

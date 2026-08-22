@@ -534,6 +534,11 @@ export interface PendingMeasurementState {
   activeAngle: unknown;
   /** Finished angle measurements (#2735) - their picks are reprojected too. */
   angleMeasurements: { length: number };
+  /** In-progress radius/diameter sequence (#2737 item 2), or null. */
+  activeRadius: unknown;
+  /** Finished radius measurements (#2737 item 2) - their picks are
+   *  reprojected too. */
+  radiusMeasurements: { length: number };
 }
 
 /**
@@ -543,7 +548,10 @@ export interface PendingMeasurementState {
  * to check only `measurements`/`activeMeasurement`, so with polyline-only
  * state the reprojection pass never ran and placed points, segments and
  * labels froze at their click-time screen position while orbiting), or angle
- * sequences/measurements (#2735, the same defect a third time).
+ * sequences/measurements (#2735, the same defect a third time), or radius
+ * sequences/measurements (#2737 item 2, the same defect a fourth time —
+ * `updateMeasurementScreenCoords` grew a radius reprojection arm without a
+ * matching arm here, so radius-only state left the pass unrun).
  *
  * This gate and `updateMeasurementScreenCoords` are a PAIR. Reprojection logic
  * added there without an arm here is dead code for any state this gate does
@@ -557,6 +565,8 @@ export function hasPendingMeasurementState(state: PendingMeasurementState): bool
     state.activePolyline !== null ||
     state.polylineMeasurements.length > 0 ||
     state.activeAngle !== null ||
-    state.angleMeasurements.length > 0
+    state.angleMeasurements.length > 0 ||
+    state.activeRadius !== null ||
+    state.radiusMeasurements.length > 0
   );
 }

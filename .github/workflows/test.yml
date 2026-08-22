@@ -542,6 +542,17 @@ jobs:
         run: pnpm fixtures
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # Executable proof the wiring gate cannot pass vacuously — the failure
+      # mode it exists to catch is exactly the one it could have itself. Its
+      # first fixture reconstructs #3062's pre-wiring state (a gate script and
+      # its test committed with no workflow step and no package.json entry),
+      # which the earlier checker could not see at all because `scripts/` was
+      # outside its `packages`/`apps` scan. The rest pin the two directions
+      # that matter: a package.json entry nobody invokes is NOT wiring, and
+      # the glob catch-all below reaching a gate's TEST does not excuse the
+      # gate SCRIPT never executing.
+      - name: Check test-wiring gate regressions
+        run: node --test scripts/check-test-wiring.test.mjs
       # typecheck-tests.mjs writes the `extends` of every generated test
       # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
       # MODULE, so the base config is not found and the `noEmit` it carries

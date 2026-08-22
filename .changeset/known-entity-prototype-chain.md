@@ -1,12 +1,19 @@
 ---
-"@ifc-lite/parser": patch
-"@ifc-lite/codegen": patch
+'@ifc-lite/parser': patch
+'@ifc-lite/codegen': patch
 ---
 
-Fix `isKnownEntity` accepting inherited `Object.prototype` members as IFC entity names (#3063).
+Stop the generated schema registry answering for `Object.prototype` members.
 
-The registry lookup used `normalized in SCHEMA_REGISTRY.entities`, and `in` walks the prototype chain. So `constructor`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `__proto__` and the rest all reported as known entities, while a plainly wrong name like `NotARealType` was correctly rejected.
+`SCHEMA_REGISTRY.entities` is a plain object literal, so `in` and `obj[key]`
+both reach the prototype chain. `getEntityMetadata('constructor')` returned
+the `Object` constructor, which made three exported guards wrong:
 
-That matters because this is the authoring guard: callers use it to decide whether a type name a user supplied is real. `normalizeIfcTypeName('constructor')` returns `"Object"`, so accepting it hands the next stage a name that is not an entity at all.
+- `isInstantiable('constructor')` was `true`. Its own docblock says it exists
+  to stop authoring code writing an abstract class into an exported file.
+- `normalizeIfcTypeName('constructor')` returned the string `"Object"`.
+- `normalizeIfcTypeName('__proto__')` returned `undefined` from a signature
+  declaring `string`.
 
-Fixed in `packages/codegen/src/typescript-generator.ts`, which emits the function, and applied to the three generated registries it produces.
+`isKnownEntity` had the same defect and now delegates to `getEntityMetadata`
+rather than repeating the lookup.

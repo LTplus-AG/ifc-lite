@@ -461,6 +461,15 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
     code += `    ${select.name}: [${escapedTypes.join(', ')}],\n`;
   }
 
+  // Everything from here to the end of this template literal is EMITTED TEXT,
+  // not code that runs here. Two consequences that have both bitten:
+  //
+  //  - A backtick anywhere in it closes the literal and the rest becomes real
+  //    TypeScript. That is a `tsc` failure on this package, and the only thing
+  //    that catches it, so never write one in a comment below.
+  //  - The registry is a plain object literal, so `in` and `obj[key]` both
+  //    walk the prototype chain and answer for `constructor`, `toString` and
+  //    `__proto__`. Every lookup below must be an own-property check (#3063).
   code += `  },
 };
 
@@ -470,6 +479,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
+  if (!Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.entities, normalized)) return undefined;
   return SCHEMA_REGISTRY.entities[normalized];
 }
 
@@ -493,12 +503,7 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
  * Check if a type is a known entity
  */
 export function isKnownEntity(typeName: string): boolean {
-  const normalized = normalizeTypeName(typeName);
-  // The 'in' operator walks the prototype chain, so it answers TRUE for every
-  // Object.prototype member: constructor, toString, valueOf, hasOwnProperty,
-  // __proto__, isPrototypeOf. Those are not IFC entities, and this function is
-  // the authoring guard callers use to decide whether a type name is real.
-  return Object.hasOwn(SCHEMA_REGISTRY.entities, normalized);
+  return getEntityMetadata(typeName) !== undefined;
 }
 
 /**

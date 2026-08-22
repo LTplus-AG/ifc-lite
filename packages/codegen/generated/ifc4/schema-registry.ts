@@ -63136,6 +63136,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
+  if (!Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.entities, normalized)) return undefined;
   return SCHEMA_REGISTRY.entities[normalized];
 }
 
@@ -63159,12 +63160,7 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
  * Check if a type is a known entity
  */
 export function isKnownEntity(typeName: string): boolean {
-  const normalized = normalizeTypeName(typeName);
-  // The 'in' operator walks the prototype chain, so it answers TRUE for every
-  // Object.prototype member: constructor, toString, valueOf, hasOwnProperty,
-  // __proto__, isPrototypeOf. Those are not IFC entities, and this function is
-  // the authoring guard callers use to decide whether a type name is real.
-  return Object.hasOwn(SCHEMA_REGISTRY.entities, normalized);
+  return getEntityMetadata(typeName) !== undefined;
 }
 
 /**

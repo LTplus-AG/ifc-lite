@@ -731,6 +731,11 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
     // a search/filter starts, so clearing it restores what the reader had
     // rather than leaving every group forced open. Null while unfiltered.
     let detailsRestore = null;
+    // Same snapshot for the outer .spec accordions, which ship collapsed
+    // unless the specification failed. Taken and released together with
+    // detailsRestore, so the two can never disagree about what "unfiltered"
+    // looked like.
+    let specRestore = null;
 
     function toggleSpec(i) {
       document.getElementById('spec-' + i).classList.toggle('open');
@@ -774,17 +779,30 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
       // that the match is behind a disclosure. Open any group that holds a
       // surviving row while a search/filter is active, and put the reader's
       // own open/closed state back when the search is cleared.
+      //
+      // The <details> is itself inside a .spec accordion whose .spec-body is
+      // display:none unless the spec carries the "open" class — and only a
+      // FAILING spec ships with it. So for an all-passing specification,
+      // opening the disclosure alone still leaves the match invisible; the
+      // spec has to be opened too, on the same rule and with the same restore.
       const groups = document.querySelectorAll('details.entity-table-details');
+      const specs = document.querySelectorAll('.spec');
       if (search || currentFilter !== 'all') {
         if (detailsRestore === null) {
           detailsRestore = Array.prototype.map.call(groups, function (d) { return d.open; });
+          specRestore = Array.prototype.map.call(specs, function (s) { return s.classList.contains('open'); });
         }
         groups.forEach(d => {
           if (d.querySelector('.entity-row:not(.hidden)')) d.open = true;
         });
+        specs.forEach(s => {
+          if (s.querySelector('.entity-row:not(.hidden)')) s.classList.add('open');
+        });
       } else if (detailsRestore !== null) {
         groups.forEach((d, i) => { d.open = detailsRestore[i]; });
+        specs.forEach((s, i) => { s.classList.toggle('open', specRestore[i]); });
         detailsRestore = null;
+        specRestore = null;
       }
 
       document.getElementById('result-count').textContent =

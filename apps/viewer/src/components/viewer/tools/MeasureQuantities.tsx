@@ -411,6 +411,10 @@ export function MeasureQuantities() {
       const declaredWeight = picked.find(
         (q) => q.quantityType === MEASURABLE_QUANTITY_TYPES.Weight,
       );
+      // Exactly the complement of `resolveElementWeight`'s `no-volume` and
+      // `volume-untrusted` guards — `Number.isFinite(undefined)` is `false`,
+      // so this is one expression for both.
+      const densityCouldMatter = volumeTrusted && Number.isFinite(volume);
       weightOutcomes.push(
         resolveElementWeight(
           declaredWeight
@@ -434,7 +438,18 @@ export function MeasureQuantities() {
                 // prebuilt tables carry properties and quantities, not
                 // material psets — so there is genuinely no density to read,
                 // and asking anyway walks an index that is not there.
-                density: store.source?.length && store.entityIndex
+                //
+                // Gated a SECOND time on the volume, because
+                // `extractMaterialPropertiesOnDemand` re-parses the source
+                // buffer per element and `resolveElementWeight` returns
+                // `no-volume` / `volume-untrusted` BEFORE it ever reads a
+                // density. Without this the panel paid that per-element parse
+                // for every element it was already going to withhold — the one
+                // place the per-model caching above was not applied. It is a
+                // cost guard only: it mirrors the resolver's two volume
+                // refusals, so every element it skips is one whose outcome the
+                // density could not have changed.
+                density: densityCouldMatter && store.source?.length && store.entityIndex
                   ? pickIfcDensity(
                       extractMaterialPropertiesOnDemand(store, ref.expressId),
                       densityToSi,

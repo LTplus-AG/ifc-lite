@@ -413,3 +413,216 @@ fn process_element_with_material_layers_returns_none_for_unsliceable() {
         "ConstituentSet must produce None so caller falls back"
     );
 }
+
+/// Asymmetric buildup: three DISTINCT materials, three DISTINCT thicknesses,
+/// and a reference-line offset that is NOT half the total.
+///
+/// Every other fixture in this file uses `[0.05, 0.20, 0.05]` of materials
+/// `[200, 201, 200]` at `offset = -0.15` on a `0.30`-thick centred profile —
+/// a palindrome in both thickness and material, centred on the reference line.
+/// Under it, reversing the layer stack leaves the cumulative interface
+/// distances (0.05, 0.25) and the asserted id vector unchanged, and replacing
+/// the authored `offset_from_reference_line` with a hard-coded `-total/2` is
+/// numerically the identity. Both mutations were confirmed to survive every
+/// other test in this file (7 passed, 0 failed under each), and the reversal
+/// also survives `material_layers_local_frame_test`.
+///
+/// Here the layers are 50 / 250 / 100 mm (total 400 mm) on a profile shifted
+/// +50 mm in local Y, so the wall body spans y in [-0.15, 0.25] and the usage
+/// offset is -0.15 != -0.20. Reversing the stack moves the interfaces to
+/// (0.10, 0.35); centring it moves them to (-0.15, 0.10). Both are visible in
+/// the slab bands asserted below.
+fn asymmetric_three_layer_wall_ifc() -> String {
+    r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1234567890123456789012',#2,'Test',$,$,$,$,(#10),#7);
+#2=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,$,$,0);
+#3=IFCPERSONANDORGANIZATION(#5,#6,$);
+#4=IFCAPPLICATION(#6,'1.0','Test','Test');
+#5=IFCPERSON($,'Test',$,$,$,$,$,$);
+#6=IFCORGANIZATION($,'Test',$,$,$);
+#7=IFCUNITASSIGNMENT((#8,#9));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#23=IFCDIRECTION((0.,0.,1.));
+#24=IFCDIRECTION((1.,0.,0.));
+#30=IFCRECTANGLEPROFILEDEF(.AREA.,'Wall',#31,4.0,0.4);
+#31=IFCAXIS2PLACEMENT2D(#32,#33);
+#32=IFCCARTESIANPOINT((0.,0.05));
+#33=IFCDIRECTION((1.,0.));
+#40=IFCEXTRUDEDAREASOLID(#30,#41,#42,3.0);
+#41=IFCAXIS2PLACEMENT3D(#43,$,$);
+#42=IFCDIRECTION((0.,0.,1.));
+#43=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#40));
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#100=IFCWALL('0001234567890123456789',#2,'TestWall',$,$,#20,#51,'Test',$);
+#200=IFCMATERIAL('Cladding',$,$);
+#201=IFCMATERIAL('Core',$,$);
+#202=IFCMATERIAL('Lining',$,$);
+#210=IFCMATERIALLAYER(#200,0.05,$,'Cladding',$,$,$);
+#211=IFCMATERIALLAYER(#201,0.25,$,'Core',$,$,$);
+#212=IFCMATERIALLAYER(#202,0.10,$,'Lining',$,$,$);
+#220=IFCMATERIALLAYERSET((#210,#211,#212),'AsymBuildup',$);
+#221=IFCMATERIALLAYERSETUSAGE(#220,.AXIS2.,.POSITIVE.,-0.15,$);
+#300=IFCRELASSOCIATESMATERIAL('0001234567890123456790',#2,$,$,(#100),#221);
+ENDSEC;
+END-ISO-10303-21;
+"#
+    .to_string()
+}
+
+/// World-space Y extent of a sub-mesh (`world = origin + position`).
+fn y_band(sub: &ifc_lite_geometry::mesh::SubMesh) -> (f64, f64) {
+    let o = sub.mesh.origin[1];
+    let mut lo = f64::INFINITY;
+    let mut hi = f64::NEG_INFINITY;
+    for v in sub.mesh.positions.chunks_exact(3) {
+        let y = v[1] as f64 + o;
+        lo = lo.min(y);
+        hi = hi.max(y);
+    }
+    (lo, hi)
+}
+
+#[test]
+fn layer_slabs_land_where_the_authored_thicknesses_and_offset_put_them() {
+    let content = asymmetric_three_layer_wall_ifc();
+    let mut decoder = EntityDecoder::new(&content);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+
+    // The buildup must reach the router with its authored asymmetry intact.
+    match index.get(100).expect("wall #100 buildup") {
+        LayerBuildup::Sliceable {
+            layers,
+            axis,
+            direction_sense,
+            offset_from_reference_line,
+        } => {
+            assert_eq!(*axis, LayerAxis::Axis2);
+            assert_eq!(*direction_sense, 1.0);
+            assert!((offset_from_reference_line + 0.15).abs() < 1e-9);
+            let t: Vec<f64> = layers.iter().map(|l| l.thickness).collect();
+            let m: Vec<u32> = layers.iter().map(|l| l.material_id).collect();
+            assert_eq!(m, vec![200, 201, 202], "materials must stay in stack order");
+            for (got, want) in t.iter().zip([0.05, 0.25, 0.10]) {
+                assert!((got - want).abs() < 1e-9, "thicknesses {t:?}");
+            }
+            // The offset is NOT half the total — a hard-coded "centre the
+            // stack" cannot masquerade as the authored value here.
+            let total: f64 = t.iter().sum();
+            assert!(
+                (offset_from_reference_line + total / 2.0).abs() > 1e-3,
+                "fixture must not centre the stack on the reference line"
+            );
+        }
+        LayerBuildup::NotSliceable => panic!("expected Sliceable buildup"),
+    }
+
+    let wall = decoder.decode_by_id(100).expect("decode wall");
+    let buildup = index.get(100).expect("buildup").clone();
+    let layered = router
+        .process_element_with_material_layers(
+            &wall,
+            &mut decoder,
+            &buildup,
+            &FxHashMap::default(),
+        )
+        .expect("layered path")
+        .expect("Some(SubMeshCollection)");
+
+    assert_eq!(layered.sub_meshes.len(), 3, "one sub-mesh per layer");
+    let ids: Vec<u32> = layered.sub_meshes.iter().map(|s| s.geometry_id).collect();
+    assert_eq!(ids, vec![200, 201, 202], "slabs come out in stack order");
+
+    // Each slab occupies exactly its authored band along the layer axis.
+    // Interfaces at offset + cumulative = -0.15 + 0.05 = -0.10 and
+    // -0.15 + 0.30 = +0.15; the outer faces are the wall body's own
+    // y in [-0.15, +0.25].
+    let expected = [(-0.15, -0.10), (-0.10, 0.15), (0.15, 0.25)];
+    for (sub, (want_lo, want_hi)) in layered.sub_meshes.iter().zip(expected) {
+        let (lo, hi) = y_band(sub);
+        assert!(
+            (lo - want_lo).abs() < 1e-4 && (hi - want_hi).abs() < 1e-4,
+            "material {} slab band: expected [{want_lo}, {want_hi}], got [{lo}, {hi}]",
+            sub.geometry_id
+        );
+    }
+}
+
+/// The same asymmetric wall with `DirectionSense = .NEGATIVE.`, the stack
+/// anchored at the far face (`offset = +0.25`) and growing back along -Y.
+///
+/// Every `IfcMaterialLayerSetUsage` fixture in the repository is
+/// `.AXIS2., .POSITIVE.`, so `direction_sense` was `1.0` everywhere — a
+/// multiplier of one. `build_layer_planes` multiplies by it twice (the plane
+/// normal and the interface distance) and `resolve_layer_set_usage` has a
+/// `NEGATIVE => -1.0` arm; none of it was reachable from a test.
+fn asymmetric_three_layer_wall_negative_sense_ifc() -> String {
+    asymmetric_three_layer_wall_ifc().replace(
+        "#221=IFCMATERIALLAYERSETUSAGE(#220,.AXIS2.,.POSITIVE.,-0.15,$);",
+        "#221=IFCMATERIALLAYERSETUSAGE(#220,.AXIS2.,.NEGATIVE.,0.25,$);",
+    )
+}
+
+#[test]
+fn a_negative_direction_sense_stacks_the_layers_the_other_way() {
+    let content = asymmetric_three_layer_wall_negative_sense_ifc();
+    let mut decoder = EntityDecoder::new(&content);
+    let router = GeometryRouter::with_units(&content, &mut decoder);
+    let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+
+    match index.get(100).expect("wall #100 buildup") {
+        LayerBuildup::Sliceable {
+            direction_sense,
+            offset_from_reference_line,
+            ..
+        } => {
+            assert_eq!(*direction_sense, -1.0, "NEGATIVE must resolve to -1.0");
+            assert!((offset_from_reference_line - 0.25).abs() < 1e-9);
+        }
+        LayerBuildup::NotSliceable => panic!("expected Sliceable buildup"),
+    }
+
+    let wall = decoder.decode_by_id(100).expect("decode wall");
+    let buildup = index.get(100).expect("buildup").clone();
+    let layered = router
+        .process_element_with_material_layers(
+            &wall,
+            &mut decoder,
+            &buildup,
+            &FxHashMap::default(),
+        )
+        .expect("layered path")
+        .expect("Some(SubMeshCollection)");
+
+    assert_eq!(layered.sub_meshes.len(), 3, "one sub-mesh per layer");
+    let ids: Vec<u32> = layered.sub_meshes.iter().map(|s| s.geometry_id).collect();
+    assert_eq!(ids, vec![200, 201, 202], "slabs still come out in stack order");
+
+    // Interfaces at offset + sense*cumulative = 0.25 - 0.05 = +0.20 and
+    // 0.25 - 0.30 = -0.05. The first (50 mm) layer is now the one against the
+    // +Y face, the mirror image of the POSITIVE case above.
+    let expected = [(0.20, 0.25), (-0.05, 0.20), (-0.15, -0.05)];
+    for (sub, (want_lo, want_hi)) in layered.sub_meshes.iter().zip(expected) {
+        let (lo, hi) = y_band(sub);
+        assert!(
+            (lo - want_lo).abs() < 1e-4 && (hi - want_hi).abs() < 1e-4,
+            "material {} slab band: expected [{want_lo}, {want_hi}], got [{lo}, {hi}]",
+            sub.geometry_id
+        );
+    }
+}

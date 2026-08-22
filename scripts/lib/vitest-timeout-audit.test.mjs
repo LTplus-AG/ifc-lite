@@ -515,6 +515,54 @@ test('CLI: a file with at least one call site still exits 0 and summarises it (t
 });
 
 
+// `--summary-only` is how CI runs this: the per-call listing is ~15k lines
+// across this repo's test files, which is noise in a CI log. It must drop the
+// listing WITHOUT changing what is classified, and without turning either
+// vacuous-pass refusal off — a flag that quietly disabled a guard would be
+// worse than the noise it saves.
+
+test('CLI: --summary-only drops the per-call listing but keeps the same summary', () => {
+  const root = makeSyntheticPackage({
+    'two.test.ts': "it('audited', () => { doWork(); }, 60_000);\nit('bare', () => { doWork(); });\n",
+  });
+  try {
+    const full = runCli([join(root, 'two.test.ts')]);
+    const quiet = runCli(['--summary-only', join(root, 'two.test.ts')]);
+    assert.equal(full.status, 0);
+    assert.equal(quiet.status, 0);
+    // Same classification either way — the flag is about output, not analysis.
+    const summaryOf = (out) => out.split('\n').find((l) => l.startsWith('summary:'));
+    assert.match(summaryOf(full.stdout), /1 protected \(own call\/describe\).*1 unprotected/);
+    assert.equal(summaryOf(quiet.stdout), summaryOf(full.stdout));
+    // The listing is present in one and absent in the other.
+    assert.match(full.stdout, /two\.test\.ts:1: it\('audited'\)/);
+    assert.doesNotMatch(quiet.stdout, /NO EXPLICIT TIMEOUT/);
+    assert.doesNotMatch(quiet.stdout, /two\.test\.ts:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('CLI: --summary-only alone is still "no file arguments", not a vacuous pass', () => {
+  const run = runCli(['--summary-only']);
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /no file arguments/);
+  assert.doesNotMatch(run.stdout, /summary:/);
+});
+
+test('CLI: --summary-only does not suppress the not-a-test-file refusal', () => {
+  const root = makeSyntheticPackage({ 'not-a-test.ts': 'export const value = 1;\n' });
+  try {
+    const run = runCli(['--summary-only', join(root, 'not-a-test.ts')]);
+    assert.equal(run.status, 1);
+    assert.match(run.stderr, /refusing a vacuous pass/);
+    assert.doesNotMatch(run.stdout, /summary:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
 // -- Regex literals must not swallow the file --------------------------------
 //
 // `stripNoise` blanks strings so their contents cannot be mistaken for

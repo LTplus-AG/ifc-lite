@@ -599,6 +599,24 @@ jobs:
       # scan to EOF and drop the call from every count. This pins both.
       - name: Check test-timeout audit
         run: node --test scripts/audit-test-timeouts.test.mjs
+      # `scripts/lib/vitest-timeout-audit.mjs` (#2948) is the same audit taken
+      # further: it also resolves a timeout INHERITED from an enclosing
+      # `describe(name, { timeout }, fn)` and one set by a package's vitest
+      # config, both of which the grep-built at-risk table in #2948 itself
+      # scored as unprotected. Its unit tests pin the parser the same way the
+      # step above pins the older one.
+      - name: Check vitest-timeout audit gate regressions
+        run: node --test scripts/lib/vitest-timeout-audit.test.mjs
+      # ...and run the audit itself over every vitest test file in the repo.
+      # It reports rather than gates on unprotected tests -- the right timeout
+      # for a slow test needs to know what the test does, which no scan can
+      # judge -- but it DOES exit non-zero on a call site its parser cannot
+      # read, and on a run that classified nothing. Those are the two ways this
+      # audit could go quietly blind against the real tree, so running it here
+      # is what keeps the numbers it prints meaningful. `--summary-only` drops
+      # the ~15k-line per-call listing; drop the flag locally to read it.
+      - name: Check vitest-timeout audit reads every test file
+        run: pnpm run check:vitest-timeout-audit
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed

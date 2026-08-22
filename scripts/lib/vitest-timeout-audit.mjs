@@ -118,7 +118,8 @@
  *     misread. See `skipTypeArguments` for the rest of that scan's limits.
  *
  * Run standalone: `node scripts/lib/vitest-timeout-audit.mjs <file...>`
- * prints one line per `it`/`test` call — deliberately a reporting tool a
+ * prints one line per `it`/`test` call (`--summary-only` drops that listing
+ * and keeps just the counts and the error paths, which is how CI runs it) — deliberately a reporting tool a
  * human reads, not a CI gate: the issue this answers (#2948) is explicit
  * that the RIGHT timeout for a slow test requires understanding what the
  * test does, which this module cannot judge — it only answers "does this
@@ -1071,7 +1072,14 @@ export function auditFile(filePath, source) {
  * silently zero — see the regex/template erasure notes in LIMITATIONS.
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const targets = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  // `--summary-only` keeps the error paths and the summary but drops the
+  // per-call-site listing. The listing is the point of a human run; across
+  // this repo's ~1300 test files it is ~15k lines, which is noise in a CI log.
+  // It changes nothing about what the run classifies or which exit code it
+  // returns.
+  const summaryOnly = argv.includes('--summary-only');
+  const targets = argv.filter((a) => a !== '--summary-only');
   if (targets.length === 0) {
     console.error(
       'vitest-timeout-audit: ERROR: no file arguments; refusing a vacuous pass.\n\n' +
@@ -1079,7 +1087,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       'so with no arguments it would print a summary of all zeros and exit 0,\n' +
       'which is indistinguishable from a clean report. Pass the test files to\n' +
       'audit:\n\n' +
-      '    node scripts/lib/vitest-timeout-audit.mjs <file...>\n',
+      '    node scripts/lib/vitest-timeout-audit.mjs [--summary-only] <file...>\n',
     );
     process.exit(1);
   }
@@ -1110,7 +1118,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         status = 'NO EXPLICIT TIMEOUT';
         unprotectedCount += 1;
       }
-      console.log(`${file}:${r.line}: ${r.keyword}('${r.name}') — ${status}`);
+      if (!summaryOnly) console.log(`${file}:${r.line}: ${r.keyword}('${r.name}') — ${status}`);
     }
   }
   if (unparsedSites.length > 0) {

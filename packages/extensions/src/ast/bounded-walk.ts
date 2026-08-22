@@ -46,6 +46,16 @@ import * as walk from 'acorn-walk';
  * (`IfStatement` -> `BlockStatement`), so the bound bites at 500 such
  * source levels.
  *
+ * The bound is in AST levels, so its effective *source*-level threshold
+ * varies by construct, and for cheap constructs it is unreachable. An
+ * arrow link (`() => () => …`) costs one level, not two, so this bound
+ * would need ~1000 of them — and acorn runs out of stack parsing that
+ * shape at a few hundred links, well before the walk is ever asked. The
+ * asymmetry is intended: the bound guards the walk's own stack, and a
+ * construct that the parser rejects first never reaches the walk.
+ * `host/source-wrap.test.ts` pins both the 1:2 cost ratio and the fact
+ * that every parseable arrow depth is accepted.
+ *
  * Do NOT think of this as "well under acorn's own parser limit": acorn
  * has no fixed limit to be under. The same script, on Node 22, parses
  * at 1100 source levels and aborts the process at 1200 in a

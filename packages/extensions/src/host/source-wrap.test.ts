@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
+import * as acorn from 'acorn';
 import * as walk from 'acorn-walk';
 import { validateCode } from '../validate/code.js';
 import { wrapEntrySource } from './source-wrap.js';
@@ -193,29 +194,94 @@ describe('wrapEntrySource — one depth bound, shared with validateCode', () => 
   const ifs = (n: number) => `${'if (1) {'.repeat(n)}function activate(ctx) {}${'}'.repeat(n)}`;
   const arrows = (n: number) => `function activate(ctx) { const f = ${'() => '.repeat(n)}1; }`;
 
-  // Deliberately spans the accept/reject boundary of both shapes: the
-  // test would be vacuous if every depth landed on the same side.
-  const DEPTHS = [10, 200, 400, 450, 475, 490, 499, 500, 501, 600, 900];
-
-  for (const [shape, make] of [['if-block', ifs], ['arrow chain', arrows]] as const) {
-    it(`accepts and rejects the same ${shape} depths as validateCode`, () => {
-      const verdicts = DEPTHS.map((n) => {
-        const source = make(n);
-        return {
-          n,
-          wrap: wrapEntrySource(source, { entryFnName: 'activate' }).ok,
-          validate: validateCode(source).ok,
-        };
-      });
-
-      for (const v of verdicts) {
-        expect(`${v.n}:${v.wrap}`).toBe(`${v.n}:${v.validate}`);
-      }
-      // The range really does straddle the bound.
-      expect(verdicts.some((v) => v.wrap)).toBe(true);
-      expect(verdicts.some((v) => !v.wrap)).toBe(true);
+  const verdictsFor = (make: (n: number) => string, depths: readonly number[]) =>
+    depths.map((n) => {
+      const source = make(n);
+      return {
+        n,
+        wrap: wrapEntrySource(source, { entryFnName: 'activate' }).ok,
+        validate: validateCode(source).ok,
+      };
     });
-  }
+
+  // Deliberately spans the accept/reject boundary: the test would be
+  // vacuous if every depth landed on the same side, so the straddle is
+  // asserted below rather than assumed.
+  const IF_DEPTHS = [10, 200, 400, 450, 475, 490, 499, 500, 501, 600, 900];
+
+  it('accepts and rejects the same if-block depths as validateCode', () => {
+    const verdicts = verdictsFor(ifs, IF_DEPTHS);
+
+    for (const v of verdicts) {
+      expect(`${v.n}:${v.wrap}`).toBe(`${v.n}:${v.validate}`);
+    }
+    // The range really does straddle the bound.
+    expect(verdicts.some((v) => v.wrap)).toBe(true);
+    expect(verdicts.some((v) => !v.wrap)).toBe(true);
+  });
+
+  // An arrow chain CANNOT straddle the bound, and the same depth list
+  // must not be reused for it. `MAX_AST_DEPTH` counts AST levels, and
+  // one arrow link costs one where one `if (1) {}` costs two (pinned by
+  // the ratio test below), so the bound needs ~1000 links — while acorn
+  // runs out of stack parsing this shape far earlier. Measured here: 400
+  // links parse, 425 fail with "Not enough stack space to parse input",
+  // and the exact crossover moves with the host's remaining stack (the
+  // very dependency `MAX_AST_DEPTH` exists to keep out of the verdict),
+  // so it is not pinned. Reusing IF_DEPTHS made the arrow half assert a
+  // straddle it reached only by PARSE failure at 450+, not by the bound
+  // — the same verdict for an unrelated reason, and flaky with it.
+  //
+  // So the honest claim, and the one asserted: within what acorn parses,
+  // every arrow depth is accepted, and both entry points agree on that.
+  const ARROW_DEPTHS = [10, 100, 200, 300];
+
+  it('accepts every parseable arrow-chain depth, and agrees with validateCode', () => {
+    const verdicts = verdictsFor(arrows, ARROW_DEPTHS);
+
+    for (const v of verdicts) {
+      expect(`${v.n}:${v.wrap}`).toBe(`${v.n}:${v.validate}`);
+    }
+    // Not a straddle — the bound is unreachable for this shape. Pin the
+    // uniformity so a future run that starts rejecting these is a
+    // failure to look at rather than a silently narrower test.
+    expect(verdicts.map((v) => `${v.n}:${v.wrap}`)).toEqual(
+      ARROW_DEPTHS.map((n) => `${n}:true`),
+    );
+  });
+
+  it('an arrow link costs one AST level where an `if (1) {}` block costs two', () => {
+    // The reason the two shapes need different depth lists, pinned
+    // directly instead of left as prose. Measured with an independent
+    // iterative crawl over acorn's tree — deliberately not `walkBounded`,
+    // which is the thing under test, and iterative so this helper cannot
+    // overflow the stack it is reasoning about.
+    const astDepth = (source: string): number => {
+      const root = acorn.parse(source, { ecmaVersion: 'latest', sourceType: 'module' });
+      let max = 0;
+      const stack: Array<{ value: unknown; depth: number }> = [{ value: root, depth: 0 }];
+      while (stack.length > 0) {
+        const { value, depth } = stack.pop()!;
+        if (Array.isArray(value)) {
+          for (const item of value) stack.push({ value: item, depth });
+          continue;
+        }
+        if (typeof value !== 'object' || value === null) continue;
+        const isNode = typeof (value as { type?: unknown }).type === 'string';
+        const childDepth = isNode ? depth + 1 : depth;
+        if (isNode && childDepth > max) max = childDepth;
+        for (const [key, child] of Object.entries(value)) {
+          if (key === 'type' || key === 'start' || key === 'end') continue;
+          stack.push({ value: child, depth: childDepth });
+        }
+      }
+      return max;
+    };
+
+    // Differences, so the constant prologue of each shape cancels.
+    expect(astDepth(ifs(200)) - astDepth(ifs(100))).toBe(200);
+    expect(astDepth(arrows(200)) - astDepth(arrows(100))).toBe(100);
+  });
 });
 
 describe('wrapEntrySource — every banned construct, in a nested position', () => {

@@ -30,6 +30,30 @@ const outDir = path.join(here, '..', 'src', 'ifc-schema', 'generated');
 
 type IfcVersion = 'Ifc2x3' | 'Ifc4' | 'Ifc4x3';
 
+/**
+ * Find `marker` in `src` as a whole identifier token, starting at `from`.
+ *
+ * A bare `indexOf` prefix-aliases across the per-version markers in the
+ * upstream sources: `GetPropertiesIFC4` is a prefix of
+ * `GetPropertiesIFC4x3`, `IfcSchemaVersions.Ifc4` of
+ * `IfcSchemaVersions.Ifc4x3`, `GetRelationTypesIFC4` of
+ * `GetRelationTypesIFC4x3`. A renamed or removed IFC4 marker therefore
+ * resolved onto the IFC4X3 one instead of returning -1, so the
+ * missing-marker throws below never fired: the generator misfiled whole
+ * blocks (the IFC4 table becoming a copy of IFC4X3) and still exited 0.
+ * Requiring the next character not to continue an identifier makes a
+ * missing marker actually read as missing.
+ */
+function indexOfMarker(src: string, marker: string, from = 0): number {
+  const rx = new RegExp(
+    marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z0-9_])',
+    'g'
+  );
+  rx.lastIndex = from;
+  const m = rx.exec(src);
+  return m ? m.index : -1;
+}
+
 interface ClassInfo {
   name: string;
   parent: string;
@@ -234,7 +258,7 @@ function parseSchemas(): Record<IfcVersion, ClassInfo[]> {
   const sections: { version: IfcVersion; from: number; to: number }[] = [];
   for (const v of ['Ifc2x3', 'Ifc4', 'Ifc4x3'] as IfcVersion[]) {
     const startMarker = `GetClassesIFC${v.slice(3)}()`;
-    const start = src.indexOf(startMarker);
+    const start = indexOfMarker(src, startMarker);
     if (start === -1) {
       throw new Error(`Could not find ${startMarker} in Schemas.g.cs`);
     }
@@ -358,14 +382,19 @@ function parseProperties(): Record<IfcVersion, PsetInfo[]> {
   };
   for (const v of ['Ifc2x3', 'Ifc4', 'Ifc4x3'] as IfcVersion[]) {
     const startMarker = `GetPropertiesIFC${v.slice(3)}`;
-    const startIdx = src.indexOf(startMarker);
+    const startIdx = indexOfMarker(src, startMarker);
     if (startIdx === -1) {
       throw new Error(`Could not find ${startMarker} in Properties.g.cs`);
     }
     let endIdx: number;
-    if (v === 'Ifc2x3') endIdx = src.indexOf('GetPropertiesIFC4', startIdx + 5);
-    else if (v === 'Ifc4') endIdx = src.indexOf('GetPropertiesIFC4x3', startIdx + 5);
+    if (v === 'Ifc2x3')
+      endIdx = indexOfMarker(src, 'GetPropertiesIFC4', startIdx + 5);
+    else if (v === 'Ifc4')
+      endIdx = indexOfMarker(src, 'GetPropertiesIFC4x3', startIdx + 5);
     else endIdx = src.length;
+    // A -1 here means the *next* version's marker is gone; that version's
+    // own start lookup throws on the following iteration, so falling back
+    // to the end of file cannot let a missing marker through silently.
     if (endIdx === -1) endIdx = src.length;
     out[v] = parsePropertyBlock(src.slice(startIdx, endIdx));
   }
@@ -560,10 +589,10 @@ function parsePartOfRelations(): Record<IfcVersion, PartOfRelation[]> {
     { version: 'Ifc4x3', marker: 'IfcSchemaVersions.Ifc4x3' },
   ];
   for (let i = 0; i < sections.length; i++) {
-    const start = src.indexOf(sections[i].marker);
+    const start = indexOfMarker(src, sections[i].marker);
     const end =
       i + 1 < sections.length
-        ? src.indexOf(sections[i + 1].marker)
+        ? indexOfMarker(src, sections[i + 1].marker)
         : src.length;
     if (start === -1) {
       throw new Error(
@@ -706,11 +735,13 @@ function parseAttributes(): Record<IfcVersion, AttrRow[]> {
   };
   const sections: { version: IfcVersion; marker: string }[] = [
     { version: 'Ifc2x3', marker: 'GetAttributesIFC2x3' },
-    { version: 'Ifc4', marker: 'GetAttributesIFC4(' },
+    // No trailing `(` needed to disambiguate from `GetAttributesIFC4x3`:
+    // `indexOfMarker` already requires a non-identifier character next.
+    { version: 'Ifc4', marker: 'GetAttributesIFC4' },
     { version: 'Ifc4x3', marker: 'GetAttributesIFC4x3' },
   ];
   for (let s = 0; s < sections.length; s++) {
-    const start = src.indexOf(sections[s].marker);
+    const start = indexOfMarker(src, sections[s].marker);
     if (start === -1) {
       throw new Error(
         `Could not find ${sections[s].marker} in Attributes.g.cs`
@@ -718,7 +749,7 @@ function parseAttributes(): Record<IfcVersion, AttrRow[]> {
     }
     let end = src.length;
     for (let t = s + 1; t < sections.length; t++) {
-      const e = src.indexOf(sections[t].marker, start + 5);
+      const e = indexOfMarker(src, sections[t].marker, start + 5);
       if (e !== -1) {
         end = e;
         break;
@@ -874,19 +905,26 @@ function parseObjectTypes(): Record<IfcVersion, [string, string][]> {
   };
   // Unlike the other SchemaInfo.*.g.cs sources, the upstream ObjectTypes
   // file has no `GetRelationTypesIFC2x3` method at all — IFC2X3 genuinely
-  // contributes 0 obj→type pairs, so a missing marker here is expected
-  // and must not throw the way it does in the sibling parsers below.
-  const sections: { version: IfcVersion; marker: string }[] = [
-    { version: 'Ifc2x3', marker: 'GetRelationTypesIFC2x3' },
+  // contributes 0 obj→type pairs, so a missing marker there is expected
+  // and must not throw the way it does in the sibling parsers below. The
+  // IFC4 and IFC4X3 methods do exist, so a missing marker for those is a
+  // drifted upstream, not an absence — hence `optional`.
+  const sections: { version: IfcVersion; marker: string; optional?: true }[] = [
+    { version: 'Ifc2x3', marker: 'GetRelationTypesIFC2x3', optional: true },
     { version: 'Ifc4', marker: 'GetRelationTypesIFC4' },
     { version: 'Ifc4x3', marker: 'GetRelationTypesIFC4x3' },
   ];
   for (let i = 0; i < sections.length; i++) {
-    const start = src.indexOf(sections[i].marker);
-    if (start === -1) continue;
+    const start = indexOfMarker(src, sections[i].marker);
+    if (start === -1) {
+      if (sections[i].optional) continue;
+      throw new Error(
+        `Could not find ${sections[i].marker} in ObjectTypes.g.cs`
+      );
+    }
     let end = src.length;
     for (let j = i + 1; j < sections.length; j++) {
-      const e = src.indexOf(sections[j].marker, start + 5);
+      const e = indexOfMarker(src, sections[j].marker, start + 5);
       if (e !== -1) {
         end = e;
         break;

@@ -25,6 +25,12 @@ function ctx(payload: ElementMeshPayload, overrides: Partial<ElementBuildContext
   };
 }
 
+/** The payload variants that reach buildAxisBox or buildLinearBox (i.e. a box). */
+type BoxBackedType = Extract<
+  ElementMeshPayload,
+  { position: [number, number, number] } | { start: [number, number, number] }
+>['type'];
+
 describe('buildElementMesh: linear shapes (wall / beam / member)', () => {
   it('builds a wall box tagged with the given globalId and IfcWall type', () => {
     const mesh = buildElementMesh(
@@ -140,31 +146,140 @@ describe('buildElementMesh: axis-aligned boxes (column / door / window)', () => 
 });
 
 describe('buildElementMesh: box side-face normals point outward', () => {
-  // A box's outward normal on any side face must point AWAY from the box
-  // centre. If it points inward, every dot(normal, cameraDir) lighting
-  // calculation for that face is backwards.
-  it('every triangle normal points away from the box centre (renderer frame)', () => {
-    const position: [number, number, number] = [0, 1, 0];
-    const height = 2;
-    const mesh = buildElementMesh(
-      ctx({ type: 'column', params: { Width: 2, Depth: 2, Height: height }, position }),
+  // A box's outward normal on any face must point AWAY from the box centre.
+  // If it points inward, every dot(normal, cameraDir) lighting calculation
+  // for that face is backwards.
+  //
+  // Both box builders must be pinned here, not just one. `buildAxisBox`
+  // (column / door / window) and `buildLinearBox` (wall / beam / member)
+  // feed the SAME buildBoxFromIfcCorners but wind their bottom rings in
+  // opposite directions, so a side-normal rule that reads the winding can
+  // be outward for one family and inward for the other. A single-shape
+  // test cannot see that: the column-only version of this test passed
+  // while every wall side face pointed inward.
+  //
+  // Scope: these are the six types that reach the two box builders today.
+  // Polygon extrusions (slab / space / roof / plate) go through
+  // buildPolygonExtrusion and are not covered here. Segments are kept
+  // level — a sloped beam's top/bottom caps carry hardcoded ±Z normals
+  // that are not the sheared cap's true plane normal, which is a separate
+  // question from the side-face winding this pins.
+  const cases: Array<{
+    name: string;
+    payload: ElementMeshPayload;
+    storeyElevation?: number;
+    /** Expected box centre in the RENDERER frame (X<-IFC X, Y<-IFC Z + elevation, Z<- -IFC Y). */
+    centre: [number, number, number];
+  }> = [
+    // buildAxisBox family — bottom ring counter-clockwise seen from IFC +Z.
+    {
+      name: 'column',
+      payload: { type: 'column', params: { Width: 2, Depth: 2, Height: 2 }, position: [0, 1, 0] },
+      centre: [0, 1, -1],
+    },
+    {
+      name: 'door',
+      payload: {
+        type: 'door',
+        params: { Width: 1, Height: 2.1, FrameThickness: 0.05 },
+        position: [3, -2, 0.5],
+      },
+      centre: [3, 1.55, 2],
+    },
+    {
+      name: 'window',
+      payload: {
+        type: 'window',
+        params: { Width: 1.2, Height: 1.4, FrameThickness: 0.08 },
+        position: [-1, 4, 1],
+      },
+      centre: [-1, 1.7, -4],
+    },
+    // buildLinearBox family — bottom ring clockwise seen from IFC +Z.
+    {
+      name: 'wall',
+      payload: {
+        type: 'wall',
+        params: { Thickness: 0.4, Height: 3 },
+        start: [0, 0, 0],
+        end: [4, 0, 0],
+      },
+      centre: [2, 1.5, 0],
+    },
+    {
+      name: 'beam (segment along IFC +Y)',
+      payload: {
+        type: 'beam',
+        params: { Width: 0.3, Height: 0.5 },
+        start: [0, 0, 0],
+        end: [0, 4, 0],
+      },
+      centre: [0, 0.25, -2],
+    },
+    {
+      name: 'member (diagonal segment, raised storey)',
+      payload: {
+        type: 'member',
+        params: { Width: 0.25, Height: 0.6 },
+        start: [1, 1, 0],
+        end: [4, 5, 0],
+      },
+      storeyElevation: 2,
+      centre: [2.5, 2.3, -3],
+    },
+  ];
+
+  for (const { name, payload, storeyElevation = 0, centre } of cases) {
+    it(`${name}: every vertex normal points away from the box centre (renderer frame)`, () => {
+      const mesh = buildElementMesh(ctx(payload, { storeyElevation }));
+      assert.ok(mesh);
+      // Guard the expected centre against the mesh itself: each of the 8 box
+      // corners is emitted once per face it belongs to (3 faces each), so the
+      // mean of the 24 welded vertices is the box centre.
+      const mean = [0, 0, 0];
+      const vertCount = mesh.positions.length / 3;
+      for (let v = 0; v < vertCount; v++) {
+        for (let k = 0; k < 3; k++) mean[k] += mesh.positions[v * 3 + k] / vertCount;
+      }
+      for (let k = 0; k < 3; k++) {
+        assert.ok(
+          Math.abs(mean[k] - centre[k]) < 1e-6,
+          `expected box centre ${centre} but the mesh's is (${mean}); the fixture's centre is wrong`,
+        );
+      }
+      for (let v = 0; v < vertCount; v++) {
+        const px: number = mesh.positions[v * 3] - centre[0];
+        const py: number = mesh.positions[v * 3 + 1] - centre[1];
+        const pz: number = mesh.positions[v * 3 + 2] - centre[2];
+        const nx: number = mesh.normals[v * 3];
+        const ny: number = mesh.normals[v * 3 + 1];
+        const nz: number = mesh.normals[v * 3 + 2];
+        const dot: number = px * nx + py * ny + pz * nz;
+        assert.ok(
+          dot > 0,
+          `vertex ${v} normal (${nx},${ny},${nz}) points toward centre from offset (${px},${py},${pz}); dot=${dot}`,
+        );
+      }
+    });
+  }
+
+  it('covers every element type the two box builders serve', () => {
+    // `boxBacked` is keyed by the payload variants that carry a `position`
+    // (buildAxisBox) or a `start`/`end` pair (buildLinearBox), so adding a
+    // seventh box-backed variant to ElementMeshPayload breaks the typecheck
+    // here; the assertion then makes the gap visible at runtime too.
+    const boxBacked: Record<BoxBackedType, true> = {
+      column: true,
+      door: true,
+      window: true,
+      wall: true,
+      beam: true,
+      member: true,
+    };
+    assert.deepEqual(
+      [...new Set(cases.map((c) => c.payload.type))].sort(),
+      Object.keys(boxBacked).sort(),
     );
-    assert.ok(mesh);
-    // Renderer frame: X<-IFC X, Y<-IFC Z(+elevation)+Height/2 for the centre, Z<- -IFC Y.
-    const centre = [position[0], position[2] + height / 2, -position[1]];
-    for (let v = 0; v < mesh.positions.length / 3; v++) {
-      const px: number = mesh.positions[v * 3] - centre[0];
-      const py: number = mesh.positions[v * 3 + 1] - centre[1];
-      const pz: number = mesh.positions[v * 3 + 2] - centre[2];
-      const nx: number = mesh.normals[v * 3];
-      const ny: number = mesh.normals[v * 3 + 1];
-      const nz: number = mesh.normals[v * 3 + 2];
-      const dot: number = px * nx + py * ny + pz * nz;
-      assert.ok(
-        dot > 0,
-        `vertex ${v} normal (${nx},${ny},${nz}) points toward centre from offset (${px},${py},${pz}); dot=${dot}`,
-      );
-    }
   });
 });
 

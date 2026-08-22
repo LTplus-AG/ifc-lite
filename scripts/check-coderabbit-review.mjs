@@ -16,6 +16,10 @@
  * its own), so a required check built on it would fail for reasons unrelated
  * to the diff.
  *
+ * @unwired-by-design its verdict depends on transient GitHub state (review
+ * latency, rate limiting), so a required check built on it would fail for
+ * reasons unrelated to the diff under test.
+ *
  * Classification lives in ./lib/coderabbit-review-state.mjs, which is pure and
  * unit-tested. Everything here is the GitHub plumbing.
  *

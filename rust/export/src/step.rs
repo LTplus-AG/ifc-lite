@@ -199,11 +199,42 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
     export_step_with_stats(content, opts).0
 }
 
+/// [`export_step_with_stats`], writing as it goes instead of returning the file.
+///
+/// The difference is the output. This never holds it: each record goes to `w` as
+/// it is read, so a 1 GB model costs the entity index and one record rather than
+/// the index plus a gigabyte of `String` that doubled its way there. What stays
+/// resident is proportional to record count, not to file size.
+///
+/// [`export_step_with_stats`] is this function writing into a `Vec`, so the two
+/// cannot drift.
+pub fn export_step_to_writer<W: std::io::Write>(
+    content: &[u8],
+    opts: &StepOptions,
+    w: &mut W,
+) -> std::io::Result<StepStats> {
+    emit(content, opts, w)
+}
+
 /// Like [`export_step`] but also returns coverage stats.
 // The grouped-property-mutation Vec type is explicit by design; aliasing it
 // would hide the (entity, pset) -> [(key, value)] grouping structure.
 #[allow(clippy::type_complexity)]
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
+    let mut buf = Vec::new();
+    let stats = emit(content, opts, &mut buf).expect("a Vec accepts every write");
+    // Every byte came from the source by way of `from_utf8_lossy`, or from a
+    // `format!`, so this validates rather than converts.
+    let out = String::from_utf8(buf).expect("the writer emits UTF-8");
+    (out, stats)
+}
+
+#[allow(clippy::type_complexity)]
+fn emit<W: std::io::Write>(
+    content: &[u8],
+    opts: &StepOptions,
+    out: &mut W,
+) -> std::io::Result<StepStats> {
     // 1. Index every entity line (preserve source order).
     let mut order: Vec<u32> = Vec::new();
     let mut line_of: HashMap<u32, (usize, usize)> = HashMap::new();
@@ -273,17 +304,17 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    let mut out = String::new();
-    out.push_str("ISO-10303-21;\nHEADER;\n");
-    out.push_str(&format!("FILE_DESCRIPTION(('{}'),'2;1');\n", escape(&opts.description)));
-    out.push_str(&format!(
-        "FILE_NAME('','',('{}'),('{}'),'{}','ifc-lite-export','');\n",
+    out.write_all(b"ISO-10303-21;\nHEADER;\n")?;
+    writeln!(out, "FILE_DESCRIPTION(('{}'),'2;1');", escape(&opts.description))?;
+    writeln!(
+        out,
+        "FILE_NAME('','',('{}'),('{}'),'{}','ifc-lite-export','');",
         escape(&opts.author),
         escape(&opts.organization),
         escape(&opts.application),
-    ));
-    out.push_str(&format!("FILE_SCHEMA(('{}'));\n", escape(&schema)));
-    out.push_str("ENDSEC;\nDATA;\n");
+    )?;
+    writeln!(out, "FILE_SCHEMA(('{}'));", escape(&schema))?;
+    out.write_all(b"ENDSEC;\nDATA;\n")?;
 
     let mut written = 0usize;
     for id in &order {
@@ -296,16 +327,19 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
                     None => raw.into_owned(),
                 };
                 if converting {
-                    out.push_str(&crate::schema_convert::convert_step_line(
-                        &edited,
-                        &source_schema,
-                        &schema,
-                        *id,
-                    ));
+                    out.write_all(
+                        crate::schema_convert::convert_step_line(
+                            &edited,
+                            &source_schema,
+                            &schema,
+                            *id,
+                        )
+                        .as_bytes(),
+                    )?;
                 } else {
-                    out.push_str(&edited);
+                    out.write_all(edited.as_bytes())?;
                 }
-                out.push('\n');
+                out.write_all(b"\n")?;
                 written += 1;
             }
         }
@@ -325,16 +359,19 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             let edited = apply_attr_mutations(&raw, &muts);
             let renumbered = renumber(&edited, *copy_id);
             if converting {
-                out.push_str(&crate::schema_convert::convert_step_line(
-                    &renumbered,
-                    &source_schema,
-                    &schema,
-                    *copy_id,
-                ));
+                out.write_all(
+                    crate::schema_convert::convert_step_line(
+                        &renumbered,
+                        &source_schema,
+                        &schema,
+                        *copy_id,
+                    )
+                    .as_bytes(),
+                )?;
             } else {
-                out.push_str(&renumbered);
+                out.write_all(renumbered.as_bytes())?;
             }
-            out.push('\n');
+            out.write_all(b"\n")?;
             written += 1;
         }
     }
@@ -360,8 +397,8 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
         // Same exhaustion, same answer: inventing ids on a full file would
         // duplicate real records.
         let Some(mut next) = next_id else {
-            out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
-            return (out, StepStats { total: order.len(), written, copies_refused });
+            out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
+            return Ok(StepStats { total: order.len(), written, copies_refused });
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -377,11 +414,12 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             }
             let mut prop_refs: Vec<u32> = Vec::with_capacity(props.len());
             for (pname, value) in props {
-                out.push_str(&format!(
-                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);\n",
+                writeln!(
+                    out,
+                    "#{next}=IFCPROPERTYSINGLEVALUE('{}',$,{},$);",
                     escape(pname),
                     value
-                ));
+                )?;
                 prop_refs.push(next);
                 next += 1;
                 written += 1;
@@ -389,26 +427,28 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
             let psid = next;
             next += 1;
             let refs_str = prop_refs.iter().map(|r| format!("#{r}")).collect::<Vec<_>>().join(",");
-            out.push_str(&format!(
-                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));\n",
+            writeln!(
+                out,
+                "#{psid}=IFCPROPERTYSET('{}',$,'{}',$,({}));",
                 crate::schema_convert::placeholder_guid(psid),
                 escape(pset_name),
                 refs_str
-            ));
+            )?;
             written += 1;
             let rid = next;
             next += 1;
-            out.push_str(&format!(
-                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});\n",
+            writeln!(
+                out,
+                "#{rid}=IFCRELDEFINESBYPROPERTIES('{}',$,$,$,(#{express_id}),#{psid});",
                 crate::schema_convert::placeholder_guid(rid),
-            ));
+            )?;
             written += 1;
         }
     }
 
-    out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+    out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    (out, StepStats { total: order.len(), written, copies_refused })
+    Ok(StepStats { total: order.len(), written, copies_refused })
 }
 
 #[cfg(test)]

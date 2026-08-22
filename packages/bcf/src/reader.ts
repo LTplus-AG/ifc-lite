@@ -30,6 +30,7 @@ import type {
   BCFDocumentReference,
   BCFBimSnippet,
   BCFHeaderFile,
+  BCFViewSetupHints,
 } from './types.js';
 import { parseFiniteFloat } from './numeric.js';
 
@@ -266,11 +267,15 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
   const content = await readEntryCapped(projectFile, 'string', budget);
 
   const projectIdMatch = content.match(/ProjectId="([^"]+)"/);
-  const nameMatch = content.match(/<Name>([^<]+)<\/Name>/);
+  // extractElement, not a raw regex: writeProjectFile escapes the name with
+  // escapeXml, so a raw match hands back the literal entities (`A &amp; B`) and
+  // the next export escapes them again. Every other element in this reader goes
+  // through extractElement precisely so the escape has an inverse.
+  const name = extractElement(content, 'Name');
 
   return {
     projectId: projectIdMatch?.[1],
-    name: nameMatch?.[1],
+    name,
   };
 }
 
@@ -491,19 +496,28 @@ function unescapeXml(str: string): string {
  * Extract BIM snippet from topic content
  */
 function extractBimSnippet(content: string): BCFBimSnippet | undefined {
-  const match = content.match(/<BimSnippet\s+SnippetType="([^"]+)"[^>]*>([\s\S]*?)<\/BimSnippet>/);
+  // Attributes are captured generically and pulled out with extractAttr rather
+  // than anchoring SnippetType to first position: our own writer always emits
+  // it first, so an anchored regex round-trips our files and silently drops the
+  // entire snippet from a foreign tool's file that orders the two attributes
+  // the other way (see extractAttr's note on attribute order).
+  const match = content.match(/<BimSnippet\b([^>]*)>([\s\S]*?)<\/BimSnippet>/);
   if (!match) return undefined;
+
+  const snippetType = extractAttr(match[1], 'SnippetType');
+  if (!snippetType) return undefined;
 
   // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
   // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
-  // casing so a spec-correct 3.0 file's flag isn't silently read as false.
-  const isExternalMatch = match[0].match(/\b[Ii]sExternal="([^"]+)"/);
+  // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
+  // the xs:boolean `1`/`0` forms alongside `true`/`false`.
+  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
   return {
-    snippetType: match[1],
-    isExternal: isExternalMatch?.[1] === 'true',
+    snippetType,
+    isExternal: isExternalRaw === 'true' || isExternalRaw === '1',
     reference: reference || '',
     referenceSchema,
   };
@@ -952,10 +966,22 @@ function parseComponents(content: string): BCFComponents | undefined {
   const selection = parseComponentList(componentsContent, 'Selection');
 
   // Parse visibility
-  const visibility = parseVisibility(componentsContent);
+  let visibility = parseVisibility(componentsContent);
 
   // Parse coloring
   const coloring = parseColoring(componentsContent);
+
+  // ViewSetupHints sits on Components (NOT inside Visibility) per visinfo.xsd,
+  // which is where writer.ts's writeComponents emits it. Nothing read it back,
+  // so every hint was lost on read -- including out of our own archives. It was
+  // invisible because no writer fixture set the hints, so the round trip
+  // compared `undefined` to `undefined`.
+  const viewSetupHints = parseViewSetupHints(componentsContent);
+  if (viewSetupHints) {
+    // Visibility is required by the schema, but tolerate a file that omits it:
+    // DefaultVisibility's schema default is true.
+    visibility = { ...(visibility ?? { defaultVisibility: true }), viewSetupHints };
+  }
 
   if (!selection && !visibility && !coloring) {
     return undefined;
@@ -992,19 +1018,60 @@ function parseComponentList(content: string, elementName: string): BCFComponent[
  * Parse a single component
  */
 function parseComponent(content: string): BCFComponent | undefined {
-  const ifcGuidMatch = content.match(/IfcGuid="([^"]+)"/);
-  const authoringToolIdMatch = content.match(/AuthoringToolId="([^"]+)"/);
-  const originatingSystemMatch = content.match(/OriginatingSystem="([^"]+)"/);
+  // buildingSMART/BCF-XML visinfo.xsd (2.1 and 3.0) gives Component ONE
+  // attribute, IfcGuid, and puts OriginatingSystem and AuthoringToolId in child
+  // ELEMENTS -- which is what writer.ts's writeComponent emits. Matching those
+  // two as attributes could never fire against the spec form, so both fields
+  // were dropped from every archive read, ours and every other tool's; and the
+  // admission guard below tested an AuthoringToolId match that could never
+  // succeed, discarding whole components that legally carry no IfcGuid (the
+  // attribute is `use="optional"`). No writer fixture set either field, so the
+  // self round-trip compared `undefined` to `undefined` and looked faithful.
+  //
+  // The attribute forms are still accepted as a fallback: some tools emit them,
+  // and reading one costs nothing.
+  const ifcGuid = content.match(/\bIfcGuid="([^"]+)"/)?.[1];
+  const originatingSystem =
+    extractElement(content, 'OriginatingSystem') ??
+    content.match(/\bOriginatingSystem="([^"]+)"/)?.[1];
+  const authoringToolId =
+    extractElement(content, 'AuthoringToolId') ??
+    content.match(/\bAuthoringToolId="([^"]+)"/)?.[1];
 
-  if (!ifcGuidMatch && !authoringToolIdMatch) {
+  if (!ifcGuid && !authoringToolId && !originatingSystem) {
     return undefined;
   }
 
-  return {
-    ifcGuid: ifcGuidMatch?.[1],
-    authoringToolId: authoringToolIdMatch?.[1],
-    originatingSystem: originatingSystemMatch?.[1],
+  return { ifcGuid, authoringToolId, originatingSystem };
+}
+
+/**
+ * Parse the `<ViewSetupHints>` element that sits directly under `<Components>`.
+ *
+ * All three attributes are optional xs:boolean; an absent one stays `undefined`
+ * rather than collapsing to `false`, because "the author did not say" and "the
+ * author said no" mean different things to a viewer applying the hints.
+ */
+function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
+  const match = content.match(/<ViewSetupHints\b([^>]*)>/);
+  if (!match) return undefined;
+
+  const attrs = match[1];
+  const flag = (name: string): boolean | undefined => {
+    const raw = extractAttr(attrs, name);
+    if (raw === undefined) return undefined;
+    return raw === 'true' || raw === '1';
   };
+
+  const spacesVisible = flag('SpacesVisible');
+  const spaceBoundariesVisible = flag('SpaceBoundariesVisible');
+  const openingsVisible = flag('OpeningsVisible');
+
+  if (spacesVisible === undefined && spaceBoundariesVisible === undefined && openingsVisible === undefined) {
+    return undefined;
+  }
+
+  return { spacesVisible, spaceBoundariesVisible, openingsVisible };
 }
 
 /**

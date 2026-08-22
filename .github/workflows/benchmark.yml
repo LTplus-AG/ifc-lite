@@ -126,6 +126,13 @@ jobs:
       - name: Fetch benchmark fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
+      # Unconditional, unlike the fetch above; see the rust-tests job in
+      # test.yml. Scoped to the same two files, because this cache namespace
+      # only ever holds them and a full --check would red the lane for 162
+      # fixtures it never wanted. `ONLY` is applied before `CHECK_ONLY`, so the
+      # file arguments narrow the check as well as the fetch.
+      - name: Verify benchmark fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check "ara3d/AC20-FZK-Haus.ifc" "various/01_Snowdon_Towers_Sample_Structural(1).ifc"
 
       # Production build: `vite preview` (the benchmark's webServer) serves
       # apps/viewer/dist. Turbo builds the workspace deps it needs.

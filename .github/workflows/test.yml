@@ -464,6 +464,10 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # Unconditional, unlike the fetch above; see the rust-tests job for why
+      # a cache hit still needs its own check.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       # Run the package script DIRECTLY, not through turbo. Two reasons, both
       # measured rather than assumed:
       #
@@ -540,6 +544,10 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # Unconditional, unlike the fetch above; see the rust-tests job for why
+      # a cache hit still needs its own check.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
       # typecheck-tests.mjs writes the `extends` of every generated test
@@ -825,6 +833,10 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # Unconditional, unlike the fetch above; see the rust-tests job for why
+      # a cache hit still needs its own check.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
@@ -883,6 +895,25 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
+      # Unconditional, unlike the fetch above. The fetch is gated on a cache
+      # MISS, so a cache entry restores tests/models and nothing re-checks it.
+      #
+      # `IFC_LITE_REQUIRE_FIXTURES=1` already turns a MISSING fixture into a
+      # panic, but only for `rust/export`: it is the one crate that reads the
+      # variable, and 32 test files under rust/geometry and rust/processing
+      # carry their own silent-skip helpers that never consult it.
+      #
+      # And the variable catches absence only. `fixture_opt` panics on
+      # `ErrorKind::NotFound` specifically, so a present-but-wrong file --
+      # truncated, or a Git LFS pointer -- returns `Some(bytes)` and the test
+      # asserts against garbage. `--check` compares size and sha256, which is
+      # the class the variable cannot see.
+      #
+      # If this step fires on CI the cache entry is poisoned, and it will keep
+      # firing: actions/cache does not re-save on a primary-key hit. Purge it
+      # with `gh cache delete`; running `pnpm fixtures` locally will not help.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
       # Cheap (resolve only, no compile) and it catches a failure mode that
       # otherwise stays invisible for weeks: a release bumps the manifests but
       # leaves Cargo.lock recording the old member versions, so every `--locked`
@@ -980,6 +1011,22 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs
+      # Unconditional, unlike the fetch above; see the rust-tests job for why
+      # a cache hit still needs its own check.
+      #
+      # triangulation_invariance.rs:136 documents a tolerance on purpose ("so a
+      # single failed fixture fetch does not red the build"). Be precise about
+      # what this actually removes: on the cache-MISS path that tolerance was
+      # already dead, because fetch-fixtures.mjs collects per-entry errors and
+      # exits 1. Only the cache-HIT path is newly covered.
+      #
+      # Wider than that phrasing suggests, and deliberate: --check gates all 164
+      # manifest entries while the census sweeps 111 models, so a fixture the
+      # census never reads can now red a 45-minute lane. Fail-fast at second 5
+      # beats a census whose floors were silently computed over a smaller
+      # population, but it is a real widening, not a no-op.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
       # The per-host rows this run measured, uploaded pass or fail. The census

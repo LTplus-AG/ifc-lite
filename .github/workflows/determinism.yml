@@ -86,6 +86,10 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+      # Unconditional, unlike the fetch above; see the note in test.yml's
+      # rust-tests job for why a cache hit needs its own check.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
 
       # exact_predicate_determinism pins exact-predicate signs across
       # platforms; geometry_correctness_harness asserts the committed

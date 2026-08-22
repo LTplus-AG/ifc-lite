@@ -26,6 +26,7 @@ import type {
   AnglePick,
 } from '../types.js';
 import { ANGLE_REQUIRED_PICKS } from '../types.js';
+import type { ReprojectedMeasurementField } from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
@@ -442,14 +443,21 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       return;
     }
 
-    set({
+    // Typed as an EXHAUSTIVE map over the shared field registry, which is the
+    // same registry `hasPendingMeasurementState` (utils/viewportUtils.ts)
+    // derives the gate deciding whether this pass runs at all. A registered
+    // field with no arm above is a missing-property error here; an arm for a
+    // field nobody registered is an excess-property error. Either way the
+    // divergence #2641 and #2735 each shipped stops being expressible.
+    const reprojected: { [K in ReprojectedMeasurementField]: MeasurementSlice[K] } = {
       measurements: updatedMeasurements,
       activeMeasurement: updatedActiveMeasurement,
       activePolyline: updatedActivePolyline,
       polylineMeasurements: updatedPolylineMeasurements,
       activeAngle: updatedActiveAngle,
       angleMeasurements: updatedAngleMeasurements,
-    });
+    };
+    set(reprojected);
   },
 
   // Snap actions

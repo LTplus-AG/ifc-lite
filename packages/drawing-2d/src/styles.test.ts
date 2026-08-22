@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { describe, it, expect } from 'vitest';
 import { getRecommendedScale, COMMON_SCALES } from './styles.js';
 
@@ -41,6 +45,19 @@ describe('getRecommendedScale', () => {
     expect(getRecommendedScale(0.3, 0.2, 210, 297).name).not.toBe('1:1');
   });
 
+  it('returns a scale that does NOT fit when the model outgrows the table', () => {
+    // Pinning a limitation, not endorsing it. The table stops at 1:1000, so a
+    // 500 x 300 m site is 500 x 300 mm at the coarsest entry, against 378 x
+    // 267.3 mm of usable A3. The caller is handed a real scale that overruns
+    // the sheet by a third with nothing to distinguish it from a fitting one.
+    // If the contract is ever narrowed, this test should fail and be deleted
+    // deliberately rather than quietly adjusted.
+    const scale = getRecommendedScale(500, 300);
+    expect(scale.name).toBe('1:1000');
+    const mmPerMetre = 1000 / scale.factor;
+    expect(500 * mmPerMetre).toBeGreaterThan(420 * 0.9);
+  });
+
   it('falls back to the coarsest scale for something too big for any of them', () => {
     // Written as a literal on purpose. Taking the expected value from
     // COMMON_SCALES[length - 1] would be an oracle built from the same array
@@ -58,6 +75,17 @@ describe('getRecommendedScale', () => {
     const factors = COMMON_SCALES.map(s => s.factor);
     expect(factors).toStrictEqual([...factors].sort((a, b) => a - b));
     expect(new Set(factors).size).toBe(factors.length);
+  });
+
+  it('pins the two indices other packages read positionally', () => {
+    // Ascending-and-unique is NOT enough on its own, and saying it protects
+    // the positional reads would have been false: inserting 1:25 between 20
+    // and 50 keeps the order ascending and unique while silently making
+    // COMMON_SCALES[5] mean 1:25 and [6] mean 1:50. That would change the
+    // svg-exporter's default scale and the sheet slice's fallback in two other
+    // packages with nothing red.
+    expect(COMMON_SCALES[5].factor).toBe(50);   // svg-exporter.ts:115,:191
+    expect(COMMON_SCALES[6].factor).toBe(100);  // sheetSlice.ts:116
   });
 
   // Every comparison in the search is `<=`, and NaN loses all of them, so

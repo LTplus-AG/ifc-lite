@@ -411,7 +411,17 @@ const FIT_MARGIN = 0.9;
 
 /**
  * Pick the tightest common scale at which a model of `boundsWidth` x
- * `boundsHeight` still fits the paper.
+ * `boundsHeight` fits the paper, or the coarsest scale in the table if none
+ * of them do.
+ *
+ * That second clause is a real limitation, not a formality. The table stops at
+ * 1:1000, so a model past roughly 378 x 267 m has no fitting entry and gets
+ * 1:1000 anyway: a 500 x 300 m site comes back as 1:1000, which puts 500 mm on
+ * 378 mm of usable A3 and overruns by a third. The caller cannot tell that
+ * apart from a fitting answer, which is the same complaint that motivates the
+ * throw below, and it is left this way only because narrowing the return type
+ * is a bigger change than this fix. Check the result yourself if your models
+ * can be that large.
  *
  * UNITS, because the two arguments are not in the same one: the BOUNDS are
  * metres (model space) and the PAPER is millimetres (drawing space). At 1:100

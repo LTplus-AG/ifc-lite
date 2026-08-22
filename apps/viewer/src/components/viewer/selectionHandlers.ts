@@ -165,14 +165,12 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
         // `openings.skipped` (wall-opening-reassign.ts) counts doors/windows
         // whose placement we couldn't interpret — they stay attached to the
         // now-tombstoned source wall rather than either half, so they can
-        // end up orphaned. Computed by `reassignWallOpenings` on every
-        // split; previously only `toLeft`/`toRight` ever reached this
-        // toast, so a skip was silent.
-        if (wallTry.openings.skipped > 0) {
-          toast.info(
-            `${wallTry.openings.skipped} opening${wallTry.openings.skipped === 1 ? '' : 's'} could not be reassigned and may need manual repositioning`,
-          );
-        }
+        // end up orphaned. Populated when a placement chain fails to resolve
+        // (mutationSlice.ts), so the zero default — and this silence — is the
+        // common case; before #3023 only `toLeft`/`toRight` ever reached this
+        // toast, so a skip was silent even when it happened.
+        const skippedNotice = formatSkippedOpeningsNotice(wallTry.openings);
+        if (skippedNotice) toast.info(skippedNotice);
         return;
       }
       const linearTry = state.splitLinearElementAtDistance(
@@ -967,6 +965,26 @@ function capitalize(s: string): string {
 export function formatOpeningReassignSuffix(op: { toLeft: number; toRight: number; skipped: number }): string {
   const moved = op.toLeft + op.toRight;
   return moved > 0 ? ` (${moved} opening${moved === 1 ? '' : 's'} reassigned)` : '';
+}
+
+/**
+ * The skipped-openings notice, or `null` when nothing was skipped.
+ *
+ * `openings.skipped` (wall-opening-reassign.ts) counts doors/windows whose
+ * placement could not be interpreted — they stay attached to the now-tombstoned
+ * source wall rather than either half, so they can end up orphaned.
+ *
+ * Lives beside {@link formatOpeningReassignSuffix} and is exported for the SAME
+ * reason both are shared rather than inlined: a wall split commits from TWO
+ * call sites — a click (`handleSelectionClick` above) and a typed distance
+ * (`SplitNumericInput.tsx`) — and #3023 fixed only the click one, leaving the
+ * numeric path still reading `toLeft`/`toRight` and discarding `skipped`.
+ * Anything either toast says about openings belongs here, so the two paths
+ * cannot report differently on the same summary again.
+ */
+export function formatSkippedOpeningsNotice(op: { skipped: number }): string | null {
+  if (op.skipped <= 0) return null;
+  return `${op.skipped} opening${op.skipped === 1 ? '' : 's'} could not be reassigned and may need manual repositioning`;
 }
 
 /** Signed 2D polygon area via the shoelace formula. */

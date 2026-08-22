@@ -33,6 +33,10 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from 'react';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
+import {
+  formatOpeningReassignSuffix,
+  formatSkippedOpeningsNotice,
+} from '@/components/viewer/selectionHandlers';
 
 const ACCENT = '#a855f7'; // purple-500
 const PANEL_OFFSET_PX = 32;
@@ -88,12 +92,14 @@ export function SplitNumericInput() {
     if (wallTry.ok) {
       clearSplitHover();
       setSelectedEntityId(wallTry.right.globalId);
-      const op = wallTry.openings;
-      const opSummary =
-        op.toLeft + op.toRight > 0
-          ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
-          : '';
-      toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
+      // Same two notices the click path raises (selectionHandlers.ts) — a
+      // typed distance and a click commit the SAME `splitWallAtDistance`, so
+      // they must report the same summary. #3023 surfaced `openings.skipped`
+      // on the click path only, leaving this one silently dropping it; both
+      // strings now come from the shared formatters so they cannot drift.
+      toast.success(`Wall split${formatOpeningReassignSuffix(wallTry.openings)} — Ctrl+Z to undo`);
+      const skippedNotice = formatSkippedOpeningsNotice(wallTry.openings);
+      if (skippedNotice) toast.info(skippedNotice);
       return;
     }
     const linearTry = splitLinearElementAtDistance(splitTargetModelId, splitTargetExpressId, distance);

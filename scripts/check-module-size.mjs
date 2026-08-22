@@ -26,25 +26,19 @@
  * Shrinking a file to <= 400 lets you delete its row, and the gate says so.
  * Budgets ratchet DOWN only: shrink or split instead of raising one.
  *
- * NOT WIRED INTO CI, deliberately. Turning it on is a maintainer call: the
- * initial allowlist grandfathers 312 files and embodies a judgement about what
- * counts as production TypeScript. Wiring would be one step in the node-test
- * job of .github/workflows/test.yml:
+ * WIRED INTO CI in the node-tests job of .github/workflows/test.yml, next to
+ * the other source-shape gates. The initial allowlist grandfathers 312 files
+ * and embodies a judgement about what counts as production TypeScript.
  *
- *     - name: Check module sizes (TypeScript)
- *       run: node scripts/check-module-size.mjs
- *
- * That step is green against the tree the allowlist was recorded from, and
- * only that tree — it was NOT verified green against any future main. The
- * allowlist is a snapshot, so growth that lands on main after the snapshot
- * (from any PR, this one included) makes the gate red the moment it is wired,
- * or the moment this branch merges. Before turning the step on, and after any
- * merge from main, run the script: if it reports a listed file past budget or
- * a new file over 400, the allowlist needs refreshing in the same commit —
- * re-record the measured counts, then recompute ALLOWLIST_DIGEST as described
- * below. A refresh that only tracks growth already on main is a maintainer
- * call and must be stated in the PR; it is not licence to raise a budget for
- * growth the PR itself introduced.
+ * The allowlist is a SNAPSHOT of the tree it was recorded from, so growth that
+ * lands on main afterwards — from any PR, including ones this branch never
+ * touched — makes the gate red on a long-lived branch. After any merge from
+ * main, run the script; if it reports a listed file past budget or a new file
+ * over 400, the allowlist needs refreshing in the same commit. Do that with
+ * `pnpm lint:module-size-baseline` rather than by hand. A refresh that only
+ * tracks growth already on main is a maintainer call and must be stated in the
+ * PR; it is not licence to raise a budget for growth the PR itself introduced,
+ * which is why the regeneration command refuses a raise unless asked twice.
  *
  * What the step breaks on afterwards, by design: any PR adding a TS/TSX file
  * over 400 lines, any PR growing a listed file past its recorded budget, and
@@ -60,13 +54,31 @@
  * sibling file. Freezing a size is not the same as enforcing a design.
  *
  * Run: node scripts/check-module-size.mjs
+ * Regenerate: pnpm lint:module-size-baseline   (node scripts/check-module-size.mjs --update)
+ *
+ * An absolute-budget ratchet fights a moving main by construction: any
+ * long-lived branch accumulates a red made of files it never touched, and a
+ * contributor reading a list of unfamiliar filenames reasonably concludes the
+ * gate is noise. `--update` is the supported way to re-record, so that
+ * hand-editing the allowlist stops being the only one — a hand-edited ratchet
+ * is one distracted afternoon from someone raising a budget instead of
+ * splitting a file, which is the exact thing this gate exists to prevent.
+ *
+ * `--update` refuses, by itself, to do the one thing that would make it a
+ * loophole: it will not raise a budget or add a new exemption. Those need
+ * `--allow-raise` on the command line, so the loosening is a deliberate act
+ * that shows up in the shell history and still costs a reviewable line in the
+ * digest pin. `check-unused-locals.mjs --update` has no such safeguard.
+ *
  * Flags (development and the test harness only; CI would pass none):
  *   --root <dir>       scan this tree instead of the repo
  *   --allowlist <path> read this allowlist instead of the committed one
  *   --digest <value>   compare against this pin instead of ALLOWLIST_DIGEST
+ *   --update           rewrite the allowlist and the digest pin from the tree
+ *   --allow-raise      with --update, permit budget raises and new exemptions
  */
 
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -77,6 +89,8 @@ import {
   allowlistDigest,
   evaluate,
   staleRows,
+  planUpdate,
+  renderAllowlist,
 } from './lib/module-size-ratchet.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
@@ -115,14 +129,22 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts)$/;
  * by 100 leaves the total unchanged. The digest moves for ANY change to ANY
  * row, so loosening the ratchet always costs one reviewable line here.
  *
- * TO RECOMPUTE: set this to '0', run `node scripts/check-module-size.mjs`,
- * and read the true value out of the failure message. Do it at the moment you
- * finalise the change — it moves if anything else touched the allowlist first.
+ * TO RECOMPUTE: `pnpm lint:module-size-baseline`, which rewrites the allowlist
+ * and this constant together. By hand: set this to '0', run
+ * `node scripts/check-module-size.mjs`, and read the true value out of the
+ * failure message. Either way do it at the moment you finalise the change — it
+ * moves if anything else touched the allowlist first.
  */
 const ALLOWLIST_DIGEST = '4512308649773476420';
 
 function parseArgs(argv) {
-  const out = { root: REPO_ROOT, allowlist: null, digest: ALLOWLIST_DIGEST };
+  const out = {
+    root: REPO_ROOT,
+    allowlist: null,
+    digest: ALLOWLIST_DIGEST,
+    update: false,
+    allowRaise: false,
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i];
     const value = argv[i + 1];
@@ -130,10 +152,17 @@ function parseArgs(argv) {
       if (value === undefined) fail(`${flag} needs a value`);
       out[flag.slice(2)] = value;
       i += 1;
+    } else if (flag === '--update') {
+      out.update = true;
+    } else if (flag === '--allow-raise') {
+      out.allowRaise = true;
     } else {
       fail(`unknown argument: ${flag}`);
     }
   }
+  // `--allow-raise` alone reads as "budgets may go up" and does nothing, which
+  // is the worst way for a safety flag to behave. Refuse it instead.
+  if (out.allowRaise && !out.update) fail('--allow-raise only means something with --update');
   if (out.allowlist === null) out.allowlist = join(out.root, 'scripts', 'module-size-allowlist.txt');
   return out;
 }
@@ -217,6 +246,71 @@ if (files.length === 0) {
     `no TypeScript files matched under ${SEARCH_DIRS.join(', ')} in ${args.root}. ` +
       'Exiting 0 here would certify a tree nobody looked at.',
   );
+}
+
+if (args.update) {
+  const { next, raised, added, lowered, removed } = planUpdate(files, allowlist);
+
+  const loosening = [...raised, ...added];
+  if (loosening.length > 0 && !args.allowRaise) {
+    fail(
+      `refusing to loosen the ratchet.\n\n` +
+        (raised.length > 0
+          ? `Allowlisted file(s) now PAST their budget — recording the new count is a raise:\n\n${raised.join('\n')}\n\n`
+          : '') +
+        (added.length > 0
+          ? `File(s) over ${LIMIT} lines with no row — recording them is a new exemption:\n\n${added.join('\n')}\n\n`
+          : '') +
+        `Shrink or split them (AGENTS.md house rule). If the growth is genuinely\n` +
+        `justified, say why in the PR and re-run with --allow-raise; the digest pin\n` +
+        `still makes it one reviewable line.\n\n` +
+        `Nothing was written.`,
+    );
+  }
+
+  if (next.size === 0) {
+    fail(
+      `refusing to write an allowlist with 0 rows: ${files.length} files measured and none ` +
+        `over ${LIMIT} lines. That is either a genuinely clean tree — in which case delete ` +
+        `the allowlist deliberately — or a --root that scanned the wrong place.`,
+    );
+  }
+
+  writeFileSync(args.allowlist, renderAllowlist(allowlistText, next));
+
+  // The pin lives in this script, not in the allowlist (see ALLOWLIST_DIGEST):
+  // a digest stored beside the rows it guards is circular. Rewrite it here so
+  // the regeneration is one command, not one command plus a hand edit that the
+  // next reader has to remember.
+  const nextDigest = allowlistDigest(next);
+  const selfPath = join(args.root, 'scripts', 'check-module-size.mjs');
+  const PIN_RE = /^const ALLOWLIST_DIGEST = '\d+';$/m;
+  let pinned = false;
+  try {
+    const selfText = readFileSync(selfPath, 'utf8');
+    if (PIN_RE.test(selfText)) {
+      writeFileSync(selfPath, selfText.replace(PIN_RE, `const ALLOWLIST_DIGEST = '${nextDigest}';`));
+      pinned = true;
+    }
+  } catch {
+    // --root points at a synthetic tree (the test harness does exactly this),
+    // so there is no pin to move. Print the value instead of pretending.
+  }
+
+  for (const row of lowered) console.log(`lowered:${row}`);
+  for (const row of removed) console.log(`removed:${row}`);
+  for (const row of raised) console.log(`RAISED:${row}`);
+  for (const row of added) console.log(`ADDED:${row}`);
+  console.log(
+    `check-module-size: wrote ${next.size} rows to ${args.allowlist} ` +
+      `(${lowered.length} lowered, ${removed.length} removed, ${raised.length} raised, ${added.length} added).`,
+  );
+  console.log(
+    pinned
+      ? `check-module-size: ALLOWLIST_DIGEST re-pinned to ${nextDigest} in ${selfPath}. Commit both.`
+      : `check-module-size: no ALLOWLIST_DIGEST pin found under ${args.root}; the new digest is ${nextDigest}.`,
+  );
+  process.exit(0);
 }
 
 let failed = false;

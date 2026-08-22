@@ -22,7 +22,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -45,7 +45,7 @@ function makeTree(files) {
   return dir;
 }
 
-function run(dir, allowlistText, { digest, allowlistPath } = {}) {
+function run(dir, allowlistText, { digest, allowlistPath, extra = [] } = {}) {
   let path = allowlistPath;
   if (path === undefined) {
     path = join(dir, 'allowlist.txt');
@@ -53,10 +53,12 @@ function run(dir, allowlistText, { digest, allowlistPath } = {}) {
   }
   const pin =
     digest ?? (allowlistText ? allowlistDigest(parseAllowlist(allowlistText, 'x')) : '0');
-  const res = spawnSync(process.execPath, [CHECKER, '--root', dir, '--allowlist', path, '--digest', pin], {
-    encoding: 'utf8',
-  });
-  return { code: res.status, out: `${res.stdout}${res.stderr}` };
+  const res = spawnSync(
+    process.execPath,
+    [CHECKER, '--root', dir, '--allowlist', path, '--digest', pin, ...extra],
+    { encoding: 'utf8' },
+  );
+  return { code: res.status, out: `${res.stdout}${res.stderr}`, allowlistPath: path };
 }
 
 const cleanup = [];
@@ -204,6 +206,141 @@ test('VACUOUS: a missing digest pin fails', () => {
   const { code, out } = run(dir, '500 packages/a/big.ts\n', { digest: '' });
   assert.equal(code, 1, out);
   assert.match(out, /no digest pin/);
+});
+
+// ---------------------------------------------------------------------------
+// --update: the regeneration half. The whole point of these is the direction
+// it must REFUSE — a ratchet whose own baseline command can raise a budget has
+// no teeth left.
+// ---------------------------------------------------------------------------
+
+const HEADER = '# header line kept verbatim\n';
+
+test('--update refuses to raise a budget, and writes nothing', () => {
+  const dir = tree({ 'packages/a/big.ts': 501 });
+  const before = `${HEADER}500 packages/a/big.ts\n`;
+  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /refusing to loosen the ratchet/);
+  assert.match(out, /packages\/a\/big\.ts: 501 lines, budget 500 \(\+1\)/);
+  assert.match(out, /Nothing was written/);
+  // Not "mostly nothing": byte-for-byte unchanged.
+  assert.equal(readFileSync(allowlistPath, 'utf8'), before);
+});
+
+test('--update refuses to add a new exemption, and writes nothing', () => {
+  const dir = tree({ 'packages/a/big.ts': 500, 'apps/v/new_god.tsx': 401 });
+  const before = `${HEADER}500 packages/a/big.ts\n`;
+  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /new exemption/);
+  assert.match(out, /apps\/v\/new_god\.tsx: 401 lines/);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), before);
+});
+
+test('--update DOES lower a slack budget and drop a stale row', () => {
+  // Both directions that tighten. This is the case that makes a rebase onto a
+  // moved main a one-command operation instead of a hand edit.
+  const dir = tree({ 'packages/a/big.ts': 450, 'packages/a/small.ts': 100 });
+  const { code, out, allowlistPath } = run(
+    dir,
+    `${HEADER}500 packages/a/big.ts\n420 packages/a/small.ts\n700 packages/a/gone.ts\n`,
+    { extra: ['--update'] },
+  );
+  assert.equal(code, 0, out);
+  assert.equal(
+    readFileSync(allowlistPath, 'utf8'),
+    `${HEADER}   450 packages/a/big.ts\n`,
+  );
+  assert.match(out, /wrote 1 rows/);
+});
+
+test('--update --allow-raise does raise it, and says so in the output', () => {
+  const dir = tree({ 'packages/a/big.ts': 501 });
+  const { code, out, allowlistPath } = run(dir, `${HEADER}500 packages/a/big.ts\n`, {
+    extra: ['--update', '--allow-raise'],
+  });
+  assert.equal(code, 0, out);
+  assert.match(out, /RAISED:\s+packages\/a\/big\.ts: 501 lines, budget 500/);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), `${HEADER}   501 packages/a/big.ts\n`);
+});
+
+test('--allow-raise without --update is refused rather than silently ignored', () => {
+  const dir = tree({ 'packages/a/big.ts': 500 });
+  const { code, out } = run(dir, `${HEADER}500 packages/a/big.ts\n`, { extra: ['--allow-raise'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /--allow-raise only means something with --update/);
+});
+
+test('VACUOUS: --update refuses to write an allowlist with no rows', () => {
+  // Every file under the limit. Silently writing an empty allowlist would
+  // parse as "0 rows" on the next run and fail there instead, or — worse —
+  // read as a clean tree.
+  const dir = tree({ 'packages/a/small.ts': 100 });
+  const { code, out, allowlistPath } = run(dir, `${HEADER}500 packages/a/small.ts\n`, {
+    extra: ['--update'],
+  });
+  assert.equal(code, 1, out);
+  assert.match(out, /refusing to write an allowlist with 0 rows/);
+  assert.equal(readFileSync(allowlistPath, 'utf8'), `${HEADER}500 packages/a/small.ts\n`);
+});
+
+test('what --update writes is what the gate then accepts', () => {
+  // The regeneration and the check must agree, or the baseline command hands
+  // you a tree that fails its own gate.
+  const dir = tree({ 'packages/a/big.ts': 450, 'packages/a/x.ts': 900 });
+  const { code, out, allowlistPath } = run(
+    dir,
+    `${HEADER}500 packages/a/big.ts\n900 packages/a/x.ts\n`,
+    { extra: ['--update'] },
+  );
+  assert.equal(code, 0, out);
+  const written = readFileSync(allowlistPath, 'utf8');
+  const digest = allowlistDigest(parseAllowlist(written, 'x'));
+  assert.match(out, new RegExp(`the new digest is ${digest}`));
+  const after = run(dir, null, { allowlistPath, digest });
+  assert.equal(after.code, 0, after.out);
+  assert.match(after.out, /0 new over 400/);
+});
+
+test('--update re-pins ALLOWLIST_DIGEST in the same run', () => {
+  // The pin lives in the checker, not beside the rows, so regeneration has to
+  // move it too — otherwise `--update` hands you a tree that fails the very
+  // next run on the digest. A stand-in script under --root, so the committed
+  // one is never rewritten by a test.
+  const dir = tree({ 'packages/a/big.ts': 450 });
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  const selfCopy = join(dir, 'scripts', 'check-module-size.mjs');
+  writeFileSync(selfCopy, "// stand-in\nconst ALLOWLIST_DIGEST = '123';\n");
+
+  const { code, out, allowlistPath } = run(dir, `${HEADER}500 packages/a/big.ts\n`, {
+    extra: ['--update'],
+  });
+  assert.equal(code, 0, out);
+
+  const digest = allowlistDigest(parseAllowlist(readFileSync(allowlistPath, 'utf8'), 'x'));
+  assert.notEqual(digest, '123');
+  assert.equal(readFileSync(selfCopy, 'utf8'), `// stand-in\nconst ALLOWLIST_DIGEST = '${digest}';\n`);
+  assert.match(out, new RegExp(`ALLOWLIST_DIGEST re-pinned to ${digest}`));
+});
+
+test('regenerating the real allowlist reproduces it byte for byte', () => {
+  // The format is hand-maintained today, so `--update` must not reflow it.
+  // Run against a COPY of the repo's allowlist in a temp dir — the committed
+  // one is never written by a test.
+  const realText = readFileSync(join(ROOT, 'scripts', 'module-size-allowlist.txt'), 'utf8');
+  const rows = parseAllowlist(realText, 'real');
+  const dir = tree({});
+  for (const [rel, budget] of rows) {
+    const full = join(dir, rel);
+    mkdirSync(dirname(full), { recursive: true });
+    writeFileSync(full, `${Array.from({ length: budget }, (_, i) => `const l${i} = ${i};`).join('\n')}\n`);
+  }
+  const copy = join(dir, 'copied-allowlist.txt');
+  writeFileSync(copy, realText);
+  const { code, out } = run(dir, null, { allowlistPath: copy, digest: '0', extra: ['--update'] });
+  assert.equal(code, 0, out);
+  assert.equal(readFileSync(copy, 'utf8'), realText);
 });
 
 test('the committed gate runs green against the real repo', () => {

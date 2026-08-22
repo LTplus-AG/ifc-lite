@@ -167,3 +167,88 @@ export function staleRows(allowlist) {
     .map(([rel, budget]) => `  ${rel}: budget ${budget} <= ${LIMIT}`)
     .sort();
 }
+
+/**
+ * The rows `--update` would write, and — separately — which of them LOOSEN the
+ * ratchet.
+ *
+ * `check-unused-locals.mjs --update`, the script this regeneration half is
+ * modelled on, will happily raise a baseline that drifted upward, and the only
+ * safeguard is a human reading the diff. A ratchet whose own regeneration
+ * command can silently undo it is not a ratchet, so the two directions are
+ * separated here and the caller refuses the loosening ones unless they were
+ * asked for explicitly:
+ *
+ *  - `raised`:  an allowlisted file is now BIGGER than its budget. Recording
+ *               the new count is exactly the "raise the budget instead of
+ *               splitting the file" move the gate exists to prevent.
+ *  - `added`:   a file crossed the limit with no row — a new exemption.
+ *  - `lowered` / `removed`: tighten or delete a row; always safe to write.
+ *
+ * `next` is the whole allowlist that would be written: every measured file over
+ * the limit, at its measured count. A file at or under the limit gets no row,
+ * which is what deletes a stale exemption.
+ */
+export function planUpdate(files, allowlist) {
+  const measured = new Map(files.map((f) => [f.rel, f.lines]));
+  const next = new Map();
+  const raised = [];
+  const added = [];
+  const lowered = [];
+  const removed = [];
+
+  for (const { rel, lines } of files) {
+    const budget = allowlist.get(rel);
+    if (lines <= LIMIT) {
+      if (budget !== undefined) removed.push(`  ${rel}: now ${lines} lines (row deleted)`);
+      continue;
+    }
+    next.set(rel, lines);
+    if (budget === undefined) added.push(`  ${rel}: ${lines} lines (new exemption)`);
+    else if (lines > budget) raised.push(`  ${rel}: ${lines} lines, budget ${budget} (+${lines - budget})`);
+    else if (lines < budget) lowered.push(`  ${rel}: ${lines} lines, budget ${budget} (-${budget - lines})`);
+  }
+  for (const [rel, budget] of allowlist) {
+    if (!measured.has(rel)) removed.push(`  ${rel} (budget ${budget}) no longer matches a tracked file`);
+  }
+
+  raised.sort();
+  added.sort();
+  lowered.sort();
+  removed.sort();
+  return { next, raised, added, lowered, removed };
+}
+
+/**
+ * Re-render an allowlist file: its leading comment block verbatim, then one
+ * `<budget> <path>` row per entry sorted by path, in the committed file's
+ * column layout.
+ *
+ * The header is carried over rather than regenerated, because it is the only
+ * place the rule ("SHRINK OR SPLIT") is written down and a regeneration command
+ * that quietly dropped it would erase the reason the file exists.
+ */
+export function renderAllowlist(existingText, map) {
+  const header = [];
+  for (const raw of String(existingText).split('\n')) {
+    const line = raw.trim();
+    if (line === '' || line.startsWith('#')) header.push(raw);
+    else break;
+  }
+  // Case-insensitive, with the raw path as tiebreak. That reproduces the order
+  // the committed allowlist was hand-maintained in (verified byte-for-byte in
+  // check-module-size.test.mjs), so the first regeneration is not a 312-line
+  // reorder nobody can review. Deliberately NOT `localeCompare`, which also
+  // reproduces it today but varies with the host's ICU data — the digest is
+  // order-independent, so a locale-dependent reorder would be an unreviewable
+  // diff with no gate reporting it.
+  const rows = [...map.entries()]
+    .sort(([a], [b]) => {
+      const x = a.toLowerCase();
+      const y = b.toLowerCase();
+      if (x !== y) return x < y ? -1 : 1;
+      return a < b ? -1 : a > b ? 1 : 0;
+    })
+    .map(([path, budget]) => `${String(budget).padStart(6)} ${path}`);
+  return `${[...header, ...rows].join('\n')}\n`;
+}

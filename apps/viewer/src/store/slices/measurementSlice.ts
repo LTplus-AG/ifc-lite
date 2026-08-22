@@ -26,7 +26,10 @@ import type {
   AnglePick,
 } from '../types.js';
 import { ANGLE_REQUIRED_PICKS } from '../types.js';
-import type { ReprojectedMeasurementField } from '../measurementReprojectionFields.js';
+import type {
+  REPROJECTED_MEASUREMENT_FIELDS,
+  ReprojectedMeasurementField,
+} from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
 import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
 import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
@@ -221,6 +224,38 @@ const getDefaultEdgeLockState = (): EdgeLockState => ({
   isCorner: false,
   cornerValence: 0,
 });
+
+/**
+ * The registered KIND of each reprojected field must match that field's real
+ * shape on the slice.
+ *
+ * The exhaustive `set()` payload below pins the field NAMES, and
+ * `PendingMeasurementState` turns a `nullable` field registered as `list`
+ * into a compile error (a `T | null` has no `length`). The opposite mistake
+ * is silent without this check: registering a LIST field as `nullable` maps
+ * it to `unknown`, which any array satisfies, so nothing fails to compile —
+ * and `hasPendingMeasurementState` then tests it with `!== null`, which an
+ * array never is. The gate would report "pending" forever and the
+ * per-frame reprojection pass would never stop running.
+ *
+ * VERIFIED BY RUNNING `tsc` before this was added: flipping
+ * `angleMeasurements` to `'nullable'` produced zero errors anywhere.
+ *
+ * Each entry resolves to `true` when the kind matches, and to a descriptive
+ * tuple when it does not — which fails the `Record<..., true>` constraint and
+ * names the offending field in the error.
+ */
+type RegisteredKindMatchesSliceShape = {
+  [K in ReprojectedMeasurementField]: (typeof REPROJECTED_MEASUREMENT_FIELDS)[K] extends 'list'
+    ? MeasurementSlice[K] extends readonly unknown[]
+      ? true
+      : ['registered as `list` but is not an array', K]
+    : null extends MeasurementSlice[K]
+      ? true
+      : ['registered as `nullable` but cannot be null', K];
+};
+type AssertAllTrue<T extends Record<ReprojectedMeasurementField, true>> = T;
+export type _ReprojectedKindsMatch = AssertAllTrue<RegisteredKindMatchesSliceShape>;
 
 export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => ({
   // Initial state

@@ -97,6 +97,30 @@ describe('allocatePassQueryIndices', () => {
     // cursor=6 -> exhausted.
     assert.strictEqual(allocatePassQueryIndices(6, 3), null);
   });
+
+  it('refuses an ODD cursor whose END index would fall outside the query set', () => {
+    // Every case above feeds an EVEN cursor, because that is all
+    // `beginPass` can produce — it advances by 2. On even cursors
+    // `nextQueryIndex + 1 >= maxPasses * 2` and `nextQueryIndex >=
+    // maxPasses * 2` agree, so the `+ 1` — the whole point of the guard —
+    // is invisible to them: deleting it leaves every test above green.
+    //
+    // But this function is exported precisely so it can be driven with
+    // synthetic cursors rather than only from inside a live recording
+    // session, and an odd cursor is where the two differ. maxPasses=8 is
+    // 16 slots (0..15): cursor 15 leaves room for a BEGIN at 15 and
+    // nothing for its END, and handing WebGPU an `endOfPassWriteIndex`
+    // of 16 against a count-16 query set is a validation error, not a
+    // truncated measurement. Exhaustion is the only correct answer.
+    assert.strictEqual(allocatePassQueryIndices(15, 8), null);
+    // ...and the odd cursor one step below still has room for both, so
+    // this pins the boundary rather than just refusing odd cursors.
+    assert.deepStrictEqual(allocatePassQueryIndices(13, 8), {
+      beginningOfPassWriteIndex: 13,
+      endOfPassWriteIndex: 14,
+      nextQueryIndex: 15,
+    });
+  });
 });
 
 describe('pairTimestampsWithLabels', () => {

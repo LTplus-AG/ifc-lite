@@ -555,3 +555,92 @@ describe('buildReportHTML — search matches content, not chrome', () => {
     }
   });
 });
+
+describe('buildReportHTML — a search hit inside the collapsed per-entity table is actually shown', () => {
+  // Grouping by requirement demoted the per-entity table into a
+  // `<details class="entity-table-details">` that ships CLOSED. `filterAll`
+  // only ever toggled a `hidden` class on rows, so a term that exists only in
+  // that table produced "1 of 3 rows shown" over a page showing nothing, with
+  // no cue that the match was behind a disclosure.
+  //
+  // The fixture name below appears ONLY on a PASSING entity, which is
+  // deliberate: a failing entity is rendered twice (once in the requirement
+  // group, which is not inside any `<details>`, and once in the per-entity
+  // table), so a failing-entity fixture would have a visible match either way
+  // and could not tell the two behaviours apart.
+  const PASS_ONLY = 'UNIQUEPASSNAME';
+
+  function buildReport(): string {
+    const req = makeRequirement('req-details');
+    const failing = makeEntity(1, [makeReqResult(req, 'fail', { failureReason: 'bad wall' })], {
+      entityName: 'Failing Wall',
+      globalId: 'GID-FAIL',
+    });
+    const passing = makeEntity(2, [makeReqResult(req, 'pass')], {
+      entityName: PASS_ONLY,
+      globalId: 'GID-PASS',
+    });
+    return buildReportHTML(
+      makeReport([makeSpecResult(makeSpecification('spec-d', 'Spec D', [req]), [failing, passing])]),
+      'en',
+    );
+  }
+
+  function groups(page: ReportPage): HTMLDetailsElement[] {
+    return Array.from(
+      page.document.querySelectorAll('details.entity-table-details'),
+    ) as HTMLDetailsElement[];
+  }
+
+  it('opens the group holding the only surviving row', () => {
+    const page = renderReport(buildReport());
+    try {
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'fixture check: the per-entity table must ship collapsed, or this proves nothing',
+      );
+
+      const hit = searchRows(page, PASS_ONLY.toLowerCase());
+      assert.ok(hit.visible.length > 0, 'the search must match the passing entity');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [true],
+        'a counted match the reader cannot see is not a match',
+      );
+    } finally {
+      page.close();
+    }
+  });
+
+  it('leaves a group with no surviving row closed', () => {
+    const page = renderReport(buildReport());
+    try {
+      searchRows(page, 'nothingmatchesthis');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'an empty group must not be forced open — that would be noise, not a result',
+      );
+    } finally {
+      page.close();
+    }
+  });
+
+  it('restores the reader\'s own open/closed state when the search is cleared', () => {
+    const page = renderReport(buildReport());
+    try {
+      searchRows(page, PASS_ONLY.toLowerCase());
+      assert.deepEqual(groups(page).map(d => d.open), [true]);
+
+      searchRows(page, '');
+      assert.deepEqual(
+        groups(page).map(d => d.open),
+        [false],
+        'clearing the search must hand the disclosure back, not leave every group forced open',
+      );
+    } finally {
+      page.close();
+    }
+  });
+});

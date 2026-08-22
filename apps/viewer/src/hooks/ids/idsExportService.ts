@@ -727,6 +727,10 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
 
   <script>
     let currentFilter = 'all';
+    // Snapshot of the per-entity <details> open/closed state taken the moment
+    // a search/filter starts, so clearing it restores what the reader had
+    // rather than leaving every group forced open. Null while unfiltered.
+    let detailsRestore = null;
 
     function toggleSpec(i) {
       document.getElementById('spec-' + i).classList.toggle('open');
@@ -763,6 +767,25 @@ export function buildReportHTML(report: IDSValidationReport, locale: SupportedLo
         row.classList.toggle('hidden', !show);
         if (show) visible++;
       });
+
+      // The per-entity table lives inside a collapsed <details>, so un-hiding
+      // a row there is not enough to SHOW it: the counter would read
+      // "1 of 3 rows shown" while the reader sees an empty page and no cue
+      // that the match is behind a disclosure. Open any group that holds a
+      // surviving row while a search/filter is active, and put the reader's
+      // own open/closed state back when the search is cleared.
+      const groups = document.querySelectorAll('details.entity-table-details');
+      if (search || currentFilter !== 'all') {
+        if (detailsRestore === null) {
+          detailsRestore = Array.prototype.map.call(groups, function (d) { return d.open; });
+        }
+        groups.forEach(d => {
+          if (d.querySelector('.entity-row:not(.hidden)')) d.open = true;
+        });
+      } else if (detailsRestore !== null) {
+        groups.forEach((d, i) => { d.open = detailsRestore[i]; });
+        detailsRestore = null;
+      }
 
       document.getElementById('result-count').textContent =
         search || currentFilter !== 'all'

@@ -17,13 +17,28 @@ import { resolveExpressBase } from './step-serialization.js';
  *
  *   TypeError: underlying.replace is not a function
  *
- * That is reachable from outside the package. `serializeTypedMarker(type, ...)`
- * takes the marker name from the caller, so authoring code that passes a
- * `{ typed: 'constructor' }` marker gets a crash rather than the documented
- * null. Sibling of #3063, which fixed `SCHEMA_REGISTRY.entities`.
+ * Reachable from outside the package, though not by the route I first claimed.
+ * `serializeTypedMarker` is NOT in the package's index and `exports` maps only
+ * ".", so no consumer can call it. The real route is the public data shape:
+ * `IfcAttributeValue`'s `{ typed: { type, value } }` carries a caller-supplied
+ * `type` string, and `MutablePropertyView.createEntity` and
+ * `StoreEditor.setPositionalAttribute` both funnel it here through
+ * `serializeStepValue`.
+ *
+ * The severity is higher that way, not lower: the throw escapes
+ * `StepExporter.export()`, so one bad marker name aborts the ENTIRE file
+ * export rather than one attribute.
+ *
+ * Sibling of the SCHEMA_REGISTRY.entities defect in #3063, which is still open
+ * at the time of writing.
  */
 describe('resolveExpressBase rejects inherited Object.prototype names', () => {
-  const inherited = ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf'];
+  // Derived, not hand-listed. A hand-picked sample is a guess about which
+  // inherited names matter, and the interesting one (`__proto__`, which
+  // resolves to an object rather than a function) is exactly the kind a sample
+  // drops. This is exhaustive by construction and stays exhaustive if the
+  // runtime grows a new Object.prototype member.
+  const inherited = Object.getOwnPropertyNames(Object.prototype);
 
   it.each(inherited)('returns null for %s rather than throwing', (name) => {
     // Both halves matter. `not.toThrow` alone would pass if the function

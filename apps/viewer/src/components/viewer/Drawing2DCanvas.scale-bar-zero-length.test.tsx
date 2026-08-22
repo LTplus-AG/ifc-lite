@@ -183,6 +183,17 @@ describe('Drawing2DCanvas does not wedge on an unusable scale bar length', () =>
     assert.ok((calls.get('fillRect') ?? 0) >= 0, 'render completed');
   });
 
+  it('returns from the render with an infinite totalLengthM', () => {
+    // A DIFFERENT loop from the other two. `Infinity > 0` passes a positivity
+    // check, so the first version of this guard admitted it, and the HALVING
+    // loop above the doubling one spins because `Infinity / 2` is `Infinity`.
+    // Review caught this against the supposedly-fixed component: a 20,000 ms
+    // budget, killed at 20,002 ms. The bug report named the doubling loop and I
+    // never looked at the one above it.
+    const calls = render(Number.POSITIVE_INFINITY);
+    assert.ok((calls.get('fillRect') ?? 0) >= 0, 'render completed');
+  });
+
   // The positive control. Without it, a guard that skipped the scale bar
   // unconditionally would satisfy both cases above, which would be a worse
   // bug than the hang and completely invisible here.
@@ -198,14 +209,21 @@ describe('Drawing2DCanvas does not wedge on an unusable scale bar length', () =>
   });
 
   // The north arrow is drawn after the scale bar in the same function, so an
-  // early `return` inside the block would have silently dropped it. That was
-  // my first attempt at this guard. Putting it in the `if` condition keeps the
-  // arrow, and this pins that it does.
+  // early `return` inside the block would silently drop it. That was my first
+  // attempt at this guard.
+  //
+  // The assertion is `fillText:N`, not `stroke`, and the difference is the
+  // whole test. Review measured `stroke` at 8 calls with the arrow explicitly
+  // set to `style: 'none'`, because the frame and title-block rules call it
+  // regardless. An `|| stroke` disjunct made this pass 4/4 with the arrow
+  // actually gone, which review proved by reintroducing the early return.
+  // `fillText:N` goes 1 -> 0 with the arrow, and nothing else emits it.
   it('still draws the north arrow when the scale bar is skipped', () => {
     const calls = render(0);
-    assert.ok(
-      (calls.get('stroke') ?? 0) > 0 || (calls.get('fill') ?? 0) > 0,
-      'the north arrow must still be drawn when the scale bar is skipped',
+    assert.equal(
+      calls.get('fillText:N') ?? 0,
+      1,
+      'the north arrow glyph must still be drawn when the scale bar is skipped',
     );
   });
 });

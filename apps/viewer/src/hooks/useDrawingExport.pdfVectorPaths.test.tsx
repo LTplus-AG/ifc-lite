@@ -21,9 +21,11 @@
  * #2941/#2942 unless it also re-derived the whole sheet layout. Without the
  * second, routing everything through the raster helper — the obvious
  * simplification, since it already handles one case — would silently make
- * the viewer's only true-vector PDF a bitmap, with nothing to catch it: the
- * export still succeeds, still has the right page size, and still looks
- * right at 100%.
+ * the viewer's only true-vector PDF OF THE DRAWING a bitmap, with nothing
+ * to catch it: the export still succeeds, still has the right page size,
+ * and still looks right at 100%. (`lib/lists/export/pdf.ts` also emits
+ * pure vector, through `jspdf-autotable`, but that is a tabular report
+ * rather than a drawing; `lib/export/view-pdf/` is a raster.)
  *
  * The observation is what reaches jsPDF: `addImage` (a raster was embedded)
  * versus `lines` (vector primitives were written). Both are spied on
@@ -296,7 +298,7 @@ describe('handleExportPDF — which PDFs are vector and which are raster', () =>
     );
     assert.ok(
       !text.includes(EMBEDDED_IMAGE),
-      'the non-sheet PDF must embed no bitmap — it is the only resolution-independent PDF the viewer emits, and routing it through the sheet raster helper would look identical at 100% zoom and only show up under a loupe',
+      'the non-sheet PDF must embed no bitmap — it is the only resolution-independent PDF of the DRAWING the viewer emits, and routing it through the sheet raster helper would look identical at 100% zoom and only show up under a loupe',
     );
   });
 });

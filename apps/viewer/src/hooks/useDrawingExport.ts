@@ -1038,9 +1038,12 @@ function useDrawingExport({
   // NON-SHEET path: since #2941/#2942 the sheet case returns from the
   // branch at the top of `handleExportPDF` and never reaches here. This
   // path is still the only PDF export for the "as displayed" / scaled
-  // drawing (#2042) and is not dead — but it is also the only true-vector
-  // PDF the viewer emits, so the branch above is where the raster
-  // trade-off is written down.
+  // drawing (#2042) and is not dead — it is the only true-vector PDF of
+  // the DRAWING the viewer emits, so the branch above is where the raster
+  // trade-off is written down. (Not the only vector PDF in the app:
+  // `lib/lists/export/pdf.ts` writes a Lists/schedule report through
+  // `jspdf-autotable` with no `addImage` at all. That is a table, not a
+  // drawing. The 3D view export, `lib/export/view-pdf/`, IS a raster.)
   const handleExportPDF = useCallback((scaleFactor?: number) => {
     if (!drawing) return;
 

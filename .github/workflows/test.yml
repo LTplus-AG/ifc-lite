@@ -691,6 +691,18 @@ jobs:
       # are pinned here.
       - name: Check the CodeRabbit review classifier
         run: node --test scripts/lib/coderabbit-review-state.test.mjs
+      # The same tick hides four MORE shapes, found by a sweep of all 36 open
+      # PRs: a fork's branch we cannot push to; a DIRTY base whose green checks
+      # ran on a merge commit that can no longer be formed (two PRs were in that
+      # state); ZERO workflow runs at the head commit, which leaves an EMPTY
+      # statusCheckRollup that counts up to the same fail=0/pending=0 as a fully
+      # passing one; and a newest run against a superseded commit. The sweep is
+      # a hand-run tool (check-pr-green.mjs, @unwired-by-design -- its verdicts
+      # are transient GitHub state), but the classification it rests on is not,
+      # including the three ways the sweep must refuse to pass vacuously: zero
+      # PRs, an unreachable API, a malformed response.
+      - name: Check the PR-green sweep classifier
+        run: node --test scripts/lib/pr-green-sweep.test.mjs
       # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
       # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
       # returned twenty lines of prose and the tar two lines down exited 2,

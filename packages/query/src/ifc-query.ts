@@ -126,10 +126,20 @@ export class IfcQuery {
     //
     // A genuine query for the Unknown bucket is still made by passing the
     // literal string `'Unknown'`.
+    //
+    // One normalisation feeds both steps. `trim()` has to happen BEFORE the
+    // enum lookup, not just inside the guard: `IfcTypeEnumFromString` only
+    // uppercases, so a padded `' IfcWall '` misses `TYPE_STRING_TO_ENUM` and
+    // yields `Unknown`, while the guard - trimming - finds `IfcWall` known and
+    // lets it through. The query would then run against the Unknown bucket and
+    // answer with entities that are not walls, with no error at all. Trimming
+    // at one place only is what creates that window; trimming at both closes
+    // it. For every unpadded name `trim()` is the identity, so no name that
+    // resolves correctly today changes meaning.
     const typeEnums = types.map(t => {
-      const typeEnum = IfcTypeEnumFromString(t);
+      const trimmed = t.trim();
+      const typeEnum = IfcTypeEnumFromString(trimmed);
       if (typeEnum === IfcTypeEnum.Unknown) {
-        const trimmed = t.trim();
         const known =
           trimmed.toUpperCase() === 'UNKNOWN' ||
           isKnownType(trimmed) ||

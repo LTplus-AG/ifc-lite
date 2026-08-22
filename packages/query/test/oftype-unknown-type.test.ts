@@ -36,10 +36,48 @@ import {
   ENTITIES_IFC4,
   ENTITIES_IFC4X3,
   IFC_DATA_TYPES,
+  type IfcStoreBase,
 } from '@ifc-lite/data';
-import { SCHEMA_REGISTRY, isKnownType } from '@ifc-lite/parser';
+import { SCHEMA_REGISTRY, isKnownType, type IfcDataStore } from '@ifc-lite/parser';
 import { createMockStore } from './mock-store.js';
 import { IfcQuery } from '../src/ifc-query.js';
+
+/** The one error `ofType()`'s guard raises. Nothing else may be mistaken for it. */
+const GUARD_MESSAGE = /is not an entity name in any IFC schema/;
+
+/**
+ * `createMockStore` builds an `IfcStoreBase`. `IfcQuery` takes the parser's
+ * `IfcDataStore`, which adds parse-time-only members (`source`, `parseTime`,
+ * the deferred indices) that none of the code under test here reads. One
+ * widening, named and explained, instead of an unchecked cast at every
+ * construction site - so the mock's own shape stays type-checked against
+ * `IfcStoreBase`.
+ */
+function queryFor(store: IfcStoreBase): IfcQuery {
+  return new IfcQuery(store as unknown as IfcDataStore);
+}
+
+/**
+ * The names `ofType()`'s guard rejected, out of `names`.
+ *
+ * Any error that is NOT the guard's is rethrown. A bare `catch { return true }`
+ * cannot tell a wrong-name rejection from an unrelated crash - in the mock
+ * store, the schema tables, or the oracle - so a sweep built on one reports
+ * "nothing rejected" for a run in which the guard was never actually reached,
+ * and passes for a reason it never verified.
+ */
+function namesRejectedByGuard(q: IfcQuery, names: readonly string[]): string[] {
+  const rejected: string[] = [];
+  for (const name of names) {
+    try {
+      q.ofType(name);
+    } catch (e) {
+      if (!(e instanceof Error) || !GUARD_MESSAGE.test(e.message)) throw e;
+      rejected.push(name);
+    }
+  }
+  return rejected;
+}
 
 /**
  * Standard buildingSMART entity names that `TYPE_STRING_TO_ENUM` has no entry
@@ -108,34 +146,75 @@ function storeWithUnclassified(unclassifiedType: string) {
 
 describe('ofType() rejects a type string that is not an IFC entity name', () => {
   it('throws on a typo rather than silently matching the Unknown bucket', () => {
-    const query = new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
     // Caller made a typo: 'IfcWal' instead of 'IfcWall'.
     expect(() => query.ofType('IfcWal')).toThrow(/is not an entity name in any IFC schema/);
   });
 
   it('throws on a name that is not in the IFC schema at all', () => {
-    const query = new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
     expect(() => query.ofType('IFCPROPRIETARYVENDORTHING')).toThrow(
       /is not an entity name in any IFC schema/,
     );
   });
 
   it('rejects a bad name even when a good one is passed alongside it', () => {
-    const query = new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
     expect(() => query.ofType('IfcWall', 'IfcWal')).toThrow(/is not an entity name in any IFC schema/);
   });
 
   it('still allows an explicit query for the Unknown bucket itself', async () => {
-    const query = new IfcQuery(storeWithUnclassified('IFCPROPRIETARYVENDORTHING') as any);
+    const query = queryFor(storeWithUnclassified('IFCPROPRIETARYVENDORTHING'));
     const ids = await query.ofType('Unknown').ids();
     expect(ids).toEqual([20]);
+  });
+});
+
+/**
+ * The guard trims; the resolution must trim too.
+ *
+ * `IfcTypeEnumFromString` only uppercases, so a padded `' IfcWall '` misses
+ * `TYPE_STRING_TO_ENUM` and comes back `Unknown`. The guard then trims, finds
+ * `IfcWall` known, and does NOT throw - so the query runs against the Unknown
+ * bucket and answers with entities that are not walls, silently. Two
+ * normalisations that disagree is the whole defect; the name must be a name the
+ * enum table DOES map, or both paths yield Unknown for their own reasons and
+ * the test cannot see it. `' IfcDoorStyle '` is exactly that useless fixture -
+ * it is Unknown on both paths either way.
+ */
+describe('ofType() resolves a padded name through the same normalisation the guard uses', () => {
+  it('a padded mapped name matches its own type, not the Unknown bucket', async () => {
+    // Entity 10 is the IfcWall; entity 20 is the unclassified IfcChiller that
+    // the Unknown bucket holds. Answering [20] means the padding turned a wall
+    // query into an Unknown-bucket query.
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
+    expect(await query.ofType(' IfcWall ').ids()).toEqual([10]);
+  });
+
+  it('the unpadded name is unchanged by the trim', async () => {
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
+    expect(await query.ofType('IfcWall').ids()).toEqual([10]);
+  });
+
+  it('padding does not smuggle a genuine typo past the guard', () => {
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
+    expect(() => query.ofType('  IfcWal  ')).toThrow(GUARD_MESSAGE);
+    // The message quotes the string the caller actually passed.
+    expect(() => query.ofType('  IfcWal  ')).toThrow(/"  IfcWal  "/);
+  });
+
+  it('a padded name the enum table does not map still reaches the Unknown bucket', async () => {
+    // The other direction of the same normalisation: trimming must not start
+    // rejecting - or re-classifying - the standard-but-unmapped names.
+    const query = queryFor(storeWithUnclassified('IFCCHILLER'));
+    expect(await query.ofType(' IfcChiller ').ids()).toEqual([20]);
   });
 });
 
 describe('ofType() accepts standard IFC types the enum table does not map', () => {
   for (const typeName of STANDARD_BUT_UNMAPPED) {
     it(`${typeName} does not throw and still reaches the Unknown bucket`, async () => {
-      const query = new IfcQuery(storeWithUnclassified(typeName) as any);
+      const query = queryFor(storeWithUnclassified(typeName));
       expect(() => query.ofType(typeName)).not.toThrow();
       // The store's only unclassified entity is the one of this very type, so
       // the Unknown bucket answers the query correctly - as it did before the
@@ -146,7 +225,7 @@ describe('ofType() accepts standard IFC types the enum table does not map', () =
   }
 
   it('accepts a standard unmapped type in any casing, with surrounding space', () => {
-    const query = new IfcQuery(storeWithUnclassified('IfcChiller') as any);
+    const query = queryFor(storeWithUnclassified('IfcChiller'));
     expect(() => query.ofType('IFCCHILLER')).not.toThrow();
     expect(() => query.ofType('  ifcchiller  ')).not.toThrow();
   });
@@ -158,7 +237,7 @@ describe('ofType() accepts standard IFC types the enum table does not map', () =
  * and a correctly spelled query cannot reach.
  */
 describe('ofType() accepts every entity name in every schema this build reads', () => {
-  const query = () => new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+  const query = () => queryFor(storeWithUnclassified('IFCCHILLER'));
 
   /**
    * The upstream SchemaInfo tables carry EXPRESS *defined types*
@@ -190,15 +269,7 @@ describe('ofType() accepts every entity name in every schema this build reads', 
     const q = query();
     const names = Object.keys(SCHEMA_REGISTRY.entities);
     expect(names.length).toBeGreaterThan(700);
-    const rejected = names.filter((n) => {
-      try {
-        q.ofType(n);
-        return false;
-      } catch {
-        return true;
-      }
-    });
-    expect(rejected).toEqual([]);
+    expect(namesRejectedByGuard(q, names)).toEqual([]);
   });
 
   for (const [schema, table] of [
@@ -210,15 +281,7 @@ describe('ofType() accepts every entity name in every schema this build reads', 
       const q = query();
       const names = entityNames(table);
       expect(names.length).toBeGreaterThan(400);
-      const rejected = names.filter((n) => {
-        try {
-          q.ofType(n);
-          return false;
-        } catch {
-          return true;
-        }
-      });
-      expect(rejected).toEqual([]);
+      expect(namesRejectedByGuard(q, names)).toEqual([]);
     });
   }
 });
@@ -235,13 +298,13 @@ describe('ofType() still rejects names that are not IFC entity names', () => {
 
   for (const bad of NOT_IFC_ENTITY_NAMES) {
     it(`rejects ${JSON.stringify(bad)}`, () => {
-      const q = new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+      const q = queryFor(storeWithUnclassified('IFCCHILLER'));
       expect(() => q.ofType(bad)).toThrow(/is not an entity name in any IFC schema/);
     });
   }
 
   it('names the offending string and points at Unknown, without blaming spelling alone', () => {
-    const q = new IfcQuery(storeWithUnclassified('IFCCHILLER') as any);
+    const q = queryFor(storeWithUnclassified('IFCCHILLER'));
     let message = '';
     try {
       q.ofType('IfcWal');

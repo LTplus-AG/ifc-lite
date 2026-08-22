@@ -43,20 +43,18 @@ fn collect_with_timeout(content: String, root_id: u32) -> (u32, Vec<u32>) {
             (base.id, cutters.iter().map(|c| c.id).collect::<Vec<_>>())
         }));
     });
-    // Match the variant rather than `is_ok()`: `recv_timeout` returns Err for
+    // Variant-matched rather than `is_ok()`: `recv_timeout` returns Err for
     // Disconnected as well as Timeout, so a PANIC in the worker drops `tx` and
-    // reports as "did not terminate" — a confident wrong diagnosis pointing at
-    // a guard that is fine (#2945).
-    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(v) => v,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("collect_polygonal_chain hung (walk did not terminate)")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("collect_polygonal_chain's worker PANICKED (not a hang); \
-                    its panic is printed above")
-        }
-    };
+    // would report as "did not terminate" — a confident wrong diagnosis
+    // pointing at a guard that is fine (#2945). The split lives in
+    // `test_support::recv_or_diagnose`, which pins both directions.
+    let value = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(10),
+        "collect_polygonal_chain hung (walk did not terminate)",
+        "collect_polygonal_chain's worker PANICKED (not a hang); \
+         its panic is printed above",
+    );
     let _ = handle.join();
     value.expect("collect_polygonal_chain returned Err")
 }
@@ -76,16 +74,13 @@ fn collect_polygonal_chain_terminates_on_cyclic_first_operand() {
     });
 
     // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
-    let value = match rx.recv_timeout(std::time::Duration::from_secs(5)) {
-        Ok(v) => v,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("collect_polygonal_chain hung on a cyclic FirstOperand chain")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("collect_polygonal_chain's worker PANICKED on the cyclic fixture \
-                    (not a hang); its panic is printed above")
-        }
-    };
+    let value = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(5),
+        "collect_polygonal_chain hung on a cyclic FirstOperand chain",
+        "collect_polygonal_chain's worker PANICKED on the cyclic fixture \
+         (not a hang); its panic is printed above",
+    );
     let _ = handle.join();
 
     let (base_id, cutter_count) = value.expect("collect_polygonal_chain returned Err");
@@ -645,16 +640,13 @@ fn full_process_terminates_on_cyclic_boolean() {
         let _ = tx.send(result.is_ok());
     });
     // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
-    match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(_) => {}
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("full process() hung on a cyclic boolean chain")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("full process()'s worker PANICKED on the cyclic fixture (not a hang); \
-                    its panic is printed above")
-        }
-    }
+    let _ = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(10),
+        "full process() hung on a cyclic boolean chain",
+        "full process()'s worker PANICKED on the cyclic fixture (not a hang); \
+         its panic is printed above",
+    );
     let _ = handle.join();
 }
 
@@ -700,16 +692,13 @@ fn boolean_csg_mutual_recursion_terminates() {
     });
 
     // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
-    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(v) => v,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("Boolean/CSG mutual recursion did not terminate")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("the Boolean/CSG worker PANICKED (not a hang); \
-                    its panic is printed above")
-        }
-    };
+    let value = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(10),
+        "Boolean/CSG mutual recursion did not terminate",
+        "the Boolean/CSG worker PANICKED (not a hang); \
+         its panic is printed above",
+    );
     let _ = handle.join();
 
     // The cycle is reported, not silently swallowed: an operand that cannot be
@@ -740,16 +729,13 @@ fn csg_entry_point_is_guarded_too() {
     });
 
     // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
-    let value = match rx.recv_timeout(std::time::Duration::from_secs(10)) {
-        Ok(v) => v,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("CsgSolid entry point did not terminate")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("the CsgSolid entry point's worker PANICKED (not a hang); \
-                    its panic is printed above")
-        }
-    };
+    let value = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(10),
+        "CsgSolid entry point did not terminate",
+        "the CsgSolid entry point's worker PANICKED (not a hang); \
+         its panic is printed above",
+    );
     let _ = handle.join();
     value.expect_err("a cyclic operand must be an error from this entry point too");
 }
@@ -789,16 +775,13 @@ fn a_long_acyclic_boolean_csg_chain_terminates() {
         let _ = tx.send(result.map(|m| m.positions.len()).map_err(|e| e.to_string()));
     });
     // Variant-matched, not `is_ok()`: see `collect_with_timeout` (#2945).
-    let value = match rx.recv_timeout(std::time::Duration::from_secs(20)) {
-        Ok(v) => v,
-        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-            panic!("the operand chain bound did not terminate")
-        }
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-            panic!("the operand chain worker PANICKED (not a hang, so the chain bound \
-                    is not implicated); its panic is printed above")
-        }
-    };
+    let value = crate::test_support::recv_or_diagnose(
+        &rx,
+        std::time::Duration::from_secs(20),
+        "the operand chain bound did not terminate",
+        "the operand chain worker PANICKED (not a hang, so the chain bound \
+         is not implicated); its panic is printed above",
+    );
     let _ = handle.join();
     let err = value
         .expect_err("an over-long operand chain must be reported, not rendered half-built");

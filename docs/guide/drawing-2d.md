@@ -105,8 +105,8 @@ import {
   createTitleBlock,
   renderFrame,
   renderTitleBlock,
-  renderScaleBar,
   DEFAULT_SCALE_BAR,
+  DEFAULT_NORTH_ARROW,
   PAPER_SIZE_REGISTRY,
 } from '@ifc-lite/drawing-2d';
 
@@ -124,9 +124,15 @@ const titleBlock = createTitleBlock('standard');
 
 // Renderers return result objects, not raw SVG strings.
 const frameResult = renderFrame(paper, frame);
-const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds);
+
+// The scale bar and north arrow are drawn inside the title block; pass them
+// as the fourth `extras` argument rather than rendering them separately.
 const scale = { name: '1:100', factor: 100, useCase: 'Floor plans' };
-const scaleBarSvg = renderScaleBar(DEFAULT_SCALE_BAR, scale, { x: 20, y: 20 });
+const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds, [], {
+  scaleBar: DEFAULT_SCALE_BAR,
+  northArrow: DEFAULT_NORTH_ARROW,
+  scale,
+});
 
 const frameSvg = frameResult.svgElements;
 const titleBlockSvg = titleBlockResult.svgElements;

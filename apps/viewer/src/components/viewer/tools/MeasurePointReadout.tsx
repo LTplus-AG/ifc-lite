@@ -23,9 +23,20 @@
  * - **Render** — the shifted frame the renderer works in. Shown only when the
  *   pipeline actually shifted the model, since otherwise it is the same row
  *   twice under two labels.
- * - **Reference** — offset from a user-set datum. Shown once one is set.
+ * - **Datum** — the temporary reference point itself (#2737 §3), as a position
+ *   in the SAME frame and format as the Model row above, because that is what
+ *   it is: a point somebody picked. Shown once one is set.
+ * - **Relative** — the live point's offset FROM that datum. Also shown only
+ *   once one is set, and printed as signed per-axis deltas (`ΔX +2.500`) so it
+ *   cannot be read as a position. The two rows ship together on purpose: an
+ *   offset whose origin is off-screen or forgotten is a number nobody can act
+ *   on, so the datum is never left implied by the delta row's existence.
  * - **Map** — projected E/N/H and WGS84 lat/lon. Unchanged from #1674/#1679,
  *   and still gated on the Geo XYZ toggle and a usable IfcMapConversion.
+ *
+ * Only the Relative row is a delta; every other row is a position, and no
+ * datum is ever subtracted from one. A relative reading and a georeferenced
+ * one are therefore never the same number wearing different labels.
  */
 
 import { Crosshair, Globe, MapPin, XCircle } from 'lucide-react';
@@ -90,6 +101,13 @@ export function MeasurePointReadout() {
   const offset = referencePoint
     ? relativeOffset(coords.local, viewerToIfcAxes(referencePoint))
     : null;
+  // The datum's own position, resolved through the SAME frame reconstruction
+  // as the live point so the two rows are comparable by eye. Derived on every
+  // render from the store rather than captured when the datum was set: moving
+  // or clearing the reference re-renders this component, so a displayed offset
+  // and the datum printed beside it can never disagree with each other or
+  // outlive the datum they were taken from.
+  const datum = referencePoint ? pointCoordinates(referencePoint, frame) : null;
   const enh = showGeo && anchor ? projectedEnh(livePoint, anchor) : null;
 
   return (
@@ -132,9 +150,19 @@ export function MeasurePointReadout() {
         {coords.shifted && (
           <CoordRow label="Render" value={formatCoordinateTriple(coords.local)} hint="m" />
         )}
+        {datum && (
+          <CoordRow
+            label="Datum"
+            // A position, not a delta — same frame, same formatter, same
+            // unlabelled metres as the Model row, because reading the two
+            // against each other is the point of showing it at all.
+            value={formatCoordinateTriple(datum.world)}
+            hint="m"
+          />
+        )}
         {offset && (
           <CoordRow
-            label="Rel. ref"
+            label="Relative"
             // dx/dy/dz are a LENGTH DELTA, not a raw model coordinate — unlike
             // the Model/Render/Map rows above, this triple must honour the
             // same LENGTHUNIT override as the trailing distance hint, or the

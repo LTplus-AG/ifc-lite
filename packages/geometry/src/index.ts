@@ -43,7 +43,7 @@ export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
 
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
-export { CoordinateHandler } from './coordinate-handler.js';
+export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is

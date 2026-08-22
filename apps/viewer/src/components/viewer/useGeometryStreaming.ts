@@ -21,7 +21,7 @@
 import { useEffect, useRef, type MutableRefObject } from 'react';
 import type { Renderer, Scene } from '@ifc-lite/renderer';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
-import { decodeInstancedShard } from '@ifc-lite/geometry';
+import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import { toast } from '../ui/toast.js';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
@@ -136,7 +136,10 @@ const DEFAULT_BOUNDS = {
   max: { x: 100, y: 100, z: 100 },
 };
 
-const MAX_VALID_COORD = 10000;
+// The per-vertex corruption filter `computeBounds` applies before fitting the
+// camera. Shared with `CoordinateHandler`, `localParsingUtils` and
+// `viewportUtils` — see `NORMAL_COORD_THRESHOLD_M`.
+const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 // Outlier-robust camera-fit bounds (issue #1394). A handful of far-flung
 // meshes (a stray covering 600 m off, a detached out-building) blow the raw

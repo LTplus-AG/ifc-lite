@@ -224,6 +224,11 @@ const LOAD_ERROR_PATTERNS = [
   // The cost is a genuine `X is not a function` thrown by product code being
   // downgraded to INCONCLUSIVE. That is the loud, self-correcting direction; a
   // false OBSERVED is the silent one this whole tool exists to prevent.
+  // NOTE, and it is the known hole: this covers only the CALLABLE half. A
+  // removed export that is read (`CONFIG.limit` -> "Cannot read properties of
+  // undefined") or compared directly (`expect(LIMIT).toBe(5)` -> "expected
+  // undefined to be 5") still reads as an assertion failure and yields a false
+  // OBSERVED. See limitation 7 in check-test-revert-oracle.mjs.
   /TypeError: .* is not a (?:function|constructor)/,
   /The requested module/,
   /Missing "\.\/[^"]*" specifier in/,

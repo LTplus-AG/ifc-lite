@@ -559,12 +559,32 @@ process.exit(exitCode);
  *    reported OBSERVED. The synthetic fixtures in `revert-oracle.test.mjs` are
  *    verbatim captures for exactly this reason; refresh them on a major bump.
  *
- * 7. FALSE "OBSERVED" IS POSSIBLE, in one known shape: a runner that fails to
- *    load a module and reports it as a NAMED test rather than as a file, with
- *    no recognised load-error string in its output. Nothing in this repo's
- *    three runners does that today, and the ReferenceError pattern is
- *    deliberately over-broad to keep the bias toward INCONCLUSIVE, but the
- *    guarantee is a heuristic, not a proof.
+ * 7. FALSE "OBSERVED" IS POSSIBLE, and vitest DOES produce the shape today.
+ *    The shape is: the revert removes a named export, the runner binds the
+ *    import to `undefined` instead of failing to link, and the resulting
+ *    failure is reported as a NAMED test with no recognised load-error string.
+ *    `node --test` (via tsx) is immune -- Node's ESM loader throws
+ *    `SyntaxError: ... does not provide an export named X` at instantiation --
+ *    and cargo is immune because Rust cannot compile a dead binding at all.
+ *    Vitest is not: vite's SSR transform rewrites the import to a property
+ *    read, so a removed export becomes `undefined` at use site. Measured, on
+ *    vitest 4.1.11:
+ *      - removed export CALLED as a function/class ->
+ *        `TypeError: X is not a function` / `... is not a constructor`.
+ *        Caught: that pattern is in LOAD_ERROR_PATTERNS.
+ *      - removed export whose member is READ (`CONFIG.limit`) ->
+ *        `TypeError: Cannot read properties of undefined (reading 'limit')`
+ *        under a `Failed Tests` banner. NOT caught -> reads as
+ *        `assertion-failure` -> false OBSERVED.
+ *      - removed export compared DIRECTLY (`expect(LIMIT).toBe(5)`) ->
+ *        an ordinary `expected undefined to be 5` AssertionError, textually
+ *        indistinguishable from a genuine RED. No pattern can catch this one;
+ *        closing it needs the removed export NAMES from the patch to be
+ *        cross-checked against the failure text, which this tool does not do.
+ *    So on a vitest package, an OBSERVED earned by a revert that deleted an
+ *    export must be read by a human before it is trusted. The ReferenceError
+ *    and `is not a function` patterns bias toward INCONCLUSIVE where they can,
+ *    but the guarantee is a heuristic, not a proof.
  *
  * 8. RUST IS COARSER STILL. `#[cfg(test)] mod tests` lives inside the file
  *    being reverted, so the automatic mode on a Rust branch will usually report

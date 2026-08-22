@@ -987,7 +987,39 @@ export function Drawing2DCanvas({
       // 6. Draw scale bar at BOTTOM LEFT of title block
       // Uses actual drawingTransform.scaleFactor which accounts for dynamic scaling
       // ─────────────────────────────────────────────────────────────────────
-      if (scaleBar.visible && tbH > 10) {
+      // `calculateOptimalScaleBarLength` returns 0 as a deliberate sentinel for
+      // "no usable bar at this scale and paper budget", pinned by
+      // scale-bar-ladder.test.ts. The EXPORT renderer honours it and declines
+      // to draw. This canvas did not: it sizes the bar by doubling until it
+      // fits, and `0 * 2` is 0, so the loop below never terminates. It did not
+      // draw a wrong bar, it wedged the render.
+      //
+      // So this is the canvas agreeing with the exporter about what an unusable
+      // length means, not a second opinion about it.
+      //
+      // The three added clauses do two different jobs. Measured, not assumed:
+      //
+      //     totalLengthM=0,  scaleFactor=10   HANGS   (0 * 2 is 0, forever)
+      //     totalLengthM=-1, scaleFactor=10   HANGS   (doubles to -Infinity,
+      //                                                which stays < 100)
+      //     totalLengthM=5,  scaleFactor=NaN  terminates
+      //     totalLengthM=5,  scaleFactor=Inf  terminates
+      //     totalLengthM=5,  scaleFactor=0    terminates
+      //
+      // `scaleBar.totalLengthM > 0` is the clause preventing the hang. The two
+      // scaleFactor clauses prevent a drawn bar instead: at scaleFactor 0,
+      // `actualTotalLength` is 0/0 and the label renders "NaNcm".
+      //
+      // Guards only the scale bar: the north arrow below is drawn after it in
+      // this same function, so an early return would have silently dropped it.
+      // That was my first attempt, and the test pins that it no longer happens.
+      if (
+        scaleBar.visible &&
+        tbH > 10 &&
+        scaleBar.totalLengthM > 0 &&
+        Number.isFinite(drawingTransform.scaleFactor) &&
+        drawingTransform.scaleFactor > 0
+      ) {
         // Position: bottom left with small margin
         const sbX = tbX + 3;
         const sbY = tbY + tbH - 8; // 8mm from bottom (leaves room for label)

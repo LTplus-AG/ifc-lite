@@ -28,6 +28,19 @@ those and leaves the overlay channel alone. The loader's own IFC style pass is
 deliberately not treated as an override, so a reset restores the model's IFC
 colors rather than stripping them.
 
+For integrators, that second half is a behaviour change on a published surface
+and not only a fix: `RESET_COLORS` no longer clears `pendingColorUpdates`. A
+host that had been sending it to clear a lens, IDS, clash or schedule overlay
+was relying on a side effect that is now gone, and must clear that overlay
+through the command that owns it. `RESET_COLORS` only undoes `SET_COLORS`.
+
+Also worth knowing before you rely on it: `RESET_COLORS` restores the entities
+the viewer holds in its primary `geometryResult`, which is the FIRST loaded
+model. In a federated embed with more than one model, `SET_COLORS` still
+colours entities in the later models and `RESET_COLORS` does not restore them,
+while both commands ack success. Single-model embeds — the common case — are
+unaffected.
+
 `ENTITY_HOVERED` was declared, exposed by the SDK, and never emitted — the SDK
 tests passed because they fabricated the event themselves. The viewer's hover
 pipeline was already there but gated behind a toolbar toggle the embed has no

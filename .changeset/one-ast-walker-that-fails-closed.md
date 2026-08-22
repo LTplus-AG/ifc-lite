@@ -41,9 +41,11 @@ these callers are declared to return a result. The result now carries
 already treat `depthExceeded`. This becomes reachable the first time acorn is
 upgraded ahead of `acorn-walk` — the skew that landed class static blocks,
 import attributes and `await using`. Verified against acorn 8.18.0 /
-acorn-walk 8.3.5: no node type acorn emits today is missing a base, and the
-tests reproduce the skew by removing one `base` entry rather than waiting for an
-upgrade.
+acorn-walk 8.3.5: no node type the walk actually reaches is missing a base.
+(`ExportSpecifier` has no `base` entry, but `base.ExportNamedDeclaration` never
+descends into `specifiers`, so the walk never dispatches on it — it is unreached,
+not unwalkable.) The tests reproduce the skew by removing one `base` entry rather
+than waiting for an upgrade.
 
 **Two comments that named a number acorn does not have.** The walker's docstring
 claimed acorn "gives up at roughly 1200 source levels" and `source-wrap.ts`

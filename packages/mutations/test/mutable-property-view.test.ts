@@ -95,6 +95,40 @@ describe('MutablePropertyView', () => {
     expect(edited.oldValue).toBeNull();
   });
 
+  it('a NEW property inside an existing base pset is still a CREATE (the base check is per-property, not per-pset)', () => {
+    // The third direction of the same rule, and the one every fixture here
+    // was blind to: each base pset above contains exactly the property being
+    // set, so "this pset exists in base" and "this property exists in base"
+    // coincide and a per-PSET existence check reads as correct.
+    //
+    // Verified by mutation: relaxing the disjunct to
+    // `basePsets.some(p => p.name === psetName)` — dropping the inner
+    // `p.properties.some(prop => prop.name === propName)` — left all 28 tests
+    // green, while it classifies every brand-new property added to an
+    // existing pset as an UPDATE with `oldValue: null`. The viewer's undo
+    // handler decides by mutation TYPE (mutationSlice.ts), so undoing that
+    // add would replay the null and leave the property behind as a
+    // present-but-unset row instead of removing it.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 11 ? [{
+      name: 'Pset_WallCommon',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },
+      ],
+    }] : []);
+
+    const created = view.setProperty(11, 'Pset_WallCommon', 'LoadBearing', true, PropertyValueType.Boolean);
+    expect(created.type).toBe('CREATE_PROPERTY');
+    // A property that was never there has no old value to restore.
+    expect(created.oldValue).toBeNull();
+    // The sibling that IS in base still classifies as an UPDATE, so this is
+    // a per-property distinction and not a blanket "base psets are absent".
+    const updated = view.setProperty(11, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+    expect(updated.type).toBe('UPDATE_PROPERTY');
+    expect(updated.oldValue).toBe(true);
+  });
+
   // The other direction of the rule above: "present in base" must stop meaning
   // present once the user has deleted it. Counting a masked base row as present
   // makes the re-set an UPDATE with `oldValue: null`, and the viewer's undo

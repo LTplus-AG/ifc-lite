@@ -53,10 +53,18 @@ const VIEWPORT = { x: 10, y: 10, width: 200, height: 100 };
 /** 1:100 -> `paperScale` = 1000/100 = 10 mm per metre. */
 const SCALE = { name: '1:100', factor: 100, useCase: 'test' };
 
-/** A 10m x 6m drawing sitting at x 2..12, y 3..9 — asymmetric about BOTH
+/** A 10m x 6m drawing sitting at x 2..12, y 5..11 — asymmetric about BOTH
  *  axes, so dropping either flip correction (or either flip itself) moves
- *  the drawing measurably. */
-const BOUNDS = { minX: 2, minY: 3, maxX: 12, maxY: 9 };
+ *  the drawing measurably.
+ *
+ *  The Y range is 5..11 rather than 3..9 for a second reason: at 3..9 the
+ *  corrected 'down' translateY works out to exactly 0 on this viewport
+ *  (120 - (9+3)*10), and a zero translate is indistinguishable from no
+ *  translate at all. Every 'down' assertion then reduces to `y * scaleFactor`
+ *  and an implementation that simply returned 0 for the unflipped axis passed
+ *  the whole file — verified by mutation. At 5..11 the corrected value is
+ *  -20mm, so it has to be computed. */
+const BOUNDS = { minX: 2, minY: 5, maxX: 12, maxY: 11 };
 
 /**
  * Hand-computed from `calculateDrawingTransform` plus the per-axis
@@ -67,14 +75,14 @@ const BOUNDS = { minX: 2, minY: 3, maxX: 12, maxY: 9 };
  *   fitScale          = min(200*.95/100, 100*.95/60, 1)   = 1
  *   scaleFactor       = 10 * 1                            = 10
  *   base.translateX   = 10 + (200-100)/2 - 2*10           = 40
- *   base.translateY   = 10 + (100-60)/2 + 9*10            = 120
+ *   base.translateY   = 10 + (100-60)/2 + 11*10           = 140
  *
  *   'down'  (flipX=false, flipY=false):
- *      translateY = 120 - (9+3)*10 = 0   ; translateX = 40
+ *      translateY = 140 - (11+5)*10 = -20 ; translateX = 40
  *   'front' (flipX=false, flipY=true):
- *      translateY = 120                  ; translateX = 40
+ *      translateY = 140                   ; translateX = 40
  *   'side'  (flipX=true,  flipY=true):
- *      translateY = 120                  ; translateX = 40 + (2+12)*10 = 180
+ *      translateY = 140                   ; translateX = 40 + (2+12)*10 = 180
  *
  * and the paper position of a model point is
  *   ((flipX ? -x : x) * scaleFactor + translateX,
@@ -88,12 +96,12 @@ const EXPECTED: Record<SectionAxis, {
   /** where the drawing's (maxX, maxY) corner lands, in paper mm */
   maxCorner: { x: number; y: number };
 }> = {
-  // (2,3) -> (2*10+40, 3*10+0)      = (60, 30)  ; (12,9) -> (160, 90)
-  down: { translateX: 40, translateY: 0, minCorner: { x: 60, y: 30 }, maxCorner: { x: 160, y: 90 } },
-  // (2,3) -> (2*10+40, -3*10+120)   = (60, 90)  ; (12,9) -> (160, 30)
-  front: { translateX: 40, translateY: 120, minCorner: { x: 60, y: 90 }, maxCorner: { x: 160, y: 30 } },
-  // (2,3) -> (-2*10+180, -3*10+120) = (160, 90) ; (12,9) -> (60, 30)
-  side: { translateX: 180, translateY: 120, minCorner: { x: 160, y: 90 }, maxCorner: { x: 60, y: 30 } },
+  // (2,5) -> (2*10+40, 5*10-20)      = (60, 30)  ; (12,11) -> (160, 90)
+  down: { translateX: 40, translateY: -20, minCorner: { x: 60, y: 30 }, maxCorner: { x: 160, y: 90 } },
+  // (2,5) -> (2*10+40, -5*10+140)    = (60, 90)  ; (12,11) -> (160, 30)
+  front: { translateX: 40, translateY: 140, minCorner: { x: 60, y: 90 }, maxCorner: { x: 160, y: 30 } },
+  // (2,5) -> (-2*10+180, -5*10+140)  = (160, 90) ; (12,11) -> (60, 30)
+  side: { translateX: 180, translateY: 140, minCorner: { x: 160, y: 90 }, maxCorner: { x: 60, y: 30 } },
 };
 
 const SCALE_FACTOR = 10;
@@ -215,10 +223,10 @@ describe('resolveSheetTransform — the pinned-placement cache', () => {
     assert.equal(resolved.fromCache, true);
     assert.deepEqual(resolved.transform, { translateX: 33, translateY: 44, scaleFactor: 5 });
     // Absolute: the held placement is applied with the axis's own flips.
-    // (2,3) -> (-2*5 + 33, -3*5 + 44) = (23, 29).
+    // (2,5) -> (-2*5 + 33, -5*5 + 44) = (23, 19).
     const corner = place(resolved, BOUNDS.minX, BOUNDS.minY);
     closeTo(corner.x, 23, 'held placement, (minX,minY) paper x');
-    closeTo(corner.y, 29, 'held placement, (minX,minY) paper y');
+    closeTo(corner.y, 19, 'held placement, (minX,minY) paper y');
   });
 
   it('holds the placement across a bounds change — the regenerate-at-a-new-elevation case', () => {

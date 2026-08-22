@@ -504,16 +504,24 @@ function buildSheetWithRoundViewport(id = 'sheet-round'): DrawingSheet {
   return { ...sheet, id, viewportBounds: { ...ROUND_VIEWPORT } };
 }
 
-/** A 10m x 6m section at x 2..12, y 3..9 — asymmetric about BOTH axes, so
+/** A 10m x 6m section at x 2..12, y 5..11 — asymmetric about BOTH axes, so
  *  neither flip correction can be dropped without moving the drawing. The
- *  line runs (2,3) -> (12,9), so the svg's first `<line>` reports where
- *  those two corners land. */
+ *  line runs (2,5) -> (12,11), so the svg's first `<line>` reports where
+ *  those two corners land.
+ *
+ *  Y is 5..11 rather than 3..9 because at 3..9 the corrected 'down'
+ *  translateY works out to exactly 0 on `ROUND_VIEWPORT` (120 - (9+3)*10),
+ *  and a zero translate is indistinguishable from no translate at all: an
+ *  implementation returning a hard 0 for the unflipped axis passed this
+ *  file, `sheet-transform.test.ts` and
+ *  `Drawing2DCanvas.section-axis-transform.test.tsx` together — verified by
+ *  mutation. At 5..11 the corrected value is -20mm and has to be computed. */
 function buildAsymmetricDrawing(): Drawing2D {
   return {
     ...buildPlanDrawing(),
     lines: [
       {
-        line: { start: { x: 2, y: 3 }, end: { x: 12, y: 9 } },
+        line: { start: { x: 2, y: 5 }, end: { x: 12, y: 11 } },
         category: 'projection',
         visibility: 'visible',
         entityId: 1,
@@ -522,7 +530,7 @@ function buildAsymmetricDrawing(): Drawing2D {
         depth: 0,
       },
     ],
-    bounds: { min: { x: 2, y: 3 }, max: { x: 12, y: 9 } },
+    bounds: { min: { x: 2, y: 5 }, max: { x: 12, y: 11 } },
   };
 }
 
@@ -533,16 +541,16 @@ function buildAsymmetricDrawing(): Drawing2D {
  *   fitScale        = min(200*.95/100, 100*.95/60, 1)  = 1
  *   scaleFactor     = 10
  *   base.translateX = 10 + (200-100)/2 - 2*10          = 40
- *   base.translateY = 10 + (100-60)/2 + 9*10           = 120
+ *   base.translateY = 10 + (100-60)/2 + 11*10          = 140
  *
- *   'down'  (flipX=false, flipY=false): tX 40,  tY 0
- *   'front' (flipX=false, flipY=true) : tX 40,  tY 120
- *   'side'  (flipX=true,  flipY=true) : tX 180, tY 120
+ *   'down'  (flipX=false, flipY=false): tX 40,  tY -20
+ *   'front' (flipX=false, flipY=true) : tX 40,  tY 140
+ *   'side'  (flipX=true,  flipY=true) : tX 180, tY 140
  *
  * so the line's endpoints land at (paper mm):
- *   'down'  (2,3) -> (60, 30)  ; (12,9) -> (160, 90)
- *   'front' (2,3) -> (60, 90)  ; (12,9) -> (160, 30)
- *   'side'  (2,3) -> (160, 90) ; (12,9) -> (60, 30)
+ *   'down'  (2,5) -> (60, 30)  ; (12,11) -> (160, 90)
+ *   'front' (2,5) -> (60, 90)  ; (12,11) -> (160, 30)
+ *   'side'  (2,5) -> (160, 90) ; (12,11) -> (60, 30)
  */
 const EXPECTED_ENDPOINTS: Record<'down' | 'front' | 'side', { x1: number; y1: number; x2: number; y2: number }> = {
   down: { x1: 60, y1: 30, x2: 160, y2: 90 },
@@ -611,12 +619,12 @@ describe('generateSheetSVG — pinned placement, shared with the preview', () =>
     });
     const { x1, y1, x2, y2 } = parseLineEndpoints(svg);
     // 'side' flips both axes, so with the held placement
-    // (2,3)  -> (-2*5 + 33,  -3*5 + 44) = (23, 29)
-    // (12,9) -> (-12*5 + 33, -9*5 + 44) = (-27, -1)
+    // (2,5)   -> (-2*5 + 33,  -5*5 + 44)  = (23, 19)
+    // (12,11) -> (-12*5 + 33, -11*5 + 44) = (-27, -11)
     closeTo(x1, 23, 'held x1');
-    closeTo(y1, 29, 'held y1');
+    closeTo(y1, 19, 'held y1');
     closeTo(x2, -27, 'held x2');
-    closeTo(y2, -1, 'held y2');
+    closeTo(y2, -11, 'held y2');
     // And that is NOT what an unpinned fit of these bounds would produce.
     assert.notEqual(x1, EXPECTED_ENDPOINTS.side.x1);
   });

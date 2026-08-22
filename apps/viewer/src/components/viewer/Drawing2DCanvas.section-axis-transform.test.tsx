@@ -86,10 +86,18 @@ function installCanvasStub(): { restore: () => void; segments: Segment[] } {
 /** Viewport centre is exactly (110, 60) mm on paper. */
 const VIEWPORT = { x: 10, y: 10, width: 200, height: 100 };
 
-/** Bounds asymmetric about BOTH axes (x 2..12, y 3..9), so neither flip
+/** Bounds asymmetric about BOTH axes (x 2..12, y 5..11), so neither flip
  *  correction can be dropped without moving the drawing. A drawing centred
- *  on the origin would make this untestable. */
-const BOUNDS = { min: { x: 2, y: 3 }, max: { x: 12, y: 9 } };
+ *  on the origin would make this untestable.
+ *
+ *  Y is 5..11 rather than 3..9 because at 3..9 the corrected 'down'
+ *  translateY comes out to exactly 0 on this viewport (120 - (9+3)*10), and a
+ *  zero translate is indistinguishable from no translate at all: every 'down'
+ *  assertion reduces to `y * scaleFactor`, and an implementation returning a
+ *  hard 0 for the unflipped axis passed this file, `sheet-transform.test.ts`
+ *  and `useDrawingExport.pdfSheet.test.tsx` together — verified by mutation.
+ *  At 5..11 the corrected value is -20mm and has to be computed. */
+const BOUNDS = { min: { x: 2, y: 5 }, max: { x: 12, y: 11 } };
 
 function buildDrawing(): Drawing2D {
   return {
@@ -159,24 +167,24 @@ function buildSheet(id = 'sheet-side'): DrawingSheet {
  *   fitScale        = min(200*.95/100, 100*.95/60, 1)   = 1
  *   scaleFactor     = 10
  *   base.translateX = 10 + (200-100)/2 - 2*10           = 40
- *   base.translateY = 10 + (100-60)/2 + 9*10            = 120
+ *   base.translateY = 10 + (100-60)/2 + 11*10           = 140
  *
- *   'down'  (flipX=false, flipY=false): translateX 40,  translateY 0
- *   'front' (flipX=false, flipY=true) : translateX 40,  translateY 120
- *   'side'  (flipX=true,  flipY=true) : translateX 180, translateY 120
+ *   'down'  (flipX=false, flipY=false): translateX 40,  translateY -20
+ *   'front' (flipX=false, flipY=true) : translateX 40,  translateY 140
+ *   'side'  (flipX=true,  flipY=true) : translateX 180, translateY 140
  */
 const EXPECTED: Record<'down' | 'front' | 'side', {
   translateX: number;
   translateY: number;
-  /** where the fixture's line, (2,3) -> (12,9), is painted in paper mm */
+  /** where the fixture's line, (2,5) -> (12,11), is painted in paper mm */
   segment: { x1: number; y1: number; x2: number; y2: number };
 }> = {
-  // (2,3) -> (2*10+40, 3*10+0)      = (60, 30)  ; (12,9) -> (160, 90)
-  down: { translateX: 40, translateY: 0, segment: { x1: 60, y1: 30, x2: 160, y2: 90 } },
-  // (2,3) -> (2*10+40, -3*10+120)   = (60, 90)  ; (12,9) -> (160, 30)
-  front: { translateX: 40, translateY: 120, segment: { x1: 60, y1: 90, x2: 160, y2: 30 } },
-  // (2,3) -> (-2*10+180, -3*10+120) = (160, 90) ; (12,9) -> (60, 30)
-  side: { translateX: 180, translateY: 120, segment: { x1: 160, y1: 90, x2: 60, y2: 30 } },
+  // (2,5) -> (2*10+40, 5*10-20)      = (60, 30)  ; (12,11) -> (160, 90)
+  down: { translateX: 40, translateY: -20, segment: { x1: 60, y1: 30, x2: 160, y2: 90 } },
+  // (2,5) -> (2*10+40, -5*10+140)    = (60, 90)  ; (12,11) -> (160, 30)
+  front: { translateX: 40, translateY: 140, segment: { x1: 60, y1: 90, x2: 160, y2: 30 } },
+  // (2,5) -> (-2*10+180, -5*10+140)  = (160, 90) ; (12,11) -> (60, 30)
+  side: { translateX: 180, translateY: 140, segment: { x1: 160, y1: 90, x2: 60, y2: 30 } },
 };
 
 /** Assert exactly one recorded segment matches `want`. The frame, grid and
@@ -283,9 +291,9 @@ describe('Drawing2DCanvas sheet placement is axis-correct, including the flipX a
     const { written, segments } = draw('side', sheet, { ...held }, true);
     assert.deepEqual(written, held, 'a pinned draw with a valid cache entry must keep the held placement untouched');
     // Absolute: 'side' flips both axes, so with the held placement
-    // (2,3) -> (-2*5 + 33, -3*5 + 44) = (23, 29) and
-    // (12,9) -> (-12*5 + 33, -9*5 + 44) = (-27, -1).
-    assertPainted(segments, { x1: 23, y1: 29, x2: -27, y2: -1 }, 'held placement drawing line');
+    // (2,5) -> (-2*5 + 33, -5*5 + 44) = (23, 19) and
+    // (12,11) -> (-12*5 + 33, -11*5 + 44) = (-27, -11).
+    assertPainted(segments, { x1: 23, y1: 19, x2: -27, y2: -11 }, 'held placement drawing line');
   });
 
   it('recomputes when NOT pinned, even with a key-valid cache entry present', () => {

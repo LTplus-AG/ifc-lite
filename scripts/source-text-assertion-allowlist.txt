@@ -26,9 +26,14 @@ apps/viewer/src/hooks/modelLoadedGeometryProps.test.ts                    # wiri
 apps/viewer/src/utils/aggregation.test.ts                                   # TWO assertions (was one; #2680 added the shared-bounds-lookup guard for the same reason) (the SearchModal.text.tsx half converted behaviourally). Viewport.tsx's `setCameraCallbacks({ frameSelection, resolveHighlightIds })` sits inside `renderer.init().then(...)`, and `renderer.init()` REJECTS under happy-dom even with `navigator.gpu` stubbed (no real adapter/device, no WebGPU canvas context) -- confirmed empirically, not asserted -- so the callbacks this test pins are never registered in-harness.
 
 # ── Detector false positives: listed so the ratchet passes, not to be converted ──
-# The detector is deliberately lexical rather than data-flow (see the script
-# header), so it cannot tell "read a production module and assert on its text"
-# from "read the artifact this tool just GENERATED and assert on it", nor a text
-# predicate applied to source from one applied to a path.
-apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The hits are an ARRAY `.includes` and two PATH checks (`file.endsWith('.tsx')`) -- no assertion reads text.
+# The detector now requires the PAIRING (a predicate applied to the value a read
+# produced), which retired the whole "reads somewhere, asserts somewhere" class
+# of false positive. What survives is the price of the remaining approximation:
+# taint is tracked over one flat, unscoped name set, so a name that happens to
+# be reused elsewhere is tainted everywhere. Over-tainting is the deliberate
+# direction -- it makes the gate stricter, and under-tainting is how a ratchet
+# turns into decoration. It still cannot tell "read a production module and
+# assert on its text" from "read the artifact this tool just GENERATED and
+# assert on it".
+apps/viewer/src/components/viewer/toolbar-parity.test.ts                    # every assertion is on the TypeScript AST. The surviving hits are PATH checks (`spec.startsWith('@/')`, `base.endsWith('.js')`) and an array-key `.startsWith`, on names the flat taint set reaches from an unrelated read -- no assertion reads source text.
 packages/create-ifc-lite/test/config-fixers.test.ts                         # asserts on the `vite.config.ts` the scaffolder writes into a temp dir, i.e. on its OUTPUT. Nothing here reads a production source file.

@@ -784,3 +784,39 @@ fn malformed_mutations_json_is_an_error_not_a_silent_no_op() {
     let result = export_step_json(&[], None, None, "{not valid json");
     assert!(result.is_err(), "malformed mutations_json must be reported, not swallowed");
 }
+
+#[test]
+fn a_valid_mutations_json_is_still_applied() {
+    // The other half of the rule the malformed case states. Both tests above
+    // exercise payloads that never reach `apply`: `""` short-circuits before
+    // `serde_json::from_str`, and `"{not valid json"` stops at the parse. So
+    // with those two alone, a change that parsed every valid payload and then
+    // threw the mutations away would be GREEN -- which is the same silent
+    // discard this PR exists to remove, just reached by a different route.
+    // Measured: stubbing the non-empty branch to `MutationsJson::default()`
+    // after a successful parse left all 260 tests in this crate passing.
+    //
+    // Inline source, no fixture: this must run in every environment, including
+    // a local tree with no `pnpm fixtures`.
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n",
+        "FILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#1=IFCWALL('g',$,'OriginalName',$,$,$,$,$,$);\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    let payload = r#"{"attributeUpdates":[{"expressId":1,"index":2,"value":"'RenamedByPayload'"}],
+                      "propertyMutations":[{"expressId":1,"psetName":"NewSet","propName":"P","value":"IFCLABEL('v')"}]}"#;
+
+    let step = export_step_json(src.as_bytes(), None, None, payload).expect("a valid payload exports");
+
+    let wall = step.lines().find(|l| l.starts_with("#1=")).expect("wall line present");
+    assert!(
+        wall.contains("'RenamedByPayload'"),
+        "attributeUpdates from the JSON payload must reach the output: {wall}"
+    );
+    assert!(!wall.contains("'OriginalName'"), "the old name must be gone: {wall}");
+    assert!(
+        step.contains("'NewSet'") && step.contains("IFCLABEL('v')"),
+        "propertyMutations from the JSON payload must reach the output too"
+    );
+}

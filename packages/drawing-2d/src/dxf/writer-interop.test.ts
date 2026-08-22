@@ -222,11 +222,21 @@ describe('DXF writer against the R12 group codes themselves (no parser involved)
   });
 
   it('uses no group code that only exists from R13 on', () => {
-    // 5 (handle), 100 (subclass marker), 330 (owner) and 370 (lineweight) are
-    // all post-R12; emitting one while declaring AC1009 makes a hybrid file
-    // that strict readers repair or reject.
-    for (const forbidden of ['5', '100', '330', '370', '410', '420']) {
+    // 100 (subclass marker), 330 (owner), 370 (lineweight), 410 (layout) and
+    // 420 (true colour) are all post-R12; emitting one while declaring AC1009
+    // makes a hybrid file that strict readers repair or reject.
+    for (const forbidden of ['100', '330', '370', '410', '420']) {
       expect(p.some(([c]) => c === forbidden), `group ${forbidden} is post-R12`).toBe(false);
     }
+  });
+
+  it('emits no entity handles, so no $HANDLING/$HANDSEED contract is implied', () => {
+    // Group 5 is NOT post-R12 — R12 permits optional handles. This pins a
+    // deliberate choice of ours, not a version rule: we emit none, and so we
+    // owe no $HANDLING=1 header or $HANDSEED above every handle used. A writer
+    // that starts emitting 5 must supply both, and should update this test
+    // rather than delete it.
+    expect(p.some(([c]) => c === '5'), 'group 5 (handle) must stay absent').toBe(false);
+    expect(p.some(([c, v]) => c === '9' && v === '$HANDLING')).toBe(false);
   });
 });

@@ -4,7 +4,7 @@
 
 import { calculateDrawingTransformForAxis, type DrawingSheet } from '@ifc-lite/drawing-2d';
 import { axisFlipForSection, type SectionAxis } from '@/hooks/pdfSectionLayout';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from './sheet-geometry-key';
+import { sheetTransformCacheKeyOf, type CachedSheetTransform } from './sheet-geometry-key';
 
 /** Drawing bounds in the flat `minX/minY/maxX/maxY` shape
  *  `calculateDrawingTransformForAxis` takes (model units, metres). */
@@ -17,8 +17,8 @@ export interface DrawingBoundsRect {
 
 export interface ResolveSheetTransformArgs {
   /** The sheet the drawing is being placed on. Supplies the viewport and the
-   *  paper scale, and (via {@link sheetGeometryKeyOf}) the key the cached
-   *  entry is validated against. */
+   *  paper scale, and (with `axis`, via {@link sheetTransformCacheKeyOf}) the
+   *  key the cached entry is validated against. */
   sheet: DrawingSheet;
   /** Bounds of the drawing being placed. */
   drawingBounds: DrawingBoundsRect;
@@ -39,8 +39,10 @@ export interface ResolvedSheetTransform {
    *  cannot pair one axis's transform with another axis's flips. */
   flipX: boolean;
   flipY: boolean;
-  /** `sheetGeometryKeyOf(sheet)` — what a caller that owns the cache must tag
-   *  a freshly computed entry with. */
+  /** `sheetTransformCacheKeyOf(sheet, axis)` — what a caller that owns the
+   *  cache must tag a freshly computed entry with. It covers the axis as well
+   *  as the sheet geometry, so an entry can never be served to a resolve on a
+   *  different axis; see {@link sheetTransformCacheKeyOf}. */
   key: string | null;
   /** True when `transform` came from `cached` rather than being recomputed.
    *  A caller that owns the cache writes only when this is false; a caller
@@ -76,10 +78,10 @@ export interface ResolvedSheetTransform {
  * the entry itself when `fromCache` is false. See `useViewControls.ts`'s
  * `cachedSheetTransformRef` docs for the invalidation rules.
  *
- * The cached entry is validated against the CURRENT sheet's geometry key
- * before reuse rather than trusted because it is present — see
- * {@link sheetGeometryKeyOf} for why the write-site clear alone is not
- * enough.
+ * The cached entry is validated against the CURRENT sheet's geometry key AND
+ * the current axis before reuse, rather than trusted because it is present —
+ * see {@link sheetTransformCacheKeyOf} for why the axis has to be in that key
+ * and why the write-site clear alone is not enough.
  */
 export function resolveSheetTransform({
   sheet,
@@ -89,7 +91,7 @@ export function resolveSheetTransform({
   cached,
 }: ResolveSheetTransformArgs): ResolvedSheetTransform {
   const { flipX, flipY } = axisFlipForSection(axis);
-  const key = sheetGeometryKeyOf(sheet);
+  const key = sheetTransformCacheKeyOf(sheet, axis);
 
   if (isPinned && cached && cached.key === key) {
     return {

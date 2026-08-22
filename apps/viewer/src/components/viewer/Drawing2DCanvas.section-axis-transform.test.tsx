@@ -43,7 +43,7 @@ import {
 } from '@ifc-lite/drawing-2d';
 import type { Drawing2D, DrawingSheet } from '@ifc-lite/drawing-2d';
 import { Drawing2DCanvas } from './Drawing2DCanvas.js';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
+import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
 installLayout();
 
@@ -253,7 +253,11 @@ describe('Drawing2DCanvas sheet placement is axis-correct, including the flipX a
       closeTo(written.scaleFactor, 10, `${axis} scaleFactor`);
       closeTo(written.translateX, EXPECTED[axis].translateX, `${axis} translateX`);
       closeTo(written.translateY, EXPECTED[axis].translateY, `${axis} translateY`);
-      assert.equal(written.key, sheetGeometryKeyOf(sheet), `${axis} cache entry must be tagged with this sheet's key`);
+      assert.equal(
+        written.key,
+        sheetTransformCacheKeyOf(sheet, axis),
+        `${axis} cache entry must be tagged with this sheet's key AND this axis`,
+      );
     });
   }
 
@@ -271,7 +275,7 @@ describe('Drawing2DCanvas sheet placement is axis-correct, including the flipX a
   it('reuses a pinned placement rather than recomputing, and does not rewrite it', () => {
     const sheet = buildSheet();
     const held: CachedSheetTransform = {
-      key: sheetGeometryKeyOf(sheet),
+      key: sheetTransformCacheKeyOf(sheet, 'side'),
       translateX: 33,
       translateY: 44,
       scaleFactor: 5,
@@ -287,7 +291,7 @@ describe('Drawing2DCanvas sheet placement is axis-correct, including the flipX a
   it('recomputes when NOT pinned, even with a key-valid cache entry present', () => {
     const sheet = buildSheet();
     const held: CachedSheetTransform = {
-      key: sheetGeometryKeyOf(sheet),
+      key: sheetTransformCacheKeyOf(sheet, 'side'),
       translateX: 33,
       translateY: 44,
       scaleFactor: 5,

@@ -39,7 +39,11 @@ import {
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import { resolveSheetTransform } from './sheet-transform.js';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from './sheet-geometry-key.js';
+import {
+  sheetGeometryKeyOf,
+  sheetTransformCacheKeyOf,
+  type CachedSheetTransform,
+} from './sheet-geometry-key.js';
 import type { SectionAxis } from '@/hooks/pdfSectionLayout';
 
 /** Viewport: x=10, y=10, 200mm x 100mm — so the viewport centre is exactly
@@ -196,15 +200,18 @@ describe('resolveSheetTransform — absolute placement per section axis', () => 
 
 describe('resolveSheetTransform — the pinned-placement cache', () => {
   const sheet = buildSheet();
-  const HELD: CachedSheetTransform = {
-    key: sheetGeometryKeyOf(sheet),
+  /** A held placement, tagged for the axis it was computed under — the cache
+   *  key covers the axis as well as the sheet geometry, because the transform
+   *  carries the axis's flips (see `sheetTransformCacheKeyOf`). */
+  const heldFor = (axis: SectionAxis): CachedSheetTransform => ({
+    key: sheetTransformCacheKeyOf(sheet, axis),
     translateX: 33,
     translateY: 44,
     scaleFactor: 5,
-  };
+  });
 
   it('returns the HELD placement when pinned and the key matches — this is what pinning means', () => {
-    const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: true, cached: HELD });
+    const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: true, cached: heldFor('side') });
     assert.equal(resolved.fromCache, true);
     assert.deepEqual(resolved.transform, { translateX: 33, translateY: 44, scaleFactor: 5 });
     // Absolute: the held placement is applied with the axis's own flips.
@@ -218,20 +225,20 @@ describe('resolveSheetTransform — the pinned-placement cache', () => {
     // `sheetGeometryKeyOf` deliberately does NOT cover the drawing bounds:
     // bounds are exactly what pinning holds constant. Two very different
     // bounds must therefore resolve to the SAME placement while pinned.
-    const a = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: true, cached: HELD });
+    const a = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: true, cached: heldFor('down') });
     const b = resolveSheetTransform({
       sheet,
       drawingBounds: { minX: -500, minY: -500, maxX: 700, maxY: 300 },
       axis: 'down',
       isPinned: true,
-      cached: HELD,
+      cached: heldFor('down'),
     });
     assert.deepEqual(a.transform, b.transform);
     assert.deepEqual(a.transform, { translateX: 33, translateY: 44, scaleFactor: 5 });
   });
 
   it('IGNORES the cache when not pinned — the unpinned path must still auto-fit', () => {
-    const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: false, cached: HELD });
+    const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: false, cached: heldFor('down') });
     assert.equal(resolved.fromCache, false);
     closeTo(resolved.transform.translateX, EXPECTED.down.translateX, 'unpinned translateX');
     closeTo(resolved.transform.translateY, EXPECTED.down.translateY, 'unpinned translateY');
@@ -239,7 +246,10 @@ describe('resolveSheetTransform — the pinned-placement cache', () => {
   });
 
   it('rejects an entry tagged with a DIFFERENT sheet geometry, even when pinned', () => {
-    const stale: CachedSheetTransform = { ...HELD, key: sheetGeometryKeyOf(buildSheet('some-other-sheet')) };
+    const stale: CachedSheetTransform = {
+      ...heldFor('down'),
+      key: sheetTransformCacheKeyOf(buildSheet('some-other-sheet'), 'down'),
+    };
     const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: true, cached: stale });
     assert.equal(resolved.fromCache, false);
     closeTo(resolved.transform.translateX, EXPECTED.down.translateX, 'stale-key translateX');
@@ -248,16 +258,77 @@ describe('resolveSheetTransform — the pinned-placement cache', () => {
 
   it('reports the key a caller that owns the cache must tag a fresh entry with', () => {
     const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: false, cached: null });
-    assert.equal(resolved.key, sheetGeometryKeyOf(sheet));
+    assert.equal(resolved.key, sheetTransformCacheKeyOf(sheet, 'down'));
   });
 
   it('never writes to the entry it was given — the preview owns the cache, export must not perturb it', () => {
-    const entry: CachedSheetTransform = { ...HELD };
+    const entry: CachedSheetTransform = heldFor('side');
     const before = { ...entry };
     resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: true, cached: entry });
     resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: false, cached: entry });
     assert.deepEqual(entry, before, 'resolveSheetTransform must not mutate the cache entry');
     const resolved = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: true, cached: entry });
     assert.notStrictEqual(resolved.transform, entry, 'must hand back a copy, not the live cache object');
+  });
+});
+
+describe('resolveSheetTransform — the cache key covers the AXIS as well as the geometry', () => {
+  const sheet = buildSheet();
+  const MID_X = (BOUNDS.minX + BOUNDS.maxX) / 2;
+  const MID_Y = (BOUNDS.minY + BOUNDS.maxY) / 2;
+
+  it('refuses an entry computed under a DIFFERENT axis — the pairing returning the flips exists to prevent', () => {
+    // The flips are an OUTPUT, so a consumer cannot pair one axis's flips
+    // with another's transform. But the cached transform is a SECOND carrier
+    // of the flips: `calculateDrawingTransformForAxis` folds `flipX` into
+    // `translateX` ('down' gives 40, 'side' gives 180). An entry written by a
+    // 'down' resolve and re-read by a pinned 'side' resolve on the SAME sheet
+    // therefore reintroduces exactly that pairing.
+    const down = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'down', isPinned: false, cached: null });
+    const written: CachedSheetTransform = { key: down.key, ...down.transform };
+
+    const side = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis: 'side', isPinned: true, cached: written });
+    assert.equal(side.fromCache, false, "a 'down' entry must not be served to a 'side' resolve");
+
+    // What the served entry would have produced: 'side' flips X, so the
+    // drawing centre would land at -7*10 + 40 = -30mm — 140mm from the
+    // viewport centre at 110mm, i.e. off the left edge of the sheet.
+    const centre = place(side, MID_X, MID_Y);
+    closeTo(centre.x, VIEWPORT.x + VIEWPORT.width / 2, "recomputed 'side' centre paper x");
+    closeTo(centre.y, VIEWPORT.y + VIEWPORT.height / 2, "recomputed 'side' centre paper y");
+    closeTo(side.transform.translateX, EXPECTED.side.translateX, "recomputed 'side' translateX");
+  });
+
+  it('still SERVES an entry written under the same axis — the cache must not become useless', () => {
+    // The other direction: scoping the key by axis must not turn every
+    // ordinary pinned redraw into a miss. Pinning only means anything if the
+    // held placement survives a re-resolve on the same axis and sheet.
+    for (const axis of AXES) {
+      const first = resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis, isPinned: false, cached: null });
+      const written: CachedSheetTransform = { key: first.key, ...first.transform };
+      const second = resolveSheetTransform({
+        sheet,
+        // Bounds moved underneath it, which is what pinning holds constant.
+        drawingBounds: { minX: -500, minY: -500, maxX: 700, maxY: 300 },
+        axis,
+        isPinned: true,
+        cached: written,
+      });
+      assert.equal(second.fromCache, true, `${axis} entry must still be served to a ${axis} resolve`);
+      assert.deepEqual(second.transform, first.transform, `${axis} held placement must survive a bounds change`);
+    }
+  });
+
+  it('tags a fresh entry with a key that distinguishes the axes', () => {
+    const keys = AXES.map(
+      (axis) => resolveSheetTransform({ sheet, drawingBounds: BOUNDS, axis, isPinned: false, cached: null }).key,
+    );
+    assert.equal(new Set(keys).size, AXES.length, 'each axis must produce its own cache key');
+    for (const key of keys) {
+      assert.ok(
+        key !== null && key.startsWith(`${sheetGeometryKeyOf(sheet)}|`),
+        'the axis-scoped key must still carry the whole sheet geometry key',
+      );
+    }
   });
 });

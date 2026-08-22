@@ -737,7 +737,8 @@ export function Drawing2DCanvas({
       // ONE resolver the print/export path also calls (`resolveSheetTransform`)
       // — so preview and print cannot derive any of the three separately.
       // The cached entry is validated against the CURRENT sheet's own
-      // geometry key inside the resolver, not trusted because it's present:
+      // geometry key AND the current section axis inside the resolver (the
+      // transform carries the axis's flips), not trusted because it's present:
       // `useViewControls`'s effect that nulls this ref on a geometry change
       // runs in the SAME commit as this drawing effect, but as the PARENT
       // hook its effect commits AFTER this (child) effect — so on the very

@@ -58,7 +58,7 @@ import {
   type DrawingSheet,
 } from '@ifc-lite/drawing-2d';
 import useDrawingExport from './useDrawingExport.js';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
+import { sheetTransformCacheKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key.js';
 
 /** The preview's placement-cache ref, as this file passes it in. */
 type CacheRef = { current: CachedSheetTransform | null };
@@ -586,13 +586,16 @@ describe('generateSheetSVG — pinned placement, shared with the preview', () =>
   // The second divergence, on the DEFAULT path: `useDrawingExport` was
   // never given `isPinned` or the preview's placement cache, so it
   // recomputed the transform from the CURRENT drawing bounds while a pinned
-  // preview kept the held one. `sheetGeometryKeyOf` deliberately excludes
+  // preview kept the held one. The cache key deliberately excludes
   // the drawing bounds (bounds are what pinning holds constant), so after a
   // regenerate at a new elevation the cache stayed valid, the preview kept
   // the held placement, and the print computed a different one. Pin View
   // defaults ON.
-  const heldFor = (sheet: DrawingSheet): CachedSheetTransform => ({
-    key: sheetGeometryKeyOf(sheet),
+  const heldFor = (
+    sheet: DrawingSheet,
+    axis: 'down' | 'front' | 'side' = 'side',
+  ): CachedSheetTransform => ({
+    key: sheetTransformCacheKeyOf(sheet, axis),
     translateX: 33,
     translateY: 44,
     scaleFactor: 5,
@@ -634,7 +637,7 @@ describe('generateSheetSVG — pinned placement, shared with the preview', () =>
     const sheet = buildSheetWithRoundViewport();
     const stale: CachedSheetTransform = {
       ...heldFor(sheet),
-      key: sheetGeometryKeyOf(buildSheetWithRoundViewport('some-other-sheet')),
+      key: sheetTransformCacheKeyOf(buildSheetWithRoundViewport('some-other-sheet'), 'side'),
     };
     const { svg } = await exportPdfForSheet(sheet, buildAsymmetricDrawing(), {
       axis: 'side',

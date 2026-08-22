@@ -69,8 +69,9 @@ function unmountAll(): void {
 function densityStore(
   density: number | null,
   declaredWeight?: number,
+  unitLines: string[] = [],
 ) {
-  const lines = [`#1=IFCWALL('g1',$,'Wall',$,$,$,$,$,$);`];
+  const lines = [`#1=IFCWALL('g1',$,'Wall',$,$,$,$,$,$);`, ...unitLines];
   if (density !== null) {
     lines.push(
       `#10=IFCMATERIAL('Concrete C30/37',$,'concrete');`,
@@ -283,6 +284,94 @@ describe('#2736: a server-parsed store has no material psets to read', () => {
     const text = container.textContent ?? '';
     assert.match(text, /Volume mesh/, `the panel failed to render at all: ${text}`);
     assert.doesNotMatch(text, /Mass derived/, text);
+  });
+});
+
+/**
+ * `MASSDENSITYUNIT` declared as g/m³ rather than kg/m³ (an `IfcDerivedUnit` of
+ * gram^1 · metre^-3, so `siScale` is 1e-3). The assignment lists ONLY the
+ * derived unit, so `MASSUNIT` stays at its kg default and the rendered symbol
+ * is unchanged — the sole difference from the kg/m³ fixtures above is the
+ * factor the density has to be converted by.
+ *
+ * Without this, every component fixture declares its density in the SI unit
+ * where the converter's scale is 1, so `densitySiConverterFor` could be the
+ * identity function without any test noticing.
+ */
+const G_PER_M3_UNITS = [
+  `#200=IFCSIUNIT(*,.MASSUNIT.,$,.GRAM.);`,
+  `#201=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);`,
+  `#202=IFCDERIVEDUNITELEMENT(#200,1);`,
+  `#203=IFCDERIVEDUNITELEMENT(#201,-3);`,
+  `#204=IFCDERIVEDUNIT((#202,#203),.MASSDENSITYUNIT.,$);`,
+  `#210=IFCUNITASSIGNMENT((#204));`,
+  `#220=IFCPROJECT('p1',$,'P',$,$,$,$,$,#210);`,
+];
+
+/** A file writing a FORCE unit under `MASSUNIT` — the self-contradiction
+ *  #2736 §4 refuses to guess about. Same wall, same density, same volume. */
+const FORCE_MASSUNIT_UNITS = [
+  `#200=IFCSIUNIT(*,.MASSUNIT.,$,.NEWTON.);`,
+  `#210=IFCUNITASSIGNMENT((#200));`,
+  `#220=IFCPROJECT('p1',$,'P',$,$,$,$,$,#210);`,
+];
+
+describe('#2736: the density is converted from the unit the FILE declared it in', () => {
+  it('converts a g/m\u00b3 density before multiplying, rather than reading it as kg/m\u00b3', () => {
+    // 2 400 000 g/m³ IS 2400 kg/m³, so the honest answer is the same 600 kg
+    // the kg/m³ fixtures report. Taking the number at face value would print
+    // 600 000 kg — a thousand-fold error that looks entirely plausible.
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['m1:1']),
+      models: new Map([['m1', federatedModel({
+        ifcDataStore: densityStore(DENSITY * 1000, undefined, G_PER_M3_UNITS),
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.match(
+      text,
+      new RegExp(`Mass derived\\s*${EXPECTED_MASS} kg`),
+      `the file's MASSDENSITYUNIT was not honoured when converting its density: ${text}`,
+    );
+    assert.doesNotMatch(
+      text,
+      /600[\s,'\u00a0\u202f]?000/,
+      `the g/m\u00b3 density was multiplied in as if it were kg/m\u00b3: ${text}`,
+    );
+  });
+});
+
+describe('#2736 \u00a74: a MASSUNIT that resolves to a force derives nothing', () => {
+  it('withholds the mass and says why, instead of guessing kilograms', () => {
+    // Everything a derivation needs is present; the only thing wrong is that
+    // the file declared newtons under MASSUNIT. kg/m³ x m³ is a mass and this
+    // file's own convention says the column is a force, so there is no answer
+    // that is not a guess.
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set(['m1:1']),
+      models: new Map([['m1', federatedModel({
+        ifcDataStore: densityStore(DENSITY, undefined, FORCE_MASSUNIT_UNITS),
+      })]]),
+    });
+    const container = render();
+    openSection(container, 'Qty');
+    const text = container.textContent ?? '';
+    assert.doesNotMatch(
+      text,
+      /Mass derived/,
+      `a mass was derived for a file whose MASSUNIT declares a force: ${text}`,
+    );
+    assert.doesNotMatch(text, new RegExp(`${EXPECTED_MASS} `), text);
+    assert.match(
+      text,
+      /MASSUNIT declares a force/,
+      `the panel withheld the mass without saying why: ${text}`,
+    );
+    // The volume itself is untouched by the unit confusion — this is a
+    // refusal to derive, not a refusal to report what the kernel proved.
+    assert.match(text, /Volume mesh/, text);
   });
 });
 

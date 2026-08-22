@@ -234,6 +234,123 @@ test('@unwired-by-design with no real reason is rejected', () => {
 });
 
 /* ---------------------------------------------------------------- *
+ * Evasions of 2a itself, found by adversarial review of this PR.     *
+ * ---------------------------------------------------------------- */
+
+test('a gate in a scripts/ SUBDIRECTORY is audited — 2a walks the tree 2b already walks', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/ci/check-evader.mjs', '// a gate nothing runs, one directory down\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /Gate scripts nothing in CI runs/);
+    assert.match(out, /scripts\/ci\/check-evader\.mjs/);
+  });
+});
+
+test('the two halves agree on the tree: the SAME subdirectory hides neither a gate nor its test', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/ci/check-evader.mjs', '// gate\n');
+    write(root, 'scripts/ci/check-evader.test.mjs', '// its harness\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    // 2b already saw the test. 2a must see the script in the very same place,
+    // or the failure text ("move the file into one of those directories")
+    // routes authors straight into 2a's blind spot.
+    assert.match(out, /scripts\/ci\/check-evader\.mjs/);
+    assert.match(out, /scripts\/ci\/check-evader\.test\.mjs/);
+  });
+});
+
+test('a subdirectory gate a WIRED script imports is not demanded — a file a running gate runs, runs', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-wired.mjs', "import './lib/check-shared.mjs';\n");
+    write(root, 'scripts/lib/check-shared.mjs', '// a module, not a gate\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+test('transitive reach is transitive: a module reached only through another module still counts', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-wired.mjs', "import './lib/check-shared.mjs';\n");
+    write(root, 'scripts/lib/check-shared.mjs', "import './check-deeper.mjs';\n");
+    write(root, 'scripts/lib/check-deeper.mjs', '// two hops from the workflow\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+test('reach follows QUOTED references only — naming a file in a comment does not run it', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-wired.mjs', '// see also lib/check-shared.mjs for the details\n');
+    write(root, 'scripts/lib/check-shared.mjs', '// nothing imports this\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/lib\/check-shared\.mjs/);
+  });
+});
+
+test('an unwired .js gate is caught — the extension is not an exemption', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-evader.js', '// a gate nothing runs, in CommonJS clothing\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/check-evader\.js/);
+  });
+});
+
+test('a WIRED .js gate passes — widening the pattern demands wiring, it does not forbid .js', () => {
+  withTree({
+    extraSteps: '      - name: Check the js gate\n        run: node scripts/check-evader.js\n',
+  }, (root) => {
+    write(root, 'scripts/check-evader.js', '// a gate CI runs\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+test('a non-gate .js script is not swept in by the widened pattern', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/sync-versions.js', '// not a check-/verify- name\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+test('naming `pnpm <script>` in a step NAME is not wiring — a label executes nothing', () => {
+  withTree({
+    rootScripts: { 'check:orphan': 'node scripts/check-orphan.mjs' },
+    extraSteps: '      - name: this step does not run pnpm check:orphan\n        run: echo hello\n',
+  }, (root) => {
+    write(root, 'scripts/check-orphan.mjs', '// gate\n');
+    const { status, out } = run(root);
+    assert.equal(status, 1, out);
+    assert.match(out, /scripts\/check-orphan\.mjs/);
+  });
+});
+
+test('wiring outside `run:` still counts: a `with:` input the action executes (verify-esm-entrypoints\' real shape)', () => {
+  withTree({
+    rootScripts: { release: 'pnpm test:esm', 'test:esm': 'node scripts/check-esm.mjs' },
+    extraSteps: '      - uses: changesets/action@v1\n        with:\n          publish-script: pnpm run release\n',
+  }, (root) => {
+    write(root, 'scripts/check-esm.mjs', '// gate, reached through the publish script\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+  });
+});
+
+test('a one-line @unwired-by-design prints the reason without the comment terminator', () => {
+  withTree({}, (root) => {
+    write(root, 'scripts/check-local-only.mjs', '/** @unwired-by-design a local pre-push convenience */\n');
+    const { status, out } = run(root);
+    assert.equal(status, 0, out);
+    assert.match(out, /scripts\/check-local-only\.mjs — a local pre-push convenience$/m);
+    assert.doesNotMatch(out, /a local pre-push convenience \*\//);
+  });
+});
+
+/* ---------------------------------------------------------------- *
  * 2b: scripts/ test files.                                           *
  * ---------------------------------------------------------------- */
 
@@ -329,7 +446,7 @@ test('a scripts/ directory with no gate scripts fails closed', () => {
     rmSync(join(root, 'scripts/check-wired.mjs'));
     const { status, out } = run(root);
     assert.equal(status, 1, out);
-    assert.match(out, /found no check-\*\.mjs \/ verify-\*\.mjs/);
+    assert.match(out, /found no check-\* \/ verify-\* script under/);
   });
 });
 

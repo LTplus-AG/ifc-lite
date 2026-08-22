@@ -18,14 +18,17 @@
  * guard that finds nothing, and it is invisible in exactly the same way.
  * Parts 2a/2b below make each half of that a hard failure.
  *
- *   2a. GATE SCRIPTS. Every `scripts/check-*.mjs` / `scripts/verify-*.mjs`
- *       must be reachable from a GitHub Actions workflow — either a workflow
- *       naming `scripts/<file>` directly, or a root package.json script that
- *       runs it where that script name is itself reachable from a workflow
- *       through `pnpm <name>` (transitively: check-changesets.mjs is run by
- *       `lint`, and the Lint job runs `pnpm lint`). A package.json entry
- *       ALONE is not wiring — an entry nobody calls executes exactly as often
- *       as no entry at all, which is the vacuity this part exists to reject.
+ *   2a. GATE SCRIPTS. Every `check-*` / `verify-*` script under `scripts/`
+ *       — at ANY depth, and in `.mjs`, `.js` or `.cjs` — must be reachable
+ *       from a GitHub Actions workflow: a workflow naming `scripts/<file>`
+ *       directly, or a root package.json script that runs it where that
+ *       script name is itself reachable from a workflow through `pnpm <name>`
+ *       (transitively: check-changesets.mjs is run by `lint`, and the Lint
+ *       job runs `pnpm lint`), or a workspace package's script reached by a
+ *       task CI fans out, or — one layer below all of those — a file that a
+ *       script already reached imports or spawns. A package.json entry ALONE
+ *       is not wiring: an entry nobody calls executes exactly as often as no
+ *       entry at all, which is the vacuity this part exists to reject.
  *
  *   2b. GATE TESTS. Every `*.test.mjs` under `scripts/` must be named by a
  *       workflow `node --test` invocation, literally or through a
@@ -42,7 +45,28 @@
  * a developer-facing report, an unadopted proposal) declares itself with an
  * `@unwired-by-design <reason>` line in its own header. Those are listed in
  * this checker's OK output rather than hidden, because an undeclared
- * exception and a declared one differ only in whether anyone can see it.
+ * exception and a declared one differ only in whether anyone can see it. The
+ * marker is a BLANKET escape and nothing here judges the reason's quality —
+ * see `unwiredReason` for what that does and does not buy.
+ *
+ * WHAT THIS CHECK CANNOT SEE. It is lexical throughout — it reads workflow
+ * text, it never evaluates it — and two consequences are worth stating rather
+ * than discovering:
+ *
+ *   - JOB AND STEP CONDITIONS ARE NOT EVALUATED. A gate whose only step sits
+ *     in a job with `if: false`, or behind a `github.event_name` guard that
+ *     never holds, counts as wired here. Deciding otherwise would mean
+ *     evaluating GitHub Actions expressions against a hypothetical event
+ *     payload, which is a different program from this one. "Wired" here means
+ *     "some workflow line spawns it", not "it ran on this commit".
+ *
+ *   - THE SPAWN TEST IS PER-LINE, NOT PER-COMMAND. `workflowInvokes` asks
+ *     whether a line both names the path and spawns node, so
+ *     `node -e "1" && cp scripts/check-copied.mjs /tmp/x` satisfies it even
+ *     though the `node` and the path belong to different commands. It is a
+ *     heuristic, chosen over a shell parser: it already rejects the shapes
+ *     that occur (a `paths:` filter, an artifact glob, a commented-out step),
+ *     and the residue takes deliberate effort to construct.
  *
  * `--root <dir>` points every read at an alternate tree, exactly like
  * scripts/check-test-glob-coverage.mjs's `--root`; the regression harness
@@ -72,8 +96,23 @@ const PACKAGE_DIRS = ['packages', 'apps'];
 const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|js|mjs)$/;
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'pkg', 'build', 'coverage', '.turbo']);
 
-/** A `scripts/*.mjs` whose name declares it a gate. `audit-*` reports, it does not gate. */
-const GATE_NAME_RE = /^(?:check|verify)-[\w-]+\.mjs$/;
+/**
+ * A script whose name declares it a gate. `audit-*` reports, it does not gate.
+ *
+ * `.js`/`.cjs` are included because this repo HAS gate-named ones —
+ * `scripts/verify-npm-publish.js` (release.yml) and
+ * `scripts/check-benchmark-regression.js` (benchmark.yml) — so an `.mjs`-only
+ * pattern would have let an unwired `scripts/check-anything.js` through by
+ * file extension alone. Nothing non-gate is swept in: the only other
+ * `scripts/**` file with either extension is `sync-versions.js`, which the
+ * `check-`/`verify-` prefix already excludes.
+ */
+const GATE_NAME_RE = /^(?:check|verify)-[\w-]+\.(?:mjs|js|cjs)$/;
+/** Any script file, gate-named or not — the graph 2a's transitive reach walks. */
+const SCRIPT_FILE_RE = /\.(?:mjs|js|cjs)$/;
+/** A gate's own harness is not itself a gate, in any of the three extensions. */
+const TEST_SUFFIX_RE = /\.(?:test|spec)\.(?:mjs|js|cjs)$/;
+/** 2b's scope: `node --test scripts/*.test.mjs` globs, so `.mjs` specifically. */
 const SCRIPT_TEST_RE = /\.test\.mjs$/;
 
 /** `@unwired-by-design <reason>` — the declared, visible exception to 2a. */
@@ -166,16 +205,44 @@ export function readWorkflows(root) {
 }
 
 /**
- * True when some workflow RUNS `scripts/<gate>` — the path has to sit on a
- * line that also spawns node. A path can appear in a workflow for reasons
- * that execute nothing (a `paths:` trigger filter, an artifact glob, a
- * `cp`), and reading a bare mention as wiring is the same false green this
- * checker exists to reject, one level up.
+ * True when some workflow RUNS `rel` — the path has to sit on a line that also
+ * spawns node. A path can appear in a workflow for reasons that execute
+ * nothing (a `paths:` trigger filter, an artifact glob, a `cp`), and reading a
+ * bare mention as wiring is the same false green this checker exists to
+ * reject, one level up.
+ *
+ * PER LINE, NOT PER COMMAND: this asks only whether ONE line carries both the
+ * path and a `node` spawn, so `node -e "1" && cp scripts/check-copied.mjs
+ * /tmp/x` passes even though the `node` and the path belong to different
+ * commands, as does any other line that pairs an unrelated node invocation
+ * with a mention. Splitting on shell operators would not fix it either — the
+ * honest fix is a shell parser, and this is a heuristic instead: it rejects
+ * the shapes that actually occur, and the residue has to be built on purpose.
  */
 export function workflowInvokes(workflows, rel) {
   return workflows.some(({ text }) =>
     text.split('\n').some((line) => line.includes(rel) && /(?:^|[\s;&|"'(])node\s/.test(line)),
   );
+}
+
+/**
+ * A workflow with its `name:` values removed. A step's `name:` is a LABEL — it
+ * executes nothing — so a step called `name: run pnpm lint first` must not
+ * count as invoking `pnpm lint`. Not live today (`pnpm lint` is a real `run:`
+ * in the Lint job), but a gate that can be wired by naming a step is a gate
+ * that can be wired by writing a sentence.
+ *
+ * Only `name:` is dropped, deliberately, and NOT everything outside `run:`:
+ * `verify-esm-entrypoints.mjs`'s real wiring is `publish-script: pnpm run
+ * release` — a `with:` input the changesets action executes — and a `run:`-only
+ * reading red-lines it. This is a lexical filter, so it also drops a shell line
+ * inside a `run:` block that happens to look like a YAML `name:` key; that
+ * narrows what counts as wiring, never widens it.
+ */
+export function workflowExecutableText(workflows) {
+  return workflows
+    .map(({ text }) => text.split('\n').filter((line) => !/^\s*(?:-\s+)?name:\s/.test(line)).join('\n'))
+    .join('\n');
 }
 
 /** True when `text` invokes the root package.json script `name` as `pnpm [run] <name>`. */
@@ -248,46 +315,160 @@ export function readWorkspaceScripts(root) {
   return out;
 }
 
-/** The declared `@unwired-by-design` reason for a script, or null. */
+/**
+ * The declared `@unwired-by-design` reason for a script, or null.
+ *
+ * The reason runs to end of line, so a one-line block comment
+ * (`/** @unwired-by-design because X *\/`) carries the comment terminator into
+ * the captured text; it is stripped so the OK output prints the reason and not
+ * the syntax around it.
+ *
+ * Known property, not an oversight: this marker is a BLANKET escape. Nothing
+ * here can judge whether a stated reason is a good one — `@unwired-by-design
+ * because I said so` satisfies the length floor and passes. The only thing
+ * that makes it safer than silence is that every declaration is printed in the
+ * OK output and lives in the diff, so an exception is reviewable rather than
+ * invisible. That visibility is the whole of the mitigation.
+ */
 export function unwiredReason(source) {
   const m = source.match(UNWIRED_MARKER_RE);
   if (!m) return null;
-  return m[1].trim();
+  return m[1].trim().replace(/\s*\*\/\s*$/, '').trim();
+}
+
+/**
+ * Every script file under `scripts/`, at ANY depth, relative to `root` and
+ * POSIX-separated — the same recursive walk `findScriptTests` does, for the
+ * same reason. A flat `readdirSync` here would make the two halves of this
+ * checker disagree about whether `scripts/` has subdirectories: 2b walks the
+ * whole tree, and its own failure text tells authors to MOVE FILES BETWEEN
+ * DIRECTORIES, which is advice that walks straight into a flat scan's blind
+ * spot. `scripts/ci/check-anything.mjs` is not a special case; it is what that
+ * advice produces.
+ */
+export function findScriptFiles(root) {
+  const scriptsDir = join(root, 'scripts');
+  if (!existsSync(scriptsDir)) fail(`no search root: ${scriptsDir} does not exist`);
+  const found = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir)) {
+      if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue;
+      const full = join(dir, entry);
+      if (statSync(full).isDirectory()) walk(full);
+      else if (SCRIPT_FILE_RE.test(entry)) found.push(relative(root, full).split('\\').join('/'));
+    }
+  };
+  walk(scriptsDir);
+  return found.sort();
+}
+
+/** POSIX path arithmetic only — `resolveRef` never touches the filesystem. */
+function resolveRef(dir, token) {
+  if (token.startsWith('scripts/')) return token;
+  const parts = [];
+  for (const seg of `${dir}/${token}`.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') parts.pop();
+    else parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+/**
+ * The `scripts/` files a given script's source names, resolved to repo-relative
+ * paths — its static imports, its `spawn`/`fork` targets, anything it opens by
+ * path. Only QUOTED tokens count, so a filename mentioned in prose or a header
+ * comment is not mistaken for a reference; a bare specifier (`'./x.mjs'`, or
+ * the `'verify-worker.mjs'` that a `path.join(HERE, ...)` hands to a worker)
+ * resolves against the referencing file's own directory, and a token already
+ * rooted at `scripts/` is taken as written. Anything not resolving to a file in
+ * `known` is dropped.
+ */
+export function referencedScriptFiles(source, fromRel, known) {
+  const out = new Set();
+  const dir = fromRel.slice(0, fromRel.lastIndexOf('/'));
+  for (const [, token] of source.matchAll(/['"`]([\w./-]+\.(?:mjs|js|cjs))['"`]/g)) {
+    const candidate = resolveRef(dir, token);
+    if (known.has(candidate)) out.add(candidate);
+  }
+  return out;
+}
+
+/**
+ * True when some workflow, some root package.json script CI reaches, or some
+ * workspace script a fanned-out task reaches, runs `rel` DIRECTLY.
+ */
+function directlyWired(rel, { workflows, pkgScripts, reachedNames, tasks, workspaces }) {
+  if (workflowInvokes(workflows, rel)) return true;
+  if (Object.keys(pkgScripts).some((n) => pkgScripts[n].includes(rel) && reachedNames.has(n))) return true;
+  // A workspace package's own script, reached by a task CI fans out. The path
+  // there is relative (`../../scripts/<name>`), so it still contains `rel`.
+  return workspaces.some(({ scripts }) =>
+    Object.entries(scripts).some(([task, cmd]) => tasks.has(task) && cmd.includes(rel)),
+  );
+}
+
+/**
+ * Every `scripts/` file that EXECUTES in CI: the directly-wired ones, closed
+ * transitively over what each of them imports or spawns.
+ *
+ * This is the same transitivity 2a already applies to package.json scripts
+ * (`check-changesets.mjs` <- `lint` <- the Lint job), one layer down, and the
+ * recursive scan makes it necessary rather than optional: below the top level,
+ * `check-`/`verify-` names belong to library modules and worker entrypoints at
+ * least as often as to gates. `scripts/moonshot/diff-spike/verify-common.mjs`
+ * is a module the workflow-wired `verify-trajectory.mjs` imports, and demanding
+ * a workflow step of it would be a false positive, not a finding. A file a
+ * running gate imports does run.
+ */
+export function reachableScriptFiles(root, context) {
+  const all = findScriptFiles(root);
+  const known = new Set(all);
+  const reached = new Set(all.filter((rel) => directlyWired(rel, context)));
+  const queue = [...reached];
+  while (queue.length > 0) {
+    const rel = queue.pop();
+    let source;
+    try {
+      source = readFileSync(join(root, rel), 'utf8');
+    } catch {
+      continue; // an unreadable neighbour narrows the reach, it never widens it
+    }
+    for (const ref of referencedScriptFiles(source, rel, known)) {
+      if (reached.has(ref)) continue;
+      reached.add(ref);
+      queue.push(ref);
+    }
+  }
+  return { all, reached };
 }
 
 export function auditGateScripts(root, workflows, pkgScripts) {
-  const scriptsDir = join(root, 'scripts');
-  if (!existsSync(scriptsDir)) fail(`no search root: ${scriptsDir} does not exist`);
-  const gates = readdirSync(scriptsDir).filter((n) => GATE_NAME_RE.test(n) && !SCRIPT_TEST_RE.test(n)).sort();
-  if (gates.length === 0) {
-    fail(`found no check-*.mjs / verify-*.mjs in ${scriptsDir} — the gate scan cannot be trusted`);
-  }
-
-  const workflowText = workflows.map((w) => w.text).join('\n');
-  const reached = reachableScriptNames(pkgScripts, workflowText);
-  const tasks = reachableTaskNames([workflowText, ...[...reached].map((n) => pkgScripts[n])]);
+  const workflowRun = workflowExecutableText(workflows);
+  const reachedNames = reachableScriptNames(pkgScripts, workflowRun);
+  const tasks = reachableTaskNames([workflowRun, ...[...reachedNames].map((n) => pkgScripts[n])]);
   const workspaces = readWorkspaceScripts(root);
+  const context = { workflows, pkgScripts, reachedNames, tasks, workspaces };
+
+  const { all, reached } = reachableScriptFiles(root, context);
+  const gates = all.filter((rel) => {
+    const base = rel.slice(rel.lastIndexOf('/') + 1);
+    return GATE_NAME_RE.test(base) && !TEST_SUFFIX_RE.test(base);
+  });
+  if (gates.length === 0) {
+    fail(`found no check-* / verify-* script under ${join(root, 'scripts')} — the gate scan cannot be trusted`);
+  }
 
   const offenders = [];
   const declared = [];
-  for (const gate of gates) {
-    const rel = `scripts/${gate}`;
-    if (workflowInvokes(workflows, rel)) continue;
-    const via = Object.keys(pkgScripts).filter((n) => pkgScripts[n].includes(rel) && reached.has(n));
-    if (via.length > 0) continue;
-    // A workspace package's own script, reached by a task CI fans out.
-    // The path there is relative (`../../scripts/<name>`), so it still
-    // contains `scripts/<name>`.
-    const viaWorkspace = workspaces.some(({ scripts }) =>
-      Object.entries(scripts).some(([task, cmd]) => tasks.has(task) && cmd.includes(rel)),
-    );
-    if (viaWorkspace) continue;
+  for (const rel of gates) {
+    if (reached.has(rel)) continue;
 
     let source;
     try {
-      source = readFileSync(join(scriptsDir, gate), 'utf8');
+      source = readFileSync(join(root, rel), 'utf8');
     } catch (err) {
-      fail(`${join(scriptsDir, gate)} could not be read: ${err.message}`);
+      fail(`${join(root, rel)} could not be read: ${err.message}`);
     }
     const reason = unwiredReason(source);
     if (reason === null) {
@@ -302,21 +483,15 @@ export function auditGateScripts(root, workflows, pkgScripts) {
   return { offenders, declared, examined: gates.length };
 }
 
-/** Every `*.test.mjs` under `scripts/`, relative to `root`, POSIX-separated. */
+/**
+ * Every `*.test.mjs` under `scripts/`, relative to `root`, POSIX-separated.
+ *
+ * A FILTER over `findScriptFiles`, not a second walk. The two halves of this
+ * checker having their own traversals is what let them disagree about whether
+ * `scripts/` has subdirectories; one walk, filtered twice, cannot drift.
+ */
 export function findScriptTests(root) {
-  const scriptsDir = join(root, 'scripts');
-  if (!existsSync(scriptsDir)) fail(`no search root: ${scriptsDir} does not exist`);
-  const found = [];
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir)) {
-      if (SKIP_DIRS.has(entry) || entry.startsWith('.')) continue;
-      const full = join(dir, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (SCRIPT_TEST_RE.test(entry)) found.push(relative(root, full).split('\\').join('/'));
-    }
-  };
-  walk(scriptsDir);
-  return found.sort();
+  return findScriptFiles(root).filter((rel) => SCRIPT_TEST_RE.test(rel));
 }
 
 /**

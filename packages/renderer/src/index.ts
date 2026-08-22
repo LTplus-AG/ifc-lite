@@ -149,7 +149,7 @@ import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { ShadowPass } from './shadow-pass.js';
+import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
 import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
 import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
 import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
@@ -1301,7 +1301,10 @@ export class Renderer {
         hasVisibilityFiltering: boolean,
     ): BatchedMesh[] {
         const all = this.scene.getBatchedMeshes();
-        if (!hasVisibilityFiltering) return all;
+        if (!hasVisibilityFiltering) {
+            for (const batch of all) this.noteShadowOccluderResidency(batch);
+            return all;
+        }
         const pipeline = this.pipeline;
 
         const out: BatchedMesh[] = [];
@@ -1309,12 +1312,18 @@ export class Renderer {
             const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
             if (vis.kind === 'none') continue; // fully hidden → does not cast
             if (vis.kind === 'all') {
+                this.noteShadowOccluderResidency(batch);
                 out.push(batch); // fully visible → its own buffers
                 continue;
             }
             // Partially hidden. Transparent parents don't cast (collector's alpha
             // filter) — skip rather than build a wasted, divergent-key clone.
             if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
+            // The partial sub-batch is built from the PARENT's CPU meshData, so a
+            // cold parent yields nothing until it is restored. Queue that restore
+            // here too: the colour pass only queues it for parents inside its own
+            // frustum, but an up-sun occluder behind the camera still has to cast.
+            this.noteShadowOccluderResidency(batch);
             // Opaque partial: reuse the colour pass's cached sub-batch. The key is
             // visibility-content-independent; `_partialBatchEpoch` invalidates it on
             // any hide/isolate or override change, so the clone is always current.
@@ -1330,11 +1339,28 @@ export class Renderer {
                 this._partialBatchEpoch,
             );
             // A cold parent yields an empty partial (its residency restore is queued
-            // by the colour pass); skip this frame — the collector drops zero-index
-            // draws anyway, and the subset casts once resident.
+            // above); skip this frame — the collector drops zero-index draws anyway,
+            // and the subset casts once resident.
             if (sub && sub.indexCount > 0) out.push(sub);
         }
         return out;
+    }
+
+    /**
+     * Keep a shadow occluder batch resident so it does not thin out silently on
+     * large models under the GPU residency budget (#2670 review). The depth pass
+     * reads these batches' buffers, but that read did not count as usage, so an
+     * up-sun occluder outside the colour frustum aged into an eviction candidate.
+     * Transparent batches never cast (the collector's alpha filter), so their
+     * residency is irrelevant here.
+     */
+    private noteShadowOccluderResidency(batch: BatchedMesh): void {
+        if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return;
+        if (batch.gpuResident === false) {
+            this.scene.requestBatchResidency(batch);
+        } else {
+            this.scene.recordBatchDrawn(batch);
+        }
     }
 
     /**
@@ -2069,7 +2095,14 @@ export class Renderer {
             if (shadowOpts?.enabled) {
                 const bounds = this.getModelBounds();
                 if (bounds) {
-                    const resolution = shadowOpts.resolution ?? 2048;
+                    // `resolution === 0` (or unset) means Auto: pick from the
+                    // device's texture limit. A manual value is clamped to that
+                    // limit so a 4096 request can't fail createTexture on a
+                    // 2048-max device (#2670 review).
+                    const resolution = resolveShadowMapResolution(
+                        shadowOpts.resolution,
+                        device.limits.maxTextureDimension2D,
+                    );
                     if (!this.shadowPass) {
                         this.shadowPass = new ShadowPass(device, resolution);
                     } else {
@@ -2165,12 +2198,24 @@ export class Renderer {
                     shadowsThisFrame = true;
                 }
             }
-            if (!shadowsThisFrame && this.shadowsWired) {
-                // Toggle-off: disable sampling and release the depth view once.
+            if (!shadowsThisFrame && (this.shadowsWired || this.shadowPass)) {
+                // Toggle-off: disable sampling, release the depth view, and free
+                // the shadow pass itself so its depth texture (16.8 MB at 2048,
+                // 67 MB at 4096) is returned to the driver for the rest of the
+                // session instead of lingering unused. Re-enabling reconstructs
+                // it lazily on the next shadowed frame (see the `!this.shadowPass`
+                // guard above). The `|| this.shadowPass` arm also covers a pass
+                // that was allocated but never wired — an occluder-prep throw
+                // between `new ShadowPass` and `shadowsWired = true` would
+                // otherwise leak its texture until Renderer.destroy() (Greptile
+                // #3053). The uniform-unwire below is a no-op when never wired.
+                // #2670 review.
                 this.shadowScratch[17] = 0;
                 this.pipeline.updateShadowUniform(this.shadowScratch);
                 this.pipeline.setShadowDepthView(null);
                 this.shadowsWired = false;
+                this.shadowPass?.destroy();
+                this.shadowPass = null;
             }
 
             // Set up MSAA rendering if enabled

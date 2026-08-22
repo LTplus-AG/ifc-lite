@@ -192,3 +192,42 @@ describe('DxfUnderlayPanel: independent 2D/3D visibility toggles (issue #2043)',
     assert.equal(entry?.visible3D, false, '2D toggle must NOT touch visible3D');
   });
 });
+
+describe('DxfUnderlayPanel: surfacing skipped entity types', () => {
+  beforeEach(() => {
+    useViewerStore.setState({ dxfUnderlays: [] });
+  });
+
+  afterEach(() => {
+    for (const { root, container } of mounted.splice(0)) {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    }
+    useViewerStore.setState({ dxfUnderlays: [] });
+  });
+
+  it('an underlay with skipped entity types shows a "Not imported" notice naming type and count', () => {
+    const underlay = emptyUnderlay('site.dxf');
+    underlay.skipped = { WIPEOUT: 40, HATCH: 2 };
+    useViewerStore.setState({ dxfUnderlays: [underlayState({ id: 'u1', underlay })] });
+    const container = renderPanel(false);
+    assert.ok(
+      container.textContent?.includes('Not imported'),
+      'expected a "Not imported" notice for skipped entity types',
+    );
+    assert.ok(container.textContent?.includes('40× WIPEOUT'), 'expected the WIPEOUT count to render');
+    assert.ok(container.textContent?.includes('2× HATCH'), 'expected the HATCH count to render');
+  });
+
+  it('an underlay with no skipped entity types shows no "Not imported" notice', () => {
+    const underlay = emptyUnderlay('clean.dxf');
+    useViewerStore.setState({ dxfUnderlays: [underlayState({ id: 'u1', underlay })] });
+    const container = renderPanel(false);
+    assert.ok(
+      !container.textContent?.includes('Not imported'),
+      'expected no "Not imported" notice when nothing was skipped',
+    );
+  });
+});

@@ -18,7 +18,14 @@ import { useViewerStore } from '@/store';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 
-const RESOLUTIONS = [1024, 2048, 4096] as const;
+const RESOLUTIONS = [0, 1024, 2048, 4096] as const;
+
+function resolutionLabel(r: number): string {
+  if (r === 0) return 'Auto (device)';
+  if (r === 1024) return `Low (${r}px)`;
+  if (r === 2048) return `Medium (${r}px)`;
+  return `High (${r}px)`;
+}
 
 export function ShadowControls() {
   const enabled = useViewerStore((s) => s.envShadowsEnabled);
@@ -74,12 +81,12 @@ export function ShadowControls() {
               aria-label="Shadow map resolution"
               value={resolution}
               onChange={(e) => setResolution(Number(e.target.value))}
-              title="Shadow-map resolution — higher is sharper but costs more GPU"
+              title="Shadow-map resolution — Auto picks from the device's texture limit; higher is sharper but costs more GPU"
               className="w-full bg-muted/40 rounded px-1.5 py-1 border text-foreground text-[10px]"
             >
               {RESOLUTIONS.map((r) => (
                 <option key={r} value={r}>
-                  {r === 1024 ? 'Low' : r === 2048 ? 'Medium' : 'High'} ({r}px)
+                  {resolutionLabel(r)}
                 </option>
               ))}
             </select>

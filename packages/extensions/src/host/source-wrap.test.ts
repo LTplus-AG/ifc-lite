@@ -132,3 +132,53 @@ describe('wrapEntrySource — entryFnName validation', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+describe('wrapEntrySource — nested banned constructs', () => {
+  it('rejects dynamic import() hidden inside a function body', () => {
+    const r = wrapEntrySource(
+      'function activate(ctx) { import("node:fs").then(fs => console.log(fs)); }',
+      { entryFnName: 'activate' },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.some((e) => e.message.toLowerCase().includes('import'))).toBe(true);
+    }
+  });
+});
+
+describe('wrapEntrySource — deeply nested entry scripts', () => {
+  const nested = (levels: number) =>
+    `${'if (1) {'.repeat(levels)}function activate(ctx) {}${'}'.repeat(levels)}`;
+
+  it('reports a validation error instead of throwing on a deeply nested script', () => {
+    // 900 nested `if` blocks is ~1800 AST levels — past MAX_AST_DEPTH,
+    // but still shallow enough that acorn itself parses it, so this
+    // exercises the walk's own bound rather than the parser's.
+    const r = wrapEntrySource(nested(900), { entryFnName: 'activate' });
+
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors).toHaveLength(1);
+      expect(r.errors[0]!.code).toBe('invalid_value');
+      expect(r.errors[0]!.message).toBe('Entry script is nested more than 1000 AST levels deep.');
+    }
+  });
+
+  it('still wraps a script nested well inside the bound', () => {
+    // 400 nested `if` blocks is ~800 AST levels — under MAX_AST_DEPTH.
+    const r = wrapEntrySource(nested(400), { entryFnName: 'activate' });
+    expect(r.ok).toBe(true);
+  });
+
+  it('still flags a banned construct buried under deep-but-legal nesting', () => {
+    const levels = 200;
+    const r = wrapEntrySource(
+      `${'if (1) {'.repeat(levels)}import('node:fs');${'}'.repeat(levels)}function activate(ctx) {}`,
+      { entryFnName: 'activate' },
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.errors.some((e) => e.message.includes('Dynamic `import(...)`'))).toBe(true);
+    }
+  });
+});

@@ -5,6 +5,7 @@
 import { useCallback } from 'react';
 import { posthog } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { toast } from '@/components/ui/toast';
 import { pdfLineStyleFor } from '@/lib/export/pdf-line-style';
 import {
   GraphicOverrideEngine,
@@ -13,6 +14,8 @@ import {
   calculateDrawingTransform,
   exportToDXF,
   formatScaleFactorLabel,
+  fitRasterPixels,
+  type RasterFit,
   type Drawing2D,
   type DrawingSheet,
   type ElementData,
@@ -142,26 +145,92 @@ function buildScanSectionSvg(
 }
 
 /**
- * Rasterize an SVG string to a PNG data URL at `dpi`, sized to exactly
- * `widthMm` x `heightMm` on paper (issues #2941/#2942). The sheet frame,
- * title block and scale bar only exist inside `generateSheetSVG` — SVG,
- * Print and the DXF-underlay path all render that exact string and the
- * reporter confirmed those are correct. Rather than re-deriving a second,
- * independent sheet layout for jsPDF's vector primitives (the "v1" PDF path
- * below did exactly that and dropped the frame/scale bar entirely, and used
+ * Dots per inch of paper the sheet raster is built at.
+ *
+ * Fixed, with no UI control anywhere: `handleExportPDF` is a single toolbar
+ * action. That is why the ceiling below CAPS rather than REFUSES — a refusal
+ * would have no setting to send the user to, and the sheet's paper size is
+ * the deliverable, not a preference.
+ */
+export const SHEET_PDF_DPI = 300;
+
+/**
+ * Pixel budget for one sheet raster, taken from WebKit's own canvas cap
+ * rather than picked as a round number: `CanvasBase::maxCanvasArea()`
+ * (Source/WebCore/html/CanvasBase.cpp) returns `8192 * 8192` on the iOS
+ * family and `16384 * 16384` elsewhere. The lower of the two is the one that
+ * has to hold, because a canvas over the cap does not report itself:
+ * `CanvasBase::validateArea()` logs a console warning and returns false, the
+ * canvas gets no backing store, `getContext('2d')` still returns a live
+ * context, the paint calls become no-ops, and `toDataURL()` then returns the
+ * literal string `"data:,"` — `encodeDataURL(RefPtr<ImageBuffer>&&)` in
+ * Source/WebCore/platform/graphics/ImageUtilities.cpp returns `"data:,"_s`
+ * for a null buffer. Nothing throws at any point.
+ *
+ * At {@link SHEET_PDF_DPI} that cap binds from ANSI D upwards. The papers
+ * that need it are the big ones — ARCH E is 14400 x 10800 = 155,520,000 px
+ * and A0 is 14043 x 9933 = 139,489,119 px, both far past even the desktop
+ * cap's memory cost (155.5 Mpx x 4 bytes = 622 MB for the bitmap alone).
+ *
+ * NOT verified in any real browser. The value and the failure mode are read
+ * off WebKit's source; Chrome's and Firefox's caps differ and are not
+ * modelled, and Safari's separate TOTAL canvas-memory limit is a second
+ * ceiling this budget cannot rule out — which is why the raster result is
+ * validated below as well as sized.
+ */
+export const MAX_SHEET_RASTER_PIXELS = 8192 * 8192;
+
+/**
+ * Per-side cap: the side length WebKit's non-iOS area cap is expressed as,
+ * and the same number `@ifc-lite/drawing-2d` already uses for the 3D-view
+ * PDF's shaded underlay (`MAX_SHADING_DIMENSION_PX`). No registry paper
+ * reaches it at {@link SHEET_PDF_DPI} (ARCH E's long side is 14400 px); it
+ * exists for a custom paper size, which `DrawingSheet.paper` permits.
+ */
+export const MAX_SHEET_RASTER_DIMENSION_PX = 16_384;
+
+/** A raster, plus what it cost to fit it inside the budget. */
+interface SheetRaster {
+  dataUrl: string;
+  fit: RasterFit;
+}
+
+/**
+ * Rasterize an SVG string to a PNG data URL, sized to exactly `widthMm` x
+ * `heightMm` on paper (issues #2941/#2942). The sheet frame, title block and
+ * scale bar only exist inside `generateSheetSVG` — SVG, Print and the
+ * DXF-underlay path all render that exact string and the reporter confirmed
+ * those are correct. Rather than re-deriving a second, independent sheet
+ * layout for jsPDF's vector primitives (the "v1" PDF path below did exactly
+ * that and dropped the frame/scale bar entirely, and used
  * `displayOptions.scale` instead of the sheet's own scale), rasterize the
  * SAME svg the working exporters use so the PDF cannot drift from them.
+ *
+ * The pixel grid comes from `fitRasterPixels`, the same helper the 3D-view
+ * PDF's shaded underlay uses, so the two raster paths cannot drift into two
+ * different cap policies. It scales BOTH sides by one factor, so a capped
+ * sheet is blurrier and never mis-scaled: the caller still places the image
+ * across the full paper rectangle in millimetres, never at `px / dpi`.
+ *
+ * `fit.capped` is returned rather than swallowed. A user who asked for a
+ * 300 dpi sheet and silently got 104 is the same defect as a blank page, one
+ * step quieter.
  */
 function rasterizeSvgToPngDataUrl(
   svgString: string,
   widthMm: number,
   heightMm: number,
-  dpi = 300,
-): Promise<string> {
+  dpi = SHEET_PDF_DPI,
+): Promise<SheetRaster> {
   return new Promise((resolve, reject) => {
-    const pxPerMm = dpi / 25.4;
-    const widthPx = Math.max(1, Math.round(widthMm * pxPerMm));
-    const heightPx = Math.max(1, Math.round(heightMm * pxPerMm));
+    const fit = fitRasterPixels(
+      widthMm,
+      heightMm,
+      dpi,
+      MAX_SHEET_RASTER_PIXELS,
+      MAX_SHEET_RASTER_DIMENSION_PX,
+    );
+    const { widthPx, heightPx } = fit;
 
     const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
@@ -179,7 +248,25 @@ function rasterizeSvgToPngDataUrl(
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(0, 0, widthPx, heightPx);
         ctx.drawImage(img, 0, 0, widthPx, heightPx);
-        resolve(canvas.toDataURL('image/png'));
+
+        const dataUrl = canvas.toDataURL('image/png');
+        // The pixel budget above is necessary, not sufficient. Safari
+        // enforces a separate TOTAL canvas-memory limit, and any browser can
+        // fail a 100+ MB allocation on a low-memory device; in both cases the
+        // buffer is simply absent and this comes back as `"data:,"` with no
+        // exception raised. Handing that to `jsPDF.addImage` produces a
+        // decoder complaint about a PNG signature, which tells the user
+        // nothing they can act on — and if a browser ever returned a valid
+        // all-white PNG instead, the export would "succeed" with a blank
+        // page. Refuse the result here, naming the way out.
+        if (!dataUrl.startsWith('data:image/png')) {
+          throw new Error(
+            `the browser returned an empty ${widthPx}x${heightPx} px canvas for this ` +
+            `${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet. Try a smaller paper ` +
+            `size, or use the SVG export, which is vector and has no pixel limit.`,
+          );
+        }
+        resolve({ dataUrl, fit });
       } catch (err) {
         reject(err instanceof Error ? err : new Error('Failed to rasterize sheet SVG'));
       } finally {
@@ -968,13 +1055,29 @@ function useDrawingExport({
       void (async () => {
         try {
           const { jsPDF } = await import('jspdf');
-          const pngDataUrl = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
+          const { dataUrl, fit } = await rasterizeSvgToPngDataUrl(svg, widthMm, heightMm);
           const doc = new jsPDF({
             unit: 'mm',
             format: [widthMm, heightMm],
             orientation: widthMm >= heightMm ? 'landscape' : 'portrait',
           });
-          doc.addImage(pngDataUrl, 'PNG', 0, 0, widthMm, heightMm);
+          // Full paper rectangle, deliberately NOT `fit.widthPx / dpi`: the
+          // image must span the sheet whatever the raster cost, or a capped
+          // export would print a smaller sheet at the same nominal scale.
+          doc.addImage(dataUrl, 'PNG', 0, 0, widthMm, heightMm);
+
+          if (fit.capped) {
+            // FLOOR, not round: 299.53 dpi renders as "reduced from 300 to
+            // 300" under rounding, which reads as a no-op notice, and
+            // overstating the resolution delivered is the direction that
+            // misleads.
+            toast.info(
+              `Sheet rasterized at ${Math.floor(fit.effectiveDpi)} dpi instead of ` +
+              `${SHEET_PDF_DPI} — a ${Math.round(widthMm)}x${Math.round(heightMm)} mm sheet ` +
+              `exceeds the browser's canvas limit at full resolution. Use the SVG export ` +
+              `for a vector sheet at any size.`,
+            );
+          }
 
           const stem = `${sanitizeFilename(activeSheet.name, { fallback: 'sheet' })}-${sectionPlane.axis}-${sectionPlane.position}`;
           downloadFile(doc.output('blob'), `${stem}.pdf`, 'application/pdf');
@@ -983,9 +1086,13 @@ function useDrawingExport({
             axis: sectionPlane.axis,
             scale_factor: activeSheet.scale.factor,
             sheet_enabled: true,
+            // What the SHEET got, not what was asked for — the same
+            // distinction `PdfViewExportDialog` records as `shading_dpi`.
+            raster_dpi: Math.floor(fit.effectiveDpi),
+            raster_capped: fit.capped,
           });
         } catch (err) {
-          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; this hook has no toast wiring.
+          // eslint-disable-next-line no-alert -- matches the raw-drawing PDF path's alert() below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
           alert(err instanceof Error ? `Could not export PDF: ${err.message}` : 'Could not export PDF.');
         }
       })();
@@ -1006,7 +1113,7 @@ function useDrawingExport({
     try {
       layout = computePdfSectionLayout(drawing.bounds, currentAxis, effectiveScale, 10);
     } catch (err) {
-      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; this hook has no toast wiring.
+      // eslint-disable-next-line no-alert -- matches handlePrint's popup-blocked alert below; a blocking alert is the existing convention for an export that FAILED, and toast.info here is only used for an export that succeeded in a degraded form.
       alert(err instanceof Error ? err.message : 'Could not export PDF: invalid scale.');
       return;
     }

@@ -213,6 +213,18 @@ pub fn convert_step_line(line: &str, from: &str, to: &str, express_id: u32) -> S
     let new_type = convert_entity_type(&entity_type, cfrom, cto);
 
     if should_skip_entity(&new_type, cto) {
+        // The proxy carries a MINTED GlobalId, not the source entity's, and the
+        // authored identity is therefore lost on a downgrade. That is
+        // deliberate on the TypeScript twin (`convertStepLine` in
+        // `packages/export/src/schema-converter.ts`), which documents the
+        // counter-example and pins it in `merged-exporter.test.ts`: two
+        // federated models can legitimately carry the SAME alignment GlobalId,
+        // and copying the source id would unify two distinct alignments into
+        // one. The two implementations do not agree on WHAT to mint — this one
+        // derives from the express id, the TypeScript one from the whole source
+        // line — so the same model downgraded by each yields different proxy
+        // ids. Left as found; changing either is a decision for the maintainer,
+        // not a side effect of a round-trip test.
         return format!(
             "{prefix}IFCPROXY('{}',$,'{}',$,$,$,$,.NOTDEFINED.,$);",
             placeholder_guid(express_id),

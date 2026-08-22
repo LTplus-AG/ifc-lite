@@ -24,6 +24,7 @@ import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import {
   createClashEngine,
   disciplineMatrixRules,
+  sortClashes,
   type Clash,
   type ClashMode,
   type ClashResult,
@@ -137,18 +138,22 @@ export function displayClash(c: Clash): Record<string, unknown> {
  * capped for display. Returns the rows plus an explicit `truncated` note when
  * capped.
  *
- * Sort by RAW distance ascending, not |distance|: hard clashes carry a negative
- * penetration depth, so most-negative-first surfaces the DEEPEST penetrations
- * (the worst, most actionable rows) instead of burying them past the cap;
- * clearance/touch gaps are positive, so the same order surfaces the tightest
- * gaps first. (An |distance| sort inverted the hard-mode order — issue caught in
- * review.)
+ * The ordering itself lives in `@ifc-lite/clash`'s `sortClashes(..., 'distance')`
+ * — the same helper the viewer's clash panel and the CLI summary use, so a
+ * "top N" list means the same N rows through every surface. It sorts by RAW
+ * distance ascending, not |distance|: hard clashes carry a negative penetration
+ * depth, so most-negative-first surfaces the DEEPEST penetrations (the worst,
+ * most actionable rows) instead of burying them past the cap; clearance/touch
+ * gaps are positive, so the same order surfaces the tightest gaps first. (An
+ * |distance| sort inverted the hard-mode order — issue caught in review.) It
+ * also breaks ties on the stable clash id, which this local copy did not, so
+ * equal-distance rows no longer reshuffle between runs.
  */
 function topClashes(clashes: Clash[], cap: number): {
   rows: Record<string, unknown>[];
   truncated: { shown: number; dropped: number; total: number } | null;
 } {
-  const sorted = [...clashes].sort((x, y) => x.distance - y.distance);
+  const sorted = sortClashes(clashes, 'distance');
   const shown = sorted.slice(0, cap);
   const rows = shown.map(displayClash);
   if (sorted.length > cap) {

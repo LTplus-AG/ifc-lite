@@ -1018,17 +1018,31 @@ function parseComponentList(content: string, elementName: string): BCFComponent[
  */
 function parseComponent(content: string): BCFComponent | undefined {
   const ifcGuidMatch = content.match(/IfcGuid="([^"]+)"/);
-  const authoringToolIdMatch = content.match(/AuthoringToolId="([^"]+)"/);
-  const originatingSystemMatch = content.match(/OriginatingSystem="([^"]+)"/);
 
-  if (!ifcGuidMatch && !authoringToolIdMatch) {
+  // Per BCF 2.1 §"Component" (unchanged in 3.0) only `IfcGuid` is an
+  // attribute; `OriginatingSystem` and `AuthoringToolId` are child
+  // ELEMENTS — which is exactly what writeComponent() emits. Reading them
+  // as attributes matched nothing, so both fields were dropped from every
+  // archive, ifc-lite's own included. The attribute spellings are still
+  // accepted as a fallback so files from tools that emit the non-spec form
+  // keep working; the element form wins when both are present.
+  const authoringToolId =
+    extractElement(content, 'AuthoringToolId') ?? content.match(/AuthoringToolId="([^"]+)"/)?.[1];
+  const originatingSystem =
+    extractElement(content, 'OriginatingSystem')
+    ?? content.match(/OriginatingSystem="([^"]+)"/)?.[1];
+
+  // A component needs some identity to be meaningful. `IfcGuid` is optional
+  // in the schema, so `AuthoringToolId` alone is a valid identification —
+  // and used to be discarded here because it was never found.
+  if (!ifcGuidMatch && authoringToolId === undefined) {
     return undefined;
   }
 
   return {
     ifcGuid: ifcGuidMatch?.[1],
-    authoringToolId: authoringToolIdMatch?.[1],
-    originatingSystem: originatingSystemMatch?.[1],
+    authoringToolId,
+    originatingSystem,
   };
 }
 

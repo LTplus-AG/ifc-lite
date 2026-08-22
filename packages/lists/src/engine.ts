@@ -772,7 +772,24 @@ export function listResultToCSV(result: ListResult, delimiter = ','): string {
     // is a plain (optionally signed, decimal/exponent) number carries no formula
     // payload, so it is left untouched; anything else with a trigger prefix
     // (including `-cmd` or `-1+cmd`) is still quoted.
-    if (/^[=+\-@\t\r]/.test(str) && !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str)) {
+    //
+    // The trigger is looked for PAST any leading invisible characters, and the
+    // invisibles are kept rather than stripped. A BOM, zero-width space,
+    // left-to-right mark, no-break space or U+2028/U+2029 in front of `=` does
+    // not stop Excel/Sheets reading the cell as a formula, but it does stop an
+    // anchored `/^[=+\-@\t\r]/` matching, so `\uFEFF=HYPERLINK(...)` used to
+    // sail through this copy of the guard unguarded (#1944 was fixed in
+    // `packages/sdk/src/namespaces/export.ts` but not here). IFC text
+    // properties are attacker-controllable and can carry any of them.
+    //
+    // `\p{Cf}` and `\p{Z}`, not `\s`: `\s` would swallow a leading TAB, and TAB
+    // is itself a trigger, so "\t=cmd" would stop being guarded. `\p{Z}` rather
+    // than `\p{Zs}` because the separator category also covers `Zl`/`Zp`, so
+    // U+2028/U+2029 would otherwise remain viable hiding prefixes.
+    if (
+      /^[\p{Cf}\p{Z}]*[=+\-@\t\r]/u.test(str) &&
+      !/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(str)
+    ) {
       str = `'${str}`;
     }
     if (str.includes(delimiter) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -788,5 +805,11 @@ export function listResultToCSV(result: ListResult, delimiter = ','): string {
     lines.push(row.values.map(csvEscape).join(delimiter));
   }
 
-  return lines.join('\n');
+  // CRLF, not LF: RFC 4180 s2.1 -- "each record is located on a separate line,
+  // delimited by a line break (CRLF)" -- and the ABNF admits no other record
+  // separator (`file = [header CRLF] record *(CRLF record) [CRLF]`). The
+  // viewer's own Lists CSV writer (`apps/viewer/src/lib/lists/export/csv.ts`)
+  // already emits CRLF; this copy emitted LF, so the two disagreed on the same
+  // export. No trailing terminator is written, which s2.2 explicitly permits.
+  return lines.join('\r\n');
 }

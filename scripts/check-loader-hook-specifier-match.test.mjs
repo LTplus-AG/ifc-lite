@@ -9,17 +9,25 @@
  * The RED is not synthetic: `PRE_FIX_HYDRATE_HOOK` below is
  * `apps/viewer/src/test/collab-hydrate-gate-hook.mjs` exactly as it was written
  * in 50568bd43 — the second time the repo shipped a `register()` loader hook
- * that could only match a bare specifier. Per 73571eb46's own reproduction, it
- * hung `collabSlice.leave-after-reconstruct.test.ts` 3 of 3 on Node 22.23.2 and
+ * that matched a tsconfig-aliased specifier by bare equality alone. Per
+ * 73571eb46's own reproduction, it hung
+ * `collabSlice.leave-after-reconstruct.test.ts` 3 of 3 on Node 22.23.2 and
  * passed on 22.13.1. `FIXED_HYDRATE_HOOK` is the same file after 73571eb46. The
  * two differ only in the `resolve` arm, so a rule that reds the first and greens
  * the second is measuring the thing the incident was about.
  *
+ * The rule turns on ALIAS COVERAGE, so the suite pins both sides of it. A bare
+ * arm on a non-aliased specifier (`cesium`, verified working on CI — see the
+ * checker's header for the run and job ids) must stay GREEN; the identical hook
+ * must go RED as soon as a `paths` entry claims that same specifier. Those two
+ * tests are a matched pair, and if they ever agree the alias table has stopped
+ * being what decides.
+ *
  * The other half of the suite is anti-vacuity: every way this guard could scan
- * nothing and pass — a missing search root, an empty tree, no hooks, an
- * unreadable file, a `resolve` with no locatable condition — is asserted to be a
- * non-zero exit with a named reason, because a guard that finds nothing to guard
- * passes forever.
+ * nothing and pass — a missing search root, an empty tree, no hooks, an empty or
+ * unparseable alias table, an unreadable file, a `resolve` with no locatable
+ * condition — is asserted to be a non-zero exit with a named reason, because a
+ * guard that finds nothing to guard passes forever.
  *
  * Method matches scripts/check-collab-room-model-target.test.mjs: build a tree
  * in a temp dir outside the repo and run the UNMODIFIED checker against it via
@@ -95,10 +103,27 @@ function runOn(tree, { mutate } = {}) {
   }
 }
 
-/** Minimum a tree needs so the search-root and empty-tree guards are not the ones firing. */
+/**
+ * The alias table a fixture tree needs, mirroring `apps/viewer/tsconfig.json`:
+ * the `@/*` wildcard that claims `@/lib/collab/geometry-sync`, and the exact
+ * `@ifc-lite/collab` key. Both historical incidents are one of these two shapes.
+ */
+const TSCONFIG = JSON.stringify(
+  {
+    compilerOptions: {
+      baseUrl: '.',
+      paths: { '@/*': ['./src/*'], '@ifc-lite/collab': ['../../packages/collab/src'] },
+    },
+  },
+  null,
+  2,
+);
+
+/** Minimum a tree needs so the search-root, empty-tree and alias-table guards are not the ones firing. */
 const BALLAST = {
   'packages/keep/index.ts': 'export const keep = 1;\n',
   'scripts/keep.mjs': 'export const keep = 1;\n',
+  'apps/viewer/tsconfig.json': TSCONFIG,
 };
 
 // ── The real tree ───────────────────────────────────────────────────────────
@@ -124,7 +149,7 @@ test('the real repository passes, with non-zero counts in the success line', () 
 test('RED: the pre-fix collab-hydrate-gate-hook (50568bd43) is flagged', () => {
   const { status, out } = runOn({ ...BALLAST, [HOOK_REL]: PRE_FIX_HYDRATE_HOOK });
   assert.equal(status, 1, out);
-  assert.match(out, /collab-hydrate-gate-hook\.mjs:4: `resolve` can only match a bare specifier/);
+  assert.match(out, /collab-hydrate-gate-hook\.mjs:4: `resolve` matches an aliased specifier by equality only/);
   assert.match(out, /matches only `@\/lib\/collab\/geometry-sync`/);
 });
 
@@ -143,8 +168,8 @@ test('a correct hook in the same tree does not excuse the pre-fix one', () => {
     'apps/viewer/src/test/collab-session-race-hook.mjs': FIXED_HYDRATE_HOOK,
   });
   assert.equal(status, 1, out);
-  assert.match(out, /collab-hydrate-gate-hook\.mjs:4: `resolve` can only match a bare specifier/);
-  assert.doesNotMatch(out, /collab-session-race-hook\.mjs:\d+: `resolve` can only match/);
+  assert.match(out, /collab-hydrate-gate-hook\.mjs:4: `resolve` matches an aliased specifier by equality only/);
+  assert.doesNotMatch(out, /collab-session-race-hook\.mjs:\d+: `resolve` matches an aliased specifier/);
 });
 
 // ── The classifier's edges ──────────────────────────────────────────────────
@@ -177,12 +202,16 @@ test('a virtual-prefix hook is not flagged: it has no exact-equality arm to be d
   assert.equal(status, 0, out);
 });
 
-test('a bare-only arm is excused by a suffix arm in the same hook — the recorded per-arm gap', () => {
-  // Pins limitation 1 in the checker's header rather than wishing it away: this
-  // is `vite-module-hooks-impl.mjs`'s real shape, and it passes. If the rule is
-  // ever tightened to per-arm, this test is the one that must be rewritten, in
-  // the same commit as the fix to that file.
-  const hook = `export async function resolve(specifier, context, nextResolve) {
+/**
+ * `vite-module-hooks-impl.mjs`'s real shape. `cesium` is a bare-only arm, and it
+ * is VERIFIED WORKING: CI run 32532771710, job 96928471894 ("Viewer tests
+ * (shard 3)") on `main`, Node v22.23.2, passes
+ * `CesiumOverlay — state writes after the init effect is torn down (#2685)`,
+ * which can only pass if this arm fires. So it must stay green — and, since the
+ * rule is now per-arm, it must stay green on its own merits rather than by
+ * being excused by the `.css` arm beside it.
+ */
+const CESIUM_SHAPED_HOOK = `export async function resolve(specifier, context, nextResolve) {
   if (specifier === 'cesium') {
     return { url: 'file:///stub.js', shortCircuit: true };
   }
@@ -192,9 +221,80 @@ test('a bare-only arm is excused by a suffix arm in the same hook — the record
   return nextResolve(specifier, context);
 }
 `;
+
+test('a bare-only arm on a NON-aliased specifier is not flagged: it is not dead', () => {
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': CESIUM_SHAPED_HOOK });
+  assert.equal(status, 0, out);
+  // Counted as bare, but cleared as not alias-covered — the discrimination this
+  // rule turns on, visible in the success line rather than merely believed.
+  assert.match(out, /1 bare-specifier arm\(s\), 0 alias-covered/);
+});
+
+test('CONTROL: the same hook IS flagged once a `paths` entry claims that specifier', () => {
+  // The lexical twin of the runtime control in the header: one specifier, one
+  // spelling, one tsconfig entry's difference. If this test and the one above
+  // ever agree, the alias table has stopped being what decides.
+  const claimed = JSON.stringify({ compilerOptions: { paths: { cesium: ['./src/cesium'] } } });
+  const { status, out } = runOn({
+    ...BALLAST,
+    'apps/viewer/tsconfig.json': claimed,
+    'apps/x/hook.mjs': CESIUM_SHAPED_HOOK,
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /matches only `cesium`, which tsconfig `paths` claims via `cesium`/);
+});
+
+test('per-arm: a dead alias arm is NOT excused by a url-capable arm beside it', () => {
+  // The gap the previous revision recorded as tolerated. A hook whose FIRST arm
+  // is an alias equality still hangs on that specifier no matter what its other
+  // arms match, so the url-capable escape must be per-condition, not per-hook.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  if (specifier === TARGET) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  if (specifier.endsWith('.css')) {
+    return { url: 'file:///css.js', shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 1, out);
+  assert.match(out, /matches only `@ifc-lite\/collab`, which tsconfig `paths` claims via `@ifc-lite\/collab`/);
+});
+
+test('a dead alias arm rescued by an `||` in the SAME condition passes', () => {
+  // The remedy both real fixes used, reduced to its essentials. This is the
+  // reason the escape is per-condition rather than per-arm-token: `specifier ===
+  // TARGET || <url test>` is one arm with a live fallback, not a dead one.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  const real = await nextResolve(specifier, context);
+  if (specifier === TARGET || real.url.endsWith('/collab/src/index.ts')) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return real;
+}
+`;
   const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
   assert.equal(status, 0, out);
-  assert.match(out, /1 bare-specifier arm\(s\)/);
+  assert.match(out, /1 bare-specifier arm\(s\), 1 alias-covered/);
+});
+
+test('alias coverage matches a `@/*` wildcard, not just an exact key', () => {
+  // `@/lib/collab/geometry-sync` is claimed by `@/*`, which is how incident one
+  // was dead. Exact-key-only matching would miss it, so pin the wildcard arm.
+  const hook = `export async function resolve(specifier, context, nextResolve) {
+  if (specifier === '@/lib/deep/nested/thing') {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return nextResolve(specifier, context);
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 1, out);
+  assert.match(out, /claims via `@\/\*`/);
 });
 
 test('a hook file embedded as a STRING fixture is data, not a hook', () => {
@@ -233,6 +333,29 @@ test('vacuity: a tree with source files but no loader hook fails', () => {
   assert.equal(status, 1, out);
   assert.match(out, /no loader hooks found/);
   assert.match(out, /file\(s\) were scanned/);
+});
+
+test('vacuity: a tree with no tsconfig `paths` aliases fails', () => {
+  // The alias table is the whole predicate now. An empty one would clear every
+  // bare arm in the repo and the success line would still read OK, so losing it
+  // must be an error rather than a quiet universal pass.
+  const { status, out } = runOn({
+    'packages/keep/index.ts': 'export const keep = 1;\n',
+    'scripts/keep.mjs': 'export const keep = 1;\n',
+    'apps/x/hook.mjs': PRE_FIX_HYDRATE_HOOK,
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /no tsconfig `paths` aliases found/);
+});
+
+test('vacuity: an unparseable tsconfig fails rather than contributing nothing', () => {
+  const { status, out } = runOn({
+    ...BALLAST,
+    'apps/viewer/tsconfig.json': '{ "compilerOptions": { "paths": { oops } } }',
+    'apps/x/hook.mjs': PRE_FIX_HYDRATE_HOOK,
+  });
+  assert.equal(status, 1, out);
+  assert.match(out, /unparseable tsconfig apps\/viewer\/tsconfig\.json/);
 });
 
 test('vacuity: an unreadable file fails rather than being skipped', () => {

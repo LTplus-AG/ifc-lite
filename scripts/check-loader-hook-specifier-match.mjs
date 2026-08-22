@@ -4,18 +4,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Lint: a `node:module` `register()` loader hook must not be able to match ONLY
- * a bare specifier.
+ * Lint: a `node:module` `register()` loader hook must not match a TSCONFIG-ALIASED
+ * specifier by bare equality alone.
  *
  * THE TRAP, from two real incidents rather than a hypothetical:
  *
  * `module.registerHooks` (synchronous, in-thread) landed in Node 22.15.0, and
- * tsx feature-detects it. On a newer 22 an alias like `@/lib/collab/geometry-sync`
- * or a workspace package like `@ifc-lite/collab` is normalised to a `file://`
- * URL by that synchronous path BEFORE the async `register()` hook is consulted.
- * A hook whose only arm is `specifier === '@/lib/collab/geometry-sync'` then
- * never matches, the target module is never wrapped, the gate the test parks on
- * never fires, and the file hangs until the runner's timeout.
+ * tsx feature-detects it. tsx's synchronous hook applies the tsconfig `paths`
+ * mapping ITSELF and short-circuits, so on a newer 22 a specifier a `paths`
+ * entry claims never reaches an async `register()` hook AT ALL. A hook whose
+ * only arm is `specifier === '@/lib/collab/geometry-sync'` then never matches,
+ * the target module is never wrapped, the gate the test parks on never fires,
+ * and the file hangs until the runner's timeout.
  *
  * It is invisible on an older 22 and deterministic on CI, whose workflow pins
  * `node-version: 22` and so floats to the newest 22.x. `collab-session-race-hook.mjs`
@@ -23,60 +23,124 @@
  * `collab-hydrate-gate-hook.mjs` was written afterwards and walked into it
  * anyway. A comment did not prevent the second occurrence. Hence a gate.
  *
- * THE RULE, and its exact scope: for every `resolve` hook found, this collects
- * the `if (...)` conditions in its body and classifies each as
+ * WHAT WAS MEASURED, and what an earlier revision of this file got wrong.
  *
- *   - BARE-ONLY  — an exact equality against the specifier parameter whose
+ * That earlier revision justified itself with a broader claim: that after tsx's
+ * sync path normalises a specifier to a `file://` URL, a bare equality can never
+ * be true. THAT CLAIM IS FALSE, and the counter-evidence was already in CI.
+ *
+ *   - MEASURED, from CI: run 32532771710, job 96928471894, "Viewer tests
+ *     (shard 3)" on `main`, Node v22.23.2. `CesiumOverlay — state writes after
+ *     the init effect is torn down (#2685)` passes, with its 4 subtests. It can
+ *     only pass if `vite-module-hooks-impl.mjs`'s `specifier === 'cesium'` arm
+ *     fires: the component reaches the real bare specifier through
+ *     `loadCesium()` → `import('cesium')` (`cesium-module.ts:24`), and the stub
+ *     and the component share a module instance only when that arm matches. Had
+ *     it missed, `waitFor()` would time out on the real `new Cesium.Viewer()`.
+ *     So a bare-only arm is NOT automatically dead.
+ *
+ *   - MEASURED, locally, Node v22.23.2 + tsx 4.23.12, an instrumented async
+ *     `register()` resolve hook logging every specifier it is handed:
+ *
+ *       bare package from node_modules   → hook called TWICE: once with a
+ *                                          speculative `file:///…/<name>` that
+ *                                          does not resolve, then again with the
+ *                                          BARE specifier. Bare arm fires.
+ *       workspace package, file-linked   → same; bare arm fires.
+ *       virtual specifier (`~virt/…`)    → hook called once, bare. Arm fires.
+ *       specifier claimed by `paths`     → hook NEVER called, in any form.
+ *
+ *   - THE CONTROL, which is what makes this causal rather than correlational:
+ *     ONE specifier, `@lab/aliased`, spelled identically in both runs. With a
+ *     `paths` entry claiming it, the async hook is never called and the real
+ *     module loads. With that one tsconfig line removed and nothing else
+ *     changed, the hook is called with the bare specifier and the stub applies.
+ *     The `paths` entry is the cause, not the specifier's spelling.
+ *
+ * This also corrects the incident write-up. Both incidents were tsconfig
+ * aliases, not "an alias and a workspace package": `@ifc-lite/collab` is an
+ * EXACT key in `apps/viewer/tsconfig.json`, alongside the `@/*` wildcard that
+ * claims `@/lib/collab/geometry-sync`. A genuinely workspace-resolved package
+ * would not have hung — which is why trying to reproduce the failure with a
+ * symlinked workspace package fails, as an earlier attempt found.
+ *
+ * THE RULE, and its exact scope: for every `resolve` hook found, this collects
+ * the `if (...)` conditions in its body and, per condition, finds
+ *
+ *   - BARE targets  — an exact equality against the specifier parameter whose
  *                  right-hand side is a string with no URI scheme
  *                  (`specifier === '@/x'`, or `specifier === TARGET` where
- *                  `TARGET` is a top-level string const). After normalisation
- *                  the specifier is a `file://` URL, so this can never be true.
- *                  A scheme-carrying literal (`'node:fs'`, `'file://…'`) is NOT
- *                  bare-only: Node does not rewrite those.
- *   - URL-CAPABLE — the condition tests something that survives normalisation:
- *                  a `.url` property, a regex `.test(`, `.endsWith(`,
- *                  `.includes(`, `.match(`, a `file://` literal, or
- *                  `pathToFileURL` / `fileURLToPath`.
+ *                  `TARGET` is a top-level string const). A scheme-carrying
+ *                  literal (`'node:fs'`, `'file://…'`) is not a bare target:
+ *                  Node does not rewrite those.
+ *   - URL-CAPABLE signals — the condition tests something that survives
+ *                  normalisation: a `.url` property, a regex `.test(`,
+ *                  `.endsWith(`, `.includes(`, `.match(`, a `file://` literal,
+ *                  or `pathToFileURL` / `fileURLToPath`.
  *
- * A hook is FLAGGED when it has at least one bare-only arm and zero URL-capable
- * arms — i.e. every way it can match is dead on a newer Node. The remedy is the
- * one both fixed hooks use: call `nextResolve` first and match the resolved URL,
- * keeping the specifier arm as an `||` for the older async-only loader path.
+ * An ARM is FLAGGED when its bare target is claimed by a tsconfig `paths` entry
+ * anywhere in the tree AND its own condition carries no URL-capable signal. Both
+ * halves are load-bearing, and both are pinned by tests: alias coverage is what
+ * separates the two incidents from `cesium`, and the per-condition escape is
+ * what keeps the remedy green. That remedy is the one both fixed hooks use:
+ * call `nextResolve` first and match the resolved URL, keeping the specifier arm
+ * as an `||` IN THE SAME CONDITION for the older async-only loader path.
+ *
+ * Note the rule is PER ARM, not per hook. A dead alias arm is not excused by a
+ * URL-capable arm sitting beside it, because the hook still hangs on that one
+ * specifier whatever its other arms match. That is affordable only because the
+ * alias predicate is narrow: `vite-module-hooks-impl.mjs`'s bare `cesium` arm
+ * and its `~icons/` prefix arm — both verified working, per the CI run above —
+ * are cleared on their own merits rather than by a per-hook escape hatch.
  *
  * WHAT THIS CANNOT SEE. It is a lexical check on one function body; it does not
  * load a hook, register it, or observe a single resolution. Specifically:
  *
- *   1. PER-ARM RISK IS NOT FLAGGED. A hook with one URL-capable arm passes even
- *      if another arm is bare-only and load-bearing on its own.
- *      `apps/viewer/src/test/vite-module-hooks-impl.mjs` is exactly this today:
- *      its `specifier === 'cesium'` arm is bare-only, and the file passes on the
- *      strength of its `.endsWith('.css')` / `.endsWith('?raw')` arms. Widening
- *      the rule to per-arm would red that file, and a gate that reds working
- *      code gets disabled — so this is a deliberate, recorded gap, not an
- *      oversight.
- *   2. A DYNAMIC MATCH TARGET IS INVISIBLE. `specifier === buildTarget()`, or a
- *      target read from a config object or an env var, resolves to neither
- *      class: the const map below only follows top-level string literals. Such a
- *      hook is neither flagged nor vouched for.
- *   3. A URL-CAPABLE-LOOKING ARM MAY NOT ACTUALLY MATCH. `specifier.endsWith(
+ *   1. A BARE ARM ON A NON-ALIASED SPECIFIER IS NOT FLAGGED — the false negative
+ *      this narrowing deliberately buys. Measured today (above), such an arm is
+ *      reached and does fire, so flagging it would be a false positive on
+ *      proven-good code. But "reached today, on tsx 4.23.12" is the whole of the
+ *      evidence: if a later tsx resolves node_modules synchronously too, that
+ *      arm becomes dead and this check will stay silent about it. The tsx
+ *      version is not pinned by anything here.
+ *   2. AN ALIAS THIS SCAN CANNOT SEE IS NOT FLAGGED. The alias table is the
+ *      union of `paths` keys written LITERALLY in `tsconfig*.json` files under
+ *      the search roots, plus the repo-root `tsconfig.json`. `extends` is not
+ *      followed, so an alias inherited only through a base config is invisible,
+ *      and a hook depending on it would be missed. Every alias in this repo is
+ *      written in the file that uses it, so this is latent rather than live.
+ *      The table is also a repo-wide union rather than a per-consumer
+ *      resolution, which errs the other way — toward flagging an arm that would
+ *      in fact have matched.
+ *   3. A DYNAMIC MATCH TARGET IS INVISIBLE. `specifier === buildTarget()`, or a
+ *      target read from a config object or an env var, is classified as neither:
+ *      the const map below only follows top-level string literals. Such a hook
+ *      is neither flagged nor vouched for.
+ *   4. A URL-CAPABLE-LOOKING ARM MAY NOT ACTUALLY MATCH. `specifier.endsWith(
  *      '/geometry-sync')` is true of the alias and false of
  *      `file:///…/geometry-sync.ts`; a regex anchored on the alias spelling is
  *      the same shape. Both read as URL-capable here and would still hang. Only
  *      running the hook on a newer Node can tell those apart.
- *   4. IT DOES NOT KNOW HOW A HOOK IS REGISTERED. `module.registerHooks` is
+ *   5. IT DOES NOT KNOW HOW A HOOK IS REGISTERED. `module.registerHooks` is
  *      synchronous and DOES see the bare specifier, so an exact match is correct
  *      there. A hook file written for that API and for nothing else would be
  *      flagged by this check, wrongly. No such file exists in the repo today.
- *   5. IT SEES ONLY `if (...)`. A hook that matches inside a ternary, a `switch`,
+ *   6. IT SEES ONLY `if (...)`. A hook that matches inside a ternary, a `switch`,
  *      or a bare `return a || b` has no `if` condition to classify; that is a
  *      hard failure ("no match condition") rather than a pass, so the shape is
  *      fail-closed but not understood.
  *
+ * Closing gaps 1 and 4 needs a RUNTIME probe — register the hook on the pinned
+ * Node and assert the stub applied — not a lexical one. This file is not that,
+ * and does not claim to be.
+ *
  * Every step fails closed. A missing root, a search root that does not exist,
- * an unreadable file, zero files scanned, zero hooks found, a `resolve` whose
- * body cannot be delimited, or a `resolve` with no locatable condition is an
- * error with a named reason and a non-zero exit. The success line prints the
- * counts, so a zero-measure green is visible in the line itself.
+ * an unreadable file, zero files scanned, zero hooks found, an empty or
+ * unparseable alias table, a `resolve` whose body cannot be delimited, or a
+ * `resolve` with no locatable condition is an error with a named reason and a
+ * non-zero exit. The success line prints the counts — including how many bare
+ * arms were alias-covered and how many alias keys were found — so a zero-measure
+ * green is visible in the line itself.
  *
  * Run: node scripts/check-loader-hook-specifier-match.mjs [--root <dir>]
  */
@@ -95,6 +159,9 @@ const ROOT =
 const SEARCH_ROOTS = ['apps', 'packages', 'scripts'];
 
 const SOURCE_EXT = new Set(['.mjs', '.cjs', '.js', '.mts', '.cts', '.ts']);
+
+/** `tsconfig.json`, `tsconfig.test.json`, … — where the `paths` aliases live. */
+const TSCONFIG_NAME = /^tsconfig(?:\..+)?\.json$/;
 
 const SKIP_DIR = new Set([
   '.git',
@@ -376,6 +443,12 @@ function blankStrings(clean) {
   return out;
 }
 
+/**
+ * Every `tsconfig*.json` seen during the walk. Populated as a side effect of
+ * `collectFiles` so the tree is walked once.
+ */
+const tsconfigFiles = [];
+
 /** Every JS/TS-family source file under the search roots. Failures are recorded, not thrown. */
 function collectFiles() {
   const present = SEARCH_ROOTS.filter((r) => existsSync(join(ROOT, r)) && statSync(join(ROOT, r)).isDirectory());
@@ -408,6 +481,8 @@ function collectFiles() {
         walk(child);
       } else if (entry.isFile() && SOURCE_EXT.has(extname(entry.name))) {
         files.push(child);
+      } else if (entry.isFile() && TSCONFIG_NAME.test(entry.name)) {
+        tsconfigFiles.push(child);
       }
     }
   };
@@ -421,6 +496,94 @@ function collectFiles() {
     ]);
   }
   return files;
+}
+
+/**
+ * Every `compilerOptions.paths` KEY declared anywhere in the tree, plus the
+ * repo-root `tsconfig.json` if there is one. This is the alias table the
+ * measured mechanism turns on: a specifier a `paths` entry claims is resolved
+ * by tsx's synchronous hook and never reaches the async chain at all.
+ *
+ * Deliberately a repo-wide UNION rather than a per-consumer resolution. A hook
+ * in `apps/viewer` is checked against `packages/*`'s aliases too, which can only
+ * over-approximate — the safe direction for a guard, since the cost is a
+ * flagged arm that would in fact have matched, not a missed hang. `extends` is
+ * not followed: only `paths` written literally in a file is read, which is
+ * enough here because every alias in this repo is declared in the file that
+ * uses it. An alias reachable ONLY through an `extends` chain is invisible.
+ */
+function collectAliasKeys() {
+  const rootTsconfig = join(ROOT, 'tsconfig.json');
+  const candidates = existsSync(rootTsconfig) ? [rootTsconfig, ...tsconfigFiles] : [...tsconfigFiles];
+  const keys = new Set();
+  for (const abs of candidates) {
+    const rel = relative(ROOT, abs) || abs;
+    let text;
+    try {
+      text = readFileSync(abs, 'utf8');
+    } catch (err) {
+      fail([
+        `unreadable tsconfig ${rel}: ${err.message}`,
+        '',
+        'The alias table decides which bare arms are dead. A tsconfig that cannot be',
+        'read is a hole in it, so this fails rather than under-reporting.',
+      ]);
+      continue;
+    }
+    // `tsconfig.json` is JSONC by specification: strip line comments and
+    // trailing commas before parsing. Block comments are left to `JSON.parse`
+    // to reject loudly, since none of this repo's tsconfigs use them.
+    const stripped = text
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/,(\s*[}\]])/g, '$1');
+    let parsed;
+    try {
+      parsed = JSON.parse(stripped);
+    } catch (err) {
+      fail([
+        `unparseable tsconfig ${rel}: ${err.message}`,
+        '',
+        'The alias table decides which bare arms are dead, so a tsconfig this guard',
+        'cannot read is an error rather than an empty contribution. Teach the stripper',
+        'the syntax this file uses.',
+      ]);
+      continue;
+    }
+    const paths = parsed?.compilerOptions?.paths;
+    if (paths && typeof paths === 'object') for (const key of Object.keys(paths)) keys.add(key);
+  }
+  if (keys.size === 0 && failures.length === 0) {
+    fail([
+      `no tsconfig \`paths\` aliases found under ${SEARCH_ROOTS.map((r) => `\`${r}/\``).join(', ')} in ${ROOT}.`,
+      '',
+      `${candidates.length} tsconfig file(s) were read. The alias table is what makes this`,
+      'guard fire at all; an empty one would clear every bare arm in the repo. Either',
+      'the aliases moved, or the scan no longer reaches them.',
+    ]);
+  }
+  return keys;
+}
+
+/**
+ * Does a tsconfig `paths` entry claim this specifier? Exact keys match exactly;
+ * a `X/*` key matches anything under `X/`. Both spellings are load-bearing:
+ * `@ifc-lite/collab` is an exact key and `@/lib/collab/geometry-sync` matches
+ * the `@/*` wildcard, and those are the two historical incidents.
+ */
+function aliasCovers(aliasKeys, specifier) {
+  for (const key of aliasKeys) {
+    const star = key.indexOf('*');
+    if (star === -1) {
+      if (key === specifier) return key;
+      continue;
+    }
+    const prefix = key.slice(0, star);
+    const suffix = key.slice(star + 1);
+    if (specifier.length >= prefix.length + suffix.length && specifier.startsWith(prefix) && specifier.endsWith(suffix)) {
+      return key;
+    }
+  }
+  return null;
 }
 
 /** Delimit the brace-balanced body that starts at the `{` at or after `from`. */
@@ -511,11 +674,13 @@ function classifyCondition(condition, specifierParam, consts) {
 }
 
 const files = collectFiles();
+const aliasKeys = collectAliasKeys();
 
 let hookFileCount = 0;
 let resolveHookCount = 0;
 let conditionCount = 0;
 let bareArmCount = 0;
+let aliasArmCount = 0;
 let urlArmCount = 0;
 const flagged = [];
 
@@ -603,18 +768,25 @@ for (const abs of files) {
     }
     conditionCount += conditions.length;
 
-    const bareTargets = [];
-    const urlWhy = [];
+    // Per ARM, not per hook. An arm is dead when its target is alias-covered and
+    // the same condition carries no URL-capable signal to fall back on — so a
+    // hook stays flagged even if a SIBLING arm is URL-capable, and a bare arm on
+    // a non-aliased specifier (`cesium`) stays green because it is not dead.
+    const deadTargets = [];
     for (const condition of conditions) {
       const { bare, urlSignals } = classifyCondition(condition, specifierParam, consts);
-      bareTargets.push(...bare);
-      urlWhy.push(...urlSignals);
+      bareArmCount += bare.length;
+      urlArmCount += urlSignals.length;
+      for (const target of bare) {
+        const key = aliasCovers(aliasKeys, target);
+        if (key === null) continue;
+        aliasArmCount += 1;
+        if (urlSignals.length === 0) deadTargets.push({ target, key });
+      }
     }
-    bareArmCount += bareTargets.length;
-    urlArmCount += urlWhy.length;
 
-    if (bareTargets.length > 0 && urlWhy.length === 0) {
-      flagged.push({ rel, line: lineOf(declOffset), targets: bareTargets });
+    if (deadTargets.length > 0) {
+      flagged.push({ rel, line: lineOf(declOffset), targets: deadTargets });
     }
   }
 }
@@ -631,22 +803,31 @@ if (hookFileCount === 0 && failures.length === 0) {
 
 for (const hit of flagged) {
   fail([
-    `${hit.rel}:${hit.line}: \`resolve\` can only match a bare specifier.`,
+    `${hit.rel}:${hit.line}: \`resolve\` matches an aliased specifier by equality only.`,
     '',
-    ...hit.targets.map((t) => `  matches only \`${t}\``),
+    ...hit.targets.map((t) => `  matches only \`${t.target}\`, which tsconfig \`paths\` claims via \`${t.key}\``),
     '',
     `\`module.registerHooks\` (synchronous, in-thread) landed in Node 22.15.0 and tsx
-feature-detects it. On a newer 22 that specifier is normalised to a \`file://\`
-URL BEFORE this async \`register()\` hook is consulted, so the equality never
-holds, the target module is never wrapped, and whatever the hook exists to gate
-never fires — a hang until the runner's timeout, on CI only, because the
-workflow pins \`node-version: 22\` and floats to the newest 22.x.
+feature-detects it. tsx's synchronous hook applies the tsconfig \`paths\` mapping
+ITSELF and short-circuits, so on a newer 22 an aliased specifier never reaches
+this async \`register()\` hook in any form — the equality cannot hold, the target
+module is never wrapped, and whatever the hook exists to gate never fires. A
+hang until the runner's timeout, on CI only, because the workflow pins
+\`node-version: 22\` and floats to the newest 22.x.
 
-This has happened twice: \`collab-session-race-hook.mjs\` and
-\`collab-hydrate-gate-hook.mjs\`. Both fixes are the same: call \`nextResolve\`
-first and match the RESOLVED url, keeping the specifier arm as an \`||\` for the
-older async-only loader path. Guard on \`context.parentURL\` if the hook's
-replacement module imports the real url, or it will wrap itself forever.`,
+Measured on Node v22.23.2 with tsx 4.23.12: a specifier covered by a \`paths\`
+entry produces ZERO calls into the async resolve hook, while the same specifier
+spelled identically with that \`paths\` entry removed reaches it and matches.
+That control is what distinguishes this from a bare arm on a non-aliased
+specifier, which is NOT dead — see the header.
+
+This has happened twice: \`collab-session-race-hook.mjs\` (\`@ifc-lite/collab\`, an
+exact \`paths\` key) and \`collab-hydrate-gate-hook.mjs\`
+(\`@/lib/collab/geometry-sync\`, via the \`@/*\` wildcard). Both fixes are the same:
+call \`nextResolve\` first and match the RESOLVED url, keeping the specifier arm
+as an \`||\` for the older async-only loader path. Guard on \`context.parentURL\` if
+the hook's replacement module imports the real url, or it will wrap itself
+forever.`,
   ]);
 }
 
@@ -659,5 +840,6 @@ if (failures.length > 0) {
 console.log(
   `check-loader-hook-specifier-match: OK (${files.length} files scanned, ${hookFileCount} loader hook file(s), ` +
     `${resolveHookCount} resolve hook(s), ${conditionCount} condition(s), ` +
-    `${bareArmCount} bare-specifier arm(s), ${urlArmCount} url-capable signal(s))`,
+    `${bareArmCount} bare-specifier arm(s), ${aliasArmCount} alias-covered, ` +
+    `${aliasKeys.size} alias key(s), ${urlArmCount} url-capable signal(s))`,
 );

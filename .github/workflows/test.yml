@@ -715,6 +715,18 @@ jobs:
       # file — the three ways it could otherwise wave a package through.
       - name: Check test-glob-coverage gate regressions
         run: node --test scripts/check-test-glob-coverage.test.mjs
+      # `fetch-fixtures.mjs --check` is the step every fixture-consuming job now
+      # runs unconditionally after its cache-gated fetch, so it is a gate about
+      # a gate: if IT can pass over nothing, it is worse than absent, because it
+      # also buys silence. These cases drive the unmodified script against
+      # synthetic corpora and assert it reds — naming the offending path — for a
+      # fixture that is absent, byte-flipped at the same size, or truncated, and
+      # for each way of verifying nothing: no manifest, an unparseable one, one
+      # listing zero files, and a scoped `--check a.ifc b.ifc` naming a path the
+      # manifest no longer lists. Positive controls keep it from being switched
+      # off for redding a healthy tree.
+      - name: Check the fixture-cache verification cannot pass vacuously
+        run: node --test scripts/fixtures/fetch-fixtures.test.mjs
       # The steps above name each scripts/ test file one by one, which is
       # itself the trap check-test-glob-coverage.mjs exists to catch: the file
       # that shipped that gate was the one entry nobody added, so a gate for
@@ -723,8 +735,10 @@ jobs:
       # closes it by GLOB, so the next script's tests run on the commit that
       # adds them. The named steps above stay for their comments and for
       # per-gate attribution; re-running them here costs a few seconds.
+      # scripts/fixtures/ is in the glob because it was NOT: the first test file
+      # under it would have been added, run locally, and then never run again.
       - name: Run every scripts/ test file (glob catch-all)
-        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync

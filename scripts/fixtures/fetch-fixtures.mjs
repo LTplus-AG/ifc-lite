@@ -113,12 +113,24 @@ function resolveFixturePath(relPath) {
 
 let entries = manifest.files;
 if (ONLY.length) {
-  const wanted = new Set(ONLY.map((p) => p.replace(/^tests\/models\//, '')));
-  entries = entries.filter((f) => wanted.has(f.path));
-  if (!entries.length) {
-    console.error(`error: none of the requested paths are in the manifest`);
+  const wanted = ONLY.map((p) => p.replace(/^tests\/models\//, ''));
+  const known = new Set(manifest.files.map((f) => f.path));
+  // A requested path the manifest does not list is a hard error, not a silent
+  // narrowing. Filtering it away made `--check a.ifc b.ifc` report "all 1
+  // fixtures present and verified" after a rename dropped `b.ifc` from the
+  // manifest — a green gate over a corpus the caller never actually got. The
+  // fetch form was worse: it downloaded nothing for the renamed path and still
+  // exited 0, so the job ran against whatever the cache happened to hold.
+  const unknown = wanted.filter((p) => !known.has(p));
+  if (unknown.length) {
+    for (const p of unknown) {
+      console.error(`error: ${p} is not listed in ${MANIFEST_PATH}`);
+    }
+    console.error(`requested paths not in the manifest: ${unknown.length} of ${wanted.length}`);
     process.exit(2);
   }
+  const wantedSet = new Set(wanted);
+  entries = entries.filter((f) => wantedSet.has(f.path));
 }
 
 async function sha256OfFile(path) {

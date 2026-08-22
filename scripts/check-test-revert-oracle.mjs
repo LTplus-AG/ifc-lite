@@ -52,6 +52,9 @@
  * See the LIMITATIONS block at the bottom of this file, and `--help`, for what
  * wiring it into CI would require.
  *
+ * @unwired-by-design it reverse-applies patches to the working tree and reruns
+ * a branch's suites twice; a pre-push interrogation tool, not a required check.
+ *
  * USAGE
  *   node scripts/check-test-revert-oracle.mjs [options]
  *

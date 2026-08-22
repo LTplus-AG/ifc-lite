@@ -87,6 +87,7 @@
     "@playwright/test": "^1.62.1",
     "@posthog/cli": "0.11.1",
     "@types/node": "^26.2.0",
+    "gltf-validator": "2.0.0-dev.3.10",
     "knip": "^6.32.2",
     "oxlint": "^1.42.0",
     "tsx": "^4.23.12",

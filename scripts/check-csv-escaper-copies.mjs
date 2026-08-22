@@ -109,16 +109,140 @@ function candidateFiles() {
   return out.split('\0').filter(Boolean);
 }
 
+/**
+ * Blank out comment CONTENT, leaving code and line structure intact.
+ *
+ * Four leading-character heuristics were tried before this and each shipped a
+ * hole, every time in the same direction -- a real escaper made invisible:
+ *
+ *   skip `//`, `*`, `/*`   missed Rust `*out = matches!(..)` and `/* c *""/ code`
+ *   skip `//` only         missed `/* \n // *""/ code`, where `*""/` resumes the line
+ *   track block state      missed code after `const s = "/* x";`
+ *   plus a star-space rule missed `* quote(cells) {}`, a live JS generator method
+ *
+ * All four passed the same 17 tests. A leading character cannot decide whether
+ * a line is a comment, because that depends on what precedes it on the SAME
+ * line and on the lines above. So this walks the text once, tracking the only
+ * states that change what a character means: line comment, block comment, the
+ * three string flavours, and regex literals.
+ *
+ * Comment characters become spaces rather than being deleted, so line numbers
+ * and columns survive and a pattern can still match code sharing a line with a
+ * trailing comment.
+ *
+ * THE SAFETY PROPERTY, stated because the four attempts above each rested on an
+ * unstated one that turned out false: **only comment content is blanked.**
+ * Strings and regexes are skipped over, never written to. So every way this can
+ * be wrong about where a string ends -- a Rust char literal `'='`, a lifetime
+ * `&'a str`, an unterminated quote, a backtick inside a single-quoted string --
+ * costs at most a MISSED comment, which is a false red. None of them can hide a
+ * line of code, because hiding requires writing spaces and that happens only
+ * inside a proven block-comment or line-comment run.
+ *
+ * (Deliberately NOT spelling the block terminator here: writing it inside this
+ * docblock closes the docblock, which is how this very edit first broke the
+ * file -- the same hazard as the backtick that closed the codegen template.)
+ *
+ * Verified rather than asserted: `matches!(c, '=' | '+' | '-' | '@')` is still
+ * caught after a lifetime declaration and after an unterminated `'`.
+ *
+ * Rust block comments nest and this does not track depth, so a nested comment
+ * closes early and its tail is scanned as code. Same direction: scanning MORE
+ * is a false red someone investigates rather than a bypass nobody sees.
+ */
+const REGEX_KEYWORD = /^(return|typeof|instanceof|in|of|case|yield|await|delete|void|new|do|else)$/;
+
+export function blankComments(text) {
+  const out = text.split('');
+  const n = text.length;
+  let i = 0;
+  // Regex-vs-division turns on the previous significant character: `/` after a
+  // value is division, after an operator or opener it starts a regex.
+  let prevSig = '';
+  let prevWord = '';
+  while (i < n) {
+    const c = text[i];
+    const d = text[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < n && text[i] !== '\n') { out[i] = ' '; i += 1; }
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      out[i] = ' '; out[i + 1] = ' '; i += 2;
+      while (i < n && !(text[i] === '*' && text[i + 1] === '/')) {
+        if (text[i] !== '\n') out[i] = ' ';
+        i += 1;
+      }
+      if (i < n) { out[i] = ' '; out[i + 1] = ' '; i += 2; }
+      prevSig = 'x';
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      // RESYNC AT THE NEWLINE for ' and ". Neither can span a line in JS, TS or
+      // ordinary Rust, and without the bound one unpaired quote in CODE opens a
+      // fake string that runs to the next quote ANYWHERE in the file, losing
+      // phase for everything after it. That is not hypothetical: a Rust
+      // lifetime `&'a str` has an odd number of quotes, and so does a JSX
+      // contraction like `What's New`. 170 .rs files and any .tsx with a
+      // contraction were affected, leaving real comments unblanked (a false
+      // red) and, once phase inverts, letting a `//` inside a real string blank
+      // live code (a bypass).
+      //
+      // Backticks DO span lines, so they are not bounded. An unterminated one
+      // still costs at most a missed comment, never a hidden line of code.
+      const bounded = c !== '`';
+      i += 1;
+      while (i < n) {
+        if (bounded && text[i] === '\n') break;
+        if (text[i] === '\\') { i += 2; continue; }
+        if (text[i] === c) { i += 1; break; }
+        i += 1;
+      }
+      prevSig = 'x';
+      continue;
+    }
+    // A `/` opens a regex after an operator or opener, and also after a keyword
+    // -- `return /["]/.test(s)` is a regex, not division. Without the keyword
+    // arm the quote inside it was read as a string opener and shifted phase.
+    if (c === '/' && (/[=(,:;[{!&|?+\-*%~^<>]/.test(prevSig) || REGEX_KEYWORD.test(prevWord))) {
+      i += 1;
+      while (i < n && text[i] !== '\n') {
+        if (text[i] === '\\') { i += 2; continue; }
+        if (text[i] === '[') { while (i < n && text[i] !== ']' && text[i] !== '\n') i += 1; }
+        if (text[i] === '/') { i += 1; break; }
+        i += 1;
+      }
+      prevSig = 'x';
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(c)) {
+      let k = i;
+      while (k < n && /[A-Za-z0-9_$]/.test(text[k])) k += 1;
+      prevWord = text.slice(i, k);
+      prevSig = text[k - 1];
+      i = k;
+      continue;
+    }
+    if (!/\s/.test(c)) { prevSig = c; prevWord = ''; }
+    i += 1;
+  }
+  return out.join('');
+}
+
 /** Scan one file's text; returns the violations found in it. */
 export function scanText(relPath, text) {
   const normalized = relPath.split(sep).join('/');
   if (CANONICAL.includes(normalized) || NON_IMPLEMENTATION.includes(normalized)) return [];
   const found = [];
+  const rawLines = text.split('\n');
+  // Comment CONTENT is blanked, code is not. A pattern can therefore still
+  // match code that shares a line with a comment, while prose describing the
+  // pattern -- which is what every fix for this defect writes -- cannot red it.
+  const lines = blankComments(text).split('\n');
   for (const p of PATTERNS) {
-    const lines = text.split('\n');
     for (let i = 0; i < lines.length; i++) {
       if (p.re.test(lines[i])) {
-        found.push({ file: normalized, line: i + 1, pattern: p.name, hint: p.hint, text: lines[i].trim() });
+        found.push({ file: normalized, line: i + 1, pattern: p.name, hint: p.hint, text: rawLines[i].trim() });
       }
     }
   }

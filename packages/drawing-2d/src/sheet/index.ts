@@ -56,9 +56,6 @@ export {
 
 // Scale bar types
 export type {
-  ScaleBarStyle,
-  ScaleBarPosition,
-  ScaleBarUnits,
   ScaleBarConfig,
   NorthArrowStyle,
   NorthArrowConfig,
@@ -107,5 +104,3 @@ export type {
 } from './title-block-renderer.js';
 export { renderTitleBlock } from './title-block-renderer.js';
 
-export type { PositionMm } from './scale-bar-renderer.js';
-export { renderScaleBar, renderNorthArrow } from './scale-bar-renderer.js';

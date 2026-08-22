@@ -175,6 +175,25 @@ function UnderlayCard({
         </div>
       )}
 
+      {/* Skipped entity types (parser-computed `underlay.skipped`, a
+          type→count map — distinct from `warnings`, a message list, so it
+          gets its own line rather than being concatenated with warnings
+          above). This is the only place a user can learn that part of the
+          DXF did not import: `ingestDxfFile` only logs `skipped` to the
+          console, and only when the underlay has ZERO drawable entities —
+          the common case of "most of it imported, N entities of type X
+          did not" was previously silent. */}
+      {Object.keys(underlay.skipped).length > 0 && (
+        <div className="flex items-start gap-1 text-[10px] text-amber-600 dark:text-amber-500 px-1">
+          <AlertTriangle className="h-3 w-3 mt-px shrink-0" />
+          <span>
+            Not imported: {Object.entries(underlay.skipped)
+              .map(([type, count]) => `${count}× ${type}`)
+              .join(', ')}
+          </span>
+        </div>
+      )}
+
       {/* Opacity — PR #2114 review: the slider only affects the 2D drawing
           panel. The 3D viewport's line pipeline (`Section2DOverlayRenderer`)
           shares one un-blended `linePipeline`/uniform colour across the

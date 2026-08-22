@@ -175,9 +175,55 @@ after(() => {
   container?.remove();
 });
 
-/** Let the host microtask/timer queues turn so a parked run can make progress. */
-async function tick(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 50));
+/**
+ * How long a run is allowed to take to reach its host gate before the wait
+ * below gives up and lets the call site's assertion report what it found.
+ *
+ * This is a HANG bound, not a timing assumption: it is the same order as the
+ * sandbox's own `timeoutMs`, while the wait it bounds normally ends within a
+ * few milliseconds. Nothing about a passing run depends on its value.
+ */
+const GATE_PARK_TIMEOUT_MS = 10_000;
+
+/**
+ * Turn the host queues until the guest has parked on `count` host gates.
+ *
+ * This used to be a flat 50ms sleep, which is a GUESS about how long
+ * `execute()` needs to import `@ifc-lite/sandbox` and stand up a QuickJS
+ * runtime — and the guess is wrong precisely where this file makes it
+ * hardest. The #1922 tests at the bottom abort a real WASM module, and an
+ * aborted module is RETIRED (`retireQuickJSModule`), so the next `execute()`
+ * pays a full fresh `newQuickJSWASMModule()` instead of reusing the cached
+ * one. Measured on a loaded machine, that one site reaches 46-72ms while
+ * every other site here stays under ~20ms: the sleep straddled the cost it
+ * was supposed to cover.
+ *
+ * When it lost, the damage did not stop at one test. The assertion threw with
+ * the run still un-awaited, that orphaned run parked a moment later into the
+ * NEXT test's freshly emptied `gates`, and that test then counted two — the
+ * `0 !== 1, then 2 !== 1` pair reported as issue #3060, which read as a flake
+ * because the trigger is load, not the diff under test.
+ *
+ * Waiting for the event instead of predicting it removes the guess rather
+ * than enlarging it. Every call site keeps its exact `gates.length` assertion
+ * afterwards, so a run that parks on the wrong number of gates — including
+ * one that leaked in from an earlier test — still fails on the count.
+ *
+ * **The same guess in its other disguise.** Sites that start a second run and
+ * `await` it were relying on the newer run settling to prove the older one had
+ * already REACHED its gate. That is the identical assumption with the sleep
+ * spelled differently, and it loses the same way: under load the older run can
+ * still be standing up its sandbox, and the gate count reads 0. Those sites
+ * call this helper too, and they call it AFTER their settle-order assertion —
+ * that assertion is the load-bearing one, and the wait cannot mask a violation
+ * of it, because a run parked on a gate cannot settle until this file opens
+ * that gate.
+ */
+async function waitForGates(count: number): Promise<void> {
+  const deadline = Date.now() + GATE_PARK_TIMEOUT_MS;
+  while (gates.length < count && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
 }
 
 describe('useSandbox().execute() — cross-instance run supersession', () => {
@@ -203,6 +249,8 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
         ['B'],
         'the older run A must still be in flight when the newer run B settles — without that ordering there is no clobber to guard against and this whole test is vacuous',
       );
+      // Settle order first, gate count second — see `waitForGates`.
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'instance A must be parked on exactly one host gate');
 
       gates[0]!({ marker: 'A-result' });
@@ -263,7 +311,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
 
     await act(async () => {
       const p = execute1!(GATED).then((x) => { r = x; });
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the lone run must be parked on its gate');
       gates[0]!({ marker: 'lone-result' });
       await p;
@@ -315,6 +363,8 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pB = execute2!(UNGATED).then(() => { settleOrder.push('B'); });
       await pB;
       assert.deepEqual(settleOrder, ['B'], 'A must still be parked when B settles');
+      // Settle order first, gate count second — see `waitForGates`.
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'A must be parked on its host gate');
       gates[0]!({ marker: 'unused' });
       await pA;
@@ -340,7 +390,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     let rA: ScriptResult | null | undefined;
     await act(async () => {
       const pA = execute1!(GATED).then((r) => { rA = r; });
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, "instance A's run must be in flight when reset() fires");
       reset1!();
       gates[0]!({ marker: 'stale' });
@@ -372,7 +422,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     await act(async () => {
       const pA = execute1!(GATED).then((r) => { rA = r; });
       reset1!();
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the superseded run still runs to its gate — reset() only bumps the epoch here, it has no sandbox to dispose yet');
       gates[0]!({ marker: 'stale' });
       await pA;
@@ -397,6 +447,8 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pSecond = execute1!(UNGATED).then((r) => { settleOrder.push('second'); rSecond = r; });
       await pSecond;
       assert.deepEqual(settleOrder, ['second'], 'the first run must still be parked when the second settles');
+      // Settle order first, gate count second — see `waitForGates`.
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the first run must be parked on its host gate');
       gates[0]!({ marker: 'superseded' });
       await pFirst;
@@ -427,7 +479,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
 
     await act(async () => {
       const pB = execute2!(GATED).then((r) => { rB = r; });
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, "instance B's run must be in flight when instance A resets");
       reset1!();
       gates[0]!({ marker: 'B-result' });
@@ -464,7 +516,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     let r: ScriptResult | null | undefined;
     await act(async () => {
       const p = executeOom!(GATED_OOM_AT_TEARDOWN).then((x) => { r = x; });
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the reproducer must be parked on its host gate');
       gates[0]!({ marker: 'A-result' });
       await p;
@@ -500,6 +552,8 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pB = execute2!(UNGATED).then(() => { settleOrder.push('B'); });
       await pB;
       assert.deepEqual(settleOrder, ['B'], 'the aborting run must still be parked when the newer run settles');
+      // Settle order first, gate count second — see `waitForGates`.
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the aborting run must be parked on its host gate');
       gates[0]!({ marker: 'A-result' });
       await pA;
@@ -530,7 +584,7 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
     let r: ScriptResult | null | undefined;
     await act(async () => {
       const p = executeOom!(GATED_OOM_AT_TEARDOWN_AFTER_THROW).then((x) => { r = x; });
-      await tick();
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the reproducer must be parked on its host gate');
       gates[0]!({ marker: 'unused' });
       await p;
@@ -555,6 +609,8 @@ describe('useSandbox().execute() — cross-instance run supersession', () => {
       const pB = execute2!(UNGATED).then(() => { settleOrder.push('B'); });
       await pB;
       assert.deepEqual(settleOrder, ['B'], 'the aborting run must still be parked when the newer run settles');
+      // Settle order first, gate count second — see `waitForGates`.
+      await waitForGates(1);
       assert.equal(gates.length, 1, 'the aborting run must be parked on its host gate');
       gates[0]!({ marker: 'unused' });
       await pA;

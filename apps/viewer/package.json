@@ -14,7 +14,7 @@
     "build": "vite build && node ../../scripts/check-tla-chunk-await.mjs",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "test": "tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=4 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v s=\"${TEST_SHARD:-0}\" -v n=\"${TEST_SHARDS:-1}\" 'NR % n == s')",
+    "test": "tsx --import ./src/test/vite-module-hooks.mjs --test --test-timeout=120000 --test-concurrency=1 $(find src -type f \\( -name '*.test.ts' -o -name '*.test.tsx' \\) | sort | awk -v s=\"${TEST_SHARD:-0}\" -v n=\"${TEST_SHARDS:-1}\" '{h=0; for(i=1;i<=length($0);i++) h=(h*31+index(\" !\\\"#$%&()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_abcdefghijklmnopqrstuvwxyz{|}~\", substr($0,i,1)))%1000003} h%n==s')",
     "check:templates": "tsc -p src/lib/scripts/templates/tsconfig.json --noEmit"
   },
   "dependencies": {

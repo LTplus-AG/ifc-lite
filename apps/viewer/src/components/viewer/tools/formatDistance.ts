@@ -68,7 +68,7 @@ function formatDistanceMagnitude(meters: number, overrides: Record<string, strin
 
 /**
  * Format a signed X/Y/Z LENGTH-DELTA triple honoring the LENGTHUNIT display
- * override, e.g. `X 3.2808  Y 6.5617  Z 9.8425`.
+ * override, e.g. `ΔX +3.2808  ΔY +6.5617  ΔZ -9.8425`.
  *
  * This is for a triple that IS a distance — the Measure tool's
  * relative-reference offset (dx/dy/dz from a user-set datum), the same kind
@@ -78,7 +78,20 @@ function formatDistanceMagnitude(meters: number, overrides: Record<string, strin
  * point positions in a file's own coordinate system or a projected CRS, and
  * are deliberately out of #2199's scope.
  *
- * Deep review on #2538: before this, the "Rel. ref" row converted only its
+ * The `Δ` prefix and the explicit `+` are the #2737 §3 acceptance criterion —
+ * *a relative coordinate is visually distinct from an absolute one* — carried
+ * in the VALUE rather than only in the row label beside it. The viewer names
+ * four kinds of coordinate (model-local, project/anchor, render-frame world
+ * and georeferenced), every one of which prints as `X … Y … Z …`; a fifth kind
+ * that printed the same way would be told apart only by the label cell, and a
+ * label cell is exactly what a narrow panel, a copied line or a screenshot
+ * crop loses. `ΔX +2.500` cannot be misread as a position no matter where it
+ * is quoted.
+ *
+ * A zero axis gets no sign: an offset of nothing has no direction, and `+0.000`
+ * claims one.
+ *
+ * Deep review on #2538: before this, the relative row converted only its
  * trailing distance hint, leaving the triple beside it in unlabelled metres —
  * a `ft` override made the row read e.g. `X 1.000 Y 2.000 Z 3.000  12.2758
  * ft`, mixing units in one line. All three axes share one override, so the
@@ -89,6 +102,11 @@ export function formatSignedTriple(
   p: { x: number; y: number; z: number },
   overrides: Record<string, string> = {},
 ): string {
-  const axis = (n: number) => formatDistanceMagnitude(n, overrides);
-  return `X ${axis(p.x)}  Y ${axis(p.y)}  Z ${axis(p.z)}`;
+  const axis = (n: number) => {
+    const magnitude = formatDistanceMagnitude(n, overrides);
+    // A negative value already carries its own '-' from the formatter, so only
+    // the positive direction needs one added.
+    return n > 0 ? `+${magnitude}` : magnitude;
+  };
+  return `ΔX ${axis(p.x)}  ΔY ${axis(p.y)}  ΔZ ${axis(p.z)}`;
 }

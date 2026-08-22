@@ -34,6 +34,11 @@ observability = ["dep:tracing"]
 # `tests/triangulation_invariance.rs` can feed the pipeline two equally valid
 # triangulations of the same polygons. Never enabled in a shipping build.
 triangulation-alt = ["dep:earcut"]
+# Test-only: exposes `test_support` (the receive-and-diagnose watchdog used by
+# the termination suites) to OTHER crates' integration tests, which cannot see
+# this crate's `cfg(test)` tree. `ifc-lite-processing` enables it as a
+# dev-dependency. Never enabled in a shipping build.
+test-support = []
 
 [dependencies]
 

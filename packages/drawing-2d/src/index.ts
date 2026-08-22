@@ -525,8 +525,6 @@ export {
   // Sheet renderers
   renderFrame,
   renderTitleBlock,
-  renderScaleBar,
-  renderNorthArrow,
 } from './sheet/index.js';
 
 export type {
@@ -550,9 +548,6 @@ export type {
   TitleBlockConfig,
 
   // Scale bar types
-  ScaleBarStyle,
-  ScaleBarPosition,
-  ScaleBarUnits,
   ScaleBarConfig,
   NorthArrowStyle,
   NorthArrowConfig,
@@ -574,5 +569,4 @@ export type {
   FrameInnerBounds,
   TitleBlockRenderResult,
   TitleBlockExtras,
-  PositionMm,
 } from './sheet/index.js';

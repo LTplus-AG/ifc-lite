@@ -282,6 +282,48 @@ export async function resolve(specifier, context, nextResolve) {
   assert.match(out, /1 bare-specifier arm\(s\), 1 alias-covered/);
 });
 
+test('an `&&` does NOT rescue a dead alias arm: every conjunct must hold', () => {
+  // The mirror image of the `||` test above, and the reason the escape reads the
+  // condition's boolean STRUCTURE rather than scanning it flat. `specifier ===
+  // ALIASED || <url test>` matches through the right-hand side; `specifier ===
+  // ALIASED && <url test>` can never match at all, because the left-hand side is
+  // exactly the equality tsx's synchronous hook makes unreachable. A flat "does
+  // this condition mention anything url-capable" test clears both, which is a
+  // hole big enough to hide the next incident in.
+  const hook = `const TARGET = '@ifc-lite/collab';
+export async function resolve(specifier, context, nextResolve) {
+  const real = await nextResolve(specifier, context);
+  if (specifier === TARGET && real.url.endsWith('/collab/src/index.ts')) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return real;
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 1, out);
+  assert.match(out, /matches only `@ifc-lite\/collab`, which tsconfig `paths` claims via `@ifc-lite\/collab`/);
+});
+
+test('an `&&` guard around a live `||` remedy still passes', () => {
+  // The false positive the `&&` rule must not produce, and the shape the
+  // checker's own header recommends: the self-wrapping guard on
+  // `context.parentURL` is ANDed onto a remedy that is live through its `||`.
+  // Structure, not string matching, is what tells this apart from the test
+  // above — both contain `===`, `&&` and a url test.
+  const hook = `const TARGET = '@ifc-lite/collab';
+const MARKER = 'stub:';
+export async function resolve(specifier, context, nextResolve) {
+  const real = await nextResolve(specifier, context);
+  if ((specifier === TARGET || real.url.endsWith('/collab/src/index.ts')) && !context.parentURL?.startsWith(MARKER)) {
+    return { url: 'file:///stub.js', shortCircuit: true };
+  }
+  return real;
+}
+`;
+  const { status, out } = runOn({ ...BALLAST, 'apps/x/hook.mjs': hook });
+  assert.equal(status, 0, out);
+});
+
 test('alias coverage matches a `@/*` wildcard, not just an exact key', () => {
   // `@/lib/collab/geometry-sync` is claimed by `@/*`, which is how incident one
   // was dead. Exact-key-only matching would miss it, so pin the wildcard arm.

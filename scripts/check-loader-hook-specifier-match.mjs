@@ -79,12 +79,27 @@
  *                  or `pathToFileURL` / `fileURLToPath`.
  *
  * An ARM is FLAGGED when its bare target is claimed by a tsconfig `paths` entry
- * anywhere in the tree AND its own condition carries no URL-capable signal. Both
- * halves are load-bearing, and both are pinned by tests: alias coverage is what
- * separates the two incidents from `cesium`, and the per-condition escape is
- * what keeps the remedy green. That remedy is the one both fixed hooks use:
- * call `nextResolve` first and match the resolved URL, keeping the specifier arm
- * as an `||` IN THE SAME CONDITION for the older async-only loader path.
+ * anywhere in the tree AND no URL-capable signal survives beside it in the same
+ * BRANCH of the condition. Both halves are load-bearing, and both are pinned by
+ * tests: alias coverage is what separates the two incidents from `cesium`, and
+ * the URL-capable escape is what keeps the remedy green. That remedy is the one
+ * both fixed hooks use: call `nextResolve` first and match the resolved URL,
+ * keeping the specifier arm as an `||` IN THE SAME CONDITION for the older
+ * async-only loader path.
+ *
+ * "In the same branch" is evaluated over the condition's `||`/`&&` STRUCTURE,
+ * not by scanning it flat, because the two connectives do opposite things to a
+ * dead equality:
+ *
+ *   `specifier === ALIASED || resolved.url.includes(X)`   matches via the right
+ *   `specifier === ALIASED && resolved.url.includes(X)`   can NEVER match
+ *
+ * A flat scan clears both. An OR is live when EITHER side is, an AND only when
+ * BOTH are, and a leaf is dead exactly when it is an equality against an
+ * alias-covered specifier with nothing URL-capable in it. That keeps the `&&`
+ * self-wrap guard the fixed hooks use (`(specifier === TARGET || <url test>) &&
+ * !context.parentURL?.startsWith(MARKER)`) green while flagging the `&&` form
+ * that cannot fire.
  *
  * Note the rule is PER ARM, not per hook. A dead alias arm is not excused by a
  * URL-capable arm sitting beside it, because the hook still hangs on that one
@@ -107,15 +122,26 @@
  *      union of `paths` keys written LITERALLY in `tsconfig*.json` files under
  *      the search roots, plus the repo-root `tsconfig.json`. `extends` is not
  *      followed, so an alias inherited only through a base config is invisible,
- *      and a hook depending on it would be missed. Every alias in this repo is
- *      written in the file that uses it, so this is latent rather than live.
+ *      and a hook depending on it would be missed. That is latent rather than
+ *      live here, but NOT because every alias is written in the file that uses
+ *      it — it is not. `tsconfig.packages.json` extends the repo-root
+ *      `tsconfig.json`, and every `packages/*` config extends that in turn, so
+ *      most of the tree INHERITS the root's `paths` rather than declaring them.
+ *      The table is complete anyway because the root config is read directly,
+ *      and it is the only inherited `paths` table in the repo. A second base
+ *      config carrying its own `paths` would open the hole for real.
  *      The table is also a repo-wide union rather than a per-consumer
  *      resolution, which errs the other way — toward flagging an arm that would
  *      in fact have matched.
  *   3. A DYNAMIC MATCH TARGET IS INVISIBLE. `specifier === buildTarget()`, or a
  *      target read from a config object or an env var, is classified as neither:
  *      the const map below only follows top-level string literals. Such a hook
- *      is neither flagged nor vouched for.
+ *      is neither flagged nor vouched for. A BACKTICK target falls here too:
+ *      both the const map and the operand pattern accept `'` and `"` only, so
+ *      `` specifier === `@/lib/x` `` reads as dynamic even though it is a
+ *      constant. Interpolation is what makes a template literal genuinely
+ *      dynamic and a no-substitution one indistinguishable at a glance, so this
+ *      declines to guess rather than half-supporting the form.
  *   4. A URL-CAPABLE-LOOKING ARM MAY NOT ACTUALLY MATCH. `specifier.endsWith(
  *      '/geometry-sync')` is true of the alias and false of
  *      `file:///…/geometry-sync.ts`; a regex anchored on the alias spelling is
@@ -508,9 +534,12 @@ function collectFiles() {
  * in `apps/viewer` is checked against `packages/*`'s aliases too, which can only
  * over-approximate — the safe direction for a guard, since the cost is a
  * flagged arm that would in fact have matched, not a missed hang. `extends` is
- * not followed: only `paths` written literally in a file is read, which is
- * enough here because every alias in this repo is declared in the file that
- * uses it. An alias reachable ONLY through an `extends` chain is invisible.
+ * not followed: only `paths` written literally in a file is read. That is enough
+ * here NOT because every alias is declared where it is used — `tsconfig.packages.json`
+ * extends the repo-root config and every `packages/*` config extends that — but
+ * because the root is the only `paths` table anything inherits, and it is read
+ * directly above. An alias reachable ONLY through some other `extends` chain
+ * would be invisible.
  */
 function collectAliasKeys() {
   const rootTsconfig = join(ROOT, 'tsconfig.json');
@@ -673,6 +702,103 @@ function classifyCondition(condition, specifierParam, consts) {
   return { bare, urlSignals };
 }
 
+/**
+ * Split `text` at its DEPTH-ZERO occurrences of `op` (`||` or `&&`), ignoring
+ * anything inside parentheses, brackets, braces or a string/template literal.
+ * Returns a single-element array when the operator does not appear at the top
+ * level, so callers can treat "no split" and "leaf" identically.
+ */
+function splitTopLevel(text, op) {
+  const parts = [];
+  let depth = 0;
+  let quote = '';
+  let start = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\') { i += 1; continue; }
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === "'" || ch === '"' || ch === '`') { quote = ch; continue; }
+    if (ch === '(' || ch === '[' || ch === '{') { depth += 1; continue; }
+    if (ch === ')' || ch === ']' || ch === '}') { depth -= 1; continue; }
+    if (depth === 0 && text.startsWith(op, i)) {
+      parts.push(text.slice(start, i));
+      i += op.length - 1;
+      start = i + 1;
+    }
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
+/** `(...)` wrapping the WHOLE expression, so it can be recursed into. */
+function unwrapParens(text) {
+  let t = text.trim();
+  while (t.startsWith('(') && t.endsWith(')') && splitTopLevel(t, '||').length === 1 && splitTopLevel(t, '&&').length === 1) {
+    const inner = t.slice(1, -1).trim();
+    // Only strip when the parens really are the outermost pair, i.e. the inner
+    // text is itself balanced — `(a) && (b)` must not become `a) && (b`.
+    let depth = 0;
+    let balanced = true;
+    for (const ch of inner) {
+      if (ch === '(') depth += 1;
+      else if (ch === ')') { depth -= 1; if (depth < 0) { balanced = false; break; } }
+    }
+    if (!balanced || depth !== 0) break;
+    t = inner;
+  }
+  return t;
+}
+
+/**
+ * Is this condition still capable of matching, and if not, which alias-covered
+ * targets killed it?
+ *
+ * Evaluated over the condition's BOOLEAN STRUCTURE rather than as one flat
+ * string, because `||` and `&&` do opposite things to a dead arm:
+ *
+ *   `specifier === ALIASED || resolved.url.includes(X)`  matches via the right
+ *   `specifier === ALIASED && resolved.url.includes(X)`  can NEVER match
+ *
+ * A flat "does this condition mention anything URL-capable" test clears both,
+ * which lets an `&&` chain hide exactly the dead arm this guard exists to find.
+ * The recursion is the whole difference: an OR is live when EITHER side is, an
+ * AND only when BOTH are, and a leaf is dead precisely when it is an equality
+ * against a tsconfig-aliased specifier with nothing URL-capable beside it.
+ *
+ * The `||` remedy both fixed hooks use therefore stays green — its left half is
+ * dead and its right half is not — and `specifier === 'cesium' && …` stays
+ * green too, because `cesium` is not alias-covered and so is not a dead leaf.
+ */
+function conditionLiveness(condition, specifierParam, consts, aliasKeys) {
+  const text = unwrapParens(condition);
+
+  const ors = splitTopLevel(text, '||');
+  if (ors.length > 1) {
+    const parts = ors.map((p) => conditionLiveness(p, specifierParam, consts, aliasKeys));
+    if (parts.some((p) => p.live)) return { live: true, deadTargets: [] };
+    return { live: false, deadTargets: parts.flatMap((p) => p.deadTargets) };
+  }
+
+  const ands = splitTopLevel(text, '&&');
+  if (ands.length > 1) {
+    const parts = ands.map((p) => conditionLiveness(p, specifierParam, consts, aliasKeys));
+    if (parts.every((p) => p.live)) return { live: true, deadTargets: [] };
+    return { live: false, deadTargets: parts.flatMap((p) => p.deadTargets) };
+  }
+
+  const { bare, urlSignals } = classifyCondition(text, specifierParam, consts);
+  const deadTargets = [];
+  for (const target of bare) {
+    const key = aliasCovers(aliasKeys, target);
+    if (key !== null) deadTargets.push({ target, key });
+  }
+  if (deadTargets.length === 0 || urlSignals.length > 0) return { live: true, deadTargets: [] };
+  return { live: false, deadTargets };
+}
+
 const files = collectFiles();
 const aliasKeys = collectAliasKeys();
 
@@ -769,20 +895,22 @@ for (const abs of files) {
     conditionCount += conditions.length;
 
     // Per ARM, not per hook. An arm is dead when its target is alias-covered and
-    // the same condition carries no URL-capable signal to fall back on — so a
-    // hook stays flagged even if a SIBLING arm is URL-capable, and a bare arm on
-    // a non-aliased specifier (`cesium`) stays green because it is not dead.
+    // nothing beside it in the same BRANCH of the condition survives
+    // normalisation — so a hook stays flagged even if a SIBLING arm is
+    // URL-capable, and a bare arm on a non-aliased specifier (`cesium`) stays
+    // green because it is not dead. `conditionLiveness` walks the condition's
+    // `||`/`&&` structure rather than scanning it flat, so an `&&` cannot
+    // launder a dead equality past a URL-capable conjunct it is joined to.
     const deadTargets = [];
     for (const condition of conditions) {
       const { bare, urlSignals } = classifyCondition(condition, specifierParam, consts);
       bareArmCount += bare.length;
       urlArmCount += urlSignals.length;
       for (const target of bare) {
-        const key = aliasCovers(aliasKeys, target);
-        if (key === null) continue;
-        aliasArmCount += 1;
-        if (urlSignals.length === 0) deadTargets.push({ target, key });
+        if (aliasCovers(aliasKeys, target) !== null) aliasArmCount += 1;
       }
+      const verdict = conditionLiveness(condition, specifierParam, consts, aliasKeys);
+      if (!verdict.live) deadTargets.push(...verdict.deadTargets);
     }
 
     if (deadTargets.length > 0) {

@@ -597,6 +597,25 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check collab room-model targeting gate regressions
         run: node --test scripts/check-collab-room-model-target.test.mjs
+      # tsx's SYNCHRONOUS loader hook (`module.registerHooks`, Node >= 22.15.0)
+      # applies the tsconfig `paths` mapping itself and short-circuits, so an
+      # aliased specifier never reaches an async `register()` hook in any form.
+      # A hook whose only arm is `specifier === '@/lib/collab/geometry-sync'`
+      # therefore never matches, the gate the test parks on never fires, and
+      # the file hangs until the runner's timeout -- CI ONLY, because
+      # `node-version: 22` floats to the newest 22.x while local machines sit
+      # on an older one. That has happened twice
+      # (`collab-session-race-hook.mjs`, then `collab-hydrate-gate-hook.mjs`
+      # written after the first grew a twenty-line comment about it), which is
+      # why this is a gate rather than a third comment.
+      - name: Check loader hook specifier match
+        run: node scripts/check-loader-hook-specifier-match.mjs
+      # Executable proof the guard above still fires: both historical incidents
+      # rebuilt in a temp tree must turn it red, a bare arm on a NON-aliased
+      # specifier must stay green (`cesium` is one, and works), and neutering
+      # the alias table in either direction must change the verdict.
+      - name: Check loader hook specifier match gate regressions
+        run: node --test scripts/check-loader-hook-specifier-match.test.mjs
       # `degenerateReason` crosses the wasm boundary as an untyped string and is
       # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
       # a union that has drifted from the kernel -- `'malformed-operand'` was

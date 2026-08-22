@@ -5,7 +5,7 @@
 /**
  * The gate's own test. A grep gate that does not fire is worse than no gate,
  * because it reads as a guarantee — so each case below plants a copy in the
- * exact shape one of the nine real ones had and asserts the gate catches it.
+ * exact shape one of the ten real ones had and asserts the gate catches it.
  *
  * Run: `node --test scripts/check-csv-escaper-copies.test.mjs`
  */
@@ -13,7 +13,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { scanText, scanRepo, CANONICAL, KNOWN_REMAINING } from './check-csv-escaper-copies.mjs';
 
-/** The nine real copies this gate exists because of, in their original form. */
+/** The ten real copies this gate exists because of, in their original form. */
 const REAL_COPIES = [
   ['rust/export/src/csv.rs (anchored Rust guard)', "if matches!(first, '=' | '+' | '-' | '@' | '\\t' | '\\r') {"],
   ['packages/cli/src/commands/export.ts (anchored TS guard)', 'if (/^[=+\\-@\\t\\r]/.test(str)) {'],
@@ -28,7 +28,7 @@ const REAL_COPIES = [
 ];
 
 for (const [label, line] of REAL_COPIES) {
-  test(`fires on a tenth copy shaped like ${label}`, () => {
+  test(`fires on an eleventh copy shaped like ${label}`, () => {
     const hits = scanText('apps/viewer/src/lib/some/new-export.ts', `function esc(s) {\n  ${line}\n}\n`);
     assert.ok(hits.length > 0, `gate missed a copy shaped like: ${line}`);
     assert.equal(hits[0].file, 'apps/viewer/src/lib/some/new-export.ts');

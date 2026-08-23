@@ -9,6 +9,7 @@
  * Callers are expected to wrap multi-step edits in `ydoc.transact()`.
  */
 
+import { ATTR } from '@ifc-lite/ifcx';
 import * as Y from 'yjs';
 import {
   ENTITY_KEY,
@@ -33,6 +34,18 @@ export interface CreateEntityOptions {
   materials?: MaterialAssignment[];
   geometryRef?: GeometryRefRecord;
   meta?: EntityMeta;
+  /**
+   * Stamp `meta.createdAt` with the wall clock when the caller supplies
+   * no `meta.createdAt` (default `true` — a genuinely new entity is
+   * created *now*, and that stamp is real provenance).
+   *
+   * Seeders pass `false`: an entity restored from a wire that carries no
+   * creation time has an UNKNOWN creation time, and the read clock is
+   * indistinguishable from the real thing once written. Absent
+   * provenance beats invented provenance — a missing field reads as
+   * "unknown", a fabricated one gets trusted.
+   */
+  stampCreatedAt?: boolean;
 }
 
 /**
@@ -73,6 +86,18 @@ export function createEntity(
     for (const [k, v] of Object.entries(options.attributes)) {
       attributes.set(k, v);
     }
+  }
+  // `meta.ifcClass` is doc-local bookkeeping with no IFCX wire form, so an
+  // entity whose class was only ever passed as the `ifcClass` option would
+  // snapshot without `bsi::ifc::class` and come back classless. The
+  // attribute IS the wire form — write it here, once, instead of leaving
+  // every caller to remember (the MCP draft path already open-coded it).
+  // A caller that supplied the attribute itself wins: it may carry more
+  // than the bare code. That check reads the plain options record rather
+  // than the Y.Map, because a Y.Map not yet integrated into a doc answers
+  // `has` from prelim state and would not see what the loop just wrote.
+  if (options.ifcClass && options.attributes?.[ATTR.CLASS] === undefined) {
+    attributes.set(ATTR.CLASS, { code: options.ifcClass });
   }
   entity.set(ENTITY_KEY.ATTRIBUTES, attributes);
 
@@ -139,12 +164,19 @@ export function createEntity(
   entity.set(ENTITY_KEY.GEOMETRY_REF, geometryRef);
 
   const meta = new Y.Map<unknown>();
-  const stamp = options.meta?.createdAt ?? new Date().toISOString();
+  const stamp =
+    options.meta?.createdAt ??
+    (options.stampCreatedAt === false ? undefined : new Date().toISOString());
   if (options.ifcClass) meta.set('ifcClass', options.ifcClass);
   if (options.schemaVersion) meta.set('schemaVersion', options.schemaVersion);
-  meta.set('createdAt', stamp);
+  if (stamp !== undefined) meta.set('createdAt', stamp);
   if (options.meta) {
     for (const [k, v] of Object.entries(options.meta)) {
+      // An explicit `undefined` is "not known", not a value: storing it
+      // would make `meta.has(k)` true for a key with nothing behind it,
+      // which `privacy.ts`'s redaction and every `has`-guarded reader
+      // treat as present.
+      if (v === undefined) continue;
       meta.set(k, v as unknown);
     }
   }

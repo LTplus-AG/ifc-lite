@@ -5,6 +5,7 @@
 //! IfcGridPlacement resolution (#883): locate the grid-axis intersection and orient it.
 
 use super::super::GeometryRouter;
+use super::walk::PlacementWalk;
 use crate::profiles::ProfileProcessor;
 use crate::{Point2, Point3, Result, TessellationQuality, Vector2, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -30,17 +31,17 @@ impl GeometryRouter {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: usize,
-    ) -> Result<Matrix4<f64>> {
+    ) -> Result<PlacementWalk> {
         // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does
-        // — it carries the grid's own world position/orientation.
-        let parent_transform = match placement.get(0) {
+        // — it carries the grid's own world position/orientation, truncation
+        // included: a parent walk cut short by the depth guard makes this
+        // result depth-dependent too, so it must not be memoised. #3012
+        let parent = match placement.get(0) {
             Some(attr) if !attr.is_null() => match decoder.resolve_ref(attr)? {
-                Some(parent) => {
-                    self.get_placement_transform_with_depth(&parent, decoder, depth + 1)?
-                }
-                None => Matrix4::identity(),
+                Some(p) => self.get_placement_transform_with_depth(&p, decoder, depth + 1)?,
+                None => PlacementWalk::complete(Matrix4::identity()),
             },
-            _ => Matrix4::identity(),
+            _ => PlacementWalk::complete(Matrix4::identity()),
         };
 
         // PlacementLocation (attr 1) → grid-local transform at the intersection.
@@ -48,7 +49,7 @@ impl GeometryRouter {
             .try_resolve_grid_intersection(placement, decoder)
             .unwrap_or_else(Matrix4::identity);
 
-        Ok(parent_transform * local)
+        Ok(PlacementWalk { transform: parent.transform * local, truncated: parent.truncated })
     }
 
     /// Decode `IfcGridPlacement.PlacementLocation` (an

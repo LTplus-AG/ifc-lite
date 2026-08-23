@@ -73,6 +73,129 @@ describe('MutablePropertyView', () => {
     expect(fresh.getForEntity(9)).toEqual([]);
   });
 
+  it('treats a null/unset property already present in BASE data as present, not absent (issue #1107, base-table shape)', () => {
+    // Same #1107 hazard as above, but the unset property comes from the
+    // *source IFC file* itself (an unset Boolean parsed with value null),
+    // not from a same-session `setProperty` call. `getPropertyValue()`
+    // still returns null for it before any edit, so the CREATE/UPDATE
+    // classification cannot rely on `oldValue !== null` alone — it must
+    // also check the base pset's property list directly, the same way
+    // `deleteProperty`'s `propExistsInBase` check already does.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 9 ? [{
+      name: 'Pset_WallCommon',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'Combustible', type: PropertyValueType.Boolean, value: null },
+      ],
+    }] : []);
+
+    const edited = view.setProperty(9, 'Pset_WallCommon', 'Combustible', true, PropertyValueType.Boolean);
+    expect(edited.type).toBe('UPDATE_PROPERTY');
+    expect(edited.oldValue).toBeNull();
+  });
+
+  it('a NEW property inside an existing base pset is still a CREATE (the base check is per-property, not per-pset)', () => {
+    // The third direction of the same rule, and the one every fixture here
+    // was blind to: each base pset above contains exactly the property being
+    // set, so "this pset exists in base" and "this property exists in base"
+    // coincide and a per-PSET existence check reads as correct.
+    //
+    // Verified by mutation: relaxing the disjunct to
+    // `basePsets.some(p => p.name === psetName)` — dropping the inner
+    // `p.properties.some(prop => prop.name === propName)` — left all 28 tests
+    // green, while it classifies every brand-new property added to an
+    // existing pset as an UPDATE with `oldValue: null`. The viewer's undo
+    // handler decides by mutation TYPE (mutationSlice.ts), so undoing that
+    // add would replay the null and leave the property behind as a
+    // present-but-unset row instead of removing it.
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor((entityId) => entityId === 11 ? [{
+      name: 'Pset_WallCommon',
+      globalId: 'base-guid',
+      properties: [
+        { name: 'IsExternal', type: PropertyValueType.Boolean, value: true },
+      ],
+    }] : []);
+
+    const created = view.setProperty(11, 'Pset_WallCommon', 'LoadBearing', true, PropertyValueType.Boolean);
+    expect(created.type).toBe('CREATE_PROPERTY');
+    // A property that was never there has no old value to restore.
+    expect(created.oldValue).toBeNull();
+    // The sibling that IS in base still classifies as an UPDATE, so this is
+    // a per-property distinction and not a blanket "base psets are absent".
+    const updated = view.setProperty(11, 'Pset_WallCommon', 'IsExternal', false, PropertyValueType.Boolean);
+    expect(updated.type).toBe('UPDATE_PROPERTY');
+    expect(updated.oldValue).toBe(true);
+  });
+
+  // The other direction of the rule above: "present in base" must stop meaning
+  // present once the user has deleted it. Counting a masked base row as present
+  // makes the re-set an UPDATE with `oldValue: null`, and the viewer's undo
+  // handler decides by mutation TYPE (mutationSlice.ts) — so undo would replay
+  // that null and bring the deleted property back as a present-but-unset row
+  // instead of removing it again.
+  describe('a base property the user already deleted is absent again', () => {
+    const withBaseProp = () => {
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor((entityId) => entityId === 7 ? [{
+        name: 'Pset_Base',
+        globalId: 'base-guid',
+        properties: [
+          { name: 'Status', type: PropertyValueType.Label, value: 'Existing' },
+        ],
+      }] : []);
+      return view;
+    };
+
+    it('re-setting a deleted base property is a CREATE, not an UPDATE', () => {
+      const view = withBaseProp();
+      view.deleteProperty(7, 'Pset_Base', 'Status');
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('CREATE_PROPERTY');
+    });
+
+    it('re-setting a property whose whole base pset was deleted is a CREATE', () => {
+      const view = withBaseProp();
+      view.deletePropertySet(7, 'Pset_Base');
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('CREATE_PROPERTY');
+    });
+
+    // The two halves of `maskedInSession` — the per-property DELETE marker and
+    // `deletedPsets` — overlap in the tests above, because `deletePropertySet`
+    // also writes a DELETE marker for every property it masks. So the
+    // `deletedPsets` half is load-bearing for exactly one route and nothing
+    // fails if it is deleted: verified by mutation, dropping it left the whole
+    // file green. The halves separate once that marker has been overwritten,
+    // which the first re-set does. The second re-set then has no DELETE marker
+    // and a null `oldValue`, so only `deletedPsets` still knows the base row is
+    // masked; without it the base row counts as present and the re-set comes
+    // back as UPDATE with `oldValue: null` — the resurrection the guard exists
+    // to prevent. Null values throughout because a non-null first re-set makes
+    // `oldValue !== null` carry the classification on its own.
+    it('a deleted base PSET keeps masking after its per-property DELETE marker is overwritten', () => {
+      const view = withBaseProp();
+      view.deletePropertySet(7, 'Pset_Base');
+
+      const first = view.setProperty(7, 'Pset_Base', 'Status', null, PropertyValueType.Label);
+      expect(first.type).toBe('CREATE_PROPERTY');
+
+      // The DELETE marker is gone now (overwritten by the SET above), so
+      // `deletedPsets` is the only remaining mask on the base row.
+      const second = view.setProperty(7, 'Pset_Base', 'Status', null, PropertyValueType.Label);
+      expect(second.type).toBe('CREATE_PROPERTY');
+      expect(second.oldValue).toBeNull();
+    });
+
+    it('an undeleted base property is still an UPDATE (the guard is not blanket)', () => {
+      const view = withBaseProp();
+      const m = view.setProperty(7, 'Pset_Base', 'Status', 'Again', PropertyValueType.Label);
+      expect(m.type).toBe('UPDATE_PROPERTY');
+      expect(m.oldValue).toBe('Existing');
+    });
+  });
+
   describe('setQuantity oldValue/type on a base quantity (undo correctness, #2297 shape)', () => {
     it('carries the base value as oldValue on the first edit of an existing quantity', () => {
       // `apps/viewer`'s undo handler only replays `mutation.oldValue` for

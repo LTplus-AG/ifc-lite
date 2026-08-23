@@ -3,7 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { inferCapabilities } from './capability.js';
+import * as walk from 'acorn-walk';
+import { inferCapabilities, type InferenceResult } from './capability.js';
 
 describe('inferCapabilities — read-only patterns', () => {
   it('detects model.read for bim.query usage', () => {
@@ -159,5 +160,91 @@ describe('inferCapabilities — non-string inputs', () => {
   it('returns a parse error for non-string input', () => {
     const r = inferCapabilities(123 as unknown as string);
     expect(r.parseErrors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('inferCapabilities — deeply nested scripts fail closed', () => {
+  /** `levels` nested `if (1) { … }` blocks around `inner`. */
+  function nestIf(levels: number, inner: string): string {
+    return 'if(1){'.repeat(levels) + inner + '}'.repeat(levels);
+  }
+
+  it('still infers from a deep-but-legal script', () => {
+    // 400 source levels is ~800 AST levels — under the bound.
+    const r = inferCapabilities(nestIf(400, 'bim.viewer.colorize({});'));
+    expect(r.parseErrors).toEqual([]);
+    expect(r.capabilities.length).toBeGreaterThan(0);
+    expect(r.observations.map((o) => o.call)).toContain('bim.viewer.colorize');
+  });
+
+  it('reports a parse error instead of throwing past the bound', () => {
+    // Before the bound this threw `RangeError: Maximum call stack size
+    // exceeded` out of acorn-walk.
+    let r!: InferenceResult;
+    expect(() => {
+      r = inferCapabilities(nestIf(800, 'bim.viewer.colorize({});'));
+    }).not.toThrow();
+    expect(r.parseErrors.some((e) => /nested more than \d+ AST levels/.test(e.message))).toBe(true);
+  });
+
+  it('never reports a partial capability set for a too-deep script', () => {
+    // Fail-closed is the whole point. `migrateSavedScripts` skips on a
+    // parse error but treats an empty capability set as "grant
+    // model.read and migrate anyway", and PromoteToolDialog renders an
+    // empty set as "no bim.* calls detected". A truncated walk must
+    // therefore surface as a parse error, not as capabilities.
+    const r = inferCapabilities(nestIf(800, 'bim.viewer.colorize({});'));
+    expect(r.parseErrors.length).toBeGreaterThan(0);
+    expect(r.capabilities).toEqual([]);
+    expect(r.observations).toEqual([]);
+  });
+
+  it('reports the depth error even when bim.* calls sit above the cut-off', () => {
+    // The capabilities found before the walk stopped are a floor, not
+    // the answer — deeper calls may need more. Returning just the
+    // shallow ones would under-grant silently.
+    const r = inferCapabilities(`bim.viewer.colorize({});\n${nestIf(800, 'bim.model.write();')}`);
+    expect(r.parseErrors.some((e) => /nested more than \d+ AST levels/.test(e.message))).toBe(true);
+    expect(r.capabilities).toEqual([]);
+  });
+
+  it('gives the same verdict however much stack the caller has left', () => {
+    const source = nestIf(800, 'bim.viewer.colorize({});');
+    const shallow = inferCapabilities(source);
+    const recurse = (n: number): InferenceResult =>
+      n === 0 ? inferCapabilities(source) : recurse(n - 1);
+    const deep = recurse(2000);
+    expect(deep.capabilities).toEqual(shallow.capabilities);
+    expect(deep.parseErrors.map((e) => e.message)).toEqual(
+      shallow.parseErrors.map((e) => e.message),
+    );
+  });
+});
+
+describe('inferCapabilities — a subtree the walker cannot descend', () => {
+  /** See `validate/code.test.ts`: simulates an acorn/acorn-walk skew. */
+  function withoutBase<T>(type: string, run: () => T): T {
+    const base = walk.base as unknown as Record<string, unknown>;
+    const saved = base[type];
+    expect(saved).toBeTypeOf('function');
+    delete base[type];
+    try {
+      return run();
+    } finally {
+      base[type] = saved;
+    }
+  }
+
+  it('reports a parse error rather than an under-counted capability set', () => {
+    const source = 'bim.viewer.colorize({});\ntry { bim.model.write(); } catch (e) {}';
+    // Unmodified, both calls are seen.
+    expect(inferCapabilities(source).capabilities.length).toBeGreaterThan(1);
+
+    const r = withoutBase('TryStatement', () => inferCapabilities(source));
+    expect(r.parseErrors.some((e) => /cannot traverse/.test(e.message))).toBe(true);
+    expect(r.parseErrors.some((e) => /TryStatement/.test(e.message))).toBe(true);
+    // Fail closed: the floor it did see is discarded, not published.
+    expect(r.capabilities).toEqual([]);
+    expect(r.observations).toEqual([]);
   });
 });

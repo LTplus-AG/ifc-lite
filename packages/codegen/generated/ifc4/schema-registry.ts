@@ -63136,6 +63136,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
+  if (!Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.entities, normalized)) return undefined;
   return SCHEMA_REGISTRY.entities[normalized];
 }
 
@@ -63159,8 +63160,7 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
  * Check if a type is a known entity
  */
 export function isKnownEntity(typeName: string): boolean {
-  const normalized = normalizeTypeName(typeName);
-  return normalized in SCHEMA_REGISTRY.entities;
+  return getEntityMetadata(typeName) !== undefined;
 }
 
 /**

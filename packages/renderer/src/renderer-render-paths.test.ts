@@ -69,6 +69,12 @@ interface Harness {
          * lighting environment is rebound at group(1) after the sky pass).
          */
         commands: { op: string; index?: number }[];
+        /** label of every `beginRenderPass` in call order (so a test can assert
+         *  the sun shadow depth pass IS or is NOT encoded). */
+        passes: string[];
+        /** label of every texture whose `destroy()` fired (shadow depth-texture
+         *  release on toggle-off). */
+        destroyedTextures: string[];
     };
     knobs: {
         /** 'texture' = getCurrentTexture succeeds; 'null' = returns null */
@@ -101,7 +107,7 @@ interface Harness {
 }
 
 function makeHarness(): Harness {
-    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [] };
+    const stats: Harness['stats'] = { push: 0, pop: 0, draws: [], createdBuffers: [], mapAsync: 0, writes: [], commands: [], passes: [], destroyedTextures: [] };
     const knobs: Harness['knobs'] = {
         textureMode: 'texture', encodeThrows: false, popRejects: false, gpuDead: false,
         deferMaps: false,
@@ -165,7 +171,8 @@ function makeHarness(): Harness {
     const encoder = new Proxy({} as Record<string | symbol, unknown>, {
         get(_t, prop) {
             if (prop === 'beginRenderPass') {
-                return () => {
+                return (desc?: { label?: string }) => {
+                    stats.passes.push(desc?.label ?? '');
                     if (knobs.encodeThrows) throw new Error('boom mid-encode');
                     return pass;
                 };
@@ -205,11 +212,11 @@ function makeHarness(): Harness {
                 case 'createCommandEncoder': return () => encoder;
                 case 'createBuffer': return (desc: { size: number }) => makeBuffer(desc);
                 case 'createBindGroup': return () => ({});
-                case 'createTexture': return (desc: { size: { width: number; height: number } }) => ({
+                case 'createTexture': return (desc: { label?: string; size: { width: number; height: number } }) => ({
                     width: desc.size.width,
                     height: desc.size.height,
                     createView: () => ({}),
-                    destroy() { /* no-op */ },
+                    destroy() { stats.destroyedTextures.push(desc.label ?? ''); },
                 });
                 // Picker builds real pipelines in its constructor and binds
                 // through the auto layout, so both arms must return objects.
@@ -909,5 +916,63 @@ describe('textured sub-pass carries the per-element origin (#1973)', () => {
 
         assert.deepStrictEqual(translationFor(h, textured[0].uniformBuffer), ORIGIN);
         assert.deepStrictEqual(translationFor(h, textured[1].uniformBuffer), other);
+    });
+});
+
+const UNIT_BOUNDS = { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } };
+
+// The sun shadow depth pre-pass is opt-in (RenderOptions.sunShadows). These
+// drive the REAL render() loop and read the encoded pass labels, so "no shadow
+// pass was encoded" is actually observed rather than assumed — the gap the
+// #2670 review flagged (the label lived only in shadow-pass.ts, in no test).
+describe('sun shadow pass (#2670 review)', () => {
+    it('encodes no shadow-depth-pass on the default off path', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        h.render(); // sunShadows absent → off
+        assert.ok(
+            !h.stats.passes.includes('shadow-depth-pass'),
+            'the zero-cost off path must not encode the depth pre-pass',
+        );
+        assert.strictEqual(h.renderer['shadowPass'], null, 'no ShadowPass constructed while off');
+    });
+
+    it('encodes exactly one shadow-depth-pass when enabled', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        h.render({ sunShadows: { enabled: true } });
+        assert.strictEqual(
+            h.stats.passes.filter((l) => l === 'shadow-depth-pass').length,
+            1,
+            'enabling shadows must encode the depth pre-pass exactly once',
+        );
+    });
+
+    it('frees the depth texture and stops encoding the pass on toggle-off', () => {
+        const h = makeHarness();
+        seedBatches(h);
+        h.renderer.setModelBounds(UNIT_BOUNDS);
+        h.render({ sunShadows: { enabled: true } });
+        const freedBefore = h.stats.destroyedTextures.filter((l) => l === 'shadow-depth').length;
+
+        h.stats.passes.length = 0;
+        h.render({ sunShadows: { enabled: false } });
+
+        assert.ok(
+            !h.stats.passes.includes('shadow-depth-pass'),
+            'the toggle-off frame must not encode the depth pass',
+        );
+        assert.strictEqual(
+            h.stats.destroyedTextures.filter((l) => l === 'shadow-depth').length,
+            freedBefore + 1,
+            'toggle-off must release the depth texture, not hold it for the session',
+        );
+        assert.strictEqual(
+            h.renderer['shadowPass'],
+            null,
+            'ShadowPass is nulled so a later re-enable reconstructs it lazily',
+        );
     });
 });

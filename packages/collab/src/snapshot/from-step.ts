@@ -131,11 +131,16 @@ export function seedFromStep(
         attributes: ent.attributes ?? {},
         children: ent.children,
         schemaVersion,
+        // Same rule as `from-ifcx.ts`: the STEP header names whoever
+        // wrote the file, not whoever authored each entity, and its
+        // timestamp is the file's, not the entity's. Stamping either
+        // onto every node manufactures per-entity provenance that reads
+        // as genuine. The header itself stays available under
+        // `meta.stepHeader`.
+        stampCreatedAt: false,
         meta: {
           ifcClass: ent.ifcClass,
           schemaVersion,
-          createdAt: source.header?.timestamp ?? new Date().toISOString(),
-          createdBy: source.header?.author,
         },
       });
 

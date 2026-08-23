@@ -37,6 +37,21 @@ pub(super) const INSTANCED_ALPHA_CUTOFF: f32 = 0.99;
 /// still drags.
 pub(super) const INSTANCE_MIN_OCCURRENCES: u32 = 8;
 
+/// The VALUE above is tunable -- its own doc invites 4 or 16. The FLOOR is not:
+/// `INSTANCE_MIN_OCCURRENCES` is also handed to `collate_and_encode` as
+/// `min_group`, and at 1 every singleton becomes its own one-instance template,
+/// which is precisely the orbit-FPS regression the gate exists to undo.
+///
+/// A `const` assertion rather than a `#[test]`: the operand is a compile-time
+/// constant, so a runtime `assert!` is decided by the compiler and can never
+/// fail when the suite runs -- clippy rejects it as `assertions_on_constants`,
+/// correctly. Placed HERE rather than in the cfg(test) sibling so it gates
+/// every build including the shipped wasm, not only the ones that compile tests.
+const _: () = assert!(
+    INSTANCE_MIN_OCCURRENCES >= 2,
+    "a gate below 2 instances singletons: O(unique-geometry) draws per frame in place of the flat path's few consolidated ones"
+);
+
 /// May this mesh ride the instanced shard at all?
 ///
 /// Transparent (alpha below the cutoff), textured (the instanced pipeline has

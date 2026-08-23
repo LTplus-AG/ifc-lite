@@ -99,21 +99,6 @@ fn the_alpha_cutoff_still_mirrors_the_renderers_constant() {
     );
 }
 
-/// `INSTANCE_MIN_OCCURRENCES` is deliberately tunable — its own doc invites
-/// lowering it to 4 or raising it to 16 — so its exact value is NOT pinned
-/// here. What is not tunable is the floor: it is also handed to
-/// `collate_and_encode` as `min_group`, and at 1 every singleton becomes its
-/// own one-instance template, which is precisely the orbit-FPS regression the
-/// gate was introduced to undo.
-#[test]
-fn the_repetition_gate_never_drops_to_instancing_singletons() {
-    assert!(
-        INSTANCE_MIN_OCCURRENCES >= 2,
-        "a gate below 2 instances singletons: O(unique-geometry) draws per \
-         frame in place of the flat path's few consolidated ones"
-    );
-}
-
 /// Alpha is `color[3]`, not any other lane. A grey fixture cannot see a gate
 /// that reads `color[0]`, so this one makes the RGB lanes disagree with alpha
 /// in both directions.

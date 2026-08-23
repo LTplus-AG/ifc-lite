@@ -128,6 +128,33 @@ test('an options bag INSIDE the body does not mark a test timed', () => {
   assert.equal(rows[2].value, 30000);
 });
 
+test('an apostrophe in a COMMENT does not swallow the rest of the file', () => {
+  // The second fixture carried over from the deleted suite, and for the same
+  // reason as the body-options one: every apostrophe fixture here sits in a
+  // REGEX literal, which is the step-over path, not the comment-blanking path.
+  // Verified by mutation: making stripNoise's line-comment branch open a
+  // phantom string at an apostrophe left all 76 other tests green while
+  // dropping both calls from this source.
+  //
+  // The silent direction. The first version treated the apostrophe as a string
+  // opener, scanned to EOF and dropped the call from timed, from untimed, and
+  // from the gap list. 449 of 13016 tests vanished, and the audit looked
+  // cleaner for it.
+  const src = [
+    "it('first, no timeout', async () => {",
+    "  // the worker doesn't come back before the poll",
+    '  expect(1).toBe(1);',
+    '});',
+    "it('second, bounded', async () => { expect(1).toBe(1); }, 30_000);",
+  ].join('\n');
+  assert.deepEqual(findUnparsedCallSites(src), [], 'nothing may be dropped silently');
+  const rows = auditSource(src);
+  assert.equal(rows.length, 2, 'both calls must survive the comment');
+  assert.equal(rows[0].protectedBy, null);
+  assert.equal(rows[1].protectedBy, 'own');
+  assert.equal(rows[1].value, 30000);
+});
+
 // ---- The two #2947 mistakes, reproduced as regression cases.
 
 test('a single-idiom grep for the trailing form would miss the options-object form — this does not', () => {

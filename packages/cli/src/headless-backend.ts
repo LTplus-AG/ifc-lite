@@ -71,7 +71,7 @@ import {
   type GenerateSpacesAllOptions,
 } from '@ifc-lite/create';
 import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType } from '@ifc-lite/data';
+
 import {
   extractAllEntityAttributes,
   extractClassificationsOnDemand,
@@ -81,11 +81,18 @@ import {
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
+  expandTypes,
+  QUERY_REL_TYPE_MAP,
   extractScheduleOnDemand,
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
+
+// `expandTypes` used to be defined here; it now comes from `@ifc-lite/parser`,
+// shared with the other query backends (see `query-backend-maps.ts`). Re-exported
+// so this module's consumers are unaffected by where it lives.
+export { expandTypes };
 
 const MODEL_ID = 'default';
 
@@ -96,39 +103,6 @@ const MODEL_ID = 'default';
  */
 function stripIfcExtension(name: string): string {
   return name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
-}
-
-const REL_TYPE_MAP: Record<string, RelationshipType> = {
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelDefinesByType: RelationshipType.DefinesByType,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
-};
-
-const IFC_SUBTYPES: Record<string, string[]> = {
-  IFCWALL: ['IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE'],
-  IFCBEAM: ['IFCBEAMSTANDARDCASE'],
-  IFCCOLUMN: ['IFCCOLUMNSTANDARDCASE'],
-  IFCDOOR: ['IFCDOORSTANDARDCASE'],
-  IFCWINDOW: ['IFCWINDOWSTANDARDCASE'],
-  IFCSLAB: ['IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE'],
-  IFCMEMBER: ['IFCMEMBERSTANDARDCASE'],
-  IFCPLATE: ['IFCPLATESTANDARDCASE'],
-  IFCOPENINGELEMENT: ['IFCOPENINGSTANDARDCASE'],
-};
-
-export function expandTypes(types: string[]): string[] {
-  const result: string[] = [];
-  for (const type of types) {
-    const upper = type.toUpperCase();
-    result.push(upper);
-    const subtypes = IFC_SUBTYPES[upper];
-    if (subtypes) {
-      for (const sub of subtypes) result.push(sub);
-    }
-  }
-  return result;
 }
 
 /**
@@ -446,7 +420,7 @@ export class HeadlessBackend implements BimBackend {
         return extractRelationshipsOnDemand(store, ref.expressId);
       },
       related(ref: EntityRef, relType: string, direction: 'forward' | 'inverse'): EntityRef[] {
-        const relEnum = REL_TYPE_MAP[relType];
+        const relEnum = QUERY_REL_TYPE_MAP[relType];
         if (relEnum === undefined) return [];
         const targets = store.relationships.getRelated(ref.expressId, relEnum, direction);
         return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));

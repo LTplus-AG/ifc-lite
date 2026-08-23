@@ -132,7 +132,7 @@ export const spaceProgramCheck: Prompt = {
 
 export const clashReview: Prompt = {
   name: 'clash_review',
-  description: 'Run the discipline clash matrix, group by trade, prioritize by severity.',
+  description: 'Run the discipline clash matrix, group by trade, and triage the closest clashes.',
   arguments: [
     { name: 'mode', description: 'Clash mode: hard (interpenetration) or clearance (gap).', required: false },
   ],
@@ -144,7 +144,9 @@ export const clashReview: Prompt = {
         systemMessage('You are a BIM coordination lead triaging clash results.'),
         userMessage([
           `Run \`clash_matrix\` (mode="${mode}") on the model.`,
-          'Summarize the byRule and bySeverity breakdowns, then produce a top-20 priority list ordered by severity and |distance|.',
+          'Summarize the byRule and bySeverity breakdowns. Those are complete counts over every clash.',
+          'Then produce a top-20 list from `sampleClashes`, ordered by distance ascending: deepest penetration first in hard mode, tightest gap first in clearance mode.',
+          'Order it by distance, NOT by severity. `sampleClashes` is already selected and capped by distance, so a high-severity clash with a large distance may not be in it at all -- a severity-ranked list built from this sample would silently omit exactly the items it claims to rank. Use bySeverity for the severity picture and say so.',
           'For any discipline pair you want to drill into, follow up with `clash_check` using the two TYPE selectors (e.g. a="IfcDuct*|IfcPipe*", b="IfcWall*").',
           'Always state the display cap and how many clashes were not shown.',
         ].join('\n')),

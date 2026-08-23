@@ -23,15 +23,18 @@ true` node deletes — and leaves untouched anything the file says nothing
 about.
 
 Read that last clause narrowly. `mergeBranch('layer')` sends a FULL snapshot,
-so the file has an opinion on nearly everything, and a value the parent
-changed after the fork is overwritten by the branch's fork-time value even
-when the branch never touched it. That is not new — it is how the attribute
-path already behaves — but this release extends it to geometry, so a parent
-re-mesh can be reverted by a branch that says nothing about that geometry.
-One consequence is specific to geometry: blob GC derives its sweep set from
-the live doc, so reverting a `blobHash` also flips which blob is the orphan,
-and a sweep between the re-mesh and the merge can leave the restored
-reference pointing at a deleted blob.
+so the file has an opinion on nearly everything: a value the parent changed
+after the fork is overwritten by the branch's fork-time value even when the
+branch never edited it. This is the trade the release makes: previously a
+layer merge dropped the branch's edits, now it applies them, and the price is
+that the branch's fork-time value can win over a newer parent one. Attributes
+and geometry behave the same way here; geometry is not a special case.
+
+One consequence is specific to geometry. Blob GC derives the set it RETAINS
+from the live doc and sweeps the complement, so reverting a `blobHash` flips
+which blob counts as an orphan; a sweep between the parent's re-mesh and the
+merge can leave the restored reference pointing at a blob that has been
+deleted.
 
 Geometry records go through `upsertGeometry` rather than `createGeometry`,
 which returns an existing record untouched. Without that, a branch that

@@ -201,9 +201,16 @@ pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
 
 /// Like [`export_step`] but also returns coverage stats.
 pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, StepStats) {
-    // One allocation instead of the ~30 a doubling `Vec` does on a gigabyte.
-    let mut buf = Vec::with_capacity(content.len());
-    let stats = export_step_to_writer(content, opts, &mut buf).expect("a Vec accepts every write");
+    // Presized for a full re-export, where the output is within a small factor
+    // of the source. Not for a subset: 200 MB filtered to a few records would
+    // reserve 200 MB, and on wasm that linear memory never comes back.
+    let mut buf = match opts.included {
+        None => Vec::with_capacity(content.len()),
+        Some(_) => Vec::new(),
+    };
+    // `emit`, not `export_step_to_writer`: a `Vec` needs no buffering, and
+    // wrapping one memcpys the whole output through a 1 MiB window for nothing.
+    let stats = emit(content, opts, &mut buf).expect("a Vec accepts every write");
     // Every byte came from the source by way of `from_utf8_lossy`, or from a
     // `format!`, so this validates rather than converts.
     let out = String::from_utf8(buf).expect("the writer emits UTF-8");
@@ -214,12 +221,10 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 /// The two cannot drift: that one is this one writing into a `Vec`.
 ///
 /// The gigabyte of `String` that doubled its way there is gone. What replaces
-/// it is not free, and "proportional to record count" hides how large the
-/// constant is: the entity index measures ~84 bytes a record, so 370 MB on a
-/// 4.4 M-record file and ~1.1 GB on a 16.8 M-record one, before a byte is
-/// written. On a very large model the index outweighs the output it stopped
-/// holding. It is not removable -- source order and the reference closure both
-/// need it.
+/// it is not free: the entity index measures ~84 bytes a record, so 370 MB on
+/// 4.4 M records and ~1.1 GB on 16.8 M, before a byte is written. On a very
+/// large model it outweighs the output it stopped holding, and it is not
+/// removable -- source order and the reference closure both need it.
 ///
 /// `out` is buffered here, so a bare `File` is fine. A record costs two `write`
 /// calls, which unbuffered is two syscalls: measured 15.0 s against 4.3 s on
@@ -315,17 +320,7 @@ fn emit<W: std::io::Write>(
     let repointed = resolved.repointed;
 
     // 3. Emit header + filtered entities (source order) + footer.
-    out.write_all(b"ISO-10303-21;\nHEADER;\n")?;
-    writeln!(out, "FILE_DESCRIPTION(('{}'),'2;1');", escape(&opts.description))?;
-    writeln!(
-        out,
-        "FILE_NAME('','',('{}'),('{}'),'{}','ifc-lite-export','');",
-        escape(&opts.author),
-        escape(&opts.organization),
-        escape(&opts.application),
-    )?;
-    writeln!(out, "FILE_SCHEMA(('{}'));", escape(&schema))?;
-    out.write_all(b"ENDSEC;\nDATA;\n")?;
+    crate::step_header::write_header(out, opts, &schema)?;
 
     let mut written = 0usize;
     for id in &order {

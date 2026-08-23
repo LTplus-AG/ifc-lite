@@ -1587,12 +1587,10 @@ fn streaming_bounded_shares_a_repeated_shape() {
 
 /// The bounded path shares at least as much as the in-memory one.
 ///
-/// Not the same amount, and the difference is deliberate on both sides. The
-/// in-memory path sends a whole group back to flat when any one occurrence has
-/// no instance side-channel, or when the group disagrees about vertex count;
-/// this one drops the occurrence and keeps the rest, because on a real model the
-/// most repeated shapes are the ones with a few clipped occurrences among the
-/// thousand plain ones. The world geometry either path produces is pinned by
+/// Not necessarily the same amount: both refuse a group that disagrees about
+/// vertex count, but the in-memory path also refuses one where any occurrence
+/// has no instance side-channel, and this one drops that occurrence and keeps
+/// the rest. The world geometry either path produces is pinned by
 /// `streaming_bounded_preserves_world_geometry_on_instanced_model`.
 #[test]
 fn the_bounded_path_shares_at_least_as_much() {
@@ -1874,12 +1872,17 @@ fn index_u32_promote_streaming_bounded() {
 }
 
 /// The bounded path's plan is per mesh, so its size is the thing that decides
-/// whether a very large model fits. 320,688 occurrences at 160 bytes is 51 MB.
+/// whether a very large model fits: 320,688 occurrences at 240 bytes is 77 MB,
+/// and it was 400 (128 MB) before the shape identity moved to a side table.
 ///
 /// Pinned because it is easy to lose by accident: a `u128` field aligns the
 /// whole struct to 16, so adding one costs every other field's padding too, and
 /// nothing else in the type system says so.
+///
+/// 64-bit only. `Arc<str>` and `Option<String>` are narrower on wasm32, so the
+/// number there is a different (also correct) one.
 #[test]
+#[cfg(target_pointer_width = "64")]
 fn the_streamed_mesh_plan_stays_small() {
     assert_eq!(
         std::mem::size_of::<StreamedMeshMeta>(),

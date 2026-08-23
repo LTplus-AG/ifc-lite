@@ -7,11 +7,26 @@
  * because it reads as a guarantee — so each case below plants a copy in the
  * exact shape one of the ten real ones had and asserts the gate catches it.
  *
+ * Every planted escaper is PAIRED with the same escaper bare: a probe that
+ * cannot match in the first place reports as a broken probe, not as a pass.
+ *
  * Run: `node --test scripts/check-csv-escaper-copies.test.mjs`
  */
 import { test, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { scanText, scanRepo, CANONICAL, KNOWN_REMAINING } from './check-csv-escaper-copies.mjs';
+import * as gate from './check-csv-escaper-copies.mjs';
+
+const { scanText, scanRepo, CANONICAL, KNOWN_REMAINING, PROSE_MENTIONS, validateMentions } = gate;
+
+/**
+ * Drive scanRepo with synthetic file contents. Real repo files not named in
+ * `overrides` read as empty; padding files satisfy the vacuous-scan guard.
+ */
+function repoWith(overrides) {
+  const pad = Array.from({ length: 120 }, (_, i) => `packages/pad/src/p${i}.ts`);
+  const files = [...new Set([...Object.keys(overrides), ...pad])];
+  return scanRepo(files, (f) => overrides[f] ?? '');
+}
 
 /** The ten real copies this gate exists because of, in their original form. */
 const REAL_COPIES = [
@@ -44,11 +59,10 @@ test('fires on a Rust copy in a brand-new crate', () => {
   assert.ok(hits.length > 0);
 });
 
-test('does not fire on the canonical implementations', () => {
-  for (const c of CANONICAL) {
-    const hits = scanText(c, `if (/^[=+\\-@\\t\\r]/.test(s)) return \`'\${s}\`;\nreturn s.replace(/"/g, '""');\n`);
-    assert.deepEqual(hits, [], `${c} must be allowed to contain the guard — it IS the guard`);
-  }
+test('the canonical implementations are exempt at repo level', () => {
+  const guard = `if (/^[=+\\-@\\t\\r]/.test(s)) return \`'\${s}\`;\nreturn s.replace(/"/g, '""');\n`;
+  const { violations } = repoWith(Object.fromEntries(CANONICAL.map((c) => [c, guard])));
+  assert.deepEqual(violations, [], 'the canonical files ARE the guard and must be allowed to contain it');
 });
 
 test('does not fire on ordinary code that merely mentions CSV', () => {
@@ -81,14 +95,19 @@ test('refuses to pass vacuously when the file scan returns almost nothing', () =
   );
 });
 
-test('the repo currently has no NEW copies, and every KNOWN_REMAINING entry is still real', () => {
-  const { violations, staleKnown, scanned } = scanRepo();
+test('the repo currently has no NEW copies, and every ratchet entry is still real', () => {
+  const { violations, staleKnown, staleMentions, scanned } = scanRepo();
   assert.ok(scanned > 1000, `expected a real scan, got ${scanned} files`);
   assert.deepEqual(violations, [], 'a new hand-rolled CSV escaper was added');
   assert.deepEqual(
     staleKnown,
     [],
     'KNOWN_REMAINING is a ratchet: an entry that no longer hand-rolls an escaper must be deleted from the list',
+  );
+  assert.deepEqual(
+    staleMentions,
+    [],
+    'PROSE_MENTIONS is a ratchet: a registered comment line that no longer exists must be deleted from the list',
   );
 });
 
@@ -102,21 +121,15 @@ test('KNOWN_REMAINING is documented debt, not an open allowlist', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Comment handling. Every case here is a shape that a PREVIOUS attempt at this
-// got wrong, and each was found by planting the escaper and executing it.
-//
-// This block exists because attempts 1 through 4 all passed the 17 tests above.
-// Two of those attempts let a live, working formula-injection escaper through
-// the gate, and the suite could not tell them apart. A guard whose test cannot
-// distinguish a fixed version from a broken one is not pinning anything.
-//
-// The MISSED cases are paired: each planted escaper is also asserted bare, so a
-// probe that simply cannot match reports as a broken probe rather than a pass.
+// No context hides code. Six previous designs excused comment-shaped text and
+// each shipped a live, working escaper made invisible — every case here is one
+// of those proven holes, plus the shapes THIS design would be weakest against
+// if it ever regressed toward context-awareness. The scan is raw and per-line,
+// so all of these hold by construction; the tests pin that construction.
 // ---------------------------------------------------------------------------
-describe('comment handling', () => {
+describe('no context hides a live escaper', () => {
   const F = 'packages/export/src/probe.ts';
   const RS = 'rust/export/src/probe.rs';
-  const bare = (src) => scanText(F, src).length;
 
   /** Assert a planted escaper is caught, and that the bare form CAN be caught. */
   function caught(name, bareSrc, contextSrc, file = F) {
@@ -127,7 +140,7 @@ describe('comment handling', () => {
       );
       assert.ok(
         scanText(file, contextSrc).length >= 1,
-        `a live escaper was hidden by its comment context: ${name}`,
+        `a live escaper was hidden by its context: ${name}`,
       );
     });
   }
@@ -135,91 +148,155 @@ describe('comment handling', () => {
   const TS_COPY = `if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s;`;
   const RS_COPY = `let hit = matches!(c, '=' | '+' | '-' | '@');`;
 
-  // attempt 2 missed this: `*/` hands the rest of the line back to the compiler
+  // attempt 1's holes: `*`-leading live code
+  caught('Rust deref-assign with a leading star', RS_COPY, `    *out = ${RS_COPY}`, RS);
+  caught('block comment sharing a line with code', TS_COPY, `/* c */ ${TS_COPY}`);
+  // attempt 2's hole: `*/` hands the rest of the line back to the compiler
   caught('/* then // */ code on one line', TS_COPY, `/* open\n// */ ${TS_COPY}`);
-  // attempt 3 missed this: an unclosed `/*` inside a string set the block flag
+  // attempt 3's hole: an unclosed `/*` inside a string set the block flag
   caught('code after a string containing /*', TS_COPY, `const s = "/* x";\n${TS_COPY}`);
   caught('code after a template literal containing /*', TS_COPY, `const t = \`/* x\`;\n${TS_COPY}`);
-  // attempt 1 missed this: `*` leads a Rust deref-assign, not only a docblock
-  caught('Rust deref-assign after a spurious opener', RS_COPY, `let s = "/* x";\n    *out = ${RS_COPY}`, RS);
-  // attempt 4 missed this: `* ` with a space is a live JS generator method
+  // attempt 4's hole: `* ` with a space is a live JS generator method
   caught('JS generator method with a leading star', TS_COPY, `const M = '/*';\nexport const o = { * q(s) { ${TS_COPY} return s; } };`);
-  // a `//` inside a string must not swallow a real `/*` later on the same line
-  caught('// inside a string before a real /*', TS_COPY, `const u = 'https://x'; /* open\n// */ ${TS_COPY}`);
+  // attempt 5's hole: an unpaired quote in code lost string phase
+  caught('escaper after a Rust lifetime and a URL string', RS_COPY,
+    `pub fn f<'a>(s: &'a str) -> bool {\n    let u = "http://x"; ${RS_COPY}\n}`, RS);
+  caught('escaper after a JSX contraction', TS_COPY,
+    `export const M = () => <p>What's New</p>;\n${TS_COPY}`, 'apps/viewer/src/probe.tsx');
+  // attempt 6's holes: a multi-line Rust string re-opened comment state, and
+  // member-access `.in / bytes.out` was taken for a regex
+  caught('escaper after a multi-line Rust string containing /*', RS_COPY,
+    `let sql = "SELECT a\n  FROM t /* hint\n  WHERE b";\n${RS_COPY}`, RS);
+  caught('escaper after member-access division', TS_COPY,
+    `const ratio = bytes.in / bytes.out;\n${TS_COPY}`);
+  // shapes THIS design must never lose: definition split from use — the
+  // canonical implementation itself writes this form (csv-cell.ts line 49),
+  // so any adjacency or usage-context rule would miss a real copy
+  caught('regex defined on its own line, used elsewhere', 'const FORMULA_RE = /^[=+\\-@\\t\\r]/;',
+    `const FORMULA_RE = /^[=+\\-@\\t\\r]/;\n// ...\nfunction esc(c) { return FORMULA_RE.test(c) ? "'" + c : c; }`);
+  caught('escaper built via new RegExp from a string', `const re = new RegExp('^[=+\\\\-@\\\\t\\\\r]');`,
+    `const re = new RegExp('^[=+\\\\-@\\\\t\\\\r]');\nif (re.test(v)) v = "'" + v;`);
+  // a `//`-leading line that EXECUTES via template interpolation: the one way
+  // a line-comment marker fronts live code, and why `${` is banned in mentions
+  caught('escaper inside template interpolation on a //-leading line', TS_COPY,
+    `let hit; const log = \`\n// \${(hit = /^[=+\\-@\\t\\r]/.test(cell))}\n\`;\nif (hit) cell = "'" + cell;`);
 
   it('a trailing comment never exempts the code before it', () => {
-    assert.equal(bare(`const RE = /^[=+\\-@\\t\\r]/; // the anchored trigger`), 1);
+    assert.equal(scanText(F, `const RE = /^[=+\\-@\\t\\r]/; // the anchored trigger`).length, 1);
   });
-
-  // False REDs. Documenting this pattern is what a fix for it writes, so prose
-  // describing it must not red the gate -- that is what redded main.
-  const prose = [
-    ['a line comment', '// not a formula to an anchored `/^[=+\\-@\\t\\r]/` but it is to Excel'],
-    ['an indented line comment', '      // anchored `/^[=+\\-@\\t\\r]/` mention'],
-    ['a docblock body', '/**\n * anchored /^[=+\\-@\\t\\r]/ described here\n */'],
-    ['a one-line docblock', '/** never hand-roll /^[=+\\-@\\t\\r]/; call escapeCsvCell() */'],
-    ['a block comment with no leading stars', '/*\n  do not re-test /^[=+\\-@\\t\\r]/ here\n*/'],
-    ['prose sharing the closing line', '/**\n * avoid /^[=+\\-@\\t\\r]/ locally. */'],
-    ['a Rust inner doc block', '/*! crate docs: never re-test /^[=+\\-@\\t\\r]/ */'],
-    ['CRLF line endings', '// anchored `/^[=+\\-@\\t\\r]/` mention\r\nconst x = 1;'],
-  ];
-  for (const [name, src] of prose) {
-    it(`prose does not red: ${name}`, () => {
-      assert.equal(scanText(F, src).length, 0, `prose redded the gate: ${name}`);
-    });
-  }
 });
 
 // ---------------------------------------------------------------------------
-// String-phase loss. These target THIS design's failure mode, not the previous
-// four's.
-//
-// Every case above was drawn from a leading-character heuristic's mistakes, so
-// none of them could have caught a tokeniser that loses string phase. A suite
-// that rejects the designs you already replaced is evidence about those, not
-// about the one you shipped.
-//
-// Root cause: an unpaired `'` in CODE -- a Rust lifetime, a JSX contraction --
-// opened a fake string that ran to the next quote anywhere in the file.
+// Prose policy. Comments quoting a pattern DO match the raw scan — that is the
+// price of a scan nothing can hide from — and are excused one exact line at a
+// time via PROSE_MENTIONS, ratcheted like KNOWN_REMAINING.
 // ---------------------------------------------------------------------------
-describe('string phase is not lost by an unpaired quote', () => {
-  const RS = 'rust/export/src/probe.rs';
-  const TSX = 'apps/viewer/src/probe.tsx';
-  const TS = 'packages/export/src/probe.ts';
-  const PROSE = '// never re-test /^[=+\\-@\\t\\r]/ here';
-  const RS_COPY = `let hit = matches!(c, '=' | '+' | '-' | '@');`;
-  const TS_COPY = `if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s;`;
+describe('prose mentions', () => {
+  const [MENTION, ENGINE_MENTION] = PROSE_MENTIONS;
+  const ENGINE_CODE =
+    '      /^[\\p{Cf}\\p{Z}]*[=+\\-@\\t\\r]/u.test(str) &&\n' +
+    '      return `"${str.replace(/"/g, \'""\')}"`;\n';
 
-  // False reds: an odd quote must not leave a later comment unblanked.
-  it('a Rust lifetime does not unblank a following comment', () => {
-    assert.equal(scanText(RS, `pub fn p<'a>(s: &'a str, t: &'a str) {}\n${PROSE}`).length, 0);
-  });
-  it('a JSX contraction does not unblank a following comment', () => {
-    assert.equal(scanText(TSX, `export const M = () => <p>What's New</p>;\n${PROSE}`).length, 0);
-  });
-  it('a Rust raw string with an odd inner quote does not unblank a comment', () => {
-    assert.equal(scanText(RS, `let r = r#"say "hi ok"#;\n${PROSE}`).length, 0);
-  });
-  it('a regex after a keyword does not unblank a comment', () => {
-    assert.equal(scanText(TS, `function q(s) { return /["]/.test(s); }\n${PROSE}`).length, 0);
+  it('the registered line, in its registered file, does not red', () => {
+    const { violations, staleMentions } = repoWith({
+      [MENTION.file]: `const TRIGGERS = ['=', '+'];\n${MENTION.text}\n`,
+      [ENGINE_MENTION.file]: `    ${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.deepEqual(violations, []);
+    assert.deepEqual(staleMentions, []);
   });
 
-  // The bypass: once phase inverts, a `//` inside a real string blanks live
-  // code. Paired, so a probe that cannot match reports as broken.
-  it('a URL in a string after a lifetime does not hide a Rust escaper', () => {
-    assert.ok(scanText(RS, RS_COPY).length >= 1, 'probe cannot red; result meaningless');
-    const ctx = `pub fn f<'a>(s: &'a str, t: &'a str) {\n    let m = "can't parse";\n    let u = "http://x"; ${RS_COPY}\n}`;
-    assert.ok(scanText(RS, ctx).length >= 1, 'a live Rust escaper was hidden by string-phase loss');
-  });
-  it('a URL in a string after a keyword-regex does not hide a TS escaper', () => {
-    assert.ok(scanText(TS, TS_COPY).length >= 1, 'probe cannot red; result meaningless');
-    const ctx = `function q(s) { return /["]/.test(s); }\nconst u = "http://x"; ${TS_COPY}`;
-    assert.ok(scanText(TS, ctx).length >= 1, 'a live TS escaper was hidden by string-phase loss');
+  it('the same registered line in a DIFFERENT file reds — excusal is file-scoped', () => {
+    const { violations } = repoWith({
+      'packages/export/src/other.ts': `${MENTION.text}\n`,
+      [MENTION.file]: `${MENTION.text}\n`,
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.equal(violations.length, 1);
+    assert.equal(violations[0].file, 'packages/export/src/other.ts');
   });
 
-  // Coverage the earlier block never gave: the match-arm pattern is the one
-  // built out of apostrophes, so it is the most entangled with string state.
-  it('prose describing the Rust match arm does not red', () => {
-    assert.equal(scanText(RS, `// never write matches!(c, '=' | '+' | '-' | '@') by hand`).length, 0);
+  it('a registered mention does not excuse an escaper elsewhere in the same file', () => {
+    const copy = `const quick = (s) => (/^[=+\\-@\\t\\r]/.test(s) ? \`'\${s}\` : s);`;
+    assert.ok(scanText(MENTION.file, copy).length >= 1, 'probe cannot match; result meaningless');
+    const { violations } = repoWith({
+      [MENTION.file]: `${MENTION.text}\n${copy}\n`,
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.equal(violations.length, 1, 'the escaper next to the registered comment must still red');
+    assert.equal(violations[0].file, MENTION.file);
+  });
+
+  it('code sharing the line with a registered mention changes the text and reds', () => {
+    const line = `if (/^[=+\\-@\\t\\r]/.test(s)) s = "'" + s; ${MENTION.text}`;
+    assert.ok(scanText(MENTION.file, line).length >= 1, 'probe cannot match; result meaningless');
+    const { violations } = repoWith({
+      [MENTION.file]: `${MENTION.text}\n${line}\n`,
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.equal(violations.length, 1);
+  });
+
+  it('unregistered prose reds — the registry does not generalise', () => {
+    const { violations } = repoWith({
+      'packages/export/src/newdoc.ts': '// never hand-roll the anchored `/^[=+\\-@\\t\\r]/` guard\n',
+      [MENTION.file]: `${MENTION.text}\n`,
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.equal(violations.length, 1, 'a new prose mention must be registered, not silently excused');
+  });
+
+  it('a registered line that disappears is stale and fails the gate', () => {
+    const { staleMentions } = repoWith({
+      [MENTION.file]: 'const nothing = 1;\n',
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\n${ENGINE_CODE}`,
+    });
+    assert.deepEqual(staleMentions, [MENTION]);
+  });
+
+  it('KNOWN_REMAINING liveness rests on CODE, not on its history comment', () => {
+    // Pay the engine.ts debt but keep the comment naming the old pattern: the
+    // ratchet must still fire, or the entry lingers as dead config forever.
+    const { staleKnown, staleMentions } = repoWith({
+      [MENTION.file]: `${MENTION.text}\n`,
+      [ENGINE_MENTION.file]: `${ENGINE_MENTION.text}\nexport const done = escapeCsvCell;\n`,
+    });
+    assert.deepEqual(staleKnown, KNOWN_REMAINING, 'comment-only liveness must not keep the debt entry alive');
+    assert.deepEqual(staleMentions, []);
+  });
+
+  describe('validateMentions rejects entries that could excuse executable text', () => {
+    const P = '`/^[=+\\-@\\t\\r]/`';
+    const bad = [
+      ['untrimmed text', { file: 'a/b.ts', text: `  // pad ${P}` }, /trimmed/],
+      ['not a line comment', { file: 'a/b.ts', text: `* docblock body ${P}` }, /line comment/],
+      ['template interpolation', { file: 'a/b.ts', text: `// \${run()} ${P}` }, /execute/],
+      ['block terminator', { file: 'a/b.ts', text: `// ${P} *` + `/ tail()` }, /block comment/],
+      ['matches no pattern', { file: 'a/b.ts', text: '// plain prose' }, /no PATTERN/],
+      ['already-exempt file', { file: CANONICAL[0], text: `// ${P}` }, /exempt/],
+    ];
+    for (const [name, entry, re] of bad) {
+      it(name, () => assert.throws(() => validateMentions([entry]), re));
+    }
+    it('accepts the real registry', () => validateMentions());
+  });
+
+  it('a registered line is inert even as regex source — executed, not asserted', () => {
+    // The one way registered text could "run" is as data fed to a regex
+    // compiler. Build that regex and show it cannot function as a trigger
+    // guard: the prose prefix means no bare trigger cell matches.
+    for (const m of PROSE_MENTIONS) {
+      let re = null;
+      try {
+        re = new RegExp(m.text);
+      } catch {
+        // not even a valid regex: inert
+      }
+      if (re) {
+        for (const cell of ['=cmd()', '+1', '-2', '@x', '\tt', '\rr', '=HYPERLINK("http://x")']) {
+          assert.equal(re.test(cell), false, `registered text works as a trigger guard on ${JSON.stringify(cell)}`);
+        }
+      }
+    }
   });
 });

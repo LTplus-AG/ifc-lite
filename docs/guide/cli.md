@@ -453,7 +453,6 @@ If meshing fails, LOD1 falls back to box geometry derived from LOD0.
 | `--level <N>` | `0` for JSON envelopes, `1` for GLB geometry |
 | `--out <file>` | Output file (`required` for LOD1) |
 | `--meta <file>` | Metadata file for LOD1 (default: derived from `--out`) |
-| `--quality <q>` | Geometry quality for LOD1: `low`, `medium`, `high` (also accepts `fast`, `balanced`) |
 | `--json` | Machine-readable summary to stdout |
 
 ---

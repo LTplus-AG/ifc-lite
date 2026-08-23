@@ -25,7 +25,7 @@
  */
 
 import * as acorn from 'acorn';
-import * as walk from 'acorn-walk';
+import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
 import { lookupNamespaceMethod, isKnownNamespace } from './catalogue.js';
 
 export interface InferenceResult {
@@ -94,28 +94,57 @@ export function inferCapabilities(source: string): InferenceResult {
   }
 
   const observations: InferenceObservation[] = [];
-  walk.simple(ast as acorn.AnyNode, {
-    MemberExpression(node) {
-      const chain = readMemberChain(node);
-      if (!chain || chain[0] !== 'bim') return;
-      // Patterns we care about:
-      //   bim.<ns>             — at least 2 parts. Untargeted; default ns.
-      //   bim.<ns>.<method>    — 3 parts; specific method.
-      //   bim.<ns>.<method>(...) — same; we record at the chain stage.
-      const namespace = chain[1] ?? undefined;
-      const method = chain[2] ?? undefined;
-      if (!namespace) return;
-      const call = `bim.${namespace}${method ? `.${method}` : ''}`;
-      const caps = method
-        ? lookupNamespaceMethod(namespace, method)
-        : INFERENCE_FALLBACK_FOR(namespace);
-      observations.push({
-        call,
-        capabilities: [...caps],
-        unknown: !isKnownNamespace(namespace),
-      });
-    },
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (node, type) => {
+    if (type !== 'MemberExpression') return;
+    const chain = readMemberChain(node);
+    if (!chain || chain[0] !== 'bim') return;
+    // Patterns we care about:
+    //   bim.<ns>             — at least 2 parts. Untargeted; default ns.
+    //   bim.<ns>.<method>    — 3 parts; specific method.
+    //   bim.<ns>.<method>(...) — same; we record at the chain stage.
+    const namespace = chain[1] ?? undefined;
+    const method = chain[2] ?? undefined;
+    if (!namespace) return;
+    const call = `bim.${namespace}${method ? `.${method}` : ''}`;
+    const caps = method
+      ? lookupNamespaceMethod(namespace, method)
+      : INFERENCE_FALLBACK_FOR(namespace);
+    observations.push({
+      call,
+      capabilities: [...caps],
+      unknown: !isKnownNamespace(namespace),
+    });
   });
+
+  // A walk that stopped at the depth bound has NOT seen the whole
+  // script, so the capability set it produced is a floor, not the
+  // answer. Returning it as-is would fail open in both directions:
+  // `migrateSavedScripts` treats an empty set as "grant model.read and
+  // migrate anyway", and the promote dialog renders "No `bim.*` calls
+  // detected". Report it through `parseErrors`, which is the channel
+  // both callers already use to refuse the script — the migration skips
+  // it, and the dialog shows the warning.
+  if (depthExceeded) {
+    parseErrors.push({
+      message: `source is nested more than ${MAX_AST_DEPTH} AST levels deep; capabilities could not be inferred`,
+      line: 0,
+      column: 0,
+    });
+    return { capabilities: [], observations: [], parseErrors };
+  }
+
+  // A subtree the walker could not descend hides `bim.*` calls just as
+  // effectively as the depth bound does, so it goes down the same
+  // channel and the inferred set is discarded rather than published as
+  // if it were complete.
+  if (unwalkableTypes.length > 0) {
+    parseErrors.push({
+      message: `source contains AST node types the walker cannot traverse (${unwalkableTypes.join(', ')}); capabilities could not be inferred`,
+      line: 0,
+      column: 0,
+    });
+    return { capabilities: [], observations: [], parseErrors };
+  }
 
   return {
     capabilities: dedupeAndSort(observations.flatMap((o) => o.capabilities)),

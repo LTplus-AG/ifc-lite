@@ -90,6 +90,12 @@ function discoverPublishablePackages() {
 
     const entry = resolveEsmEntry(pkg);
     if (!entry) {
+      // Known limit: this skip is soft on purpose. A package that
+      // legitimately declares no root ESM entry (`@ifc-lite/wasm`, subpath
+      // exports only) is indistinguishable here from one that LOST its
+      // entry to a bad `exports` edit — telling them apart needs the prior
+      // state of package.json, which this script does not have. Left as a
+      // skip rather than guessed at.
       out.push({ name: pkg.name, dir, skip: 'no ESM entry declared' });
       continue;
     }
@@ -99,6 +105,7 @@ function discoverPublishablePackages() {
         name: pkg.name,
         dir,
         skip: `entry missing on disk: ${entry} (did you run \`pnpm build\` first?)`,
+        unbuilt: true,
       });
       continue;
     }
@@ -232,6 +239,37 @@ function main() {
   console.log(
     `${testable.length - failures.length} passed, ${failures.length} failed, ${skipped.length} skipped`
   );
+
+  // An "entry missing on disk" skip means the package was never built, not
+  // that its ESM entry point is fine — this script's whole purpose is to
+  // load the BUILT artifact through Node's resolver. Treating a wholesale
+  // unbuilt tree as "skipped" let a bypass-turbo/pre-build run print "0
+  // failed" and exit 0 without importing a single package: absence
+  // misread as success (see AGENTS.md, unbuilt/stale workspace sibling).
+  // Fail closed instead, the same way `pnpm build` is a hard precondition
+  // for this script's one caller (`pnpm release`).
+  // Nothing tested AND nothing skipped means discovery itself came up
+  // empty — `packages/` moved, or every package.json stopped matching the
+  // publishable filter. The loop above then has nothing to fail on and the
+  // summary reads "0 passed, 0 failed, 0 skipped", success reported for
+  // having imported nothing. Same absence-as-success shape as the unbuilt
+  // case below, one level further up.
+  if (testable.length === 0 && skipped.length === 0) {
+    console.error(
+      `\nNo publishable packages were discovered under ${PACKAGES_DIR}. Nothing was ` +
+        'verified, so this run proves nothing — check the package layout before trusting it.\n'
+    );
+    process.exit(1);
+  }
+
+  const unbuilt = skipped.filter((p) => p.unbuilt);
+  if (unbuilt.length) {
+    console.error(
+      `\n${unbuilt.length} package(s) were skipped only because they are unbuilt, not because ` +
+        'their ESM entry is verified fine. Run `pnpm build` first, then re-run `pnpm test:esm`.\n'
+    );
+    process.exit(1);
+  }
 
   if (failures.length) {
     console.error('\nESM smoke test failed. Most likely cause: a relative import in one');

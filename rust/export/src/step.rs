@@ -151,17 +151,25 @@ struct MutationsJson {
 /// `MutablePropertyView` diff). `mutations_json` shape:
 /// `{ "attributeUpdates": [{expressId,index,value}], "propertyMutations":
 /// [{expressId,psetName,propName,value}] }` where `value` is already STEP-serialized
-/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). Empty/invalid JSON ⇒ no mutations.
+/// (`'Name'`, `IFCLABEL('x')`, `IFCREAL(1.)`). An empty string means "no mutations" —
+/// a legitimate, common case (plain re-export). A non-empty string that fails to
+/// parse is a caller bug (a malformed payload, a version mismatch across the wasm
+/// boundary) and must not be treated the same way: silently falling back to "no
+/// mutations" would export a file that LOOKS like a successful re-export of the
+/// user's edits but silently contains none of them. Callers get an `Err` instead,
+/// matching `exportGlb`'s and `exportMerged`'s fail-closed contract at this same
+/// wasm boundary.
 pub fn export_step_json(
     content: &[u8],
     schema: Option<String>,
     included: Option<Vec<u32>>,
     mutations_json: &str,
-) -> String {
+) -> Result<String, String> {
     let muts: MutationsJson = if mutations_json.trim().is_empty() {
         MutationsJson::default()
     } else {
-        serde_json::from_str(mutations_json).unwrap_or_default()
+        serde_json::from_str(mutations_json)
+            .map_err(|e| format!("invalid mutations_json: {e}"))?
     };
     let opts = StepOptions {
         schema,
@@ -183,7 +191,7 @@ pub fn export_step_json(
             .collect(),
         ..StepOptions::default()
     };
-    export_step(content, &opts)
+    Ok(export_step(content, &opts))
 }
 
 /// Export the parsed model in `content` as a STEP/IFC string.
@@ -406,3 +414,7 @@ pub fn export_step_with_stats(content: &[u8], opts: &StepOptions) -> (String, St
 #[cfg(test)]
 #[path = "step_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "step_roundtrip_tests.rs"]
+mod roundtrip_tests;

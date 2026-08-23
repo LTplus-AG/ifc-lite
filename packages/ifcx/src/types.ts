@@ -158,6 +158,25 @@ export const IFCLITE_ATTR = {
   CLASSIFICATIONS: 'ifclite::classifications',
   MATERIALS: 'ifclite::materials',
   GEOMETRY_REF: 'ifclite::geometryRef',
+  /**
+   * Per-entity provenance carrier (`createdBy` / `createdAt` /
+   * `lastEditedBy` / `lastEditedAt` / `previousPath`). IFCX nodes have
+   * no provenance slot of their own, so without this key a snapshot
+   * round trip loses whoever authored an entity — and the reader then
+   * back-fills the FILE header's author and the read clock, which is
+   * fabricated attribution wearing the shape of the real thing.
+   *
+   * Every field carried here is written once, when the entity is
+   * created, and never re-stamped — `lastEditedBy` / `lastEditedAt`
+   * included (only `promoteEntityType` writes them, on the new entity).
+   * That is load-bearing, not incidental: a field re-stamped on each
+   * edit would make this attribute change whenever anything else on the
+   * entity does, putting it in every minimal layer and handing the merge
+   * engine a component that conflicts on every concurrent edit. If a
+   * per-edit stamp is ever wanted, give it its own key rather than
+   * adding it here.
+   */
+  META: 'ifclite::meta',
 } as const;
 
 /** Header key carrying the provenance manifest (see provenance.ts). */

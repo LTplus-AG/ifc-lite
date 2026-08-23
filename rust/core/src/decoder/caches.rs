@@ -100,10 +100,24 @@ impl EntityDecoder<'_> {
         self.placement_transform_cache.get(&id).copied()
     }
 
-    /// Memoize a resolved placement world transform under its placement id. Only
-    /// the geometry router's real computed transforms (IfcLocalPlacement /
-    /// linear / grid) are stored here; identity/depth-guard fallbacks are not, so
-    /// the memo stays a pure function of the placement id (byte-identical reuse).
+    /// Memoize a placement world transform under its placement id.
+    ///
+    /// This is an unconditional insert, and last write wins. It does not
+    /// validate `transform`, does not compare it against any entry already held
+    /// for `id`, and has no way to tell a complete world transform from a
+    /// partial one — nothing in this crate computes placement transforms, so
+    /// nothing here can.
+    ///
+    /// Whether the memo is a pure function of the placement id is therefore a
+    /// property of the CALLERS, not of this method. The geometry router is the
+    /// one that owes it: it stores only fully composed local/linear/grid
+    /// transforms, and in particular never stores one composed from a walk its
+    /// depth guard cut short, because what such a walk composed depends on the
+    /// depth it was entered at rather than on the placement id (#3012). A caller
+    /// that breaks that discipline does not fail here — it makes whichever
+    /// reader happens to query the id first decide the answer for every reader
+    /// after it, including across workers via
+    /// [`Self::take_placement_transform_cache`].
     pub fn cache_placement_transform(&mut self, id: u32, transform: [f64; 16]) {
         self.placement_transform_cache.insert(id, transform);
     }

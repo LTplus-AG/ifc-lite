@@ -7,6 +7,14 @@
  *
  * `reset: true` must clear `entities`/`relationships`/`geometry` before
  * reseeding; `reset: false` must preserve whatever was already on the doc.
+ *
+ * Read the `relationships` assertions for exactly what they say: seeding
+ * never WRITES that map (IFCX has no relationship node — see
+ * `snapshot-relationships.test.ts`), so "the relationship is still there"
+ * proves only that `rels.clear()` did not run. It is a real assertion
+ * about the reset branch and a vacuous one about round-tripping; do not
+ * read it as evidence that relationships survive a snapshot, because
+ * they do not.
  * `mergeBranch('layer')` deliberately calls seedFromIfcx with
  * `reset: false` (see branch.ts) so a branch merge never wipes the
  * parent's own content — that is a data-loss risk, not a mere ordering

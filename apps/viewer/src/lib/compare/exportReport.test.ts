@@ -35,13 +35,16 @@ describe('reportToCsv (#1202)', () => {
    * Element names come from the compared IFC files, so they are
    * attacker-influenced. A leading BOM is treated as file metadata by
    * spreadsheet importers, so a formula trigger hidden behind one still
-   * executes -- and the apostrophe guard, applied without stripping the BOM,
-   * lands in front of the BOM rather than the `=`.
+   * executes while an anchored regex fails to match it. The guard must
+   * therefore look PAST the invisible run.
    *
-   * The Lists exporter (lib/lists/export/model.ts) already strips it and its
-   * comment explains why; this writer and lib/search/result-export.ts did not,
-   * so the same crafted name was neutralised in one CSV and live in the other
-   * two.
+   * It must not DELETE it. These cases used to assert `!line.includes(invisible)`
+   * -- that the invisible was stripped -- which is the wrong half of the rule:
+   * stripping is not what makes the cell safe (the leading apostrophe is), and
+   * the strip was implemented as `replace(/^[\p{Cf}\p{Z}]+/u, '')`, whose
+   * `\p{Z}` includes U+0020, so every exported cell silently lost its leading
+   * spaces. RFC 4180 §2.4: "Spaces are considered part of a field and should
+   * not be ignored." Both directions are pinned below.
    */
   for (const [label, invisible] of [
     ['BOM', '\uFEFF'],
@@ -59,13 +62,38 @@ describe('reportToCsv (#1202)', () => {
         rows: [{ ...report.rows[0], name: `${invisible}=cmd|'/c calc'!A1` }],
       };
       const line = reportToCsv(hostile).split('\r\n')[1];
-      assert.ok(!line.includes(invisible), 'the invisible must not survive into the cell');
+      // The apostrophe is what makes the cell text; the invisible is DATA and
+      // must survive verbatim, in its original position, behind the guard.
       assert.ok(
-        line.includes("'=cmd"),
-        `expected the guard in front of the trigger, got ${JSON.stringify(line)}`,
+        line.includes(`'${invisible}=cmd`),
+        `expected the guard in front of the whole run, got ${JSON.stringify(line)}`,
+      );
+    });
+
+    it(`preserves a leading ${label} on a name that is NOT a formula`, () => {
+      // The other direction of the same rule: looking past an invisible must
+      // never turn into deleting it. A cell is not made safer by losing data.
+      const benign: CompareReport = {
+        ...report,
+        rows: [{ ...report.rows[0], name: `${invisible}Wall A` }],
+      };
+      const line = reportToCsv(benign).split('\r\n')[1];
+      assert.ok(
+        line.includes(`${invisible}Wall A`),
+        `the invisible must survive into the cell, got ${JSON.stringify(line)}`,
       );
     });
   }
+
+  it('preserves leading spaces in a name (RFC 4180 §2.4)', () => {
+    // The regression the strip caused: `\p{Z}` includes U+0020, so every name
+    // with leading whitespace was exported with it silently removed.
+    const padded: CompareReport = {
+      ...report,
+      rows: [{ ...report.rows[0], name: '   Wall A' }],
+    };
+    assert.ok(reportToCsv(padded).split('\r\n')[1].includes('   Wall A'));
+  });
 
   it('emits a header and one row per change', () => {
     const lines = reportToCsv(report).split('\r\n');

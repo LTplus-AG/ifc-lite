@@ -10,6 +10,7 @@
  * the same module but isolated from the formatters.
  */
 
+import { escapeCsvCell as escapeCsvCellShared } from '@ifc-lite/export';
 import { downloadFile, sanitizeFilename } from '../export/download.js';
 
 export interface ExportResult {
@@ -34,30 +35,16 @@ function cellToString(v: unknown): string {
   }
 }
 
-/** RFC-4180-style escaping: quote any cell containing comma, quote, or
- *  newline; double-up embedded quotes inside the wrapped cell. Also
- *  neutralises spreadsheet formula triggers (CWE-1236) so user/model-
- *  controlled cell values are treated as text on open. */
+/** RFC-4180 quoting + the CWE-1236 formula-injection guard.
+ *
+ *  Delegates to `@ifc-lite/export`'s single escaper — the copy that used to
+ *  live here bought its invisible-handling by DELETING the leading run of
+ *  `\p{Cf}\p{Z}`. `\p{Z}` includes U+0020, so every exported cell silently lost
+ *  its leading spaces, against RFC 4180 §2.4 ("Spaces are considered part of a
+ *  field and should not be ignored"). The shared escaper looks *past* the run
+ *  instead of removing it, guarding the same payloads without touching data. */
 function escapeCsvCell(raw: string): string {
-  if (raw.length === 0) return '';
-  // CWE-1236: neutralise spreadsheet formula triggers in the leading
-  // position. Prefixing first ensures the needsQuotes check below still
-  // wraps values that also contain comma/quote/newline.
-  //
-  // Strip EVERY leading invisible before the test, not just the BOM. A
-  // zero-width space (U+200B), an LTR mark (U+200E), a non-breaking space
-  // (U+00A0) or a line / paragraph separator (U+2028/U+2029) in front of `=`
-  // does not stop a spreadsheet reading the cell as a formula, but it does
-  // stop the anchored test below matching -- so the apostrophe never lands and
-  // the payload executes. The BOM is the narrowest case of the class.
-  //
-  // `\p{Z}`, not `\p{Zs}`: the separator category also covers `Zl` and `Zp`.
-  // Same class as `lists/export/model.ts`.
-  raw = raw.replace(/^[\p{Cf}\p{Z}]+/u, '');
-  if (/^[=+\-@\t\r]/.test(raw)) raw = `'${raw}`;
-  const needsQuotes = raw.includes(',') || raw.includes('"') || raw.includes('\n') || raw.includes('\r');
-  if (!needsQuotes) return raw;
-  return `"${raw.replace(/"/g, '""')}"`;
+  return escapeCsvCellShared(raw, { delimiter: ',' });
 }
 
 /** Serialize a result set to CSV (UTF-8). Trailing newline included. */

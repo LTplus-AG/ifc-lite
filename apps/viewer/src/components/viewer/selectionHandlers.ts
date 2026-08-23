@@ -13,6 +13,7 @@ import { useViewerStore } from '@/store';
 import { fromGlobalIdFromModels, toGlobalIdFromModels } from '@/store/globalId';
 import { pointInPolygon } from '@/lib/polygon-clip';
 import { toast } from '@/components/ui/toast';
+import { notifyWallSplit } from './wallSplitNotice.js';
 import { raycastForPolylinePoint, isNearPolylineStart,
   isDuplicateClickPoint,
 } from './measureHandlers.js';
@@ -160,15 +161,13 @@ export async function handleSelectionClick(ctx: MouseHandlerContext, e: MouseEve
       if (wallTry.ok) {
         state.clearSplitHover();
         state.setSelectedEntityId(wallTry.right.globalId);
-        // Mention opening reassignment in the toast only when it
-        // happened — silence is preferable to "0 openings moved"
-        // for a wall with no doors / windows.
-        const op = wallTry.openings;
-        const opSummary =
-          op.toLeft + op.toRight > 0
-            ? ` (${op.toLeft + op.toRight} opening${op.toLeft + op.toRight === 1 ? '' : 's'} reassigned)`
-            : '';
-        toast.success(`Wall split${opSummary} — Ctrl+Z to undo`);
+        // Both wall-split commit paths — here and the Split tool's
+        // numeric-distance panel — announce the split through the same
+        // emitter (`wallSplitNotice.ts`), so a notice added to one cannot
+        // go missing from the other. That is exactly how `openings.skipped`
+        // stayed silent on the typed-distance path after #3023 taught this
+        // one to report it.
+        notifyWallSplit(wallTry.openings);
         return;
       }
       const linearTry = state.splitLinearElementAtDistance(

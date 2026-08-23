@@ -14,8 +14,10 @@ import type {
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
 import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
+import { matchPredefinedType } from './predefined-type-match.js';
 
-/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
+ *  types are NOT — see `predefined-type-match.ts`. */
 const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
 
 /**
@@ -116,21 +118,18 @@ export function checkEntityFacet(
     };
   }
 
-  // Check predefined type if specified
+  // Check predefined type if specified. The matching rule itself lives
+  // in `predefined-type-match.ts` — shared verbatim with the partOf
+  // facet, whose nested `<entity>` is the same IDS construct. Only the
+  // failure wording below is entity-facet-specific.
   if (facet.predefinedType) {
-    // Per IDS spec, predefined-type matching has two distinct paths:
-    //   1. Compare against the raw IFC `PredefinedType` enum token
-    //      (BEAM, USERDEFINED, NOTDEFINED, …) — case-insensitive.
-    //   2. When the raw token is `USERDEFINED`, fall back to the
-    //      user-defined name (`ObjectType`/`ElementType`/`ProcessType`)
-    //      — case-sensitive.
-    // The order matters: a fixture asking for `USERDEFINED` literally
-    // must match an entity whose enum is `USERDEFINED` regardless of
-    // its accompanying user-defined name.
-    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
-    const userDefinedType = accessor.getObjectType(expressId);
+    const outcome = matchPredefinedType(
+      facet.predefinedType,
+      accessor.getPredefinedTypeRaw?.(expressId),
+      accessor.getObjectType(expressId)
+    );
 
-    if (!rawType && !userDefinedType) {
+    if (outcome.kind === 'absent') {
       return {
         passed: false,
         actualValue: entityType,
@@ -143,40 +142,15 @@ export function checkEntityFacet(
       };
     }
 
-    let matched = false;
-    // Predefined-type enum tokens (BEAM, USERDEFINED, …) MUST be
-    // uppercase per the IFC schema, and the IDS literal MUST match
-    // exactly. Case-sensitive comparison is the spec.
-    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
-      matched = true;
-    } else if (
-      rawType === 'USERDEFINED' &&
-      userDefinedType &&
-      userDefinedType !== rawType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      // Case-sensitive comparison for user-defined names.
-      matched = true;
-    } else if (
-      !rawType &&
-      userDefinedType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      // No raw enum reported (legacy accessor) — case-sensitive match
-      // against the substituted form.
-      matched = true;
-    }
-
-    if (!matched) {
-      const display = userDefinedType || rawType || '(none)';
+    if (outcome.kind === 'mismatch') {
       return {
         passed: false,
-        actualValue: `${entityType}[${display}]`,
+        actualValue: `${entityType}[${outcome.actual}]`,
         expectedValue: `${formatConstraint(facet.name)} with predefinedType ${formatConstraint(facet.predefinedType)}`,
         failure: {
           type: 'PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: display,
+          actual: outcome.actual,
           expected: formatConstraint(facet.predefinedType),
         },
       };
@@ -228,30 +202,13 @@ export function entityFacetPasses(
   }
 
   if (facet.predefinedType) {
-    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
-    const userDefinedType = accessor.getObjectType(expressId);
-
-    if (!rawType && !userDefinedType) return false;
-
-    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
-      return true;
-    }
-    if (
-      rawType === 'USERDEFINED' &&
-      userDefinedType &&
-      userDefinedType !== rawType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      return true;
-    }
-    if (
-      !rawType &&
-      userDefinedType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      return true;
-    }
-    return false;
+    return (
+      matchPredefinedType(
+        facet.predefinedType,
+        accessor.getPredefinedTypeRaw?.(expressId),
+        accessor.getObjectType(expressId)
+      ).kind === 'match'
+    );
   }
 
   return true;

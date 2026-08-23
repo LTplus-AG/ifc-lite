@@ -5,6 +5,7 @@
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
 use super::super::GeometryRouter;
+use super::walk::PlacementWalk;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
@@ -26,20 +27,18 @@ impl GeometryRouter {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: usize,
-    ) -> Result<Matrix4<f64>> {
-        // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does.
-        let parent_transform = if let Some(parent_attr) = placement.get(0) {
-            if !parent_attr.is_null() {
-                if let Some(parent) = decoder.resolve_ref(parent_attr)? {
-                    self.get_placement_transform_with_depth(&parent, decoder, depth + 1)?
-                } else {
-                    Matrix4::identity()
+    ) -> Result<PlacementWalk> {
+        // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does,
+        // truncation included: a parent walk cut short by the depth guard makes
+        // this result depth-dependent too, so it must not be memoised. #3012
+        let parent = match placement.get(0) {
+            Some(parent_attr) if !parent_attr.is_null() => {
+                match decoder.resolve_ref(parent_attr)? {
+                    Some(p) => self.get_placement_transform_with_depth(&p, decoder, depth + 1)?,
+                    None => PlacementWalk::complete(Matrix4::identity()),
                 }
-            } else {
-                Matrix4::identity()
             }
-        } else {
-            Matrix4::identity()
+            _ => PlacementWalk::complete(Matrix4::identity()),
         };
 
         // Prefer the authored CartesianPosition (attr 2) when the exporter
@@ -56,7 +55,7 @@ impl GeometryRouter {
                 .unwrap_or_else(Matrix4::identity),
         };
 
-        Ok(parent_transform * local)
+        Ok(PlacementWalk { transform: parent.transform * local, truncated: parent.truncated })
     }
 
     /// Decode `IfcLinearPlacement.RelativePlacement` → sample the basis
@@ -260,7 +259,8 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         let router = GeometryRouter::new();
         let m = router
             .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-            .expect("resolve linear placement");
+            .expect("resolve linear placement")
+            .transform;
         assert!(
             (m[(0, 3)] - 10.0).abs() < 1e-9
                 && (m[(1, 3)] - 20.0).abs() < 1e-9
@@ -283,7 +283,8 @@ ENDSEC;\nEND-ISO-10303-21;\n";
         let router = GeometryRouter::new();
         let m = router
             .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
-            .expect("resolve linear placement");
+            .expect("resolve linear placement")
+            .transform;
         assert!(
             (m[(0, 3)] - 5.0).abs() < 1e-9 && m[(1, 3)].abs() < 1e-9 && m[(2, 3)].abs() < 1e-9,
             "sampling a straight +X polyline at 5 m must give (5, 0, 0); got \

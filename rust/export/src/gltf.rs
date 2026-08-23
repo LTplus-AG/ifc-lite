@@ -46,7 +46,9 @@ mod from_meshes;
 mod matrix;
 
 pub use from_meshes::{export_glb_from_meshes, try_export_glb_from_meshes};
-use matrix::{affine_inverse, compose_world_meta, occurrence_node_matrix};
+use matrix::{
+    affine_inverse, compose_world_meta, occurrence_node_matrix, occurrence_node_matrix_composed,
+};
 
 /// Options for glTF/GLB export.
 ///
@@ -1647,9 +1649,12 @@ fn export_gltf_streaming_impl(
     //   pass 1 — the Y-up world AABB for `scene_center` (a precision-centering device, so
     //            any value is correct; the exact one keeps baked f32 magnitudes small);
     //   pass 2 — bake + encode each mesh as a flat node into the chunker, dropping it.
-    // Instancing/content-dedup is skipped (it needs every mesh co-resident); the dense
-    // models that actually need bounded memory have little instancing, and world geometry
-    // is identical either way (instancing is only a dedup of repeated placements).
+    // Instancing/content-dedup is skipped: this path pushes every mesh with no
+    // cache. World geometry is identical either way (instancing is only a dedup
+    // of repeated placements), so what it costs is size, not correctness.
+    // `plan_bounded_glb` -- the single-GLB bounded path -- does both; the
+    // decision needs a plan rather than co-resident vertices, and that path
+    // keeps one. This one does not.
     // A shared `index` (when present) is injected into BOTH passes' StreamingOptions so
     // neither re-scans `content` for its entity index (#1516).
     let stream_opts = || StreamingOptions {
@@ -1890,9 +1895,9 @@ struct StreamedWrite {
 /// there — which is the point: the wasm path must never build the whole model
 /// in memory for large inputs.
 fn glb_stream_threshold_bytes() -> usize {
-    // 64 MB: 2x under the smallest input reported to trap the wasm heap (131 MB),
-    // while instancing-heavy mid-size models (which lose rep-identity dedup on
-    // the streaming path) keep the in-memory instanced assembler.
+    // 64 MB: 2x under the smallest input reported to trap the wasm heap (131 MB).
+    // The streaming path used to lose rep-identity dedup, which was a second
+    // reason to keep mid-size models in memory; it no longer does.
     const DEFAULT_MB: usize = 64;
     let mb = std::env::var("IFC_LITE_GLB_STREAM_THRESHOLD_MB")
         .ok()
@@ -1953,10 +1958,12 @@ pub struct GlbSizeProjection {
 /// or [`project_glb_size`] to decide up front.
 ///
 /// Tradeoffs vs the in-memory assembler (`build_gltf`):
-/// - rep-identity instancing is SKIPPED (it needs every occurrence co-resident);
-///   content-hash dedup is kept (the hash is computed batch-locally on pass 1).
-///   Models with no instanceable groups produce BYTE-IDENTICAL output; models
-///   with them produce the same world geometry, larger by the forgone dedup.
+/// - rep-identity instancing is done here too, on the f32 layout, under the
+///   same policy `collate_refs` applies. The vertex data needs every occurrence
+///   co-resident; the grouping decision does not, so it is made from the plan.
+///   Quantized output still skips it: a shared mesh's non-uniform dequant scale
+///   cannot fold into a rotating placement without breaking `Matrix4.decompose`.
+/// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
 /// - the model is meshed twice (the price of bounded memory).
 ///
 /// Supports both the f32 and the `KHR_mesh_quantization` layouts; the quantized
@@ -2124,6 +2131,12 @@ fn plan_bounded_glb(
     // Intern IFC type names so each distinct type is heap-allocated once, not per mesh.
     let mut type_intern: FxHashMap<String, Arc<str>> = FxHashMap::default();
     let mut metas: Vec<StreamedMeshMeta> = Vec::new();
+    // Quantized output cannot share a shape anyway (see the rep-bucket block
+    // below), so under `--quantize` this is never built rather than built and
+    // then not read.
+    let want_rep = !opts.quantize;
+    let mut reps: Vec<(u128, [f64; 16])> = Vec::new();
+    let mut rep_of: FxHashMap<u32, u32> = FxHashMap::default();
     let mut wmin = [f64::INFINITY; 3];
     let mut wmax = [f64::NEG_INFINITY; 3];
     // Pass 1's result carries `site_transform` and the RTC offset. Dropping it
@@ -2177,6 +2190,36 @@ fn plan_bounded_glb(
                         a
                     }
                 };
+                // Shape identity and this occurrence's composed world
+                // placement, for meshes the geometry engine says are provably
+                // shareable. `canonical_transform` marks the rotation-
+                // normalized tier, where a template is congruent rather than
+                // identical; the in-memory path refuses those groups and so
+                // does this one.
+                //
+                // Beside `metas` rather than in it. An `InstanceMeta` is 424
+                // bytes and one entry here is 160, which is what makes
+                // rep-identity instancing affordable on the path that exists to
+                // bound memory. Measured on a 1.05 GB model: about 30 MB of
+                // plan against 680 MB of geometry not written (glTF 1.82 GB ->
+                // 1.14 GB, peak RSS 6.02 GB -> 5.36 GB, same wall time).
+                //
+                // Out of the per-mesh struct for two reasons: only instanceable
+                // meshes pay, and nothing reads it after planning, so it drops
+                // instead of sitting beside the whole output buffer while pass
+                // 2 writes it. (That 160 is this entry, not the per-mesh struct
+                // -- `the_streamed_mesh_plan_stays_small` pins that separately
+                // at 240, and it is 240 *because* this moved out.)
+                if want_rep {
+                    let instanceable = m
+                        .instance
+                        .as_ref()
+                        .filter(|i| i.instanceable && i.canonical_transform.is_none());
+                    if let Some(inst) = instanceable {
+                        rep_of.insert(metas.len() as u32, reps.len() as u32);
+                        reps.push((inst.rep_identity, compose_world_meta(inst)));
+                    }
+                }
                 metas.push(StreamedMeshMeta {
                     express_id: m.express_id,
                     ifc_type,
@@ -2206,10 +2249,120 @@ fn plan_bounded_glb(
     };
 
     // ── Build the glTF JSON (mirrors build_gltf's flat branch exactly) ──────
+
+    // Rep-identity instancing, which this path used to give up on because it
+    // "needs every occurrence co-resident". The vertex data does; the decision
+    // does not. `collate_refs` reads nothing off a mesh's geometry but its
+    // length, so what a group needs is an identity and a placement, and those
+    // fit in the plan this path already keeps.
+    //
+    // f32 output only. Quantized, a shared mesh carries a non-uniform dequant
+    // scale that cannot fold into a rotating placement without breaking
+    // `Matrix4.decompose`, so it needs the nested parent/child node the
+    // in-memory path builds.
+    let (rtc_zup, site_zup) = site_restore(&meta_result);
+    // Rep identities whose occurrences disagree about shape size. Resolved
+    // before any bucketing, because one disagreeing member refuses the whole
+    // identity and it may be the last one seen.
+    //
+    // This is `collate_refs`' policy, arrived at the hard way. Keying the
+    // bucket on size instead shares more -- on one 1 GB file, 532 rep groups of
+    // 87,393 hold an occurrence clipped to a different vertex count, and
+    // between them 22,343 of the 151,282 occurrences. But the collator's
+    // refusal is a safety property rather than an oversight: `rep_identity` is
+    // only the RepresentationMap entity id for a mapped item, so two
+    // occurrences of one map clipped differently that land on the same vertex
+    // and index counts are a group whose members are not one shape.
+    // Sub-bucketing by size hands one of them the other's geometry, silently.
+    // Refusing costs sharing; the other way costs correctness. What it costs,
+    // measured on a 342 MB model: 34.5 MB of glTF instead of 25.0 MB, against
+    // 108 MB with no instancing at all.
+    //
+    // This aligns the size rule with the collator, and it does not make the two
+    // paths identical: the in-memory one refuses a whole group where any
+    // occurrence has no instance side-channel, and this one drops that
+    // occurrence and keeps the rest. See
+    // `the_bounded_path_shares_at_least_as_much`, which pins that difference.
+    let refused: FxHashSet<u128> = {
+        let mut seen: FxHashMap<u128, (u32, u32)> = FxHashMap::default();
+        let mut bad: FxHashSet<u128> = FxHashSet::default();
+        for (i, meta) in metas.iter().enumerate() {
+            let Some(&slot) = rep_of.get(&(i as u32)) else { continue };
+            let rid = reps[slot as usize].0;
+            match seen.get(&rid) {
+                None => {
+                    seen.insert(rid, (meta.nverts, meta.nidx));
+                }
+                Some(&size) if size != (meta.nverts, meta.nidx) => {
+                    bad.insert(rid);
+                }
+                Some(_) => {}
+            }
+        }
+        bad
+    };
+    /// Identity and colour. Colour because a glTF material rides the mesh
+    /// primitive and not the node, so two colours of one shape are two meshes.
+    type RepBucket = (u128, (i32, i32, i32, i32));
+    let bucket_of = |mi: usize, m: &StreamedMeshMeta| -> Option<RepBucket> {
+        let rid = reps[*rep_of.get(&(mi as u32))? as usize].0;
+        if refused.contains(&rid) {
+            return None;
+        }
+        Some((rid, color_key(m.color)))
+    };
+    /// What one shape does about being shared, decided before the emission loop
+    /// so it can read the template's placement while holding the occurrence's
+    /// mutably.
+    ///
+    /// Per bucket rather than per occurrence. The same plan indexed by mesh is
+    /// 208 bytes on every member of every group: on the 1 GB file's 151,282
+    /// occurrences that is 31 MB, which is what the whole plan costs in the
+    /// first place, on the path that exists to bound memory. It also inverts
+    /// the template's placement once per occurrence instead of once per shape.
+    struct RepGroup {
+        first: usize,
+        /// `affine_inverse` of the template's world placement, which maps its
+        /// baked geometry back into the shape's own frame.
+        m_ref_inv: [f64; 16],
+        template_origin: [f64; 3],
+    }
+    let rep_groups: FxHashMap<RepBucket, RepGroup> = {
+        let mut counts: FxHashMap<RepBucket, (usize, u32)> = FxHashMap::default();
+        for (i, meta) in metas.iter().enumerate() {
+            let Some(bucket) = bucket_of(i, meta) else { continue };
+            let e = counts.entry(bucket).or_insert((i, 0));
+            e.1 += 1;
+        }
+        counts
+            .into_iter()
+            .filter(|&(_, (_, n))| n >= 2)
+            .filter_map(|(bucket, (first, _))| {
+                // A singular placement has no inverse, so the shape cannot be
+                // recovered from its baked form and the bucket stays flat.
+                let m_ref = reps[*rep_of.get(&(first as u32))? as usize].1;
+                let m_ref_inv = affine_inverse(&m_ref)?;
+                Some((
+                    bucket,
+                    RepGroup { first, m_ref_inv, template_origin: metas[first].origin },
+                ))
+            })
+            .collect()
+    };
+    // Content-dedup over the flat remainder only. A rep-grouped mesh never
+    // reads or writes `shared_cache`, so counting it here would make the sole
+    // flat member of its key look shared: it would emit local geometry and a
+    // node translation instead of the baked singleton, and write a cache entry
+    // nothing reads. The in-memory twin counts the remainder, so this matches
+    // rather than diverges from it.
     let mut key_counts: FxHashMap<u128, u32> = FxHashMap::default();
-    for meta in &metas {
+    for (i, meta) in metas.iter().enumerate() {
+        if bucket_of(i, meta).is_some_and(|b| rep_groups.contains_key(&b)) {
+            continue;
+        }
         *key_counts.entry(meta.key).or_insert(0) += 1;
     }
+    let mut rep_cache: FxHashMap<RepBucket, u32> = FxHashMap::default();
     let mut accessors: Vec<Accessor> = Vec::new();
     let mut meshes: Vec<Mesh> = Vec::new();
     let mut nodes: Vec<Node> = Vec::new();
@@ -2232,9 +2385,13 @@ fn plan_bounded_glb(
         mesh_idx: u32,
         translation: Option<[f64; 3]>,
         scale: Option<[f64; 3]>,
+        matrix: Option<[f32; 16]>,
     }
     let mut per_meta: Vec<Emitted> = Vec::with_capacity(metas.len());
-    for meta in &mut metas {
+    for (mi, meta) in metas.iter_mut().enumerate() {
+        // The bucket is the shape's identity, and it is also what the mesh
+        // cache is keyed on, so carry both rather than looking it up twice.
+        let rep = bucket_of(mi, meta).and_then(|b| rep_groups.get(&b).map(|g| (b, g)));
         let placement = [
             meta.origin[0] - scene_center[0],
             meta.origin[1] - scene_center[1],
@@ -2257,10 +2414,20 @@ fn plan_bounded_glb(
             }
             (c, h)
         };
-        let emit = !(shared && shared_cache.contains_key(&meta.key));
+        // A shape's geometry goes out once, on its bucket's template. Every
+        // other occurrence of it emits a node and no bytes.
+        let emit = match rep {
+            Some((_, group)) => mi == group.first,
+            None => !(shared && shared_cache.contains_key(&meta.key)),
+        };
         // f32 path only: singletons bake world-minus-centre into the vertices.
-        let vertex_offset =
-            if shared || quantize { [0.0, 0.0, 0.0] } else { placement };
+        // A shared shape stays in its own frame, because what places it is the
+        // node, and for an instanced occurrence that node is a full matrix.
+        let vertex_offset = if shared || quantize || rep.is_some() {
+            [0.0, 0.0, 0.0]
+        } else {
+            placement
+        };
         let (mesh_idx, center, half) = if emit {
             let (pos_acc, norm_acc, idx_acc) = if quantize {
                 // Quantize is monotone per axis, so the accessor min/max are the
@@ -2384,14 +2551,40 @@ fn plan_bounded_glb(
                 norm_len += meta.nverts as u64 * 12;
                 idx_len += meta.nidx as u64 * 4;
             }
-            if shared {
+            if let Some((bucket, _)) = rep {
+                rep_cache.insert(bucket, mesh_idx);
+            } else if shared {
                 shared_cache.insert(meta.key, (mesh_idx, q_center, q_half));
             }
             (mesh_idx, q_center, q_half)
+        } else if let Some((bucket, _)) = rep {
+            (rep_cache[&bucket], q_center, q_half)
         } else {
             shared_cache[&meta.key]
         };
-        let (translation, scale) = if quantize {
+        // An occurrence differs from its template by a rotation as often as by
+        // a translation, so it needs the whole placement and not an offset.
+        // `rep` is `Some` only where `bucket_of` was, which is only where
+        // `meta.rep` was, so the placement is there by construction.
+        let matrix = rep.map(|(_, group)| {
+            // Indexed, not `?`. `emit` and `vertex_offset` above have already
+            // committed to this mesh being in a group; falling back to `None`
+            // here would place the template's geometry at this occurrence's
+            // origin with no rotation, which is silent corruption. A miss is a
+            // broken invariant and should say so.
+            let slot = rep_of[&(mi as u32)] as usize;
+            let (_, m_k) = reps[slot];
+            occurrence_node_matrix_composed(
+                m_k,
+                &group.m_ref_inv,
+                rtc_zup,
+                group.template_origin,
+                scene_center,
+            )
+        });
+        let (translation, scale) = if matrix.is_some() {
+            (None, None)
+        } else if quantize {
             // Placement is pure translation, so it commutes with the dequant
             // translate: node = T(placement + center) · S(half).
             (
@@ -2410,7 +2603,7 @@ fn plan_bounded_glb(
         } else {
             (None, None)
         };
-        per_meta.push(Emitted { mesh_idx, translation, scale });
+        per_meta.push(Emitted { mesh_idx, translation, scale, matrix });
     }
     for (meta, emitted) in metas.iter().zip(&per_meta) {
         let node_idx = nodes.len() as u32;
@@ -2420,7 +2613,7 @@ fn plan_bounded_glb(
             children: None,
             translation: emitted.translation,
             scale: emitted.scale,
-            matrix: None,
+            matrix: emitted.matrix,
             extras: node_extras(
                 opts.include_metadata,
                 meta.express_id,
@@ -2471,10 +2664,8 @@ fn plan_bounded_glb(
         )
     };
 
-    let (root_translation, site_rotation) = {
-        let (rtc_zup, site_zup) = site_restore(&meta_result);
-        scene_root(scene_center, rtc_zup, site_zup.as_deref())
-    };
+    let (root_translation, site_rotation) =
+        scene_root(scene_center, rtc_zup, site_zup.as_deref());
     let scene_nodes = if element_node_indices.is_empty() {
         Vec::new()
     } else {

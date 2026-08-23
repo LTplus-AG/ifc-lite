@@ -882,3 +882,67 @@ fn a_valid_mutations_json_is_still_applied() {
         "propertyMutations from the JSON payload must reach the output too"
     );
 }
+
+/// Streaming and returning produce the same file.
+///
+/// The whole point of `export_step_to_writer` is that a 1 GB model does not have
+/// to exist twice in memory to be written. That is only worth having if the
+/// bytes are the same bytes, so the returned form is defined as the streaming
+/// one writing into a `Vec` and this checks the definition holds through every
+/// branch that writes: header, plain records, copies, and synthesized property
+/// sets.
+#[test]
+fn streaming_and_returning_agree() {
+    let content = br#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('g',$,'P',$,$,$,$,$,$);
+#2=IFCWALL('w',$,'W',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let opts = StepOptions {
+        description: "d".into(),
+        author: "a".into(),
+        organization: "o".into(),
+        application: "app".into(),
+        property_mutations: vec![PropMutation {
+            express_id: 2,
+            pset_name: "P".into(),
+            prop_name: "k".into(),
+            value: "IFCTEXT('v')".into(),
+        }],
+        ..Default::default()
+    };
+    let (returned, rstats) = export_step_with_stats(content, &opts);
+    let mut streamed = Vec::new();
+    let sstats = export_step_to_writer(content, &opts, &mut streamed).expect("write");
+    assert_eq!(returned.as_bytes(), streamed.as_slice(), "the two forms differ");
+    assert_eq!(rstats.written, sstats.written);
+    assert_eq!(rstats.total, sstats.total);
+    // The property set really was synthesized, so the comparison covered that arm.
+    assert!(returned.contains("IFCPROPERTYSET"), "{returned}");
+}
+
+/// A writer that fails reports the failure instead of losing it.
+#[test]
+fn a_broken_writer_is_an_error() {
+    struct Full;
+    impl std::io::Write for Full {
+        fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::new(std::io::ErrorKind::StorageFull, "no room"))
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let r = export_step_to_writer(
+        b"ISO-10303-21;\nDATA;\nENDSEC;\n",
+        &StepOptions::default(),
+        &mut Full,
+    );
+    let Err(err) = r else { panic!("a full disk is not a successful export") };
+    assert_eq!(err.kind(), std::io::ErrorKind::StorageFull);
+}

@@ -2198,15 +2198,18 @@ fn plan_bounded_glb(
                 // does this one.
                 //
                 // Beside `metas` rather than in it. An `InstanceMeta` is 424
-                // bytes and this keeps 160, which is what makes rep-identity
-                // instancing affordable on the path that exists to bound
-                // memory. Measured on a 1.05 GB model: about 30 MB of plan
-                // against 680 MB of geometry not written (glTF 1.82 GB ->
-                // 1.14 GB, peak RSS 6.02 GB -> 5.36 GB, same wall time). Kept
-                // out of the per-mesh struct for
-                // two reasons: only instanceable meshes pay, and nothing reads
-                // it after planning, so it drops instead of sitting beside the
-                // whole output buffer while pass 2 writes it.
+                // bytes and one entry here is 160, which is what makes
+                // rep-identity instancing affordable on the path that exists to
+                // bound memory. Measured on a 1.05 GB model: about 30 MB of
+                // plan against 680 MB of geometry not written (glTF 1.82 GB ->
+                // 1.14 GB, peak RSS 6.02 GB -> 5.36 GB, same wall time).
+                //
+                // Out of the per-mesh struct for two reasons: only instanceable
+                // meshes pay, and nothing reads it after planning, so it drops
+                // instead of sitting beside the whole output buffer while pass
+                // 2 writes it. (That 160 is this entry, not the per-mesh struct
+                // -- `the_streamed_mesh_plan_stays_small` pins that separately
+                // at 240, and it is 240 *because* this moved out.)
                 if want_rep {
                     let instanceable = m
                         .instance

@@ -14,8 +14,10 @@ import type {
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { matchPredefinedType } from './predefined-type-match.js';
 
-/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
+ *  types are NOT — see `predefined-type-match.ts`. */
 const IFC_CASE_INSENSITIVE: MatchOptions = { caseInsensitive: true };
 
 /** Human-readable relation names */
@@ -127,20 +129,20 @@ function checkAncestorAgainstFacet(
     };
   }
 
-  // Check parent predefined type if specified.
-  //
-  // Mirrors entity-facet.ts's two-branch match: compare the raw enum
-  // token first (BEAM, USERDEFINED, …), and only when the raw token is
-  // USERDEFINED fall back to the parent's user-defined name. A single
-  // combined value can't reproduce this — a parent whose raw
-  // PredefinedType is literally USERDEFINED but that also carries a
-  // custom name (ObjectType) must still match a facet asking for the
-  // literal "USERDEFINED" token, not just the custom name.
+  // Check parent predefined type if specified. The IDS XSD gives this
+  // nested `<entity>` the same complex type an entity facet uses, so the
+  // matching rule is the shared one in `predefined-type-match.ts` — the
+  // raw enum token first, the parent's user-defined name only as the
+  // USERDEFINED fallback, both compared case-sensitively. Only the
+  // PARTOF_-prefixed failure wording below is specific to this facet.
   if (facet.entity.predefinedType) {
-    const rawType = parent.predefinedType;
-    const userDefinedType = parent.objectType;
+    const outcome = matchPredefinedType(
+      facet.entity.predefinedType,
+      parent.predefinedType,
+      parent.objectType
+    );
 
-    if (!rawType && !userDefinedType) {
+    if (outcome.kind === 'absent') {
       return {
         passed: false,
         actualValue: `${parent.entityType} (no predefinedType)`,
@@ -157,34 +159,15 @@ function checkAncestorAgainstFacet(
       };
     }
 
-    let matched = false;
-    if (rawType && matchConstraint(facet.entity.predefinedType, rawType, IFC_CASE_INSENSITIVE)) {
-      matched = true;
-    } else if (
-      rawType === 'USERDEFINED' &&
-      userDefinedType &&
-      userDefinedType !== rawType &&
-      matchConstraint(facet.entity.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
-    ) {
-      matched = true;
-    } else if (
-      !rawType &&
-      userDefinedType &&
-      matchConstraint(facet.entity.predefinedType, userDefinedType, IFC_CASE_INSENSITIVE)
-    ) {
-      matched = true;
-    }
-
-    if (!matched) {
-      const display = userDefinedType || rawType || '(none)';
+    if (outcome.kind === 'mismatch') {
       return {
         passed: false,
-        actualValue: `${parent.entityType}[${display}]`,
+        actualValue: `${parent.entityType}[${outcome.actual}]`,
         expectedValue: `${formatConstraint(facet.entity.name)}[${formatConstraint(facet.entity.predefinedType)}]`,
         failure: {
           type: 'PARTOF_PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: display,
+          actual: outcome.actual,
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
             relation: facet.relation,

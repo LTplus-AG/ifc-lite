@@ -83,12 +83,19 @@
  *       * a regex immediately after `}` (a block close) or after `)` — both
  *         characters are absent from `REGEX_PRECEDING_RE`, so the `/` is
  *         read as division, and an apostrophe inside the pattern then opens
- *         a phantom string that swallows the rest of the file. EVERY call
- *         site in that file disappears, including the ones written before
- *         the regex. There is no error: the file simply reports nothing.
- *         Auditing that file ALONE now fails the vacuous-pass guard below
- *         (verified), but in a multi-file run one healthy file satisfies
- *         that guard and the erasure stays silent.
+ *         a phantom string that swallows the REST of the file. The erasure
+ *         is POSITIONAL: sites written before the bad token still report,
+ *         sites after it disappear. Verified by running this module on a
+ *         file with one `it()` either side of the token -- it reports 1 of
+ *         2 and exits 0.
+ *         So the vacuous-pass guard below does NOT catch this, in a
+ *         single-file run either: that guard fires on `testFiles === 0`,
+ *         which only total erasure produces. A partial under-count is
+ *         indistinguishable from an accurate one, in a tool whose whole
+ *         purpose is an accurate count. Fencing it properly means flagging
+ *         any `isVitestTestFile` whose site count is 0 -- the four
+ *         describe-runner exceptions are already enumerated, so the
+ *         allowlist for that check exists.
  *       * the same erasure through a different door: a template literal
  *         nested inside another template literal's `${…}`, whose inner text
  *         holds an apostrophe. `stripNoise` closes the outer template at the

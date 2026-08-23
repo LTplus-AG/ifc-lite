@@ -72,7 +72,7 @@ export function validateCode(source: string, opts: CodeValidationOptions = {}): 
     return { ok: false, errors };
   }
 
-  const { depthExceeded } = walkBounded(ast, (node, type) => {
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (node, type) => {
     switch (type) {
       case 'Identifier': {
         const n = node as unknown as acorn.Identifier;
@@ -147,6 +147,18 @@ export function validateCode(source: string, opts: CodeValidationOptions = {}): 
       code: 'invalid_value',
       message: `Source is nested more than ${MAX_AST_DEPTH} AST levels deep; it was not fully validated.`,
       hint: 'Flatten the source — extract deeply nested blocks into separate helper functions.',
+    });
+  }
+
+  // Same rule, different cause: a subtree the walker could not descend
+  // is unexamined source. A banned global or an `eval` under it would
+  // have gone unseen, so this cannot come back `ok`.
+  if (unwalkableTypes.length > 0) {
+    errors.push({
+      path: prefix,
+      code: 'invalid_value',
+      message: `Source contains AST node types this validator cannot traverse (${unwalkableTypes.join(', ')}); it was not fully validated.`,
+      hint: 'This usually means the parser is newer than the walker it is paired with — report it rather than working around it.',
     });
   }
 

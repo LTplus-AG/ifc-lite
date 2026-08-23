@@ -295,3 +295,144 @@ fn reporting_the_verdict_does_not_change_a_single_index() {
         );
     }
 }
+
+/// Flat-shaded triangle soup from a vertex table and a face list — one vertex
+/// per corner, exactly like [`cube`], so welding (not index sharing) is what
+/// builds the edge graph.
+fn soup(verts: &[[f32; 3]], faces: &[[usize; 3]]) -> Mesh {
+    let mut m = Mesh::new();
+    for f in faces {
+        for &vi in f {
+            m.positions.extend_from_slice(&verts[vi]);
+            m.normals.extend_from_slice(&[0.0, 0.0, 0.0]);
+        }
+        let base = m.indices.len() as u32;
+        m.indices.extend_from_slice(&[base, base + 1, base + 2]);
+    }
+    m
+}
+
+/// `all_closed` must reject a NON-MANIFOLD edge, not just a boundary one.
+///
+/// Two tetrahedra glued at a shared face, with that face emitted by BOTH — the
+/// doubled coincident sheet `router::layers` names as the "ghost face", and what
+/// exporters produce whenever two bodies are stacked at a common interface.
+/// Every edge here has TWO or FOUR incident triangles, never one, so a gate
+/// that asks "is any edge under-shared" (`count < 2`) sees a perfectly closed
+/// shell and licenses a divergence-theorem volume over a surface with no
+/// well-defined inside. The pass asks `count != 2`; this pins that.
+///
+/// The existing open-sheet fixtures cannot see the difference: their bad edges
+/// are BOUNDARY edges, degree 1, which both readings reject. Only a
+/// degree-FOUR edge separates the two.
+#[test]
+fn a_doubled_interface_face_is_not_closed_even_though_no_edge_is_under_shared() {
+    // P, Q, R = the shared base; A above it, B below it.
+    let verts = [
+        [0.0f32, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+    ];
+    let faces = [
+        [0, 1, 2], [3, 1, 0], [3, 2, 1], [3, 0, 2], // tetra A, base included
+        [0, 2, 1], [4, 0, 1], [4, 1, 2], [4, 2, 0], // tetra B, base included again
+    ];
+    let mut m = soup(&verts, &faces);
+
+    // The fixture's defining property: no edge is under-shared, three are
+    // OVER-shared. Asserted, not assumed — it is the whole point of the case.
+    let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
+    let mut counts: FxHashMap<((i64, i64, i64), (i64, i64, i64)), u32> = FxHashMap::default();
+    for t in m.indices.chunks_exact(3) {
+        let key = |i: u32| {
+            let b = i as usize * 3;
+            (q(m.positions[b]), q(m.positions[b + 1]), q(m.positions[b + 2]))
+        };
+        let (a, b, c) = (key(t[0]), key(t[1]), key(t[2]));
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let e = if x < y { (x, y) } else { (y, x) };
+            *counts.entry(e).or_insert(0) += 1;
+        }
+    }
+    assert!(
+        counts.values().all(|&c| c >= 2),
+        "fixture must have NO boundary edge, else it cannot distinguish the two readings"
+    );
+    assert_eq!(
+        counts.values().filter(|&&c| c > 2).count(),
+        3,
+        "the doubled base contributes exactly three non-manifold edges"
+    );
+
+    let before = m.indices.clone();
+    let v = orient_mesh_outward_verdict(&mut m);
+    assert!(
+        !v.all_closed,
+        "a shell with a degree-4 edge is NOT closed — it has no well-defined inside: {v:?}"
+    );
+    assert!(
+        !v.is_single_closed_solid(),
+        "and therefore must not license a volume: {v:?}"
+    );
+    assert_eq!(
+        m.indices, before,
+        "an unclosed component is left wound exactly as authored"
+    );
+}
+
+/// `all_orientable` must be able to come out FALSE. Nothing else in the suite
+/// ever observes it: every other fixture is orientable, so the contradiction
+/// branch could be deleted outright and the whole package still passed.
+///
+/// The 6-vertex hemi-icosahedron is the minimal triangulation of the real
+/// projective plane: 6 vertices, 15 edges, 10 faces, χ = 1. Every edge is
+/// shared by EXACTLY two triangles — so it is closed and manifold — yet
+/// orientation propagated around it comes back reversed. That combination
+/// (closed AND non-orientable) is the only one that isolates the branch; an
+/// open Möbius band would be rejected by `all_closed` first and prove nothing.
+///
+/// The positions are the octahedron's, which makes the surface self-intersect
+/// in R³. That is unavoidable — no closed non-orientable surface embeds in R³ —
+/// and irrelevant here: the pass reads welded positions for vertex identity and
+/// the edge graph for topology, and never reaches the signed-volume sum on a
+/// component it has already refused.
+#[test]
+fn a_closed_but_non_orientable_shell_is_refused_rather_than_wound_outward() {
+    let verts = [
+        [1.0f32, 0.0, 0.0],
+        [-1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, -1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 0.0, -1.0],
+    ];
+    let faces = [
+        [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 5], [0, 5, 1],
+        [1, 2, 4], [2, 3, 5], [3, 4, 1], [4, 5, 2], [5, 1, 3],
+    ];
+    let mut m = soup(&verts, &faces);
+    let before = m.indices.clone();
+    let v = orient_mesh_outward_verdict(&mut m);
+
+    assert_eq!(v.components, 1, "the hemi-icosahedron is connected: {v:?}");
+    assert!(
+        v.all_closed,
+        "every one of its 15 edges is shared by exactly two triangles: {v:?}"
+    );
+    assert!(
+        !v.all_orientable,
+        "a projective plane has no consistent orientation, so the pass must say so: {v:?}"
+    );
+    assert!(
+        !v.is_single_closed_solid(),
+        "closed is not enough — without an orientation the sign of each \
+         triangle's contribution is arbitrary: {v:?}"
+    );
+    assert!(!v.flipped, "nothing may be re-wound: {v:?}");
+    assert_eq!(
+        m.indices, before,
+        "a non-orientable component keeps the winding it was authored with"
+    );
+}

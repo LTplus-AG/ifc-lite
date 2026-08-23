@@ -46,7 +46,7 @@ import {
   extractQuantitiesOnDemand,
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
-import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
 
@@ -248,18 +248,14 @@ export class HeadlessLikeBackend implements BimBackend {
     const store = this.dataStore;
     const queryAdapter = this.query;
 
-    const escapeCsv = (value: string, sep: string): string => {
-      // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-      // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-      let str = value;
-      if (/^[=+\-@\t\r]/.test(str)) {
-        str = `'${str}`;
-      }
-      if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-        return `"${str.replace(/"/g, '""')}"`;
-      }
-      return str;
-    };
+    /**
+     * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+     * `@ifc-lite/export`'s single escaper. The copy that used to live here
+     * tested the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028
+     * in front of `=` walked past it.
+     */
+    const escapeCsv = (value: string, sep: string): string =>
+      escapeCsvCell(value, { delimiter: sep });
 
     const resolveColumn = (
       data: EntityData,

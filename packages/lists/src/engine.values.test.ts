@@ -473,7 +473,7 @@ describe('listResultToCSV headers', () => {
       executionTime: 0,
     });
 
-    expect(csv.split('\n')[0]).toBe(
+    expect(csv.split('\r\n')[0]).toBe(
       'Qto_WallBaseQuantities.NetVolume,Qto_SlabBaseQuantities.NetVolume,Name',
     );
   });

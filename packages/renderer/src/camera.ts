@@ -512,6 +512,14 @@ export class Camera {
     // whole point of the command.
     const distance = isUsableDistance(current, 1e-6) ? current : 1;
 
+    // The TARGET is the other unguarded input, and `isUsableDistance` above only
+    // rescues the radius. `setTarget` accepts non-finite coordinates, and every
+    // position component below is `target.<axis> + ...`, so one NaN there makes
+    // the whole pose NaN -- and this method's contract is that it RECOVERS a
+    // pose, so silently writing an unrecoverable one is worse than refusing.
+    // Same rejection shape as the angle guard at the top: change nothing.
+    if (!areFiniteNumbers(target.x, target.y, target.z)) return;
+
     const theta = ((((azimuth % 360) + 360) % 360) * Math.PI) / 180;
     const poleMargin = CAMERA_CONSTANTS.MIN_PHI;
     const phi = Math.max(

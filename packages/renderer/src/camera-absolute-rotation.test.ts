@@ -181,6 +181,27 @@ describe('Camera.setRotation (absolute orientation)', () => {
     assert.deepStrictEqual(camera.getUp(), { x: 0, y: 1, z: 0 });
   });
 
+  it('rejects a non-finite TARGET instead of writing a NaN pose', () => {
+    // The angle guard above is not enough: every position component is
+    // `target.<axis> + ...`, and `setTarget` accepts non-finite coordinates, so
+    // one NaN there makes the whole pose NaN. `isUsableDistance` rescues the
+    // radius and says nothing about the target. This method's contract is that
+    // it RECOVERS a pose, so writing an unrecoverable one is worse than
+    // refusing outright.
+    const camera = new Camera();
+    camera.setRotation(30, 10);
+    const pose = camera.getPosition();
+
+    camera.setTarget(NaN, 0, 0);
+    camera.setRotation(45, 20);
+    assert.deepStrictEqual(camera.getPosition(), pose, 'a NaN target must not move the camera');
+
+    camera.setTarget(0, Infinity, 0);
+    camera.setRotation(60, 15);
+    assert.deepStrictEqual(camera.getPosition(), pose, 'an infinite target must not move it either');
+    assert.ok(Number.isFinite(camera.getPosition().x));
+  });
+
   it('rejects non-finite angles instead of writing a NaN pose', () => {
     const camera = new Camera();
     camera.setRotation(30, 10);

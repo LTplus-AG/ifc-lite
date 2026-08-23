@@ -21,6 +21,9 @@ export interface CameraSlice {
   // Actions
   setCameraRotation: (rotation: CameraRotation) => void;
   setCameraCallbacks: (callbacks: CameraCallbacks) => void;
+  /** A rotation accepted before any renderer was registered, replayed by
+   *  {@link setCameraCallbacks}. `null` once applied. */
+  pendingCameraRotation: CameraRotation | null;
   setProjectionMode: (mode: ProjectionMode) => void;
   toggleProjectionMode: () => void;
   setOnCameraRotationChange: (callback: ((rotation: CameraRotation) => void) | null) => void;
@@ -35,6 +38,7 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
     azimuth: CAMERA_DEFAULTS.AZIMUTH,
     elevation: CAMERA_DEFAULTS.ELEVATION,
   },
+  pendingCameraRotation: null,
   cameraCallbacks: {},
   projectionMode: 'perspective',
   onCameraRotationChange: null,
@@ -48,10 +52,20 @@ export const createCameraSlice: StateCreator<CameraSlice, [], [], CameraSlice> =
   // This is the absolute-orientation path only; live navigation reports
   // through `updateCameraRotationRealtime`, which must NOT actuate.
   setCameraRotation: (cameraRotation) => {
-    get().cameraCallbacks.setCameraRotation?.(cameraRotation);
-    set({ cameraRotation });
+    const actuator = get().cameraCallbacks.setCameraRotation;
+    actuator?.(cameraRotation);
+    // If no renderer was registered yet the command was ACKED and nothing moved.
+    // An embed host can send SET_CAMERA before `Viewport`'s effect registers its
+    // callbacks, and `setCameraCallbacks` used to only store them, so the pose
+    // was recorded in state and never reached the camera: success reported for
+    // something that did not happen. Remember it and replay on registration.
+    set({ cameraRotation, pendingCameraRotation: actuator ? null : cameraRotation });
   },
-  setCameraCallbacks: (cameraCallbacks) => set({ cameraCallbacks }),
+  setCameraCallbacks: (cameraCallbacks) => {
+    const pending = get().pendingCameraRotation;
+    set({ cameraCallbacks, pendingCameraRotation: null });
+    if (pending) cameraCallbacks.setCameraRotation?.(pending);
+  },
   setProjectionMode: (projectionMode) => {
     get().cameraCallbacks.setProjectionMode?.(projectionMode);
     set({ projectionMode });

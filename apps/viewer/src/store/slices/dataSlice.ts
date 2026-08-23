@@ -206,19 +206,30 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
   }),
 
   setGeometryResult: (geometryResult) => set((state) => {
+    // Replacing the geometry invalidates the colour backup: it maps global
+    // express id -> the element's ORIGINAL colour, and the incoming meshes
+    // reuse those ids for different elements. `useIfcFederation` calls this on
+    // an ACTIVE-MODEL SWITCH, so without this `resetMeshColors` restores the
+    // model you just left onto the one you just opened.
+    //
+    // Keyed on IDENTITY, not on every call: a redundant set of the same object
+    // changes nothing, and dropping the backup there would destroy a live undo
+    // for no gain -- the mistake this fix already made once, in `removeModel`.
+    const backup = geometryResult !== state.geometryResult ? { meshColorBackup: null } : {};
+
     const modelId = state.activeModelId;
     if (!modelId) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
+      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
     }
 
     const model = state.models.get(modelId);
     if (!model) {
-      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1 };
+      return { geometryResult, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
     }
 
     const models = new Map(state.models);
     models.set(modelId, { ...model, geometryResult });
-    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
+    return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1, ...backup };
   }),
 
   setBoundedGeometryMode: (boundedGeometryMode) => set({ boundedGeometryMode }),

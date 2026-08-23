@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
+import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
 
 // ─── Public interfaces ──────────────────────────────────────────────────────
 
@@ -75,9 +76,7 @@ export function useMeasure2D({
   const screenToDrawing = useCallback((screenX: number, screenY: number): { x: number; y: number } => {
     // Screen coord → drawing coord
     // Apply axis-specific inverse transforms (matching canvas rendering)
-    const currentAxis = sectionAxis;
-    const flipY = currentAxis !== 'down'; // Only flip Y for front/side views
-    const flipX = currentAxis === 'side'; // Flip X for side view
+    const { flipX, flipY } = axisFlipForSection(sectionAxis);
 
     // Inverse of: screenX = drawingX * scaleX + transform.x
     // where scaleX = flipX ? -scale : scale

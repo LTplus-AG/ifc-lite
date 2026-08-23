@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { escapeCsvCell } from '@ifc-lite/export';
 import type { CellValue } from '@ifc-lite/lists';
-import { displayCell, neutralizeSpreadsheetFormula, type ExportModel } from './model';
+import { displayCell, type ExportModel } from './model';
 
+/** CWE-1236 formula guard + RFC 4180 quoting, delegated to `@ifc-lite/export`'s
+ *  single escaper. `exemptNumbers` is left at its default `false`, which is
+ *  what `neutralizeSpreadsheetFormula` did here before and what
+ *  `injection.test.ts` pins (see the policy note in `model.ts`). */
 function esc(s: string, delim: string): string {
-  // Neutralize spreadsheet formula injection (CWE-1236) via the shared guard,
-  // then apply CSV quoting for the delimiter/quote/newline cases.
-  s = neutralizeSpreadsheetFormula(s);
-  return /["\r\n]/.test(s) || s.includes(delim) ? `"${s.replace(/"/g, '""')}"` : s;
+  return escapeCsvCell(s, { delimiter: delim });
 }
 
 /**

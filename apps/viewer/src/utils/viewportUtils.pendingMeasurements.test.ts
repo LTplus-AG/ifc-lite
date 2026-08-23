@@ -19,6 +19,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { hasPendingMeasurementState, type PendingMeasurementState } from './viewportUtils.js';
+import {
+  REPROJECTED_MEASUREMENT_FIELDS,
+  REPROJECTED_MEASUREMENT_FIELD_NAMES,
+} from '../store/measurementReprojectionFields.js';
 
 function base(): PendingMeasurementState {
   return {
@@ -72,4 +76,39 @@ describe('hasPendingMeasurementState - angle state (#2735)', () => {
       true,
     );
   });
+});
+
+/**
+ * The cases above name their fields by hand, so they can only ever cover the
+ * kinds someone remembered to write a case for — which is the same failure
+ * mode as the gate itself. These derive from the shared registry instead: a
+ * measurement kind registered in `REPROJECTED_MEASUREMENT_FIELDS` (the only
+ * way to get it reprojected — `updateMeasurementScreenCoords` does not
+ * compile otherwise) is covered here the moment it is added.
+ */
+describe('hasPendingMeasurementState — derived from the field registry', () => {
+  /** All registered fields empty/null, built from the registry itself. */
+  function emptyState(): PendingMeasurementState {
+    const state: Record<string, unknown> = {};
+    for (const field of REPROJECTED_MEASUREMENT_FIELD_NAMES) {
+      state[field] = REPROJECTED_MEASUREMENT_FIELDS[field] === 'list' ? { length: 0 } : null;
+    }
+    return state as PendingMeasurementState;
+  }
+
+  it('the registry is non-empty, so the per-field cases below are not vacuous', () => {
+    assert.ok(REPROJECTED_MEASUREMENT_FIELD_NAMES.length > 0);
+  });
+
+  it('is false when every registered field is empty', () => {
+    assert.equal(hasPendingMeasurementState(emptyState()), false);
+  });
+
+  for (const field of REPROJECTED_MEASUREMENT_FIELD_NAMES) {
+    it(`is true when only \`${field}\` has content`, () => {
+      const state: Record<string, unknown> = { ...emptyState() };
+      state[field] = REPROJECTED_MEASUREMENT_FIELDS[field] === 'list' ? { length: 1 } : {};
+      assert.equal(hasPendingMeasurementState(state as PendingMeasurementState), true);
+    });
+  }
 });

@@ -40,17 +40,27 @@ export function queryMeshCross(
   if (!a.bvh.root || !b.bvh.root) return [];
   const out: Array<readonly [number, number]> = [];
   crossNode(a.bvh, b.bvh, a.bvh.root, b.bvh.root, epsilon, out);
-  // Dedup — BVHs partition the triangle set, so no true duplicates, but
-  // belt-and-braces:
-  const seen = new Set<string>();
-  const deduped: Array<readonly [number, number]> = [];
-  for (const p of out) {
-    const key = `${p[0]}|${p[1]}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(p);
-  }
-  return deduped;
+  // No dedup pass: the traversal cannot emit a pair twice, so one would be
+  // pure cost. `buildNode` (bvh.ts) splits a node's indices into disjoint,
+  // covering halves and a leaf keeps exactly its own slice, so every
+  // triangle lives in exactly ONE leaf — leaves PARTITION the triangle set.
+  // And `crossNode` reaches a node pair (u, w) by one route only: it
+  // descends both sides together while both are internal, and only the
+  // internal side once the other is a leaf, so with one parent per node the
+  // path from (rootA, rootB) is forced. One visit per leaf pair, therefore
+  // at most one emission per (iA, iB).
+  //
+  // This previously ran a `Set<`${iA}|${iB}`>` over `out` as "belt and
+  // braces". It deduped nothing (see mesh-bvh.test.ts, which pins the
+  // emitted list against brute force across leaf sizes and topologies)
+  // while allocating one key string and one Set entry per emitted pair —
+  // O(triA * triB) in the worst case, for a SINGLE element pair, uncapped.
+  // `Set` shares V8's hard 2^24-entry ceiling, past which insertion throws
+  // `RangeError`; 4096 * 4096 = 2^24, so two ~4k-triangle elements whose
+  // AABB filter passes nearly everything (dense interpenetrating solids)
+  // sit exactly on it. Below that it was simply wasted allocation on the
+  // hottest inner loop of contact clustering.
+  return out;
 }
 
 function crossNode(

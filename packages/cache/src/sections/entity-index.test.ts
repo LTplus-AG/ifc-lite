@@ -38,6 +38,30 @@ describe('EntityIndex section round-trip', () => {
     expect(restored.typeNames[restored.typeIndices[1]]).toBe('IFCSLAB');
   });
 
+  it('normalizes the type name to upper case and prefers a ref-supplied expressId over the map key', () => {
+    // Both halves of `normalizeRef` were unobservable: every existing
+    // fixture in this package already spells its type in upper case and
+    // already sets `expressId` equal to the map key. Mutation testing
+    // confirmed it — deleting `.toUpperCase()`, and replacing
+    // `ref.expressId || id` with a bare `id`, each left the whole
+    // `@ifc-lite/cache` suite green at 83/83.
+    const byId = new Map<number, { expressId: number; type: string; byteOffset: number; byteLength: number; lineNumber: number }>([
+      // Key 99, but the ref names itself 5 — the ref wins.
+      [99, { expressId: 5, type: 'IFCSLAB', byteOffset: 30, byteLength: 15, lineNumber: 0 }],
+      // Mixed case on the wire; and expressId 0 is falsy, so this row is
+      // the one where the map key legitimately supplies the id.
+      [7, { expressId: 0, type: 'IfcWall', byteOffset: 10, byteLength: 20, lineNumber: 0 }],
+    ]);
+    const restored = roundTrip({ byId });
+
+    // Sorted by the NORMALIZED expressId: 5 (from key 99) then 7 (from the
+    // key, the ref having none).
+    expect(Array.from(restored.ids)).toEqual([5, 7]);
+    expect(Array.from(restored.byteOffsets)).toEqual([30, 10]);
+    expect(restored.typeNames[restored.typeIndices[0]]).toBe('IFCSLAB');
+    expect(restored.typeNames[restored.typeIndices[1]]).toBe('IFCWALL');
+  });
+
   it('rejects a typeIndex that points outside the typeNames table (corrupt/truncated cache)', () => {
     // Write a valid, single-type-name section, then corrupt the on-disk
     // typeIndices column so it addresses a type name that doesn't exist —

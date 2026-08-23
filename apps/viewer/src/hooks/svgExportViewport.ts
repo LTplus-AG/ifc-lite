@@ -23,6 +23,8 @@
  * behaviour change — see `svgExportViewport.test.ts`'s equivalence note).
  */
 
+import { axisFlipForSection } from '@/hooks/pdfSectionLayout';
+
 export interface SvgExportBounds {
   min: { x: number; y: number };
   max: { x: number; y: number };
@@ -86,12 +88,10 @@ export function computeSvgExportViewport(
   const widthMm = (viewBoxWidth * 1000) / effectiveScale;
   const heightMm = (viewBoxHeight * 1000) / effectiveScale;
 
-  // Axis-specific flipping (matching canvas rendering):
-  // - 'down' (plan view): DON'T flip Y so north (Z+) is up.
-  // - 'front' and 'side': flip Y so height (Y+) is up.
-  // - 'side': also flip X to look from the conventional direction.
-  const flipY = axis !== 'down';
-  const flipX = axis === 'side';
+  // Axis-specific flipping (matching canvas rendering) — from the one
+  // helper every section path shares (`axisFlipForSection`), never
+  // re-derived inline.
+  const { flipX, flipY } = axisFlipForSection(axis);
 
   const viewBoxMinX = flipX ? -viewMinX - viewBoxWidth : viewMinX;
   const viewBoxMinY = flipY ? -viewMinY - viewBoxHeight : viewMinY;

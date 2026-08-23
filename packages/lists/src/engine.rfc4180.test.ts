@@ -393,7 +393,8 @@ describe('every cell survives a third-party parser round trip', () => {
 // round trip is the only place the guard's real contract is observable: after
 // parsing, no cell may still start with a trigger character, INCLUDING when the
 // trigger hides behind leading invisible characters. `\uFEFF=HYPERLINK(...)`
-// is not a formula to an anchored `/^[=+\-@\t\r]/` but it is one to Excel.
+// is not a formula to the pre-hardening guard, which anchored the trigger
+// characters at offset 0, but it is one to Excel.
 // ---------------------------------------------------------------------------
 
 const TRIGGERS = ['=', '+', '-', '@', '\t', '\r'];

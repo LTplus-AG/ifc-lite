@@ -9,16 +9,14 @@
  */
 
 import JSZip from 'jszip';
+import { parseComponents } from './reader-components.js';
+import { extractElement, unescapeXml } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
   BCFComment,
   BCFViewpoint,
   BCFVersion,
-  BCFComponents,
-  BCFComponent,
-  BCFVisibility,
-  BCFColoring,
   BCFPerspectiveCamera,
   BCFOrthogonalCamera,
   BCFLine,
@@ -30,7 +28,6 @@ import type {
   BCFDocumentReference,
   BCFBimSnippet,
   BCFHeaderFile,
-  BCFViewSetupHints,
 } from './types.js';
 import { parseFiniteFloat } from './numeric.js';
 
@@ -463,33 +460,6 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
  */
 function extractAttr(attrsString: string, attrName: string): string | undefined {
   return attrsString.match(new RegExp(`\\b${attrName}="([^"]*)"`))?.[1];
-}
-
-/**
- * Extract a simple element value from XML
- *
- * Values are unescaped so writer.ts's escapeXml() round-trips correctly
- * (see escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
- * comments must come back exactly as written, not as literal entities).
- */
-function extractElement(content: string, elementName: string): string | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
-}
-
-/**
- * Unescape XML entities produced by writer.ts's escapeXml()
- *
- * &amp; must be decoded last so a literal "&lt;" written as "&amp;lt;"
- * doesn't get corrupted into "<" by an earlier pass.
- */
-function unescapeXml(str: string): string {
-  return str
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, '&');
 }
 
 /**
@@ -976,175 +946,6 @@ function parsePoint(content: string, elementName: string): BCFPoint | undefined 
  */
 function parseDirection(content: string, elementName: string): BCFDirection | undefined {
   return parsePoint(content, elementName) as BCFDirection | undefined;
-}
-
-/**
- * Parse components (selection/visibility/coloring)
- */
-function parseComponents(content: string): BCFComponents | undefined {
-  const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
-  if (!componentsMatch) return undefined;
-
-  const componentsContent = componentsMatch[1];
-
-  // Parse selection
-  const selection = parseComponentList(componentsContent, 'Selection');
-
-  // Parse visibility
-  let visibility = parseVisibility(componentsContent);
-
-  // Parse coloring
-  const coloring = parseColoring(componentsContent);
-
-  // ViewSetupHints sits on Components (NOT inside Visibility) per visinfo.xsd,
-  // which is where writer.ts's writeComponents emits it. Nothing read it back,
-  // so every hint was lost on read -- including out of our own archives. It was
-  // invisible because no writer fixture set the hints, so the round trip
-  // compared `undefined` to `undefined`.
-  const viewSetupHints = parseViewSetupHints(componentsContent);
-  if (viewSetupHints) {
-    // Visibility is required by the schema, but tolerate a file that omits it:
-    // DefaultVisibility's schema default is true.
-    visibility = { ...(visibility ?? { defaultVisibility: true }), viewSetupHints };
-  }
-
-  if (!selection && !visibility && !coloring) {
-    return undefined;
-  }
-
-  return {
-    selection: selection?.length ? selection : undefined,
-    visibility,
-    coloring: coloring?.length ? coloring : undefined,
-  };
-}
-
-/**
- * Parse a list of components
- */
-function parseComponentList(content: string, elementName: string): BCFComponent[] | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`));
-  if (!match) return undefined;
-
-  const components: BCFComponent[] = [];
-  const componentMatches = match[1].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-  for (const compMatch of componentMatches) {
-    const component = parseComponent(compMatch[0]);
-    if (component) {
-      components.push(component);
-    }
-  }
-
-  return components.length > 0 ? components : undefined;
-}
-
-/**
- * Parse a single component
- */
-function parseComponent(content: string): BCFComponent | undefined {
-  // buildingSMART/BCF-XML visinfo.xsd (2.1 and 3.0) gives Component ONE
-  // attribute, IfcGuid, and puts OriginatingSystem and AuthoringToolId in child
-  // ELEMENTS -- which is what writer.ts's writeComponent emits. Matching those
-  // two as attributes could never fire against the spec form, so both fields
-  // were dropped from every archive read, ours and every other tool's; and the
-  // admission guard below tested an AuthoringToolId match that could never
-  // succeed, discarding whole components that legally carry no IfcGuid (the
-  // attribute is `use="optional"`). No writer fixture set either field, so the
-  // self round-trip compared `undefined` to `undefined` and looked faithful.
-  //
-  // The attribute forms are still accepted as a fallback: some tools emit them,
-  // and reading one costs nothing.
-  const ifcGuid = content.match(/\bIfcGuid="([^"]+)"/)?.[1];
-  const originatingSystem =
-    extractElement(content, 'OriginatingSystem') ??
-    content.match(/\bOriginatingSystem="([^"]+)"/)?.[1];
-  const authoringToolId =
-    extractElement(content, 'AuthoringToolId') ??
-    content.match(/\bAuthoringToolId="([^"]+)"/)?.[1];
-
-  if (!ifcGuid && !authoringToolId && !originatingSystem) {
-    return undefined;
-  }
-
-  return { ifcGuid, authoringToolId, originatingSystem };
-}
-
-/**
- * Parse the `<ViewSetupHints>` element that sits directly under `<Components>`.
- *
- * All three attributes are optional xs:boolean; an absent one stays `undefined`
- * rather than collapsing to `false`, because "the author did not say" and "the
- * author said no" mean different things to a viewer applying the hints.
- */
-function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
-  const match = content.match(/<ViewSetupHints\b([^>]*)>/);
-  if (!match) return undefined;
-
-  const attrs = match[1];
-  const flag = (name: string): boolean | undefined => {
-    const raw = extractAttr(attrs, name);
-    if (raw === undefined) return undefined;
-    return raw === 'true' || raw === '1';
-  };
-
-  const spacesVisible = flag('SpacesVisible');
-  const spaceBoundariesVisible = flag('SpaceBoundariesVisible');
-  const openingsVisible = flag('OpeningsVisible');
-
-  if (spacesVisible === undefined && spaceBoundariesVisible === undefined && openingsVisible === undefined) {
-    return undefined;
-  }
-
-  return { spacesVisible, spaceBoundariesVisible, openingsVisible };
-}
-
-/**
- * Parse visibility settings
- */
-function parseVisibility(content: string): BCFVisibility | undefined {
-  const visibilityMatch = content.match(/<Visibility[^>]*>([\s\S]*?)<\/Visibility>/);
-  if (!visibilityMatch) return undefined;
-
-  const defaultVisMatch = content.match(/DefaultVisibility="([^"]+)"/);
-  const defaultVisibility = defaultVisMatch?.[1] !== 'false';
-
-  const exceptions = parseComponentList(visibilityMatch[1], 'Exceptions');
-
-  return {
-    defaultVisibility,
-    exceptions,
-  };
-}
-
-/**
- * Parse coloring settings
- */
-function parseColoring(content: string): BCFColoring[] | undefined {
-  const coloringMatch = content.match(/<Coloring>([\s\S]*?)<\/Coloring>/);
-  if (!coloringMatch) return undefined;
-
-  const colorings: BCFColoring[] = [];
-  const colorMatches = coloringMatch[1].matchAll(/<Color\s+Color="([^"]+)"[^>]*>([\s\S]*?)<\/Color>/g);
-
-  for (const match of colorMatches) {
-    const color = match[1];
-    const components: BCFComponent[] = [];
-    const componentMatches = match[2].matchAll(/<Component[^>]*(?:\/>|>[\s\S]*?<\/Component>)/g);
-
-    for (const compMatch of componentMatches) {
-      const component = parseComponent(compMatch[0]);
-      if (component) {
-        components.push(component);
-      }
-    }
-
-    if (components.length > 0) {
-      colorings.push({ color, components });
-    }
-  }
-
-  return colorings.length > 0 ? colorings : undefined;
 }
 
 /**

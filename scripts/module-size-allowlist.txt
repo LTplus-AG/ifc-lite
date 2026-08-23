@@ -166,7 +166,7 @@
    413 apps/viewer/vite.config.ts
    792 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
-  1257 packages/bcf/src/reader.ts
+  1058 packages/bcf/src/reader.ts
    573 packages/bcf/src/viewpoint.ts
    981 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts

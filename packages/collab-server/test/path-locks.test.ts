@@ -41,6 +41,39 @@ describe('path-locks', () => {
     expect(paths.some((p) => p === 'entities/wall' || p === 'entities/wall/attributes')).toBe(true);
   });
 
+  it('harvests every top-level shared type, including ones the harvester does not pre-create', () => {
+    // `harvestUpdatePaths` pre-creates four maps on its throwaway doc
+    // (entities/relationships/geometry/meta) but `TOP` in @ifc-lite/collab has
+    // five — `annotations` is not among them. That reads like an enumeration
+    // with one missing, and an unenforceable lock prefix would be a real
+    // security hole, so pin what actually happens: `Y.applyUpdate` registers
+    // any top-level type the update names, and `topLevelKeyOf` scans
+    // `doc.share`, so the path IS harvested. The pre-creation is a no-op for
+    // this purpose. If that ever stops being true — a Yjs change, or someone
+    // "tidying" the scan into a fixed list — a lock on `annotations/…` would
+    // silently stop matching, and this fails instead.
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      doc.getMap('annotations').set('pin1', new Y.Map<unknown>());
+      doc.getMap('entities').set('wall1', new Y.Map<unknown>());
+    });
+    const paths = harvestUpdatePaths(Y.encodeStateAsUpdate(doc));
+    expect(paths).toContain('annotations/pin1');
+    expect(paths).toContain('entities/wall1');
+  });
+
+  it('an annotations lock is enforceable, not merely declarable', () => {
+    const reg = createPathLockRegistry();
+    reg.add({ prefix: 'annotations/', label: 'markup-freeze' });
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      doc.getMap('annotations').set('pin1', new Y.Map<unknown>());
+    });
+    const paths = harvestUpdatePaths(Y.encodeStateAsUpdate(doc));
+    const hit = paths.map((p) => reg.matches(p, { userId: 'u1', role: 'editor' })).find(Boolean);
+    expect(hit?.label).toBe('markup-freeze');
+  });
+
   it('registry add / matches / remove', () => {
     const reg = createPathLockRegistry();
     const lock = reg.add({

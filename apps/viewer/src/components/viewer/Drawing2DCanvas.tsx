@@ -5,7 +5,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   GraphicOverrideEngine,
-  calculateDrawingTransform,
   type Drawing2D,
   type ElementData,
 } from '@ifc-lite/drawing-2d';
@@ -17,7 +16,8 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotati
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
-import { sheetGeometryKeyOf, type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -733,44 +733,33 @@ export function Drawing2DCanvas({
         maxY: drawing.bounds.max.y,
       };
 
-      // Axis-specific flipping
-      const flipY = sectionAxis !== 'down';
-      const flipX = sectionAxis === 'side';
+      // Flips, cache read and the axis-corrected transform all come from the
+      // ONE resolver the print/export path also calls (`resolveSheetTransform`)
+      // — so preview and print cannot derive any of the three separately.
+      // The cached entry is validated against the CURRENT sheet's own
+      // geometry key AND the current section axis inside the resolver (the
+      // transform carries the axis's flips), not trusted because it's present:
+      // `useViewControls`'s effect that nulls this ref on a geometry change
+      // runs in the SAME commit as this drawing effect, but as the PARENT
+      // hook its effect commits AFTER this (child) effect — so on the very
+      // render the sheet's geometry changes, a stale (still non-null) cached
+      // entry would otherwise be reused for one frame, and nothing forces a
+      // second draw to correct it (PR #2853 review).
+      const resolved = resolveSheetTransform({
+        sheet: activeSheet,
+        drawingBounds,
+        axis: sectionAxis,
+        isPinned: Boolean(isPinned),
+        cached: cachedSheetTransformRef?.current,
+      });
+      const { flipX, flipY } = resolved;
+      const drawingTransform = resolved.transform;
 
-      // Use cached transform when pinned, otherwise calculate new one
-      let drawingTransform: { translateX: number; translateY: number; scaleFactor: number };
-
-      // Validated against the CURRENT sheet's own geometry key, not just
-      // trusted because it's present: `useViewControls`'s effect that nulls
-      // this ref on a geometry change runs in the SAME commit as this
-      // drawing effect, but as the PARENT hook its effect commits AFTER this
-      // (child) effect — so on the very render the sheet's geometry changes,
-      // a stale (still non-null) cached entry would otherwise be reused for
-      // one frame, and nothing forces a second draw to correct it (PR #2853
-      // review). Comparing `key` here makes this effect correct on its own,
-      // independent of that ordering.
-      const currentSheetGeometryKey = sheetGeometryKeyOf(activeSheet);
-      if (isPinned && cachedSheetTransformRef?.current && cachedSheetTransformRef.current.key === currentSheetGeometryKey) {
-        // Use cached transform to keep model fixed in place
-        drawingTransform = cachedSheetTransformRef.current;
-      } else {
-        // Calculate new transform
-        const baseTransform = calculateDrawingTransform(drawingBounds, viewport, activeSheet.scale);
-
-        // Adjust for axis-specific flipping
-        // calculateDrawingTransform assumes Y-flip (uses maxY), but for 'down' view we don't flip Y
-        drawingTransform = {
-          ...baseTransform,
-          translateY: flipY
-            ? baseTransform.translateY
-            : baseTransform.translateY - (drawingBounds.maxY + drawingBounds.minY) * baseTransform.scaleFactor,
-        };
-
-        // Cache the transform for pinned mode, tagged with the geometry it
-        // was computed for (see the validation above).
-        if (cachedSheetTransformRef) {
-          cachedSheetTransformRef.current = { ...drawingTransform, key: currentSheetGeometryKey };
-        }
+      // The PREVIEW owns the cache: it is the only path that writes. Export
+      // reads through the same resolver but never writes, so printing can
+      // never perturb the placement on screen.
+      if (!resolved.fromCache && cachedSheetTransformRef) {
+        cachedSheetTransformRef.current = { ...drawingTransform, key: resolved.key };
       }
 
       // Apply combined transform: sheet mm -> screen, then drawing coords -> sheet mm
@@ -987,7 +976,52 @@ export function Drawing2DCanvas({
       // 6. Draw scale bar at BOTTOM LEFT of title block
       // Uses actual drawingTransform.scaleFactor which accounts for dynamic scaling
       // ─────────────────────────────────────────────────────────────────────
-      if (scaleBar.visible && tbH > 10) {
+      // The scale bar is sized by two loops, and BOTH can fail to terminate:
+      //
+      //   while (sbLengthMm > maxBarWidth && targetLengthM > 0.5)   // halving
+      //     targetLengthM = targetLengthM / 2;
+      //   while (sbLengthMm < maxBarWidth * 0.3 && targetLengthM < 100)  // doubling
+      //     targetLengthM = targetLengthM * 2;
+      //
+      // They wedge on different inputs, which is why the guard needs three
+      // clauses and not one. Measured against the real component, each one a
+      // render that had to be killed by the test runner's timeout:
+      //
+      //     totalLengthM=0         doubling loop   0 * 2 is 0, forever
+      //     totalLengthM=-1        doubling loop   halves toward -Infinity,
+      //                                            which stays < 100
+      //     totalLengthM=Infinity  HALVING loop    Infinity / 2 is Infinity
+      //     scaleFactor=NaN        terminates
+      //     scaleFactor=0          terminates
+      //
+      // The Infinity case is the one I missed first time round, because I
+      // reasoned about the doubling loop the bug report named and never looked
+      // at the one above it. `Infinity > 0` passes a positivity check, so a
+      // guard without `Number.isFinite` reads as complete and is not.
+      //
+      // title-block-renderer.ts:410 already had this exactly right, and says so:
+      // "Checked BEFORE the clamp, and the ordering is load-bearing: testing
+      // the clamped result loses the infinite case". This is the canvas
+      // catching up with the exporter, which is also why `calculateOptimal-
+      // ScaleBarLength` is left alone: it returns 0 for "no usable bar" and the
+      // exporter already declines to draw that. The canvas was the half not
+      // holding up its end.
+      //
+      // The two scaleFactor clauses do a different job. Neither prevents a
+      // hang; they stop a bar being drawn with a `NaNm` label when
+      // `actualTotalLength` comes out 0/0.
+      //
+      // Guards only the scale bar: the north arrow is drawn after this block in
+      // the same function, so an early return would silently drop it. That was
+      // my first attempt.
+      if (
+        scaleBar.visible &&
+        tbH > 10 &&
+        scaleBar.totalLengthM > 0 &&
+        Number.isFinite(scaleBar.totalLengthM) &&
+        Number.isFinite(drawingTransform.scaleFactor) &&
+        drawingTransform.scaleFactor > 0
+      ) {
         // Position: bottom left with small margin
         const sbX = tbX + 3;
         const sbY = tbY + tbH - 8; // 8mm from bottom (leaves room for label)

@@ -37,7 +37,7 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter, escapeCsvCell, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -46,7 +46,7 @@ import {
   extractQuantitiesOnDemand,
   extractScheduleOnDemand,
 } from '@ifc-lite/parser';
-import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { createQueryAdapter } from './backend-query.js';
 import { overlayFromView, type PendingOverlay } from './overlay.js';
 
@@ -248,6 +248,15 @@ export class HeadlessLikeBackend implements BimBackend {
     const store = this.dataStore;
     const queryAdapter = this.query;
 
+    /**
+     * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+     * `@ifc-lite/export`'s single escaper. The copy that used to live here
+     * tested the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028
+     * in front of `=` walked past it.
+     */
+    const escapeCsv = (value: string, sep: string): string =>
+      escapeCsvCell(value, { delimiter: sep });
+
     const resolveColumn = (
       data: EntityData,
       col: string,
@@ -295,7 +304,7 @@ export class HeadlessLikeBackend implements BimBackend {
           const qsets = hasDot ? queryAdapter.quantities(ref) : null;
           rows.push(opts.columns.map((c) => resolveColumn(data, c, props, qsets)));
         }
-        return rows.map((r) => r.map((c) => escapeCsvCell(c, sep)).join(sep)).join('\n');
+        return rows.map((r) => r.map((c) => escapeCsv(c, sep)).join(sep)).join('\n');
       },
       json(refs, columns): Record<string, unknown>[] {
         const entityRefs = refs as EntityRef[];

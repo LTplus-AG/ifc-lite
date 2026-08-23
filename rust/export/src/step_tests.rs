@@ -114,6 +114,56 @@ fn attribute_mutation_renames_entity() {
     assert_eq!(reparsed, total, "no entities dropped by the edit");
 }
 
+/// Synthetic twin of [`attribute_mutation_renames_entity`]: that test's
+/// invariant (a root-attribute edit rewrites the targeted line in place,
+/// keeps every entity, and the result re-parses) is pure text/line
+/// manipulation over `export_step_with_stats` — it does not need
+/// duplex.ifc's geometry or property sets, only *an* IFCWALLSTANDARDCASE
+/// line to edit. `fixture_or_skip!` means that invariant is unpinned
+/// on any checkout without the fixture corpus fetched (`pnpm fixtures`).
+/// That is the local case: CI's `rust-tests` job does fetch the corpus
+/// (`.github/workflows/test.yml`, "Fetch fixtures"), so the fixture-backed
+/// original really does execute there on a normal run. This minimal
+/// two-entity model exercises the identical code path without the fixture,
+/// so the invariant is pinned on a fixture-less checkout too.
+#[test]
+fn attribute_mutation_renames_entity_synthetic() {
+    const SRC: &str = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION(('test'),'2;1');\n\
+FILE_NAME('','',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4'));\n\
+ENDSEC;\nDATA;\n\
+#1=IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n\
+#2=IFCWALLSTANDARDCASE('1sCS0nJz90qvRDVAJIGGiy',#1,'Original Wall',$,$,$,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+    let step = export_step(
+        SRC.as_bytes(),
+        &StepOptions {
+            attribute_mutations: vec![AttrMutation {
+                express_id: 2,
+                index: 2,
+                value: "'RENAMED_BY_TEST'".to_string(),
+            }],
+            ..StepOptions::default()
+        },
+    );
+
+    let line = step
+        .lines()
+        .find(|l| l.starts_with("#2="))
+        .expect("wall line present");
+    assert!(line.contains("'RENAMED_BY_TEST'"), "name replaced: {line}");
+    assert!(!line.contains("'Original Wall'"), "old name gone: {line}");
+
+    let (reparsed, ids, _schema) = parse_back(&step);
+    assert_eq!(reparsed, 2, "both source entities survive the edit");
+    assert!(
+        ids.contains(&1) && ids.contains(&2),
+        "both ids present: {ids:?}"
+    );
+}
+
 #[test]
 fn property_synthesis_attaches_new_pset() {
     let src = fixture_or_skip!("ara3d/duplex.ifc");
@@ -756,4 +806,79 @@ fn a_copy_that_cannot_be_made_does_not_refuse_a_repointing() {
     // Only the impossible one is counted.
     assert_eq!(stats.copies_refused, 1);
     assert!(out.contains("#10=IFCPROPERTYSET('s2',$,'P',$,(#41));"));
+}
+
+#[test]
+fn empty_mutations_json_is_ok_and_applies_nothing() {
+    // The legitimate "no mutations" case must keep working exactly as before.
+    let src = fixture_or_skip!("ara3d/duplex.ifc");
+    let step = export_step_json(&src, None, None, "").expect("empty payload is valid");
+    let (reparsed, _ids, _schema) = parse_back(&step);
+    let mut sc = EntityScanner::new(&src[..]);
+    let mut total = 0usize;
+    while sc.next_entity().is_some() {
+        total += 1;
+    }
+    assert_eq!(reparsed, total, "no entities dropped with no mutations");
+}
+
+#[test]
+fn malformed_mutations_json_is_an_error_not_a_silent_no_op() {
+    // Before this fix, a malformed payload fell back to `MutationsJson::default()`
+    // via `unwrap_or_default()` — the caller's edits vanished and the function
+    // still returned a normal-looking, fully re-parseable STEP file, so a bug on
+    // the JS side of the wasm boundary (or a version-mismatched payload) came out
+    // indistinguishable from "the user genuinely made no edits". Confirm it is
+    // rejected instead of silently discarded. The parse happens before `content`
+    // is touched, so no fixture is needed here — this must not skip in CI.
+    let result = export_step_json(&[], None, None, "{not valid json");
+    assert!(result.is_err(), "malformed mutations_json must be reported, not swallowed");
+}
+
+#[test]
+fn a_valid_mutations_json_is_still_applied() {
+    // The other half of the rule the malformed case states. Both tests above
+    // exercise payloads that never reach `apply`: `""` short-circuits before
+    // `serde_json::from_str`, and `"{not valid json"` stops at the parse. So
+    // with those two alone, a change that parsed every valid payload and then
+    // threw the mutations away would be GREEN -- which is the same silent
+    // discard this PR exists to remove, just reached by a different route.
+    // Measured: stubbing the non-empty branch to `MutationsJson::default()`
+    // after a successful parse left all 260 tests in this crate passing.
+    //
+    // Inline source, no fixture: this must run in every environment, including
+    // a local tree with no `pnpm fixtures`.
+    let src = concat!(
+        "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\n",
+        "FILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n",
+        "#1=IFCWALL('g',$,'OriginalName',$,$,$,$,$,$);\n",
+        "ENDSEC;\nEND-ISO-10303-21;\n"
+    );
+    // TWO attribute updates at DIFFERENT indices. With only one, "the payload's
+    // index is carried through" and "the index is hard-coded to 2" produce the
+    // same output -- measured: replacing `index: a.index` with `index: 2` in
+    // export_step_json's mapping left all 261 tests in this crate green.
+    // Index 2 is IfcWall's Name, index 3 its Description.
+    let payload = r#"{"attributeUpdates":[{"expressId":1,"index":2,"value":"'RenamedByPayload'"},
+                                          {"expressId":1,"index":3,"value":"'DescFromPayload'"}],
+                      "propertyMutations":[{"expressId":1,"psetName":"NewSet","propName":"P","value":"IFCLABEL('v')"}]}"#;
+
+    let step = export_step_json(src.as_bytes(), None, None, payload).expect("a valid payload exports");
+
+    let wall = step.lines().find(|l| l.starts_with("#1=")).expect("wall line present");
+    assert!(
+        wall.contains("'RenamedByPayload'"),
+        "attributeUpdates from the JSON payload must reach the output: {wall}"
+    );
+    assert!(!wall.contains("'OriginalName'"), "the old name must be gone: {wall}");
+    // Positional, not just "contains": each value must land in ITS OWN slot,
+    // which is what makes the per-update index observable.
+    assert_eq!(
+        wall, "#1=IFCWALL('g',$,'RenamedByPayload','DescFromPayload',$,$,$,$,$);",
+        "each attributeUpdate must be written at its own index"
+    );
+    assert!(
+        step.contains("'NewSet'") && step.contains("IFCLABEL('v')"),
+        "propertyMutations from the JSON payload must reach the output too"
+    );
 }

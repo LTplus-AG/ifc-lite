@@ -40,7 +40,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter, escapeCsvCell } from '@ifc-lite/sdk';
+import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -84,7 +84,7 @@ import {
   extractScheduleOnDemand,
   isQueryableObjectType,
 } from '@ifc-lite/parser';
-import { exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 
 const MODEL_ID = 'default';
@@ -611,6 +611,16 @@ export class HeadlessBackend implements BimBackend {
     const modelName = this.modelName;
     const queryAdapter = this.query;
 
+    /**
+     * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+     * `@ifc-lite/export`'s single escaper. The copy that used to live here
+     * tested the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028
+     * in front of `=` walked past it.
+     */
+    function escapeCsv(value: string, sep: string): string {
+      return escapeCsvCell(value, { delimiter: sep });
+    }
+
     function resolveColumn(data: EntityData, col: string, props: PropertySetData[] | null, qsets: QuantitySetData[] | null): string {
       if (col === 'Name' || col === 'name') return data.name;
       if (col === 'Type' || col === 'type') return data.type;
@@ -657,7 +667,7 @@ export class HeadlessBackend implements BimBackend {
           rows.push(columns.map(col => resolveColumn(data, col, props, qsets)));
         }
 
-        return rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
+        return rows.map(r => r.map(cell => escapeCsv(cell, sep)).join(sep)).join('\n');
       },
       json(refs: unknown, columns: unknown): Record<string, unknown>[] {
         const entityRefs = refs as EntityRef[];

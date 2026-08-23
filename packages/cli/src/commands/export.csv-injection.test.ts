@@ -5,12 +5,14 @@
 /**
  * `ifc-lite export --format csv` versus spreadsheet formula injection (CWE-1236).
  *
- * The CLI had its own copy of the guard — a bare `/^[=+\-@\t\r]/` — while the
- * SDK's `ExportNamespace` had the hardened one that looks PAST leading
+ * The CLI had its own copy of the guard, one that anchored the trigger
+ * characters at offset 0, while the SDK's `ExportNamespace` had the hardened
+ * one that looks PAST leading
  * invisible characters (#1944). So `﻿=HYPERLINK(...)` in an entity name
  * was exported guarded by `bim.export.csv()` and unguarded by the CLI, and
  * deleting the CLI guard entirely left all 435 CLI tests green. Both now call
- * `escapeCsvCell` from `@ifc-lite/sdk`.
+ * `escapeCsvCell` from `@ifc-lite/export`, the one canonical TS escaper
+ * (`packages/export/src/csv-cell.ts`), reached via `export.ts:162`.
  *
  * `--columns Name` and `--columns Name,Pset_X.Y` are BOTH exercised on purpose:
  * `exportCommand` splits on `hasCustomColumns`, and the two branches used to
@@ -78,8 +80,9 @@ async function csvCells(stepPayload: string, columns: string): Promise<string[]>
 }
 
 describe('export --format csv guards a formula trigger hidden behind an invisible', () => {
-  // `\X2\FEFF\X0\` is a BOM; the trigger sits behind it, so an anchored
-  // `/^[=+\-@\t\r]/` never matches and the cell reaches Excel as a formula.
+  // `\X2\FEFF\X0\` is a BOM; the trigger sits behind it, so a guard that
+  // anchors the trigger characters at offset 0 never matches, and the cell
+  // reaches Excel as a formula.
   const HIDDEN = String.raw`\X2\FEFF\X0\=HYPERLINK("http://evil")`;
 
   it('on the native-column path (--columns Name)', async () => {

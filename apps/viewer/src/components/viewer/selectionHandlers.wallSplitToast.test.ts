@@ -12,11 +12,14 @@
  * handler in `selectionHandlers.ts` only ever read `toLeft`/`toRight` —
  * `skipped` reached the toast call site and was discarded.
  *
- * These tests exercise `formatOpeningReassignSuffix` (the pure formatter
- * pulled out of the toast call) directly, and drive the real
+ * These tests exercise `formatOpeningReassignSuffix` (the pure formatter,
+ * now in `wallSplitNotice.ts` beside `notifyWallSplit` — the single emitter
+ * both wall-split commit paths call) directly, and drive the real
  * `handleSelectionClick` split branch through the store to confirm the
  * `toast.info(...)` skipped-openings notice actually fires when
- * `openings.skipped > 0`, and does not fire when it's 0.
+ * `openings.skipped > 0`, and does not fire when it's 0. The other commit
+ * path — the Split tool's numeric-distance panel — is pinned against the
+ * same strings by `tools/SplitNumericInput.wallSplitToast.test.tsx`.
  */
 
 import '@/test/setup-dom.js';
@@ -24,7 +27,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { useViewerStore } from '@/store';
 import { toast } from '@/components/ui/toast';
-import { handleSelectionClick, formatOpeningReassignSuffix } from './selectionHandlers.js';
+import { handleSelectionClick } from './selectionHandlers.js';
+import { formatOpeningReassignSuffix } from './wallSplitNotice.js';
 import type { MouseHandlerContext } from './mouseHandlerTypes.js';
 
 function fakeCtx(): MouseHandlerContext {
@@ -94,7 +98,10 @@ describe('wall split toast: skipped openings notice', () => {
 
     await handleSelectionClick(fakeCtx(), fakeClick());
 
-    assert.equal(successCalls.length, 1, 'expected the wall-split success toast');
+    // The exact string, not a substring: `Wall split` and `— Ctrl+Z to undo`
+    // are what the numeric path's test pins too, so a change to either
+    // path's wording has to be a deliberate change to both.
+    assert.deepEqual(successCalls, ['Wall split (1 opening reassigned) — Ctrl+Z to undo']);
     assert.ok(
       infoCalls.some((m) => m.includes('2 openings could not be reassigned')),
       `expected a skipped-openings notice, got: ${JSON.stringify(infoCalls)}`,
@@ -113,7 +120,7 @@ describe('wall split toast: skipped openings notice', () => {
 
     await handleSelectionClick(fakeCtx(), fakeClick());
 
-    assert.equal(successCalls.length, 1, 'expected the wall-split success toast');
-    assert.equal(infoCalls.length, 0, 'expected no skipped-openings notice when skipped === 0');
+    assert.deepEqual(successCalls, ['Wall split (2 openings reassigned) — Ctrl+Z to undo']);
+    assert.deepEqual(infoCalls, [], 'expected no skipped-openings notice when skipped === 0');
   });
 });

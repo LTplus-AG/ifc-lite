@@ -3,10 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { StoreApi } from './types.js';
-import { escapeCsvCell } from '@ifc-lite/sdk';
 import type { EntityRef, EntityData, PropertySetData, QuantitySetData, ExportBackendMethods } from '@ifc-lite/sdk';
 import { EntityNode } from '@ifc-lite/query';
-import { StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { escapeCsvCell, StepExporter, type StepExportOptions } from '@ifc-lite/export';
 import { getModelForRef, LEGACY_MODEL_ID } from './model-compat.js';
 import { applyAttributeMutationsToEntityData, getMutationViewForModel } from './mutation-view.js';
 import { serializeScheduleToStep, type ScheduleExtraction, type IfcDataStore } from '@ifc-lite/parser';
@@ -19,6 +18,7 @@ interface CsvOptions {
   separator?: string;
   filename?: string;
 }
+
 
 /** Options for IFC STEP export */
 interface IfcExportOptions {
@@ -102,6 +102,16 @@ export function resolveVisibilityFilterSets(
       ? selectedExpressIds
       : modelIsolated,
   };
+}
+
+/**
+ * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+ * `@ifc-lite/export`'s single escaper. The copy that used to live here tested
+ * the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028 in front of
+ * `=` walked past it.
+ */
+function escapeCsv(value: string, sep: string): string {
+  return escapeCsvCell(value, { delimiter: sep });
 }
 
 /**
@@ -251,7 +261,7 @@ export function createExportAdapter(store: StoreApi): ExportBackendMethods {
         rows.push(row);
       }
 
-      const csvString = rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
+      const csvString = rows.map(r => r.map(cell => escapeCsv(cell, sep)).join(sep)).join('\n');
 
       // If filename specified, trigger browser download
       if (options.filename) {

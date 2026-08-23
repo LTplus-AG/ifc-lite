@@ -207,11 +207,6 @@ export { StyleNamespace, type ColorBatch } from './namespaces/style.js';
 // type without taking a direct dependency on @ifc-lite/create.
 export type { ApplyStyleOptions, ApplyStyleResult, SurfaceStyleColor } from '@ifc-lite/create';
 export { createHeadlessMutateAdapter, propertyValueTypeOf } from './headless-mutate.js';
-
-// The single CSV cell writer shared by every `export.csv` implementation
-// (SDK namespace, CLI command, CLI/MCP headless backends, viewer adapter).
-// See ./csv-escape.ts for why it is exported rather than copied.
-export { escapeCsvCell } from './csv-escape.js';
 export type { ClashGroupBy, ClashRunOptions, ClashMatrixOptions } from './namespaces/clash.js';
 // Re-export the clash core types so hosts can type elements/rules/results
 // without taking a second direct dependency on @ifc-lite/clash.

@@ -10,8 +10,8 @@
  * entities to include, and delegates to the appropriate exporter.
  */
 
+import { escapeCsvCell } from '@ifc-lite/export';
 import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
-import { escapeCsvCell } from '../csv-escape.js';
 
 export interface ExportCsvOptions {
   columns: string[];
@@ -117,7 +117,7 @@ export class ExportNamespace {
     }
 
     const sep = options.separator ?? ',';
-    const csvString = rows.map(r => r.map(cell => escapeCsvCell(cell, sep)).join(sep)).join('\n');
+    const csvString = rows.map(r => r.map(cell => this.escapeCsv(cell, sep)).join(sep)).join('\n');
 
     // Trigger browser download if filename specified
     if (options.filename) {
@@ -246,5 +246,19 @@ export class ExportNamespace {
    */
   download(content: string, filename: string, mimeType?: string): void {
     this.backend.export.download(content, filename, mimeType ?? 'text/plain');
+  }
+
+  /**
+   * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+   * `@ifc-lite/export`'s single escaper.
+   *
+   * This method used to carry the repo's reference copy of the guard (#1944).
+   * It was the best of nine, but still its own: its invisible class was
+   * `\p{Zs}`, which leaves U+2028 LINE SEPARATOR and U+2029 PARAGRAPH
+   * SEPARATOR usable as hiding places for a trigger. The shared escaper uses
+   * `\p{Z}`, covering `Zl`/`Zp` too.
+   */
+  private escapeCsv(value: string, sep: string): string {
+    return escapeCsvCell(value, { delimiter: sep });
   }
 }

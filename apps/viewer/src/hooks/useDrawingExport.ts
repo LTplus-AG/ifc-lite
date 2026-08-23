@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { useCallback } from 'react';
+import type React from 'react';
 import { posthog } from '@/lib/analytics';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
 import { toast } from '@/components/ui/toast';
@@ -11,7 +12,6 @@ import {
   GraphicOverrideEngine,
   renderFrame,
   renderTitleBlock,
-  calculateDrawingTransform,
   exportToDXF,
   formatScaleFactorLabel,
   fitRasterPixels,
@@ -23,6 +23,8 @@ import {
   type PdfScaleLayout,
 } from '@ifc-lite/drawing-2d';
 import { computePdfSectionLayout, makeSectionMapPoint } from '@/hooks/pdfSectionLayout';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { getFillColorForType } from '@/components/viewer/Drawing2DCanvas';
 import { formatDistance } from '@/components/viewer/tools/formatDistance';
 import { formatArea, computePolygonCentroid } from '@/components/viewer/tools/computePolygonArea';
@@ -309,6 +311,14 @@ interface UseDrawingExportParams {
   coordinateInfo: GeometryResult['coordinateInfo'] | undefined;
   /** Point-cloud scan overlay, already in drawing space (issue #1805) */
   scanSection: { points: readonly ScanBandPoint[] };
+  /** Pin View state, shared with the preview canvas. While pinned the sheet
+   *  placement is HELD across a regenerate; print/export must honour the same
+   *  held placement or it silently prints a different layout from the one on
+   *  screen (see `resolveSheetTransform`). */
+  isPinned?: boolean;
+  /** The preview's pinned-transform cache. Read-only here — the preview owns
+   *  the write, so exporting never perturbs what is on screen. */
+  cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
 }
 
 interface UseDrawingExportResult {
@@ -342,6 +352,8 @@ function useDrawingExport({
   ifcDataStore,
   coordinateInfo,
   scanSection,
+  isPinned = false,
+  cachedSheetTransformRef,
 }: UseDrawingExportParams): UseDrawingExportResult {
   // Georef inputs for the DXF export (PR #1871 review, P1): placement edits
   // applied in CesiumPlacementEditor live in `georefMutations` (per model
@@ -709,22 +721,26 @@ function useDrawingExport({
     const paperHeight = activeSheet.paper.heightMm;
     const viewport = activeSheet.viewportBounds;
 
-    // Calculate transform to fit drawing into viewport
-    const drawingTransform = calculateDrawingTransform(
-      { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
-      viewport,
-      activeSheet.scale
-    );
-
-    const { translateX, translateY, scaleFactor } = drawingTransform;
-
-    // Axis-specific flipping (matching canvas rendering)
-    // - 'down' (plan view): DON'T flip Y so north (Z+) is up
-    // - 'front' and 'side': flip Y so height (Y+) is up
-    // - 'side': also flip X to look from conventional direction
-    const currentAxis = sectionPlane.axis;
-    const flipY = currentAxis !== 'down';
-    const flipX = currentAxis === 'side';
+    // Flips, cache read and the axis-corrected transform all come from the
+    // ONE resolver the preview canvas (`Drawing2DCanvas.tsx`) also calls, so
+    // print/export cannot derive any of the three separately (#2940: print
+    // used the raw, always-Y-flip-assuming transform, which only matched the
+    // preview for axes that flip Y and left plan ('down') sections off-centre
+    // on paper; and print recomputed from current bounds while a PINNED
+    // preview held a cached placement).
+    //
+    // Read-only on the cache by construction: `resolveSheetTransform` never
+    // writes, and this path does not write either — printing must not move
+    // what is on screen.
+    const resolved = resolveSheetTransform({
+      sheet: activeSheet,
+      drawingBounds: { minX: bounds.min.x, minY: bounds.min.y, maxX: bounds.max.x, maxY: bounds.max.y },
+      axis: sectionPlane.axis,
+      isPinned,
+      cached: cachedSheetTransformRef?.current,
+    });
+    const { flipX, flipY } = resolved;
+    const { translateX, translateY, scaleFactor } = resolved.transform;
 
     // Helper: convert model coordinates to paper mm (matching canvas rendering exactly)
     const modelToPaper = (x: number, y: number): { x: number; y: number } => {
@@ -950,7 +966,13 @@ function useDrawingExport({
 
     svg += '</svg>';
     return svg;
-  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection]);
+    // `sectionPlane.axis` and `isPinned` are read INSIDE this callback (via
+    // `resolveSheetTransform`) and so must be here. Both were previously
+    // held up only by invariants elsewhere — `drawing` happens to change
+    // identity when the axis changes, and the canvas rewrote the cache on
+    // every fresh draw — neither of which this callback controls.
+    // `cachedSheetTransformRef` is a ref: stable identity, read at call time.
+  }, [drawing, activeSheet, displayOptions, activePresetId, entityColorMap, overridesEnabled, overrideEngine, dxfUnderlays, scanSection, sectionPlane.axis, isPinned]);
 
   // Export SVG
   const handleExportSVG = useCallback(() => {
@@ -1029,10 +1051,21 @@ function useDrawingExport({
   // v1 scope, deliberately smaller than the SVG export: cut-polygon
   // OUTLINES and drawing LINES only (matching what an engineer actually
   // measures off a printed section). Not yet included: area fills /
-  // hatching, DXF underlays, the drawing-sheet title block/frame/scale
-  // bar, text/cloud annotations, and the point-cloud scan overlay. Those
-  // are straightforward follow-ups once this scale plumbing is reviewed;
-  // see the PR description.
+  // hatching, DXF underlays, text/cloud annotations, and the point-cloud
+  // scan overlay. Those are straightforward follow-ups once this scale
+  // plumbing is reviewed; see the PR description.
+  //
+  // The drawing-sheet frame / title block / scale bar are NOT on that list
+  // any more, and this path is not where they will arrive. It is the
+  // NON-SHEET path: since #2941/#2942 the sheet case returns from the
+  // branch at the top of `handleExportPDF` and never reaches here. This
+  // path is still the only PDF export for the "as displayed" / scaled
+  // drawing (#2042) and is not dead — it is the only true-vector PDF of
+  // the DRAWING the viewer emits, so the branch above is where the raster
+  // trade-off is written down. (Not the only vector PDF in the app:
+  // `lib/lists/export/pdf.ts` writes a Lists/schedule report through
+  // `jspdf-autotable` with no `addImage` at all. That is a table, not a
+  // drawing. The 3D view export, `lib/export/view-pdf/`, IS a raster.)
   const handleExportPDF = useCallback((scaleFactor?: number) => {
     if (!drawing) return;
 
@@ -1048,6 +1081,41 @@ function useDrawingExport({
     // all branch on `sheetEnabled && activeSheet` (e.g. handleExportSVG
     // above); PDF alone didn't. Reuse the already-correct sheet SVG instead
     // of re-deriving a second sheet layout for jsPDF's vector primitives.
+    //
+    // THE TRADE-OFF THIS BRANCH MAKES, stated so the next reader does not
+    // have to rediscover it by zooming into an exported sheet:
+    //
+    //   A sheet-mode PDF is a RASTER, not vector. It carries one PNG per
+    //   page ({@link SHEET_PDF_DPI}, capped by MAX_SHEET_RASTER_PIXELS),
+    //   so its text and lines are resolution-dependent and will pixelate
+    //   under zoom or on a plotter finer than the effective dpi.
+    //
+    // Before this branch existed, sheet mode fell through to the v1 path
+    // below and produced true-vector output — but of the wrong drawing:
+    // no frame, no title block, no scale bar (#2941) and at
+    // `displayOptions.scale` rather than the sheet's own (#2942). So the
+    // choice was not "vector vs raster", it was "a resolution-independent
+    // PDF that is not the sheet and is not to scale" vs "the correct sheet
+    // at the correct scale, rasterized". Correctness won.
+    //
+    // Vector would require re-deriving the whole sheet — frame, title
+    // block, scale bar, north arrow, and the drawing transform — against
+    // jsPDF's own primitives, because no SVG-import plugin is installed
+    // (apps/viewer depends on `jspdf` and `jspdf-autotable`; there is no
+    // `svg2pdf.js`). That is a second, independent implementation of
+    // `generateSheetSVG` that would then have to be kept in step with it —
+    // exactly the drift the v1 path already demonstrated. It is a real
+    // follow-up, not a hidden cost.
+    //
+    // The route for a user who needs vector today is the SVG export, which
+    // is not an approximation of this: `handleExportSVG` above emits the
+    // SAME `generateSheetSVG()` string, with no raster step at all. The
+    // over-cap toast below already points there; this note records that
+    // the recommendation applies to EVERY sheet PDF, not only capped ones.
+    //
+    // The non-sheet path below is untouched by any of this and stays true
+    // vector — see `useDrawingExport.pdfVectorPaths.test.tsx`, which pins
+    // both halves of that split.
     if (sheetEnabled && activeSheet) {
       const svg = generateSheetSVG();
       if (!svg) return;

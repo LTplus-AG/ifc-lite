@@ -13,12 +13,11 @@
 import { writeFile, readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { GeometryProcessor, isNoRenderGeometryError } from '@ifc-lite/geometry';
-import { countGlbMeshes } from '@ifc-lite/export';
+import { countGlbMeshes, escapeCsvCell } from '@ifc-lite/export';
 import { createHeadlessContext } from '../loader.js';
 import { getFlag, hasFlag, fatal, writeOutput, validateLimit } from '../output.js';
 import { logger } from '../logger.js';
 import { formatGeometryReport, NO_DIAGNOSTICS_LINE } from '../geometry-report.js';
-import { escapeCsvCell } from '@ifc-lite/sdk';
 import type { ComparisonOp } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 
@@ -153,6 +152,16 @@ async function rustExportContext(
   return { bytes, gp };
 }
 
+/**
+ * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+ * `@ifc-lite/export`'s single escaper. The copy that used to live here tested
+ * the trigger anchored at offset 0, so a BOM/ZWSP/LRM/NBSP/U+2028 in front of
+ * `=` walked past it.
+ */
+function escapeCsv(value: string, sep: string): string {
+  return escapeCsvCell(value, { delimiter: sep });
+}
+
 export async function exportCommand(args: string[]): Promise<void> {
   const filePath = args.find(a => !a.startsWith('-'));
   const format = getFlag(args, '--format') ?? 'csv';
@@ -252,7 +261,7 @@ export async function exportCommand(args: string[]): Promise<void> {
         for (const entity of entities) {
           rows.push(columns.map(col => columnValueToCsv(resolveColumnValue(entity, col, bim))));
         }
-        const csv = rows.map(r => r.map(cell => escapeCsvCell(cell, separator)).join(separator)).join('\n');
+        const csv = rows.map(r => r.map(cell => escapeCsv(cell, separator)).join(separator)).join('\n');
         await writeOutput(csv, outPath);
       } else {
         const csv = bim.export.csv(refs, { columns, separator });

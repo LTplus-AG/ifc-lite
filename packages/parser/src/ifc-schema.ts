@@ -170,7 +170,12 @@ export function getAttributeNamesAcrossSchemas(type: string): string[] {
  *
  * Still a real guard, not a pass-through: a typo (`IfcWal`), a vendor extension
  * and an EXPRESS defined type (`IfcLengthMeasure`, `IfcArcIndex`) are all
- * rejected.
+ * rejected. So are `Object.prototype` member names (`constructor`, `toString`,
+ * `__proto__`, ...): the union lookup is a `Map`, and the pin fallback's
+ * own-property test — added in #3063/#3069, replacing an `in` that walked the
+ * prototype chain and answered `true` for every one of them — keeps the second
+ * lookup from re-admitting them. Callers of this predicate (`ofType()`,
+ * `addEntity`) rely on that; the guard is only as good as `isKnownEntity`.
  *
  * Known-ness, not instantiability: abstract supertypes (`IfcProduct`,
  * `IfcRoot`) answer `true`, as they always have — that is a different

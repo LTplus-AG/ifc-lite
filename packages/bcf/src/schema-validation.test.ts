@@ -1,0 +1,526 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * Validate real `.bcfzip` output against buildingSMART's official BCF XSDs.
+ *
+ * Every other test in this package is `parse(write(x)) === x`. That check is
+ * blind by construction: it can see neither a field both sides get wrong the
+ * same way, nor one that no fixture populates. The writer and the reader agree
+ * with each other, not with the format — which is how, for example, a
+ * `<Bitmaps>` wrapper that does not exist in BCF 2.1 round-tripped perfectly
+ * for as long as it did.
+ *
+ * The schemas in `__fixtures__/schemas/` are verbatim copies of the published
+ * BCF-XML schemas (see the `UPSTREAM_LICENSE` beside them). They are an
+ * authority independent of this codebase, so they can catch what a round trip
+ * cannot. Validation runs through `xmllint-wasm`, a WebAssembly build of
+ * libxml2 with no native dependencies and no network access.
+ *
+ * The fixture below is deliberately maximal: every optional field is populated,
+ * every position gets a DISTINCT value (so a writer that swaps two fields is
+ * visible), and the cameras sit on a schema boundary. An empty or symmetric
+ * fixture cannot observe most of what this file is here to check.
+ */
+
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import JSZip from 'jszip';
+import { validateXML } from 'xmllint-wasm';
+import { writeBCF } from './writer.js';
+import { readBCF } from './reader.js';
+import type { BCFProject, BCFTopic } from './types.js';
+
+const DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function schema(version: '2.1' | '3.0', file: string): string {
+  const dir = version === '2.1' ? 'v2_1' : 'v3_0';
+  return readFileSync(path.join(DIR, '__fixtures__', 'schemas', dir, file), 'utf8');
+}
+
+/**
+ * BCF 3.0 splits its schemas across files and pulls the shared simple types in
+ * with `<xs:include schemaLocation="shared-types.xsd"/>`. xmllint resolves that
+ * against its in-memory filesystem, so the include target has to be preloaded
+ * under exactly that name. BCF 2.1 is self-contained and needs nothing.
+ */
+function preloadFor(version: '2.1' | '3.0') {
+  return version === '3.0'
+    ? [{ fileName: 'shared-types.xsd', contents: schema('3.0', 'shared-types.xsd') }]
+    : [];
+}
+
+async function validate(
+  version: '2.1' | '3.0',
+  xsd: string,
+  xml: string
+): Promise<{ valid: boolean; messages: string[] }> {
+  const result = await validateXML({
+    // xmllint treats a leading dash as a CLI flag, and the archive's real entry
+    // names contain `/`; a fixed inert name keeps both out of the argv.
+    xml: [{ fileName: 'subject.xml', contents: xml }],
+    schema: [schema(version, xsd)],
+    preload: preloadFor(version),
+  });
+  return { valid: result.valid, messages: result.errors.map((e) => e.message) };
+}
+
+/** The XSD that governs each archive entry, keyed by how the entry is named. */
+const SCHEMA_FOR_ENTRY: ReadonlyArray<readonly [RegExp, string]> = [
+  [/(^|\/)bcf\.version$/, 'version.xsd'],
+  [/(^|\/)project\.bcfp$/, 'project.xsd'],
+  [/(^|\/)markup\.bcf$/, 'markup.xsd'],
+  [/\.bcfv$/, 'visinfo.xsd'],
+];
+
+const TOPIC_GUID = '11111111-1111-4111-8111-111111111111';
+const VIEWPOINT_GUID = '55555555-5555-4555-8555-555555555555';
+
+/**
+ * A topic with every optional field set and no two positions sharing a value.
+ *
+ * The distinctness matters: with `{x:0,y:0,z:0}` points, or one label, or a
+ * creation author equal to the modified author, a writer that transposed two
+ * fields would still round-trip and still validate.
+ */
+function maximalTopic(): BCFTopic {
+  return {
+    guid: TOPIC_GUID,
+    title: 'Maximal topic',
+    description: 'Description distinct from the title',
+    topicType: 'Issue',
+    topicStatus: 'Open',
+    priority: 'High',
+    index: 7,
+    creationDate: '2026-01-02T03:04:05Z',
+    creationAuthor: 'creation-author@example.invalid',
+    modifiedDate: '2026-02-03T04:05:06Z',
+    modifiedAuthor: 'modified-author@example.invalid',
+    dueDate: '2026-03-04T05:06:07Z',
+    assignedTo: 'assigned-to@example.invalid',
+    stage: 'Design',
+    // Two labels, so a writer that emits the wrong container shape (one
+    // `<Labels>` per label vs. one `<Labels>` holding `<Label>` children)
+    // is distinguishable from a writer that emits the right one.
+    labels: ['label-one', 'label-two'],
+    bimSnippet: {
+      snippetType: 'JSON',
+      isExternal: false,
+      reference: 'snippet.json',
+      referenceSchema: 'https://example.invalid/snippet-schema.json',
+    },
+    documentReferences: [
+      {
+        guid: '22222222-2222-4222-8222-222222222222',
+        isExternal: true,
+        referencedDocument: 'https://example.invalid/referenced-document.pdf',
+        url: 'https://example.invalid/url-document.pdf',
+        description: 'document reference description',
+      },
+    ],
+    relatedTopics: ['33333333-3333-4333-8333-333333333333'],
+    header: [
+      {
+        ifcProject: '3ZpjZ0Ban1$hVDaAmsCwSK',
+        ifcSpatialStructureElement: '1kTvXnbbzCWw8lcMd1dR4o',
+        isExternal: true,
+        filename: 'model.ifc',
+        date: '2026-01-01T00:00:00Z',
+        reference: 'https://example.invalid/model.ifc',
+      },
+    ],
+    comments: [
+      {
+        guid: '44444444-4444-4444-8444-444444444444',
+        date: '2026-01-05T06:07:08Z',
+        author: 'comment-author@example.invalid',
+        comment: 'Comment text',
+        viewpointGuid: VIEWPOINT_GUID,
+        modifiedDate: '2026-01-06T07:08:09Z',
+        modifiedAuthor: 'comment-modifier@example.invalid',
+      },
+    ],
+    viewpoints: [
+      {
+        guid: VIEWPOINT_GUID,
+        perspectiveCamera: {
+          // Distinct, non-symmetric vectors: a transposed X/Y/Z is visible.
+          cameraViewPoint: { x: 1.5, y: 2.5, z: 3.5 },
+          cameraDirection: { x: 0, y: 0, z: -1 },
+          cameraUpVector: { x: 0, y: 1, z: 0 },
+          // BOUNDARY CASE. BCF 2.1's `FieldOfView` is `[45, 60]` inclusive;
+          // BCF 3.0 widened it to `(0, 180)` exclusive. 60 is the exact 2.1
+          // maximum, so this pins the edge that is legal in both.
+          fieldOfView: 60,
+          // Required in BCF 3.0, absent from the 2.1 schema entirely.
+          aspectRatio: 1.5,
+        },
+        lines: [
+          { startPoint: { x: 1, y: 2, z: 3 }, endPoint: { x: 4, y: 5, z: 6 } },
+        ],
+        clippingPlanes: [
+          { location: { x: 7, y: 8, z: 9 }, direction: { x: 1, y: 0, z: 0 } },
+        ],
+        bitmaps: [
+          {
+            format: 'PNG',
+            reference: 'bitmap.png',
+            location: { x: 10, y: 11, z: 12 },
+            normal: { x: 0, y: 0, z: 1 },
+            up: { x: 0, y: 1, z: 0 },
+            height: 2.5,
+          },
+        ],
+        components: {
+          selection: [
+            {
+              ifcGuid: '0GbQ8$mZH4$8dFR$JUFRuF',
+              authoringToolId: 'authoring-tool-id',
+              originatingSystem: 'Originating System',
+            },
+          ],
+          visibility: {
+            // `false` rather than the `true` default, so a writer that drops
+            // the attribute and relies on the schema default is caught.
+            defaultVisibility: false,
+            exceptions: [{ ifcGuid: '1kTvXnbbzCWw8lcMd1dR4o' }],
+            // Each hint a different value: a writer that emits one attribute's
+            // value under another attribute's name cannot hide.
+            viewSetupHints: {
+              spacesVisible: true,
+              spaceBoundariesVisible: false,
+              openingsVisible: true,
+            },
+          },
+          coloring: [
+            {
+              color: 'FF0000FF',
+              components: [{ ifcGuid: '3ZpjZ0Ban1$hVDaAmsCwSK' }],
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function maximalProject(version: '2.1' | '3.0'): BCFProject {
+  return {
+    version,
+    projectId: '66666666-6666-4666-8666-666666666666',
+    name: 'Schema validation project',
+    topics: new Map([[TOPIC_GUID, maximalTopic()]]),
+  };
+}
+
+/** Write a project and return its archive entries as `{ name: xml }`. */
+async function writeAndUnzip(project: BCFProject): Promise<Map<string, string>> {
+  const blob = await writeBCF(project);
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const out = new Map<string, string>();
+  for (const name of Object.keys(zip.files)) {
+    const entry = zip.files[name];
+    if (entry.dir) continue;
+    if (SCHEMA_FOR_ENTRY.some(([re]) => re.test(name))) {
+      out.set(name, await entry.async('string'));
+    }
+  }
+  return out;
+}
+
+describe('BCF output validates against the official buildingSMART XSDs', () => {
+  for (const version of ['2.1', '3.0'] as const) {
+    describe(`BCF ${version}`, () => {
+      it('writes every archive entry the schemas govern', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        const names = [...entries.keys()].sort();
+        // If the writer stops emitting one of these, the per-entry validation
+        // below would vacuously pass on the ones that remain.
+        expect(names).toEqual([
+          `${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`,
+          `${TOPIC_GUID}/markup.bcf`,
+          'bcf.version',
+          'project.bcfp',
+        ]);
+      });
+
+      it('emits a schema-valid bcf.version', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        const { valid, messages } = await validate(
+          version,
+          'version.xsd',
+          entries.get('bcf.version')!
+        );
+        expect(messages).toEqual([]);
+        expect(valid).toBe(true);
+      });
+
+      it('emits a schema-valid markup.bcf', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        const { valid, messages } = await validate(
+          version,
+          'markup.xsd',
+          entries.get(`${TOPIC_GUID}/markup.bcf`)!
+        );
+        expect(messages).toEqual([]);
+        expect(valid).toBe(true);
+      });
+
+      it('emits a schema-valid viewpoint (.bcfv)', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        const { valid, messages } = await validate(
+          version,
+          'visinfo.xsd',
+          entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!
+        );
+        expect(messages).toEqual([]);
+        expect(valid).toBe(true);
+      });
+    });
+  }
+
+  it('emits a schema-valid project.bcfp for BCF 3.0', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const { valid, messages } = await validate(
+      '3.0',
+      'project.xsd',
+      entries.get('project.bcfp')!
+    );
+    expect(messages).toEqual([]);
+    expect(valid).toBe(true);
+  });
+
+  /**
+   * KNOWN GAP, deliberately left unfixed — this test pins it rather than hides it.
+   *
+   * BCF 2.1's `project.xsd` declares `<ExtensionSchema>` (an `xs:anyURI`) as a
+   * REQUIRED child of `<ProjectExtension>`, and we do not emit it. Every 2.1
+   * archive ifc-lite writes with a project id or name — which is every archive
+   * `createBCFProject` produces, and so everything `@ifc-lite/cli` and
+   * `@ifc-lite/mcp` write — carries a `project.bcfp` that fails 2.1 validation.
+   *
+   * The fix is not contained and is a maintainer's call, not this test's:
+   * `<ExtensionSchema>` names an `extensions.xsd` that has to exist in the
+   * archive, and a conformant BCF 2.1 `extensions.xsd` is an `xs:redefine` of
+   * `markup.xsd` — so emitting one honestly means shipping buildingSMART's
+   * `markup.xsd` inside our archives, which is a licensing and packaging
+   * decision. Emitting the reference without the file would trade a schema
+   * error for a dangling one. Note also that `BCFProject.extensions` is
+   * currently dropped on write entirely, which is the same gap seen from the
+   * data side.
+   *
+   * This asserts the EXACT error, not merely "invalid": if the gap is fixed,
+   * this test goes red and must be deleted; if a DIFFERENT error appears, this
+   * test goes red too. It never passes for the wrong reason.
+   */
+  it('BCF 2.1 project.bcfp omits the schema-required <ExtensionSchema> (known gap)', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const { valid, messages } = await validate(
+      '2.1',
+      'project.xsd',
+      entries.get('project.bcfp')!
+    );
+    expect(valid).toBe(false);
+    expect(messages).toEqual([
+      "Schemas validity error : Element 'ProjectExtension': Missing child element(s). Expected is ( ExtensionSchema ).",
+    ]);
+  });
+});
+
+/**
+ * `AspectRatio` is the field neither side handled.
+ *
+ * BCF 3.0's `visinfo.xsd` makes it REQUIRED on both camera types. Before this
+ * change the writer never emitted it and the reader never parsed it, and no
+ * fixture set it — so a `parse(write(x)) === x` check saw a faithful round trip
+ * of a value that simply did not exist, while every 3.0 archive we produced was
+ * invalid. Nothing in this repository populates `aspectRatio` even now
+ * (`ViewerCameraState` carries no aspect ratio, so `cameraToPerspective` and
+ * `cameraToOrthogonal` cannot supply one), which is exactly why the round trip
+ * could never have caught it.
+ */
+describe('BCF 3.0 AspectRatio', () => {
+  it('survives a write/read round trip on both camera types', async () => {
+    const topic = maximalTopic();
+    // Distinct values per camera, and neither is 1 — a writer or reader that
+    // dropped the field and defaulted to a square viewport would still pass a
+    // test that used 1, and a writer that read one camera's value while
+    // writing the other's would pass a test that used the same number twice.
+    topic.viewpoints[0].perspectiveCamera!.aspectRatio = 1.7777;
+    topic.viewpoints[0].orthogonalCamera = {
+      cameraViewPoint: { x: 20, y: 21, z: 22 },
+      cameraDirection: { x: 0, y: 0, z: -1 },
+      cameraUpVector: { x: 0, y: 1, z: 0 },
+      viewToWorldScale: 12.5,
+      aspectRatio: 2.3333,
+    };
+    const project: BCFProject = {
+      version: '3.0',
+      projectId: '66666666-6666-4666-8666-666666666666',
+      name: 'Aspect ratio project',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+
+    const blob = await writeBCF(project);
+    const readBack = await readBCF(new Uint8Array(await blob.arrayBuffer()));
+    const viewpoint = readBack.topics.get(TOPIC_GUID)!.viewpoints[0];
+
+    expect(viewpoint.perspectiveCamera?.aspectRatio).toBe(1.7777);
+    expect(viewpoint.orthogonalCamera?.aspectRatio).toBe(2.3333);
+  });
+
+  it('refuses to write a 3.0 camera without one rather than emitting an invalid archive', async () => {
+    const topic = maximalTopic();
+    delete topic.viewpoints[0].perspectiveCamera!.aspectRatio;
+    const project: BCFProject = {
+      version: '3.0',
+      topics: new Map([[TOPIC_GUID, topic]]),
+    };
+    await expect(writeBCF(project)).rejects.toThrow(/AspectRatio/);
+  });
+
+  it('is not emitted for BCF 2.1, whose schema has no such element', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    // The 2.1 fixture DOES set `aspectRatio` (see maximalTopic), so this
+    // distinguishes "correctly suppressed for 2.1" from "never written".
+    expect(entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)).not.toContain(
+      'AspectRatio'
+    );
+  });
+});
+
+/**
+ * Schema validity is necessary, not sufficient.
+ *
+ * `<ViewSetupHints>` is OPTIONAL in both versions, so an archive that drops it
+ * entirely still validates — the XSD cannot tell "correctly placed" from
+ * "silently discarded". Mutation-testing the writer proved exactly that: with
+ * the 3.0 placement deleted, every validation test above still passed. Placement
+ * and survival therefore need their own assertion. The 2.1 side of this is
+ * covered in `writer.test.ts` ("writes ViewSetupHints with the spec attribute
+ * names, only for the hints that are set").
+ */
+describe('BCF 3.0 places ViewSetupHints inside <Visibility>', () => {
+  it('keeps the hints, with their values, nested in Visibility rather than at Components level', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    const bcfv = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+
+    // Present at all — the mutation that deleted it left the file schema-valid.
+    expect(bcfv).toContain('<ViewSetupHints');
+    // Each hint keeps its own value: the fixture sets three different ones, so
+    // a writer that emitted one attribute's value under another name is caught.
+    expect(bcfv).toContain('SpacesVisible="true"');
+    expect(bcfv).toContain('SpaceBoundariesVisible="false"');
+    expect(bcfv).toContain('OpeningsVisible="true"');
+
+    // Nested inside <Visibility>, not a sibling of it at <Components> level.
+    // v3_0/visinfo.xsd's `Components` admits only Selection/Visibility/Coloring.
+    const visibilityOpen = bcfv.indexOf('<Visibility');
+    const visibilityClose = bcfv.indexOf('</Visibility>');
+    const hints = bcfv.indexOf('<ViewSetupHints');
+    expect(visibilityOpen).toBeGreaterThan(-1);
+    expect(hints).toBeGreaterThan(visibilityOpen);
+    expect(hints).toBeLessThan(visibilityClose);
+    // Exactly one — a writer that emitted it in BOTH places would produce a
+    // schema-invalid file, but this pins the count directly too.
+    expect(bcfv.split('<ViewSetupHints').length - 1).toBe(1);
+  });
+});
+
+/**
+ * A validator that has never been shown to go red is worth nothing.
+ *
+ * Everything above asserts `valid === true`. If the schema failed to load, if
+ * the include never resolved, if xmllint silently ignored the document, or if
+ * `validateXML` returned `valid: true` for input it never actually read, every
+ * assertion above would pass for the wrong reason. These tests break the
+ * document in one specific way each and require the validator to notice —
+ * covering a missing required element, a bad enum value, a wrong-typed
+ * attribute, an out-of-range facet and a broken sequence order, i.e. one case
+ * per class of rule the tests above depend on.
+ */
+describe('the validator can fail (mutation proof)', () => {
+  it('rejects a required element that has been dropped', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const good = entries.get(`${TOPIC_GUID}/markup.bcf`)!;
+    // `<Title>` is required by markup.xsd in both versions.
+    const broken = good.replace(/\s*<Title>[\s\S]*?<\/Title>/, '');
+    expect(broken).not.toEqual(good);
+
+    expect((await validate('2.1', 'markup.xsd', good)).valid).toBe(true);
+    const { valid, messages } = await validate('2.1', 'markup.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages.join('\n')).toContain('Title');
+  });
+
+  it('rejects a misspelled enum value', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    // 2.1's BitmapFormat enum is {PNG, JPG} — uppercase. 3.0's is {png, jpg}.
+    // Lowercasing it is exactly the cross-version mistake this catches.
+    const broken = good.replace('>PNG<', '>png<');
+    expect(broken).not.toEqual(good);
+
+    const { valid, messages } = await validate('2.1', 'visinfo.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages.join('\n')).toContain('enumeration');
+  });
+
+  it('rejects a wrong-typed attribute', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    // `DefaultVisibility` is xs:boolean; "sometimes" is not a boolean.
+    const broken = good.replace(
+      /DefaultVisibility="[^"]*"/,
+      'DefaultVisibility="sometimes"'
+    );
+    expect(broken).not.toEqual(good);
+
+    const { valid, messages } = await validate('2.1', 'visinfo.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages.join('\n')).toContain('DefaultVisibility');
+  });
+
+  it('rejects a value outside a schema facet range', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    // 2.1 restricts FieldOfView to [45, 60]; the fixture sits on 60.
+    const broken = good.replace(
+      /<FieldOfView>[^<]*<\/FieldOfView>/,
+      '<FieldOfView>60.5</FieldOfView>'
+    );
+    expect(broken).not.toEqual(good);
+
+    const { valid, messages } = await validate('2.1', 'visinfo.xsd', broken);
+    expect(valid).toBe(false);
+    expect(messages.join('\n')).toContain('FieldOfView');
+  });
+
+  it('rejects elements emitted out of schema sequence order', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const good = entries.get(`${TOPIC_GUID}/markup.bcf`)!;
+    // markup.xsd orders Topic's children as a strict xs:sequence, so moving
+    // CreationDate after CreationAuthor is invalid even though both are present
+    // and both are well-formed. An order-blind check would miss this.
+    const creationDate = /\s*<CreationDate>[\s\S]*?<\/CreationDate>/.exec(good);
+    expect(creationDate).not.toBeNull();
+    const broken = good
+      .replace(creationDate![0], '')
+      .replace(
+        /(<\/CreationAuthor>)/,
+        `$1${creationDate![0]}`
+      );
+    expect(broken).not.toEqual(good);
+
+    const { valid } = await validate('2.1', 'markup.xsd', broken);
+    expect(valid).toBe(false);
+  });
+
+  it('rejects XML that is not well-formed at all', async () => {
+    const { valid } = await validate('2.1', 'markup.xsd', '<Markup><unclosed>');
+    expect(valid).toBe(false);
+  });
+});

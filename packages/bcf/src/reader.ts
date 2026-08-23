@@ -876,7 +876,31 @@ function parsePerspectiveCamera(content: string): BCFPerspectiveCamera | undefin
     cameraDirection: direction,
     cameraUpVector: upVector,
     fieldOfView: fov,
+    ...parseAspectRatio(cameraContent),
   };
+}
+
+/**
+ * Parse the optional `<AspectRatio>` of either camera type.
+ *
+ * BCF 3.0's visinfo.xsd makes `AspectRatio` (a `PositiveDouble`) a REQUIRED
+ * child of both camera types; BCF 2.1 has no such element. It is read here for
+ * both, since the element's presence — not the archive's declared version — is
+ * what says whether there is a value to keep.
+ *
+ * Reading it matters beyond fidelity: the writer refuses to emit a 3.0 camera
+ * without one, so a 3.0 archive from another tool could otherwise be read and
+ * then not written back. Returned as a spread-able partial so an absent or
+ * unusable value leaves the property off entirely rather than setting it to
+ * `undefined`, and a non-positive value is dropped rather than carried into
+ * output the schema would reject.
+ */
+function parseAspectRatio(cameraContent: string): { aspectRatio?: number } {
+  const raw = extractElement(cameraContent, 'AspectRatio');
+  if (!raw) return {};
+  const value = parseFiniteFloat(raw);
+  if (value === undefined || !(value > 0)) return {};
+  return { aspectRatio: value };
 }
 
 /**
@@ -908,6 +932,7 @@ function parseOrthogonalCamera(content: string): BCFOrthogonalCamera | undefined
     cameraDirection: direction,
     cameraUpVector: upVector,
     viewToWorldScale: scale,
+    ...parseAspectRatio(cameraContent),
   };
 }
 
@@ -1164,20 +1189,31 @@ function parseClippingPlanes(content: string): BCFClippingPlane[] {
 
 /**
  * Parse bitmaps
+ *
+ * The two BCF versions diverge in shape (see writer.ts's writeBitmap/
+ * writeViewpointFiles for the write side of this):
+ * - BCF 3.0: entries sit inside a `<Bitmaps>` wrapper, and the per-entry
+ *   format element is named `<Format>`. No tag inside an entry shares the
+ *   entry's own name, so a plain non-greedy `<Bitmap>...</Bitmap>` match
+ *   is unambiguous.
+ * - BCF 2.1: entries sit DIRECTLY under `<VisualizationInfo>` (no wrapper),
+ *   and the format element is confusingly also named `<Bitmap>`, nested one
+ *   level inside the entry (`<Bitmap><Bitmap>PNG</Bitmap><Reference>...`).
+ *   A naive non-greedy `<Bitmap>...</Bitmap>` match on that shape terminates
+ *   at the FIRST `</Bitmap>` it sees -- the inner format tag's closing tag,
+ *   not the entry's -- and silently drops the rest of the entry. It must be
+ *   matched with an explicit two-level pattern instead.
  */
 function parseBitmaps(content: string): BCFBitmap[] {
   const bitmaps: BCFBitmap[] = [];
   const bitmapsMatch = content.match(/<Bitmaps>([\s\S]*?)<\/Bitmaps>/);
-  if (!bitmapsMatch) return bitmaps;
 
-  const bitmapMatches = bitmapsMatch[1].matchAll(/<Bitmap>([\s\S]*?)<\/Bitmap>/g);
-  for (const match of bitmapMatches) {
-    const format = extractElement(match[1], 'Format') || extractElement(match[1], 'Bitmap');
-    const reference = extractElement(match[1], 'Reference');
-    const location = parsePoint(match[1], 'Location');
-    const normal = parseDirection(match[1], 'Normal');
-    const up = parseDirection(match[1], 'Up');
-    const height = extractElement(match[1], 'Height');
+  const pushBitmap = (format: string | undefined, body: string) => {
+    const reference = extractElement(body, 'Reference');
+    const location = parsePoint(body, 'Location');
+    const normal = parseDirection(body, 'Normal');
+    const up = parseDirection(body, 'Up');
+    const height = extractElement(body, 'Height');
 
     if (format && reference && location && normal && up && height) {
       bitmaps.push({
@@ -1188,6 +1224,21 @@ function parseBitmaps(content: string): BCFBitmap[] {
         up,
         height: parseFloat(height),
       });
+    }
+  };
+
+  if (bitmapsMatch) {
+    // BCF 3.0 shape: <Bitmaps><Bitmap><Format>...</Format>...</Bitmap>...</Bitmaps>
+    for (const match of bitmapsMatch[1].matchAll(/<Bitmap>([\s\S]*?)<\/Bitmap>/g)) {
+      pushBitmap(extractElement(match[1], 'Format'), match[1]);
+    }
+  } else {
+    // BCF 2.1 shape: <Bitmap><Bitmap>PNG</Bitmap>...</Bitmap>, unwrapped,
+    // directly under VisualizationInfo.
+    for (const match of content.matchAll(
+      /<Bitmap>\s*<Bitmap>([\s\S]*?)<\/Bitmap>([\s\S]*?)<\/Bitmap>/g,
+    )) {
+      pushBitmap(match[1], match[2]);
     }
   }
 

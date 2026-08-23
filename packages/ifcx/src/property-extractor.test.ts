@@ -47,6 +47,7 @@ describe('extractProperties — typed records and internal carriers (#1031)', ()
     node.attributes.set('ifclite::materials', [{ materialId: 'mat-1' }]);
     node.attributes.set('ifclite::geometryRef', 'geom-1');
     node.attributes.set('ifclite::deleted', false);
+    node.attributes.set('ifclite::meta', { createdBy: 'ada', createdAt: '2019-05-05T00:00:00Z' });
     node.attributes.set('bsi::ifc::v5a::Pset_WallCommon::IsExternal', {
       type: 'IfcBoolean',
       value: true,

@@ -32,6 +32,26 @@ async function flushMicrotasks(): Promise<void> {
 // share a `parser.worker.js` instance, silently breaking per-test isolation.
 let importCounter = 0;
 
+/**
+ * #2948: the dynamic import below pays a real transform cost — the FIRST
+ * `beforeEach` in this file loads `parser.worker.js` for the first time and
+ * vitest/vite must parse+transform it and its import graph, a one-time cost
+ * that later `?t=N` cache-busted imports of the same underlying file reuse
+ * (measured: first test 1111ms, second test 4ms, same machine, same run).
+ * On a green CI run that first hook was measured at 4462ms.
+ *
+ * That number does NOT threaten `testTimeout` (5000ms default): the import
+ * runs inside `beforeEach`, and vitest starts each test's own timeout clock
+ * only once its hooks have resolved — confirmed by probe, a `beforeEach`
+ * that alone takes 5.8s passes under the default 5000ms `testTimeout`. The
+ * real ceiling here is `hookTimeout` (10_000ms default), against which
+ * 4462ms is 45%, not the 89% headline number would suggest against 5000ms.
+ * Made explicit anyway, at the repo's usual order of magnitude for a
+ * genuinely slow but non-scaling one-time cost, so the budget is a decision
+ * rather than an artifact of which default vitest happens to apply here.
+ */
+const WORKER_IMPORT_HOOK_TIMEOUT_MS = 30_000;
+
 beforeEach(async () => {
   postedMessages.length = 0;
   const g = globalThis as Record<string, unknown>;
@@ -41,7 +61,7 @@ beforeEach(async () => {
   g.postMessage = (msg: unknown) => postedMessages.push(msg);
   delete g[WASM_PANIC_STASH_KEY];
   await import('./parser.worker.js?t=' + ++importCounter);
-});
+}, WORKER_IMPORT_HOOK_TIMEOUT_MS);
 
 afterEach(() => {
   const g = globalThis as Record<string, unknown>;

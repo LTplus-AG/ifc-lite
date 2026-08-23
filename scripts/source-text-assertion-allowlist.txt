@@ -18,6 +18,14 @@
 #
 # Each line: path, then why it is still here.
 
+# ── NOT source-text: the guard's three conditions co-occur by accident ──
+# These trip READS_A_FILE, SOURCE_LITERAL and TEXT_PREDICATE without the three
+# being related to each other. That is a limitation of a file-level heuristic,
+# not a property of the test. Separating them needs to track which variable
+# holds file contents, which is real static analysis; two cheaper rules were
+# measured and both lost coverage on entries above (4 of 7 and 3 of 7 caught).
+packages/data/scripts/generate-ifc-schema.test.ts                          # behavioural, and carefully so: spawns the generator against a temp copy of the vendored .g.cs data with one marker renamed, then asserts `r.status` is non-zero BEFORE the stderr message, and that stdout lacks "Done.". Its rename/edit helpers assert the mutation changed something, so a no-op edit cannot make a case vacuous. What trips the guard: reads are fixture setup, the .ts literal is a copyFileSync of the script under test, and the .indexOf() calls splice fixture text. Not one assertion touches source text.
+
 # ── Genuinely source-text, and genuinely blocked ──
 apps/viewer/src/components/viewer/toolbar/export-ui-parity.test.tsx         # narrowed to ONE assertion: the CSV success toast. That exporter loads the wasm over a file:// URL, which fetch refuses, so its click cannot be driven in node. JSON -- same code path, same note -- IS driven, in the same test.
 apps/viewer/src/components/viewer/colorful-popover-opacity.test.ts          # a CSS `!important` cascade-order contract. Tailwind utilities are not materialised in the test env, so getComputedStyle would agree with whatever the file said: the "behavioural" form is strictly weaker here, not stronger.

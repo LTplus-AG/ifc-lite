@@ -76,8 +76,18 @@ const ALLOWLIST_PATH = join(ROOT, 'scripts', 'source-text-assertion-allowlist.tx
  * in the same commit as the row, which is what this constant exists to force.
  * The cache-hit half of #2388 is NOT covered by that exception and is tested
  * behaviourally against real `posthog.capture` payloads.
+ *
+ * Raised to 8 for `packages/data/scripts/generate-ifc-schema.test.ts`, and that
+ * one is a DIFFERENT kind of entry from every other row: it is not a
+ * source-text assertion at all. It trips READS_A_FILE, SOURCE_LITERAL and
+ * TEXT_PREDICATE without the three being related -- fixture reads, a
+ * copyFileSync of the script under test, and `.indexOf()` splicing fixture
+ * text. Separating that from a real hit needs to track which variable holds
+ * file contents; two cheaper rules were measured against the rows above and
+ * lost coverage (4 of 7 and 3 of 7 caught), so both were rejected rather than
+ * shipped for the convenience of one file.
  */
-const ALLOWLIST_CEILING = 7;
+const ALLOWLIST_CEILING = 8;
 
 /** Reads a file from disk at all. */
 const READS_A_FILE = /\b(readFileSync|readFile)\s*\(/;
@@ -102,6 +112,49 @@ const SOURCE_LITERAL = /['"`][^'"`\n]*\.(ts|tsx|mts|rs|css|scss)['"`]/;
  */
 const TEXT_PREDICATE =
   /(\.(includes|indexOf|match|search|startsWith|endsWith|exec)|\/\s*\.test)\s*\(|\.test\s*\(\s*(source|src|text|body|content|contents)\b|\.(toContain|toMatch)\s*\(/;
+
+/**
+ * Assertions on a spawned process's own output are BEHAVIOURAL, not source-text,
+ * and stripping them before the predicate runs is what stops this guard firing
+ * on a test that merely happens to read files for fixture setup.
+ *
+ * `packages/data/scripts/generate-ifc-schema.test.ts` is the case that forced
+ * this: it copies vendored `.g.cs` data into a temp directory, renames a marker,
+ * runs the generator, and asserts `r.status` is non-zero and `r.stderr` names
+ * the missing marker. Every `readFileSync` there is fixture setup; not one reads
+ * a source file to assert on its text. File-level co-occurrence of
+ * `readFileSync` and `.toContain(` was enough to flag it, which is a false
+ * positive on exactly the shape this guard wants people to write.
+ *
+ * `{0,200}` on the receiver runs, not `*`. Two unbounded runs before a required
+ * `)` backtrack QUADRATICALLY when the input has no `)` at all. Measured on
+ * `'expect(' + '.status'.repeat(n)`:
+ *
+ *     n=4000    unbounded 41.6ms   newline-excluded 49.4ms   bounded 0.1ms
+ *     n=16000   unbounded 657.9ms  newline-excluded 720.1ms  bounded 0.0ms
+ *
+ * Excluding the newline alone does NOT help -- that input has no newlines, so
+ * `[^)\n]*` and `[^)]*` behave identically. Only the length bound flattens it.
+ * 200 is far above any real receiver: the longest real one in the tree is 41
+ * chars, and the longest `)`-free stretch in any test file is roughly 4.5k --
+ * both orders of magnitude past the bound either way. Stated loosely on
+ * purpose, because an exact count here is measured on the COMMENT-STRIPPED
+ * text this regex actually sees, not on raw source, and goes stale on the next
+ * commit regardless. Matcher
+ * ARGS do span lines, which is why `[^;]*?` below stays unbounded.
+ *
+ * Deliberately narrow: only `.status`, `.stdout` and `.stderr` receivers are
+ * dropped, so `expect(readFileSync(x)).toContain(y)` is untouched. A test that
+ * genuinely asserts on file text cannot hide behind this by renaming a
+ * variable, because the receiver property is what is matched, not its name.
+ */
+const PROCESS_OUTPUT_ASSERTION =
+  /\bexpect\s*\([^)\n]{0,200}\.(status|stdout|stderr)\b[^)\n]{0,200}\)\s*(\.\s*not)?\s*\.\s*(toContain|toMatch|toBe|toEqual)\s*\([^;]*?\)/g;
+
+/** Blank process-output assertions so only file-text ones reach TEXT_PREDICATE. */
+function stripProcessOutputAssertions(text) {
+  return text.replace(PROCESS_OUTPUT_ASSERTION, '');
+}
 
 function walk(dir, found = []) {
   // Fail closed. Swallowing an unreadable directory would let this guard
@@ -145,8 +198,9 @@ for (const dir of SEARCH_DIRS) {
   for (const file of walk(join(ROOT, dir))) {
     const rel = relative(ROOT, file).split('\\').join('/');
     const source = stripComments(readFileSync(file, 'utf8'));
+    const assertions = stripProcessOutputAssertions(source);
     const flagged =
-      READS_A_FILE.test(source) && SOURCE_LITERAL.test(source) && TEXT_PREDICATE.test(source);
+      READS_A_FILE.test(source) && SOURCE_LITERAL.test(source) && TEXT_PREDICATE.test(assertions);
     if (!flagged) continue;
     if (allowlist.has(rel)) {
       staleAllowlistEntries.delete(rel);

@@ -1899,6 +1899,7 @@
     "MetadataBootstrapEntitySummary: interface",
     "MetadataBootstrapPayload: interface",
     "MetadataBootstrapSpatialNode: interface",
+    "NORMAL_COORD_THRESHOLD_M: const",
     "NO_RENDER_GEOMETRY: const",
     "PlatformGeometryStats: interface",
     "PointCloudAsset: interface",
